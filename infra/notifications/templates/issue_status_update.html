@@ -1,0 +1,24 @@
+{{define "title"}}Status do chamado atualizado - {{.Brand.Name}}{{end}}
+{{define "preheader"}}O status do seu chamado mudou para {{.NewStatusLabel}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "info" "glyph" "bell"}}
+        {{template "heading" dict "title" "Status atualizado" "subtitle" "O status do seu chamado foi alterado"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 8px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.OwnerName}}</strong>, o status do seu chamado de suporte foi atualizado. Veja os detalhes abaixo.
+        </p>
+        {{template "details" dict "title" "Chamado" "k1" "Título" "v1" .IssueTitle "k2" "Status anterior" "v2" .OldStatusLabel "k3" "Status atual" "v3" .NewStatusLabel}}
+        {{if .IsClosed}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "success" "title" "Chamado encerrado" "body" "O seu chamado foi marcado como resolvido. Se ainda precisar de ajuda, abra um novo chamado quando quiser."}}
+        {{end}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Ver chamado"}}
+    </td>
+</tr>
+{{end}}

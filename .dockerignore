@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Documentation — keep docs/docs.go (imported as vozko/docs by the swagger
+# route in delivery/http/router.go); drop the heavy markdown/PDF/spec bloat.
+docs/*.md
+docs/*.pdf
+docs/swagger.json
+docs/swagger.yaml
+*.md
+
+# Test files
+*_test.go
+recordings/
+
+# Docker files
+docker/
+Dockerfile*
+docker-compose*.yml
+
+# Scripts
+scripts/
+deploy.sh
+
+# Data and local files
+data/
+*.log
+*.env
+.env*
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/

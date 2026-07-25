@@ -1,0 +1,54 @@
+groups:
+  - name: app_calls
+    rules:
+      - alert: NoCallsProgressing
+        expr: app_calls_current{state="ongoing"} == 0 and app_calls_current{state="dialing"} == 0
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "No active calls for 10 minutes"
+          description: "No calls in dialing or ongoing state. May indicate a trunk outage or campaign paused."
+
+      - alert: CallDialingStuck
+        expr: app_calls_current{state="dialing"} > 0 and app_calls_current{state="dialing"} == on(workspace) app_calls_current{state="dialing"} offset 5m
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dialing gauge unchanged for 5m"
+          description: >-
+            Calls are stuck in dialing state. Possible SIP trunk issue or
+            INVITE timeout misconfiguration.
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} is down"
+          description: "The target {{ $labels.instance }} has been unreachable for 2 minutes."
+
+  - name: app_http
+    rules:
+      - alert: HighHTTPLatency
+        expr: histogram_quantile(0.95, sum(rate(app_http_request_duration_seconds_bucket[5m])) by (le, method, path)) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP p95 latency above 5s"
+          description: >-
+            {{ $labels.method }} {{ $labels.path }} p95 latency is {{ $value }}s.
+            Users may be experiencing slow responses.
+
+      - alert: HighHTTPErrorRate
+        expr: sum(rate(app_http_requests_total{status=~"5.."}[5m])) / sum(rate(app_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx error rate above 5%"
+          description: >-
+            {{ $value | humanizePercentage }} of HTTP responses are 5xx errors.

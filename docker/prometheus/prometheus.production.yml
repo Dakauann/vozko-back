@@ -1,0 +1,95 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Production scrape config template for Vozko multi-replica deployments.
+#
+# Copy this to your monitoring host as `prometheus.yml`, replace the targets
+# directory path with whatever your deploy pipeline writes, and reload
+# Prometheus (`kill -HUP <pid>` or `curl -X POST http://prom:9090/-/reload`).
+#
+# This file is intentionally separate from `prometheus.yml` (the dev/
+# docker-compose config) so we don't accidentally ship dev-only static
+# targets to production.
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  # 15s is the production default. Dev uses 5s for faster feedback;
+  # production triples the storage cost without proportional benefit.
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: vozko-prod
+    # Set per region/datacenter when running multiple Prometheus shards.
+    # region: us-east-1
+
+scrape_configs:
+  # ── Vozko application replicas ──────────────────────────────────────────
+  # Replicas register themselves into the targets directory at boot time.
+  # Each file in targets/*.json is a JSON array of target groups, e.g.:
+  #
+  #   [
+  #     {
+  #       "targets": ["10.0.0.5:9213"],
+  #       "labels": {
+  #         "instance": "vozko-go-replica-01",
+  #         "datacenter": "dc1",
+  #         "version": "1.42.0"
+  #       }
+  #     }
+  #   ]
+  #
+  # Prometheus picks up file changes within `refresh_interval` without a
+  # restart, so autoscaling and rolling deploys are zero-config from
+  # Prometheus's perspective.
+  - job_name: vozko-go
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/vozko-go-*.json
+        refresh_interval: 30s
+    metrics_path: /metrics
+    # If you choose to require an auth token on /metrics, uncomment:
+    # bearer_token_file: /etc/prometheus/secrets/vozko-metrics-token
+
+  # ── Prometheus self-scrape ─────────────────────────────────────────────
+  # Always scrape Prometheus itself so we can alert on scrape health,
+  # tsdb head series count, ingestion rate, etc.
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # ── Node Exporter (optional) ───────────────────────────────────────────
+  # Uncomment when host-level metrics (CPU/RAM/disk/network) are needed
+  # alongside app metrics. Node Exporter listens on :9100 — that's why
+  # Vozko defaults to :9213 for its own /metrics, to avoid collision.
+  # - job_name: node
+  #   file_sd_configs:
+  #     - files: [/etc/prometheus/targets/node-*.json]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Long-term storage (HA + retention beyond local TSDB)
+# ─────────────────────────────────────────────────────────────────────────────
+# Once you outgrow single-Prometheus retention or need cross-cluster
+# queries, point remote_write at Grafana Mimir / VictoriaMetrics /
+# Grafana Cloud. Until then, leave commented.
+#
+# remote_write:
+#   - url: https://mimir.internal.example.com/api/v1/push
+#     basic_auth:
+#       username_file: /etc/prometheus/secrets/mimir-user
+#       password_file: /etc/prometheus/secrets/mimir-password
+#     queue_config:
+#       max_samples_per_send: 5000
+#       max_shards: 30
+#       capacity: 20000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Alertmanager wiring (optional in this template — uncomment when ready)
+# ─────────────────────────────────────────────────────────────────────────────
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - alertmanager-1.internal:9093
+#             - alertmanager-2.internal:9093
+#
+# rule_files:
+#   - /etc/prometheus/rules/*.yml

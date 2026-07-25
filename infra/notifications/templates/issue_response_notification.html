@@ -1,0 +1,25 @@
+{{define "title"}}Nova resposta no chamado - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{.AuthorName}} respondeu ao seu chamado: {{.IssueTitle}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "info" "glyph" "bell"}}
+        {{template "heading" dict "title" "Nova resposta no chamado" "subtitle" "A equipe de suporte respondeu"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 8px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.OwnerName}}</strong>, há uma nova resposta no seu chamado de suporte. Confira os detalhes abaixo.
+        </p>
+        {{template "details" dict "title" "Chamado" "k1" "Título" "v1" .IssueTitle "k2" "Status" "v2" .StatusLabel}}
+        <div style="height:14px; line-height:14px;">&nbsp;</div>
+        {{template "textblock" dict "label" (printf "%s  ·  Equipe de Suporte  ·  %s" .AuthorName .ResponseDate) "body" .ResponseBody}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Ver chamado completo"}}
+        <p style="margin:18px 0 0; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center; line-height:1.6;">
+            Você pode responder diretamente pelo painel acessando o chamado acima.
+        </p>
+    </td>
+</tr>
+{{end}}

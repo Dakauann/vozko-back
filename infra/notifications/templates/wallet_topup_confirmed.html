@@ -1,0 +1,24 @@
+{{define "title"}}Saldo adicionado - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Sua recarga de {{.Amount}} foi confirmada.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "success" "glyph" "check"}}
+        {{template "heading" dict "title" "Saldo adicionado" "subtitle" "Sua recarga foi confirmada"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Recebemos o seu pagamento e o valor já está disponível na sua carteira {{.Brand.Name}}.
+        </p>
+        {{if .Balance}}
+        {{template "details" dict "title" "Detalhes da recarga" "k1" "Valor adicionado" "v1" .Amount "k2" "Saldo atual" "v2" .Balance}}
+        {{else}}
+        {{template "details" dict "title" "Detalhes da recarga" "k1" "Valor adicionado" "v1" .Amount}}
+        {{end}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Ver carteira"}}
+    </td>
+</tr>
+{{end}}

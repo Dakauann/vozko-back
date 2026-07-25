@@ -1,0 +1,29 @@
+groups:
+  - name: vozko_rate_limits
+    rules:
+      # A single client IP being rejected repeatedly almost always means many
+      # users share one NAT (an office) and collide on the per-IP budget — the
+      # legitimate-traffic false positive we care about, not an attacker.
+      - alert: ClientIPRateLimited
+        expr: sum by (client_ip, limiter) (increase(app_http_rate_limited_total{reason="limit_exceeded"}[10m])) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Client IP {{ $labels.client_ip }} is being rate-limited ({{ $labels.limiter }})"
+          description: >-
+            {{ $labels.client_ip }} got {{ $value | humanize }} rejections in 10m on
+            the '{{ $labels.limiter }}' limiter. Likely a multi-seat office behind one
+            NAT sharing a per-IP budget. Consider a per-user limit or a higher/allow-listed
+            budget for this IP rather than raising the global cap for everyone.
+
+      - alert: RateLimiterFailClosed
+        expr: sum(rate(app_http_rate_limited_total{reason="limiter_error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Rate limiter is failing closed"
+          description: >-
+            The limiter backend (Redis) is erroring, so requests are being rejected
+            fail-closed with HTTP 429. Users are blocked platform-wide until this recovers.

@@ -1,0 +1,22 @@
+{{define "title"}}Qualidade do número em risco - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A qualidade do número {{.PhoneNumber}} mudou para {{.Quality}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "alert"}}
+        {{template "heading" dict "title" "Qualidade do número em risco" "subtitle" .PhoneNumber}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            A Meta reduziu a classificação de qualidade do seu número de WhatsApp. Qualidade baixa pode limitar o volume de mensagens e, se persistir, levar à restrição do número.
+        </p>
+        {{template "details" dict "title" "Número afetado" "k1" "Número" "v1" .PhoneNumber "k2" "Qualidade atual" "v2" .Quality}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "warning" "title" "Como recuperar" "body" "Evite envios em massa não solicitados, use modelos aprovados e respeite as janelas de conversa. A qualidade tende a melhorar com o tempo e bons indicadores."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Ver números"}}
+    </td>
+</tr>
+{{end}}

@@ -1,0 +1,857 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Vozko App Process (resources)",
+      "type": "dashboards",
+      "tags": [
+        "vozko",
+        "resources"
+      ],
+      "asDropdown": true,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "liveNow": false,
+  "description": "Application & domain metrics for vozko-go (calls, WebSockets, HTTP, speech pools, loop-guard, errors), scoped by replica. For host/process resource usage (RAM/CPU/GC) see the 'Vozko App Process' dashboard.",
+  "panels": [
+    {
+      "title": "Active Calls (Ongoing)",
+      "type": "stat",
+      "description": "Calls currently connected and in progress (app_calls_current{state=ongoing}). Sparkline shows the recent trend.",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "app_calls_current{state=\"ongoing\", replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Calls Dialing",
+      "type": "stat",
+      "description": "Calls in the dialing/ringing phase, not yet connected (app_calls_current{state=dialing}).",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "app_calls_current{state=\"dialing\", replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Total Finished Calls",
+      "type": "stat",
+      "description": "Cumulative finished calls since process start (app_calls_finished_total). Per-process counter — it resets to 0 on restart; the sparkline shows accumulation.",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "app_calls_finished_total{replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "WebSocket Connections",
+      "type": "stat",
+      "description": "Live WebSocket clients across all endpoints, summed over the selected replicas (app_ws_connections).",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(app_ws_connections{replica_id=~\"$replica_id\"})",
+          "legendFormat": "total",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "HTTP In-Flight",
+      "type": "stat",
+      "description": "HTTP requests currently being served, summed over the selected replicas (app_http_in_flight_requests). A sustained climb signals saturation or stuck handlers.",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(app_http_in_flight_requests{replica_id=~\"$replica_id\"})",
+          "legendFormat": "total",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 200
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Active WebSocket Endpoints",
+      "type": "stat",
+      "description": "Distinct WebSocket endpoints with at least one active connection. Replicas are collapsed first (sum by endpoint), so an endpoint counts once no matter how many replicas serve it.",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "count(sum by (endpoint) (app_ws_connections{replica_id=~\"$replica_id\"}) > 0) or vector(0)",
+          "legendFormat": "endpoints",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "none",
+        "colorMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "title": "Call Rate (calls/min)",
+      "type": "timeseries",
+      "description": "Throughput of completed calls (rate of app_calls_finished_total over 5m, ×60). Reads as calls finishing per minute.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "expr": "rate(app_calls_finished_total{replica_id=~\"$replica_id\"}[5m]) * 60",
+          "legendFormat": "finished/min · {{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "calls/min",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 22,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "title": "Active Calls Over Time (stacked by state)",
+      "type": "timeseries",
+      "description": "Concurrent calls split by state (dialing vs ongoing), stacked so the band height is total active calls. Watch the ongoing band for live load.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "expr": "app_calls_current{replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{state}} · {{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "title": "WebSocket Connections by Endpoint (stacked)",
+      "type": "timeseries",
+      "description": "Live WebSocket clients per endpoint, stacked so total height is all connections. Composition shows which endpoint (conversations/dialer/simulators) drives the load.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "expr": "app_ws_connections{replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{endpoint}} · {{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "last"
+          ]
+        }
+      }
+    },
+    {
+      "title": "Loop Guard Checks / Blocks",
+      "type": "timeseries",
+      "description": "Conversation loop-guard activity per second. 'checks' is evaluation throughput; 'blocked' (filled red) is AI responses suppressed as loops — a rising blocked rate means the guard is catching repetition.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "expr": "rate(app_loopguard_blocks_total{replica_id=~\"$replica_id\"}[5m])",
+          "legendFormat": "blocked ({{reason}}) · {{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        },
+        {
+          "expr": "rate(app_loopguard_checks_total{replica_id=~\"$replica_id\"}[5m])",
+          "legendFormat": "checks ({{layer}}/{{action}}) · {{replica_id}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "blocked.*"
+            },
+            "properties": [
+              {
+                "id": "custom.fillOpacity",
+                "value": 30
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "title": "HTTP Request Rate (stacked)",
+      "type": "timeseries",
+      "description": "Requests per second by method/path/status, stacked so total height is overall throughput. Useful for spotting which endpoints and status classes dominate traffic.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "targets": [
+        {
+          "expr": "rate(app_http_requests_total{replica_id=~\"$replica_id\"}[5m])",
+          "legendFormat": "{{method}} {{path}} {{status}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 35,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "last",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "title": "HTTP Latency p95",
+      "type": "timeseries",
+      "description": "95th-percentile request duration by method/path (app_http_request_duration_seconds). The latency your slowest 5% of requests experience.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(app_http_request_duration_seconds_bucket{replica_id=~\"$replica_id\"}[5m])) by (le, method, path))",
+          "legendFormat": "{{method}} {{path}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "last",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "title": "HTTP In-Flight by Endpoint (stacked)",
+      "type": "timeseries",
+      "description": "Concurrent requests per method/path, stacked so total height is all in-flight work. Tall persistent bands flag endpoints holding connections open.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "targets": [
+        {
+          "expr": "app_http_in_flight_requests{replica_id=~\"$replica_id\"}",
+          "legendFormat": "{{method}} {{path}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 35,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "title": "HTTP Slow Endpoints (p99 > 1s)",
+      "type": "timeseries",
+      "description": "99th-percentile duration, filtered to only series exceeding 1s (the query drops anything faster). Points appear only when an endpoint is genuinely slow — empty is healthy.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(app_http_request_duration_seconds_bucket{replica_id=~\"$replica_id\"}[5m])) by (le, method, path)) > 1",
+          "legendFormat": "{{method}} {{path}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "title": "Email / Metric Errors",
+      "type": "timeseries",
+      "description": "Error rates for outbound email and business-metric recording (bars). Any sustained bar height is worth investigating; healthy is flat at zero.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "targets": [
+        {
+          "expr": "rate(app_email_send_errors_total{replica_id=~\"$replica_id\"}[5m])",
+          "legendFormat": "email ({{error_type}}) · {{replica_id}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        },
+        {
+          "expr": "rate(app_metrics_record_errors_total{replica_id=~\"$replica_id\"}[5m])",
+          "legendFormat": "metric-record {{event_type}} ({{error_type}}) · {{replica_id}}",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": ""
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "vozko",
+    "infrastructure"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Replica",
+        "multi": true,
+        "name": "replica_id",
+        "options": [],
+        "query": "label_values(app_http_requests_total, replica_id)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": ""
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Vozko Infra",
+  "uid": "vozko-infra"
+}

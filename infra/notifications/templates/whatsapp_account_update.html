@@ -1,0 +1,24 @@
+{{define "title"}}Atualização da sua conta WhatsApp - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{.Headline}}{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" .Tone "glyph" .Glyph}}
+        {{template "heading" dict "title" .Headline "subtitle" .Subtitle}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            {{.Message}}
+        </p>
+        {{if .PhoneNumber}}
+        {{template "details" dict "title" "Detalhes" "k1" "Número" "v1" .PhoneNumber "k2" "Status" "v2" .StatusLabel}}
+        {{else}}
+        {{template "details" dict "title" "Detalhes" "k1" "Status" "v1" .StatusLabel}}
+        {{end}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Abrir o painel"}}
+    </td>
+</tr>
+{{end}}

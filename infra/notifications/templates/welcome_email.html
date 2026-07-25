@@ -1,0 +1,19 @@
+{{define "title"}}Bem-vindo à {{.Brand.Name}}{{end}}
+{{define "preheader"}}A sua conta {{.Brand.Name}} está pronta para usar.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "success" "glyph" "check"}}
+        {{template "heading" dict "title" (printf "Bem-vindo à %s" .Brand.Name) "subtitle" "A sua conta está pronta"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 24px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.Email}}</strong>, é um prazer ter você na {{.Brand.Name}}. Centralize os seus agentes de IA, dialers e canais de WhatsApp em um único painel de controle.
+        </p>
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" (printf "%s/dashboard" .Brand.SiteURL) "label" "Acessar o painel"}}
+    </td>
+</tr>
+{{end}}

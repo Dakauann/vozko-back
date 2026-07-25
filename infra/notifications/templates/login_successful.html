@@ -1,0 +1,20 @@
+{{define "title"}}Novo acesso à sua conta - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Um novo acesso foi realizado na sua conta {{.Brand.Name}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "brand" "glyph" "lock"}}
+        {{template "heading" dict "title" "Novo acesso à sua conta" "subtitle" "Confirmação de login"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 8px;">
+        <p style="margin:0 0 24px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.Email}}</strong>, registramos um novo acesso à sua conta {{.Brand.Name}}. Confira os detalhes abaixo.
+        </p>
+        {{template "details" dict "title" "Detalhes do acesso" "k1" "Conta" "v1" .Email "k2" "Data e hora" "v2" .LoginTime}}
+        <div style="height:22px; line-height:22px;">&nbsp;</div>
+        {{template "panel" dict "tone" "info" "title" "Não reconhece este acesso?" "body" "Se não foi você, redefina a sua senha imediatamente e fale com o nosso suporte."}}
+    </td>
+</tr>
+{{end}}

@@ -1,0 +1,23 @@
+name: Deploy Main Application Process
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy Via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ~/vozko-go
+            git pull origin main
+            docker compose build --no-cache
+            docker compose up -d --remove-orphans
+            docker system prune -f  

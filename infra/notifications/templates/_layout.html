@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="x-apple-disable-message-reformatting">
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <title>{{block "title" .}}{{.Brand.Name}}{{end}}</title>
+    <!--[if mso]>
+    <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+    <![endif]-->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap');
+        html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+        * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+        a { color: #2463eb; }
+        @media only screen and (max-width: 620px) {
+            .vx-container { width: 100% !important; border-radius: 0 !important; }
+            .vx-pad { padding-left: 26px !important; padding-right: 26px !important; }
+        }
+    </style>
+</head>
+
+<body style="margin:0; padding:0; background-color:#eef1f6; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;">
+    <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; line-height:0; font-size:0; color:#eef1f6;">{{block "preheader" .}}{{.Brand.Name}}{{end}}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef1f6" style="background-color:#eef1f6;">
+        <tr>
+            <td align="center" style="padding:40px 16px 28px;">
+
+                <!-- Content card (elevated-container surface) -->
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="vx-container" style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #e1e7ef; border-radius:20px; overflow:hidden; box-shadow:0px 0.7066px 0.7066px -0.6667px rgba(0,0,0,0.08), 0px 1.8066px 1.8066px -1.3333px rgba(0,0,0,0.08), 0px 3.6218px 3.6218px -2px rgba(0,0,0,0.07), 0px 6.8656px 6.8656px -2.6667px rgba(0,0,0,0.07), 0px 13.6468px 13.6468px -3.3333px rgba(0,0,0,0.05), 0px 30px 30px -4px rgba(0,0,0,0.02);">
+
+                    <!-- Brand -->
+                    <tr>
+                        <td class="vx-pad" align="center" style="padding:36px 40px 28px; border-bottom:1px solid #eef1f6;">
+                            <img src="{{.Brand.LogoURL}}" alt="{{.Brand.Name}}" height="40" style="display:inline-block; border:0; max-height:40px; width:auto;" />
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    {{block "content" .}}{{end}}
+
+                    <tr>
+                        <td style="font-size:0; line-height:0; height:22px;">&nbsp;</td>
+                    </tr>
+
+                </table>
+
+                <!-- Footer below the card -->
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+                    <tr>
+                        <td class="vx-pad" align="center" style="padding:26px 40px 0;">
+                            <p style="margin:0 0 4px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; color:#65758b; text-align:center; letter-spacing:0.03em;">{{.Brand.LegalName}}</p>
+                            <p style="margin:0 0 12px; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center;">CNPJ {{.Brand.CNPJ}}</p>
+                            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center; line-height:1.6;">
+                                <a href="{{.Brand.SiteURL}}" style="color:#2463eb; text-decoration:none;">{{.Brand.EmailDomain}}</a>
+                                &nbsp;&nbsp;&middot;&nbsp;&nbsp;
+                                <a href="mailto:{{.Brand.SupportEmail}}" style="color:#2463eb; text-decoration:none;">{{.Brand.SupportEmail}}</a>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="vx-pad" align="center" style="padding:16px 40px 0;">
+                            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:11px; color:#aab6c8; text-align:center; line-height:1.6;">Esta mensagem foi enviada por {{.Brand.Name}}. Se tiver dúvidas, fale com o suporte.</p>
+                        </td>
+                    </tr>
+                </table>
+
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>

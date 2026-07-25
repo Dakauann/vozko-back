@@ -1,0 +1,22 @@
+{{define "title"}}Falha na renovação do complemento - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Não conseguimos renovar {{.AddonName}} por saldo insuficiente.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "alert"}}
+        {{template "heading" dict "title" "Falha na renovação" "subtitle" "Saldo insuficiente para renovar o complemento"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            A renovação do complemento <strong style="color:#344256;">{{.AddonName}}</strong> não foi concluída porque o saldo era insuficiente. Adicione saldo para reativar o serviço.
+        </p>
+        {{template "details" dict "title" "Detalhes da cobrança" "k1" "Complemento" "v1" .AddonName "k2" "Valor necessário" "v2" .Amount}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "warning" "title" "O que acontece agora" "body" "Enquanto o saldo estiver insuficiente, o complemento permanece inativo. Para números de WhatsApp, o número fica suspenso até a recompra."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Adicionar saldo"}}
+    </td>
+</tr>
+{{end}}

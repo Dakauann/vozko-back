@@ -1,0 +1,20 @@
+{{define "title"}}Renovação do seu complemento - {{.Brand.Name}}{{end}}
+{{define "preheader"}}O complemento {{.AddonName}} será cobrado do seu saldo em {{.RenewalDate}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "brand" "glyph" "bell"}}
+        {{template "heading" dict "title" "Renovação em breve" "subtitle" (printf "Cobrança automática em %s" .RenewalDate)}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            O complemento abaixo será renovado automaticamente a partir do seu saldo {{.Brand.Name}}. Garanta saldo suficiente para manter o serviço ativo.
+        </p>
+        {{template "details" dict "title" "Detalhes da renovação" "k1" "Complemento" "v1" .AddonName "k2" "Valor" "v2" .Amount "k3" "Data da cobrança" "v3" .RenewalDate}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Gerenciar complementos"}}
+    </td>
+</tr>
+{{end}}

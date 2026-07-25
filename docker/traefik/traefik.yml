@@ -1,0 +1,29 @@
+# Traefik Static Configuration
+# This file configures Traefik as a load balancer for STT services
+
+# API and Dashboard
+api:
+  dashboard: true
+  insecure: true  # Enable dashboard on port 8080
+
+# Entry Points
+entryPoints:
+  stt:
+    address: ":8080"
+  traefik:
+    address: ":8090"
+
+# Providers - using file-based config (Docker provider has API issues)
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+# Logging
+log:
+  level: INFO
+
+# Access Log (disabled to reduce noise)
+# accessLog:
+#   filePath: "/var/log/traefik/access.log"
+#   bufferingSize: 100

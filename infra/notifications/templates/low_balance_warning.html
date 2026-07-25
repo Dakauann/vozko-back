@@ -1,0 +1,20 @@
+{{define "title"}}Saldo baixo - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Seu saldo está baixo. Adicione saldo para evitar a pausa dos serviços.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "wallet"}}
+        {{template "heading" dict "title" "Saldo baixo" "subtitle" "Adicione saldo para manter os serviços ativos"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            O saldo da sua carteira {{.Brand.Name}} está abaixo do recomendado. Ao chegar a zero, as respostas de IA e novas mensagens podem ser pausadas.
+        </p>
+        {{template "details" dict "title" "Sua carteira" "k1" "Saldo atual" "v1" .Balance "k2" "Status" "v2" "Abaixo do recomendado"}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Adicionar saldo"}}
+    </td>
+</tr>
+{{end}}

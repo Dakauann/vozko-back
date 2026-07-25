@@ -1,0 +1,56 @@
+# whisper.cpp STT Server with CUDA
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+
+RUN apt-get update && \
+    apt-get install -y curl git build-essential cmake && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/ggerganov/whisper.cpp.git /whisper && \
+    ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    cd /whisper && \
+    cmake -B build \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES="86" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DBUILD_TESTING=OFF && \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs \
+    cmake --build build --target whisper-server --parallel $(nproc)
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+RUN apt-get update && \
+    apt-get install -y curl ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /whisper/build/bin/whisper-server /usr/local/bin/
+COPY --from=builder /whisper/build/bin/lib*.so* /usr/local/lib/
+
+RUN ldconfig
+
+WORKDIR /app
+
+ARG MODEL_NAME=ggml-large-v3-turbo.bin
+ENV MODEL_NAME=${MODEL_NAME}
+
+RUN mkdir -p /models && \
+    curl -L "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}" \
+    -o /models/${MODEL_NAME}
+
+EXPOSE 8080
+
+ENV MODEL_PATH=/models/${MODEL_NAME}
+ENV THREADS=4
+ENV PROCESSORS=1
+ENV HOST=0.0.0.0
+ENV PORT=8080
+ENV LANGUAGE=pt
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda/lib64
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD curl -sf http://localhost:${PORT}/ || exit 1
+
+# Auto-convert incoming audio to the WAV format expected by whisper.cpp.
+CMD ["sh", "-c", "whisper-server -m /models/${MODEL_NAME} -t ${THREADS} -p ${PROCESSORS} --host ${HOST} --port ${PORT} -l ${LANGUAGE} --convert"]

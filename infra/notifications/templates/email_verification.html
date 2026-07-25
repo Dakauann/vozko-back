@@ -1,0 +1,22 @@
+{{define "title"}}Código de verificação - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Use o código abaixo para verificar o seu email e ativar a conta.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "brand" "glyph" "check"}}
+        {{template "heading" dict "title" "Verifique o seu email" "subtitle" "Confirme o seu endereço para ativar a conta"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 24px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.Email}}</strong>, use o código abaixo para verificar o seu email e ativar a sua conta {{.Brand.Name}}:
+        </p>
+        {{template "codebox" dict "label" "Seu código" "code" .Token}}
+        <p style="margin:20px 0 24px; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b; line-height:1.5; text-align:center;">
+            O código expira em <strong style="color:#344256;">15 minutos</strong>.
+        </p>
+        {{template "panel" dict "tone" "info" "title" "Não foi você?" "body" "Se você não solicitou este código, ignore este email. A sua conta permanece segura."}}
+    </td>
+</tr>
+{{end}}

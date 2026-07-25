@@ -1,0 +1,132 @@
+# Replica Test Overlay
+# Usage: docker compose -f docker-compose.yml -f docker-compose.replica-test.yml up --build app-1 app-2 api-lb
+#
+# This overlay runs 2 API replicas behind Traefik to validate horizontal scaling.
+# Both replicas share the same PostgreSQL, Redis, and RabbitMQ (all on the host).
+#
+# Key differences from production compose:
+#   - Switches from network_mode:host to bridge network (required for 2 instances)
+#   - Two explicit app services (app-1, app-2) with unique REPLICA_ID
+#   - Traefik as API load balancer with WebSocket sticky sessions
+#   - Connects to host-network DB, Redis, RabbitMQ via host.docker.internal
+
+services:
+  # Override: disable the original single-instance app
+  app:
+    profiles: ["disabled"]
+
+  # Disable services that are already running on host or not needed
+  redis:
+    profiles: ["disabled"]
+  rabbitmq:
+    profiles: ["disabled"]
+  prometheus:
+    profiles: ["disabled"]
+  ollama:
+    profiles: ["disabled"]
+
+  # --- Replica 1 ---
+  app-1:
+    build: .
+    container_name: vozko-api-1
+    env_file:
+      - .env
+    environment:
+      # All host services accessed via host.docker.internal
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      PORT: 4000
+      REDIS_ADDR: host.docker.internal:6379
+      RABBITMQ_HOST: host.docker.internal
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5673}
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - replica-net
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.api.entryPoints=api"
+      - "traefik.http.routers.api.service=api-service"
+      - "traefik.http.services.api-service.loadbalancer.server.port=4000"
+      # Sticky sessions for WebSocket connections
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie=true"
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie.name=_vozko_replica"
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie.httponly=true"
+      - "traefik.http.services.api-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.api-service.loadbalancer.healthcheck.interval=5s"
+
+  # --- Replica 2 ---
+  app-2:
+    build: .
+    container_name: vozko-api-2
+    env_file:
+      - .env
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      PORT: 4000
+      REDIS_ADDR: host.docker.internal:6379
+      RABBITMQ_HOST: host.docker.internal
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5673}
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - replica-net
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.api.entryPoints=api"
+      - "traefik.http.routers.api.service=api-service"
+      - "traefik.http.services.api-service.loadbalancer.server.port=4000"
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie=true"
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie.name=_vozko_replica"
+      - "traefik.http.services.api-service.loadbalancer.sticky.cookie.httponly=true"
+      - "traefik.http.services.api-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.api-service.loadbalancer.healthcheck.interval=5s"
+
+  # --- API Load Balancer (Traefik) ---
+  api-lb:
+    image: traefik:v3.6
+    container_name: vozko-api-lb
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=vozko-replica-net"
+      - "--entrypoints.api.address=:80"
+      - "--entrypoints.traefik.address=:8080"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--accesslog.fields.headers.defaultmode=keep"
+    ports:
+      # API traffic — point your frontend/tests here
+      - "127.0.0.1:4000:80"
+      # Traefik dashboard — see which replicas are healthy
+      - "127.0.0.1:8088:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - replica-net
+    restart: "no"
+
+networks:
+  replica-net:
+    name: vozko-replica-net
+    driver: bridge

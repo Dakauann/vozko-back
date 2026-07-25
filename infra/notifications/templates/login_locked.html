@@ -1,0 +1,20 @@
+{{define "title"}}Acesso bloqueado temporariamente - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Bloqueamos tentativas de login na sua conta {{.Brand.Name}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "danger" "glyph" "lock"}}
+        {{template "heading" dict "title" "Acesso bloqueado temporariamente" "subtitle" "Detectamos várias tentativas de login"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Registramos várias tentativas de login malsucedidas na conta <strong style="color:#344256;">{{.Email}}</strong>. Por segurança, bloqueamos temporariamente novos acessos.
+        </p>
+        {{template "panel" dict "tone" "danger" "title" "Não reconhece estas tentativas?" "body" "Se não foi você, redefina a sua senha agora. Se foi você, aguarde alguns minutos e tente novamente."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .ResetURL "label" "Redefinir senha"}}
+    </td>
+</tr>
+{{end}}

@@ -1,0 +1,26 @@
+{{define "title"}}Chamado recebido - {{.Brand.Name}}{{end}}
+{{define "preheader"}}Recebemos o seu chamado de suporte: {{.IssueTitle}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "info" "glyph" "bell"}}
+        {{template "heading" dict "title" "Chamado recebido" "subtitle" "Recebemos o seu chamado de suporte"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 8px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Olá <strong style="color:#344256;">{{.OwnerName}}</strong>, o seu chamado foi registrado com sucesso. A nossa equipe já foi notificada e responderá o mais breve possível.
+        </p>
+        {{template "details" dict "title" "Seu chamado" "k1" "Título" "v1" .IssueTitle}}
+        {{if .IssueDescription}}
+        <div style="height:12px; line-height:12px;">&nbsp;</div>
+        {{template "textblock" dict "label" "Descrição" "body" .IssueDescription}}
+        {{end}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "info" "title" "O que esperar?" "body" "Você recebe um email a cada nova resposta e a cada mudança de status, e pode acompanhar tudo pelo painel quando quiser."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Acompanhar chamado"}}
+    </td>
+</tr>
+{{end}}

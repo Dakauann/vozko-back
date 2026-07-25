@@ -1,0 +1,20 @@
+{{define "title"}}Falha na configuração do número - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A configuração do número {{.PhoneNumber}} não foi concluída.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "alert"}}
+        {{template "heading" dict "title" "Configuração não concluída" "subtitle" .PhoneNumber}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Não foi possível concluir a configuração do seu número de WhatsApp. O número permanece visível no painel e você pode tentar novamente.
+        </p>
+        {{template "details" dict "title" "Detalhes" "k1" "Número" "v1" .PhoneNumber "k2" "Motivo" "v2" .Reason}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Tentar novamente"}}
+    </td>
+</tr>
+{{end}}

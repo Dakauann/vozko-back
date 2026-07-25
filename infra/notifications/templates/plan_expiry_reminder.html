@@ -1,0 +1,20 @@
+{{define "title"}}Seu plano expira em breve - {{.Brand.Name}}{{end}}
+{{define "preheader"}}O plano {{.PlanName}} expira em {{.ExpiryDate}}. Renove para manter o serviço ativo.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "bell"}}
+        {{template "heading" dict "title" "Seu plano expira em breve" "subtitle" (printf "Expira em %s" .ExpiryDate)}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Renove agora para evitar a interrupção das suas chamadas, automações e números de WhatsApp incluídos no plano.
+        </p>
+        {{template "details" dict "title" "Detalhes do plano" "k1" "Plano" "v1" .PlanName "k2" "Expira em" "v2" .ExpiryDate}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Renovar plano"}}
+    </td>
+</tr>
+{{end}}

@@ -1,0 +1,20 @@
+{{define "title"}}Seu número de WhatsApp está ativo - {{.Brand.Name}}{{end}}
+{{define "preheader"}}O número {{.PhoneNumber}} está pronto para enviar e receber mensagens.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "success" "glyph" "check"}}
+        {{template "heading" dict "title" "Número ativo" "subtitle" (printf "%s está pronto para uso" .PhoneNumber)}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            A configuração do seu número de WhatsApp foi concluída. Ele já pode enviar e receber mensagens pelos seus agentes e campanhas.
+        </p>
+        {{template "details" dict "title" "Número ativo" "k1" "Número" "v1" .PhoneNumber "k2" "Status" "v2" "Ativo"}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Abrir o painel"}}
+    </td>
+</tr>
+{{end}}

@@ -1,0 +1,23 @@
+# Traefik Dynamic Configuration
+# Static routing since Docker auto-discovery has API version issues
+
+http:
+  routers:
+    stt-router:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - stt
+      service: stt-service
+
+  services:
+    stt-service:
+      loadBalancer:
+        # Weighted round-robin with health checks
+        healthCheck:
+          path: /
+          interval: "10s"
+          timeout: "3s"
+        servers:
+          - url: "http://stt-vozko-1:8080"
+          - url: "http://stt-vozko-2:8080"
+          - url: "http://stt-vozko-3:8080"

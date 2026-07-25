@@ -1,0 +1,103 @@
+{{- /* Reusable, design-system email components. Call with the dict helper, e.g.
+       {{template "cta" dict "url" .ResetURL "label" "Redefinir senha"}} */ -}}
+
+{{- /* symbol is intentionally a no-op. Gmail and most clients strip inline SVG and
+       border-radius, so an icon tile renders as a bare colored square. The brand is
+       carried by the real logo in the header, and meaning by the tone-coloured panels
+       and the heading. The define is kept so templates need no edits. */ -}}
+{{define "symbol"}}{{end}}
+
+{{- /* heading: centered title + optional subtitle. */ -}}
+{{define "heading"}}
+<h1 style="margin:24px 0 0; font-family:Inter,Arial,sans-serif; font-size:24px; font-weight:600; color:#344256; line-height:1.3; letter-spacing:-0.01em; text-align:center;">{{.title}}</h1>
+{{if .subtitle}}<p style="margin:9px 0 0; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.5; text-align:center;">{{.subtitle}}</p>{{end}}
+{{end}}
+
+{{- /* cta: the site's primary Button, rebuilt bulletproof. Pill (rounded-full),
+       bg-primary #2463eb, text-primary-foreground #ffffff, text-sm font-medium. */ -}}
+{{define "cta"}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:8px auto 0;">
+    <tr>
+        <td align="center" bgcolor="#2463eb" style="border-radius:9999px;">
+            <!--[if mso]>
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{.url}}" style="height:44px;v-text-anchor:middle;width:240px;" arcsize="50%" strokecolor="#2463eb" fillcolor="#2463eb">
+            <w:anchorlock/><center style="color:#ffffff;font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:500;">{{.label}}</center>
+            </v:roundrect>
+            <![endif]-->
+            <!--[if !mso]><!-->
+            <a href="{{.url}}" style="display:inline-block; min-width:176px; background-color:#2463eb; color:#ffffff; font-family:Inter,Arial,sans-serif; font-size:14px; font-weight:500; line-height:44px; text-align:center; text-decoration:none; border-radius:9999px; padding:0 30px; box-shadow:0 1px 2px 0 rgba(15,23,42,0.06), 0 10px 22px -12px rgba(36,99,235,0.5);">{{.label}}</a>
+            <!--<![endif]-->
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* panel: a notice surface. Hairline 1px border + tint, never a thick colored left-stripe.
+       tone: info|success|warning|danger. */ -}}
+{{define "panel"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td style="padding:18px 20px; border-radius:16px; border:1px solid {{if eq .tone "success"}}#cbebdb{{else if eq .tone "warning"}}#f6e6b8{{else if eq .tone "danger"}}#f6d0d2{{else}}#cfe0ff{{end}}; background-color:{{if eq .tone "success"}}#f1f9f5{{else if eq .tone "warning"}}#fef8e7{{else if eq .tone "danger"}}#fdeced{{else}}#f2f6ff{{end}};">
+            {{if .title}}<p style="margin:0 0 6px; font-family:Inter,Arial,sans-serif; font-size:14px; font-weight:600; color:{{if eq .tone "success"}}#2f604b{{else if eq .tone "warning"}}#8f6a08{{else if eq .tone "danger"}}#9b1c1c{{else}}#1e3fae{{end}};">{{.title}}</p>{{end}}
+            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b; line-height:1.6;">{{.body}}</p>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* codebox: a one-time code or token. Solid Signal Blue, white mono code. */ -}}
+{{define "codebox"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td align="center" style="padding:32px 20px; border-radius:18px; background-color:#2463eb; text-align:center;">
+            <p style="margin:0 0 14px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; color:#ffffff; text-transform:uppercase; letter-spacing:0.14em;">{{.label}}</p>
+            <p style="margin:0; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:40px; font-weight:700; color:#ffffff; letter-spacing:0.18em;">{{.code}}</p>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* datarow: a label/value detail line. Used inside the details card, or wrap a
+       sequence in your own table. The last row's rule sits under the card padding. */ -}}
+{{define "datarow"}}
+<tr>
+    <td style="padding:11px 0; border-bottom:1px solid #edf1f7; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b;">{{.label}}</td>
+    <td align="right" style="padding:11px 0; border-bottom:1px solid #edf1f7; font-family:Inter,Arial,sans-serif; font-size:13px; font-weight:600; color:#344256;">{{.value}}</td>
+</tr>
+{{end}}
+
+{{- /* details: a framed summary surface with an optional section label and up to five
+       label/value rows. Restores the substance of a real transactional receipt without
+       any banned pattern. Pass k1..k5 / v1..v5; empty pairs are skipped. */ -}}
+{{define "details"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td style="padding:6px 22px 14px; border:1px solid #e1e7ef; border-radius:16px; background-color:#fafbfd;">
+            {{if .title}}<p style="margin:0; padding:14px 0 2px; font-family:Inter,Arial,sans-serif; font-size:11px; font-weight:600; color:#4e5e74; text-transform:uppercase; letter-spacing:0.09em;">{{.title}}</p>{{end}}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {{if .k1}}{{template "datarow" dict "label" .k1 "value" .v1}}{{end}}
+                {{if .k2}}{{template "datarow" dict "label" .k2 "value" .v2}}{{end}}
+                {{if .k3}}{{template "datarow" dict "label" .k3 "value" .v3}}{{end}}
+                {{if .k4}}{{template "datarow" dict "label" .k4 "value" .v4}}{{end}}
+                {{if .k5}}{{template "datarow" dict "label" .k5 "value" .v5}}{{end}}
+            </table>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* textblock: a free-text surface (a description, a support reply). Same framed
+       look as the details card; optional uppercase label. Preserves line breaks. */ -}}
+{{define "textblock"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td style="padding:16px 20px; border:1px solid #e1e7ef; border-radius:16px; background-color:#fafbfd;">
+            {{if .label}}<p style="margin:0 0 8px; font-family:Inter,Arial,sans-serif; font-size:11px; font-weight:600; color:#4e5e74; text-transform:uppercase; letter-spacing:0.09em;">{{.label}}</p>{{end}}
+            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:14px; color:#65758b; line-height:1.7; white-space:pre-wrap;">{{.body}}</p>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* badge: a status pill carrying meaning via tint+ink. tone: info|success|warning|danger|neutral. */ -}}
+{{define "badge"}}<span style="display:inline-block; padding:4px 12px; border-radius:9999px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; background-color:{{if eq .tone "success"}}#eef7f3{{else if eq .tone "warning"}}#fef8e7{{else if eq .tone "danger"}}#fdeced{{else if eq .tone "info"}}#eef3ff{{else}}#f1f5f9{{end}}; color:{{if eq .tone "success"}}#2f604b{{else if eq .tone "warning"}}#8f6a08{{else if eq .tone "danger"}}#9b1c1c{{else if eq .tone "info"}}#1e3fae{{else}}#4e5e74{{end}};">{{.text}}</span>{{end}}

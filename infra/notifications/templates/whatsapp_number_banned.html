@@ -1,0 +1,22 @@
+{{define "title"}}Número de WhatsApp bloqueado - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A Meta bloqueou o número {{.PhoneNumber}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "danger" "glyph" "alert"}}
+        {{template "heading" dict "title" "Número bloqueado pela Meta" "subtitle" .PhoneNumber}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            A Meta bloqueou o seu número de WhatsApp. Enquanto estiver bloqueado, o número não envia nem recebe mensagens.
+        </p>
+        {{template "details" dict "title" "Número afetado" "k1" "Número" "v1" .PhoneNumber "k2" "Status" "v2" "Bloqueado"}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "danger" "title" "Próximos passos" "body" "Revise as políticas do WhatsApp Business e abra uma contestação pela Meta. Nosso suporte pode ajudar a entender o motivo e o caminho para a recuperação."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Falar com o suporte"}}
+    </td>
+</tr>
+{{end}}

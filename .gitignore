@@ -1,0 +1,16 @@
+.env
+docker/redis/users.acl
+data/postgres
+tree.txt
+recordings/*
+
+# Flow encryption keys (DO NOT COMMIT)
+keys/
+
+logs/
+
+# Carrier codec probe holds live trunk credentials — keep it local only, never commit
+cmd/codec_probe/main.go
+
+# Generated per-trunk SIP configs — plaintext carrier passwords, never commit
+docker/asterisk/

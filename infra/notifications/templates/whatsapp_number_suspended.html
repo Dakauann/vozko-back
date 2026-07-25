@@ -1,0 +1,22 @@
+{{define "title"}}Número de WhatsApp suspenso - {{.Brand.Name}}{{end}}
+{{define "preheader"}}O número {{.PhoneNumber}} foi suspenso.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "danger" "glyph" "alert"}}
+        {{template "heading" dict "title" "Número de WhatsApp suspenso" "subtitle" .PhoneNumber}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            O número de WhatsApp abaixo foi suspenso porque o complemento que o cobria deixou de estar ativo. O número não envia nem recebe mensagens enquanto estiver suspenso.
+        </p>
+        {{template "details" dict "title" "Número afetado" "k1" "Número" "v1" .PhoneNumber "k2" "Motivo" "v2" .Reason}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "info" "title" "Como reativar" "body" "Recompre o complemento correspondente para reativar o mesmo número. Se a reativação ocorrer antes do fim do mês, o número volta sem reonboarding."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Reativar número"}}
+    </td>
+</tr>
+{{end}}

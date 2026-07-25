@@ -1,0 +1,166 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "description": "Per-IP rate-limiter rejections (HTTP 429). A single client_ip with a high count means many users behind one NAT (e.g. an office) sharing one per-IP budget and colliding on the global 500 req/60s limit.",
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Limiter",
+        "multi": true,
+        "name": "limiter",
+        "options": [],
+        "query": "label_values(app_http_rate_limited_total, limiter)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Rejections/sec by limiter",
+      "type": "timeseries",
+      "description": "Rate of 429s per limiter. The 'global' series is the coarse 500 req/60s per-IP limit that dashboard page-loads hit.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (limiter) (rate(app_http_rate_limited_total{limiter=~\"$limiter\"}[5m]))",
+          "legendFormat": "{{limiter}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum", "max"] }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "title": "Rejections/sec by reason",
+      "type": "timeseries",
+      "description": "limit_exceeded = IP spent its window budget; limiter_error = limiter backend failed and the request was rejected fail-closed.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(app_http_rate_limited_total{limiter=~\"$limiter\"}[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "title": "Top offending client IPs (last 1h)",
+      "type": "table",
+      "description": "The client IPs hitting rate limits most. A single IP dominating this list = a shared-NAT office (e.g. SudaSeg at 179.191.107.18) whose agents collide on one per-IP budget.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "topk(20, sum by (client_ip, limiter) (increase(app_http_rate_limited_total{limiter=~\"$limiter\"}[1h])))",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true }, "renameByName": { "client_ip": "Client IP", "limiter": "Limiter", "Value": "429s (1h)" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "429s (1h)", "desc": true } ] } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true }
+    },
+    {
+      "title": "Total 429s (last 1h)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "sum(increase(app_http_rate_limited_total{limiter=~\"$limiter\"}[1h]))",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 50 }, { "color": "red", "value": 500 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "title": "Distinct IPs being rate-limited (last 1h)",
+      "type": "stat",
+      "description": "How many separate client IPs hit a limit. If this is small but total 429s is large, the pain is concentrated on a few shared-NAT offices.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 9 },
+      "targets": [
+        {
+          "expr": "count(sum by (client_ip) (increase(app_http_rate_limited_total{limiter=~\"$limiter\"}[1h])) > 0)",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "title": "429s/sec by endpoint",
+      "type": "timeseries",
+      "description": "Which endpoints are being rate-limited, from http_requests_total{status=429}. /auth/refresh, call-permission, analysis/entry and media dominate when the global per-IP limit is hit on page-loads.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "sum by (path) (rate(app_http_requests_total{status=\"429\"}[5m]))",
+          "legendFormat": "{{path}}",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "title": "Top rate-limited endpoints (last 1h)",
+      "type": "table",
+      "description": "Count of 429 responses per endpoint. Note: this is the OUTCOME (429s served) across all per-IP limiters + the global one; endpoint-specific limits (login 100/60s, cep 20/60s, media_upload 10/1s, etc.) surface here too.",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "expr": "topk(25, sum by (method, path) (increase(app_http_requests_total{status=\"429\"}[1h])))",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "" }
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "status": true, "replica_id": true }, "renameByName": { "method": "Method", "path": "Endpoint", "Value": "429s (1h)" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "429s (1h)", "desc": true } ] } }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["vozko", "rate-limit", "http"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Vozko · Rate Limiting (429s)",
+  "uid": "vozko-rate-limits"
+}
