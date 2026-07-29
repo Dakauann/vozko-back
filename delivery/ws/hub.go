@@ -2695,8 +2695,9 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 
 	if status == conversation.ConversationStatusFinished {
 		if err := h.statusUpdater.Finish(p.EntryID, p.EntryType, conversation.FinishOptions{
-			Source: conversation.CloseSourceHuman,
-			Reason: conversation.CloseReasonManual,
+			Source:  conversation.CloseSourceHuman,
+			Reason:  conversation.CloseReasonManual,
+			ActorID: conn.UserID,
 		}); err != nil {
 			h.sendConversationStatusError(
 				conn,

@@ -175,7 +175,7 @@ func (r *repository) buildLatestAnalysisSubquery(input analysis.ListAnalysisInpu
 				JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.deleted_at IS NULL
 				WHERE wce.id = analyses.entry_id AND wc.workspace_id = ? AND wce.deleted_at IS NULL
 			))
-		`, input.WorkspaceID, input.WorkspaceID)
+		`, input.WorkspaceID)
 	}
 
 	if input.EntryType.Valid() {
@@ -372,7 +372,7 @@ func (r *repository) applyFilters(query *gorm.DB, input analysis.ListAnalysisInp
 				JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.deleted_at IS NULL
 				WHERE wc.workspace_id = ? AND wce.deleted_at IS NULL
 			))
-		`, input.WorkspaceID, input.WorkspaceID)
+		`, input.WorkspaceID)
 	}
 
 	if input.EntryType.Valid() {

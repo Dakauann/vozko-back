@@ -192,6 +192,10 @@ type InitialStageAssigner interface {
 type FinishOptions struct {
 	Source CloseSource
 	Reason CloseReason
+	// ActorID is the user (source=human) or agent (source=ai) that closed the
+	// conversation. Recorded on the timeline event so "who finalized this?" is
+	// answerable. Empty for system closes.
+	ActorID string
 }
 
 type ConversationStatusUpdater interface {

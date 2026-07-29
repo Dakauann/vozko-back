@@ -82,7 +82,7 @@ func (s *ConversationStatusService) Finish(entryID, entryType string, opts conve
 			reason = conversation.CloseReasonManual
 		}
 	}
-	return s.applyStatus(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, false)
+	return s.applyStatusActor(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, false, opts.ActorID)
 }
 
 func (s *ConversationStatusService) applyStatus(
@@ -92,6 +92,20 @@ func (s *ConversationStatusService) applyStatus(
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
 	clearClose bool,
+) error {
+	return s.applyStatusActor(entryID, entryType, status, setClose, source, reason, clearClose, "")
+}
+
+// applyStatusActor is applyStatus plus the acting user/agent id, threaded through
+// to the timeline event so human closes are attributable.
+func (s *ConversationStatusService) applyStatusActor(
+	entryID, entryType string,
+	status conversation.ConversationStatus,
+	setClose bool,
+	source conversation.CloseSource,
+	reason conversation.CloseReason,
+	clearClose bool,
+	actorID string,
 ) error {
 	from := s.GetConversationStatus(entryID, entryType)
 	// Idempotent finish: already finished with same status, no-op side effects.
@@ -126,7 +140,7 @@ func (s *ConversationStatusService) applyStatus(
 		if s.resolveWorkspace != nil {
 			wsID = s.resolveWorkspace(entryID, entryType)
 		}
-		s.emitStatusChanged(entryID, entryType, string(from), string(status), source, reason, wsID)
+		s.emitStatusChanged(entryID, entryType, string(from), string(status), source, reason, wsID, actorID)
 		if status == conversation.ConversationStatusFinished {
 			s.endAISessionContained(entryID, entryType, wsID)
 		}
@@ -144,7 +158,7 @@ func (s *ConversationStatusService) endAISessionContained(entryID, entryType, wo
 	s.aiSessions.EndOpenRaw(workspaceID, entryID, entryType, "contained", "conversation_finished", "")
 }
 
-func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, to string, source conversation.CloseSource, reason conversation.CloseReason, workspaceID string) {
+func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, to string, source conversation.CloseSource, reason conversation.CloseReason, workspaceID, actorID string) {
 	if s.events == nil {
 		return
 	}
@@ -168,9 +182,18 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	builder := conv_event.New(wsID, entryID, entryType, evType).
 		WithChannel(channel).
 		WithDetails(details)
-	if source == conversation.CloseSourceHuman {
-		builder = builder.WithActorSystem() // actor still system for WS path; human id optional later
-	} else {
+	// Attribute the event to whoever actually acted. Previously both branches of
+	// this condition called WithActorSystem(), so every close - including agent
+	// clicks - was logged as actor_kind=system with no actor_id, making "who
+	// finalized this?" unanswerable on the timeline.
+	switch {
+	case source == conversation.CloseSourceHuman && actorID != "":
+		builder = builder.WithActorHuman(actorID)
+	case source == conversation.CloseSourceAI:
+		// Kind matters even when the agent id is unknown, so the timeline's AI
+		// filter catches it. FormatAI("") is empty-safe.
+		builder = builder.WithActorAI(actorID)
+	default:
 		builder = builder.WithActorSystem()
 	}
 	s.events.Log(builder.Build())
