@@ -31,7 +31,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.wcEntry,
 	)
 
-	c.services.conversationAuth = conversation_infra.NewAuthorizer(
+	conversationAuthorizer := conversation_infra.NewAuthorizer(
 		c.repositories.wcEntry,
 		c.repositories.workspace,
 		c.repositories.workspaceDepartment,
@@ -39,6 +39,13 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		workspaceResolver,
 		c.redisProvider.SharedState(),
 	)
+	// Both fields point at the same object: the interface for existing consumers,
+	// the concrete type so channels can register their per-entry lookups.
+	c.services.conversationAuth = conversationAuthorizer
+	if impl, ok := conversationAuthorizer.(*conversation_infra.Authorizer); ok {
+		c.services.conversationAuthImpl = impl
+	}
+
 	c.services.conversationHub = wsdelivery.NewConversationHub(c.services.conversationAuth, c.repositories.user, c.redisProvider.SharedState(), c.replicaID, c.cfg.PublicReplicaURL)
 	c.services.conversationHub.SetWSMetrics(c.services.metrics)
 
@@ -88,6 +95,8 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	conversationStatusUpdater := conversation_usecase.NewConversationStatusService(
 		c.repositories.wcEntry,
 	)
+	c.services.conversationStatusService = conversationStatusUpdater
+	c.services.campaignWorkspaceResolver = workspaceResolver
 	// Telemetry publisher is queue-only (no DB). Never Transition/Create on the hub path.
 	if c.services.crmTelemetryPublisher == nil && c.services.crmTelemetryPub != nil {
 		drops := crm_telemetry_usecase.NewLogDropRecorder()
@@ -250,6 +259,7 @@ func (c *Container) startConversationHub() {
 		c.redisProvider.SharedState(),
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
+	c.services.messageSender = messageSender
 	c.services.conversationHub.SetMessageSender(messageSender)
 	c.services.requestCallPermission = messageSender
 

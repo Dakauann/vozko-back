@@ -30,12 +30,18 @@ type JobRunner struct {
 	monitorLowBalance                  *balance_usecase.MonitorLowBalanceUseCase
 	renewCalendarChannels              calendar_domain.RenewExpiringChannelsUseCase
 	reconcileWhatsAppTemplates         whatsapp_template.ReconcileTemplatesUseCase
-	reconcileWhatsAppEntitlements      businessphone.EntitlementReconciler
-	emitMonthlyInvoices                billing.EmitMonthlyInvoicesUseCase
-	cancelBillingSweep                 billing.CancelSweepUseCase
-	vendorChannelReconciler            businessphone.VendorChannelReconciler
-	channelStatusReconciler            businessphone.ChannelStatusReconciler
-	purgeShortLinkClicks               shortlink_domain.PurgeClicksUseCase
+	// Instagram jobs are registered with setters rather than through the
+	// constructor: the channel is optional, and threading two more positional
+	// arguments through a 17-arg constructor for an optional feature is not worth
+	// the churn. StartAll runs after the container has had a chance to set them.
+	instagramTokenRefresh         ctxJob
+	instagramEventPurge           ctxJob
+	reconcileWhatsAppEntitlements businessphone.EntitlementReconciler
+	emitMonthlyInvoices           billing.EmitMonthlyInvoicesUseCase
+	cancelBillingSweep            billing.CancelSweepUseCase
+	vendorChannelReconciler       businessphone.VendorChannelReconciler
+	channelStatusReconciler       businessphone.ChannelStatusReconciler
+	purgeShortLinkClicks          shortlink_domain.PurgeClicksUseCase
 }
 
 func NewJobRunner(orderCleanupJob cron.OrderCleanupChecker, startScheduledWhatsappCampaignsJob wc_usecase.StartScheduleJob, shared cache.SharedState, analysisDebounceJob conversation.AnalysisDebounceJob, autoCloseJob conversation.AutoCloseJob, workflowManager workflow_domain.WorkflowManager, expireSubscriptions workspace_plan.ExpireSubscriptionsUseCase, remindExpiringSubscriptions workspace_plan.RemindExpiringSubscriptionsUseCase, monitorLowBalance *balance_usecase.MonitorLowBalanceUseCase, renewCalendarChannels calendar_domain.RenewExpiringChannelsUseCase, reconcileWhatsAppTemplates whatsapp_template.ReconcileTemplatesUseCase, reconcileWhatsAppEntitlements businessphone.EntitlementReconciler, emitMonthlyInvoices billing.EmitMonthlyInvoicesUseCase, cancelBillingSweep billing.CancelSweepUseCase, vendorChannelReconciler businessphone.VendorChannelReconciler, channelStatusReconciler businessphone.ChannelStatusReconciler, purgeShortLinkClicks shortlink_domain.PurgeClicksUseCase) *JobRunner {
@@ -57,6 +63,68 @@ func NewJobRunner(orderCleanupJob cron.OrderCleanupChecker, startScheduledWhatsa
 		vendorChannelReconciler:            vendorChannelReconciler,
 		channelStatusReconciler:            channelStatusReconciler,
 		purgeShortLinkClicks:               purgeShortLinkClicks,
+	}
+}
+
+// ctxJob is a context-aware periodic job. Newer usecases take a context, unlike
+// the older Execute() jobs above.
+type ctxJob interface {
+	Execute(ctx context.Context) error
+}
+
+// SetInstagramJobs registers the Instagram periodic jobs. Safe to skip entirely:
+// nil jobs are not started.
+func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
+	r.instagramTokenRefresh = tokenRefresh
+	r.instagramEventPurge = eventPurge
+}
+
+// runInstagramTokenRefreshHourly keeps long-lived Instagram tokens alive.
+//
+// Tokens last 60 days, cannot be refreshed in their first 24 hours, and die
+// permanently if unused for 60 days — with no recovery except full re-auth. The
+// usecase refreshes ~20 days ahead of expiry, so an hourly tick gives many
+// chances to recover from a transient failure before a tenant is locked out.
+func (r *JobRunner) runInstagramTokenRefreshHourly() {
+	if r.instagramTokenRefresh == nil {
+		return
+	}
+
+	period := time.Hour
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if r.tryLock("instagram_token_refresh", 2*period) {
+			func() {
+				defer r.releaseLock("instagram_token_refresh")
+				if err := r.instagramTokenRefresh.Execute(context.Background()); err != nil {
+					log.Printf("[cron] instagram_token_refresh error: %v", err)
+				}
+			}()
+		}
+	}
+}
+
+// runInstagramEventPurgeDaily trims the durable webhook dedup table.
+func (r *JobRunner) runInstagramEventPurgeDaily() {
+	if r.instagramEventPurge == nil {
+		return
+	}
+
+	period := 24 * time.Hour
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if r.tryLock("instagram_event_purge", 2*period) {
+			func() {
+				defer r.releaseLock("instagram_event_purge")
+				if err := r.instagramEventPurge.Execute(context.Background()); err != nil {
+					log.Printf("[cron] instagram_event_purge error: %v", err)
+				}
+			}()
+		}
 	}
 }
 
@@ -100,6 +168,8 @@ func (r *JobRunner) StartAll() {
 	go r.runVendorChannelReconcileDaily()
 	go r.runReconcileChannelStatusEvery10Minutes()
 	go r.runShortLinkRetentionDaily()
+	go r.runInstagramTokenRefreshHourly()
+	go r.runInstagramEventPurgeDaily()
 }
 
 func (r *JobRunner) runReconcileWhatsAppTemplatesEvery15Minutes() {

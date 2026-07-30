@@ -1,0 +1,204 @@
+// Package channel holds the channel-agnostic vocabulary the conversation layer
+// uses to talk to a messaging provider without knowing which one it is.
+//
+// Today only Instagram is registered here. WhatsApp and the support widget still
+// carry their behaviour in the per-channel `switch entryType` statements spread
+// through usecases/conversation and infra/repositories/conversation (33 sites at
+// the time of writing). The migration plan is to move one channel at a time into
+// a Descriptor + ChannelAdapter pair until those switches disappear:
+//
+//  1. Instagram lands here first, greenfield, so the abstraction is proven
+//     against a real second channel instead of being designed in the abstract.
+//  2. WhatsApp follows by lifting the `case "whatsapp"` bodies verbatim into a
+//     whatsappChannelAdapter — behaviour-preserving, so its existing tests must
+//     pass untouched.
+//  3. The support widget follows.
+//  4. Only then do the switches get deleted.
+//
+// Nothing in this package may import infra or usecases; it is pure domain.
+package channel
+
+import (
+	"errors"
+	"time"
+
+	"vozko/domain/shared"
+)
+
+var (
+	ErrUnknownKind      = errors.New("channel: unknown kind")
+	ErrUnknownEntryType = errors.New("channel: unknown entry type")
+	ErrKindAlreadySet   = errors.New("channel: kind already registered")
+)
+
+// Kind identifies a messaging channel. The string value is persisted (it is the
+// same value stored in conversation_messages.channel), so never rename one
+// without a data migration.
+type Kind string
+
+const (
+	KindInstagram Kind = "instagram"
+
+	// Registered here for reference so callers can reason about the full set
+	// while the migration is in flight. These are NOT yet backed by a
+	// Descriptor — Registry.Get returns ErrUnknownKind for them until their
+	// migration step lands.
+	KindWhatsApp Kind = "whatsapp"
+	KindSupport  Kind = "support"
+)
+
+func (k Kind) String() string { return string(k) }
+
+// Capabilities describes what a channel can do, so callers branch on a
+// capability rather than on a Kind. Adding a channel must not require editing
+// a switch somewhere else.
+type Capabilities struct {
+	// CanInitiateConversation reports whether we may send the first message.
+	// Instagram: false — a user must message the account first, and there is no
+	// template-initiated conversation as there is on WhatsApp.
+	CanInitiateConversation bool
+
+	SupportsTemplates       bool
+	SupportsReactions       bool
+	SupportsTypingIndicator bool
+	SupportsReadReceipts    bool
+	// SupportsRichText reports whether the provider renders markup. Instagram
+	// DMs are plain text, so the operator signature must not be wrapped in
+	// WhatsApp's *bold* syntax.
+	SupportsRichText bool
+
+	// MaxTextBytes is a BYTE limit, not a rune count. Instagram documents
+	// "1000 bytes or less" and multibyte emoji blow a naive character count.
+	MaxTextBytes int
+
+	// OutboundWindow is how long after the contact's last inbound message we
+	// may reply. Zero means unlimited.
+	OutboundWindow time.Duration
+	// ExtendedWindow is the longer window available under a provider-specific
+	// escalation (Instagram: the human_agent tag, 7 days). Zero means none.
+	ExtendedWindow time.Duration
+
+	// SignatureFormat renders an operator-signed message. Two verbs: username,
+	// then body.
+	SignatureFormat string
+
+	// Media constraints, keyed by the normalized media kind.
+	MediaLimits map[MediaKind]MediaLimit
+}
+
+type MediaKind string
+
+const (
+	MediaImage    MediaKind = "image"
+	MediaVideo    MediaKind = "video"
+	MediaAudio    MediaKind = "audio"
+	MediaDocument MediaKind = "document"
+)
+
+type MediaLimit struct {
+	MaxBytes  int64
+	MIMETypes []string
+}
+
+// Allows reports whether mime is accepted for this kind.
+func (l MediaLimit) Allows(mime string) bool {
+	for _, m := range l.MIMETypes {
+		if m == mime {
+			return true
+		}
+	}
+	return false
+}
+
+// InboxSQL carries the per-channel SQL fragments the inbox query needs. It
+// exists so infra/repositories/conversation stops hardcoding one channel's
+// tables; see the `switch entryType` that builds these today.
+//
+// These are trusted, code-authored constants — never user input — and are
+// interpolated into the query text. Bind parameters still carry all values.
+type InboxSQL struct {
+	// EntryTable is the table holding the entry (== the conversation) and its
+	// denormalized last_message_at.
+	EntryTable string
+
+	// ContactIDField yields the contact primary key.
+	ContactIDField string
+	// AccountIDField yields the channel account the conversation belongs to
+	// (WhatsApp: business phone; Instagram: instagram account).
+	AccountIDField string
+	// ContainerIDField / ContainerNameField yield the config-carrying parent
+	// shown as the conversation's origin.
+	ContainerIDField   string
+	ContainerNameField string
+	// AutomationFields yields agent_id, workflow_id, agent_responses_enabled
+	// and workflow_enabled, aliased exactly so.
+	AutomationFields string
+
+	// EntryJoin joins the entry (and its container) onto the message alias.
+	// It must expose the aliases used by the field expressions above.
+	EntryJoin string
+}
+
+// Descriptor is the single registration point for a channel.
+type Descriptor struct {
+	Kind         Kind
+	EntryType    shared.EntryType
+	Capabilities Capabilities
+	InboxSQL     InboxSQL
+}
+
+// Registry resolves descriptors. Implementations must be safe for concurrent
+// reads after construction.
+type Registry interface {
+	Get(k Kind) (*Descriptor, error)
+	ByEntryType(t shared.EntryType) (*Descriptor, error)
+	All() []*Descriptor
+}
+
+type registry struct {
+	byKind      map[Kind]*Descriptor
+	byEntryType map[shared.EntryType]*Descriptor
+	ordered     []*Descriptor
+}
+
+// NewRegistry builds an immutable registry. It returns an error rather than
+// panicking so the container surfaces a misconfiguration at boot.
+func NewRegistry(descriptors ...*Descriptor) (Registry, error) {
+	r := &registry{
+		byKind:      make(map[Kind]*Descriptor, len(descriptors)),
+		byEntryType: make(map[shared.EntryType]*Descriptor, len(descriptors)),
+		ordered:     make([]*Descriptor, 0, len(descriptors)),
+	}
+	for _, d := range descriptors {
+		if d == nil {
+			continue
+		}
+		if _, exists := r.byKind[d.Kind]; exists {
+			return nil, ErrKindAlreadySet
+		}
+		r.byKind[d.Kind] = d
+		r.byEntryType[d.EntryType] = d
+		r.ordered = append(r.ordered, d)
+	}
+	return r, nil
+}
+
+func (r *registry) Get(k Kind) (*Descriptor, error) {
+	if d, ok := r.byKind[k]; ok {
+		return d, nil
+	}
+	return nil, ErrUnknownKind
+}
+
+func (r *registry) ByEntryType(t shared.EntryType) (*Descriptor, error) {
+	if d, ok := r.byEntryType[t]; ok {
+		return d, nil
+	}
+	return nil, ErrUnknownEntryType
+}
+
+func (r *registry) All() []*Descriptor {
+	out := make([]*Descriptor, len(r.ordered))
+	copy(out, r.ordered)
+	return out
+}

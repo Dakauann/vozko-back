@@ -1,6 +1,7 @@
 .env
 docker/redis/users.acl
-data/postgres
+# Local container state (postgres/redis/rabbitmq bind mounts)
+data/
 tree.txt
 recordings/*
 

@@ -88,9 +88,19 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		UpdatedAt:   timestamp,
 	}
 
+	// Provider message id. Channels that set ProviderMessageID (Instagram
+	// onward) go to the generic external_message_id column; WhatsApp keeps
+	// writing whatsapp_message_id from MessageID. Both share the same
+	// singleflight + read-before-insert dedup below.
+	providerID := strings.TrimSpace(record.ProviderMessageID)
 	wamid := strings.TrimSpace(record.MessageID)
-	if wamid != "" {
+
+	dedupID := providerID
+	if providerID != "" {
+		message.ExternalMessageID = &providerID
+	} else if wamid != "" {
 		message.WhatsAppMessageID = &wamid
+		dedupID = wamid
 	}
 
 	message.Normalize()
@@ -99,18 +109,28 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		return err
 	}
 
-	if wamid == "" {
+	if dedupID == "" {
 		return m.persist(message, entryID, entryType)
 	}
 
-	_, err, _ := m.wamid.Do(wamid, func() (interface{}, error) {
-		existing, err := m.repo.GetByWhatsAppMessageID(wamid)
+	// Key the singleflight by entry type too, so ids from different channels can
+	// never collide in the in-flight map.
+	_, err, _ := m.wamid.Do(string(entryType)+":"+dedupID, func() (interface{}, error) {
+		var (
+			existing *conversation.Message
+			err      error
+		)
+		if providerID != "" {
+			existing, err = m.repo.GetByExternalMessageID(entryType, providerID)
+		} else {
+			existing, err = m.repo.GetByWhatsAppMessageID(dedupID)
+		}
 		switch {
 		case err == nil && existing != nil:
-			log.Printf("[MessageHistoryManager] duplicate message ignored: wamid=%s entry=%s:%s", wamid, entryType, entryID)
+			log.Printf("[MessageHistoryManager] duplicate message ignored: id=%s entry=%s:%s", dedupID, entryType, entryID)
 			return nil, nil
 		case err != nil && !errors.Is(err, conversation.ErrMessageNotFound):
-			log.Printf("[MessageHistoryManager] failed to check existing message by wamid %s: %v", wamid, err)
+			log.Printf("[MessageHistoryManager] failed to check existing message by id %s: %v", dedupID, err)
 
 		}
 		return nil, m.persist(message, entryID, entryType)

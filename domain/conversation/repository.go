@@ -192,6 +192,12 @@ type MessageRepository interface {
 	CountByEntry(entryID string, entryType shared.EntryType) (int64, error)
 
 	GetByWhatsAppMessageID(wamid string) (*Message, error)
+
+	// GetByExternalMessageID is the channel-agnostic form, scoped by entry type
+	// because a provider message id is only unique within its own channel.
+	// Channels added from Instagram onward use this instead of the WhatsApp
+	// column.
+	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*Message, error)
 	UpdateDeliveryStatus(wamid string, status DeliveryStatus) error
 
 	ClearAll() error

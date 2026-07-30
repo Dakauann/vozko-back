@@ -69,6 +69,34 @@ type Config struct {
 	// META_APP_SECRET only. Comma-separated via META_APP_SECRETS.
 	MetaAppSecretsExtra []string
 
+	// Instagram (Business Login for Instagram). The Instagram API setup nests
+	// inside the same Meta app as WhatsApp but carries its OWN app id and app
+	// secret — using the Facebook ones here fails. Webhooks are signed with the
+	// Instagram app secret, which is why it is also fed into the inbound
+	// signature verifier's accepted-secret list.
+	//
+	// The three OAuth hosts are fixed by the login path and live as constants in
+	// infra/instagram, not here. The scope list is likewise code (see
+	// instagram.RequiredScopes): it is a contract with the implementation and with
+	// what was submitted for App Review, so a deployment must not be able to
+	// silently drop a permission.
+	//
+	// InstagramRedirectURI is NOT caller-supplied — in OAuth the redirect URI is
+	// the security boundary, and it must match the App Dashboard exactly. Only the
+	// Graph version is genuinely deployment-owned, because Meta sunsets versions on
+	// published dates and it must be bumpable without a code deploy.
+	//
+	// These are REQUIRED, exactly like the WhatsApp equivalents: Instagram is a
+	// first-class channel, and a half-configured deployment that silently serves
+	// 404s on every Instagram route is far worse than failing fast at boot.
+	InstagramAppID              string
+	InstagramAppSecret          string
+	InstagramRedirectURI        string
+	InstagramWebhookVerifyToken string
+	InstagramGraphVersion       string
+	// FrontendBaseURL is where OAuth callbacks send the browser back to.
+	FrontendBaseURL string
+
 	// 360dialog partner (BSP) integration. New onboarding goes through 360dialog;
 	// the reconciliation backstop activates when Dialog360PartnerAPIKey is set.
 	Dialog360PartnerID          string
@@ -200,8 +228,18 @@ func LoadConfig() Config {
 		MetaAppSecret:              mustGetEnvTrimmed("META_APP_SECRET"),
 		MetaConfigID:               mustGetEnvTrimmed("META_CONFIG_ID"),
 		MetaAppSecretsExtra:        parseCSVEnv("META_APP_SECRETS"),
-		GoogleOAuthClientID:        trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
-		GoogleOAuthClientSecret:    trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
+
+		InstagramAppID:              mustGetEnvTrimmed("INSTAGRAM_APP_ID"),
+		InstagramAppSecret:          mustGetEnvTrimmed("INSTAGRAM_APP_SECRET"),
+		InstagramRedirectURI:        mustGetEnvTrimmed("INSTAGRAM_REDIRECT_URI"),
+		InstagramWebhookVerifyToken: mustGetEnvTrimmed("INSTAGRAM_WEBHOOK_VERIFY_TOKEN"),
+		// Empty means "use the client default", so a deployment only pins a version
+		// when it needs to.
+		InstagramGraphVersion: trimEnv("INSTAGRAM_GRAPH_VERSION"),
+		FrontendBaseURL:       strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
+
+		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
+		GoogleOAuthClientSecret: trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
 
 		Dialog360PartnerID:          mustGetEnvTrimmed("D360_PARTNER_ID"),
 		Dialog360PartnerAPIKey:      mustGetEnvTrimmed("D360_PARTNER_API_KEY"),

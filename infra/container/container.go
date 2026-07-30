@@ -48,8 +48,16 @@ func New() *Container {
 	c.initDialerTransferStack()
 	c.initBranchRegistrar()
 	c.agentMCP = c.initAgentMCP()
+	// The Instagram channel is built before the usecases so its handler is
+	// available to initHandlers/initRouter; its runtime half (webhook consumer)
+	// is wired from inside initUseCases, where the shared history manager exists.
+	c.initInstagram()
 	c.initUseCases(consumeWhatsappTemplateUC)
 	c.startConversationHub()
+	// Registered after the hub so the message sender exists: this is the strangler
+	// seam where Instagram joins the conversation stack while WhatsApp keeps its
+	// existing code path.
+	c.wireInstagramConversationStack()
 	c.initHandlers()
 	c.initRouter()
 	c.initServer()

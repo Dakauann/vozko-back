@@ -11,14 +11,15 @@ import (
 type MessageChannel string
 
 const (
-	MessageChannelVoice    MessageChannel = "voice"
-	MessageChannelWhatsApp MessageChannel = "whatsapp"
-	MessageChannelSupport  MessageChannel = "support"
+	MessageChannelVoice     MessageChannel = "voice"
+	MessageChannelWhatsApp  MessageChannel = "whatsapp"
+	MessageChannelSupport   MessageChannel = "support"
+	MessageChannelInstagram MessageChannel = "instagram"
 )
 
 func (c MessageChannel) Valid() bool {
 	switch c {
-	case MessageChannelVoice, MessageChannelWhatsApp, MessageChannelSupport:
+	case MessageChannelVoice, MessageChannelWhatsApp, MessageChannelSupport, MessageChannelInstagram:
 		return true
 	}
 	return false
@@ -48,6 +49,15 @@ const (
 	MessageTypeCallAnswered MessageType = "call_answered"
 	MessageTypeCallMissed   MessageType = "call_missed"
 	MessageTypeCallEnded    MessageType = "call_ended"
+
+	// Instagram-specific inbound shapes. A story reply and a story mention are
+	// conversational turns and carry the story context in Metadata; a reaction
+	// and an unsupported message are markers.
+	MessageTypeStoryReply   MessageType = "story_reply"
+	MessageTypeStoryMention MessageType = "story_mention"
+	MessageTypeReaction     MessageType = "reaction"
+	MessageTypeUnsupported  MessageType = "unsupported"
+	MessageTypePostShare    MessageType = "post_share"
 )
 
 // IsCallEvent reports whether the type is a call-lifecycle marker. These (and
@@ -67,6 +77,12 @@ func InboundMessageTypes() []MessageType {
 		MessageTypeUserMessage,
 		MessageTypeAudio,
 		MessageTypeMedia,
+		// Instagram story replies and mentions are genuine inbound turns, so
+		// they must count toward unread and appear in AI history. Channels that
+		// cannot produce them are unaffected.
+		MessageTypeStoryReply,
+		MessageTypeStoryMention,
+		MessageTypePostShare,
 	}
 }
 
@@ -81,7 +97,8 @@ func InboundMessageTypeStrings() []string {
 
 func (t MessageType) IsInbound() bool {
 	switch t {
-	case MessageTypeUserMessage, MessageTypeAudio, MessageTypeMedia:
+	case MessageTypeUserMessage, MessageTypeAudio, MessageTypeMedia,
+		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypePostShare:
 		return true
 	}
 	return false
@@ -89,7 +106,8 @@ func (t MessageType) IsInbound() bool {
 
 func (t MessageType) Valid() bool {
 	switch t {
-	case MessageTypeUserMessage, MessageTypeAIResponse, MessageTypeToolCall, MessageTypeToolResult, MessageTypeAudio, MessageTypeSystem, MessageTypeMedia, MessageTypeOperator, MessageTypeTemplate:
+	case MessageTypeUserMessage, MessageTypeAIResponse, MessageTypeToolCall, MessageTypeToolResult, MessageTypeAudio, MessageTypeSystem, MessageTypeMedia, MessageTypeOperator, MessageTypeTemplate,
+		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypeReaction, MessageTypeUnsupported, MessageTypePostShare:
 		return true
 	}
 	return false
@@ -141,6 +159,13 @@ type Message struct {
 	ReadBy      *string          `json:"readBy,omitempty"`
 
 	WhatsAppMessageID *string `json:"whatsappMessageId,omitempty" bson:"whatsappMessageId,omitempty"`
+
+	// ExternalMessageID is the provider's message id for any channel. WhatsApp
+	// still writes WhatsAppMessageID (40+ call sites depend on it); channels
+	// added from Instagram onward use this field, which is covered by a partial
+	// UNIQUE index on (entry_type, external_message_id) so duplicate webhook
+	// deliveries are rejected by the database and not only by the Redis guard.
+	ExternalMessageID *string `json:"externalMessageId,omitempty"`
 
 	ReplyToMessageID *string `json:"replyToMessageId,omitempty" bson:"replyToMessageId,omitempty"`
 

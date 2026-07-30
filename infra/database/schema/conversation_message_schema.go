@@ -24,6 +24,12 @@ type ConversationMessage struct {
 	ReadAt            *time.Time     `gorm:"type:timestamptz"`
 	ReadBy            *string        `gorm:"type:uuid"`
 	WhatsAppMessageID *string        `gorm:"column:whatsapp_message_id;type:text;index:idx_message_wamid"`
+	// ExternalMessageID is the provider message id for channels added from
+	// Instagram onward. WhatsApp still writes whatsapp_message_id. A partial
+	// UNIQUE index on (entry_type, external_message_id) is created in migrate.go
+	// so duplicate webhook deliveries are rejected by the database, not only by
+	// the Redis dedup guard.
+	ExternalMessageID *string        `gorm:"column:external_message_id;type:text;index:idx_cm_external_msgid"`
 	ReplyToMessageID  *string        `gorm:"column:reply_to_message_id;type:text"`
 	DeliveryStatus    string         `gorm:"type:varchar(20);default:''"`
 	Metadata          []byte         `gorm:"type:jsonb"`

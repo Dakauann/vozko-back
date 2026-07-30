@@ -76,6 +76,7 @@ var (
 	ResourceAIChat            = registerResource("ai_chat")
 	ResourceBranches          = registerResource("branches")
 	ResourceShortLinks        = registerResource("short_links")
+	ResourceInstagramAccounts = registerResource("instagram_accounts")
 )
 
 func (r Resource) IsValid() bool {
@@ -290,6 +291,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar caixas de entrada de suporte"},
 		{ActionName: ActionUpdate, Description: "Editar caixas de entrada de suporte"},
 		{ActionName: ActionDelete, Description: "Excluir caixas de entrada de suporte"},
+	},
+	ResourceInstagramAccounts: {
+		{ActionName: ActionCreate, Description: "Conectar contas do Instagram"},
+		{ActionName: ActionRead, Description: "Visualizar contas, publicações e comentários do Instagram"},
+		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram"},
+		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram"},
 	},
 	ResourceIssues: {
 		{ActionName: ActionCreate, Description: "Criar issues"},

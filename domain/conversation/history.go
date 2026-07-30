@@ -31,6 +31,12 @@ type MessageHistoryRecord struct {
 	Text               string
 	Timestamp          time.Time
 
+	// ProviderMessageID is the channel-agnostic provider id. When set it is
+	// written to conversation_messages.external_message_id and used as the dedup
+	// key, instead of the WhatsApp-specific column. Channels added from Instagram
+	// onward set this; WhatsApp keeps using MessageID.
+	ProviderMessageID string
+
 	MediaID   string
 	MediaType MediaType
 	MediaURL  string

@@ -1,6 +1,7 @@
 package conversation_usecase
 
 import (
+	"context"
 	"fmt"
 
 	"vozko/domain/conversation"
@@ -8,9 +9,18 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
+// instagramEntryResolver is a narrow port for resolving the tenant and department
+// of an Instagram conversation. Declared here so this resolver does not depend on
+// the Instagram package.
+type instagramEntryResolver interface {
+	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
+	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
+}
+
 type campaignWorkspaceResolver struct {
-	wcCampaignRepo wc_domain.Repository
-	waEntryRepo    wce.Repository
+	wcCampaignRepo     wc_domain.Repository
+	waEntryRepo        wce.Repository
+	instagramEntryRepo instagramEntryResolver
 }
 
 func NewCampaignWorkspaceResolver(
@@ -21,6 +31,12 @@ func NewCampaignWorkspaceResolver(
 		wcCampaignRepo: wcCampaignRepo,
 		waEntryRepo:    waEntryRepo,
 	}
+}
+
+// SetInstagramEntryResolver registers the Instagram lookup. Optional so the
+// resolver still constructs when the channel is disabled.
+func (r *campaignWorkspaceResolver) SetInstagramEntryResolver(repo instagramEntryResolver) {
+	r.instagramEntryRepo = repo
 }
 
 func (r *campaignWorkspaceResolver) GetCampaignWorkspaceID(campaignID, campaignType string) (string, error) {
@@ -43,7 +59,7 @@ func (r *campaignWorkspaceResolver) GetCampaignDepartmentID(campaignID, campaign
 		}
 		return c.DepartmentID, nil
 
-	case "support":
+	case "support", "instagram":
 		return "", nil
 
 	default:
@@ -52,6 +68,14 @@ func (r *campaignWorkspaceResolver) GetCampaignDepartmentID(campaignID, campaign
 }
 
 func (r *campaignWorkspaceResolver) GetEntryWorkspaceID(entryID, entryType string) (string, error) {
+	// Instagram conversations carry workspace_id on the row, so there is no
+	// campaign to walk through — the whole reason WhatsApp needs the indirection.
+	if entryType == "instagram" {
+		if r.instagramEntryRepo == nil {
+			return "", fmt.Errorf("instagram entry resolver not configured")
+		}
+		return r.instagramEntryRepo.WorkspaceIDForEntry(context.Background(), entryID)
+	}
 	if entryType != "whatsapp" {
 		return "", fmt.Errorf("unknown entry type: %s", entryType)
 	}
@@ -71,6 +95,11 @@ func (r *campaignWorkspaceResolver) GetEntryDepartmentID(entryID, entryType stri
 	switch entryType {
 	case "whatsapp":
 		return r.GetCampaignDepartmentID(campaignID, "whatsapp")
+	case "instagram":
+		if r.instagramEntryRepo == nil {
+			return "", nil
+		}
+		return r.instagramEntryRepo.DepartmentIDForEntry(context.Background(), entryID)
 	case "support":
 		return "", nil
 	default:
@@ -79,6 +108,11 @@ func (r *campaignWorkspaceResolver) GetEntryDepartmentID(entryID, entryType stri
 }
 
 func (r *campaignWorkspaceResolver) GetEntryCampaignID(entryID, entryType string) (string, error) {
+	// Instagram has no campaign; the entry itself is the unit and callers that
+	// need the container use the account id instead.
+	if entryType == "instagram" {
+		return "", nil
+	}
 	if entryType != "whatsapp" {
 		return "", fmt.Errorf("unknown entry type: %s", entryType)
 	}
