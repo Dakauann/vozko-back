@@ -43,6 +43,9 @@ func RegisterProtectedRoutes(
 	ig.HandleFunc("/accounts/{id}", ac(res, workspace_domain.ActionRead, h.GetAccount)).Methods(http.MethodGet)
 	ig.HandleFunc("/accounts/{id}", ac(res, workspace_domain.ActionUpdate, h.UpdateAccount)).Methods(http.MethodPut)
 	ig.HandleFunc("/accounts/{id}", ac(res, workspace_domain.ActionDelete, h.DisconnectAccount)).Methods(http.MethodDelete)
+	// Avatar proxy, for the same reason as the media proxy: profile_picture_url is
+	// a signed CDN link that expires, so the browser cannot be handed it directly.
+	ig.HandleFunc("/accounts/{id}/avatar", ac(res, workspace_domain.ActionRead, h.ProxyAvatar)).Methods(http.MethodGet)
 
 	// Posts.
 	ig.HandleFunc("/accounts/{id}/media", ac(res, workspace_domain.ActionRead, h.ListMedia)).Methods(http.MethodGet)

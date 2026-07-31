@@ -31,6 +31,7 @@ type Handler struct {
 	listMedia         *iguc.ListMediaUseCase
 	getMedia          *iguc.GetMediaUseCase
 	proxyMedia        *iguc.ProxyMediaUseCase
+	proxyAvatar       *iguc.ProxyAvatarUseCase
 	createMedia       *iguc.CreateMediaUseCase
 	setCommentEnabled *iguc.SetCommentEnabledUseCase
 
@@ -54,6 +55,7 @@ type HandlerDeps struct {
 	ListMedia         *iguc.ListMediaUseCase
 	GetMedia          *iguc.GetMediaUseCase
 	ProxyMedia        *iguc.ProxyMediaUseCase
+	ProxyAvatar       *iguc.ProxyAvatarUseCase
 	CreateMedia       *iguc.CreateMediaUseCase
 	SetCommentEnabled *iguc.SetCommentEnabledUseCase
 
@@ -75,6 +77,7 @@ func NewHandler(d HandlerDeps) *Handler {
 		listMedia:         d.ListMedia,
 		getMedia:          d.GetMedia,
 		proxyMedia:        d.ProxyMedia,
+		proxyAvatar:       d.ProxyAvatar,
 		createMedia:       d.CreateMedia,
 		setCommentEnabled: d.SetCommentEnabled,
 		listComments:      d.ListComments,

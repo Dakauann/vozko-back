@@ -143,6 +143,7 @@ func (c *Container) initInstagram() {
 		ListMedia:         iguc.NewListMediaUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		GetMedia:          iguc.NewGetMediaUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		ProxyMedia:        iguc.NewProxyMediaUseCase(bundle.Accounts, mediaSvc),
+		ProxyAvatar:       iguc.NewProxyAvatarUseCase(bundle.Accounts, bundle.OAuth, mediaSvc),
 		CreateMedia:       iguc.NewCreateMediaUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		SetCommentEnabled: iguc.NewSetCommentEnabledUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		ListComments:      iguc.NewListCommentsUseCase(bundle.Accounts, commentSvc, bundle.Comments),

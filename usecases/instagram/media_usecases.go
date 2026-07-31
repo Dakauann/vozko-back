@@ -2,6 +2,7 @@ package instagram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -184,6 +185,57 @@ func (uc *ProxyMediaUseCase) Execute(ctx context.Context, workspaceID, accountID
 		return nil, "", fmt.Errorf("instagram: media %s has no downloadable asset", igMediaID)
 	}
 	return uc.media.FetchMediaBytes(ctx, url)
+}
+
+// ErrNoAvatar is returned when the account has no profile picture.
+//
+// This is a normal state, not a failure: Instagram OMITS profile_picture_url from
+// the response entirely for an account that has never set a photo — the field is
+// absent rather than empty — and the caller should fall back to a placeholder.
+var ErrNoAvatar = errors.New("instagram: account has no profile picture")
+
+// ProxyAvatarUseCase streams the account's profile picture.
+//
+// It re-reads the URL from Graph on every request rather than trusting the copy
+// stored at connect time, for the same reason media is proxied: profile_picture_url
+// is a signed CDN link with an expiry, so a stored value becomes a broken image —
+// silently, and only some time after everything looked fine.
+//
+// The extra Graph call is bounded by the HTTP cache header on the response, and an
+// avatar changes far less often than that window.
+type ProxyAvatarUseCase struct {
+	accountResolver
+	oauth igdomain.OAuthService
+	media igdomain.MediaService
+}
+
+func NewProxyAvatarUseCase(
+	accounts igdomain.AccountRepository,
+	oauth igdomain.OAuthService,
+	mediaSvc igdomain.MediaService,
+) *ProxyAvatarUseCase {
+	return &ProxyAvatarUseCase{
+		accountResolver: accountResolver{accounts: accounts},
+		oauth:           oauth,
+		media:           mediaSvc,
+	}
+}
+
+// Execute returns the avatar bytes and its content type.
+func (uc *ProxyAvatarUseCase) Execute(ctx context.Context, workspaceID, accountID string) ([]byte, string, error) {
+	account, err := uc.resolve(ctx, workspaceID, accountID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	profile, err := uc.oauth.GetProfile(ctx, account.AccessToken)
+	if err != nil {
+		return nil, "", err
+	}
+	if profile.ProfilePictureURL == "" {
+		return nil, "", ErrNoAvatar
+	}
+	return uc.media.FetchMediaBytes(ctx, profile.ProfilePictureURL)
 }
 
 // CreateMediaInput publishes a post.

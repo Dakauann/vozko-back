@@ -1,6 +1,7 @@
 package instagram
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -211,4 +212,39 @@ func proxyPath(accountID, mediaID string, thumb bool) string {
 		return base + "?thumb=1"
 	}
 	return base
+}
+
+// ProxyAvatar streams the account's profile picture.
+//
+//	@Summary		Foto de perfil da conta
+//	@Description	Faz proxy da foto de perfil, cuja URL de CDN expira.
+//	@Tags			Instagram
+//	@Produce		image/jpeg
+//	@Success		200
+//	@Security		BearerAuth
+//	@Router			/instagram/accounts/{id}/avatar [get]
+func (h *Handler) ProxyAvatar(w http.ResponseWriter, r *http.Request) {
+	data, contentType, err := h.proxyAvatar.Execute(r.Context(),
+		middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
+	if err != nil {
+		// An account with no photo is an ordinary state, so it answers 404 rather
+		// than an error page — the client falls back to a placeholder glyph.
+		if errors.Is(err, iguc.ErrNoAvatar) {
+			http.NotFound(w, r)
+			return
+		}
+		writeDomainError(w, err, "Failed to load Instagram avatar")
+		return
+	}
+
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	// Longer than the media cache: an avatar changes far less often than a feed is
+	// scrolled, and each miss costs a Graph round trip on top of the CDN fetch.
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
