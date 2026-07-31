@@ -97,6 +97,8 @@ func (c *Container) initRouter() {
 		c.services.rateLimiterFactory,
 		c.redisProvider.SharedState(),
 		c.services.metrics,
+		instagramHandler(c),
+		instagramWebhookHandler(c),
 	)
 }
 

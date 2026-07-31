@@ -150,6 +150,7 @@ import (
 	redisCache "vozko/infra/cache"
 	"vozko/infra/cloudflare"
 	"vozko/infra/config"
+	conversation_infra "vozko/infra/conversation"
 	cronPackage "vozko/infra/cron"
 	queue "vozko/infra/messaging"
 	prometheus_service "vozko/infra/prometheus"
@@ -162,6 +163,7 @@ import (
 	balance_usecase "vozko/usecases/balance"
 	cu_usecase "vozko/usecases/call_roulette"
 	calls_usecase "vozko/usecases/calls"
+	conversation_usecase "vozko/usecases/conversation"
 	copilot_usecase "vozko/usecases/copilot"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
@@ -182,6 +184,9 @@ type Container struct {
 	useCases      *useCases
 	handlers      *handlers_
 	agentMCP      *handlers.AgentMCPBundle
+	// instagram is the Instagram channel, wired as one self-contained bundle so
+	// it can be disabled without threading nil checks through the god-structs.
+	instagram     *instagramBundle
 	mcpCollection domainmcp.CollectionRepository
 	mcpRegistry   *ucmcp.Registry
 	router        deliveryHttp.Router
@@ -346,13 +351,20 @@ type services struct {
 	whatsappCallRegistry          conversation_domain.WhatsAppCallRegistry
 	whatsappPublicMediaIP         string
 	campaignWorkspaceResolver     conversation_domain.CampaignWorkspaceResolver
-	requestCallPermission         conversation_domain.RequestCallPermissionUseCase
-	conversationHistory           conversation_domain.HistoryProvider
-	callAdmission                 dialer_domain.CallAdmissionCoordinator
-	startOutboundCall             dialer_domain.StartOutboundCallUseCase
-	endOutboundCall               dialer_domain.EndOutboundCallUseCase
-	dialerLifecycle               *dialer_usecase.OutboundCallLifecycleRunner
-	conversationHub               *wsdelivery.ConversationHub
+	// messageSender / conversationStatusService / conversationAuthImpl are the
+	// CONCRETE types (not the domain interfaces) because per-channel registration
+	// setters live on the implementations. Kept so a channel can register itself
+	// after the conversation stack is built.
+	messageSender             *conversation_usecase.MessageSenderService
+	conversationStatusService *conversation_usecase.ConversationStatusService
+	conversationAuthImpl      *conversation_infra.Authorizer
+	requestCallPermission     conversation_domain.RequestCallPermissionUseCase
+	conversationHistory       conversation_domain.HistoryProvider
+	callAdmission             dialer_domain.CallAdmissionCoordinator
+	startOutboundCall         dialer_domain.StartOutboundCallUseCase
+	endOutboundCall           dialer_domain.EndOutboundCallUseCase
+	dialerLifecycle           *dialer_usecase.OutboundCallLifecycleRunner
+	conversationHub           *wsdelivery.ConversationHub
 	// conversationStatusUpdater is the single choke point for finish/reopen/auto-close.
 	conversationStatusUpdater conversation_domain.ConversationStatusUpdater
 	inboxService              conversation_domain.InboxService

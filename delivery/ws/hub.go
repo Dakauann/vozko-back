@@ -2055,6 +2055,18 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 	log.Printf("[ConversationHub] User %s unsubscribed from %s:%s", conn.UserID, p.EntryType, p.EntryID)
 }
 
+// signatureFormatFor returns the operator-signature template for a channel.
+//
+// WhatsApp renders *bold* markup; Instagram DMs do not, so the same asterisks
+// would be shown literally to the customer. The format is therefore chosen per
+// channel rather than hardcoded.
+func signatureFormatFor(entryType string) string {
+	if entryType == string(shared.EntryTypeInstagram) {
+		return "%s:\n%s"
+	}
+	return "*%s*:\n%s"
+}
+
 func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage) {
 	var p SendMessagePayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -2098,7 +2110,7 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 		userUsername := user.Username
 		text := strings.TrimSpace(p.Text)
 		if p.Signed {
-			text = fmt.Sprintf("*%s*:\n%s", userUsername, text)
+			text = fmt.Sprintf(signatureFormatFor(p.EntryType), userUsername, text)
 		}
 
 		if p.MediaID != nil && p.MediaType != nil {
@@ -2142,6 +2154,8 @@ func (h *ConversationHub) afterOperatorSend(conn *WSConnection, entryID, entryTy
 			channel = "voice"
 		case "support":
 			channel = "support"
+		case "instagram":
+			channel = "instagram"
 		}
 		h.eventLogger.Log(ce.New(wsID, entryID, entryType, ce.EventReplied).
 			WithActorHuman(conn.UserID).

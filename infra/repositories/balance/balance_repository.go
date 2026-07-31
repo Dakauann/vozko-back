@@ -411,7 +411,9 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		  AND (
 		    EXISTS (
 		      SELECT 1 FROM whatsapp_campaigns c
-		      WHERE c.id = bt.reference_id AND ` + whereCamp + `
+		      -- c.id is uuid, bt.reference_id is varchar: compare as text or
+		      -- Postgres raises 42883 (operator does not exist: uuid = varchar).
+		      WHERE c.id::text = bt.reference_id AND ` + whereCamp + `
 		    )
 		    OR EXISTS (
 		      SELECT 1 FROM whatsapp_campaigns c

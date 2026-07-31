@@ -1321,6 +1321,22 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatal("Failed to start Asaas webhook consumer:", err)
 	}
 
+	// Instagram's runtime half is wired here rather than earlier: it needs both the
+	// shared history manager (a local in this function) and c.useCases.publishWebhook,
+	// which only exists once the useCases struct literal above has been assigned.
+	c.initInstagramRuntime(messageHistoryManager)
+
+	// Instagram subscribes three topics (messages, comments, account events).
+	// Unlike the WhatsApp consumers this is not fatal on failure: the channel is
+	// optional, so a broker hiccup here must not stop the product from booting.
+	if c.instagram != nil && c.instagram.Enabled && c.instagram.Consume != nil {
+		if err := c.instagram.Consume.Start(); err != nil {
+			log.Printf("[instagram] failed to start webhook consumers: %v", err)
+		} else {
+			log.Printf("[instagram] webhook consumers started")
+		}
+	}
+
 	if c.useCases.consumeWorkflowWake != nil {
 		if err := c.useCases.consumeWorkflowWake.Start(); err != nil {
 			log.Fatal("Failed to start workflow wake consumer:", err)

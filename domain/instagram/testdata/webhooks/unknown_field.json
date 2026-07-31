@@ -1,0 +1,13 @@
+[
+  {
+    "object": "instagram",
+    "entry": [
+      {
+        "id": "IGID",
+        "time": 1569262486134,
+        "field": "messaging_policy_enforcement",
+        "value": { "some": "undocumented shape" }
+      }
+    ]
+  }
+]

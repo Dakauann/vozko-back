@@ -1,0 +1,24 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "IGID",
+      "time": 1569262486134,
+      "messaging": [
+        {
+          "sender": { "id": "IGSID" },
+          "recipient": { "id": "IGID" },
+          "timestamp": 1569262485349,
+          "message": {
+            "mid": "MESSAGE-ID",
+            "text": "MESSAGE-TEXT",
+            "attachments": [
+              { "type": "image", "payload": { "url": "https://cdn.example/img" } },
+              { "type": "video", "payload": { "url": "https://cdn.example/vid" } }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

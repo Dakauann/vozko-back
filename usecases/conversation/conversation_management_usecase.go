@@ -1220,10 +1220,114 @@ type MessageSenderService struct {
 	sharedState    cache.SharedState
 
 	callPermissionRepo callpermission.Repository
+
+	// channelAdapters routes sends for channels that have been migrated onto the
+	// channel-agnostic port. When an entry type has an adapter, it is used; when
+	// it does not, the legacy WhatsApp path below runs unchanged.
+	//
+	// This is the strangler seam that replaces the per-channel `switch entryType`
+	// in getEntryInfo. Instagram is the first channel through it; WhatsApp keeps
+	// its existing code until its adapter lands, so its behaviour (and its tests)
+	// are untouched.
+	channelAdapters conversation.AdapterRegistry
 }
 
 func (s *MessageSenderService) SetCallPermissionRepo(repo callpermission.Repository) {
 	s.callPermissionRepo = repo
+}
+
+// SetChannelAdapters registers the channel-agnostic send adapters.
+func (s *MessageSenderService) SetChannelAdapters(registry conversation.AdapterRegistry) {
+	s.channelAdapters = registry
+}
+
+// adapterFor returns the adapter for an entry type, or nil when the channel has
+// not been migrated yet.
+func (s *MessageSenderService) adapterFor(entryType string) conversation.ChannelAdapter {
+	if s.channelAdapters == nil {
+		return nil
+	}
+	adapter, err := s.channelAdapters.For(shared.EntryType(entryType))
+	if err != nil {
+		return nil
+	}
+	return adapter
+}
+
+// sendViaAdapter performs a send through a migrated channel and persists the
+// result.
+//
+// Persistence is deliberately shared with the legacy path's shape (same Message
+// fields, same repository) so the CRM renders both channels identically. The
+// provider id goes to ExternalMessageID rather than the WhatsApp column, which is
+// also what lets the later echo webhook reconcile against this row instead of
+// inserting a duplicate.
+func (s *MessageSenderService) sendViaAdapter(
+	adapter conversation.ChannelAdapter,
+	entryID, entryType, userID, replyToMessageID string,
+	send func(*conversation.EntryContext) (*conversation.SendOutcome, error),
+	msgType conversation.MessageType,
+	text string,
+	mediaID, mediaType string,
+) (*conversation.Message, error) {
+	ctx := context.Background()
+
+	ec, err := adapter.ResolveEntry(ctx, entryID)
+	if err != nil {
+		return nil, err
+	}
+
+	// A closed window is an expected state, not a fault: on Instagram it closes
+	// 24h after the contact's last message and only a new inbound message reopens
+	// it. Surfacing the sentinel lets the UI explain it.
+	open, _, err := adapter.WindowState(ctx, ec)
+	if err != nil {
+		return nil, err
+	}
+	if !open {
+		return nil, conversation.ErrOutboundWindowClosed
+	}
+
+	outcome, err := send(ec)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	message := &conversation.Message{
+		ID:             uuid.NewString(),
+		EntryID:        entryID,
+		EntryType:      shared.EntryType(entryType),
+		Channel:        conversation.MessageChannel(entryType),
+		MessageType:    msgType,
+		From:           userID,
+		To:             ec.ContactRef,
+		Text:           text,
+		Read:           true,
+		ReadAt:         &now,
+		ReadBy:         &userID,
+		DeliveryStatus: conversation.DeliveryStatusSent,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if outcome != nil && outcome.ProviderMessageID != "" {
+		providerID := outcome.ProviderMessageID
+		message.ExternalMessageID = &providerID
+	}
+	if replyToMessageID != "" {
+		message.ReplyToMessageID = &replyToMessageID
+	}
+	if mediaID != "" {
+		message.MediaID = &mediaID
+		message.MediaType = conversation.MediaType(mediaType)
+	}
+	message.Normalize()
+
+	if err := s.messageRepo.Create(message); err != nil {
+		log.Printf("[MessageSender] failed to save %s message: %v", entryType, err)
+		return nil, fmt.Errorf("failed to save message: %w", err)
+	}
+	return message, nil
 }
 
 func NewMessageSenderService(
@@ -1259,6 +1363,20 @@ func NewMessageSenderService(
 }
 
 func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error) {
+	// Migrated channels take the adapter path; everything else falls through to
+	// the WhatsApp implementation below.
+	if adapter := s.adapterFor(entryType); adapter != nil {
+		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
+		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
+			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
+				return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{
+					Body:                     text,
+					ReplyToProviderMessageID: replyProviderID,
+				})
+			},
+			conversation.MessageTypeOperator, text, "", "")
+	}
+
 	leadID, leadNumber, businessPhoneID, err := s.getEntryInfo(entryID, entryType)
 	if err != nil {
 		return nil, err
@@ -1489,6 +1607,32 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 }
 
 func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID string, caption string) (*conversation.Message, error) {
+	// Migrated channels take the adapter path.
+	//
+	// Note the difference from WhatsApp: Instagram fetches the asset server-side
+	// from a public URL rather than accepting an upload, so the stored CDN URL is
+	// handed over instead of the bytes.
+	if adapter := s.adapterFor(entryType); adapter != nil {
+		mediaRecord, err := s.mediaRepo.GetByID(mediaID)
+		if err != nil || mediaRecord == nil {
+			return nil, fmt.Errorf("media not found: %w", err)
+		}
+		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
+
+		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
+			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
+				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
+					Kind:                     mediaKindForChannel(mediaType),
+					URL:                      mediaRecord.URL,
+					MIMEType:                 mediaRecord.MimeType,
+					FileName:                 mediaRecord.OriginalFilename,
+					Caption:                  caption,
+					ReplyToProviderMessageID: replyProviderID,
+				})
+			},
+			conversation.MessageTypeOperator, caption, mediaID, mediaType)
+	}
+
 	leadID, leadNumber, businessPhoneID, err := s.getEntryInfo(entryID, entryType)
 	if err != nil {
 		return nil, err
@@ -1912,6 +2056,42 @@ func (s *MessageSenderService) resolveContextMessageID(replyToMessageID string) 
 		return *msg.WhatsAppMessageID
 	}
 	log.Printf("[MessageSender] Reply-to message %s has no WhatsApp message ID", replyToMessageID)
+	return ""
+}
+
+// mediaKindForChannel maps the CRM's media type onto the channel-agnostic kind
+// vocabulary the adapters use.
+func mediaKindForChannel(mediaType string) string {
+	switch conversation.MediaType(mediaType) {
+	case conversation.MediaTypeImage, conversation.MediaTypeSticker:
+		return "image"
+	case conversation.MediaTypeVideo:
+		return "video"
+	case conversation.MediaTypeAudio:
+		return "audio"
+	default:
+		return "document"
+	}
+}
+
+// resolveProviderMessageID is the channel-agnostic form of
+// resolveContextMessageID: it reads the generic external_message_id column that
+// migrated channels write, falling back to the WhatsApp column so a mixed-history
+// entry still resolves.
+func (s *MessageSenderService) resolveProviderMessageID(replyToMessageID string) string {
+	if replyToMessageID == "" || s.messageRepo == nil {
+		return ""
+	}
+	msg, err := s.messageRepo.GetByID(replyToMessageID)
+	if err != nil || msg == nil {
+		return ""
+	}
+	if msg.ExternalMessageID != nil && *msg.ExternalMessageID != "" {
+		return *msg.ExternalMessageID
+	}
+	if msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
+		return *msg.WhatsAppMessageID
+	}
 	return ""
 }
 

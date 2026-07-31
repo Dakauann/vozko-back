@@ -28,6 +28,7 @@ import (
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	holdmusichttp "vozko/delivery/http/holdmusic"
+	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
@@ -153,24 +154,28 @@ type router struct {
 	resetPasswordRateLimiter       *middleware.RateLimiterMiddleware
 	phoneVerificationRateLimiter   *middleware.RateLimiterMiddleware
 	metaEmbeddedSignupHandler      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler
-	workspaceHandler               *workspacehttp.WorkspaceHandler
-	workspacePricingHandler        *workspacepricinghttp.WorkspacePricingHandler
-	workspaceConfigHandler         *workspaceconfighttp.WorkspaceConfigHandler
-	workspacePlanHandler           *handlers.WorkspacePlanHandler
-	workspaceAddonHandler          *workspaceaddonhttp.WorkspaceAddonHandler
-	supportInboxHandler            *supportinboxhttp.SupportInboxHandler
-	issueHandler                   *issuehttp.IssueHandler
-	workflowHandler                *handlers.WorkflowHandler
-	workflowWebhookHandler         *workflowwebhookhttp.Handler
-	wsWorkflowSimulatorHandler     *wsdelivery.WSWorkflowSimulatorHandler
-	wsWorkflowAIBuilderHandler     *wsdelivery.WSWorkflowAIBuilderHandler
-	builderSessionHandler          *buildersessionhttp.BuilderSessionHandler
-	calendarHandler                *calendarhttp.CalendarHandler
-	workspaceDepartmentHandler     *workspacedepartmenthttp.WorkspaceDepartmentHandler
-	affiliateHandler               *affiliatehttp.AffiliateHandler
-	agentMCP                       *handlers.AgentMCPBundle
-	workspaceMiddleware            *middleware.WorkspaceMiddleware
-	departmentMiddleware           *middleware.DepartmentMiddleware
+	// Instagram handlers are nil when the channel is disabled, so both route
+	// registrations are guarded.
+	instagramHandler           *instagramhttp.Handler
+	instagramWebhookHandler    *instagramhttp.WebhookHandler
+	workspaceHandler           *workspacehttp.WorkspaceHandler
+	workspacePricingHandler    *workspacepricinghttp.WorkspacePricingHandler
+	workspaceConfigHandler     *workspaceconfighttp.WorkspaceConfigHandler
+	workspacePlanHandler       *handlers.WorkspacePlanHandler
+	workspaceAddonHandler      *workspaceaddonhttp.WorkspaceAddonHandler
+	supportInboxHandler        *supportinboxhttp.SupportInboxHandler
+	issueHandler               *issuehttp.IssueHandler
+	workflowHandler            *handlers.WorkflowHandler
+	workflowWebhookHandler     *workflowwebhookhttp.Handler
+	wsWorkflowSimulatorHandler *wsdelivery.WSWorkflowSimulatorHandler
+	wsWorkflowAIBuilderHandler *wsdelivery.WSWorkflowAIBuilderHandler
+	builderSessionHandler      *buildersessionhttp.BuilderSessionHandler
+	calendarHandler            *calendarhttp.CalendarHandler
+	workspaceDepartmentHandler *workspacedepartmenthttp.WorkspaceDepartmentHandler
+	affiliateHandler           *affiliatehttp.AffiliateHandler
+	agentMCP                   *handlers.AgentMCPBundle
+	workspaceMiddleware        *middleware.WorkspaceMiddleware
+	departmentMiddleware       *middleware.DepartmentMiddleware
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -264,8 +269,12 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	wsDefaultResolver middleware.DefaultWorkspaceResolver,
 	rateLimiterFactory cache.RateLimiterFactory,
 	shared cache.SharedState,
-	rateLimitMetrics metrics.RateLimitMetricsRecorder) Router {
+	rateLimitMetrics metrics.RateLimitMetricsRecorder,
+	instagramHandler *instagramhttp.Handler,
+	instagramWebhookHandler *instagramhttp.WebhookHandler) Router {
 	r := &router{
+		instagramHandler:               instagramHandler,
+		instagramWebhookHandler:        instagramWebhookHandler,
 		mux:                            mux.NewRouter(),
 		productHandler:                 productHandler,
 		propertyHandler:                propertyHandler,
@@ -423,6 +432,7 @@ func (r *router) setupRoutes() {
 	r.setupWhatsAppTemplateRoutes(protected)
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
+	r.setupInstagramRoutes(protected)
 	r.setupWABARoutes(protected)
 	r.setupSIPTrunkRoutes(protected)
 	r.setupBranchRoutes(protected)
@@ -566,6 +576,15 @@ func (r *router) setupWhatsAppOnboardRoute() {
 	}).Methods(http.MethodGet)
 }
 
+// setupInstagramRoutes registers the Instagram channel. A nil handler means the
+// channel is disabled, in which case no routes exist at all.
+func (r *router) setupInstagramRoutes(protected *mux.Router) {
+	if r.instagramHandler == nil {
+		return
+	}
+	instagramhttp.RegisterProtectedRoutes(protected, r.instagramHandler, r.ac)
+}
+
 func (r *router) setupMetaEmbeddedSignupRoutes(protected *mux.Router) {
 	metaembeddedsignuphttp.RegisterProtectedRoutes(protected, r.metaEmbeddedSignupHandler, r.ac)
 }
@@ -592,6 +611,11 @@ func (r *router) setupWebhookRoutes() {
 	readmehttp.RegisterPublicRoutes(r.mux, r.readMeHandler)
 	r.mux.HandleFunc("/webhooks/whatsapp", r.webhookHandler.HandleWhatsAppWebhook).Methods(http.MethodGet, http.MethodPost)
 	metaembeddedsignuphttp.RegisterPublicRoutes(r.mux, r.metaEmbeddedSignupHandler)
+	// The OAuth callback is public because Instagram redirects the browser to it
+	// directly, and the webhook is public because Meta calls it. Both are
+	// authenticated by other means: a signed single-use state, and the
+	// X-Hub-Signature-256 HMAC.
+	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
 	// 360dialog inbound messaging webhook (messages, statuses, template + coexistence
 	// events). Reuses the Meta envelope pipeline; authenticated by shared secret.
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)

@@ -1,10 +1,12 @@
 package conversation_usecase
 
 import (
+	"context"
 	"time"
 
 	"vozko/domain/conversation"
 	conv_event "vozko/domain/conversation_event"
+	igdomain "vozko/domain/instagram"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
@@ -15,11 +17,21 @@ type AISessionEnder interface {
 
 type ConversationStatusService struct {
 	whatsappRepo wce.Repository
-	events       conv_event.Logger
+	// instagramRepo carries the same conversation-status contract as the WhatsApp
+	// entry repository. Optional so the service still works with the channel off.
+	instagramRepo igdomain.ConversationRepository
+	events        conv_event.Logger
 	// resolveWorkspace is optional; when set, status_changed events are logged with workspace scope.
 	resolveWorkspace func(entryID, entryType string) string
 	// aiSessions ends open AI sessions when a conversation is marked finished (contained).
 	aiSessions AISessionEnder
+}
+
+// SetInstagramRepo registers the Instagram conversation repository.
+func (s *ConversationStatusService) SetInstagramRepo(repo igdomain.ConversationRepository) {
+	if s != nil {
+		s.instagramRepo = repo
+	}
 }
 
 func NewConversationStatusService(whatsappRepo wce.Repository) *ConversationStatusService {
@@ -47,6 +59,13 @@ func (s *ConversationStatusService) GetConversationStatus(entryID, entryType str
 	case "whatsapp":
 		if e, err := s.whatsappRepo.FindByID(entryID); err == nil && e != nil {
 			return conversation.ConversationStatus(e.ConversationStatus)
+		}
+	case "instagram":
+		if s.instagramRepo == nil {
+			return ""
+		}
+		if c, err := s.instagramRepo.FindByID(context.Background(), entryID); err == nil && c != nil {
+			return conversation.ConversationStatus(c.ConversationStatus)
 		}
 	}
 	return ""
@@ -128,6 +147,21 @@ func (s *ConversationStatusService) applyStatusActor(
 			write.ClosedAt = &now
 		}
 		err = s.whatsappRepo.UpdateConversationStatus(entryID, write)
+	case "instagram":
+		if s.instagramRepo == nil {
+			return nil
+		}
+		var closedAt *time.Time
+		closeSource, closeReason := "", ""
+		if setClose {
+			now := time.Now().UTC()
+			closedAt = &now
+			closeSource = string(source)
+			closeReason = string(reason)
+		}
+		// clearClose reopens the conversation, so the close provenance is wiped
+		// rather than left pointing at a stale closure.
+		err = s.instagramRepo.SetStatus(context.Background(), entryID, string(status), closeSource, closeReason, closedAt)
 	default:
 		return nil
 	}

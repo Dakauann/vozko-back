@@ -154,6 +154,13 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.ShortLink{},
 			&schema.ShortLinkClick{},
 			&schema.ShortLinkDailyStat{},
+			&schema.InstagramAccount{},
+			&schema.InstagramContact{},
+			&schema.InstagramConversation{},
+			&schema.InstagramMedia{},
+			&schema.InstagramComment{},
+			&schema.InstagramPrivateReply{},
+			&schema.WebhookProcessedEvent{},
 		); err != nil {
 			return err
 		}
@@ -201,6 +208,38 @@ func RunMigrations(db *gorm.DB) error {
 		if err := tx.Exec(`
 			CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_sip_user
 			ON branches (sip_user)
+		`).Error; err != nil {
+			return err
+		}
+
+		// An Instagram-scoped ID is unique only within the (app, professional
+		// account) pair, so contact identity is (ig_account_id, igsid) and never
+		// igsid alone.
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_contact_account_igsid
+			ON instagram_contacts (ig_account_id, igsid)
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// One open conversation per (account, contact).
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_conversation_account_contact
+			ON instagram_conversations (ig_account_id, contact_id)
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// Durable duplicate protection for provider message ids. Webhook
+		// delivery is at-least-once, and the Redis dedup guard has a 5-minute
+		// TTL, so the database is the only thing that still rejects a replay
+		// after eviction.
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_type_external_msgid
+			ON conversation_messages (entry_type, external_message_id)
+			WHERE external_message_id IS NOT NULL AND deleted_at IS NULL
 		`).Error; err != nil {
 			return err
 		}
