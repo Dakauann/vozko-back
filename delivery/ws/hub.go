@@ -1634,6 +1634,12 @@ func (h *ConversationHub) handleIncoming(msg *incomingMessage) {
 	}
 }
 
+// invalidEntryTypeMessage names the entry types a conversation can be opened
+// for, derived from the domain set so this text can never drift from it.
+func invalidEntryTypeMessage() string {
+	return "entry_type must be " + shared.FormatEntryTypes(shared.ConversationViewableEntryTypes())
+}
+
 func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMessage) {
 	var p SubscribePayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -1649,8 +1655,8 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 
 	p.EntryType = strings.ToLower(strings.TrimSpace(p.EntryType))
 
-	if p.EntryType != "voice" && p.EntryType != "whatsapp" {
-		h.sendError(conn, "invalid_entry_type", "entry_type must be 'voice' or 'whatsapp'")
+	if !shared.EntryType(p.EntryType).SupportsConversationView() {
+		h.sendError(conn, "invalid_entry_type", invalidEntryTypeMessage())
 		return
 	}
 
@@ -2771,8 +2777,8 @@ func (h *ConversationHub) handleSearchMessages(conn *WSConnection, payload json.
 		return
 	}
 
-	if p.EntryType != "voice" && p.EntryType != "whatsapp" {
-		h.sendError(conn, "invalid_entry_type", "entry_type must be 'voice' or 'whatsapp'")
+	if !shared.EntryType(p.EntryType).SupportsConversationView() {
+		h.sendError(conn, "invalid_entry_type", invalidEntryTypeMessage())
 		return
 	}
 
@@ -2858,8 +2864,8 @@ func (h *ConversationHub) handleLoadEntryMatches(conn *WSConnection, payload jso
 		return
 	}
 
-	if p.EntryType != "voice" && p.EntryType != "whatsapp" {
-		h.sendError(conn, "invalid_entry_type", "entry_type must be 'voice' or 'whatsapp'")
+	if !shared.EntryType(p.EntryType).SupportsConversationView() {
+		h.sendError(conn, "invalid_entry_type", invalidEntryTypeMessage())
 		return
 	}
 

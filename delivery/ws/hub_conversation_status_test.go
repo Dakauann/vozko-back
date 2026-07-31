@@ -470,3 +470,4 @@ func TestHandleSwitchView_ClearsConversationStatusWhenEmpty(t *testing.T) {
 
 	require.Equal(t, "", conn.ConversationStatus, "switching view with empty status should clear the filter")
 }
+

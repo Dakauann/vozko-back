@@ -112,6 +112,21 @@ func (f *fakeContactRepo) FindByID(ctx context.Context, id string) (*igdomain.Co
 	return nil, igdomain.ErrContactNotFound
 }
 
+func (f *fakeContactRepo) FindByIDs(ctx context.Context, ids []string) ([]*igdomain.Contact, error) {
+	if f.FindByIDFn == nil {
+		return nil, nil
+	}
+	out := make([]*igdomain.Contact, 0, len(ids))
+	for _, id := range ids {
+		c, err := f.FindByIDFn(ctx, id)
+		if err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
 func (f *fakeContactRepo) FindByIGSID(context.Context, string, string) (*igdomain.Contact, error) {
 	return nil, igdomain.ErrContactNotFound
 }

@@ -60,6 +60,105 @@ type HistoryProviderService struct {
 	assignmentRepo    ia.Repository
 	workflowRunRepo   workflowRunLookup
 	workflowRepo      workflowLookup
+	instagramContacts InstagramContactLookup
+	channelAdapters   conversation.AdapterRegistry
+}
+
+// InstagramContactDisplay is the sender identity shown for an Instagram DM.
+//
+// Instagram contacts are not leads, so the lead repository cannot resolve them;
+// without this lookup an Instagram inbox row renders with no name, handle or
+// avatar.
+type InstagramContactDisplay struct {
+	ContactID  string
+	Handle     string
+	Name       string
+	PictureURL string
+}
+
+// InstagramContactLookup is the narrow read port for Instagram sender identity.
+// Declared here (rather than importing the Instagram domain) so the conversation
+// usecase stays channel-agnostic and testable with a plain fake.
+type InstagramContactLookup interface {
+	// ContactsByIDs batch-loads display identities for one page of entries.
+	ContactsByIDs(ctx context.Context, contactIDs []string) (map[string]InstagramContactDisplay, error)
+	// ContactForConversation resolves the sender plus the owning workspace for a
+	// single conversation, backing the open-conversation header.
+	ContactForConversation(ctx context.Context, conversationID string) (InstagramContactDisplay, string, error)
+}
+
+// SetInstagramContacts wires Instagram sender identity. Optional: when unset,
+// Instagram entries simply render without a resolved name, exactly as before.
+func (s *HistoryProviderService) SetInstagramContacts(lookup InstagramContactLookup) {
+	s.instagramContacts = lookup
+}
+
+// hydrateInstagramSenders fills name/handle/avatar on Instagram inbox rows.
+//
+// EntryWithLastMessage.LeadID carries the Instagram contact id for these rows
+// (the repository projects igc.contact_id into the lead slot), so the contact id
+// is already on hand and only needs resolving.
+func (s *HistoryProviderService) hydrateInstagramSenders(entries []conversation.InboxEntry) {
+	if s.instagramContacts == nil || len(entries) == 0 {
+		return
+	}
+	idx := make(map[string][]int)
+	for i := range entries {
+		if entries[i].EntryType != string(shared.EntryTypeInstagram) || entries[i].LeadID == "" {
+			continue
+		}
+		idx[entries[i].LeadID] = append(idx[entries[i].LeadID], i)
+	}
+	if len(idx) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(idx))
+	for id := range idx {
+		ids = append(ids, id)
+	}
+	contacts, err := s.instagramContacts.ContactsByIDs(context.Background(), ids)
+	if err != nil {
+		log.Printf("[HistoryProvider] instagram contact hydration failed: %v", err)
+		return
+	}
+	for id, positions := range idx {
+		contact, ok := contacts[id]
+		if !ok {
+			continue
+		}
+		name, handle := instagramDisplayNames(contact)
+		for _, i := range positions {
+			entries[i].LeadName = name
+			entries[i].LeadNumber = handle
+			entries[i].LeadPicture = contact.PictureURL
+			// The last-message sender label defaults to the lead name, which was
+			// empty when it was computed. Only inbound rows carry the contact as
+			// sender; operator rows keep the user name already resolved.
+			if entries[i].LastMessageSender == "" {
+				entries[i].LastMessageSender = name
+			}
+			if entries[i].LastMessageSenderAvatar == "" {
+				entries[i].LastMessageSenderAvatar = contact.PictureURL
+			}
+		}
+	}
+}
+
+// instagramDisplayNames derives the (name, handle) pair shown in the CRM. A
+// contact whose profile has not been enriched yet still gets a usable label.
+func instagramDisplayNames(c InstagramContactDisplay) (name, handle string) {
+	handle = strings.TrimSpace(c.Handle)
+	if handle != "" && !strings.HasPrefix(handle, "@") {
+		handle = "@" + handle
+	}
+	name = strings.TrimSpace(c.Name)
+	if name == "" {
+		name = handle
+	}
+	if name == "" {
+		name = "Instagram"
+	}
+	return name, handle
 }
 
 // SetWorkflowLookups wires the optional workflow read ports used to show which
@@ -301,8 +400,8 @@ func reverseMessages(msgs []*conversation.Message) {
 func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType string) (windowOpen bool, windowExpiresAt *time.Time) {
 	var leadID, businessPhoneID string
 
-	switch entryType {
-	case "whatsapp":
+	switch shared.EntryType(entryType) {
+	case shared.EntryTypeWhatsApp:
 		entry, err := s.whatsappRepo.FindByID(entryID)
 		if err != nil || entry == nil {
 			return false, nil
@@ -313,10 +412,44 @@ func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType stri
 			businessPhoneID = campaign.BusinessPhoneID
 		}
 	default:
+		// Channels with an adapter own their own window rule (Instagram's 24h
+		// clock runs from the contact's last message). Reusing the adapter keeps
+		// one definition of "can we send right now" for the composer and the
+		// sender service, instead of two that can disagree.
+		if adapter := s.adapterFor(entryType); adapter != nil {
+			ctx := context.Background()
+			ec, err := adapter.ResolveEntry(ctx, entryID)
+			if err != nil {
+				return false, nil
+			}
+			open, expiresAt, err := adapter.WindowState(ctx, ec)
+			if err != nil {
+				return false, nil
+			}
+			return open, expiresAt
+		}
 		return false, nil
 	}
 
 	return s.getWindowStatus(leadID, businessPhoneID)
+}
+
+// adapterFor resolves a channel adapter, or nil when the channel has none.
+func (s *HistoryProviderService) adapterFor(entryType string) conversation.ChannelAdapter {
+	if s.channelAdapters == nil {
+		return nil
+	}
+	adapter, err := s.channelAdapters.For(shared.EntryType(entryType))
+	if err != nil {
+		return nil
+	}
+	return adapter
+}
+
+// SetChannelAdapters wires the channel adapters used for window state. Optional:
+// without it, non-WhatsApp channels simply report no window.
+func (s *HistoryProviderService) SetChannelAdapters(registry conversation.AdapterRegistry) {
+	s.channelAdapters = registry
 }
 
 func (s *HistoryProviderService) GetUnreadCount(entryID string, entryType shared.EntryType) (int64, error) {
@@ -328,8 +461,8 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 	var entryMetadata map[string]interface{}
 	automationEnabled = true
 
-	switch entryType {
-	case "whatsapp":
+	switch shared.EntryType(entryType) {
+	case shared.EntryTypeWhatsApp:
 		entry, err := s.whatsappRepo.FindByID(entryID)
 		if err != nil {
 			return "", "", "", nil, nil, true, err
@@ -341,6 +474,21 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 		if info, infoErr := s.whatsappRepo.GetCampaignForEntry(entryID); infoErr == nil && info != nil {
 			workspaceID = info.WorkspaceID
 		}
+
+	case shared.EntryTypeInstagram:
+		// Instagram senders are contacts, not leads, so the header is resolved
+		// here and returned directly instead of falling through to the lead
+		// lookup below.
+		if s.instagramContacts == nil {
+			return "", "", "", nil, nil, true, errors.New("instagram contact lookup not configured")
+		}
+		contact, _, cErr := s.instagramContacts.ContactForConversation(context.Background(), entryID)
+		if cErr != nil {
+			return "", "", "", nil, nil, true, cErr
+		}
+		name, handle := instagramDisplayNames(contact)
+		return name, handle, contact.PictureURL, nil, nil, true, nil
+
 	default:
 		return "", "", "", nil, nil, true, errors.New("invalid entry type")
 	}
@@ -483,6 +631,7 @@ func (s *HistoryProviderService) GetInboxEntries(userID, workspaceID, campaignID
 		})
 	}
 
+	s.hydrateInstagramSenders(entries)
 	s.enrichAssignments(entries, workspaceID)
 	return entries, totalWithMessages, nil
 }
@@ -664,6 +813,7 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		})
 	}
 
+	s.hydrateInstagramSenders(entries)
 	s.enrichAssignments(entries, input.WorkspaceID)
 	s.enrichAIHandlers(entries, results)
 	return entries, totalCount, nil

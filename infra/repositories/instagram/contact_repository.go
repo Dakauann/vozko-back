@@ -76,6 +76,21 @@ func (r *contactRepository) FindByID(ctx context.Context, id string) (*igdomain.
 	return toContactDomain(&record), nil
 }
 
+func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*igdomain.Contact, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var records []schema.InstagramContact
+	if err := r.db.WithContext(ctx).Find(&records, "id IN ?", ids).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*igdomain.Contact, 0, len(records))
+	for i := range records {
+		out = append(out, toContactDomain(&records[i]))
+	}
+	return out, nil
+}
+
 func (r *contactRepository) FindByIGSID(ctx context.Context, igAccountID, igsid string) (*igdomain.Contact, error) {
 	var record schema.InstagramContact
 	if err := r.db.WithContext(ctx).

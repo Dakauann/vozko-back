@@ -50,6 +50,9 @@ type ContactRepository interface {
 	// the (app, professional account) pair.
 	FindOrCreate(ctx context.Context, workspaceID, igAccountID, igsid string) (*Contact, error)
 	FindByID(ctx context.Context, id string) (*Contact, error)
+	// FindByIDs batch-loads contacts for one page of inbox entries, so hydrating
+	// sender identity costs one query rather than one per conversation.
+	FindByIDs(ctx context.Context, ids []string) ([]*Contact, error)
 	FindByIGSID(ctx context.Context, igAccountID, igsid string) (*Contact, error)
 	UpdateProfile(ctx context.Context, id string, p ContactProfile) error
 	SetBlocked(ctx context.Context, id string, blocked bool) error

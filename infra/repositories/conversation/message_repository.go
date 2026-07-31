@@ -1170,6 +1170,45 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	return entries, totalCount, nil
 }
 
+// instagramWorkspaceEntryCTE builds the Instagram branch of the workspace-global
+// inbox union.
+//
+// Without this branch an Instagram DM only ever reached the operator through the
+// live websocket push: it showed up while the tab stayed open and vanished on
+// reload, because the list query never selected it.
+//
+// The Instagram account plays the role whatsapp_campaigns plays for WhatsApp —
+// it is the container carrying the department — so the department scope keys off
+// instagram_accounts.department_id. A WhatsApp-specific campaign-type filter
+// excludes Instagram entirely, matching how the support branch behaves.
+func instagramWorkspaceEntryCTE(input conversation.SearchEntriesInput, workspaceID string) (string, []interface{}, bool) {
+	if input.EntryType != "" && input.EntryType != shared.EntryTypeInstagram {
+		return "", nil, false
+	}
+	if input.WhatsAppCampaignType != "" {
+		return "", nil, false
+	}
+
+	statusFilter := ` AND igc.conversation_status IS DISTINCT FROM 'finished'`
+	args := []interface{}{workspaceID}
+	if input.ConversationStatus != "" {
+		statusFilter = ` AND igc.conversation_status = ?`
+		args = append(args, string(input.ConversationStatus))
+	}
+
+	departmentFilter, departmentArgs := departmentScopeClause("iga.department_id", "igc.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
+	args = append(args, departmentArgs...)
+
+	part := `SELECT igc.id AS entry_id, 'instagram'::text AS entry_type, igc.contact_id AS lead_id,
+	         COALESCE(igc.ig_account_id::text, '') AS business_phone_id,
+	         igc.last_message_at AS lm_created_at
+	         FROM instagram_conversations igc
+	         JOIN instagram_accounts iga ON iga.id = igc.ig_account_id AND iga.workspace_id = ?
+	         WHERE igc.deleted_at IS NULL AND igc.last_message_at IS NOT NULL` + statusFilter + departmentFilter
+
+	return part, args, true
+}
+
 func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
 	wsID := input.WorkspaceID
 
@@ -1203,6 +1242,11 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 		entryArgs = append(entryArgs, waCampaignTypeArgs...)
 		entryArgs = append(entryArgs, convStatusArgs...)
 		entryArgs = append(entryArgs, departmentArgs...)
+	}
+
+	if part, igArgs, include := instagramWorkspaceEntryCTE(input, wsID); include {
+		entryParts = append(entryParts, part)
+		entryArgs = append(entryArgs, igArgs...)
 	}
 
 	includeSupport := (input.EntryType == "" || input.EntryType == shared.EntryTypeSupport) && input.WhatsAppCampaignType == "" && input.ConversationStatus == ""

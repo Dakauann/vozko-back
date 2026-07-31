@@ -10,6 +10,7 @@ import (
 	igdomain "vozko/domain/instagram"
 	iginfra "vozko/infra/instagram"
 	instagram_repository "vozko/infra/repositories/instagram"
+	conversation_usecase "vozko/usecases/conversation"
 	iguc "vozko/usecases/instagram"
 )
 
@@ -249,10 +250,16 @@ func (c *Container) wireInstagramConversationStack() {
 		bundle.Messaging,
 	)
 
+	registry := conversation_domain.NewAdapterRegistry(adapter)
 	if c.services.messageSender != nil {
-		c.services.messageSender.SetChannelAdapters(
-			conversation_domain.NewAdapterRegistry(adapter),
-		)
+		c.services.messageSender.SetChannelAdapters(registry)
+	}
+	// The history provider reads the same registry so the composer's window state
+	// and the send path agree on whether a reply is currently allowed.
+	if setter, ok := c.services.conversationHistory.(interface {
+		SetChannelAdapters(conversation_domain.AdapterRegistry)
+	}); ok {
+		setter.SetChannelAdapters(registry)
 	}
 	if c.services.conversationAuthImpl != nil {
 		c.services.conversationAuthImpl.SetInstagramEntryRepo(bundle.Conversations)
@@ -268,6 +275,62 @@ func (c *Container) wireInstagramConversationStack() {
 	}); ok {
 		setter.SetInstagramEntryResolver(bundle.Conversations)
 	}
+	// The history provider is held as the domain interface, so the optional
+	// Instagram identity port is attached by assertion — the same pattern the
+	// resolver above uses.
+	if setter, ok := c.services.conversationHistory.(interface {
+		SetInstagramContacts(conversation_usecase.InstagramContactLookup)
+	}); ok {
+		setter.SetInstagramContacts(instagramContactLookup{
+			contacts:      bundle.Contacts,
+			conversations: bundle.Conversations,
+		})
+	}
+}
+
+// instagramContactLookup adapts the Instagram repositories onto the conversation
+// usecase's sender-identity port, so the CRM can label an Instagram DM without
+// the conversation package importing the Instagram domain.
+type instagramContactLookup struct {
+	contacts      igdomain.ContactRepository
+	conversations igdomain.ConversationRepository
+}
+
+func (l instagramContactLookup) ContactsByIDs(ctx context.Context, ids []string) (map[string]conversation_usecase.InstagramContactDisplay, error) {
+	contacts, err := l.contacts.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]conversation_usecase.InstagramContactDisplay, len(contacts))
+	for _, c := range contacts {
+		if c == nil {
+			continue
+		}
+		out[c.ID] = conversation_usecase.InstagramContactDisplay{
+			ContactID:  c.ID,
+			Handle:     c.Username,
+			Name:       c.Name,
+			PictureURL: c.ProfilePictureURL,
+		}
+	}
+	return out, nil
+}
+
+func (l instagramContactLookup) ContactForConversation(ctx context.Context, conversationID string) (conversation_usecase.InstagramContactDisplay, string, error) {
+	conv, err := l.conversations.FindByID(ctx, conversationID)
+	if err != nil {
+		return conversation_usecase.InstagramContactDisplay{}, "", err
+	}
+	contact, err := l.contacts.FindByID(ctx, conv.ContactID)
+	if err != nil {
+		return conversation_usecase.InstagramContactDisplay{}, conv.WorkspaceID, err
+	}
+	return conversation_usecase.InstagramContactDisplay{
+		ContactID:  contact.ID,
+		Handle:     contact.Username,
+		Name:       contact.Name,
+		PictureURL: contact.ProfilePictureURL,
+	}, conv.WorkspaceID, nil
 }
 
 // instagramHandler returns the channel's HTTP handler, or nil when the channel is
