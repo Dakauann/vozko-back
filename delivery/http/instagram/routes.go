@@ -62,6 +62,13 @@ func RegisterProtectedRoutes(
 	ig.HandleFunc("/accounts/{id}/comments/{commentId}/hide", ac(res, workspace_domain.ActionUpdate, h.HideComment)).Methods(http.MethodPost)
 	ig.HandleFunc("/accounts/{id}/comments/{commentId}/private-reply", ac(res, workspace_domain.ActionUpdate, h.PrivateReply)).Methods(http.MethodPost)
 	ig.HandleFunc("/accounts/{id}/comments/{commentId}", ac(res, workspace_domain.ActionUpdate, h.DeleteComment)).Methods(http.MethodDelete)
+
+	// Comment automation rules. Read is a read; every mutation is an update on
+	// the Instagram resource, matching how account config is gated.
+	ig.HandleFunc("/accounts/{id}/comment-rules", ac(res, workspace_domain.ActionRead, h.ListCommentRules)).Methods(http.MethodGet)
+	ig.HandleFunc("/accounts/{id}/comment-rules", ac(res, workspace_domain.ActionUpdate, h.CreateCommentRule)).Methods(http.MethodPost)
+	ig.HandleFunc("/accounts/{id}/comment-rules/{ruleId}", ac(res, workspace_domain.ActionUpdate, h.UpdateCommentRule)).Methods(http.MethodPut)
+	ig.HandleFunc("/accounts/{id}/comment-rules/{ruleId}", ac(res, workspace_domain.ActionUpdate, h.DeleteCommentRule)).Methods(http.MethodDelete)
 }
 
 // RegisterPublicRoutes wires the unauthenticated Instagram routes.

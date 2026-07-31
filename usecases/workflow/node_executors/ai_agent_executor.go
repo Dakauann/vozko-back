@@ -38,7 +38,8 @@ type aiAgentExecutor struct {
 	agentRepo            agent.Repository
 	messageRepo          conversation.MessageRepository
 	cachedBalanceChecker balance.CachedBalanceChecker
-	sender               *whatsappSender
+	sender               *channelSender
+	waSender             *whatsappSender
 	ragService           rag.RAGService
 	aiAttendance         WorkflowAIAttendance
 }
@@ -49,7 +50,8 @@ func NewAIAgentExecutor(aiSvc ai.Service, agentRepo agent.Repository, msgRepo co
 		agentRepo:            agentRepo,
 		messageRepo:          msgRepo,
 		cachedBalanceChecker: cachedBalanceChecker,
-		sender:               waSender,
+		sender:               newChannelSenderFromWhatsApp(waSender),
+		waSender:             waSender,
 		ragService:           ragSvc,
 	}
 }
@@ -202,7 +204,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 	var typingClient conversation.WhatsAppClient
 	var latestWamid string
-	if isWhatsApp && e.sender != nil {
+	if isWhatsApp && e.waSender != nil {
 		if tc, wamid, err := e.resolveTypingClient(ctx); err == nil && tc != nil && wamid != "" {
 			typingClient = tc
 			latestWamid = wamid
@@ -613,7 +615,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		e.recordWorkflowAIAttendance(ctx, agentID, model, "")
 	}
 
-	if isSegmented && isWhatsApp && e.sender != nil && len(segmentedMessages) > 0 && len(output.ToolCalls) == 0 {
+	if isSegmented && isWhatsApp && e.waSender != nil && len(segmentedMessages) > 0 && len(output.ToolCalls) == 0 {
 		log.Printf("%s segmented WhatsApp delivery: %d messages", logPrefix, len(segmentedMessages))
 		allSent := true
 		for i, msgText := range segmentedMessages {
@@ -629,7 +631,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 				time.Sleep(segmentedTypingMinShow)
 			}
 
-			sendOutput, _, sendErr := e.sender.SendText(context.Background(), ctx.Run, msgText, conversation.MessageTypeAIResponse)
+			sendOutput, _, sendErr := e.waSender.SendText(context.Background(), ctx.Run, msgText, conversation.MessageTypeAIResponse)
 			if sendErr != nil {
 				log.Printf("%s segmented send failed at segment %d/%d: %v", logPrefix, i+1, len(segmentedMessages), sendErr)
 				allSent = false
@@ -648,18 +650,23 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	if !isSegmented && isWhatsApp && e.sender != nil && responseText != "" && len(output.ToolCalls) == 0 {
-		sendOutput, _, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
+	// Default (non-segmented) delivery goes through the channel sender, so the
+	// agent node answers on every adapter-backed channel — not only WhatsApp.
+	// Segmented delivery above stays WhatsApp-only: it paces several sends
+	// against WhatsApp's own rate rules.
+	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
+		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
 		if sendErr != nil {
 			log.Printf("%s default delivery failed: %v", logPrefix, sendErr)
+		} else if sent == nil {
+			// The channel declined (a closed outbound window is the usual cause).
+			// The response is still recorded by the node; it simply was not sent.
+			log.Printf("%s default delivery withheld by channel %q", logPrefix, ctx.Run.EntryType)
 		} else {
 			result["delivered"] = true
 			ctx.State.Set("_ai_agent_delivered", true)
-			wamid := ""
-			if sendOutput != nil {
-				wamid = sendOutput.MessageID
-			}
-			log.Printf("%s default delivery: wamid=%s text=%d chars", logPrefix, wamid, len(responseText))
+			log.Printf("%s default delivery: channel=%s id=%s text=%d chars",
+				logPrefix, ctx.Run.EntryType, sent.ProviderMessageID, len(responseText))
 		}
 	}
 
@@ -1052,20 +1059,22 @@ func mergeShortSegments(segments []string, minLen int) []string {
 	return out
 }
 
+// resolveTypingClient is WhatsApp-only: the typing indicator is addressed by a
+// wamid, which no other channel has.
 func (e *aiAgentExecutor) resolveTypingClient(ctx *workflow.NodeContext) (conversation.WhatsAppClient, string, error) {
-	if e.sender == nil || ctx.Run == nil {
+	if e.waSender == nil || ctx.Run == nil {
 		return nil, "", nil
 	}
 	if shared.EntryType(ctx.Run.EntryType) != shared.EntryTypeWhatsApp {
 		return nil, "", nil
 	}
 
-	target, err := e.sender.resolveTarget(ctx.Run.EntryID, ctx.Run.WorkspaceID)
+	target, err := e.waSender.resolveTarget(ctx.Run.EntryID, ctx.Run.WorkspaceID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	client, _, err := e.sender.resolveWhatsAppClient(target.campaignBusinessPhoneID, target.receivedBusinessPhoneID)
+	client, _, err := e.waSender.resolveWhatsAppClient(target.campaignBusinessPhoneID, target.receivedBusinessPhoneID)
 	if err != nil {
 		return nil, "", err
 	}

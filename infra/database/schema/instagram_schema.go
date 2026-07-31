@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	"vozko/infra/crypto/piigorm"
@@ -275,3 +276,42 @@ type WebhookProcessedEvent struct {
 }
 
 func (WebhookProcessedEvent) TableName() string { return "webhook_processed_events" }
+
+// InstagramCommentRule is one stored comment automation.
+//
+// A rule scoped to a media id applies to that post only; an empty media id makes
+// it an account-wide default. Both tiers are read together and ordered by
+// priority, so a post rule can pre-empt a default.
+type InstagramCommentRule struct {
+	ID          string `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string `gorm:"type:uuid;not null;index"`
+	IGAccountID string `gorm:"type:uuid;not null;index:idx_ig_rule_account"`
+
+	Name    string `gorm:"size:120;not null"`
+	Enabled bool   `gorm:"not null;default:true;index:idx_ig_rule_enabled"`
+
+	// IGMediaID empty means "every post on this account".
+	IGMediaID string `gorm:"column:ig_media_id;size:64;not null;default:'';index:idx_ig_rule_media"`
+
+	Match    string         `gorm:"size:16;not null;default:'contains'"`
+	Keywords pq.StringArray `gorm:"type:text[]"`
+	Actions  pq.StringArray `gorm:"type:text[]"`
+
+	PublicReplyText  string `gorm:"type:text"`
+	PrivateReplyText string `gorm:"type:text"`
+
+	Priority int `gorm:"not null;default:0;index:idx_ig_rule_priority"`
+
+	CreatedAt time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+func (InstagramCommentRule) TableName() string { return "instagram_comment_rules" }
+
+func (r *InstagramCommentRule) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == "" {
+		r.ID = uuid.NewString()
+	}
+	return nil
+}

@@ -46,11 +46,45 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram: {},
 }
 
+// crmTaggableEntryTypes are the entry types whose conversations can carry CRM
+// metadata: a kanban stage and labels.
+//
+// A third question again, and it answers differently from both sets above —
+// voice is not a messaging channel yet is staged and labelled like any other
+// conversation, and support is staged despite not being opened through the CRM
+// conversation view. Every channel that reaches the board belongs here: a card
+// that renders but cannot be moved or labelled is worse than no card, so adding
+// a channel to entry_sources.go without listing it here ships exactly that.
+var crmTaggableEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:  {},
+	EntryTypeVoice:     {},
+	EntryTypeSupport:   {},
+	EntryTypeInstagram: {},
+}
+
 // Valid reports whether the entry type is a messaging channel the shared
 // pipeline can persist and route.
 func (e EntryType) Valid() bool {
 	_, ok := messagingEntryTypes[e]
 	return ok
+}
+
+// SupportsCRMTagging reports whether conversations of this type can be assigned
+// a stage and labels.
+func (e EntryType) SupportsCRMTagging() bool {
+	_, ok := crmTaggableEntryTypes[e]
+	return ok
+}
+
+// CRMTaggableEntryTypes lists the taggable entry types in a stable order, so
+// validation messages stay in step with the set instead of restating it.
+func CRMTaggableEntryTypes() []EntryType {
+	out := make([]EntryType, 0, len(crmTaggableEntryTypes))
+	for t := range crmTaggableEntryTypes {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // SupportsConversationView reports whether a conversation of this type can be

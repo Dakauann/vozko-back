@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -12,7 +13,7 @@ type sendTemplateExecutor struct {
 	sender *whatsappSender
 }
 
-func NewSendTemplateExecutor(waDeps WhatsAppSenderDeps) workflow.NodeExecutor {
+func NewSendTemplateExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 	return &sendTemplateExecutor{sender: newWhatsAppSender(waDeps)}
 }
 
@@ -51,6 +52,12 @@ func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 }
 
 func (e *sendTemplateExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
+	// Templates are a WhatsApp construct: no other channel has an approved,
+	// pre-registered message. On any other channel the node is skipped and the
+	// run continues, so a workflow shared across channels still completes.
+	if shared.EntryType(ctx.Run.EntryType) != shared.EntryTypeWhatsApp {
+		return skipUnsupportedNode(ctx, "action_send_template"), nil
+	}
 	templateID, _ := ctx.Node.Config["template_id"].(string)
 	if templateID == "" {
 		return nil, workflow.ErrNodeConfigMissing

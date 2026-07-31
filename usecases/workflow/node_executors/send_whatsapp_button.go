@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -25,7 +26,7 @@ type sendWhatsappButtonExecutor struct {
 	sender *whatsappSender
 }
 
-func NewSendWhatsappButtonExecutor(waDeps WhatsAppSenderDeps) workflow.NodeExecutor {
+func NewSendWhatsappButtonExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 	return &sendWhatsappButtonExecutor{sender: newWhatsAppSender(waDeps)}
 }
 
@@ -213,6 +214,13 @@ func interactiveTimeoutSeconds(config map[string]interface{}) float64 {
 }
 
 func (e *sendWhatsappButtonExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
+	// Interactive buttons are modelled per provider — Instagram's quick replies
+	// carry different limits and a different payload — so this node stays
+	// WhatsApp-only and is skipped elsewhere rather than sent in a shape the
+	// provider would reject.
+	if shared.EntryType(ctx.Run.EntryType) != shared.EntryTypeWhatsApp {
+		return skipUnsupportedNode(ctx, "action_send_button"), nil
+	}
 	body, _ := ctx.Node.Config["body"].(string)
 	if strings.TrimSpace(body) == "" {
 		return nil, workflow.ErrNodeConfigMissing

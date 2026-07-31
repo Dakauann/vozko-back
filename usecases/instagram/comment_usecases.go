@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
+	"vozko/domain/shared"
 	"vozko/infra/meta"
 )
 
@@ -265,6 +267,15 @@ type SendPrivateReplyUseCase struct {
 	privateReplies igdomain.PrivateReplyRepository
 	contacts       igdomain.ContactRepository
 	conversations  igdomain.ConversationRepository
+	// history records the reply in the CRM transcript. Optional, but without it
+	// the conversation this reply opens stays invisible: the inbox lists only
+	// conversations that have a last message.
+	history conversation.MessageHistoryManager
+}
+
+// SetHistoryManager wires transcript recording for private replies.
+func (uc *SendPrivateReplyUseCase) SetHistoryManager(h conversation.MessageHistoryManager) {
+	uc.history = h
 }
 
 func NewSendPrivateReplyUseCase(
@@ -341,22 +352,62 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 
 	// The response carries the commenter's IGSID, which is the handle needed for
 	// every subsequent normal DM — so the conversation is created now.
-	uc.ensureConversation(ctx, account, result.RecipientID)
+	conv := uc.ensureConversation(ctx, account, result.RecipientID)
+	uc.recordInTranscript(ctx, account, conv, result, text)
 	return nil
 }
 
-func (uc *SendPrivateReplyUseCase) ensureConversation(ctx context.Context, account *igdomain.Account, igsid string) {
-	if igsid == "" || uc.contacts == nil || uc.conversations == nil {
+// recordInTranscript writes the private reply into the CRM conversation.
+//
+// Without this the reply is delivered on Instagram but absent from the CRM, and
+// the conversation it opened does not appear in the inbox at all — the inbox
+// lists conversations by their last message, and this would be a conversation
+// with none. The operator would then meet the customer's answer with no record
+// of what was said to them.
+func (uc *SendPrivateReplyUseCase) recordInTranscript(
+	ctx context.Context,
+	account *igdomain.Account,
+	conv *igdomain.Conversation,
+	result *igdomain.SendResult,
+	text string,
+) {
+	if uc.history == nil || conv == nil {
 		return
+	}
+	providerID := ""
+	if result != nil {
+		providerID = result.MessageID
+	}
+	if err := uc.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+		EntryID:           conv.ID,
+		EntryType:         shared.EntryTypeInstagram,
+		Channel:           conversation.MessageChannelInstagram,
+		MessageType:       conversation.MessageTypeOperator,
+		ProviderMessageID: providerID,
+		From:              account.IGUserID,
+		To:                result.RecipientID,
+		Text:              text,
+		Timestamp:         time.Now().UTC(),
+	}); err != nil {
+		log.Printf("[instagram] private reply transcript record failed conversation=%s: %v", conv.ID, err)
+	}
+}
+
+func (uc *SendPrivateReplyUseCase) ensureConversation(ctx context.Context, account *igdomain.Account, igsid string) *igdomain.Conversation {
+	if igsid == "" || uc.contacts == nil || uc.conversations == nil {
+		return nil
 	}
 	contact, err := uc.contacts.FindOrCreate(ctx, account.WorkspaceID, account.ID, igsid)
 	if err != nil {
 		log.Printf("[instagram] private reply contact create failed igsid=%s: %v", igsid, err)
-		return
+		return nil
 	}
-	if _, err := uc.conversations.FindOrCreate(ctx, account.WorkspaceID, account.ID, contact.ID); err != nil {
+	conv, err := uc.conversations.FindOrCreate(ctx, account.WorkspaceID, account.ID, contact.ID)
+	if err != nil {
 		log.Printf("[instagram] private reply conversation create failed igsid=%s: %v", igsid, err)
+		return nil
 	}
+	return conv
 }
 
 func remoteToComment(account *igdomain.Account, igMediaID string, c *igdomain.RemoteComment, parent *string) *igdomain.Comment {

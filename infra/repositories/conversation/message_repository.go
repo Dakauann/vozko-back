@@ -1170,95 +1170,29 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	return entries, totalCount, nil
 }
 
-// instagramWorkspaceEntryCTE builds the Instagram branch of the workspace-global
-// inbox union.
-//
-// Without this branch an Instagram DM only ever reached the operator through the
-// live websocket push: it showed up while the tab stayed open and vanished on
-// reload, because the list query never selected it.
-//
-// The Instagram account plays the role whatsapp_campaigns plays for WhatsApp —
-// it is the container carrying the department — so the department scope keys off
-// instagram_accounts.department_id. A WhatsApp-specific campaign-type filter
-// excludes Instagram entirely, matching how the support branch behaves.
-func instagramWorkspaceEntryCTE(input conversation.SearchEntriesInput, workspaceID string) (string, []interface{}, bool) {
-	if input.EntryType != "" && input.EntryType != shared.EntryTypeInstagram {
-		return "", nil, false
-	}
-	if input.WhatsAppCampaignType != "" {
-		return "", nil, false
-	}
-
-	statusFilter := ` AND igc.conversation_status IS DISTINCT FROM 'finished'`
-	args := []interface{}{workspaceID}
-	if input.ConversationStatus != "" {
-		statusFilter = ` AND igc.conversation_status = ?`
-		args = append(args, string(input.ConversationStatus))
-	}
-
-	departmentFilter, departmentArgs := departmentScopeClause("iga.department_id", "igc.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-	args = append(args, departmentArgs...)
-
-	part := `SELECT igc.id AS entry_id, 'instagram'::text AS entry_type, igc.contact_id AS lead_id,
-	         COALESCE(igc.ig_account_id::text, '') AS business_phone_id,
-	         igc.last_message_at AS lm_created_at
-	         FROM instagram_conversations igc
-	         JOIN instagram_accounts iga ON iga.id = igc.ig_account_id AND iga.workspace_id = ?
-	         WHERE igc.deleted_at IS NULL AND igc.last_message_at IS NOT NULL` + statusFilter + departmentFilter
-
-	return part, args, true
-}
-
 func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
 	wsID := input.WorkspaceID
 
 	var entryParts []string
 	var entryArgs []interface{}
 
-	if input.EntryType == "" || input.EntryType == shared.EntryTypeWhatsApp {
-		waCampaignTypeFilter := ""
-		var waCampaignTypeArgs []interface{}
-		convStatusFilter := ""
-		var convStatusArgs []interface{}
-		departmentFilter, departmentArgs := departmentScopeClause("wc.department_id", "wce.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-		if input.WhatsAppCampaignType == "standard" || input.WhatsAppCampaignType == "organic" {
-			waCampaignTypeFilter = ` AND wc.type = ?`
-			waCampaignTypeArgs = append(waCampaignTypeArgs, input.WhatsAppCampaignType)
-		}
-		if input.ConversationStatus == "" {
-			convStatusFilter = ` AND wce.conversation_status IS DISTINCT FROM 'finished'`
-		} else {
-			convStatusFilter = ` AND wce.conversation_status = ?`
-			convStatusArgs = append(convStatusArgs, string(input.ConversationStatus))
-		}
-		part := `SELECT wce.id AS entry_id, 'whatsapp'::text AS entry_type, wce.lead_id AS lead_id,
-		         COALESCE(wc.business_phone_id::text, '') AS business_phone_id,
-		         wce.last_message_at AS lm_created_at
-		         FROM whatsapp_campaign_entries wce
-		         JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.workspace_id = ?` + waCampaignTypeFilter + `
-		         WHERE wce.deleted_at IS NULL AND wce.last_message_at IS NOT NULL` + convStatusFilter + departmentFilter
-		entryParts = append(entryParts, part)
-		entryArgs = append(entryArgs, wsID)
-		entryArgs = append(entryArgs, waCampaignTypeArgs...)
-		entryArgs = append(entryArgs, convStatusArgs...)
-		entryArgs = append(entryArgs, departmentArgs...)
-	}
-
-	if part, igArgs, include := instagramWorkspaceEntryCTE(input, wsID); include {
-		entryParts = append(entryParts, part)
-		entryArgs = append(entryArgs, igArgs...)
-	}
-
-	includeSupport := (input.EntryType == "" || input.EntryType == shared.EntryTypeSupport) && input.WhatsAppCampaignType == "" && input.ConversationStatus == ""
-	if includeSupport {
-		part := `SELECT se.id AS entry_id, 'support'::text AS entry_type, NULL::uuid AS lead_id,
-		         '' AS business_phone_id,
-		         se.last_message_at AS lm_created_at
-		         FROM support_entries se
-		         JOIN support_inboxes si ON si.id = se.inbox_id AND si.workspace_id = ?
-		         WHERE se.deleted_at IS NULL AND se.last_message_at IS NOT NULL`
-		entryParts = append(entryParts, part)
-		entryArgs = append(entryArgs, wsID)
+	// Every channel's conversations come from the shared channel registry
+	// (entry_sources.go), so a new channel appears here — and on the CRM board —
+	// by registering a descriptor, with no query edits.
+	entryCTESQL, entryCTEArgs := buildEntryUnion(entrySourceScope{
+		EntryType:            input.EntryType,
+		WhatsAppCampaignType: input.WhatsAppCampaignType,
+		ConversationStatus:   string(input.ConversationStatus),
+		// The inbox list hides finished conversations unless one is asked for by
+		// name. The board deliberately does not — see entrySourceScope.
+		ExcludeFinished:        true,
+		DepartmentIDs:          input.DepartmentIDs,
+		RestrictDepartments:    input.RestrictDepartments,
+		AssigneeOverrideUserID: input.AssigneeOverrideUserID,
+	}, wsID, entrySource.inboxSelect)
+	if entryCTESQL != "" {
+		entryParts = append(entryParts, entryCTESQL)
+		entryArgs = append(entryArgs, entryCTEArgs...)
 	}
 
 	if len(entryParts) == 0 {
@@ -1524,35 +1458,19 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	var entryParts []string
 	var entryArgs []interface{}
 
-	{
-		departmentFilter, departmentArgs := departmentScopeClause("wc.department_id", "wce.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-		selfFilter, selfArgs := assignedSelfClause("wce.id", input.AssignedUserID)
-		entryParts = append(entryParts, `SELECT wce.id AS entry_id, 'whatsapp'::text AS entry_type, wce.lead_id AS lead_id,
-		         COALESCE(wc.business_phone_id::text, '') AS business_phone_id,
-		         wce.conversation_status AS conversation_status, wce.campaign_id::text AS campaign_id,
-		         wce.created_at AS created_at, wce.updated_at AS updated_at,
-		         wce.last_message_at AS lm_created_at
-		         FROM whatsapp_campaign_entries wce
-		         JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.workspace_id = ?
-		         WHERE wce.deleted_at IS NULL AND wce.last_message_at IS NOT NULL`+departmentFilter+selfFilter)
-		entryArgs = append(entryArgs, wsID)
-		entryArgs = append(entryArgs, departmentArgs...)
-		entryArgs = append(entryArgs, selfArgs...)
-	}
-	{
-		// Support entries have no campaign / conversation_status; NULL/'' keep them
-		// visible under status filters (IS DISTINCT FROM keeps '' rows).
-		selfFilter, selfArgs := assignedSelfClause("se.id", input.AssignedUserID)
-		entryParts = append(entryParts, `SELECT se.id AS entry_id, 'support'::text AS entry_type, NULL::uuid AS lead_id,
-		         ''::text AS business_phone_id,
-		         ''::text AS conversation_status, NULL::text AS campaign_id,
-		         se.created_at AS created_at, se.updated_at AS updated_at,
-		         se.last_message_at AS lm_created_at
-		         FROM support_entries se
-		         JOIN support_inboxes si ON si.id = se.inbox_id AND si.workspace_id = ?
-		         WHERE se.deleted_at IS NULL AND se.last_message_at IS NOT NULL`+selfFilter)
-		entryArgs = append(entryArgs, wsID)
-		entryArgs = append(entryArgs, selfArgs...)
+	// Same channel registry the inbox list reads, projected into the board's
+	// wider column shape. Registering a channel makes it available to the board,
+	// and therefore to stages, labels and every compiled filter — all of which key
+	// on (entry_id, entry_type) rather than on a channel table.
+	boardCTESQL, boardCTEArgs := buildEntryUnion(entrySourceScope{
+		DepartmentIDs:          input.DepartmentIDs,
+		RestrictDepartments:    input.RestrictDepartments,
+		AssigneeOverrideUserID: input.AssigneeOverrideUserID,
+		AssignedUserID:         input.AssignedUserID,
+	}, wsID, entrySource.boardSelect)
+	if boardCTESQL != "" {
+		entryParts = append(entryParts, boardCTESQL)
+		entryArgs = append(entryArgs, boardCTEArgs...)
 	}
 
 	entryCTE := strings.Join(entryParts, " UNION ALL ")

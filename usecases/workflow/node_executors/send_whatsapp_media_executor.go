@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -11,7 +12,7 @@ type sendMediaExecutor struct {
 	sender *whatsappSender
 }
 
-func NewSendMediaExecutor(waDeps WhatsAppSenderDeps) workflow.NodeExecutor {
+func NewSendMediaExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 	return &sendMediaExecutor{sender: newWhatsAppSender(waDeps)}
 }
 
@@ -47,6 +48,12 @@ func (e *sendMediaExecutor) Definition() workflow.NodeDefinition {
 }
 
 func (e *sendMediaExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
+	// Media sending still resolves a WhatsApp media id / business phone. Adapters
+	// expose SendMedia, so this node can be generalized next; until then it is
+	// skipped on other channels rather than silently reporting success.
+	if shared.EntryType(ctx.Run.EntryType) != shared.EntryTypeWhatsApp {
+		return skipUnsupportedNode(ctx, "action_send_media"), nil
+	}
 	mediaID, _ := ctx.Node.Config["media_id"].(string)
 	mediaID = strings.TrimSpace(workflow.Interpolate(mediaID, ctx.State, nil))
 	mediaURL, _ := ctx.Node.Config["media_url"].(string)

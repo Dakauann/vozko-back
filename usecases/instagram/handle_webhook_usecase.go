@@ -17,6 +17,7 @@ import (
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/media"
 	"vozko/domain/shared"
+	"vozko/domain/workflow"
 )
 
 // profileTTL is how long a cached contact profile is considered fresh.
@@ -35,6 +36,30 @@ const profileTTL = 7 * 24 * time.Hour
 // round-robin pools separate per connected account.
 type AssignmentService interface {
 	EnsureAssignment(entryID, entryType, accountID string) string
+}
+
+// AIReplier lets an AI agent attend this channel's conversations. Declared here
+// as a narrow port for the same reason AssignmentService is: the Instagram
+// usecase depends on the contract, not on the conversation usecase package.
+//
+// A nil message with a nil error means "deliberately not answered" — automation
+// off, loop suspected, empty body, or a closed provider window. That is a normal
+// outcome, not a failure.
+type AIReplier interface {
+	Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error)
+}
+
+// WorkflowTrigger fires workflow triggers for a conversation. Narrow port, same
+// reasoning as AIReplier: the workflow engine keys on (entry_id, entry_type) and
+// needs nothing Instagram-specific.
+type WorkflowTrigger interface {
+	Evaluate(event workflow.TriggerEvent)
+}
+
+// CommentRuleEvaluator applies comment automation to one mirrored comment.
+// Narrow port for the same reason as the others.
+type CommentRuleEvaluator interface {
+	Execute(ctx context.Context, comment *igdomain.Comment)
 }
 
 // MediaFetcher downloads an attachment from a signed CDN URL. Narrowed to one
@@ -59,6 +84,14 @@ type HandleWebhookUseCase struct {
 	fileStorage media.FileStorage
 	broadcaster conversation.EventBroadcaster
 	assignments AssignmentService
+	// aiReply is the channel-agnostic AI attendant. Optional: when unset the
+	// channel simply has no agent, exactly as before.
+	aiReply AIReplier
+	// workflows fires trigger events. Optional: unset means the channel runs no
+	// workflows.
+	workflows WorkflowTrigger
+	// commentRules applies comment automation. Optional.
+	commentRules CommentRuleEvaluator
 }
 
 // HandleWebhookDeps groups the dependencies so the constructor stays readable as
@@ -72,12 +105,15 @@ type HandleWebhookDeps struct {
 	Messaging     igdomain.MessagingService
 	MediaFetcher  MediaFetcher
 
-	History     conversation.MessageHistoryManager
-	Messages    conversation.MessageRepository
-	ConvMedia   conversation.ConversationMediaRepository
-	FileStorage media.FileStorage
-	Broadcaster conversation.EventBroadcaster
-	Assignments AssignmentService
+	History      conversation.MessageHistoryManager
+	Messages     conversation.MessageRepository
+	ConvMedia    conversation.ConversationMediaRepository
+	FileStorage  media.FileStorage
+	Broadcaster  conversation.EventBroadcaster
+	Assignments  AssignmentService
+	AIReply      AIReplier
+	Workflows    WorkflowTrigger
+	CommentRules CommentRuleEvaluator
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -95,6 +131,9 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		fileStorage:   d.FileStorage,
 		broadcaster:   d.Broadcaster,
 		assignments:   d.Assignments,
+		aiReply:       d.AIReply,
+		workflows:     d.Workflows,
+		commentRules:  d.CommentRules,
 	}
 }
 
@@ -279,7 +318,123 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	}
 
 	uc.enrichContact(ctx, account, contact)
+	uc.fireWorkflowTriggers(ctx, account, conv, text)
+	uc.maybeReplyWithAgent(ctx, account, conv, text)
 	return nil
+}
+
+// fireWorkflowTriggers starts or advances workflows for this conversation.
+//
+// Gating matches the AI agent exactly — the account's workflow switch, overridden
+// per conversation by the automation toggle — so pausing automation on a
+// conversation silences BOTH the agent and its workflows. Otherwise an operator
+// who took over would still be interrupted by a workflow step.
+//
+// The trigger event itself is channel-neutral, so every node that keys on
+// (entry_id, entry_type) works here unchanged.
+func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
+	ctx context.Context,
+	account *igdomain.Account,
+	conv *igdomain.Conversation,
+	text string,
+) {
+	if uc.workflows == nil || !account.EnableWorkflow {
+		return
+	}
+	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {
+		log.Printf("[instagram] automation disabled for conversation=%s — skipping workflow triggers", conv.ID)
+		return
+	}
+
+	data := map[string]interface{}{
+		"message":      text,
+		"channel":      string(shared.EntryTypeInstagram),
+		"workspace_id": account.WorkspaceID,
+	}
+	if account.WorkflowID != nil {
+		data["account_workflow_id"] = *account.WorkflowID
+	}
+
+	uc.workflows.Evaluate(workflow.TriggerEvent{
+		WorkspaceID: account.WorkspaceID,
+		EntryID:     conv.ID,
+		EntryType:   string(shared.EntryTypeInstagram),
+		TriggerType: workflow.TriggerMessageReceived,
+		Data:        data,
+	})
+
+	// trigger_first_message fires on the contact's first inbound message. The
+	// conversation's customer clock is set by RecordInbound before this runs, so
+	// "first" is derived from whether one had been recorded previously.
+	if uc.isFirstInboundMessage(ctx, conv) {
+		uc.workflows.Evaluate(workflow.TriggerEvent{
+			WorkspaceID: account.WorkspaceID,
+			EntryID:     conv.ID,
+			EntryType:   string(shared.EntryTypeInstagram),
+			TriggerType: workflow.TriggerFirstMessage,
+			Data:        data,
+		})
+	}
+}
+
+// isFirstInboundMessage reports whether the message just recorded is the first
+// one this contact has sent.
+//
+// It counts stored inbound messages rather than trusting a clock: the message is
+// already persisted at this point, so exactly one inbound message means this was
+// the first.
+func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv *igdomain.Conversation) bool {
+	if uc.messages == nil {
+		return false
+	}
+	history, err := uc.messages.ListByEntryPaginated(conversation.ListMessagesInput{
+		EntryID:   conv.ID,
+		EntryType: shared.EntryTypeInstagram,
+		Limit:     5,
+	})
+	if err != nil {
+		return false
+	}
+	inbound := 0
+	for _, m := range history {
+		if m != nil && m.MessageType.IsInbound() {
+			inbound++
+			if inbound > 1 {
+				return false
+			}
+		}
+	}
+	return inbound == 1
+}
+
+// maybeReplyWithAgent hands the message to the channel-agnostic AI service.
+//
+// The service owns every decision — automation gating, loop protection, the
+// outbound window — so this stays a hand-off rather than a second place where
+// "should the bot answer?" is implemented.
+//
+// Failures are logged, never returned: an AI problem must not fail the webhook
+// and trigger a redelivery of a message that was already stored.
+func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
+	ctx context.Context,
+	account *igdomain.Account,
+	conv *igdomain.Conversation,
+	text string,
+) {
+	if uc.aiReply == nil || account.AgentID == nil {
+		return
+	}
+	if _, err := uc.aiReply.Reply(ctx, conversation.AIReplyRequest{
+		WorkspaceID:           account.WorkspaceID,
+		EntryID:               conv.ID,
+		EntryType:             shared.EntryTypeInstagram,
+		AgentID:               *account.AgentID,
+		AgentResponsesEnabled: account.EnableAgentResponses,
+		AutomationEnabled:     conv.AutomationEnabled,
+		Text:                  text,
+	}); err != nil {
+		log.Printf("[instagram] agent reply failed conversation=%s: %v", conv.ID, err)
+	}
 }
 
 // handleEcho reconciles a message we sent.
@@ -502,7 +657,17 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 	// A comment authored by our own account arrives with our IGSID as the sender.
 	record.IsOurs = record.FromIGSID != "" && record.FromIGSID == account.IGUserID
 
-	return uc.comments.Upsert(ctx, record)
+	if err := uc.comments.Upsert(ctx, record); err != nil {
+		return err
+	}
+
+	// Automation runs AFTER the mirror is written, so a rule's own public reply
+	// (which arrives back as another webhook) is evaluated against stored state
+	// rather than racing it.
+	if uc.commentRules != nil {
+		uc.commentRules.Execute(ctx, record)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------- helpers

@@ -1611,6 +1611,36 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 	return message, nil
 }
 
+// SendAgentTextMessage delivers a reply authored by an AI agent.
+//
+// It is the agent-authored twin of SendTextMessage: the same adapter, window
+// check and persistence, but recorded as an AI response attributed to the agent
+// rather than an operator message. Because no operator socket is involved, the
+// result is broadcast here so open inboxes see the reply immediately.
+//
+// Only adapter-backed channels are served. WhatsApp keeps its existing dedicated
+// pipeline, which carries campaign tooling this path deliberately does not.
+func (s *MessageSenderService) SendAgentTextMessage(entryID, entryType, text, agentID string) (*conversation.Message, error) {
+	adapter := s.adapterFor(entryType)
+	if adapter == nil {
+		return nil, conversation.ErrNoAdapterForEntryType
+	}
+
+	message, err := s.sendViaAdapter(adapter, entryID, entryType, agentID, "",
+		func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
+			return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: text})
+		},
+		conversation.MessageTypeAIResponse, text, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	if s.hub != nil && message != nil {
+		s.hub.BroadcastNewMessage(entryID, entryType, message)
+	}
+	return message, nil
+}
+
 func (s *MessageSenderService) RequestCallPermission(input conversation.RequestCallPermissionInput) (*conversation.Message, error) {
 	entryID := strings.TrimSpace(input.EntryID)
 	entryType := strings.TrimSpace(input.EntryType)

@@ -260,6 +260,16 @@ func (c *Container) startConversationHub() {
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	c.services.messageSender = messageSender
+
+	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
+	// this serves every adapter-backed channel (Instagram today, Telegram next)
+	// so a channel gains an agent by wiring rather than by growing AI code.
+	c.services.channelAIReply = conversation_usecase.NewChannelAIReplyService(
+		c.repositories.agent,
+		c.services.ai,
+		c.repositories.conversation,
+		messageSender,
+	)
 	c.services.conversationHub.SetMessageSender(messageSender)
 	c.services.requestCallPermission = messageSender
 
@@ -296,4 +306,31 @@ func (a callRouletteConfigAdapter) GetByWorkspaceID(workspaceID string) (bool, e
 		return false, err
 	}
 	return cfg != nil, nil
+}
+
+// registerChannelAdapter adds one channel's send-side adapter and refreshes
+// every consumer of the adapter registry.
+//
+// Adapters ACCUMULATE: the registry is rebuilt from all channels registered so
+// far. Handing each channel's adapter straight to SetChannelAdapters would make
+// the last channel wired silently replace the previous ones, disabling their
+// send path and window checks.
+//
+// Both consumers are refreshed together so the composer's "can I reply now?"
+// and the actual send path can never disagree.
+func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAdapter) {
+	if adapter == nil {
+		return
+	}
+	c.services.channelAdapters = append(c.services.channelAdapters, adapter)
+	registry := conversation_domain.NewAdapterRegistry(c.services.channelAdapters...)
+
+	if c.services.messageSender != nil {
+		c.services.messageSender.SetChannelAdapters(registry)
+	}
+	if setter, ok := c.services.conversationHistory.(interface {
+		SetChannelAdapters(conversation_domain.AdapterRegistry)
+	}); ok {
+		setter.SetChannelAdapters(registry)
+	}
 }

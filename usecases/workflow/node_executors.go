@@ -64,7 +64,7 @@ type ExecutorDeps struct {
 }
 
 func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) {
-	waDeps := node_executors.WhatsAppSenderDeps{
+	waDeps := node_executors.SenderDeps{
 		ClientFactory:           deps.WhatsAppClientFactory,
 		LeadRepo:                deps.LeadRepo,
 		WhatsAppEntryRepo:       deps.WhatsAppEntryRepo,

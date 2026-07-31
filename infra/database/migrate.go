@@ -159,6 +159,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.InstagramConversation{},
 			&schema.InstagramMedia{},
 			&schema.InstagramComment{},
+			&schema.InstagramCommentRule{},
 			&schema.InstagramPrivateReply{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {

@@ -22,11 +22,12 @@ import (
 
 // Handler serves the Instagram account, OAuth, posts and comments endpoints.
 type Handler struct {
-	connect    *iguc.ConnectAccountUseCase
-	list       *iguc.ListAccountsUseCase
-	get        *iguc.GetAccountUseCase
-	updateCfg  *iguc.UpdateAccountConfigUseCase
-	disconnect *iguc.DisconnectAccountUseCase
+	connect     *iguc.ConnectAccountUseCase
+	list        *iguc.ListAccountsUseCase
+	get         *iguc.GetAccountUseCase
+	updateCfg   *iguc.UpdateAccountConfigUseCase
+	disconnect  *iguc.DisconnectAccountUseCase
+	manageRules *iguc.ManageCommentRulesUseCase
 
 	listMedia         *iguc.ListMediaUseCase
 	getMedia          *iguc.GetMediaUseCase
@@ -46,11 +47,12 @@ type Handler struct {
 
 // HandlerDeps groups the usecases.
 type HandlerDeps struct {
-	Connect    *iguc.ConnectAccountUseCase
-	List       *iguc.ListAccountsUseCase
-	Get        *iguc.GetAccountUseCase
-	UpdateCfg  *iguc.UpdateAccountConfigUseCase
-	Disconnect *iguc.DisconnectAccountUseCase
+	Connect     *iguc.ConnectAccountUseCase
+	List        *iguc.ListAccountsUseCase
+	Get         *iguc.GetAccountUseCase
+	UpdateCfg   *iguc.UpdateAccountConfigUseCase
+	ManageRules *iguc.ManageCommentRulesUseCase
+	Disconnect  *iguc.DisconnectAccountUseCase
 
 	ListMedia         *iguc.ListMediaUseCase
 	GetMedia          *iguc.GetMediaUseCase
@@ -73,6 +75,7 @@ func NewHandler(d HandlerDeps) *Handler {
 		list:              d.List,
 		get:               d.Get,
 		updateCfg:         d.UpdateCfg,
+		manageRules:       d.ManageRules,
 		disconnect:        d.Disconnect,
 		listMedia:         d.ListMedia,
 		getMedia:          d.GetMedia,

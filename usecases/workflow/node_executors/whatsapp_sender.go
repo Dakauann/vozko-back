@@ -51,7 +51,13 @@ type mediaLookup interface {
 	GetMediaByID(mediaID string) (*media_domain.Media, error)
 }
 
-type WhatsAppSenderDeps struct {
+// SenderDeps carries everything the workflow send nodes need.
+//
+// Most fields are WhatsApp's (client factory, business phones, templates, the
+// lead window) because WhatsApp keeps a dedicated sender; Adapters serves every
+// other channel through the shared registry. The struct is named for its role —
+// sending — rather than for the channel that needs the most from it.
+type SenderDeps struct {
 	ClientFactory           conversation.WhatsAppClientFactory
 	LeadRepo                leadLookup
 	WhatsAppEntryRepo       whatsappEntryLookup
@@ -68,10 +74,14 @@ type WhatsAppSenderDeps struct {
 	FileStorage media_domain.FileStorage
 
 	ConversationMediaRepo conversation.ConversationMediaRepository
+
+	// Adapters is the channel registry used for every non-WhatsApp channel.
+	// Optional: without it, only WhatsApp can be sent to.
+	Adapters conversation.AdapterRegistry
 }
 
 type whatsappSender struct {
-	deps WhatsAppSenderDeps
+	deps SenderDeps
 }
 
 type whatsappSendTarget struct {
@@ -81,14 +91,14 @@ type whatsappSendTarget struct {
 	receivedBusinessPhoneID string
 }
 
-func newWhatsAppSender(deps WhatsAppSenderDeps) *whatsappSender {
+func newWhatsAppSender(deps SenderDeps) *whatsappSender {
 	if deps.ClientFactory == nil || deps.LeadRepo == nil || deps.WhatsAppEntryRepo == nil {
 		return nil
 	}
 	return &whatsappSender{deps: deps}
 }
 
-func NewWhatsAppSenderFromDeps(deps WhatsAppSenderDeps) *whatsappSender {
+func NewWhatsAppSenderFromDeps(deps SenderDeps) *whatsappSender {
 	return newWhatsAppSender(deps)
 }
 

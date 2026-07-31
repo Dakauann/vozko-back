@@ -360,11 +360,17 @@ type services struct {
 	conversationAuthImpl      *conversation_infra.Authorizer
 	requestCallPermission     conversation_domain.RequestCallPermissionUseCase
 	conversationHistory       conversation_domain.HistoryProvider
-	callAdmission             dialer_domain.CallAdmissionCoordinator
-	startOutboundCall         dialer_domain.StartOutboundCallUseCase
-	endOutboundCall           dialer_domain.EndOutboundCallUseCase
-	dialerLifecycle           *dialer_usecase.OutboundCallLifecycleRunner
-	conversationHub           *wsdelivery.ConversationHub
+	// channelAdapters accumulates every channel's send-side adapter. The registry
+	// handed to consumers is rebuilt from this slice, so wiring a second channel
+	// adds to it instead of replacing the first channel's registry.
+	channelAdapters []conversation_domain.ChannelAdapter
+	// channelAIReply lets an agent attend any adapter-backed channel.
+	channelAIReply    *conversation_usecase.ChannelAIReplyService
+	callAdmission     dialer_domain.CallAdmissionCoordinator
+	startOutboundCall dialer_domain.StartOutboundCallUseCase
+	endOutboundCall   dialer_domain.EndOutboundCallUseCase
+	dialerLifecycle   *dialer_usecase.OutboundCallLifecycleRunner
+	conversationHub   *wsdelivery.ConversationHub
 	// conversationStatusUpdater is the single choke point for finish/reopen/auto-close.
 	conversationStatusUpdater conversation_domain.ConversationStatusUpdater
 	inboxService              conversation_domain.InboxService

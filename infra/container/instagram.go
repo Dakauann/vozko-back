@@ -26,13 +26,17 @@ type instagramBundle struct {
 	// consumer checks it before using the bundle.
 	Enabled bool
 
-	Accounts       igdomain.AccountRepository
-	Contacts       igdomain.ContactRepository
-	Conversations  igdomain.ConversationRepository
-	Media          igdomain.MediaRepository
-	Comments       igdomain.CommentRepository
-	PrivateReplies igdomain.PrivateReplyRepository
-	ProcessedEvent igdomain.ProcessedEventRepository
+	Accounts        igdomain.AccountRepository
+	Contacts        igdomain.ContactRepository
+	Conversations   igdomain.ConversationRepository
+	Media           igdomain.MediaRepository
+	Comments        igdomain.CommentRepository
+	PrivateReplies  igdomain.PrivateReplyRepository
+	ProcessedEvent  igdomain.ProcessedEventRepository
+	CommentRules    igdomain.CommentRuleRepository
+	CommentRuleEval *iguc.EvaluateCommentRulesUseCase
+	PrivateReplyUC  *iguc.SendPrivateReplyUseCase
+	ManageRules     *iguc.ManageCommentRulesUseCase
 
 	OAuth        igdomain.OAuthService
 	Messaging    igdomain.MessagingService
@@ -118,6 +122,7 @@ func (c *Container) initInstagram() {
 	bundle.Comments = instagram_repository.NewCommentRepository(c.db)
 	bundle.PrivateReplies = instagram_repository.NewPrivateReplyRepository(c.db)
 	bundle.ProcessedEvent = instagram_repository.NewProcessedEventRepository(c.db)
+	bundle.CommentRules = instagram_repository.NewCommentRuleRepository(c.db)
 
 	// Instagram webhooks are signed with the Instagram app secret, but the docs
 	// only say "your app's App Secret". Accepting both removes the ambiguity
@@ -135,6 +140,21 @@ func (c *Container) initInstagram() {
 		"/dashboard/instagram-accounts",
 	)
 
+	// Built once and shared: the HTTP handler exposes them as operator actions,
+	// and the comment-rule evaluator performs the same operations automatically.
+	replyComment := iguc.NewReplyToCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
+	moderateComment := iguc.NewModerateCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
+	privateReply := iguc.NewSendPrivateReplyUseCase(
+		bundle.Accounts, bundle.Messaging, bundle.Comments,
+		bundle.PrivateReplies, bundle.Contacts, bundle.Conversations,
+	)
+	bundle.PrivateReplyUC = privateReply
+	bundle.CommentRuleEval = iguc.NewEvaluateCommentRulesUseCase(
+		bundle.CommentRules,
+		iguc.NewCommentActionRunner(replyComment, privateReply, moderateComment),
+	)
+	bundle.ManageRules = iguc.NewManageCommentRulesUseCase(bundle.CommentRules, bundle.Accounts)
+
 	bundle.Handler = instagramhttp.NewHandler(instagramhttp.HandlerDeps{
 		Connect:           connect,
 		List:              iguc.NewListAccountsUseCase(bundle.Accounts),
@@ -148,13 +168,11 @@ func (c *Container) initInstagram() {
 		CreateMedia:       iguc.NewCreateMediaUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		SetCommentEnabled: iguc.NewSetCommentEnabledUseCase(bundle.Accounts, mediaSvc, bundle.Media),
 		ListComments:      iguc.NewListCommentsUseCase(bundle.Accounts, commentSvc, bundle.Comments),
-		ReplyComment:      iguc.NewReplyToCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments),
-		Moderate:          iguc.NewModerateCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments),
-		PrivateReply: iguc.NewSendPrivateReplyUseCase(
-			bundle.Accounts, bundle.Messaging, bundle.Comments,
-			bundle.PrivateReplies, bundle.Contacts, bundle.Conversations,
-		),
-		FrontendBaseURL: c.cfg.FrontendBaseURL,
+		ReplyComment:      replyComment,
+		Moderate:          moderateComment,
+		PrivateReply:      privateReply,
+		ManageRules:       bundle.ManageRules,
+		FrontendBaseURL:   c.cfg.FrontendBaseURL,
 	})
 
 	bundle.RefreshTokens = iguc.NewRefreshTokensUseCase(bundle.Accounts, bundle.OAuth)
@@ -187,6 +205,13 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 	if bundle == nil || !bundle.Enabled {
 		return
 	}
+
+	// A private reply opens a conversation; recording it in the transcript is what
+	// makes that conversation appear in the inbox, since the inbox lists
+	// conversations by their last message.
+	if bundle.PrivateReplyUC != nil {
+		bundle.PrivateReplyUC.SetHistoryManager(history)
+	}
 	// Guard the wiring order explicitly: this half depends on the useCases struct
 	// literal having been assigned, and a nil here used to panic at boot rather
 	// than saying what was wrong.
@@ -217,6 +242,9 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		FileStorage:   c.services.fileStorage,
 		Broadcaster:   c.services.conversationHub,
 		Assignments:   c.services.assignmentService,
+		AIReply:       c.services.channelAIReply,
+		Workflows:     c.useCases.triggerEvaluator,
+		CommentRules:  bundle.CommentRuleEval,
 	})
 
 	bundle.Consume = iguc.NewConsumeWebhookUseCase(
@@ -250,17 +278,7 @@ func (c *Container) wireInstagramConversationStack() {
 		bundle.Messaging,
 	)
 
-	registry := conversation_domain.NewAdapterRegistry(adapter)
-	if c.services.messageSender != nil {
-		c.services.messageSender.SetChannelAdapters(registry)
-	}
-	// The history provider reads the same registry so the composer's window state
-	// and the send path agree on whether a reply is currently allowed.
-	if setter, ok := c.services.conversationHistory.(interface {
-		SetChannelAdapters(conversation_domain.AdapterRegistry)
-	}); ok {
-		setter.SetChannelAdapters(registry)
-	}
+	c.registerChannelAdapter(adapter)
 	if c.services.conversationAuthImpl != nil {
 		c.services.conversationAuthImpl.SetInstagramEntryRepo(bundle.Conversations)
 	}
