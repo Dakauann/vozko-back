@@ -308,6 +308,7 @@ func (l instagramContactLookup) ContactsByIDs(ctx context.Context, ids []string)
 		}
 		out[c.ID] = conversation_usecase.InstagramContactDisplay{
 			ContactID:  c.ID,
+			Ref:        c.IGSID,
 			Handle:     c.Username,
 			Name:       c.Name,
 			PictureURL: c.ProfilePictureURL,
@@ -327,6 +328,7 @@ func (l instagramContactLookup) ContactForConversation(ctx context.Context, conv
 	}
 	return conversation_usecase.InstagramContactDisplay{
 		ContactID:  contact.ID,
+		Ref:        contact.IGSID,
 		Handle:     contact.Username,
 		Name:       contact.Name,
 		PictureURL: contact.ProfilePictureURL,

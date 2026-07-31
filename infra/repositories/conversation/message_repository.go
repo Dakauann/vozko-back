@@ -1451,16 +1451,16 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 		return nil, totalCount, nil
 	}
 
-	voiceIDs := make([]string, 0)
+	// Only the entry types the union above can emit are dispatched here. A voice
+	// branch used to collect ids that were never read: the workspace CTE has no
+	// voice source, so it could never match.
 	whatsappIDs := make([]string, 0)
 	instagramIDs := make([]string, 0)
 	for _, m := range matchedIDs {
-		switch m.EntryType {
-		case "voice":
-			voiceIDs = append(voiceIDs, m.EntryID)
-		case "whatsapp":
+		switch shared.EntryType(m.EntryType) {
+		case shared.EntryTypeWhatsApp:
 			whatsappIDs = append(whatsappIDs, m.EntryID)
-		case "instagram":
+		case shared.EntryTypeInstagram:
 			instagramIDs = append(instagramIDs, m.EntryID)
 		}
 	}
@@ -1648,18 +1648,15 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	order := make(map[string]int, len(matchedIDs))
 	type leadIdentity struct{ name, number string }
 	leadByEntry := make(map[string]leadIdentity, len(matchedIDs))
-	voiceIDs := make([]string, 0)
 	whatsappIDs := make([]string, 0)
 	instagramIDs := make([]string, 0)
 	for i, m := range matchedIDs {
 		order[m.EntryID] = i
 		leadByEntry[m.EntryID] = leadIdentity{name: m.LeadName, number: m.LeadNumber}
-		switch m.EntryType {
-		case "voice":
-			voiceIDs = append(voiceIDs, m.EntryID)
-		case "whatsapp":
+		switch shared.EntryType(m.EntryType) {
+		case shared.EntryTypeWhatsApp:
 			whatsappIDs = append(whatsappIDs, m.EntryID)
-		case "instagram":
+		case shared.EntryTypeInstagram:
 			instagramIDs = append(instagramIDs, m.EntryID)
 		}
 	}

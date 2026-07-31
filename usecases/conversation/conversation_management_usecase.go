@@ -70,7 +70,11 @@ type HistoryProviderService struct {
 // without this lookup an Instagram inbox row renders with no name, handle or
 // avatar.
 type InstagramContactDisplay struct {
-	ContactID  string
+	ContactID string
+	// Ref is the provider-facing id (IGSID). It is what the message rows carry
+	// as the sender, so it is also how a raw id leaking into a display label is
+	// recognised.
+	Ref        string
 	Handle     string
 	Name       string
 	PictureURL string
@@ -131,13 +135,16 @@ func (s *HistoryProviderService) hydrateInstagramSenders(entries []conversation.
 			entries[i].LeadName = name
 			entries[i].LeadNumber = handle
 			entries[i].LeadPicture = contact.PictureURL
-			// The last-message sender label defaults to the lead name, which was
-			// empty when it was computed. Only inbound rows carry the contact as
-			// sender; operator rows keep the user name already resolved.
-			if entries[i].LastMessageSender == "" {
+
+			// The sender label is replaced when it is blank OR when it is the raw
+			// provider id. Story replies, mentions, shares and unsupported
+			// messages fall through the sender resolver's default branch, which
+			// returns the sender ref verbatim — so without this the inbox would
+			// show a numeric IGSID where the contact's name belongs.
+			//
+			// Any other label (an operator's or agent's name) is left alone.
+			if entries[i].LastMessageSender == "" || entries[i].LastMessageSender == contact.Ref {
 				entries[i].LastMessageSender = name
-			}
-			if entries[i].LastMessageSenderAvatar == "" {
 				entries[i].LastMessageSenderAvatar = contact.PictureURL
 			}
 		}
@@ -992,9 +999,22 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 		ClosedAt:                closedAt,
 	}
 
-	windowOpen, windowExpiresAt := s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
-	entry.WindowOpen = windowOpen
-	entry.WindowExpiresAt = windowExpiresAt
+	// Channel identity for entries whose sender is not a lead. This is the
+	// single-entry twin of the list paths: without it an entry_update broadcast
+	// would rebuild the row with an empty name, blanking the Instagram
+	// conversation's title in the live inbox.
+	batch := []conversation.InboxEntry{*entry}
+	s.hydrateInstagramSenders(batch)
+	*entry = batch[0]
+
+	// Channels with an adapter own their window rule; getWindowStatus below is
+	// the WhatsApp lead/business-phone rule and reports closed for anything else,
+	// which would lock the composer on an Instagram update.
+	if s.adapterFor(entryType) != nil {
+		entry.WindowOpen, entry.WindowExpiresAt = s.GetWindowStatusForEntry(entryID, entryType)
+	} else {
+		entry.WindowOpen, entry.WindowExpiresAt = s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
+	}
 	entry.BusinessPhoneID = e.BusinessPhoneID
 
 	// Reuse the same assignee enrichment the inbox list uses, so the build logic

@@ -324,3 +324,70 @@ func (c *concurrentSafeContacts) ContactsByIDs(ctx context.Context, ids []string
 func (c *concurrentSafeContacts) ContactForConversation(ctx context.Context, id string) (InstagramContactDisplay, string, error) {
 	return c.inner.ContactForConversation(ctx, id)
 }
+
+// --- entry_update regression (reported in production) ---
+//
+// An entry_update broadcast rebuilds a single row through GetInboxEntry, a path
+// separate from the two list paths. It resolved the name through the lead
+// repository, which cannot resolve an Instagram contact, so the conversation's
+// name blanked every time a new message arrived.
+
+func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
+	const igsid = "17841458366137975"
+	svc := &HistoryProviderService{}
+	svc.SetInstagramContacts(&fakeInstagramContacts{
+		byID: map[string]InstagramContactDisplay{
+			"contact-1": {ContactID: "contact-1", Ref: igsid, Handle: "mariasilva", Name: "Maria Silva", PictureURL: "pic"},
+		},
+	})
+
+	entries := []conversation.InboxEntry{
+		// Story replies/mentions fall through the sender resolver's default
+		// branch, which returns the raw ref: it must not reach the UI as a name.
+		{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: igsid},
+		// A blank label is filled too.
+		{EntryID: "ig-2", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: ""},
+		// An operator's name is authoritative and must survive.
+		{EntryID: "ig-3", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: "jose", LastMessageSenderAvatar: "jose.jpg"},
+	}
+	svc.hydrateInstagramSenders(entries)
+
+	if entries[0].LastMessageSender != "Maria Silva" {
+		t.Errorf("raw IGSID leaked as sender name: %q", entries[0].LastMessageSender)
+	}
+	if entries[1].LastMessageSender != "Maria Silva" {
+		t.Errorf("blank sender not filled: %q", entries[1].LastMessageSender)
+	}
+	if entries[2].LastMessageSender != "jose" || entries[2].LastMessageSenderAvatar != "jose.jpg" {
+		t.Errorf("operator sender overwritten: %+v", entries[2])
+	}
+	// The row identity is hydrated in every case.
+	for i := range entries {
+		if entries[i].LeadName != "Maria Silva" {
+			t.Errorf("entry %d name = %q", i, entries[i].LeadName)
+		}
+	}
+}
+
+// Hydration must be idempotent: entry_update fires repeatedly for an active
+// conversation, and each rebuild must produce the same row.
+func TestHydrateInstagramSenders_Idempotent(t *testing.T) {
+	svc := &HistoryProviderService{}
+	svc.SetInstagramContacts(igContactsFixture())
+
+	entries := []conversation.InboxEntry{{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1"}}
+	svc.hydrateInstagramSenders(entries)
+	first := entries[0]
+	for i := 0; i < 5; i++ {
+		svc.hydrateInstagramSenders(entries)
+	}
+	if entries[0].LeadName != first.LeadName ||
+		entries[0].LeadNumber != first.LeadNumber ||
+		entries[0].LastMessageSender != first.LastMessageSender {
+		t.Errorf("hydration is not idempotent:\n first %+v\n later %+v", first, entries[0])
+	}
+	// The handle must not accumulate '@' prefixes across rebuilds.
+	if strings.HasPrefix(entries[0].LeadNumber, "@@") {
+		t.Errorf("handle prefix accumulated: %q", entries[0].LeadNumber)
+	}
+}
