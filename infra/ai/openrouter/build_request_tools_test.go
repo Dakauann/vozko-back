@@ -59,7 +59,7 @@ func TestBuildRequest_ResponseFormatJSONObject(t *testing.T) {
 		Messages: []ai.Message{
 			{Role: ai.RoleUser, Content: "return json"},
 		},
-		ResponseFormat: &ai.ResponseFormat{Type: ai.ResponseFormatJSONObject},
+		ResponseFormat:    &ai.ResponseFormat{Type: ai.ResponseFormatJSONObject},
 		ToolExecutionMode: ai.ToolExecutionModeNone,
 	})
 	if req.ResponseFormat == nil || string(req.ResponseFormat.Type) != "json_object" {

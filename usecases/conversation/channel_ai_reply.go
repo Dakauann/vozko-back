@@ -8,7 +8,9 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/conversation"
+	"vozko/usecases/agentturn"
 	"vozko/usecases/conversation/loopguard"
+	shared_usecase "vozko/usecases/shared"
 )
 
 // ChannelAIReplyService lets an AI agent attend a conversation on any
@@ -28,6 +30,11 @@ type ChannelAIReplyService struct {
 	messages  conversation.MessageRepository
 	sender    *MessageSenderService
 	guard     loopguard.Guard
+	// assembler builds the turn: prompt, tools with channel seeds, identity
+	// preamble and knowledge-base grounding. Optional only so an unwired
+	// container still replies with plain text instead of failing; every real
+	// deployment sets it.
+	assembler *agentturn.Assembler
 }
 
 func NewChannelAIReplyService(
@@ -48,6 +55,16 @@ func NewChannelAIReplyService(
 // the service still replies, it simply loses the bot-to-bot loop protection.
 func (s *ChannelAIReplyService) SetLoopGuard(g loopguard.Guard) {
 	s.guard = g
+}
+
+// SetAssembler wires the shared agent-turn recipe.
+//
+// Without it this service could only ever send plain text: no tools, no
+// knowledge base, no channel identity — while the WhatsApp pipeline had all
+// three. An agent configured with a knowledge base in the UI silently ignored
+// it on every channel but WhatsApp.
+func (s *ChannelAIReplyService) SetAssembler(a *agentturn.Assembler) {
+	s.assembler = a
 }
 
 // historyDepth bounds how much transcript is replayed to the model. Deep enough
@@ -92,12 +109,7 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		return nil, err
 	}
 
-	out, err := s.aiService.Generate(ctx, ai.GenerateInput{
-		Model:        agentRecord.MessagingModel,
-		SystemPrompt: agentRecord.MessagingPrompt,
-		Messages:     messages,
-		WorkspaceID:  req.WorkspaceID,
-	})
+	out, err := s.aiService.Generate(ctx, s.generateInput(ctx, req, agentRecord, messages, text))
 	if err != nil {
 		log.Printf("[channel-ai] entry=%s generation failed: %v", req.EntryID, err)
 		return nil, err
@@ -188,4 +200,77 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 		out = append(out, ai.Message{Role: ai.RoleUser, Content: latest})
 	}
 	return out, nil
+}
+
+// generateInput builds the model request through the shared assembler.
+//
+// This is the whole point of adopting it: Instagram and Telegram now get the
+// same recipe — resolved tools carrying this conversation's id, the channel
+// identity preamble, and knowledge-base grounding — instead of a bare prompt.
+// Anything the recipe gains later, every channel gains at the same moment.
+//
+// The assembler is build-only. Tool EXECUTION is the ai.Service's job
+// (ToolExecutionModeAuto), so a tool the model calls runs and its result is fed
+// back without this service owning a loop.
+func (s *ChannelAIReplyService) generateInput(
+	ctx context.Context,
+	req conversation.AIReplyRequest,
+	agentRecord *agent.Agent,
+	messages []ai.Message,
+	latest string,
+) ai.GenerateInput {
+	if s.assembler == nil {
+		// Pre-assembler behaviour, kept so an unwired container still answers.
+		return ai.GenerateInput{
+			Model:        agentRecord.MessagingModel,
+			SystemPrompt: agentRecord.MessagingPrompt,
+			Messages:     messages,
+			WorkspaceID:  req.WorkspaceID,
+		}
+	}
+
+	identity := shared_usecase.ConversationContext{
+		// Messaging, not WhatsApp: the preamble tells the agent which surface it
+		// is on, and claiming WhatsApp here would have it offer to "send to your
+		// WhatsApp" from inside a Telegram chat.
+		Channel:        shared_usecase.ChannelMessaging,
+		AgentName:      agentRecord.Name,
+		ConversationID: req.EntryID,
+	}
+
+	assembled := s.assembler.Assemble(ctx, agentturn.Request{
+		Agent:    agentRecord,
+		Identity: &identity,
+
+		ResolveInternalTools: true,
+		Visibility:           agent.ToolVisibilityMessaging,
+		// The seeds every conversation-scoped tool reads to know WHICH
+		// conversation it is acting on. finish_conversation and
+		// manage_entry_stage both require these two; without them a tool call
+		// either fails or, worse, resolves nothing and reports success.
+		ToolSeed: map[string]interface{}{
+			"__entry_id":     req.EntryID,
+			"__entry_type":   string(req.EntryType),
+			"__workspace_id": req.WorkspaceID,
+		},
+
+		// Ground on the message being answered.
+		RAGQuery: latest,
+
+		// History already ends with the message being answered, so it is not
+		// passed again as UserMessage — that would duplicate the last turn.
+		History: messages,
+
+		Model: agentRecord.MessagingModel,
+	})
+
+	// The assembler leaves execution knobs to the caller by design.
+	assembled.Input.WorkspaceID = req.WorkspaceID
+	assembled.Input.ToolExecutionMode = ai.ToolExecutionModeAuto
+
+	if len(assembled.ToolNames) > 0 {
+		log.Printf("[channel-ai] entry=%s assembled with %d tool(s): %v",
+			req.EntryID, len(assembled.ToolNames), assembled.ToolNames)
+	}
+	return assembled.Input
 }

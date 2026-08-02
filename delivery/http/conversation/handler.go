@@ -76,7 +76,7 @@ func (h *ConversationHandler) SendMessage(w http.ResponseWriter, r *http.Request
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -156,7 +156,7 @@ func (h *ConversationHandler) RequestCallPermission(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -214,7 +214,7 @@ func (h *ConversationHandler) GetCallPermission(w http.ResponseWriter, r *http.R
 	vars := mux.Vars(r)
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -259,7 +259,7 @@ func (h *ConversationHandler) UploadMedia(w http.ResponseWriter, r *http.Request
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -341,7 +341,7 @@ func (h *ConversationHandler) GetMedia(w http.ResponseWriter, r *http.Request) {
 	entryID := vars["entryId"]
 	mediaID := vars["mediaId"]
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -414,8 +414,9 @@ func (h *ConversationHandler) SearchInbox(w http.ResponseWriter, r *http.Request
 		response.WriteError(w, http.StatusBadRequest, "campaign_id and campaign_type are required", nil)
 		return
 	}
-	if campaignType != "voice" && campaignType != "whatsapp" && campaignType != "support" {
-		response.WriteError(w, http.StatusBadRequest, "campaign_type must be 'voice', 'whatsapp', or 'support'", nil)
+	if !shared.EntryType(campaignType).SupportsInboxScope() {
+		response.WriteError(w, http.StatusBadRequest,
+			"campaign_type must be "+shared.FormatEntryTypes(shared.InboxScopableEntryTypes()), nil)
 		return
 	}
 
@@ -554,7 +555,7 @@ func (h *ConversationHandler) ReopenWindow(w http.ResponseWriter, r *http.Reques
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}
@@ -618,7 +619,7 @@ func (h *ConversationHandler) SearchMessages(w http.ResponseWriter, r *http.Requ
 	entryType := vars["entryType"]
 	entryID := vars["entryId"]
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	if !shared.EntryType(entryType).IsKnown() {
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return
 	}

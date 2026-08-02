@@ -1,0 +1,15 @@
+{
+  "update_id": 870123463,
+  "message": {
+    "message_id": 4826,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312007,
+    "contact": {
+      "phone_number": "5511987654321",
+      "first_name": "Marina",
+      "last_name": "Alves",
+      "user_id": 5041234567
+    }
+  }
+}

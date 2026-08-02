@@ -40,12 +40,12 @@ func (r *StageGroupRepository) Create(group *stage.StageGroup) error {
 			group.Items[i].ID = item.ID
 		}
 		schemaItem := schema.StageGroupItem{
-			ID:          item.ID,
-			StageGroupID:  group.ID,
-			Name:        item.Name,
-			Description: item.Description,
-			Color:       item.Color,
-			Position:    item.Position,
+			ID:           item.ID,
+			StageGroupID: group.ID,
+			Name:         item.Name,
+			Description:  item.Description,
+			Color:        item.Color,
+			Position:     item.Position,
 		}
 		if err := r.db.Create(&schemaItem).Error; err != nil {
 			return err
@@ -125,12 +125,12 @@ func (r *StageGroupRepository) AddItem(item *stage.StageGroupItem) error {
 		item.ID = uuid.New().String()
 	}
 	schemaItem := schema.StageGroupItem{
-		ID:          item.ID,
-		StageGroupID:  item.StageGroupID,
-		Name:        item.Name,
-		Description: item.Description,
-		Color:       item.Color,
-		Position:    item.Position,
+		ID:           item.ID,
+		StageGroupID: item.StageGroupID,
+		Name:         item.Name,
+		Description:  item.Description,
+		Color:        item.Color,
+		Position:     item.Position,
 	}
 	return r.db.Create(&schemaItem).Error
 }
@@ -150,12 +150,12 @@ func (r *StageGroupRepository) GetItems(StageGroupID string) ([]stage.StageGroup
 	result := make([]stage.StageGroupItem, len(items))
 	for i, item := range items {
 		result[i] = stage.StageGroupItem{
-			ID:          item.ID,
-			StageGroupID:  item.StageGroupID,
-			Name:        item.Name,
-			Description: item.Description,
-			Color:       item.Color,
-			Position:    item.Position,
+			ID:           item.ID,
+			StageGroupID: item.StageGroupID,
+			Name:         item.Name,
+			Description:  item.Description,
+			Color:        item.Color,
+			Position:     item.Position,
 		}
 	}
 	return result, nil
@@ -173,12 +173,12 @@ func mapTagGroupToDomain(s *schema.StageGroup) *stage.StageGroup {
 	}
 	for i, item := range s.Items {
 		group.Items[i] = stage.StageGroupItem{
-			ID:          item.ID,
-			StageGroupID:  item.StageGroupID,
-			Name:        item.Name,
-			Description: item.Description,
-			Color:       item.Color,
-			Position:    item.Position,
+			ID:           item.ID,
+			StageGroupID: item.StageGroupID,
+			Name:         item.Name,
+			Description:  item.Description,
+			Color:        item.Color,
+			Position:     item.Position,
 		}
 	}
 	return group

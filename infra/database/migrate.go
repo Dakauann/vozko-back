@@ -161,6 +161,11 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.InstagramComment{},
 			&schema.InstagramCommentRule{},
 			&schema.InstagramPrivateReply{},
+			&schema.TelegramAccount{},
+			&schema.TelegramContact{},
+			&schema.TelegramConversation{},
+			&schema.TelegramDeepLink{},
+			&schema.TelegramFileCache{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {
 			return err
@@ -229,6 +234,56 @@ func RunMigrations(db *gorm.DB) error {
 			CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_conversation_account_contact
 			ON instagram_conversations (ig_account_id, contact_id)
 			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// One bot per workspace, globally. Mirrors the Instagram account and
+		// WhatsApp phone rules: the same bot cannot be connected twice, and a
+		// soft-deleted row must not block reconnecting it.
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_account_bot_user
+			ON telegram_accounts (bot_user_id)
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// A business connection identifies exactly one account: it is the ONLY
+		// routing key a business-mode webhook carries, so two accounts claiming
+		// one connection would make delivery ambiguous.
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_account_business_connection
+			ON telegram_accounts (business_connection_id)
+			WHERE business_connection_id IS NOT NULL AND deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// A Telegram user id is global, but contact identity is still scoped to
+		// the account so one workspace can never read another's row.
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_contact_account_user
+			ON telegram_contacts (account_id, tg_user_id)
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// One open conversation per (account, contact).
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_conversation_account_contact
+			ON telegram_conversations (account_id, contact_id)
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return err
+		}
+
+		// The file cache is keyed by (account, object): "file_id is unique for
+		// each individual bot and can't be transferred from one bot to another".
+		if err := tx.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_file_cache_account_source
+			ON telegram_file_cache (account_id, source_key)
 		`).Error; err != nil {
 			return err
 		}

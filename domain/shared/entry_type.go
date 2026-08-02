@@ -14,6 +14,7 @@ const (
 	EntryTypeWhatsApp  EntryType = "whatsapp"
 	EntryTypeSupport   EntryType = "support"
 	EntryTypeInstagram EntryType = "instagram"
+	EntryTypeTelegram  EntryType = "telegram"
 	// EntryTypeVoice is a telephony conversation. It is written to
 	// conversation_messages like any other entry type, but it is not a messaging
 	// channel: it carries no inbound/outbound message pipeline, which is why it
@@ -30,6 +31,7 @@ var messagingEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:  {},
 	EntryTypeSupport:   {},
 	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
 }
 
 // conversationViewableEntryTypes are the entry types whose conversations the CRM
@@ -44,6 +46,7 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:  {},
 	EntryTypeVoice:     {},
 	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
 }
 
 // crmTaggableEntryTypes are the entry types whose conversations can carry CRM
@@ -60,6 +63,25 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 	EntryTypeVoice:     {},
 	EntryTypeSupport:   {},
 	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
+}
+
+// conversationClosableEntryTypes are the entry types whose conversations can be
+// moved to "finished" — by an operator, by the AI's finish tool, or by a
+// workflow's finish node.
+//
+// A fourth independent question. It used to be spelled inline as
+// `entryType != "whatsapp" && entryType != "voice"` in three separate places,
+// which is why Instagram conversations could be transferred and staged but never
+// closed: the guards predate the channel and fail CLOSED, silently. Voice is
+// listed because those guards accepted it and the status service treats it as a
+// no-op; removing it here would be a behaviour change unrelated to adding a
+// channel.
+var conversationClosableEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:  {},
+	EntryTypeVoice:     {},
+	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
 }
 
 // Valid reports whether the entry type is a messaging channel the shared
@@ -105,6 +127,123 @@ func (e EntryType) SupportsConversationView() bool {
 func ConversationViewableEntryTypes() []EntryType {
 	out := make([]EntryType, 0, len(conversationViewableEntryTypes))
 	for t := range conversationViewableEntryTypes {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// knownEntryTypes is every entry type the system recognises at all — the union
+// of the sets above.
+//
+// It answers the weakest question there is: "is this path variable a real entry
+// type?" That is what the HTTP conversation endpoints actually need, and they
+// spelled it as `!= "voice" && != "whatsapp" && != "support"`, which rejected
+// Instagram with a 400 on nine endpoints. entry_type_test.go asserts this stays
+// the union, so a channel added to any set above cannot be missing here.
+var knownEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:  {},
+	EntryTypeSupport:   {},
+	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
+	EntryTypeVoice:     {},
+}
+
+// IsKnown reports whether this is an entry type the system recognises.
+func (e EntryType) IsKnown() bool {
+	_, ok := knownEntryTypes[e]
+	return ok
+}
+
+// KnownEntryTypes lists every entry type in a stable order.
+func KnownEntryTypes() []EntryType {
+	out := make([]EntryType, 0, len(knownEntryTypes))
+	for t := range knownEntryTypes {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// inboxScopableEntryTypes are the entry types the inbox can be narrowed to — the
+// valid values of the websocket's `campaignType` selector and of
+// SearchInboxInput.CampaignType.
+//
+// A fifth independent question, and it answers differently again: support IS a
+// valid inbox scope despite not being opened through the conversation view, and
+// voice IS one despite having no entry_sources branch (the dialer's inbox is
+// scoped separately). Spelled inline it read
+// `!= "voice" && != "whatsapp" && != "support"`, which rejected Instagram with a
+// 400 and would have rejected Telegram the same way.
+var inboxScopableEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:  {},
+	EntryTypeVoice:     {},
+	EntryTypeSupport:   {},
+	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
+}
+
+// SupportsInboxScope reports whether the inbox can be narrowed to this channel.
+func (e EntryType) SupportsInboxScope() bool {
+	_, ok := inboxScopableEntryTypes[e]
+	return ok
+}
+
+// InboxScopableEntryTypes lists the scopable entry types in a stable order, so
+// the "must be one of" error stays in step with the set.
+func InboxScopableEntryTypes() []EntryType {
+	out := make([]EntryType, 0, len(inboxScopableEntryTypes))
+	for t := range inboxScopableEntryTypes {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// containerScopedInboxEntryTypes are the entry types whose inbox can be narrowed
+// to a single container — a WhatsApp campaign, or the account row for channels
+// that have no campaign concept.
+//
+// This is narrower than SupportsInboxScope: voice and support are valid inbox
+// selectors but have no container-scoped query behind them, and asking for one
+// would return an empty list rather than the workspace-wide view they show
+// today. infra/repositories/conversation/channel_queries.go is the registry that
+// actually serves these, and entry_type_test.go pins the two in step.
+var containerScopedInboxEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:  {},
+	EntryTypeInstagram: {},
+	EntryTypeTelegram:  {},
+}
+
+// SupportsContainerScopedInbox reports whether the inbox can be narrowed to one
+// of this channel's containers.
+func (e EntryType) SupportsContainerScopedInbox() bool {
+	_, ok := containerScopedInboxEntryTypes[e]
+	return ok
+}
+
+// ContainerScopedInboxEntryTypes lists them in a stable order.
+func ContainerScopedInboxEntryTypes() []EntryType {
+	out := make([]EntryType, 0, len(containerScopedInboxEntryTypes))
+	for t := range containerScopedInboxEntryTypes {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// SupportsConversationClosing reports whether a conversation of this type can be
+// finished.
+func (e EntryType) SupportsConversationClosing() bool {
+	_, ok := conversationClosableEntryTypes[e]
+	return ok
+}
+
+// ConversationClosableEntryTypes lists the closable entry types in a stable
+// order, so error messages stay in step with the set instead of restating it.
+func ConversationClosableEntryTypes() []EntryType {
+	out := make([]EntryType, 0, len(conversationClosableEntryTypes))
+	for t := range conversationClosableEntryTypes {
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })

@@ -613,18 +613,24 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
 	d := tool.Definition()
 
-	if d.Name != "send_whatsapp_media" {
-		t.Errorf("expected name send_whatsapp_media, got %q", d.Name)
+	// Channel-neutral: the name reaches the model, and one naming a channel
+	// makes the model decline to use it in a conversation on another.
+	if d.Name != ToolNameSendMedia {
+		t.Errorf("expected name %q, got %q", ToolNameSendMedia, d.Name)
 	}
 	for _, k := range []string{"to", "media_id", "caption"} {
 		if _, ok := d.Parameters[k]; !ok {
 			t.Errorf("expected parameter %q", k)
 		}
 	}
-	for _, req := range []string{"to", "media_id"} {
-		if !sliceContains(d.Required, req) {
-			t.Errorf("expected %q in Required, got %v", req, d.Required)
-		}
+	// Only the media is required. "to" is a phone number, which does not exist
+	// on Telegram or Instagram — requiring it made the tool unusable there. It
+	// remains accepted for saved WhatsApp agents that were taught to pass one.
+	if !sliceContains(d.Required, "media_id") {
+		t.Errorf("expected media_id in Required, got %v", d.Required)
+	}
+	if sliceContains(d.Required, "to") {
+		t.Errorf("\"to\" must be optional so the tool works without a phone number, got %v", d.Required)
 	}
 	if sliceContains(d.Required, "caption") {
 		t.Errorf("caption must be optional (image/video/document only)")

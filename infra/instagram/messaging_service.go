@@ -90,6 +90,18 @@ type recipient struct {
 
 type textMessage struct {
 	Text string `json:"text"`
+	// QuickReplies rides inside message, unlike reply_to which is a sibling of
+	// it. Omitted entirely when empty so an ordinary text send is byte-identical
+	// to what it was before quick replies existed.
+	QuickReplies []quickReply `json:"quick_replies,omitempty"`
+}
+
+// quickReply is one tappable option. content_type is required and "text" is the
+// only value this surface uses.
+type quickReply struct {
+	ContentType string `json:"content_type"`
+	Title       string `json:"title"`
+	Payload     string `json:"payload"`
 }
 
 type replyTo struct {
@@ -148,7 +160,7 @@ func (s *messagingService) SendText(ctx context.Context, igUserID, token string,
 
 	body := textBody{
 		Recipient: recipient{ID: in.RecipientIGSID},
-		Message:   textMessage{Text: in.Text},
+		Message:   textMessage{Text: in.Text, QuickReplies: quickRepliesFor(in.QuickReplies)},
 	}
 	if in.ReplyToMID != "" {
 		body.ReplyTo = &replyTo{MID: in.ReplyToMID}
@@ -387,4 +399,46 @@ func attachmentTypeFor(kind string) (string, error) {
 		return "file", nil
 	}
 	return "", fmt.Errorf("instagram: unsupported media kind %q", kind)
+}
+
+// quickRepliesFor maps our options onto Instagram's wire shape.
+//
+// Titles are truncated here rather than left to Instagram. Instagram truncates
+// at 20 characters silently on its side; doing it ourselves means the label we
+// log and the label the contact sees are the same string, so a support question
+// about "why does the button say something different" has an answer.
+//
+// Payloads are never truncated — a shortened payload comes back as an id that
+// matches no branch. Over-long ones are dropped by the caller, which knows the
+// option well enough to say so.
+func quickRepliesFor(options []igdomain.QuickReplyOption) []quickReply {
+	if len(options) == 0 {
+		return nil
+	}
+	out := make([]quickReply, 0, len(options))
+	for _, o := range options {
+		if len(out) >= igdomain.MaxQuickReplies {
+			break
+		}
+		out = append(out, quickReply{
+			ContentType: "text",
+			Title:       truncateRunes(o.Title, igdomain.MaxQuickReplyTitleRunes),
+			Payload:     o.Payload,
+		})
+	}
+	return out
+}
+
+// truncateRunes cuts to a CHARACTER count, not a byte count: Instagram's "20
+// characters" is about what the contact reads, and slicing bytes would split a
+// multibyte emoji into invalid UTF-8.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
 }

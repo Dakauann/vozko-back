@@ -18,7 +18,7 @@ type Client struct {
 	HeaderName  string
 	Prefix      string
 	APIKey      string
-	sessionID string
+	sessionID   string
 }
 
 func New(url string) *Client {

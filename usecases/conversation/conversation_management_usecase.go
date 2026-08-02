@@ -60,100 +60,162 @@ type HistoryProviderService struct {
 	assignmentRepo    ia.Repository
 	workflowRunRepo   workflowRunLookup
 	workflowRepo      workflowLookup
-	instagramContacts InstagramContactLookup
+	// contactIdentities resolves display names for channels whose contacts are
+	// not leads, keyed by entry type so registering one never displaces another.
+	contactIdentities map[shared.EntryType]ContactIdentityLookup
 	channelAdapters   conversation.AdapterRegistry
 }
 
-// InstagramContactDisplay is the sender identity shown for an Instagram DM.
+// ContactDisplay is the sender identity shown for a channel whose contacts are
+// not leads.
 //
-// Instagram contacts are not leads, so the lead repository cannot resolve them;
-// without this lookup an Instagram inbox row renders with no name, handle or
-// avatar.
-type InstagramContactDisplay struct {
+// The inbox resolves display names through the lead repository. Instagram and
+// Telegram contacts are not leads, so without a per-channel lookup those rows
+// render with no name, handle or avatar.
+type ContactDisplay struct {
 	ContactID string
-	// Ref is the provider-facing id (IGSID). It is what the message rows carry
-	// as the sender, so it is also how a raw id leaking into a display label is
-	// recognised.
+	// Ref is the provider-facing id (an IGSID, a Telegram user id). It is what
+	// the message rows carry as the sender, so it is also how a raw id leaking
+	// into a display label is recognised.
 	Ref        string
 	Handle     string
 	Name       string
 	PictureURL string
 }
 
-// InstagramContactLookup is the narrow read port for Instagram sender identity.
-// Declared here (rather than importing the Instagram domain) so the conversation
-// usecase stays channel-agnostic and testable with a plain fake.
-type InstagramContactLookup interface {
-	// ContactsByIDs batch-loads display identities for one page of entries.
-	ContactsByIDs(ctx context.Context, contactIDs []string) (map[string]InstagramContactDisplay, error)
+// ContactIdentityLookup is the narrow read port for one channel's sender
+// identity. Declared here (rather than importing each channel's domain) so the
+// conversation usecase stays channel-agnostic and testable with a plain fake.
+type ContactIdentityLookup interface {
+	// ContactsByIDs batch-loads display identities for one page of entries. The
+	// inbox hydrates a whole page with one call; a per-row lookup would make the
+	// inbox N+1.
+	ContactsByIDs(ctx context.Context, contactIDs []string) (map[string]ContactDisplay, error)
 	// ContactForConversation resolves the sender plus the owning workspace for a
 	// single conversation, backing the open-conversation header.
-	ContactForConversation(ctx context.Context, conversationID string) (InstagramContactDisplay, string, error)
+	ContactForConversation(ctx context.Context, conversationID string) (ContactDisplay, string, error)
 }
 
-// SetInstagramContacts wires Instagram sender identity. Optional: when unset,
-// Instagram entries simply render without a resolved name, exactly as before.
-func (s *HistoryProviderService) SetInstagramContacts(lookup InstagramContactLookup) {
-	s.instagramContacts = lookup
-}
-
-// hydrateInstagramSenders fills name/handle/avatar on Instagram inbox rows.
+// InstagramContactDisplay is the previous name of ContactDisplay.
 //
-// EntryWithLastMessage.LeadID carries the Instagram contact id for these rows
-// (the repository projects igc.contact_id into the lead slot), so the contact id
-// is already on hand and only needs resolving.
-func (s *HistoryProviderService) hydrateInstagramSenders(entries []conversation.InboxEntry) {
-	if s.instagramContacts == nil || len(entries) == 0 {
-		return
-	}
-	idx := make(map[string][]int)
-	for i := range entries {
-		if entries[i].EntryType != string(shared.EntryTypeInstagram) || entries[i].LeadID == "" {
-			continue
-		}
-		idx[entries[i].LeadID] = append(idx[entries[i].LeadID], i)
-	}
-	if len(idx) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(idx))
-	for id := range idx {
-		ids = append(ids, id)
-	}
-	contacts, err := s.instagramContacts.ContactsByIDs(context.Background(), ids)
-	if err != nil {
-		log.Printf("[HistoryProvider] instagram contact hydration failed: %v", err)
-		return
-	}
-	for id, positions := range idx {
-		contact, ok := contacts[id]
-		if !ok {
-			continue
-		}
-		name, handle := instagramDisplayNames(contact)
-		for _, i := range positions {
-			entries[i].LeadName = name
-			entries[i].LeadNumber = handle
-			entries[i].LeadPicture = contact.PictureURL
+// Deprecated: use ContactDisplay. Kept so the Instagram wiring and its tests
+// compile unchanged through the rename.
+type InstagramContactDisplay = ContactDisplay
 
-			// The sender label is replaced when it is blank OR when it is the raw
-			// provider id. Story replies, mentions, shares and unsupported
-			// messages fall through the sender resolver's default branch, which
-			// returns the sender ref verbatim — so without this the inbox would
-			// show a numeric IGSID where the contact's name belongs.
-			//
-			// Any other label (an operator's or agent's name) is left alone.
-			if entries[i].LastMessageSender == "" || entries[i].LastMessageSender == contact.Ref {
-				entries[i].LastMessageSender = name
-				entries[i].LastMessageSenderAvatar = contact.PictureURL
+// InstagramContactLookup is the previous name of ContactIdentityLookup.
+//
+// Deprecated: use ContactIdentityLookup.
+type InstagramContactLookup = ContactIdentityLookup
+
+// SetContactIdentityLookup registers a channel's sender-identity lookup.
+//
+// Registration is keyed by entry type and lookups accumulate, so adding a
+// channel cannot silently disable another's — the mistake the send-adapter
+// registry documents and guards against in exactly the same way.
+func (s *HistoryProviderService) SetContactIdentityLookup(entryType shared.EntryType, lookup ContactIdentityLookup) {
+	if s == nil || lookup == nil || entryType == "" {
+		return
+	}
+	if s.contactIdentities == nil {
+		s.contactIdentities = make(map[shared.EntryType]ContactIdentityLookup, 2)
+	}
+	s.contactIdentities[entryType] = lookup
+}
+
+// SetInstagramContacts wires Instagram sender identity.
+//
+// Deprecated: use SetContactIdentityLookup(shared.EntryTypeInstagram, lookup).
+func (s *HistoryProviderService) SetInstagramContacts(lookup ContactIdentityLookup) {
+	s.SetContactIdentityLookup(shared.EntryTypeInstagram, lookup)
+}
+
+// contactLookupFor resolves the registered lookup for an entry type.
+func (s *HistoryProviderService) contactLookupFor(entryType shared.EntryType) (ContactIdentityLookup, bool) {
+	if s == nil || s.contactIdentities == nil {
+		return nil, false
+	}
+	lookup, ok := s.contactIdentities[entryType]
+	return lookup, ok && lookup != nil
+}
+
+// hydrateContactSenders fills name/handle/avatar on inbox rows whose contacts are
+// not leads.
+//
+// EntryWithLastMessage.LeadID carries the channel's own contact id for those rows
+// (the repository projects it into the lead slot), so the id is already on hand
+// and only needs resolving.
+//
+// This must be applied at EVERY point that produces inbox rows — the
+// container-scoped list, the workspace list AND GetInboxEntry, which backs the
+// entry_update broadcast. Missing that third one is what made an Instagram
+// conversation's name vanish every time a new message arrived.
+func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.InboxEntry) {
+	if len(s.contactIdentities) == 0 || len(entries) == 0 {
+		return
+	}
+
+	// Group by channel first so each registered lookup is called once per page.
+	byType := make(map[shared.EntryType]map[string][]int)
+	for i := range entries {
+		et := shared.EntryType(entries[i].EntryType)
+		if entries[i].LeadID == "" {
+			continue
+		}
+		if _, ok := s.contactLookupFor(et); !ok {
+			continue
+		}
+		if byType[et] == nil {
+			byType[et] = make(map[string][]int)
+		}
+		byType[et][entries[i].LeadID] = append(byType[et][entries[i].LeadID], i)
+	}
+
+	for et, idx := range byType {
+		lookup, ok := s.contactLookupFor(et)
+		if !ok || len(idx) == 0 {
+			continue
+		}
+		ids := make([]string, 0, len(idx))
+		for id := range idx {
+			ids = append(ids, id)
+		}
+		contacts, err := lookup.ContactsByIDs(context.Background(), ids)
+		if err != nil {
+			log.Printf("[HistoryProvider] %s contact hydration failed: %v", et, err)
+			continue
+		}
+		for id, positions := range idx {
+			contact, ok := contacts[id]
+			if !ok {
+				continue
+			}
+			name, handle := contactDisplayNames(et, contact)
+			for _, i := range positions {
+				entries[i].LeadName = name
+				entries[i].LeadNumber = handle
+				entries[i].LeadPicture = contact.PictureURL
+
+				// The sender label is replaced when it is blank OR when it is the
+				// raw provider id. Story replies, mentions, shares and unsupported
+				// messages fall through the sender resolver's default branch,
+				// which returns the sender ref verbatim — so without this the
+				// inbox would show a numeric provider id where the contact's name
+				// belongs.
+				//
+				// Any other label (an operator's or agent's name) is left alone.
+				if entries[i].LastMessageSender == "" || entries[i].LastMessageSender == contact.Ref {
+					entries[i].LastMessageSender = name
+					entries[i].LastMessageSenderAvatar = contact.PictureURL
+				}
 			}
 		}
 	}
 }
 
-// instagramDisplayNames derives the (name, handle) pair shown in the CRM. A
-// contact whose profile has not been enriched yet still gets a usable label.
-func instagramDisplayNames(c InstagramContactDisplay) (name, handle string) {
+// contactDisplayNames derives the (name, handle) pair shown in the CRM. A contact
+// whose profile has not been enriched yet still gets a usable label, falling back
+// to the channel name so a row is never blank.
+func contactDisplayNames(entryType shared.EntryType, c ContactDisplay) (name, handle string) {
 	handle = strings.TrimSpace(c.Handle)
 	if handle != "" && !strings.HasPrefix(handle, "@") {
 		handle = "@" + handle
@@ -163,9 +225,21 @@ func instagramDisplayNames(c InstagramContactDisplay) (name, handle string) {
 		name = handle
 	}
 	if name == "" {
-		name = "Instagram"
+		name = channelDisplayLabel(entryType)
 	}
 	return name, handle
+}
+
+// channelDisplayLabel is the last-resort label for a contact with no name and no
+// handle.
+func channelDisplayLabel(entryType shared.EntryType) string {
+	switch entryType {
+	case shared.EntryTypeInstagram:
+		return "Instagram"
+	case shared.EntryTypeTelegram:
+		return "Telegram"
+	}
+	return string(entryType)
 }
 
 // SetWorkflowLookups wires the optional workflow read ports used to show which
@@ -482,22 +556,21 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 			workspaceID = info.WorkspaceID
 		}
 
-	case shared.EntryTypeInstagram:
-		// Instagram senders are contacts, not leads, so the header is resolved
-		// here and returned directly instead of falling through to the lead
-		// lookup below.
-		if s.instagramContacts == nil {
-			return "", "", "", nil, nil, true, errors.New("instagram contact lookup not configured")
+	default:
+		// Channels whose senders are contacts rather than leads resolve the
+		// header through their registered identity lookup and return directly,
+		// instead of falling through to the lead lookup below.
+		et := shared.EntryType(entryType)
+		lookup, ok := s.contactLookupFor(et)
+		if !ok {
+			return "", "", "", nil, nil, true, errors.New("invalid entry type")
 		}
-		contact, _, cErr := s.instagramContacts.ContactForConversation(context.Background(), entryID)
+		contact, _, cErr := lookup.ContactForConversation(context.Background(), entryID)
 		if cErr != nil {
 			return "", "", "", nil, nil, true, cErr
 		}
-		name, handle := instagramDisplayNames(contact)
+		name, handle := contactDisplayNames(et, contact)
 		return name, handle, contact.PictureURL, nil, nil, true, nil
-
-	default:
-		return "", "", "", nil, nil, true, errors.New("invalid entry type")
 	}
 
 	if workspaceID == "" {
@@ -638,7 +711,7 @@ func (s *HistoryProviderService) GetInboxEntries(userID, workspaceID, campaignID
 		})
 	}
 
-	s.hydrateInstagramSenders(entries)
+	s.hydrateContactSenders(entries)
 	s.enrichAssignments(entries, workspaceID)
 	return entries, totalWithMessages, nil
 }
@@ -650,22 +723,29 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		return nil, 0, fmt.Errorf("campaignID and campaignType are required")
 	}
 
-	var entryType shared.EntryType
+	// CampaignType is really the channel selector, and the question both branches
+	// ask is whether the repository can serve a container-scoped read for it.
+	//
+	// It used to accept only "whatsapp": in global mode every other channel fell
+	// through to "all channels", and in container-scoped mode every other channel
+	// was rejected with a 400. That is why an Instagram account could never have
+	// its own scoped inbox even though the repository could already serve one,
+	// and Telegram would have inherited exactly the same hole.
+	//
+	// Channels with no container-scoped query (voice, support) keep falling
+	// through to the workspace-wide view in global mode, unchanged.
+	candidate := shared.EntryType(input.CampaignType)
 
+	var entryType shared.EntryType
 	if isGlobal {
-		switch input.CampaignType {
-		case "whatsapp":
-			entryType = shared.EntryTypeWhatsApp
-		default:
-			entryType = ""
+		if candidate.SupportsContainerScopedInbox() {
+			entryType = candidate
 		}
 	} else {
-		switch input.CampaignType {
-		case "whatsapp":
-			entryType = shared.EntryTypeWhatsApp
-		default:
+		if !candidate.SupportsContainerScopedInbox() {
 			return nil, 0, fmt.Errorf("invalid campaign type: %s", input.CampaignType)
 		}
+		entryType = candidate
 	}
 
 	searchInput := conversation.SearchEntriesInput{
@@ -820,7 +900,7 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		})
 	}
 
-	s.hydrateInstagramSenders(entries)
+	s.hydrateContactSenders(entries)
 	s.enrichAssignments(entries, input.WorkspaceID)
 	s.enrichAIHandlers(entries, results)
 	return entries, totalCount, nil
@@ -1004,7 +1084,7 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	// would rebuild the row with an empty name, blanking the Instagram
 	// conversation's title in the live inbox.
 	batch := []conversation.InboxEntry{*entry}
-	s.hydrateInstagramSenders(batch)
+	s.hydrateContactSenders(batch)
 	*entry = batch[0]
 
 	// Channels with an adapter own their window rule; getWindowStatus below is
@@ -1162,6 +1242,43 @@ func (s *HistoryProviderService) getSenderInfo(from string, messageType conversa
 		}
 		return from, ""
 	}
+}
+
+// ResolveSenderIdentity fills a message's display identity in place.
+//
+// Every read path already did this through getSenderInfo; the live broadcast
+// did not, so the frontend fell back to rendering `from` raw. On WhatsApp that
+// is a phone number and looked merely unpolished, so it went unnoticed for as
+// long as WhatsApp was the only channel. On Telegram `from` is a bare numeric
+// user id, which is unreadable — the same bug, finally visible.
+//
+// Only the message types that actually consume lead/contact identity pay for
+// the entry lookup. Agent, operator and system messages resolve from the
+// repositories getSenderInfo already consults, or from a constant, so a
+// conversation full of outbound traffic costs nothing extra here.
+func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string, message *conversation.Message) {
+	if s == nil || message == nil || message.SenderName != "" {
+		return
+	}
+
+	var leadName, leadNumber, leadPicture string
+	switch message.MessageType {
+	case conversation.MessageTypeUserMessage, conversation.MessageTypeAudio, conversation.MessageTypeMedia:
+		if entryID == "" || entryType == "" {
+			return
+		}
+		var err error
+		leadName, leadNumber, leadPicture, _, _, _, err = s.GetEntryInfo(entryID, entryType)
+		if err != nil {
+			// A failed lookup must not cost the user the message. Leaving the
+			// identity empty falls back to `from`, which is what shipped before
+			// this method existed.
+			log.Printf("[HistoryProvider] could not resolve sender for %s:%s: %v", entryType, entryID, err)
+			return
+		}
+	}
+
+	message.SenderName, message.SenderAvatar = s.getSenderInfo(message.From, message.MessageType, leadName, leadNumber, leadPicture)
 }
 
 func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLastMessage) string {
@@ -1605,9 +1722,8 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 
 	log.Printf("[MessageSender] Sent message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	if entryType == "whatsapp" {
-		go s.maybeRunWhatsAppCampaignTools(context.Background(), entryID, entryType, leadNumber)
-	}
+	// Deferred analysis runs on every channel now, not only WhatsApp.
+	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
 
@@ -1961,9 +2077,8 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	log.Printf("[MessageSender] Sent %s media to %s, WhatsApp ID: %s", mediaType, leadNumber, output.MessageID)
 
-	if entryType == "whatsapp" {
-		go s.maybeRunWhatsAppCampaignTools(context.Background(), entryID, entryType, leadNumber)
-	}
+	// Deferred analysis runs on every channel now, not only WhatsApp.
+	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
 
@@ -2033,18 +2148,23 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 
 	log.Printf("[MessageSender] Sent button message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	if entryType == "whatsapp" {
-		go s.maybeRunWhatsAppCampaignTools(context.Background(), entryID, entryType, leadNumber)
-	}
+	// Deferred analysis runs on every channel now, not only WhatsApp.
+	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
 
-func (s *MessageSenderService) maybeRunWhatsAppCampaignTools(_ context.Context, entryID, entryType, _ string) {
-	if s.sharedState == nil {
+// scheduleAnalysis stamps a conversation for deferred AI analysis.
+//
+// It is channel-agnostic: the entry type is carried in the value so the debounce
+// job knows which resolver to use. It used to be named for WhatsApp campaigns
+// and was only ever called on that path, which is half of why analysis never ran
+// on any other channel.
+func (s *MessageSenderService) scheduleAnalysis(_ context.Context, entryID, entryType, _ string) {
+	if s.sharedState == nil || entryID == "" {
 		return
 	}
-	nowStr := time.Now().UTC().Format(time.RFC3339)
-	if err := s.sharedState.HSet(AnalysisDebounceRedisKey, entryID, nowStr); err != nil {
+	value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
+	if err := s.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
 		log.Printf("[MessageSender] failed to stamp analysis debounce for entry %s: %v", entryID, err)
 	}
 }
@@ -2295,6 +2415,14 @@ func (s *MessageSenderService) resolveProviderMessageID(replyToMessageID string)
 	return ""
 }
 
+// ChannelMessageSender is the send surface shared by the WebSocket and HTTP
+// paths. Declared as a narrow port so this usecase depends on the contract, not
+// on the concrete MessageSenderService.
+type ChannelMessageSender interface {
+	SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error)
+	SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID, caption string) (*conversation.Message, error)
+}
+
 type sendConversationMessageUseCase struct {
 	messageRepo           conversation.MessageRepository
 	leadRepo              lead.Repository
@@ -2307,6 +2435,32 @@ type sendConversationMessageUseCase struct {
 	analysisRepo          analysisdomain.Repository
 	stageRepo             stage.Repository
 	sharedState           cache.SharedState
+
+	// channelAdapters and sender route adapter-backed channels.
+	//
+	// This endpoint used to be WhatsApp-only while its route accepted several
+	// entry types, so a Telegram or Instagram send fell through getEntryInfo's
+	// default branch and surfaced as "conversation not found" — a lie, since the
+	// conversation exists and is perfectly sendable over the WebSocket path.
+	// Rather than grow a second per-channel send implementation here, the
+	// migrated channels delegate to the one that already exists.
+	channelAdapters conversation.AdapterRegistry
+	sender          ChannelMessageSender
+}
+
+// SetChannelSender wires the shared adapter-backed sender. Optional: without it
+// the usecase keeps its WhatsApp-only behaviour.
+func (uc *sendConversationMessageUseCase) SetChannelSender(registry conversation.AdapterRegistry, sender ChannelMessageSender) {
+	uc.channelAdapters = registry
+	uc.sender = sender
+}
+
+// adapterBacked reports whether this channel sends through a ChannelAdapter.
+func (uc *sendConversationMessageUseCase) adapterBacked(entryType string) bool {
+	if uc.channelAdapters == nil || uc.sender == nil {
+		return false
+	}
+	return uc.channelAdapters.Has(shared.EntryType(entryType))
 }
 
 func NewSendConversationMessageUseCase(
@@ -2349,6 +2503,23 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 
 	if input.Text == "" && input.MediaID == nil {
 		return nil, errors.New("text or media_id is required")
+	}
+
+	// Channels with an adapter send through the shared path. ResolveEntry queries
+	// that channel's own conversation table, so it also verifies the
+	// (entry_id, entry_type) pair actually belongs together — passing a Telegram
+	// id with entry_type=instagram resolves to nothing rather than sending
+	// somewhere unintended.
+	if uc.adapterBacked(input.EntryType) {
+		return uc.sendViaChannel(input)
+	}
+
+	// A channel with no adapter and no WhatsApp path cannot send. Saying so
+	// plainly beats the previous behaviour, where getEntryInfo's default branch
+	// surfaced as "conversation not found" — a lie about a conversation that
+	// exists.
+	if input.EntryType != string(shared.EntryTypeWhatsApp) {
+		return nil, conversation.ErrEntryTypeInvalid
 	}
 
 	leadNumber, businessPhoneID, err := uc.getEntryInfo(input.EntryID, input.EntryType)
@@ -2428,10 +2599,31 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 	log.Printf("[SendMessage] Sent to %s, WhatsApp ID: %s", leadNumber, whatsappMsgID)
 
 	if input.EntryType == "whatsapp" {
-		go uc.maybeRunWhatsAppCampaignTools(context.Background(), input.EntryID, input.EntryType, leadNumber)
+		go uc.scheduleAnalysis(context.Background(), input.EntryID, input.EntryType, leadNumber)
 	}
 
 	return message, nil
+}
+
+// sendViaChannel delegates to the shared adapter-backed sender.
+//
+// It performs no persistence or broadcasting of its own: the sender already owns
+// the window check, the provider call, the row and the websocket fan-out, and
+// duplicating any of that here would mean two places to fix every future bug.
+func (uc *sendConversationMessageUseCase) sendViaChannel(input conversation.SendMessageInput) (*conversation.Message, error) {
+	if input.MediaID != nil && *input.MediaID != "" {
+		mediaType := ""
+		if input.MediaType != nil {
+			mediaType = string(*input.MediaType)
+		}
+		return uc.sender.SendMediaMessage(
+			input.EntryID, input.EntryType, *input.MediaID, mediaType,
+			input.SenderID, input.ReplyToMessageID, input.Text,
+		)
+	}
+	return uc.sender.SendTextMessage(
+		input.EntryID, input.EntryType, input.Text, input.SenderID, input.ReplyToMessageID,
+	)
 }
 
 func (uc *sendConversationMessageUseCase) getEntryInfo(entryID, entryType string) (leadNumber, businessPhoneID string, err error) {
@@ -2462,12 +2654,12 @@ func (uc *sendConversationMessageUseCase) getEntryInfo(entryID, entryType string
 	return leadRecord.Number, businessPhoneID, nil
 }
 
-func (uc *sendConversationMessageUseCase) maybeRunWhatsAppCampaignTools(_ context.Context, entryID, _, _ string) {
-	if uc.sharedState == nil {
+func (uc *sendConversationMessageUseCase) scheduleAnalysis(_ context.Context, entryID, entryType, _ string) {
+	if uc.sharedState == nil || entryID == "" {
 		return
 	}
-	nowStr := time.Now().UTC().Format(time.RFC3339)
-	if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, nowStr); err != nil {
+	value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
+	if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
 		log.Printf("[SendMessage] failed to stamp analysis debounce for entry %s: %v", entryID, err)
 	}
 }

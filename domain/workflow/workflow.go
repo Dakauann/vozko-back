@@ -69,10 +69,15 @@ const (
 	NodeTypeTriggerNoReply         NodeType = "trigger_no_reply"
 	NodeTypeTriggerWebhook         NodeType = "trigger_webhook"
 
-	NodeTypeActionSendText                  NodeType = "action_send_text"
-	NodeTypeActionSendTemplate              NodeType = "action_send_template"
-	NodeTypeActionSendEmail                 NodeType = "action_send_email"
-	NodeTypeActionSendWhatsappButton        NodeType = "action_send_whatsapp_button"
+	NodeTypeActionSendText     NodeType = "action_send_text"
+	NodeTypeActionSendTemplate NodeType = "action_send_template"
+	NodeTypeActionSendEmail    NodeType = "action_send_email"
+	// NodeTypeActionSendInteractive is the single-choice prompt node. It works on
+	// every channel with an InteractiveAdapter — WhatsApp buttons and lists,
+	// Instagram quick replies, Telegram inline keyboards — so it no longer names
+	// one channel. See NodeTypeActionSendWhatsappButtonLegacy for the value it
+	// was persisted under before.
+	NodeTypeActionSendInteractive           NodeType = "action_send_interactive"
 	NodeTypeActionSendMedia                 NodeType = "action_send_media"
 	NodeTypeActionAIAgent                   NodeType = "action_ai_agent"
 	NodeTypeActionAIExtract                 NodeType = "action_ai_extract"
@@ -112,7 +117,7 @@ func (n NodeType) Valid() bool {
 		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
 		NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
-		NodeTypeActionSendWhatsappButton, NodeTypeActionSendMedia,
+		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
 		NodeTypeActionAIAgent, NodeTypeActionAIExtract,
 		NodeTypeActionSetVariable, NodeTypeActionHTTPRequest,
 		NodeTypeActionRunTool,
@@ -165,7 +170,59 @@ func (n NodeType) IsWait() bool {
 // IsWait() || IsInteractivePrompt() so this node reuses that machinery without
 // inheriting the wait node's other behaviors.
 func (n NodeType) IsInteractivePrompt() bool {
-	return n == NodeTypeActionSendWhatsappButton
+	return n.Canonical() == NodeTypeActionSendInteractive
+}
+
+// ParksForReply reports whether the node suspends the run until the contact
+// responds.
+//
+// It names the thing five call sites actually mean. Three of them wrote it out
+// as IsWait() || IsInteractivePrompt(); two wrote only IsWait() and were wrong
+// in a way nothing catches — the interactive prompt parks exactly like a wait
+// node but is deliberately excluded from IsWait(), so a forgotten clause makes
+// a button press behave as if the run had never paused. One predicate removes
+// the chance to forget.
+func (n NodeType) ParksForReply() bool {
+	return n.IsWait() || n.IsInteractivePrompt()
+}
+
+// NodeTypeActionSendWhatsappButtonLegacy is the value the interactive prompt was
+// persisted under while it was WhatsApp-only.
+//
+// It is never written again — Canonical maps it forward on read, so a graph
+// saved before the rename keeps running and is rewritten to the new value the
+// next time it is saved. Deleting this constant would orphan every workflow
+// authored before the node became channel-neutral.
+const NodeTypeActionSendWhatsappButtonLegacy NodeType = "action_send_whatsapp_button"
+
+// legacyNodeTypes maps retired wire values onto their current ones.
+var legacyNodeTypes = map[NodeType]NodeType{
+	NodeTypeActionSendWhatsappButtonLegacy: NodeTypeActionSendInteractive,
+}
+
+// Canonical resolves a possibly-legacy node type to the one the code uses.
+func (n NodeType) Canonical() NodeType {
+	if current, ok := legacyNodeTypes[n]; ok {
+		return current
+	}
+	return n
+}
+
+// UnmarshalJSON normalizes a legacy node type as the graph is decoded.
+//
+// This is the single choke point: workflow graphs are stored as JSONB and
+// arrive from the API as JSON, so normalizing here means nothing downstream —
+// the executor registry, the lint rules, the AI builder, the editor — ever sees
+// a retired value. Normalizing at each comparison site instead would mean
+// finding every one of them, and missing one fails silently, on old workflows
+// only, which is the worst way to find out.
+func (n *NodeType) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*n = NodeType(raw).Canonical()
+	return nil
 }
 
 func (n NodeType) IsCondition() bool {
@@ -201,7 +258,7 @@ func (n NodeType) IsMessaging() bool {
 	switch n {
 	case NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
-		NodeTypeActionSendWhatsappButton, NodeTypeActionSendMedia:
+		NodeTypeActionSendInteractive, NodeTypeActionSendMedia:
 		return true
 	}
 	return false

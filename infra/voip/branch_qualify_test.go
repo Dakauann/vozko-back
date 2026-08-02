@@ -31,7 +31,9 @@ func (s *qualifyFakeStore) ReapExpired(time.Time) []branch.RegistrationBinding  
 type qualifyFakePresence struct{ unreachable []string }
 
 func (p *qualifyFakePresence) OnBranchReachable(branch.RegisteredBranch) {}
-func (p *qualifyFakePresence) OnBranchUnreachable(id string)             { p.unreachable = append(p.unreachable, id) }
+func (p *qualifyFakePresence) OnBranchUnreachable(id string) {
+	p.unreachable = append(p.unreachable, id)
+}
 
 func qualifyBinding() branch.RegistrationBinding {
 	return branch.RegistrationBinding{

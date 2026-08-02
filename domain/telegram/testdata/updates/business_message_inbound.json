@@ -1,0 +1,11 @@
+{
+  "update_id": 870123472,
+  "business_message": {
+    "message_id": 901,
+    "business_connection_id": "BqhVQx8AAAAA",
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "first_name": "Marina", "type": "private"},
+    "date": 1785312015,
+    "text": "Voces entregam no ABC?"
+  }
+}

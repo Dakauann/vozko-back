@@ -37,8 +37,8 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/whisper"
 	"vozko/usecases/agentctx"
+	"vozko/usecases/agentturn"
 	ia_usecase "vozko/usecases/inbox_assignment"
-	rag_usecase "vozko/usecases/rag"
 	shared_usecase "vozko/usecases/shared"
 	tools_usecase "vozko/usecases/tools"
 
@@ -53,27 +53,30 @@ const (
 )
 
 type handleWhatsAppMessageUseCase struct {
-	aiService               ai.Service
-	leadRepo                lead.Repository
-	agentRepo               agent.Repository
-	toolRegistry            toolsdomain.Service
-	whatsappClientFactory   conversation.WhatsAppClientFactory
-	historyManager          conversation.MessageHistoryManager
-	messageRepo             conversation.MessageRepository
-	configRepo              config.SystemConfigRepository
-	recordMetric            business_metrics.RecordMetricUseCase
-	whisperPool             *whisper.Pool
-	analysisRepo            analysisdomain.Repository
-	wcCampaignRepo          wc.Repository
-	wcEntryRepo             wce.Repository
-	businessPhoneRepo       businessphone.Repository
-	messageWindowRepo       lmw.Repository
-	fileStorage             media.FileStorage
-	conversationMediaRepo   conversation.ConversationMediaRepository
-	hub                     conversation.EventBroadcaster
-	assignmentService       *ia_usecase.AssignmentService
-	aiAttendance            AIAttendanceRecorder
-	triggerEvaluator        workflow_domain.TriggerEvaluator
+	aiService             ai.Service
+	leadRepo              lead.Repository
+	agentRepo             agent.Repository
+	toolRegistry          toolsdomain.Service
+	whatsappClientFactory conversation.WhatsAppClientFactory
+	historyManager        conversation.MessageHistoryManager
+	messageRepo           conversation.MessageRepository
+	configRepo            config.SystemConfigRepository
+	recordMetric          business_metrics.RecordMetricUseCase
+	whisperPool           *whisper.Pool
+	analysisRepo          analysisdomain.Repository
+	wcCampaignRepo        wc.Repository
+	wcEntryRepo           wce.Repository
+	businessPhoneRepo     businessphone.Repository
+	messageWindowRepo     lmw.Repository
+	fileStorage           media.FileStorage
+	conversationMediaRepo conversation.ConversationMediaRepository
+	hub                   conversation.EventBroadcaster
+	assignmentService     *ia_usecase.AssignmentService
+	aiAttendance          AIAttendanceRecorder
+	triggerEvaluator      workflow_domain.TriggerEvaluator
+	// turnAssembler is the shared agent-turn recipe. Optional: unset falls back
+	// to a locally constructed one so a partially-wired container still works.
+	turnAssembler           *agentturn.Assembler
 	stageRepo               stage.Repository
 	textExtractor           media.TextExtractor
 	sharedState             cache.SharedState
@@ -220,10 +223,14 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	}
 	if selected != nil {
 		// Stable identity of the tapped button / list row, keyed on by the
-		// interactive prompt node to branch by option id.
-		data["selected_option_id"] = selected.ID
-		data["selected_option_title"] = selected.Title
-		data["selected_option_type"] = selected.Kind
+		// interactive prompt node to branch by option id. Written through the
+		// shared helper so WhatsApp, Instagram and Telegram cannot drift on the
+		// key names AdvanceOnReply reads.
+		workflow_domain.ApplySelection(data, &workflow_domain.OptionSelection{
+			ID:    selected.ID,
+			Title: selected.Title,
+			Kind:  selected.Kind,
+		})
 	}
 	if agentCtx != nil {
 		if cID, _ := agentCtx.getCampaignInfo(); cID != "" {
@@ -370,11 +377,14 @@ type WhatsAppContext struct {
 	CampaignName        string
 	AgentName           string
 	Metadata            map[string]interface{}
-	AvailableTools      []string
 }
 
-func (c WhatsAppContext) buildContextPrompt() string {
-	ctx := shared_usecase.ConversationContext{
+// toConversationContext maps the WhatsApp context onto the shared identity the
+// assembler builds its preamble from. AvailableTools is deliberately not copied:
+// the assembler fills it from the tools actually attached to the turn, so the
+// preamble can never advertise a different set than the model receives.
+func (c WhatsAppContext) toConversationContext() shared_usecase.ConversationContext {
+	return shared_usecase.ConversationContext{
 		Channel:         shared_usecase.ChannelWhatsApp,
 		UserPhoneNumber: c.UserPhoneNumber,
 		UserName:        c.UserName,
@@ -383,9 +393,7 @@ func (c WhatsAppContext) buildContextPrompt() string {
 		CampaignName:    c.CampaignName,
 		AgentName:       c.AgentName,
 		Metadata:        c.Metadata,
-		AvailableTools:  c.AvailableTools,
 	}
-	return ctx.BuildContextPrompt()
 }
 
 type agentContext struct {
@@ -709,77 +717,18 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			Text:           strings.TrimSpace(message.Text.Body),
 			Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
 		}
+		// The lead is already loaded, so the live broadcast is labelled without
+		// the hub re-resolving it. WhatsApp is the highest-volume channel here;
+		// making it pay for a lookup per inbound message would be a real cost.
+		if leadRecord != nil {
+			record.SenderName = leadRecord.Name
+			record.SenderAvatar = leadRecord.ProfilePictureURL
+		}
 		if err := uc.historyManager.Record(ctx, conversation.MessageDirectionInbound, record); err != nil {
 			return err
 		}
 	}
-	var messagingPrompt string
-	toolsForAgent := make([]toolsdomain.Definition, 0)
-	toolConfigs := make(map[string]map[string]interface{})
-
 	recipientPhone := strings.TrimSpace(message.From)
-
-	if agentCtx != nil {
-		if agentCtx.messagingPrompt != "" {
-			messagingPrompt = agentCtx.messagingPrompt
-			log.Printf("[whatsapp-usecase] using agent messaging prompt (%d chars)", len(messagingPrompt))
-
-			if agentCtx.agent != nil {
-				interpolated := agent.InterpolateAgent(agentCtx.agent, agent.MetadataToVars(whatsappCtx.Metadata))
-				if interpolated.MessagingPrompt != "" {
-					messagingPrompt = interpolated.MessagingPrompt
-				}
-			}
-		} else {
-			log.Printf("[whatsapp-usecase] agent has no messaging prompt")
-		}
-
-		for _, rt := range agentCtx.tools {
-			if rt.IsVisibleIn(agent.ToolVisibilityMessaging) {
-				toolsForAgent = append(toolsForAgent, rt.Definition)
-				config := make(map[string]interface{})
-				for k, v := range rt.Config {
-					config[k] = v
-				}
-				config["__recipient_phone"] = recipientPhone
-				config["__business_phone_id"] = outboundBusinessPhoneID
-				if entryID, entryType := agentCtx.getEntryInfo(); entryID != "" {
-					config["__entry_id"] = entryID
-					config["__entry_type"] = string(entryType)
-				}
-				if agentCtx.agent != nil {
-					config["__workspace_id"] = agentCtx.agent.WorkspaceID
-				}
-				if cID, cType := agentCtx.getCampaignInfo(); cID != "" {
-					config["__campaign_id"] = cID
-					config["__campaign_type"] = cType
-				}
-				toolConfigs[strings.ToLower(rt.Definition.Name)] = config
-				log.Printf("[whatsapp-usecase] resolved messaging tool: %s (params: %d, enum: %v)", rt.Definition.Name, len(rt.Definition.Parameters), len(rt.Definition.Parameters["target_tag_name"].Enum))
-			} else {
-				log.Printf("[whatsapp-usecase] skipping tool %s (visibility: %v, not messaging)", rt.Definition.Name, rt.Visibility)
-			}
-		}
-	} else {
-		log.Printf("[whatsapp-usecase] no agent context found")
-	}
-
-	var waToolNames []string
-	for _, t := range toolsForAgent {
-		waToolNames = append(waToolNames, t.Name)
-	}
-	whatsappCtx.AvailableTools = waToolNames
-
-	contextPrompt := whatsappCtx.buildContextPrompt()
-
-	messagingPrompt = contextPrompt + messagingPrompt
-
-	if agentCtx != nil && agentCtx.agent != nil {
-		ragContext := rag_usecase.BuildRAGContext(ctx, uc.ragService, agentCtx.agent, message.Text.Body)
-		if ragContext != "" {
-			messagingPrompt = messagingPrompt + ragContext
-		}
-	}
 
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
 	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: message.Text.Body})
@@ -837,18 +786,32 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	incomingMessageID := strings.TrimSpace(message.ID)
 	initialTypingSentAt := ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-usecase]", time.Time{})
 
+	// Assembled here, AFTER the skip/flood/guard/balance gates: it runs a vector
+	// search, and the previous inline version paid for one on every message the
+	// system then declined to answer.
+	turnEntryID, turnEntryType := "", shared.EntryType("")
+	if agentCtx != nil {
+		turnEntryID, turnEntryType = agentCtx.getEntryInfo()
+	}
+	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
+		agentCtx:        agentCtx,
+		whatsappCtx:     whatsappCtx,
+		RecipientPhone:  recipientPhone,
+		BusinessPhoneID: outboundBusinessPhoneID,
+		EntryID:         turnEntryID,
+		EntryType:       turnEntryType,
+		Vars:            agent.MetadataToVars(whatsappCtx.Metadata),
+		Query:           message.Text.Body,
+		Messages:        conversationMessages,
+		Model:           messagingModel,
+		Temperature:     0.2,
+		Segmented:       true,
+	})
+	toolsForAgent := generateInput.Tools
+
 	log.Printf("[whatsapp-usecase] Starting AI response generation (model: %s, tools: %d)", messagingModel, len(toolsForAgent))
 
-	output, err := uc.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:       agentCtx.getWorkspaceID(),
-		Model:             messagingModel,
-		SystemPrompt:      messagingPrompt,
-		Messages:          conversationMessages,
-		Temperature:       0.2,
-		Tools:             toolsForAgent,
-		ToolConfigs:       toolConfigs,
-		SegmentedResponse: true,
-	})
+	output, err := uc.aiService.Generate(ctx, generateInput)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -1116,8 +1079,10 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		}
 
 		if uc.sharedState != nil {
-			nowStr := time.Now().UTC().Format(time.RFC3339)
-			if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, nowStr); err != nil {
+			// The entry type travels with the timestamp: the hash is keyed by
+			// entry id alone, and an entry id does not say which channel it is on.
+			value := encodeAnalysisDebounceValue(shared.EntryTypeWhatsApp, time.Now().UTC())
+			if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
 				log.Printf("[whatsapp-usecase] failed to stamp analysis debounce for entry %s: %v", entryID, err)
 			}
 		}
@@ -2338,9 +2303,7 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 	history []*conversation.Message,
 	userMessage string,
 ) {
-	var messagingPrompt string
-	toolsForAgent := make([]toolsdomain.Definition, 0)
-	toolConfigs := make(map[string]map[string]interface{})
+	var toolsForAgent []toolsdomain.Definition
 
 	var campaignPhoneID string
 	if agentCtx.wcCampaign != nil {
@@ -2349,44 +2312,13 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 
 	recipientPhone := strings.TrimSpace(message.From)
 
-	if agentCtx.messagingPrompt != "" {
-		messagingPrompt = agentCtx.messagingPrompt
+	mediaBusinessPhoneID := campaignPhoneID
+	if mediaBusinessPhoneID == "" {
+		mediaBusinessPhoneID = receivedPhoneID
 	}
-	if agentCtx.agent != nil {
-		var mediaEntryMetadata map[string]interface{}
-		if agentCtx.wcEntry != nil {
-			mediaEntryMetadata = agentCtx.wcEntry.Metadata
-		}
-		interpolated := agent.InterpolateAgent(agentCtx.agent, agent.MetadataToVars(mediaEntryMetadata))
-		if interpolated.MessagingPrompt != "" {
-			messagingPrompt = interpolated.MessagingPrompt
-		}
-	}
-	for _, rt := range agentCtx.tools {
-		if rt.IsVisibleIn(agent.ToolVisibilityMessaging) {
-			toolsForAgent = append(toolsForAgent, rt.Definition)
-			config := make(map[string]interface{})
-			for k, v := range rt.Config {
-				config[k] = v
-			}
-			config["__recipient_phone"] = recipientPhone
-			config["__business_phone_id"] = campaignPhoneID
-			if config["__business_phone_id"] == "" {
-				config["__business_phone_id"] = receivedPhoneID
-			}
-			if entryID != "" {
-				config["__entry_id"] = entryID
-				config["__entry_type"] = string(entryType)
-			}
-			if agentCtx.agent != nil {
-				config["__workspace_id"] = agentCtx.agent.WorkspaceID
-			}
-			if cID, cType := agentCtx.getCampaignInfo(); cID != "" {
-				config["__campaign_id"] = cID
-				config["__campaign_type"] = cType
-			}
-			toolConfigs[strings.ToLower(rt.Definition.Name)] = config
-		}
+	var mediaEntryMetadata map[string]interface{}
+	if agentCtx.wcEntry != nil {
+		mediaEntryMetadata = agentCtx.wcEntry.Metadata
 	}
 
 	whatsappCtx := WhatsAppContext{
@@ -2411,22 +2343,6 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 		whatsappCtx.UserName = leadRecord.Name
 	}
 
-	var toolNames []string
-	for _, t := range toolsForAgent {
-		toolNames = append(toolNames, t.Name)
-	}
-	whatsappCtx.AvailableTools = toolNames
-
-	contextPrompt := whatsappCtx.buildContextPrompt()
-	messagingPrompt = contextPrompt + messagingPrompt
-
-	if agentCtx != nil && agentCtx.agent != nil {
-		ragContext := rag_usecase.BuildRAGContext(ctx, uc.ragService, agentCtx.agent, userMessage)
-		if ragContext != "" {
-			messagingPrompt = messagingPrompt + ragContext
-		}
-	}
-
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
 	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: userMessage})
 
@@ -2443,15 +2359,22 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 	initialTypingSentAt := ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-media]", time.Time{})
 
 	log.Printf("[whatsapp-media] Generating AI response for extracted media content (model: %s, tools: %d)...", mediaMessagingModel, len(toolsForAgent))
-	output, err := uc.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  agentCtx.getWorkspaceID(),
-		Model:        mediaMessagingModel,
-		SystemPrompt: messagingPrompt,
-		Messages:     conversationMessages,
-		Temperature:  0.2,
-		Tools:        toolsForAgent,
-		ToolConfigs:  toolConfigs,
+	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
+		agentCtx:        agentCtx,
+		whatsappCtx:     whatsappCtx,
+		RecipientPhone:  recipientPhone,
+		BusinessPhoneID: mediaBusinessPhoneID,
+		EntryID:         entryID,
+		EntryType:       entryType,
+		Vars:            agent.MetadataToVars(mediaEntryMetadata),
+		Query:           userMessage,
+		Messages:        conversationMessages,
+		Model:           mediaMessagingModel,
+		Temperature:     0.2,
 	})
+	toolsForAgent = generateInput.Tools
+
+	output, err := uc.aiService.Generate(ctx, generateInput)
 	if err != nil {
 		log.Printf("[whatsapp-media] AI generation failed for media: %v", err)
 		return
@@ -2836,81 +2759,38 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		return nil
 	}
 
-	var messagingPrompt string
-	toolsForAgent := make([]toolsdomain.Definition, 0)
-	audioToolConfigs := make(map[string]map[string]interface{})
-
 	recipientPhone := strings.TrimSpace(message.From)
 
+	audioBusinessPhoneID := audioCampaignPhoneID
+	if audioBusinessPhoneID == "" {
+		audioBusinessPhoneID = audioReceivedBusinessPhoneID
+	}
+	audioEntryIDSeed, audioEntryTypeSeed := "", shared.EntryType("")
 	if agentCtx != nil {
-		if agentCtx.messagingPrompt != "" {
-			messagingPrompt = agentCtx.messagingPrompt
-		}
-		if agentCtx.agent != nil {
-			interpolated := agent.InterpolateAgent(agentCtx.agent, agent.MetadataToVars(whatsappCtx.Metadata))
-			if interpolated.MessagingPrompt != "" {
-				messagingPrompt = interpolated.MessagingPrompt
-			}
-		}
-		for _, rt := range agentCtx.tools {
-			if rt.IsVisibleIn(agent.ToolVisibilityMessaging) {
-				toolsForAgent = append(toolsForAgent, rt.Definition)
-				config := make(map[string]interface{})
-				for k, v := range rt.Config {
-					config[k] = v
-				}
-				config["__recipient_phone"] = recipientPhone
-				config["__business_phone_id"] = audioCampaignPhoneID
-				if config["__business_phone_id"] == "" {
-					config["__business_phone_id"] = audioReceivedBusinessPhoneID
-				}
-				if entryID, entryType := agentCtx.getEntryInfo(); entryID != "" {
-					config["__entry_id"] = entryID
-					config["__entry_type"] = string(entryType)
-				}
-				if agentCtx.agent != nil {
-					config["__workspace_id"] = agentCtx.agent.WorkspaceID
-				}
-				if cID, cType := agentCtx.getCampaignInfo(); cID != "" {
-					config["__campaign_id"] = cID
-					config["__campaign_type"] = cType
-				}
-				audioToolConfigs[strings.ToLower(rt.Definition.Name)] = config
-			}
-		}
-	}
-
-	var audioToolNames []string
-	for _, t := range toolsForAgent {
-		audioToolNames = append(audioToolNames, t.Name)
-	}
-	whatsappCtx.AvailableTools = audioToolNames
-
-	contextPrompt := whatsappCtx.buildContextPrompt()
-
-	messagingPrompt = contextPrompt + messagingPrompt
-
-	if agentCtx != nil && agentCtx.agent != nil {
-		ragContext := rag_usecase.BuildRAGContext(ctx, uc.ragService, agentCtx.agent, transcribedText)
-		if ragContext != "" {
-			messagingPrompt = messagingPrompt + ragContext
-		}
+		audioEntryIDSeed, audioEntryTypeSeed = agentCtx.getEntryInfo()
 	}
 
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
 	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: transcribedText})
 
+	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
+		agentCtx:        agentCtx,
+		whatsappCtx:     whatsappCtx,
+		RecipientPhone:  recipientPhone,
+		BusinessPhoneID: audioBusinessPhoneID,
+		EntryID:         audioEntryIDSeed,
+		EntryType:       audioEntryTypeSeed,
+		Vars:            agent.MetadataToVars(whatsappCtx.Metadata),
+		Query:           transcribedText,
+		Messages:        conversationMessages,
+		Model:           audioMessagingModel,
+	})
+	toolsForAgent := generateInput.Tools
+
 	log.Printf("[whatsapp-audio] Generating AI response (model: %s, tools: %d)...", audioMessagingModel, len(toolsForAgent))
 	aiStart := time.Now()
 
-	output, err := uc.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  agentCtx.getWorkspaceID(),
-		Model:        audioMessagingModel,
-		SystemPrompt: messagingPrompt,
-		Messages:     conversationMessages,
-		Tools:        toolsForAgent,
-		ToolConfigs:  audioToolConfigs,
-	})
+	output, err := uc.aiService.Generate(ctx, generateInput)
 	aiLatency := time.Since(aiStart)
 
 	if err != nil {
@@ -3069,4 +2949,122 @@ func extractMetadataMap(metadata interface{}) map[string]interface{} {
 	default:
 		return nil
 	}
+}
+
+// whatsAppTurn is the per-call variation between WhatsApp's three agent turns
+// (text, media and audio).
+//
+// Everything else about them was identical — interpolate the prompt, resolve
+// tools and stamp the same seven seeds, build the identity preamble from the
+// resolved tool names, then ground in the knowledge base — and had been
+// copy-pasted three times. Only these fields actually differed.
+type whatsAppTurn struct {
+	agentCtx    *agentContext
+	whatsappCtx WhatsAppContext
+
+	// Seeds. The business phone differs per turn: the text path uses the
+	// outbound phone, media and audio prefer the campaign's and fall back to
+	// the one the message arrived on.
+	RecipientPhone  string
+	BusinessPhoneID string
+	EntryID         string
+	EntryType       shared.EntryType
+
+	// Vars source also differs: text and audio interpolate from the WhatsApp
+	// context metadata, media from the campaign entry's.
+	Vars map[string]string
+
+	// Query drives knowledge-base retrieval: the message body, the extracted
+	// media content, or the transcription.
+	Query string
+	// Messages is the full history INCLUDING the turn being answered.
+	Messages []ai.Message
+
+	Model       string
+	Temperature float32
+	Segmented   bool
+}
+
+// assembleWhatsAppTurn builds the model request through the shared recipe.
+//
+// WhatsApp resolved its tools earlier (agentCtx.tools, which carries the
+// campaign context a ContextualHandler needs), so this passes them through
+// rather than asking the assembler to resolve again — the seeds and the
+// identity/RAG assembly are what was duplicated, not the resolution.
+func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context, t whatsAppTurn) ai.GenerateInput {
+	var agentRecord *agent.Agent
+	if t.agentCtx != nil {
+		agentRecord = t.agentCtx.agent
+	}
+
+	seed := map[string]interface{}{
+		"__recipient_phone":   t.RecipientPhone,
+		"__business_phone_id": t.BusinessPhoneID,
+	}
+	if t.EntryID != "" {
+		seed["__entry_id"] = t.EntryID
+		seed["__entry_type"] = string(t.EntryType)
+	}
+	if agentRecord != nil {
+		seed["__workspace_id"] = agentRecord.WorkspaceID
+	}
+	campaignID, campaignType := "", ""
+	if t.agentCtx != nil {
+		if cID, cType := t.agentCtx.getCampaignInfo(); cID != "" {
+			campaignID, campaignType = cID, cType
+			seed["__campaign_id"] = cID
+			seed["__campaign_type"] = cType
+		}
+	}
+
+	// The tools were resolved upstream with the campaign context, so they are
+	// handed over rather than resolved again. Seed stamping and the identity's
+	// tool awareness are the assembler's job either way.
+	var defs []toolsdomain.Definition
+	configs := make(map[string]map[string]interface{})
+	if t.agentCtx != nil {
+		for _, rt := range t.agentCtx.tools {
+			if !rt.IsVisibleIn(agent.ToolVisibilityMessaging) {
+				continue
+			}
+			defs = append(defs, rt.Definition)
+			configs[strings.ToLower(rt.Definition.Name)] = rt.Config
+		}
+	}
+
+	identity := t.whatsappCtx.toConversationContext()
+	assembled := uc.assembler().Assemble(ctx, agentturn.Request{
+		Agent:              agentRecord,
+		Vars:               t.Vars,
+		Identity:           &identity,
+		CampaignID:         campaignID,
+		CampaignType:       campaignType,
+		PreResolved:        defs,
+		PreResolvedConfigs: configs,
+		ToolSeed:           seed,
+		RAGQuery:           t.Query,
+		History:            t.Messages,
+		Model:              t.Model,
+		Temperature:        t.Temperature,
+		Segmented:          t.Segmented,
+	})
+
+	if t.agentCtx != nil {
+		assembled.Input.WorkspaceID = t.agentCtx.getWorkspaceID()
+	}
+	return assembled.Input
+}
+
+// assembler returns the shared recipe, falling back to an empty one so a
+// partially-wired container still assembles a prompt.
+func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
+	if uc.turnAssembler != nil {
+		return uc.turnAssembler
+	}
+	return agentturn.New(uc.toolRegistry, uc.ragService)
+}
+
+// SetTurnAssembler wires the shared agent-turn recipe.
+func (uc *handleWhatsAppMessageUseCase) SetTurnAssembler(a *agentturn.Assembler) {
+	uc.turnAssembler = a
 }

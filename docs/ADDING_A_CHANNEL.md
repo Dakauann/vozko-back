@@ -8,8 +8,16 @@ The shared machinery keys on **`(entry_id, entry_type)`** and never on a channel
 table. Anything that follows that rule works for a new channel automatically;
 this document lists the places that genuinely need to learn about it.
 
-Instagram is the reference implementation — when in doubt, grep for
-`instagram` and mirror it.
+Instagram and Telegram are the reference implementations — when in doubt, grep
+for one of them and mirror it. Telegram is the better model for a channel with
+no campaign concept and no publishing surface; Instagram is the better model for
+one that also has posts and comments.
+
+**Read §0.5 first.** Registering a channel in the sets below gets it into the
+inbox and onto the board. It does NOT get it analysis, analytics, export, the AI
+finish/stage tools or webhook-triggered workflows — those used to fail closed and
+silently for anything but WhatsApp, and the registries that fixed it are the
+things you now have to add one line to.
 
 ---
 
@@ -24,7 +32,32 @@ Instagram is the reference implementation — when in doubt, grep for
 | A stable provider message id | Deduplication and echo reconciliation |
 
 If the provider restricts outbound messaging to a time window (Instagram's 24h
-rule), note it now — step 5 is where it is expressed.
+rule), note it now — step 5 is where it is expressed. A channel with no window is
+not exempt from step 5: Telegram in bot mode has no clock at all, and its
+composer closes only when the customer blocks the bot. That still has to be
+expressed, because the UI copy for "closed" differs.
+
+---
+
+## 0.5 The registries: one line each, and the reason they exist
+
+Every one of these replaced an `entryType == "whatsapp"` check whose `default`
+branch returned "not supported" with no error and no log line. A channel missing
+from one of them does not break — it silently loses a feature, which is how
+Instagram shipped for months with conversations that could be transferred and
+staged but never closed, analysed, exported or counted.
+
+| Registry | File | What a missing entry costs |
+|---|---|---|
+| Entry-type predicate sets | [domain/shared/entry_type.go](../domain/shared/entry_type.go) | Everything below; `channel_parity_test.go` fails the build if the sets disagree |
+| Inbox/board UNION | [infra/repositories/conversation/entry_sources.go](../infra/repositories/conversation/entry_sources.go) | Conversations invisible in the list and on the board |
+| Entry-scoped queries | [infra/repositories/conversation/channel_queries.go](../infra/repositories/conversation/channel_queries.go) | `invalid entry type` on the scoped inbox, no window filter, blank conversation header |
+| Attendance/analytics | [infra/repositories/attendance/channel_sources.go](../infra/repositories/attendance/channel_sources.go) | Agents handling the channel look idle; the channel-mix panel reports 100% of something else |
+| Workflow ownership | [infra/repositories/workflow/entry_ownership_repository.go](../infra/repositories/workflow/entry_ownership_repository.go) | Webhook-triggered workflows rejected silently |
+| Stage counts | [infra/repositories/stage/stage_repository.go](../infra/repositories/stage/stage_repository.go) | Per-channel stage counts silently return every channel's |
+| Analysis subject | `SetAnalysisSubjectResolver` in [infra/container/jobs.go](../infra/container/jobs.go) | `EnableAnalysis` is a switch that does nothing |
+| Export source | `SetChannelEntryLister` in [infra/container/channel_wiring.go](../infra/container/channel_wiring.go) | `unsupported entry type` — the tenant cannot get their data out |
+| Status counts | `SetConversationCounter` (step 8) | The inbox header reads "no work here" while the list below shows work |
 
 ---
 
@@ -44,14 +77,27 @@ Then add it to the sets that apply:
   labels. Gates `SupportsCRMTagging()`, which both `domain/stage` and
   `domain/label` validate against. **If your channel reaches the board (step 4),
   it must be here**, or its cards render but cannot be moved or labelled.
+- `conversationClosableEntryTypes` — conversations that can be finished. Gates
+  the AI finish tool, the workflow finish node and the manual close.
+- `inboxScopableEntryTypes` — valid values of the websocket's `campaignType` and
+  of `SearchInboxInput.CampaignType`. Missing here is a 400 on connect.
+- `containerScopedInboxEntryTypes` — channels whose inbox can be narrowed to one
+  container (a campaign, or an account). Narrower than the previous set: voice and
+  support are selectable but have no container query behind them.
+- `knownEntryTypes` — the union of every set above. Gates `IsKnown()`, which nine
+  HTTP conversation endpoints use. `channel_parity_test.go` asserts it stays the
+  union, so you cannot add to one set and forget this one.
 
-These are three independent questions (voice is viewable and taggable but is not
-a messaging channel; support is a messaging channel and taggable but is not
-opened through the conversation view), so decide each on its own.
+These are six independent questions (voice is viewable and taggable but is not a
+messaging channel; support is a messaging channel and taggable but is not opened
+through the conversation view, and has no container query), so decide each on its
+own. Answering by copying another channel's memberships is how a hole gets in.
 
 `TestEveryBoardChannelCanCarryStagesAndLabels` pins the board registry and the
-tagging set together, so forgetting the third set fails the build rather than
-shipping an immovable card.
+tagging set together, and
+[domain/shared/channel_parity_test.go](../domain/shared/channel_parity_test.go)
+pins every set against every other, so forgetting one fails the build rather than
+shipping a card that cannot be moved or a conversation that cannot be closed.
 
 Nothing else in the delivery or usecase layers needs editing for the
 conversation view: the websocket handlers ask
@@ -208,11 +254,18 @@ Also add the type to the per-type hydration switches in
 Mirror `wireInstagramConversationStack()`:
 
 ```go
-c.registerChannelAdapter(adapter)                                  // send + window
-c.services.conversationAuthImpl.SetTelegramEntryRepo(convRepo)     // access control
-c.services.conversationStatusService.SetTelegramRepo(convRepo)     // status writes
-setter.SetTelegramEntryResolver(convRepo)                          // workspace/department
+c.registerChannelAdapter(adapter)                                       // send + window
+c.services.conversationAuthImpl.SetEntryAccessRepo(entryType, convRepo) // access control
+c.services.conversationStatusService.SetConversationStatusStore(entryType, store)
+c.services.conversationStatusService.SetConversationCounter(entryType, convRepo.CountByStatus)
+resolverSetter.SetEntryOwnerResolver(entryType, convRepo)               // workspace/department
+historySetter.SetContactIdentityLookup(entryType, lookup)               // sender names
 ```
+
+Every one of these is keyed by `shared.EntryType` and ACCUMULATES. They were
+originally Instagram-shaped single fields (`SetInstagramEntryRepo`,
+`SetInstagramContacts`); the deprecated aliases still exist, but a second channel
+calling them would have overwritten the first. Use the keyed form.
 
 > **Use `c.registerChannelAdapter`.** Adapters accumulate; calling
 > `SetChannelAdapters(NewAdapterRegistry(adapter))` directly would replace the
@@ -223,20 +276,20 @@ setter.SetTelegramEntryResolver(convRepo)                          // workspace/
 The inbox resolves display names through the lead repository. A channel whose
 contacts are not leads needs its own lookup, or rows render with no name.
 
-Today this port is Instagram-shaped:
-`conversation_usecase.InstagramContactLookup` +
-`HistoryProviderService.SetInstagramContacts`, with `hydrateInstagramSenders`
-applied in three places — the campaign inbox list, the workspace inbox list, and
-`GetInboxEntry` (the `entry_update` broadcast path).
+The port is `conversation_usecase.ContactIdentityLookup`, registered with
+`HistoryProviderService.SetContactIdentityLookup(entryType, lookup)`. Hydration
+iterates every registered lookup and is applied in three places — the
+container-scoped inbox list, the workspace inbox list, and `GetInboxEntry` (the
+`entry_update` broadcast path).
 
-**All three must be covered.** Missing the third is what caused the production
-bug where an Instagram conversation's name vanished every time a new message
-arrived.
+**All three are covered by `hydrateContactSenders`**, and they must stay that
+way: missing the third is what caused the production bug where an Instagram
+conversation's name vanished every time a new message arrived.
 
-When adding the second such channel, generalize rather than copy: rename the port
-to something channel-neutral (`ContactIdentityLookup`), key the registration by
-`shared.EntryType`, and make the hydration iterate registered lookups. That is a
-small refactor and the right moment to do it.
+Supply the mapping through `contactIdentityFuncs` in
+[infra/container/channel_wiring.go](../infra/container/channel_wiring.go) rather
+than writing a new adapter type — only the field mapping is genuinely per
+channel.
 
 ---
 
@@ -315,14 +368,16 @@ until it is set.
 
 ## Checklist
 
-- [ ] `EntryType` constant + both domain sets
+- [ ] `EntryType` constant + ALL SIX domain sets (§1)
 - [ ] `MessageChannel` constant + `Valid()`
 - [ ] Domain package (entities, ports, webhook normalizer)
 - [ ] Schema + migration + indexes
 - [ ] Repositories, including batch `FindByIDs`
 - [ ] `ChannelAdapter` (send + window)
 - [ ] Webhook handler via `MessageHistoryManager` + `ConsumerRunner`
-- [ ] `entrySources` descriptor
+- [ ] `entrySources` descriptor + `channelQueries` declaration
+- [ ] `channelSources` (attendance), ownership query, stage subquery
+- [ ] Analysis subject resolver + export lister + status counter
 - [ ] Container wiring via `registerChannelAdapter` + auth/status/resolver
 - [ ] Contact identity lookup wired into **all three** hydration points
 - [ ] HTTP routes (public webhook + management)

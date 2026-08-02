@@ -1,0 +1,11 @@
+{
+  "update_id": 870123466,
+  "edited_message": {
+    "message_id": 4821,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312000,
+    "edit_date": 1785312100,
+    "text": "Boa tarde, queria negociar meu boleto"
+  }
+}

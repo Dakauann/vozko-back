@@ -22,6 +22,24 @@ type exportEntriesUseCase struct {
 	leadRepo     lead.Repository
 	analysisRepo analysis.Repository
 	stageRepo    stage.Repository
+	// listers supply channel-neutral rows for channels that have no campaigns.
+	// Keyed by entry type so registering one never displaces another.
+	listers map[export.EntryType]export.ChannelEntryLister
+}
+
+// SetChannelEntryLister registers a channel's export source.
+//
+// Without one, that channel's conversations cannot be exported at all — the old
+// behaviour for everything except WhatsApp, which returned "unsupported entry
+// type" and gave an operator no way to get their data out.
+func (uc *exportEntriesUseCase) SetChannelEntryLister(entryType export.EntryType, lister export.ChannelEntryLister) {
+	if uc == nil || lister == nil || entryType == "" {
+		return
+	}
+	if uc.listers == nil {
+		uc.listers = make(map[export.EntryType]export.ChannelEntryLister, 2)
+	}
+	uc.listers[entryType] = lister
 }
 
 func NewExportEntriesUseCase(
@@ -39,16 +57,91 @@ func NewExportEntriesUseCase(
 }
 
 func (uc *exportEntriesUseCase) Export(filter export.ExportFilter, w io.Writer) (int, error) {
-	if filter.CampaignID == "" {
-		return 0, fmt.Errorf("campaign id is required")
+	if filter.EntryType == export.EntryTypeWhatsApp {
+		// A WhatsApp conversation cannot exist without a campaign, so requiring
+		// one here is a real invariant rather than an accident of the API shape.
+		if filter.CampaignID == "" {
+			return 0, fmt.Errorf("campaign id is required")
+		}
+		return uc.exportWhatsApp(filter, w)
 	}
 
-	switch filter.EntryType {
-	case export.EntryTypeWhatsApp:
-		return uc.exportWhatsApp(filter, w)
-	default:
+	lister, ok := uc.listers[filter.EntryType]
+	if !ok {
 		return 0, fmt.Errorf("unsupported entry type: %s", filter.EntryType)
 	}
+	if filter.WorkspaceID == "" {
+		return 0, fmt.Errorf("workspace id is required")
+	}
+	return uc.exportChannel(filter, lister, w)
+}
+
+// exportChannel exports a channel with no campaign concept.
+//
+// CampaignID, when present, means the account: the container filter is the same
+// question, and the caller already sends the account id in that slot everywhere
+// else in the CRM.
+func (uc *exportEntriesUseCase) exportChannel(filter export.ExportFilter, lister export.ChannelEntryLister, w io.Writer) (int, error) {
+	entries, err := lister.ListForExport(filter.WorkspaceID, filter.CampaignID)
+	if err != nil {
+		return 0, fmt.Errorf("list entries: %w", err)
+	}
+	if len(entries) == 0 {
+		return 0, nil
+	}
+
+	entryIDs := make([]string, len(entries))
+	for i, e := range entries {
+		entryIDs[i] = e.EntryID
+	}
+
+	// Analyses and stages key on (entry_id, entry_type), so they are read exactly
+	// as they are for WhatsApp — no per-channel branch needed.
+	analysisMap, err := uc.analysisRepo.FindLatestByEntries(entryIDs, shared_domain.EntryType(filter.EntryType))
+	if err != nil {
+		return 0, fmt.Errorf("load analyses: %w", err)
+	}
+	stageMap, err := uc.stageRepo.GetBatchEntryStages(entryIDs, string(filter.EntryType), filter.WorkspaceID)
+	if err != nil {
+		return 0, fmt.Errorf("load tags: %w", err)
+	}
+
+	maxVars := 0
+	for _, e := range entries {
+		if len(e.Variables) > maxVars {
+			maxVars = len(e.Variables)
+		}
+	}
+	metaKeys := collectMetadataKeys(entries, func(e export.ChannelEntry) map[string]interface{} {
+		return e.Metadata
+	})
+
+	var rows []export.ExportRow
+	for _, e := range entries {
+		a := analysisMap[e.EntryID]
+		entryStage := stageMap[e.EntryID]
+
+		row := export.ExportRow{
+			Number:    e.Number,
+			Name:      e.Name,
+			Status:    e.Status,
+			CreatedAt: e.CreatedAt,
+			UpdatedAt: e.UpdatedAt,
+			Variables: e.Variables,
+			Metadata:  e.Metadata,
+		}
+		if entryStage != nil {
+			row.StageName = entryStage.StageName
+		}
+		populateAnalysisFields(&row, a)
+
+		if !matchesFilter(filter, row, a, entryStage) {
+			continue
+		}
+		rows = append(rows, row)
+	}
+
+	return writeCSV(w, rows, maxVars, metaKeys, filter.EntryType)
 }
 
 func (uc *exportEntriesUseCase) exportWhatsApp(filter export.ExportFilter, w io.Writer) (int, error) {

@@ -118,7 +118,7 @@ func (d *fakeDriver) Model() string {
 }
 func (d *fakeDriver) SystemPrompt() string      { return "sys" }
 func (d *fakeDriver) Tools() []tools.Definition { return d.toolset }
-func (d *fakeDriver) Reground(prompt string, iter, maxIter, noMut int) string {
+func (d *fakeDriver) Reground(iter, maxIter, noMut int) string {
 	return "obs"
 }
 func (d *fakeDriver) Refresh()            { d.refreshes++ }
@@ -511,11 +511,13 @@ func TestWithDefaults(t *testing.T) {
 	d := Config{}.withDefaults()
 	if d.MaxIterations != 30 || d.NoProgressStop != 5 || d.RepairBudget != 3 ||
 		d.EmptyTurnRetries != 2 || d.MaxHistoryMsgs != 80 || d.MaxTokensPerGen != 24000 ||
-		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" {
+		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" ||
+		d.RepeatedTurnStop != 3 {
 		t.Fatalf("defaults wrong: %+v", d)
 	}
 	in := Config{MaxIterations: 1, NoProgressStop: 1, RepairBudget: 1, EmptyTurnRetries: 1,
-		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim"}
+		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim",
+		RepeatedTurnStop: 1}
 	if out := in.withDefaults(); out != in {
 		t.Fatalf("populated config must be unchanged, got %+v", out)
 	}

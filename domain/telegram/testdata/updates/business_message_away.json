@@ -1,0 +1,13 @@
+{
+  "update_id": 870123474,
+  "business_message": {
+    "message_id": 903,
+    "business_connection_id": "BqhVQx8AAAAA",
+    "from": {"id": 6012345678, "is_bot": false, "first_name": "Loja"},
+    "sender_business_bot": {"id": 77777, "is_bot": true, "first_name": "VozkoBot"},
+    "is_from_offline": true,
+    "chat": {"id": 5041234567, "first_name": "Marina", "type": "private"},
+    "date": 1785312017,
+    "text": "Estamos fora do horario de atendimento."
+  }
+}

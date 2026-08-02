@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/pipeline"
+	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/infra/database/schema"
 )
@@ -16,6 +17,26 @@ import (
 // defaultConversationPipelineName is the workspace-global conversation pipeline
 // that the stage promotion decouples the board from a campaign onto.
 const defaultConversationPipelineName = "Atendimento"
+
+// workspaceEntryIDSubqueries yields one workspace's entry ids per channel, for
+// narrowing stage counts to a single channel.
+//
+// Each subquery takes the workspace id as its single bind parameter. A channel
+// missing from here cannot be narrowed, which is treated as an explicit empty
+// result rather than as "no filter" — the previous behaviour, where asking for
+// Instagram's stage counts silently returned every channel's.
+var workspaceEntryIDSubqueries = map[shared.EntryType]string{
+	shared.EntryTypeWhatsApp: `SELECT wce.id FROM whatsapp_campaign_entries wce
+		JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id
+		WHERE wc.workspace_id = ? AND wce.deleted_at IS NULL`,
+	shared.EntryTypeInstagram: `SELECT igc.id::text FROM instagram_conversations igc
+		WHERE igc.workspace_id = ?::uuid AND igc.deleted_at IS NULL`,
+	shared.EntryTypeTelegram: `SELECT tgc.id::text FROM telegram_conversations tgc
+		WHERE tgc.workspace_id = ?::uuid AND tgc.deleted_at IS NULL`,
+	shared.EntryTypeSupport: `SELECT se.id::text FROM support_entries se
+		JOIN support_inboxes si ON si.id = se.inbox_id
+		WHERE si.workspace_id = ?::uuid AND se.deleted_at IS NULL`,
+}
 
 type repository struct {
 	db *gorm.DB
@@ -841,9 +862,19 @@ func (r *repository) GetStageCountsForWorkspace(workspaceID, entryType string) (
 
 	args := []interface{}{workspaceID}
 
+	// Narrow to one channel's entries when asked. An unrecognised type used to
+	// apply NO filter at all, so asking for one channel's stage counts silently
+	// returned every channel's — an over-count that looks like real data.
 	var entryTypeFilter string
-	if entryType == "whatsapp" {
-		entryTypeFilter = `AND et.entry_id IN (SELECT wce.id FROM whatsapp_campaign_entries wce JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id WHERE wc.workspace_id = ? AND wce.deleted_at IS NULL)`
+	if entryType != "" {
+		subquery, ok := workspaceEntryIDSubqueries[shared.EntryType(entryType)]
+		if !ok {
+			// A channel with no entry table to scope by (voice) cannot be
+			// narrowed; returning nothing is the honest answer, since the
+			// alternative is silently counting other channels.
+			return map[string]int64{}, nil
+		}
+		entryTypeFilter = "AND et.entry_id IN (" + subquery + ")"
 		args = append(args, workspaceID)
 	}
 

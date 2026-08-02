@@ -159,15 +159,15 @@ func (r *repository) applyFilters(query *gorm.DB, input shop.ListShopsInput) *go
 
 func mapToDomain(dbShop *schema.Shop) *shop.Shop {
 	return &shop.Shop{
-		ID:                    dbShop.ID,
-		UserID:                dbShop.UserID,
-		Name:                  dbShop.Name,
-		Brand:                 dbShop.Brand,
-		LogoMediaID:           ptrToString(dbShop.LogoMediaID),
-		BannerMediaID:         ptrToString(dbShop.BannerMediaID),
-		CreatedAt:             dbShop.CreatedAt,
-		UpdatedAt:             dbShop.UpdatedAt,
-		IsOfficial:            dbShop.IsOfficial,
+		ID:            dbShop.ID,
+		UserID:        dbShop.UserID,
+		Name:          dbShop.Name,
+		Brand:         dbShop.Brand,
+		LogoMediaID:   ptrToString(dbShop.LogoMediaID),
+		BannerMediaID: ptrToString(dbShop.BannerMediaID),
+		CreatedAt:     dbShop.CreatedAt,
+		UpdatedAt:     dbShop.UpdatedAt,
+		IsOfficial:    dbShop.IsOfficial,
 	}
 }
 

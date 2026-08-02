@@ -42,8 +42,15 @@ func (r *NodeExecutorRegistry) RegisterDefinition(def workflow.NodeDefinition) {
 	r.definitions[def.Type] = workflow.NormalizeNodeDefinition(def)
 }
 
+// Get resolves the executor for a node type, mapping retired wire values
+// forward.
+//
+// Graph decoding already normalizes, so this is belt-and-braces for any path
+// that builds a Node in Go without going through JSON (tests, fixtures, the
+// simulator). A missing executor stops a run dead, so it is worth the one
+// method call.
 func (r *NodeExecutorRegistry) Get(nodeType workflow.NodeType) (workflow.NodeExecutor, bool) {
-	ex, ok := r.executors[nodeType]
+	ex, ok := r.executors[nodeType.Canonical()]
 	return ex, ok
 }
 

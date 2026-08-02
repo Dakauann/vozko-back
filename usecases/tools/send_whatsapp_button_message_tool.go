@@ -6,13 +6,29 @@ import (
 	"log"
 	"strings"
 
+	"vozko/domain/channel"
 	"vozko/domain/conversation"
 	"vozko/domain/tools"
 )
 
+// ToolNameSendOptions is channel-neutral on purpose. The name reaches the model
+// verbatim, and a tool called "send_whatsapp_button_message" offered inside a
+// Telegram conversation reads as belonging elsewhere. Saved bindings under the
+// old name still resolve through CanonicalToolName.
+const ToolNameSendOptions = "send_options"
+
 type sendWhatsappButtonMessageTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
+	// adapters routes the prompt on every channel that is not WhatsApp.
+	// Optional: unset keeps the tool WhatsApp-only, as it was.
+	adapters conversation.AdapterRegistry
+}
+
+// SetAdapters wires the channel registry so the tool can present options
+// anywhere the channel supports them.
+func (uc *sendWhatsappButtonMessageTool) SetAdapters(r conversation.AdapterRegistry) {
+	uc.adapters = r
 }
 
 func NewSendWhatsappButtonMessageToolUseCase(ctx context.Context, whatsappClientFactory conversation.WhatsAppClientFactory) tools.Handler {
@@ -24,12 +40,18 @@ func NewSendWhatsappButtonMessageToolUseCase(ctx context.Context, whatsappClient
 
 func (uc *sendWhatsappButtonMessageTool) Definition() tools.Definition {
 	return tools.Definition{
-		Name:               "send_whatsapp_button_message",
-		DisplayName:        "Enviar Botões WhatsApp",
-		DisplayDescription: "Envia uma mensagem com botões de resposta rápida ou botão de cópia (Pix, cupons, etc.) via WhatsApp.",
-		Description: `Envia uma mensagem de WhatsApp com botões interativos para o cliente atual.
+		Name:               ToolNameSendOptions,
+		DisplayName:        "Enviar Opções",
+		DisplayDescription: "Envia uma mensagem com botões de resposta rápida ou botão de cópia (Pix, cupons, etc.).",
+		Description: `Envia uma mensagem com botões interativos para o cliente atual.
 
-O número de telefone é obtido automaticamente do contexto da conversa - NÃO é necessário informar.
+O destinatário é obtido automaticamente do contexto da conversa - NÃO é necessário informar.
+
+Funciona em todos os canais que suportam escolhas: WhatsApp (botões ou lista),
+Instagram (respostas rápidas) e Telegram (teclado inline). Cada canal renderiza
+no formato nativo dele e aplica os próprios limites; opções além do limite de um
+canal simplesmente não aparecem nele. O botão de cópia (copy_code) existe apenas
+no WhatsApp.
 
 DOIS MODOS DE USO:
 
@@ -169,14 +191,20 @@ func (uc *sendWhatsappButtonMessageTool) Execute(ctx context.Context, data map[s
 }
 
 func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, config map[string]interface{}, data map[string]interface{}) (tools.ExecutionResult, error) {
-	whatsappClient, err := uc.resolveWhatsAppClient(config)
-	if err != nil {
-		return tools.ExecutionResult{}, err
-	}
+	// Non-WhatsApp channels are addressed by conversation and resolved before a
+	// phone number is looked for — there is none to find.
+	adapter, ec, viaAdapter := resolveToolAdapter(ctx, uc.adapters, config)
 
-	to, err := uc.resolveRecipientPhone(ctx, config, data)
-	if err != nil {
-		return tools.ExecutionResult{}, err
+	var whatsappClient conversation.WhatsAppClient
+	var to string
+	if !viaAdapter {
+		var err error
+		if whatsappClient, err = uc.resolveWhatsAppClient(config); err != nil {
+			return tools.ExecutionResult{}, err
+		}
+		if to, err = uc.resolveRecipientPhone(ctx, config, data); err != nil {
+			return tools.ExecutionResult{}, err
+		}
 	}
 
 	body, ok := data["body"].(string)
@@ -264,6 +292,31 @@ func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, c
 		footer = strings.TrimSpace(footerRaw)
 	}
 
+	if viaAdapter {
+		options := make([]conversation.InteractiveOption, 0, len(buttons))
+		for _, b := range buttons {
+			// Only reply buttons cross channels. copy_code is a WhatsApp
+			// affordance with no equivalent elsewhere, and silently turning one
+			// into a plain button would hand the contact something that looks
+			// tappable and copies nothing.
+			if b.Type != "" && b.Type != "reply" {
+				continue
+			}
+			options = append(options, conversation.InteractiveOption{ID: b.ID, Title: b.Title})
+		}
+		if len(options) == 0 {
+			return toolRefusal(fmt.Sprintf(
+				"O canal %s não suporta este tipo de botão. Envie a informação em texto.", ec.EntryType)), nil
+		}
+		return sendOptionsViaAdapter(ctx, adapter, ec, conversation.SendInteractiveRequest{
+			Body:    body,
+			Header:  header,
+			Footer:  footer,
+			Options: options,
+			Style:   channel.InteractiveStyleButtons,
+		})
+	}
+
 	input := conversation.SendButtonMessageInput{
 		To:         to,
 		BodyText:   body,
@@ -284,7 +337,7 @@ func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, c
 		activeCtx = context.Background()
 	}
 
-	log.Printf("[WhatsApp Button Tool] Sending button message to: %s, body: %s, buttons: %d", to, body, len(buttons))
+	log.Printf("[Options Tool] Sending %d option(s) to: %s", len(buttons), to)
 	result, err := whatsappClient.SendButtonMessage(activeCtx, input)
 	if err != nil {
 		log.Printf("[WhatsApp Button Tool] ERROR: %v", err)

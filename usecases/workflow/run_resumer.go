@@ -36,7 +36,7 @@ func resumeRunFromCurrent(
 		return fmt.Errorf("current node not found during resume")
 	}
 
-	if node.Type.IsWait() || node.Type.IsInteractivePrompt() {
+	if node.Type.ParksForReply() {
 		edges := w.Graph.OutgoingEdges(run.CurrentNodeID)
 		nextID := ""
 		switch {

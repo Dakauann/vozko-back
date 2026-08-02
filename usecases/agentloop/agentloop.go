@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"vozko/domain/ai"
@@ -57,9 +58,15 @@ type Driver interface {
 	SystemPrompt() string
 	// Tools are the tool definitions offered to the model this turn.
 	Tools() []tools.Definition
-	// Reground builds the ephemeral per-turn observation message (current state +
+	// Reground builds the ephemeral per-turn OBSERVATION message (current state +
 	// nudges). It is appended after the persistent history and is NOT stored.
-	Reground(prompt string, iter, maxIter, noMutationStreak int) string
+	//
+	// It deliberately does NOT receive the user's prompt. The request is anchored
+	// once at the head of the conversation; restating it in the newest message
+	// every turn makes the model read it as a question just asked, so it answers
+	// the same question again on every iteration while the loop grinds on. That
+	// was a real bug, and removing the parameter is what makes it unrepeatable.
+	Reground(iter, maxIter, noMutationStreak int) string
 	// Dispatch executes ONE non-finish tool call, emitting any driver-specific
 	// events (tool/resource/snapshot/meta) via emit. It returns the RoleTool
 	// result text fed back to the model and whether state advanced this turn.
@@ -85,6 +92,17 @@ type StepResult struct {
 	// so far and returns an OutcomePaused; the caller drives the out-of-band step
 	// (approval) and starts a fresh Run to resume the conversation.
 	Pause *Pause
+	// Signature identifies WHAT this call acted on, e.g. "update_node:n11".
+	//
+	// The Driver supplies it because only the Driver knows which argument is the
+	// target. The engine compares whole turns: a model that spends three turns
+	// running update_node against the same node is not converging, even when the
+	// arguments differ slightly each time and the state hash therefore keeps
+	// changing. That specific shape — endless micro-edits to one node chasing
+	// advisory hints — defeats both of the other stall guards.
+	//
+	// Empty disables the guard for that call.
+	Signature string
 }
 
 // Pause is a request from the Driver to suspend the loop pending an out-of-band
@@ -121,6 +139,9 @@ type Config struct {
 	ReasoningMaxTokens int
 	MaxIterations      int
 	NoProgressStop     int
+	// RepeatedTurnStop is how many consecutive turns with an identical call
+	// signature end the loop. Defaults to 3.
+	RepeatedTurnStop   int
 	RepairBudget       int
 	SessionTokenBudget int // 0 = unlimited
 	EmptyTurnRetries   int
@@ -135,6 +156,10 @@ func (c Config) withDefaults() Config {
 	}
 	if c.NoProgressStop <= 0 {
 		c.NoProgressStop = 5
+	}
+	if c.RepeatedTurnStop <= 0 {
+		// Three identical turns is already two more than a productive loop needs.
+		c.RepeatedTurnStop = 3
 	}
 	if c.RepairBudget <= 0 {
 		c.RepairBudget = 3
@@ -198,6 +223,7 @@ const (
 	reasonNoProgressState = "sem progresso — o grafo não mudou nas últimas iterações"
 	reasonChurn           = "sem progresso — o mesmo conjunto de problemas persiste"
 	reasonRepairExhausted = "orçamento de reparo esgotado"
+	reasonRepeatedTurn    = "sem progresso — as mesmas ações se repetiram sem convergir"
 	reasonEmptyTurn       = "o modelo não produziu nenhuma ação — possível truncamento pelo limite de tokens de raciocínio do modelo (tente novamente ou troque de modelo)"
 	finishIgnoredMsg      = "finish IGNORADO: você fez mutações neste turno — chame finish sozinho, sem outras ferramentas."
 	providerErrPrefix     = "erro do provedor de IA: "
@@ -246,6 +272,8 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	unchangedTurns := 0
 	noMutationStreak := 0
 	truncStreak := 0
+	prevTurnSig := ""
+	repeatedTurns := 0
 
 	// Anchor the user's request at the head of the persistent conversation — the
 	// standard agentic tool-use loop keeps its own message history (prior tool
@@ -266,7 +294,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		// Messages = persistent history + a fresh ephemeral observation of the
 		// current state (NOT stored — it would bloat history with full-state dumps).
 		msgs := append(append([]ai.Message(nil), sess.History...),
-			ai.Message{Role: ai.RoleUser, Content: drv.Reground(prompt, iter, cfg.MaxIterations, noMutationStreak)})
+			ai.Message{Role: ai.RoleUser, Content: drv.Reground(iter, cfg.MaxIterations, noMutationStreak)})
 
 		out, err := e.streamGenerate(ctx, emit, ai.GenerateInput{
 			Model:              drv.Model(),
@@ -331,6 +359,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		finishIdx := -1
 		var finishCall ai.ToolCall
 		mutated := false
+		turnSignature := make([]string, 0, len(calls))
 		for i := range calls {
 			tc := calls[i]
 			if tc.Name == cfg.FinishToolName {
@@ -342,6 +371,9 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			results[i] = step.Result
 			if step.Mutated {
 				mutated = true
+			}
+			if step.Signature != "" {
+				turnSignature = append(turnSignature, step.Signature)
 			}
 			if step.Pause != nil {
 				// The Driver suspended the loop (e.g. a mutation awaiting user
@@ -423,6 +455,26 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			sameCount = 0
 		}
 		prevSig = sig
+
+		// Stall guard C — the model keeps performing the SAME actions on the same
+		// targets. Guards A and B both miss this: micro-edits to one node change
+		// the state hash every turn (so A resets), and when nothing is blocking the
+		// signature is empty (so B is skipped entirely). The result was a session
+		// that re-edited one node until the iteration budget ran out.
+		//
+		// The outcome keeps the current validity: a valid graph that simply stopped
+		// converging is a finished workflow, not a failure.
+		sort.Strings(turnSignature)
+		turnSig := strings.Join(turnSignature, ",")
+		if turnSig != "" && turnSig == prevTurnSig {
+			repeatedTurns++
+			if repeatedTurns >= cfg.RepeatedTurnStop {
+				return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonRepeatedTurn}
+			}
+		} else {
+			repeatedTurns = 0
+		}
+		prevTurnSig = turnSig
 	}
 
 	return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonMaxIterations}

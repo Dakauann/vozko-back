@@ -16,32 +16,36 @@ func New(db *gorm.DB) attendance.Repository {
 	return &repository{db: db}
 }
 
-func campaignJoinForIA(filter attendance.StatsFilter) (joinSQL string, extraWhere string, extraArgs []interface{}) {
+// campaignJoinForEntryColumn narrows attendant stats to one container.
+//
+// "Campaign" is the channel's container: a WhatsApp campaign, or the account row
+// for channels with none. Driving it from the channel registry means a new
+// channel's per-account stats work on the day it is registered, instead of
+// silently ignoring the filter and reporting the whole workspace — which is what
+// the previous `default: return "", "", nil` did.
+func campaignJoinForEntryColumn(filter attendance.StatsFilter, alias, entryColumn string) (joinSQL string, extraWhere string, extraArgs []interface{}) {
 	if filter.CampaignID == "" {
 		return "", "", nil
 	}
-	switch filter.CampaignType {
-	case "whatsapp":
-		return " JOIN whatsapp_campaign_entries wce ON wce.id = ia.entry_id AND wce.deleted_at IS NULL",
-			" AND ia.entry_type = 'whatsapp' AND wce.campaign_id = ?",
-			[]interface{}{filter.CampaignID}
-	default:
-		return "", "", nil
+	for _, src := range channelSources {
+		if string(src.EntryType) != filter.CampaignType {
+			continue
+		}
+		join := " JOIN " + src.EntryTable + " ON " + src.EntryAlias + ".id = " + entryColumn +
+			" AND " + src.EntryAlias + ".deleted_at IS NULL"
+		where := " AND " + alias + ".entry_type = '" + string(src.EntryType) + "'" +
+			" AND " + src.ContainerIDColumn + " = ?"
+		return join, where, []interface{}{filter.CampaignID}
 	}
+	return "", "", nil
 }
 
-func campaignJoinForCM(filter attendance.StatsFilter) (joinSQL string, extraWhere string, extraArgs []interface{}) {
-	if filter.CampaignID == "" {
-		return "", "", nil
-	}
-	switch filter.CampaignType {
-	case "whatsapp":
-		return " JOIN whatsapp_campaign_entries wce ON wce.id = cm.entry_id AND wce.deleted_at IS NULL",
-			" AND cm.entry_type = 'whatsapp' AND wce.campaign_id = ?",
-			[]interface{}{filter.CampaignID}
-	default:
-		return "", "", nil
-	}
+func campaignJoinForIA(filter attendance.StatsFilter) (string, string, []interface{}) {
+	return campaignJoinForEntryColumn(filter, "ia", "ia.entry_id")
+}
+
+func campaignJoinForCM(filter attendance.StatsFilter) (string, string, []interface{}) {
+	return campaignJoinForEntryColumn(filter, "cm", "cm.entry_id")
 }
 
 func (r *repository) GetAttendantStats(workspaceID string, filter attendance.StatsFilter) ([]attendance.AttendantStats, error) {

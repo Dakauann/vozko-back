@@ -224,8 +224,11 @@ func TestDriver_Accessors(t *testing.T) {
 	if len(drv.Tools()) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(drv.Tools()))
 	}
-	if !strings.Contains(drv.Reground("faça X", 1, 12, 0), "faça X") {
-		t.Fatal("reground should restate the request")
+	// The per-turn observation must NOT restate the request. It is already the
+	// first message of the conversation; repeating it as the newest message made
+	// the model answer the same question again on every iteration.
+	if strings.Contains(drv.Reground(1, 12, 0), "faça X") {
+		t.Fatal("reground must not restate the user's request")
 	}
 	if !drv.Progress().Valid {
 		t.Fatal("copilot progress is always valid (no validator)")

@@ -1,0 +1,21 @@
+{
+  "update_id": 870123468,
+  "callback_query": {
+    "id": "4382012345678901235",
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "message": {
+      "message_id": 4830,
+      "chat": {"id": 5041234567, "type": "private"},
+      "date": 1785312011,
+      "text": "Escolha uma opcao",
+      "reply_markup": {
+        "inline_keyboard": [
+          [{"text": "Suporte", "callback_data": "support"}],
+          [{"text": "Vendas", "callback_data": "sales"}],
+          [{"text": "Financeiro", "callback_data": "finances"}]
+        ]
+      }
+    },
+    "data": "support"
+  }
+}

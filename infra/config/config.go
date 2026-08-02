@@ -97,6 +97,28 @@ type Config struct {
 	// FrontendBaseURL is where OAuth callbacks send the browser back to.
 	FrontendBaseURL string
 
+	// Telegram.
+	//
+	// TelegramWebhookBaseURL is our own public origin; Telegram POSTs updates to
+	// {base}/webhooks/telegram/{accountId}.
+	//
+	// REQUIRED, exactly like the Instagram equivalents: Telegram is a first-class
+	// channel, and a half-configured deployment that silently serves 404s on every
+	// Telegram route is far worse than failing fast at boot. Telegram's own
+	// constraints on this URL also fail SILENTLY — https is mandatory and only
+	// ports 443, 80, 88 and 8443 are ever delivered to — so
+	// telegram.ValidateWebhookBaseURL checks it at boot too.
+	//
+	// There are deliberately no token or secret variables: a bot token is tenant
+	// data (one per connected bot, pasted by the operator, encrypted at rest),
+	// and the webhook secret is generated per account.
+	TelegramWebhookBaseURL string
+	// TelegramBotAPIBaseURL overrides Telegram's hosted API. Its only real use is
+	// pointing at a self-hosted Local Bot API Server, which lifts the 20MB
+	// inbound download ceiling — the channel's hardest product limit. Empty uses
+	// https://api.telegram.org, so this one stays optional.
+	TelegramBotAPIBaseURL string
+
 	// 360dialog partner (BSP) integration. New onboarding goes through 360dialog;
 	// the reconciliation backstop activates when Dialog360PartnerAPIKey is set.
 	Dialog360PartnerID          string
@@ -237,6 +259,11 @@ func LoadConfig() Config {
 		// when it needs to.
 		InstagramGraphVersion: trimEnv("INSTAGRAM_GRAPH_VERSION"),
 		FrontendBaseURL:       strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
+
+		TelegramWebhookBaseURL: strings.TrimRight(mustGetEnvTrimmed("TELEGRAM_WEBHOOK_BASE_URL"), "/"),
+		// Optional: empty means Telegram's hosted API, which is right for every
+		// deployment that does not run its own Bot API server.
+		TelegramBotAPIBaseURL: strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),
 
 		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),

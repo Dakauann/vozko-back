@@ -195,6 +195,20 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 		}
 	}
 
+	// The channel account's own workflow link, set by Instagram and Telegram.
+	//
+	// Without this the link is decorative: every active workflow in the
+	// workspace whose trigger matches runs on every conversation, so connecting
+	// a second bot — or simply having a second workflow — makes both fire on the
+	// same contact and the customer receives two greetings. Selecting a workflow
+	// on the account has to mean only that workflow attends it.
+	if accountWfID, ok := event.Data["account_workflow_id"].(string); ok && accountWfID != "" {
+		if w.ID != accountWfID {
+			log.Printf("[workflow] trigger: skipping workflow=%s (channel account linked to workflow=%s)", w.ID, accountWfID)
+			return false
+		}
+	}
+
 	triggerNode := w.Graph.TriggerNodeByType(event.TriggerType)
 	cfg := map[string]interface{}{}
 	if triggerNode != nil && triggerNode.Config != nil {

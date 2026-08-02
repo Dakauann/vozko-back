@@ -168,6 +168,64 @@ func (r *conversationRepository) SetIGConversationID(ctx context.Context, id, ig
 	return nil
 }
 
+// StatusForEntry reads just the conversation status.
+//
+// A dedicated one-column read rather than FindByID + field access: the
+// conversation-status service consults it on every status transition, and
+// loading the whole row to look at one string is waste on a hot path.
+func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) (string, error) {
+	var status string
+	err := r.db.WithContext(ctx).Model(&schema.InstagramConversation{}).
+		Where("id = ?", id).
+		Limit(1).
+		Pluck("COALESCE(conversation_status, '')", &status).Error
+	if err != nil {
+		return "", err
+	}
+	return status, nil
+}
+
+// CountByStatus powers the inbox status chips.
+//
+// Conversations with no status yet count as "new", matching the inbox's own
+// IS DISTINCT FROM default — otherwise brand-new conversations would be visible
+// in the list but absent from every count above it.
+func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, igAccountID string) (map[string]int64, error) {
+	type row struct {
+		Status string `gorm:"column:status"`
+		Count  int64  `gorm:"column:cnt"`
+	}
+
+	// Repeated in GROUP BY rather than referenced positionally: GORM quotes
+	// Group("1") into GROUP BY "1", which Postgres rejects as a column name.
+	const statusExpr = "COALESCE(NULLIF(conversation_status, ''), 'new')"
+
+	query := r.db.WithContext(ctx).Model(&schema.InstagramConversation{}).
+		Select(statusExpr + " AS status, COUNT(*) AS cnt").
+		Where("deleted_at IS NULL").
+		Where("last_message_at IS NOT NULL")
+
+	switch {
+	case igAccountID != "":
+		query = query.Where("ig_account_id = ?", igAccountID)
+	case workspaceID != "":
+		query = query.Where("workspace_id = ?", workspaceID)
+	default:
+		return map[string]int64{}, nil
+	}
+
+	var rows []row
+	if err := query.Group(statusExpr).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]int64, len(rows))
+	for _, rw := range rows {
+		out[rw.Status] = rw.Count
+	}
+	return out, nil
+}
+
 func (r *conversationRepository) SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error {
 	result := r.db.WithContext(ctx).Model(&schema.InstagramConversation{}).
 		Where("id = ?", id).

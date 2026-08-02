@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"vozko/domain/shared"
 	"vozko/domain/user"
 	workspace_domain "vozko/domain/workspace"
 	"vozko/infra/http/middleware"
@@ -78,8 +79,11 @@ func (h *ConversationWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.R
 	campaignID := query.Get("campaignId")
 	campaignType := query.Get("campaignType")
 
-	if campaignType != "" && campaignType != "voice" && campaignType != "whatsapp" && campaignType != "support" {
-		http.Error(w, "campaignType must be 'voice', 'whatsapp', or 'support'", http.StatusBadRequest)
+	// Empty means the global (all-channel) inbox. Otherwise the selector must
+	// name a channel the inbox can be scoped to; the message is generated from
+	// the domain set so it cannot drift from what is actually accepted.
+	if campaignType != "" && !shared.EntryType(campaignType).SupportsInboxScope() {
+		http.Error(w, "campaignType must be "+shared.FormatEntryTypes(shared.InboxScopableEntryTypes()), http.StatusBadRequest)
 		return
 	}
 

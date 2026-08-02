@@ -31,7 +31,7 @@ var (
 // It does NOT persist or execute; the caller updates the repo and runs the engine.
 func AdvanceOnReply(run *workflow.WorkflowRun, w *workflow.Workflow, data map[string]interface{}) error {
 	node := w.Graph.FindNode(run.CurrentNodeID)
-	if node == nil || !(node.Type.IsWait() || node.Type.IsInteractivePrompt()) {
+	if node == nil || !node.Type.ParksForReply() {
 		return ErrRunNotAtWaitNode
 	}
 	edges := w.Graph.OutgoingEdges(run.CurrentNodeID)

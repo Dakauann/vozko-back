@@ -325,12 +325,41 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	c.services.channelAdapters = append(c.services.channelAdapters, adapter)
 	registry := conversation_domain.NewAdapterRegistry(c.services.channelAdapters...)
 
+	// Consumers that were built before this channel registered hold the live
+	// registry rather than a snapshot, so updating it is what makes the new
+	// adapter visible to them.
+	c.liveAdapterRegistry().Replace(c.services.channelAdapters...)
+
 	if c.services.messageSender != nil {
 		c.services.messageSender.SetChannelAdapters(registry)
+	}
+	// The HTTP send endpoint shares the same sender rather than carrying a second
+	// per-channel implementation. Without this it stays WhatsApp-only while its
+	// route accepts every known entry type — which fails as a misleading
+	// "conversation not found" instead of an honest refusal.
+	if setter, ok := c.useCases.sendConversationMessage.(interface {
+		SetChannelSender(conversation_domain.AdapterRegistry, conversation_usecase.ChannelMessageSender)
+	}); ok && c.services.messageSender != nil {
+		setter.SetChannelSender(registry, c.services.messageSender)
 	}
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetChannelAdapters(conversation_domain.AdapterRegistry)
 	}); ok {
 		setter.SetChannelAdapters(registry)
 	}
+}
+
+// liveAdapterRegistry returns the container's swappable adapter registry,
+// creating it on first use.
+//
+// It exists because channel adapters register one at a time during startup
+// while several consumers are constructed in between. A consumer handed a
+// snapshot sees only the channels registered so far, and a missing adapter is
+// indistinguishable from "this channel cannot send" — which is how every
+// workflow send node came to be skipped on Instagram and Telegram.
+func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegistry {
+	if c.services.liveChannelAdapters == nil {
+		c.services.liveChannelAdapters = conversation_domain.NewLiveAdapterRegistry()
+	}
+	return c.services.liveChannelAdapters
 }

@@ -350,10 +350,20 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 			inject := toolName != "" && sourceAI == ctx.Node.ID
 
+			// Never inject a stale tool result when the run just resumed from a
+			// node that was waiting on the contact. The contact's reply is the new
+			// input; replaying the previous tool's output as a USER message makes
+			// the model read its own last action as a fresh request and call the
+			// same tool again — a menu that reappears forever no matter which
+			// button is tapped.
+			//
+			// ParksForReply, not IsWait: the interactive prompt parks exactly like
+			// a wait node but is excluded from IsWait, and this guard originally
+			// missed it.
 			if inject {
 				if prevID := ctx.State.GetString("_prev_node_id"); prevID != "" {
 					if prevNode := ctx.Graph.FindNode(prevID); prevNode != nil {
-						if prevNode.Type.IsWait() || prevNode.Type.IsTrigger() {
+						if prevNode.Type.ParksForReply() || prevNode.Type.IsTrigger() {
 							inject = false
 						}
 					}
@@ -650,10 +660,26 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
+	// Segmented delivery on every OTHER channel. Without this the reply is
+	// generated and billed and then silently dropped: the WhatsApp block above
+	// requires isWhatsApp, and the default block below requires !isSegmented, so
+	// a segmented agent on Telegram or Instagram matched neither.
+	if isSegmented && !isWhatsApp && len(segmentedMessages) > 0 && len(output.ToolCalls) == 0 {
+		log.Printf("%s segmented %s delivery: %d messages", logPrefix, ctx.Run.EntryType, len(segmentedMessages))
+		delivered, sendErr := e.sender.SendSegments(context.Background(), ctx.Run, segmentedMessages, nil)
+		if sendErr != nil {
+			log.Printf("%s segmented delivery failed: %v", logPrefix, sendErr)
+		} else if !delivered {
+			log.Printf("%s segmented delivery withheld by channel %q", logPrefix, ctx.Run.EntryType)
+		} else {
+			result["delivered"] = true
+			ctx.State.Set("_ai_agent_delivered", true)
+			log.Printf("%s all %d segments delivered on %s", logPrefix, len(segmentedMessages), ctx.Run.EntryType)
+		}
+	}
+
 	// Default (non-segmented) delivery goes through the channel sender, so the
 	// agent node answers on every adapter-backed channel — not only WhatsApp.
-	// Segmented delivery above stays WhatsApp-only: it paces several sends
-	// against WhatsApp's own rate rules.
 	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
 		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
 		if sendErr != nil {

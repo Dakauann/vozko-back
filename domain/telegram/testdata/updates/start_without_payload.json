@@ -1,0 +1,11 @@
+{
+  "update_id": 870123458,
+  "message": {
+    "message_id": 2,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312002,
+    "text": "/start",
+    "entities": [{"offset": 0, "length": 6, "type": "bot_command"}]
+  }
+}

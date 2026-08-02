@@ -15,4 +15,12 @@ func RegisterRoutes(
 ) {
 	wc := workspace_domain.ResourceWhatsAppCampaigns
 	protected.HandleFunc("/whatsapp/campaigns/{id}/entries/export", ac(wc, workspace_domain.ActionRead, h.ExportWhatsAppEntries)).Methods(http.MethodGet)
+
+	// Channels with no campaign export per account, or workspace-wide when no
+	// account is named. Gated on each channel's own resource so export never
+	// grants more than the channel itself does.
+	protected.HandleFunc("/instagram/accounts/{id}/entries/export",
+		ac(workspace_domain.ResourceInstagramAccounts, workspace_domain.ActionRead, h.ExportInstagramEntries)).Methods(http.MethodGet)
+	protected.HandleFunc("/telegram/accounts/{id}/entries/export",
+		ac(workspace_domain.ResourceTelegramAccounts, workspace_domain.ActionRead, h.ExportTelegramEntries)).Methods(http.MethodGet)
 }

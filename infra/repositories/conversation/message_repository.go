@@ -77,32 +77,18 @@ func NewRepository(db *gorm.DB) conversation.MessageRepository {
 	return &repository{db: db}
 }
 
-// instagramContactJoin projects instagram_contacts into the column shape the
-// inbox query expects from its `l` (lead) alias.
-//
-// The query's search and select clauses reference l.name, l.number,
-// l.profile_picture_url and l.blocked. An Instagram contact has no phone number,
-// so the @handle fills the number slot — that is what an operator searches by,
-// and it keeps every existing predicate working without duplicating the query per
-// channel.
-const instagramContactJoin = `JOIN (
-	SELECT id, name, username AS number, profile_picture_url, blocked, deleted_at
-	FROM instagram_contacts
-) l ON l.id = igc.contact_id AND l.deleted_at IS NULL`
-
 // entryTableForLastMessage maps a message entry_type to the entry table carrying
 // the denormalized last_message_at. Unknown types have no entry row to touch.
 func entryTableForLastMessage(entryType string) string {
-	switch entryType {
-	case string(conversation.MessageChannelWhatsApp):
-		return "whatsapp_campaign_entries"
-	case string(conversation.MessageChannelSupport):
+	// Support has no channelQuery declaration (it carries no container and is
+	// never entry-scoped), so it stays spelled out here.
+	if entryType == string(conversation.MessageChannelSupport) {
 		return "support_entries"
-	case string(conversation.MessageChannelInstagram):
-		return "instagram_conversations"
-	default:
-		return ""
 	}
+	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
+		return ch.EntryTable
+	}
+	return ""
 }
 
 // touchEntryLastMessageAt moves the entry's denormalized last_message_at forward to
@@ -592,48 +578,27 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 		assignmentArgs = append(assignmentArgs, assignedUserID)
 	}
 
+	ch, ok := channelQueryFor(entryType)
+	if !ok {
+		return nil, 0, fmt.Errorf("invalid entry type: %s", et)
+	}
+
 	var entryCTE string
 	var cteArgs []interface{}
-	var leadField, bphoneField, campaignIDField, campaignNameField, entryJoin, aiFields string
 
-	switch entryType {
-	case "whatsapp":
-		leadField = "wce.lead_id::text"
-		bphoneField = "COALESCE(wc.business_phone_id::text, '')"
-		campaignIDField = "wc.id::text"
-		campaignNameField = "wc.name"
-		aiFields = "COALESCE(wc.agent_id::text, '') AS agent_id, COALESCE(wc.workflow_id::text, '') AS workflow_id, wc.enable_agent_responses AS agent_responses_enabled, wc.enable_workflow AS workflow_enabled"
-		entryJoin = `JOIN whatsapp_campaign_entries wce ON wce.id = e.entry_id AND wce.deleted_at IS NULL
-		             JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id`
-		if useCampaignFilter {
-			entryCTE = `SELECT wce_f.id AS entry_id FROM whatsapp_campaign_entries wce_f WHERE wce_f.campaign_id = ? AND wce_f.deleted_at IS NULL` + assignmentFilterFor("wce_f.id")
-			cteArgs = append([]interface{}{campaignID}, assignmentArgs...)
-		} else {
-			entryCTE = `SELECT u.entry_id FROM unnest(?::uuid[]) AS u(entry_id) WHERE 1=1` + assignmentFilterFor("u.entry_id")
-			cteArgs = append([]interface{}{pq.Array(filteredIDs)}, assignmentArgs...)
-		}
+	leadField := ch.ContactIDField
+	bphoneField := ch.AccountIDField
+	campaignIDField := ch.ContainerIDField
+	campaignNameField := ch.ContainerNameField
+	aiFields := ch.AutomationFields
+	entryJoin := ch.entryJoinOn("e.entry_id")
 
-	case shared.EntryTypeInstagram:
-		// The Instagram account plays the role whatsapp_campaigns plays for
-		// WhatsApp: it is the container that carries the automation config. There
-		// is no campaign, so campaignID here is the account id.
-		leadField = "igc.contact_id::text"
-		bphoneField = "COALESCE(igc.ig_account_id::text, '')"
-		campaignIDField = "iga.id::text"
-		campaignNameField = "iga.username"
-		aiFields = "COALESCE(iga.agent_id::text, '') AS agent_id, COALESCE(iga.workflow_id::text, '') AS workflow_id, iga.enable_agent_responses AS agent_responses_enabled, iga.enable_workflow AS workflow_enabled"
-		entryJoin = `JOIN instagram_conversations igc ON igc.id = e.entry_id AND igc.deleted_at IS NULL
-		             JOIN instagram_accounts iga ON iga.id = igc.ig_account_id`
-		if useCampaignFilter {
-			entryCTE = `SELECT igc_f.id AS entry_id FROM instagram_conversations igc_f WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL` + assignmentFilterFor("igc_f.id")
-			cteArgs = append([]interface{}{campaignID}, assignmentArgs...)
-		} else {
-			entryCTE = `SELECT u.entry_id FROM unnest(?::uuid[]) AS u(entry_id) WHERE 1=1` + assignmentFilterFor("u.entry_id")
-			cteArgs = append([]interface{}{pq.Array(filteredIDs)}, assignmentArgs...)
-		}
-
-	default:
-		return nil, 0, fmt.Errorf("invalid entry type: %s", et)
+	if useCampaignFilter {
+		entryCTE = ch.containerCTE(assignmentFilterFor(ch.ContainerCTEEntryCol))
+		cteArgs = append([]interface{}{campaignID}, assignmentArgs...)
+	} else {
+		entryCTE = `SELECT u.entry_id FROM unnest(?::uuid[]) AS u(entry_id) WHERE 1=1` + assignmentFilterFor("u.entry_id")
+		cteArgs = append([]interface{}{pq.Array(filteredIDs)}, assignmentArgs...)
 	}
 
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM (%s) AS cnt`, entryCTE)
@@ -773,45 +738,25 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 
 	et := string(input.EntryType)
 
-	var entryJoin, leadJoin, campaignFilter string
-	var campaignFilterArgs []interface{}
-	switch input.EntryType {
-	case "whatsapp":
-		entryJoin = `JOIN whatsapp_campaign_entries wce ON wce.id = entries.entry_id AND wce.deleted_at IS NULL
-		             JOIN whatsapp_campaigns wcamp ON wcamp.id = wce.campaign_id`
-		leadJoin = `JOIN leads l ON l.id = wce.lead_id AND l.deleted_at IS NULL`
-		if useCampaignFilter {
-			departmentFilter, departmentArgs := departmentScopeClause("wc_f.department_id", "wce_f.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-			campaignFilter = fmt.Sprintf(`cm.entry_id IN (
-				SELECT wce_f.id FROM whatsapp_campaign_entries wce_f
-				JOIN whatsapp_campaigns wc_f ON wc_f.id = wce_f.campaign_id
-				WHERE wce_f.campaign_id = ? AND wce_f.deleted_at IS NULL%s
-			)`, departmentFilter)
-			campaignFilterArgs = append([]interface{}{input.CampaignID}, departmentArgs...)
-		}
-
-	case shared.EntryTypeInstagram:
-		entryJoin = `JOIN instagram_conversations igc ON igc.id = entries.entry_id AND igc.deleted_at IS NULL
-		             JOIN instagram_accounts iga ON iga.id = igc.ig_account_id`
-		// Projected into the same shape the lead join exposes, so every
-		// downstream predicate that references l.name / l.number keeps working.
-		// An Instagram contact has no phone number, so the @handle takes that
-		// slot — it is what an operator actually searches by.
-		leadJoin = instagramContactJoin
-		if useCampaignFilter {
-			// For Instagram the "campaign" filter is the account filter: the
-			// account is the container.
-			departmentFilter, departmentArgs := departmentScopeClause("iga_f.department_id", "igc_f.id", input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-			campaignFilter = fmt.Sprintf(`cm.entry_id IN (
-				SELECT igc_f.id::text FROM instagram_conversations igc_f
-				JOIN instagram_accounts iga_f ON iga_f.id = igc_f.ig_account_id
-				WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL%s
-			)`, departmentFilter)
-			campaignFilterArgs = append([]interface{}{input.CampaignID}, departmentArgs...)
-		}
-
-	default:
+	ch, ok := channelQueryFor(input.EntryType)
+	if !ok {
 		return nil, 0, fmt.Errorf("invalid entry type: %s", et)
+	}
+
+	var campaignFilter string
+	var campaignFilterArgs []interface{}
+
+	entryJoin := ch.entryJoinOn("entries.entry_id")
+	leadJoin := ch.ContactJoin
+
+	if useCampaignFilter {
+		// "Campaign" here means the channel's container: a WhatsApp campaign, or
+		// the account row for channels that have no campaign concept.
+		departmentFilter, departmentArgs := departmentScopeClause(
+			ch.DepartmentColumn, ch.DepartmentEntryCol,
+			input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
+		campaignFilter = ch.containerFilter(departmentFilter)
+		campaignFilterArgs = append([]interface{}{input.CampaignID}, departmentArgs...)
 	}
 
 	var cteConditions []string
@@ -883,13 +828,7 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	// finalized. A concrete status filters to exactly that status. IS DISTINCT
 	// FROM keeps entries that have no status yet (never finalized) visible.
 	{
-		var statusCol string
-		switch input.EntryType {
-		case shared.EntryTypeWhatsApp:
-			statusCol = "wce.conversation_status"
-		case shared.EntryTypeInstagram:
-			statusCol = "igc.conversation_status"
-		}
+		statusCol := ch.StatusColumn
 		if statusCol != "" {
 			if input.ConversationStatus == "" {
 				whereConditions = append(whereConditions, statusCol+" IS DISTINCT FROM 'finished'")
@@ -978,27 +917,15 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 		whereArgs = append(whereArgs, et)
 	}
 
-	if input.WindowOpen != nil {
-		var windowSubquery string
-		switch input.EntryType {
-		case "whatsapp":
-			windowSubquery = `SELECT wce_w.id FROM whatsapp_campaign_entries wce_w
-				JOIN whatsapp_campaigns wc_w ON wc_w.id = wce_w.campaign_id
-				JOIN lead_message_windows lmw ON lmw.lead_id = wce_w.lead_id AND lmw.business_phone_id = wc_w.business_phone_id
-				WHERE wce_w.deleted_at IS NULL AND lmw.last_message_at > NOW() - INTERVAL '24 hours'`
-		case "instagram":
-			// Instagram's window is anchored on the conversation row itself
-			// rather than on a separate window table: last_customer_message_at
-			// is the sliding 24h anchor and resets on every inbound message.
-			windowSubquery = `SELECT igc_w.id::text FROM instagram_conversations igc_w
-				WHERE igc_w.deleted_at IS NULL
-				  AND igc_w.last_customer_message_at IS NOT NULL
-				  AND igc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`
-		}
+	// A channel with no window declares no subquery. Skipping the filter is the
+	// only correct behaviour there: interpolating an empty subquery produced
+	// `entry_id IN ()`, a syntax error, and treating it as "no rows" would hide
+	// every conversation on a channel that can always be replied to.
+	if input.WindowOpen != nil && ch.WindowSubquery != "" {
 		if *input.WindowOpen {
-			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id IN (%s)", windowSubquery))
+			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id IN (%s)", ch.WindowSubquery))
 		} else {
-			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id NOT IN (%s)", windowSubquery))
+			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id NOT IN (%s)", ch.WindowSubquery))
 		}
 	}
 
@@ -1385,33 +1312,19 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 		return nil, totalCount, nil
 	}
 
-	// Only the entry types the union above can emit are dispatched here. A voice
-	// branch used to collect ids that were never read: the workspace CTE has no
-	// voice source, so it could never match.
-	whatsappIDs := make([]string, 0)
-	instagramIDs := make([]string, 0)
+	// Hydration is per channel because each needs its own joins. The set of
+	// channels comes from the registry, so a new one is never silently dropped
+	// between matching and hydration.
+	refs := make([]entryRef, 0, len(matchedIDs))
 	for _, m := range matchedIDs {
-		switch shared.EntryType(m.EntryType) {
-		case shared.EntryTypeWhatsApp:
-			whatsappIDs = append(whatsappIDs, m.EntryID)
-		case shared.EntryTypeInstagram:
-			instagramIDs = append(instagramIDs, m.EntryID)
-		}
+		refs = append(refs, entryRef{ID: m.EntryID, Type: shared.EntryType(m.EntryType)})
 	}
 
 	var allEntries []conversation.EntryWithLastMessage
-
-	if len(instagramIDs) > 0 {
-		igEntries, _, err := r.GetEntriesWithMessages("", instagramIDs, shared.EntryTypeInstagram, 1, len(instagramIDs), "")
+	for _, batch := range hydrationBatches(refs) {
+		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
 		if err == nil {
-			allEntries = append(allEntries, igEntries...)
-		}
-	}
-
-	if len(whatsappIDs) > 0 {
-		waEntries, _, err := r.GetEntriesWithMessages("", whatsappIDs, shared.EntryTypeWhatsApp, 1, len(whatsappIDs), "")
-		if err == nil {
-			allEntries = append(allEntries, waEntries...)
+			allEntries = append(allEntries, entries...)
 		}
 	}
 
@@ -1566,30 +1479,18 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	order := make(map[string]int, len(matchedIDs))
 	type leadIdentity struct{ name, number string }
 	leadByEntry := make(map[string]leadIdentity, len(matchedIDs))
-	whatsappIDs := make([]string, 0)
-	instagramIDs := make([]string, 0)
+	refs := make([]entryRef, 0, len(matchedIDs))
 	for i, m := range matchedIDs {
 		order[m.EntryID] = i
 		leadByEntry[m.EntryID] = leadIdentity{name: m.LeadName, number: m.LeadNumber}
-		switch shared.EntryType(m.EntryType) {
-		case shared.EntryTypeWhatsApp:
-			whatsappIDs = append(whatsappIDs, m.EntryID)
-		case shared.EntryTypeInstagram:
-			instagramIDs = append(instagramIDs, m.EntryID)
-		}
+		refs = append(refs, entryRef{ID: m.EntryID, Type: shared.EntryType(m.EntryType)})
 	}
 
 	var allEntries []conversation.EntryWithLastMessage
-	if len(instagramIDs) > 0 {
-		igEntries, _, err := r.GetEntriesWithMessages("", instagramIDs, shared.EntryTypeInstagram, 1, len(instagramIDs), "")
+	for _, batch := range hydrationBatches(refs) {
+		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
 		if err == nil {
-			allEntries = append(allEntries, igEntries...)
-		}
-	}
-	if len(whatsappIDs) > 0 {
-		waEntries, _, err := r.GetEntriesWithMessages("", whatsappIDs, shared.EntryTypeWhatsApp, 1, len(whatsappIDs), "")
-		if err == nil {
-			allEntries = append(allEntries, waEntries...)
+			allEntries = append(allEntries, entries...)
 		}
 	}
 
@@ -1639,31 +1540,10 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 	}
 	var info entryInfo
 
-	switch entryType {
-	case "whatsapp":
-		r.db.Raw(`
-			SELECT wce.lead_id::text AS lead_id, COALESCE(wc.business_phone_id::text, '') AS business_phone_id,
-			       wc.id::text AS campaign_id, wc.name AS campaign_name,
-			       COALESCE(wc.agent_id::text, '') AS agent_id, COALESCE(wc.workflow_id::text, '') AS workflow_id,
-			       wc.enable_agent_responses AS agent_responses_enabled, wc.enable_workflow AS workflow_enabled
-			FROM whatsapp_campaign_entries wce
-			JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id
-			WHERE wce.id = ?::uuid AND wce.deleted_at IS NULL
-			LIMIT 1
-		`, entryID).Scan(&info)
-	case "instagram":
-		// The account is the container, so it fills the campaign slot; the
-		// @handle fills the lead-number slot.
-		r.db.Raw(`
-			SELECT igc.contact_id::text AS lead_id, COALESCE(igc.ig_account_id::text, '') AS business_phone_id,
-			       iga.id::text AS campaign_id, iga.username AS campaign_name,
-			       COALESCE(iga.agent_id::text, '') AS agent_id, COALESCE(iga.workflow_id::text, '') AS workflow_id,
-			       iga.enable_agent_responses AS agent_responses_enabled, iga.enable_workflow AS workflow_enabled
-			FROM instagram_conversations igc
-			JOIN instagram_accounts iga ON iga.id = igc.ig_account_id
-			WHERE igc.id = ?::uuid AND igc.deleted_at IS NULL
-			LIMIT 1
-		`, entryID).Scan(&info)
+	// Channels that carry no container (support) simply have no declaration, and
+	// the header stays empty exactly as it did before.
+	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
+		r.db.Raw(ch.EntryInfoSQL, entryID).Scan(&info)
 	}
 	leadID = info.LeadID
 	businessPhoneID = info.BusinessPhoneID
@@ -1746,6 +1626,44 @@ func (r *repository) CountByEntry(entryID string, entryType shared.EntryType) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+// CountInboundByEntry counts only the contact's own messages.
+//
+// The inbound message types are listed here rather than filtered in Go because
+// the caller wants a count, not the rows: loading a page to count it is what
+// produced the windowed-count bug this replaces.
+func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryType) (int64, error) {
+	var count int64
+	err := r.db.Raw(`
+		SELECT COUNT(*)
+		FROM conversation_messages
+		WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
+		  AND message_type IN (?)
+	`, entryID, string(entryType), inboundMessageTypes()).Scan(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// inboundMessageTypes mirrors MessageType.IsInbound for SQL. Derived from the
+// domain predicate so the two cannot drift.
+func inboundMessageTypes() []string {
+	all := []conversation.MessageType{
+		conversation.MessageTypeUserMessage, conversation.MessageTypeAudio,
+		conversation.MessageTypeMedia, conversation.MessageTypeStoryReply,
+		conversation.MessageTypeStoryMention, conversation.MessageTypePostShare,
+		conversation.MessageTypeAIResponse, conversation.MessageTypeOperator,
+		conversation.MessageTypeSystem, conversation.MessageTypeUnsupported,
+	}
+	out := make([]string, 0, len(all))
+	for _, t := range all {
+		if t.IsInbound() {
+			out = append(out, string(t))
+		}
+	}
+	return out
 }
 
 func (r *repository) SearchMessagesByEntry(input conversation.SearchMessagesByEntryInput) ([]*conversation.Message, int64, error) {

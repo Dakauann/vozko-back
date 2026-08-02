@@ -24,6 +24,7 @@ import (
 
 	agent_domain "vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
+	conversation_domain "vozko/domain/conversation"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
 	rag_domain "vozko/domain/rag"
@@ -50,6 +51,7 @@ import (
 	affiliate_usecase "vozko/usecases/affiliate"
 	agent_usecase "vozko/usecases/agent"
 	agentloop "vozko/usecases/agentloop"
+	"vozko/usecases/agentturn"
 	aichat_usecase "vozko/usecases/aichat"
 	analysis_usecase "vozko/usecases/analysis"
 	analytics_usecase "vozko/usecases/analytics"
@@ -76,7 +78,6 @@ import (
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
 	dialer_usecase "vozko/usecases/dialer"
-	export_usecase "vozko/usecases/export"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	insurance_usecase "vozko/usecases/insurance"
 	invoice_usecase "vozko/usecases/invoice"
@@ -145,6 +146,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	queryAgentKBUC := rag_usecase.NewQueryAgentKnowledgeBaseUseCase(c.repositories.ragAgentKB, queryKnowledgeBaseUC)
 	ragService := rag_usecase.NewRAGService(queryKnowledgeBaseUC, queryAgentKBUC)
 
+	// The single agent-turn recipe. Wired here rather than at construction time
+	// because the tool registry and RAG service only exist at this point, and
+	// the channel AI service is built earlier in initConversation.
+	//
+	// Without it, Instagram and Telegram agents could only send plain text: no
+	// tools, no knowledge base, no channel identity — while WhatsApp had all
+	// three. That is exactly the drift this package was written to prevent.
+	turnAssembler := agentturn.New(c.services.toolRegistry, ragService)
+	if c.services.channelAIReply != nil {
+		c.services.channelAIReply.SetAssembler(turnAssembler)
+	}
+
 	// Reschedule engine (reagendamento): reused by both the AI tool and the workflow
 	// node executor so the move logic lives in one place.
 	rescheduleEventUC := calendar_usecase.NewRescheduleEventUseCase(
@@ -153,10 +166,23 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		calendar_usecase.NewUpdateEventUseCase(c.repositories.calendar, c.services.googleCalendar),
 	)
 
+	// The messaging tools reach every channel through the live adapter registry.
+	// Without it they stay WhatsApp-only — and since the agent turn now offers
+	// them on Telegram and Instagram too, they would be offered and then fail.
+	optionsTool := tools_usecase.NewSendWhatsappButtonMessageToolUseCase(context.Background(), c.services.whatsappClientFactory)
+	mediaTool := tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media)
+	for _, h := range []tools.Handler{optionsTool, mediaTool} {
+		if setter, ok := h.(interface {
+			SetAdapters(conversation_domain.AdapterRegistry)
+		}); ok {
+			setter.SetAdapters(c.liveAdapterRegistry())
+		}
+	}
+
 	toolHandlers := []tools.Handler{
 		tools_usecase.NewSendEmailToolUseCase(nil),
-		tools_usecase.NewSendWhatsappButtonMessageToolUseCase(context.Background(), c.services.whatsappClientFactory),
-		tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media),
+		optionsTool,
+		mediaTool,
 		tools_usecase.NewValidateCEPToolUseCase(searchCEPUC),
 		tools_usecase.NewHTTPRequestToolUseCase(),
 		func() tools.Handler {
@@ -921,12 +947,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		shortLinkQR:           shortlink_usecase.NewGenerateQRUseCase(c.repositories.shortLink, shortlinkQR, c.cfg.ShortLinkBaseURL),
 		purgeShortLinkClicks:  shortlink_usecase.NewPurgeClicksUseCase(c.repositories.shortLinkClick, c.cfg.ShortLinkClickRetentionDays),
 
-		exportEntries: export_usecase.NewExportEntriesUseCase(
-			c.repositories.wcEntry,
-			c.repositories.lead,
-			c.repositories.analysis,
-			c.repositories.stage,
-		),
+		exportEntries: c.buildExportEntriesUseCase(),
 
 		publishWebhook:              webhook_usecase.NewPublishWebhookUseCase(c.services.webhookQueuePub),
 		consumeWhatsAppMsgWebhook:   conversation_usecase.NewConsumeWhatsAppMessageWebhookUseCaseWithPublisher(c.services.webhookQueueSub, c.services.webhookQueuePub, handleWhatsAppMessageUC, c.redisProvider.SharedState()),
@@ -1055,6 +1076,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		ConversationMediaRepo:   c.repositories.conversationMedia,
 		AIAttendance:            c.services.aiAttendanceService,
 		ConversationStatus:      c.services.conversationStatusUpdater,
+		// The LIVE registry, not a snapshot: channel adapters register as each
+		// channel initializes, and several do so after this point.
+		Adapters: c.liveAdapterRegistry(),
 	}
 	workflow_usecase.RegisterDefaultExecutors(wfRegistry, executorDeps)
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
@@ -1265,6 +1289,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
+	// WhatsApp uses the same recipe as every other channel. Its three agent
+	// turns (text, media, audio) previously carried three copies of it.
+	if setter, ok := c.useCases.handleWhatsAppMessage.(interface {
+		SetTurnAssembler(*agentturn.Assembler)
+	}); ok {
+		setter.SetTurnAssembler(turnAssembler)
+	}
+
 	if setter, ok := c.useCases.handleWhatsAppMessage.(interface {
 		SetLoopGuard(loopguard.Guard)
 	}); ok {
@@ -1334,6 +1366,17 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			log.Printf("[instagram] failed to start webhook consumers: %v", err)
 		} else {
 			log.Printf("[instagram] webhook consumers started")
+		}
+	}
+
+	// Telegram's runtime half, for the same reason and with the same
+	// non-fatal-on-failure rule: the channel is optional.
+	c.initTelegramRuntime(messageHistoryManager)
+	if c.telegram != nil && c.telegram.Enabled && c.telegram.Consume != nil {
+		if err := c.telegram.Consume.Start(); err != nil {
+			log.Printf("[telegram] failed to start webhook consumers: %v", err)
+		} else {
+			log.Printf("[telegram] webhook consumers started")
 		}
 	}
 

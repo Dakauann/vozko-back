@@ -59,6 +59,27 @@ func Descriptor() *channel.Descriptor {
 					MIMETypes: []string{"application/pdf"},
 				},
 			},
+
+			// Quick replies. Instagram has ONE mechanism for a single choice, so
+			// both prompt styles map to it and both caps are the same number.
+			//
+			// The generic template also carries buttons, but only 3 per element
+			// and only postback/web_url, so it is strictly worse than quick
+			// replies for this purpose and is not used here.
+			Interactive: channel.InteractiveLimits{
+				// "A maximum of 13 quick replies are supported."
+				MaxOptionsButtons: MaxQuickReplies,
+				MaxOptionsList:    MaxQuickReplies,
+				// "Each quick reply allows up to 20 characters before being
+				// truncated" — truncated by Instagram, silently, which is
+				// exactly the kind of thing the editor must warn about.
+				MaxLabelRunes: MaxQuickReplyTitleRunes,
+				// Instagram's own docs do not state a payload bound; this is the
+				// Messenger Platform limit the Instagram surface inherits.
+				MaxPayloadBytes: MaxQuickReplyPayloadBytes,
+				// Quick replies are label-only — there is no description slot.
+				SupportsOptionDescriptions: false,
+			},
 		},
 		InboxSQL: channel.InboxSQL{
 			EntryTable:         "instagram_conversations",

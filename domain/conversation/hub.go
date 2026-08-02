@@ -262,6 +262,14 @@ type HistoryProvider interface {
 	GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*Message, bool, bool, int64, error)
 	GetUnreadCount(entryID string, entryType shared.EntryType) (int64, error)
 	GetEntryInfo(entryID, entryType string) (leadName, leadNumber, leadPicture string, leadMetadata map[string]interface{}, entryVariables []string, automationEnabled bool, err error)
+	// ResolveSenderIdentity fills SenderName/SenderAvatar on a single message.
+	//
+	// Reading a page of history resolves the sender; a message that arrives
+	// while the conversation is already open did not, so the two paths
+	// disagreed and a reload "fixed" the label. It belongs on the provider
+	// because resolving a sender is a lookup across leads, contacts, agents and
+	// users — the provider already owns all four.
+	ResolveSenderIdentity(entryID, entryType string, message *Message)
 	GetWindowStatusForEntry(entryID, entryType string) (windowOpen bool, windowExpiresAt *time.Time)
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)
 	GetInboxEntry(entryID, entryType string) (*InboxEntry, error)

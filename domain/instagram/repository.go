@@ -91,6 +91,17 @@ type ConversationRepository interface {
 	RecordOutbound(ctx context.Context, id string, at time.Time) error
 	SetIGConversationID(ctx context.Context, id, igConversationID string) error
 	SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error
+	// CountByStatus powers the inbox status chips, per account or per workspace.
+	// Without it the channel's conversations are absent from the counts, which
+	// reads as "there is no work here" while the list below shows work.
+	CountByStatus(ctx context.Context, workspaceID, igAccountID string) (map[string]int64, error)
+	// StatusForEntry reads just the conversation status.
+	//
+	// It exists so the conversation-status service can be wired with a method
+	// reference instead of a closure that loads the whole conversation in the
+	// composition root. Reading one column is repository work; the container's
+	// job is to connect things, not to query.
+	StatusForEntry(ctx context.Context, id string) (string, error)
 }
 
 // MediaRepository stores the durable projection of a post. CDN URLs are never

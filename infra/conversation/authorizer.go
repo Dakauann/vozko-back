@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 	"vozko/domain/workspace"
 	workspace_department "vozko/domain/workspace/workspace_department"
 )
@@ -16,16 +17,19 @@ type whatsappEntryAccessRepository interface {
 	GetAccessibleEntryIDs(workspaceID string, isAdmin bool) ([]string, error)
 }
 
-// instagramEntryAccessRepository is the Instagram equivalent. Kept as a narrow
-// port here rather than importing the Instagram repository, so the authorizer
-// stays decoupled from any one channel's package.
-//
-// Instagram conversations carry workspace_id directly, so the check is a single
-// ownership comparison — there is no campaign indirection to walk.
-type instagramEntryAccessRepository interface {
+// entryAccessRepository is the port for channels whose conversations carry
+// workspace_id directly, so the check is a single ownership comparison with no
+// campaign indirection to walk. Kept narrow here rather than importing each
+// channel's repository, so the authorizer stays decoupled from all of them.
+type entryAccessRepository interface {
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 }
+
+// instagramEntryAccessRepository is the previous name of entryAccessRepository.
+//
+// Deprecated: use entryAccessRepository.
+type instagramEntryAccessRepository = entryAccessRepository
 
 type workspaceMembershipRepository interface {
 	GetMember(workspaceID, userID string) (*workspace.Member, error)
@@ -42,14 +46,18 @@ type assignmentLookupRepository interface {
 }
 
 type Authorizer struct {
-	whatsappEntryRepo  whatsappEntryAccessRepository
-	instagramEntryRepo instagramEntryAccessRepository
-	workspaceRepo      workspaceMembershipRepository
-	departmentRepo     departmentMembershipRepository
-	assignmentRepo     assignmentLookupRepository
-	workspaceResolver  conversation.CampaignWorkspaceResolver
-	shared             cache.SharedState
-	cacheTTL           time.Duration
+	whatsappEntryRepo whatsappEntryAccessRepository
+	// entryRepos holds one reader per channel whose conversations own their
+	// workspace id, keyed by entry type. Registering one never displaces
+	// another — the mistake a single Instagram-shaped field would have forced on
+	// the second such channel.
+	entryRepos        map[shared.EntryType]entryAccessRepository
+	workspaceRepo     workspaceMembershipRepository
+	departmentRepo    departmentMembershipRepository
+	assignmentRepo    assignmentLookupRepository
+	workspaceResolver conversation.CampaignWorkspaceResolver
+	shared            cache.SharedState
+	cacheTTL          time.Duration
 }
 
 func NewAuthorizer(
@@ -247,17 +255,16 @@ func (a *Authorizer) entryBelongsToWorkspace(workspaceID, entryID, entryType str
 			return false
 		}
 		return ok
-	case "instagram":
-		if a.instagramEntryRepo == nil {
+	default:
+		repo, ok := a.entryRepoFor(entryType)
+		if !ok {
 			return false
 		}
-		owner, err := a.instagramEntryRepo.WorkspaceIDForEntry(context.Background(), entryID)
+		owner, err := repo.WorkspaceIDForEntry(context.Background(), entryID)
 		if err != nil {
 			return false
 		}
 		return owner != "" && owner == workspaceID
-	default:
-		return false
 	}
 }
 
@@ -273,24 +280,48 @@ func (a *Authorizer) GetAccessibleEntryIDs(workspaceID, entryType string, isAdmi
 			return nil
 		}
 		return ids
-	case "instagram":
-		if a.instagramEntryRepo == nil {
-			return nil
-		}
-		ids, err := a.instagramEntryRepo.ListEntryIDsByWorkspace(context.Background(), workspaceID)
+	}
+
+	if repo, ok := a.entryRepoFor(entryType); ok {
+		ids, err := repo.ListEntryIDsByWorkspace(context.Background(), workspaceID)
 		if err != nil {
 			return nil
 		}
 		return ids
 	}
-
 	return nil
 }
 
-// SetInstagramEntryRepo registers the Instagram entry-access reader. Optional, so
-// the authorizer still constructs when the Instagram channel is disabled.
-func (a *Authorizer) SetInstagramEntryRepo(repo instagramEntryAccessRepository) {
-	a.instagramEntryRepo = repo
+// SetEntryAccessRepo registers a channel's entry-access reader. Optional, so the
+// authorizer still constructs when a channel is disabled.
+func (a *Authorizer) SetEntryAccessRepo(entryType shared.EntryType, repo entryAccessRepository) {
+	if a == nil || repo == nil || entryType == "" {
+		return
+	}
+	if a.entryRepos == nil {
+		a.entryRepos = make(map[shared.EntryType]entryAccessRepository, 2)
+	}
+	a.entryRepos[entryType] = repo
+}
+
+// SetInstagramEntryRepo registers the Instagram reader.
+//
+// Deprecated: use SetEntryAccessRepo(shared.EntryTypeInstagram, repo).
+func (a *Authorizer) SetInstagramEntryRepo(repo entryAccessRepository) {
+	a.SetEntryAccessRepo(shared.EntryTypeInstagram, repo)
+}
+
+// SetTelegramEntryRepo registers the Telegram reader.
+func (a *Authorizer) SetTelegramEntryRepo(repo entryAccessRepository) {
+	a.SetEntryAccessRepo(shared.EntryTypeTelegram, repo)
+}
+
+func (a *Authorizer) entryRepoFor(entryType string) (entryAccessRepository, bool) {
+	if a == nil || a.entryRepos == nil {
+		return nil, false
+	}
+	repo, ok := a.entryRepos[shared.EntryType(entryType)]
+	return repo, ok && repo != nil
 }
 
 func (a *Authorizer) HasWorkspacePermission(userID, workspaceID, resource, action string, isSystemAdmin bool) bool {

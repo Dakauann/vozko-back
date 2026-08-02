@@ -101,10 +101,10 @@ func (r *Repository) EnsureExists(ctx context.Context, workspaceID string) error
 		ID:                         uuid.New().String(),
 		WorkspaceID:                workspaceID,
 		CampaignSpamProtectionDays: wsc.DefaultCampaignSpamProtectionDays,
-		AutoCloseEnabled:          wsc.DefaultAutoCloseEnabled,
-		AutoCloseIdleAfterHours:   wsc.DefaultAutoCloseIdleAfterHours,
-		AutoCloseMaxAgeEnabled:    wsc.DefaultAutoCloseMaxAgeEnabled,
-		AutoCloseMaxAgeAfterHours: wsc.DefaultAutoCloseMaxAgeAfterHours,
+		AutoCloseEnabled:           wsc.DefaultAutoCloseEnabled,
+		AutoCloseIdleAfterHours:    wsc.DefaultAutoCloseIdleAfterHours,
+		AutoCloseMaxAgeEnabled:     wsc.DefaultAutoCloseMaxAgeEnabled,
+		AutoCloseMaxAgeAfterHours:  wsc.DefaultAutoCloseMaxAgeAfterHours,
 	}
 	return r.db.WithContext(ctx).Omit("UpdatedBy").Create(row).Error
 }

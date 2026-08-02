@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"vozko/domain/channel"
 )
 
 // WhatsApp interactive-message limits, per Meta's WhatsApp Cloud API docs.
@@ -31,6 +33,28 @@ const (
 	WhatsAppListRowsMax            = 10
 	WhatsAppListSectionsMax        = 10
 )
+
+// WhatsAppInteractiveLimits states WhatsApp's single-choice bounds in the same
+// shape every other channel reports through its Descriptor.
+//
+// WhatsApp has no Descriptor yet — it is the channel still being migrated onto
+// the adapter abstraction — so this stands in for one. It is built from the
+// constants directly above so the numbers the workflow editor shows and the
+// numbers Validate enforces cannot drift apart.
+func WhatsAppInteractiveLimits() channel.InteractiveLimits {
+	return channel.InteractiveLimits{
+		MaxOptionsButtons: WhatsAppButtonMaxCount,
+		MaxOptionsList:    WhatsAppListRowsMax,
+		// The button title cap is the tighter of the two styles, so quoting it
+		// keeps an author inside both.
+		MaxLabelRunes: WhatsAppButtonTitleMaxLen,
+		// Likewise the list row id, the tighter of 256 and 200.
+		MaxPayloadBytes: WhatsAppListRowIDMaxLen,
+		// List rows carry a description line; button replies do not. WhatsApp is
+		// the only channel with the slot at all.
+		SupportsOptionDescriptions: true,
+	}
+}
 
 // overLimit reports whether s exceeds max WhatsApp-counted characters. Meta
 // counts characters (code points), not bytes, so accented Portuguese and emoji

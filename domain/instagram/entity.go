@@ -49,6 +49,18 @@ const MaxTextBytes = 1000
 // PrivateReplyWindow — a private reply must be sent within 7 days of the comment.
 const PrivateReplyWindow = 7 * 24 * time.Hour
 
+// Quick-reply limits. "A maximum of 13 quick replies are supported" and "Each
+// quick reply allows up to 20 characters before being truncated" — Instagram
+// truncates the label itself rather than rejecting the send, so an over-long
+// label is a silent product defect, not an error we would ever see.
+const (
+	MaxQuickReplies         = 13
+	MaxQuickReplyTitleRunes = 20
+	// Instagram's own reference states no payload bound; 1000 is the Messenger
+	// Platform limit this surface inherits.
+	MaxQuickReplyPayloadBytes = 1000
+)
+
 type Status string
 
 const (

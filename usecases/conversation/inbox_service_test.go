@@ -37,6 +37,9 @@ func (p *inboxServiceTestHistoryProvider) GetEntryInfo(string, string) (string, 
 	return "", "", "", nil, nil, true, nil
 }
 
+func (p *inboxServiceTestHistoryProvider) ResolveSenderIdentity(string, string, *conversation.Message) {
+}
+
 func (p *inboxServiceTestHistoryProvider) GetWindowStatusForEntry(string, string) (bool, *time.Time) {
 	return false, nil
 }

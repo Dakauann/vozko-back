@@ -382,6 +382,14 @@ func (h *ConversationHub) ensureInitialTag(entryID, entryType string) {
 func (h *ConversationHub) BroadcastNewMessage(entryID, entryType string, message *conversation.Message) {
 	h.ensureInitialTag(entryID, entryType)
 
+	// Resolved here rather than in each producer. Nine call sites reach this
+	// method and every channel's inbound path funnels through it, so this is the
+	// one place a new channel cannot forget. The write happens before the
+	// channel send below, which is what publishes it safely to the pump.
+	if h.historyProvider != nil && message != nil {
+		h.historyProvider.ResolveSenderIdentity(entryID, entryType, message)
+	}
+
 	if h.statusUpdater != nil && message != nil {
 		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType); err != nil {
 			log.Printf("[ConversationHub] Error transitioning conversation status for %s (%s): %v", entryID, entryType, err)
@@ -2820,14 +2828,11 @@ func (h *ConversationHub) handleSearchMessages(conn *WSConnection, payload json.
 		}
 
 		if h.historyProvider != nil {
-			leadName, leadNumber, leadPicture, _, _, _, _ := h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
-			_ = leadNumber
-			_ = leadPicture
+			// The same resolution history uses. The hand-rolled version this
+			// replaced named only inbound text messages, so an operator or agent
+			// message in a search result rendered as a bare UUID.
 			for _, msg := range messages {
-				if msg.MessageType == conversation.MessageTypeUserMessage {
-					msg.SenderName = leadName
-					msg.SenderAvatar = leadPicture
-				}
+				h.historyProvider.ResolveSenderIdentity(p.EntryID, p.EntryType, msg)
 			}
 		}
 

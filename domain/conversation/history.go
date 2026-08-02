@@ -42,6 +42,16 @@ type MessageHistoryRecord struct {
 	MediaURL  string
 
 	Metadata json.RawMessage
+
+	// SenderName and SenderAvatar are the display identity for the live
+	// broadcast, and are never persisted — a message row that froze the name it
+	// was sent under would show a stale name forever after a rename.
+	//
+	// Inbound handlers set them because they have just loaded the contact or
+	// lead anyway, which makes the broadcast free. Leaving them empty is valid:
+	// the hub resolves the identity itself, at the cost of a lookup.
+	SenderName   string
+	SenderAvatar string
 }
 
 func (r MessageHistoryRecord) GetEntryID() string {

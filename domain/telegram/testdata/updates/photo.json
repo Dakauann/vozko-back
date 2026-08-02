@@ -1,0 +1,15 @@
+{
+  "update_id": 870123459,
+  "message": {
+    "message_id": 4822,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312003,
+    "caption": "comprovante",
+    "photo": [
+      {"file_id": "AgACsmall", "file_unique_id": "AQADs", "width": 90, "height": 67, "file_size": 1420},
+      {"file_id": "AgACmedium", "file_unique_id": "AQADm", "width": 320, "height": 240, "file_size": 18240},
+      {"file_id": "AgAClarge", "file_unique_id": "AQADl", "width": 1280, "height": 960, "file_size": 184320}
+    ]
+  }
+}

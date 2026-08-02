@@ -3,8 +3,11 @@ package conversation
 import (
 	"context"
 	"errors"
+	"sort"
+	"sync"
 	"time"
 
+	"vozko/domain/channel"
 	"vozko/domain/shared"
 )
 
@@ -111,10 +114,81 @@ type PresenceAdapter interface {
 	MarkSeen(ctx context.Context, ec *EntryContext, upToProviderMessageID string) error
 }
 
+// EditingAdapter is implemented by channels where an already-sent message can be
+// corrected.
+//
+// Only Telegram can do this today. It is an optional capability rather than a
+// method on every adapter precisely so the UI can hide the action for channels
+// that cannot honour it: offering "edit" on WhatsApp and then failing is worse
+// than not offering it.
+type EditingAdapter interface {
+	EditText(ctx context.Context, ec *EntryContext, providerMessageID, body string) error
+}
+
+// RetractingAdapter is implemented by channels where a sent message can be
+// unsent.
+//
+// sentAt lets the adapter enforce the provider's own time bound (Telegram: 48
+// hours) and explain the refusal, instead of surfacing an opaque provider error
+// to an operator who is trying to undo a mistake.
+type RetractingAdapter interface {
+	Retract(ctx context.Context, ec *EntryContext, providerMessageID string, sentAt time.Time) error
+}
+
+// InteractiveOption is one choice offered to the contact.
+//
+// ID is the contract and Title is the display string. Everything downstream —
+// the workflow node's branching, the stored message text — keys off ID, because
+// a title is a label an author edits freely and a payload is an identifier a
+// running conversation depends on.
+type InteractiveOption struct {
+	ID    string
+	Title string
+}
+
+// SendInteractiveRequest is a channel-agnostic "pick one" prompt.
+//
+// Header and Footer are best-effort: WhatsApp renders both, Instagram and
+// Telegram have no such slots and fold them into the body rather than dropping
+// the author's words.
+type SendInteractiveRequest struct {
+	Body    string
+	Header  string
+	Footer  string
+	Options []InteractiveOption
+
+	// Style is buttons | list. Channels with one native mechanism ignore it;
+	// it exists because WhatsApp picks a different message type from it.
+	Style string
+}
+
+// InteractiveAdapter is implemented by channels that can ask the contact to
+// pick one option and report which was picked.
+//
+// Optional, like ReactingAdapter and EditingAdapter, and for the same reason:
+// the workflow editor and the CRM must be able to ask "can this channel do it?"
+// before offering the affordance. A channel that cannot present choices must
+// not silently send a wall of text listing them.
+type InteractiveAdapter interface {
+	// SendInteractive delivers the prompt. The adapter is responsible for
+	// applying its own channel's limits — the caller passes the author's full
+	// option list and the adapter renders what it can.
+	SendInteractive(ctx context.Context, ec *EntryContext, req SendInteractiveRequest) (*SendOutcome, error)
+
+	// InteractiveLimits reports what this channel will actually render, so a
+	// caller can warn before sending rather than explain afterwards.
+	InteractiveLimits() channel.InteractiveLimits
+}
+
 // AdapterRegistry resolves adapters by entry type.
 type AdapterRegistry interface {
 	For(t shared.EntryType) (ChannelAdapter, error)
 	Has(t shared.EntryType) bool
+	// EntryTypes lists every registered channel, sorted, so callers that must
+	// describe ALL channels — the workflow editor asking which ones render an
+	// interactive prompt — can enumerate instead of hardcoding a list that goes
+	// stale the next time a channel is added.
+	EntryTypes() []shared.EntryType
 }
 
 type adapterRegistry struct {
@@ -143,4 +217,59 @@ func (r *adapterRegistry) For(t shared.EntryType) (ChannelAdapter, error) {
 func (r *adapterRegistry) Has(t shared.EntryType) bool {
 	_, ok := r.adapters[t]
 	return ok
+}
+
+func (r *adapterRegistry) EntryTypes() []shared.EntryType {
+	out := make([]shared.EntryType, 0, len(r.adapters))
+	for t := range r.adapters {
+		out = append(out, t)
+	}
+	// Sorted so the editor's channel list has a stable order between requests
+	// rather than Go's randomized map iteration.
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// LiveAdapterRegistry is an AdapterRegistry whose contents can be replaced after
+// it has been handed out.
+//
+// Channels register their adapters one at a time as the container initializes,
+// so anything wired before the last channel would otherwise hold a snapshot
+// missing it. That failure is silent and badly misleading: a missing adapter
+// reads downstream as "this channel cannot send", so a workflow simply skips
+// every send node on that channel and reports the run as completed.
+//
+// Handing consumers this instead means registration order stops mattering.
+type LiveAdapterRegistry struct {
+	mu    sync.RWMutex
+	inner AdapterRegistry
+}
+
+func NewLiveAdapterRegistry() *LiveAdapterRegistry {
+	return &LiveAdapterRegistry{inner: NewAdapterRegistry()}
+}
+
+// Replace swaps in a registry built from the adapters known so far.
+func (r *LiveAdapterRegistry) Replace(adapters ...ChannelAdapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inner = NewAdapterRegistry(adapters...)
+}
+
+func (r *LiveAdapterRegistry) For(t shared.EntryType) (ChannelAdapter, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.inner.For(t)
+}
+
+func (r *LiveAdapterRegistry) Has(t shared.EntryType) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.inner.Has(t)
+}
+
+func (r *LiveAdapterRegistry) EntryTypes() []shared.EntryType {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.inner.EntryTypes()
 }

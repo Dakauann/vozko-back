@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	conversation "vozko/domain/conversation"
+	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/domain/tools"
 )
@@ -60,15 +61,27 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 	}
 }
 
+// DefinitionWithContext fills the target-stage enum from the pipeline this
+// conversation belongs to.
+//
+// The campaign is an OPTIONAL refinement, not a requirement: it selects a
+// campaign's own funnel when one exists, and ListByCampaign already falls back
+// to the workspace's default conversation pipeline when it does not. Requiring
+// it here meant every channel without campaigns — Telegram, Instagram — got an
+// EMPTY enum while the prompt instructed the model to "use SOMENTE etapas
+// listadas no enum". The agent could not classify a lead at all, and nothing
+// reported an error: Execute already had the same fallback, so the tool would
+// have worked if only it had been offered a stage to pick.
 func (t *manageEntryStageTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
 	base := t.Definition()
-	if ctx.WorkspaceID == "" || ctx.CampaignID == "" || ctx.CampaignType == "" {
+	if ctx.WorkspaceID == "" {
 		return base
 	}
 
 	tags, err := t.stageRepo.ListByCampaign(ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType)
 	if err != nil || len(tags) == 0 {
-		log.Printf("[ManageEntryTag] DefinitionWithContext: could not load tags for campaign %s/%s: %v", ctx.CampaignID, ctx.CampaignType, err)
+		log.Printf("[ManageEntryTag] DefinitionWithContext: no stages for workspace=%s campaign=%q/%q: %v",
+			ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType, err)
 		return base
 	}
 
@@ -122,7 +135,10 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 		campaignType = entryType
 	}
 
-	if entryType != "voice" && entryType != "whatsapp" && entryType != "support" {
+	// The board already renders cards for every taggable channel, so the guard
+	// must use the same predicate the stage and label domains validate against —
+	// otherwise the agent cannot move a card the UI happily shows.
+	if !shared.EntryType(entryType).SupportsCRMTagging() {
 		return tools.ExecutionResult{
 			Result:  fmt.Sprintf("Tipo de entrada inválido: %s", entryType),
 			IsError: true,

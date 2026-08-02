@@ -60,6 +60,19 @@ func (m *mockStatusUpdater) GetStatusCounts(workspaceID, campaignID, entryType s
 
 type statusTestHistoryProvider struct {
 	entries map[string]*conversation.InboxEntry
+
+	// resolveCalls counts fallback resolutions so a test can assert that a
+	// producer-supplied name skips the lookup entirely.
+	resolveCalls int
+	resolvedName string
+}
+
+func (p *statusTestHistoryProvider) ResolveSenderIdentity(_, _ string, m *conversation.Message) {
+	if m == nil || m.SenderName != "" {
+		return
+	}
+	p.resolveCalls++
+	m.SenderName = p.resolvedName
 }
 
 func (p *statusTestHistoryProvider) GetEntryInfo(string, string) (string, string, string, map[string]interface{}, []string, bool, error) {
@@ -470,4 +483,3 @@ func TestHandleSwitchView_ClearsConversationStatusWhenEmpty(t *testing.T) {
 
 	require.Equal(t, "", conn.ConversationStatus, "switching view with empty status should clear the filter")
 }
-

@@ -224,7 +224,7 @@ func isInLoopBody(graph *workflow.Graph, loopNodeID, prevNodeID string) bool {
 		}
 
 		node := graph.FindNode(curr)
-		if node != nil && (node.Type.IsWait() || node.Type.IsTrigger()) {
+		if node != nil && (node.Type.ParksForReply() || node.Type.IsTrigger()) {
 			continue
 		}
 		for _, e := range graph.OutgoingEdges(curr) {

@@ -1,0 +1,16 @@
+{
+  "update_id": 870123462,
+  "message": {
+    "message_id": 4825,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312006,
+    "sticker": {
+      "file_id": "CAACSticker",
+      "file_unique_id": "AgADS",
+      "emoji": "👍",
+      "set_name": "Cats",
+      "file_size": 8192
+    }
+  }
+}

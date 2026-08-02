@@ -47,6 +47,7 @@ import (
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
+	telegramhttp "vozko/delivery/http/telegram"
 	telephonyhttp "vozko/delivery/http/telephony"
 	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
@@ -158,6 +159,8 @@ type router struct {
 	// registrations are guarded.
 	instagramHandler           *instagramhttp.Handler
 	instagramWebhookHandler    *instagramhttp.WebhookHandler
+	telegramHandler            *telegramhttp.Handler
+	telegramWebhookHandler     *telegramhttp.WebhookHandler
 	workspaceHandler           *workspacehttp.WorkspaceHandler
 	workspacePricingHandler    *workspacepricinghttp.WorkspacePricingHandler
 	workspaceConfigHandler     *workspaceconfighttp.WorkspaceConfigHandler
@@ -271,10 +274,14 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	shared cache.SharedState,
 	rateLimitMetrics metrics.RateLimitMetricsRecorder,
 	instagramHandler *instagramhttp.Handler,
-	instagramWebhookHandler *instagramhttp.WebhookHandler) Router {
+	instagramWebhookHandler *instagramhttp.WebhookHandler,
+	telegramHandler *telegramhttp.Handler,
+	telegramWebhookHandler *telegramhttp.WebhookHandler) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
+		telegramHandler:                telegramHandler,
+		telegramWebhookHandler:         telegramWebhookHandler,
 		mux:                            mux.NewRouter(),
 		productHandler:                 productHandler,
 		propertyHandler:                propertyHandler,
@@ -433,6 +440,7 @@ func (r *router) setupRoutes() {
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
 	r.setupInstagramRoutes(protected)
+	r.setupTelegramRoutes(protected)
 	r.setupWABARoutes(protected)
 	r.setupSIPTrunkRoutes(protected)
 	r.setupBranchRoutes(protected)
@@ -585,6 +593,15 @@ func (r *router) setupInstagramRoutes(protected *mux.Router) {
 	instagramhttp.RegisterProtectedRoutes(protected, r.instagramHandler, r.ac)
 }
 
+// setupTelegramRoutes registers the Telegram channel. A nil handler means the
+// channel is disabled, in which case no routes exist at all.
+func (r *router) setupTelegramRoutes(protected *mux.Router) {
+	if r.telegramHandler == nil {
+		return
+	}
+	telegramhttp.RegisterProtectedRoutes(protected, r.telegramHandler, r.ac)
+}
+
 func (r *router) setupMetaEmbeddedSignupRoutes(protected *mux.Router) {
 	metaembeddedsignuphttp.RegisterProtectedRoutes(protected, r.metaEmbeddedSignupHandler, r.ac)
 }
@@ -616,6 +633,11 @@ func (r *router) setupWebhookRoutes() {
 	// authenticated by other means: a signed single-use state, and the
 	// X-Hub-Signature-256 HMAC.
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
+	// Telegram calls its webhook directly. There is no body signature to verify —
+	// the endpoint is authenticated by the per-account secret token Telegram
+	// echoes in X-Telegram-Bot-Api-Secret-Token, and the path carries our own
+	// account uuid because an Update object identifies no bot.
+	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	// 360dialog inbound messaging webhook (messages, statuses, template + coexistence
 	// events). Reuses the Meta envelope pipeline; authenticated by shared secret.
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)

@@ -33,7 +33,7 @@ func TestHydrateInstagramSenders_WhatsAppOnlyWorkspaceUntouched(t *testing.T) {
 	}
 	entries := append([]conversation.InboxEntry(nil), before...)
 
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if fake.calls != 0 {
 		t.Errorf("contact lookup ran %d times for a WhatsApp-only page; want 0 (no wasted query)", fake.calls)
@@ -64,7 +64,7 @@ func TestHydrateInstagramSenders_EntryTypeIsTheDiscriminator(t *testing.T) {
 	entries := []conversation.InboxEntry{
 		{EntryID: "wa-1", EntryType: "whatsapp", LeadID: "contact-1", LeadName: "Real Lead", LeadNumber: "+5511999999999"},
 	}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if entries[0].LeadName != "Real Lead" || entries[0].LeadNumber != "+5511999999999" {
 		t.Errorf("a WhatsApp row was hydrated from Instagram data: %+v", entries[0])
@@ -82,7 +82,7 @@ func TestHydrateInstagramSenders_MixedChannelPage(t *testing.T) {
 		{EntryID: "sup-1", EntryType: "support", LeadID: "lead-3", LeadName: "Carla"},
 		{EntryID: "ig-2", EntryType: "instagram", LeadID: "contact-2"},
 	}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if entries[0].LeadName != "Ana" || entries[2].LeadName != "Carla" {
 		t.Error("non-Instagram rows must be preserved in a mixed page")
@@ -96,17 +96,17 @@ func TestHydrateInstagramSenders_MixedChannelPage(t *testing.T) {
 
 func TestHydrateInstagramSenders_EdgeCaseInputs(t *testing.T) {
 	// Empty and nil pages must be safe.
-	(&HistoryProviderService{}).hydrateInstagramSenders(nil)
+	(&HistoryProviderService{}).hydrateContactSenders(nil)
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
-	svc.hydrateInstagramSenders([]conversation.InboxEntry{})
+	svc.hydrateContactSenders([]conversation.InboxEntry{})
 
 	// A row with no contact id cannot be resolved and must be skipped, not queried.
 	fake := igContactsFixture()
 	svc2 := &HistoryProviderService{}
 	svc2.SetInstagramContacts(fake)
 	entries := []conversation.InboxEntry{{EntryID: "ig-1", EntryType: "instagram", LeadID: ""}}
-	svc2.hydrateInstagramSenders(entries)
+	svc2.hydrateContactSenders(entries)
 	if fake.calls != 0 {
 		t.Errorf("lookup ran for a row with no contact id (%d calls)", fake.calls)
 	}
@@ -114,7 +114,7 @@ func TestHydrateInstagramSenders_EdgeCaseInputs(t *testing.T) {
 	// A contact id the repository does not know about leaves the row as-is
 	// rather than blanking or panicking.
 	entries = []conversation.InboxEntry{{EntryID: "ig-1", EntryType: "instagram", LeadID: "ghost", LeadName: "prior"}}
-	svc2.hydrateInstagramSenders(entries)
+	svc2.hydrateContactSenders(entries)
 	if entries[0].LeadName != "prior" {
 		t.Errorf("unknown contact should leave the row untouched, got %q", entries[0].LeadName)
 	}
@@ -133,7 +133,7 @@ func TestHydrateInstagramSenders_PreservesExistingSenderLabel(t *testing.T) {
 		LastMessageSender:       "operator-jose",
 		LastMessageSenderAvatar: "https://cdn/jose.jpg",
 	}}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if entries[0].LastMessageSender != "operator-jose" {
 		t.Errorf("operator sender label overwritten: %q", entries[0].LastMessageSender)
@@ -164,7 +164,7 @@ func TestInstagramDisplayNames(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotName, gotHandle := instagramDisplayNames(tc.in)
+			gotName, gotHandle := contactDisplayNames(shared.EntryTypeInstagram, tc.in)
 			if gotName != tc.wantName {
 				t.Errorf("name = %q, want %q", gotName, tc.wantName)
 			}
@@ -179,7 +179,7 @@ func TestInstagramDisplayNames(t *testing.T) {
 // owns presentation.
 func TestInstagramDisplayNames_LongValuesPassThrough(t *testing.T) {
 	long := strings.Repeat("a", 300)
-	name, handle := instagramDisplayNames(InstagramContactDisplay{Handle: long})
+	name, handle := contactDisplayNames(shared.EntryTypeInstagram, InstagramContactDisplay{Handle: long})
 	if handle != "@"+long || name != "@"+long {
 		t.Error("long handle was altered")
 	}
@@ -297,7 +297,7 @@ func TestHydrateInstagramSenders_ConcurrentPages(t *testing.T) {
 				{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1"},
 				{EntryID: "wa-1", EntryType: "whatsapp", LeadID: "lead-1", LeadName: "Ana"},
 			}
-			svc.hydrateInstagramSenders(entries)
+			svc.hydrateContactSenders(entries)
 			if entries[0].LeadName != "Maria Silva" || entries[1].LeadName != "Ana" {
 				t.Errorf("bad hydration under concurrency: %+v", entries)
 			}
@@ -350,7 +350,7 @@ func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
 		// An operator's name is authoritative and must survive.
 		{EntryID: "ig-3", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: "jose", LastMessageSenderAvatar: "jose.jpg"},
 	}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if entries[0].LastMessageSender != "Maria Silva" {
 		t.Errorf("raw IGSID leaked as sender name: %q", entries[0].LastMessageSender)
@@ -376,10 +376,10 @@ func TestHydrateInstagramSenders_Idempotent(t *testing.T) {
 	svc.SetInstagramContacts(igContactsFixture())
 
 	entries := []conversation.InboxEntry{{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1"}}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 	first := entries[0]
 	for i := 0; i < 5; i++ {
-		svc.hydrateInstagramSenders(entries)
+		svc.hydrateContactSenders(entries)
 	}
 	if entries[0].LeadName != first.LeadName ||
 		entries[0].LeadNumber != first.LeadNumber ||

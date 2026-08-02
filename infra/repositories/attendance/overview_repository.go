@@ -237,8 +237,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		to = f.DateTo
 	}
 
-	includeWA := f.Channel == "" || f.Channel == "whatsapp"
-
 	parts := []string{}
 	var args []interface{}
 
@@ -276,26 +274,47 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		return "(" + strings.Join(ors, " OR ") + ")", a
 	}
 
-	appendWACreated := func(whereExtra string, whereArgs []interface{}) {
+	// filterCampaignDeptMember narrows a channel branch by container, department
+	// and assignee.
+	//
+	// "Campaign" means the channel's container: a WhatsApp campaign, or the
+	// account row for channels with none. The CampaignType guard keeps a
+	// voice-scoped filter from silently matching a messaging channel's ids.
+	filterCampaignDeptMember := func(src channelSource) (string, []interface{}) {
+		extra := ""
+		var a []interface{}
+		if f.CampaignID != "" {
+			if f.CampaignType == "" || f.CampaignType == string(src.EntryType) {
+				extra += " AND " + src.ContainerIDColumn + " = ?"
+				a = append(a, f.CampaignID)
+			} else {
+				// The filter names a different channel's container, so this branch
+				// must match nothing rather than everything.
+				extra += " AND FALSE"
+			}
+		}
+		if f.DepartmentID != "" {
+			extra += " AND " + src.DepartmentColumn + " = ?"
+			a = append(a, f.DepartmentID)
+		}
+		if f.MemberID != "" {
+			extra += " AND ia.assigned_user_id = ?"
+			a = append(a, f.MemberID)
+		}
+		return extra, a
+	}
+
+	// appendCreated selects conversations CREATED in the window: the "new
+	// contacts" half.
+	appendCreated := func(src channelSource, whereExtra string, whereArgs []interface{}) {
 		sql := `
-			SELECT wce.id AS entry_id, 'whatsapp'::text AS entry_type,
-				CASE
-					WHEN wce.conversation_status = 'finished' THEN 'finished'
-					WHEN wce.conversation_status = 'ongoing' THEN 'ongoing'
-					ELSE 'pending'
-				END AS status_bucket,
-				TRUE AS is_new_contact,
-				EXTRACT(HOUR FROM (wce.created_at))::int AS hour_bucket,
-				COALESCE(wc.department_id::text, '') AS department_id,
-				COALESCE(ia.assigned_user_id::text, '') AS assigned_user_id,
-				wce.created_at,
-				COALESCE(wce.close_source, '') AS close_source
-			FROM whatsapp_campaigns wc
-			JOIN whatsapp_campaign_entries wce
-				ON wce.campaign_id = wc.id AND wce.deleted_at IS NULL
+			SELECT ` + src.projection("TRUE") + `
+			FROM ` + src.ContainerTable + `
+			JOIN ` + src.EntryTable + `
+				ON ` + src.ContainerJoin + ` AND ` + src.EntryAlias + `.deleted_at IS NULL
 			LEFT JOIN inbox_assignments ia
-				ON ia.entry_id = wce.id AND ia.entry_type = 'whatsapp'
-			WHERE wc.workspace_id = ? AND wc.deleted_at IS NULL
+				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
+			WHERE ` + src.WorkspaceColumn + ` = ? AND ` + src.ContainerAlias + `.deleted_at IS NULL
 			` + whereExtra
 		a := []interface{}{workspaceID}
 		a = append(a, whereArgs...)
@@ -303,34 +322,26 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		args = append(args, a...)
 	}
 
-	appendWAActivity := func(fcd string, fca []interface{}) {
+	// appendActivity selects conversations created BEFORE the window that were
+	// messaged inside it — work an agent did on an older conversation, which
+	// would otherwise vanish from the period's numbers.
+	appendActivity := func(src channelSource, fcd string, fca []interface{}) {
 		if from == nil && to == nil {
 			return
 		}
-		cout, couta := createdOutsideRange("wce")
+		cout, couta := createdOutsideRange(src.EntryAlias)
 		sql := `
-			SELECT wce.id AS entry_id, 'whatsapp'::text AS entry_type,
-				CASE
-					WHEN wce.conversation_status = 'finished' THEN 'finished'
-					WHEN wce.conversation_status = 'ongoing' THEN 'ongoing'
-					ELSE 'pending'
-				END AS status_bucket,
-				FALSE AS is_new_contact,
-				EXTRACT(HOUR FROM (wce.created_at))::int AS hour_bucket,
-				COALESCE(wc.department_id::text, '') AS department_id,
-				COALESCE(ia.assigned_user_id::text, '') AS assigned_user_id,
-				wce.created_at,
-				COALESCE(wce.close_source, '') AS close_source
+			SELECT ` + src.projection("FALSE") + `
 			FROM conversation_messages cm
-			JOIN whatsapp_campaign_entries wce
-				ON wce.id = cm.entry_id AND wce.deleted_at IS NULL
-			JOIN whatsapp_campaigns wc
-				ON wc.id = wce.campaign_id AND wc.deleted_at IS NULL
+			JOIN ` + src.EntryTable + `
+				ON ` + src.EntryAlias + `.id = cm.entry_id AND ` + src.EntryAlias + `.deleted_at IS NULL
+			JOIN ` + src.ContainerTable + `
+				ON ` + src.ContainerJoin + ` AND ` + src.ContainerAlias + `.deleted_at IS NULL
 			LEFT JOIN inbox_assignments ia
-				ON ia.entry_id = wce.id AND ia.entry_type = 'whatsapp'
-			WHERE cm.entry_type = 'whatsapp'
+				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
+			WHERE cm.entry_type = '` + string(src.EntryType) + `'
 			  AND cm.deleted_at IS NULL
-			  AND wc.workspace_id = ?
+			  AND ` + src.WorkspaceColumn + ` = ?
 		`
 		a := []interface{}{workspaceID}
 		if from != nil {
@@ -345,45 +356,22 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		a = append(a, couta...)
 		a = append(a, fca...)
 		sql += `
-			GROUP BY wce.id, wce.conversation_status, wce.created_at, wce.close_source,
-				wc.department_id, ia.assigned_user_id
+			GROUP BY ` + src.groupByColumns() + `
 		`
 		parts = append(parts, sql)
 		args = append(args, a...)
 	}
 
-	filterCampaignDeptMember := func(campaignAlias, entryAlias string, etype string) (string, []interface{}) {
-		extra := ""
-		var a []interface{}
-		if f.CampaignID != "" {
-			if (etype == "whatsapp" && f.CampaignType != "voice") ||
-				(etype == "voice" && f.CampaignType != "whatsapp") ||
-				f.CampaignType == "" {
-				extra += " AND " + entryAlias + ".campaign_id = ?"
-				a = append(a, f.CampaignID)
-			}
-		}
-		if f.DepartmentID != "" {
-			extra += " AND " + campaignAlias + ".department_id = ?"
-			a = append(a, f.DepartmentID)
-		}
-		if f.MemberID != "" {
-			extra += " AND ia.assigned_user_id = ?"
-			a = append(a, f.MemberID)
-		}
-		return extra, a
-	}
-
-	if includeWA {
-		fcd, fca := filterCampaignDeptMember("wc", "wce", "whatsapp")
+	for _, src := range selectedChannelSources(f.Channel) {
+		fcd, fca := filterCampaignDeptMember(src)
 		if from == nil && to == nil {
-			appendWACreated(fcd, fca)
-		} else {
-			cin, cina := createdInRange("wce")
-			a1 := append(append([]interface{}{}, fca...), cina...)
-			appendWACreated(fcd+" AND "+cin, a1)
-			appendWAActivity(fcd, fca)
+			appendCreated(src, fcd, fca)
+			continue
 		}
+		cin, cina := createdInRange(src.EntryAlias)
+		a1 := append(append([]interface{}{}, fca...), cina...)
+		appendCreated(src, fcd+" AND "+cin, a1)
+		appendActivity(src, fcd, fca)
 	}
 
 	if len(parts) == 0 {
@@ -672,8 +660,13 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 			aiSQL += " AND s.campaign_id = ?"
 			aiArgs = append(aiArgs, strings.TrimSpace(filter.CampaignID))
 		}
-		if filter.Channel == "whatsapp" {
-			aiSQL += " AND s.channel = 'whatsapp'"
+		// The AI-session channel column holds the entry type, so any messaging
+		// channel filters correctly. It used to match only the literal "whatsapp",
+		// which meant filtering the page to Instagram silently returned WhatsApp's AI
+		// numbers alongside it.
+		if ch := strings.TrimSpace(filter.Channel); ch != "" {
+			aiSQL += " AND s.channel = ?"
+			aiArgs = append(aiArgs, ch)
 		}
 		aiSQL += " GROUP BY s.agent_id, a.name ORDER BY sessions DESC"
 		type aiRow struct {

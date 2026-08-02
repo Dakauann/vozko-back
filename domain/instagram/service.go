@@ -141,6 +141,20 @@ type SendTextInput struct {
 	// ReplyToMID makes this an inline reply. It is a TOP-LEVEL field in the
 	// request body, not nested inside message.
 	ReplyToMID string
+
+	// QuickReplies turns the message into a single-choice prompt. They ride on
+	// the same /messages call as the text — Instagram has no separate endpoint —
+	// and come back as message.quick_reply.payload on the contact's tap.
+	QuickReplies []QuickReplyOption
+}
+
+// QuickReplyOption is one tappable choice under a message.
+//
+// Payload is the contract the workflow branches on; Title is a label the author
+// may reword at any time. Instagram truncates Title at 20 characters silently.
+type QuickReplyOption struct {
+	Title   string
+	Payload string
 }
 
 type SendMediaInput struct {

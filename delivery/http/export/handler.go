@@ -75,6 +75,36 @@ func (h *ExportHandler) ExportWhatsAppEntries(w http.ResponseWriter, r *http.Req
 	h.writeCSVExport(w, filter, fmt.Sprintf("whatsapp-campaign-%s", req.CampaignID))
 }
 
+// ExportInstagramEntries exports one Instagram account's conversations.
+//
+// The account id fills the CampaignID slot: it is the channel's container, which
+// is the same question a campaign filter asks on WhatsApp.
+func (h *ExportHandler) ExportInstagramEntries(w http.ResponseWriter, r *http.Request) {
+	h.exportChannelEntries(w, r, exportdomain.EntryTypeInstagram, "instagram-account")
+}
+
+// ExportTelegramEntries exports one Telegram bot's conversations.
+func (h *ExportHandler) ExportTelegramEntries(w http.ResponseWriter, r *http.Request) {
+	h.exportChannelEntries(w, r, exportdomain.EntryTypeTelegram, "telegram-account")
+}
+
+func (h *ExportHandler) exportChannelEntries(
+	w http.ResponseWriter,
+	r *http.Request,
+	entryType exportdomain.EntryType,
+	filenamePrefix string,
+) {
+	accountID := mux.Vars(r)["id"]
+	if middleware.GetWorkspaceID(r) == "" {
+		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+		return
+	}
+	// The account's own tenancy is enforced by the lister's workspace filter, so
+	// a caller cannot export another workspace's account by guessing its id.
+	filter := h.parseExportFilter(r, accountID, entryType)
+	h.writeCSVExport(w, filter, fmt.Sprintf("%s-%s", filenamePrefix, accountID))
+}
+
 func (h *ExportHandler) parseExportFilter(r *http.Request, campaignID string, entryType exportdomain.EntryType) exportdomain.ExportFilter {
 	values := r.URL.Query()
 	filter := exportdomain.ExportFilter{

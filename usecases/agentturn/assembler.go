@@ -52,6 +52,24 @@ type Request struct {
 	ResolveInternalTools bool
 	Visibility           agent.ToolVisibility
 	ToolSeed             map[string]interface{}
+	// CampaignID/CampaignType reach the tool resolver's ToolContext, which is
+	// what a ContextualHandler uses to build its definition — manage_entry_stage
+	// populates its target_stage_name enum from the campaign's pipeline this
+	// way. Omitting them does not fail: the tool is offered with an EMPTY enum
+	// while the prompt instructs the model to use only enumerated stages, so the
+	// agent silently stops classifying leads.
+	CampaignID   string
+	CampaignType string
+
+	// PreResolved supplies tools that the CALLER already resolved, for paths
+	// that resolve earlier with context the assembler does not have. Seed
+	// stamping, name collection and the identity preamble are applied to these
+	// exactly as they are to self-resolved tools — that shared handling is what
+	// was being copy-pasted per channel.
+	//
+	// Ignored when ResolveInternalTools is set; a caller means one or the other.
+	PreResolved        []tools.Definition
+	PreResolvedConfigs map[string]map[string]interface{}
 
 	// RAG: Query drives retrieval (agent KBs win; else KnowledgeBaseIDs). Empty
 	// query disables it.
@@ -97,25 +115,33 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 	var toolDefs []tools.Definition
 	toolConfigs := make(map[string]map[string]interface{})
 	var toolNames []string
-	if req.ResolveInternalTools && req.Agent != nil {
-		resolved := tools_usecase.ResolveToolsWithOptions(a.tools, req.Agent.InternalTools, req.Visibility, tools_usecase.ToolResolverOptions{Agent: req.Agent})
+
+	switch {
+	case req.ResolveInternalTools && req.Agent != nil:
+		resolved := tools_usecase.ResolveToolsWithOptions(a.tools, req.Agent.InternalTools, req.Visibility, tools_usecase.ToolResolverOptions{
+			Agent:        req.Agent,
+			CampaignID:   req.CampaignID,
+			CampaignType: req.CampaignType,
+		})
 		toolDefs = resolved.Definitions
-		for name, cfg := range resolved.Configs {
-			copied := make(map[string]interface{}, len(cfg))
-			for k, v := range cfg {
-				copied[k] = v
-			}
-			toolConfigs[name] = copied
+		copyConfigsInto(toolConfigs, resolved.Configs)
+
+	case len(req.PreResolved) > 0:
+		toolDefs = req.PreResolved
+		copyConfigsInto(toolConfigs, req.PreResolvedConfigs)
+	}
+
+	// Seeds and names are applied the same way however the tools arrived. The
+	// configs are copied above rather than referenced, so stamping never reaches
+	// back into the caller's agent record or its resolved set.
+	for _, def := range toolDefs {
+		toolNames = append(toolNames, def.Name)
+		key := strings.ToLower(def.Name)
+		if toolConfigs[key] == nil {
+			toolConfigs[key] = make(map[string]interface{})
 		}
-		for _, def := range toolDefs {
-			toolNames = append(toolNames, def.Name)
-			key := strings.ToLower(def.Name)
-			if toolConfigs[key] == nil {
-				toolConfigs[key] = make(map[string]interface{})
-			}
-			for sk, sv := range req.ToolSeed {
-				toolConfigs[key][sk] = sv
-			}
+		for sk, sv := range req.ToolSeed {
+			toolConfigs[key][sk] = sv
 		}
 	}
 
@@ -164,5 +190,18 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 			SegmentedResponse: req.Segmented,
 		},
 		ToolNames: toolNames,
+	}
+}
+
+// copyConfigsInto deep-copies one level of tool config so the assembled request
+// never shares a map with the caller. Two conversations assembling from the
+// same agent would otherwise stamp their entry ids into each other.
+func copyConfigsInto(dst map[string]map[string]interface{}, src map[string]map[string]interface{}) {
+	for name, cfg := range src {
+		copied := make(map[string]interface{}, len(cfg))
+		for k, v := range cfg {
+			copied[k] = v
+		}
+		dst[strings.ToLower(name)] = copied
 	}
 }

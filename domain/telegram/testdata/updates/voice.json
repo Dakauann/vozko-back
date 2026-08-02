@@ -1,0 +1,16 @@
+{
+  "update_id": 870123461,
+  "message": {
+    "message_id": 4824,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312005,
+    "voice": {
+      "file_id": "AwACVoice",
+      "file_unique_id": "AgADV",
+      "duration": 7,
+      "mime_type": "audio/ogg",
+      "file_size": 24096
+    }
+  }
+}

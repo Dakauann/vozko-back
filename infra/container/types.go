@@ -186,7 +186,11 @@ type Container struct {
 	agentMCP      *handlers.AgentMCPBundle
 	// instagram is the Instagram channel, wired as one self-contained bundle so
 	// it can be disabled without threading nil checks through the god-structs.
-	instagram     *instagramBundle
+	instagram *instagramBundle
+	// telegram is the Telegram channel, wired as one self-contained bundle for
+	// the same reason: it can be enabled or skipped without threading a dozen
+	// fields through the god-structs.
+	telegram      *telegramBundle
 	mcpCollection domainmcp.CollectionRepository
 	mcpRegistry   *ucmcp.Registry
 	router        deliveryHttp.Router
@@ -364,6 +368,11 @@ type services struct {
 	// handed to consumers is rebuilt from this slice, so wiring a second channel
 	// adds to it instead of replacing the first channel's registry.
 	channelAdapters []conversation_domain.ChannelAdapter
+	// liveChannelAdapters is the same set behind a registry that can be handed
+	// out before every channel has registered. Consumers built during container
+	// startup take this instead of a snapshot, so a channel wired later is still
+	// visible to them.
+	liveChannelAdapters *conversation_domain.LiveAdapterRegistry
 	// channelAIReply lets an agent attend any adapter-backed channel.
 	channelAIReply    *conversation_usecase.ChannelAIReplyService
 	callAdmission     dialer_domain.CallAdmissionCoordinator

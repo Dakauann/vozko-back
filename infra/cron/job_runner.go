@@ -34,8 +34,9 @@ type JobRunner struct {
 	// constructor: the channel is optional, and threading two more positional
 	// arguments through a 17-arg constructor for an optional feature is not worth
 	// the churn. StartAll runs after the container has had a chance to set them.
-	instagramTokenRefresh         ctxJob
-	instagramEventPurge           ctxJob
+	// channelJobs holds the optional per-channel periodic jobs, appended by the
+	// Set*Jobs methods below.
+	channelJobs                   []channelJob
 	reconcileWhatsAppEntitlements businessphone.EntitlementReconciler
 	emitMonthlyInvoices           billing.EmitMonthlyInvoicesUseCase
 	cancelBillingSweep            billing.CancelSweepUseCase
@@ -72,56 +73,59 @@ type ctxJob interface {
 	Execute(ctx context.Context) error
 }
 
+// channelJobs are the optional per-channel periodic jobs.
+//
+// Every one of them is the same shape — a distributed lock, a ticker, a
+// context-aware Execute — so they are declared as data rather than as one
+// hand-written 25-line method each. That is what stopped Telegram's two jobs
+// from being a copy of Instagram's two.
+type channelJob struct {
+	name   string
+	period time.Duration
+	job    ctxJob
+}
+
 // SetInstagramJobs registers the Instagram periodic jobs. Safe to skip entirely:
 // nil jobs are not started.
 func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
-	r.instagramTokenRefresh = tokenRefresh
-	r.instagramEventPurge = eventPurge
+	// Instagram tokens last 60 days, cannot be refreshed in their first 24 hours,
+	// and die permanently if unused for 60 days — with no recovery except full
+	// re-auth. The usecase refreshes ~20 days ahead of expiry, so an hourly tick
+	// gives many chances to recover from a transient failure before a tenant is
+	// locked out.
+	r.addChannelJob("instagram_token_refresh", time.Hour, tokenRefresh)
+	r.addChannelJob("instagram_event_purge", 24*time.Hour, eventPurge)
 }
 
-// runInstagramTokenRefreshHourly keeps long-lived Instagram tokens alive.
-//
-// Tokens last 60 days, cannot be refreshed in their first 24 hours, and die
-// permanently if unused for 60 days — with no recovery except full re-auth. The
-// usecase refreshes ~20 days ahead of expiry, so an hourly tick gives many
-// chances to recover from a transient failure before a tenant is locked out.
-func (r *JobRunner) runInstagramTokenRefreshHourly() {
-	if r.instagramTokenRefresh == nil {
+// SetTelegramJobs registers the Telegram periodic jobs.
+func (r *JobRunner) SetTelegramJobs(webhookHealth, eventPurge ctxJob) {
+	// Telegram has no token to refresh — a bot token never expires. What it has
+	// instead is a webhook that can start failing silently, and undelivered
+	// updates are DISCARDED after 24 hours with no history API to recover them.
+	// So the hourly job here is the data-loss alarm, not hygiene.
+	r.addChannelJob("telegram_webhook_health", time.Hour, webhookHealth)
+	r.addChannelJob("telegram_event_purge", 24*time.Hour, eventPurge)
+}
+
+func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob) {
+	if job == nil {
 		return
 	}
+	r.channelJobs = append(r.channelJobs, channelJob{name: name, period: period, job: job})
+}
 
-	period := time.Hour
-	ticker := time.NewTicker(period)
+// runChannelJob ticks one channel job under a distributed lock, so only one
+// replica runs it.
+func (r *JobRunner) runChannelJob(j channelJob) {
+	ticker := time.NewTicker(j.period)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if r.tryLock("instagram_token_refresh", 2*period) {
+		if r.tryLock(j.name, 2*j.period) {
 			func() {
-				defer r.releaseLock("instagram_token_refresh")
-				if err := r.instagramTokenRefresh.Execute(context.Background()); err != nil {
-					log.Printf("[cron] instagram_token_refresh error: %v", err)
-				}
-			}()
-		}
-	}
-}
-
-// runInstagramEventPurgeDaily trims the durable webhook dedup table.
-func (r *JobRunner) runInstagramEventPurgeDaily() {
-	if r.instagramEventPurge == nil {
-		return
-	}
-
-	period := 24 * time.Hour
-	ticker := time.NewTicker(period)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if r.tryLock("instagram_event_purge", 2*period) {
-			func() {
-				defer r.releaseLock("instagram_event_purge")
-				if err := r.instagramEventPurge.Execute(context.Background()); err != nil {
-					log.Printf("[cron] instagram_event_purge error: %v", err)
+				defer r.releaseLock(j.name)
+				if err := j.job.Execute(context.Background()); err != nil {
+					log.Printf("[cron] %s error: %v", j.name, err)
 				}
 			}()
 		}
@@ -168,8 +172,9 @@ func (r *JobRunner) StartAll() {
 	go r.runVendorChannelReconcileDaily()
 	go r.runReconcileChannelStatusEvery10Minutes()
 	go r.runShortLinkRetentionDaily()
-	go r.runInstagramTokenRefreshHourly()
-	go r.runInstagramEventPurgeDaily()
+	for _, job := range r.channelJobs {
+		go r.runChannelJob(job)
+	}
 }
 
 func (r *JobRunner) runReconcileWhatsAppTemplatesEvery15Minutes() {

@@ -45,8 +45,11 @@ func (d *Driver) Tools() []tools.Definition { return d.registry.Definitions() }
 
 func (d *Driver) SystemPrompt() string { return systemPrompt() }
 
-func (d *Driver) Reground(prompt string, iter, maxIter, noMutationStreak int) string {
-	return "Pedido do usuário: " + prompt + "\nUse ferramentas quando úteis; conclua respondendo ao usuário."
+// Reground carries no restatement of the request: it is already the first
+// message of the conversation, and repeating it as the newest message makes the
+// model answer it again every turn.
+func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
+	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário."
 }
 
 // Reads and mutations carry no server-side mutable state, so the stall guards are

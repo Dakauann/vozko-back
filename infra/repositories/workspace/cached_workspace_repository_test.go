@@ -248,9 +248,9 @@ func (f *fakeRepo) SetPermissions(memberID string, permissions []*workspace.Perm
 	f.perms[memberID] = append([]*workspace.Permission(nil), permissions...)
 	return nil
 }
-func (f *fakeRepo) CreateInvite(*workspace.Invite) error                 { panic("unused") }
-func (f *fakeRepo) GetInviteByID(string) (*workspace.Invite, error)      { panic("unused") }
-func (f *fakeRepo) GetInviteByToken(string) (*workspace.Invite, error)   { panic("unused") }
+func (f *fakeRepo) CreateInvite(*workspace.Invite) error               { panic("unused") }
+func (f *fakeRepo) GetInviteByID(string) (*workspace.Invite, error)    { panic("unused") }
+func (f *fakeRepo) GetInviteByToken(string) (*workspace.Invite, error) { panic("unused") }
 func (f *fakeRepo) ListInvitesByWorkspace(string) ([]*workspace.Invite, error) {
 	panic("unused")
 }

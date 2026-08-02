@@ -61,6 +61,13 @@ type ExecutorDeps struct {
 	AIAttendance node_executors.WorkflowAIAttendance
 	// ConversationStatus is the single finish/reopen choke point (shared with AI tools / hub).
 	ConversationStatus conversation.ConversationStatusUpdater
+	// Adapters is the channel registry every non-WhatsApp send goes through.
+	//
+	// Without it the channel-neutral senders resolve no adapter and every send
+	// node SKIPS on Instagram and Telegram — text, media and interactive alike —
+	// while the run reports itself completed. Pass the container's live registry
+	// so adapters registered after this point are still seen.
+	Adapters conversation.AdapterRegistry
 }
 
 func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) {
@@ -78,6 +85,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 		BillingPub:              deps.BillingPub,
 		FileStorage:             deps.FileStorage,
 		ConversationMediaRepo:   deps.ConversationMediaRepo,
+		Adapters:                deps.Adapters,
 	}
 
 	emailSender := deps.EmailSender
@@ -90,7 +98,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionSendMedia, node_executors.NewSendMediaExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSetVariable, node_executors.NewSetVariableExecutor())
 	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor())
-	registry.Register(workflow.NodeTypeActionSendWhatsappButton, node_executors.NewSendWhatsappButtonExecutor(waDeps))
+	registry.Register(workflow.NodeTypeActionSendInteractive, node_executors.NewInteractivePromptExecutor(waDeps))
 
 	aiAgentExec := node_executors.NewAIAgentExecutor(deps.AIService, deps.AgentRepo, deps.MessageRepo, deps.CachedBalanceChecker, node_executors.NewWhatsAppSenderFromDeps(waDeps), deps.RAGService)
 	if deps.AIAttendance != nil {

@@ -1,0 +1,16 @@
+{
+  "update_id": 870123460,
+  "message": {
+    "message_id": 4823,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312004,
+    "document": {
+      "file_id": "BQACHuge",
+      "file_unique_id": "AgADH",
+      "file_name": "contrato-assinado.pdf",
+      "mime_type": "application/pdf",
+      "file_size": 41943040
+    }
+  }
+}

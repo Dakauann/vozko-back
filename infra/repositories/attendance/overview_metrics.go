@@ -24,10 +24,9 @@ func overviewFillExtendedTX(
 	filter attendance.OverviewFilter,
 	out *attendance.Overview,
 ) error {
-	// Unassigned + channel mix: ENGAGED only (shells are not live-queue work).
+	// Unassigned backlog: ENGAGED only (shells are not live-queue work).
 	type scopeAgg struct {
 		Unassigned int64
-		Whatsapp   int64
 	}
 	var sa scopeAgg
 	scopeSQL := `
@@ -36,21 +35,46 @@ func overviewFillExtendedTX(
 				WHERE total_msgs > 0
 				  AND assigned_user_id = ''
 				  AND status_bucket <> 'finished'
-			) AS unassigned,
-			COUNT(*) FILTER (WHERE total_msgs > 0 AND entry_type = 'whatsapp') AS whatsapp
+			) AS unassigned
 		FROM ` + msgTmp
 	if err := tx.Raw(scopeSQL).Scan(&sa).Error; err != nil {
 		return err
 	}
 	out.KPIs.UnassignedBacklog = sa.Unassigned
-	totalCh := sa.Whatsapp
-	out.ChannelMix = make([]attendance.ChannelSlice, 0, 2)
+
+	// Channel mix: GROUPED by entry_type rather than counting one hardcoded
+	// channel.
+	//
+	// It previously counted only `entry_type = 'whatsapp'` and therefore always
+	// reported 100% WhatsApp — which is worse than reporting nothing, because a
+	// manager reading it concludes the other channels carry no work. Grouping
+	// means every channel that exists shows up, including ones added later.
+	type channelRow struct {
+		EntryType string `gorm:"column:entry_type"`
+		Count     int64  `gorm:"column:cnt"`
+	}
+	var rows []channelRow
+	mixSQL := `
+		SELECT entry_type, COUNT(*) AS cnt
+		FROM ` + msgTmp + `
+		WHERE total_msgs > 0 AND entry_type <> ''
+		GROUP BY entry_type
+		ORDER BY cnt DESC, entry_type ASC`
+	if err := tx.Raw(mixSQL).Scan(&rows).Error; err != nil {
+		return err
+	}
+
+	var totalCh int64
+	for _, r := range rows {
+		totalCh += r.Count
+	}
+	out.ChannelMix = make([]attendance.ChannelSlice, 0, len(rows))
 	if totalCh > 0 {
-		if sa.Whatsapp > 0 {
+		for _, r := range rows {
 			out.ChannelMix = append(out.ChannelMix, attendance.ChannelSlice{
-				Channel: "whatsapp",
-				Count:   sa.Whatsapp,
-				Pct:     math.Round(float64(sa.Whatsapp)/float64(totalCh)*10000) / 100,
+				Channel: r.EntryType,
+				Count:   r.Count,
+				Pct:     math.Round(float64(r.Count)/float64(totalCh)*10000) / 100,
 			})
 		}
 	}
@@ -168,8 +192,13 @@ func overviewFillExtendedTX(
 		aiSQL += " AND campaign_id = ?"
 		aiArgs = append(aiArgs, strings.TrimSpace(filter.CampaignID))
 	}
-	if filter.Channel == "whatsapp" {
-		aiSQL += " AND channel = 'whatsapp'"
+	// The AI-session channel column holds the entry type, so any messaging
+	// channel filters correctly. It used to match only the literal "whatsapp",
+	// which meant filtering the page to Instagram silently returned WhatsApp's AI
+	// numbers alongside it.
+	if ch := strings.TrimSpace(filter.Channel); ch != "" {
+		aiSQL += " AND channel = ?"
+		aiArgs = append(aiArgs, ch)
 	}
 	type aiAgg struct {
 		Sessions      int64

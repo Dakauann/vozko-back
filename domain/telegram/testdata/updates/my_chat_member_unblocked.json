@@ -1,0 +1,10 @@
+{
+  "update_id": 870123469,
+  "my_chat_member": {
+    "chat": {"id": 5041234567, "first_name": "Marina", "type": "private"},
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "date": 1785312012,
+    "old_chat_member": {"user": {"id": 77777, "is_bot": true, "first_name": "VozkoBot"}, "status": "kicked"},
+    "new_chat_member": {"user": {"id": 77777, "is_bot": true, "first_name": "VozkoBot"}, "status": "member"}
+  }
+}

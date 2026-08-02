@@ -84,8 +84,12 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		MediaID:     mediaID,
 		MediaType:   mediaType,
 		Metadata:    record.Metadata,
-		CreatedAt:   timestamp,
-		UpdatedAt:   timestamp,
+		// Transient: carried to the broadcast, dropped by the repository. When
+		// the producer knew the sender, the hub does no lookup at all.
+		SenderName:   strings.TrimSpace(record.SenderName),
+		SenderAvatar: strings.TrimSpace(record.SenderAvatar),
+		CreatedAt:    timestamp,
+		UpdatedAt:    timestamp,
 	}
 
 	// Provider message id. Channels that set ProviderMessageID (Instagram

@@ -187,6 +187,14 @@ func (f *fakeConversationRepo) RecordOutbound(context.Context, string, time.Time
 }
 
 func (f *fakeConversationRepo) SetIGConversationID(context.Context, string, string) error { return nil }
+func (f *fakeConversationRepo) StatusForEntry(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeConversationRepo) CountByStatus(context.Context, string, string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (f *fakeConversationRepo) SetStatus(context.Context, string, string, string, string, *time.Time) error {
 	return nil
 }

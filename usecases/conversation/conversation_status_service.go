@@ -2,11 +2,12 @@ package conversation_usecase
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"vozko/domain/conversation"
 	conv_event "vozko/domain/conversation_event"
-	igdomain "vozko/domain/instagram"
+	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
@@ -15,23 +16,72 @@ type AISessionEnder interface {
 	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
 }
 
+// ConversationStatusStore is the per-channel read/write port for conversation
+// status. Declared here rather than importing each channel's domain, so the
+// service stays channel-agnostic and testable with a plain fake.
+type ConversationStatusStore interface {
+	// Status reads the current status, or "" when the entry has none.
+	Status(ctx context.Context, entryID string) (string, error)
+	// SetStatus writes the status and its close provenance. A nil closedAt with
+	// empty source/reason clears the provenance, which is how a reopen is
+	// expressed.
+	SetStatus(ctx context.Context, entryID, status, closeSource, closeReason string, closedAt *time.Time) error
+}
+
 type ConversationStatusService struct {
 	whatsappRepo wce.Repository
-	// instagramRepo carries the same conversation-status contract as the WhatsApp
-	// entry repository. Optional so the service still works with the channel off.
-	instagramRepo igdomain.ConversationRepository
-	events        conv_event.Logger
+	// stores carries the same conversation-status contract as the WhatsApp entry
+	// repository, keyed by entry type. Registering one never displaces another,
+	// and a channel that is switched off simply has no entry.
+	//
+	// WhatsApp deliberately keeps its own branch below: its write goes through a
+	// distinct struct, and lifting it would mean changing a working revenue path
+	// for no behavioural gain. That is the strangler order documented in
+	// domain/channel/channel.go.
+	stores map[shared.EntryType]ConversationStatusStore
+	// counters supply the per-status counts shown in the inbox header, keyed by
+	// entry type. Separate from stores because a channel can carry status without
+	// being able to count it cheaply.
+	counters map[shared.EntryType]ConversationStatusCounter
+	events   conv_event.Logger
 	// resolveWorkspace is optional; when set, status_changed events are logged with workspace scope.
 	resolveWorkspace func(entryID, entryType string) string
 	// aiSessions ends open AI sessions when a conversation is marked finished (contained).
 	aiSessions AISessionEnder
 }
 
-// SetInstagramRepo registers the Instagram conversation repository.
-func (s *ConversationStatusService) SetInstagramRepo(repo igdomain.ConversationRepository) {
-	if s != nil {
-		s.instagramRepo = repo
+// ConversationStatusCounter returns per-status conversation counts, scoped to a
+// container (accountID) when given, else to the whole workspace.
+type ConversationStatusCounter func(ctx context.Context, workspaceID, accountID string) (map[string]int64, error)
+
+// SetConversationCounter registers a channel's status counter.
+func (s *ConversationStatusService) SetConversationCounter(entryType shared.EntryType, counter ConversationStatusCounter) {
+	if s == nil || counter == nil || entryType == "" {
+		return
 	}
+	if s.counters == nil {
+		s.counters = make(map[shared.EntryType]ConversationStatusCounter, 2)
+	}
+	s.counters[entryType] = counter
+}
+
+// SetConversationStatusStore registers a channel's status store.
+func (s *ConversationStatusService) SetConversationStatusStore(entryType shared.EntryType, store ConversationStatusStore) {
+	if s == nil || store == nil || entryType == "" {
+		return
+	}
+	if s.stores == nil {
+		s.stores = make(map[shared.EntryType]ConversationStatusStore, 2)
+	}
+	s.stores[entryType] = store
+}
+
+func (s *ConversationStatusService) storeFor(entryType string) (ConversationStatusStore, bool) {
+	if s == nil || s.stores == nil {
+		return nil, false
+	}
+	store, ok := s.stores[shared.EntryType(entryType)]
+	return store, ok && store != nil
 }
 
 func NewConversationStatusService(whatsappRepo wce.Repository) *ConversationStatusService {
@@ -55,17 +105,15 @@ func (s *ConversationStatusService) SetAISessionEnder(e AISessionEnder) {
 }
 
 func (s *ConversationStatusService) GetConversationStatus(entryID, entryType string) conversation.ConversationStatus {
-	switch entryType {
-	case "whatsapp":
+	if entryType == string(shared.EntryTypeWhatsApp) {
 		if e, err := s.whatsappRepo.FindByID(entryID); err == nil && e != nil {
 			return conversation.ConversationStatus(e.ConversationStatus)
 		}
-	case "instagram":
-		if s.instagramRepo == nil {
-			return ""
-		}
-		if c, err := s.instagramRepo.FindByID(context.Background(), entryID); err == nil && c != nil {
-			return conversation.ConversationStatus(c.ConversationStatus)
+		return ""
+	}
+	if store, ok := s.storeFor(entryType); ok {
+		if status, err := store.Status(context.Background(), entryID); err == nil {
+			return conversation.ConversationStatus(status)
 		}
 	}
 	return ""
@@ -133,8 +181,8 @@ func (s *ConversationStatusService) applyStatusActor(
 	}
 
 	var err error
-	switch entryType {
-	case "whatsapp":
+	switch {
+	case entryType == string(shared.EntryTypeWhatsApp):
 		write := wce.ConversationStatusWrite{
 			Status:         string(status),
 			SetCloseMeta:   setClose,
@@ -147,8 +195,10 @@ func (s *ConversationStatusService) applyStatusActor(
 			write.ClosedAt = &now
 		}
 		err = s.whatsappRepo.UpdateConversationStatus(entryID, write)
-	case "instagram":
-		if s.instagramRepo == nil {
+
+	default:
+		store, ok := s.storeFor(entryType)
+		if !ok {
 			return nil
 		}
 		var closedAt *time.Time
@@ -161,9 +211,7 @@ func (s *ConversationStatusService) applyStatusActor(
 		}
 		// clearClose reopens the conversation, so the close provenance is wiped
 		// rather than left pointing at a stale closure.
-		err = s.instagramRepo.SetStatus(context.Background(), entryID, string(status), closeSource, closeReason, closedAt)
-	default:
-		return nil
+		err = store.SetStatus(context.Background(), entryID, string(status), closeSource, closeReason, closedAt)
 	}
 	if err != nil {
 		return err
@@ -207,7 +255,10 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	if to == string(conversation.ConversationStatusNew) && from == string(conversation.ConversationStatusFinished) {
 		evType = conv_event.EventReopened
 	}
-	channel := "whatsapp"
+	// The entry type IS the channel here — every value in the messaging set maps
+	// 1:1 onto a MessageChannel. It was hardcoded to "whatsapp", which labelled
+	// every Instagram close as a WhatsApp event on the timeline.
+	channel := entryType
 	details := map[string]string{"from": from, "to": to}
 	if to == string(conversation.ConversationStatusFinished) && source.Valid() {
 		details["close_source"] = string(source)
@@ -266,7 +317,11 @@ func (s *ConversationStatusService) GetStatusCounts(workspaceID, campaignID, ent
 		}
 	}
 
-	includeWhatsApp := entryType == "" || entryType == "whatsapp"
+	// An empty entryType means "every channel". The counts are what the inbox
+	// header shows above the list, so a channel missing from here reads as "there
+	// is no work on this channel" while its conversations sit in the list below —
+	// which is exactly what happened to Instagram.
+	includeWhatsApp := entryType == "" || entryType == string(shared.EntryTypeWhatsApp)
 
 	if includeWhatsApp {
 		var waCounts map[string]int64
@@ -282,6 +337,22 @@ func (s *ConversationStatusService) GetStatusCounts(workspaceID, campaignID, ent
 		if waCounts != nil {
 			merge(waCounts)
 		}
+	}
+
+	for channelType, count := range s.counters {
+		if entryType != "" && entryType != string(channelType) {
+			continue
+		}
+		// campaignID is the container id for channels with no campaign concept:
+		// the account row. Passing it through unchanged is what makes a
+		// per-account inbox count the right conversations.
+		channelCounts, err := count(context.Background(), workspaceID, campaignID)
+		if err != nil {
+			// One channel's failure must not blank the whole header.
+			log.Printf("[ConversationStatus] %s status counts failed: %v", channelType, err)
+			continue
+		}
+		merge(channelCounts)
 	}
 
 	return counts, nil

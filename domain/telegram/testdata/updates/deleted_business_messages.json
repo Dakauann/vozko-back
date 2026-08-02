@@ -1,0 +1,8 @@
+{
+  "update_id": 870123475,
+  "deleted_business_messages": {
+    "business_connection_id": "BqhVQx8AAAAA",
+    "chat": {"id": 5041234567, "first_name": "Marina", "type": "private"},
+    "message_ids": [901, 902]
+  }
+}

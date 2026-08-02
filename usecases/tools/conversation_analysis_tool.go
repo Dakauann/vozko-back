@@ -169,7 +169,9 @@ func (t *conversationAnalysisTool) ExecuteWithConfig(ctx context.Context, config
 
 	entryType := shared.EntryType(entryTypeStr)
 	if !entryType.Valid() {
-		return tools.ExecutionResult{}, fmt.Errorf("invalid entry_type: must be 'whatsapp' or 'support', got '%s'", entryTypeStr)
+		// The allowed set is the domain enum, which now spans every channel.
+		// Naming two of them here went stale the moment a third was added.
+		return tools.ExecutionResult{}, fmt.Errorf("invalid entry_type: %q", entryTypeStr)
 	}
 
 	if entryType == shared.EntryTypeWhatsApp {

@@ -1,0 +1,12 @@
+{
+  "update_id": 870123473,
+  "business_message": {
+    "message_id": 902,
+    "business_connection_id": "BqhVQx8AAAAA",
+    "from": {"id": 6012345678, "is_bot": false, "first_name": "Loja"},
+    "sender_business_bot": {"id": 77777, "is_bot": true, "first_name": "VozkoBot"},
+    "chat": {"id": 5041234567, "first_name": "Marina", "type": "private"},
+    "date": 1785312016,
+    "text": "Entregamos sim!"
+  }
+}

@@ -19,9 +19,9 @@ func (f *fakeOrganic) Execute(workspaceID, businessPhoneID, displayPhoneNumber s
 
 // fakePartner implements businessphone.Dialog360PartnerService for tests.
 type fakePartner struct {
-	channels       []businessphone.Dialog360Channel
-	genKeyCalls    int
-	genKeyResponse *businessphone.APIKeyResult
+	channels            []businessphone.Dialog360Channel
+	genKeyCalls         int
+	genKeyResponse      *businessphone.APIKeyResult
 	createCalls         int
 	createErr           error  // when set, CreateClient returns this error
 	findByEmailID       string // when set, FindClientByEmail returns this id (existing client)

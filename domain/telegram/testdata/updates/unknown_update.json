@@ -1,0 +1,8 @@
+{
+  "update_id": 870123476,
+  "poll_answer": {
+    "poll_id": "5123456789",
+    "user": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "option_ids": [1]
+  }
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 	"vozko/domain/tools"
 )
 
@@ -73,7 +74,10 @@ func (t *finishConversationTool) ExecuteWithConfig(ctx context.Context, config m
 			IsError: true,
 		}, nil
 	}
-	if entryType != "whatsapp" && entryType != "voice" {
+	// Ask the domain whether this channel can be closed rather than listing
+	// channels here. An inline allowlist fails closed for every channel added
+	// after it was written, which is how Instagram ended up unclosable.
+	if !shared.EntryType(entryType).SupportsConversationClosing() {
 		return tools.ExecutionResult{
 			Result:  "Tipo de conversa não suportado para finalização.",
 			IsError: true,

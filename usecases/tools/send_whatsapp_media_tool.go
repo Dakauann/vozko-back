@@ -28,6 +28,14 @@ type SendWhatsappMediaTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	mediaRepo             media.MediaRepository
+	// adapters routes the send on every channel that is not WhatsApp. Optional:
+	// unset keeps the tool WhatsApp-only, which is what it was before.
+	adapters conversation.AdapterRegistry
+}
+
+// SetAdapters wires the channel registry so the tool can send anywhere.
+func (uc *SendWhatsappMediaTool) SetAdapters(r conversation.AdapterRegistry) {
+	uc.adapters = r
 }
 
 const (
@@ -38,7 +46,12 @@ const (
 	maxStickerBytes  = 500 * 1024
 )
 
-const ToolNameSendWhatsappMedia = "send_whatsapp_media"
+// ToolNameSendMedia is deliberately channel-neutral. The name is part of the
+// prompt the model reads, and a tool called "send_whatsapp_media" offered inside
+// a Telegram conversation reads as belonging to another channel — a model that
+// declines to use it is behaving sensibly. Saved bindings under the old name
+// keep working through CanonicalToolName.
+const ToolNameSendMedia = "send_media"
 
 const LegacyToolNameSendWhatsappImage = "send_whatsapp_image"
 
@@ -56,18 +69,21 @@ func NewSendWhatsappMediaToolUseCase(
 
 func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 	return tools.Definition{
-		Name:        ToolNameSendWhatsappMedia,
-		DisplayName: "Enviar Mídia WhatsApp",
-		Description: "Envia uma mídia (imagem, vídeo, áudio, documento ou sticker) via WhatsApp para um número de telefone especificado. " +
-			"O número deve estar no formato internacional, por exemplo, 5511999999999 para um número brasileiro. " +
+		Name:        ToolNameSendMedia,
+		DisplayName: "Enviar Mídia",
+		Description: "Envia uma mídia (imagem, vídeo, áudio, documento ou sticker) ao contato da conversa atual. " +
 			"O tipo de envio é determinado automaticamente pelo tipo da mídia escolhida.",
-		DisplayDescription: "Envia uma mídia (imagem, vídeo, áudio, documento ou sticker) via WhatsApp.",
+		DisplayDescription: "Envia uma mídia (imagem, vídeo, áudio, documento ou sticker) ao contato.",
 		Parameters: map[string]tools.Parameter{
 			"to": {
-				Type:               "string",
-				Description:        "Número de telefone do destinatário (formato: 5511999999999)",
+				Type: "string",
+				// Optional: the recipient is the conversation the agent is
+				// already in. It remains accepted because saved WhatsApp agents
+				// were taught to pass a number, and because the WhatsApp path
+				// still addresses by number.
+				Description:        "Opcional. Destinatário no WhatsApp (formato 5511999999999). Deixe vazio para enviar ao contato da conversa atual.",
 				DisplayName:        "Destinatário",
-				DisplayDescription: "Número de telefone do destinatário",
+				DisplayDescription: "Opcional — por padrão, o contato da conversa atual",
 			},
 			"media_id": {
 				Type:               "string",
@@ -82,7 +98,9 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 				DisplayDescription: "Legenda opcional (apenas para imagem, vídeo e documento)",
 			},
 		},
-		Required: []string{"to", "media_id"},
+		// Only the media is required. Requiring "to" would make the tool
+		// unusable on every channel that has no phone number.
+		Required: []string{"media_id"},
 		Visibility: []tools.ToolVisibility{
 			tools.VisibilityMessaging,
 		},
@@ -138,15 +156,10 @@ func (uc *SendWhatsappMediaTool) DefinitionWithContext(ctx tools.ToolContext) to
 var _ tools.ContextualHandler = (*SendWhatsappMediaTool)(nil)
 
 func (uc *SendWhatsappMediaTool) Execute(ctx context.Context, params map[string]interface{}) (tools.ExecutionResult, error) {
-	return tools.ExecutionResult{}, fmt.Errorf("%s requires ExecuteWithConfig with __business_phone_id", ToolNameSendWhatsappMedia)
+	return tools.ExecutionResult{}, fmt.Errorf("%s requires ExecuteWithConfig with __business_phone_id", ToolNameSendMedia)
 }
 
 func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config map[string]interface{}, params map[string]interface{}) (tools.ExecutionResult, error) {
-	whatsappClient, err := uc.resolveClient(config)
-	if err != nil {
-		return tools.ExecutionResult{}, err
-	}
-
 	to, _ := params["to"].(string)
 	mediaID, _ := params["media_id"].(string)
 	caption, _ := params["caption"].(string)
@@ -160,6 +173,17 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 	}
 	if strings.TrimSpace(mediaItem.URL) == "" {
 		return tools.ExecutionResult{}, fmt.Errorf("media with ID %s is missing a URL", mediaID)
+	}
+
+	// Every channel but WhatsApp sends through its adapter, addressed by the
+	// conversation rather than by a phone number.
+	if adapter, ec, ok := resolveToolAdapter(ctx, uc.adapters, config); ok {
+		return sendMediaViaAdapter(ctx, adapter, ec, mediaItem, caption)
+	}
+
+	whatsappClient, err := uc.resolveClient(config)
+	if err != nil {
+		return tools.ExecutionResult{}, err
 	}
 
 	switch mediaKindFor(mediaItem.Type) {
@@ -199,13 +223,13 @@ func (uc *SendWhatsappMediaTool) resolveClient(config map[string]interface{}) (c
 func (uc *SendWhatsappMediaTool) sendImage(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
 	imageData, mimeType, fileName, err := fetchMedia(m.URL, maxImageBytes)
 	if err != nil {
-		log.Printf("[%s][image] fetch failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][image] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendImageByLink(ctx, c, to, caption, m.URL)
 	}
 
 	normalizedData, normalizedMime, normalizedExt, err := normalizeImageForWhatsApp(imageData, mimeType)
 	if err != nil {
-		log.Printf("[%s][image] normalize failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][image] normalize failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendImageByLink(ctx, c, to, caption, m.URL)
 	}
 
@@ -213,7 +237,7 @@ func (uc *SendWhatsappMediaTool) sendImage(ctx context.Context, c conversation.W
 
 	waMediaID, err := c.UploadImage(ctx, normalizedData, normalizedFileName, normalizedMime)
 	if err != nil {
-		log.Printf("[%s][image] upload failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][image] upload failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendImageByLink(ctx, c, to, caption, m.URL)
 	}
 
@@ -239,7 +263,7 @@ func (uc *SendWhatsappMediaTool) sendImageByLink(ctx context.Context, c conversa
 func (uc *SendWhatsappMediaTool) sendVideo(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
 	data, mimeType, fileName, err := fetchMedia(m.URL, maxVideoBytes)
 	if err != nil {
-		log.Printf("[%s][video] fetch failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][video] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendVideoByLink(ctx, c, to, caption, m.URL)
 	}
 	if mimeType == "" {
@@ -248,7 +272,7 @@ func (uc *SendWhatsappMediaTool) sendVideo(ctx context.Context, c conversation.W
 
 	waMediaID, err := c.UploadMedia(ctx, data, fileName, mimeType)
 	if err != nil {
-		log.Printf("[%s][video] upload failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][video] upload failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendVideoByLink(ctx, c, to, caption, m.URL)
 	}
 
@@ -284,7 +308,7 @@ func (uc *SendWhatsappMediaTool) sendAudio(ctx context.Context, c conversation.W
 func (uc *SendWhatsappMediaTool) sendDocument(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
 	data, mimeType, fileName, err := fetchMedia(m.URL, maxDocumentBytes)
 	if err != nil {
-		log.Printf("[%s][document] fetch failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][document] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendDocumentByLink(ctx, c, to, caption, m.URL, deriveDocumentFilename(m, ""))
 	}
 	if mimeType == "" {
@@ -296,7 +320,7 @@ func (uc *SendWhatsappMediaTool) sendDocument(ctx context.Context, c conversatio
 
 	waMediaID, err := c.UploadMedia(ctx, data, fileName, mimeType)
 	if err != nil {
-		log.Printf("[%s][document] upload failed, falling back to link: %v", ToolNameSendWhatsappMedia, err)
+		log.Printf("[%s][document] upload failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendDocumentByLink(ctx, c, to, caption, m.URL, fileName)
 	}
 

@@ -56,6 +56,32 @@ type NodeDefinition struct {
 	// node in the catalog so the AI Workflow Builder always sees how each node
 	// works and behaves. Required — every node must describe itself.
 	Guidance NodeGuidance `json:"guidance"`
+
+	// ChannelLimits reports, per channel, what this node will actually render.
+	//
+	// Only the interactive prompt sets it today. It exists because the option
+	// list an author writes is ONE list rendered by several channels with
+	// different caps: three buttons on WhatsApp, thirteen on Instagram, no
+	// practical limit on Telegram. Without this the editor cannot tell the
+	// author that options four through thirteen will silently not appear on
+	// WhatsApp, and the first anyone learns of it is a customer who never saw
+	// the option.
+	ChannelLimits map[string]ChannelInteractiveLimits `json:"channelLimits,omitempty"`
+}
+
+// ChannelInteractiveLimits is the JSON shape of one channel's option limits.
+//
+// It mirrors channel.InteractiveLimits rather than reusing it so the domain's
+// internal type is free to change without altering an API the frontend parses.
+type ChannelInteractiveLimits struct {
+	MaxOptionsButtons int `json:"maxOptionsButtons"`
+	MaxOptionsList    int `json:"maxOptionsList"`
+	// MaxLabelRunes is 0 when the channel documents no label limit.
+	MaxLabelRunes int `json:"maxLabelRunes"`
+	// MaxPayloadBytes bounds the option id. Bytes, not characters.
+	MaxPayloadBytes int `json:"maxPayloadBytes"`
+	// SupportsDescriptions is false for every channel except WhatsApp lists.
+	SupportsDescriptions bool `json:"supportsDescriptions"`
 }
 
 // NodeGuidance is per-node usage guidance for the AI Workflow Builder, authored

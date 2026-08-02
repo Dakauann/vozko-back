@@ -1,0 +1,16 @@
+{
+  "update_id": 870123465,
+  "message": {
+    "message_id": 4828,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": 5041234567, "type": "private"},
+    "date": 1785312009,
+    "text": "sim, esse mesmo",
+    "reply_to_message": {
+      "message_id": 4820,
+      "chat": {"id": 5041234567, "type": "private"},
+      "date": 1785311000,
+      "text": "Voce se refere ao boleto de marco?"
+    }
+  }
+}

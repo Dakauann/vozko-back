@@ -19,7 +19,7 @@ func TestEntryTypeValid(t *testing.T) {
 
 	invalid := []EntryType{
 		EntryTypeVoice, // viewable, but carries no message pipeline
-		"", "WHATSAPP", "telegram", "whatsapp ", "instagram\n",
+		"", "WHATSAPP", "messenger", "whatsapp ", "instagram\n",
 	}
 	for _, e := range invalid {
 		if e.Valid() {
@@ -41,7 +41,7 @@ func TestEntryTypeSupportsConversationView(t *testing.T) {
 
 	notViewable := []EntryType{
 		EntryTypeSupport, // handled by its own inbox, not the conversation view
-		"", "telegram", "Instagram", "INSTAGRAM", " whatsapp",
+		"", "messenger", "Instagram", "INSTAGRAM", " whatsapp",
 	}
 	for _, e := range notViewable {
 		if e.SupportsConversationView() {
@@ -62,7 +62,7 @@ func TestEntryTypeMatchingIsExact(t *testing.T) {
 
 func TestConversationViewableEntryTypesIsStableAndComplete(t *testing.T) {
 	got := ConversationViewableEntryTypes()
-	want := []EntryType{EntryTypeInstagram, EntryTypeVoice, EntryTypeWhatsApp}
+	want := []EntryType{EntryTypeInstagram, EntryTypeTelegram, EntryTypeVoice, EntryTypeWhatsApp}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ConversationViewableEntryTypes() = %v, want %v (sorted)", got, want)
 	}
@@ -109,23 +109,23 @@ func TestFormatEntryTypes(t *testing.T) {
 // membership. This test documents that contract — if it needs editing for a new
 // channel, the capability leaked back out into the callers.
 func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
-	const telegram EntryType = "telegram"
+	const messenger EntryType = "messenger"
 
-	if telegram.SupportsConversationView() {
-		t.Fatal("precondition: telegram is not registered yet")
+	if messenger.SupportsConversationView() {
+		t.Fatal("precondition: messenger is not registered yet")
 	}
-	conversationViewableEntryTypes[telegram] = struct{}{}
-	t.Cleanup(func() { delete(conversationViewableEntryTypes, telegram) })
+	conversationViewableEntryTypes[messenger] = struct{}{}
+	t.Cleanup(func() { delete(conversationViewableEntryTypes, messenger) })
 
-	if !telegram.SupportsConversationView() {
+	if !messenger.SupportsConversationView() {
 		t.Error("registering the type should make it viewable")
 	}
 	// The user-facing message picks the new channel up with no other edit.
-	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'telegram', 'voice' or 'whatsapp'" {
+	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'voice' or 'whatsapp'" {
 		t.Errorf("error text did not follow the set: %q", got)
 	}
 	// Viewability must not imply messaging-pipeline membership.
-	if telegram.Valid() {
+	if messenger.Valid() {
 		t.Error("viewable must not imply Valid(); the two sets are independent")
 	}
 }

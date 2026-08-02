@@ -8,22 +8,22 @@ import (
 )
 
 type ConversationMessage struct {
-	ID                string         `gorm:"primaryKey;type:text"`
-	EntryID           string         `gorm:"index:idx_message_entry;index:idx_cm_entry_composite,priority:1;index:idx_cm_unread,priority:1;index:idx_cm_type_entry_created,priority:2;index:idx_cm_entry_del_created,priority:1;type:uuid;not null"`
-	EntryType         string         `gorm:"index:idx_message_entry_type;index:idx_cm_entry_composite,priority:2;index:idx_cm_unread,priority:2;index:idx_cm_type_entry_created,priority:1;index:idx_cm_entry_del_created,priority:2;type:varchar(20);not null"`
-	Channel           string         `gorm:"type:varchar(20)"`
-	MessageType       string         `gorm:"type:varchar(30);index:idx_cm_unread,priority:4"`
-	FromParticipant   string         `gorm:"size:120"`
-	ToParticipant     string         `gorm:"size:120"`
-	Text              string         `gorm:"type:text"`
-	Image             []byte         `gorm:"type:bytea"`
-	Video             []byte         `gorm:"type:bytea"`
-	MediaID           *string        `gorm:"type:uuid;index"`
-	MediaType         string         `gorm:"type:varchar(30)"`
-	Read              bool           `gorm:"default:false;index:idx_cm_unread,priority:3"`
-	ReadAt            *time.Time     `gorm:"type:timestamptz"`
-	ReadBy            *string        `gorm:"type:uuid"`
-	WhatsAppMessageID *string        `gorm:"column:whatsapp_message_id;type:text;index:idx_message_wamid"`
+	ID                string     `gorm:"primaryKey;type:text"`
+	EntryID           string     `gorm:"index:idx_message_entry;index:idx_cm_entry_composite,priority:1;index:idx_cm_unread,priority:1;index:idx_cm_type_entry_created,priority:2;index:idx_cm_entry_del_created,priority:1;type:uuid;not null"`
+	EntryType         string     `gorm:"index:idx_message_entry_type;index:idx_cm_entry_composite,priority:2;index:idx_cm_unread,priority:2;index:idx_cm_type_entry_created,priority:1;index:idx_cm_entry_del_created,priority:2;type:varchar(20);not null"`
+	Channel           string     `gorm:"type:varchar(20)"`
+	MessageType       string     `gorm:"type:varchar(30);index:idx_cm_unread,priority:4"`
+	FromParticipant   string     `gorm:"size:120"`
+	ToParticipant     string     `gorm:"size:120"`
+	Text              string     `gorm:"type:text"`
+	Image             []byte     `gorm:"type:bytea"`
+	Video             []byte     `gorm:"type:bytea"`
+	MediaID           *string    `gorm:"type:uuid;index"`
+	MediaType         string     `gorm:"type:varchar(30)"`
+	Read              bool       `gorm:"default:false;index:idx_cm_unread,priority:3"`
+	ReadAt            *time.Time `gorm:"type:timestamptz"`
+	ReadBy            *string    `gorm:"type:uuid"`
+	WhatsAppMessageID *string    `gorm:"column:whatsapp_message_id;type:text;index:idx_message_wamid"`
 	// ExternalMessageID is the provider message id for channels added from
 	// Instagram onward. WhatsApp still writes whatsapp_message_id. A partial
 	// UNIQUE index on (entry_type, external_message_id) is created in migrate.go

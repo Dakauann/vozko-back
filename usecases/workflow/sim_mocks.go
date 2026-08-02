@@ -507,6 +507,9 @@ func (r *simMessageRepo) GetEntryLastMessage(_ string, _ shared.EntryType) (*con
 func (r *simMessageRepo) CountByEntry(_ string, _ shared.EntryType) (int64, error) {
 	return 0, nil
 }
+func (r *simMessageRepo) CountInboundByEntry(_ string, _ shared.EntryType) (int64, error) {
+	return 0, nil
+}
 func (r *simMessageRepo) GetByWhatsAppMessageID(_ string) (*conversation.Message, error) {
 	return nil, nil
 }

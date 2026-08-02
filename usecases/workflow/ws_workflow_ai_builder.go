@@ -579,7 +579,7 @@ func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) 
 		return node_executors.TextMatchOutputs(n.Config), true
 	case workflow.NodeTypeActionAIAgent:
 		return node_executors.AIAgentToolOutputs(n.Config), true
-	case workflow.NodeTypeActionSendWhatsappButton:
+	case workflow.NodeTypeActionSendInteractive:
 		return node_executors.AskInteractiveOutputs(n.Config), true
 	}
 	return nil, false
@@ -673,8 +673,8 @@ func (d *builderDriver) Model() string             { return d.st.model }
 func (d *builderDriver) SystemPrompt() string      { return d.uc.systemPrompt(d.st) }
 func (d *builderDriver) Tools() []tools.Definition { return d.uc.builderTools(d.st) }
 
-func (d *builderDriver) Reground(prompt string, iter, maxIter, noMutationStreak int) string {
-	return d.uc.regroundMessage(d.st, prompt, iter, maxIter, noMutationStreak)
+func (d *builderDriver) Reground(iter, maxIter, noMutationStreak int) string {
+	return d.uc.regroundMessage(d.st, iter, maxIter, noMutationStreak)
 }
 
 func (d *builderDriver) Refresh() { d.uc.relint(d.st) }
@@ -706,19 +706,20 @@ func (d *builderDriver) Dispatch(ctx context.Context, tc ai.ToolCall, emit agent
 		emit("tool", toolEventPayload{Name: toolFindResource, Summary: fmt.Sprintf("buscou %s \"%s\"", kind, query), Ok: true})
 		return agentloop.StepResult{Result: res}
 	default:
+		sig := mutationSignature(tc)
 		delta, err := d.uc.applyMutation(d.st, tc)
 		if err != nil {
 			r := "REJEITADO " + tc.Name + ": " + err.Error()
 			d.st.pushLog(r)
 			emit("tool", toolEventPayload{Name: tc.Name, Summary: err.Error(), Ok: false})
-			return agentloop.StepResult{Result: r}
+			return agentloop.StepResult{Result: r, Signature: sig}
 		}
 		d.st.pushLog(delta)
 		emit("tool", toolEventPayload{Name: tc.Name, Summary: delta, Ok: true})
 		if tc.Name == toolSetMeta {
 			emit("meta", metaPayload{Name: d.st.name, Description: d.st.description, WorkflowType: string(d.st.wfType)})
 		}
-		return agentloop.StepResult{Result: delta, Mutated: true}
+		return agentloop.StepResult{Result: delta, Mutated: true, Signature: sig}
 	}
 }
 
@@ -1188,9 +1189,17 @@ func (uc *aiBuilderUC) catalogLines(st *builderState) []string {
 	return lines
 }
 
-func (uc *aiBuilderUC) regroundMessage(st *builderState, prompt string, iter, maxIter, noMutationStreak int) string {
+// regroundMessage is the per-turn OBSERVATION of the graph.
+//
+// It must never restate the user's request. The request is anchored once at the
+// head of the conversation; repeating it as the newest message every turn made
+// the model read it as a question just asked, so it re-answered the same
+// question on every iteration ("sim, o nó n5 continua sendo X") while the loop
+// ground on. The same reasoning already applies to tool results, which are not
+// re-stuffed here either.
+func (uc *aiBuilderUC) regroundMessage(st *builderState, iter, maxIter, noMutationStreak int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "PEDIDO DO USUÁRIO:\n%s\n\n", prompt)
+	b.WriteString("OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta do usuário — não repita a resposta anterior):\n")
 	fmt.Fprintf(&b, "ITERAÇÃO %d de %d (orçamento limitado).\n", iter, maxIter)
 	// Escalating "act now" nudge — breaks the over-planning / repeated-lookup loop
 	// that otherwise burns tokens without changing the graph.
@@ -1204,7 +1213,7 @@ func (uc *aiBuilderUC) regroundMessage(st *builderState, prompt string, iter, ma
 	blocking := st.lastReport.Blocking()
 	advisory := st.lastReport.Advisory()
 	if len(blocking) == 0 {
-		b.WriteString("PROBLEMAS BLOQUEANTES: nenhum. O grafo está VÁLIDO — se o pedido do usuário está atendido, chame finish.\n")
+		b.WriteString("PROBLEMAS BLOQUEANTES: nenhum. O grafo está VÁLIDO — se o pedido do usuário está atendido, chame finish AGORA.\n")
 	} else {
 		fmt.Fprintf(&b, "PROBLEMAS BLOQUEANTES (%d) — devem ser resolvidos antes de finish:\n", len(blocking))
 		for _, i := range blocking {
@@ -1212,7 +1221,7 @@ func (uc *aiBuilderUC) regroundMessage(st *builderState, prompt string, iter, ma
 		}
 	}
 	if len(advisory) > 0 {
-		fmt.Fprintf(&b, "\nDICAS (advisory — não bloqueiam finish, mas melhore se puder):\n")
+		fmt.Fprintf(&b, "\nDICAS (advisory — NÃO bloqueiam finish). Aplique no MÁXIMO uma vez cada. Se uma dica persistir depois de você já ter tentado corrigi-la, IGNORE-A e chame finish: insistir nela não torna o workflow válido, apenas gasta o orçamento:\n")
 		for _, i := range advisory {
 			fmt.Fprintf(&b, "  - [%s] %s%s\n", i.Code, i.Message, hintSuffix(i))
 		}
@@ -1491,4 +1500,21 @@ func allTriggerTypes() []workflow.TriggerType {
 		workflow.TriggerFirstMessage, workflow.TriggerMessageReceived, workflow.TriggerCampaignSent,
 		workflow.TriggerStageAdded, workflow.TriggerManual, workflow.TriggerNoReply,
 	}
+}
+
+// mutationSignature names WHAT a mutation acted on, for the engine's
+// repeated-turn stall guard.
+//
+// Deliberately the tool name plus the target id, NOT the arguments: the failure
+// this catches is a model re-editing one node over and over with slightly
+// different config, chasing an advisory hint it cannot satisfy. Hashing the
+// arguments would make each attempt look distinct and the guard would never
+// fire — which is exactly what happened before it existed.
+func mutationSignature(tc ai.ToolCall) string {
+	for _, key := range []string{"node_id", "id", "edge_id", "from", "source"} {
+		if v, ok := tc.Arguments[key].(string); ok && strings.TrimSpace(v) != "" {
+			return tc.Name + ":" + v
+		}
+	}
+	return tc.Name
 }

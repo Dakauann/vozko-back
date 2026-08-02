@@ -137,6 +137,29 @@ var entrySources = []entrySource{
 		Department: "iga.department_id",
 	},
 	{
+		// Telegram mirrors Instagram's container shape: the bot account carries
+		// the department and the automation config, there is no campaign, and a
+		// Telegram contact is not a lead — the contact id rides the lead slot and
+		// the usecase layer resolves it to a name.
+		EntryType:     shared.EntryTypeTelegram,
+		From:          "telegram_conversations tgc",
+		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
+
+		EntryID: "tgc.id",
+		LeadID:  "tgc.contact_id",
+		Account: "COALESCE(tgc.account_id::text, '')",
+
+		ConversationStatus: "tgc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "tgc.created_at",
+		UpdatedAt:     "tgc.updated_at",
+		LastMessageAt: "tgc.last_message_at",
+		Deleted:       "tgc.deleted_at IS NULL",
+
+		Department: "tga.department_id",
+	},
+	{
 		// Support entries have neither campaign nor conversation status; the
 		// literals below keep them visible under a default status filter, which
 		// uses IS DISTINCT FROM.

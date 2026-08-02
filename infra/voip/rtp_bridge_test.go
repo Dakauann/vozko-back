@@ -112,8 +112,8 @@ func TestRTPBridge_DropsEmptyPayload(t *testing.T) {
 	br.Start(context.Background())
 	defer br.Stop()
 
-	a.inbound <- pcmaPacket(1, nil)                 // empty: must NOT be relayed
-	a.inbound <- pcmaPacket(2, []byte{0x01})        // real: must be relayed
+	a.inbound <- pcmaPacket(1, nil)          // empty: must NOT be relayed
+	a.inbound <- pcmaPacket(2, []byte{0x01}) // real: must be relayed
 
 	select {
 	case got := <-b.written:

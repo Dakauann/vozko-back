@@ -52,12 +52,14 @@ func New() *Container {
 	// available to initHandlers/initRouter; its runtime half (webhook consumer)
 	// is wired from inside initUseCases, where the shared history manager exists.
 	c.initInstagram()
+	c.initTelegram()
 	c.initUseCases(consumeWhatsappTemplateUC)
 	c.startConversationHub()
 	// Registered after the hub so the message sender exists: this is the strangler
 	// seam where Instagram joins the conversation stack while WhatsApp keeps its
 	// existing code path.
 	c.wireInstagramConversationStack()
+	c.wireTelegramConversationStack()
 	c.initHandlers()
 	c.initRouter()
 	c.initServer()

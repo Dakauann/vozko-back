@@ -190,6 +190,13 @@ type MessageRepository interface {
 	GetEntryLastMessage(entryID string, entryType shared.EntryType) (*EntryWithLastMessage, error)
 
 	CountByEntry(entryID string, entryType shared.EntryType) (int64, error)
+	// CountInboundByEntry counts only the messages the CONTACT sent.
+	//
+	// It answers "is this their first message?", which cannot be derived from a
+	// page of recent history: late in a conversation the last few rows are
+	// mostly outbound, so a windowed count sees exactly one inbound and reports
+	// a first message that is actually the forty-fifth.
+	CountInboundByEntry(entryID string, entryType shared.EntryType) (int64, error)
 
 	GetByWhatsAppMessageID(wamid string) (*Message, error)
 

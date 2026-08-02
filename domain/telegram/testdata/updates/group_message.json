@@ -1,0 +1,11 @@
+{
+  "update_id": 870123470,
+  "message": {
+    "message_id": 55,
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "chat": {"id": -1001234567890, "title": "Equipe Cobranca", "type": "supergroup"},
+    "date": 1785312013,
+    "text": "/start@vozko_bot",
+    "entities": [{"offset": 0, "length": 16, "type": "bot_command"}]
+  }
+}

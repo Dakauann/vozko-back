@@ -25,7 +25,12 @@ func sourceFor(t *testing.T, entryType shared.EntryType) entrySource {
 }
 
 func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
-	want := []shared.EntryType{shared.EntryTypeWhatsApp, shared.EntryTypeInstagram, shared.EntryTypeSupport}
+	want := []shared.EntryType{
+		shared.EntryTypeWhatsApp,
+		shared.EntryTypeInstagram,
+		shared.EntryTypeTelegram,
+		shared.EntryTypeSupport,
+	}
 	if len(entrySources) != len(want) {
 		t.Fatalf("registry holds %d sources, want %d", len(entrySources), len(want))
 	}
@@ -155,7 +160,7 @@ func TestScopeSelectsChannels(t *testing.T) {
 	}
 
 	// An unknown channel selects nothing rather than everything.
-	if got := (entrySourceScope{EntryType: "telegram"}).selected(); len(got) != 0 {
+	if got := (entrySourceScope{EntryType: "messenger"}).selected(); len(got) != 0 {
 		t.Errorf("unregistered channel should select nothing, got %+v", got)
 	}
 }
@@ -262,7 +267,7 @@ func TestBuildEntryUnionJoinsEverySelectedChannel(t *testing.T) {
 }
 
 func TestBuildEntryUnionEmptyWhenNothingSelected(t *testing.T) {
-	sql, args := buildEntryUnion(entrySourceScope{EntryType: "telegram"}, "ws-1", entrySource.inboxSelect)
+	sql, args := buildEntryUnion(entrySourceScope{EntryType: "messenger"}, "ws-1", entrySource.inboxSelect)
 	if sql != "" || len(args) != 0 {
 		t.Errorf("an unmatched scope must produce no SQL, got %q / %v", sql, args)
 	}
@@ -271,11 +276,11 @@ func TestBuildEntryUnionEmptyWhenNothingSelected(t *testing.T) {
 // Registering a channel is the whole cost of adding one: the descriptor flows
 // into both read paths with no further edits.
 func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
-	const telegram shared.EntryType = "telegram"
+	const messenger shared.EntryType = "messenger"
 	entrySources = append(entrySources, entrySource{
-		EntryType:     telegram,
-		From:          "telegram_conversations tgc",
-		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
+		EntryType:     messenger,
+		From:          "messenger_conversations mgc",
+		WorkspaceJoin: "JOIN messenger_accounts mga ON mga.id = mgc.account_id AND mga.workspace_id = ?",
 		EntryID:       "tgc.id",
 		LeadID:        "tgc.contact_id",
 		Account:       "COALESCE(tgc.account_id::text, '')",
@@ -292,17 +297,17 @@ func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
 		"board": entrySource.boardSelect,
 	} {
 		sql, args := buildEntryUnion(entrySourceScope{}, "ws-1", project)
-		if !strings.Contains(sql, "telegram_conversations tgc") {
+		if !strings.Contains(sql, "messenger_conversations mgc") {
 			t.Errorf("%s path did not pick up the new channel:\n%s", name, sql)
 		}
-		if !strings.Contains(sql, "'telegram'::text AS entry_type") {
+		if !strings.Contains(sql, "'messenger'::text AS entry_type") {
 			t.Errorf("%s path missing the new channel's entry_type literal", name)
 		}
 		assertPlaceholdersMatchArgs(t, sql, args)
 	}
 
 	// And it participates in scoping like every other channel.
-	if got := (entrySourceScope{EntryType: telegram}).selected(); len(got) != 1 {
+	if got := (entrySourceScope{EntryType: messenger}).selected(); len(got) != 1 {
 		t.Errorf("new channel should be selectable by entry type, got %+v", got)
 	}
 }
@@ -413,8 +418,8 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 
 	// A department-less channel that has NOT opted out stays hidden.
 	entrySources = append(entrySources, entrySource{
-		EntryType: "telegram", From: "telegram_conversations tgc",
-		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
+		EntryType: "messenger", From: "messenger_conversations mgc",
+		WorkspaceJoin: "JOIN messenger_accounts mga ON mga.id = mgc.account_id AND mga.workspace_id = ?",
 		EntryID:       "tgc.id", LeadID: "tgc.contact_id", Account: "''",
 		CreatedAt: "tgc.created_at", UpdatedAt: "tgc.updated_at",
 		LastMessageAt: "tgc.last_message_at", Deleted: "tgc.deleted_at IS NULL",

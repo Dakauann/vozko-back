@@ -1,0 +1,14 @@
+{
+  "update_id": 870123467,
+  "callback_query": {
+    "id": "4382012345678901234",
+    "from": {"id": 5041234567, "is_bot": false, "first_name": "Marina"},
+    "message": {
+      "message_id": 4829,
+      "chat": {"id": 5041234567, "type": "private"},
+      "date": 1785312010,
+      "text": "Escolha uma opcao"
+    },
+    "data": "negotiate:installments:3"
+  }
+}

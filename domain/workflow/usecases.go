@@ -120,6 +120,53 @@ type TriggerEvent struct {
 	Data        map[string]interface{}
 }
 
+// Trigger-data keys the interactive prompt node branches on.
+//
+// They are named constants rather than string literals at each call site
+// because they are a contract between three channel handlers and
+// AdvanceOnReply. A typo in any one channel does not fail loudly — it silently
+// routes every button press down the no_match branch, which reads as "the
+// customer typed something unexpected" and is very hard to trace back.
+const (
+	DataKeySelectedOptionID    = "selected_option_id"
+	DataKeySelectedOptionTitle = "selected_option_title"
+	DataKeySelectedOptionKind  = "selected_option_type"
+)
+
+// OptionSelection is the option a contact tapped, when the inbound event was a
+// tap on an interactive prompt rather than typed text.
+//
+// Every channel reports one differently — WhatsApp nests it under
+// interactive.button_reply/list_reply, Telegram sends a callback_query,
+// Instagram sets message.quick_reply.payload — and all three normalize to this.
+type OptionSelection struct {
+	// ID is the payload the option was sent with. It is what the workflow
+	// branches on, and it must survive the round trip byte-for-byte.
+	ID string
+	// Title is the label the contact saw. Display only: an author may reword it
+	// between the send and the reply.
+	Title string
+	// Kind names the provider mechanism, for observability only.
+	Kind string
+}
+
+// ApplySelection writes the tapped-option keys into a trigger's data map.
+//
+// A nil selection writes nothing, so a channel can call this unconditionally
+// for both typed replies and taps.
+func ApplySelection(data map[string]interface{}, sel *OptionSelection) {
+	if data == nil || sel == nil || sel.ID == "" {
+		return
+	}
+	data[DataKeySelectedOptionID] = sel.ID
+	if sel.Title != "" {
+		data[DataKeySelectedOptionTitle] = sel.Title
+	}
+	if sel.Kind != "" {
+		data[DataKeySelectedOptionKind] = sel.Kind
+	}
+}
+
 type WorkflowDashboardUseCase interface {
 	Execute(workspaceID string) (*DashboardStats, error)
 }

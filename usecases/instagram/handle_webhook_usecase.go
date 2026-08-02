@@ -56,6 +56,15 @@ type WorkflowTrigger interface {
 	Evaluate(event workflow.TriggerEvent)
 }
 
+// AnalysisScheduler stamps a conversation for deferred AI analysis.
+//
+// Instagram's EnableAnalysis switch existed on the account row from day one and
+// did nothing, because nothing ever scheduled the job for this channel. This is
+// the missing call.
+type AnalysisScheduler interface {
+	ScheduleAnalysis(entryID string, entryType shared.EntryType)
+}
+
 // CommentRuleEvaluator applies comment automation to one mirrored comment.
 // Narrow port for the same reason as the others.
 type CommentRuleEvaluator interface {
@@ -92,6 +101,8 @@ type HandleWebhookUseCase struct {
 	workflows WorkflowTrigger
 	// commentRules applies comment automation. Optional.
 	commentRules CommentRuleEvaluator
+	// analysis schedules deferred AI analysis. Optional.
+	analysis AnalysisScheduler
 }
 
 // HandleWebhookDeps groups the dependencies so the constructor stays readable as
@@ -114,6 +125,7 @@ type HandleWebhookDeps struct {
 	AIReply      AIReplier
 	Workflows    WorkflowTrigger
 	CommentRules CommentRuleEvaluator
+	Analysis     AnalysisScheduler
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -134,6 +146,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		aiReply:       d.AIReply,
 		workflows:     d.Workflows,
 		commentRules:  d.CommentRules,
+		analysis:      d.Analysis,
 	}
 }
 
@@ -264,6 +277,10 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	// is stored and recorded separately. `ephemeral` carries no payload at all.
 	stored := uc.storeAttachments(ctx, conv, msg)
 
+	// The contact is already loaded here, so naming the sender for the live
+	// broadcast is free; without it the CRM renders the raw IGSID until reload.
+	senderName, senderAvatar := contact.DisplayName(), contact.ProfilePictureURL
+
 	// A message with neither text nor storable media still needs a row so the
 	// operator sees that something arrived.
 	if text == "" && len(stored) == 0 {
@@ -278,6 +295,8 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 			Text:              unsupportedPlaceholder(msg),
 			Timestamp:         ev.Timestamp,
 			Metadata:          metadata,
+			SenderName:        senderName,
+			SenderAvatar:      senderAvatar,
 		})
 	}
 
@@ -290,6 +309,8 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 			Text:              text,
 			Timestamp:         ev.Timestamp,
 			Metadata:          metadata,
+			SenderName:        senderName,
+			SenderAvatar:      senderAvatar,
 		}); err != nil {
 			return err
 		}
@@ -312,15 +333,32 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 			MediaType:         item.mediaType,
 			MediaURL:          item.url,
 			Metadata:          metadata,
+			SenderName:        senderName,
+			SenderAvatar:      senderAvatar,
 		}); err != nil {
 			return err
 		}
 	}
 
 	uc.enrichContact(ctx, account, contact)
-	uc.fireWorkflowTriggers(ctx, account, conv, text)
+	uc.fireWorkflowTriggers(ctx, account, conv, text, quickReplySelection(msg))
 	uc.maybeReplyWithAgent(ctx, account, conv, text)
+	uc.scheduleAnalysis(account, conv)
 	return nil
+}
+
+// scheduleAnalysis stamps the conversation for deferred AI analysis.
+//
+// Gated on the account's own switches, exactly as the agent and workflows are,
+// so one toggle in the UI means one behaviour.
+func (uc *HandleWebhookUseCase) scheduleAnalysis(account *igdomain.Account, conv *igdomain.Conversation) {
+	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging) {
+		return
+	}
+	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {
+		return
+	}
+	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeInstagram)
 }
 
 // fireWorkflowTriggers starts or advances workflows for this conversation.
@@ -332,11 +370,17 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 //
 // The trigger event itself is channel-neutral, so every node that keys on
 // (entry_id, entry_type) works here unchanged.
+// fireWorkflowTriggers evaluates workflow triggers for one inbound event.
+//
+// sel is non-nil only when the contact TAPPED a quick reply or a postback
+// button rather than typing. Without it a tap cannot reach the option's own
+// branch — AdvanceOnReply routes on the option id and falls back to no_match.
 func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	ctx context.Context,
 	account *igdomain.Account,
 	conv *igdomain.Conversation,
 	text string,
+	sel *workflow.OptionSelection,
 ) {
 	if uc.workflows == nil || !account.EnableWorkflow {
 		return
@@ -354,6 +398,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	if account.WorkflowID != nil {
 		data["account_workflow_id"] = *account.WorkflowID
 	}
+	workflow.ApplySelection(data, sel)
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: account.WorkspaceID,
@@ -380,31 +425,24 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 // isFirstInboundMessage reports whether the message just recorded is the first
 // one this contact has sent.
 //
-// It counts stored inbound messages rather than trusting a clock: the message is
-// already persisted at this point, so exactly one inbound message means this was
-// the first.
+// It counts ALL of the contact's messages, not a page of recent history. A
+// windowed count is wrong in a way that only surfaces deep in a conversation:
+// once the agent has answered with several messages, the most recent rows are
+// mostly outbound, exactly one is inbound, and the check reports a "first
+// message" long after the first — starting a duplicate workflow run and
+// greeting the contact again.
 func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv *igdomain.Conversation) bool {
 	if uc.messages == nil {
 		return false
 	}
-	history, err := uc.messages.ListByEntryPaginated(conversation.ListMessagesInput{
-		EntryID:   conv.ID,
-		EntryType: shared.EntryTypeInstagram,
-		Limit:     5,
-	})
+	// The message is already persisted, so exactly one means this is it.
+	count, err := uc.messages.CountInboundByEntry(conv.ID, shared.EntryTypeInstagram)
 	if err != nil {
+		// Fail closed: a spurious trigger is worse than a missed one here.
+		log.Printf("[instagram] could not count inbound messages for %s: %v", conv.ID, err)
 		return false
 	}
-	inbound := 0
-	for _, m := range history {
-		if m != nil && m.MessageType.IsInbound() {
-			inbound++
-			if inbound > 1 {
-				return false
-			}
-		}
-	}
-	return inbound == 1
+	return count == 1
 }
 
 // maybeReplyWithAgent hands the message to the channel-agnostic AI service.
@@ -596,7 +634,7 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 		"instagram_postback_payload": ev.Postback.Payload,
 		"instagram_postback_title":   ev.Postback.Title,
 	})
-	return uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
 		ProviderMessageID: ev.Postback.MID,
 		From:              contact.IGSID,
@@ -604,7 +642,38 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 		Text:              ev.Postback.Title,
 		Timestamp:         ev.Timestamp,
 		Metadata:          metadata,
+		SenderName:        contact.DisplayName(),
+		SenderAvatar:      contact.ProfilePictureURL,
+	}); err != nil {
+		return err
+	}
+
+	// A postback tap fired no workflow trigger at all before this: the run
+	// stayed parked at the prompt until it timed out, even though the contact
+	// had answered. The payload is the option id, exactly as for quick replies.
+	uc.fireWorkflowTriggers(ctx, account, conv, ev.Postback.Title, &workflow.OptionSelection{
+		ID:    ev.Postback.Payload,
+		Title: ev.Postback.Title,
+		Kind:  "postback",
 	})
+	return nil
+}
+
+// quickReplySelection lifts the tapped quick reply out of an inbound message.
+//
+// Instagram reports the tap as an ordinary message whose text is the button's
+// TITLE, with the payload tucked into message.quick_reply. Branching on the
+// title would break the moment an author reworded a label, so only the payload
+// is treated as the option id.
+func quickReplySelection(msg *igdomain.Message) *workflow.OptionSelection {
+	if msg == nil || msg.QuickReply == nil || msg.QuickReply.Payload == "" {
+		return nil
+	}
+	return &workflow.OptionSelection{
+		ID:    msg.QuickReply.Payload,
+		Title: msg.Text,
+		Kind:  "quick_reply",
+	}
 }
 
 // handleReferral stores ad/ig.me attribution on the conversation.
@@ -710,6 +779,11 @@ type historyInput struct {
 	MediaType         conversation.MediaType
 	MediaURL          string
 	Metadata          json.RawMessage
+
+	// SenderName/SenderAvatar label the live broadcast, filled from the contact
+	// the inbound path already loaded so the hub does not re-read it.
+	SenderName   string
+	SenderAvatar string
 }
 
 // record persists and broadcasts through the SHARED history manager, so
@@ -733,6 +807,8 @@ func (uc *HandleWebhookUseCase) record(ctx context.Context, conv *igdomain.Conve
 		MediaType:         in.MediaType,
 		MediaURL:          in.MediaURL,
 		Metadata:          in.Metadata,
+		SenderName:        in.SenderName,
+		SenderAvatar:      in.SenderAvatar,
 	})
 }
 

@@ -72,7 +72,7 @@ func TestHydrateInstagramSenders(t *testing.T) {
 		{EntryID: "wa-1", EntryType: string(shared.EntryTypeWhatsApp), LeadID: "lead-9", LeadName: "Lead Nine", LeadNumber: "+5511999999999"},
 	}
 
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if entries[0].LeadName != "Maria Silva" {
 		t.Errorf("entry 0 name = %q, want %q", entries[0].LeadName, "Maria Silva")
@@ -111,7 +111,7 @@ func TestHydrateInstagramSendersBatchesOneQuery(t *testing.T) {
 		{EntryID: "b", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-2"},
 		{EntryID: "c", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-1"},
 	}
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 
 	if fake.calls != 1 {
 		t.Fatalf("contact lookup ran %d times, want 1 batched call", fake.calls)
@@ -127,7 +127,7 @@ func TestHydrateInstagramSendersDegradesGracefully(t *testing.T) {
 	}
 
 	// No lookup wired: must not panic, and must leave the row untouched.
-	(&HistoryProviderService{}).hydrateInstagramSenders(entries)
+	(&HistoryProviderService{}).hydrateContactSenders(entries)
 	if entries[0].LeadName != "" {
 		t.Errorf("expected no hydration without lookup, got %q", entries[0].LeadName)
 	}
@@ -135,7 +135,7 @@ func TestHydrateInstagramSendersDegradesGracefully(t *testing.T) {
 	// A failing lookup must never break the inbox listing.
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(&fakeInstagramContacts{err: errors.New("db down")})
-	svc.hydrateInstagramSenders(entries)
+	svc.hydrateContactSenders(entries)
 	if entries[0].LeadName != "" {
 		t.Errorf("expected no hydration on error, got %q", entries[0].LeadName)
 	}

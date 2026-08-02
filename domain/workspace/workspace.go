@@ -77,6 +77,7 @@ var (
 	ResourceBranches          = registerResource("branches")
 	ResourceShortLinks        = registerResource("short_links")
 	ResourceInstagramAccounts = registerResource("instagram_accounts")
+	ResourceTelegramAccounts  = registerResource("telegram_accounts")
 )
 
 func (r Resource) IsValid() bool {
@@ -297,6 +298,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar contas, publicações e comentários do Instagram"},
 		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram"},
 		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram"},
+	},
+	ResourceTelegramAccounts: {
+		{ActionName: ActionCreate, Description: "Conectar bots do Telegram"},
+		{ActionName: ActionRead, Description: "Visualizar bots e links de atribuição do Telegram"},
+		{ActionName: ActionUpdate, Description: "Editar configurações e links do Telegram"},
+		{ActionName: ActionDelete, Description: "Desconectar bots do Telegram"},
 	},
 	ResourceIssues: {
 		{ActionName: ActionCreate, Description: "Criar issues"},

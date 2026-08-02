@@ -18,7 +18,23 @@ const (
 	TopicInstagramMessage = "webhook.instagram.message"
 	TopicInstagramComment = "webhook.instagram.comment"
 	TopicInstagramAccount = "webhook.instagram.account"
+
+	// Telegram topics. Two rather than three: Telegram has no comment surface,
+	// so the split is simply "conversation traffic" versus "everything about the
+	// account itself".
+	//
+	// TopicTelegramAccount is the catch-all. The Bot API adds new update kinds
+	// several times a year, and routing an unrecognised one here means it is
+	// logged rather than discarded.
+	TopicTelegramMessage = "webhook.telegram.message"
+	TopicTelegramAccount = "webhook.telegram.account"
 )
+
+// TelegramTopics lists every Telegram topic, for consumer registration and queue
+// provisioning.
+func TelegramTopics() []string {
+	return []string{TopicTelegramMessage, TopicTelegramAccount}
+}
 
 // InstagramTopics lists every Instagram topic, for consumer registration and
 // queue provisioning.

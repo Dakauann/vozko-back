@@ -739,15 +739,15 @@ func (r *repository) mapProducts(dbProducts []schema.Product) ([]*product.Produc
 		}
 
 		products[i] = &product.Product{
-			ID:                        dbProduct.ID,
-			ShopID:                    dbProduct.ShopID,
-			Name:                      dbProduct.Name,
-			Description:               dbProduct.Description,
-			Tags:                      tags,
-			IsFromOfficialShop:        isFromOfficialShop,
-			CreatedAt:                 dbProduct.CreatedAt,
-			UpdatedAt:                 dbProduct.UpdatedAt,
-			Variants:                  variants,
+			ID:                 dbProduct.ID,
+			ShopID:             dbProduct.ShopID,
+			Name:               dbProduct.Name,
+			Description:        dbProduct.Description,
+			Tags:               tags,
+			IsFromOfficialShop: isFromOfficialShop,
+			CreatedAt:          dbProduct.CreatedAt,
+			UpdatedAt:          dbProduct.UpdatedAt,
+			Variants:           variants,
 		}
 	}
 

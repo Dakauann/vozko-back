@@ -99,6 +99,8 @@ func (c *Container) initRouter() {
 		c.services.metrics,
 		instagramHandler(c),
 		instagramWebhookHandler(c),
+		telegramHandler(c),
+		telegramWebhookHandler(c),
 	)
 }
 

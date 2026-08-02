@@ -1,0 +1,16 @@
+{
+  "update_id": 870123471,
+  "business_connection": {
+    "id": "BqhVQx8AAAAA",
+    "user": {
+      "id": 6012345678,
+      "is_bot": false,
+      "first_name": "Loja",
+      "username": "loja_exemplo"
+    },
+    "user_chat_id": 6012345678,
+    "date": 1785312014,
+    "rights": {"can_reply": true, "can_read_messages": true, "can_delete_sent_messages": true},
+    "is_enabled": true
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -88,7 +89,9 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 			},
 		}, nil
 	}
-	if entryType != "whatsapp" && entryType != "voice" {
+	// Same predicate the AI finish tool uses: a workflow that can transfer and
+	// assign a conversation must also be able to close it, on every channel.
+	if !shared.EntryType(entryType).SupportsConversationClosing() {
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),
 			Output: map[string]interface{}{

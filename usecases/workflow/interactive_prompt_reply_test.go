@@ -11,7 +11,7 @@ import (
 // the given edges, plus a run parked at "ask".
 func askGraph(edges []workflow.Edge) (*workflow.WorkflowRun, *workflow.Workflow) {
 	nodes := []workflow.Node{
-		{ID: "ask", Type: workflow.NodeTypeActionSendWhatsappButton},
+		{ID: "ask", Type: workflow.NodeTypeActionSendInteractive},
 		{ID: "a", Type: workflow.NodeTypeEnd},
 		{ID: "b", Type: workflow.NodeTypeEnd},
 		{ID: "nomatch", Type: workflow.NodeTypeEnd},

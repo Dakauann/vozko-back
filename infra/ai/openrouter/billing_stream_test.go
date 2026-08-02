@@ -33,7 +33,7 @@ func (p *capturingPub) Publish(topic string, message []byte) error {
 	return nil
 }
 func (p *capturingPub) PublishWithDelay(string, []byte, time.Duration) error { return nil }
-func (p *capturingPub) ValidateConnection() error                           { return nil }
+func (p *capturingPub) ValidateConnection() error                            { return nil }
 
 func (p *capturingPub) events() []ai.AICompletedEvent {
 	p.mu.Lock()
