@@ -274,7 +274,7 @@ func (s *Dialog360OnboardingService) resolveClientID(in businessphone.Dialog360P
 		s.persistClientID(in.WABAExternalID, id)
 		return id, nil
 	}
-	// 3. Create. If the create itself errors, re-check by email once — 360dialog may
+	// 3. Create. If the create itself errors, re-check by email once, 360dialog may
 	// have created the client and still failed the response (the duplicate-leak bug),
 	// so we recover the id instead of failing and re-creating on the next retry.
 	clientID, err := s.partner.CreateClient(in.ClientName, in.ClientEmail)
@@ -429,7 +429,7 @@ func (s *Dialog360OnboardingService) Finalize(channelID string, now time.Time) e
 		phone.DisplayPhoneNumber = matched.PhoneNumber
 	}
 	// Populate the metadata carried on the partner channel. A dialog360-hosted number
-	// has no Meta access token, so the Meta-Graph sync can never fetch these — the
+	// has no Meta access token, so the Meta-Graph sync can never fetch these, the
 	// partner channel is the only source. Without this the number connects but shows
 	// empty verified name / quality / tier / review status in the UI.
 	if matched.PhoneName != "" {

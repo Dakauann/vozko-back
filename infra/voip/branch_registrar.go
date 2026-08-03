@@ -349,8 +349,8 @@ func (r *BranchRegistrar) drain() {
 	}
 }
 
-// recovered wraps a SIP request handler so a panic — a latent bug, or a crafted packet
-// that trips the sipgo/diago parser — is contained to that one transaction instead of
+// recovered wraps a SIP request handler so a panic, a latent bug, or a crafted packet
+// that trips the sipgo/diago parser, is contained to that one transaction instead of
 // crashing the whole process. The SIP port is public and pre-authentication, so an
 // unrecovered panic here is a remote DoS on all of Vozko.
 func (r *BranchRegistrar) recovered(name string, fn func(*sip.Request, sip.ServerTransaction)) func(*sip.Request, sip.ServerTransaction) {

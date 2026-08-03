@@ -93,7 +93,7 @@ func (m *mockAuthorizer) CanAccessEntry(userID, workspaceID, entryID, entryType 
 	return !m.denyEntry[entryID]
 }
 
-// allowAll grants every action permission and every entry — the baseline a
+// allowAll grants every action permission and every entry, the baseline a
 // legitimate, in-scope actor sees; individual tests tighten it.
 func allowAll() *mockAuthorizer {
 	return &mockAuthorizer{allowPerm: map[string]bool{
@@ -198,7 +198,7 @@ func TestBulkApply_Labels_RouteAndBroadcast(t *testing.T) {
 // --- RBAC: per-action permission is enforced ---------------------------------
 
 func TestBulkApply_RBAC_DeniedAction_TouchesNothing(t *testing.T) {
-	// Actor holds labels:assign but NOT stages:assign — a move_stage bulk must be a
+	// Actor holds labels:assign but NOT stages:assign, a move_stage bulk must be a
 	// hard 403 and never reach the stage port, mirroring the single-entry route.
 	authz := &mockAuthorizer{allowPerm: map[string]bool{"labels:assign": true}}
 	sa, bc := &mockStageAssigner{}, &mockBroadcaster{}
@@ -241,7 +241,7 @@ func TestActionPermission_MapsEachActionToItsResource(t *testing.T) {
 // --- ownership: cross-workspace + department scope ---------------------------
 
 func TestBulkApply_ScopeGate_RejectsOutOfScopeEntries(t *testing.T) {
-	// e2 is out of scope (another workspace OR outside the actor's department) —
+	// e2 is out of scope (another workspace OR outside the actor's department),
 	// CanAccessEntry returns false. It must fail with ErrForbiddenEntry, never be
 	// mutated or broadcast, while the in-scope e1/e3 still succeed.
 	authz := allowAll()
@@ -358,7 +358,7 @@ func TestBulkApply_NoTargets_IsNoOp(t *testing.T) {
 }
 
 // applyOne is only reached for a known action (BulkApply gates the rest), but its
-// default is a fail-safe if ever called directly — exercise it to lock the contract.
+// default is a fail-safe if ever called directly, exercise it to lock the contract.
 func TestApplyOne_UnknownAction_FailSafe(t *testing.T) {
 	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), nil)
 	err := svc.applyOne(context.Background(), BulkInput{Action: "bogus"}, EntryRef{EntryID: "e1", EntryType: "whatsapp"})

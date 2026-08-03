@@ -6,8 +6,8 @@ import (
 	"vozko/domain/shared"
 )
 
-// The entry-scoped read paths — "one campaign's inbox", "these entry ids", "this
-// one entry's header" — differ per channel only in table and column names, in
+// The entry-scoped read paths, "one campaign's inbox", "these entry ids", "this
+// one entry's header", differ per channel only in table and column names, in
 // exactly the same way the workspace-wide UNION in entry_sources.go does.
 //
 // Those fragments used to be spelled out inline in eight separate `switch
@@ -18,7 +18,7 @@ import (
 // A channel is declared ONCE below. Both entry-scoped query paths, the window
 // filter, the status filter and the single-entry hydration read from it.
 //
-// These are trusted, code-authored constants — never user input — and are
+// These are trusted, code-authored constants, never user input, and are
 // interpolated into query text. Every VALUE is still passed as a bind
 // parameter; channel_queries_test.go asserts both properties.
 
@@ -53,6 +53,11 @@ type channelQuery struct {
 	// AutomationFields yields agent_id, workflow_id, agent_responses_enabled and
 	// workflow_enabled, aliased exactly so.
 	AutomationFields string
+
+	// AutomationColumn is the per-conversation automation override column. Every
+	// channel stores one; only WhatsApp's was ever read, so the others reported
+	// automation as enabled regardless of what an operator had set.
+	AutomationColumn string
 
 	// StatusColumn is the conversation-status column, or "" when the channel has
 	// none (the filter is then skipped rather than matching nothing).
@@ -105,7 +110,8 @@ var channelQueries = []channelQuery{
 			"wc.enable_agent_responses AS agent_responses_enabled, " +
 			"wc.enable_workflow AS workflow_enabled",
 
-		StatusColumn: "wce.conversation_status",
+		AutomationColumn: "wce.automation_enabled",
+		StatusColumn:     "wce.conversation_status",
 
 		ContainerCTE:         `SELECT wce_f.id AS entry_id FROM whatsapp_campaign_entries wce_f WHERE wce_f.campaign_id = ? AND wce_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "wce_f.id",
@@ -128,7 +134,8 @@ var channelQueries = []channelQuery{
 			SELECT wce.lead_id::text AS lead_id, COALESCE(wc.business_phone_id::text, '') AS business_phone_id,
 			       wc.id::text AS campaign_id, wc.name AS campaign_name,
 			       COALESCE(wc.agent_id::text, '') AS agent_id, COALESCE(wc.workflow_id::text, '') AS workflow_id,
-			       wc.enable_agent_responses AS agent_responses_enabled, wc.enable_workflow AS workflow_enabled
+			       wc.enable_agent_responses AS agent_responses_enabled, wc.enable_workflow AS workflow_enabled,
+			       wce.automation_enabled AS automation_enabled
 			FROM whatsapp_campaign_entries wce
 			JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id
 			WHERE wce.id = ?::uuid AND wce.deleted_at IS NULL
@@ -145,7 +152,7 @@ var channelQueries = []channelQuery{
 		EntryJoin: `JOIN instagram_conversations igc ON igc.id = %[1]s AND igc.deleted_at IS NULL
 		             JOIN instagram_accounts iga ON iga.id = igc.ig_account_id`,
 		// An Instagram contact has no phone number, so the @handle takes the
-		// number slot — it is what an operator actually searches by.
+		// number slot, it is what an operator actually searches by.
 		ContactJoin: `JOIN (
 	SELECT id, name, username AS number, profile_picture_url, blocked, deleted_at
 	FROM instagram_contacts
@@ -160,7 +167,8 @@ var channelQueries = []channelQuery{
 			"iga.enable_agent_responses AS agent_responses_enabled, " +
 			"iga.enable_workflow AS workflow_enabled",
 
-		StatusColumn: "igc.conversation_status",
+		AutomationColumn: "igc.automation_enabled",
+		StatusColumn:     "igc.conversation_status",
 
 		ContainerCTE:         `SELECT igc_f.id AS entry_id FROM instagram_conversations igc_f WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "igc_f.id",
@@ -185,7 +193,8 @@ var channelQueries = []channelQuery{
 			SELECT igc.contact_id::text AS lead_id, COALESCE(igc.ig_account_id::text, '') AS business_phone_id,
 			       iga.id::text AS campaign_id, iga.username AS campaign_name,
 			       COALESCE(iga.agent_id::text, '') AS agent_id, COALESCE(iga.workflow_id::text, '') AS workflow_id,
-			       iga.enable_agent_responses AS agent_responses_enabled, iga.enable_workflow AS workflow_enabled
+			       iga.enable_agent_responses AS agent_responses_enabled, iga.enable_workflow AS workflow_enabled,
+			       igc.automation_enabled AS automation_enabled
 			FROM instagram_conversations igc
 			JOIN instagram_accounts iga ON iga.id = igc.ig_account_id
 			WHERE igc.id = ?::uuid AND igc.deleted_at IS NULL
@@ -220,7 +229,8 @@ var channelQueries = []channelQuery{
 			"tga.enable_agent_responses AS agent_responses_enabled, " +
 			"tga.enable_workflow AS workflow_enabled",
 
-		StatusColumn: "tgc.conversation_status",
+		AutomationColumn: "tgc.automation_enabled",
+		StatusColumn:     "tgc.conversation_status",
 
 		ContainerCTE:         `SELECT tgc_f.id AS entry_id FROM telegram_conversations tgc_f WHERE tgc_f.account_id = ? AND tgc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "tgc_f.id",
@@ -236,7 +246,7 @@ var channelQueries = []channelQuery{
 		// In bot mode Telegram has no messaging window at all, and in business
 		// mode the 24h clock is anchored on the same conversation column
 		// Instagram uses. Filtering on that column is therefore correct for
-		// business mode and harmlessly conservative for bot mode — which is why
+		// business mode and harmlessly conservative for bot mode, which is why
 		// the composer consults ChannelAdapter.WindowState, the single authority,
 		// rather than this filter.
 		WindowSubquery: `SELECT tgc_w.id::text FROM telegram_conversations tgc_w
@@ -248,7 +258,8 @@ var channelQueries = []channelQuery{
 			SELECT tgc.contact_id::text AS lead_id, COALESCE(tgc.account_id::text, '') AS business_phone_id,
 			       tga.id::text AS campaign_id, tga.bot_username AS campaign_name,
 			       COALESCE(tga.agent_id::text, '') AS agent_id, COALESCE(tga.workflow_id::text, '') AS workflow_id,
-			       tga.enable_agent_responses AS agent_responses_enabled, tga.enable_workflow AS workflow_enabled
+			       tga.enable_agent_responses AS agent_responses_enabled, tga.enable_workflow AS workflow_enabled,
+			       tgc.automation_enabled AS automation_enabled
 			FROM telegram_conversations tgc
 			JOIN telegram_accounts tga ON tga.id = tgc.account_id
 			WHERE tgc.id = ?::uuid AND tgc.deleted_at IS NULL
@@ -275,7 +286,7 @@ type entryBatch struct {
 // The workspace-wide queries return a mixed-channel id list which then has to be
 // hydrated one channel at a time (each needs its own joins). That grouping was
 // written as a switch listing two channels, so a third channel's rows were
-// silently dropped between matching and hydration — the conversation existed,
+// silently dropped between matching and hydration, the conversation existed,
 // was counted, and then vanished from the page. Driving it from the registry
 // makes that impossible.
 //

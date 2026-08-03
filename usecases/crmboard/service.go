@@ -42,7 +42,7 @@ type LabelLister interface {
 
 // Authorizer resolves the caller's visibility (conversation.ConversationAuthorizer).
 // Beyond department scope it answers whether the caller may see conversations
-// assigned to OTHER members — the same check the inbox uses — so the board can
+// assigned to OTHER members, the same check the inbox uses, so the board can
 // apply the identical self-scope instead of leaking every member's entries.
 type Authorizer interface {
 	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
@@ -153,7 +153,7 @@ func (s *Service) GetBoard(in BoardInput) (*Board, error) {
 	// The selected pipeline scopes the ENTIRE board, not only the stage columns.
 	// Resolve its stages once: they are the stage-axis columns AND the set every other
 	// axis is scoped to. Without this, label/owner/none render the whole workspace and
-	// silently ignore the chosen funnel — industry-standard CRMs (Kommo, HubSpot,
+	// silently ignore the chosen funnel, industry-standard CRMs (Kommo, HubSpot,
 	// Pipedrive) scope every grouping of a board to its pipeline.
 	pipeStages, err := s.pipelineStages(in.WorkspaceID, in.PipelineID)
 	if err != nil {
@@ -323,7 +323,7 @@ func (s *Service) ownerByEntry(workspaceID string, ids []string) map[string]stri
 
 // pipelineStages returns the columns for the board: the stages of the SELECTED
 // pipeline. With no pipeline chosen, ListByCampaign("","") resolves the workspace
-// default. A specific pipeline is loaded DIRECTLY by id — never by filtering the
+// default. A specific pipeline is loaded DIRECTLY by id, never by filtering the
 // default's stages, which could never match a non-default pipeline and made every
 // non-default funnel silently render the default board.
 func (s *Service) pipelineStages(workspaceID, pipelineID string) ([]*stage.Stage, error) {
@@ -336,7 +336,7 @@ func (s *Service) pipelineStages(workspaceID, pipelineID string) ([]*stage.Stage
 // resolveScope mirrors inbox_service.SearchInbox in full: department visibility
 // from the authorizer (narrowed by an explicitly selected department), the
 // department-scope widener that keeps a restricted member's own conversations
-// visible, AND — the piece the board was missing — the member-level self-scope.
+// visible, AND, the piece the board was missing, the member-level self-scope.
 //
 // assignedUserID is the self-scope: a caller who is not admin, not workspace
 // owner, and lacks conversations:view_others may only see conversations assigned

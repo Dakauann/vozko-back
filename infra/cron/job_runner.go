@@ -75,8 +75,8 @@ type ctxJob interface {
 
 // channelJobs are the optional per-channel periodic jobs.
 //
-// Every one of them is the same shape — a distributed lock, a ticker, a
-// context-aware Execute — so they are declared as data rather than as one
+// Every one of them is the same shape, a distributed lock, a ticker, a
+// context-aware Execute, so they are declared as data rather than as one
 // hand-written 25-line method each. That is what stopped Telegram's two jobs
 // from being a copy of Instagram's two.
 type channelJob struct {
@@ -89,7 +89,7 @@ type channelJob struct {
 // nil jobs are not started.
 func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
 	// Instagram tokens last 60 days, cannot be refreshed in their first 24 hours,
-	// and die permanently if unused for 60 days — with no recovery except full
+	// and die permanently if unused for 60 days, with no recovery except full
 	// re-auth. The usecase refreshes ~20 days ahead of expiry, so an hourly tick
 	// gives many chances to recover from a transient failure before a tenant is
 	// locked out.
@@ -99,7 +99,7 @@ func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
 
 // SetTelegramJobs registers the Telegram periodic jobs.
 func (r *JobRunner) SetTelegramJobs(webhookHealth, eventPurge ctxJob) {
-	// Telegram has no token to refresh — a bot token never expires. What it has
+	// Telegram has no token to refresh, a bot token never expires. What it has
 	// instead is a webhook that can start failing silently, and undelivered
 	// updates are DISCARDED after 24 hours with no history API to recover them.
 	// So the hourly job here is the data-loss alarm, not hygiene.
@@ -135,12 +135,12 @@ func (r *JobRunner) runChannelJob(j channelJob) {
 func (r *JobRunner) tryLock(name string, ttl time.Duration) bool {
 	if r.shared == nil {
 
-		log.Printf("[cron] no shared state configured for %s — skipping (fail-closed)", name)
+		log.Printf("[cron] no shared state configured for %s, skipping (fail-closed)", name)
 		return false
 	}
 	acquired, err := r.shared.SetNX("lock:cron:"+name, "1", ttl)
 	if err != nil {
-		log.Printf("[cron] lock acquire error for %s: %v — skipping", name, err)
+		log.Printf("[cron] lock acquire error for %s: %v, skipping", name, err)
 		return false
 	}
 	return acquired

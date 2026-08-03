@@ -17,7 +17,7 @@ import (
 	"vozko/domain/auth"
 )
 
-// Scenario 1 — concurrent refresh + Set-Cookie arrival order.
+// Scenario 1, concurrent refresh + Set-Cookie arrival order.
 //
 //	T0  tab A and tab B both hold refresh cookie "orig" and refresh concurrently
 //	    (client single-flight can still let this happen: two browser profiles,
@@ -28,7 +28,7 @@ import (
 //	    previous=raw-1. B's response carries Set-Cookie refreshToken=raw-2.
 //	T0  The cookie jar keeps whichever Set-Cookie arrives LAST. With multiple
 //	    replicas behind Cloudflare, A's response can land after B's, so the
-//	    persisted cookie is raw-1 — which the DB now considers spent.
+//	    persisted cookie is raw-1, which the DB now considers spent.
 //	T15m the access token expires; the browser refreshes with raw-1. It matches
 //	    previous_refresh_token_hash, rotated_at is far outside the 30 s grace,
 //	    and reuse detection fires: every session revoked, token version bumped.
@@ -63,7 +63,7 @@ func TestRefresh_ConcurrentRotationThenStaleCookieNukesHonestUser(t *testing.T) 
 		t.Fatal("test setup broken: both rotations returned the same token")
 	}
 
-	// A's Set-Cookie arrives last, so the jar persists pairA.RefreshToken —
+	// A's Set-Cookie arrives last, so the jar persists pairA.RefreshToken,
 	// now the DB's *previous* hash. 15 minutes pass (access-token TTL) before
 	// the next refresh, far beyond the 30 s grace window.
 	sessionRepo.sessions["sess1"].RotatedAt = timePtr(time.Now().Add(-2 * refreshGraceWindow))
@@ -85,14 +85,14 @@ func TestRefresh_ConcurrentRotationThenStaleCookieNukesHonestUser(t *testing.T) 
 	}
 }
 
-// Scenario 2 — lost refresh response, no concurrency at all.
+// Scenario 2, lost refresh response, no concurrency at all.
 //
 // The browser POSTs /auth/refresh; the server rotates orig -> raw-1, but the
 // response never lands (tab closed mid-flight, navigation aborts the fetch,
 // network drop, Cloudflare 5xx). The jar still holds "orig". The user comes
 // back minutes later; the refresh presents "orig", outside grace -> nuke.
 // The 30 s grace only covers an immediate retry, not a lost-response client
-// that returns later — which is a routine event, not an attack.
+// that returns later, which is a routine event, not an attack.
 func TestRefresh_LostResponseThenLaterRefreshNukesHonestUser(t *testing.T) {
 	userRepo, sessionRepo, issuer, shared := newRefreshFixture()
 	uc := NewRefreshTokenUseCase(userRepo, issuer, sessionRepo, shared)

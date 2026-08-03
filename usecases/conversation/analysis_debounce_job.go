@@ -45,7 +45,7 @@ type analysisDebounceJob struct {
 
 // SetAnalysisSubjectResolver registers a channel's subject loader.
 //
-// Without one, a channel's conversations are simply never analysed — which is
+// Without one, a channel's conversations are simply never analysed, which is
 // what happened to Instagram for months, silently, while its EnableAnalysis
 // switch sat in the UI doing nothing.
 func (j *analysisDebounceJob) SetAnalysisSubjectResolver(entryType shared.EntryType, resolver AnalysisSubjectResolver) {
@@ -104,7 +104,7 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 	for entryID, raw := range pending {
 		pendingEntry, ok := decodeAnalysisDebounceValue(raw)
 		if !ok {
-			log.Printf("[analysis-debounce] invalid pending value for entry %s: %q — removing", entryID, raw)
+			log.Printf("[analysis-debounce] invalid pending value for entry %s: %q, removing", entryID, raw)
 			_ = j.sharedState.HDel(AnalysisDebounceRedisKey, entryID)
 			continue
 		}
@@ -145,7 +145,7 @@ func (j *analysisDebounceJob) resolveSubject(entryID string, entryType shared.En
 		// No resolver means the channel is switched off in this deployment. Not
 		// an error, but worth saying out loud: silence here is exactly how the
 		// Instagram gap stayed invisible.
-		log.Printf("[analysis-debounce] no analysis resolver registered for %q — skipping entry %s",
+		log.Printf("[analysis-debounce] no analysis resolver registered for %q, skipping entry %s",
 			entryType, entryID)
 		return nil, nil
 	}
@@ -164,7 +164,7 @@ func (j *analysisDebounceJob) resolveWhatsAppSubject(entryID string) (*AnalysisS
 	}
 
 	// The lead's phone number is WhatsApp's contact label. It is still required
-	// HERE — a WhatsApp conversation without one is malformed — but it is no
+	// HERE, a WhatsApp conversation without one is malformed, but it is no
 	// longer a precondition for the job as a whole, which is what excluded every
 	// channel whose contacts have no phone.
 	var contactLabel string
@@ -324,7 +324,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	if j.cachedBalanceChecker != nil {
 		bal, err := j.cachedBalanceChecker.GetBalance(workspaceID)
 		if err != nil {
-			log.Printf("[analysis-debounce] balance check error for workspace %s: %v — skipping analysis (fail-closed)", workspaceID, err)
+			log.Printf("[analysis-debounce] balance check error for workspace %s: %v, skipping analysis (fail-closed)", workspaceID, err)
 			return nil
 		}
 		if bal < minBalanceFloor {

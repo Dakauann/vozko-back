@@ -23,7 +23,7 @@ import (
 // repository and the broadcaster, so a channel gains AI attendance by wiring,
 // not by growing its own AI code.
 //
-// Automation gating is honoured exactly as WhatsApp honours it — see Reply.
+// Automation gating is honoured exactly as WhatsApp honours it, see Reply.
 type ChannelAIReplyService struct {
 	agents    agent.Repository
 	aiService ai.Service
@@ -60,7 +60,7 @@ func (s *ChannelAIReplyService) SetLoopGuard(g loopguard.Guard) {
 // SetAssembler wires the shared agent-turn recipe.
 //
 // Without it this service could only ever send plain text: no tools, no
-// knowledge base, no channel identity — while the WhatsApp pipeline had all
+// knowledge base, no channel identity, while the WhatsApp pipeline had all
 // three. An agent configured with a knowledge base in the UI silently ignored
 // it on every channel but WhatsApp.
 func (s *ChannelAIReplyService) SetAssembler(a *agentturn.Assembler) {
@@ -92,7 +92,7 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 
 	if s.guard != nil {
 		if dec := s.guard.CheckInbound(ctx, req.WorkspaceID, req.EntryID, text); dec.Block {
-			log.Printf("[channel-ai] entry=%s loop suspected (%s, count=%d) — not replying",
+			log.Printf("[channel-ai] entry=%s loop suspected (%s, count=%d), not replying",
 				req.EntryID, dec.Reason, dec.Count)
 			return nil, nil
 		}
@@ -120,7 +120,7 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		reply = strings.TrimSpace(out.Message.Content)
 	}
 	if reply == "" {
-		log.Printf("[channel-ai] entry=%s model returned no content — not replying", req.EntryID)
+		log.Printf("[channel-ai] entry=%s model returned no content, not replying", req.EntryID)
 		return nil, nil
 	}
 
@@ -129,7 +129,7 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		// A closed provider window is an expected state, not a fault: the contact
 		// must message again before a reply is allowed.
 		if err == conversation.ErrOutboundWindowClosed {
-			log.Printf("[channel-ai] entry=%s outbound window closed — reply withheld", req.EntryID)
+			log.Printf("[channel-ai] entry=%s outbound window closed, reply withheld", req.EntryID)
 			return nil, nil
 		}
 		return nil, err
@@ -154,7 +154,7 @@ func (s *ChannelAIReplyService) enabled(req conversation.AIReplyRequest) bool {
 		return false
 	}
 	if req.AutomationEnabled != nil && !*req.AutomationEnabled {
-		log.Printf("[channel-ai] entry=%s automation disabled for this conversation — not replying", req.EntryID)
+		log.Printf("[channel-ai] entry=%s automation disabled for this conversation, not replying", req.EntryID)
 		return false
 	}
 	if !req.AgentResponsesEnabled {
@@ -205,8 +205,8 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 // generateInput builds the model request through the shared assembler.
 //
 // This is the whole point of adopting it: Instagram and Telegram now get the
-// same recipe — resolved tools carrying this conversation's id, the channel
-// identity preamble, and knowledge-base grounding — instead of a bare prompt.
+// same recipe, resolved tools carrying this conversation's id, the channel
+// identity preamble, and knowledge-base grounding, instead of a bare prompt.
 // Anything the recipe gains later, every channel gains at the same moment.
 //
 // The assembler is build-only. Tool EXECUTION is the ai.Service's job
@@ -258,7 +258,7 @@ func (s *ChannelAIReplyService) generateInput(
 		RAGQuery: latest,
 
 		// History already ends with the message being answered, so it is not
-		// passed again as UserMessage — that would duplicate the last turn.
+		// passed again as UserMessage, that would duplicate the last turn.
 		History: messages,
 
 		Model: agentRecord.MessagingModel,

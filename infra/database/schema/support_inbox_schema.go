@@ -49,7 +49,7 @@ type SupportEntry struct {
 	// LastMessageAt denormalizes the newest conversation_messages.created_at for this
 	// entry. The inbox lists order and filter by it, which replaces a per-entry
 	// JOIN LATERAL over conversation_messages that forced a full scan of every entry
-	// in the workspace on each load. NULL means "no messages" — such entries are not
+	// in the workspace on each load. NULL means "no messages", such entries are not
 	// listed, matching the inner-join semantics the LATERAL had.
 	LastMessageAt *time.Time `gorm:"column:last_message_at"`
 }

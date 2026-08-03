@@ -131,7 +131,7 @@ func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 	// WritePaginated, not WriteSuccess: every paginated list in this API answers
 	// {"data": [...], "meta": {...}}, and the browser client reads exactly that
 	// shape. A bespoke {"items": ...} envelope parses without error and yields an
-	// empty list — the account is created, the request is 200, and the table is
+	// empty list, the account is created, the request is 200, and the table is
 	// simply blank.
 	response.WritePaginated(w, http.StatusOK, items, response.PaginationMeta{
 		Page:       result.Page,

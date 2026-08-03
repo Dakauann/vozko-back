@@ -30,7 +30,7 @@ func formatValue(val interface{}) string {
 
 // normalizeIndexing rewrites array indexing (data[0]) into dot form (data.0) so
 // every path segment is parsed uniformly by the resolver. It only changes how
-// the path is *tokenised* — an integer segment is applied as an index only when
+// the path is *tokenised*, an integer segment is applied as an index only when
 // the current value is an array (see deepResolve), so bracket indexing stays
 // array-only and never accidentally indexes a map.
 func normalizeIndexing(path string) string {
@@ -144,7 +144,7 @@ func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) st
 					if val, ok := state.Get(stateKey); ok {
 						return formatValue(val)
 					}
-					// Deep access: {{node.<id>.<outputKey>.<path...>}} — the first
+					// Deep access: {{node.<id>.<outputKey>.<path...>}}, the first
 					// segment is the output key, the remainder a dot/bracket path into
 					// its value (mirrors var/last/ai and the n8n expression standard).
 					if dotIdx := strings.IndexByte(nodeParts[1], '.'); dotIdx > 0 {
@@ -172,8 +172,8 @@ func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) st
 					}
 				}
 				// deepResolve walks both maps (by key) and arrays (by index), so a
-				// top-level array variable captured from a JSON array response —
-				// e.g. {{token_consulta_cadastro[0].token}} — resolves here too.
+				// top-level array variable captured from a JSON array response,
+				// e.g. {{token_consulta_cadastro[0].token}}, resolves here too.
 				if resolved, ok3 := deepResolve(val, key); ok3 {
 					return formatValue(resolved)
 				}

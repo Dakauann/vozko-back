@@ -27,7 +27,7 @@ func (c *Container) initJobRunner() {
 	)
 	// Register each channel's analysis subject resolver.
 	//
-	// Without one a channel's conversations are never analysed — the silent gap
+	// Without one a channel's conversations are never analysed, the silent gap
 	// Instagram carried for months while its EnableAnalysis switch sat in the UI
 	// doing nothing.
 	if setter, ok := analysisDebounceJob.(interface {
@@ -59,8 +59,8 @@ func (c *Container) initJobRunner() {
 
 // instagramAnalysisResolver loads an Instagram conversation's analysis subject.
 //
-// The account is the container — the role whatsapp_campaigns plays for WhatsApp
-// — and the @handle is the contact label. Instagram contacts have no phone
+// The account is the container, the role whatsapp_campaigns plays for WhatsApp,
+// and the @handle is the contact label. Instagram contacts have no phone
 // number, which is precisely why the job's old phone-number precondition
 // excluded them.
 func instagramAnalysisResolver(bundle *instagramBundle) conversation_usecase.AnalysisSubjectResolver {

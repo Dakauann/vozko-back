@@ -12,7 +12,7 @@ import (
 //
 // The evaluator stops at the comment: its most valuable action, the private
 // reply, opens a DM conversation, and from there the existing agent/workflow
-// automation attends it. So this file contains no AI and no branching — the
+// automation attends it. So this file contains no AI and no branching, the
 // branching a marketer wants after "hello" already lives on the conversation.
 
 // commentActions is the set of provider calls a rule can make, kept as a narrow
@@ -77,7 +77,7 @@ func (uc *EvaluateCommentRulesUseCase) Execute(ctx context.Context, comment *igd
 //
 // Order matters and is preserved from the rule: replying to a comment after
 // hiding it would answer something nobody can see. One action failing does not
-// abort the rest — hiding spam is still worth doing if the reply failed.
+// abort the rest, hiding spam is still worth doing if the reply failed.
 func (uc *EvaluateCommentRulesUseCase) apply(ctx context.Context, rule *igdomain.CommentRule, comment *igdomain.Comment) {
 	for _, action := range rule.Actions {
 		switch action {
@@ -97,7 +97,7 @@ func (uc *EvaluateCommentRulesUseCase) apply(ctx context.Context, rule *igdomain
 			}
 			// Instagram allows exactly one private reply per comment, ever. The
 			// allowance is claimed in Postgres before the send, so a rule that
-			// somehow runs twice cannot burn it twice — the second attempt is
+			// somehow runs twice cannot burn it twice, the second attempt is
 			// rejected here rather than at Meta.
 			if err := uc.actions.ReplyPrivately(ctx, rule.WorkspaceID, rule.IGAccountID, comment.IGCommentID, text); err != nil {
 				// Both are expected outcomes, not faults: the allowance is
@@ -192,8 +192,8 @@ func (uc *ManageCommentRulesUseCase) requireAccount(ctx context.Context, workspa
 }
 
 // CommentActionRunner adapts the three existing comment usecases onto the
-// evaluator's port, so automation performs exactly the same operations — with
-// the same provider rules, mirror updates and one-shot claims — as an operator
+// evaluator's port, so automation performs exactly the same operations, with
+// the same provider rules, mirror updates and one-shot claims, as an operator
 // clicking the equivalent button.
 type CommentActionRunner struct {
 	reply    *ReplyToCommentUseCase

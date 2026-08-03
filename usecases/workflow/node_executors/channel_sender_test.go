@@ -95,7 +95,7 @@ func TestChannelSenderSendsThroughAdapter(t *testing.T) {
 	}
 
 	// The transcript must be written through the shared history manager, with the
-	// run's own channel — otherwise the message is delivered but invisible.
+	// run's own channel, otherwise the message is delivered but invisible.
 	if len(history.records) != 1 {
 		t.Fatalf("expected one history record, got %d", len(history.records))
 	}
@@ -180,7 +180,7 @@ func TestChannelSenderSupports(t *testing.T) {
 	if !sender.Supports(igRun()) {
 		t.Error("a registered channel must be supported")
 	}
-	// A channel with no adapter — the state before a channel is wired — must
+	// A channel with no adapter, the state before a channel is wired, must
 	// report unsupported so nodes skip instead of pretending to send.
 	unknown := &workflow.WorkflowRun{ID: "r", EntryID: "e", EntryType: "telegram"}
 	if sender.Supports(unknown) {

@@ -24,7 +24,7 @@ type IDGenerator func() string
 
 // Driver adapts one copilot session to the generic agentloop.Driver seam. Reads
 // execute immediately (after an RBAC check); mutations are RBAC-checked and then
-// PAUSED for explicit user approval — the engine yields, and ExecuteApproved runs
+// PAUSED for explicit user approval, the engine yields, and ExecuteApproved runs
 // the real usecase once the user confirms. Scope is taken from the session
 // Context, never from model arguments.
 type Driver struct {
@@ -53,7 +53,7 @@ func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
 }
 
 // Reads and mutations carry no server-side mutable state, so the stall guards are
-// inert (empty hash/signature) and finish is always allowed — the copilot ends a
+// inert (empty hash/signature) and finish is always allowed, the copilot ends a
 // turn by replying conversationally (the engine's idle path) or pausing.
 func (d *Driver) Refresh()                {}
 func (d *Driver) AfterTurn(_ agentloop.Emit) {}
@@ -102,7 +102,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 
 // ExecuteApproved runs a previously-proposed mutation after the user approves it.
 // It re-checks RBAC (permissions may have changed since the proposal) and then
-// calls the real usecase via the tool — so domain validation still applies.
+// calls the real usecase via the tool, so domain validation still applies.
 func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction) copilot.Result {
 	tool, ok := d.registry.Get(pa.ToolName)
 	if !ok {

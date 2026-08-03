@@ -97,7 +97,7 @@ type SearchByFilterInput struct {
 	AssigneeOverrideUserID string
 
 	// AssignedUserID restricts the result to entries this user owns OR that are
-	// unassigned (the shared pool) — the inbox's self-scope for a member who
+	// unassigned (the shared pool), the inbox's self-scope for a member who
 	// lacks the conversations:view_others permission. Empty means no
 	// self-restriction (admins, owners, and members who can view others). Without
 	// it the board/list leaked every member's entries. Mirrors SearchInboxInput.
@@ -156,6 +156,15 @@ type EntryWithLastMessage struct {
 	WorkflowID            string
 	AgentResponsesEnabled bool
 	WorkflowEnabled       bool
+	// AutomationEnabled is the PER-CONVERSATION override an operator flips when
+	// taking over, distinct from the container's AgentResponsesEnabled above.
+	//
+	// nil means no override, so the conversation inherits the container switch.
+	// It is read from SQL for every channel: it used to be looked up only for
+	// WhatsApp, and every other channel silently reported "enabled" no matter
+	// what was stored, so pausing a Telegram or Instagram conversation wrote
+	// correctly and then read back as still running.
+	AutomationEnabled *bool
 }
 
 type MessageRepository interface {

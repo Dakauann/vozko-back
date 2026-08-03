@@ -376,7 +376,7 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 		}
 	}
 	// Diagnostic for "no agent available": when candidates is 0, the field that
-	// is empty tells you the cause —
+	// is empty tells you the cause,
 	//   eligible=[]         → a roulette-permission / SkipAdminAssignment / inbox
 	//                         (/ws/conversations) presence problem (no one qualifies);
 	//   dialerAvailable=[]  → nobody is connected to the dialer (/ws/dialer);
@@ -440,7 +440,7 @@ func (uc *WhatsAppInboundCallUseCase) ringSequentially(
 			lastDeclinedBy = cand.UserID()
 		case candTimedOut, candUnavailable:
 			// Ring window elapsed or the agent was grabbed concurrently / unreachable;
-			// the reservation (if any) was already released — move to the next agent.
+			// the reservation (if any) was already released, move to the next agent.
 		}
 	}
 	return &ringOutcome{declinedByUserID: lastDeclinedBy}
@@ -463,7 +463,7 @@ const (
 // ringCandidate reserves one agent for the offer, rings them, and waits up to
 // `ring` for an accept/decline. The reservation excludes the agent from every
 // other routing flow's availability pool while their phone is ringing. A deferred
-// release runs on every outcome EXCEPT accept — so decline, timeout, caller
+// release runs on every outcome EXCEPT accept, so decline, timeout, caller
 // hangup, a failed notify, and even a panic all free the agent immediately,
 // while an accepted agent stays reserved until handle() attaches the call (which
 // consumes the reservation atomically). onReserved runs once the reservation is

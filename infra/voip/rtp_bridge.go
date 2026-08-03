@@ -22,7 +22,7 @@ import (
 // is A-law end to end), so a normal SIP-sized packet is forwarded as-is. It DOES
 // re-packetize a payload too large to relay (the agent simulator's channel-based
 // media emits ~2048-byte frames that overflow the 1500-byte RTP write buffer) into
-// standard 20 ms G.711 frames — same codec, so this is framing, not transcoding. If
+// standard 20 ms G.711 frames, same codec, so this is framing, not transcoding. If
 // the two legs ever negotiate different payload types a transcode step belongs here,
 // guarded on NegotiatedCodec().
 //
@@ -78,7 +78,7 @@ const (
 	// SRTP tag, so every normal SIP ptime (20/30/40 ms G.711 = 160/240/320 B) passes
 	// through untouched. A larger payload is re-framed below (see relay).
 	maxRelayPayload = 1400
-	// g711FrameBytes is one 20 ms G.711 frame (8 kHz, 1 byte/sample) — the ptime a real
+	// g711FrameBytes is one 20 ms G.711 frame (8 kHz, 1 byte/sample), the ptime a real
 	// phone's jitter buffer expects when an oversized source packet is re-framed.
 	g711FrameBytes = 160
 )
@@ -131,9 +131,9 @@ func (br *RTPBridge) pump(ctx context.Context, src, dst voip.MediaSession, dir s
 }
 
 // relay forwards one packet to dst. A normal SIP-sized payload is forwarded as-is
-// (preserving the source SSRC/sequence/timestamp). An oversized payload — the agent
+// (preserving the source SSRC/sequence/timestamp). An oversized payload, the agent
 // simulator emits ~2048-byte PCMU frames from its channel-based media, which overflow
-// the receiver's RTP write buffer — is split into 20 ms G.711 frames with a
+// the receiver's RTP write buffer, is split into 20 ms G.711 frames with a
 // re-originated monotonic sequence/timestamp so a real phone accepts the stream. This
 // path is never taken by a real SIP leg (its frames already fit maxRelayPayload).
 func (br *RTPBridge) relay(dst voip.MediaSession, p *rtp.Packet, out *reframeState) error {

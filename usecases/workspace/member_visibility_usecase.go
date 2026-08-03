@@ -15,7 +15,7 @@ type workspaceConfigReader interface {
 }
 
 // memberVisibilityUseCase is the single source of truth for "which members can
-// this caller see/assign to" — used by both the HTTP assignable-members
+// this caller see/assign to", used by both the HTTP assignable-members
 // endpoint and the realtime conversation-assign guard, so the read path and the
 // write path can never drift apart.
 type memberVisibilityUseCase struct {
@@ -74,7 +74,7 @@ func (uc *memberVisibilityUseCase) Scope(userID, workspaceID string, isPlatformA
 		return workspace.MemberVisibilityScope{}, workspace.ErrUnauthorized
 	}
 
-	// A workspace with no departments imposes no scope — everyone is visible.
+	// A workspace with no departments imposes no scope, everyone is visible.
 	departments, err := uc.deptRepo.ListDepartments(workspaceID)
 	if err != nil {
 		return workspace.MemberVisibilityScope{}, err
@@ -139,7 +139,7 @@ func (uc *memberVisibilityUseCase) CanView(callerUserID, targetUserID, workspace
 	}
 
 	// Department-scoped caller may also reach owners/admins when they participate
-	// in roulette — even without a shared department (escalation path).
+	// in roulette, even without a shared department (escalation path).
 	if scope.IncludeAdmins && (target.Role == workspace.RoleOwner || target.Role == workspace.RoleAdmin) {
 		return true, nil
 	}

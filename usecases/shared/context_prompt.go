@@ -41,12 +41,12 @@ func (c ConversationContext) BuildContextPrompt() string {
 	sb.WriteString("REGRAS DE IDENTIDADE (OBRIGATÓRIO):\n")
 	sb.WriteString("- Seu nome e identidade são definidos EXCLUSIVAMENTE pelo seu system prompt ou messaging prompt.\n")
 	sb.WriteString("- NUNCA use o nome do lead/contato como seu próprio nome.\n")
-	sb.WriteString("- NUNCA diga '[Seu Nome]', '[Nome]' ou qualquer placeholder — use SOMENTE o nome que está no seu system prompt.\n")
+	sb.WriteString("- NUNCA diga '[Seu Nome]', '[Nome]' ou qualquer placeholder, use SOMENTE o nome que está no seu system prompt.\n")
 
 	if c.hasTools() {
 		sb.WriteString("\nUSO DE FERRAMENTAS (OBRIGATÓRIO):\n")
 		sb.WriteString("- Você tem ferramentas (functions) disponíveis. Quando precisar executar uma ação, você DEVE usar a chamada de função (tool call / function call).\n")
-		sb.WriteString("- NUNCA apenas diga que vai fazer algo — você DEVE chamar a ferramenta correspondente.\n")
+		sb.WriteString("- NUNCA apenas diga que vai fazer algo, você DEVE chamar a ferramenta correspondente.\n")
 		sb.WriteString("- Se o cliente pedir ou concordar com uma ação que uma ferramenta pode executar, chame a ferramenta IMEDIATAMENTE.\n\n")
 	}
 	sb.WriteString("- Se seu system prompt não define um nome, NÃO invente um. Apenas prossiga sem se apresentar novamente.\n\n")
@@ -54,7 +54,7 @@ func (c ConversationContext) BuildContextPrompt() string {
 	if c.Channel != ChannelMessaging && c.hasTool("manage_entry_stage") {
 		sb.WriteString("CLASSIFICAÇÃO DO LEAD (OBRIGATÓRIO - TODA MENSAGEM):\n")
 		sb.WriteString("Em CADA resposta sua, você DEVE chamar a ferramenta 'manage_entry_stage' para classificar o lead.\n")
-		sb.WriteString("Chame a ferramenta JUNTO com sua resposta de texto — não espere ser solicitado.\n")
+		sb.WriteString("Chame a ferramenta JUNTO com sua resposta de texto, não espere ser solicitado.\n")
 		sb.WriteString("As etapas disponíveis estão pré-carregadas no parâmetro 'target_stage_name' da ferramenta.\n")
 		sb.WriteString("Use SOMENTE etapas listadas no enum. NUNCA invente ou adivinhe nomes de etapas.\n")
 		sb.WriteString("Se a etapa atual já está correta, chame a ferramenta mesmo assim passando a mesma etapa.\n")
@@ -66,7 +66,7 @@ func (c ConversationContext) BuildContextPrompt() string {
 		sb.WriteString("Você tem a ferramenta 'send_whatsapp_template' disponível para enviar mensagens de WhatsApp.\n")
 		sb.WriteString("Quando o cliente ACEITAR receber uma mensagem no WhatsApp (ex: 'pode sim', 'pode enviar', 'sim', 'ok', 'tá bom'),\n")
 		sb.WriteString("você DEVE OBRIGATORIAMENTE chamar a ferramenta 'send_whatsapp_template' imediatamente.\n")
-		sb.WriteString("NUNCA diga 'vou enviar' ou 'enviarei' sem de fato chamar a ferramenta — isso é PROIBIDO.\n")
+		sb.WriteString("NUNCA diga 'vou enviar' ou 'enviarei' sem de fato chamar a ferramenta, isso é PROIBIDO.\n")
 		sb.WriteString("O número do cliente e o template já estão configurados automaticamente.\n")
 		sb.WriteString("Se o template tiver parâmetros (placeholders {{1}}, {{2}}...), preencha-os com os dados do contexto.\n")
 		sb.WriteString("FLUXO: 1) Cliente aceita → 2) Chame send_whatsapp_template → 3) Confirme o envio ao cliente.\n\n")

@@ -10,6 +10,7 @@ import (
 	"vozko/domain/actor"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/crm_telemetry"
+	"vozko/domain/shared"
 )
 
 // Emitter is the single facade hot paths use for timeline + ops telemetry.
@@ -50,7 +51,7 @@ func (e *Emitter) Transfer(workspaceID, entryID, entryType string, eventType ce.
 	if !e.enabled() || workspaceID == "" {
 		return
 	}
-	// entry may be empty for pure call transfers — still record under call correlation.
+	// entry may be empty for pure call transfers, still record under call correlation.
 	if entryID == "" {
 		entryID = callID
 	}
@@ -172,15 +173,11 @@ func (e *Emitter) CallLinked(workspaceID, entryID, entryType, callID, direction,
 		Build())
 }
 
+// channelFor names the channel an event belongs to. It listed voice and support
+// and defaulted everything else to "whatsapp", so Instagram and Telegram events
+// were filed under WhatsApp in every channel-grouped report.
 func channelFor(entryType string) string {
-	switch entryType {
-	case "voice":
-		return "voice"
-	case "support":
-		return "support"
-	default:
-		return "whatsapp"
-	}
+	return shared.EntryType(entryType).EventChannel()
 }
 
 func boolStr(v bool) string {

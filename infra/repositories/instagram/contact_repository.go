@@ -48,7 +48,7 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, workspaceID, igAcc
 			Columns: []clause.Column{{Name: "ig_account_id"}, {Name: "igsid"}},
 			// The unique index is PARTIAL (WHERE deleted_at IS NULL), because a soft-deleted
 			// row must not block re-creating the same contact. Postgres will not infer a
-			// partial index as the conflict arbiter unless the predicate is repeated here —
+			// partial index as the conflict arbiter unless the predicate is repeated here,
 			// a bare ON CONFLICT (cols) fails outright with 42P10 "no unique or exclusion
 			// constraint matching the ON CONFLICT specification".
 			TargetWhere: clause.Where{

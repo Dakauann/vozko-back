@@ -13,7 +13,7 @@ import (
 
 // ConnectAccountUseCase attaches a Telegram bot to a workspace.
 //
-// The whole flow is two round-trips — getMe, then setWebhook — with no OAuth, no
+// The whole flow is two round-trips, getMe, then setWebhook, with no OAuth, no
 // callback, no state parameter and no token refresh. That is not an accident of
 // this implementation: a Telegram bot token is minted by the customer in
 // BotFather and never expires, so there is no authorization dance to run.
@@ -203,7 +203,7 @@ func (uc *ConnectAccountUseCase) registerWebhook(ctx context.Context, account *t
 //
 // This is the recovery action for the channel's worst failure mode. Undelivered
 // updates are discarded after 24 hours and there is no history API, so a webhook
-// that has been failing is losing messages permanently — and the fix has to be
+// that has been failing is losing messages permanently, and the fix has to be
 // one button, not a support ticket.
 type ReregisterWebhookUseCase struct {
 	accounts       tgdomain.AccountRepository

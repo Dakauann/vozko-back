@@ -13,7 +13,7 @@ import (
 	"vozko/usecases/agentloop"
 )
 
-// The driver is tested against a generic fakeTool — it cares only about a tool's
+// The driver is tested against a generic fakeTool, it cares only about a tool's
 // Meta (read vs mutating, RBAC resource/action), not about any concrete tool. The
 // real agent tools are tested in package copilottools.
 

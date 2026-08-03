@@ -78,12 +78,12 @@ func (p *passthroughPacer) Wait(ctx context.Context, samples int) error {
 	}
 }
 
-// lead reports how far ahead of real time the next frame is scheduled — i.e. the
+// lead reports how far ahead of real time the next frame is scheduled, i.e. the
 // buffered one-way latency the pacer is currently holding. <= 0 means on or
 // behind schedule. The plain Wait() loop only resets when it falls BEHIND
 // (wait <= 0); nothing bounds how far AHEAD nextSend can drift, so when the
-// browser's audio clock outpaces our wall clock even slightly, this lead — and
-// the audible delay — grows for the whole call. SendAudio reads this to decimate.
+// browser's audio clock outpaces our wall clock even slightly, this lead, and
+// the audible delay, grows for the whole call. SendAudio reads this to decimate.
 func (p *passthroughPacer) lead() time.Duration {
 	if p == nil || !p.started {
 		return 0
@@ -177,7 +177,7 @@ func NewVoipPassthroughCall(id, phone string, media voip.MediaSession, hangupTru
 }
 
 func (c *VoipPassthroughCall) Start() {
-	c.log.Printf("[VoipPassthrough] %s Start() — human leg attached to the surrendered SIP media", c.id)
+	c.log.Printf("[VoipPassthrough] %s Start(), human leg attached to the surrendered SIP media", c.id)
 	select {
 	case c.events <- conversation_domain.CallEvent{Type: conversation_domain.CallEventAnswered}:
 	default:
@@ -191,10 +191,10 @@ func (c *VoipPassthroughCall) Events() <-chan conversation_domain.CallEvent { re
 func (c *VoipPassthroughCall) Done() <-chan struct{}                        { return c.done }
 
 func (c *VoipPassthroughCall) readLoop() {
-	c.log.Printf("[VoipPassthrough] %s readLoop started — reading surrendered media for the human leg", c.id)
+	c.log.Printf("[VoipPassthrough] %s readLoop started, reading surrendered media for the human leg", c.id)
 	firstPacketLogged := false
 	defer func() {
-		c.log.Printf("[VoipPassthrough] %s readLoop exited (ctxErr=%v) — human leg media stopped", c.id, c.ctx.Err())
+		c.log.Printf("[VoipPassthrough] %s readLoop exited (ctxErr=%v), human leg media stopped", c.id, c.ctx.Err())
 		close(c.done)
 
 		time.Sleep(50 * time.Millisecond)
@@ -236,7 +236,7 @@ func (c *VoipPassthroughCall) readLoop() {
 		}
 		if !firstPacketLogged {
 			firstPacketLogged = true
-			c.log.Printf("[VoipPassthrough] %s first inbound RTP on human leg (pt=%d) — caller↔human media is flowing", c.id, packet.PayloadType)
+			c.log.Printf("[VoipPassthrough] %s first inbound RTP on human leg (pt=%d), caller↔human media is flowing", c.id, packet.PayloadType)
 		}
 		if len(packet.Payload) == 0 {
 			continue
@@ -302,7 +302,7 @@ func (c *VoipPassthroughCall) SendAudio(pcm16 []byte) error {
 	offset := 0
 	for offset+passthroughFrameBytes <= len(encoded) {
 		// Bound one-way latency: if the pacer has drifted too far ahead of real
-		// time (the browser's audio clock outpacing our send clock — the cause of
+		// time (the browser's audio clock outpacing our send clock, the cause of
 		// the ever-growing transfer-call delay), decimate. Drop the oldest queued
 		// frame so the backlog actually shrinks. We do NOT advance the RTP
 		// timestamp/seq here: the dropped audio is discarded, and transmitted
@@ -400,7 +400,7 @@ func (c *VoipPassthroughCall) SurrenderMedia() (voip.MediaSession, error) {
 func (c *VoipPassthroughCall) Hangup() error {
 	var err error
 	c.hangupOnce.Do(func() {
-		c.log.Printf("[VoipPassthrough] %s Hangup() invoked — cancelling read, closing media, sending SIP BYE", c.id)
+		c.log.Printf("[VoipPassthrough] %s Hangup() invoked, cancelling read, closing media, sending SIP BYE", c.id)
 		c.cancel()
 		if c.media != nil {
 			if cerr := c.media.Close(); cerr != nil {

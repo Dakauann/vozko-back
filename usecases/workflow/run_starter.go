@@ -61,7 +61,7 @@ func newTriggeredRun(w *workflow.Workflow, trigger *workflow.Node, event workflo
 
 func executeLocked(engine *RunEngine, run *workflow.WorkflowRun, w *workflow.Workflow) {
 	if !engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] run-start: skipping run %s — already locked", run.ID)
+		log.Printf("[workflow] run-start: skipping run %s, already locked", run.ID)
 		return
 	}
 	defer engine.UnlockRun(run.ID)

@@ -11,8 +11,8 @@ import (
 )
 
 // TelegramAccount is a connected Telegram bot. It doubles as the config carrier
-// for its conversations — the role whatsapp_campaigns plays for WhatsApp and
-// instagram_accounts plays for Instagram — which is why the agent/workflow
+// for its conversations, the role whatsapp_campaigns plays for WhatsApp and
+// instagram_accounts plays for Instagram, which is why the agent/workflow
 // columns live here. Telegram has no campaign analogue: a bot cannot open a
 // conversation, so there is nothing to blast and no template to carry.
 type TelegramAccount struct {
@@ -26,7 +26,7 @@ type TelegramAccount struct {
 	Mode string `gorm:"size:16;not null;default:'BOT';index"`
 
 	// BotUserID is the bot's own Telegram id. Telegram ids carry up to 52
-	// significant bits, so this is bigint — a 32-bit column would corrupt them
+	// significant bits, so this is bigint, a 32-bit column would corrupt them
 	// silently. Globally unique (enforced by a partial index in migrate.go), so
 	// one bot cannot be connected to two workspaces.
 	BotUserID   int64  `gorm:"not null;index:idx_tg_acct_bot_user"`
@@ -42,7 +42,7 @@ type TelegramAccount struct {
 	BotToken piigorm.EncryptedString `gorm:"type:bytea" json:"-"`
 	// WebhookSecret is echoed by Telegram in X-Telegram-Bot-Api-Secret-Token.
 	// Telegram does not sign the body, so this header is the ONLY authenticity
-	// control the channel has — it is a credential, and encrypted like one.
+	// control the channel has, it is a credential, and encrypted like one.
 	WebhookSecret piigorm.EncryptedString `gorm:"type:bytea" json:"-"`
 
 	WebhookSetAt *time.Time `gorm:"type:timestamptz"`
@@ -88,7 +88,7 @@ func (a *TelegramAccount) BeforeCreate(tx *gorm.DB) error {
 
 // TelegramContact is a person who messaged one of our bots.
 //
-// A Telegram user id is GLOBAL — unlike an Instagram IGSID, the same human has
+// A Telegram user id is GLOBAL, unlike an Instagram IGSID, the same human has
 // the same id for every bot. Identity is still scoped to (account, user) so one
 // workspace can never read another's contact row; the unique index is created in
 // migrate.go because it needs a WHERE clause GORM tags cannot express.
@@ -124,7 +124,7 @@ type TelegramContact struct {
 	LeadID *string `gorm:"type:uuid;index"`
 
 	// Blocked comes from my_chat_member, which in private chats fires only on
-	// block/unblock. In bot mode this — not a clock — is what closes the
+	// block/unblock. In bot mode this, not a clock, is what closes the
 	// composer.
 	Blocked   bool       `gorm:"not null;default:false;index"`
 	BlockedAt *time.Time `gorm:"type:timestamptz"`
@@ -143,7 +143,7 @@ func (c *TelegramContact) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TelegramConversation is the ENTRY — what the CRM treats as a conversation.
+// TelegramConversation is the ENTRY, what the CRM treats as a conversation.
 // conversation_messages rows point here via (entry_id, entry_type='telegram'),
 // and because labels, stages, opportunities and inbox assignment all key on that
 // pair, they work for Telegram with no change.
@@ -193,7 +193,7 @@ func (c *TelegramConversation) BeforeCreate(tx *gorm.DB) error {
 // TelegramDeepLink is a t.me/<bot>?start=<token> attribution record.
 //
 // Telegram caps the start parameter at 64 characters from a restricted alphabet,
-// which is not enough to carry real ids — so the link carries an opaque token
+// which is not enough to carry real ids, so the link carries an opaque token
 // and this row carries what it resolves to. It is the channel's answer to having
 // no cold outbound: a link in an email, an invoice or a QR code opens an
 // already-attributed conversation on the customer's first tap.
@@ -224,7 +224,7 @@ func (TelegramDeepLink) TableName() string { return "telegram_deep_links" }
 // assigned it.
 //
 // "There are no limits for files sent this way", so a cached id turns every
-// repeat send of the same asset into a free, instant call — and it sidesteps the
+// repeat send of the same asset into a free, instant call, and it sidesteps the
 // URL-send size caps entirely. The id is per bot: "file_id is unique for each
 // individual bot and can't be transferred from one bot to another".
 type TelegramFileCache struct {

@@ -124,7 +124,7 @@ type TriggerEvent struct {
 //
 // They are named constants rather than string literals at each call site
 // because they are a contract between three channel handlers and
-// AdvanceOnReply. A typo in any one channel does not fail loudly — it silently
+// AdvanceOnReply. A typo in any one channel does not fail loudly, it silently
 // routes every button press down the no_match branch, which reads as "the
 // customer typed something unexpected" and is very hard to trace back.
 const (
@@ -136,9 +136,9 @@ const (
 // OptionSelection is the option a contact tapped, when the inbound event was a
 // tap on an interactive prompt rather than typed text.
 //
-// Every channel reports one differently — WhatsApp nests it under
+// Every channel reports one differently, WhatsApp nests it under
 // interactive.button_reply/list_reply, Telegram sends a callback_query,
-// Instagram sets message.quick_reply.payload — and all three normalize to this.
+// Instagram sets message.quick_reply.payload, and all three normalize to this.
 type OptionSelection struct {
 	// ID is the payload the option was sent with. It is what the workflow
 	// branches on, and it must survive the round trip byte-for-byte.

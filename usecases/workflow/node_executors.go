@@ -64,7 +64,7 @@ type ExecutorDeps struct {
 	// Adapters is the channel registry every non-WhatsApp send goes through.
 	//
 	// Without it the channel-neutral senders resolve no adapter and every send
-	// node SKIPS on Instagram and Telegram — text, media and interactive alike —
+	// node SKIPS on Instagram and Telegram, text, media and interactive alike,
 	// while the run reports itself completed. Pass the container's live registry
 	// so adapters registered after this point are still seen.
 	Adapters conversation.AdapterRegistry

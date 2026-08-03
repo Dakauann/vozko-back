@@ -262,7 +262,7 @@ func (c *Dialog360PartnerClient) ListChannels() ([]businessphone.Dialog360Channe
 }
 
 // GetChannel fetches a single channel by id. 360dialog supports filtering the
-// listing by id, so this is an O(1) call — the finalize path uses it instead of
+// listing by id, so this is an O(1) call, the finalize path uses it instead of
 // paging the whole fleet on every onboarding. Returns nil if the channel is absent.
 func (c *Dialog360PartnerClient) GetChannel(channelID string) (*businessphone.Dialog360Channel, error) {
 	if strings.TrimSpace(channelID) == "" {

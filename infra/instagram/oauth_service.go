@@ -18,8 +18,8 @@ import (
 //
 // These are constants rather than configuration on purpose: they are determined
 // by the login path (Instagram Login, not Facebook Login), not by the deployment.
-// Making them env-tunable would add a silent-breakage footgun — point one at the
-// wrong host and the whole flow fails in a way that looks like a Meta outage —
+// Making them env-tunable would add a silent-breakage footgun, point one at the
+// wrong host and the whole flow fails in a way that looks like a Meta outage,
 // while the only real need for substitution is tests, which inject an HTTPClient
 // instead.
 const (
@@ -36,8 +36,8 @@ type OAuthConfig struct {
 	//
 	// It is deliberately NOT caller-supplied. In OAuth the redirect URI is the
 	// security boundary: if a request could name its own, anyone able to reach the
-	// start endpoint could have the authorization code — and therefore the
-	// account's token — delivered to a host they control. Callers instead choose
+	// start endpoint could have the authorization code, and therefore the
+	// account's token, delivered to a host they control. Callers instead choose
 	// where they land AFTER the callback, via the `returnPath` carried inside the
 	// signed state and validated as a relative path.
 	RedirectURI string
@@ -178,7 +178,7 @@ func (s *oauthService) ExchangeForLongLived(ctx context.Context, shortLivedToken
 
 // RefreshToken extends a long-lived token.
 //
-// Deliberately does NOT send client_secret — unlike the long-lived exchange,
+// Deliberately does NOT send client_secret, unlike the long-lived exchange,
 // this endpoint does not take it. Instagram also rejects a refresh on a token
 // younger than 24 hours, which the caller enforces before calling.
 func (s *oauthService) RefreshToken(ctx context.Context, longLivedToken string) (*igdomain.TokenGrant, error) {

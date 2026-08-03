@@ -55,7 +55,7 @@ no WhatsApp.
 
 DOIS MODOS DE USO:
 
-1. BOTÕES DE RESPOSTA RÁPIDA (type="reply") — máximo 3 botões:
+1. BOTÕES DE RESPOSTA RÁPIDA (type="reply"), máximo 3 botões:
    Use quando o usuário precisa escolher entre opções:
    - Perguntar sexo → "Homem" / "Mulher"
    - Confirmação → "Sim" / "Não"
@@ -65,7 +65,7 @@ DOIS MODOS DE USO:
    - Qualquer seleção de confirmação, ou demonstração de opções
    O usuário clica no botão e você recebe a resposta automaticamente.
 
-2. BOTÃO DE CÓPIA (type="copy_code") — exatamente 1 botão:
+2. BOTÃO DE CÓPIA (type="copy_code"), exatamente 1 botão:
    Use quando o usuário precisa copiar um valor para a área de transferência:
    - Enviar chave Pix → o usuário toca para copiar a chave
    - Enviar código de cupom/desconto
@@ -87,7 +87,7 @@ DICA: Após usar esta ferramenta, evite repetir o conteúdo dos botões em texto
 				Description: `Lista de botões. Suporta dois tipos:
 
 ` +
-					`TIPO 1 — Resposta rápida ("type": "reply"):
+					`TIPO 1, Resposta rápida ("type": "reply"):
 ` +
 					`  Usado quando o usuário precisa escolher entre opções. Mínimo 1, máximo 3.
 ` +
@@ -96,7 +96,7 @@ DICA: Após usar esta ferramenta, evite repetir o conteúdo dos botões em texto
 					`  Campos: type="reply", id (interno), title (texto no botão, máx 20 chars).
 
 ` +
-					`TIPO 2 — Copiar valor ("type": "copy_code"):
+					`TIPO 2, Copiar valor ("type": "copy_code"):
 ` +
 					`  Usado quando o usuário precisa copiar um dado para a área de transferência.
 ` +
@@ -192,7 +192,7 @@ func (uc *sendWhatsappButtonMessageTool) Execute(ctx context.Context, data map[s
 
 func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, config map[string]interface{}, data map[string]interface{}) (tools.ExecutionResult, error) {
 	// Non-WhatsApp channels are addressed by conversation and resolved before a
-	// phone number is looked for — there is none to find.
+	// phone number is looked for, there is none to find.
 	adapter, ec, viaAdapter := resolveToolAdapter(ctx, uc.adapters, config)
 
 	var whatsappClient conversation.WhatsAppClient

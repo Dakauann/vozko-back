@@ -78,8 +78,8 @@ func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 
 // TestRegisterPublicRoutes_OnlyTheTwoUnauthenticatedEndpoints.
 //
-// Both must be public by necessity — Meta calls the webhook, and Instagram
-// redirects the browser to the callback — and both are protected by other means:
+// Both must be public by necessity, Meta calls the webhook, and Instagram
+// redirects the browser to the callback, and both are protected by other means:
 // the callback by a signed single-use state, the webhook by X-Hub-Signature-256.
 func TestRegisterPublicRoutes_OnlyTheTwoUnauthenticatedEndpoints(t *testing.T) {
 	router := mux.NewRouter()

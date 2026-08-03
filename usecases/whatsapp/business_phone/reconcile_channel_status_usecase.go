@@ -12,7 +12,7 @@ import (
 // reconcileChannelStatusUseCase keeps the local dialog360 fleet in sync with the
 // partner's actual channel state. It exists because two facts about 360dialog:
 //
-//  1. Some channel metadata — notably the display phone number and the account name —
+//  1. Some channel metadata, notably the display phone number and the account name,
 //     is NOT available at channel_live; it appears a short while later. Finalize can
 //     only write what exists then, so the number/name stay blank without a follow-up.
 //  2. A channel can be deactivated at 360dialog/Meta (cancelled, bsp_removed) without
@@ -20,7 +20,7 @@ import (
 //     with a now-invalid API key.
 //
 // This is deliberately a LOW-FREQUENCY pass (a single ListChannels per run) so it is
-// never a rate-limit risk — unlike reconciling on every webhook. It is idempotent.
+// never a rate-limit risk, unlike reconciling on every webhook. It is idempotent.
 type reconcileChannelStatusUseCase struct {
 	partner  businessphone.Dialog360PartnerService
 	refs     businessphone.OwnerPhoneReader
@@ -100,7 +100,7 @@ func (uc *reconcileChannelStatusUseCase) Execute() (businessphone.ChannelStatusR
 		// phone_number, and the WABA (on_behalf_of) name later still. When this live
 		// channel is still missing the number or WABA name that the phone also lacks,
 		// re-read just this channel via the single-channel endpoint, which is current
-		// (not the cached bulk snapshot) — so the gap closes in THIS pass instead of
+		// (not the cached bulk snapshot), so the gap closes in THIS pass instead of
 		// waiting for the bulk list to catch up on a later tick. Bounded: only fires
 		// for channels still missing metadata, and the partner client is throttled.
 		if (phone.DisplayPhoneNumber == "" && ch.PhoneNumber == "") ||

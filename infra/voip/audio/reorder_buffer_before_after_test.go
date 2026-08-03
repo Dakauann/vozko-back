@@ -312,7 +312,7 @@ func TestReorderBuffer_InboundInOrderPreservesPayload(t *testing.T) {
 
 		for j := range orig {
 			if received[j] != orig[j] {
-				t.Errorf("seq %d payload byte %d: expected 0x%02X, got 0x%02X — REORDER BUFFER MODIFIED INBOUND DATA", pkt.SequenceNumber, j, orig[j], received[j])
+				t.Errorf("seq %d payload byte %d: expected 0x%02X, got 0x%02X, REORDER BUFFER MODIFIED INBOUND DATA", pkt.SequenceNumber, j, orig[j], received[j])
 				break
 			}
 		}

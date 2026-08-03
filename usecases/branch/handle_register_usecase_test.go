@@ -27,7 +27,7 @@ func newRegisterUC(store branch.BindingStore, branches ...*branch.Branch) (branc
 
 // authedRequest builds a REGISTER whose digest response is correct for the branch,
 // using the qop=auth path and a signed nonce issued (at fixedNow) for the request's
-// source IP and the branch realm — exactly what the registrar would have challenged.
+// source IP and the branch realm, exactly what the registrar would have challenged.
 func authedRequest(b *branch.Branch, callID, contact, receivedFrom string, expires int) branch.RegisterRequest {
 	return authedRequestAt(b, callID, contact, receivedFrom, expires, fixedNow())
 }
@@ -146,7 +146,7 @@ func TestHandleRegister_IntervalTooBrief(t *testing.T) {
 
 // TestHandleRegister_EnumerationParity is the anti-enumeration guarantee: a valid, an
 // unknown, and a disabled extension must be INDISTINGUISHABLE to an unauthenticated
-// prober — all get the same 401 challenge (never 404/403), so an attacker cannot map
+// prober, all get the same 401 challenge (never 404/403), so an attacker cannot map
 // which extensions exist. This is the successor to Asterisk's alwaysauthreject=yes.
 func TestHandleRegister_EnumerationParity(t *testing.T) {
 	valid := enabledBranch("1001", "ws-1", "vozko", "s3cret")
@@ -165,7 +165,7 @@ func TestHandleRegister_EnumerationParity(t *testing.T) {
 	}
 
 	// And with auth present, an unknown extension returns the SAME 401 as a bad
-	// password (never 404) — no existence leak on the second leg either.
+	// password (never 404), no existence leak on the second leg either.
 	unknown := authedRequest(valid, "call-x", "sip:9999@x", "1.2.3.4:5060", 60)
 	unknown.SIPUser = "9999"
 	if res, _ := uc.Execute(unknown); res.Action != branch.RegisterUnauthorized {

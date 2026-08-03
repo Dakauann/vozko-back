@@ -568,7 +568,7 @@ func (h *LeadHandler) applyWhatsAppBlock(workspaceID, businessPhoneID, contactNu
 		return false
 	}
 	if strings.TrimSpace(phone.AccessToken) == "" || strings.TrimSpace(phone.MetaPhoneNumberID) == "" {
-		log.Printf("[lead-block] business phone %s missing access token or meta phone id — skipping Meta block", businessPhoneID)
+		log.Printf("[lead-block] business phone %s missing access token or meta phone id, skipping Meta block", businessPhoneID)
 		return false
 	}
 

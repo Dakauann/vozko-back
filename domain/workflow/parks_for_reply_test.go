@@ -28,7 +28,7 @@ func TestParksForReplyCoversBothWaitingNodes(t *testing.T) {
 	}
 }
 
-// The interactive prompt stays out of IsWait on purpose — IsWait also drives the
+// The interactive prompt stays out of IsWait on purpose, IsWait also drives the
 // node catalog's "wait" category. This pins the split so nobody "simplifies" it
 // and silently changes which category the node appears in.
 func TestTheInteractivePromptIsStillNotAWaitNode(t *testing.T) {

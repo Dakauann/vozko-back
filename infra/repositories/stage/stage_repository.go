@@ -23,7 +23,7 @@ const defaultConversationPipelineName = "Atendimento"
 //
 // Each subquery takes the workspace id as its single bind parameter. A channel
 // missing from here cannot be narrowed, which is treated as an explicit empty
-// result rather than as "no filter" — the previous behaviour, where asking for
+// result rather than as "no filter", the previous behaviour, where asking for
 // Instagram's stage counts silently returned every channel's.
 var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 	shared.EntryTypeWhatsApp: `SELECT wce.id FROM whatsapp_campaign_entries wce
@@ -332,7 +332,7 @@ func (r *repository) ListDistinctByWorkspace(workspaceID string) ([]*stage.Stage
 // workspace's default conversation pipeline (created/seeded on demand). An empty
 // campaignID (the workspace-global board) always resolves to the default. This is
 // what makes stage listing, the AI classifier enum and initial-stage assignment
-// per-campaign again — each campaign can carry a distinct funnel.
+// per-campaign again, each campaign can carry a distinct funnel.
 func (r *repository) resolveConversationPipeline(workspaceID, campaignID, campaignType string) (string, error) {
 	if strings.TrimSpace(campaignID) != "" {
 		if pid := r.campaignPipelineID(campaignID, campaignType); pid != "" {
@@ -864,7 +864,7 @@ func (r *repository) GetStageCountsForWorkspace(workspaceID, entryType string) (
 
 	// Narrow to one channel's entries when asked. An unrecognised type used to
 	// apply NO filter at all, so asking for one channel's stage counts silently
-	// returned every channel's — an over-count that looks like real data.
+	// returned every channel's, an over-count that looks like real data.
 	var entryTypeFilter string
 	if entryType != "" {
 		subquery, ok := workspaceEntryIDSubqueries[shared.EntryType(entryType)]

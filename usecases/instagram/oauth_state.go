@@ -24,8 +24,8 @@ const stateTTL = 15 * time.Minute
 
 // OAuthState is the CSRF/replay protection for the connect flow.
 //
-// The existing WhatsApp embedded-signup flow has no state parameter at all — it
-// relies on the popup being opened from an authenticated session — and it accepts
+// The existing WhatsApp embedded-signup flow has no state parameter at all, it
+// relies on the popup being opened from an authenticated session, and it accepts
 // a caller-supplied access_token, which lets a caller skip the code exchange
 // entirely. A plain redirect flow cannot lean on that, and does not need to: a
 // signed state carries the tenant identity, and a single-use nonce blocks replay.

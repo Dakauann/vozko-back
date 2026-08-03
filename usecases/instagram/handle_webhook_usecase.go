@@ -42,7 +42,7 @@ type AssignmentService interface {
 // as a narrow port for the same reason AssignmentService is: the Instagram
 // usecase depends on the contract, not on the conversation usecase package.
 //
-// A nil message with a nil error means "deliberately not answered" — automation
+// A nil message with a nil error means "deliberately not answered", automation
 // off, loop suspected, empty body, or a closed provider window. That is a normal
 // outcome, not a failure.
 type AIReplier interface {
@@ -363,8 +363,8 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(account *igdomain.Account, conv
 
 // fireWorkflowTriggers starts or advances workflows for this conversation.
 //
-// Gating matches the AI agent exactly — the account's workflow switch, overridden
-// per conversation by the automation toggle — so pausing automation on a
+// Gating matches the AI agent exactly, the account's workflow switch, overridden
+// per conversation by the automation toggle, so pausing automation on a
 // conversation silences BOTH the agent and its workflows. Otherwise an operator
 // who took over would still be interrupted by a workflow step.
 //
@@ -374,7 +374,7 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(account *igdomain.Account, conv
 //
 // sel is non-nil only when the contact TAPPED a quick reply or a postback
 // button rather than typing. Without it a tap cannot reach the option's own
-// branch — AdvanceOnReply routes on the option id and falls back to no_match.
+// branch, AdvanceOnReply routes on the option id and falls back to no_match.
 func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	ctx context.Context,
 	account *igdomain.Account,
@@ -386,7 +386,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		return
 	}
 	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {
-		log.Printf("[instagram] automation disabled for conversation=%s — skipping workflow triggers", conv.ID)
+		log.Printf("[instagram] automation disabled for conversation=%s, skipping workflow triggers", conv.ID)
 		return
 	}
 
@@ -429,7 +429,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 // windowed count is wrong in a way that only surfaces deep in a conversation:
 // once the agent has answered with several messages, the most recent rows are
 // mostly outbound, exactly one is inbound, and the check reports a "first
-// message" long after the first — starting a duplicate workflow run and
+// message" long after the first, starting a duplicate workflow run and
 // greeting the contact again.
 func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv *igdomain.Conversation) bool {
 	if uc.messages == nil {
@@ -447,8 +447,8 @@ func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv 
 
 // maybeReplyWithAgent hands the message to the channel-agnostic AI service.
 //
-// The service owns every decision — automation gating, loop protection, the
-// outbound window — so this stays a hand-off rather than a second place where
+// The service owns every decision, automation gating, loop protection, the
+// outbound window, so this stays a hand-off rather than a second place where
 // "should the bot answer?" is implemented.
 //
 // Failures are logged, never returned: an AI problem must not fail the webhook
@@ -566,8 +566,8 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igd
 		return err
 	}
 
-	// The reaction value is not a closed enum — the docs list different sets and
-	// allow "other" — so the raw string and emoji are both stored verbatim.
+	// The reaction value is not a closed enum, the docs list different sets and
+	// allow "other", so the raw string and emoji are both stored verbatim.
 	payload := map[string]any{
 		"instagram_reaction_action": ev.Reaction.Action,
 		"instagram_reaction":        ev.Reaction.Reaction,
@@ -590,7 +590,7 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igd
 // handleRead marks our outbound message as read.
 //
 // Instagram sends a specific message id, NOT a watermark, so only that message
-// can be marked — "everything before T" cannot be inferred.
+// can be marked, "everything before T" cannot be inferred.
 func (uc *HandleWebhookUseCase) handleRead(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Read == nil || uc.messages == nil {
 		return nil
@@ -840,7 +840,7 @@ func (uc *HandleWebhookUseCase) storeAttachments(ctx context.Context, conv *igdo
 		if att == nil {
 			continue
 		}
-		// `ephemeral` (disappearing media) carries no payload at all — a naive
+		// `ephemeral` (disappearing media) carries no payload at all, a naive
 		// dereference here would panic.
 		if att.Payload == nil || att.Payload.URL == "" {
 			continue

@@ -143,7 +143,7 @@ func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, wo
 
 // RecordInbound advances the customer clock.
 //
-// The update is monotonic — GREATEST against the stored value — so an
+// The update is monotonic, GREATEST against the stored value, so an
 // out-of-order delivery cannot move the clock backwards. Telegram explicitly
 // warns updates may arrive out of order, and a clock that moved backwards would
 // both reorder the inbox and wrongly reopen a business-mode window.
@@ -234,7 +234,7 @@ func (r *conversationRepository) UpdateChatID(ctx context.Context, id string, ch
 // CountByStatus powers the inbox status chips.
 //
 // Conversations with no status yet count as "new", matching the inbox's own
-// IS DISTINCT FROM default — otherwise a channel's brand-new conversations would
+// IS DISTINCT FROM default, otherwise a channel's brand-new conversations would
 // be visible in the list but absent from every count above it.
 func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, accountID string) (map[string]int64, error) {
 	type row struct {
@@ -294,4 +294,22 @@ func toConversationDomain(record *schema.TelegramConversation) *tgdomain.Convers
 		CreatedAt:             record.CreatedAt,
 		UpdatedAt:             record.UpdatedAt,
 	}
+}
+
+// SetAutomationEnabled writes the per-conversation automation override.
+//
+// nil clears it, restoring inheritance from the account switch. Update with a
+// map is required for exactly that reason: GORM's struct update skips nil
+// fields, so clearing an override would silently do nothing.
+func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error {
+	result := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
+		Where("id = ?", id).
+		Update("automation_enabled", enabled)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return tgdomain.ErrConversationNotFound
+	}
+	return nil
 }

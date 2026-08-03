@@ -28,7 +28,7 @@ type inlineButton struct {
 // Telegram is the most permissive channel we carry on option COUNT and the
 // strictest on option PAYLOAD: the Bot API documents no bound on
 // inline_keyboard length, but callback_data is "1-64 bytes". So the failure
-// mode here is not "too many options" — it is an option id that is a few
+// mode here is not "too many options", it is an option id that is a few
 // accented characters too long, which would fail the whole send.
 //
 // Options whose id does not fit are dropped rather than truncated. A truncated
@@ -121,7 +121,7 @@ func inlineKeyboardFor(options []conversation.InteractiveOption) ([][]inlineButt
 			dropped = append(dropped, droppedOption{opt.Title, "no id to send back on press"})
 			continue
 		case len(id) > tgdomain.MaxCallbackDataBytes:
-			// Bytes, not characters — the documented limit is on the encoded
+			// Bytes, not characters, the documented limit is on the encoded
 			// payload, so an id of accented text overflows earlier than it looks.
 			dropped = append(dropped, droppedOption{id, fmt.Sprintf(
 				"callback_data is %d bytes, over Telegram's %d-byte limit",
@@ -142,7 +142,7 @@ func inlineKeyboardFor(options []conversation.InteractiveOption) ([][]inlineButt
 //
 // Telegram has no header or footer slot. Dropping them would silently discard
 // words the author wrote and expected the customer to read, so they are joined
-// into the body instead — the header emphasised, the footer plain.
+// into the body instead, the header emphasised, the footer plain.
 func composeInteractiveBody(req conversation.SendInteractiveRequest) string {
 	parts := make([]string, 0, 3)
 	if h := strings.TrimSpace(req.Header); h != "" {

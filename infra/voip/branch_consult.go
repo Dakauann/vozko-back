@@ -131,7 +131,7 @@ func (r *branchConsultRelay) firePhoneGone() {
 		// Dispatch ASYNC: onPhoneGone drives the transfer abort, which ends in
 		// DetachConsult -> stop() -> wg.Wait(). Calling it inline would run that on
 		// THIS relay goroutine, so wg.Wait() would wait for a goroutine that is
-		// blocked in the callback — a self-join deadlock that leaves the branch
+		// blocked in the callback, a self-join deadlock that leaves the branch
 		// reserved (member stuck "on call") until the reservation TTL. Running it on
 		// its own goroutine lets this one return and Done() so stop() completes.
 		go r.onPhoneGone()

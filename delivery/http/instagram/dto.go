@@ -32,7 +32,7 @@ type AccountResponse struct {
 	CanPublish        bool `json:"canPublish"`
 
 	// MessagingHealthy is false when the Instagram-app "Allow Access to
-	// Messages" toggle is off — a state in which DMs and webhooks fail silently.
+	// Messages" toggle is off, a state in which DMs and webhooks fail silently.
 	MessagingHealthy    bool       `json:"messagingHealthy"`
 	MessagingCheckedAt  *time.Time `json:"messagingCheckedAt,omitempty"`
 	WebhookSubscribedAt *time.Time `json:"webhookSubscribedAt,omitempty"`
@@ -142,7 +142,7 @@ type MediaResponse struct {
 //
 // The cursor is opaque and must not be persisted by the client either: Meta
 // documents that cursors can become invalid quickly. HasNext comes from the
-// presence of paging.next — a short page does NOT mean the end.
+// presence of paging.next, a short page does NOT mean the end.
 type PageResponse[T any] struct {
 	Items      []T    `json:"items"`
 	NextCursor string `json:"nextCursor,omitempty"`

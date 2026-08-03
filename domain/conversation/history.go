@@ -44,7 +44,7 @@ type MessageHistoryRecord struct {
 	Metadata json.RawMessage
 
 	// SenderName and SenderAvatar are the display identity for the live
-	// broadcast, and are never persisted — a message row that froze the name it
+	// broadcast, and are never persisted, a message row that froze the name it
 	// was sent under would show a stale name forever after a rename.
 	//
 	// Inbound handlers set them because they have just loaded the contact or

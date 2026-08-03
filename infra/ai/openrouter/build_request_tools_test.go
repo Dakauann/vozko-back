@@ -27,7 +27,7 @@ func (injectFakeToolService) ExecuteWithConfig(context.Context, string, map[stri
 func (injectFakeToolService) Handler(string) (tools.Handler, bool) { return nil, false }
 
 // Regression: a caller that disables tool execution (ToolExecutionModeNone) and
-// passes no tools — e.g. a workflow AI-agent node in prompt mode — must NOT have
+// passes no tools, e.g. a workflow AI-agent node in prompt mode, must NOT have
 // the full default registry injected. Injecting it made the model emit tool calls
 // it could never run, suppressing its text reply (the "keeps typing, won't
 // respond" bug). A normal Auto-mode call with no tools still gets the defaults.

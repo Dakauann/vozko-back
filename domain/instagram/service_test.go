@@ -7,7 +7,7 @@ import (
 
 // TestValidateRedirectURI covers the class of bug that produced a real
 // "Invalid redirect_uri": the configured URI disagreeing with the path this build
-// actually serves. The path is a code constant, so only the host is configurable —
+// actually serves. The path is a code constant, so only the host is configurable,
 // and everything else must fail at boot rather than mid-onboarding.
 func TestValidateRedirectURI(t *testing.T) {
 	valid := []string{
@@ -99,7 +99,7 @@ func TestRequiredScopes(t *testing.T) {
 // TestSubscribedFields_AreAllAcceptedByTheAPI is the regression test for a silent
 // total failure: subscribed_fields validation is ATOMIC upstream, so one
 // unrecognised entry rejects the whole call with code 100, subscribes nothing, and
-// produces no webhooks at all — with silence as the only symptom.
+// produces no webhooks at all, with silence as the only symptom.
 //
 // That is exactly what "message_echoes" did. The docs list it as subscribable; the
 // API refuses it, and its rejection voided every other field in the same call.
@@ -107,7 +107,7 @@ func TestSubscribedFields_AreAllAcceptedByTheAPI(t *testing.T) {
 	fields := SubscribedFields()
 
 	if bad := InvalidSubscribedFields(fields); len(bad) > 0 {
-		t.Fatalf("SubscribedFields() contains value(s) the API rejects: %v — a single bad "+
+		t.Fatalf("SubscribedFields() contains value(s) the API rejects: %v, a single bad "+
 			"entry voids the entire subscription", bad)
 	}
 

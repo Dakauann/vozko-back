@@ -393,7 +393,7 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 						}
 					}
 				}
-				log.Printf("[phone-webhook] account_update: waba %s reinstated — %d phones restored", wabaID, len(phones))
+				log.Printf("[phone-webhook] account_update: waba %s reinstated, %d phones restored", wabaID, len(phones))
 				if reinstated != nil {
 					h.notifyPhoneAlert(reinstated, "reinstated", "Conta WhatsApp restaurada - "+brand.Active().Name, "whatsapp_account_update.html", map[string]interface{}{
 						"Headline":    "Conta restaurada",

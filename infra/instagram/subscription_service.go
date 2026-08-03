@@ -40,7 +40,7 @@ type subscribeResponse struct {
 // Subscribe enables webhook fields for one account.
 //
 // On the Instagram Login path this is graph.instagram.com with the account's
-// Instagram User token — not graph.facebook.com with a Page token.
+// Instagram User token, not graph.facebook.com with a Page token.
 func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token string, fields []string) error {
 	if len(fields) == 0 {
 		fields = igdomain.SubscribedFields()
@@ -50,7 +50,7 @@ func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token str
 	// with code 100 and subscribes nothing, so no webhook ever arrives and the only
 	// symptom is silence. Catching it here names the offending field instead.
 	if bad := igdomain.InvalidSubscribedFields(fields); len(bad) > 0 {
-		return fmt.Errorf("instagram: refusing to subscribe — invalid webhook field(s) %v "+
+		return fmt.Errorf("instagram: refusing to subscribe, invalid webhook field(s) %v "+
 			"(a single bad entry voids the entire subscription)", bad)
 	}
 

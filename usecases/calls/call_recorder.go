@@ -112,7 +112,7 @@ func (r *CallRecorder) RecordRemotePCM(pcm []byte, sampleRate int) {
 	}
 
 	if sampleRate != recorderSampleRate {
-		log.Printf("CallRecorder: rejecting remote-leg PCM at %dHz, expected %dHz — audio dropped", sampleRate, recorderSampleRate)
+		log.Printf("CallRecorder: rejecting remote-leg PCM at %dHz, expected %dHz, audio dropped", sampleRate, recorderSampleRate)
 		return
 	}
 

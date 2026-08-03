@@ -96,7 +96,7 @@ func (r *commentRuleRepository) ListByAccount(ctx context.Context, workspaceID, 
 // scoped to it plus the account-wide defaults.
 //
 // Both tiers come back in one query, ordered so a post-scoped rule is evaluated
-// before a default of the same priority — the specific rule should win.
+// before a default of the same priority, the specific rule should win.
 func (r *commentRuleRepository) ListCandidates(ctx context.Context, igAccountID, igMediaID string) ([]*igdomain.CommentRule, error) {
 	var records []schema.InstagramCommentRule
 	if err := r.db.WithContext(ctx).

@@ -45,7 +45,7 @@ const (
 	MessageTypeCallPermissionRejected MessageType = "call_permission_rejected"
 
 	// Inbound WhatsApp call lifecycle, recorded into the conversation like a
-	// phone call log. These are event/system markers — never conversational turns
+	// phone call log. These are event/system markers, never conversational turns
 	// (see IsCallEvent / AI history exclusion) so they don't pollute AI context.
 	MessageTypeCallReceived MessageType = "call_received"
 	MessageTypeCallAnswered MessageType = "call_answered"

@@ -320,7 +320,7 @@ func (s *Service) ListOpportunitiesForEntry(workspaceID, entryID, entryType stri
 	for _, l := range links {
 		o, err := s.repo.GetByID(workspaceID, l.OpportunityID)
 		if err != nil || o == nil {
-			continue // dangling link (deal deleted) — omit, don't fail the panel
+			continue // dangling link (deal deleted), omit, don't fail the panel
 		}
 		out = append(out, o)
 	}

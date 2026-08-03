@@ -1,8 +1,8 @@
 // Package telegram holds the Telegram channel's contracts and rules.
 //
 // It deliberately contains no HTTP: the Bot API details live in infra/telegram.
-// What is here is the vocabulary the rest of the system reasons about — accounts,
-// contacts, conversations, deep links — plus the rules that are genuinely
+// What is here is the vocabulary the rest of the system reasons about, accounts,
+// contacts, conversations, deep links, plus the rules that are genuinely
 // Telegram's and cannot be inferred from a generic messaging model.
 //
 // Two of those rules shape everything downstream:
@@ -10,7 +10,7 @@
 //  1. A bot cannot open a conversation. Sending to a user who never started the
 //     bot fails with "bot can't initiate conversation with a user". Our
 //     conversations only exist because an inbound message created one, so the
-//     rule is satisfied by construction — the real outbound gate is whether the
+//     rule is satisfied by construction, the real outbound gate is whether the
 //     contact has since BLOCKED the bot.
 //  2. There are two connection modes with different messaging rules. See Mode.
 package telegram
@@ -42,7 +42,7 @@ var (
 )
 
 // MaxTextRunes is Telegram's documented limit: "1-4096 characters after entities
-// parsing". Note CHARACTERS — Instagram's equivalent limit is in BYTES, and
+// parsing". Note CHARACTERS, Instagram's equivalent limit is in BYTES, and
 // applying the wrong one silently truncates or over-accepts.
 const MaxTextRunes = 4096
 
@@ -84,7 +84,7 @@ const (
 
 // MaxCallbackDataBytes is the documented inline-button payload limit: "Data to
 // be sent in a callback query to the bot when the button is pressed, 1-64
-// bytes". Bytes, not characters — an option id with accented text overflows it
+// bytes". Bytes, not characters, an option id with accented text overflows it
 // sooner than it looks.
 const MaxCallbackDataBytes = 64
 
@@ -190,7 +190,7 @@ func (s Status) CanTransitionTo(next Status) bool {
 //
 // Every field is presence-only upstream (the type is literally `True`), so a
 // missing field means "not granted". The owner can change them at any moment and
-// we learn only from the next business_connection update — which is why they are
+// we learn only from the next business_connection update, which is why they are
 // stored verbatim and re-read rather than assumed from onboarding.
 type BusinessRights struct {
 	CanReply              bool `json:"can_reply,omitempty"`
@@ -205,8 +205,8 @@ type BusinessRights struct {
 }
 
 // Account is a connected Telegram bot. It doubles as the config carrier for its
-// conversations — the role whatsapp_campaigns plays for WhatsApp and
-// instagram_accounts plays for Instagram — which is why the automation fields
+// conversations, the role whatsapp_campaigns plays for WhatsApp and
+// instagram_accounts plays for Instagram, which is why the automation fields
 // live here. Telegram has no campaign concept: there is no cold outbound to
 // blast and no template to carry.
 type Account struct {
@@ -231,8 +231,8 @@ type Account struct {
 	// so plaintext storage would be strictly worse than the Meta equivalent.
 	BotToken string `json:"-"`
 	// WebhookSecret is echoed by Telegram in X-Telegram-Bot-Api-Secret-Token. It
-	// is the ONLY authenticity control the channel has — there is no body
-	// signature — so it is treated as a credential and compared in constant time.
+	// is the ONLY authenticity control the channel has, there is no body
+	// signature, so it is treated as a credential and compared in constant time.
 	WebhookSecret string `json:"-"`
 
 	WebhookSetAt *time.Time `json:"webhookSetAt,omitempty"`
@@ -295,7 +295,7 @@ func (a *Account) Validate() error {
 
 // CanSend reports whether this account is usable for outbound at all.
 //
-// A webhook-failing account can still SEND — the failure is inbound-only — so it
+// A webhook-failing account can still SEND, the failure is inbound-only, so it
 // is deliberately not excluded here. Only a dead token or a revoked account is.
 func (a *Account) CanSend() bool {
 	if a.BotToken == "" {
@@ -314,7 +314,7 @@ func (a *Account) CanSend() bool {
 
 // Rights returns the granted business rights, never nil, so callers can read a
 // field without a presence check. In bot mode everything the bot can do it can
-// do unconditionally, so the zero value would be wrong — bot mode is handled by
+// do unconditionally, so the zero value would be wrong, bot mode is handled by
 // the caller before it reaches here.
 func (a *Account) Rights() BusinessRights {
 	if a.BusinessRights == nil {
@@ -351,7 +351,7 @@ func (a *Account) WebhookUnhealthy(pendingThreshold int) bool {
 
 // Contact is a person who messaged one of our bots.
 //
-// Unlike an Instagram IGSID, a Telegram user id is GLOBAL — the same human has
+// Unlike an Instagram IGSID, a Telegram user id is GLOBAL, the same human has
 // the same id for every bot. Identity is still scoped to (account, user) so one
 // workspace can never read another's contact row, and so the same person talking
 // to two of a workspace's bots keeps two independent conversations.
@@ -387,7 +387,7 @@ type Contact struct {
 	LeadID *string `json:"leadId,omitempty"`
 
 	// Blocked is set from my_chat_member, which for private chats fires only on
-	// block/unblock. In bot mode this — not a clock — is what closes the
+	// block/unblock. In bot mode this, not a clock, is what closes the
 	// composer.
 	Blocked   bool       `json:"blocked"`
 	BlockedAt *time.Time `json:"blockedAt,omitempty"`
@@ -430,7 +430,7 @@ func (c *Contact) ProfileIsStale(now time.Time, ttl time.Duration) bool {
 	return now.Sub(*c.ProfileFetchedAt) > ttl
 }
 
-// Conversation is the ENTRY — what the CRM treats as a conversation. It carries
+// Conversation is the ENTRY, what the CRM treats as a conversation. It carries
 // the same state contract as whatsapp_campaign_entries and
 // instagram_conversations, so labels, stages, opportunities and inbox assignment
 // (all keyed on entry_id + entry_type) work with no change to those subsystems.
@@ -468,7 +468,7 @@ type Conversation struct {
 
 // BusinessWindowOpen reports whether the business-mode 24h window is open, and
 // when it closes. Bot mode has no window at all, which is why this is not called
-// there — see the channel adapter.
+// there, see the channel adapter.
 func (c *Conversation) BusinessWindowOpen(now time.Time) (bool, *time.Time) {
 	if c.LastCustomerMessageAt == nil {
 		return false, nil

@@ -195,12 +195,16 @@ func (f *fakeConversationRepo) CountByStatus(context.Context, string, string) (m
 	return nil, nil
 }
 
+func (f *fakeConversationRepo) SetAutomationEnabled(context.Context, string, *bool) error {
+	return nil
+}
+
 func (f *fakeConversationRepo) SetStatus(context.Context, string, string, string, string, *time.Time) error {
 	return nil
 }
 
 // sentMessage records one outbound Send API call so a test can assert WHICH
-// account and token were used — the property that keeps multi-account replies
+// account and token were used, the property that keeps multi-account replies
 // correct.
 type sentMessage struct {
 	IGUserID  string

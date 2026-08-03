@@ -19,7 +19,7 @@ type ParkedLeg struct {
 
 // ParkRegistry owns parked legs. Implementations must watch each leg's Done
 // channel and fire onDeath exactly once if the leg dies while still parked (the
-// caller hung up in the hold/ring window) — that callback is the transfer engine's
+// caller hung up in the hold/ring window), that callback is the transfer engine's
 // customer-hangup funnel. A leg that was retrieved or abandoned must NOT fire it.
 type ParkRegistry interface {
 	// Park stores the leg under (workspaceID, leg.CallID()) owned by ownerToken.

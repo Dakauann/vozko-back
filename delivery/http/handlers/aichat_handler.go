@@ -240,7 +240,7 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Context {
 	// Department scope mirrors the rest of the app: departmentFilterIDs returns nil
 	// for owners/admins (all departments) or the member's allowed department IDs for
-	// a restricted member — so the copilot can only see/touch what the user can. The
+	// a restricted member, so the copilot can only see/touch what the user can. The
 	// RBAC gate (CheckAccess) looks the workspace role up itself.
 	return copilot_domain.Context{
 		WorkspaceID: workspaceID,

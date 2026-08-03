@@ -1,7 +1,7 @@
 // Package meta is a shared client for Meta's Graph API family.
 //
 // It exists because the existing WhatsApp client (infra/whatsapp/business_phone)
-// decodes Meta's structured error — code, error_subcode, is_transient — and then
+// decodes Meta's structured error, code, error_subcode, is_transient, and then
 // formats it into a string, so nothing downstream can decide whether a failure is
 // retryable. It also hardcodes the API version in several places, takes no
 // context.Context, and has no retry or rate limiting.
@@ -44,7 +44,7 @@ func (e *Error) Error() string {
 }
 
 // Well-known Graph error codes. The full table is not published for Instagram
-// messaging — four documentation URLs return 500 or a JS shell — so this list
+// messaging, four documentation URLs return 500 or a JS shell, so this list
 // covers the codes we can act on and everything else falls through to the
 // HTTP-status heuristics below. Extend it from real staging responses rather
 // than from guesswork.
@@ -126,7 +126,7 @@ func (e *Error) IsRecipientUnreachable() bool {
 	return e != nil && e.Code == CodePersonUnavailable
 }
 
-// IsPermission reports a missing or insufficient permission — a configuration or
+// IsPermission reports a missing or insufficient permission, a configuration or
 // App Review problem, never transient.
 func (e *Error) IsPermission() bool {
 	return e != nil && (e.Code == CodePermission || e.Code == CodeInvalidParam && e.Subcode == 33)

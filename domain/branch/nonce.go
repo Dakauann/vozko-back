@@ -25,7 +25,7 @@ const NonceLifetime = 32 * time.Second
 // any nonce it would not itself have produced.
 //
 // This replaces a predictable, unverified nonce (which let a captured REGISTER be
-// replayed indefinitely, and — since the digest does not cover the Contact header —
+// replayed indefinitely, and, since the digest does not cover the Contact header,
 // let an attacker rebind the AOR to their own phone). Binding the nonce to the source
 // IP and a short lifetime is the standard mitigation.
 type NonceService struct {

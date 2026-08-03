@@ -18,7 +18,7 @@ type AIReplyRequest struct {
 	// "enable agent responses").
 	AgentResponsesEnabled bool
 	// AutomationEnabled is the per-conversation override. nil means "never
-	// toggled", which inherits the container switch — the same contract the
+	// toggled", which inherits the container switch, the same contract the
 	// WhatsApp entry uses, so an operator taking over one conversation silences
 	// the agent there without affecting the rest.
 	AutomationEnabled *bool

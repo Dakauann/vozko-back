@@ -229,7 +229,7 @@ func TestConversationIsPrivate(t *testing.T) {
 		t.Error("private is private")
 	}
 	if (&Conversation{ChatType: ChatTypeSupergroup}).IsPrivate() {
-		t.Error("a supergroup is not private — automation must not run there")
+		t.Error("a supergroup is not private, automation must not run there")
 	}
 }
 
@@ -244,7 +244,7 @@ func TestDeepLinkURLAndExpiry(t *testing.T) {
 
 	now := time.Now().UTC()
 	if link.Expired(now) {
-		t.Error("a link with no expiry never expires — correct for a printed QR code")
+		t.Error("a link with no expiry never expires, correct for a printed QR code")
 	}
 
 	past := now.Add(-time.Hour)
@@ -254,8 +254,8 @@ func TestDeepLinkURLAndExpiry(t *testing.T) {
 	}
 }
 
-// Telegram's own webhook rules fail SILENTLY when broken — a wrong scheme or
-// port simply never delivers — so they are checked at boot.
+// Telegram's own webhook rules fail SILENTLY when broken, a wrong scheme or
+// port simply never delivers, so they are checked at boot.
 func TestValidateWebhookBaseURL(t *testing.T) {
 	valid := []string{
 		"https://api.example.com",
@@ -273,7 +273,7 @@ func TestValidateWebhookBaseURL(t *testing.T) {
 		"":                             "empty",
 		"api.example.com":              "no scheme",
 		"http://api.example.com":       "plain http is refused outright by Telegram",
-		"https://api.example.com:9000": "unsupported port — Telegram silently never delivers",
+		"https://api.example.com:9000": "unsupported port, Telegram silently never delivers",
 		"https://api.example.com/hook": "path is owned by the code",
 		"https://api.example.com?a=b":  "query string",
 	}
@@ -292,8 +292,8 @@ func TestWebhookURLFor(t *testing.T) {
 	}
 }
 
-// The secret token is the ONLY authenticity control this channel has — Telegram
-// does not sign the body — so it must be unguessable and within Telegram's
+// The secret token is the ONLY authenticity control this channel has, Telegram
+// does not sign the body, so it must be unguessable and within Telegram's
 // documented alphabet.
 func TestGenerateWebhookSecret(t *testing.T) {
 	seen := map[string]bool{}

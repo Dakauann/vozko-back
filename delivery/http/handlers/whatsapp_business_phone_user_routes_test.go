@@ -540,7 +540,7 @@ func TestPhoneSetCallingStatus_NonAdminNonOwnedForbidden(t *testing.T) {
 	}
 }
 
-// The Vozko-managed WABA block is enforced even for admins — the bypass only
+// The Vozko-managed WABA block is enforced even for admins, the bypass only
 // relaxes workspace ownership, not the managed-phone protection.
 func TestPhoneSetCallingStatus_AdminVozkoManagedStillForbidden(t *testing.T) {
 	h := newPhoneTestHandler()
@@ -556,7 +556,7 @@ func TestPhoneSetCallingStatus_AdminVozkoManagedStillForbidden(t *testing.T) {
 }
 
 // The bypass is centralized in verifyPhoneOwnership, so it applies to every
-// handler that gates through it — not just calling status.
+// handler that gates through it, not just calling status.
 func TestPhoneSyncOne_AdminBypassesOwnership(t *testing.T) {
 	h := newPhoneTestHandler()
 	req := requestWithClaimsAndVars(http.MethodPost, "/whatsapp/business-phones/phone-ws2/sync", nil, adminClaims(), "ws-1", map[string]string{"id": "phone-ws2"})

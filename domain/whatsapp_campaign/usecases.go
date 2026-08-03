@@ -32,7 +32,7 @@ type ListCampaignsUseCase interface {
 }
 
 // GetSummaryUseCase returns the workspace-level metrics rollup (the "disparos"
-// summary) across all campaigns matching the filter — date range, type and
+// summary) across all campaigns matching the filter, date range, type and
 // department. An empty filter yields the all-time total.
 type GetSummaryUseCase interface {
 	Execute(filter wce.WorkspaceSummaryFilter) (*CampaignMetrics, error)

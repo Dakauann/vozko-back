@@ -9,7 +9,7 @@ import (
 // single-JOIN, no N+1 contract. Real EXPLAIN ANALYZE is run in ops after
 // migrate (partial index idx_wce_autoclose_agent + ANALYZE on backfill).
 func TestAutoCloseEligibilitySQLShape(t *testing.T) {
-	// Mirror of ListEligibleForAutoClose — keep in sync with repository method.
+	// Mirror of ListEligibleForAutoClose, keep in sync with repository method.
 	sql := `
 		SELECT e.id AS entry_id,
 		       c.workspace_id AS workspace_id,

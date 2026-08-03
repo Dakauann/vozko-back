@@ -13,7 +13,7 @@ import (
 )
 
 // newTestOAuth points the service at a stub so the three-host flow can be exercised
-// without touching Instagram. Only the transport is substituted — the request
+// without touching Instagram. Only the transport is substituted, the request
 // shapes and decoding are the real ones.
 func newTestOAuth(t *testing.T, handler http.HandlerFunc) (igdomain.OAuthService, *httptest.Server) {
 	t.Helper()
@@ -322,8 +322,8 @@ func TestPermissionList_Shapes(t *testing.T) {
 // TestGraphID_PreservesExactDigits is the regression test for a silent data
 // corruption: an Instagram account id exceeds float64's exact-integer range, so
 // decoding it through `any` (float64) changed 17841458366137975 into
-// 17841458366137976. The wrong id would be stored, and every inbound webhook —
-// which carries the REAL id in entry.id — would then fail to resolve an account and
+// 17841458366137976. The wrong id would be stored, and every inbound webhook,
+// which carries the REAL id in entry.id, would then fail to resolve an account and
 // be dropped as "unknown account", with messages never arriving and nothing logged
 // as an error.
 func TestGraphID_PreservesExactDigits(t *testing.T) {

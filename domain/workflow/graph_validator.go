@@ -95,7 +95,7 @@ func ValidateGraph(g *Graph, wfType WorkflowType, skipOutgoingCheck ...map[strin
 	}
 
 	// At least one trigger must actually feed the flow. A trigger whose only (or
-	// zero) outgoing edges go to decoration nodes is a dangling entry point — the
+	// zero) outgoing edges go to decoration nodes is a dangling entry point, the
 	// workflow can never start from it. The AI commonly drops a trigger node and
 	// forgets to wire it; the generic per-node "no outgoing" rule below also
 	// rejects a wholly-unwired single trigger, but this fires first with a precise,
@@ -195,7 +195,7 @@ func ValidateNodeConfigs(g *Graph, catalog []NodeDefinition, validators ...Confi
 			// Numeric range bounds (range/number fields declare Min/Max): a value
 			// that's present and statically numeric must fall within [Min, Max].
 			// PURE + schema-driven, so the builder lint AND activation reject an
-			// out-of-range value — the AI sees it instead of failing at run time.
+			// out-of-range value, the AI sees it instead of failing at run time.
 			if field.Min != nil || field.Max != nil {
 				if raw, exists := n.Config[field.Key]; exists {
 					if num, ok := numericConfigValue(raw); ok {

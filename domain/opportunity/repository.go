@@ -19,7 +19,7 @@ type SearchByFilterInput struct {
 
 	// Department scope (mirrors conversation.SearchByFilterInput). When
 	// RestrictDepartments is set, only deals whose OWNER belongs to one of
-	// DepartmentIDs — OR that the requesting user owns (AssigneeOverrideUserID) — are
+	// DepartmentIDs, OR that the requesting user owns (AssigneeOverrideUserID), are
 	// returned. Empty/false = workspace-wide (admins/owners). This closes the
 	// cross-department visibility gap on the deal board.
 	DepartmentIDs          []string

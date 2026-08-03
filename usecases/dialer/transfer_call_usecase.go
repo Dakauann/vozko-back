@@ -181,7 +181,7 @@ func (uc *CallTransferUseCase) Initiate(ctx context.Context, req dialer_domain.T
 	}
 
 	// One human = one call: if the target is on a call (or already being rung) on
-	// ANY endpoint, they are busy — do not ring their other idle endpoints (an idle
+	// ANY endpoint, they are busy, do not ring their other idle endpoints (an idle
 	// browser must not mask an in-progress branch call). This mirrors the presence
 	// roster and ListAvailable's offerability rule so routing stays consistent.
 	for _, s := range targetSessions {
@@ -802,7 +802,7 @@ func (uc *CallTransferUseCase) notifyInitiator(h *dialer_domain.TransferHandle, 
 // carries the ROLE (initiator_disconnect / target_disconnect, wired by the
 // executor's per-role hooks; the session's generic participant_disconnect is
 // treated as unknown). Asterisk semantics for the initiator dropping mid-consult:
-// COMPLETE the transfer — the target is already engaged and context-loaded;
+// COMPLETE the transfer, the target is already engaged and context-loaded;
 // killing the customer's call (the old behavior) is the worst outcome.
 func (uc *CallTransferUseCase) AbortByDisconnect(ctx context.Context, transferID, reason string) error {
 	var (
@@ -867,7 +867,7 @@ func (uc *CallTransferUseCase) AbortByDisconnect(ctx context.Context, transferID
 	} else if !captured.Parked {
 		// A pending held caller resumes with the initiator (if the INITIATOR is the
 		// one who dropped, their session teardown ends the call right after; a
-		// parked leg is untouched — the offer keeps ringing without them).
+		// parked leg is untouched, the offer keeps ringing without them).
 		uc.executor.ReleaseHold(ctx, captured)
 	}
 
@@ -1211,7 +1211,7 @@ func (uc *CallTransferUseCase) failRecall(ctx context.Context, transferID, reaso
 // A queued caller is a parked leg (identical to a recall) whose ring target is the
 // director's available pool for the caller's QueueTarget instead of the original
 // initiator. The queued stage is driven entirely by Tick, reusing the SAME park /
-// reservation / SwapParked / cancelOffered machinery as the recall ladder — the
+// reservation / SwapParked / cancelOffered machinery as the recall ladder, the
 // only queue-specific logic is candidate selection (delegated to the director) and
 // the MaxWait/overflow bounds. All state transitions go through the store's Update
 // CAS, exactly like every other actor, so there is no queue-specific race surface.
@@ -1302,7 +1302,7 @@ func (uc *CallTransferUseCase) enterQueue(ctx context.Context, workspaceID, call
 	}
 	pos, aerr := uc.queue.Admit(ctx, h.AsQueuedCaller(entryPhone), policy)
 	if aerr != nil {
-		// Full line: never park a caller who can't be bounded — abandon and report.
+		// Full line: never park a caller who can't be bounded, abandon and report.
 		_, _ = uc.store.Update(h.ID, func(t *dialer_domain.TransferHandle) error {
 			if t.Stage.Terminal() {
 				return errAbortNoop

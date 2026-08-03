@@ -41,7 +41,7 @@ type throttled struct {
 // NewThrottled decorates a client with per-chat and per-bot rate limiting.
 //
 // A nil factory returns the client unchanged, so a deployment without Redis
-// still works — it simply relies on Telegram's own 429 plus the retry_after the
+// still works, it simply relies on Telegram's own 429 plus the retry_after the
 // caller already honours.
 func NewThrottled(api tgdomain.BotAPI, factory cache.RateLimiterFactory) tgdomain.BotAPI {
 	if api == nil || factory == nil {
@@ -57,8 +57,8 @@ func NewThrottled(api tgdomain.BotAPI, factory cache.RateLimiterFactory) tgdomai
 // acquire waits for both budgets.
 //
 // It waits rather than failing: a send is a user-visible action already
-// committed to by an operator, and the alternative — surfacing "rate limited" in
-// the composer — is worse than a sub-second delay. The context bounds the wait,
+// committed to by an operator, and the alternative, surfacing "rate limited" in
+// the composer, is worse than a sub-second delay. The context bounds the wait,
 // so a genuinely saturated bot still fails fast rather than hanging.
 func (t *throttled) acquire(ctx context.Context, botKey string, chatID int64) error {
 	chatKey := botKey + ":" + strconv.FormatInt(chatID, 10)

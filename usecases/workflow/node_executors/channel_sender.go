@@ -16,7 +16,7 @@ import (
 //
 // WhatsApp keeps its dedicated sender: it resolves a lead number, picks between
 // the campaign phone and the phone the customer wrote to, checks the 24h lead
-// window and consumes template balance — none of which generalizes.
+// window and consumes template balance, none of which generalizes.
 //
 // Every other channel goes through the shared ChannelAdapter registry, which
 // already owns that channel's send call and its outbound-window rule. So a
@@ -46,13 +46,13 @@ type SentMessage struct {
 }
 
 // ErrChannelCannotSend is returned when the run's channel has no send path at
-// all — neither the WhatsApp sender nor a registered adapter.
+// all, neither the WhatsApp sender nor a registered adapter.
 var ErrChannelCannotSend = workflow.ErrNodeConfigMissing
 
 // SendText delivers text on the run's channel.
 //
 // A nil result with a nil error means the channel declined to send for a reason
-// that is not a fault — most often a closed outbound window, which on Instagram
+// that is not a fault, most often a closed outbound window, which on Instagram
 // is normal and only the contact can reopen.
 func (s *channelSender) SendText(
 	ctx context.Context,
@@ -97,7 +97,7 @@ func (s *channelSender) SendText(
 		return nil, err
 	}
 	if !open {
-		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s — message withheld",
+		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, message withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
 	}
@@ -141,8 +141,8 @@ func (s *channelSender) SendText(
 // workflow that answered a Telegram contact in text went silent the moment it
 // reached an image.
 //
-// Returning (nil, nil) means the channel declined for a non-fault reason —
-// a closed window, or no adapter — matching SendText.
+// Returning (nil, nil) means the channel declined for a non-fault reason,
+// a closed window, or no adapter, matching SendText.
 func (s *channelSender) SendMedia(
 	ctx context.Context,
 	run *workflow.WorkflowRun,
@@ -183,7 +183,7 @@ func (s *channelSender) SendMedia(
 		return nil, err
 	}
 	if !open {
-		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s — media withheld",
+		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, media withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
 	}
@@ -216,7 +216,7 @@ func (s *channelSender) SendMedia(
 			// Caption as the text, and no MediaID: the workflow's media id comes
 			// from the media library, not the conversation-media space the
 			// transcript renders from. This mirrors the WhatsApp media node
-			// exactly — the attachment reaches the customer, and the transcript
+			// exactly, the attachment reaches the customer, and the transcript
 			// records that a media message was sent. Rendering the thumbnail in
 			// the transcript needs a media-id bridge that no channel has today.
 			Text:      caption,
@@ -255,11 +255,11 @@ func (s *channelSender) adapterFor(entryType shared.EntryType) conversation.Chan
 // skipUnsupportedNode records that a node could not run on this run's channel.
 //
 // The run continues by product decision, so the log line is the only trace an
-// operator gets — it names the node, the run and the channel precisely, because
+// operator gets, it names the node, the run and the channel precisely, because
 // "the workflow completed but the customer got nothing" is otherwise very hard
 // to reconstruct.
 func skipUnsupportedNode(ctx *workflow.NodeContext, nodeKind string) *workflow.NodeResult {
-	log.Printf("[workflow][node:%s][run:%s] %s is not supported on channel %q — node skipped, run continues (entry=%s)",
+	log.Printf("[workflow][node:%s][run:%s] %s is not supported on channel %q, node skipped, run continues (entry=%s)",
 		ctx.Node.ID, ctx.Run.ID, nodeKind, ctx.Run.EntryType, ctx.Run.EntryID)
 	return &workflow.NodeResult{
 		Output: map[string]interface{}{
@@ -317,7 +317,7 @@ func (s *channelSender) SendInteractive(
 		return nil, err
 	}
 	if !open {
-		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s — prompt withheld",
+		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, prompt withheld",
 			run.ID, run.EntryType, run.EntryID)
 		return nil, nil
 	}
@@ -386,7 +386,7 @@ func (s *channelSender) interactiveAdapterFor(entryType shared.EntryType) (conve
 //
 // Built by walking the adapter registry rather than from a hardcoded list, so a
 // channel added later appears here the moment its adapter is registered.
-// WhatsApp is added explicitly because it has no adapter yet — it is the
+// WhatsApp is added explicitly because it has no adapter yet, it is the
 // channel still being migrated onto the abstraction.
 func (s *channelSender) InteractiveSupport() map[shared.EntryType]channel.InteractiveLimits {
 	out := make(map[shared.EntryType]channel.InteractiveLimits, 4)
@@ -409,7 +409,7 @@ func (s *channelSender) InteractiveSupport() map[shared.EntryType]channel.Intera
 //
 // Segmented mode exists so a long answer arrives the way a person types it
 // rather than as one wall of text. It was implemented only for WhatsApp, and
-// the default single-send path was gated on NOT being segmented — so on every
+// the default single-send path was gated on NOT being segmented, so on every
 // other channel a segmented agent generated a reply, billed for it, and sent
 // nothing at all. Silent, and invisible in the run's own logs.
 //
@@ -446,7 +446,7 @@ func (s *channelSender) SendSegments(
 		return false, err
 	}
 	if !open {
-		log.Printf("[workflow][run:%s] channel %s outbound window closed — %d segment(s) withheld",
+		log.Printf("[workflow][run:%s] channel %s outbound window closed, %d segment(s) withheld",
 			run.ID, run.EntryType, len(segments))
 		return false, nil
 	}

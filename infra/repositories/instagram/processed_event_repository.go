@@ -20,7 +20,7 @@ type processedEventRepository struct {
 // It follows the pattern already proven by telemetry_dedupe. The reason it exists
 // alongside the Redis guard: the Redis dedup key has a 5-minute TTL and its
 // one-shot variant fails OPEN on a Redis error, so an at-least-once redelivery
-// arriving after eviction — or during a Redis outage — would be processed twice.
+// arriving after eviction, or during a Redis outage, would be processed twice.
 // Postgres is the durable backstop.
 func NewProcessedEventRepository(db *gorm.DB) igdomain.ProcessedEventRepository {
 	return &processedEventRepository{db: db}

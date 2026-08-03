@@ -50,7 +50,7 @@ Retorna os slots livres em formato texto (para mostrar ao cliente) e JSON (para 
 			},
 			"date_to": {
 				Type:               "string",
-				Description:        "Data/hora de fim da busca no formato RFC3339. Opcional — se vazio, consulta até o fim do horário comercial do dia.",
+				Description:        "Data/hora de fim da busca no formato RFC3339. Opcional, se vazio, consulta até o fim do horário comercial do dia.",
 				DisplayName:        "Data/hora fim",
 				DisplayDescription: "Fim do período para verificar disponibilidade",
 			},

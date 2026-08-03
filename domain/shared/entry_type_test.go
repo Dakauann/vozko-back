@@ -106,7 +106,7 @@ func TestFormatEntryTypes(t *testing.T) {
 }
 
 // Adding a channel must be a one-line domain change: the constant plus its set
-// membership. This test documents that contract — if it needs editing for a new
+// membership. This test documents that contract, if it needs editing for a new
 // channel, the capability leaked back out into the callers.
 func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 	const messenger EntryType = "messenger"

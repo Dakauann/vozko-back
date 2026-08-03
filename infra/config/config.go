@@ -71,7 +71,7 @@ type Config struct {
 
 	// Instagram (Business Login for Instagram). The Instagram API setup nests
 	// inside the same Meta app as WhatsApp but carries its OWN app id and app
-	// secret — using the Facebook ones here fails. Webhooks are signed with the
+	// secret, using the Facebook ones here fails. Webhooks are signed with the
 	// Instagram app secret, which is why it is also fed into the inbound
 	// signature verifier's accepted-secret list.
 	//
@@ -81,7 +81,7 @@ type Config struct {
 	// what was submitted for App Review, so a deployment must not be able to
 	// silently drop a permission.
 	//
-	// InstagramRedirectURI is NOT caller-supplied — in OAuth the redirect URI is
+	// InstagramRedirectURI is NOT caller-supplied, in OAuth the redirect URI is
 	// the security boundary, and it must match the App Dashboard exactly. Only the
 	// Graph version is genuinely deployment-owned, because Meta sunsets versions on
 	// published dates and it must be bumpable without a code deploy.
@@ -105,8 +105,8 @@ type Config struct {
 	// REQUIRED, exactly like the Instagram equivalents: Telegram is a first-class
 	// channel, and a half-configured deployment that silently serves 404s on every
 	// Telegram route is far worse than failing fast at boot. Telegram's own
-	// constraints on this URL also fail SILENTLY — https is mandatory and only
-	// ports 443, 80, 88 and 8443 are ever delivered to — so
+	// constraints on this URL also fail SILENTLY, https is mandatory and only
+	// ports 443, 80, 88 and 8443 are ever delivered to, so
 	// telegram.ValidateWebhookBaseURL checks it at boot too.
 	//
 	// There are deliberately no token or secret variables: a bot token is tenant
@@ -115,7 +115,7 @@ type Config struct {
 	TelegramWebhookBaseURL string
 	// TelegramBotAPIBaseURL overrides Telegram's hosted API. Its only real use is
 	// pointing at a self-hosted Local Bot API Server, which lifts the 20MB
-	// inbound download ceiling — the channel's hardest product limit. Empty uses
+	// inbound download ceiling, the channel's hardest product limit. Empty uses
 	// https://api.telegram.org, so this one stays optional.
 	TelegramBotAPIBaseURL string
 

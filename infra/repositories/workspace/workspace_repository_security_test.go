@@ -25,7 +25,7 @@ func TestAllowedWorkspaceResourceTables_RejectsInjectionAttempts(t *testing.T) {
 	}
 	for _, name := range bad {
 		if _, ok := allowedWorkspaceResourceTables[name]; ok {
-			t.Errorf("allowlist unexpectedly contains %q — review workspace_repository.go", name)
+			t.Errorf("allowlist unexpectedly contains %q, review workspace_repository.go", name)
 		}
 	}
 }

@@ -92,7 +92,7 @@ func entryTableForLastMessage(entryType string) string {
 }
 
 // touchEntryLastMessageAt moves the entry's denormalized last_message_at forward to
-// at. Monotonic — it never moves backwards, so retries and out-of-order writes are
+// at. Monotonic, it never moves backwards, so retries and out-of-order writes are
 // safe. Best effort: the message itself is already durable, so a failure here must
 // not fail the write; the value self-heals on the next message, and the backfill
 // migration re-seeds anything that drifts.
@@ -155,7 +155,7 @@ func (r *repository) touchEntryMessageClocks(entryID, entryType string, msgType 
 
 // recomputeEntryLastMessageAt re-derives last_message_at from the surviving
 // messages. Needed when messages are removed, where the stored value must be able
-// to recede — or become NULL, which correctly drops the entry out of the inbox
+// to recede, or become NULL, which correctly drops the entry out of the inbox
 // again (mirroring the inner-join semantics the old JOIN LATERAL had).
 func (r *repository) recomputeEntryLastMessageAt(entryID, entryType string) {
 	table := entryTableForLastMessage(entryType)
@@ -423,7 +423,7 @@ func (r *repository) DeleteByEntry(entryID string, entryType shared.EntryType) e
 		Delete(&schema.ConversationMessage{}).Error; err != nil {
 		return err
 	}
-	// Every message of this entry is gone, so last_message_at must go NULL — which
+	// Every message of this entry is gone, so last_message_at must go NULL, which
 	// drops the entry out of the inbox, exactly as the old LATERAL did.
 	r.recomputeEntryLastMessageAt(entryID, string(entryType))
 	return nil
@@ -591,6 +591,13 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 	campaignIDField := ch.ContainerIDField
 	campaignNameField := ch.ContainerNameField
 	aiFields := ch.AutomationFields
+	// The per-conversation override rides with the container's AI config so the
+	// list gets it in the same pass; NULL means "inherit".
+	if ch.AutomationColumn != "" {
+		aiFields += ", " + ch.AutomationColumn + " AS automation_enabled"
+	} else {
+		aiFields += ", NULL::boolean AS automation_enabled"
+	}
 	entryJoin := ch.entryJoinOn("e.entry_id")
 
 	if useCampaignFilter {
@@ -630,6 +637,7 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 		WorkflowID      string    `gorm:"column:workflow_id"`
 		AgentEnabled    bool      `gorm:"column:agent_responses_enabled"`
 		WorkflowEnabled bool      `gorm:"column:workflow_enabled"`
+		AutomationOn    *bool     `gorm:"column:automation_enabled"`
 	}
 
 	query := fmt.Sprintf(`
@@ -704,6 +712,7 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 			WorkflowID:            r.WorkflowID,
 			AgentResponsesEnabled: r.AgentEnabled,
 			WorkflowEnabled:       r.WorkflowEnabled,
+			AutomationEnabled:     r.AutomationOn,
 		})
 	}
 
@@ -1104,14 +1113,14 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	var entryArgs []interface{}
 
 	// Every channel's conversations come from the shared channel registry
-	// (entry_sources.go), so a new channel appears here — and on the CRM board —
+	// (entry_sources.go), so a new channel appears here, and on the CRM board,
 	// by registering a descriptor, with no query edits.
 	entryCTESQL, entryCTEArgs := buildEntryUnion(entrySourceScope{
 		EntryType:            input.EntryType,
 		WhatsAppCampaignType: input.WhatsAppCampaignType,
 		ConversationStatus:   string(input.ConversationStatus),
 		// The inbox list hides finished conversations unless one is asked for by
-		// name. The board deliberately does not — see entrySourceScope.
+		// name. The board deliberately does not, see entrySourceScope.
 		ExcludeFinished:        true,
 		DepartmentIDs:          input.DepartmentIDs,
 		RestrictDepartments:    input.RestrictDepartments,
@@ -1248,8 +1257,8 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	// Last activity comes from the entry's stored last_message_at (projected as
 	// lm_created_at by each CTE branch, which also filters out entries that have no
 	// messages). This replaces a JOIN LATERAL that ran once per entry and forced
-	// every entry in the workspace to be materialized — and the multi-GB entries
-	// table sequentially scanned — before pagination. Semantics are unchanged: the
+	// every entry in the workspace to be materialized, and the multi-GB entries
+	// table sequentially scanned, before pagination. Semantics are unchanged: the
 	// LATERAL was an inner join, so entries without messages were already excluded.
 	baseCTE := fmt.Sprintf(`
 		WITH all_entries AS (%s),
@@ -1373,7 +1382,7 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 
 	// Same channel registry the inbox list reads, projected into the board's
 	// wider column shape. Registering a channel makes it available to the board,
-	// and therefore to stages, labels and every compiled filter — all of which key
+	// and therefore to stages, labels and every compiled filter, all of which key
 	// on (entry_id, entry_type) rather than on a channel table.
 	boardCTESQL, boardCTEArgs := buildEntryUnion(entrySourceScope{
 		DepartmentIDs:          input.DepartmentIDs,
@@ -1402,8 +1411,8 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	// The last message timestamp is read from the entry's stored last_message_at
 	// (projected as lm_created_at by each CTE branch, which also filters out entries
 	// that have none). This replaces a JOIN LATERAL over conversation_messages that
-	// ran once per entry: it forced every entry in the workspace to be materialized
-	// — and the multi-GB entries table sequentially scanned — before pagination,
+	// ran once per entry: it forced every entry in the workspace to be materialized,
+	// and the multi-GB entries table sequentially scanned, before pagination,
 	// costing seconds on large workspaces. Semantics are unchanged: the LATERAL was
 	// an inner join, so entries without messages were already excluded, exactly as
 	// the IS NOT NULL filter does now.
@@ -1537,6 +1546,11 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WorkflowID      string `gorm:"column:workflow_id"`
 		AgentEnabled    bool   `gorm:"column:agent_responses_enabled"`
 		WorkflowEnabled bool   `gorm:"column:workflow_enabled"`
+		// The per-conversation override. A pointer because nil ("inherit") is a
+		// distinct state from an explicit false, and this query never selected
+		// it at all, so every entry_update broadcast reported automation as
+		// enabled, and pausing a conversation only appeared after a reload.
+		AutomationOn *bool `gorm:"column:automation_enabled"`
 	}
 	var info entryInfo
 
@@ -1612,6 +1626,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WorkflowID:            info.WorkflowID,
 		AgentResponsesEnabled: info.AgentEnabled,
 		WorkflowEnabled:       info.WorkflowEnabled,
+		AutomationEnabled:     info.AutomationOn,
 	}, nil
 }
 

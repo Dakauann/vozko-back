@@ -22,7 +22,7 @@ const (
 	EntryTypeVoice EntryType = "voice"
 )
 
-// messagingEntryTypes are the channels the shared messaging pipeline accepts —
+// messagingEntryTypes are the channels the shared messaging pipeline accepts,
 // the ones with inbound webhooks, an outbound send path and a message history.
 //
 // Voice is deliberately excluded: it has no message pipeline, and several call
@@ -40,7 +40,7 @@ var messagingEntryTypes = map[EntryType]struct{}{
 // This is a different question from Valid(): support entries are a valid
 // messaging type but are not opened through the CRM conversation view, while
 // voice conversations are viewable despite not being a messaging channel. Adding
-// a channel (Telegram, say) means adding its constant and listing it here — no
+// a channel (Telegram, say) means adding its constant and listing it here, no
 // delivery-layer or usecase code changes.
 var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:  {},
@@ -52,7 +52,7 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 // crmTaggableEntryTypes are the entry types whose conversations can carry CRM
 // metadata: a kanban stage and labels.
 //
-// A third question again, and it answers differently from both sets above —
+// A third question again, and it answers differently from both sets above,
 // voice is not a messaging channel yet is staged and labelled like any other
 // conversation, and support is staged despite not being opened through the CRM
 // conversation view. Every channel that reaches the board belongs here: a card
@@ -67,7 +67,7 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 }
 
 // conversationClosableEntryTypes are the entry types whose conversations can be
-// moved to "finished" — by an operator, by the AI's finish tool, or by a
+// moved to "finished", by an operator, by the AI's finish tool, or by a
 // workflow's finish node.
 //
 // A fourth independent question. It used to be spelled inline as
@@ -112,8 +112,8 @@ func CRMTaggableEntryTypes() []EntryType {
 // SupportsConversationView reports whether a conversation of this type can be
 // opened, searched and paged from the CRM.
 //
-// Opening a conversation is channel-agnostic — transcript, unread count and
-// window state all key on (entry_id, entry_type) — so this single predicate
+// Opening a conversation is channel-agnostic, transcript, unread count and
+// window state all key on (entry_id, entry_type), so this single predicate
 // replaces the per-handler entry-type allowlists that previously had to be
 // edited in lockstep whenever a channel was added.
 func (e EntryType) SupportsConversationView() bool {
@@ -133,7 +133,7 @@ func ConversationViewableEntryTypes() []EntryType {
 	return out
 }
 
-// knownEntryTypes is every entry type the system recognises at all — the union
+// knownEntryTypes is every entry type the system recognises at all, the union
 // of the sets above.
 //
 // It answers the weakest question there is: "is this path variable a real entry
@@ -165,7 +165,7 @@ func KnownEntryTypes() []EntryType {
 	return out
 }
 
-// inboxScopableEntryTypes are the entry types the inbox can be narrowed to — the
+// inboxScopableEntryTypes are the entry types the inbox can be narrowed to, the
 // valid values of the websocket's `campaignType` selector and of
 // SearchInboxInput.CampaignType.
 //
@@ -201,7 +201,7 @@ func InboxScopableEntryTypes() []EntryType {
 }
 
 // containerScopedInboxEntryTypes are the entry types whose inbox can be narrowed
-// to a single container — a WhatsApp campaign, or the account row for channels
+// to a single container, a WhatsApp campaign, or the account row for channels
 // that have no campaign concept.
 //
 // This is narrower than SupportsInboxScope: voice and support are valid inbox
@@ -268,4 +268,21 @@ func FormatEntryTypes(types []EntryType) string {
 
 func (e EntryType) String() string {
 	return string(e)
+}
+
+// EventChannel is the channel label carried on conversation timeline events.
+//
+// Every entry type names its own channel, so this is the identity, but it was
+// written twice as a switch with `default: "whatsapp"`, which labelled every
+// Instagram and Telegram event as WhatsApp on the timeline and in any report
+// grouped by channel. A channel added later inherited the same wrong default
+// silently.
+//
+// An unknown type keeps the historical "whatsapp" fallback rather than emitting
+// an empty label into stored events, since the value is persisted.
+func (e EntryType) EventChannel() string {
+	if e.IsKnown() {
+		return string(e)
+	}
+	return string(EntryTypeWhatsApp)
 }

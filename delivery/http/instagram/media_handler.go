@@ -176,8 +176,8 @@ func (h *Handler) toMediaResponse(accountID string, m *igdomain.RemoteMedia) Med
 		ID:               m.IGMediaID,
 		MediaType:        string(m.MediaType),
 		MediaProductType: string(m.MediaProductType),
-		// A reel is a VIDEO with a REELS product type — there is no
-		// media_type=REELS — so the flag is derived here once for the UI.
+		// A reel is a VIDEO with a REELS product type, there is no
+		// media_type=REELS, so the flag is derived here once for the UI.
 		IsReel:           m.MediaProductType == igdomain.MediaProductReels,
 		IsCarousel:       m.MediaType == igdomain.MediaTypeCarousel,
 		Caption:          m.Caption,
@@ -228,7 +228,7 @@ func (h *Handler) ProxyAvatar(w http.ResponseWriter, r *http.Request) {
 		middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
 	if err != nil {
 		// An account with no photo is an ordinary state, so it answers 404 rather
-		// than an error page — the client falls back to a placeholder glyph.
+		// than an error page, the client falls back to a placeholder glyph.
 		if errors.Is(err, iguc.ErrNoAvatar) {
 			http.NotFound(w, r)
 			return

@@ -624,7 +624,7 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 		}
 	}
 	// Only the media is required. "to" is a phone number, which does not exist
-	// on Telegram or Instagram — requiring it made the tool unusable there. It
+	// on Telegram or Instagram, requiring it made the tool unusable there. It
 	// remains accepted for saved WhatsApp agents that were taught to pass one.
 	if !sliceContains(d.Required, "media_id") {
 		t.Errorf("expected media_id in Required, got %v", d.Required)

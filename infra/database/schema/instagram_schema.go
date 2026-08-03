@@ -11,8 +11,8 @@ import (
 )
 
 // InstagramAccount is a connected Instagram professional account. It doubles as
-// the config carrier for its conversations — the role whatsapp_campaigns plays
-// for WhatsApp — which is why the agent/workflow/automation columns live here.
+// the config carrier for its conversations, the role whatsapp_campaigns plays
+// for WhatsApp, which is why the agent/workflow/automation columns live here.
 // Instagram has no campaign analogue: outbound-first messaging is impossible, so
 // there is nothing to blast and no template to carry.
 type InstagramAccount struct {
@@ -115,7 +115,7 @@ func (c *InstagramContact) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// InstagramConversation is the ENTRY — what the CRM treats as a conversation.
+// InstagramConversation is the ENTRY, what the CRM treats as a conversation.
 // conversation_messages rows point here via (entry_id, entry_type='instagram'),
 // and because labels, stages, opportunities and inbox assignment all key on that
 // same pair, they work here with no change.
@@ -128,7 +128,7 @@ type InstagramConversation struct {
 	ContactID   string `gorm:"type:uuid;not null;index:idx_ig_conv_contact"`
 
 	// IGConversationID is Meta's thread id. Nullable because ingest is
-	// webhook-first — we learn a thread from a message, not from a sync.
+	// webhook-first, we learn a thread from a message, not from a sync.
 	IGConversationID *string `gorm:"size:128;index"`
 
 	ConversationStatus string     `gorm:"size:20;not null;default:'';index:idx_ig_conv_status"`
@@ -267,7 +267,7 @@ type WebhookProcessedEvent struct {
 	// (original, tombstone, edit, read, reaction), so the kind is part of it.
 	ID string `gorm:"primaryKey;size:255"`
 	// 64, not 24: the consumer names are the values stored here, and
-	// "instagram-message-webhook" is 25 characters — one over the old limit, which
+	// "instagram-message-webhook" is 25 characters, one over the old limit, which
 	// made every durable dedup claim fail with 22001 and silently fall back to the
 	// 5-minute Redis guard, losing the durable backstop entirely.
 	Channel   string    `gorm:"size:64;not null;index"`

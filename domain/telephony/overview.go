@@ -43,7 +43,7 @@ type OverviewKPIs struct {
 	AnsweredWithinSL    int64    `json:"answered_within_sl"`
 	// CDR abandon rate among total attempts.
 	CDRAbandonRate *float64 `json:"cdr_abandon_rate"`
-	// Short hangups (<6s after answer) — early customer drop signal.
+	// Short hangups (<6s after answer), early customer drop signal.
 	ShortAbandons int64 `json:"short_abandons"`
 	// Transfers completed (conversation_events) in range.
 	Transfers int64 `json:"transfers"`
@@ -183,13 +183,13 @@ func DefaultDefinitions() MetricDefinitions {
 		TalkTime:     "ended_at - answered_at (mins) when both set",
 		AHT:          "talk + hold_sec + acw_sec when set; else duration_sec for answered (industry AHT approx)",
 		ASA:          "avg queue_events.waited_ms for type=connected (mins)",
-		ServiceLevel: "answered with ring <= 20s (default) / answered * 100 — industry 80/20",
+		ServiceLevel: "answered with ring <= 20s (default) / answered * 100, industry 80/20",
 		Occupancy:    "on_call_ms / online_ms from agent_presence_intervals",
 		Idle:         "live: free/online; historical: 100 - occupancy",
 		Disposition:  "calls.status + end_reason stacks",
 		ByMember:     "human CDR agent_id (dialer user) grouped: volume, connect, times, SL, occupancy",
 		Persistence:  "all metrics from durable tables except live dialer registry snapshot",
-		Gaps:         "true hold/ACW capture on hot path, RPC disposition product codes, schedule adherence — see docs/VOIP_METRICS.md",
+		Gaps:         "true hold/ACW capture on hot path, RPC disposition product codes, schedule adherence, see docs/VOIP_METRICS.md",
 	}
 }
 

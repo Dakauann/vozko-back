@@ -23,7 +23,7 @@ import (
 const (
 	defaultTimeout    = 30 * time.Second
 	defaultMaxRetries = 3
-	maxResponseBytes  = 16 << 20 // 16 MiB — media proxying reads larger bodies separately
+	maxResponseBytes  = 16 << 20 // 16 MiB, media proxying reads larger bodies separately
 )
 
 // Config configures a Graph client.

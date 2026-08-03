@@ -185,13 +185,13 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 
 	// A human explicitly turned automation off for this lead (per-entry
 	// AutomationEnabled override == false). That must stop the campaign WORKFLOW
-	// too, not only the direct AI agent — otherwise the workflow keeps replying and
+	// too, not only the direct AI agent, otherwise the workflow keeps replying and
 	// the operator sees the "deactivated automation is still responding" bug. A nil
 	// override (never toggled) is left untouched, so normal workflow campaigns still
 	// run by default.
 	if agentCtx != nil && agentCtx.wcEntry != nil &&
 		agentCtx.wcEntry.AutomationEnabled != nil && !*agentCtx.wcEntry.AutomationEnabled {
-		log.Printf("[whatsapp-workflow] automation disabled for entry=%s — skipping workflow triggers", entryID)
+		log.Printf("[whatsapp-workflow] automation disabled for entry=%s, skipping workflow triggers", entryID)
 		return
 	}
 
@@ -208,7 +208,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	}
 
 	if dec := uc.guardCheckInbound(context.Background(), workspaceID, entryID, messageText); dec.Block {
-		log.Printf("[whatsapp-workflow] loop suspected for entry=%s reason=%s count=%d — skipping workflow triggers", entryID, dec.Reason, dec.Count)
+		log.Printf("[whatsapp-workflow] loop suspected for entry=%s reason=%s count=%d, skipping workflow triggers", entryID, dec.Reason, dec.Count)
 		return
 	}
 
@@ -268,7 +268,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		Data:        data,
 	})
 
-	// trigger_first_message must fire on the customer's FIRST inbound message —
+	// trigger_first_message must fire on the customer's FIRST inbound message,
 	// gate on the absence of a PRIOR inbound message, not on empty history. A
 	// campaign that sends an outbound template records it in history before the
 	// lead replies, so `len(history) == 0` was never true for template-first
@@ -289,7 +289,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 // isFirstInboundMessage reports whether the message currently being handled is the
 // first inbound (customer) message on the entry, i.e. prior history holds no
 // inbound message. Outbound messages (campaign templates, agent/operator replies)
-// do not count — they must not suppress the first-message trigger.
+// do not count, they must not suppress the first-message trigger.
 func isFirstInboundMessage(history []*conversation.Message) bool {
 	for _, m := range history {
 		if m != nil && m.MessageType.IsInbound() {
@@ -310,12 +310,12 @@ func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) b
 	)
 
 	if uc.cachedBalanceChecker == nil {
-		log.Printf("CRITICAL: cachedBalanceChecker is nil — blocking AI response for workspace %s (fail-closed)", workspaceID)
+		log.Printf("CRITICAL: cachedBalanceChecker is nil, blocking AI response for workspace %s (fail-closed)", workspaceID)
 		return false
 	}
 	bal, err := uc.cachedBalanceChecker.GetBalance(workspaceID)
 	if err != nil {
-		log.Printf("[whatsapp-usecase] balance check error for workspace %s: %v — blocking AI response (fail-closed)", workspaceID, err)
+		log.Printf("[whatsapp-usecase] balance check error for workspace %s: %v, blocking AI response (fail-closed)", workspaceID, err)
 		return false
 	}
 	if bal <= 0 {
@@ -331,7 +331,7 @@ func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) b
 	if uc.llmPriceFetcher != nil && model != "" {
 		inputMicros, outputMicros, fetchErr := uc.llmPriceFetcher.FetchLLMPriceMicros(model)
 		if fetchErr != nil {
-			log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v — relying on balance floor only", model, fetchErr)
+			log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v, relying on balance floor only", model, fetchErr)
 		} else if inputMicros > 0 || outputMicros > 0 {
 
 			estimatedCost := (inputMicros*estimatedInputTokens + outputMicros*estimatedOutputTokens) * safetyMultiplier / 1_000_000
@@ -431,7 +431,7 @@ func (ctx *agentContext) getCampaignInfo() (campaignID string, campaignType stri
 
 func (ctx *agentContext) getWorkspaceID() string {
 	if ctx == nil {
-		log.Printf("[whatsapp-usecase] WARNING: cannot resolve workspace_id — nil agent context")
+		log.Printf("[whatsapp-usecase] WARNING: cannot resolve workspace_id, nil agent context")
 		return ""
 	}
 	if ctx.agent != nil && ctx.agent.WorkspaceID != "" {
@@ -753,12 +753,12 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	}
 
 	if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, message.Text.Body); dec.Block {
-		log.Printf("[whatsapp-usecase] loop suspected for entry=%s reason=%s count=%d — skipping AI response", entryID, dec.Reason, dec.Count)
+		log.Printf("[whatsapp-usecase] loop suspected for entry=%s reason=%s count=%d, skipping AI response", entryID, dec.Reason, dec.Count)
 		return nil
 	}
 
 	if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), entryID); dec.Block {
-		log.Printf("[whatsapp-usecase] AI reply rate limit hit for entry=%s count=%d — skipping AI response", entryID, dec.Count)
+		log.Printf("[whatsapp-usecase] AI reply rate limit hit for entry=%s count=%d, skipping AI response", entryID, dec.Count)
 		return nil
 	}
 
@@ -1794,7 +1794,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 
 					wcCtx.skipResponse = true
 					responsesEnabled = false
-					log.Printf("[whatsapp-usecase] campaign %s has workflow %s — agent responses will be skipped", wcCampaign.ID, wcCampaign.WorkflowID)
+					log.Printf("[whatsapp-usecase] campaign %s has workflow %s, agent responses will be skipped", wcCampaign.ID, wcCampaign.WorkflowID)
 				} else if hasAgent {
 					agentRecord, prompt, tools := uc.resolveAgentPromptAndTools(wcCampaign.AgentID, wcCampaign.ID, "whatsapp")
 					if agentRecord != nil {
@@ -1804,13 +1804,13 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 					} else {
 						wcCtx.skipResponse = true
 						responsesEnabled = false
-						log.Printf("[whatsapp-usecase] campaign %s could not resolve agent %s — skipping responses", wcCampaign.ID, wcCampaign.AgentID)
+						log.Printf("[whatsapp-usecase] campaign %s could not resolve agent %s, skipping responses", wcCampaign.ID, wcCampaign.AgentID)
 					}
 				} else {
 
 					wcCtx.skipResponse = true
 					responsesEnabled = false
-					log.Printf("[whatsapp-usecase] campaign %s has no workflow and no agent configured — skipping responses", wcCampaign.ID)
+					log.Printf("[whatsapp-usecase] campaign %s has no workflow and no agent configured, skipping responses", wcCampaign.ID)
 				}
 
 				candidates = append(candidates, candidate{
@@ -1844,7 +1844,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 		return winner.ctx, winner.lead
 	}
 
-	log.Printf("[whatsapp-usecase] no campaign found for number %s — checking organic campaigns", normalized)
+	log.Printf("[whatsapp-usecase] no campaign found for number %s, checking organic campaigns", normalized)
 
 	if metadata != nil && metadata.PhoneNumberID != "" && uc.businessPhoneRepo != nil && uc.wcCampaignRepo != nil && uc.wcEntryRepo != nil && uc.leadRepo != nil {
 		businessPhone, err := uc.businessPhoneRepo.FindByMetaPhoneNumberID(metadata.PhoneNumberID)
@@ -1901,7 +1901,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 
 		if hasWorkflow {
 			organicCtx.skipResponse = true
-			log.Printf("[whatsapp-usecase] organic campaign %s has workflow %s — agent responses will be skipped", organicCampaign.ID, organicCampaign.WorkflowID)
+			log.Printf("[whatsapp-usecase] organic campaign %s has workflow %s, agent responses will be skipped", organicCampaign.ID, organicCampaign.WorkflowID)
 		} else if hasAgent {
 			agentRecord, prompt, tools := uc.resolveAgentPromptAndTools(organicCampaign.AgentID, organicCampaign.ID, "whatsapp")
 			if agentRecord != nil {
@@ -1910,11 +1910,11 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 				organicCtx.tools = tools
 			} else {
 				organicCtx.skipResponse = true
-				log.Printf("[whatsapp-usecase] organic campaign %s could not resolve agent %s — skipping responses", organicCampaign.ID, organicCampaign.AgentID)
+				log.Printf("[whatsapp-usecase] organic campaign %s could not resolve agent %s, skipping responses", organicCampaign.ID, organicCampaign.AgentID)
 			}
 		} else {
 			organicCtx.skipResponse = true
-			log.Printf("[whatsapp-usecase] organic campaign %s has no workflow and no agent configured — skipping responses", organicCampaign.ID)
+			log.Printf("[whatsapp-usecase] organic campaign %s has no workflow and no agent configured, skipping responses", organicCampaign.ID)
 		}
 
 		return organicCtx, leadRecord
@@ -2269,9 +2269,9 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 			if !uc.canAffordAI(agentCtx.getWorkspaceID(), mediaModel) {
 				log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 			} else if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, userMessage); dec.Block {
-				log.Printf("[whatsapp-media] loop suspected for entry=%s reason=%s count=%d — skipping AI response", entryID, dec.Reason, dec.Count)
+				log.Printf("[whatsapp-media] loop suspected for entry=%s reason=%s count=%d, skipping AI response", entryID, dec.Reason, dec.Count)
 			} else if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), entryID); dec.Block {
-				log.Printf("[whatsapp-media] AI reply rate limit hit for entry=%s count=%d — skipping AI response", entryID, dec.Count)
+				log.Printf("[whatsapp-media] AI reply rate limit hit for entry=%s count=%d, skipping AI response", entryID, dec.Count)
 			} else {
 				uc.generateMediaAIResponse(ctx, agentCtx, leadRecord, message, metadata, conversationID, businessNumber, entryID, entryType, receivedPhoneID, history, userMessage)
 			}
@@ -2632,7 +2632,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 	}
 
 	if uc.whisperPool == nil {
-		log.Println("[whatsapp-audio] Whisper (STT) not configured — audio saved without transcription")
+		log.Println("[whatsapp-audio] Whisper (STT) not configured, audio saved without transcription")
 		_ = uc.sendWhatsAppFallbackTextIfEligible(
 			ctx,
 			audioClient,
@@ -2649,7 +2649,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 	sttLatency := time.Since(sttStart)
 
 	if err != nil {
-		log.Printf("[whatsapp-audio] STT failed: %v — audio saved without transcription", err)
+		log.Printf("[whatsapp-audio] STT failed: %v, audio saved without transcription", err)
 		_ = uc.sendWhatsAppFallbackTextIfEligible(
 			ctx,
 			audioClient,
@@ -2663,7 +2663,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	transcribedText := strings.TrimSpace(transcription.Text)
 	if transcribedText == "" {
-		log.Printf("[whatsapp-audio] Empty transcription (conf=%.2f, dur=%.2fs) — audio saved without transcription", transcription.Confidence, transcription.Duration)
+		log.Printf("[whatsapp-audio] Empty transcription (conf=%.2f, dur=%.2fs), audio saved without transcription", transcription.Confidence, transcription.Duration)
 		_ = uc.sendWhatsAppFallbackTextIfEligible(
 			ctx,
 			audioClient,
@@ -2741,11 +2741,11 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 	}
 
 	if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), audioEntryID, transcribedText); dec.Block {
-		log.Printf("[whatsapp-audio] loop suspected for entry=%s reason=%s count=%d — skipping AI response", audioEntryID, dec.Reason, dec.Count)
+		log.Printf("[whatsapp-audio] loop suspected for entry=%s reason=%s count=%d, skipping AI response", audioEntryID, dec.Reason, dec.Count)
 		return nil
 	}
 	if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), audioEntryID); dec.Block {
-		log.Printf("[whatsapp-audio] AI reply rate limit hit for entry=%s count=%d — skipping AI response", audioEntryID, dec.Count)
+		log.Printf("[whatsapp-audio] AI reply rate limit hit for entry=%s count=%d, skipping AI response", audioEntryID, dec.Count)
 		return nil
 	}
 
@@ -2954,9 +2954,9 @@ func extractMetadataMap(metadata interface{}) map[string]interface{} {
 // whatsAppTurn is the per-call variation between WhatsApp's three agent turns
 // (text, media and audio).
 //
-// Everything else about them was identical — interpolate the prompt, resolve
+// Everything else about them was identical, interpolate the prompt, resolve
 // tools and stamp the same seven seeds, build the identity preamble from the
-// resolved tool names, then ground in the knowledge base — and had been
+// resolved tool names, then ground in the knowledge base, and had been
 // copy-pasted three times. Only these fields actually differed.
 type whatsAppTurn struct {
 	agentCtx    *agentContext
@@ -2989,7 +2989,7 @@ type whatsAppTurn struct {
 //
 // WhatsApp resolved its tools earlier (agentCtx.tools, which carries the
 // campaign context a ContextualHandler needs), so this passes them through
-// rather than asking the assembler to resolve again — the seeds and the
+// rather than asking the assembler to resolve again, the seeds and the
 // identity/RAG assembly are what was duplicated, not the resolution.
 func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context, t whatsAppTurn) ai.GenerateInput {
 	var agentRecord *agent.Agent

@@ -14,7 +14,7 @@ import (
 // The hot path used to re-query the same fat entry row up to 4× per message
 // (spam check, variables, template-info, send record). After consolidating to a
 // single fetch threaded through the helpers, a successful send must hit
-// EntryRepo.FindByID exactly once — while preserving status + metadata behavior.
+// EntryRepo.FindByID exactly once, while preserving status + metadata behavior.
 
 func TestSendTemplateMessage_FetchesEntryOnce(t *testing.T) {
 	h := newTestHarness()
@@ -60,7 +60,7 @@ func TestSendTemplateMessage_WithVariables_SingleFetch(t *testing.T) {
 	if res != sendResultSuccess {
 		t.Fatalf("expected sendResultSuccess, got %v", res)
 	}
-	// The variables read must reuse the single fetch — still exactly one.
+	// The variables read must reuse the single fetch, still exactly one.
 	if n := h.entryRepo.findByIDCount(); n != 1 {
 		t.Errorf("expected exactly 1 entry fetch with variables, got %d", n)
 	}

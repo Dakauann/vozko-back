@@ -9,7 +9,7 @@ import (
 
 // Comment automation: a stored rule reacts to a public comment.
 //
-// The rule is DATA — an ordered list of conditions and actions — rather than a
+// The rule is DATA, an ordered list of conditions and actions, rather than a
 // hardcoded if-chain, so a later "comment received" workflow trigger can consume
 // the same comment events without either engine rewriting the other.
 //
@@ -64,7 +64,7 @@ type CommentRule struct {
 	Enabled bool   `json:"enabled"`
 
 	// IGMediaID scopes the rule to a single post. Empty means the rule applies to
-	// every post on the account — the "account default" tier.
+	// every post on the account, the "account default" tier.
 	IGMediaID string `json:"igMediaId,omitempty"`
 
 	Match    CommentRuleMatch `json:"match"`

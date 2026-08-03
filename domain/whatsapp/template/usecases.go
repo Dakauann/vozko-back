@@ -93,7 +93,7 @@ type SetTemplateHeaderMediaInput struct {
 // WhatsApp /media endpoint to mint the media id that sends attach by, and links
 // both URL and id to the template. A nil/empty URL clears the header media.
 // It is invoked when a media-header template is first created and by the PATCH
-// /whatsapp/templates/{id}/header-media endpoint — so both paths share one
+// /whatsapp/templates/{id}/header-media endpoint, so both paths share one
 // download/upload/link implementation.
 type SetTemplateHeaderMediaUseCase interface {
 	Execute(input SetTemplateHeaderMediaInput) error

@@ -150,7 +150,7 @@ func (uc *consumeWhatsAppMessageWebhookUseCase) handle(raw []byte, ack messaging
 			// Fail open: a Redis hiccup must not block delivery. Worst case is the
 			// previous behavior (this event may run alongside another for the same
 			// entity); balance row-locks keep money safe regardless.
-			log.Printf("[webhook-consumer] in-flight lock error for %s: %v — proceeding without lock", serialKey, lockErr)
+			log.Printf("[webhook-consumer] in-flight lock error for %s: %v, proceeding without lock", serialKey, lockErr)
 			inflightKey = ""
 		} else if !acquired {
 			// Another event for this entity is already processing. Release our wamid

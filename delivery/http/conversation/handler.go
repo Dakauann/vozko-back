@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -26,6 +27,19 @@ type ConversationHandler struct {
 	searchMessagesUC      conversationdomain.SearchMessagesByEntryUseCase
 	listEventsUC          ce.ListEventsUseCase
 	requestCallPermission conversationdomain.RequestCallPermissionUseCase
+	automationService     ConversationAutomationService
+}
+
+// ConversationAutomationService is the narrow port this handler needs. Declared
+// here rather than importing the usecase so the delivery layer keeps depending
+// on a contract instead of a concrete service.
+type ConversationAutomationService interface {
+	SetAutomation(ctx context.Context, entryID string, entryType shared.EntryType, enabled *bool) error
+}
+
+// SetAutomationService wires the channel-neutral automation toggle.
+func (h *ConversationHandler) SetAutomationService(s ConversationAutomationService) {
+	h.automationService = s
 }
 
 func (h *ConversationHandler) SetRequestCallPermission(uc conversationdomain.RequestCallPermissionUseCase) {
@@ -744,5 +758,72 @@ func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *h
 		"page_size":   pageSize,
 		"total_items": totalItems,
 		"total_pages": totalPages,
+	})
+}
+
+// SetAutomationRequest toggles the per-conversation automation override.
+//
+// A pointer, not a bool: null CLEARS the override so the conversation inherits
+// the account or campaign switch again, which is a different state from an
+// explicit false.
+type SetAutomationRequest struct {
+	AutomationEnabled *bool `json:"automationEnabled"`
+}
+
+// SetAutomation flips automation for one conversation, on any channel.
+//
+// @Summary		Ativar/desativar automação de uma conversa
+// @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha.
+// @Tags			Conversas
+// @Accept			json
+// @Produce		json
+// @Param			entryType	path		string					true	"Tipo da entrada"
+// @Param			entryId		path		string					true	"ID da entrada"
+// @Param			request		body		SetAutomationRequest	true	"Novo estado"
+// @Success		200			{object}	map[string]interface{}
+// @Router			/conversations/{entryType}/{entryId}/automation [patch]
+func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetClaims(r) == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
+	vars := mux.Vars(r)
+	entryType := vars["entryType"]
+	entryID := vars["entryId"]
+
+	if !shared.EntryType(entryType).IsKnown() {
+		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
+		return
+	}
+	if entryID == "" {
+		response.WriteError(w, http.StatusBadRequest, "entryId is required", nil)
+		return
+	}
+
+	var req SetAutomationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
+		return
+	}
+
+	if h.automationService == nil {
+		response.WriteError(w, http.StatusInternalServerError, "Automation service not configured", nil)
+		return
+	}
+
+	if err := h.automationService.SetAutomation(
+		r.Context(), entryID, shared.EntryType(entryType), req.AutomationEnabled,
+	); err != nil {
+		// A channel with no setter registered is a configuration gap, not a
+		// missing conversation, say which so it is not mistaken for bad input.
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
+		"entry_id":           entryID,
+		"entry_type":         entryType,
+		"automation_enabled": req.AutomationEnabled,
 	})
 }

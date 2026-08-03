@@ -15,7 +15,7 @@ import (
 
 // callingSettingsEndpoint builds the WhatsApp Business Calling settings endpoint.
 // 360dialog exposes a channel-scoped shortcut ("{base}/calling/settings", authed by the
-// D360-API-KEY) — verified live against waba-v2.360dialog.io, which returns the Meta
+// D360-API-KEY), verified live against waba-v2.360dialog.io, which returns the Meta
 // Cloud API shape {"calling":{"status":...}}. Meta scopes it by phone number id
 // ("{base}/{phone_number_id}/settings").
 func (c *Client) callingSettingsEndpoint() string {

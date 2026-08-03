@@ -191,7 +191,7 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 	// ("pending"/"approved"/"rejected"), whereas Meta returns it uppercased and the
 	// domain (IsApproved/CanSend) compares against the uppercase TemplateStatus
 	// constants. Without normalising, a 360dialog template is persisted as
-	// "pending" and never satisfies IsApproved — so it can never be sent even after
+	// "pending" and never satisfies IsApproved, so it can never be sent even after
 	// Meta approves it. Mirror the sync path, which already uppercases.
 	status := template.TemplateStatus(strings.ToUpper(strings.TrimSpace(apiOutput.Status)))
 
@@ -218,7 +218,7 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 
 	// Standardize sending on a WhatsApp media id. Every campaign/workflow/tool send
 	// path attaches the header media by id (header_handle is only the create-time
-	// example), so a media-header template needs its id minted up front — otherwise
+	// example), so a media-header template needs its id minted up front, otherwise
 	// the first send goes out without its required header and is rejected. Reuse the
 	// PATCH /header-media use case (download URL -> /media upload -> id, linked to the
 	// template) instead of duplicating that logic here. Best-effort: the template

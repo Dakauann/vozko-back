@@ -103,7 +103,7 @@ func (r *campaignWorkspaceResolver) GetCampaignDepartmentID(campaignID, campaign
 
 func (r *campaignWorkspaceResolver) GetEntryWorkspaceID(entryID, entryType string) (string, error) {
 	// Channels that carry workspace_id on the conversation row need no campaign
-	// walk — the indirection exists only because a WhatsApp entry does not know
+	// walk, the indirection exists only because a WhatsApp entry does not know
 	// its own tenant.
 	if resolver, ok := r.resolverFor(entryType); ok {
 		return resolver.WorkspaceIDForEntry(context.Background(), entryID)

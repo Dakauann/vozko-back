@@ -122,11 +122,18 @@ type ConversationRepository interface {
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 
-	// RecordInbound advances the customer clock — the anchor for the
+	// RecordInbound advances the customer clock, the anchor for the
 	// business-mode 24h window and for inbox ordering.
 	RecordInbound(ctx context.Context, id string, at time.Time) error
 	RecordOutbound(ctx context.Context, id string, at time.Time) error
 	SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error
+	// SetAutomationEnabled is the per-conversation automation override an
+	// operator flips when taking a conversation over.
+	//
+	// A nil value clears the override so the conversation inherits the account
+	// switch again, which is a different state from an explicit false, and the
+	// gating in the webhook handlers reads it that way.
+	SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error
 	// StatusForEntry reads just the conversation status.
 	//
 	// It exists so the conversation-status service can be wired with a method
@@ -167,9 +174,9 @@ type DeepLinkRepository interface {
 // FileCacheRepository maps our stored objects to Telegram file ids.
 //
 // "There are no limits for files sent this way", so a cached id turns every
-// repeat send of the same asset into a free, instant call. The id is per bot —
+// repeat send of the same asset into a free, instant call. The id is per bot,
 // "file_id is unique for each individual bot and can't be transferred from one
-// bot to another" — so the cache is keyed by account.
+// bot to another", so the cache is keyed by account.
 type FileCacheRepository interface {
 	Get(ctx context.Context, accountID, sourceKey string) (string, error)
 	Put(ctx context.Context, accountID, sourceKey, fileID string) error

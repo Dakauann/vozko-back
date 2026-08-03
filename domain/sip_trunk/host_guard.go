@@ -7,6 +7,6 @@ package sip_trunk
 type HostGuard interface {
 	// ResolvesToBlocked reports whether host (a hostname or IP literal) points at
 	// a blocked internal address (see IsBlockedIP). A host that cannot be resolved
-	// is reported as not blocked — it cannot be used to reach an internal service.
+	// is reported as not blocked, it cannot be used to reach an internal service.
 	ResolvesToBlocked(host string) bool
 }

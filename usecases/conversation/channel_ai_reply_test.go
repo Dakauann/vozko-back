@@ -10,8 +10,8 @@ import (
 )
 
 // The automation gate decides whether a bot speaks to a customer. Getting it
-// wrong is visible and embarrassing in both directions — a silent agent, or an
-// agent talking over an operator who has taken the conversation — so every
+// wrong is visible and embarrassing in both directions, a silent agent, or an
+// agent talking over an operator who has taken the conversation, so every
 // branch is pinned here.
 //
 // The contract mirrors WhatsApp's: the per-conversation override wins when set,
@@ -43,7 +43,7 @@ func TestChannelAIReplyGate(t *testing.T) {
 		{"conversation overridden off", func(r *conversation.AIReplyRequest) { r.AutomationEnabled = &disabled }, false},
 
 		// The override also cannot switch an agent ON for an account that has
-		// agent responses disabled — otherwise a stale per-conversation flag would
+		// agent responses disabled, otherwise a stale per-conversation flag would
 		// resurrect a bot the tenant turned off.
 		{"account off, conversation on", func(r *conversation.AIReplyRequest) {
 			r.AgentResponsesEnabled = false

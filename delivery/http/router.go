@@ -633,7 +633,7 @@ func (r *router) setupWebhookRoutes() {
 	// authenticated by other means: a signed single-use state, and the
 	// X-Hub-Signature-256 HMAC.
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
-	// Telegram calls its webhook directly. There is no body signature to verify —
+	// Telegram calls its webhook directly. There is no body signature to verify,
 	// the endpoint is authenticated by the per-account secret token Telegram
 	// echoes in X-Telegram-Bot-Api-Secret-Token, and the path carries our own
 	// account uuid because an Update object identifies no bot.
@@ -1081,7 +1081,7 @@ func (r *router) setupWorkflowRoutes(protected *mux.Router) {
 	}
 	if r.wsWorkflowAIBuilderHandler != nil {
 		// Edit an existing workflow (ActionUpdate) and build a new one from
-		// scratch (ActionCreate). Drafts only — persistence stays on the normal
+		// scratch (ActionCreate). Drafts only, persistence stays on the normal
 		// create/update HTTP path.
 		protected.HandleFunc("/ws/workflows/{id}/ai-builder", r.ac(wf, workspace_domain.ActionUpdate, r.wsWorkflowAIBuilderHandler.HandleSession))
 		protected.HandleFunc("/ws/workflows/ai-builder", r.ac(wf, workspace_domain.ActionCreate, r.wsWorkflowAIBuilderHandler.HandleSession))
@@ -1104,7 +1104,7 @@ func (r *router) setupAttendanceRoutes(protected *mux.Router) {
 	attendancehttp.RegisterProtectedRoutes(protected, r.attendanceHandler, r.ac)
 
 	// Telephony metrics dashboard (volume, queue, occupancy, voice AI).
-	// Gated by attendance:read — same metrics RBAC as omnichannel service metrics.
+	// Gated by attendance:read, same metrics RBAC as omnichannel service metrics.
 	// Dialer:use remains only for placing/transferring calls, not for viewing stats.
 	telephonyhttp.RegisterRoutes(protected, r.telephonyHandler, r.ac)
 }

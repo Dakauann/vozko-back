@@ -268,8 +268,8 @@ func isPhysicalEndpoint(s dialer_domain.DialerSession) bool {
 // representativeLocked collapses a member's contacts to one session for the
 // per-user presence/target lists, under a "one human = one call" rule: a member is
 // available only when EVERY contact is free. If any contact has an active call (or
-// live ring reservation), the member is busy — an idle browser must not mask an
-// in-progress branch call — so onlyFree returns nil (not offerable) and otherwise the
+// live ring reservation), the member is busy, an idle browser must not mask an
+// in-progress branch call, so onlyFree returns nil (not offerable) and otherwise the
 // preferred BUSY contact is returned, so downstream HasActiveCall() checks agree with
 // the presence roster.
 func (r *InProcSessionRegistry) representativeLocked(sessions map[string]dialer_domain.DialerSession, onlyFree bool) dialer_domain.DialerSession {

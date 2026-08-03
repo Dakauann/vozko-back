@@ -12,8 +12,8 @@ import (
 
 // ConsumerRunner is the shared webhook-consumer skeleton.
 //
-// The same ~40 lines — unmarshal, dedup, semaphore, goroutine, panic recover,
-// ack — are copy-pasted across four consumer packages today, each differing only
+// The same ~40 lines, unmarshal, dedup, semaphore, goroutine, panic recover,
+// ack, are copy-pasted across four consumer packages today, each differing only
 // in the payload type and the log prefix. This generic runner exists so channels
 // added from Instagram onward describe only what is actually channel-specific:
 // the dedup key, the handler, and how a failure should be classified.
@@ -234,7 +234,7 @@ func (r *ConsumerRunner[T]) dispatch(raw []byte, ack messaging.MessageAck) {
 			// A plain requeue puts the message straight back on the head of the same
 			// queue with no delay AND no x-death header. DeliveryCount() is derived
 			// from x-death, which RabbitMQ only stamps when a message is actually
-			// dead-lettered — so a requeued message reports attempt 1 forever, the
+			// dead-lettered, so a requeued message reports attempt 1 forever, the
 			// exhaustion check above can never fire, and a permanently failing
 			// message spins the consumer at full CPU indefinitely. A single bad
 			// payload did exactly that: hundreds of identical attempts inside one
@@ -273,7 +273,7 @@ func (r *ConsumerRunner[T]) requeueWithDelay(raw []byte, ack messaging.MessageAc
 // deadLetter parks a message on the topic's DLQ.
 //
 // The WhatsApp pipeline has no DLQ at all: exhausted retries are logged and
-// acked, so the event is gone. Parking it keeps an operator story — the message
+// acked, so the event is gone. Parking it keeps an operator story, the message
 // can be inspected and replayed.
 func (r *ConsumerRunner[T]) deadLetter(raw []byte, ack messaging.MessageAck) {
 	if r.queuePub == nil {

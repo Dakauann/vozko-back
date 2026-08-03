@@ -293,7 +293,7 @@ func TestGetBoard_ThreadsDepartmentScope(t *testing.T) {
 	}
 	for i, in := range searcher.sumInputs {
 		if !in.RestrictDepartments {
-			t.Errorf("value sum %d not scoped — column totals would leak across departments", i)
+			t.Errorf("value sum %d not scoped, column totals would leak across departments", i)
 		}
 	}
 }
@@ -313,7 +313,7 @@ func TestGetBoard_AdminNotRestricted(t *testing.T) {
 	}
 	for i, in := range searcher.searchInputs {
 		if in.RestrictDepartments {
-			t.Errorf("search %d restricted for admin — should be workspace-wide", i)
+			t.Errorf("search %d restricted for admin, should be workspace-wide", i)
 		}
 	}
 }

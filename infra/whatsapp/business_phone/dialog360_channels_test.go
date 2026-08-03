@@ -10,7 +10,7 @@ import (
 )
 
 // channelsPageJSON builds a /channels page with `count` channels starting at `start`,
-// reporting `total` overall — matching the shape the client decodes.
+// reporting `total` overall, matching the shape the client decodes.
 func channelsPageJSON(start, count, total int) string {
 	page := dialog360ChannelPage{Total: total}
 	for i := 0; i < count; i++ {
@@ -78,7 +78,7 @@ func TestListChannels_SinglePartialPage(t *testing.T) {
 	}
 }
 
-// GetChannel must fetch a single channel via the id filter — one call, no paging.
+// GetChannel must fetch a single channel via the id filter, one call, no paging.
 func TestGetChannel_SingleCallViaFilter(t *testing.T) {
 	var sawFilter bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

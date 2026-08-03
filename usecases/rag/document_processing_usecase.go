@@ -112,7 +112,7 @@ func (uc *consumeDocumentProcessingUseCase) handle(payload []byte, ack messaging
 			if m.Attempt < rag.MaxProcessingAttempts {
 				uc.retryLater(m)
 			} else {
-				log.Printf("[RAG] consumer: document %s exhausted all %d attempts — marked as failed",
+				log.Printf("[RAG] consumer: document %s exhausted all %d attempts, marked as failed",
 					m.DocumentID, rag.MaxProcessingAttempts)
 			}
 			return

@@ -9,7 +9,7 @@ import (
 )
 
 // dialog360Throttle keeps our calls to the 360dialog Partner API within its
-// documented limit — 5 requests / 30s per partner. It WAITS for a slot instead of
+// documented limit, 5 requests / 30s per partner. It WAITS for a slot instead of
 // rejecting, so an onboarding burst (CreateClient + account_sharing/numbers +
 // ListChannels + api_keys) is smoothed out rather than 429-ing (and cascading into
 // failed onboardings). It is backed by Redis (SharedState.TryIncr) so the budget is
@@ -60,7 +60,7 @@ func (t *dialog360Throttle) tryAcquire(at time.Time) (bool, time.Duration) {
 }
 
 // Acquire blocks until a slot is free or the max wait elapses (then proceeds
-// best-effort — a rare 429 is still retried by the caller).
+// best-effort, a rare 429 is still retried by the caller).
 func (t *dialog360Throttle) Acquire() {
 	if t == nil || t.shared == nil {
 		return

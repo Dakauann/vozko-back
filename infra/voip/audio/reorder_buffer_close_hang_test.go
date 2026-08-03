@@ -13,7 +13,7 @@ import (
 
 // wedgedMedia simulates a half-open / wedged RTP socket: ReadRTP blocks forever and
 // neither Close() nor UnblockReaders() wakes it. This is exactly the production
-// condition that deadlocked RTPReorderBuffer.Close() — pprof showed the bridge
+// condition that deadlocked RTPReorderBuffer.Close(), pprof showed the bridge
 // goroutine stuck at `<-rb.doneCh` in Close() for ~19h because mainLoop never
 // exited (it watched a context Close() didn't cancel) and inner.Close() never
 // unblocked the read. Because the slot is released by `defer releaseCallSlot` only
@@ -35,7 +35,7 @@ func (m *wedgedMedia) LocalAddr() net.Addr               { return &net.UDPAddr{P
 func (m *wedgedMedia) RemoteAddr() net.Addr              { return &net.UDPAddr{Port: 20000} }
 
 // Close and UnblockReaders record the call but deliberately do NOT unblock the
-// read — the whole point is that the socket is wedged, so teardown must not depend
+// read, the whole point is that the socket is wedged, so teardown must not depend
 // on the read ever returning.
 func (m *wedgedMedia) Close() error {
 	atomic.AddInt32(&m.closeCalls, 1)
@@ -77,9 +77,9 @@ func TestReorderBuffer_CloseDoesNotHangOnWedgedInner(t *testing.T) {
 
 	select {
 	case <-returned:
-		// Close returned despite a permanently-wedged inner read — the fix works.
+		// Close returned despite a permanently-wedged inner read, the fix works.
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close() did not return within 2s on a wedged inner read — teardown deadlock (the ~19h slot-leak hang) is NOT fixed")
+		t.Fatal("Close() did not return within 2s on a wedged inner read, teardown deadlock (the ~19h slot-leak hang) is NOT fixed")
 	}
 	close(inner.block) // let the parked reader exit cleanly for the rest of the run
 }
@@ -105,7 +105,7 @@ func TestReorderBuffer_CloseReleasesCallSlotEvenWhenInnerWedged(t *testing.T) {
 	case <-released:
 		// The slot-release defer ran → the workspace call slot is freed. No leak.
 	case <-time.After(2 * time.Second):
-		t.Fatal("call-slot release defer never ran — Close() hung and the slot would leak forever")
+		t.Fatal("call-slot release defer never ran, Close() hung and the slot would leak forever")
 	}
 
 	if atomic.LoadInt32(&inner.unblockCalls) == 0 {
@@ -115,9 +115,9 @@ func TestReorderBuffer_CloseReleasesCallSlotEvenWhenInnerWedged(t *testing.T) {
 }
 
 // TestReorderBuffer_ConcurrentCloseFromBothPaths mirrors production precisely: pprof
-// showed the SAME buffer being Close()'d concurrently from two paths — the bridge
+// showed the SAME buffer being Close()'d concurrently from two paths, the bridge
 // (RecordingMediaSession.Close) and the SIP dialog teardown (SIPTrunkManager.Invite
-// .func1 via diago's OnClose) — with BOTH goroutines stuck on `<-doneCh`. Both must
+// .func1 via diago's OnClose), with BOTH goroutines stuck on `<-doneCh`. Both must
 // now return, and the cancel/close/unblock side-effects must run exactly once.
 func TestReorderBuffer_ConcurrentCloseFromBothPaths(t *testing.T) {
 	inner := newWedgedMedia()
@@ -153,7 +153,7 @@ func TestReorderBuffer_ConcurrentCloseFromBothPaths(t *testing.T) {
 
 // TestReorderBuffer_CloseDrainsCleanlyOnHealthyInner guards the common path: a
 // well-behaved inner whose Close unblocks the read must still tear down promptly and
-// let the reader exit — i.e. the fix must not have broken normal teardown.
+// let the reader exit, i.e. the fix must not have broken normal teardown.
 func TestReorderBuffer_CloseDrainsCleanlyOnHealthyInner(t *testing.T) {
 	inner := newPassthroughMedia() // Close() closes m.closed → ReadRTP returns
 	rb := NewRTPReorderBuffer(inner, RTPReorderBufferOptions{Depth: 3, MaxWait: 20 * time.Millisecond, CallID: "healthy"})

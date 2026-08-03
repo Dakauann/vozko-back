@@ -50,7 +50,7 @@ func (uc *releasePhoneUseCase) Execute(input businessphone.ReleasePhoneInput) (*
 	}
 
 	// Typed-confirmation guard. Match the display number, or the WABA id when the
-	// number was never populated (a failed/unsynced row shows no number) — otherwise
+	// number was never populated (a failed/unsynced row shows no number), otherwise
 	// such a phone could never be confirmed and thus never removed. The backend owns
 	// this check so the irreversible teardown can't be triggered against the wrong
 	// record even if a client skips its own confirmation UI.
@@ -94,7 +94,7 @@ func (uc *releasePhoneUseCase) Execute(input businessphone.ReleasePhoneInput) (*
 	}
 
 	// dialog360-hosted numbers have no Meta token, so the Cloud API teardown above is a
-	// no-op for them — their billing lives at the 360dialog PARTNER, not Meta. We MUST
+	// no-op for them, their billing lives at the 360dialog PARTNER, not Meta. We MUST
 	// cancel the partner channel here, or the number is billed forever after the local
 	// row is gone. Cancel FIRST and abort the local delete if it fails, so a transient
 	// 360dialog error can never orphan a paying channel with no local record to retry.
@@ -149,7 +149,7 @@ func (uc *releasePhoneUseCase) cancelDialog360Channel(phone *businessphone.Whats
 		return nil
 	}
 
-	// The cancel call errored — confirm the true state before deciding it's fatal. If
+	// The cancel call errored, confirm the true state before deciding it's fatal. If
 	// the channel is already cancelled/deactivated or no longer present, the goal is
 	// met and the local delete may proceed (idempotent re-release, or cancelled by hand).
 	if ch, gerr := uc.partner.GetChannel(phone.Dialog360ChannelID); gerr == nil && (ch == nil || ch.IsDeactivated()) {

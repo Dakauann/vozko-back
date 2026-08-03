@@ -103,8 +103,8 @@ func csrfRequestOrigin(r *http.Request) string {
 // csrfIsSameOrigin reports whether origin matches the host the request was sent
 // to (scheme://host). A same-origin request is not cross-site and therefore not
 // CSRF-able, so it is trusted regardless of the frontend allowlist. This matters
-// because the API serves some of its own pages — e.g. the Meta Embedded Signup
-// popup — that make cookie-authenticated POSTs back to the API; those carry the
+// because the API serves some of its own pages, e.g. the Meta Embedded Signup
+// popup, that make cookie-authenticated POSTs back to the API; those carry the
 // API's OWN origin, which is not (and should not be) in CORS_TRUSTED_ORIGINS.
 // This is the canonical OWASP check: compare Origin against the target origin.
 func csrfIsSameOrigin(r *http.Request, origin string) bool {
@@ -115,7 +115,7 @@ func csrfIsSameOrigin(r *http.Request, origin string) bool {
 // csrfSelfOrigin reconstructs the origin the client used to reach us. TLS is
 // terminated at the reverse proxy, so r.TLS is nil in production; the proxy's
 // X-Forwarded-Proto carries the real scheme. r.Host is the client-supplied Host
-// header, i.e. the public host the browser addressed — the same host it stamps
+// header, i.e. the public host the browser addressed, the same host it stamps
 // into the Origin of a same-origin request. Only our proxy sets these; a browser
 // cannot forge X-Forwarded-Proto on a cross-site request, so this is safe as a
 // CSRF trust signal.

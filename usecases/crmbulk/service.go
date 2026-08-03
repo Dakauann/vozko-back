@@ -45,7 +45,7 @@ type EntryAssigner interface {
 	Reassign(entryID, entryType, businessPhoneID, workspaceID, userID string) error
 }
 
-// Authorizer is the SAME gate the single-entry paths and the board already use —
+// Authorizer is the SAME gate the single-entry paths and the board already use,
 // no bulk-specific auth logic. It enforces (a) per-action RBAC via
 // HasWorkspacePermission and (b) per-entry scope via CanAccessEntry, which itself
 // blocks BOTH cross-workspace and out-of-department entries. Satisfied by the
@@ -94,7 +94,7 @@ var (
 	// ErrUnknownAction is returned per target when the requested action is not one
 	// of the supported ActionX constants.
 	ErrUnknownAction = errors.New("crmbulk: unknown action")
-	// ErrForbiddenEntry marks a target the actor may not touch — its entry is in
+	// ErrForbiddenEntry marks a target the actor may not touch, its entry is in
 	// another workspace, or outside the actor's department scope (CanAccessEntry).
 	ErrForbiddenEntry = errors.New("crmbulk: entry is outside your workspace or department scope")
 )
@@ -128,7 +128,7 @@ type BulkResult struct {
 	Succeeded int           `json:"succeeded"`
 	Failed    []BulkFailure `json:"failed"`
 	// Forbidden is set when the actor lacks the ACTION's permission entirely (or the
-	// action is unknown): a hard gate — no target is touched and the handler maps it
+	// action is unknown): a hard gate, no target is touched and the handler maps it
 	// to 403. Per-target scope denials are reported in Failed instead.
 	Forbidden bool `json:"forbidden,omitempty"`
 }
@@ -169,7 +169,7 @@ func NewService(
 //      one the single-entry route requires). Denied / unknown action → Forbidden,
 //      nothing is touched (handler → 403).
 //   2. PER-TARGET scope gate: CanAccessEntry blocks any entry in another workspace
-//      or outside the actor's department scope — reported in Failed, never mutated.
+//      or outside the actor's department scope, reported in Failed, never mutated.
 // Each surviving target is mutated via the existing single-entry usecase and then
 // broadcast, so every client stays in sync. One target never aborts the rest.
 func (s *Service) BulkApply(ctx context.Context, in BulkInput) BulkResult {

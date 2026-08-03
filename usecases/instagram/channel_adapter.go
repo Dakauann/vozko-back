@@ -160,7 +160,7 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 // SendReaction implements conversation.ReactingAdapter.
 //
 // Note that Instagram never echoes our own reactions back, so the caller must
-// record them locally — no webhook will confirm this.
+// record them locally, no webhook will confirm this.
 func (a *channelAdapter) SendReaction(ctx context.Context, ec *conversation.EntryContext, targetProviderMessageID, reaction string) error {
 	account, err := a.sendableAccount(ctx, ec)
 	if err != nil {

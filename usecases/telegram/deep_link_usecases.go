@@ -12,7 +12,7 @@ import (
 //
 // A bot cannot message a customer first. But a t.me link in an e-mail, an SMS, a
 // boleto PDF or a QR code opens an ALREADY ATTRIBUTED conversation on the
-// customer's first tap — which for a collections product is a stronger flow than
+// customer's first tap, which for a collections product is a stronger flow than
 // a template blast, because the customer initiated it.
 
 // CreateDeepLinkInput describes a link to mint.

@@ -25,7 +25,7 @@ func (t *deleteAgentTool) Meta() copilot.Meta {
 func (t *deleteAgentTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:        "delete_agent",
-		Description: "Exclui um agente permanentemente. Ação destrutiva — só ocorre após aprovação explícita do usuário.",
+		Description: "Exclui um agente permanentemente. Ação destrutiva, só ocorre após aprovação explícita do usuário.",
 		Parameters:  map[string]tools.Parameter{"id": {Type: "string", Description: "id do agente a excluir"}},
 		Required:    []string{"id"},
 	}

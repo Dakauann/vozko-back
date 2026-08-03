@@ -34,7 +34,7 @@ func withWorkspace(req *http.Request, workspaceID string) *http.Request {
 // this API answers: {"data": [...], "meta": {...}}.
 //
 // It originally returned a bespoke {"items": [...], "page": ...}. That parses
-// without error in the browser client, which reads response.data.data — so the
+// without error in the browser client, which reads response.data.data, so the
 // account was created, the request was 200, and the table was simply blank with
 // nothing anywhere saying why.
 func TestListAccountsUsesTheStandardPaginatedEnvelope(t *testing.T) {
@@ -69,11 +69,11 @@ func TestListAccountsUsesTheStandardPaginatedEnvelope(t *testing.T) {
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("response does not decode: %v — body=%s", err, rec.Body.String())
+		t.Fatalf("response does not decode: %v, body=%s", err, rec.Body.String())
 	}
 
 	if len(body.Data) != 1 {
-		t.Fatalf("data has %d rows, want 1 — the browser client reads exactly this key; body=%s",
+		t.Fatalf("data has %d rows, want 1, the browser client reads exactly this key; body=%s",
 			len(body.Data), rec.Body.String())
 	}
 	if body.Data[0].BotUsername != "vozkotest_bot" {

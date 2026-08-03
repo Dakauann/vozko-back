@@ -333,9 +333,9 @@ func (h *WorkflowHandler) NodeTypes(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, h.catalogFn())
 }
 
-// ResolveHandles returns, for each posted node, its output handles — including
+// ResolveHandles returns, for each posted node, its output handles, including
 // config-dependent (dynamic) ones (ai_agent tool routes + response, text_match
-// cases) and each handle's optional flag — from the single backend authority.
+// cases) and each handle's optional flag, from the single backend authority.
 // The frontend renders these verbatim instead of recomputing handles, so the
 // backend is the only source of truth for what is connectable and what is required.
 func (h *WorkflowHandler) ResolveHandles(w http.ResponseWriter, r *http.Request) {
@@ -357,7 +357,7 @@ func (h *WorkflowHandler) ResolveHandles(w http.ResponseWriter, r *http.Request)
 // ValidateGraph runs the full backend lint over a posted graph and returns the
 // structured issues + a `valid` flag (the same rules `activate` enforces). The
 // frontend calls this to show, before activation, exactly which nodes/handles are
-// blocking — instead of guessing or relying on a generic activation error.
+// blocking, instead of guessing or relying on a generic activation error.
 func (h *WorkflowHandler) ValidateGraph(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Type  workflow.WorkflowType `json:"type"`

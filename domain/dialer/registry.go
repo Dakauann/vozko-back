@@ -16,7 +16,7 @@ type DialerSession interface {
 	ID() string
 	UserID() string
 	WorkspaceID() string
-	// HasActiveCall reports whether the session is occupied for routing — either
+	// HasActiveCall reports whether the session is occupied for routing, either
 	// it has an attached call OR a live ring reservation (an offer is ringing the
 	// agent but has not been accepted yet). This is the single availability
 	// predicate every routing path reads (directly and via ListAvailable), so an

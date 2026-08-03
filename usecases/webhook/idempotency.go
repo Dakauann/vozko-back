@@ -78,7 +78,7 @@ func (g *IdempotencyGuard) IsDuplicate(key string) bool {
 	}
 	acquired, err := g.state.SetNX("dedup:webhook:"+key, "1", g.ttl)
 	if err != nil {
-		log.Printf("[webhook-dedup] Redis error: %v — allowing message", err)
+		log.Printf("[webhook-dedup] Redis error: %v, allowing message", err)
 		return false
 	}
 	return !acquired

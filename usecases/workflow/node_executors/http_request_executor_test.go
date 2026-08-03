@@ -29,7 +29,7 @@ func httpNodeCtx(id string, config map[string]interface{}, state *workflow.RunSt
 }
 
 // Reproduces node s2_1: the token endpoint returns a JSON ARRAY. After capture,
-// the token MUST be reachable via {{var[0].token}} — before the fix it was stored
+// the token MUST be reachable via {{var[0].token}}, before the fix it was stored
 // as a raw string and the reference resolved to the literal, producing an empty
 // auth header on the next node.
 func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
@@ -142,8 +142,8 @@ func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 }
 
 // The status code must be reachable from the captured variable itself
-// ({{captureVar.status_code}}) for a retry/branch condition — for BOTH an object
-// body and an array body — while the body's own fields remain directly navigable.
+// ({{captureVar.status_code}}) for a retry/branch condition, for BOTH an object
+// body and an array body, while the body's own fields remain directly navigable.
 func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 	allowLoopback(t)
 

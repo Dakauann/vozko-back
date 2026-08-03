@@ -28,7 +28,7 @@ var (
 )
 
 // Scope names for the Instagram Login flow. The short forms (business_basic
-// etc.) were deprecated 2025-01-27 — only these are valid.
+// etc.) were deprecated 2025-01-27, only these are valid.
 const (
 	ScopeBasic          = "instagram_business_basic"
 	ScopeManageMessages = "instagram_business_manage_messages"
@@ -46,11 +46,11 @@ const ExtendedMessagingWindow = 7 * 24 * time.Hour
 // MaxTextBytes is Instagram's documented limit: "1000 bytes or less".
 const MaxTextBytes = 1000
 
-// PrivateReplyWindow — a private reply must be sent within 7 days of the comment.
+// PrivateReplyWindow, a private reply must be sent within 7 days of the comment.
 const PrivateReplyWindow = 7 * 24 * time.Hour
 
 // Quick-reply limits. "A maximum of 13 quick replies are supported" and "Each
-// quick reply allows up to 20 characters before being truncated" — Instagram
+// quick reply allows up to 20 characters before being truncated", Instagram
 // truncates the label itself rather than rejecting the send, so an over-long
 // label is a silent product defect, not an error we would ever see.
 const (
@@ -80,7 +80,7 @@ func (s Status) Valid() bool {
 }
 
 // CanTransitionTo guards the lifecycle. The WhatsApp phone entity has ten states
-// and no guard at all — every mutation is a bare field assignment. We add the
+// and no guard at all, every mutation is a bare field assignment. We add the
 // guard here from day one so an invalid transition is a domain error, not a
 // silent corruption.
 func (s Status) CanTransitionTo(next Status) bool {
@@ -108,8 +108,8 @@ func (s Status) CanTransitionTo(next Status) bool {
 }
 
 // Account is a connected Instagram professional account. It doubles as the
-// config carrier for its conversations — the role whatsapp_campaigns plays for
-// WhatsApp — which is why the automation fields live here. Instagram has no
+// config carrier for its conversations, the role whatsapp_campaigns plays for
+// WhatsApp, which is why the automation fields live here. Instagram has no
 // campaign concept: outbound-first messaging is impossible, so there is nothing
 // to blast and no template to carry.
 type Account struct {
@@ -117,7 +117,7 @@ type Account struct {
 	WorkspaceID  string  `json:"workspaceId"`
 	DepartmentID *string `json:"departmentId,omitempty"`
 
-	// IGUserID is the Instagram professional account ID — the `user_id` field
+	// IGUserID is the Instagram professional account ID, the `user_id` field
 	// from GET /me, NOT the app-scoped `id`. It is what goes in endpoint paths.
 	IGUserID          string `json:"igUserId"`
 	Username          string `json:"username"`
@@ -242,7 +242,7 @@ func (a *Account) TokenNeedsRefresh(now time.Time, lead time.Duration) bool {
 
 // Contact is a person who messaged one of our Instagram accounts.
 //
-// The identity is (account, IGSID) — never IGSID alone. An Instagram-scoped ID
+// The identity is (account, IGSID), never IGSID alone. An Instagram-scoped ID
 // is scoped to the (app, professional account) pair, so the same human has a
 // DIFFERENT IGSID on each connected account.
 type Contact struct {
@@ -262,7 +262,7 @@ type Contact struct {
 
 	// LeadID optionally bridges this contact to a WhatsApp lead so the same
 	// human can be recognised across channels. Nullable and unused by the base
-	// implementation — it exists so cross-channel identity can be added later
+	// implementation, it exists so cross-channel identity can be added later
 	// without a migration.
 	LeadID *string `json:"leadId,omitempty"`
 
@@ -292,7 +292,7 @@ func (c *Contact) ProfileIsStale(now time.Time, ttl time.Duration) bool {
 	return now.Sub(*c.ProfileFetchedAt) > ttl
 }
 
-// Conversation is the ENTRY — the thing the CRM treats as a conversation. It
+// Conversation is the ENTRY, the thing the CRM treats as a conversation. It
 // carries the same state contract as whatsapp_campaign_entries so labels,
 // stages, opportunities and inbox assignment (all keyed on entry_id+entry_type)
 // work without any change to those subsystems.
@@ -333,7 +333,7 @@ func (c *Conversation) WindowOpen(now time.Time) (bool, *time.Time) {
 }
 
 // MediaProductType distinguishes reels and stories. There is no
-// media_type=REELS — media_type is only IMAGE/VIDEO/CAROUSEL_ALBUM, so all
+// media_type=REELS, media_type is only IMAGE/VIDEO/CAROUSEL_ALBUM, so all
 // per-type logic must branch on THIS field or every reel reads as a plain video.
 type MediaProductType string
 

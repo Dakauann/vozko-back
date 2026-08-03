@@ -67,7 +67,7 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 // The campaign is an OPTIONAL refinement, not a requirement: it selects a
 // campaign's own funnel when one exists, and ListByCampaign already falls back
 // to the workspace's default conversation pipeline when it does not. Requiring
-// it here meant every channel without campaigns — Telegram, Instagram — got an
+// it here meant every channel without campaigns, Telegram, Instagram, got an
 // EMPTY enum while the prompt instructed the model to "use SOMENTE etapas
 // listadas no enum". The agent could not classify a lead at all, and nothing
 // reported an error: Execute already had the same fallback, so the tool would
@@ -136,7 +136,7 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 	}
 
 	// The board already renders cards for every taggable channel, so the guard
-	// must use the same predicate the stage and label domains validate against —
+	// must use the same predicate the stage and label domains validate against,
 	// otherwise the agent cannot move a card the UI happily shows.
 	if !shared.EntryType(entryType).SupportsCRMTagging() {
 		return tools.ExecutionResult{

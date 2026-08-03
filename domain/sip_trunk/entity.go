@@ -92,7 +92,7 @@ type CodecInfo struct {
 // This is the single source of truth the API exposes to clients so the trunk
 // UI never drifts from what the media plane can actually honor. It MUST stay in
 // sync with infra/voip.codecByID (the resolver that maps these IDs onto the
-// wire) — a consistency test guards this. The removed G.722/Opus are
+// wire), a consistency test guards this. The removed G.722/Opus are
 // deliberately absent (see docs/SIP_AUDIO_PIPELINE.md §9.1), and
 // telephone-event is excluded because it is DTMF (RFC 4733), always appended
 // automatically rather than chosen as a voice codec.
@@ -101,14 +101,14 @@ func OfferableCodecs() []CodecInfo {
 		{
 			ID:          CodecIDPCMA,
 			Label:       "G.711 A-law (PCMA)",
-			Description: "Narrowband padrão. Recomendado no Brasil — a PSTN é nativamente A-law, evitando uma transcodificação na operadora.",
+			Description: "Narrowband padrão. Recomendado no Brasil, a PSTN é nativamente A-law, evitando uma transcodificação na operadora.",
 			Recommended: true,
 			Default:     true,
 		},
 		{
 			ID:          CodecIDPCMU,
 			Label:       "G.711 µ-law (PCMU)",
-			Description: "Narrowband padrão — América do Norte/Japão. Use apenas se a operadora exigir µ-law.",
+			Description: "Narrowband padrão, América do Norte/Japão. Use apenas se a operadora exigir µ-law.",
 			Default:     true,
 		},
 	}
@@ -250,7 +250,7 @@ type Actor struct {
 
 // CanBeModifiedBy reports whether the actor may mutate this trunk. Platform
 // admins may modify any trunk. A workspace actor may modify only a trunk it
-// owns, and never a globally-visible (shared) trunk — a shared trunk that other
+// owns, and never a globally-visible (shared) trunk, a shared trunk that other
 // workspaces depend on must only be changed by an admin.
 func (t *SIPTrunk) CanBeModifiedBy(a Actor) error {
 	if a.IsAdmin {

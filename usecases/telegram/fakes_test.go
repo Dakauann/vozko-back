@@ -248,6 +248,10 @@ func (f *fakeConversations) RecordOutbound(_ context.Context, id string, _ time.
 	return nil
 }
 
+func (f *fakeConversations) SetAutomationEnabled(context.Context, string, *bool) error {
+	return nil
+}
+
 func (f *fakeConversations) SetStatus(context.Context, string, string, string, string, *time.Time) error {
 	return nil
 }

@@ -48,7 +48,7 @@ const (
 
 // ToolNameSendMedia is deliberately channel-neutral. The name is part of the
 // prompt the model reads, and a tool called "send_whatsapp_media" offered inside
-// a Telegram conversation reads as belonging to another channel — a model that
+// a Telegram conversation reads as belonging to another channel, a model that
 // declines to use it is behaving sensibly. Saved bindings under the old name
 // keep working through CanonicalToolName.
 const ToolNameSendMedia = "send_media"
@@ -83,7 +83,7 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 				// still addresses by number.
 				Description:        "Opcional. Destinatário no WhatsApp (formato 5511999999999). Deixe vazio para enviar ao contato da conversa atual.",
 				DisplayName:        "Destinatário",
-				DisplayDescription: "Opcional — por padrão, o contato da conversa atual",
+				DisplayDescription: "Opcional, por padrão, o contato da conversa atual",
 			},
 			"media_id": {
 				Type:               "string",

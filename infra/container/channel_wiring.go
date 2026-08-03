@@ -16,8 +16,8 @@ import (
 // Two of the conversation services need a per-channel lookup they cannot resolve
 // generically: the sender identity shown in the inbox (for channels whose
 // contacts are not leads) and the conversation-status read/write. Both were
-// originally added Instagram-shaped — a SetInstagram… setter and a hand-written
-// Instagram adapter — so the second such channel would have meant copying both.
+// originally added Instagram-shaped, a SetInstagram… setter and a hand-written
+// Instagram adapter, so the second such channel would have meant copying both.
 //
 // The ports are now keyed by entry type and the adapters below are plain
 // function holders, so each channel supplies only the mapping that is genuinely

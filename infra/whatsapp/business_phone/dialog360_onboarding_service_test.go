@@ -309,7 +309,7 @@ func newFailedPhoneForRetry() *fakePhoneRepo {
 
 // The number that motivated this fix: 360dialog created the client on prior attempts
 // but returned 429/500, so no id was persisted. A retry must REUSE the existing
-// client (found by its deterministic email) and never call CreateClient again — this
+// client (found by its deterministic email) and never call CreateClient again, this
 // is the exact duplication the production incident produced (3 leaked clients).
 func TestRetry_ReusesExistingClientByEmail_NoDuplicate(t *testing.T) {
 	phoneRepo := newFailedPhoneForRetry()
@@ -322,7 +322,7 @@ func TestRetry_ReusesExistingClientByEmail_NoDuplicate(t *testing.T) {
 		t.Fatalf("Retry: %v", err)
 	}
 	if partner.createCalls != 0 {
-		t.Fatalf("CreateClient called %d times, want 0 — must reuse the existing client, not leak a duplicate", partner.createCalls)
+		t.Fatalf("CreateClient called %d times, want 0, must reuse the existing client, not leak a duplicate", partner.createCalls)
 	}
 	if partner.registerCalls != 1 || partner.lastRegister.ClientID != "existing-client-9" {
 		t.Fatalf("RegisterNumber must run once with the reused client id, got calls=%d clientID=%q", partner.registerCalls, partner.lastRegister.ClientID)
@@ -334,7 +334,7 @@ func TestRetry_ReusesExistingClientByEmail_NoDuplicate(t *testing.T) {
 
 // If CreateClient itself errors but the client was actually created (360dialog's
 // ack-then-500 bug), the retry must recover the id via the email lookup rather than
-// failing — otherwise it re-creates on the next attempt and leaks duplicates.
+// failing, otherwise it re-creates on the next attempt and leaks duplicates.
 func TestRetry_RecoversWhenCreateErroredButClientExists(t *testing.T) {
 	phoneRepo := newFailedPhoneForRetry()
 	partner := &fakePartner{
@@ -378,7 +378,7 @@ func TestRetry_CreatesClientWhenNoneExists(t *testing.T) {
 
 // TestFinalize_PopulatesChannelMetadata proves a dialog360-hosted number gets its
 // verified name, quality, messaging tier and review status from the partner channel
-// at finalize time — the only source, since these numbers have no Meta access token
+// at finalize time, the only source, since these numbers have no Meta access token
 // for the Graph sync. Without this the number connects but shows empty metadata.
 func TestFinalize_PopulatesChannelMetadata(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)

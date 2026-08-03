@@ -12,7 +12,7 @@ import (
 )
 
 // BillingMetrics surfaces revenue-leak signals (events that did not debit) so they
-// can be alerted on instead of staying silent. Optional — nil disables metrics.
+// can be alerted on instead of staying silent. Optional, nil disables metrics.
 type BillingMetrics interface {
 	IncBillingSkipped(reason string)
 }
@@ -79,7 +79,7 @@ func (c *ConsumeAIBillingUseCase) handle(message []byte, ack messaging.MessageAc
 			requeue := ack.DeliveryCount() < messaging.MaxRetries
 			if !requeue {
 				c.markSkipped("permanent_drop")
-				log.Printf("CRITICAL: [ai-billing] permanently dropping event %s (ws=%s, model=%s, tokens=%d+%d) after %d retries — REVENUE LOST: %v",
+				log.Printf("CRITICAL: [ai-billing] permanently dropping event %s (ws=%s, model=%s, tokens=%d+%d) after %d retries, REVENUE LOST: %v",
 					event.RequestID, event.WorkspaceID, event.Model,
 					event.PromptTokens, event.CompletionTokens,
 					messaging.MaxRetries, err)
@@ -112,11 +112,11 @@ func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error 
 	fmt.Println("[ai-billing] result:", result)
 
 	if result.PriceMicros <= 0 {
-		// Usage existed (zero-token events are dropped earlier) but priced at $0 —
+		// Usage existed (zero-token events are dropped earlier) but priced at $0,
 		// the model is missing from the price table and the live fetcher too. That
 		// is free AI for the customer: make it loud instead of a silent return.
 		c.markSkipped("zero_price")
-		log.Printf("CRITICAL: [ai-billing] priced at $0 — NOT billing (ws=%s, model=%s, tokens=%d+%d, req=%s) — model likely unpriced; REVENUE LEAK",
+		log.Printf("CRITICAL: [ai-billing] priced at $0, NOT billing (ws=%s, model=%s, tokens=%d+%d, req=%s), model likely unpriced; REVENUE LEAK",
 			event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.RequestID)
 		return nil
 	}

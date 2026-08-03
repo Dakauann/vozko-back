@@ -98,7 +98,7 @@ func TestExecute_HappyPath(t *testing.T) {
 		t.Errorf("expected segments, got none")
 	}
 	if fAI.seen.WorkspaceID != "ws1" {
-		t.Errorf("WorkspaceID not forwarded to AI (got %q) — billing event will be skipped", fAI.seen.WorkspaceID)
+		t.Errorf("WorkspaceID not forwarded to AI (got %q), billing event will be skipped", fAI.seen.WorkspaceID)
 	}
 	if fAI.seen.Model == "" {
 		t.Errorf("default model not applied")

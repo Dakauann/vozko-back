@@ -102,7 +102,7 @@ func TestHandleDialog360PartnerWebhook_RoutesTemplateStatus(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	if len(ftw.payloads) != 1 {
-		t.Fatalf("template handler called %d times, want 1 (event was dropped — the bug)", len(ftw.payloads))
+		t.Fatalf("template handler called %d times, want 1 (event was dropped, the bug)", len(ftw.payloads))
 	}
 	v := ftw.payloads[0].Entry[0].Changes[0].Value
 	if v.ChannelExternalID != "gqh7gkLf8nZPcY4EpEbmWT" || v.Event != "REJECTED" {

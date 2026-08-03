@@ -28,7 +28,7 @@ func stagesFixture() []*stage.Stage {
 	}
 }
 
-// A channel without campaigns — Telegram, Instagram — must still get the stage
+// A channel without campaigns, Telegram, Instagram, must still get the stage
 // enum. Requiring a campaign returned the bare definition with an EMPTY enum
 // while the prompt told the model to use only enumerated stages, so the agent
 // silently stopped classifying leads on every channel but WhatsApp.
@@ -52,7 +52,7 @@ func TestStageEnumIsPopulatedWithoutACampaign(t *testing.T) {
 	}
 }
 
-// A campaign still selects its own funnel — it is an optional refinement, not a
+// A campaign still selects its own funnel, it is an optional refinement, not a
 // requirement, and WhatsApp's behaviour must not change.
 func TestStageEnumStillHonoursACampaignsOwnPipeline(t *testing.T) {
 	repo := &stubStageRepo{stages: stagesFixture()}
@@ -70,7 +70,7 @@ func TestStageEnumStillHonoursACampaignsOwnPipeline(t *testing.T) {
 }
 
 // Without a workspace there is no pipeline to read, so the bare definition is
-// correct — an enum invented from nothing would be worse.
+// correct, an enum invented from nothing would be worse.
 func TestStageEnumIsOmittedWithoutAWorkspace(t *testing.T) {
 	repo := &stubStageRepo{stages: stagesFixture()}
 	tool := &manageEntryStageTool{stageRepo: repo}

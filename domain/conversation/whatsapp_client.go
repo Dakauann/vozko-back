@@ -37,8 +37,8 @@ const (
 // WhatsAppInteractiveLimits states WhatsApp's single-choice bounds in the same
 // shape every other channel reports through its Descriptor.
 //
-// WhatsApp has no Descriptor yet — it is the channel still being migrated onto
-// the adapter abstraction — so this stands in for one. It is built from the
+// WhatsApp has no Descriptor yet, it is the channel still being migrated onto
+// the adapter abstraction, so this stands in for one. It is built from the
 // constants directly above so the numbers the workflow editor shows and the
 // numbers Validate enforces cannot drift apart.
 func WhatsAppInteractiveLimits() channel.InteractiveLimits {
@@ -131,7 +131,7 @@ type WhatsAppBusinessProfileClient interface {
 // example.header_handle. Meta's Graph endpoint wants a Resumable-Upload handle
 // (so the URL must be uploaded first), whereas 360dialog's channel-scoped
 // "/v1/configs/templates" endpoint wants the public media URL as-is and fetches
-// it itself — it rejects an uploaded handle with 400 "it should be valid url
+// it itself, it rejects an uploaded handle with 400 "it should be valid url
 // address". It is a narrow capability implemented by the concrete Cloud API
 // client; callers obtain it by type-asserting a WhatsAppClient. Kept separate so
 // message-only fakes need not implement it (a fake that doesn't implement it

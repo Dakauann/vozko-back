@@ -45,8 +45,8 @@ func (rlm *RateLimiterMiddleware) WithMetrics(rec metrics.RateLimitMetricsRecord
 
 // WithUserIdentity makes the limiter identity-aware: when the request carries a
 // valid auth token, it is limited per USER (its own budget); otherwise it falls
-// back to per-IP. This is the industry-standard split — rate-limit authenticated
-// traffic by stable identity, reserve per-IP for anonymous traffic — so that many
+// back to per-IP. This is the industry-standard split, rate-limit authenticated
+// traffic by stable identity, reserve per-IP for anonymous traffic, so that many
 // users behind one shared IP (an office NAT, or first-party SSR calls) each get an
 // independent budget instead of colliding on one per-IP bucket. Anonymous floods
 // (no/invalid token) still hit the per-IP path, so DoS protection is preserved.
@@ -57,7 +57,7 @@ func (rlm *RateLimiterMiddleware) WithUserIdentity(fn func(*http.Request) (strin
 
 // UserFromToken builds an identity function for WithUserIdentity from the same
 // token verifier the auth middleware uses. It only checks the signature (not
-// revocation/version) — enough to pick a stable per-user rate-limit key cheaply;
+// revocation/version), enough to pick a stable per-user rate-limit key cheaply;
 // any revoked/expired token still gets rejected downstream by the auth middleware.
 func UserFromToken(verifier auth.TokenVerifier) func(*http.Request) (string, bool) {
 	return func(r *http.Request) (string, bool) {
@@ -126,7 +126,7 @@ func (rlm *RateLimiterMiddleware) Validate(next http.Handler) http.Handler {
 		allowed, retryAfter, err := rlm.limiter.Allow(key)
 		if err != nil {
 
-			log.Printf("rate-limiter error (%T): %v — rejecting request (fail-closed)", err, err)
+			log.Printf("rate-limiter error (%T): %v, rejecting request (fail-closed)", err, err)
 			rlm.observeRejection(r, ip, metrics.RateLimitReasonError, retryAfter)
 			response.WriteError(w, http.StatusTooManyRequests, "Service temporarily unavailable, please retry", nil)
 			return

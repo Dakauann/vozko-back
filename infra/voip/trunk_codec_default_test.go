@@ -29,7 +29,7 @@ func TestResolveCodecList_DefaultProfileIsPCMAFirstG711Only(t *testing.T) {
 		}
 	}
 
-	// G.722 / Opus must NOT be advertised — they were removed from the media
+	// G.722 / Opus must NOT be advertised, they were removed from the media
 	// plane (a carrier selecting one would yield silent/garbled audio).
 	for _, c := range cfg.Codecs {
 		if c.Name == "G722" || c.Name == "opus" {

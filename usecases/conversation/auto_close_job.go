@@ -25,8 +25,8 @@ type autoCloseJob struct {
 
 // NewAutoCloseJob wires idle + max-age closers. status must be the shared service.
 //
-// Policy A (customer_idle): agent/AI last, customer quiet — default on (24h).
-// Policy C (max_age): last_message_at absolute inactivity — default on (7d).
+// Policy A (customer_idle): agent/AI last, customer quiet, default on (24h).
+// Policy C (max_age): last_message_at absolute inactivity, default on (7d).
 // Industry: Intercom waiting-on-customer + LivePerson long inactivity hygiene.
 func NewAutoCloseJob(whatsapp wce.Repository, status conversation.ConversationStatusUpdater) conversation.AutoCloseJob {
 	batch := DefaultAutoCloseBatch

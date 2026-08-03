@@ -71,14 +71,14 @@ func (m *WorkspaceMiddleware) ResolveWorkspace() func(http.Handler) http.Handler
 					return
 				}
 				if member == nil {
-					// The requested workspace is not one this user belongs to — almost
+					// The requested workspace is not one this user belongs to, almost
 					// always a stale/foreign X-Workspace-ID left in a cookie (an old
 					// session or a second account). Do NOT 403 the whole request: that
 					// bricks the entire session, including workspace-agnostic endpoints
 					// like pending invites. Ignore the invalid id and fall back to the
-					// user's default workspace below. This grants no extra access — the
+					// user's default workspace below. This grants no extra access, the
 					// per-route access checks still run against the resolved workspace.
-					log.Printf("workspace-resolver: user %s is not a member of requested workspace %s — ignoring stale id, falling back to default", claims.UserID, wsID)
+					log.Printf("workspace-resolver: user %s is not a member of requested workspace %s, ignoring stale id, falling back to default", claims.UserID, wsID)
 					wsID = ""
 				}
 			}

@@ -20,13 +20,13 @@ import (
 //
 // WhatsApp deliberately keeps its own path: it resolves a business phone,
 // normalises images, falls back to a link when an upload fails, and checks the
-// lead window — none of which generalises.
+// lead window, none of which generalises.
 
 // resolveToolAdapter returns the channel adapter for the conversation this tool
 // call belongs to.
 //
 // Reports false for WhatsApp (which has its own path), for a conversation with
-// no seeds, and when no adapter is registered — in each case the caller falls
+// no seeds, and when no adapter is registered, in each case the caller falls
 // back to the WhatsApp path and fails honestly there rather than here.
 func resolveToolAdapter(
 	ctx context.Context,
@@ -148,7 +148,7 @@ func assertWindowOpen(ctx context.Context, adapter conversation.ChannelAdapter, 
 }
 
 // toolRefusal is a non-fault outcome the model can act on. Returned as a
-// successful execution with IsError so the turn continues — the agent can
+// successful execution with IsError so the turn continues, the agent can
 // explain in text instead of the run failing.
 func toolRefusal(reason string) tools.ExecutionResult {
 	return tools.ExecutionResult{Result: reason, IsError: true, ContextUpdateText: reason}

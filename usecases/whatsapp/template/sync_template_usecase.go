@@ -33,7 +33,7 @@ func (uc *syncTemplateUseCase) Execute(input template.SyncTemplateInput) (*templ
 		return nil, ErrTemplateNoExternalID
 	}
 	if existing.WABAId == "" {
-		return nil, errors.New("template has no WABA ID — cannot determine which WABA to sync from")
+		return nil, errors.New("template has no WABA ID, cannot determine which WABA to sync from")
 	}
 
 	client, err := uc.clientFactory.ClientForWABA(existing.WABAId)

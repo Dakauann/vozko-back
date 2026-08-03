@@ -15,7 +15,7 @@ import (
 )
 
 // Before the assembler was adopted, this service sent the agent's raw prompt and
-// nothing else: no tools, no knowledge base, no channel identity — while the
+// nothing else: no tools, no knowledge base, no channel identity, while the
 // WhatsApp pipeline had all three. An agent configured with a knowledge base in
 // the UI silently ignored it on Instagram and Telegram.
 //
@@ -164,7 +164,7 @@ func TestTelegramTurnDoesNotDuplicateTheLastMessage(t *testing.T) {
 	in := s.generateInput(context.Background(), req, agentWithTools(), history, req.Text)
 
 	if len(in.Messages) != len(history) {
-		t.Fatalf("messages = %d, want %d — the last turn was duplicated", len(in.Messages), len(history))
+		t.Fatalf("messages = %d, want %d, the last turn was duplicated", len(in.Messages), len(history))
 	}
 	if in.Messages[len(in.Messages)-1].Content != req.Text {
 		t.Errorf("last message = %q", in.Messages[len(in.Messages)-1].Content)
@@ -189,7 +189,7 @@ func TestWithoutAnAssemblerTheServiceFallsBackToAPlainPrompt(t *testing.T) {
 	}
 }
 
-// Instagram takes the identical path — the point of the shared recipe is that
+// Instagram takes the identical path, the point of the shared recipe is that
 // no channel gets a different answer.
 func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 	s := newAssembledService(t)

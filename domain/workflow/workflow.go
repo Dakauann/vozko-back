@@ -73,8 +73,8 @@ const (
 	NodeTypeActionSendTemplate NodeType = "action_send_template"
 	NodeTypeActionSendEmail    NodeType = "action_send_email"
 	// NodeTypeActionSendInteractive is the single-choice prompt node. It works on
-	// every channel with an InteractiveAdapter — WhatsApp buttons and lists,
-	// Instagram quick replies, Telegram inline keyboards — so it no longer names
+	// every channel with an InteractiveAdapter, WhatsApp buttons and lists,
+	// Instagram quick replies, Telegram inline keyboards, so it no longer names
 	// one channel. See NodeTypeActionSendWhatsappButtonLegacy for the value it
 	// was persisted under before.
 	NodeTypeActionSendInteractive           NodeType = "action_send_interactive"
@@ -178,7 +178,7 @@ func (n NodeType) IsInteractivePrompt() bool {
 //
 // It names the thing five call sites actually mean. Three of them wrote it out
 // as IsWait() || IsInteractivePrompt(); two wrote only IsWait() and were wrong
-// in a way nothing catches — the interactive prompt parks exactly like a wait
+// in a way nothing catches, the interactive prompt parks exactly like a wait
 // node but is deliberately excluded from IsWait(), so a forgotten clause makes
 // a button press behave as if the run had never paused. One predicate removes
 // the chance to forget.
@@ -189,7 +189,7 @@ func (n NodeType) ParksForReply() bool {
 // NodeTypeActionSendWhatsappButtonLegacy is the value the interactive prompt was
 // persisted under while it was WhatsApp-only.
 //
-// It is never written again — Canonical maps it forward on read, so a graph
+// It is never written again, Canonical maps it forward on read, so a graph
 // saved before the rename keeps running and is rewritten to the new value the
 // next time it is saved. Deleting this constant would orphan every workflow
 // authored before the node became channel-neutral.
@@ -211,8 +211,8 @@ func (n NodeType) Canonical() NodeType {
 // UnmarshalJSON normalizes a legacy node type as the graph is decoded.
 //
 // This is the single choke point: workflow graphs are stored as JSONB and
-// arrive from the API as JSON, so normalizing here means nothing downstream —
-// the executor registry, the lint rules, the AI builder, the editor — ever sees
+// arrive from the API as JSON, so normalizing here means nothing downstream,
+// the executor registry, the lint rules, the AI builder, the editor, ever sees
 // a retired value. Normalizing at each comparison site instead would mean
 // finding every one of them, and missing one fails silently, on old workflows
 // only, which is the worst way to find out.
@@ -525,8 +525,8 @@ const (
 	// MaxExecutionsPerRun, this counter is persisted in run state and never
 	// resets, so a cycle that passes through a wait node cannot loop forever
 	// (the failure mode that hammered a partner API on an unbounded 401-retry).
-	// Aligned with AWS Step Functions' 25,000-history-event hard stop — roughly
-	// 10k node executions once the per-node event overhead is discounted — and
+	// Aligned with AWS Step Functions' 25,000-history-event hard stop, roughly
+	// 10k node executions once the per-node event overhead is discounted, and
 	// ~20x the work of even a very long legitimate conversational or drip run,
 	// so it never trips a real workflow.
 	MaxDurableExecutionsPerRun = 10000

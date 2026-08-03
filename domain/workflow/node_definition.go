@@ -41,7 +41,7 @@ type NodeDefinition struct {
 	Label       string       `json:"label"`
 	Description string       `json:"description"`
 	Icon        string       `json:"icon"`
-	// Outputs are the node's BASE/static output handles — those that don't depend
+	// Outputs are the node's BASE/static output handles, those that don't depend
 	// on config. They ship in the catalog so the frontend renders them instantly.
 	Outputs []HandleDefinition `json:"outputs,omitempty"`
 	// DynamicHandles marks a node whose full handle set depends on its config
@@ -54,7 +54,7 @@ type NodeDefinition struct {
 	ConfigSchema   []ConfigField          `json:"configSchema"`
 	// Guidance is authored by each executor (or builtin) and travels with the
 	// node in the catalog so the AI Workflow Builder always sees how each node
-	// works and behaves. Required — every node must describe itself.
+	// works and behaves. Required, every node must describe itself.
 	Guidance NodeGuidance `json:"guidance"`
 
 	// ChannelLimits reports, per channel, what this node will actually render.
@@ -87,7 +87,7 @@ type ChannelInteractiveLimits struct {
 // NodeGuidance is per-node usage guidance for the AI Workflow Builder, authored
 // alongside each node's Definition(). It describes WHEN to use the node and any
 // non-obvious runtime BEHAVIOR. It deliberately does NOT list output handles,
-// output keys, or config fields — those are dynamic/structured data exposed by
+// output keys, or config fields, those are dynamic/structured data exposed by
 // Outputs, OutputKeys, and ConfigSchema, which the builder already sees.
 type NodeGuidance struct {
 	When string `json:"when"`

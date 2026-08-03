@@ -26,7 +26,7 @@ type ListCommentsInput struct {
 // ListCommentsUseCase lists comments with their replies expanded.
 //
 // Graph caps this edge at 50 per query, returns only top-level comments unless
-// `replies` is field-expanded, and cannot be filtered by timestamp — so this is a
+// `replies` is field-expanded, and cannot be filtered by timestamp, so this is a
 // live paginated read, and the local mirror is kept current from webhooks rather
 // than by polling.
 type ListCommentsUseCase struct {
@@ -72,7 +72,7 @@ func (uc *ListCommentsUseCase) Execute(ctx context.Context, in ListCommentsInput
 	// this edge returns: it counts every comment, while the edge returns only
 	// top-level ones and additionally applies privacy filtering (a commenter with a
 	// private or restricted account is omitted). A visible mismatch is expected
-	// behaviour, not necessarily a fault — this line is how to tell them apart.
+	// behaviour, not necessarily a fault, this line is how to tell them apart.
 	log.Printf("[instagram] list comments account=@%s media=%s -> %d top-level + %d replies (hasNext=%t cursor=%t)",
 		account.Username, in.IGMediaID, len(page.Items), replies, page.HasNext, page.NextCursor != "")
 
@@ -200,7 +200,7 @@ func NewModerateCommentUseCase(
 // SetHidden hides or unhides a comment.
 //
 // Hiding requires the MEDIA OWNER's token, which we have, so this is the
-// moderation action that works on anyone's comment — unlike deletion.
+// moderation action that works on anyone's comment, unlike deletion.
 func (uc *ModerateCommentUseCase) SetHidden(ctx context.Context, workspaceID, accountID, igCommentID string, hidden bool) error {
 	account, err := uc.resolve(ctx, workspaceID, accountID)
 	if err != nil {
@@ -351,7 +351,7 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 	}
 
 	// The response carries the commenter's IGSID, which is the handle needed for
-	// every subsequent normal DM — so the conversation is created now.
+	// every subsequent normal DM, so the conversation is created now.
 	conv := uc.ensureConversation(ctx, account, result.RecipientID)
 	uc.recordInTranscript(ctx, account, conv, result, text)
 	return nil
@@ -360,7 +360,7 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 // recordInTranscript writes the private reply into the CRM conversation.
 //
 // Without this the reply is delivered on Instagram but absent from the CRM, and
-// the conversation it opened does not appear in the inbox at all — the inbox
+// the conversation it opened does not appear in the inbox at all, the inbox
 // lists conversations by their last message, and this would be a conversation
 // with none. The operator would then meet the customer's answer with no record
 // of what was said to them.

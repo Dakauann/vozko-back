@@ -10,7 +10,7 @@ import (
 //
 // The pattern was always the same: a call site asked `entryType == "whatsapp"`
 // instead of asking what the channel can DO, and the `default` branch returned
-// "not supported" with no error and no log line. Instagram shipped that way — its
+// "not supported" with no error and no log line. Instagram shipped that way, its
 // conversations could be transferred and staged but never closed, never analysed,
 // never exported, and never counted in any dashboard.
 //
@@ -48,7 +48,7 @@ func TestEveryMessagingChannelIsInboxScopable(t *testing.T) {
 	}
 }
 
-// IsKnown is the weakest predicate — "is this a real entry type?" — and the HTTP
+// IsKnown is the weakest predicate, "is this a real entry type?", and the HTTP
 // conversation endpoints depend on it. It must be the union of every other set,
 // or an endpoint rejects a channel the rest of the system accepts.
 func TestIsKnownIsTheUnionOfEverySet(t *testing.T) {
@@ -79,7 +79,7 @@ func TestIsKnownIsTheUnionOfEverySet(t *testing.T) {
 }
 
 // A container-scoped inbox is necessarily a valid inbox scope. The reverse does
-// not hold — voice and support are selectable but have no container query — which
+// not hold, voice and support are selectable but have no container query, which
 // is exactly why they are separate sets.
 func TestContainerScopedIsSubsetOfInboxScopable(t *testing.T) {
 	for _, e := range ContainerScopedInboxEntryTypes() {

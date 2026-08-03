@@ -125,7 +125,7 @@ func (h *MetaEmbeddedSignupHandler) embeddedSignupExtras() string {
 // OnboardingConfigResponse tells the dashboard which onboarding path the server
 // is running and whether that path consumes a workspace phone-capacity slot. The
 // capacity gate reads it so it never blocks a slot-free (native Meta) onboarding,
-// and always gates the slot-billed 360dialog one — keeping the UI in lockstep with
+// and always gates the slot-billed 360dialog one, keeping the UI in lockstep with
 // ENABLE_360DIALOG_ONBOARDING instead of hardcoding an assumption.
 type OnboardingConfigResponse struct {
 	Provider     string `json:"provider"`     // "meta" | "dialog360"
@@ -228,7 +228,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             --primary-active: #1e3fae;
             --primary-50: #eef3ff;
             --primary-100: #dce7ff;
-            --foreground: #344256;          /* Ink — never pure black */
+            --foreground: #344256;          /* Ink, never pure black */
             --slate-50: #f5f5f5;            /* Canvas */
             --slate-100: #f1f5f9;           /* Mist */
             --slate-200: #e1e7ef;           /* Hairline */
@@ -265,7 +265,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             overflow-x: hidden;
         }
 
-        /* Faint engineered grid + a single soft blue wash — Quiet Infrastructure */
+        /* Faint engineered grid + a single soft blue wash, Quiet Infrastructure */
         body::before {
             content: '';
             position: fixed;
@@ -632,7 +632,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
                         btn.style.background = '#059669';
                         finishFlow({ status: 'success', phone_id: phoneId, waba_id: wabaId });
                     } else if (data.data && data.data.status === 'code_received_but_no_app_secret') {
-                        showStatus('info', '<span class="status-icon">⚠</span> <strong>Código recebido</strong> — META_APP_SECRET não configurado no servidor. Contate o administrador.');
+                        showStatus('info', '<span class="status-icon">⚠</span> <strong>Código recebido</strong>, META_APP_SECRET não configurado no servidor. Contate o administrador.');
                         btn.disabled = false;
                         btn.innerHTML = 'Iniciar Cadastro WhatsApp';
                     } else if (data.error) {

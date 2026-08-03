@@ -10,8 +10,8 @@ import (
 // leadLinker resolves a consented phone share to an existing CRM lead.
 //
 // This is the one moment a Telegram contact can be bridged to the rest of the
-// CRM. Telegram never volunteers a phone number — it arrives only when the
-// customer taps a request_contact button — so without this the contact's LeadID
+// CRM. Telegram never volunteers a phone number, it arrives only when the
+// customer taps a request_contact button, so without this the contact's LeadID
 // column could never be populated by anything, and the same human would exist
 // twice: once as a WhatsApp lead and once as an unlinked Telegram contact.
 //

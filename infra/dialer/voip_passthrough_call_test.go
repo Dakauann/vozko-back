@@ -149,7 +149,7 @@ func (m *recordingMediaSession) headers() []rtp.Header {
 }
 
 // The pacer must let the buffered lead (one-way latency) be measured and pulled
-// back — the primitives SendAudio uses to bound uplink delay.
+// back, the primitives SendAudio uses to bound uplink delay.
 func TestPassthroughPacer_DropFrameReducesLead(t *testing.T) {
 	t.Parallel()
 

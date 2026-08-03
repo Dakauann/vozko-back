@@ -27,7 +27,7 @@ const (
 	// catalogOutputModalities restricts the catalog to text-generating (chat) models
 	// via OpenRouter's documented output_modalities filter, dropping image-gen,
 	// embeddings, audio/TTS, and rerankers that don't belong in an LLM picker. This
-	// is an official server-side filter — see
+	// is an official server-side filter, see
 	// https://openrouter.ai/docs/api/api-reference/models/get-models
 	catalogOutputModalities = "text"
 	// catalogSupportedParameters restricts the catalog to tool-capable models via
@@ -40,7 +40,7 @@ const (
 
 // modelCatalogFetcher loads the priced model catalog directly from OpenRouter's
 // GET /models endpoint. It exists because the go-openrouter client's ListModels
-// sends no query params — so it can't request server-side sorting (?sort=...) and
+// sends no query params, so it can't request server-side sorting (?sort=...) and
 // drops fields we surface in the picker UI (created, context_length). Results are
 // cached for modelCatalogTTL. Optional on the Service: when nil the caller falls
 // back to the unsorted library path.
@@ -102,7 +102,7 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 	}
 	f.mu.Unlock()
 
-	// Official OpenRouter /models query params only — no client-side filtering.
+	// Official OpenRouter /models query params only, no client-side filtering.
 	params := url.Values{}
 	params.Set("sort", defaultModelSort)
 	params.Set("output_modalities", catalogOutputModalities)

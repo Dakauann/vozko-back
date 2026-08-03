@@ -97,12 +97,12 @@ func dateTruncUnit(granularity analytics_domain.Granularity) string {
 }
 
 // truncBucket truncates a timestamptz column to unit in the system's business
-// timezone (config.BrazilianTimezone — the single source of truth) and returns the
+// timezone (config.BrazilianTimezone, the single source of truth) and returns the
 // bucket start as the true instant of that local boundary (Brazil midnight for a day),
 // so a client formatting it in local time lands on the correct day.
 //
 // The DB session runs in UTC, so a plain DATE_TRUNC('day', ts) would bucket by UTC
-// calendar day and — because Brazil is UTC-3 — shift every point in a daily series one
+// calendar day and, because Brazil is UTC-3, shift every point in a daily series one
 // day at the boundary (a UTC-midnight bucket renders as the previous day locally).
 //
 // column is a trusted literal (never user input); tz is an IANA name Postgres resolves.

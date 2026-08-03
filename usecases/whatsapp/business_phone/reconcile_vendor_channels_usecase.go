@@ -36,7 +36,7 @@ func NewReconcileVendorChannelsUseCase(
 //   - suspended locally -> LEAK: the platform already cancelled (or lapsed) this channel, but the cancellation
 //     never reached the vendor. Re-issue it; alert if it still fails.
 //   - active locally, no owner -> OWNERLESS: billing 360dialog but funded by no plan/customer and
-//     un-reactivatable (reactivation is owner-keyed). Cancel it — nobody can ever pay for it.
+//     un-reactivatable (reactivation is owner-keyed). Cancel it, nobody can ever pay for it.
 //   - active locally, owned -> consistent. The internal EntitlementReconciler owns the over-cap case where
 //     an active owned channel should be suspended; this pass does not duplicate that entitlement check.
 //
@@ -81,7 +81,7 @@ func (uc *reconcileVendorChannelsUseCase) Execute() (businessphone.VendorReconci
 		case strings.TrimSpace(ref.WorkspaceID) == "":
 			// Live at Vozko but owned by no workspace: 360dialog bills it, yet no plan or
 			// customer funds it and it can never be reactivated (reactivation is owner-keyed,
-			// see OnEntitlementIncreased). Cancel it — the vendor cancellation_request is
+			// see OnEntitlementIncreased). Cancel it, the vendor cancellation_request is
 			// reversible if the number is ever re-assigned. This is the ownerless-billing
 			// backstop; without it an unassigned live channel bills forever.
 			report.Ownerless++

@@ -13,7 +13,7 @@ import (
 // countingSharedState is an accumulating in-memory SharedState. It reuses the
 // package's testSharedState for the bulk of the interface but gives IncrWithTTL
 // real counting semantics (the base fake always returns 1), so the *production*
-// failure throttle actually accumulates across attempts — exactly as Redis does.
+// failure throttle actually accumulates across attempts, exactly as Redis does.
 type countingSharedState struct{ *testSharedState }
 
 func newCountingSharedState() *countingSharedState {
@@ -47,7 +47,7 @@ func realThrottle(state *countingSharedState) auth.CredentialsLoginUseCase {
 // production incident: one account ("anapaula@sudaseg") used from ~5 identical
 // office computers. The per-account failure throttle is keyed ONLY by the email,
 // so failed attempts from every computer land in the SAME counter. Ten bad
-// attempts spread across five machines lock the account for ALL of them — and a
+// attempts spread across five machines lock the account for ALL of them, and a
 // machine typing the CORRECT password is then rejected with the user-facing
 // "Too many login attempts" (AUTH_RATE_LIMIT_EXCEEDED) alert.
 func TestLoginThrottle_LocksSharedAccountAcrossAllDevices(t *testing.T) {

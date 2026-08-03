@@ -148,7 +148,7 @@ func NewSIPTrunkManager(cfg TrunkManagerConfig, repo sip_trunk.Repository) (*SIP
 	logger := log.New(log.Writer(), "sip-trunk-manager ", log.LstdFlags)
 
 	// SIP_DEBUG=1 raises slog to Debug, which makes sipgo log every raw SIP
-	// message (requests + responses with all headers — e.g. the exact 401/407
+	// message (requests + responses with all headers, e.g. the exact 401/407
 	// challenge a provider returns). Use it to diagnose auth failures like
 	// "No WWW-Authenticate header present" and tell our-code vs provider apart.
 	// Off by default: it's verbose and SIP auth headers are sensitive.
@@ -350,23 +350,23 @@ func (m *SIPTrunkManager) Stop() error {
 func (m *SIPTrunkManager) handleOwnershipAcquired(trunkID string) {
 	trunk, err := m.repo.FindByID(trunkID)
 	if err != nil {
-		m.log.Printf("Trunk %s: ownership acquired but FindByID failed: %v — releasing", trunkID, err)
+		m.log.Printf("Trunk %s: ownership acquired but FindByID failed: %v, releasing", trunkID, err)
 		_ = m.ownership.Release(trunkID)
 		return
 	}
 	if trunk == nil || !trunk.Enabled {
-		m.log.Printf("Trunk %s: ownership acquired but trunk is disabled/missing — releasing", trunkID)
+		m.log.Printf("Trunk %s: ownership acquired but trunk is disabled/missing, releasing", trunkID)
 		_ = m.ownership.Release(trunkID)
 		return
 	}
 	if err := m.registerFn(trunk); err != nil {
-		m.log.Printf("Trunk %s: register after ownership acquire failed: %v — releasing", trunkID, err)
+		m.log.Printf("Trunk %s: register after ownership acquire failed: %v, releasing", trunkID, err)
 		_ = m.ownership.Release(trunkID)
 	}
 }
 
 func (m *SIPTrunkManager) handleOwnershipLost(trunkID string) {
-	m.log.Printf("Trunk %s: ownership lost — tearing down local connection", trunkID)
+	m.log.Printf("Trunk %s: ownership lost, tearing down local connection", trunkID)
 	if err := m.unregisterFn(trunkID); err != nil && !errors.Is(err, sip_trunk.ErrTrunkNotFound) {
 		m.log.Printf("Trunk %s: unregister after ownership loss failed: %v", trunkID, err)
 	}
@@ -588,8 +588,8 @@ func (m *mediaSessionAdapter) Close() error {
 	return m.session.Close()
 }
 
-// NegotiatedCodec reports the call's negotiated voice codec — the first
-// non-DTMF codec common to both ends — as the single source of truth for
+// NegotiatedCodec reports the call's negotiated voice codec, the first
+// non-DTMF codec common to both ends, as the single source of truth for
 // encoding/decoding. Mirrors the selection logic in buildMediaInfo.
 func (m *mediaSessionAdapter) NegotiatedCodec() voip.CodecInfo {
 	if m == nil || m.session == nil {
@@ -702,7 +702,7 @@ func (m *SIPTrunkManager) Invite(ctx context.Context, trunkID string, input sip_
 	// Set the From identity to the trunk's SIP account (username@domain), not the
 	// default UA identity (<Brand>Trunk/<trunkID>@<our-ip>). Registration-based
 	// providers (e.g. kvoip) only accept INVITEs from the registered AOR and
-	// reject anything else with a 401 — which is why dialing failed while a
+	// reject anything else with a 401, which is why dialing failed while a
 	// softphone using <username>@<domain> works. sipgo keeps a pre-set From
 	// (it only builds a default when From is nil), so injecting it here wins.
 	if conn.trunk.Username != "" {
@@ -1195,8 +1195,8 @@ func (m *SIPTrunkManager) handleInboundDialog(conn *trunkConnection, dialog *dia
 	// CRITICAL lifecycle marker: returning from this serve handler makes diago
 	// send BYE to the caller and close the dialog/media (diago.go serve loop).
 	// A surrendered (human-attended) call must therefore NOT let this return
-	// until the human leg ends — see InboundReceptiveBridgeUseCase.holdUntilHumanHangup.
-	m.log.Printf("[media-handoff] Trunk %s inbound dialog %s: serve handler returning — diago will now hang up the caller + close the dialog/media", conn.trunk.ID, dialog.ID)
+	// until the human leg ends, see InboundReceptiveBridgeUseCase.holdUntilHumanHangup.
+	m.log.Printf("[media-handoff] Trunk %s inbound dialog %s: serve handler returning, diago will now hang up the caller + close the dialog/media", conn.trunk.ID, dialog.ID)
 	adapter.untrack()
 }
 
@@ -1313,7 +1313,7 @@ func (a *inboundDialogAdapter) Answer(ctx context.Context, recording *voip.Recor
 
 	a.dialog.OnClose(func() error {
 		if a.manager != nil && a.manager.log != nil {
-			a.manager.log.Printf("[media-handoff] inbound dialog %s OnClose fired — closing reorder buffer + media session (call is ending)", a.dialog.ID)
+			a.manager.log.Printf("[media-handoff] inbound dialog %s OnClose fired, closing reorder buffer + media session (call is ending)", a.dialog.ID)
 		}
 		a.callSM.LeaveOngoing()
 		a.callSM.Finished()

@@ -327,7 +327,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			totalUsage.TotalTokens += resp.Usage.TotalTokens
 
 			if input.WorkspaceID == "" {
-				log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s — NOT billing (REVENUE LEAK)", req.Model)
+				log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", req.Model)
 			} else {
 				s.publishBillingEvent(input.WorkspaceID, req.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 			}

@@ -252,7 +252,7 @@ func (s *branchSession) clearActive() {
 // AttachLeg completes a blind transfer of the caller leg onto this branch: it takes
 // exclusive raw access to the caller's media (SurrenderMedia) and hands it to the
 // registrar's RTP bridge, which relays it to the already-answered phone dialog. This
-// is what makes a phone a first-class transfer target — the browser session does the
+// is what makes a phone a first-class transfer target, the browser session does the
 // analogous forwarder re-point; the transfer FSM in the executor is shared, not
 // duplicated (plan §5.4). DetachLeg is a no-op: a branch is a terminal target that
 // never yields the leg back (re-transfer FROM a phone is a later REFER phase).

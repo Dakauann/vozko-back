@@ -13,7 +13,7 @@ import (
 
 // validatePortLayout refuses to start when the port plan is unsafe. A media plane must
 // be deterministic, so a misconfiguration is FATAL, not a warning: an RTP window that
-// overlaps the OS ephemeral range (outbound sockets — Redis/DB/STUN/HTTP — would steal
+// overlaps the OS ephemeral range (outbound sockets, Redis/DB/STUN/HTTP, would steal
 // RTP ports and blackhole media under load), SIP signaling overlapping RTP, an odd RTP
 // start (breaks RFC 3550 even-RTP / odd-RTCP pairing), or a fixed listener sitting
 // inside the RTP window. Runs at the very top of container.New, before anything binds.
@@ -33,7 +33,7 @@ func (c *Container) validatePortLayout() {
 		for _, v := range violations {
 			log.Printf("[port-config] violation: %s", v)
 		}
-		log.Fatalf("[port-config] REFUSING TO START: %d unsafe port-layout violation(s) above — fix SIP_TRUNK_RTP_PORT_* / SIP_TRUNK_PORT_* / BRANCH_SIP_LISTEN_PORT / WHATSAPP_MEDIA_UDP_MUX_PORT", len(violations))
+		log.Fatalf("[port-config] REFUSING TO START: %d unsafe port-layout violation(s) above, fix SIP_TRUNK_RTP_PORT_* / SIP_TRUNK_PORT_* / BRANCH_SIP_LISTEN_PORT / WHATSAPP_MEDIA_UDP_MUX_PORT", len(violations))
 	}
 	log.Printf("[port-config] OK: RTP %d-%d (%d RTP/RTCP pairs, below OS ephemeral %d-%d), SIP trunk %d-%d, branch SIP %d, mux %d",
 		in.rtpStart, in.rtpEnd, (in.rtpEnd-in.rtpStart)/2, eLo, eHi, in.sipStart, in.sipStart+in.sipCount-1, in.branchSIP, in.mux)

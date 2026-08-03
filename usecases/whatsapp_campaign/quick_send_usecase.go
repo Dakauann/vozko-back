@@ -82,7 +82,7 @@ func (uc *quickSendUseCase) Execute(input wc.QuickSendInput) (*wc.QuickSendOutpu
 			}
 		}()
 	} else {
-		log.Printf("[whatsapp_campaign quick_send] WARN: shared state is nil — replica-safety degraded")
+		log.Printf("[whatsapp_campaign quick_send] WARN: shared state is nil, replica-safety degraded")
 	}
 
 	campaign, err := uc.campaignRepo.FindByID(input.CampaignID)

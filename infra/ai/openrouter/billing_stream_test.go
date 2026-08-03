@@ -87,7 +87,7 @@ func drain(t *testing.T, ch <-chan ai.StreamEvent) (reasoning, content string) {
 // A reasoning model spends most of its turn THINKING: here 700 of the 1000
 // completion tokens are reasoning. OpenRouter reports reasoning inside
 // completion_tokens (completion_token_details.reasoning_tokens is a breakdown of
-// it), and we bill on completion_tokens — so the thinking is paid for. This drives
+// it), and we bill on completion_tokens, so the thinking is paid for. This drives
 // the real adapter end-to-end (stream parse → usage → billing publish).
 func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 	srv := sseServer([]string{
@@ -135,11 +135,11 @@ func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 	// The crux: completion_tokens billed is the FULL 1000, which contains the 700
 	// reasoning tokens. If reasoning were dropped we'd see ~300 here.
 	if e.CompletionTokens != 1000 {
-		t.Errorf("billed completion_tokens = %d, want 1000 (incl. 700 reasoning) — thinking must be charged", e.CompletionTokens)
+		t.Errorf("billed completion_tokens = %d, want 1000 (incl. 700 reasoning), thinking must be charged", e.CompletionTokens)
 	}
 }
 
-// When the provider returns NO usage object, we must NOT fabricate a charge — and
+// When the provider returns NO usage object, we must NOT fabricate a charge, and
 // (P2) the skip is logged loudly. This proves the "no usage → no bill" leak path
 // is real and bounded (nothing is billed rather than something wrong).
 func TestGenerateStream_NoUsage_PublishesNothing(t *testing.T) {

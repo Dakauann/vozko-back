@@ -15,7 +15,7 @@ type Dialog360Channel struct {
 	PhoneNumber    string
 	// Metadata carried from the partner channel listing so a dialog360-hosted number
 	// can be populated at finalize time. These numbers have no Meta access token, so
-	// the Meta-Graph sync (SyncPhoneNumberUseCase) can never fetch them — the partner
+	// the Meta-Graph sync (SyncPhoneNumberUseCase) can never fetch them, the partner
 	// channel is the only source. Fields map to the 360dialog channel response:
 	// PhoneName=setup_info.phone_name, QualityRating=current_quality_rating,
 	// MessagingTier=current_limit, ReviewStatus=waba_account.status.
@@ -42,7 +42,7 @@ type Dialog360Channel struct {
 }
 
 // IsDeactivated reports whether 360dialog no longer treats this channel as a live,
-// usable channel — the local number should then be SUSPENDED. Conservative: only
+// usable channel, the local number should then be SUSPENDED. Conservative: only
 // terminal signals count (a submitted cancellation, a pending-deletion/terminated
 // hub state, or the BSP removed from the WABA), not a transient availability blip.
 func (c Dialog360Channel) IsDeactivated() bool {
@@ -94,7 +94,7 @@ type Dialog360PartnerService interface {
 	// email matches, or "" if none exists. This is the idempotency key for client
 	// creation: 360dialog can create the client yet still return an error to the
 	// caller (observed 429/500 acks), so onboarding looks up the deterministic
-	// per-workspace email before creating — otherwise every retry leaks a duplicate.
+	// per-workspace email before creating, otherwise every retry leaks a duplicate.
 	FindClientByEmail(email string) (clientID string, err error)
 	// RegisterNumber shares a Meta WABA number with the partner (account_sharing).
 	RegisterNumber(input RegisterNumberInput) error

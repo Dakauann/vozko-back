@@ -15,7 +15,7 @@ import (
 	"vozko/usecases/agentturn"
 )
 
-// WhatsApp's three agent turns — text, media and audio — each carried their own
+// WhatsApp's three agent turns, text, media and audio, each carried their own
 // copy of the same assembly: interpolate the prompt, stamp seven seeds onto every
 // tool, build the identity preamble from the resolved names, ground in the
 // knowledge base. Three copies meant a fix landed in one and not the others.
@@ -235,7 +235,7 @@ func TestWhatsAppTurnInterpolatesTheAgentPrompt(t *testing.T) {
 	}
 }
 
-// A turn with no agent must still produce a usable request rather than panic —
+// A turn with no agent must still produce a usable request rather than panic,
 // the caller decides separately whether to skip the reply.
 func TestWhatsAppTurnSurvivesWithoutAnAgent(t *testing.T) {
 	turn := waTurn()

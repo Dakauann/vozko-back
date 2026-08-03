@@ -209,8 +209,8 @@ func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*T
 	// already-mocked output (e.g. an AI response) and skip re-executing it.
 	applyMockedState(&state, input.MockedState)
 
-	// Satisfy NON-AI capture-variable dependencies — e.g. an HTTP node that
-	// captures an auth token into token_consulta_cadastro — by executing their
+	// Satisfy NON-AI capture-variable dependencies, e.g. an HTTP node that
+	// captures an auth token into token_consulta_cadastro, by executing their
 	// producer node directly. Those are not "required mocks", so the mode gate
 	// below never runs them; without this, a reference like {{token[0].token}}
 	// resolves to nothing and the node fails (an empty Bearer header -> 401).
@@ -406,7 +406,7 @@ func mockRootKeys(mockedState map[string]interface{}) map[string]bool {
 }
 
 // nodeOutputMocked reports whether a node's captured output is already provided
-// by a mock — used to avoid re-executing it (notably AI agents, which are
+// by a mock, used to avoid re-executing it (notably AI agents, which are
 // expensive/nondeterministic and are meant to be mocked in a node test).
 func nodeOutputMocked(node *workflow.Node, mockRoots map[string]bool) bool {
 	if node == nil || len(mockRoots) == 0 {
@@ -422,7 +422,7 @@ func nodeOutputMocked(node *workflow.Node, mockRoots map[string]bool) bool {
 }
 
 // findCaptureProducer returns the node whose capture_variable/response_variable
-// equals varName — i.e. the node that produces that variable when executed.
+// equals varName, i.e. the node that produces that variable when executed.
 func findCaptureProducer(g *workflow.Graph, varName string) *workflow.Node {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]

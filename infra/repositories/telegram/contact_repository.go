@@ -25,7 +25,7 @@ func NewContactRepository(db *gorm.DB) tgdomain.ContactRepository {
 // FindOrCreate resolves a contact by (account, telegram user id).
 //
 // The profile fields the update already carried are written on creation, so a
-// first message yields a named contact with no extra API call — Telegram puts
+// first message yields a named contact with no extra API call, Telegram puts
 // first_name, username and language_code straight in the payload, unlike Meta.
 func (r *contactRepository) FindOrCreate(ctx context.Context, in tgdomain.FindOrCreateContactInput) (*tgdomain.Contact, error) {
 	existing, err := r.FindByTGUserID(ctx, in.AccountID, in.TGUserID)
@@ -66,7 +66,7 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in tgdomain.FindOr
 			// The unique index is PARTIAL (WHERE deleted_at IS NULL): a
 			// soft-deleted row must not block re-creating the contact. Postgres
 			// will not infer a partial index as the conflict arbiter unless the
-			// predicate is repeated here — a bare ON CONFLICT (cols) fails with
+			// predicate is repeated here, a bare ON CONFLICT (cols) fails with
 			// 42P10.
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},

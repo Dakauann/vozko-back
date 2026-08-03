@@ -192,8 +192,8 @@ func TestCommentRuleValidate(t *testing.T) {
 
 func TestRenderText(t *testing.T) {
 	c := comment("tem promoção?")
-	got := RenderText("Oi {{username}}, sobre \"{{comment}}\" — te chamei no direct!", c)
-	want := `Oi maria, sobre "tem promoção?" — te chamei no direct!`
+	got := RenderText("Oi {{username}}, sobre \"{{comment}}\", te chamei no direct!", c)
+	want := `Oi maria, sobre "tem promoção?", te chamei no direct!`
 	if got != want {
 		t.Errorf("RenderText = %q, want %q", got, want)
 	}

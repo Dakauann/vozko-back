@@ -116,7 +116,7 @@ func (e *sendMediaExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		log.Printf("[workflow][node:%s][run:%s] send_media error: %v", ctx.Node.ID, ctx.Run.ID, err)
 		return fail(mediaURL), nil
 	}
-	// A nil result with no error is a deliberate decline — most often a closed
+	// A nil result with no error is a deliberate decline, most often a closed
 	// outbound window. Reporting sent=true there would tell the workflow the
 	// customer received something they did not.
 	if sent == nil {

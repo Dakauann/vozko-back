@@ -88,7 +88,7 @@ func TestInteractiveOptionsInterpolatesTitlesButNeverIDs(t *testing.T) {
 		t.Errorf("title = %q, want the interpolated label", got[0].Title)
 	}
 	if got[0].ID != "opt_{{nome}}" {
-		t.Errorf("id = %q — interpolating a routing key breaks the branch match", got[0].ID)
+		t.Errorf("id = %q, interpolating a routing key breaks the branch match", got[0].ID)
 	}
 }
 

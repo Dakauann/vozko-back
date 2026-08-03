@@ -23,8 +23,8 @@ const (
 
 // ConsumeWebhookUseCase subscribes the Instagram topics.
 //
-// Every topic carries the same unit of work — one entry envelope for one account
-// — so all three share the generic ConsumerRunner and differ only in
+// Every topic carries the same unit of work, one entry envelope for one account,
+// so all three share the generic ConsumerRunner and differ only in
 // concurrency. Splitting entries at ingest is what makes this safe: a poison
 // event for one tenant cannot block another's.
 type ConsumeWebhookUseCase struct {
@@ -76,9 +76,9 @@ func (uc *ConsumeWebhookUseCase) Start() error {
 
 // dedupKeyForEntry derives the idempotency key for a whole entry.
 //
-// A single mid legitimately recurs across event kinds — the original message, its
+// A single mid legitimately recurs across event kinds, the original message, its
 // deletion tombstone, an edit, a read receipt and react/unreact all carry the
-// same mid — so the key is composite per event. For a multi-event entry the first
+// same mid, so the key is composite per event. For a multi-event entry the first
 // event's key represents the batch; the per-message read-before-insert in the
 // history manager and the unique index on (entry_type, external_message_id)
 // catch anything the batch key misses.

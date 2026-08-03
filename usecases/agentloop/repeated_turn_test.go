@@ -20,7 +20,7 @@ import (
 // the same target still read as standing still.
 
 func TestRepeatedTurnsEndTheLoopEvenWhenStateKeepsChanging(t *testing.T) {
-	// The same call, every turn — fakeAI repeats the zero turn once its script
+	// The same call, every turn, fakeAI repeats the zero turn once its script
 	// runs out, so this keeps answering update_node forever.
 	sameCall := aiTurn{tcs: []ai.ToolCall{{
 		Name:      "update_node",
@@ -32,7 +32,7 @@ func TestRepeatedTurnsEndTheLoopEvenWhenStateKeepsChanging(t *testing.T) {
 	drv := &fakeDriver{
 		dispatchFn: func(call ai.ToolCall) StepResult {
 			edits++
-			// Mutated, and the state hash differs every turn — exactly the shape
+			// Mutated, and the state hash differs every turn, exactly the shape
 			// that defeats guard A.
 			return StepResult{Result: "ok", Mutated: true, Signature: "update_node:n11"}
 		},
@@ -61,7 +61,7 @@ func TestRepeatedTurnsEndTheLoopEvenWhenStateKeepsChanging(t *testing.T) {
 		t.Errorf("made %d edits, want the guard to fire at 3", edits)
 	}
 	// A valid graph that merely stopped converging is a finished workflow, not a
-	// failure — the user keeps their work.
+	// failure, the user keeps their work.
 	if !out.Valid {
 		t.Error("a valid graph must stay valid when the loop stalls")
 	}
@@ -113,7 +113,7 @@ func TestNoSignatureDisablesTheGuard(t *testing.T) {
 
 // The per-turn observation is appended as the newest message every iteration.
 // If it restated the request, the model would read it as a question just asked
-// and answer it again on every turn — which is exactly what went wrong. The
+// and answer it again on every turn, which is exactly what went wrong. The
 // Driver interface no longer receives the prompt, so this asserts the engine
 // still anchors it exactly once.
 func TestTheRequestIsAnchoredOnceAndNeverRepeated(t *testing.T) {

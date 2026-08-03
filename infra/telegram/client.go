@@ -136,7 +136,7 @@ func (c *Client) do(req *http.Request, method string, out any) error {
 
 	var envelope apiResponse
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		// A non-JSON body means something in front of Telegram answered — a
+		// A non-JSON body means something in front of Telegram answered, a
 		// proxy, a captive portal. Surface the status so it is diagnosable.
 		return &tgdomain.APIError{
 			HTTPStatus:  resp.StatusCode,
@@ -333,7 +333,7 @@ type sendMessageBody struct {
 type replyParams struct {
 	MessageID int64 `json:"message_id"`
 	// AllowSendingWithoutReply keeps the send working when the quoted message has
-	// since been deleted — otherwise a reply to an unsent message fails outright.
+	// since been deleted, otherwise a reply to an unsent message fails outright.
 	AllowSendingWithoutReply bool `json:"allow_sending_without_reply"`
 }
 

@@ -137,8 +137,8 @@ type RetractingAdapter interface {
 
 // InteractiveOption is one choice offered to the contact.
 //
-// ID is the contract and Title is the display string. Everything downstream —
-// the workflow node's branching, the stored message text — keys off ID, because
+// ID is the contract and Title is the display string. Everything downstream,
+// the workflow node's branching, the stored message text, keys off ID, because
 // a title is a label an author edits freely and a payload is an identifier a
 // running conversation depends on.
 type InteractiveOption struct {
@@ -171,7 +171,7 @@ type SendInteractiveRequest struct {
 // not silently send a wall of text listing them.
 type InteractiveAdapter interface {
 	// SendInteractive delivers the prompt. The adapter is responsible for
-	// applying its own channel's limits — the caller passes the author's full
+	// applying its own channel's limits, the caller passes the author's full
 	// option list and the adapter renders what it can.
 	SendInteractive(ctx context.Context, ec *EntryContext, req SendInteractiveRequest) (*SendOutcome, error)
 
@@ -185,8 +185,8 @@ type AdapterRegistry interface {
 	For(t shared.EntryType) (ChannelAdapter, error)
 	Has(t shared.EntryType) bool
 	// EntryTypes lists every registered channel, sorted, so callers that must
-	// describe ALL channels — the workflow editor asking which ones render an
-	// interactive prompt — can enumerate instead of hardcoding a list that goes
+	// describe ALL channels, the workflow editor asking which ones render an
+	// interactive prompt, can enumerate instead of hardcoding a list that goes
 	// stale the next time a channel is added.
 	EntryTypes() []shared.EntryType
 }

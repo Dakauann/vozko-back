@@ -1757,7 +1757,7 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	}
 
 	// 360dialog's channel-scoped template endpoint rejects Meta's top-level
-	// parameter_format with 400 "Unknown field." — it wraps an older Meta template
+	// parameter_format with 400 "Unknown field.", it wraps an older Meta template
 	// API version that has no such field (it infers the format from the {{...}}
 	// placeholders). Only Meta Cloud API accepts it.
 	if input.ParameterFormat != "" && !c.templatesChannelScoped {
@@ -2159,7 +2159,7 @@ func (c *Client) inferMimeTypeFromFileName(fileName string) string {
 // Meta scopes the endpoint by app id ("{base}/{app_id}/uploads"); 360dialog
 // proxies the same API scoped by the channel API key ("{base}/uploads", no
 // app-id segment and no file_name param, per docs.360dialog.com "Resumable
-// Upload API" — the documented source of template header_handle assets).
+// Upload API", the documented source of template header_handle assets).
 func (c *Client) createUploadSession(ctx context.Context, fileName string, fileLength int64, fileType string) (string, error) {
 	params := url.Values{}
 	params.Set("file_length", strconv.FormatInt(fileLength, 10))

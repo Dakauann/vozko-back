@@ -169,7 +169,7 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 	loginURL := frontendURL + "/login"
 
 	go func() {
-		subject := "Convite para Área de Trabalho: " + ws.Name + " — " + brand.Active().Name
+		subject := "Convite para Área de Trabalho: " + ws.Name + ", " + brand.Active().Name
 		if err := uc.emailService.SendTemplate(email, subject, "workspace_invite.html", map[string]interface{}{
 			"Email":         email,
 			"InviterEmail":  inviterEmail,

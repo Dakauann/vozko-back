@@ -51,6 +51,10 @@ type workflowLookup interface {
 }
 
 type HistoryProviderService struct {
+	// automationReaders resolve the per-conversation automation override for
+	// channels that store it on the conversation instead of a campaign entry.
+	automationReaders map[shared.EntryType]func(ctx context.Context, entryID string) (*bool, error)
+
 	messageRepo       conversation.MessageRepository
 	whatsappRepo      wce.Repository
 	leadRepo          lead.Repository
@@ -110,7 +114,7 @@ type InstagramContactLookup = ContactIdentityLookup
 // SetContactIdentityLookup registers a channel's sender-identity lookup.
 //
 // Registration is keyed by entry type and lookups accumulate, so adding a
-// channel cannot silently disable another's — the mistake the send-adapter
+// channel cannot silently disable another's, the mistake the send-adapter
 // registry documents and guards against in exactly the same way.
 func (s *HistoryProviderService) SetContactIdentityLookup(entryType shared.EntryType, lookup ContactIdentityLookup) {
 	if s == nil || lookup == nil || entryType == "" {
@@ -145,7 +149,7 @@ func (s *HistoryProviderService) contactLookupFor(entryType shared.EntryType) (C
 // (the repository projects it into the lead slot), so the id is already on hand
 // and only needs resolving.
 //
-// This must be applied at EVERY point that produces inbox rows — the
+// This must be applied at EVERY point that produces inbox rows, the
 // container-scoped list, the workspace list AND GetInboxEntry, which backs the
 // entry_update broadcast. Missing that third one is what made an Instagram
 // conversation's name vanish every time a new message arrived.
@@ -198,7 +202,7 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 				// The sender label is replaced when it is blank OR when it is the
 				// raw provider id. Story replies, mentions, shares and unsupported
 				// messages fall through the sender resolver's default branch,
-				// which returns the sender ref verbatim — so without this the
+				// which returns the sender ref verbatim, so without this the
 				// inbox would show a numeric provider id where the contact's name
 				// belongs.
 				//
@@ -570,7 +574,10 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 			return "", "", "", nil, nil, true, cErr
 		}
 		name, handle := contactDisplayNames(et, contact)
-		return name, handle, contact.PictureURL, nil, nil, true, nil
+		// Read the override rather than assuming enabled. Returning a hard true
+		// here is what made a paused Telegram or Instagram conversation report
+		// itself as still automated: the write landed and every read denied it.
+		return name, handle, contact.PictureURL, nil, nil, s.automationFor(entryID, et), nil
 	}
 
 	if workspaceID == "" {
@@ -669,7 +676,10 @@ func (s *HistoryProviderService) GetInboxEntries(userID, workspaceID, campaignID
 		}
 
 		var entryVariables []string
-		automationEnabled := true
+		// From SQL for every channel. It used to be resolved only inside the
+		// WhatsApp branch below, so every other channel reported "enabled"
+		// regardless of the stored override.
+		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 		var convStatus conversation.ConversationStatus
 		var closeSource conversation.CloseSource
 		var closeReason conversation.CloseReason
@@ -840,7 +850,10 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		}
 
 		var entryVariables []string
-		automationEnabled := true
+		// From SQL for every channel. It used to be resolved only inside the
+		// WhatsApp branch below, so every other channel reported "enabled"
+		// regardless of the stored override.
+		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 		var convStatus conversation.ConversationStatus
 		var closeSource conversation.CloseSource
 		var closeReason conversation.CloseReason
@@ -908,8 +921,8 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 
 // enrichAIHandlers attaches the effective AI handler (direct agent or workflow, plus
 // the live workflow-run/current-node when running) to each inbox entry. Everything is
-// batched over the visible page only — one query for active runs, one for agents, one
-// for workflows — so it stays O(page) regardless of how many conversations exist.
+// batched over the visible page only, one query for active runs, one for agents, one
+// for workflows, so it stays O(page) regardless of how many conversations exist.
 func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEntry, results []conversation.EntryWithLastMessage) {
 	if len(entries) == 0 {
 		return
@@ -971,8 +984,8 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 }
 
 // buildAIHandler resolves the effective handler for one entry. Workflow beats a direct
-// agent (mirrors the message-time rule in resolveAgentContext): a configured workflow —
-// or a live run, even if the campaign flag was since toggled off — is the handler.
+// agent (mirrors the message-time rule in resolveAgentContext): a configured workflow,
+// or a live run, even if the campaign flag was since toggled off, is the handler.
 func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
 	hasWorkflow := r.WorkflowEnabled && r.WorkflowID != ""
 	hasAgent := r.AgentResponsesEnabled && r.AgentID != ""
@@ -1038,7 +1051,9 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	senderName, senderAvatar := s.getSenderInfo(e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
 
 	var entryVariables []string
-	automationEnabled := true
+	// Same source as the list paths: the entry row carries the override for
+	// every channel.
+	automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 	var convStatus conversation.ConversationStatus
 	var closeSource conversation.CloseSource
 	var closeReason conversation.CloseReason
@@ -1250,7 +1265,7 @@ func (s *HistoryProviderService) getSenderInfo(from string, messageType conversa
 // did not, so the frontend fell back to rendering `from` raw. On WhatsApp that
 // is a phone number and looked merely unpolished, so it went unnoticed for as
 // long as WhatsApp was the only channel. On Telegram `from` is a bare numeric
-// user id, which is unreadable — the same bug, finally visible.
+// user id, which is unreadable, the same bug, finally visible.
 //
 // Only the message types that actually consume lead/contact identity pay for
 // the entry lookup. Agent, operator and system messages resolve from the
@@ -1854,7 +1869,7 @@ func (s *MessageSenderService) CallPermissionStatus(entryID, entryType string) (
 	}
 
 	// No WhatsApp business phone (or no permission store) means there is nothing to
-	// call from — report "none" so the UI simply keeps the call action disabled.
+	// call from, report "none" so the UI simply keeps the call action disabled.
 	if strings.TrimSpace(businessPhoneID) == "" || s.callPermissionRepo == nil {
 		return conversation.CallPermissionStatus{Status: "none"}, nil
 	}
@@ -2440,7 +2455,7 @@ type sendConversationMessageUseCase struct {
 	//
 	// This endpoint used to be WhatsApp-only while its route accepted several
 	// entry types, so a Telegram or Instagram send fell through getEntryInfo's
-	// default branch and surfaced as "conversation not found" — a lie, since the
+	// default branch and surfaced as "conversation not found", a lie, since the
 	// conversation exists and is perfectly sendable over the WebSocket path.
 	// Rather than grow a second per-channel send implementation here, the
 	// migrated channels delegate to the one that already exists.
@@ -2507,7 +2522,7 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 
 	// Channels with an adapter send through the shared path. ResolveEntry queries
 	// that channel's own conversation table, so it also verifies the
-	// (entry_id, entry_type) pair actually belongs together — passing a Telegram
+	// (entry_id, entry_type) pair actually belongs together, passing a Telegram
 	// id with entry_type=instagram resolves to nothing rather than sending
 	// somewhere unintended.
 	if uc.adapterBacked(input.EntryType) {
@@ -2516,7 +2531,7 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 
 	// A channel with no adapter and no WhatsApp path cannot send. Saying so
 	// plainly beats the previous behaviour, where getEntryInfo's default branch
-	// surfaced as "conversation not found" — a lie about a conversation that
+	// surfaced as "conversation not found", a lie about a conversation that
 	// exists.
 	if input.EntryType != string(shared.EntryTypeWhatsApp) {
 		return nil, conversation.ErrEntryTypeInvalid
@@ -3031,4 +3046,40 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	}
 
 	return result.MessageID, nil
+}
+
+// automationFor reads the per-conversation automation override for a channel
+// that stores it on the conversation rather than on a campaign entry.
+//
+// Defaults to enabled, matching the inherit-from-container semantics of a nil
+// override, and on a lookup failure, an inbox that showed every conversation
+// as paused because one query failed would be worse than the opposite.
+func (s *HistoryProviderService) automationFor(entryID string, entryType shared.EntryType) bool {
+	if s.automationReaders == nil {
+		return true
+	}
+	read, ok := s.automationReaders[entryType]
+	if !ok {
+		return true
+	}
+	enabled, err := read(context.Background(), entryID)
+	if err != nil {
+		log.Printf("[inbox] could not read automation for %s:%s: %v", entryType, entryID, err)
+		return true
+	}
+	return enabled == nil || *enabled
+}
+
+// SetAutomationReader registers a channel's automation override reader.
+func (s *HistoryProviderService) SetAutomationReader(
+	entryType shared.EntryType,
+	read func(ctx context.Context, entryID string) (*bool, error),
+) {
+	if s == nil || read == nil {
+		return
+	}
+	if s.automationReaders == nil {
+		s.automationReaders = make(map[shared.EntryType]func(context.Context, string) (*bool, error))
+	}
+	s.automationReaders[entryType] = read
 }

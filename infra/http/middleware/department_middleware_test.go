@@ -247,7 +247,7 @@ func TestResolveDepartment_MemberSelectingWrongDepartmentIs403(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	handler := middleware.ResolveDepartment()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("handler should not be reached — expected 403")
+		t.Fatal("handler should not be reached, expected 403")
 	}))
 
 	handler.ServeHTTP(rr, req)

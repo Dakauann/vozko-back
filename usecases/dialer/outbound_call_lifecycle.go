@@ -216,7 +216,7 @@ func (r *OutboundCallLifecycleRunner) extendReservation(
 		r.logger.Printf("[DialerBalanceGuard] balance read error for ws %s: %v (consecutive: %d)",
 			input.WorkspaceID, err, *balanceErrors)
 		if *balanceErrors >= balanceGuardFailClosedThreshold {
-			r.logger.Printf("[DialerBalanceGuard] CRITICAL: %d consecutive balance errors for ws %s — terminating call (fail-closed)",
+			r.logger.Printf("[DialerBalanceGuard] CRITICAL: %d consecutive balance errors for ws %s, terminating call (fail-closed)",
 				*balanceErrors, input.WorkspaceID)
 			return current, "balance_check_error", true
 		}
@@ -229,7 +229,7 @@ func (r *OutboundCallLifecycleRunner) extendReservation(
 		r.logger.Printf("[DialerBalanceGuard] reserve error for ws %s: %v (consecutive: %d)",
 			input.WorkspaceID, err, *balanceErrors)
 		if *balanceErrors >= balanceGuardFailClosedThreshold {
-			r.logger.Printf("[DialerBalanceGuard] CRITICAL: %d consecutive reserve errors for ws %s — terminating call (fail-closed)",
+			r.logger.Printf("[DialerBalanceGuard] CRITICAL: %d consecutive reserve errors for ws %s, terminating call (fail-closed)",
 				*balanceErrors, input.WorkspaceID)
 			return current, "balance_check_error", true
 		}
@@ -238,7 +238,7 @@ func (r *OutboundCallLifecycleRunner) extendReservation(
 	*balanceErrors = 0
 
 	if !ok {
-		r.logger.Printf("[DialerBalanceGuard] insufficient balance for ws %s (budget=%d) — ending call %s",
+		r.logger.Printf("[DialerBalanceGuard] insufficient balance for ws %s (budget=%d), ending call %s",
 			input.WorkspaceID, budget, input.Call.ID())
 		return current, "insufficient_balance", true
 	}

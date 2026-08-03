@@ -101,7 +101,7 @@ func TestDynamicLimiter_SetMaxHugeValueIsCheap(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("SetMax(MaxInt32) did not return quickly — possible allocation")
+		t.Fatal("SetMax(MaxInt32) did not return quickly, possible allocation")
 	}
 
 	l.SetMax(8)

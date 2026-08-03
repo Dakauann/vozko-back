@@ -48,7 +48,7 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 		Category:      workflow.NodeCategoryAction,
 		Scopes:        []workflow.NodeScope{workflow.NodeScopeShared},
 		Label:         "Enviar Opções",
-		Description:   "Envia uma escolha única (botões ou lista) e ramifica o fluxo conforme a opção escolhida pelo contato. Funciona no WhatsApp, Instagram e Telegram — cada canal exibe as opções no formato que suporta.",
+		Description:   "Envia uma escolha única (botões ou lista) e ramifica o fluxo conforme a opção escolhida pelo contato. Funciona no WhatsApp, Instagram e Telegram, cada canal exibe as opções no formato que suporta.",
 		Icon:          "PaperPlaneTilt",
 		ChannelLimits: e.channelLimits(),
 		Guidance: workflow.NodeGuidance{
@@ -59,7 +59,7 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 				"Sem nenhuma saída de opção conectada, comporta-se como envio simples e segue adiante (compatibilidade). " +
 				"LIMITES POR CANAL: WhatsApp exibe 3 botões ou 10 itens de lista (com descrição por item); Instagram exibe até 13 opções com rótulo de 20 caracteres e SEM descrição; " +
 				"Telegram exibe as opções em teclado inline, sem limite prático de quantidade nem de rótulo, mas o id da opção não pode passar de 64 bytes. " +
-				"Opções além do limite de um canal simplesmente não aparecem nele — o editor mostra quais.",
+				"Opções além do limite de um canal simplesmente não aparecem nele, o editor mostra quais.",
 			Examples: []string{
 				"config: {\"interactive_type\":\"buttons\",\"body\":\"Deseja continuar?\",\"buttons\":\"[{\\\"Type\\\":\\\"reply\\\",\\\"ID\\\":\\\"sim\\\",\\\"Title\\\":\\\"Sim\\\"},{\\\"Type\\\":\\\"reply\\\",\\\"ID\\\":\\\"nao\\\",\\\"Title\\\":\\\"Não\\\"}]\"}  // saídas: \"sim\", \"nao\", \"no_match\", \"no_reply\", \"send_failed\"",
 			},
@@ -204,7 +204,7 @@ func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefin
 // isInteractiveWiring reports whether the node is wired to branch on the reply:
 // at least one outgoing edge targets an option handle or a catch-all. This is
 // what distinguishes the interactive (send + park + branch) mode from the legacy
-// fire-and-forget send. It never depends on a hidden flag — behavior follows the
+// fire-and-forget send. It never depends on a hidden flag, behavior follows the
 // wiring the author drew.
 func isInteractiveWiring(edges []workflow.Edge, config map[string]interface{}) bool {
 	branchLabels := make(map[string]struct{})
@@ -251,7 +251,7 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	if sendErr != nil {
 		log.Printf("[workflow][node:%s][run:%s] interactive send error: %v", ctx.Node.ID, ctx.Run.ID, sendErr)
 		// Prefer an explicit send_failed branch; otherwise surface the error so
-		// the engine's retry/backoff applies (we do NOT park on a failed send —
+		// the engine's retry/backoff applies (we do NOT park on a failed send,
 		// the contact never received anything to reply to).
 		if target := resolveEdgeByLabelStrict(edges, interactiveHandleSendFailed); target != "" {
 			return &workflow.NodeResult{
@@ -286,7 +286,7 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 
 // send dispatches the buttons or list message and returns the sent message id.
 // A nil sender (simulation / unconfigured) is a no-op success so branching can
-// still be exercised. It keeps NO state on the executor — executors are shared
+// still be exercised. It keeps NO state on the executor, executors are shared
 // singletons across concurrent runs.
 func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer string) (string, error) {
 	// WhatsApp keeps its own path: headers, footers, list sections and per-row
@@ -330,7 +330,7 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 		return "", err
 	}
 	if sent == nil {
-		// A deliberate decline — most often a closed outbound window. The caller
+		// A deliberate decline, most often a closed outbound window. The caller
 		// treats an empty id with no error as "nothing was sent" and takes the
 		// send_failed branch, which is correct: the contact has nothing to tap.
 		return "", nil

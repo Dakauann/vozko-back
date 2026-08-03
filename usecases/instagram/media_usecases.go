@@ -190,15 +190,15 @@ func (uc *ProxyMediaUseCase) Execute(ctx context.Context, workspaceID, accountID
 // ErrNoAvatar is returned when the account has no profile picture.
 //
 // This is a normal state, not a failure: Instagram OMITS profile_picture_url from
-// the response entirely for an account that has never set a photo — the field is
-// absent rather than empty — and the caller should fall back to a placeholder.
+// the response entirely for an account that has never set a photo, the field is
+// absent rather than empty, and the caller should fall back to a placeholder.
 var ErrNoAvatar = errors.New("instagram: account has no profile picture")
 
 // ProxyAvatarUseCase streams the account's profile picture.
 //
 // It re-reads the URL from Graph on every request rather than trusting the copy
 // stored at connect time, for the same reason media is proxied: profile_picture_url
-// is a signed CDN link with an expiry, so a stored value becomes a broken image —
+// is a signed CDN link with an expiry, so a stored value becomes a broken image,
 // silently, and only some time after everything looked fine.
 //
 // The extra Graph call is bounded by the HTTP cache header on the response, and an
@@ -344,7 +344,7 @@ func (uc *CreateMediaUseCase) awaitContainer(ctx context.Context, account *igdom
 
 // SetCommentEnabledUseCase toggles comments on a post.
 //
-// This is the ONLY supported update on a published post — Instagram has no
+// This is the ONLY supported update on a published post, Instagram has no
 // endpoint to edit a caption, so caption changes are rejected in the domain
 // rather than attempted.
 type SetCommentEnabledUseCase struct {

@@ -56,7 +56,7 @@ func (m *workflowManager) Tick() {
 
 func (m *workflowManager) resumeRun(run *workflow.WorkflowRun) {
 	if !m.engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] tick: skipping run %s — already locked by another process", run.ID)
+		log.Printf("[workflow] tick: skipping run %s, already locked by another process", run.ID)
 		return
 	}
 	defer m.engine.UnlockRun(run.ID)

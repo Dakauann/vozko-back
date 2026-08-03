@@ -18,7 +18,7 @@ const (
 )
 
 // generationUsageFetcher recovers token usage for a generation whose inline
-// stream usage chunk never arrived — i.e. the stream was cancelled, timed out, or
+// stream usage chunk never arrived, i.e. the stream was cancelled, timed out, or
 // aborted before OpenRouter sent the final usage chunk (which carries the token
 // counts). It queries OpenRouter's GET /generation endpoint by id. Optional on
 // the Service: when nil, recovery is disabled and a cut stream simply isn't
@@ -87,12 +87,12 @@ func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID str
 // billStreamUsage bills a single streamed turn. With an inline usage chunk it
 // bills directly. When that chunk never arrived (the stream was cancelled, timed
 // out, or aborted), it recovers the real usage from OpenRouter's /generation
-// endpoint by the generation id captured from the stream — so the turn is still
+// endpoint by the generation id captured from the stream, so the turn is still
 // charged. Only when recovery is unavailable or returns nothing does it fall back
 // to logging the (now-rare) revenue leak.
 func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage *openrouter.Usage) {
 	if workspaceID == "" {
-		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s — NOT billing (REVENUE LEAK)", model)
+		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", model)
 		return
 	}
 	if usage != nil {
@@ -110,6 +110,6 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 			return
 		}
 	}
-	log.Printf("CRITICAL: [ai-billing] no usage for model=%s ws=%s (generation_id=%q, recovery unavailable/empty) — NOT billing this stream (REVENUE LEAK)",
+	log.Printf("CRITICAL: [ai-billing] no usage for model=%s ws=%s (generation_id=%q, recovery unavailable/empty), NOT billing this stream (REVENUE LEAK)",
 		model, workspaceID, generationID)
 }

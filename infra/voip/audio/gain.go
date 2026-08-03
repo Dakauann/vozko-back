@@ -9,7 +9,7 @@ import (
 // See docs/SIP_AUDIO_PIPELINE.md §10 (P3). The goal is to hand the carrier's
 // transcoder a consistent level: quiet TTS/agent audio is gently boosted toward
 // a target RMS, while a hard saturating limiter guarantees no inter-sample
-// overflow/clipping. Everything here is pure and deterministic — apply it to a
+// overflow/clipping. Everything here is pure and deterministic, apply it to a
 // whole TTS segment so a single buffer carries one stable gain (no pumping).
 
 const (
@@ -99,7 +99,7 @@ func NormalizeRMS(pcm16 []byte, targetRMS, maxGain float64) []byte {
 
 	rms := RMSAmplitude(pcm16)
 	if rms <= 0 {
-		// Pure silence — nothing to boost.
+		// Pure silence, nothing to boost.
 		return append([]byte(nil), pcm16...)
 	}
 

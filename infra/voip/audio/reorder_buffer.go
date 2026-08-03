@@ -52,7 +52,7 @@ const (
 	// unbroken run of read-deadline timeouts before declaring the socket dead.
 	// A transient timeout is how mediaSessionAdapter.UnblockReaders() momentarily
 	// wakes this goroutine (it sets a read deadline in the past for ~50ms, then
-	// clears it) so an in-flight AI→human surrender can re-home the live media —
+	// clears it) so an in-flight AI→human surrender can re-home the live media,
 	// so timeouts must NOT tear the buffer down. But a deadline that is never
 	// cleared must not spin forever either; at readTimeoutBackoff per iteration
 	// this caps the tolerated run at ~2s before the buffer gives up.
@@ -63,7 +63,7 @@ const (
 // and close doneCh. Close() MUST return even if the inner RTP socket is so wedged
 // that neither UnblockReaders nor inner.Close() ever wakes the blocked reader: the
 // call bridge releases the workspace call slot only AFTER Close() returns (via
-// `defer releaseCallSlot`), so an unbounded wait here leaks the slot forever — the
+// `defer releaseCallSlot`), so an unbounded wait here leaks the slot forever, the
 // root cause of the campaign stalling at capacity with phantom slots while real
 // calls sit far below the plan limit. A healthy drain is sub-millisecond; this cap
 // only bites on a truly wedged socket. It is a var (not a const) so teardown tests
@@ -189,13 +189,13 @@ func NewRTPReorderBuffer(inner voip.MediaSession, opts RTPReorderBufferOptions) 
 
 func (rb *RTPReorderBuffer) Run(ctx context.Context) {
 	rb.runOnce.Do(func() {
-		// The loops run on rb.ctx — the context Close() cancels via rb.cancel — and
+		// The loops run on rb.ctx, the context Close() cancels via rb.cancel, and
 		// the caller's ctx is bridged into it, so BOTH the call ending (ctx) and
 		// Close() stop them. Previously the loops ran on the caller's ctx while
 		// Close() cancelled an unrelated internal ctx (rb.ctx), so cancellation never
 		// reached them: teardown then relied solely on inner.Close() unblocking the
 		// RTP read, which deadlocks on a wedged/half-open socket. That was the ~19h
-		// RTPReorderBuffer.Close hang seen in pprof — the bridge goroutine stuck in
+		// RTPReorderBuffer.Close hang seen in pprof, the bridge goroutine stuck in
 		// Close(), so `defer releaseCallSlot` never ran and the slot leaked.
 		go func() {
 			select {
@@ -235,7 +235,7 @@ func (rb *RTPReorderBuffer) readFromInner(ctx context.Context) {
 			// mediaSessionAdapter.UnblockReaders() momentarily wakes this goroutine
 			// (it sets a read deadline in the past for ~50ms, then clears it) so an
 			// in-flight AI→human surrender can re-home the live media onto the human
-			// leg. Propagating it would tear the whole reorder buffer down — closing
+			// leg. Propagating it would tear the whole reorder buffer down, closing
 			// the media out from under the call the human just accepted (the inbound
 			// "audio: reorder buffer closed" call-drop bug). Keep reading; the
 			// deadline is cleared again within ~50ms.
@@ -251,7 +251,7 @@ func (rb *RTPReorderBuffer) readFromInner(ctx context.Context) {
 				}
 				continue
 			}
-			// The deadline was never cleared — treat the socket as genuinely dead
+			// The deadline was never cleared, treat the socket as genuinely dead
 			// and fall through to propagate the error below.
 			rb.logf("[reorder] call=%s read deadline stuck across %d timeouts (~%s); treating socket as dead",
 				rb.opts.CallID, consecutiveTimeouts, time.Duration(consecutiveTimeouts)*readTimeoutBackoff)
@@ -259,7 +259,7 @@ func (rb *RTPReorderBuffer) readFromInner(ctx context.Context) {
 		consecutiveTimeouts = 0
 
 		if err != nil {
-			rb.logf("[reorder] call=%s inner read error: %v — closing buffer", rb.opts.CallID, err)
+			rb.logf("[reorder] call=%s inner read error: %v, closing buffer", rb.opts.CallID, err)
 		}
 
 		payload := make([]byte, len(pkt.Payload))
@@ -404,7 +404,7 @@ func (rb *RTPReorderBuffer) mainLoop(ctx context.Context) {
 				}
 			}
 			// If a gap still remains after the conceal cap, the awaited packet is
-			// too far ahead to be real loss — skip ahead to the earliest buffered
+			// too far ahead to be real loss, skip ahead to the earliest buffered
 			// packet instead of looping toward a uint16 wraparound (65533 fills).
 			rb.mu.Lock()
 			if rb.hasGapLocked() {
@@ -446,7 +446,7 @@ func (rb *RTPReorderBuffer) hasGapLocked() bool {
 }
 
 // resyncLocked discards any buffered (now-stale) packets and re-anchors the
-// buffer on the given packet's stream — used when the SSRC changes or a gap is
+// buffer on the given packet's stream, used when the SSRC changes or a gap is
 // too large to conceal. It makes that packet the next one to deliver, so the
 // timeline jumps to live audio instead of synthesizing the (possibly
 // wrapped-around) gap.
@@ -506,8 +506,8 @@ func (rb *RTPReorderBuffer) fillSilenceOneLocked() {
 // G.711 codec with a previous frame it repeats that frame attenuated by
 // plcDecay; because lastPayload is updated to each emitted frame by
 // drainToChannel, consecutive concealed frames compound the attenuation and the
-// gap fades smoothly toward silence. Once faded below plcSilenceFloor — or when
-// the codec/last frame is unknown — it emits clean codec silence. This is a
+// gap fades smoothly toward silence. Once faded below plcSilenceFloor, or when
+// the codec/last frame is unknown, it emits clean codec silence. This is a
 // simplified, frame-level approximation of the attenuate-toward-silence
 // behaviour of ITU-T G.711 Appendix I (Asterisk's plc.c); it does not perform
 // the pitch-period extraction of the full algorithm.
@@ -524,7 +524,7 @@ func (rb *RTPReorderBuffer) concealPayloadLocked() []byte {
 		return codec.Silence(rb.frameLenLocked())
 	}
 
-	// Unknown/non-G.711 payload: best effort — repeat the last frame verbatim,
+	// Unknown/non-G.711 payload: best effort, repeat the last frame verbatim,
 	// else fill µ-law idle (observedPT is unknown so we can't pick a law).
 	if len(rb.lastPayload) > 0 {
 		return append([]byte(nil), rb.lastPayload...)
@@ -636,7 +636,7 @@ func (rb *RTPReorderBuffer) RemoteAddr() net.Addr {
 
 func (rb *RTPReorderBuffer) Close() error {
 	rb.closeOnce.Do(func() {
-		rb.logf("[reorder] call=%s Close() invoked — tearing down buffer + inner media session", rb.opts.CallID)
+		rb.logf("[reorder] call=%s Close() invoked, tearing down buffer + inner media session", rb.opts.CallID)
 		rb.cancel()
 		close(rb.stopCh)
 		// Force the in-flight ReadRTP in readFromInner to return. Cancelling rb.ctx
@@ -644,7 +644,7 @@ func (rb *RTPReorderBuffer) Close() error {
 		// does not reliably wake a wedged/half-open RTP socket (mediaSessionAdapter.
 		// Close just calls session.Close, which never sets a read deadline). Setting
 		// a past read deadline via UnblockReaders makes ReadRTP return a timeout, so
-		// readFromInner observes the cancelled ctx and exits — otherwise that reader
+		// readFromInner observes the cancelled ctx and exits, otherwise that reader
 		// goroutine (and the diago RTP monitor behind it) leaks for the process life.
 		if err := rb.inner.UnblockReaders(); err != nil {
 			rb.logf("[reorder] call=%s Close() UnblockReaders failed (continuing teardown): %v", rb.opts.CallID, err)

@@ -341,7 +341,7 @@ func TestLiveDialerCall_StartThenStartSurrendered_SecondIsNoOp(t *testing.T) {
 		t.Fatalf("primary onEnd invocations = %d, want 1", got)
 	}
 	if got := surrenderOnEnd.Load(); got != 0 {
-		t.Fatalf("surrender onEnd ran %d times on a call already owned by start() — CAS guard breached", got)
+		t.Fatalf("surrender onEnd ran %d times on a call already owned by start(), CAS guard breached", got)
 	}
 	if got := pub.Count(); got != 1 {
 		t.Fatalf("billing publishes = %d, want exactly 1 (no double-billing)", got)
@@ -374,12 +374,12 @@ func TestLiveDialerCall_StartSurrenderedThenStart_SecondIsNoOp(t *testing.T) {
 		t.Fatalf("surrender onEnd invocations = %d, want 1", got)
 	}
 	if got := primaryOnEnd.Load(); got != 0 {
-		t.Fatalf("primary onEnd ran %d times on a call already owned by startSurrendered() — CAS guard breached", got)
+		t.Fatalf("primary onEnd ran %d times on a call already owned by startSurrendered(), CAS guard breached", got)
 	}
 	if got := pub.Count(); got != 0 {
 		t.Fatalf("billing publishes = %d, want 0 (surrendered lifecycle owns the call; bridge publishes externally)", got)
 	}
 	if got := adm.Releases(); got != 0 {
-		t.Fatalf("admission.Release ran %d times on surrendered-only call — must be 0", got)
+		t.Fatalf("admission.Release ran %d times on surrendered-only call, must be 0", got)
 	}
 }

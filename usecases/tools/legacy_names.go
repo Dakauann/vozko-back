@@ -4,7 +4,7 @@ import "strings"
 
 // Tool names are persisted: an agent's InternalTools bindings store the name the
 // operator selected, and workflow configs reference them too. Renaming a tool
-// therefore breaks every saved binding — the resolver looks the name up in its
+// therefore breaks every saved binding, the resolver looks the name up in its
 // definition index, misses, and `continue`s. The tool simply vanishes from the
 // agent with no error anywhere.
 //
@@ -14,7 +14,7 @@ import "strings"
 var legacyToolNames = map[string]string{
 	// Renamed when the tool stopped being WhatsApp-only. The old name is also
 	// what the MODEL saw, and a tool called "send_whatsapp_media" offered inside
-	// a Telegram conversation reads as inapplicable — the rename is a behaviour
+	// a Telegram conversation reads as inapplicable, the rename is a behaviour
 	// fix, not just tidying.
 	"send_whatsapp_media":          ToolNameSendMedia,
 	LegacyToolNameSendWhatsappImage: ToolNameSendMedia,

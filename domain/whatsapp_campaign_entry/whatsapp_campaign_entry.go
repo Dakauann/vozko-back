@@ -115,10 +115,10 @@ func (sc StatusCounts) Processed() int64 {
 	return sc.Sent + sc.Delivered + sc.Read + sc.Failed + sc.NotEligiblePossibleSpam
 }
 
-// Dispatches ("disparos") counts BILLED sends — the entries a workspace was
+// Dispatches ("disparos") counts BILLED sends, the entries a workspace was
 // actually charged for. It is defined subtractively from billing eligibility,
 // NOT by summing the WhatsApp delivery lifecycle (SENT/DELIVERED/READ): we take
-// the whole campaign and remove the buckets that are never billed — not-yet-sent
+// the whole campaign and remove the buckets that are never billed, not-yet-sent
 // (PENDING), spam-protection skips (NOT_ELIGIBLE_POSSIBLE_SPAM) and failed sends
 // (FAILED). Everything else that left our system counts, so a future billed
 // status is included automatically instead of being silently dropped. Today the

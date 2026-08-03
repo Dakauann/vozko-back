@@ -9,7 +9,7 @@ import (
 
 // builderMemberLister adapts the workspace member repository to the AI builder's
 // resource resolver so the copilot can resolve attendants for transfer/assign
-// nodes (target_user_id). The id is the member's UserID — the exact value the
+// nodes (target_user_id). The id is the member's UserID, the exact value the
 // human picker stores and the target_user_id field expects. Workspace-scoped and
 // re-asserted per row, so it never leaks members of another tenant.
 type builderMemberLister struct {

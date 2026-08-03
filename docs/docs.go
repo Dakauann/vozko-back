@@ -21717,7 +21717,7 @@ const docTemplate = `{
                 },
                 "gaps": {
                     "type": "string",
-                    "example": "captura real de espera/ACW no caminho quente — ver docs"
+                    "example": "captura real de espera/ACW no caminho quente, ver docs"
                 },
                 "idle": {
                     "type": "string",

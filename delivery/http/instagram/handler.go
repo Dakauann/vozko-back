@@ -95,7 +95,7 @@ func NewHandler(d HandlerDeps) *Handler {
 
 // StartConnect begins onboarding.
 //
-// Business Login for Instagram is just a URL — there is no Facebook JS SDK and no
+// Business Login for Instagram is just a URL, there is no Facebook JS SDK and no
 // config_id, unlike WhatsApp Embedded Signup. Two transports are supported over
 // that one URL:
 //

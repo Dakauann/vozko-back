@@ -201,7 +201,7 @@ func resolveCodecList(t *sip_trunk.SIPTrunk, logger *log.Logger) []media.Codec {
 	// PCMA is listed FIRST: Brazil's PSTN is A-law-native, so preferring it
 	// avoids an extra µ-law↔A-law transcode at the carrier. This is now safe
 	// because every channel encodes with the codec carried on the media session
-	// (voip.MediaSession.NegotiatedCodec) — bridge, CRM, dialer and workflow all
+	// (voip.MediaSession.NegotiatedCodec), bridge, CRM, dialer and workflow all
 	// emit A-law when PCMA is negotiated, so the wire label always matches the
 	// bytes. Per-trunk `Codecs` config overrides this entirely.
 	base := []media.Codec{

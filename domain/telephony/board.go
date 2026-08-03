@@ -37,7 +37,7 @@ type QueueStrip struct {
 	Available bool  `json:"available"`
 }
 
-// BoardSnapshot is the live concurrency board (Redis / memory only — no SQL).
+// BoardSnapshot is the live concurrency board (Redis / memory only, no SQL).
 type BoardSnapshot struct {
 	WorkspaceID string      `json:"workspace_id"`
 	Rev         int64       `json:"rev"`

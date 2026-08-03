@@ -27,7 +27,7 @@ func (f *stubFetcher) FetchUsage(_ context.Context, id string) (int, int, bool) 
 }
 
 // hangingSSEServer flushes the given chunks then holds the connection open until
-// stop() is called — so a test can let the client receive some tokens and then
+// stop() is called, so a test can let the client receive some tokens and then
 // cancel the request mid-stream, exactly like a timeout/abort in production.
 func hangingSSEServer(chunks []string) (*httptest.Server, func()) {
 	release := make(chan struct{})
@@ -114,7 +114,7 @@ func TestGenerateStream_CutStream_RecoversUsageAndBills(t *testing.T) {
 	}
 }
 
-// EOF without a usage chunk (provider just never sent usage) is recovered too —
+// EOF without a usage chunk (provider just never sent usage) is recovered too,
 // the generation completed, so /generation has the counts.
 func TestGenerateStream_EOFNoUsage_RecoversAndBills(t *testing.T) {
 	srv := sseServer([]string{
@@ -146,7 +146,7 @@ func TestGenerateStream_EOFNoUsage_RecoversAndBills(t *testing.T) {
 	}
 }
 
-// Recovery that fails (endpoint error / not found) must NOT bill — better to leak
+// Recovery that fails (endpoint error / not found) must NOT bill, better to leak
 // than to charge a fabricated amount.
 func TestGenerateStream_RecoveryFails_DoesNotBill(t *testing.T) {
 	srv := sseServer([]string{

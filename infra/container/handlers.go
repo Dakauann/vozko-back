@@ -328,14 +328,20 @@ func (c *Container) initHandlers() {
 				Realm:     c.cfg.SIPRealm,
 			},
 		),
-		conversation: conversationhttp.NewConversationHandler(
-			c.useCases.sendConversationMessage,
-			c.useCases.uploadConversationMedia,
-			c.useCases.getConversationMedia,
-			c.services.inboxService,
-			c.useCases.searchMessagesByEntry,
-			c.useCases.listConversationEvents,
-		),
+		conversation: func() *conversationhttp.ConversationHandler {
+			h := conversationhttp.NewConversationHandler(
+				c.useCases.sendConversationMessage,
+				c.useCases.uploadConversationMedia,
+				c.useCases.getConversationMedia,
+				c.services.inboxService,
+				c.useCases.searchMessagesByEntry,
+				c.useCases.listConversationEvents,
+			)
+			if c.services.conversationAutomation != nil {
+				h.SetAutomationService(c.services.conversationAutomation)
+			}
+			return h
+		}(),
 		conversationWS: wsdelivery.NewConversationWSHandler(
 			c.services.conversationHub,
 			log.Default(),
@@ -733,7 +739,7 @@ func (c *Container) buildWebhookHandler() *handlers.WebhookHandler {
 	if c.cfg.Dialog360WebhookSecret != "" {
 		h.SetDialog360WebhookSecret(c.cfg.Dialog360WebhookSecret)
 	} else {
-		log.Println("[WARN] D360_WEBHOOK_SECRET is empty — 360dialog inbound webhook signature verification disabled")
+		log.Println("[WARN] D360_WEBHOOK_SECRET is empty, 360dialog inbound webhook signature verification disabled")
 	}
 	return h
 }

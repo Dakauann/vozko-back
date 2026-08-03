@@ -3,11 +3,11 @@ package workflow
 import "testing"
 
 // Reproduces the production bug on workflow node s2_2: an HTTP node captured a
-// Supabase REST response whose BODY IS A JSON ARRAY — `[{"id":1,"token":"..."}]`
-// — into a variable, then referenced the token as `{{token_consulta_cadastro[0].token}}`.
+// Supabase REST response whose BODY IS A JSON ARRAY, `[{"id":1,"token":"..."}]`,
+// into a variable, then referenced the token as `{{token_consulta_cadastro[0].token}}`.
 //
 // The reference resolved to the literal unresolved string, producing an empty
-// `Authorization: Bearer ` header and a 401 from the downstream API — even after
+// `Authorization: Bearer ` header and a 401 from the downstream API, even after
 // the operator corrected the path and removed a duplicate "Bearer" prefix.
 //
 // Root cause (resolver half): a TOP-LEVEL array captured variable hits the

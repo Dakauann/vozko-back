@@ -13,7 +13,7 @@ import (
 // Telegram gives us no way to identify which bot an update belongs to: the
 // Update object carries no bot id, unlike Meta's entry[].id. Tenancy therefore
 // has to come from somewhere outside the body, and there are exactly two places
-// it can come from — the URL we registered, and (in business mode) the
+// it can come from, the URL we registered, and (in business mode) the
 // business_connection_id inside the payload.
 //
 // So each bot gets its own URL, keyed by OUR account uuid. Never by the bot
@@ -62,7 +62,7 @@ func ValidateWebhookBaseURL(raw string) error {
 	isLocal := strings.HasPrefix(parsed.Hostname(), "localhost") || parsed.Hostname() == "127.0.0.1"
 	if parsed.Scheme != "https" && !isLocal {
 		return fmt.Errorf(
-			"telegram: webhook base URL %q must use https — Telegram refuses plain-text webhooks entirely", raw)
+			"telegram: webhook base URL %q must use https, Telegram refuses plain-text webhooks entirely", raw)
 	}
 
 	if port := parsed.Port(); port != "" && !isLocal {
@@ -77,7 +77,7 @@ func ValidateWebhookBaseURL(raw string) error {
 
 	if parsed.Path != "" && parsed.Path != "/" {
 		return fmt.Errorf(
-			"telegram: webhook base URL %q must not carry a path — the path is owned by the code (%s)",
+			"telegram: webhook base URL %q must not carry a path, the path is owned by the code (%s)",
 			raw, WebhookPathTemplate)
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -94,7 +94,7 @@ const SecretTokenHeader = "X-Telegram-Bot-Api-Secret-Token"
 // The Bot API allows "1-256 characters. Only characters A-Z, a-z, 0-9, _ and -",
 // which base64url satisfies without padding. 32 random bytes is well beyond
 // guessing range, and this value is the ONLY authenticity control the channel
-// has — Telegram does not sign the body.
+// has, Telegram does not sign the body.
 func GenerateWebhookSecret() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {

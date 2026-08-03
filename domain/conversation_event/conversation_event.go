@@ -91,7 +91,7 @@ type ConversationEvent struct {
 
 // Validate reports whether the event can be persisted. workspace_id and entry_id
 // map to `uuid NOT NULL` columns, so an empty value is a permanent data error
-// (Postgres 22P02) that no retry can fix — the exact poison that looped forever.
+// (Postgres 22P02) that no retry can fix, the exact poison that looped forever.
 // It returns ErrInvalidEvent so the emitter drops it before publishing and the
 // consumer drops it instead of requeuing. Non-empty-but-malformed values (rare;
 // producers pass real UUIDs or empty) are caught downstream by the consumer's

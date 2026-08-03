@@ -17,9 +17,9 @@ const (
 
 // HoldPlayer pumps hold audio (music on hold, a comfort tone, ringback, or
 // silence when src is nil) into a call leg's SendAudio on the telephony 20ms
-// cadence. It is the SOLE writer to the leg while hold is active — the WS
+// cadence. It is the SOLE writer to the leg while hold is active, the WS
 // handler's uplink gate and the lifecycle's holdActive downlink gate guarantee
-// that — so the caller hears exactly this source and nothing else.
+// that, so the caller hears exactly this source and nothing else.
 //
 // Start/Stop are once-guarded and idempotent; Stop blocks until the pump
 // goroutine exits so a swap can safely attach the leg right after.

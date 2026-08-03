@@ -24,7 +24,7 @@ const (
 // RateLimitMetricsRecorder records requests rejected by a per-IP rate limiter.
 // The client_ip label is intentionally populated only on the rejection path
 // (not per request), so cardinality is bounded to the small set of IPs that
-// actually exceed a limit — typically shared-NAT offices whose many agents
+// actually exceed a limit, typically shared-NAT offices whose many agents
 // collide on one per-IP budget. That is precisely the signal we want to surface.
 type RateLimitMetricsRecorder interface {
 	IncRateLimited(limiter, clientIP, reason string)

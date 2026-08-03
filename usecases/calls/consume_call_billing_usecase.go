@@ -71,7 +71,7 @@ func (c *ConsumeCallBillingUseCase) handleBillingEvent(message []byte, ack messa
 		if err := c.processEvent(event); err != nil {
 			requeue := ack.DeliveryCount() < messaging.MaxRetries
 			if !requeue {
-				c.logf("CRITICAL: billing consumer permanently dropping call %s after %d retries — REVENUE LOST: %v",
+				c.logf("CRITICAL: billing consumer permanently dropping call %s after %d retries, REVENUE LOST: %v",
 					event.CallID, messaging.MaxRetries, err)
 				c.markChargeFailed(event.CallID)
 			} else {
@@ -111,7 +111,7 @@ func (c *ConsumeCallBillingUseCase) processEvent(event billing.CallCompletedEven
 	totalProviderCost := telResult.CostMicros
 	totalProfit := telResult.ProfitMicros
 
-	c.logf("billing consumer: call %s costs — tel=%d total=%d debit=%d profit=%d micros",
+	c.logf("billing consumer: call %s costs, tel=%d total=%d debit=%d profit=%d micros",
 		event.CallID, telResult.PriceMicros, totalPrice, debitPrice, totalProfit)
 
 	durationSec := int(math.Ceil(event.CallEnd.Sub(event.CallStart).Seconds()))

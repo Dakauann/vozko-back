@@ -580,7 +580,7 @@ func TestConsumeWhatsAppMessage_HandlerErrorNacksAndAllowsRetry(t *testing.T) {
 		t.Fatal("first delivery must be acked so the consumer slot is freed")
 	}
 	if ack1.wasNacked() {
-		t.Fatal("must not Nack — that's the prod-loop bug")
+		t.Fatal("must not Nack, that's the prod-loop bug")
 	}
 	if pub.callCount() != 1 {
 		t.Fatalf("expected exactly 1 republish to .delay queue, got %d", pub.callCount())
@@ -833,7 +833,7 @@ func TestConsumeWhatsAppMessage_StatusEventNotBlockedByUnrelatedSenderLock(t *te
 
 // Critical safety property: failed-status webhooks are NOT deduped (they trigger
 // refunds), so under prefetch>1 a duplicate failed webhook for the same message
-// must be serialized by the in-flight lock — otherwise the refund guard could run
+// must be serialized by the in-flight lock, otherwise the refund guard could run
 // concurrently and double-refund (money leak).
 func TestConsumeWhatsAppMessage_DuplicateFailedStatusSerializedByInFlightLock(t *testing.T) {
 	sub := &mockWhatsAppQueueSub{}
@@ -1111,7 +1111,7 @@ func TestConsumeWhatsAppMessage_HandlerErrorBelowMaxRetriesRequeues(t *testing.T
 			t.Fatalf("attempt %d: original delivery must be acked so the consumer slot is freed (preventing tenant starvation)", attempt)
 		}
 		if ack.wasNacked() {
-			t.Fatalf("attempt %d: must NOT Nack — Nack(requeue=true) is the bug that caused the prod loop", attempt)
+			t.Fatalf("attempt %d: must NOT Nack, Nack(requeue=true) is the bug that caused the prod loop", attempt)
 		}
 		if pub.callCount() != callsBefore+1 {
 			t.Fatalf("attempt %d: expected exactly one delayed republish, got %d new calls", attempt, pub.callCount()-callsBefore)
@@ -1142,10 +1142,10 @@ func TestConsumeWhatsAppMessage_HandlerErrorAtMaxRetriesIsDropped(t *testing.T) 
 	time.Sleep(100 * time.Millisecond)
 
 	if !ack.wasAcked() {
-		t.Fatal("at MaxRetries the message must be acked (permanently dropped) — leaving it unacked starves the channel")
+		t.Fatal("at MaxRetries the message must be acked (permanently dropped), leaving it unacked starves the channel")
 	}
 	if ack.wasNacked() {
-		t.Fatal("must not Nack at MaxRetries — that resurrects the loop")
+		t.Fatal("must not Nack at MaxRetries, that resurrects the loop")
 	}
 	if pub.callCount() != 0 {
 		t.Fatalf("at MaxRetries the message must NOT be republished, got %d calls", pub.callCount())
@@ -1211,7 +1211,7 @@ func TestConsumeWhatsAppMessage_UnknownPhoneAudioDoesNotLoopForever(t *testing.T
 		time.Sleep(100 * time.Millisecond)
 
 		if ack.wasNacked() {
-			t.Fatalf("attempt %d: must NEVER Nack — Nack(requeue=true) is the prod bug", attempt)
+			t.Fatalf("attempt %d: must NEVER Nack, Nack(requeue=true) is the prod bug", attempt)
 		}
 		if !ack.wasAcked() {
 			t.Fatalf("attempt %d: original delivery must always be acked (either after republish or drop)", attempt)
@@ -1225,7 +1225,7 @@ func TestConsumeWhatsAppMessage_UnknownPhoneAudioDoesNotLoopForever(t *testing.T
 			republishCount++
 		} else {
 			if newCalls != 0 {
-				t.Fatalf("attempt %d (==MaxRetries=%d): message must be DROPPED, not republished — got %d new calls", attempt, messaging.MaxRetries, newCalls)
+				t.Fatalf("attempt %d (==MaxRetries=%d): message must be DROPPED, not republished, got %d new calls", attempt, messaging.MaxRetries, newCalls)
 			}
 		}
 	}
@@ -1242,7 +1242,7 @@ func TestConsumeWhatsAppMessage_UnknownPhoneAudioDoesNotLoopForever(t *testing.T
 			t.Fatalf("republish %d targeted wrong topic %q", i, c.topic)
 		}
 		if c.delay <= 0 {
-			t.Fatalf("republish %d had non-positive delay %v — would resurrect the hot loop", i, c.delay)
+			t.Fatalf("republish %d had non-positive delay %v, would resurrect the hot loop", i, c.delay)
 		}
 	}
 }
@@ -1295,7 +1295,7 @@ func TestConsumeWhatsAppMessage_NoPublisherDropsOnFirstError(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	if !ack.wasAcked() {
-		t.Fatal("with no publisher, message must be acked (dropped) — fallback to Nack(true) would resurrect the loop")
+		t.Fatal("with no publisher, message must be acked (dropped), fallback to Nack(true) would resurrect the loop")
 	}
 	if ack.wasNacked() {
 		t.Fatal("with no publisher, must not Nack")
@@ -1319,6 +1319,6 @@ func TestConsumeWhatsAppMessage_DelayPublishFailureDrops(t *testing.T) {
 		t.Fatal("with broker republish failure, message must be acked + dropped")
 	}
 	if ack.wasNacked() {
-		t.Fatal("must not Nack on publish failure — that resurrects the starvation loop")
+		t.Fatal("must not Nack on publish failure, that resurrects the starvation loop")
 	}
 }

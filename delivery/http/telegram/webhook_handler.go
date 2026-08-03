@@ -18,7 +18,7 @@ import (
 )
 
 // maxWebhookBody caps the inbound body. Telegram posts exactly one Update per
-// request — there is no batching — so this is generous even for a large album
+// request, there is no batching, so this is generous even for a large album
 // caption.
 const maxWebhookBody = 2 << 20
 
@@ -34,7 +34,7 @@ type AccountLookup interface {
 // of the bot it belongs to.
 //
 //  1. Tenancy comes from the URL. Each bot is registered with its own
-//     /webhooks/telegram/{accountId} path, keyed by our uuid — never by the bot
+//     /webhooks/telegram/{accountId} path, keyed by our uuid, never by the bot
 //     token, which would leak a permanent credential through proxy logs and
 //     Referer headers.
 //  2. Authenticity comes from a header, not a signature. Telegram does not sign
@@ -108,8 +108,8 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	topic := topicFor(update)
 	if err := h.publish.Publish(topic, payload); err != nil {
-		// A non-2xx makes Telegram redeliver. That is safe — the pipeline dedups
-		// on update_id — and far better than acknowledging an update we failed to
+		// A non-2xx makes Telegram redeliver. That is safe, the pipeline dedups
+		// on update_id, and far better than acknowledging an update we failed to
 		// enqueue, because Telegram discards undelivered updates after 24 hours
 		// and there is no history API to recover them from.
 		log.Printf("[telegram-webhook] publish failed topic=%s: %v", topic, err)

@@ -51,7 +51,7 @@ type ChannelStatusReport struct {
 // ChannelStatusReconciler syncs the local dialog360 fleet with the partner's actual
 // channel state. It SUSPENDS numbers whose channel was deactivated/removed on
 // 360dialog (so a now-invalid API key is never used again) and backfills the
-// metadata that only appears a short while AFTER channel_live — notably the display
+// metadata that only appears a short while AFTER channel_live, notably the display
 // phone number and the WABA account name. Idempotent; safe on webhooks and a timer.
 type ChannelStatusReconciler interface {
 	Execute() (ChannelStatusReport, error)

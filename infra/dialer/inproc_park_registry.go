@@ -10,7 +10,7 @@ import (
 // InProcParkRegistry holds parked caller legs (see dialer_domain.ParkRegistry).
 // One entry per call, owner-token CAS on Retrieve/Abandon (the same discipline as
 // the ring ReservationState), and a per-entry death watcher on the leg's Done
-// channel that fires the customer-hangup funnel exactly once — and only while the
+// channel that fires the customer-hangup funnel exactly once, and only while the
 // leg is still parked. In-process, matching the transfer store and call registry.
 type InProcParkRegistry struct {
 	mu   sync.Mutex

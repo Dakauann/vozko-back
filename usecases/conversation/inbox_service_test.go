@@ -143,7 +143,7 @@ func TestSearchInbox_AppliesDepartmentScopeToWorkspaceSearch(t *testing.T) {
 }
 
 // The user-facing "filter by responsible" must SURVIVE the permission-clearing that
-// wipes AssignedUserID for privileged users — otherwise an admin filtering by a
+// wipes AssignedUserID for privileged users, otherwise an admin filtering by a
 // responsible would silently see everyone instead of that person's conversations.
 func TestSearchInbox_ResponsibleFilterSurvivesPermissionClear(t *testing.T) {
 	historyProvider := &inboxServiceTestHistoryProvider{}
@@ -157,8 +157,8 @@ func TestSearchInbox_ResponsibleFilterSurvivesPermissionClear(t *testing.T) {
 	_, _, err := service.SearchInbox("admin-1", conversation.SearchInboxInput{
 		WorkspaceID:       "ws-1",
 		IsAdmin:           true,      // triggers the AssignedUserID permission-clear
-		AssignedUserID:    "admin-1", // permission scope — must be cleared
-		ResponsibleUserID: "agent-9", // user-facing filter — must survive
+		AssignedUserID:    "admin-1", // permission scope, must be cleared
+		ResponsibleUserID: "agent-9", // user-facing filter, must survive
 		Page:              1,
 		PageSize:          20,
 		SortOrder:         "desc",

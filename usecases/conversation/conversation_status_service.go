@@ -255,7 +255,7 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	if to == string(conversation.ConversationStatusNew) && from == string(conversation.ConversationStatusFinished) {
 		evType = conv_event.EventReopened
 	}
-	// The entry type IS the channel here — every value in the messaging set maps
+	// The entry type IS the channel here, every value in the messaging set maps
 	// 1:1 onto a MessageChannel. It was hardcoded to "whatsapp", which labelled
 	// every Instagram close as a WhatsApp event on the timeline.
 	channel := entryType
@@ -319,7 +319,7 @@ func (s *ConversationStatusService) GetStatusCounts(workspaceID, campaignID, ent
 
 	// An empty entryType means "every channel". The counts are what the inbox
 	// header shows above the list, so a channel missing from here reads as "there
-	// is no work on this channel" while its conversations sit in the list below —
+	// is no work on this channel" while its conversations sit in the list below,
 	// which is exactly what happened to Instagram.
 	includeWhatsApp := entryType == "" || entryType == string(shared.EntryTypeWhatsApp)
 

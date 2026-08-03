@@ -17,7 +17,7 @@ const (
 // Export was WhatsApp-only and structurally campaign-keyed: it required a
 // CampaignID, which channels without campaigns simply do not have, and rejected
 // every other entry type outright. This type is what lets a channel contribute
-// rows without inventing a campaign — the container is the account, and the
+// rows without inventing a campaign, the container is the account, and the
 // contact is whatever identity that channel actually has.
 type ChannelEntry struct {
 	EntryID string

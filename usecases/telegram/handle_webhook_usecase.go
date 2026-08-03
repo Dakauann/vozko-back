@@ -24,7 +24,7 @@ import (
 // profileTTL is how long a cached contact profile is considered fresh.
 //
 // Telegram puts first_name/username/language_code straight in every update, so
-// the only thing enrichment adds is the avatar — which makes a long TTL correct
+// the only thing enrichment adds is the avatar, which makes a long TTL correct
 // rather than merely cheap.
 const profileTTL = 7 * 24 * time.Hour
 
@@ -42,8 +42,8 @@ type AssignmentService interface {
 }
 
 // AIReplier lets an AI agent attend this channel. A nil message with a nil error
-// means "deliberately not answered" — automation off, loop suspected, empty
-// body — which is a normal outcome, not a failure.
+// means "deliberately not answered", automation off, loop suspected, empty
+// body, which is a normal outcome, not a failure.
 type AIReplier interface {
 	Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error)
 }
@@ -135,7 +135,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 // tenant the ingest handler resolved it to.
 //
 // The account id travels alongside the payload because the update itself carries
-// no bot identity — it is resolved from the URL at ingest and must not be
+// no bot identity, it is resolved from the URL at ingest and must not be
 // re-derived later.
 type QueuedUpdate struct {
 	AccountID string          `json:"account_id"`
@@ -279,7 +279,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 	}
 
 	// A /start payload is the channel's only attribution mechanism, so it is
-	// bound before the message is recorded — a workflow triggered by this very
+	// bound before the message is recorded, a workflow triggered by this very
 	// message can then already see it.
 	uc.bindDeepLink(ctx, account, conv, ev)
 
@@ -501,7 +501,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	// Both are needed and they are not interchangeable. Routing keys on the
 	// payload, because a label is a display string an author may reword at any
 	// time. But the text is what an operator reads in the transcript and what an
-	// AI agent is handed as the customer's words — and there a raw id like
+	// AI agent is handed as the customer's words, and there a raw id like
 	// "support" is at best unreadable and at worst actively misleading: an agent
 	// whose tool description mentions "Suporte" will match it and act on it.
 	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
@@ -663,8 +663,8 @@ func (uc *HandleWebhookUseCase) handleBusinessConnection(ctx context.Context, ac
 
 // fireWorkflowTriggers starts or advances workflows for this conversation.
 //
-// Gating matches the AI agent exactly — the account's workflow switch, overridden
-// per conversation by the automation toggle — so pausing automation silences
+// Gating matches the AI agent exactly, the account's workflow switch, overridden
+// per conversation by the automation toggle, so pausing automation silences
 // BOTH, and an operator who took over is not interrupted by a workflow step.
 // fireWorkflowTriggers evaluates workflow triggers for one inbound event.
 //
@@ -721,7 +721,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 // windowed count is wrong in a way that only shows up deep in a conversation:
 // once the bot has answered with several segments, the most recent rows are
 // mostly outbound, exactly one of them is inbound, and the check reports a
-// "first message" on the forty-fifth — starting a whole second workflow run.
+// "first message" on the forty-fifth, starting a whole second workflow run.
 func (uc *HandleWebhookUseCase) isFirstInboundMessage(conv *tgdomain.Conversation) bool {
 	if uc.messages == nil {
 		return false
@@ -738,7 +738,7 @@ func (uc *HandleWebhookUseCase) isFirstInboundMessage(conv *tgdomain.Conversatio
 }
 
 // maybeReplyWithAgent hands the message to the channel-agnostic AI service,
-// which owns every decision — automation gating, loop protection, the window —
+// which owns every decision, automation gating, loop protection, the window,
 // so this stays a hand-off rather than a second place where "should the bot
 // answer?" is implemented.
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
@@ -1010,8 +1010,8 @@ func (uc *HandleWebhookUseCase) storeAttachments(
 
 // enrichContact refreshes a stale profile.
 //
-// Only the avatar actually needs fetching — Telegram already put the name,
-// username and locale in the update — so this is deliberately rare.
+// Only the avatar actually needs fetching, Telegram already put the name,
+// username and locale in the update, so this is deliberately rare.
 func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, account *tgdomain.Account, contact *tgdomain.Contact) {
 	if uc.api == nil || !contact.ProfileIsStale(time.Now().UTC(), profileTTL) {
 		return
@@ -1109,7 +1109,7 @@ func inboundMetadata(ev *tgdomain.Event) json.RawMessage {
 func placeholderFor(ev *tgdomain.Event) string {
 	for _, att := range ev.Attachments {
 		if att.TooLarge {
-			return fmt.Sprintf("[file too large to download — %s, open in Telegram]", humanSize(att.Size))
+			return fmt.Sprintf("[file too large to download, %s, open in Telegram]", humanSize(att.Size))
 		}
 		if att.Emoji != "" {
 			return att.Emoji

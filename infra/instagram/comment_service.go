@@ -98,7 +98,7 @@ type commentListResponse struct {
 // ListComments returns top-level comments with their replies expanded.
 //
 // The edge returns only top-level comments unless `replies` is field-expanded,
-// is reverse-chronological, and cannot be filtered by timestamp — which is why
+// is reverse-chronological, and cannot be filtered by timestamp, which is why
 // incremental sync comes from webhooks rather than polling.
 func (s *commentService) ListComments(ctx context.Context, token, igMediaID string, limit int, after string) (*igdomain.Page[*igdomain.RemoteComment], error) {
 	if limit <= 0 || limit > maxCommentsPerPage {

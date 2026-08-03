@@ -36,7 +36,7 @@ func (f fakeInteractiveAdapter) InteractiveLimits() channel.InteractiveLimits {
 
 // Channel adapters register one at a time during container startup, and several
 // consumers are constructed in between. A consumer handed a snapshot sees only
-// the channels registered so far — and a missing adapter is indistinguishable
+// the channels registered so far, and a missing adapter is indistinguishable
 // from "this channel cannot send", so every workflow send node silently skipped
 // on Instagram and Telegram while the run reported itself completed.
 func TestLiveRegistrySeesAdaptersRegisteredAfterItWasHandedOut(t *testing.T) {
@@ -74,7 +74,7 @@ func TestLiveRegistryResolvesTheAdapterItself(t *testing.T) {
 	if err != nil {
 		t.Fatalf("For: %v", err)
 	}
-	// The optional capability must survive the indirection — it is discovered by
+	// The optional capability must survive the indirection, it is discovered by
 	// type assertion, so a wrapper that hid it would disable interactive prompts
 	// on every channel at once.
 	if _, ok := adapter.(InteractiveAdapter); !ok {

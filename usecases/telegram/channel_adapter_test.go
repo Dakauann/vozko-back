@@ -99,7 +99,7 @@ func TestWindowStateBotModeHasNoClock(t *testing.T) {
 	}
 	// A nil expiry is what tells the UI "this is not a clock".
 	if expires != nil {
-		t.Errorf("expiry = %v, want nil — there is no moment at which bot mode reopens", expires)
+		t.Errorf("expiry = %v, want nil, there is no moment at which bot mode reopens", expires)
 	}
 }
 
@@ -213,8 +213,8 @@ func TestSendTextEscapesHTML(t *testing.T) {
 	}
 }
 
-// The provider id is known synchronously — Telegram answers a send with the full
-// Message — so there is no echo webhook to reconcile against. It must pair the
+// The provider id is known synchronously, Telegram answers a send with the full
+// Message, so there is no echo webhook to reconcile against. It must pair the
 // chat id with the message id, because message_id is unique only inside a chat.
 func TestSendTextReturnsCompositeProviderID(t *testing.T) {
 	conv := conversationFor(5041234567)

@@ -64,7 +64,7 @@ func Active() Brand {
 	}
 	// Not loaded yet: this is either pre-boot or a unit test. Try the environment;
 	// if it is fully set, cache and use it. Otherwise return a zero brand rather
-	// than panic — MustLoad at boot is the real fail-fast guardrail, so a running
+	// than panic, MustLoad at boot is the real fail-fast guardrail, so a running
 	// production process (where MustLoad has succeeded) never reaches this branch.
 	if b, err := fromEnv(); err == nil {
 		mu.Lock()

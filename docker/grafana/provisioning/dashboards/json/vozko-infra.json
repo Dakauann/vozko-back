@@ -143,7 +143,7 @@
     {
       "title": "Total Finished Calls",
       "type": "stat",
-      "description": "Cumulative finished calls since process start (app_calls_finished_total). Per-process counter — it resets to 0 on restart; the sparkline shows accumulation.",
+      "description": "Cumulative finished calls since process start (app_calls_finished_total). Per-process counter, it resets to 0 on restart; the sparkline shows accumulation.",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -485,7 +485,7 @@
     {
       "title": "Loop Guard Checks / Blocks",
       "type": "timeseries",
-      "description": "Conversation loop-guard activity per second. 'checks' is evaluation throughput; 'blocked' (filled red) is AI responses suppressed as loops — a rising blocked rate means the guard is catching repetition.",
+      "description": "Conversation loop-guard activity per second. 'checks' is evaluation throughput; 'blocked' (filled red) is AI responses suppressed as loops, a rising blocked rate means the guard is catching repetition.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -708,7 +708,7 @@
     {
       "title": "HTTP Slow Endpoints (p99 > 1s)",
       "type": "timeseries",
-      "description": "99th-percentile duration, filtered to only series exceeding 1s (the query drops anything faster). Points appear only when an endpoint is genuinely slow — empty is healthy.",
+      "description": "99th-percentile duration, filtered to only series exceeding 1s (the query drops anything faster). Points appear only when an endpoint is genuinely slow, empty is healthy.",
       "gridPos": {
         "h": 8,
         "w": 12,

@@ -11,7 +11,7 @@ import (
 //
 // Previously the taxonomy and the quality weights were restated in three
 // places (the domain enums, the conversation_analysis tool schema, and two
-// separate prompt strings) and had already diverged — e.g. one prompt scored
+// separate prompt strings) and had already diverged, e.g. one prompt scored
 // quality on 35/25/25/15 weights while the tool schema and the other prompt
 // used 40/30/20/10. Both the tool schema and the prompt builders now derive
 // their values and scoring from the functions here, so they cannot drift.
@@ -23,7 +23,7 @@ import (
 // for any niche (sales, scheduling/dental, support, collections, …). The
 // objective itself is supplied to the model through the agent instructions and
 // campaign context in the prompt. Both the conversation_analysis tool schema
-// and the analysis prompts render from here — the criteria are defined once.
+// and the analysis prompts render from here, the criteria are defined once.
 
 type ClassificationOption struct {
 	Value       string
@@ -63,9 +63,9 @@ func ClassificationFields() []ClassificationField {
 			Title: "Interesse",
 			Intro: "Nível de interesse do cliente NO OBJETIVO da conversa (baseado em AÇÕES concretas, não em mera educação):",
 			Options: []ClassificationOption{
-				{string(InterestInterested), "demonstra interesse claro COM AÇÕES relevantes ao objetivo — faz perguntas, pede detalhes/proposta/agendamento, fornece informações voluntariamente, confirma necessidade/fit, ou aceita um próximo passo coerente com o objetivo"},
+				{string(InterestInterested), "demonstra interesse claro COM AÇÕES relevantes ao objetivo, faz perguntas, pede detalhes/proposta/agendamento, fornece informações voluntariamente, confirma necessidade/fit, ou aceita um próximo passo coerente com o objetivo"},
 				{string(InterestNotInterested), "recusa explicitamente, ignora repetidamente, pede para parar, ou demonstra desinteresse inequívoco no objetivo"},
-				{string(InterestUndecided), "não se posicionou — respostas vagas, monossilábicas, apenas educado sem compromisso, ou exploratório sem intenção clara"},
+				{string(InterestUndecided), "não se posicionou, respostas vagas, monossilábicas, apenas educado sem compromisso, ou exploratório sem intenção clara"},
 			},
 		},
 		{
@@ -73,11 +73,11 @@ func ClassificationFields() []ClassificationField {
 			Title: "Disposição",
 			Intro: "Resultado ATUAL da interação em relação ao OBJETIVO da campanha (seja rigoroso):",
 			Options: []ClassificationOption{
-				{string(DispositionSale), "o EVENTO DE CONVERSÃO do objetivo foi CONCLUÍDO e confirmado (ex.: venda fechada/paga, agendamento ou consulta confirmada, caso resolvido como ganho). Intenção (\"quero\", \"pode marcar\") NÃO basta — exige confirmação final"},
+				{string(DispositionSale), "o EVENTO DE CONVERSÃO do objetivo foi CONCLUÍDO e confirmado (ex.: venda fechada/paga, agendamento ou consulta confirmada, caso resolvido como ganho). Intenção (\"quero\", \"pode marcar\") NÃO basta, exige confirmação final"},
 				{string(DispositionFillingInfo), "cliente fornecendo ATIVAMENTE os dados necessários para concluir a conversão (cadastro, pagamento, data/horário de agendamento, documentos). Já decidiu e está no processo"},
 				{string(DispositionCallback), "cliente solicitou retorno em um momento específico (data/hora mencionada)"},
 				{string(DispositionDeclined), "recusa EXPLÍCITA e definitiva do objetivo"},
-				{string(DispositionPending), "TODOS os demais casos em andamento — fazendo perguntas, negociando, ou apenas aceitou receber mais informações, sem decisão final"},
+				{string(DispositionPending), "TODOS os demais casos em andamento, fazendo perguntas, negociando, ou apenas aceitou receber mais informações, sem decisão final"},
 				{string(DispositionNoAnswer), "apenas para chamadas de voz: não atendida, ou o usuário não falou nada"},
 				{string(DispositionVoicemail), "apenas para chamadas de voz: caiu na caixa postal"},
 			},
@@ -97,9 +97,9 @@ func ClassificationFields() []ClassificationField {
 			Title: "Qualificação",
 			Intro: "Probabilidade de o cliente ALCANÇAR O OBJETIVO (baseado em evidência, fit e próximo passo):",
 			Options: []ClassificationOption{
-				{string(QualificationHotLead), "1 sinal decisivo (pede o próximo passo concreto do objetivo — proposta/preço/condições/agendamento; quer avançar/fechar/marcar; fornece dados concretos para viabilizar; confirma necessidade atual + aceite imediato) OU 2+ sinais fortes (fit claro com o objetivo da campanha, contexto real do caso, respostas substantivas, aceite de continuidade, perguntas relevantes)"},
+				{string(QualificationHotLead), "1 sinal decisivo (pede o próximo passo concreto do objetivo, proposta/preço/condições/agendamento; quer avançar/fechar/marcar; fornece dados concretos para viabilizar; confirma necessidade atual + aceite imediato) OU 2+ sinais fortes (fit claro com o objetivo da campanha, contexto real do caso, respostas substantivas, aceite de continuidade, perguntas relevantes)"},
 				{string(QualificationWarmLead), "há potencial/interesse real, mas ainda sem urgência, compromisso claro ou prova suficiente de avanço"},
-				{string(QualificationColdLead), "baixo potencial no estado atual — receptividade passiva, monossilábico, sem fit/necessidade clara, ou apenas educação sem avanço"},
+				{string(QualificationColdLead), "baixo potencial no estado atual, receptividade passiva, monossilábico, sem fit/necessidade clara, ou apenas educação sem avanço"},
 			},
 		},
 		{
@@ -107,7 +107,7 @@ func ClassificationFields() []ClassificationField {
 			Title: "Próxima Ação",
 			Intro: "Próxima ação recomendada para avançar ao objetivo:",
 			Options: []ClassificationOption{
-				{string(NextActionContinue), "conversa progredindo bem — continuar (coletando informações, negociando, construindo rapport)"},
+				{string(NextActionContinue), "conversa progredindo bem, continuar (coletando informações, negociando, construindo rapport)"},
 				{string(NextActionScheduleCallback), "cliente pediu ou precisa de retorno em outro momento"},
 				{string(NextActionSendWhatsApp), "acompanhamento futuro via WhatsApp (enviar material, proposta, lembrete)"},
 				{string(NextActionClose), "APENAS se o objetivo foi concluído OU o cliente recusou definitivamente"},
@@ -122,7 +122,7 @@ func ClassificationFields() []ClassificationField {
 func ClassificationRubricPrompt() string {
 	var b strings.Builder
 	for i, f := range ClassificationFields() {
-		fmt.Fprintf(&b, "%d. %s — %s\n", i+1, f.Key, f.Intro)
+		fmt.Fprintf(&b, "%d. %s, %s\n", i+1, f.Key, f.Intro)
 		for _, o := range f.Options {
 			fmt.Fprintf(&b, "   - \"%s\": %s\n", o.Value, o.Description)
 		}
@@ -178,7 +178,7 @@ func QualityLevelValues() []string {
 	}
 }
 
-// Dimension keys — referenced by the tool schema, the parser and the assessment.
+// Dimension keys, referenced by the tool schema, the parser and the assessment.
 const (
 	QualityKeyGoalProgress       = "goal_progress"
 	QualityKeyCustomerEngagement = "customer_engagement"
@@ -205,12 +205,12 @@ func QualityDimensions() []QualityDimension {
 		{
 			Key: QualityKeyCustomerEngagement, Weight: 0.30,
 			Label:       "Engajamento do cliente",
-			Description: "O cliente interagiu de forma substantiva — fez perguntas, deu respostas detalhadas, demonstrou interesse real (não apenas educação)?",
+			Description: "O cliente interagiu de forma substantiva, fez perguntas, deu respostas detalhadas, demonstrou interesse real (não apenas educação)?",
 		},
 		{
 			Key: QualityKeyAgentConduct, Weight: 0.20,
 			Label:       "Condução do atendente",
-			Description: "O atendente conduziu bem — fez perguntas de qualificação estratégicas, explorou oportunidades, contornou objeções e foi específico (não genérico)?",
+			Description: "O atendente conduziu bem, fez perguntas de qualificação estratégicas, explorou oportunidades, contornou objeções e foi específico (não genérico)?",
 		},
 		{
 			Key: QualityKeyProfessionalism, Weight: 0.10,
@@ -268,10 +268,10 @@ func (a QualityAssessment) Score() int {
 // (instead of divergent inline copies).
 func QualityRubricPrompt() string {
 	var b strings.Builder
-	b.WriteString("QUALIDADE DO ATENDIMENTO — avalie cada dimensão abaixo com um nível ordinal e registre-o na ferramenta conversation_analysis. A nota final de 0 a 100 é CALCULADA AUTOMATICAMENTE a partir desses níveis e dos pesos — NÃO informe um número diretamente.\n\n")
+	b.WriteString("QUALIDADE DO ATENDIMENTO, avalie cada dimensão abaixo com um nível ordinal e registre-o na ferramenta conversation_analysis. A nota final de 0 a 100 é CALCULADA AUTOMATICAMENTE a partir desses níveis e dos pesos, NÃO informe um número diretamente.\n\n")
 	b.WriteString("Níveis: \"none\" (ausente) · \"low\" (fraco) · \"medium\" (razoável) · \"high\" (forte/excelente)\n\n")
 	for _, d := range QualityDimensions() {
-		fmt.Fprintf(&b, "- %s (%s — peso %.0f%%): %s\n", d.Key, d.Label, d.Weight*100, d.Description)
+		fmt.Fprintf(&b, "- %s (%s, peso %.0f%%): %s\n", d.Key, d.Label, d.Weight*100, d.Description)
 	}
 	b.WriteString("\nDiretrizes de calibração:\n")
 	b.WriteString("- A avaliação é do ATENDENTE, não do cliente: um cliente difícil bem conduzido pode ter agent_conduct \"high\".\n")

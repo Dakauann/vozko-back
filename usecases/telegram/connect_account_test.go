@@ -160,7 +160,7 @@ func TestConnectFailsWhenTelegramCannotReachUs(t *testing.T) {
 }
 
 // A mismatch between the URL Telegram holds and the one we registered means a
-// misconfigured base URL — which otherwise produces no error, only silence.
+// misconfigured base URL, which otherwise produces no error, only silence.
 func TestConnectDetectsWebhookURLMismatch(t *testing.T) {
 	api := &fakeBotAPI{
 		GetWebhookInfoFn: func(context.Context, string) (*tgdomain.WebhookInfo, error) {

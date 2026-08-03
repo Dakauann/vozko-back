@@ -105,7 +105,7 @@
     {
       "title": "Open File Descriptors",
       "type": "stat",
-      "description": "Open FDs (process_open_fds) — sockets + files. Climbing toward process_max_fds risks 'too many open files'.",
+      "description": "Open FDs (process_open_fds), sockets + files. Climbing toward process_max_fds risks 'too many open files'.",
       "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
       "targets": [
         {
@@ -179,7 +179,7 @@
       }
     },
     {
-      "title": "Process Memory — RSS vs Virtual",
+      "title": "Process Memory, RSS vs Virtual",
       "type": "timeseries",
       "description": "The headline RAM chart. RSS (filled) is the real physical memory held; Virtual is the address space reserved (normally much larger, not all resident). Watch RSS for capacity.",
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
@@ -323,7 +323,7 @@
     {
       "title": "Heap: live allocation vs GC target (the GC sawtooth)",
       "type": "timeseries",
-      "description": "Live heap (go_memstats_heap_alloc_bytes) climbs as you allocate; when it reaches the GC target (go_memstats_next_gc_bytes, dashed) a garbage collection fires and live heap drops — the classic sawtooth. A target that keeps ratcheting up indicates growing retained memory.",
+      "description": "Live heap (go_memstats_heap_alloc_bytes) climbs as you allocate; when it reaches the GC target (go_memstats_next_gc_bytes, dashed) a garbage collection fires and live heap drops, the classic sawtooth. A target that keeps ratcheting up indicates growing retained memory.",
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 14 },
       "targets": [
         {

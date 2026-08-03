@@ -258,12 +258,12 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 	}
 	cachedTemplate, err := c.TemplateRepo.FindByID(initialCampaign.TemplateID)
 	if err != nil || cachedTemplate == nil {
-		fmt.Printf("whatsapp campaign consumer: template %s not found for campaign %s — stopping campaign\n", initialCampaign.TemplateID, campaignID)
+		fmt.Printf("whatsapp campaign consumer: template %s not found for campaign %s, stopping campaign\n", initialCampaign.TemplateID, campaignID)
 		_, _ = c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusStopped, wc.CampaignStatusRunning)
 		return fmt.Errorf("whatsapp campaign consumer: template %s not found for campaign %s", initialCampaign.TemplateID, campaignID)
 	}
 	if !cachedTemplate.IsReadyToSend() {
-		fmt.Printf("whatsapp campaign consumer: template %s is not ready to send (status: %s) for campaign %s — stopping campaign\n", cachedTemplate.Name, cachedTemplate.Status, campaignID)
+		fmt.Printf("whatsapp campaign consumer: template %s is not ready to send (status: %s) for campaign %s, stopping campaign\n", cachedTemplate.Name, cachedTemplate.Status, campaignID)
 		_, _ = c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusStopped, wc.CampaignStatusRunning)
 		return fmt.Errorf("whatsapp campaign consumer: template %s not ready for campaign %s", cachedTemplate.Name, campaignID)
 	}
@@ -326,7 +326,7 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 		templateCostMicros, err := c.ConsumeWhatsappTemplate.GetTemplateCostMicros(campaign.WorkspaceID, templateCategory)
 		if err != nil {
 			if errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(err, workspace_plan.ErrSubscriptionNotActive) {
-				fmt.Printf("whatsapp campaign consumer: no active subscription for workspace %s (campaign %s) — failing entry\n", campaign.WorkspaceID, payload.CampaignID)
+				fmt.Printf("whatsapp campaign consumer: no active subscription for workspace %s (campaign %s), failing entry\n", campaign.WorkspaceID, payload.CampaignID)
 				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
 				_ = ack.Ack()
 				c.completeCampaignByCounter(payload.CampaignID, topic)
@@ -338,21 +338,21 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 		}
 
 		if c.InflightReserver == nil || c.CachedBalanceChecker == nil {
-			fmt.Printf("CRITICAL: whatsapp campaign consumer — inflightReserver or cachedBalanceChecker is nil, blocking send for workspace %s (fail-closed)\n", campaign.WorkspaceID)
+			fmt.Printf("CRITICAL: whatsapp campaign consumer, inflightReserver or cachedBalanceChecker is nil, blocking send for workspace %s (fail-closed)\n", campaign.WorkspaceID)
 			_ = ack.Nack(true)
 			return
 		}
 
 		budget, balErr := c.CachedBalanceChecker.GetBalance(campaign.WorkspaceID)
 		if balErr != nil {
-			fmt.Printf("whatsapp campaign consumer: balance read error for workspace %s: %v — blocking send (fail-closed)\n", campaign.WorkspaceID, balErr)
+			fmt.Printf("whatsapp campaign consumer: balance read error for workspace %s: %v, blocking send (fail-closed)\n", campaign.WorkspaceID, balErr)
 			_ = ack.Nack(true)
 			return
 		}
 
 		reserved, reserveErr := c.InflightReserver.Reserve(campaign.WorkspaceID, templateCostMicros, budget)
 		if reserveErr != nil {
-			fmt.Printf("whatsapp campaign consumer: reserve error for workspace %s: %v — blocking send (fail-closed)\n", campaign.WorkspaceID, reserveErr)
+			fmt.Printf("whatsapp campaign consumer: reserve error for workspace %s: %v, blocking send (fail-closed)\n", campaign.WorkspaceID, reserveErr)
 			_ = ack.Nack(true)
 			return
 		}
@@ -375,19 +375,19 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 				return
 			}
 			if errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotActive) {
-				fmt.Printf("whatsapp campaign consumer: subscription expired during debit for workspace %s (campaign %s) — failing entry\n", campaign.WorkspaceID, payload.CampaignID)
+				fmt.Printf("whatsapp campaign consumer: subscription expired during debit for workspace %s (campaign %s), failing entry\n", campaign.WorkspaceID, payload.CampaignID)
 				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
 				_ = ack.Ack()
 				c.completeCampaignByCounter(payload.CampaignID, topic)
 				return
 			}
 
-			fmt.Printf("whatsapp campaign consumer: debit failed for workspace %s: %v — requeuing message\n", campaign.WorkspaceID, consumeErr)
+			fmt.Printf("whatsapp campaign consumer: debit failed for workspace %s: %v, requeuing message\n", campaign.WorkspaceID, consumeErr)
 			_ = ack.Nack(true)
 			return
 		}
 
-		fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s) — now sending\n", campaign.WorkspaceID, payload.CampaignID, templateCategory)
+		fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s), now sending\n", campaign.WorkspaceID, payload.CampaignID, templateCategory)
 
 		sendResult := c.sendTemplateMessage(campaign, currentTemplate, payload.EntryID, payload.PhoneNumber)
 
@@ -395,7 +395,7 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 			if refundErr := c.ConsumeWhatsappTemplate.Refund(campaign.WorkspaceID, payload.CampaignID, templateCategory); refundErr != nil {
 				fmt.Printf("whatsapp campaign consumer: WARNING: failed to refund balance for workspace %s after send failure: %v\n", campaign.WorkspaceID, refundErr)
 			} else {
-				fmt.Printf("whatsapp campaign consumer: refunded balance for workspace %s (campaign %s) — send failed, message not delivered\n", campaign.WorkspaceID, payload.CampaignID)
+				fmt.Printf("whatsapp campaign consumer: refunded balance for workspace %s (campaign %s), send failed, message not delivered\n", campaign.WorkspaceID, payload.CampaignID)
 			}
 		}
 
@@ -447,7 +447,7 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 
 	// Fetch the campaign entry once and reuse it for the spam check, variables,
 	// template-info and send record below. Previously each of those steps
-	// re-queried the same fat row (jsonb metadata + variables array) — up to 4×
+	// re-queried the same fat row (jsonb metadata + variables array), up to 4×
 	// per message on the hottest path. The row is read at the start and the only
 	// later read (recordCampaignSend → LeadID) is of an immutable field, so a
 	// single fetch is safe.
@@ -680,7 +680,7 @@ func (c *messageConsumerUseCase) buildTemplateInfo(tmpl *template.Template, para
 }
 
 // storeTemplateInfoOnEntry renders the sent template and stores it on the entry
-// metadata (template_info) — the source the CRM entry panel reads.
+// metadata (template_info), the source the CRM entry panel reads.
 func (c *messageConsumerUseCase) storeTemplateInfoOnEntry(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string) {
 	if entry == nil || tmpl == nil {
 		return

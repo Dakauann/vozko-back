@@ -42,7 +42,7 @@ func (uc *replicateTemplateUseCase) Execute(input template.ReplicateTemplateInpu
 	}
 
 	if source.WABAId == targetWABAId {
-		return nil, errors.New("target phone belongs to the same WABA as the source template — nothing to replicate")
+		return nil, errors.New("target phone belongs to the same WABA as the source template, nothing to replicate")
 	}
 
 	existing, _ := uc.templateRepo.FindByNameAndWABA(source.Name, source.Language, targetWABAId)

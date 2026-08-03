@@ -26,7 +26,7 @@ func NewRedisProvider(addr, password string) *RedisProvider {
 	ctx := context.Background()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("WARNING: Redis ping failed (%s): %v — rate limiting will fail-open", addr, err)
+		log.Printf("WARNING: Redis ping failed (%s): %v, rate limiting will fail-open", addr, err)
 	} else {
 		log.Printf("[Redis] Connected to %s", addr)
 	}

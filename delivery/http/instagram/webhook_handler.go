@@ -27,7 +27,7 @@ type WebhookHandler struct {
 	publish webhook.PublishWebhookUseCase
 	// appSecrets accepts more than one secret. The Instagram API setup carries
 	// its own app secret, distinct from the WhatsApp/Facebook one, and the docs do
-	// not state unambiguously which signs Instagram webhooks — so both are
+	// not state unambiguously which signs Instagram webhooks, so both are
 	// registered and either verifies.
 	appSecrets  []string
 	verifyToken string
@@ -62,7 +62,7 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 // verify answers the subscription handshake.
 //
 // The query parameter names contain DOTS, not underscores, and the challenge must
-// be echoed back verbatim as the raw body — parsing it to an int and reprinting it
+// be echoed back verbatim as the raw body, parsing it to an int and reprinting it
 // risks changing the bytes.
 func (h *WebhookHandler) verify(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -172,7 +172,7 @@ func (h *WebhookHandler) verifySignature(body []byte, header string) bool {
 // fieldOf determines which topic an entry belongs to.
 //
 // An entry can carry four different shapes, and the Instagram Login flavour puts
-// field/value directly on the entry with NO changes array — the shape most
+// field/value directly on the entry with NO changes array, the shape most
 // implementations miss.
 func fieldOf(env *igdomain.EntryEnvelope) string {
 	e := env.Entry

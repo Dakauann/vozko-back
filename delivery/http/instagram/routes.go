@@ -28,7 +28,7 @@ func RegisterProtectedRoutes(
 	res := workspace_domain.ResourceInstagramAccounts
 
 	// Onboarding sits under /oauth/instagram/..., matching both the existing
-	// /oauth/meta/embedded convention and — critically — the redirect URI
+	// /oauth/meta/embedded convention and, critically, the redirect URI
 	// registered in the Meta App Dashboard. Meta validates redirect_uri by exact
 	// string match, so this path is not free to change.
 	protected.HandleFunc(igdomain.OAuthStartPath,
@@ -82,7 +82,7 @@ func RegisterPublicRoutes(public *mux.Router, h *Handler, wh *WebhookHandler) {
 		//
 		// Meta matches redirect_uri by exact string, and its own docs warn that the
 		// App Dashboard may silently append a trailing slash to a saved URI. If that
-		// happens, the configured value becomes ".../callback/" — which gorilla/mux
+		// happens, the configured value becomes ".../callback/", which gorilla/mux
 		// would 404 on, turning a one-character dashboard quirk into a dead
 		// onboarding flow. Accepting both spellings removes that failure mode
 		// entirely, whichever form ends up registered.

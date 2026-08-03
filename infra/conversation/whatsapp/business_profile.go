@@ -12,7 +12,7 @@ import (
 )
 
 // businessProfileEndpoint builds the whatsapp_business_profile endpoint. 360dialog scopes
-// it by the channel API key ("{base}/whatsapp_business_profile" — verified live against
+// it by the channel API key ("{base}/whatsapp_business_profile", verified live against
 // waba-v2.360dialog.io, returning {"data":[{...}]}); Meta scopes it by phone number id.
 func (c *Client) businessProfileEndpoint() string {
 	if c.omitPhoneNumberInPath {

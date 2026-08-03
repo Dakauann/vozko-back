@@ -6,7 +6,7 @@ import (
 	"vozko/domain/shared"
 )
 
-// The workspace-wide read paths — the CRM inbox list and the CRM board — both
+// The workspace-wide read paths, the CRM inbox list and the CRM board, both
 // answer the same question: "which conversations exist in this workspace?"
 // Each channel stores its conversations in its own table, so the answer is a
 // UNION whose branches differ only in table names and column expressions.
@@ -17,8 +17,8 @@ import (
 // were missing from the list on reload, and never reached the board at all.
 //
 // A channel is declared ONCE below. Everything that reads conversations
-// workspace-wide — the inbox list, the board, and the stage/label/filter
-// machinery layered on top of them — picks it up automatically, because those
+// workspace-wide, the inbox list, the board, and the stage/label/filter
+// machinery layered on top of them, picks it up automatically, because those
 // features key on (entry_id, entry_type) and never on a specific table.
 
 // entrySource declares how one channel's conversations are selected.
@@ -116,7 +116,7 @@ var entrySources = []entrySource{
 	{
 		// The Instagram account plays the container role whatsapp_campaigns plays
 		// for WhatsApp: it carries the department and the automation config. There
-		// is no campaign, and an Instagram contact is not a lead — the contact id
+		// is no campaign, and an Instagram contact is not a lead, the contact id
 		// rides the lead slot and the usecase layer resolves it to a name.
 		EntryType:     shared.EntryTypeInstagram,
 		From:          "instagram_conversations igc",
@@ -139,7 +139,7 @@ var entrySources = []entrySource{
 	{
 		// Telegram mirrors Instagram's container shape: the bot account carries
 		// the department and the automation config, there is no campaign, and a
-		// Telegram contact is not a lead — the contact id rides the lead slot and
+		// Telegram contact is not a lead, the contact id rides the lead slot and
 		// the usecase layer resolves it to a name.
 		EntryType:     shared.EntryTypeTelegram,
 		From:          "telegram_conversations tgc",

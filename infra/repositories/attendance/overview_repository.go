@@ -323,7 +323,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 	}
 
 	// appendActivity selects conversations created BEFORE the window that were
-	// messaged inside it — work an agent did on an older conversation, which
+	// messaged inside it, work an agent did on an older conversation, which
 	// would otherwise vanish from the period's numbers.
 	appendActivity := func(src channelSource, fcd string, fca []interface{}) {
 		if from == nil && to == nil {
@@ -519,7 +519,7 @@ func overviewByDepartmentTX(tx *gorm.DB, msgTmp string) ([]attendance.Department
 }
 
 func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendance.OverviewFilter) ([]attendance.MemberRow, error) {
-	// Engaged assigned entries only — shells without messages are not agent workload.
+	// Engaged assigned entries only, shells without messages are not agent workload.
 	sql := `
 		SELECT
 			m.assigned_user_id AS actor_id,

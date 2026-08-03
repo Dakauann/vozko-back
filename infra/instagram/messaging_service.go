@@ -16,7 +16,7 @@ import (
 // Send API quotas, per Instagram professional account.
 //
 // The media bucket is 10x tighter than text, so media sends are throttled
-// separately — otherwise a burst of images starves text replies.
+// separately, otherwise a burst of images starves text replies.
 const (
 	sendTextPerSecond  = 100
 	sendMediaPerSecond = 10
@@ -74,8 +74,8 @@ type sendResponse struct {
 
 // textBody is a plain text or inline-reply send.
 //
-// ReplyTo is a TOP-LEVEL sibling of Recipient and Message — not nested inside
-// message — and its inner key is "mid".
+// ReplyTo is a TOP-LEVEL sibling of Recipient and Message, not nested inside
+// message, and its inner key is "mid".
 type textBody struct {
 	Recipient recipient   `json:"recipient"`
 	Message   textMessage `json:"message"`
@@ -277,8 +277,8 @@ func (s *messagingService) senderAction(ctx context.Context, igUserID, token, re
 
 // SendPrivateReply DMs the author of a public comment.
 //
-// The path carries OUR business account id — not the comment id and not the
-// recipient — and the comment is addressed via recipient.comment_id. Getting
+// The path carries OUR business account id, not the comment id and not the
+// recipient, and the comment is addressed via recipient.comment_id. Getting
 // this wrong is the most common private-reply bug. The single-allowance guard
 // lives in the usecase, which claims it before this is ever called.
 func (s *messagingService) SendPrivateReply(ctx context.Context, igUserID, token, igCommentID, text string) (*igdomain.SendResult, error) {
@@ -408,7 +408,7 @@ func attachmentTypeFor(kind string) (string, error) {
 // log and the label the contact sees are the same string, so a support question
 // about "why does the button say something different" has an answer.
 //
-// Payloads are never truncated — a shortened payload comes back as an id that
+// Payloads are never truncated, a shortened payload comes back as an id that
 // matches no branch. Over-long ones are dropped by the caller, which knows the
 // option well enough to say so.
 func quickRepliesFor(options []igdomain.QuickReplyOption) []quickReply {

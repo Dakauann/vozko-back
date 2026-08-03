@@ -24,7 +24,7 @@ func TestInlineKeyboardPutsOneButtonPerRow(t *testing.T) {
 	}
 	for i, row := range rows {
 		if len(row) != 1 {
-			t.Errorf("row %d has %d buttons, want 1 — a multi-column layout truncates unbounded labels", i, len(row))
+			t.Errorf("row %d has %d buttons, want 1, a multi-column layout truncates unbounded labels", i, len(row))
 		}
 	}
 	if len(dropped) != 0 {
@@ -39,7 +39,7 @@ func TestInlineKeyboardPutsOneButtonPerRow(t *testing.T) {
 
 // callback_data is documented as "1-64 bytes". A truncated payload comes back
 // as an id that matches no branch, which reads as the customer answering
-// something unexpected — so the option is dropped instead.
+// something unexpected, so the option is dropped instead.
 func TestInlineKeyboardDropsAnOptionWhosePayloadOverflows(t *testing.T) {
 	long := strings.Repeat("a", tgdomain.MaxCallbackDataBytes+1)
 	rows, dropped := inlineKeyboardFor(opts("ok", "Certo", long, "Longo"))
@@ -57,7 +57,7 @@ func TestInlineKeyboardDropsAnOptionWhosePayloadOverflows(t *testing.T) {
 
 // Bytes, not characters: an id of accented text overflows sooner than it looks.
 func TestInlineKeyboardMeasuresThePayloadInBytes(t *testing.T) {
-	// 40 characters, 80 bytes — under 64 by rune count, over it by byte count.
+	// 40 characters, 80 bytes, under 64 by rune count, over it by byte count.
 	id := strings.Repeat("ç", 40)
 	rows, dropped := inlineKeyboardFor(opts(id, "Acentuado"))
 

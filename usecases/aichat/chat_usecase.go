@@ -121,7 +121,7 @@ func (s *Service) Precheck(workspaceID, userID, threadID string) (*aichat.Thread
 
 // Stream persists the user turn, replays bounded history to the model, relays
 // every stream event via emit, then persists the assistant turn (even a partial
-// one if the client disconnected — the AI service still bills the partial). The
+// one if the client disconnected, the AI service still bills the partial). The
 // thread passed in must already be authorized + gated via Precheck.
 func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content, model string, emit func(ai.StreamEvent)) error {
 	content = strings.TrimSpace(content)

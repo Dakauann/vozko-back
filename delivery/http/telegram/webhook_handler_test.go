@@ -202,7 +202,7 @@ func TestWebhookAnswers500WhenPublishFails(t *testing.T) {
 }
 
 // A malformed body will never parse, so it is acked to stop Telegram retrying
-// forever — but it must never be published.
+// forever, but it must never be published.
 func TestWebhookAcksUndecodableBody(t *testing.T) {
 	publisher := &stubPublisher{}
 	rec := serve(t, &stubAccounts{account: activeAccount()}, publisher, "acct-1", "s3cr3t-token", "not json")
@@ -223,14 +223,14 @@ func TestWebhookRejectsNonPost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.Handle(rec, req)
 
-	// Unlike Meta, Telegram has no GET handshake — there is nothing to verify.
+	// Unlike Meta, Telegram has no GET handshake, there is nothing to verify.
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rec.Code)
 	}
 }
 
 // The Bot API adds update kinds several times a year. An unrecognised one must
-// still be published — to the account topic — so it is logged rather than lost.
+// still be published, to the account topic, so it is logged rather than lost.
 func TestTopicRouting(t *testing.T) {
 	cases := map[string]struct {
 		body string
@@ -255,7 +255,7 @@ func TestTopicRouting(t *testing.T) {
 				t.Fatalf("status = %d, want 200", rec.Code)
 			}
 			if len(publisher.published) != 1 {
-				t.Fatalf("published %d, want 1 — nothing may be silently dropped", len(publisher.published))
+				t.Fatalf("published %d, want 1, nothing may be silently dropped", len(publisher.published))
 			}
 			if publisher.published[0].Topic != tc.want {
 				t.Errorf("topic = %q, want %q", publisher.published[0].Topic, tc.want)

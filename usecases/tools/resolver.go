@@ -62,7 +62,7 @@ func ResolveTools(
 		def, ok := defIndex[key]
 		if !ok {
 			// Only now try the alias. Rewriting the name FIRST would break a
-			// registry that still registers the old name — the direct hit would
+			// registry that still registers the old name, the direct hit would
 			// be skipped in favour of a lookup that misses, and the agent would
 			// lose the tool. A miss is silent either way, which is what makes
 			// the ordering matter.

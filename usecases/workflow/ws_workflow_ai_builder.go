@@ -58,7 +58,7 @@ const (
 	// builderMaxTokensPerGen is the per-turn output budget. It must be generous:
 	// reasoning models (Gemini 3, etc.) count thinking tokens against this budget,
 	// so a small cap (the old 4096) let thinking consume everything and the model
-	// emitted no tool call — a silent "empty turn". Paired with a reasoning cap
+	// emitted no tool call, a silent "empty turn". Paired with a reasoning cap
 	// below so output always has room.
 	builderMaxTokensPerGen = 24000
 	// builderReasoningMaxTokens caps chain-of-thought per turn so it can't eat the
@@ -97,7 +97,7 @@ type ResourceResolver interface {
 	Search(ctx context.Context, workspaceID, kind, query string, limit int) ([]ResourceMatch, error)
 }
 
-// BuilderAuditRecord is a minimal compliance record of one build session — the
+// BuilderAuditRecord is a minimal compliance record of one build session, the
 // builder produces savable/activatable automations (WhatsApp/SMS/email,
 // department transfers), so this is a requirement, not optional.
 type BuilderAuditRecord struct {
@@ -119,7 +119,7 @@ type BuilderAuditSink interface {
 
 // BalanceGate reports whether a workspace can afford to keep spending. The builder
 // uses it to refuse a build turn before any model call when the balance is
-// exhausted — post-hoc metering can't prevent unmetered spend on its own.
+// exhausted, post-hoc metering can't prevent unmetered spend on its own.
 type BalanceGate interface {
 	HasSufficientBalance(workspaceID string, amountMicros int64) (bool, error)
 }
@@ -139,7 +139,7 @@ type AIBuilderUseCaseDeps struct {
 	// Balance gating (optional). When BalanceGate is set, each build turn is
 	// refused up-front unless the workspace holds at least MinBalanceMicros
 	// (a strictly positive balance by default). Post-hoc metering alone cannot
-	// stop a zero/negative-balance workspace from accruing AI cost — this can.
+	// stop a zero/negative-balance workspace from accruing AI cost, this can.
 	BalanceGate      BalanceGate
 	MinBalanceMicros int64
 
@@ -280,7 +280,7 @@ type builderState struct {
 	exempt     map[string]bool
 	lastReport workflow.LintReport
 
-	actionLog []string // "what I did" (bounded tail) — internal audit, not sent to the model
+	actionLog []string // "what I did" (bounded tail), internal audit, not sent to the model
 	prompts   []string // all user prompts this session (for audit)
 
 	nextID         int
@@ -299,7 +299,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 	}
 
 	if !uc.acquire(workspaceID) {
-		return uc.sendError(conn, &writeMu, "muitas sessões de construção simultâneas neste workspace — tente novamente em instantes")
+		return uc.sendError(conn, &writeMu, "muitas sessões de construção simultâneas neste workspace, tente novamente em instantes")
 	}
 	defer uc.release(workspaceID)
 
@@ -404,7 +404,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 			// The client re-sends its canvas on (re)connect. Adopt it as the working
 			// graph so a session that lost its in-memory state doesn't rebuild from
 			// scratch (which would clobber the canvas on the next edit). Only handled
-			// while idle here — a running build blocks this loop, so there is never a
+			// while idle here, a running build blocks this loop, so there is never a
 			// concurrent writer of st.graph.
 			uc.applyHydrate(st, g)
 			uc.relint(st)
@@ -413,7 +413,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 			// Adopt the canvas the user is looking at RIGHT NOW before building, so
 			// the agent works from their manual edits since connect (moves/config/
 			// added/removed nodes) instead of the last server-side snapshot. Done
-			// here in the main loop — never concurrently with a build — so st.graph
+			// here in the main loop, never concurrently with a build, so st.graph
 			// keeps a single writer. Carried on the prompt (not a separate message)
 			// so it can't be reordered after the build starts.
 			if turn.Graph != nil {
@@ -441,7 +441,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 			outcome := uc.engine.Run(lctx, emit, drv, uc.builderConfig(st), sess, turn.Text)
 			switch outcome.Kind {
 			case agentloop.OutcomeIdle:
-				log.Printf("[wf-ai-builder] s%d IDLE (resposta conversacional, sem ações) — yielding to user, valid=%v", st.sessionID, outcome.Valid)
+				log.Printf("[wf-ai-builder] s%d IDLE (resposta conversacional, sem ações), yielding to user, valid=%v", st.sessionID, outcome.Valid)
 				emit("idle", map[string]bool{"valid": outcome.Valid})
 			default:
 				uc.emitDone(ctx, emit, st, outcome.Valid, outcome.Summary, sess.TokensUsed)
@@ -557,12 +557,12 @@ func (uc *aiBuilderUC) guardBalance(ctx context.Context, emit agentloop.Emit, st
 	ok, err := uc.deps.BalanceGate.HasSufficientBalance(st.workspaceID, minMicros)
 	if err != nil {
 		log.Printf("[wf-ai-builder] s%d balance check failed for workspace %s (fail-closed): %v", st.sessionID, st.workspaceID, err)
-		uc.emitDone(ctx, emit, st, false, "não foi possível verificar o saldo do workspace — tente novamente em instantes", 0)
+		uc.emitDone(ctx, emit, st, false, "não foi possível verificar o saldo do workspace, tente novamente em instantes", 0)
 		return false
 	}
 	if !ok {
 		log.Printf("[wf-ai-builder] s%d refused: insufficient balance for workspace %s", st.sessionID, st.workspaceID)
-		uc.emitDone(ctx, emit, st, false, "saldo insuficiente para usar o construtor de IA — adicione créditos para continuar", 0)
+		uc.emitDone(ctx, emit, st, false, "saldo insuficiente para usar o construtor de IA, adicione créditos para continuar", 0)
 		return false
 	}
 	return true
@@ -586,8 +586,8 @@ func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) 
 }
 
 // ResolveNodeHandles is the single backend authority for a node's output handles
-// and their optional flags: config-dependent (dynamic) handles when applicable —
-// ai_agent tool routes + response, text_match cases — otherwise the node type's
+// and their optional flags: config-dependent (dynamic) handles when applicable,
+// ai_agent tool routes + response, text_match cases, otherwise the node type's
 // static catalog handles. The builder lint, activation, and the resolve-handles
 // API all go through this, so every surface (including the frontend) agrees.
 func ResolveNodeHandles(catalog []workflow.NodeDefinition, n workflow.Node) []workflow.HandleDefinition {
@@ -601,8 +601,8 @@ func ResolveNodeHandles(catalog []workflow.NodeDefinition, n workflow.Node) []wo
 }
 
 // LintWorkflowGraph runs the full builder/activation lint over a graph and returns
-// the structured issues — the SAME rules the activation gate enforces, via the
-// SAME dynamic-handle resolver — so the frontend can surface and highlight
+// the structured issues, the SAME rules the activation gate enforces, via the
+// SAME dynamic-handle resolver, so the frontend can surface and highlight
 // problems (per node/handle) before activating, without re-deriving any rule.
 func LintWorkflowGraph(catalog []workflow.NodeDefinition, w *workflow.Workflow) workflow.LintReport {
 	w.Normalize()
@@ -621,7 +621,7 @@ func (uc *aiBuilderUC) snapshot(emit agentloop.Emit, st *builderState) {
 func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *builderState, valid bool, summary string, tokensUsed int) {
 	log.Printf("[wf-ai-builder] s%d DONE valid=%v blocking=%d tokens=%d reason=%q",
 		st.sessionID, valid, len(st.lastReport.Blocking()), tokensUsed, summary)
-	// Persist the audit trail BEFORE notifying the client it's done — the record
+	// Persist the audit trail BEFORE notifying the client it's done, the record
 	// is the compliance source of truth for what the builder produced.
 	if uc.deps.AuditSink != nil {
 		// Use a detached context so a cancelled/timed-out build still records.
@@ -732,7 +732,7 @@ func (d *builderDriver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
 		return agentloop.FinishResult{Honored: true, Summary: summary, Result: "finish ACEITO: " + summary}
 	}
 	cur := len(d.st.lastReport.Blocking())
-	r := fmt.Sprintf("finish RECUSADO: ainda há %d problema(s) bloqueante(s) — corrija-os antes de finalizar.", cur)
+	r := fmt.Sprintf("finish RECUSADO: ainda há %d problema(s) bloqueante(s), corrija-os antes de finalizar.", cur)
 	d.st.pushLog(r)
 	return agentloop.FinishResult{
 		Honored:      false,
@@ -745,8 +745,8 @@ func (d *builderDriver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
 // ---- mutation guard ------------------------------------------------------
 
 // validateConfigResourceIDs rejects config values that reference a resource by id
-// but don't match a real one. It is schema-driven — it walks the node's
-// ConfigSchema and checks every field whose OptionsSource names a resource kind —
+// but don't match a real one. It is schema-driven, it walks the node's
+// ConfigSchema and checks every field whose OptionsSource names a resource kind,
 // so new resource-backed fields are covered automatically. Only kinds the builder
 // can actually verify are checked (see resourceIDValid); the rest are skipped so
 // we never raise a false rejection.
@@ -773,7 +773,7 @@ func (uc *aiBuilderUC) validateConfigResourceIDs(st *builderState, nt workflow.N
 		}
 		valid, checkable := uc.resourceIDValid(f.OptionsSource, val)
 		if checkable && !valid {
-			return fmt.Errorf("valor %q inválido para o campo %q: não corresponde a nenhum %s real. Use find_resource(%s, ...) para listar ids válidos e copie um EXATAMENTE como retornado — NUNCA invente nomes ou sufixos (ex.: '-latest').",
+			return fmt.Errorf("valor %q inválido para o campo %q: não corresponde a nenhum %s real. Use find_resource(%s, ...) para listar ids válidos e copie um EXATAMENTE como retornado, NUNCA invente nomes ou sufixos (ex.: '-latest').",
 				val, f.Key, f.OptionsSource, f.OptionsSource)
 		}
 	}
@@ -781,7 +781,7 @@ func (uc *aiBuilderUC) validateConfigResourceIDs(st *builderState, nt workflow.N
 }
 
 // resourceIDValid reports whether id is a real id for kind via a targeted, cached
-// membership check (it validates only the id in question — it never loads the
+// membership check (it validates only the id in question, it never loads the
 // whole catalog into the builder). checkable=false means the builder cannot
 // verify this kind here (workspace-scoped opaque ids the model already resolved
 // via find_resource, or a lookup that's temporarily unavailable) and the caller
@@ -977,7 +977,7 @@ func (uc *aiBuilderUC) applyRemoveEdge(st *builderState, tc ai.ToolCall) (string
 
 func (uc *aiBuilderUC) validateNodeType(st *builderState, nt workflow.NodeType) error {
 	if !nt.Valid() {
-		return fmt.Errorf("tipo de nó %q inválido — use apenas tipos do catálogo", nt)
+		return fmt.Errorf("tipo de nó %q inválido, use apenas tipos do catálogo", nt)
 	}
 	if nt.IsTrigger() {
 		if workflow.TriggerType(nt).WorkflowType() != st.wfType {
@@ -1014,14 +1014,14 @@ func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) strin
 	if !ok {
 		return fmt.Sprintf("get_node_spec(%s): tipo desconhecido", typeStr)
 	}
-	// Anti-dither: if the spec was already served this session, don't resend it —
+	// Anti-dither: if the spec was already served this session, don't resend it,
 	// push the model to act instead of re-inspecting (the classic ReAct loop).
 	if st.inspectedSpecs[string(nt)] {
 		return fmt.Sprintf("get_node_spec(%s): VOCÊ JÁ CONSULTOU ISTO. Pare de inspecionar e EXECUTE agora: use add_node/update_node para criar/configurar o nó e connect para ligá-lo. Não chame get_node_spec(%s) de novo.", nt, nt)
 	}
 	st.inspectedSpecs[string(nt)] = true
 	var b strings.Builder
-	fmt.Fprintf(&b, "get_node_spec(%s): %s — %s\n", nt, def.Label, def.Description)
+	fmt.Fprintf(&b, "get_node_spec(%s): %s, %s\n", nt, def.Label, def.Description)
 	if len(def.ConfigSchema) > 0 {
 		b.WriteString("  campos de config:\n")
 		for _, f := range def.ConfigSchema {
@@ -1039,7 +1039,7 @@ func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) strin
 			} else if f.OptionsSource != "" {
 				opts = " (use find_resource " + f.OptionsSource + ")"
 			}
-			// Numeric range bounds — the AI MUST see Min/Max or it guesses (a "speed
+			// Numeric range bounds, the AI MUST see Min/Max or it guesses (a "speed
 			// no máximo" request becomes 2.0 when the real max is 1.2, the range
 			// validator rejects it, and the agent dithers in a fix-up loop).
 			rng := ""
@@ -1102,7 +1102,7 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 	// Anti-dither: serve the same query from cache + tell the model to act.
 	cacheKey := kind + ":" + strings.ToLower(strings.TrimSpace(query))
 	if cached, ok := st.searchCache[cacheKey]; ok {
-		return cached + " — VOCÊ JÁ BUSCOU ISTO. Use um dos ids acima AGORA (add_node/update_node); não repita find_resource para a mesma busca."
+		return cached + ", VOCÊ JÁ BUSCOU ISTO. Use um dos ids acima AGORA (add_node/update_node); não repita find_resource para a mesma busca."
 	}
 	matches, err := uc.deps.ResourceResolver.Search(ctx, st.workspaceID, kind, query, limit)
 	if err != nil {
@@ -1111,7 +1111,7 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 	emit("resource_resolved", resourceResolvedPayload{Kind: kind, Query: query, Matches: matches})
 	var result string
 	if len(matches) == 0 {
-		result = fmt.Sprintf("find_resource(%s, %q): NENHUM resultado — esse recurso não existe no workspace. NÃO repita esta busca. Construa o fluxo SEM ele (use outra abordagem/nó) ou, se for indispensável, finalize/responda perguntando ao usuário se deve criá-lo.", kind, query)
+		result = fmt.Sprintf("find_resource(%s, %q): NENHUM resultado, esse recurso não existe no workspace. NÃO repita esta busca. Construa o fluxo SEM ele (use outra abordagem/nó) ou, se for indispensável, finalize/responda perguntando ao usuário se deve criá-lo.", kind, query)
 	} else {
 		parts := make([]string, 0, len(matches))
 		for _, m := range matches {
@@ -1129,17 +1129,17 @@ func (uc *aiBuilderUC) systemPrompt(st *builderState) string {
 	var b strings.Builder
 	b.WriteString("Você é o Copiloto de Fluxos da ")
 	b.WriteString(brand.Active().Name)
-	b.WriteString(" — um agente que CONSTRÓI e EDITA grafos de workflow (nós + arestas) a partir de pedidos em linguagem natural.\n\n")
+	b.WriteString(", um agente que CONSTRÓI e EDITA grafos de workflow (nós + arestas) a partir de pedidos em linguagem natural.\n\n")
 	b.WriteString("Você opera por chamadas de ferramenta sobre um grafo mantido no servidor. A cada turno você recebe o estado atual do grafo e a lista de problemas do validador; faça mutações para resolver o pedido do usuário e DEIXAR O GRAFO VÁLIDO.\n\n")
-	b.WriteString("REGRA DE TÉRMINO (inviolável): só chame finish quando NÃO houver problemas BLOQUEANTES. O validador do domínio é a única autoridade — finish é recusado se houver qualquer problema bloqueante. Problemas ADVISORY (dica) não impedem finish, mas resolva-os quando possível para um fluxo totalmente funcional. Nunca chame finish no mesmo turno em que faz mutações.\n\n")
+	b.WriteString("REGRA DE TÉRMINO (inviolável): só chame finish quando NÃO houver problemas BLOQUEANTES. O validador do domínio é a única autoridade, finish é recusado se houver qualquer problema bloqueante. Problemas ADVISORY (dica) não impedem finish, mas resolva-os quando possível para um fluxo totalmente funcional. Nunca chame finish no mesmo turno em que faz mutações.\n\n")
 	b.WriteString("REGRAS:\n")
 	b.WriteString("- Para um workflow NOVO (sem nome ainda), defina um nome curto e uma descrição via set_meta logo no PRIMEIRO turno (junto das primeiras mutações).\n")
 	b.WriteString("- Use apenas tipos de nó do catálogo abaixo. Todo workflow precisa de ao menos um gatilho (trigger) e ao menos um caminho até um nó 'end'.\n")
 	b.WriteString("- O rótulo (label) de cada aresta deve ser o id exato de uma saída (handle) do nó de origem.\n")
 	b.WriteString("- Nós de saída DINÂMICA (action_ai_agent em tool_mode=route → uma saída por custom_tool; condition_text_match → uma saída por cases[].value): defina a config (custom_tools/cases/tool_mode) ANTES de conectar as arestas a essas saídas.\n")
-	b.WriteString("- O campo 'tool_mode' do action_ai_agent é OCULTO no schema mas essencial (route vs execute) — veja get_node_spec.\n")
+	b.WriteString("- O campo 'tool_mode' do action_ai_agent é OCULTO no schema mas essencial (route vs execute), veja get_node_spec.\n")
 	b.WriteString("- Resolva ids de recursos (modelos, agentes, templates, departamentos, etiquetas, membros...) via find_resource; nunca invente ids.\n")
-	b.WriteString("- MODELO DE IA (campo 'model' de action_ai_agent em modo prompt): use SEMPRE find_resource ai_models e copie um id EXATAMENTE como retornado (ex.: 'openai/gpt-4o', 'anthropic/claude-sonnet-4'). NUNCA escreva um id de memória nem invente variações/sufixos (ex.: '-latest', 'gpt-chat', 'gemini-3.5-flash'). Um modelo que não existe é REJEITADO na hora — não tente adivinhar; escolha um id da lista retornada.\n")
+	b.WriteString("- MODELO DE IA (campo 'model' de action_ai_agent em modo prompt): use SEMPRE find_resource ai_models e copie um id EXATAMENTE como retornado (ex.: 'openai/gpt-4o', 'anthropic/claude-sonnet-4'). NUNCA escreva um id de memória nem invente variações/sufixos (ex.: '-latest', 'gpt-chat', 'gemini-3.5-flash'). Um modelo que não existe é REJEITADO na hora, não tente adivinhar; escolha um id da lista retornada.\n")
 	b.WriteString("- Use get_node_spec(tipo) para ver o schema completo, saídas e orientações de um nó antes de configurá-lo.\n")
 	b.WriteString("- Referencie dados de nós anteriores (ancestrais) com {{node.<id>.<chave>}}, variáveis com {{var.<nome>}}.\n")
 	b.WriteString("- ORDEM TÍPICA DE CONSTRUÇÃO (siga e AJA, não fique só consultando): set_meta → add_node do gatilho → add_node dos nós de ação (ex.: action_ai_agent com source=prompt + model + instructions para conversar) → connect na ordem do fluxo → add_node 'end' e connect até ele → finish. Consulte get_node_spec/find_resource NO MÁXIMO uma vez por item; depois EXECUTE.\n")
@@ -1199,34 +1199,34 @@ func (uc *aiBuilderUC) catalogLines(st *builderState) []string {
 // re-stuffed here either.
 func (uc *aiBuilderUC) regroundMessage(st *builderState, iter, maxIter, noMutationStreak int) string {
 	var b strings.Builder
-	b.WriteString("OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta do usuário — não repita a resposta anterior):\n")
+	b.WriteString("OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta do usuário, não repita a resposta anterior):\n")
 	fmt.Fprintf(&b, "ITERAÇÃO %d de %d (orçamento limitado).\n", iter, maxIter)
-	// Escalating "act now" nudge — breaks the over-planning / repeated-lookup loop
+	// Escalating "act now" nudge, breaks the over-planning / repeated-lookup loop
 	// that otherwise burns tokens without changing the graph.
 	if noMutationStreak == 1 {
-		b.WriteString("ATENÇÃO: você NÃO alterou o grafo no último turno. PARE de só consultar — execute AGORA uma mutação concreta (add_node/connect/update_node/remove_*) para resolver os problemas bloqueantes, ou chame finish se já estiver válido. Não repita get_node_spec/find_resource para algo que já consultou.\n")
+		b.WriteString("ATENÇÃO: você NÃO alterou o grafo no último turno. PARE de só consultar, execute AGORA uma mutação concreta (add_node/connect/update_node/remove_*) para resolver os problemas bloqueantes, ou chame finish se já estiver válido. Não repita get_node_spec/find_resource para algo que já consultou.\n")
 	} else if noMutationStreak >= 2 {
-		fmt.Fprintf(&b, "ATENÇÃO CRÍTICA: você está há %d turnos SEM alterar o grafo — pare de buscar/consultar imediatamente. Sua PRÓXIMA ação DEVE ser uma mutação que resolva os PROBLEMAS BLOQUEANTES listados abaixo (ex.: adicionar um nó 'end' e conectar a ele; conectar a saída obrigatória de um nó). Se um recurso (etiqueta, agente, etc.) NÃO existe no workspace, NÃO continue procurando: construa o fluxo sem ele (use outro nó) ou, se for indispensável, chame finish/responda perguntando ao usuário se deve criá-lo. NUNCA fique preso buscando algo que não existe.\n", noMutationStreak)
+		fmt.Fprintf(&b, "ATENÇÃO CRÍTICA: você está há %d turnos SEM alterar o grafo, pare de buscar/consultar imediatamente. Sua PRÓXIMA ação DEVE ser uma mutação que resolva os PROBLEMAS BLOQUEANTES listados abaixo (ex.: adicionar um nó 'end' e conectar a ele; conectar a saída obrigatória de um nó). Se um recurso (etiqueta, agente, etc.) NÃO existe no workspace, NÃO continue procurando: construa o fluxo sem ele (use outro nó) ou, se for indispensável, chame finish/responda perguntando ao usuário se deve criá-lo. NUNCA fique preso buscando algo que não existe.\n", noMutationStreak)
 	}
 	fmt.Fprintf(&b, "ESTADO ATUAL DO GRAFO (id=%q, tipo=%s, nome=%q):\n%s\n\n", st.workflowID, st.wfType, st.name, serializeGraph(st.graph))
 
 	blocking := st.lastReport.Blocking()
 	advisory := st.lastReport.Advisory()
 	if len(blocking) == 0 {
-		b.WriteString("PROBLEMAS BLOQUEANTES: nenhum. O grafo está VÁLIDO — se o pedido do usuário está atendido, chame finish AGORA.\n")
+		b.WriteString("PROBLEMAS BLOQUEANTES: nenhum. O grafo está VÁLIDO, se o pedido do usuário está atendido, chame finish AGORA.\n")
 	} else {
-		fmt.Fprintf(&b, "PROBLEMAS BLOQUEANTES (%d) — devem ser resolvidos antes de finish:\n", len(blocking))
+		fmt.Fprintf(&b, "PROBLEMAS BLOQUEANTES (%d), devem ser resolvidos antes de finish:\n", len(blocking))
 		for _, i := range blocking {
 			fmt.Fprintf(&b, "  - [%s] %s%s\n", i.Code, i.Message, hintSuffix(i))
 		}
 	}
 	if len(advisory) > 0 {
-		fmt.Fprintf(&b, "\nDICAS (advisory — NÃO bloqueiam finish). Aplique no MÁXIMO uma vez cada. Se uma dica persistir depois de você já ter tentado corrigi-la, IGNORE-A e chame finish: insistir nela não torna o workflow válido, apenas gasta o orçamento:\n")
+		fmt.Fprintf(&b, "\nDICAS (advisory, NÃO bloqueiam finish). Aplique no MÁXIMO uma vez cada. Se uma dica persistir depois de você já ter tentado corrigi-la, IGNORE-A e chame finish: insistir nela não torna o workflow válido, apenas gasta o orçamento:\n")
 		for _, i := range advisory {
 			fmt.Fprintf(&b, "  - [%s] %s%s\n", i.Code, i.Message, hintSuffix(i))
 		}
 	}
-	// Tool results and the model's own prior actions are NOT re-stuffed here — they
+	// Tool results and the model's own prior actions are NOT re-stuffed here, they
 	// live in the agentic message history (assistant tool calls + their RoleTool
 	// results), which the model already sees. Duplicating them as prose wastes
 	// tokens and is a documented cause of degraded tool-calling.
@@ -1251,7 +1251,7 @@ func (uc *aiBuilderUC) builderTools(st *builderState) []tools.Definition {
 		},
 		{
 			Name:        toolFindResource,
-			Description: "Resolve um nome humano de recurso para um id real do workspace (modelos de IA, agentes, templates, departamentos, etc.). Nunca invente ids — sempre resolva via esta ferramenta.",
+			Description: "Resolve um nome humano de recurso para um id real do workspace (modelos de IA, agentes, templates, departamentos, etc.). Nunca invente ids, sempre resolva via esta ferramenta.",
 			Parameters: map[string]tools.Parameter{
 				"kind":  enum("tipo de recurso", resourceKinds),
 				"query": str("texto de busca pelo nome do recurso"),
@@ -1451,7 +1451,7 @@ func hintSuffix(i workflow.LintIssue) string {
 
 // staticHandleIDs renders a node's static output handles (id + optional flag)
 // for the catalog. Dynamic-handle nodes (ai_agent route / text_match) have none
-// here — their guidance explains the dynamic handles.
+// here, their guidance explains the dynamic handles.
 func staticHandleIDs(outs []workflow.HandleDefinition) string {
 	if len(outs) == 0 {
 		return ""
@@ -1509,7 +1509,7 @@ func allTriggerTypes() []workflow.TriggerType {
 // this catches is a model re-editing one node over and over with slightly
 // different config, chasing an advisory hint it cannot satisfy. Hashing the
 // arguments would make each attempt look distinct and the guard would never
-// fire — which is exactly what happened before it existed.
+// fire, which is exactly what happened before it existed.
 func mutationSignature(tc ai.ToolCall) string {
 	for _, key := range []string{"node_id", "id", "edge_id", "from", "source"} {
 		if v, ok := tc.Arguments[key].(string); ok && strings.TrimSpace(v) != "" {

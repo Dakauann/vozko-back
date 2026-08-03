@@ -121,7 +121,7 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 	)
 
 	// client_ip is labelled ONLY here, on the rejection path. Cardinality stays
-	// bounded to IPs that actually hit a limit — a single IP with a large count
+	// bounded to IPs that actually hit a limit, a single IP with a large count
 	// means many users behind one NAT (e.g. an office) sharing one per-IP budget.
 	rateLimited := prometheus.NewCounterVec(
 		prometheus.CounterOpts{

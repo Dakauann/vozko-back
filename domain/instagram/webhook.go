@@ -24,10 +24,10 @@ type Envelope struct {
 
 // Entry carries FOUR mutually-exclusive shapes on the same endpoint:
 //
-//  1. Messaging — DM events
-//  2. Standby   — messages on the standby channel (we don't own thread control)
-//  3. Changes   — Facebook-Login style change events, wrapped in an array
-//  4. Field/Value directly on the entry — Instagram-Login style change events,
+//  1. Messaging, DM events
+//  2. Standby  , messages on the standby channel (we don't own thread control)
+//  3. Changes  , Facebook-Login style change events, wrapped in an array
+//  4. Field/Value directly on the entry, Instagram-Login style change events,
 //     with NO changes array. Missing this shape is the single most common
 //     Instagram integration bug.
 //
@@ -123,8 +123,8 @@ type QuickReply struct {
 }
 
 // Reaction arrives as a sibling of Message. Action is react|unreact; on unreact
-// both Reaction and Emoji may be absent. Reaction is NOT a closed enum — the
-// docs list different sets and explicitly allow "other" — so the raw string is
+// both Reaction and Emoji may be absent. Reaction is NOT a closed enum, the
+// docs list different sets and explicitly allow "other", so the raw string is
 // preserved rather than mapped.
 type Reaction struct {
 	MID      string `json:"mid"`
@@ -133,7 +133,7 @@ type Reaction struct {
 	Emoji    string `json:"emoji,omitempty"`
 }
 
-// Read is Instagram's read receipt. It carries a specific message id — there is
+// Read is Instagram's read receipt. It carries a specific message id, there is
 // NO watermark, so we cannot infer "everything before T is read".
 type Read struct {
 	MID string `json:"mid"`
@@ -241,7 +241,7 @@ func SplitEntries(envelopes []*Envelope) []*EntryEnvelope {
 	return out
 }
 
-// EntryEnvelope is one entry addressed to one Instagram account — the unit we
+// EntryEnvelope is one entry addressed to one Instagram account, the unit we
 // publish to the queue.
 type EntryEnvelope struct {
 	Object string `json:"object"`
@@ -333,7 +333,7 @@ func NormalizeEntry(env *EntryEnvelope) []*Event {
 			events = append(events, ev)
 		}
 	}
-	// Shape 4 — field/value directly on the entry (Instagram Login).
+	// Shape 4, field/value directly on the entry (Instagram Login).
 	if e.Field != "" {
 		if ev := normalizeChange(e, e.Field, e.Value); ev != nil {
 			events = append(events, ev)

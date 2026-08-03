@@ -77,7 +77,7 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 
 		// The identity slot prefers a consented phone (the only thing that links
 		// a Telegram contact to the rest of the CRM), then the handle, then the
-		// numeric id — so the column is never blank.
+		// numeric id, so the column is never blank.
 		identity := ""
 		if rw.PhoneNumber != nil {
 			identity = strings.TrimSpace(*rw.PhoneNumber)

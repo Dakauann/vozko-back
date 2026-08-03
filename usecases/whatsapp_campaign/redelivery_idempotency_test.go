@@ -58,7 +58,7 @@ func (m *idempotentConsumeTemplate) distinctRefs() []string {
 // CORRECT BEHAVIOR (red until the fix): two recipients of a campaign, each
 // redelivered once, must be charged exactly once each. Today every recipient is
 // debited under one shared CampaignID reference, so the idempotent dependency
-// collapses them to a single charge — this fails until debits are keyed per
+// collapses them to a single charge, this fails until debits are keyed per
 // recipient.
 func TestWhatsAppRedelivery_ChargesEachRecipientExactlyOnce(t *testing.T) {
 	h := newTestHarness()

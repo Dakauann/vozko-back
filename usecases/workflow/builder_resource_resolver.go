@@ -23,7 +23,7 @@ import (
 // phones, knowledge bases) deliberately return no matches rather than risk
 // cross-tenant disclosure. One deliberate exception: members are workspace-scoped
 // attendants (re-asserted per row) needed so the AI can fill the assign
-// target member id — without them the copilot can't wire a "assign to attendant".
+// target member id, without them the copilot can't wire a "assign to attendant".
 
 type modelLister interface {
 	GetAvaibleModels(ctx context.Context) ([]string, error)
@@ -183,7 +183,7 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 		return out, nil
 
 	case "members":
-		// Workspace attendants for transfer/assign nodes — id is the member's
+		// Workspace attendants for transfer/assign nodes, id is the member's
 		// UserID (the value target_user_id expects). The adapter scopes to and
 		// re-asserts the workspace per row, so this leaks no foreign tenant.
 		if r.deps.Members == nil {

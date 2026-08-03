@@ -62,7 +62,7 @@ func (e *sendTextExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRes
 		return nil, err
 	}
 	if sent == nil {
-		// The channel declined without failing — a closed outbound window is the
+		// The channel declined without failing, a closed outbound window is the
 		// usual reason. `sent:false` is reported rather than a false success, so a
 		// downstream condition can branch on it.
 		log.Printf("[workflow][node:%s][run:%s] action_send_text: not delivered on channel %q for entry=%s",

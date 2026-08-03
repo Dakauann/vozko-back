@@ -51,7 +51,7 @@ func (b *InboundOfferBroker) Accept(_ context.Context, input dialer.AcceptInboun
 }
 
 func (b *InboundOfferBroker) Decline(_ context.Context, input dialer.DeclineInboundCallInput) error {
-	// Decline matches at USER level — the session id is NOT required. A dialer that
+	// Decline matches at USER level, the session id is NOT required. A dialer that
 	// dropped and reconnected gets a fresh session id, but the user rejecting the
 	// ring must still cancel it. Requiring an exact session match here left the ring
 	// reservation stuck until the offer TTL (~30s), blocking new outbound dials with

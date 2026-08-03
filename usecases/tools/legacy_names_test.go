@@ -9,7 +9,7 @@ import (
 )
 
 // Tool names are persisted in every agent's InternalTools bindings. The resolver
-// looks a binding's name up in its definition index and `continue`s on a miss —
+// looks a binding's name up in its definition index and `continue`s on a miss,
 // so renaming a tool does not fail loudly, it silently removes that tool from
 // every agent already configured with it. Nobody sees an error; the agent simply
 // stops being able to do something it could do yesterday.
@@ -66,7 +66,7 @@ func TestAnAgentBoundToTheOldNameStillGetsTheTool(t *testing.T) {
 		agent.ToolVisibilityMessaging, ToolResolverOptions{})
 
 	if len(resolved.Definitions) != 1 {
-		t.Fatalf("definitions = %+v — the saved binding was silently dropped", resolved.Definitions)
+		t.Fatalf("definitions = %+v, the saved binding was silently dropped", resolved.Definitions)
 	}
 	if resolved.Definitions[0].Name != ToolNameSendMedia {
 		t.Errorf("resolved %q, want the current tool", resolved.Definitions[0].Name)
@@ -74,7 +74,7 @@ func TestAnAgentBoundToTheOldNameStillGetsTheTool(t *testing.T) {
 }
 
 // A binding under the current name must not be double-resolved alongside an
-// aliased one — the model would be offered the same tool twice.
+// aliased one, the model would be offered the same tool twice.
 func TestOldAndNewBindingsDoNotDuplicateTheTool(t *testing.T) {
 	reg := aliasRegistry{defs: []tools.Definition{{
 		Name:       ToolNameSendMedia,
@@ -123,7 +123,7 @@ func contains(s, sub string) bool {
 // The alias must be a FALLBACK, never a rewrite. Applying it before the direct
 // lookup breaks a registry that still registers the old name: the direct hit is
 // skipped in favour of a lookup that misses, and the agent silently loses the
-// tool — the exact failure aliases exist to prevent.
+// tool, the exact failure aliases exist to prevent.
 func TestADirectNameMatchWinsOverTheAlias(t *testing.T) {
 	// A registry that still registers the retired name.
 	reg := aliasRegistry{defs: []tools.Definition{{
@@ -135,7 +135,7 @@ func TestADirectNameMatchWinsOverTheAlias(t *testing.T) {
 		agent.ToolVisibilityMessaging, ToolResolverOptions{})
 
 	if len(resolved.Definitions) != 1 {
-		t.Fatalf("definitions = %+v — the alias hid a tool that was registered under the old name",
+		t.Fatalf("definitions = %+v, the alias hid a tool that was registered under the old name",
 			resolved.Definitions)
 	}
 	if resolved.Definitions[0].Name != "send_whatsapp_media" {

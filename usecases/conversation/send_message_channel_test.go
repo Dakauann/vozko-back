@@ -12,7 +12,7 @@ import (
 
 // The HTTP send endpoint accepts an {entryType} path variable, but its usecase
 // was WhatsApp-only. Widening the handler's guard without widening the usecase
-// turned a clear 400 into a 404 that LIED — the conversation exists and the
+// turned a clear 400 into a 404 that LIED, the conversation exists and the
 // WebSocket path can send on it perfectly well.
 //
 // These pin the two together.
@@ -97,7 +97,7 @@ func TestSendRoutesAdapterBackedChannelsToTheSharedSender(t *testing.T) {
 				t.Fatalf("sender calls = %d, want 1", len(sender.textCalls))
 			}
 			// The entry type is passed through unchanged so the sender resolves the
-			// right adapter — and therefore queries the right channel's table.
+			// right adapter, and therefore queries the right channel's table.
 			if got := sender.textCalls[0].EntryType; got != string(entryType) {
 				t.Errorf("entry type = %q, want %q", got, entryType)
 			}

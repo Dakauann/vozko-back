@@ -49,7 +49,7 @@ func TestTryIncr_AllowsAfterDecrement(t *testing.T) {
 
 	ok, _ = ss.TryIncr("k", max)
 	if ok {
-		t.Fatal("second TryIncr should fail — at capacity")
+		t.Fatal("second TryIncr should fail, at capacity")
 	}
 
 	ss.Decr("k")

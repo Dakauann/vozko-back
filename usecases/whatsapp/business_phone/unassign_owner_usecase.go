@@ -24,7 +24,7 @@ func NewUnassignOwnerUseCase(
 // Execute detaches the phone from its owning workspace, returning it to the
 // unassigned pool.
 //
-// For a Meta phone this is reversible and non-destructive — a Meta number costs
+// For a Meta phone this is reversible and non-destructive, a Meta number costs
 // nothing to park. For a dialog360 phone the channel BILLS the vendor every
 // month, and an ownerless-but-live channel is funded by no plan and can never be
 // reactivated (reactivation is owner-keyed, see OnEntitlementIncreased). So a
@@ -43,7 +43,7 @@ func (uc *unassignOwnerUseCase) Execute(phoneID string) error {
 	}
 
 	if phone.OwnerWorkspaceID == "" {
-		// Already unassigned — nothing to do, treat as success (idempotent).
+		// Already unassigned, nothing to do, treat as success (idempotent).
 		return nil
 	}
 
@@ -64,8 +64,8 @@ func (uc *unassignOwnerUseCase) Execute(phoneID string) error {
 
 // cancelLiveDialog360Channel cancels the phone's 360dialog channel at the vendor
 // (client + channel scoped) and suspends it locally, so detaching the phone never
-// leaves a channel billing for no owner. It returns an error — blocking the
-// unassign — if the channel cannot be cancelled, so the bad state is never created.
+// leaves a channel billing for no owner. It returns an error, blocking the
+// unassign, if the channel cannot be cancelled, so the bad state is never created.
 func (uc *unassignOwnerUseCase) cancelLiveDialog360Channel(phone *businessphone.WhatsAppBusinessPhoneNumber) error {
 	if uc.partner == nil || uc.phones == nil {
 		return fmt.Errorf("unassign: dialog360 channel cancellation is not configured")
@@ -86,11 +86,11 @@ func (uc *unassignOwnerUseCase) cancelLiveDialog360Channel(phone *businessphone.
 		}
 	}
 	if target == nil || target.Dialog360ChannelID == "" {
-		// No live channel on record — nothing to cancel; safe to unassign.
+		// No live channel on record, nothing to cancel; safe to unassign.
 		return nil
 	}
 	if target.Dialog360ClientID == "" {
-		return fmt.Errorf("unassign: cannot cancel dialog360 channel %s: missing client id — cancel it manually before unassigning", target.Dialog360ChannelID)
+		return fmt.Errorf("unassign: cannot cancel dialog360 channel %s: missing client id, cancel it manually before unassigning", target.Dialog360ChannelID)
 	}
 	if err := uc.partner.CancelChannel(target.Dialog360ClientID, target.Dialog360ChannelID); err != nil {
 		return fmt.Errorf("unassign: cancel dialog360 channel %s failed: %w", target.Dialog360ChannelID, err)

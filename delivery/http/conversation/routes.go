@@ -30,4 +30,7 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/events", ac(cv, workspace_domain.ActionRead, h.ListConversationEvents)).Methods(http.MethodGet)
 
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/reopen-window", ac(cv, workspace_domain.ActionUpdate, h.ReopenWindow)).Methods(http.MethodPost)
+	// Channel-neutral automation toggle. The only previous way to set this was
+	// a PATCH on a WhatsApp CAMPAIGN entry, which no other channel has.
+	protected.HandleFunc("/conversations/{entryType}/{entryId}/automation", ac(cv, workspace_domain.ActionUpdate, h.SetAutomation)).Methods(http.MethodPatch)
 }

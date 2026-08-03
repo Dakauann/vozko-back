@@ -78,7 +78,7 @@ func (r *businessPhoneRepository) Update(phoneID string, phone *businessphone.Wh
 	// Persist the display number when set. Written conditionally (like the other
 	// vendor-sourced fields below) so an Update that doesn't carry it can't blank it.
 	// Without this, Finalize/reconcile set phone.DisplayPhoneNumber in memory but it was
-	// never written — dialog360 numbers connected showing no phone number.
+	// never written, dialog360 numbers connected showing no phone number.
 	if phone.DisplayPhoneNumber != "" {
 		update["display_phone_number"] = phone.DisplayPhoneNumber
 	}
@@ -142,7 +142,7 @@ func (r *businessPhoneRepository) ClearAccessToken(phoneID string) error {
 
 // ClearOwner detaches a phone from its owning workspace, returning it to the
 // unassigned pool. It nulls only the ownership columns and leaves the Meta
-// registration and connection state untouched (reversible — the number can be
+// registration and connection state untouched (reversible, the number can be
 // re-assigned afterwards).
 func (r *businessPhoneRepository) ClearOwner(phoneID string) error {
 	result := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).Where("id = ?", phoneID).Updates(map[string]interface{}{

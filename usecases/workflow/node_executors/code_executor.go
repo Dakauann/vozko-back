@@ -25,7 +25,7 @@ func NewCodeExecutorWithLimits(l scriptvm.Limits) workflow.NodeExecutor {
 }
 
 const defaultCodeNodeSnippet = `// ─────────────────────────────────────────────────────────────────────
-// Sandbox JavaScript — sem eval, sem require, sem timers, sem DOM.
+// Sandbox JavaScript, sem eval, sem require, sem timers, sem DOM.
 // Retorne um objeto → seus campos viram a saída deste nó, acessíveis
 // nos próximos nós como {{last.<campo>}}. Sem retorno → saída vazia.
 // ─────────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ const defaultCodeNodeSnippet = `// ───────────────
 //   new Date(Date.now() + 86400000)     amanhã
 //   new Date('2026-12-31').getTime()    parse → epoch ms
 
-// ── Strings, números, arrays, regex — ES5+ padrão ──────────────────
+// ── Strings, números, arrays, regex, ES5+ padrão ──────────────────
 //   'oi'.toUpperCase()
 //   [1, 2, 3].map(x => x * 2)
 //   /\d+/.test('abc123')

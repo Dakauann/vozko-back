@@ -14,7 +14,7 @@ import (
 
 // The assembler is about to become the single recipe every channel's agent turn
 // is built from. Until now it has never run outside its own unit test, so these
-// cover the paths a real channel will actually take — including the ones where a
+// cover the paths a real channel will actually take, including the ones where a
 // caller passes nothing, which is exactly what a partially-wired container does.
 
 func ragAgent(prompt string) *agent.Agent {
@@ -80,7 +80,7 @@ func TestAssembleSurvivesRAGWithoutAService(t *testing.T) {
 // ---------------------------------------------------------------- tool config
 
 // The AI service reads ToolConfigs[strings.ToLower(name)]. A seed stamped under
-// any other key is silently invisible at execution time — the tool runs with no
+// any other key is silently invisible at execution time, the tool runs with no
 // entry id and fails or, worse, acts on the wrong conversation.
 func TestSeedsAreStampedUnderTheKeyTheAIServiceReads(t *testing.T) {
 	reg := stubRegistry{defs: []tools.Definition{{Name: "Finish_Conversation"}}}
@@ -218,7 +218,7 @@ func TestVarsAreInterpolatedIntoTheAgentPrompt(t *testing.T) {
 
 // The identity preamble is built from the RESOLVED tool names, so it must come
 // after resolution. Built first, it would see no tools and omit the "you must
-// call the function, never just say you will" instruction — while the model is
+// call the function, never just say you will" instruction, while the model is
 // handed a full tool list. That combination produces an agent that narrates
 // actions it never performs, which is the single most confusing failure an
 // operator can be asked to debug.
@@ -237,7 +237,7 @@ func TestIdentityReflectsResolvedToolsInThePrompt(t *testing.T) {
 	if !strings.Contains(out.Input.SystemPrompt, "USO DE FERRAMENTAS") {
 		t.Errorf("the tool-usage instruction is missing even though a tool resolved: %q", out.Input.SystemPrompt)
 	}
-	// The caller's own struct must not be mutated — a ConversationContext is
+	// The caller's own struct must not be mutated, a ConversationContext is
 	// typically built per agent and reused across turns.
 	if len(identity.AvailableTools) != 0 {
 		t.Errorf("the caller's identity was mutated: %+v", identity.AvailableTools)
@@ -282,7 +282,7 @@ func TestRAGIsSkippedWithoutAQuery(t *testing.T) {
 	}
 }
 
-// An agent with RAG off can still be grounded against explicitly named bases —
+// An agent with RAG off can still be grounded against explicitly named bases,
 // this is the path a channel uses when the knowledge base comes from the
 // channel account rather than the agent.
 func TestExplicitKnowledgeBasesGroundAnAgentWithRAGDisabled(t *testing.T) {
@@ -453,7 +453,7 @@ func toString(v interface{}) string {
 	return s
 }
 
-// contextualStub is a tool whose DEFINITION depends on the campaign — the shape
+// contextualStub is a tool whose DEFINITION depends on the campaign, the shape
 // manage_entry_stage has, where the campaign's pipeline fills the stage enum.
 type contextualStub struct {
 	def  tools.Definition
@@ -491,7 +491,7 @@ func (r contextualRegistry) Handler(string) (tools.Handler, bool) { return r.han
 
 // The campaign reaches the resolver's ToolContext, or a contextual tool is
 // offered with an empty enum while the prompt tells the model to use only
-// enumerated values — an agent that silently stops classifying leads.
+// enumerated values, an agent that silently stops classifying leads.
 func TestCampaignContextReachesContextualTools(t *testing.T) {
 	stub := &contextualStub{def: tools.Definition{Name: "manage_entry_stage"}}
 	reg := contextualRegistry{defs: []tools.Definition{{Name: "manage_entry_stage"}}, handler: stub}
@@ -541,7 +541,7 @@ func TestNoCampaignStillResolvesContextualTools(t *testing.T) {
 
 // WhatsApp resolves its tools earlier, with campaign context the assembler does
 // not have. Supplying them pre-resolved must get the SAME treatment as
-// self-resolved ones — seeds stamped, names collected, identity informed — or
+// self-resolved ones, seeds stamped, names collected, identity informed, or
 // the surface that pre-resolves quietly loses all three.
 func TestPreResolvedToolsGetTheSameTreatmentAsResolvedOnes(t *testing.T) {
 	a := New(nil, nil)
@@ -593,7 +593,7 @@ func TestPreResolvedConfigsAreCopied(t *testing.T) {
 	}
 }
 
-// Resolution wins when both are supplied — a caller means one or the other, and
+// Resolution wins when both are supplied, a caller means one or the other, and
 // silently merging two tool sets would offer duplicates to the model.
 func TestResolutionTakesPrecedenceOverPreResolved(t *testing.T) {
 	reg := stubRegistry{defs: []tools.Definition{{Name: "resolved_tool"}}}

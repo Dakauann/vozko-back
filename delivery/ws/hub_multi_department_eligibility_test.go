@@ -72,7 +72,7 @@ func (l *fakeDepartmentMemberLister) ListMembers(departmentID string) ([]workspa
 
 // TestRouletteEligibility_MultiDepartmentMember_IsEligibleInAllDepartments asserts the
 // user's concern directly: an online operator who belongs to several departments must be
-// part of the roulette pool for EVERY department they belong to — not just one.
+// part of the roulette pool for EVERY department they belong to, not just one.
 func TestRouletteEligibility_MultiDepartmentMember_IsEligibleInAllDepartments(t *testing.T) {
 	// bob ∈ {dept-a, dept-b}; alice ∈ {dept-a}; carol ∈ {dept-b}.
 	deptRepo := &fakeDepartmentMemberLister{
@@ -104,7 +104,7 @@ func TestRouletteEligibility_MultiDepartmentMember_IsEligibleInAllDepartments(t 
 
 // TestRouletteEligibility_MultiDepartmentMember_CurrentViewDoesNotRestrict proves that the
 // department the operator is *currently viewing* (conn.DepartmentID) never narrows the
-// roulette pool — eligibility is membership-based, resolved from the conversation's department.
+// roulette pool, eligibility is membership-based, resolved from the conversation's department.
 func TestRouletteEligibility_MultiDepartmentMember_CurrentViewDoesNotRestrict(t *testing.T) {
 	deptRepo := &fakeDepartmentMemberLister{
 		membersByDept: map[string][]string{

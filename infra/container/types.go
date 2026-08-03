@@ -373,6 +373,9 @@ type services struct {
 	// startup take this instead of a snapshot, so a channel wired later is still
 	// visible to them.
 	liveChannelAdapters *conversation_domain.LiveAdapterRegistry
+	// conversationAutomation flips the per-conversation automation override on
+	// any channel. Each channel registers its own setter.
+	conversationAutomation *conversation_usecase.ConversationAutomationService
 	// channelAIReply lets an agent attend any adapter-backed channel.
 	channelAIReply    *conversation_usecase.ChannelAIReplyService
 	callAdmission     dialer_domain.CallAdmissionCoordinator

@@ -197,7 +197,7 @@ func (m *CallSlotManager) clearWorkspaceCapacityLog(workspaceID string) {
 func (m *CallSlotManager) StartupCleanup() {
 	replicas, err := m.shared.SMembers("calls:replicas")
 	if err != nil {
-		log.Printf("call slot manager: startup cleanup — failed to list replicas: %v", err)
+		log.Printf("call slot manager: startup cleanup, failed to list replicas: %v", err)
 		return
 	}
 	for _, rid := range replicas {

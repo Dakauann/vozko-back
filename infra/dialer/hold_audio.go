@@ -57,7 +57,7 @@ func (s *loopingPCMSource) NextFrame() []byte {
 
 // The default hold audio when no HOLD_MUSIC_PATH asset is configured: a soft
 // two-note chime every few seconds over silence. It is the standard contact
-// center comfort tone pattern — it tells the caller "you are still connected,
+// center comfort tone pattern, it tells the caller "you are still connected,
 // please hold" without licensing a music track, and it replaces the dead air
 // that made held callers hang up. Rendered once, shared read-only.
 var (

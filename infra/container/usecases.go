@@ -151,7 +151,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// the channel AI service is built earlier in initConversation.
 	//
 	// Without it, Instagram and Telegram agents could only send plain text: no
-	// tools, no knowledge base, no channel identity — while WhatsApp had all
+	// tools, no knowledge base, no channel identity, while WhatsApp had all
 	// three. That is exactly the drift this package was written to prevent.
 	turnAssembler := agentturn.New(c.services.toolRegistry, ragService)
 	if c.services.channelAIReply != nil {
@@ -167,7 +167,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	)
 
 	// The messaging tools reach every channel through the live adapter registry.
-	// Without it they stay WhatsApp-only — and since the agent turn now offers
+	// Without it they stay WhatsApp-only, and since the agent turn now offers
 	// them on Telegram and Instagram too, they would be offered and then fail.
 	optionsTool := tools_usecase.NewSendWhatsappButtonMessageToolUseCase(context.Background(), c.services.whatsappClientFactory)
 	mediaTool := tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media)
@@ -391,7 +391,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	callSlotManager := workspace_domain.NewCallSlotManager(c.redisProvider.SharedState(), c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.replicaID).WithEntitlements(entitlementResolverUC)
 	c.services.callSlotManager = callSlotManager
 
-	// Live concurrency board (Redis only — paint path never hits Postgres).
+	// Live concurrency board (Redis only, paint path never hits Postgres).
 	boardStore := telephony_infra.NewBoardStore(c.redisProvider.SharedState())
 	capacityReader := telephony_usecase.NewSlotCapacityReader(c.redisProvider.SharedState(), callSlotManager)
 	boardSvc := telephony_usecase.NewBoardService(boardStore, capacityReader)
@@ -1150,7 +1150,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	})
 	// Shared, TTL-cached model-id validity check (same caching discipline as the
 	// LLM price fetcher). Reused by the builder and the activate-time validator so
-	// neither re-fetches the ~300-model catalog per check — they validate only the
+	// neither re-fetches the ~300-model catalog per check, they validate only the
 	// model ids actually used.
 	var aiModelValidator workflow_usecase.ModelLookup
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {

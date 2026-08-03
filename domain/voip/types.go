@@ -36,7 +36,7 @@ type MediaSession interface {
 	// NegotiatedCodec reports the codec the SIP trunk negotiated for this call.
 	// It is the single source of truth for which codec to encode/decode with, so
 	// every channel (bridge, CRM, dialer, workflow) reads it from the session
-	// rather than deciding independently — no two channels can diverge. Wrapping
+	// rather than deciding independently, no two channels can diverge. Wrapping
 	// sessions MUST delegate to the session they wrap.
 	NegotiatedCodec() CodecInfo
 }

@@ -76,7 +76,7 @@ func TestConsumer_EmptyWorkspace_DroppedNotRequeued(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	if ack.requeue {
-		t.Fatal("poison event must NOT be requeued — that is the infinite loop")
+		t.Fatal("poison event must NOT be requeued, that is the infinite loop")
 	}
 	if !ack.nacked {
 		t.Fatal("poison event must be nacked (dropped)")

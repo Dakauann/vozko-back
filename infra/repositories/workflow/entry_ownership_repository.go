@@ -11,7 +11,7 @@ import (
 //
 // Each query takes (entry_id, workspace_id) in that order and yields one
 // boolean. The check is what lets a webhook-triggered workflow act on a
-// conversation, so a channel missing from here is not merely unsupported — its
+// conversation, so a channel missing from here is not merely unsupported, its
 // workflows are rejected SILENTLY, with no error and no log line, because
 // OwnsEntry answers `false, nil`. That is what happened to Instagram, and it is
 // why this is a registry rather than a switch with a `default: return false`.

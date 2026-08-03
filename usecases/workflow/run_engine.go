@@ -15,7 +15,7 @@ import (
 
 // errNodePanic wraps a panic recovered while executing a node. It is terminal:
 // a panic is a programming error (e.g. a nil dependency), not a transient
-// failure, so the run fails fast instead of retrying — and, crucially, it never
+// failure, so the run fails fast instead of retrying, and, crucially, it never
 // escapes to crash the HTTP serving goroutine.
 var errNodePanic = errors.New("node executor panicked")
 
@@ -150,7 +150,7 @@ func loopBodyNodes(g *workflow.Graph) map[string]bool {
 const maxAgentCycleRevisits = 50
 
 // agentCycleNodes returns the nodes that sit on a cycle running through an
-// AI-agent node — the agent "hub" plus the tool/action nodes it routes to that
+// AI-agent node, the agent "hub" plus the tool/action nodes it routes to that
 // route back to it. An AI agent legitimately revisits its hub once per tool call
 // within a single uninterrupted pass (agent → http → agent → http → …), which is
 // forward progress, not an infinite loop. These nodes get a relaxed per-node
@@ -216,7 +216,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 	// durableSteps is the lifetime node-execution count, loaded from persisted
 	// run state so it SURVIVES waits (executionCount/nodeVisitCounts below are
 	// per-pass and reset on every re-entry). This is the backstop that catches a
-	// loop cycling through a wait node — see MaxDurableExecutionsPerRun.
+	// loop cycling through a wait node, see MaxDurableExecutionsPerRun.
 	durableSteps := run.State.GetInt(workflow.StateKeyDurableSteps)
 
 	nodeVisitCounts := make(map[string]int)
@@ -244,7 +244,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 		durableSteps++
 		run.State.Set(workflow.StateKeyDurableSteps, durableSteps)
 		if durableSteps > workflow.MaxDurableExecutionsPerRun {
-			log.Printf("[workflow] engine: run=%s DURABLE LOOP CIRCUIT BREAKER — %d lifetime node executions across waits, stopping",
+			log.Printf("[workflow] engine: run=%s DURABLE LOOP CIRCUIT BREAKER, %d lifetime node executions across waits, stopping",
 				run.ID, durableSteps)
 			run.SetError(workflow.ErrDurableExecutionsReached.Error())
 			return e.runRepo.Update(run)
@@ -255,20 +255,20 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 		if node.Type == workflow.NodeTypeActionLoop || insideLoop[node.ID] {
 			revisitLimit = workflow.MaxExecutionsPerRun
 		} else if agentCycle[node.ID] {
-			// AI-agent hub (and the tool nodes it routes to) — revisited once per
+			// AI-agent hub (and the tool nodes it routes to), revisited once per
 			// tool call in a single pass, which is progress, not a loop. Allow many
 			// tool cycles but still cap to catch a genuinely stuck agent.
 			revisitLimit = maxAgentCycleRevisits
 		}
 		if nodeVisitCounts[node.ID] > revisitLimit {
-			log.Printf("[workflow] engine: run=%s LOOP DETECTED — node=%s visited %d times, stopping",
+			log.Printf("[workflow] engine: run=%s LOOP DETECTED, node=%s visited %d times, stopping",
 				run.ID, node.ID, nodeVisitCounts[node.ID])
 			run.SetError(fmt.Sprintf("loop detected: node %s visited %d times without waiting", node.ID, nodeVisitCounts[node.ID]))
 			return e.runRepo.Update(run)
 		}
 
 		if node.Type.IsEnd() {
-			log.Printf("[workflow] engine: run=%s reached end node=%s — completing", run.ID, node.ID)
+			log.Printf("[workflow] engine: run=%s reached end node=%s, completing", run.ID, node.ID)
 			run.SetCompleted()
 			e.writeLog(run.ID, node, workflow.LogStatusExecuted, nil, nil, "")
 			return e.runRepo.Update(run)
@@ -278,7 +278,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 		if !ok {
 
 			if node.Type.IsTrigger() {
-				log.Printf("[workflow] engine: run=%s trigger node=%s type=%s — passing through", run.ID, node.ID, node.Type)
+				log.Printf("[workflow] engine: run=%s trigger node=%s type=%s, passing through", run.ID, node.ID, node.Type)
 				edges := w.Graph.OutgoingEdges(node.ID)
 				if len(edges) == 0 {
 					run.SetError("trigger node has no outgoing edges")
@@ -323,7 +323,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 			}
 			if errors.Is(err, errNodePanic) {
 				// Terminal: don't retry a panic, and never let it crash the server.
-				log.Printf("[workflow] engine: run=%s node=%s PANICKED — failing run: %v", run.ID, node.ID, err)
+				log.Printf("[workflow] engine: run=%s node=%s PANICKED, failing run: %v", run.ID, node.ID, err)
 				run.SetError(err.Error())
 				e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
 				return e.runRepo.Update(run)
@@ -332,12 +332,12 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				run.RetryCount++
 				retryDelay := int64(run.RetryCount*run.RetryCount*5) * int64(time.Second)
 				run.SetWaiting(time.Now().UTC().UnixMilli()+retryDelay/int64(time.Millisecond), workflow.WaitReasonRetry)
-				log.Printf("[workflow] engine: run=%s node=%s RETRYING (%d/%d) in %ds — error: %v",
+				log.Printf("[workflow] engine: run=%s node=%s RETRYING (%d/%d) in %ds, error: %v",
 					run.ID, node.ID, run.RetryCount, workflow.MaxRetriesPerNode, run.RetryCount*run.RetryCount*5, err)
 				e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
 				return e.runRepo.Update(run)
 			}
-			log.Printf("[workflow] engine: run=%s node=%s FAILED (retries exhausted) — error: %v",
+			log.Printf("[workflow] engine: run=%s node=%s FAILED (retries exhausted), error: %v",
 				run.ID, node.ID, err)
 			run.SetError(err.Error())
 			e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
@@ -410,7 +410,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 // safeExecute runs a node executor with a panic barrier. A misconfigured or
 // buggy executor (e.g. a nil dependency, as happens for repo-backed nodes in the
 // simulation registry) must never propagate a panic up through the HTTP handler
-// and kill the serving goroutine — it is converted into a terminal node error.
+// and kill the serving goroutine, it is converted into a terminal node error.
 // It also defends against an executor returning (nil, nil), which would nil-deref
 // downstream.
 func (e *RunEngine) safeExecute(executor workflow.NodeExecutor, ctx *workflow.NodeContext) (result *workflow.NodeResult, err error) {

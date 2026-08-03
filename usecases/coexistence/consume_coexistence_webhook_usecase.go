@@ -118,7 +118,7 @@ func (uc *consumeCoexistenceWebhookUseCase) handleHistory(raw []byte) {
 			for _, chunk := range change.Value.History {
 
 				for _, histErr := range chunk.Errors {
-					log.Printf("[coexistence-consumer] history error code=%d: %s — %s",
+					log.Printf("[coexistence-consumer] history error code=%d: %s, %s",
 						histErr.Code, histErr.Title, histErr.Message)
 				}
 
@@ -449,7 +449,7 @@ func classifyHistoryMessage(
 	case "location":
 		text := ""
 		if msg.Location != nil {
-			text = fmt.Sprintf("📍 %s — %s (%.6f, %.6f)",
+			text = fmt.Sprintf("📍 %s, %s (%.6f, %.6f)",
 				msg.Location.Name, msg.Location.Address,
 				msg.Location.Latitude, msg.Location.Longitude)
 		}

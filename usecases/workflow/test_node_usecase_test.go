@@ -166,7 +166,7 @@ func (e *captureHTTPExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 
 // Reproduces the production node-test gap: testing s2_2 (which needs BOTH a
 // mocked AI value AND a non-AI HTTP token from s2_1) must execute s2_1 to
-// populate the token — without re-running the mocked AI agent — so the auth
+// populate the token, without re-running the mocked AI agent, so the auth
 // token interpolates instead of staying an empty/literal Bearer (the 401 cause).
 func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	repo := NewMockWorkflowRepository()

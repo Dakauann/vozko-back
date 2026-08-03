@@ -119,7 +119,7 @@ func (c *Container) initDialerTransferStack() {
 
 // dialerHoldAudioFactory resolves what a held/parked caller hears: a music-on-hold
 // MP3 decoded ONCE at boot when HOLD_MUSIC_PATH is set (same pattern as the
-// KEYBOARD_SOUND_PATH ambience bed), otherwise the generated comfort tone — never
+// KEYBOARD_SOUND_PATH ambience bed), otherwise the generated comfort tone, never
 // dead air.
 func dialerHoldAudioFactory() dialer_infra.HoldAudioFactory {
 	path := strings.TrimSpace(os.Getenv("HOLD_MUSIC_PATH"))

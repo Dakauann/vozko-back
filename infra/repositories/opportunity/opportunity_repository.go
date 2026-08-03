@@ -181,7 +181,7 @@ func (r *repository) filteredQuery(input opportunity.SearchByFilterInput) (*gorm
 // one of the user's departments. Mirrors the conversation departmentScopeClause
 // (owner ~ assignee). Fail-closed: a restricted user with neither an owner-override
 // nor departments sees nothing. Unassigned deals (owner NULL) are invisible to
-// restricted users by design — admins/owners (RestrictDepartments=false) see all.
+// restricted users by design, admins/owners (RestrictDepartments=false) see all.
 func applyDepartmentScope(q *gorm.DB, input opportunity.SearchByFilterInput) *gorm.DB {
 	return applyDepartmentScopeRaw(q, input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
 }

@@ -70,7 +70,7 @@ func (c *Container) initInstagram() {
 	// Validate the redirect URI against the path this build actually serves.
 	//
 	// The path is a code constant (igdomain.OAuthCallbackPath) shared with the
-	// router, so a deployment can only get the HOST wrong — and that failure now
+	// router, so a deployment can only get the HOST wrong, and that failure now
 	// surfaces at boot with a precise message rather than as an opaque
 	// "Invalid redirect_uri" from Instagram halfway through onboarding.
 	if err := igdomain.ValidateRedirectURI(c.cfg.InstagramRedirectURI); err != nil {
@@ -264,8 +264,8 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 // Each of these is a per-channel lookup that the conversation stack keys on
 // (entry_id, entry_type) and therefore cannot resolve generically: the send
 // adapter, the WS authorizer's ownership check, the workspace/department resolver,
-// and the conversation-status writer. Registering them here — rather than adding
-// another `case "instagram"` inside each of those files — is what keeps the
+// and the conversation-status writer. Registering them here, rather than adding
+// another `case "instagram"` inside each of those files, is what keeps the
 // channel additive.
 func (c *Container) wireInstagramConversationStack() {
 	bundle := c.instagram
@@ -281,6 +281,38 @@ func (c *Container) wireInstagramConversationStack() {
 	)
 
 	c.registerChannelAdapter(adapter)
+
+	// Instagram had the same gap as Telegram: no campaign, so the campaign-scoped
+	// toggle could never reach it.
+	// The matching READER. GetEntryInfo returned a hard true for every
+	// adapter-backed channel, so the header reported automation as running even
+	// after it had been paused.
+	if setter, ok := c.services.conversationHistory.(interface {
+		SetAutomationReader(shared.EntryType, func(context.Context, string) (*bool, error))
+	}); ok {
+		conversations := bundle.Conversations
+		setter.SetAutomationReader(shared.EntryTypeInstagram, func(ctx context.Context, entryID string) (*bool, error) {
+			conv, err := conversations.FindByID(ctx, entryID)
+			if err != nil {
+				return nil, err
+			}
+			return conv.AutomationEnabled, nil
+		})
+	} else {
+		// Never silently. A missing reader is indistinguishable from "automation
+		// is on" at the UI, which is the exact bug this registration fixes.
+		log.Printf("[instagram] history provider exposes no SetAutomationReader; the toggle will read as always-on")
+	}
+
+	if c.services.conversationAutomation != nil {
+		conversations := bundle.Conversations
+		c.services.conversationAutomation.Register(
+			shared.EntryTypeInstagram,
+			func(ctx context.Context, entryID string, enabled *bool) error {
+				return conversations.SetAutomationEnabled(ctx, entryID, enabled)
+			},
+		)
+	}
 	if c.services.conversationAuthImpl != nil {
 		c.services.conversationAuthImpl.SetInstagramEntryRepo(bundle.Conversations)
 	}
@@ -304,7 +336,7 @@ func (c *Container) wireInstagramConversationStack() {
 		setter.SetInstagramEntryResolver(bundle.Conversations)
 	}
 	// The history provider is held as the domain interface, so the optional
-	// identity port is attached by assertion — the same pattern the resolver
+	// identity port is attached by assertion, the same pattern the resolver
 	// above uses.
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetContactIdentityLookup(shared.EntryType, conversation_usecase.ContactIdentityLookup)
@@ -359,7 +391,7 @@ func instagramContactIdentity(bundle *instagramBundle) conversation_usecase.Cont
 }
 
 // instagramHandler returns the channel's HTTP handler, or nil when the channel is
-// disabled — the router treats nil as "register no routes".
+// disabled, the router treats nil as "register no routes".
 func instagramHandler(c *Container) *instagramhttp.Handler {
 	if c.instagram == nil || !c.instagram.Enabled {
 		return nil

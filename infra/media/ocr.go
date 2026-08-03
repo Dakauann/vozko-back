@@ -36,7 +36,7 @@ func (t *TesseractOCR) RecognizeText(imageData []byte) (*media.OCRResult, error)
 
 	if err := cmd.Run(); err != nil {
 		stderrText := strings.TrimSpace(stderr.String())
-		log.Printf("[ocr] tesseract failed (lang=%s): %v — %s", t.languages, err, stderrText)
+		log.Printf("[ocr] tesseract failed (lang=%s): %v, %s", t.languages, err, stderrText)
 		return nil, fmt.Errorf("tesseract OCR failed: %w", err)
 	}
 

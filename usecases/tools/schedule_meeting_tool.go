@@ -56,7 +56,7 @@ Cria o evento no Google Calendar, opcionalmente gera link do Google Meet, e envi
 			},
 			"end_time": {
 				Type:               "string",
-				Description:        "Data/hora de fim no formato RFC3339. Opcional — se vazio, usa a duração para calcular.",
+				Description:        "Data/hora de fim no formato RFC3339. Opcional, se vazio, usa a duração para calcular.",
 				DisplayName:        "Fim",
 				DisplayDescription: "Data e hora de fim da reunião",
 			},
@@ -367,7 +367,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 
 // parseToolAttendees parses the attendees param into valid Google Calendar
 // attendees. Non-email entries (e.g. a WhatsApp lead's phone number the AI passes
-// through) are returned in `skipped` instead of aborting the whole meeting — so
+// through) are returned in `skipped` instead of aborting the whole meeting, so
 // the meeting is still created and the caller can tell the AI which contacts
 // weren't invited (and to share the link in the conversation instead).
 func parseToolAttendees(raw interface{}) (attendees []calendar.Attendee, skipped []string) {

@@ -18,8 +18,8 @@ func NewEnsureOrganicCoexistenceCampaignUseCase(repo wc.Repository) wc.EnsureOrg
 }
 
 // Execute preserves the exact behavior previously inlined in the Meta embedded
-// signup handler: return the latest organic campaign for the phone, or — when
-// none exists (or the lookup errors) — create a running organic campaign with
+// signup handler: return the latest organic campaign for the phone, or, when
+// none exists (or the lookup errors), create a running organic campaign with
 // the same naming/metadata and report created=true.
 func (uc *ensureOrganicCoexistenceCampaignUseCase) Execute(workspaceID, businessPhoneID, displayPhoneNumber string) (*wc.Campaign, bool, error) {
 	existing, err := uc.repo.FindLatestOrganicByBusinessPhone(workspaceID, businessPhoneID)

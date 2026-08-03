@@ -622,7 +622,7 @@ func TestHasAIDependencies_CustomCaptureVariable(t *testing.T) {
 		{Scope: "ia_classificadora", Key: "tool_args"},
 	}
 	if HasAIDependencies(deps) {
-		t.Fatal("expected false — custom scopes require graph-level analysis")
+		t.Fatal("expected false, custom scopes require graph-level analysis")
 	}
 }
 

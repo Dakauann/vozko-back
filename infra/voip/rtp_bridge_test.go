@@ -133,7 +133,7 @@ func TestRTPBridge_ReframesOversizedPayload(t *testing.T) {
 	defer br.Stop()
 
 	// The agent simulator emits a single ~2048-byte PCMU frame (its channel media has
-	// no MTU). It must be split into standard 160-byte frames the phone accepts — not
+	// no MTU). It must be split into standard 160-byte frames the phone accepts, not
 	// dropped, and not fatal to the call (the old behaviour: a "short buffer" that
 	// killed the whole bridge).
 	big := make([]byte, 2048)

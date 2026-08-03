@@ -87,7 +87,7 @@ func NewRecordingUploadPool(
 	}
 
 	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
-		logger.Printf("recording-pool: CRITICAL cannot create staging dir %s: %v — recordings may be lost", stagingDir, err)
+		logger.Printf("recording-pool: CRITICAL cannot create staging dir %s: %v, recordings may be lost", stagingDir, err)
 	}
 
 	for i := 0; i < workers; i++ {
@@ -115,7 +115,7 @@ func (p *RecordingUploadPool) Submit(job RecordingUploadJob) bool {
 	if err != nil {
 		// Staging to disk failed (disk full / perms). Last resort: upload from
 		// memory so we don't silently drop the recording.
-		p.logger.Printf("recording-pool: staging failed for call %s: %v — uploading inline as a fallback", job.CallID, err)
+		p.logger.Printf("recording-pool: staging failed for call %s: %v, uploading inline as a fallback", job.CallID, err)
 		p.uploadAndPublish(job.CallID, job.WAVData, job.Meta)
 		return false
 	}
@@ -189,13 +189,13 @@ func (p *RecordingUploadPool) process(wavPath string) {
 
 	metaBytes, err := os.ReadFile(metaPath)
 	if err != nil {
-		p.logger.Printf("recording-pool: unreadable sidecar for %s: %v — discarding orphan", wavPath, err)
+		p.logger.Printf("recording-pool: unreadable sidecar for %s: %v, discarding orphan", wavPath, err)
 		_ = os.Remove(wavPath)
 		return
 	}
 	var meta recordings.RecordingUploadEvent
 	if err := json.Unmarshal(metaBytes, &meta); err != nil {
-		p.logger.Printf("recording-pool: corrupt sidecar %s: %v — discarding", metaPath, err)
+		p.logger.Printf("recording-pool: corrupt sidecar %s: %v, discarding", metaPath, err)
 		_ = os.Remove(wavPath)
 		_ = os.Remove(metaPath)
 		return
@@ -203,7 +203,7 @@ func (p *RecordingUploadPool) process(wavPath string) {
 
 	wavData, err := os.ReadFile(wavPath)
 	if err != nil {
-		p.logger.Printf("recording-pool: cannot read staged wav %s: %v — will retry", wavPath, err)
+		p.logger.Printf("recording-pool: cannot read staged wav %s: %v, will retry", wavPath, err)
 		return
 	}
 
@@ -233,7 +233,7 @@ func (p *RecordingUploadPool) uploadAndPublish(callID string, wavData []byte, me
 		break
 	}
 	if lastErr != nil {
-		p.logger.Printf("recording-pool: R2 upload failed for call %s after %d attempts: %v — staged copy retained for retry",
+		p.logger.Printf("recording-pool: R2 upload failed for call %s after %d attempts: %v, staged copy retained for retry",
 			callID, maxRecordingUploadRetries, lastErr)
 		return false
 	}
@@ -242,11 +242,11 @@ func (p *RecordingUploadPool) uploadAndPublish(callID string, wavData []byte, me
 	meta.FileSize = int64(len(wavData))
 	msg, err := json.Marshal(meta)
 	if err != nil {
-		p.logger.Printf("recording-pool: marshal event failed for call %s: %v — staged copy retained", callID, err)
+		p.logger.Printf("recording-pool: marshal event failed for call %s: %v, staged copy retained", callID, err)
 		return false
 	}
 	if err := p.pub.Publish(recordings.TopicRecordingUpload, msg); err != nil {
-		p.logger.Printf("recording-pool: publish failed for call %s: %v — staged copy retained for retry", callID, err)
+		p.logger.Printf("recording-pool: publish failed for call %s: %v, staged copy retained for retry", callID, err)
 		return false
 	}
 

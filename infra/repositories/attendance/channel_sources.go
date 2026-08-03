@@ -13,7 +13,7 @@ import (
 //
 // That read was written for WhatsApp and only WhatsApp. Its channel-mix panel
 // counted `entry_type = 'whatsapp'` and therefore always reported 100% WhatsApp,
-// and its entry CTE had exactly one branch — so an Instagram or Telegram
+// and its entry CTE had exactly one branch, so an Instagram or Telegram
 // conversation was invisible in every operational metric on the page. An agent
 // who spent a day on Instagram looked idle.
 //
@@ -99,7 +99,7 @@ var channelSources = []channelSource{
 
 // selectedChannelSources returns the channels a filter reads.
 //
-// An empty filter means every channel — which is the whole point: the overview
+// An empty filter means every channel, which is the whole point: the overview
 // is a workspace-wide view, and silently limiting it to one channel is how the
 // page came to lie.
 func selectedChannelSources(channel string) []channelSource {
@@ -139,7 +139,7 @@ func (s channelSource) closeSource() string {
 
 // projection is the column list both halves of the CTE emit. It must be
 // identical across channels or the UNION ALL is rejected by Postgres and the
-// whole overview breaks — including for WhatsApp-only tenants.
+// whole overview breaks, including for WhatsApp-only tenants.
 func (s channelSource) projection(isNewContact string) string {
 	return s.EntryAlias + `.id AS entry_id, '` + string(s.EntryType) + `'::text AS entry_type,
 				` + s.statusBucket() + ` AS status_bucket,

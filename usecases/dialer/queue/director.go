@@ -36,7 +36,7 @@ type CandidateSource interface {
 }
 
 // EventSink records queue lifecycle events for reporting/SLA (Asterisk's
-// queue_log). It is OFF the hot path — implementations MUST NOT block or fail the
+// queue_log). It is OFF the hot path, implementations MUST NOT block or fail the
 // caller (fan out to a durable store asynchronously). A nil sink drops events.
 type EventSink interface {
 	QueueEvent(ev Event)

@@ -23,7 +23,7 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 		Icon:        "GitBranch",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para rotear por correspondência de texto (switch/case) sem custo de IA.",
-			Behavior: "Saídas DINÂMICAS: cada item de 'cases' cria uma saída (rótulo igual ao value do case) — preencha 'cases' ANTES de conectar. Há sempre uma saída 'default' para quando nada corresponde.",
+			Behavior: "Saídas DINÂMICAS: cada item de 'cases' cria uma saída (rótulo igual ao value do case), preencha 'cases' ANTES de conectar. Há sempre uma saída 'default' para quando nada corresponde.",
 			Examples: []string{
 				"config: {\"text\":\"{{message}}\",\"match_mode\":\"exact\",\"cases\":[{\"value\":\"1\"},{\"value\":\"2\"}]}  // arestas: \"1\", \"2\", \"default\"",
 			},
@@ -34,7 +34,7 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 			"match_mode": "exact",
 		},
 		// Base handle ships in the catalog (the optional "default" fallback). The
-		// per-case routes are config-dependent — DynamicHandles tells the frontend
+		// per-case routes are config-dependent, DynamicHandles tells the frontend
 		// to resolve the full set via the backend (TextMatchOutputs).
 		Outputs: []workflow.HandleDefinition{
 			{ID: "default", Label: "Padrão", Optional: true},
@@ -134,7 +134,7 @@ func TextMatchOutputs(config map[string]interface{}) []workflow.HandleDefinition
 
 	// "default" is the optional fallback (unmatched input): a flow may legitimately
 	// handle only specific cases and let the rest end. Declared cases above, by
-	// contrast, are required — a case that routes nowhere is a dead-end.
+	// contrast, are required, a case that routes nowhere is a dead-end.
 	outputs = append(outputs, workflow.HandleDefinition{
 		ID:       "default",
 		Label:    "Padrão",

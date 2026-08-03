@@ -614,7 +614,7 @@ func TestQuickSend_RunningCampaign_UsesIncrByNotOverwrite(t *testing.T) {
 	}
 	v, _ := h.shared.GetString(remainingCounterKey("c-1"))
 	if v != "502" {
-		t.Fatalf("expected counter 502 (500+2), got %q — overwrite would have produced 2", v)
+		t.Fatalf("expected counter 502 (500+2), got %q, overwrite would have produced 2", v)
 	}
 	if h.cons.subscribeCalls != 0 || h.cons.resumeCalls != 0 {
 		t.Fatalf("running campaign should not re-subscribe or resume; got sub=%d resume=%d", h.cons.subscribeCalls, h.cons.resumeCalls)

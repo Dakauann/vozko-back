@@ -40,7 +40,7 @@ func (r *conversationRepository) FindOrCreate(ctx context.Context, workspaceID, 
 			Columns: []clause.Column{{Name: "ig_account_id"}, {Name: "contact_id"}},
 			// The unique index is PARTIAL (WHERE deleted_at IS NULL), because a soft-deleted
 			// row must not block re-creating the same conversation. Postgres will not infer a
-			// partial index as the conflict arbiter unless the predicate is repeated here —
+			// partial index as the conflict arbiter unless the predicate is repeated here,
 			// a bare ON CONFLICT (cols) fails outright with 42P10 "no unique or exclusion
 			// constraint matching the ON CONFLICT specification".
 			TargetWhere: clause.Where{
@@ -125,7 +125,7 @@ func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, wo
 // RecordInbound advances the customer clock, which is the anchor for the sliding
 // 24h messaging window.
 //
-// The update is monotonic — GREATEST against the stored value — so an
+// The update is monotonic, GREATEST against the stored value, so an
 // out-of-order webhook delivery cannot move the window backwards and wrongly
 // reopen or close it.
 func (r *conversationRepository) RecordInbound(ctx context.Context, id string, at time.Time) error {
@@ -188,7 +188,7 @@ func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) 
 // CountByStatus powers the inbox status chips.
 //
 // Conversations with no status yet count as "new", matching the inbox's own
-// IS DISTINCT FROM default — otherwise brand-new conversations would be visible
+// IS DISTINCT FROM default, otherwise brand-new conversations would be visible
 // in the list but absent from every count above it.
 func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, igAccountID string) (map[string]int64, error) {
 	type row struct {
@@ -262,4 +262,22 @@ func toConversationDomain(record *schema.InstagramConversation) *igdomain.Conver
 		CreatedAt:             record.CreatedAt,
 		UpdatedAt:             record.UpdatedAt,
 	}
+}
+
+// SetAutomationEnabled writes the per-conversation automation override.
+//
+// nil clears it, restoring inheritance from the account switch. Update with a
+// map is required for exactly that reason: GORM's struct update skips nil
+// fields, so clearing an override would silently do nothing.
+func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error {
+	result := r.db.WithContext(ctx).Model(&schema.InstagramConversation{}).
+		Where("id = ?", id).
+		Update("automation_enabled", enabled)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return igdomain.ErrConversationNotFound
+	}
+	return nil
 }

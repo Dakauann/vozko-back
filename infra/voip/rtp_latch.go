@@ -243,7 +243,7 @@ func (l *latchingPacketConn) commitLatch(udpSrc *net.UDPAddr, ip4 net.IP) {
 	l.outcome.Store(int32(latchOutcomeApplied))
 
 	if sdpIP4 != nil && !sameNetwork16(sdpIP4, ip4) {
-		l.logf("RTP LATCHED [cross-network — carrier SBC pattern]: sdp=%s actual=%s trunk=%s call=%s",
+		l.logf("RTP LATCHED [cross-network, carrier SBC pattern]: sdp=%s actual=%s trunk=%s call=%s",
 			l.sdpRaddr.String(), newAddr.String(), l.trunkID, l.callID)
 	} else {
 		l.logf("RTP LATCHED: sdp=%s actual=%s trunk=%s call=%s",
@@ -411,8 +411,8 @@ func (l *latchingPacketConn) diagWatchdog(total time.Duration) {
 			return
 		}
 		if time.Now().After(deadline) {
-			l.logf("watchdog: giving up after %s with NO inbound — reads=%d writes=%d trunk=%s call=%s "+
-				"[likely host firewall blocking UDP — see docs/deployment/SIP_RTP_FIREWALL.md]",
+			l.logf("watchdog: giving up after %s with NO inbound, reads=%d writes=%d trunk=%s call=%s "+
+				"[likely host firewall blocking UDP, see docs/deployment/SIP_RTP_FIREWALL.md]",
 				total, l.diagReads.Load(), l.diagWrites.Load(), l.trunkID, l.callID)
 			return
 		}

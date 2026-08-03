@@ -218,7 +218,7 @@ func TestConsumerRunner_ExhaustedRetriesDeadLetter(t *testing.T) {
 
 // TestConsumerRunner_NoPublisherParksInsteadOfSpinning covers the fallback path.
 // Without a publisher there is no way to delay, and an immediate requeue would
-// reintroduce the spin — so the message is parked instead.
+// reintroduce the spin, so the message is parked instead.
 func TestConsumerRunner_NoPublisherParksInsteadOfSpinning(t *testing.T) {
 	runner := NewConsumerRunner(ConsumerConfig[testPayload]{
 		Name:  "test-consumer",
@@ -315,7 +315,7 @@ func TestConsumerRunner_SuccessAcks(t *testing.T) {
 }
 
 // TestConsumerRunner_DropDispositionAcks: a permanent failure is acked, not
-// retried — retrying something that cannot succeed is the spin in another form.
+// retried, retrying something that cannot succeed is the spin in another form.
 func TestConsumerRunner_DropDispositionAcks(t *testing.T) {
 	pub := &recordingPub{}
 

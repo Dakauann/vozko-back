@@ -1,6 +1,6 @@
 // Package agentloop is the reusable, transport-agnostic agentic tool-use loop
-// extracted from the AI Workflow Builder. It runs a bounded ReAct-style loop —
-// stream a model turn, let it call tools, feed the results back, repeat — keeping
+// extracted from the AI Workflow Builder. It runs a bounded ReAct-style loop,
+// stream a model turn, let it call tools, feed the results back, repeat, keeping
 // a persistent tool-use conversation, enforcing stall/repair/iteration/token
 // guards, and yielding to the user on a conversational reply.
 //
@@ -9,7 +9,7 @@
 // behind the Driver interface. The loop itself knows nothing about workflows,
 // graphs, the copilot, or any particular channel. The original Workflow-Builder
 // behaviour is preserved exactly: the same reason strings, the same finish/repair
-// semantics, the same empty-turn handling — so the builder rides this engine with
+// semantics, the same empty-turn handling, so the builder rides this engine with
 // no observable change, and new surfaces (the dashboard AI copilot) reuse it by
 // supplying their own Driver.
 //
@@ -87,7 +87,7 @@ type Driver interface {
 type StepResult struct {
 	Result  string // RoleTool content fed back to the model
 	Mutated bool   // did this call advance the domain state?
-	// Pause, when non-nil, suspends the loop after this call — e.g. a mutation that
+	// Pause, when non-nil, suspends the loop after this call, e.g. a mutation that
 	// needs explicit user approval before it executes. The engine records the turn
 	// so far and returns an OutcomePaused; the caller drives the out-of-band step
 	// (approval) and starts a fresh Run to resume the conversation.
@@ -98,8 +98,8 @@ type StepResult struct {
 	// target. The engine compares whole turns: a model that spends three turns
 	// running update_node against the same node is not converging, even when the
 	// arguments differ slightly each time and the state hash therefore keeps
-	// changing. That specific shape — endless micro-edits to one node chasing
-	// advisory hints — defeats both of the other stall guards.
+	// changing. That specific shape, endless micro-edits to one node chasing
+	// advisory hints, defeats both of the other stall guards.
 	//
 	// Empty disables the guard for that call.
 	Signature string
@@ -123,7 +123,7 @@ type FinishResult struct {
 
 // Progress is the post-turn signal used for stall detection and the validity flag.
 // An empty StateHash disables the "state unchanged" guard; an empty
-// BlockingSignature disables the "same problems persist" guard — so a Driver with
+// BlockingSignature disables the "same problems persist" guard, so a Driver with
 // no validator (e.g. the copilot) naturally relies on iteration/empty-turn limits.
 type Progress struct {
 	StateHash         string
@@ -220,15 +220,15 @@ type Engine struct {
 const (
 	reasonMaxIterations   = "número máximo de iterações atingido"
 	reasonTokenBudget     = "limite de tokens da sessão atingido"
-	reasonNoProgressState = "sem progresso — o grafo não mudou nas últimas iterações"
-	reasonChurn           = "sem progresso — o mesmo conjunto de problemas persiste"
+	reasonNoProgressState = "sem progresso, o grafo não mudou nas últimas iterações"
+	reasonChurn           = "sem progresso, o mesmo conjunto de problemas persiste"
 	reasonRepairExhausted = "orçamento de reparo esgotado"
-	reasonRepeatedTurn    = "sem progresso — as mesmas ações se repetiram sem convergir"
-	reasonEmptyTurn       = "o modelo não produziu nenhuma ação — possível truncamento pelo limite de tokens de raciocínio do modelo (tente novamente ou troque de modelo)"
-	finishIgnoredMsg      = "finish IGNORADO: você fez mutações neste turno — chame finish sozinho, sem outras ferramentas."
+	reasonRepeatedTurn    = "sem progresso, as mesmas ações se repetiram sem convergir"
+	reasonEmptyTurn       = "o modelo não produziu nenhuma ação, possível truncamento pelo limite de tokens de raciocínio do modelo (tente novamente ou troque de modelo)"
+	finishIgnoredMsg      = "finish IGNORADO: você fez mutações neste turno, chame finish sozinho, sem outras ferramentas."
 	providerErrPrefix     = "erro do provedor de IA: "
 	reasonCancelled       = "cancelado"
-	reasonTimeout         = "tempo limite da sessão atingido — o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
+	reasonTimeout         = "tempo limite da sessão atingido, o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
 )
 
 // sessionEndReason maps a terminated loop context to a user-facing reason. A
@@ -255,7 +255,7 @@ type iterationPayload struct {
 
 // Run executes one agentic loop for a single user prompt. It streams the model's
 // reasoning/answer and tool activity via emit, mutates sess (history + tokens) in
-// place, and returns a terminal Outcome — the caller emits the matching done/idle
+// place, and returns a terminal Outcome, the caller emits the matching done/idle
 // client event. Run only returns once the loop ends (finish, idle, a stop guard,
 // a provider error, or context cancellation).
 func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, sess *Session, prompt string) Outcome {
@@ -275,7 +275,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	prevTurnSig := ""
 	repeatedTurns := 0
 
-	// Anchor the user's request at the head of the persistent conversation — the
+	// Anchor the user's request at the head of the persistent conversation, the
 	// standard agentic tool-use loop keeps its own message history (prior tool
 	// calls + results) instead of re-planning from scratch each turn.
 	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: "PEDIDO DO USUÁRIO:\n" + prompt})
@@ -292,7 +292,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		emit(EventIteration, iterationPayload{N: iter, Max: cfg.MaxIterations, TokensUsed: sess.TokensUsed, TokenBudget: cfg.SessionTokenBudget})
 
 		// Messages = persistent history + a fresh ephemeral observation of the
-		// current state (NOT stored — it would bloat history with full-state dumps).
+		// current state (NOT stored, it would bloat history with full-state dumps).
 		msgs := append(append([]ai.Message(nil), sess.History...),
 			ai.Message{Role: ai.RoleUser, Content: drv.Reground(iter, cfg.MaxIterations, noMutationStreak)})
 
@@ -430,7 +430,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonRepairExhausted}
 		}
 
-		// Stall guard A — the state did not change this turn (informational-call
+		// Stall guard A, the state did not change this turn (informational-call
 		// dithering or repeated rejected mutations). Skipped when the Driver exposes
 		// no state hash.
 		if prog.StateHash != "" && prog.StateHash == prevHash {
@@ -443,7 +443,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		}
 		prevHash = prog.StateHash
 
-		// Stall guard B — the state keeps changing but the SAME blocking problems
+		// Stall guard B, the state keeps changing but the SAME blocking problems
 		// persist (oscillation that never converges). Skipped when no signature.
 		sig := prog.BlockingSignature
 		if sig != "" && sig == prevSig {
@@ -456,7 +456,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		}
 		prevSig = sig
 
-		// Stall guard C — the model keeps performing the SAME actions on the same
+		// Stall guard C, the model keeps performing the SAME actions on the same
 		// targets. Guards A and B both miss this: micro-edits to one node change
 		// the state hash every turn (so A resets), and when nothing is blocking the
 		// signature is empty (so B is skipped entirely). The result was a session

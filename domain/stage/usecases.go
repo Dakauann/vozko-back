@@ -89,7 +89,7 @@ type GetStageGroupUseCase interface {
 }
 
 // CloneStagesFromGroupUseCase copies the stages of a (workspace-owned) stage
-// group onto a newly created campaign — the first item becomes the initial
+// group onto a newly created campaign, the first item becomes the initial
 // stage. Best-effort: it reports the first failure but always attempts every
 // item, mirroring the original campaign-creation behavior.
 type CloneStagesFromGroupUseCase interface {

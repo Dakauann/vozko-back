@@ -80,7 +80,7 @@ func TestReconcileTemplates_SyncsOnlyEligiblePhones(t *testing.T) {
 		{ID: "phone-no-token", WABAId: "waba-4", Status: businessphone.StatusConnected},
 		{ID: "phone-no-waba", AccessToken: "token-5", Status: businessphone.StatusConnected},
 		// 360dialog channels authenticate with the channel D360-API-KEY, never an
-		// access token — they must still be reconciled so their template statuses
+		// access token, they must still be reconciled so their template statuses
 		// refresh (previously they were silently skipped and stayed "pending").
 		{ID: "phone-d360", WABAId: "waba-6", Provider: businessphone.ProviderDialog360, Dialog360APIKey: "d360-key", Status: businessphone.StatusConnected},
 		// A 360dialog phone whose onboarding never captured a key is not reconcilable.

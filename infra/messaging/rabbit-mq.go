@@ -204,7 +204,7 @@ func isPreconditionFailed(err error) bool {
 // their TTL expires and dead-letters them onto the real topic.
 //
 // The queue is durable and its x-dead-letter-exchange is baked in at creation, so
-// a queue created against a PREVIOUS exchange name can never be redeclared — the
+// a queue created against a PREVIOUS exchange name can never be redeclared, the
 // broker answers 406 and the consumer refuses to start, silently stranding every
 // delayed message. When that happens, drop the stale queue and recreate it with
 // the current arguments. Its contents are only un-elapsed timers, and they are
@@ -455,7 +455,7 @@ func (q *RabbitMQQueueSub) consumeLoop(topic string, ch *amqp.Channel, handler f
 
 				return
 			}
-			log.Printf("rabbitmq: failed to start consumer for %s: %v — reconnecting in %v", topic, err, backoff)
+			log.Printf("rabbitmq: failed to start consumer for %s: %v, reconnecting in %v", topic, err, backoff)
 			time.Sleep(backoff)
 			backoff = min(backoff*2, maxBackoff)
 			newCh, err := q.setupChannel(topic)

@@ -24,7 +24,7 @@ func Descriptor() *channel.Descriptor {
 		Capabilities: channel.Capabilities{
 			// A bot cannot message a user who never started it. Our conversations
 			// only exist because the customer wrote first, so this is satisfied by
-			// construction — but the CRM must not offer an "open a conversation"
+			// construction, but the CRM must not offer an "open a conversation"
 			// affordance, because there is none. Deep links are the substitute.
 			CanInitiateConversation: false,
 			SupportsTemplates:       false,
@@ -35,8 +35,8 @@ func Descriptor() *channel.Descriptor {
 			SupportsTypingIndicator: true,
 			// Read receipts exist only in business mode, only outbound (we mark the
 			// customer's message read on the owner's behalf). We never learn whether
-			// the customer read ours — Telegram has no delivery or read callback at
-			// all — so the CRM must not render a status track that can never fill.
+			// the customer read ours, Telegram has no delivery or read callback at
+			// all, so the CRM must not render a status track that can never fill.
 			SupportsReadReceipts: false,
 			// Telegram renders HTML and MarkdownV2. HTML is the one we use:
 			// MarkdownV2 requires escaping a long list of characters and a stray
@@ -73,7 +73,7 @@ func Descriptor() *channel.Descriptor {
 			// Inline keyboards. Telegram is the most permissive channel we carry
 			// on count and the strictest on payload.
 			Interactive: channel.InteractiveLimits{
-				// The Bot API documents NO limit on inline_keyboard length —
+				// The Bot API documents NO limit on inline_keyboard length,
 				// it is "Array of Array of InlineKeyboardButton" and nothing
 				// more. MaxInlineKeyboardButtons is therefore OUR cap, not
 				// Telegram's, chosen so a runaway workflow config cannot build a
@@ -87,7 +87,7 @@ func Descriptor() *channel.Descriptor {
 				// callback query to the bot when the button is pressed, 1-64
 				// bytes". This is the tightest payload bound in the system.
 				MaxPayloadBytes: MaxCallbackDataBytes,
-				// Inline buttons are label-only — there is no second line under a button.
+				// Inline buttons are label-only, there is no second line under a button.
 				SupportsOptionDescriptions: false,
 			},
 		},

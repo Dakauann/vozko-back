@@ -85,7 +85,7 @@ func TestNormalizeUpdateKinds(t *testing.T) {
 
 // A Telegram id carries "at most 52 significant bits". Rounding one through a
 // 32-bit field is the single most common Telegram integration bug, and it
-// corrupts identity silently — the contact simply becomes a different person.
+// corrupts identity silently, the contact simply becomes a different person.
 func TestLargeIdsSurviveDecoding(t *testing.T) {
 	ev := normalizeFixture(t, "large_ids.json")
 
@@ -113,7 +113,7 @@ func TestIdempotencyKeyIsScopedByAccount(t *testing.T) {
 	b := NormalizeUpdate("acct-b", update, raw)
 
 	if a.IdempotencyKey == b.IdempotencyKey {
-		t.Fatalf("two accounts share an idempotency key (%q) — one bot's update would suppress another's",
+		t.Fatalf("two accounts share an idempotency key (%q), one bot's update would suppress another's",
 			a.IdempotencyKey)
 	}
 }
@@ -160,7 +160,7 @@ func TestStartCommandInGroupStripsBotSuffix(t *testing.T) {
 
 // A payload outside Telegram's alphabet is silently dropped by Telegram itself,
 // so accepting one here would produce a link that opens an ordinary chat with no
-// attribution — the hardest kind of bug to notice.
+// attribution, the hardest kind of bug to notice.
 func TestValidDeepLinkToken(t *testing.T) {
 	valid := []string{"abc", "A-Z_0-9", "Zm9vYmFyMTIzNDU2Nzg"}
 	for _, tok := range valid {
@@ -228,7 +228,7 @@ func TestOversizedAttachmentIsFlaggedBeforeDownload(t *testing.T) {
 		t.Error("a 24KB voice note must not be flagged TooLarge")
 	}
 	if small.Attachments[0].Kind != MediaVoice {
-		t.Errorf("kind = %q, want voice — the STT pipeline keys on it", small.Attachments[0].Kind)
+		t.Errorf("kind = %q, want voice, the STT pipeline keys on it", small.Attachments[0].Kind)
 	}
 }
 
@@ -251,7 +251,7 @@ func TestBusinessMessageDirection(t *testing.T) {
 		t.Errorf("kind = %q, want inbound", inbound.Kind)
 	}
 	if inbound.BusinessConnectionID != "BqhVQx8AAAAA" {
-		t.Errorf("business_connection_id = %q, want it carried through — it is the only routing key",
+		t.Errorf("business_connection_id = %q, want it carried through, it is the only routing key",
 			inbound.BusinessConnectionID)
 	}
 
@@ -277,7 +277,7 @@ func TestDeletedBusinessMessages(t *testing.T) {
 		t.Fatalf("deleted ids = %v, want two", ev.DeletedMessageIDs)
 	}
 	if ev.ChatID != 5041234567 {
-		t.Errorf("chat id = %d — deletions name a chat, never a contact", ev.ChatID)
+		t.Errorf("chat id = %d, deletions name a chat, never a contact", ev.ChatID)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestSharedContactCarriesUserID(t *testing.T) {
 func TestEditedMessageUsesEditDate(t *testing.T) {
 	ev := normalizeFixture(t, "edited_message.json")
 	if ev.Timestamp.Unix() != 1785312100 {
-		t.Errorf("timestamp = %d, want edit_date 1785312100 — using date would reorder the transcript",
+		t.Errorf("timestamp = %d, want edit_date 1785312100, using date would reorder the transcript",
 			ev.Timestamp.Unix())
 	}
 }
@@ -333,7 +333,7 @@ func TestCallbackQueryCarriesIDAndData(t *testing.T) {
 		t.Error("callback query id must survive: an unanswered query spins the customer's button")
 	}
 	if ev.CallbackData != "negotiate:installments:3" {
-		t.Errorf("CallbackData = %q, want the payload — button labels are display text", ev.CallbackData)
+		t.Errorf("CallbackData = %q, want the payload, button labels are display text", ev.CallbackData)
 	}
 }
 
@@ -390,7 +390,7 @@ func TestSortByUpdateID(t *testing.T) {
 
 // A tapped button reports an internal payload, not the words the contact read.
 // Storing the payload as the message text put a raw id like "support" into the
-// transcript AND handed it to the AI agent as the customer's message — where an
+// transcript AND handed it to the AI agent as the customer's message, where an
 // agent whose tool description mentioned "Suporte" matched it and acted on it,
 // re-showing the menu forever. The label is what a reader needs; the payload is
 // what routing needs; they are not interchangeable.
@@ -403,7 +403,7 @@ func TestCallbackQueryUsesTheButtonLabelAsTheMessageText(t *testing.T) {
 	if ev.Text != "Suporte" {
 		t.Errorf("Text = %q, want the label the contact tapped", ev.Text)
 	}
-	// The payload must survive untouched — it is the branch key.
+	// The payload must survive untouched, it is the branch key.
 	if ev.CallbackData != "support" {
 		t.Errorf("CallbackData = %q, want the payload", ev.CallbackData)
 	}

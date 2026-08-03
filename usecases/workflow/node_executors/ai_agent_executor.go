@@ -116,13 +116,13 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 		Icon:        "Robot",
 		Guidance: workflow.NodeGuidance{
 			When: "Para conversar com o contato usando IA, classificar intenção ou orquestrar ferramentas. source=prompt (defina model+instructions) para um agente ad-hoc; source=agent (defina agent_id) para reutilizar um agente salvo.",
-			Behavior: "ENVIO: em response_mode=segmented o PRÓPRIO NÓ envia as mensagens no WhatsApp (divididas, com indicador de 'digitando') — não conecte um send_text depois (envio duplicado, é bloqueado). " +
+			Behavior: "ENVIO: em response_mode=segmented o PRÓPRIO NÓ envia as mensagens no WhatsApp (divididas, com indicador de 'digitando'), não conecte um send_text depois (envio duplicado, é bloqueado). " +
 				"Em response_mode=default o nó também envia a resposta no WhatsApp; use um send_text apenas para enviar por outro canal, transformar o texto, ou quando o agente roteia para ferramentas (aí o nó NÃO envia). " +
 				"tool_mode (campo oculto, essencial quando há custom_tools): 'route' = a IA escolhe uma ferramenta e o fluxo SAI pela saída cujo nome é o da ferramenta; 'execute' = as ferramentas rodam internamente e o fluxo segue pela saída padrão. Defina custom_tools e tool_mode ANTES de conectar. " +
 				"Ao chamar uma ferramenta, cada argumento fica acessível adiante como {{node.<id>.<arg>}} (ex.: {{node.n2.cep}}).",
 			Examples: []string{
 				"config: {\"source\":\"prompt\",\"model\":\"<find_resource ai_models>\",\"instructions\":\"Você é um atendente cordial de cartões...\",\"response_mode\":\"segmented\"}  // o nó envia sozinho; ligue só a 'default' (ex.: wait_for_reply)",
-				"Ferramenta + HTTP: ai_agent(tool_mode=route, custom_tools=[{name:buscar_cep, parameters:[{name:cep}]}]) — conecte a saída \"buscar_cep\" → http_request com url usando {{node.<idDoAgente>.cep}}; conecte o \"sucesso\" do http de volta ao agente.",
+				"Ferramenta + HTTP: ai_agent(tool_mode=route, custom_tools=[{name:buscar_cep, parameters:[{name:cep}]}]), conecte a saída \"buscar_cep\" → http_request com url usando {{node.<idDoAgente>.cep}}; conecte o \"sucesso\" do http de volta ao agente.",
 			},
 		},
 		DefaultConfig: map[string]interface{}{
@@ -142,7 +142,7 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 			"custom_tools":       []interface{}{},
 		},
 		// Base handles ship in the catalog so they render instantly. The full set
-		// (these + one route per custom tool) is config-dependent — DynamicHandles
+		// (these + one route per custom tool) is config-dependent, DynamicHandles
 		// tells the frontend to resolve it via the backend (AIAgentToolOutputs).
 		Outputs: []workflow.HandleDefinition{
 			{ID: "default", Label: "Resposta (texto)"},
@@ -175,7 +175,7 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 			{Key: "source", Label: "Fonte de IA", Type: "select", Options: []workflow.ConfigFieldOption{
 				{Value: "agent", Label: "Agente salvo"},
 				{Value: "prompt", Label: "Prompt inline"},
-			}, Description: "Modo do nó (padrão 'agent' quando vazio). 'agent': usa um agente salvo — preencha agent_id; model/instructions são ignorados. 'prompt': agente ad-hoc — preencha model e instructions; agent_id é ignorado."},
+			}, Description: "Modo do nó (padrão 'agent' quando vazio). 'agent': usa um agente salvo, preencha agent_id; model/instructions são ignorados. 'prompt': agente ad-hoc, preencha model e instructions; agent_id é ignorado."},
 			{Key: "agent_id", Label: "Agente", Type: "select", Placeholder: "Selecione um agente", OptionsSource: "agents"},
 			{Key: "model", Label: "Modelo", Type: "select", Placeholder: "Selecione um modelo", OptionsSource: "ai_models"},
 			{Key: "instructions", Label: "Prompt do sistema", Type: "textarea", Placeholder: "Descreva como a IA deve se comportar..."},
@@ -354,7 +354,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 			// node that was waiting on the contact. The contact's reply is the new
 			// input; replaying the previous tool's output as a USER message makes
 			// the model read its own last action as a fresh request and call the
-			// same tool again — a menu that reappears forever no matter which
+			// same tool again, a menu that reappears forever no matter which
 			// button is tapped.
 			//
 			// ParksForReply, not IsWait: the interactive prompt parks exactly like
@@ -458,7 +458,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	if raw, ok := ctx.State.Get("_executed_actions"); ok {
 		if actions, ok := raw.([]interface{}); ok && len(actions) > 0 {
 			var sb strings.Builder
-			sb.WriteString("\n\n[AÇÕES JÁ EXECUTADAS NESTA CONVERSA — NÃO repita a menos que o usuário peça explicitamente]\n")
+			sb.WriteString("\n\n[AÇÕES JÁ EXECUTADAS NESTA CONVERSA, NÃO repita a menos que o usuário peça explicitamente]\n")
 			for _, a := range actions {
 				if s, ok := a.(string); ok {
 					sb.WriteString("• ")
@@ -489,7 +489,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 		log.Printf("%s configured %d custom tools, tool_choice=%s (default_edge=%v)", logPrefix, len(toolDefs), toolChoice, hasDefaultEdge)
 		for _, td := range toolDefs {
-			log.Printf("%s   tool: %s — %s", logPrefix, td.Name, td.Description)
+			log.Printf("%s   tool: %s, %s", logPrefix, td.Name, td.Description)
 		}
 	}
 
@@ -497,7 +497,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	if e.cachedBalanceChecker != nil {
 		bal, err := e.cachedBalanceChecker.GetBalance(ctx.Workflow.WorkspaceID)
 		if err != nil {
-			log.Printf("%s balance check error for workspace %s: %v — blocking AI call (fail-closed)", logPrefix, ctx.Workflow.WorkspaceID, err)
+			log.Printf("%s balance check error for workspace %s: %v, blocking AI call (fail-closed)", logPrefix, ctx.Workflow.WorkspaceID, err)
 			return nil, fmt.Errorf("balance check failed: %w", err)
 		}
 		if bal < minBalanceFloor {
@@ -679,7 +679,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	}
 
 	// Default (non-segmented) delivery goes through the channel sender, so the
-	// agent node answers on every adapter-backed channel — not only WhatsApp.
+	// agent node answers on every adapter-backed channel, not only WhatsApp.
 	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
 		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
 		if sendErr != nil {
@@ -740,13 +740,13 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		nextNodeID := resolveEdgeByLabelStrict(edges, "default")
 		if nextNodeID == "" {
 			if isSegmented {
-				log.Printf("%s segmented mode responded but no default edge — completing", logPrefix)
+				log.Printf("%s segmented mode responded but no default edge, completing", logPrefix)
 				return &workflow.NodeResult{
 					Output:   result,
 					Complete: true,
 				}, nil
 			}
-			log.Printf("%s ERROR: no default edge and no tool called — dead end", logPrefix)
+			log.Printf("%s ERROR: no default edge and no tool called, dead end", logPrefix)
 			return &workflow.NodeResult{
 				Error: "AI agent has custom tools but model did not call any tool and no 'Padrão' (default) output is connected",
 			}, nil
@@ -920,7 +920,7 @@ func buildCustomToolDefs(cts []customToolConfig) []tools.Definition {
 
 // AIAgentToolOutputs is the single backend authority for an AI-agent node's
 // output handles. It ALWAYS declares the response and error paths, plus one route
-// per custom tool — so every ai_agent node (with or without tools) has the same,
+// per custom tool, so every ai_agent node (with or without tools) has the same,
 // backend-defined handle set. The frontend renders this verbatim; it never
 // recomputes handles or their optional flags.
 func AIAgentToolOutputs(config map[string]interface{}) []workflow.HandleDefinition {
@@ -938,7 +938,7 @@ func AIAgentToolOutputs(config map[string]interface{}) []workflow.HandleDefiniti
 	// The response path is REQUIRED: whenever the model answers with text instead
 	// of calling a tool (it always may, including in segmented mode), the flow
 	// leaves through "default". Forcing it to be connected stops a text reply from
-	// silently dead-ending — the builder must wire it (e.g. to wait_for_reply to
+	// silently dead-ending, the builder must wire it (e.g. to wait_for_reply to
 	// continue the conversation, or to end).
 	outputs = append(outputs, workflow.HandleDefinition{
 		ID:    "default",
@@ -1214,7 +1214,7 @@ func formatRAGResults(result *rag.QueryOutput) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- Base de Conhecimento (Informações Recuperadas) ---\n")
-	sb.WriteString("REGRAS DE FUNDAMENTAÇÃO (OBRIGATÓRIO — VIOLAÇÃO = FALHA CRÍTICA):\n")
+	sb.WriteString("REGRAS DE FUNDAMENTAÇÃO (OBRIGATÓRIO, VIOLAÇÃO = FALHA CRÍTICA):\n")
 	sb.WriteString("1. Use SOMENTE as informações abaixo para responder perguntas factuais. NUNCA invente, extrapole ou preencha lacunas.\n")
 	sb.WriteString("2. Se a informação necessária NÃO está abaixo, diga: 'Não tenho essa informação disponível na minha base de dados'.\n")
 	sb.WriteString("3. NUNCA fabrique preços, endereços, nomes, datas, grades ou qualquer dado específico que NÃO esteja nos trechos abaixo.\n")

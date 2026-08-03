@@ -54,7 +54,7 @@ func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 		t.Fatalf("got %d sends, want 1", len(messaging.Sent))
 	}
 	// The path takes OUR business account id, and the comment travels in the
-	// recipient — not the other way round.
+	// recipient, not the other way round.
 	if messaging.Sent[0].IGUserID != account.IGUserID {
 		t.Errorf("sent from %q, want the business IG id %q", messaging.Sent[0].IGUserID, account.IGUserID)
 	}

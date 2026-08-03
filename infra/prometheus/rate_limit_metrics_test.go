@@ -8,7 +8,7 @@ import (
 )
 
 // TestRateLimited_ExposedOnMetricsEndpoint proves the new counter is registered
-// and rendered on the /metrics scrape output with the expected labels — i.e. the
+// and rendered on the /metrics scrape output with the expected labels, i.e. the
 // Grafana dashboard/PromQL below will actually have data to read. Metric names use
 // the fixed brand-neutral "app_" namespace, independent of BRAND_KEY.
 func TestRateLimited_ExposedOnMetricsEndpoint(t *testing.T) {

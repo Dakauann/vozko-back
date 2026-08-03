@@ -274,7 +274,7 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		switch authType {
 		case "bearer":
 			if authToken != "" {
-				// Tolerate an operator pasting the token WITH a leading "Bearer " —
+				// Tolerate an operator pasting the token WITH a leading "Bearer ",
 				// we always emit exactly one prefix. A duplicated "Bearer Bearer
 				// <token>" is rejected by the target API with 401.
 				token := strings.TrimSpace(authToken)
@@ -329,7 +329,7 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	// drop the handshake (surfaces as "net/http: TLS handshake timeout"). Retry
 	// once capped at TLS 1.2 so those endpoints (e.g. ssl.datanext.com.br) work.
 	if err != nil && isTLSHandshakeError(err) {
-		log.Printf("[http_request] node %s: TLS handshake failed (%v) — retrying capped at TLS 1.2", ctx.Node.ID, err)
+		log.Printf("[http_request] node %s: TLS handshake failed (%v), retrying capped at TLS 1.2", ctx.Node.ID, err)
 		if req2, mkErr := makeReq(); mkErr == nil {
 			resp, err = (&http.Client{Timeout: timeout, Transport: e.transportTLS12}).Do(req2)
 		}
@@ -367,8 +367,8 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		log.Printf("[http_request] node %s: response body: %s", ctx.Node.ID, string(respBody))
 	}
 
-	// Parse into interface{} (not map only) so ARRAY bodies — e.g. a REST list
-	// endpoint returning `[{"token":"..."}]` — are captured as a navigable
+	// Parse into interface{} (not map only) so ARRAY bodies, e.g. a REST list
+	// endpoint returning `[{"token":"..."}]`, are captured as a navigable
 	// []interface{} instead of being dropped to a raw string. A raw string cannot
 	// be indexed by {{var[0].field}}, which silently produced empty auth headers.
 	var jsonResp interface{}
@@ -398,7 +398,7 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 
 		// Expose the HTTP envelope under a companion key so a downstream condition
 		// can branch on {{captureVar.status_code}} / {{captureVar.success}} even
-		// though the captured value itself is the bare response body — which, for
+		// though the captured value itself is the bare response body, which, for
 		// an array (e.g. a token list) or an object without a status_code field,
 		// has nowhere to carry it. The resolver consults this only as a fallback,
 		// so a real body field of the same name always wins.

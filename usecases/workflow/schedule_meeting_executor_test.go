@@ -437,7 +437,7 @@ func TestScheduleMeetingExecutor_RejectsInvalidAttendees(t *testing.T) {
 }
 
 // Regression: a FAILED schedule must never flow down the success edge when no
-// "erro" edge is wired — it must end the run (NextNodeID empty) instead.
+// "erro" edge is wired, it must end the run (NextNodeID empty) instead.
 func TestScheduleMeetingExecutor_FailureDoesNotFallThroughToSuccess(t *testing.T) {
 	repo := &scheduleMeetingRepoMock{} // no connection → failure
 	google := &scheduleMeetingGoogleMock{}
@@ -458,7 +458,7 @@ func TestScheduleMeetingExecutor_FailureDoesNotFallThroughToSuccess(t *testing.T
 				{ID: "meeting-1", Type: workflow.NodeTypeActionScheduleMeeting, Config: config},
 				{ID: "success-node", Type: workflow.NodeTypeEnd},
 			},
-			// ONLY the success edge is wired — no "erro".
+			// ONLY the success edge is wired, no "erro".
 			Edges: []workflow.Edge{
 				{Source: "meeting-1", Target: "success-node", Label: "sucesso"},
 			},

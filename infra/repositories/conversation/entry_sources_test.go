@@ -64,7 +64,7 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 }
 
 // Both projections must emit the same column list for every channel, or the
-// UNION is rejected by Postgres and the whole inbox/board breaks — including for
+// UNION is rejected by Postgres and the whole inbox/board breaks, including for
 // WhatsApp-only tenants.
 func TestEntrySourceProjectionsShareOneShape(t *testing.T) {
 	inboxCols := []string{"AS entry_id", "AS entry_type", "AS lead_id", "AS business_phone_id", "AS lm_created_at"}
@@ -344,7 +344,7 @@ func TestEntrySourceNeverInterpolatesCallerInput(t *testing.T) {
 }
 
 // Identifiers come from the registry, which is compile-time data. This pins that
-// the SQL text is built only from those constants plus placeholders — the
+// the SQL text is built only from those constants plus placeholders, the
 // invariant that makes the concatenation safe.
 func TestEntrySourceSQLIsBuiltFromRegistryConstantsOnly(t *testing.T) {
 	for _, src := range entrySources {
@@ -435,7 +435,7 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 // A channel on the board must be able to carry CRM metadata.
 //
 // Instagram shipped as a card that rendered on the kanban but was rejected by
-// the stage and label gates, so it could not be moved or labelled — worse than
+// the stage and label gates, so it could not be moved or labelled, worse than
 // not appearing at all. The board registry and the tagging set are two separate
 // lists, so this pins them together rather than trusting them to stay in step.
 func TestEveryBoardChannelCanCarryStagesAndLabels(t *testing.T) {

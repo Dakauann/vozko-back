@@ -29,7 +29,7 @@ type exportEntriesUseCase struct {
 
 // SetChannelEntryLister registers a channel's export source.
 //
-// Without one, that channel's conversations cannot be exported at all — the old
+// Without one, that channel's conversations cannot be exported at all, the old
 // behaviour for everything except WhatsApp, which returned "unsupported entry
 // type" and gave an operator no way to get their data out.
 func (uc *exportEntriesUseCase) SetChannelEntryLister(entryType export.EntryType, lister export.ChannelEntryLister) {
@@ -96,7 +96,7 @@ func (uc *exportEntriesUseCase) exportChannel(filter export.ExportFilter, lister
 	}
 
 	// Analyses and stages key on (entry_id, entry_type), so they are read exactly
-	// as they are for WhatsApp — no per-channel branch needed.
+	// as they are for WhatsApp, no per-channel branch needed.
 	analysisMap, err := uc.analysisRepo.FindLatestByEntries(entryIDs, shared_domain.EntryType(filter.EntryType))
 	if err != nil {
 		return 0, fmt.Errorf("load analyses: %w", err)

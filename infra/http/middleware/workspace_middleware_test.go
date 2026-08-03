@@ -31,7 +31,7 @@ func (s *stubDefaultResolver) Execute(string, string, string) (*workspace.Worksp
 
 // Reproduces the production incident: a user (two accounts) sends a stale/foreign
 // X-Workspace-ID left in a cookie from another account. The middleware must NOT
-// 403 the whole session — it must ignore the invalid id and fall back to the
+// 403 the whole session, it must ignore the invalid id and fall back to the
 // user's default workspace, so workspace-agnostic endpoints (pending invites)
 // keep working.
 func TestResolveWorkspace_StaleWorkspace_FallsBackToDefault_NoBrick(t *testing.T) {
@@ -56,7 +56,7 @@ func TestResolveWorkspace_StaleWorkspace_FallsBackToDefault_NoBrick(t *testing.T
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code == http.StatusForbidden {
-		t.Fatal("stale workspace must NOT 403 — that bricks the whole session")
+		t.Fatal("stale workspace must NOT 403, that bricks the whole session")
 	}
 	if !reached {
 		t.Fatal("handler must be reached (request not blocked)")

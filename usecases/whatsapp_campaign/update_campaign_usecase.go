@@ -65,7 +65,7 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	existing.AiModel = input.AiModel
 	// Archive/unarchive flows go through this usecase (the handler loads the
 	// campaign, flips Archived, and calls Execute). Copying it from input is
-	// what makes archiving persist — matching the voice and SMS usecases.
+	// what makes archiving persist, matching the voice and SMS usecases.
 	// Leaving it out silently drops the flag: the row vanishes from the list
 	// optimistically but reappears on reload.
 	existing.Archived = input.Archived

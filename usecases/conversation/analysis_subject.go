@@ -13,7 +13,7 @@ import (
 // AI conversation analysis was WhatsApp-only, and not by design.
 //
 // The debounce job hardcoded `entryType := "whatsapp"`, read its configuration
-// from whatsapp_campaigns, and — most decisively — returned early when the
+// from whatsapp_campaigns, and, most decisively, returned early when the
 // contact had no phone number. An Instagram contact is an IGSID and a Telegram
 // contact is a numeric user id, so the job would have bailed even if it had been
 // called, which it never was. The result was an EnableAnalysis switch on both
@@ -40,7 +40,7 @@ type AnalysisSubject struct {
 
 	// ContactLabel identifies the person in the transcript. WhatsApp uses the
 	// phone number; channels without one use the handle or the provider id. It
-	// only has to be stable and recognisable — it is prompt text, not a key,
+	// only has to be stable and recognisable, it is prompt text, not a key,
 	// which is why demanding a phone number was the wrong precondition.
 	ContactLabel string
 
@@ -57,15 +57,15 @@ func (s *AnalysisSubject) WantsWork() bool {
 
 // AnalysisSubjectResolver loads one channel's subject.
 //
-// Returning (nil, nil) means "this entry exists but should not be analysed" —
-// deleted, or belonging to a container with everything switched off — which is a
+// Returning (nil, nil) means "this entry exists but should not be analysed",
+// deleted, or belonging to a container with everything switched off, which is a
 // normal outcome, not a failure.
 type AnalysisSubjectResolver func(ctx context.Context, entryID string) (*AnalysisSubject, error)
 
 // AnalysisScheduler stamps a conversation for deferred analysis.
 //
 // It is a service rather than a method on each channel's usecase so every
-// channel schedules the same way, into the same hash, with the same encoding —
+// channel schedules the same way, into the same hash, with the same encoding,
 // which is what makes the debounce job able to stay channel-agnostic.
 type AnalysisScheduler struct {
 	sharedState cache.SharedState

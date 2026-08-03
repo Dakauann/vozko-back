@@ -12,8 +12,8 @@ import (
 )
 
 // These tests exist to protect the WhatsApp-only tenant. The Instagram channel
-// was added by widening shared code paths — the inbox list, the conversation-open
-// gate, the window check and the sender hydration — so every one of them is
+// was added by widening shared code paths, the inbox list, the conversation-open
+// gate, the window check and the sender hydration, so every one of them is
 // exercised here with WhatsApp data to prove the widening changed nothing for it.
 
 // ---------------------------------------------------------------- isolation
@@ -212,7 +212,7 @@ func TestAdapterFor_InstagramAdapterNeverServesOtherChannels(t *testing.T) {
 		t.Error("instagram must resolve to its adapter")
 	}
 
-	// With no registry at all — a WhatsApp-only deployment — nothing resolves and
+	// With no registry at all, a WhatsApp-only deployment, nothing resolves and
 	// nothing panics.
 	if a := (&HistoryProviderService{}).adapterFor("instagram"); a != nil {
 		t.Error("no adapter should resolve without a registry")
@@ -258,7 +258,7 @@ func TestGetEntryInfo_ChannelRouting(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
 
-	// Unsupported channels are still rejected — adding Instagram did not open the
+	// Unsupported channels are still rejected, adding Instagram did not open the
 	// switch to everything.
 	for _, entryType := range []string{"support", "email", "", "Instagram"} {
 		if _, _, _, _, _, _, err := svc.GetEntryInfo("x", entryType); err == nil {

@@ -106,7 +106,7 @@ CONTEXTO
 %s
 
 OBJETIVO
-O OBJETIVO desta conversa é definido pelas instruções do agente acima e pelo contexto da campanha — pode ser venda, agendamento, suporte, qualificação, cobrança, ou qualquer outro. Se não houver instruções, deduza o objetivo pelo fluxo. Avalie TODOS os critérios SEMPRE em relação a esse objetivo; NÃO pressuponha que seja venda. Não infle resultados positivos sem evidências concretas na transcrição.
+O OBJETIVO desta conversa é definido pelas instruções do agente acima e pelo contexto da campanha, pode ser venda, agendamento, suporte, qualificação, cobrança, ou qualquer outro. Se não houver instruções, deduza o objetivo pelo fluxo. Avalie TODOS os critérios SEMPRE em relação a esse objetivo; NÃO pressuponha que seja venda. Não infle resultados positivos sem evidências concretas na transcrição.
 
 CRITÉRIOS DE CLASSIFICAÇÃO (use a ferramenta conversation_analysis)
 %s
@@ -118,14 +118,14 @@ REGRAS DE OURO
 2. Nunca classifique "sale" sem o evento de conversão CONCLUÍDO e confirmado.
 3. Avalie a conversa COMO UM TODO, não apenas a última mensagem.
 4. Quando não houver instruções do agente, avalie pela condução geral e profissionalismo.
-5. Para "hot_lead", procure evidências de avanço, fit e próximo passo — não dependa exclusivamente de pergunta sobre preço.
+5. Para "hot_lead", procure evidências de avanço, fit e próximo passo, não dependa exclusivamente de pergunta sobre preço.
 
 Transcrição:
 %s`, campaignName, messageCount, agentInstructions, analysis.ClassificationRubricPrompt(), analysis.QualityRubricPrompt(), transcript)
 }
 
 func buildCompletedCallPrompt(campaignName, userPhoneNumber, agentInstructions, transcript string) string {
-	return fmt.Sprintf(`Você é um analista profissional de conversas. Analise esta CHAMADA DE VOZ CONCLUÍDA e registre uma análise estruturada, de forma rigorosa e realista — não infle resultados positivos sem evidências concretas.
+	return fmt.Sprintf(`Você é um analista profissional de conversas. Analise esta CHAMADA DE VOZ CONCLUÍDA e registre uma análise estruturada, de forma rigorosa e realista, não infle resultados positivos sem evidências concretas.
 
 CONTEXTO
 - Campanha: %s
@@ -169,7 +169,7 @@ func BuildAutoTagPrompt(input AutoTagPromptInput) string {
 		if desc == "" {
 			desc = "(sem descrição)"
 		}
-		tagList.WriteString(fmt.Sprintf("%s• \"%s\" — %s\n", marker, t.Name, desc))
+		tagList.WriteString(fmt.Sprintf("%s• \"%s\", %s\n", marker, t.Name, desc))
 	}
 
 	currentTagSection := "nenhuma (lead ainda não classificado)"
@@ -195,7 +195,7 @@ COMO CLASSIFICAR
 ═══════════════════════════════════════════════════
 
 PASSO 1: Leia a transcrição INTEIRA do início ao fim.
-PASSO 2: Identifique o ESTADO MAIS RECENTE da negociação — o que aconteceu nas ÚLTIMAS mensagens é o mais importante.
+PASSO 2: Identifique o ESTADO MAIS RECENTE da negociação, o que aconteceu nas ÚLTIMAS mensagens é o mais importante.
 PASSO 3: Compare a descrição de CADA tag disponível com o estado atual da conversa.
 PASSO 4: Escolha a tag cuja descrição MELHOR descreve a situação ATUAL do lead.
 
@@ -203,7 +203,7 @@ IMPORTANTE:
 - Foque no que aconteceu mais recentemente na conversa, não apenas nas primeiras mensagens.
 - Se a tag atual já descreve corretamente o estado do lead, MANTENHA ela (não chame a ferramenta ou passe a mesma tag).
 - Se a tag atual NÃO corresponde mais ao estado real da conversa, MUDE para a tag correta.
-- Leia as descrições das tags com atenção — a classificação deve bater com a descrição.
+- Leia as descrições das tags com atenção, a classificação deve bater com a descrição.
 
 ═══════════════════════════════════════════════════
 TRANSCRIÇÃO COMPLETA DA CONVERSA

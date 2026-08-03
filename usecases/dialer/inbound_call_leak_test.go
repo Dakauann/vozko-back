@@ -43,7 +43,7 @@ func TestInboundDecline_ReleasesReservation_NoLeak(t *testing.T) {
 // THE FIX: the dialer WS dropped and reconnected with a new session id (seen in
 // the production logs), so the decline carries a different session id than the
 // offer's target. It must still cancel the ring (user-level match) and free the
-// agent immediately — not leave it stuck until the offer TTL (~30s).
+// agent immediately, not leave it stuck until the offer TTL (~30s).
 func TestInboundDecline_FromReconnectedSession_StillCancels(t *testing.T) {
 	session := newInboundTestSession("s-1", "u-1", "ws-1")
 	uc := newInboundTestUseCase(t, &inboundTestRegistry{available: []dialer.DialerSession{session}}, &inboundTestAdmission{}, nil)
@@ -64,7 +64,7 @@ func TestInboundDecline_FromReconnectedSession_StillCancels(t *testing.T) {
 	}
 }
 
-// A decline from a DIFFERENT user must NOT cancel someone else's ring — that stays
+// A decline from a DIFFERENT user must NOT cancel someone else's ring, that stays
 // session/user-scoped. The ring is only cleared by its TTL. This guards against
 // over-relaxing the match.
 func TestInboundDecline_WrongUser_CannotCancel(t *testing.T) {
@@ -129,7 +129,7 @@ func TestInboundOfferBroker_DeclineUserLevel_AcceptSessionLevel(t *testing.T) {
 	}
 	remove()
 
-	// Decline with a mismatched session (same user) IS delivered — the fix.
+	// Decline with a mismatched session (same user) IS delivered, the fix.
 	b = NewInboundOfferBroker()
 	st = newState()
 	remove = b.Store(st)

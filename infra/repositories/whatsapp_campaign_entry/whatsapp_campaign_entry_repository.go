@@ -429,7 +429,7 @@ func (r *repository) CountDispatchesByCategoryForWorkspace(f wce.WorkspaceSummar
 		Where("c.workspace_id = ?", f.WorkspaceID).
 		Where("c.deleted_at IS NULL").
 		Where("e.deleted_at IS NULL").
-		// Billed statuses only — same subtractive set as StatusCounts.Dispatches.
+		// Billed statuses only, same subtractive set as StatusCounts.Dispatches.
 		Where("e.status NOT IN ?", []string{
 			string(wce.SendStatusPending),
 			string(wce.SendStatusFailed),

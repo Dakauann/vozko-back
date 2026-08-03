@@ -6,7 +6,7 @@ import (
 )
 
 // ErrThreadNotFound is returned when a thread does not exist (or is not visible to
-// the caller's workspace/user — callers must authorize against the returned thread).
+// the caller's workspace/user, callers must authorize against the returned thread).
 var ErrThreadNotFound = errors.New("aichat: thread not found")
 
 type ListThreadsInput struct {

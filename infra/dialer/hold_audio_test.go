@@ -66,7 +66,7 @@ func TestGeneratedSources_ProduceRealFrames(t *testing.T) {
 			}
 		}
 		if !nonSilent {
-			t.Fatalf("%s: generated loop is pure silence — the whole point is to kill dead air", name)
+			t.Fatalf("%s: generated loop is pure silence, the whole point is to kill dead air", name)
 		}
 	}
 }

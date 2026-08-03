@@ -622,7 +622,7 @@ func TestEnsureAssignment_DynamicPool_SkewsDistribution(t *testing.T) {
 	if isUneven {
 		t.Logf("BUG CONFIRMED: dynamic user pool causes uneven distribution: %v", counts)
 	} else {
-		t.Logf("Distribution happened to be even — try different pool change patterns")
+		t.Logf("Distribution happened to be even, try different pool change patterns")
 	}
 }
 
@@ -984,7 +984,7 @@ func TestEnsureAssignment_MultipleDepts_SharedRRState_CausesSkew(t *testing.T) {
 	}
 
 	if !deptASkewed && !deptBSkewed {
-		t.Log("Distributions happened to be even despite shared state — try different interleaving")
+		t.Log("Distributions happened to be even despite shared state, try different interleaving")
 	}
 }
 
@@ -1398,7 +1398,7 @@ func TestEnsureAssignment_UserInTwoDepartments_GetsDoubleAssignments(t *testing.
 	assignN("sales", 10)
 	assignN("support", 10)
 
-	t.Logf("User in 2 depts — distribution: %v", counts)
+	t.Logf("User in 2 depts, distribution: %v", counts)
 
 	totalShared := counts["shared-user"]
 	t.Logf("shared-user got %d out of 20 total (alice=%d, bob=%d)", totalShared, counts["alice"], counts["bob"])
@@ -1452,7 +1452,7 @@ func TestEnsureAssignment_UserInTwoDepts_SeparatePhones_ShowsDoubleLoad(t *testi
 	assert.Equal(t, 10, supportCounts["shared-user"], "shared-user gets exactly half of support")
 
 	totalShared := salesCounts["shared-user"] + supportCounts["shared-user"]
-	t.Logf("DESIGN ISSUE: shared-user total=%d, alice=%d, bob=%d — shared-user gets 2x load",
+	t.Logf("DESIGN ISSUE: shared-user total=%d, alice=%d, bob=%d, shared-user gets 2x load",
 		totalShared, salesCounts["alice"], supportCounts["bob"])
 	assert.Equal(t, 20, totalShared, "shared-user gets double the load of single-dept users")
 }
@@ -1559,7 +1559,7 @@ func TestEnsureAssignment_UserInTwoDepts_OnlyMemberOfOneDept(t *testing.T) {
 	assert.Equal(t, 2, bigCounts["shared-user"])
 
 	totalShared := smallCounts["shared-user"] + bigCounts["shared-user"]
-	t.Logf("shared-user total: %d (small-dept=%d, big-dept=%d) — 4x alice's load",
+	t.Logf("shared-user total: %d (small-dept=%d, big-dept=%d), 4x alice's load",
 		totalShared, smallCounts["shared-user"], bigCounts["shared-user"])
 }
 
@@ -1685,7 +1685,7 @@ func TestEnsureAssignment_StaleIndex_DepartmentStateNeverSaved(t *testing.T) {
 
 	require.Len(t, counts, 1,
 		"BUG: stale idx_rr_state_ws_phone causes all department entries to go to a single user; "+
-			"expected 1 recipient but got %d — distribution: %v", len(counts), counts)
+			"expected 1 recipient but got %d, distribution: %v", len(counts), counts)
 
 }
 

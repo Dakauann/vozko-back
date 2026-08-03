@@ -11,7 +11,7 @@ import (
 
 // createMockWAClient embeds the full client mock and captures the
 // CreateTemplate input so we can assert exactly what parameter_format the use
-// case forwards to Meta — the field whose absence caused named templates to be
+// case forwards to Meta, the field whose absence caused named templates to be
 // rejected with INVALID_FORMAT.
 type createMockWAClient struct {
 	syncTemplatesClientMock
@@ -138,7 +138,7 @@ func TestCreateTemplate_NamedParams_OverridesWrongClientFormat(t *testing.T) {
 }
 
 // Mixing numbered ({{1}}) and named ({{nome}}) placeholders is rejected before
-// ever reaching Meta — it would otherwise come back as INVALID_FORMAT.
+// ever reaching Meta, it would otherwise come back as INVALID_FORMAT.
 func TestCreateTemplate_MixedFormat_Rejected(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -234,7 +234,7 @@ func firstHeaderHandle(t *testing.T, in *conversation.CreateTemplateInput) strin
 // 360dialog's channel-scoped template endpoint fetches the header media from the
 // URL itself and rejects an uploaded handle with 400 "it should be valid url
 // address". So for those channels the raw URL must be passed straight through in
-// header_handle — the use case must NOT upload it to a handle first.
+// header_handle, the use case must NOT upload it to a handle first.
 func TestCreateTemplate_Dialog360_MediaHeaderPassesURLThrough(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
 	client := &mediaHeaderMockClient{wantsURL: true}

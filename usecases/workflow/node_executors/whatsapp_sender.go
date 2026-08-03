@@ -55,8 +55,8 @@ type mediaLookup interface {
 //
 // Most fields are WhatsApp's (client factory, business phones, templates, the
 // lead window) because WhatsApp keeps a dedicated sender; Adapters serves every
-// other channel through the shared registry. The struct is named for its role —
-// sending — rather than for the channel that needs the most from it.
+// other channel through the shared registry. The struct is named for its role,
+// sending, rather than for the channel that needs the most from it.
 type SenderDeps struct {
 	ClientFactory           conversation.WhatsAppClientFactory
 	LeadRepo                leadLookup

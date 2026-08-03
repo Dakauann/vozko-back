@@ -268,7 +268,7 @@ type HistoryProvider interface {
 	// while the conversation is already open did not, so the two paths
 	// disagreed and a reload "fixed" the label. It belongs on the provider
 	// because resolving a sender is a lookup across leads, contacts, agents and
-	// users — the provider already owns all four.
+	// users, the provider already owns all four.
 	ResolveSenderIdentity(entryID, entryType string, message *Message)
 	GetWindowStatusForEntry(entryID, entryType string) (windowOpen bool, windowExpiresAt *time.Time)
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)

@@ -46,7 +46,7 @@ func overviewFillExtendedTX(
 	// channel.
 	//
 	// It previously counted only `entry_type = 'whatsapp'` and therefore always
-	// reported 100% WhatsApp — which is worse than reporting nothing, because a
+	// reported 100% WhatsApp, which is worse than reporting nothing, because a
 	// manager reading it concludes the other channels carry no work. Grouping
 	// means every channel that exists shows up, including ones added later.
 	type channelRow struct {
@@ -133,7 +133,7 @@ func overviewFillExtendedTX(
 		out.Messaging.AvgMessagesAllScoped = &v
 	}
 
-	// FRT / AI / reopen use their own tables (not scoped_entries CTE) — still on same tx.
+	// FRT / AI / reopen use their own tables (not scoped_entries CTE), still on same tx.
 	sf := attendance.StatsFilter{
 		DateFrom:     filter.DateFrom,
 		DateTo:       filter.DateTo,

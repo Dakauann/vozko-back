@@ -19,7 +19,7 @@ func NewHandleNotificationUseCase(repo calendar.Repository, google calendar.Goog
 func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resourceState string) error {
 
 	if resourceState == "sync" {
-		log.Printf("[calendar-watch] sync notification for channel %s — acknowledged", channelID)
+		log.Printf("[calendar-watch] sync notification for channel %s, acknowledged", channelID)
 		return nil
 	}
 
@@ -43,7 +43,7 @@ func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resou
 	}
 
 	if conn.SyncToken == "" {
-		log.Printf("[calendar-watch] no sync token for workspace %s — performing full sync", ch.WorkspaceID)
+		log.Printf("[calendar-watch] no sync token for workspace %s, performing full sync", ch.WorkspaceID)
 		return uc.fullSync(accessToken, conn)
 	}
 
@@ -53,7 +53,7 @@ func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resou
 	}
 
 	if result.SyncExpired {
-		log.Printf("[calendar-watch] sync token expired for workspace %s — performing full sync", ch.WorkspaceID)
+		log.Printf("[calendar-watch] sync token expired for workspace %s, performing full sync", ch.WorkspaceID)
 		return uc.fullSync(accessToken, conn)
 	}
 
@@ -125,7 +125,7 @@ func (uc *handleNotificationUseCase) fullSync(accessToken string, conn *calendar
 	result, err := uc.google.ListEventsIncremental(accessToken, "")
 	if err != nil {
 
-		log.Printf("[calendar-watch] full sync failed: %v — skipping", err)
+		log.Printf("[calendar-watch] full sync failed: %v, skipping", err)
 		return nil
 	}
 

@@ -90,7 +90,7 @@ func TestRegisterProtectedRoutes_NilHandlerRegistersNothing(t *testing.T) {
 	}
 }
 
-// The webhook is public by necessity — Telegram calls it — and is authenticated
+// The webhook is public by necessity, Telegram calls it, and is authenticated
 // by the per-account secret token instead. It must be registered on the PUBLIC
 // router, and it must carry the account id in the path, because an Update object
 // identifies no bot.
@@ -104,7 +104,7 @@ func TestRegisterPublicRoutes(t *testing.T) {
 		t.Fatal("the webhook route is not registered on the public router")
 	}
 	if got := match.Vars["accountId"]; got != "acct-1" {
-		t.Errorf("accountId var = %q, want acct-1 — tenancy comes from the URL", got)
+		t.Errorf("accountId var = %q, want acct-1, tenancy comes from the URL", got)
 	}
 
 	// Telegram has no GET handshake, unlike Meta: there is nothing to verify.
@@ -125,7 +125,7 @@ func TestRegisterPublicRoutes_NilHandlerRegistersNothing(t *testing.T) {
 }
 
 // The registered path and the constant the connect flow hands to Telegram must be
-// the same string. If they drift, setWebhook succeeds and every delivery 404s —
+// the same string. If they drift, setWebhook succeeds and every delivery 404s,
 // a failure with no error anywhere, only silence.
 func TestWebhookPathMatchesTheRegisteredURL(t *testing.T) {
 	url := tgdomain.WebhookURLFor("https://api.example.com", "acct-1")

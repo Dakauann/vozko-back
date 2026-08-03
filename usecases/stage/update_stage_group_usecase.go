@@ -65,7 +65,7 @@ func (uc *UpdateStageGroupUseCase) Execute(workspaceID, groupID string, input st
 		// The group's items are also materialized once into a shared conversation
 		// pipeline ("same group → same board" in CloneStagesFromGroupUseCase):
 		// campaigns created from this group reuse that pipeline and never re-clone.
-		// So an edit here must be pushed onto that pipeline too — otherwise a removed
+		// So an edit here must be pushed onto that pipeline too, otherwise a removed
 		// item lingers as a live stage and keeps showing up on the board and on every
 		// newly created campaign.
 		if err := uc.syncPipelineToGroup(workspaceID, groupID, input.Items); err != nil {
@@ -78,8 +78,8 @@ func (uc *UpdateStageGroupUseCase) Execute(workspaceID, groupID string, input st
 
 // syncPipelineToGroup reconciles the conversation pipeline stamped from this group so
 // its stages mirror the group's items: stages whose (normalized) name is no longer in
-// the group are deleted — dropping their entry assignments, exactly as a manual stage
-// delete does — new item names are cloned in, and surviving stages take the item's
+// the group are deleted, dropping their entry assignments, exactly as a manual stage
+// delete does, new item names are cloned in, and surviving stages take the item's
 // position/description/color. Matching is by normalized name, mirroring how the clone
 // stores stage names. No-op when the group was never materialized (no campaign yet).
 func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID string, items []stage.StageGroupItemInput) error {
@@ -142,7 +142,7 @@ func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID stri
 		if s.IsInitial {
 			hasInitial = true
 		}
-		if present[name] { // a duplicate row for a name we already reconciled — leave it
+		if present[name] { // a duplicate row for a name we already reconciled, leave it
 			continue
 		}
 		present[name] = true

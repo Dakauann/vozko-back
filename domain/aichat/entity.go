@@ -26,7 +26,7 @@ type Thread struct {
 }
 
 // Message is one turn within a Thread. ToolCalls holds the raw JSON of any tool
-// calls/results on an assistant turn. Token counts are for display/audit only —
+// calls/results on an assistant turn. Token counts are for display/audit only,
 // billing is handled out-of-band via the ai.billing.completed event.
 type Message struct {
 	ID               string

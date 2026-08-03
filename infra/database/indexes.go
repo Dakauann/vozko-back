@@ -1,6 +1,7 @@
 package database
 
 import (
+	"fmt"
 	"log"
 
 	"gorm.io/gorm"
@@ -399,6 +400,19 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_short_link_daily_lookup
 				ON short_link_daily_stats (short_link_id, dimension, day)`,
 		},
+
+		// Vector search for RAG. It lived at the end of the migration with its
+		// error explicitly discarded, which was load-bearing: a failed statement
+		// poisons a Postgres transaction, so anything added after it would have
+		// failed with "current transaction is aborted" instead of its own error.
+		// Best-effort belongs here, where nothing shares its transaction. The
+		// vector extension and rag_chunks both exist by the time this runs.
+		{
+			name: "idx_rag_chunks_embedding_hnsw",
+			sql: `CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
+				ON rag_chunks USING hnsw (embedding vector_cosine_ops)
+				WITH (m = 16, ef_construction = 64)`,
+		},
 	}
 
 	for _, idx := range indexes {
@@ -406,4 +420,138 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
 	}
+}
+
+// createSchemaConstraints creates the indexes that are part of the schema
+// rather than tuning: the partial UNIQUE indexes GORM's struct tags cannot
+// express.
+//
+// It is deliberately NOT part of CreatePerformanceIndexes, even though both now
+// live in this file. A performance index that fails to build costs latency, so
+// that path logs and continues. These ones ARE the rule, one bot per workspace,
+// one open conversation per contact, one invoice per idempotency key, so a
+// failure has to abort the migration. Demoting them to a logged warning would
+// leave a database that accepts the duplicates they exist to reject.
+//
+// Runs inside the migration transaction, so the caller's advisory lock still
+// serialises concurrent boots.
+func createSchemaConstraints(tx *gorm.DB) error {
+	constraints := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "idx_short_links_code_active",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_short_links_code_active
+				ON short_links (code)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_workspace_subscriptions_current",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_subscriptions_current
+				ON workspace_subscriptions (workspace_id)
+				WHERE status IN ('active', 'cancelled')`,
+		},
+		{
+			name: "idx_addon_subscription_current",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_addon_subscription_current
+				ON workspace_addon_subscriptions (workspace_id, addon_definition_id)
+				WHERE status = 'active'`,
+		},
+		{
+			name: "ux_invoices_idempotency_key",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_idempotency_key
+				ON invoices (idempotency_key)
+				WHERE idempotency_key <> ''`,
+		},
+		{
+			name: "ux_leads_workspace_number",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_leads_workspace_number
+				ON leads (workspace_id, number)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_branches_sip_user",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_sip_user
+				ON branches (sip_user)`,
+		},
+
+		// An Instagram-scoped ID is unique only within the (app, professional
+		// account) pair, so contact identity is (ig_account_id, igsid) and never
+		// igsid alone.
+		{
+			name: "ux_ig_contact_account_igsid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_contact_account_igsid
+				ON instagram_contacts (ig_account_id, igsid)
+				WHERE deleted_at IS NULL`,
+		},
+		// One open conversation per (account, contact).
+		{
+			name: "ux_ig_conversation_account_contact",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_conversation_account_contact
+				ON instagram_conversations (ig_account_id, contact_id)
+				WHERE deleted_at IS NULL`,
+		},
+
+		// One bot per workspace, globally. Mirrors the Instagram account and
+		// WhatsApp phone rules: the same bot cannot be connected twice, and a
+		// soft-deleted row must not block reconnecting it.
+		{
+			name: "ux_tg_account_bot_user",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_account_bot_user
+				ON telegram_accounts (bot_user_id)
+				WHERE deleted_at IS NULL`,
+		},
+		// A business connection identifies exactly one account: it is the ONLY
+		// routing key a business-mode webhook carries, so two accounts claiming
+		// one connection would make delivery ambiguous.
+		{
+			name: "ux_tg_account_business_connection",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_account_business_connection
+				ON telegram_accounts (business_connection_id)
+				WHERE business_connection_id IS NOT NULL AND deleted_at IS NULL`,
+		},
+		// A Telegram user id is global, but contact identity is still scoped to
+		// the account so one workspace can never read another's row.
+		{
+			name: "ux_tg_contact_account_user",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_contact_account_user
+				ON telegram_contacts (account_id, tg_user_id)
+				WHERE deleted_at IS NULL`,
+		},
+		// One open conversation per (account, contact).
+		{
+			name: "ux_tg_conversation_account_contact",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_conversation_account_contact
+				ON telegram_conversations (account_id, contact_id)
+				WHERE deleted_at IS NULL`,
+		},
+		// The file cache is keyed by (account, object): "file_id is unique for
+		// each individual bot and can't be transferred from one bot to another".
+		{
+			name: "ux_tg_file_cache_account_source",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_file_cache_account_source
+				ON telegram_file_cache (account_id, source_key)`,
+		},
+
+		// Durable duplicate protection for provider message ids. Webhook
+		// delivery is at-least-once, and the Redis dedup guard has a 5-minute
+		// TTL, so the database is the only thing that still rejects a replay
+		// after eviction.
+		{
+			name: "ux_cm_entry_type_external_msgid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_type_external_msgid
+				ON conversation_messages (entry_type, external_message_id)
+				WHERE external_message_id IS NOT NULL AND deleted_at IS NULL`,
+		},
+	}
+
+	for _, c := range constraints {
+		if err := tx.Exec(c.sql).Error; err != nil {
+			// Named, because "duplicate key value violates unique constraint"
+			// on its own does not say which rule the existing data breaks.
+			return fmt.Errorf("creating constraint %s: %w", c.name, err)
+		}
+	}
+	return nil
 }

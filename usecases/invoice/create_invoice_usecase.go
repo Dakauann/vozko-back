@@ -145,7 +145,7 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	}
 	// Asaas requires a document to create any charge. Without one, GetOrCreateCustomer would issue a
 	// wildcard search (cpfCnpj=<empty>) that resolves to an unrelated document-less customer and then
-	// fail — or worse, bill the wrong customer. Reject here so the caller gets a clear, actionable error.
+	// fail, or worse, bill the wrong customer. Reject here so the caller gets a clear, actionable error.
 	if cpf == "" {
 		return nil, invoice.ErrCustomerDocumentRequired
 	}

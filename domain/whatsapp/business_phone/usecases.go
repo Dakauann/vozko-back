@@ -104,7 +104,7 @@ type ReleasePhoneInput struct {
 	AccessToken string
 	// ConfirmPhoneNumber, when non-empty, must match the phone's display number.
 	// This is the server-side guard for the typed-confirmation UX on the
-	// irreversible removal — the backend is the source of truth, not the client.
+	// irreversible removal, the backend is the source of truth, not the client.
 	ConfirmPhoneNumber string
 }
 

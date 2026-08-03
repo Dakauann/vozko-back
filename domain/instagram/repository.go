@@ -85,12 +85,19 @@ type ConversationRepository interface {
 	// authorizer's accessible-entry check.
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 
-	// RecordInbound advances the customer clock — the anchor for the 24h window.
+	// RecordInbound advances the customer clock, the anchor for the 24h window.
 	RecordInbound(ctx context.Context, id string, at time.Time) error
 	// RecordOutbound advances the agent clock.
 	RecordOutbound(ctx context.Context, id string, at time.Time) error
 	SetIGConversationID(ctx context.Context, id, igConversationID string) error
 	SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error
+	// SetAutomationEnabled is the per-conversation automation override an
+	// operator flips when taking a conversation over.
+	//
+	// A nil value clears the override so the conversation inherits the account
+	// switch again, which is a different state from an explicit false, and the
+	// gating in the webhook handlers reads it that way.
+	SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error
 	// CountByStatus powers the inbox status chips, per account or per workspace.
 	// Without it the channel's conversations are absent from the counts, which
 	// reads as "there is no work here" while the list below shows work.

@@ -84,7 +84,7 @@ func TestHydrateInstagramSenders(t *testing.T) {
 		t.Errorf("entry 0 picture = %q", entries[0].LeadPicture)
 	}
 	// The last-message sender label was empty before hydration, so it adopts the
-	// contact — otherwise the inbox row shows a message with no author.
+	// contact, otherwise the inbox row shows a message with no author.
 	if entries[0].LastMessageSender != "Maria Silva" {
 		t.Errorf("entry 0 sender = %q, want %q", entries[0].LastMessageSender, "Maria Silva")
 	}

@@ -332,7 +332,7 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Excluir departamentos"},
 	},
 	ResourceDialer: {
-		{ActionName: ActionUse, Description: "Realizar chamadas pelo discador (SIP e ligações WhatsApp). Não inclui métricas — use a permissão de atendimento para dashboards.", Requires: []PermissionEntry{
+		{ActionName: ActionUse, Description: "Realizar chamadas pelo discador (SIP e ligações WhatsApp). Não inclui métricas, use a permissão de atendimento para dashboards.", Requires: []PermissionEntry{
 			{Resource: ResourceSIPTrunks, Action: ActionRead},
 		}},
 		{ActionName: ActionListMembers, Description: "Visualizar membros conectados ao discador em tempo real (necessário para selecionar destino de transferência)", Requires: []PermissionEntry{

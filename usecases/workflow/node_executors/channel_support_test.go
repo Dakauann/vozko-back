@@ -94,7 +94,7 @@ func TestASenderHoldingTheLiveRegistrySeesLaterChannels(t *testing.T) {
 }
 
 // A channel with a send path but NO interactive capability must report exactly
-// that — sending the prompt body without its options would leave the contact
+// that, sending the prompt body without its options would leave the contact
 // reading a question with nothing to tap.
 func TestAChannelWithoutTheCapabilityIsNotInteractive(t *testing.T) {
 	s := newChannelSender(SenderDeps{
@@ -150,7 +150,7 @@ func (a *presenceSupportAdapter) SendText(_ context.Context, _ *conversation.Ent
 }
 
 // Segmented mode was WhatsApp-only, and the default single-send path was gated
-// on NOT being segmented — so a segmented agent on any other channel generated
+// on NOT being segmented, so a segmented agent on any other channel generated
 // a reply, billed for it, and sent nothing.
 func TestSegmentsAreDeliveredOnAnAdapterBackedChannel(t *testing.T) {
 	adapter := &presenceSupportAdapter{supportAdapter: supportAdapter{entryType: shared.EntryTypeTelegram}}

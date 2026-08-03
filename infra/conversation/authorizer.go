@@ -49,7 +49,7 @@ type Authorizer struct {
 	whatsappEntryRepo whatsappEntryAccessRepository
 	// entryRepos holds one reader per channel whose conversations own their
 	// workspace id, keyed by entry type. Registering one never displaces
-	// another — the mistake a single Instagram-shaped field would have forced on
+	// another, the mistake a single Instagram-shaped field would have forced on
 	// the second such channel.
 	entryRepos        map[shared.EntryType]entryAccessRepository
 	workspaceRepo     workspaceMembershipRepository
@@ -97,7 +97,7 @@ func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType stri
 	}
 
 	if workspaceID == "" {
-		log.Printf("[Authorizer] user %s has no workspace context — access denied", userID)
+		log.Printf("[Authorizer] user %s has no workspace context, access denied", userID)
 		return false
 	}
 

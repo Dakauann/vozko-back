@@ -9,8 +9,8 @@ import (
 
 // rescheduleEventUseCase moves an existing appointment to a new time. It only computes
 // the target start/end (preserving the original duration when the caller gives neither
-// a new end nor a duration) and delegates the actual move — provider update, local
-// persistence, and the new-slot conflict check — to the update use case, so the
+// a new end nor a duration) and delegates the actual move, provider update, local
+// persistence, and the new-slot conflict check, to the update use case, so the
 // reschedule path reuses that engine rather than re-implementing it.
 type rescheduleEventUseCase struct {
 	repo     calendar.Repository

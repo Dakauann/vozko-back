@@ -50,7 +50,7 @@ var (
 	ErrNodeInvalidToolMode              = errors.New("workflow: invalid tool_mode value (must be 'route' or 'execute')")
 	ErrNodeInvalidToolParamType         = errors.New("workflow: a custom-tool parameter has an invalid type (must be a supported parameter type)")
 	ErrNodeInvalidResponseMode          = errors.New("workflow: invalid response_mode value (must be 'default' or 'segmented')")
-	ErrNodeSegmentedSendConflict        = errors.New("workflow: AI agent with segmented response_mode sends messages automatically — remove the downstream send_text node to avoid duplicate messages")
+	ErrNodeSegmentedSendConflict        = errors.New("workflow: AI agent with segmented response_mode sends messages automatically, remove the downstream send_text node to avoid duplicate messages")
 	ErrNodeInvalidInteractiveConfig     = errors.New("workflow: interactive prompt node has invalid buttons/list options (see WhatsApp limits)")
 
 	ErrRunNotFound          = errors.New("workflow: run not found")
@@ -62,7 +62,7 @@ var (
 	ErrEntryTypeRequired    = errors.New("workflow: entry type is required")
 	ErrMaxExecutionsReached = errors.New("workflow: maximum node executions reached (circuit breaker)")
 	// ErrDurableExecutionsReached fires when a run exceeds the lifetime node-execution
-	// cap across waits — the backstop for a loop that cycles through a wait node.
+	// cap across waits, the backstop for a loop that cycles through a wait node.
 	ErrDurableExecutionsReached = errors.New("workflow: maximum lifetime node executions across waits reached (circuit breaker)")
 	ErrInsufficientBalance      = errors.New("workflow: insufficient balance to execute node")
 

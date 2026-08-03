@@ -14,15 +14,15 @@ var (
 	// ErrInteractiveReplyUnhandled means the contact replied to an interactive
 	// prompt but the reply matched no option edge, no 'no_match' edge, and no
 	// legacy default edge. Callers treat it as "leave the run PARKED" (ignore the
-	// stray reply) so a later valid selection — or the timeout ('no_reply') — can
+	// stray reply) so a later valid selection, or the timeout ('no_reply'), can
 	// still resume it, rather than erroring the run over unexpected input.
 	ErrInteractiveReplyUnhandled = errors.New("interactive prompt reply matched no wired output")
 )
 
 // AdvanceOnReply moves a run parked at a reply-waiting node onto the correct
 // outgoing edge, recording the reply data into state. It is the single source of
-// truth for reply-resume semantics — shared by production message routing
-// (trigger_evaluator.wakeRunForReply) and the workflow simulator — so both
+// truth for reply-resume semantics, shared by production message routing
+// (trigger_evaluator.wakeRunForReply) and the workflow simulator, so both
 // resume identically. It handles two parked node kinds:
 //   - wait_for_reply: always routes to the required "replied" edge.
 //   - interactive prompt (send buttons/list): routes to the edge whose label is

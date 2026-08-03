@@ -138,7 +138,7 @@ func TestGetBoard_NonDefaultPipeline_RendersOwnStages_NotDefault(t *testing.T) {
 	}
 	for i, want := range []string{"n1", "n2"} {
 		if board.Columns[i].ID != want {
-			t.Errorf("column %d = %q, want %q — the board leaked the DEFAULT pipeline's stages", i, board.Columns[i].ID, want)
+			t.Errorf("column %d = %q, want %q, the board leaked the DEFAULT pipeline's stages", i, board.Columns[i].ID, want)
 		}
 	}
 }
@@ -194,7 +194,7 @@ func filterHasStageScope(f crmfilter.Filter, stageIDs []string) bool {
 
 // Industry standard (HubSpot Board mode, Salesforce Kanban-over-list, Pipedrive/Kommo):
 // a board is scoped to ONE pipeline, and switching the swimlane axis re-groups that same
-// scoped set — it never widens to the whole workspace. On the LABEL axis (columns are
+// scoped set, it never widens to the whole workspace. On the LABEL axis (columns are
 // workspace-global) the board must therefore inject a "stage IN <pipeline stages>" scope
 // into every column search, else the funnel is ignored and all conversations leak in.
 func TestGetBoard_LabelAxis_ScopedToSelectedPipeline(t *testing.T) {
@@ -213,12 +213,12 @@ func TestGetBoard_LabelAxis_ScopedToSelectedPipeline(t *testing.T) {
 	}
 	for i, call := range searcher.calls {
 		if !filterHasStageScope(call.Filter, []string{"x1", "x2"}) {
-			t.Errorf("label column %d searched WITHOUT the pipeline stage scope — the funnel is ignored and the whole workspace leaks: %+v", i, call.Filter)
+			t.Errorf("label column %d searched WITHOUT the pipeline stage scope, the funnel is ignored and the whole workspace leaks: %+v", i, call.Filter)
 		}
 	}
 }
 
-// "Todos os funis": an empty PipelineID on a global axis (owner/label) must NOT scope —
+// "Todos os funis": an empty PipelineID on a global axis (owner/label) must NOT scope,
 // the user is deliberately viewing every responsável/etiqueta across all pipelines
 // (HubSpot's "All Pipelines"). No stage predicate may be injected.
 func TestGetBoard_LabelAxis_AllFunnels_NotScoped(t *testing.T) {
@@ -234,7 +234,7 @@ func TestGetBoard_LabelAxis_AllFunnels_NotScoped(t *testing.T) {
 		for _, g := range call.Filter.Groups {
 			for _, p := range g.Predicates {
 				if p.Field == crmfilter.FieldStage {
-					t.Errorf("label column %d was scoped by a stage predicate under 'Todos os funis' — the global view must span all pipelines: %+v", i, p)
+					t.Errorf("label column %d was scoped by a stage predicate under 'Todos os funis', the global view must span all pipelines: %+v", i, p)
 				}
 			}
 		}

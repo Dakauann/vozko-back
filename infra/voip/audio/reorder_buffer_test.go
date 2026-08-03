@@ -660,7 +660,7 @@ func TestReorderBuffer_DynamicFrameSize(t *testing.T) {
 // inbound-transfer call-drop bug. When an AI→human surrender happens,
 // mediaSessionAdapter.UnblockReaders() sets a past read deadline on the raw
 // socket to wake the blocked reader, which surfaces as an i/o-timeout net.Error.
-// The buffer MUST absorb that transient timeout and keep delivering packets — the
+// The buffer MUST absorb that transient timeout and keep delivering packets, the
 // human's passthrough leg reads from this same buffer. Treating the timeout as
 // fatal (the original bug) closed the media out from under the call the human
 // just accepted ("audio: reorder buffer closed").
@@ -701,7 +701,7 @@ func TestReorderBuffer_SurvivesTransientReadTimeout(t *testing.T) {
 	mock.sendPacket(101, 160, 12345, 0, make([]byte, 160))
 	pkt2 := &rtp.Packet{}
 	if _, err := rb.ReadRTP(buf, pkt2); err != nil {
-		t.Fatalf("buffer died after a transient read timeout (UnblockReaders surrender hand-off) — this is the inbound-transfer call-drop bug: %v", err)
+		t.Fatalf("buffer died after a transient read timeout (UnblockReaders surrender hand-off), this is the inbound-transfer call-drop bug: %v", err)
 	}
 	if pkt2.SequenceNumber != 101 {
 		t.Fatalf("expected seq 101 after the transient timeout, got %d", pkt2.SequenceNumber)

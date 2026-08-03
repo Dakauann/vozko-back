@@ -7,6 +7,7 @@ import (
 	wsdelivery "vozko/delivery/ws"
 	balance_domain "vozko/domain/balance"
 	conversation_domain "vozko/domain/conversation"
+	"vozko/domain/shared"
 	workflow_domain "vozko/domain/workflow"
 	workspace_config "vozko/domain/workspace_config"
 	conversation_infra "vozko/infra/conversation"
@@ -200,13 +201,13 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 
 		muxPort := c.cfg.WhatsAppMediaUDPMuxPort
 		if media.PortRangeOverlaps(muxPort, muxPort, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd) {
-			log.Printf("[whatsapp-calls] WARNING: media UDP mux port %d is INSIDE the SIP RTP range %d-%d — choose a port outside it.",
+			log.Printf("[whatsapp-calls] WARNING: media UDP mux port %d is INSIDE the SIP RTP range %d-%d, choose a port outside it.",
 				muxPort, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd)
 		}
 		if bound, err := media.EnableSharedUDPMux(muxPort); err != nil {
-			log.Printf("[whatsapp-calls] WARNING: could not bind media UDP mux on :%d (%v) — WhatsApp media falls back to per-call sockets, which does NOT scale. Fix WHATSAPP_MEDIA_UDP_MUX_PORT.", muxPort, err)
+			log.Printf("[whatsapp-calls] WARNING: could not bind media UDP mux on :%d (%v), WhatsApp media falls back to per-call sockets, which does NOT scale. Fix WHATSAPP_MEDIA_UDP_MUX_PORT.", muxPort, err)
 		} else {
-			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d — one shared socket for all calls (scales to thousands; SIP RTP %d-%d)",
+			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d, one shared socket for all calls (scales to thousands; SIP RTP %d-%d)",
 				bound, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd)
 		}
 
@@ -260,6 +261,22 @@ func (c *Container) startConversationHub() {
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	c.services.messageSender = messageSender
+
+	// The per-conversation automation override, for every channel. Each channel
+	// registers its own setter as it initialises; WhatsApp is registered here
+	// because its entry repository already exists at this point.
+	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
+		c.services.conversationHub,
+	)
+	if c.repositories.wcEntry != nil {
+		wcEntries := c.repositories.wcEntry
+		c.services.conversationAutomation.Register(
+			shared.EntryTypeWhatsApp,
+			func(_ context.Context, entryID string, enabled *bool) error {
+				return wcEntries.UpdateAutomationEnabled(entryID, enabled)
+			},
+		)
+	}
 
 	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
 	// this serves every adapter-backed channel (Instagram today, Telegram next)
@@ -335,7 +352,7 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	}
 	// The HTTP send endpoint shares the same sender rather than carrying a second
 	// per-channel implementation. Without this it stays WhatsApp-only while its
-	// route accepts every known entry type — which fails as a misleading
+	// route accepts every known entry type, which fails as a misleading
 	// "conversation not found" instead of an honest refusal.
 	if setter, ok := c.useCases.sendConversationMessage.(interface {
 		SetChannelSender(conversation_domain.AdapterRegistry, conversation_usecase.ChannelMessageSender)
@@ -355,7 +372,7 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 // It exists because channel adapters register one at a time during startup
 // while several consumers are constructed in between. A consumer handed a
 // snapshot sees only the channels registered so far, and a missing adapter is
-// indistinguishable from "this channel cannot send" — which is how every
+// indistinguishable from "this channel cannot send", which is how every
 // workflow send node came to be skipped on Instagram and Telegram.
 func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegistry {
 	if c.services.liveChannelAdapters == nil {

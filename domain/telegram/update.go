@@ -17,7 +17,7 @@ var ErrInvalidUpdate = errors.New("telegram: invalid update payload")
 // Only the fields we act on are modelled. The Bot API grows several new update
 // kinds and message fields per release (10.0 → 10.2 added three update kinds in
 // three months), so everything else is deliberately ignored rather than
-// enumerated — and an unrecognised update is logged, never dropped silently.
+// enumerated, and an unrecognised update is logged, never dropped silently.
 
 // Update is one webhook POST body. "At most one of the optional fields can be
 // present in any given update."
@@ -43,7 +43,7 @@ type Update struct {
 
 // User is the Bot API User object.
 //
-// ID is int64 because Telegram ids have "at most 52 significant bits" — a 32-bit
+// ID is int64 because Telegram ids have "at most 52 significant bits", a 32-bit
 // round trip silently corrupts them, which is the single most common Telegram
 // integration bug.
 type User struct {
@@ -67,7 +67,7 @@ type Chat struct {
 
 // Message is the Bot API Message object, narrowed to what the CRM records.
 type Message struct {
-	// MessageID is "Unique message identifier INSIDE THIS CHAT" — it is not
+	// MessageID is "Unique message identifier INSIDE THIS CHAT", it is not
 	// globally unique, so every persisted provider id pairs it with the chat id.
 	MessageID int64 `json:"message_id"`
 	From      *User `json:"from,omitempty"`
@@ -79,7 +79,7 @@ type Message struct {
 	// account, and is how such a message is routed to a tenant.
 	BusinessConnectionID string `json:"business_connection_id,omitempty"`
 	// SenderBusinessBot is present only on outgoing messages the bot sent on the
-	// business account's behalf — one half of the direction test.
+	// business account's behalf, one half of the direction test.
 	SenderBusinessBot *User `json:"sender_business_bot,omitempty"`
 	// IsFromOffline marks an automatic away or greeting message, which must not
 	// be treated as an operator's reply.
@@ -91,7 +91,7 @@ type Message struct {
 
 	// ReplyMarkup is the inline keyboard attached to this message. On a
 	// callback_query it is what maps the received payload back to the LABEL the
-	// contact actually tapped — the payload is an internal id, and showing it in
+	// contact actually tapped, the payload is an internal id, and showing it in
 	// the transcript (or handing it to an AI agent as the customer's words) is
 	// wrong and actively misleading.
 	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
@@ -196,7 +196,7 @@ type InlineKeyboardButton struct {
 
 // LabelFor resolves the visible label of the button carrying this payload.
 //
-// Returns "" when the keyboard is absent or has no such button — the caller
+// Returns "" when the keyboard is absent or has no such button, the caller
 // falls back to the payload, which is worse but never empty.
 func (m *InlineKeyboardMarkup) LabelFor(data string) string {
 	if m == nil || data == "" {
@@ -234,7 +234,7 @@ type ChatMember struct {
 
 // DecodeUpdate parses one webhook body.
 //
-// Telegram posts a single JSON object per request — no batching, no array
+// Telegram posts a single JSON object per request, no batching, no array
 // wrapper, no multi-tenant fan-in. That is a genuine simplification over Meta,
 // and the decoder stays strict rather than inventing tolerance the wire does not
 // need.
@@ -257,7 +257,7 @@ type EventKind string
 
 const (
 	EventInboundMessage EventKind = "inbound_message"
-	// EventOutboundMessage is a message the business account sent — either by us
+	// EventOutboundMessage is a message the business account sent, either by us
 	// through the bot, or by the owner from their own phone. Business mode only.
 	EventOutboundMessage    EventKind = "outbound_message"
 	EventEditedMessage      EventKind = "edited_message"
@@ -280,7 +280,7 @@ type Attachment struct {
 	Duration int
 	// TooLarge is set when Telegram already told us the file exceeds the bot
 	// download ceiling, so the handler can render a placeholder WITHOUT calling
-	// getFile — a call that can only fail.
+	// getFile, a call that can only fail.
 	TooLarge bool
 	// Emoji carries a sticker's emoji, which is the only renderable thing about
 	// a sticker we cannot download.
@@ -362,8 +362,8 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 	case u.Message != nil:
 		ev := base(EventInboundMessage, "message")
 		fillFromMessage(ev, u.Message)
-		// A shared contact is a distinct CRM action — it links the conversation to
-		// a lead — so it is classified rather than buried in the message body.
+		// A shared contact is a distinct CRM action, it links the conversation to
+		// a lead, so it is classified rather than buried in the message body.
 		if u.Message.Contact != nil {
 			ev.Kind = EventContactShared
 			ev.SharedContact = u.Message.Contact
@@ -432,7 +432,7 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 			ev.MessageID = cq.Message.MessageID
 			ev.BusinessConnectionID = cq.Message.BusinessConnectionID
 			ev.Timestamp = unixToTime(cq.Message.Date)
-			// Text is what a HUMAN — or an AI agent reading the transcript — sees
+			// Text is what a HUMAN, or an AI agent reading the transcript, sees
 			// as the contact's message, so it must be the button's label. The
 			// payload stays in CallbackData, which is what routing keys on.
 			ev.Text = cq.Message.ReplyMarkup.LabelFor(cq.Data)
@@ -549,8 +549,8 @@ func parseStart(msg *Message) (isCommand bool, payload string) {
 
 // attachmentsOf normalizes a message's media.
 //
-// A Telegram message carries at most ONE attachment — albums arrive as separate
-// updates sharing a media_group_id — so this returns a slice only for symmetry
+// A Telegram message carries at most ONE attachment, albums arrive as separate
+// updates sharing a media_group_id, so this returns a slice only for symmetry
 // with channels that do batch, and to keep the handler's loop identical.
 func attachmentsOf(msg *Message) []Attachment {
 	tooLarge := func(size int64) bool { return size > MaxDownloadBytes }

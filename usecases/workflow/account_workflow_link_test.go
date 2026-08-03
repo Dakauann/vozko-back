@@ -47,7 +47,7 @@ func TestNoAccountLinkLeavesEveryWorkflowEligible(t *testing.T) {
 	}
 }
 
-// The campaign link still wins where it applies — WhatsApp sets it and no
+// The campaign link still wins where it applies, WhatsApp sets it and no
 // channel sets both.
 func TestCampaignLinkStillFilters(t *testing.T) {
 	te := &triggerEvaluator{}

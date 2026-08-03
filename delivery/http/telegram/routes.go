@@ -46,7 +46,7 @@ func RegisterProtectedRoutes(
 
 // RegisterPublicRoutes wires the unauthenticated webhook endpoint.
 //
-// It is unauthenticated by necessity — Telegram calls it — and protected instead
+// It is unauthenticated by necessity, Telegram calls it, and protected instead
 // by the per-account secret token echoed in X-Telegram-Bot-Api-Secret-Token.
 // Note the path carries OUR account uuid, never the bot token: an Update object
 // contains no bot identity, so tenancy has to come from the URL, and a token in

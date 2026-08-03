@@ -86,7 +86,7 @@ func (s *AssignmentService) EnsureAssignment(entryID, sipTrunkID string) string 
 		connectedUsers = s.eligibleUsers.GetEligibleUsersForWorkspace(workspaceID, skipAdmins)
 	}
 	if len(connectedUsers) == 0 {
-		log.Printf("[CallRoulette] no connected eligible users for workspace %s — entry %s stays unassigned", workspaceID, entryID)
+		log.Printf("[CallRoulette] no connected eligible users for workspace %s, entry %s stays unassigned", workspaceID, entryID)
 		return ""
 	}
 

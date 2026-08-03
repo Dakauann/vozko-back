@@ -120,8 +120,8 @@ var validSubscribedFields = map[string]struct{}{
 
 // InvalidSubscribedFields returns any entries the API would reject.
 //
-// Because validation is atomic upstream, a single unknown field means zero webhooks
-// — a failure mode with no symptom other than silence. Checking locally turns that
+// Because validation is atomic upstream, a single unknown field means zero webhooks,
+// a failure mode with no symptom other than silence. Checking locally turns that
 // into an explicit error naming the offending field.
 func InvalidSubscribedFields(fields []string) []string {
 	var bad []string
@@ -143,7 +143,7 @@ type SendTextInput struct {
 	ReplyToMID string
 
 	// QuickReplies turns the message into a single-choice prompt. They ride on
-	// the same /messages call as the text — Instagram has no separate endpoint —
+	// the same /messages call as the text, Instagram has no separate endpoint,
 	// and come back as message.quick_reply.payload on the contact's tap.
 	QuickReplies []QuickReplyOption
 }
@@ -206,7 +206,7 @@ type MessagingService interface {
 	GetContactProfile(ctx context.Context, token, igsid string) (*ContactProfileResult, error)
 
 	// GetConversations is used only as a health probe and for gap repair. It is
-	// rate-limited to 2 calls/sec per account — 50× tighter than sending.
+	// rate-limited to 2 calls/sec per account, 50× tighter than sending.
 	GetConversations(ctx context.Context, igUserID, token string, limit int) error
 }
 
@@ -216,7 +216,7 @@ type MessagingService interface {
 //
 // Cursors are passed through to the client opaquely and never persisted: Meta
 // documents that they "can become invalid quickly". A short page does NOT mean
-// the end — privacy filtering shrinks pages — so HasNext is derived from the
+// the end, privacy filtering shrinks pages, so HasNext is derived from the
 // presence of paging.next and nothing else.
 type Page[T any] struct {
 	Items      []T
@@ -260,7 +260,7 @@ type RemoteMedia struct {
 }
 
 type CreateMediaInput struct {
-	// ImageURL or VideoURL — publicly reachable. JPEG only for images.
+	// ImageURL or VideoURL, publicly reachable. JPEG only for images.
 	ImageURL string
 	VideoURL string
 	Caption  string
@@ -348,9 +348,9 @@ type CommentService interface {
 // RequiredScopes is the permission set the Instagram channel needs.
 //
 // This is deliberately code, not configuration. The scopes are a hard contract
-// with the implementation — the messaging code cannot work without
+// with the implementation, the messaging code cannot work without
 // instagram_business_manage_messages, comment moderation cannot work without
-// instagram_business_manage_comments — and they are also exactly what was
+// instagram_business_manage_comments, and they are also exactly what was
 // submitted for App Review. Making them env-tunable would let a deployment typo
 // silently disable a feature at consent time, surfacing much later as a confusing
 // runtime permission error.
@@ -371,7 +371,7 @@ func RequiredScopes() []string {
 // The OAuth paths are owned by the code, not by configuration.
 //
 // In OAuth the redirect URI is registered at the authorization server, which then
-// exact-matches whatever the client sends — so the value necessarily exists in two
+// exact-matches whatever the client sends, so the value necessarily exists in two
 // places (here, and Meta's App Dashboard allowlist). That duplication IS the
 // security boundary and cannot be removed: if Meta accepted any redirect_uri we
 // sent, an attacker able to reach our start endpoint could have authorization codes
@@ -391,7 +391,7 @@ const (
 //
 // It deliberately does NOT check the host: only the deployment knows its public
 // hostname, and Meta is the authority on which hosts are allowlisted. It checks the
-// parts we own — scheme and path — so a typo fails at boot with a precise message
+// parts we own, scheme and path, so a typo fails at boot with a precise message
 // instead of surfacing as an opaque Instagram error mid-onboarding.
 func ValidateRedirectURI(raw string) error {
 	trimmed := strings.TrimSpace(raw)
@@ -417,7 +417,7 @@ func ValidateRedirectURI(raw string) error {
 	// append one to a saved URI, and the router accepts both spellings.
 	if strings.TrimSuffix(parsed.Path, "/") != OAuthCallbackPath {
 		return fmt.Errorf(
-			"instagram: redirect URI path is %q but this build serves %q — the path is "+
+			"instagram: redirect URI path is %q but this build serves %q, the path is "+
 				"owned by the code, so only the host is configurable (the full URI must "+
 				"also be registered in the App Dashboard under Instagram > API setup with "+
 				"Instagram login > Set up Instagram business login > Redirect URL)",

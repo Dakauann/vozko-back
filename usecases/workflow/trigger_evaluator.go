@@ -34,7 +34,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	log.Printf("[workflow] trigger: evaluating event type=%s workspace=%s entry=%s", event.TriggerType, event.WorkspaceID, event.EntryID)
 
 	// An incoming message must resume ANY run parked at wait_for_reply for this
-	// entry — regardless of which trigger started that workflow. Resuming only via
+	// entry, regardless of which trigger started that workflow. Resuming only via
 	// trigger-matched workflows (the loop below) silently fails for workflows
 	// started by trigger_first_message, leaving them stuck until their timeout.
 	// This is the same resume the simulator does; here we route the real message.
@@ -86,7 +86,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 
 				te.wakeRunForMessage(existing, w, event)
 			} else {
-				log.Printf("[workflow] trigger: skipping workflow=%s — existing run=%s in status=%s", w.ID, existing.ID, existing.Status)
+				log.Printf("[workflow] trigger: skipping workflow=%s, existing run=%s in status=%s", w.ID, existing.ID, existing.Status)
 			}
 			continue
 		}
@@ -103,7 +103,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 			continue
 		}
 
-		log.Printf("[workflow] trigger: created run=%s for workflow=%s entry=%s — starting engine", run.ID, w.ID, event.EntryID)
+		log.Printf("[workflow] trigger: created run=%s for workflow=%s entry=%s, starting engine", run.ID, w.ID, event.EntryID)
 
 		executeLocked(te.engine, run, w)
 		releaseWorkspaceSlot(te.sharedState, event.WorkspaceID)
@@ -112,7 +112,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 
 func (te *triggerEvaluator) wakeRunForReply(run *workflow.WorkflowRun, w *workflow.Workflow, event workflow.TriggerEvent) {
 	if !te.engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] trigger: skipping wake for run=%s — already locked", run.ID)
+		log.Printf("[workflow] trigger: skipping wake for run=%s, already locked", run.ID)
 		return
 	}
 	defer te.engine.UnlockRun(run.ID)
@@ -125,7 +125,7 @@ func (te *triggerEvaluator) wakeRunForReply(run *workflow.WorkflowRun, w *workfl
 			// Stray reply to an interactive prompt (not one of its options and no
 			// no_match/default branch). Leave the run parked so a later valid
 			// selection or the timeout can resume it; do not error or advance.
-			log.Printf("[workflow] trigger: run=%s ignored unhandled interactive reply (entry=%s) — left parked", run.ID, event.EntryID)
+			log.Printf("[workflow] trigger: run=%s ignored unhandled interactive reply (entry=%s), left parked", run.ID, event.EntryID)
 			return
 		}
 		if errors.Is(err, ErrMissingRepliedEdge) {
@@ -149,12 +149,12 @@ func (te *triggerEvaluator) wakeRunForReply(run *workflow.WorkflowRun, w *workfl
 
 func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *workflow.Workflow, event workflow.TriggerEvent) {
 	if !te.engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] trigger: skipping message wake for run=%s — already locked", run.ID)
+		log.Printf("[workflow] trigger: skipping message wake for run=%s, already locked", run.ID)
 		return
 	}
 	defer te.engine.UnlockRun(run.ID)
 
-	log.Printf("[workflow] trigger: cancelling duration wait run=%s — user sent message (entry=%s)", run.ID, event.EntryID)
+	log.Printf("[workflow] trigger: cancelling duration wait run=%s, user sent message (entry=%s)", run.ID, event.EntryID)
 
 	node := w.Graph.FindNode(run.CurrentNodeID)
 	if node == nil || (node.Type != workflow.NodeTypeWaitDuration && node.Type != workflow.NodeTypeWaitSchedule) {
@@ -163,7 +163,7 @@ func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *work
 	edges := w.Graph.OutgoingEdges(run.CurrentNodeID)
 	nextID := findExactEdgeByLabel(edges, "message_received")
 	if nextID == "" {
-		log.Printf("[workflow] trigger: ignoring message wake for run=%s — wait node=%s has no message_received edge", run.ID, run.CurrentNodeID)
+		log.Printf("[workflow] trigger: ignoring message wake for run=%s, wait node=%s has no message_received edge", run.ID, run.CurrentNodeID)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 	//
 	// Without this the link is decorative: every active workflow in the
 	// workspace whose trigger matches runs on every conversation, so connecting
-	// a second bot — or simply having a second workflow — makes both fire on the
+	// a second bot, or simply having a second workflow, makes both fire on the
 	// same contact and the customer receives two greetings. Selecting a workflow
 	// on the account has to mean only that workflow attends it.
 	if accountWfID, ok := event.Data["account_workflow_id"].(string); ok && accountWfID != "" {

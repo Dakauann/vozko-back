@@ -65,7 +65,7 @@ func (lc *liveDialerCall) startUplinkPump(logger *log.Logger) {
 			// Periodic uplink heartbeat: channel-level drops (producer outpacing
 			// the real-time send) + current queue depth. A climbing drop count or a
 			// persistently full queue means browser audio is arriving faster than it
-			// can be sent — the buffer-bloat signature behind growing uplink delay.
+			// can be sent, the buffer-bloat signature behind growing uplink delay.
 			processed++
 			if processed%500 == 0 && logger != nil {
 				logger.Printf("[DialerWS] uplink pump call=%s processed=%d channel_drops=%d queue=%d/%d",
@@ -537,9 +537,9 @@ func (s *dialerSession) Reserve(token string) bool {
 }
 
 // Release clears a reservation taken with the same token. It is token-scoped and
-// idempotent: releasing a stale or foreign token — after Attach already consumed
+// idempotent: releasing a stale or foreign token, after Attach already consumed
 // the reservation (reserved == ""), or after the agent reconnected and a newer
-// offer re-reserved the session — is a no-op, so duplicate/liberal releases from
+// offer re-reserved the session, is a no-op, so duplicate/liberal releases from
 // every resolution site are safe. Release never touches an attached call.
 func (s *dialerSession) Release(token string) {
 	s.mu.Lock()
@@ -562,7 +562,7 @@ func (s *dialerSession) reservedLiveLocked() bool {
 	return s.res.ReservedLive(s.now(), dialerReservationTTL)
 }
 
-// isOccupiedLocked reports whether the session is unavailable for a new call —
+// isOccupiedLocked reports whether the session is unavailable for a new call,
 // either it has an attached call or a live ring reservation. Caller holds s.mu.
 func (s *dialerSession) isOccupiedLocked() bool {
 	return s.current != nil || s.reservedLiveLocked()
@@ -608,7 +608,7 @@ func (s *dialerSession) Shutdown(ctx context.Context) {
 
 	// Release any outstanding ring reservation first: an agent that disconnects
 	// while an offer is still ringing (before Attach) leaves current == nil, so
-	// the call teardown below early-returns — without this the reservation would
+	// the call teardown below early-returns, without this the reservation would
 	// linger until the TTL backstop. clearReservation is unconditional and safe
 	// when no reservation is held.
 	s.clearReservation()
@@ -648,7 +648,7 @@ func (s *dialerSession) Shutdown(ctx context.Context) {
 	case <-lc.done():
 
 	case <-time.After(s.forcedShutdownTimeout):
-		s.logger.Printf("[DialerWS] lifecycle stuck after %s for call %s — forcing admission release to prevent slot leak",
+		s.logger.Printf("[DialerWS] lifecycle stuck after %s for call %s, forcing admission release to prevent slot leak",
 			s.forcedShutdownTimeout, lc.call.ID())
 		if s.endUseCase != nil {
 			_ = s.endUseCase.Execute(ctx, dialer_domain.EndOutboundCallInput{
@@ -657,7 +657,7 @@ func (s *dialerSession) Shutdown(ctx context.Context) {
 			})
 		} else if lc.admission != nil {
 
-			s.logger.Printf("[DialerWS] CRITICAL: cannot force-release admission for call %s — endUseCase is nil. Slot may leak until admission TTL expires.", lc.call.ID())
+			s.logger.Printf("[DialerWS] CRITICAL: cannot force-release admission for call %s, endUseCase is nil. Slot may leak until admission TTL expires.", lc.call.ID())
 		}
 	}
 }

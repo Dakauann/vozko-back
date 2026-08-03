@@ -196,7 +196,7 @@ func TestRAGIngestInvariants(t *testing.T) {
 			}
 			// Embed every chunk: this is the exact step that used to 400.
 			_ = embedAll(ctx, t, embedder, chunkTexts(chunks))
-			t.Logf("%-32s chunks=%d maxRunes=%d — all valid UTF-8, all embedded OK", f, len(chunks), maxRunes)
+			t.Logf("%-32s chunks=%d maxRunes=%d, all valid UTF-8, all embedded OK", f, len(chunks), maxRunes)
 		})
 	}
 }

@@ -634,7 +634,7 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 	}
 
 	// Workspace/campaign are still needed for the connection filtering below
-	// (not for enrichment — the inbox service already handled that).
+	// (not for enrichment, the inbox service already handled that).
 	var workspaceID string
 	if h.workspaceResolver != nil {
 		workspaceID, _ = h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
@@ -2162,15 +2162,10 @@ func (h *ConversationHub) afterOperatorSend(conn *WSConnection, entryID, entryTy
 		if message != nil && message.ID != "" {
 			details["message_id"] = message.ID
 		}
-		channel := "whatsapp"
-		switch entryType {
-		case "voice":
-			channel = "voice"
-		case "support":
-			channel = "support"
-		case "instagram":
-			channel = "instagram"
-		}
+		// Every entry type names its own channel. This was a switch that listed
+		// three of them and defaulted to "whatsapp", so an operator's Telegram
+		// reply was recorded as a WhatsApp event.
+		channel := shared.EntryType(entryType).EventChannel()
 		h.eventLogger.Log(ce.New(wsID, entryID, entryType, ce.EventReplied).
 			WithActorHuman(conn.UserID).
 			WithChannel(channel).

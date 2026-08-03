@@ -78,7 +78,7 @@ func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content str
 }
 
 // runTurn runs one agentic turn: it replays bounded history, runs the loop
-// (streaming via emit), and persists the outcome — the final assistant reply, or,
+// (streaming via emit), and persists the outcome, the final assistant reply, or,
 // when the model proposes a mutation, a proposal message plus a parked pending
 // action (emitting "awaiting_approval" with its id). persistUserMsg records prompt
 // as a visible user message (true for a real user turn; false for the
@@ -126,7 +126,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 		}
 		_ = s.messages.Create(rec.message(thread.ID, proposal, model))
 		emit("awaiting_approval", map[string]interface{}{"actionId": pa.ID, "tool": pa.ToolName, "summary": pa.Summary})
-	default: // Done / Idle — a conversational reply
+	default: // Done / Idle, a conversational reply
 		reply := lastAssistantContent(sess.History)
 		if reply != "" {
 			_ = s.messages.Create(rec.message(thread.ID, reply, model))
@@ -143,7 +143,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 
 // Approve executes a previously-proposed mutation (the user confirmed it), clears
 // the pending action, and then RE-ENTERS the agentic loop with the outcome so the
-// model continues naturally — confirming a success, or, when the mutation failed,
+// model continues naturally, confirming a success, or, when the mutation failed,
 // seeing the error in-loop and recovering (fixing the inputs and proposing again).
 func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, cc copilot.Context, emit agentloop.Emit) error {
 	pa, ok, err := s.pending.Get(thread.ID, actionID)
@@ -223,13 +223,13 @@ func lastAssistantContent(h []ai.Message) string {
 
 // approvalContinuationPrompt is the system-authored turn fed back to the model
 // after an approved mutation runs, so it confirms a success or recovers from a
-// failure within the loop — instead of a dead-end templated message.
+// failure within the loop, instead of a dead-end templated message.
 func approvalContinuationPrompt(pa copilot.PendingAction, res copilot.Result) string {
 	var b strings.Builder
 	b.WriteString("[SISTEMA] O usuário aprovou a ação que você propôs: ")
 	b.WriteString(pa.ToolName)
 	if pa.Summary != "" {
-		b.WriteString(" — ")
+		b.WriteString(", ")
 		b.WriteString(pa.Summary)
 	}
 	b.WriteString(". ")

@@ -13,7 +13,7 @@ import (
 const telephonyRate = 8000
 
 // LoadMP3AsTelephonyPCM decodes an MP3 file into 16-bit little-endian MONO PCM
-// at 8kHz — the exact format the RTP sender expects — so the result can be
+// at 8kHz, the exact format the RTP sender expects, so the result can be
 // handed straight to playback with no per-call decode or resample.
 //
 // It is meant to be called ONCE at startup. The returned buffer is immutable

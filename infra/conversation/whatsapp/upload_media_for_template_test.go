@@ -12,7 +12,7 @@ import (
 // The Resumable Upload API differs per provider: Meta scopes the session
 // endpoint by app id and authenticates the binary upload with
 // "Authorization: OAuth <token>"; 360dialog proxies the same API scoped by the
-// channel API key ("{base}/uploads", D360-API-KEY on both steps, no app id —
+// channel API key ("{base}/uploads", D360-API-KEY on both steps, no app id,
 // verified against docs.360dialog.com and the live waba-v2 routing). These
 // tests pin both contracts.
 

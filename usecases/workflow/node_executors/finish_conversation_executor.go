@@ -11,7 +11,7 @@ import (
 
 // finishConversationExecutor marks the CRM conversation finished via the
 // shared ConversationStatusService (close_source=system, reason=workflow).
-// It does not end the workflow run — connect "sucesso" to an end node if needed.
+// It does not end the workflow run, connect "sucesso" to an end node if needed.
 type finishConversationExecutor struct {
 	status conversation.ConversationStatusUpdater
 }
@@ -32,7 +32,7 @@ func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 			When: "Quando o fluxo concluiu o atendimento e a conversa deve sair do conjunto aberto (ex.: após despedida, resolução, ou fim de automação).",
 			Behavior: "Chama o mesmo serviço de status que humanos e a ferramenta finish_conversation da IA. " +
 				"Origem: system · motivo: workflow. Idempotente se já estiver finalizada. " +
-				"Não encerra o run do workflow — conecte a saída sucesso a um nó Fim se quiser terminar o fluxo.",
+				"Não encerra o run do workflow, conecte a saída sucesso a um nó Fim se quiser terminar o fluxo.",
 			Examples: []string{
 				"IA responde → Finalizar conversa → Fim",
 				"Enviar texto de despedida → Finalizar conversa → Fim",
@@ -85,7 +85,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),
 			Output: map[string]interface{}{
 				"success": false,
-				"error":   "run sem entry_id/entry_type — finalize só em fluxos de conversa",
+				"error":   "run sem entry_id/entry_type, finalize só em fluxos de conversa",
 			},
 		}, nil
 	}

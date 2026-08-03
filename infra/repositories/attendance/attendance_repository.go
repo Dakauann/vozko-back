@@ -21,7 +21,7 @@ func New(db *gorm.DB) attendance.Repository {
 // "Campaign" is the channel's container: a WhatsApp campaign, or the account row
 // for channels with none. Driving it from the channel registry means a new
 // channel's per-account stats work on the day it is registered, instead of
-// silently ignoring the filter and reporting the whole workspace — which is what
+// silently ignoring the filter and reporting the whole workspace, which is what
 // the previous `default: return "", "", nil` did.
 func campaignJoinForEntryColumn(filter attendance.StatsFilter, alias, entryColumn string) (joinSQL string, extraWhere string, extraArgs []interface{}) {
 	if filter.CampaignID == "" {

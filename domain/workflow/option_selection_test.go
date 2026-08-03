@@ -8,7 +8,7 @@ import (
 
 // The three data keys are a contract between every channel's inbound handler
 // and AdvanceOnReply. A channel that writes a different key does not fail
-// loudly — it silently routes every button press down the no_match branch,
+// loudly, it silently routes every button press down the no_match branch,
 // which reads as "the customer typed something unexpected" and is very hard to
 // trace back to a typo. These pin the keys.
 

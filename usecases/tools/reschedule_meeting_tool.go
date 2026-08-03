@@ -36,7 +36,7 @@ QUANDO USAR:
 - Cliente já tem uma reunião agendada e quer mudar para outra data ou horário ("pode remarcar para amanhã às 15h?", "consigo mudar minha consulta?").
 - Após um agendamento (schedule_meeting), use o "google_event_id" retornado como "event_id" aqui.
 
-IMPORTANTE: informe o "event_id" do agendamento existente. Se o novo horário já estiver ocupado, a ferramenta avisa e o evento NÃO é movido — ofereça outro horário.`,
+IMPORTANTE: informe o "event_id" do agendamento existente. Se o novo horário já estiver ocupado, a ferramenta avisa e o evento NÃO é movido, ofereça outro horário.`,
 		DisplayDescription: "Muda a data/horário de um evento existente no Google Calendar.",
 		Parameters: map[string]tools.Parameter{
 			"event_id": {
@@ -53,13 +53,13 @@ IMPORTANTE: informe o "event_id" do agendamento existente. Se o novo horário j�
 			},
 			"end_time": {
 				Type:               "string",
-				Description:        "Nova data/hora de fim no formato RFC3339. Opcional — se vazio, mantém a mesma duração do evento original.",
+				Description:        "Nova data/hora de fim no formato RFC3339. Opcional, se vazio, mantém a mesma duração do evento original.",
 				DisplayName:        "Novo fim",
 				DisplayDescription: "Nova data e hora de fim",
 			},
 			"duration": {
 				Type:               "number",
-				Description:        "Nova duração em minutos. Opcional — usada quando end_time não é informado. Se ambos vazios, mantém a duração original.",
+				Description:        "Nova duração em minutos. Opcional, usada quando end_time não é informado. Se ambos vazios, mantém a duração original.",
 				DisplayName:        "Duração (minutos)",
 				DisplayDescription: "Nova duração em minutos",
 			},

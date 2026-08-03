@@ -258,7 +258,7 @@ func TestRelease_Dialog360_CancelsPartnerChannel(t *testing.T) {
 }
 
 // If the partner cancel fails AND the channel is still live, the release MUST abort and
-// keep the local row — deleting it would orphan a paying channel with nothing to retry.
+// keep the local row, deleting it would orphan a paying channel with nothing to retry.
 func TestRelease_Dialog360_CancelFails_AbortsAndKeepsRow(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()

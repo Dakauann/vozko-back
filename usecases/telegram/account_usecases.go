@@ -92,7 +92,7 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, workspaceID, 
 	}
 
 	// Every field is a pointer so "not supplied" is distinguishable from
-	// "cleared" — otherwise a partial form submission would silently unset the
+	// "cleared", otherwise a partial form submission would silently unset the
 	// agent.
 	if in.DepartmentID != nil {
 		account.DepartmentID = emptyToNil(in.DepartmentID)
@@ -157,7 +157,7 @@ func (uc *DisconnectAccountUseCase) Execute(ctx context.Context, workspaceID, ac
 	}
 
 	// Unregistering is best effort. If it fails the row still goes away, and the
-	// webhook handler answers 401 for an unknown account — so no traffic is
+	// webhook handler answers 401 for an unknown account, so no traffic is
 	// accepted either way. Blocking the disconnect on a Telegram outage would
 	// leave the operator unable to remove a bot they no longer control.
 	if err := uc.api.DeleteWebhook(ctx, account.BotToken, false); err != nil {
@@ -176,7 +176,7 @@ const webhookHealthLead = time.Hour
 // pendingUpdateAlarm is the backlog at which an account is marked unhealthy.
 //
 // Deliberately low. Telegram discards undelivered updates after 24 hours and has
-// no history API, so a backlog is not a statistic — it is a countdown to
+// no history API, so a backlog is not a statistic, it is a countdown to
 // permanent message loss.
 const pendingUpdateAlarm = 20
 
@@ -207,7 +207,7 @@ func (uc *CheckWebhookHealthUseCase) Execute(ctx context.Context) error {
 
 	log.Printf("[telegram] probing webhook health for %d account(s)", len(accounts))
 	for _, account := range accounts {
-		// One tenant's failure must never abort the loop — the same isolation the
+		// One tenant's failure must never abort the loop, the same isolation the
 		// Instagram refresh cron enforces.
 		uc.probe(ctx, account)
 	}
@@ -252,7 +252,7 @@ func (uc *CheckWebhookHealthUseCase) probe(ctx context.Context, account *tgdomai
 	account.WebhookLastError = info.LastErrorMessage
 
 	if account.WebhookUnhealthy(pendingUpdateAlarm) {
-		log.Printf("[telegram] ALARM: webhook unhealthy for @%s (pending=%d, error=%q) — "+
+		log.Printf("[telegram] ALARM: webhook unhealthy for @%s (pending=%d, error=%q), "+
 			"undelivered updates are discarded after 24h and cannot be recovered",
 			account.BotUsername, info.PendingCount, info.LastErrorMessage)
 		uc.transition(ctx, account, tgdomain.StatusWebhookFailing, info.LastErrorMessage)

@@ -53,7 +53,7 @@ type Request struct {
 	Visibility           agent.ToolVisibility
 	ToolSeed             map[string]interface{}
 	// CampaignID/CampaignType reach the tool resolver's ToolContext, which is
-	// what a ContextualHandler uses to build its definition — manage_entry_stage
+	// what a ContextualHandler uses to build its definition, manage_entry_stage
 	// populates its target_stage_name enum from the campaign's pipeline this
 	// way. Omitting them does not fail: the tool is offered with an EMPTY enum
 	// while the prompt instructs the model to use only enumerated stages, so the
@@ -64,7 +64,7 @@ type Request struct {
 	// PreResolved supplies tools that the CALLER already resolved, for paths
 	// that resolve earlier with context the assembler does not have. Seed
 	// stamping, name collection and the identity preamble are applied to these
-	// exactly as they are to self-resolved tools — that shared handling is what
+	// exactly as they are to self-resolved tools, that shared handling is what
 	// was being copy-pasted per channel.
 	//
 	// Ignored when ResolveInternalTools is set; a caller means one or the other.

@@ -64,7 +64,7 @@ type UpdateAccountConfigInput struct {
 }
 
 // UpdateAccountConfigUseCase edits the automation config an account carries for
-// its conversations — the same role whatsapp_campaigns plays for WhatsApp.
+// its conversations, the same role whatsapp_campaigns plays for WhatsApp.
 type UpdateAccountConfigUseCase struct {
 	accounts igdomain.AccountRepository
 }

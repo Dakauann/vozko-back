@@ -18,7 +18,7 @@ type transferAborter interface {
 // consultCapable is the endpoint-side port for the attended consult: attach one
 // end of the private PCM bridge and carry the disconnect context. The browser
 // dialerSession implements it; a branch session can implement it by pumping the
-// consult PCM over its RTP leg (plan §4.8) — the executor no longer cares which.
+// consult PCM over its RTP leg (plan §4.8), the executor no longer cares which.
 type consultCapable interface {
 	AttachConsult(endpoint *dialer_infra.ConsultEndpoint) error
 	DetachConsult()
@@ -140,10 +140,10 @@ func (x *dialerTransferExecutor) initiatorSession(h *dialer_domain.TransferHandl
 	// Resolve the session that actually OWNS the call, not the member's preferred
 	// contact. A member can hold a call on their browser while ALSO having a branch
 	// (SIP phone) registered; FindByUser prefers the physical branch, which is not a
-	// browser delivery session and does not hold the leg — so a transfer initiated
+	// browser delivery session and does not hold the leg, so a transfer initiated
 	// from the browser would fail with "initiator is not a delivery dialer session"
 	// (e.g. accept a transfer on the browser, then transfer back). The call registry
-	// records the true owner session, so key on it — the same "hit the exact contact
+	// records the true owner session, so key on it, the same "hit the exact contact
 	// that owns the leg" principle resolveSessionForUser uses for the target.
 	if entry, ok := x.calls.Lookup(h.WorkspaceID, h.CallID); ok && entry.OwnerSessionID != "" {
 		for _, s := range x.sessions.FindSessionsByUser(h.WorkspaceID, h.InitiatorID) {
@@ -303,7 +303,7 @@ func (x *dialerTransferExecutor) SwapParked(ctx context.Context, h *dialer_domai
 
 	repark := func(reason string, cause error) error {
 		if err := x.park.Park(h.WorkspaceID, legIface, h.ID, x.legDeathHook(h.WorkspaceID, h.CallID)); err != nil {
-			x.logger.Printf("[Transfer] re-park failed for %s (%s): %v — hanging the leg up", h.ID, reason, err)
+			x.logger.Printf("[Transfer] re-park failed for %s (%s): %v, hanging the leg up", h.ID, reason, err)
 			_ = legIface.Hangup()
 		}
 		return cause
@@ -452,7 +452,7 @@ func (x *dialerTransferExecutor) SwapBlind(ctx context.Context, h *dialer_domain
 	}
 	// Reject only when the target holds a genuine attached call. A bare
 	// reservation here is this transfer's own ring (taken at Initiate and consumed
-	// by AttachLeg below), so it must not register as "busy" — that's why we check
+	// by AttachLeg below), so it must not register as "busy", that's why we check
 	// ActiveCallID rather than the reservation-aware HasActiveCall.
 	if targetIface.ActiveCallID() != "" {
 		return dialer_domain.ErrTransferTargetBusy
@@ -594,7 +594,7 @@ func (x *dialerTransferExecutor) CloseConsult(ctx context.Context, h *dialer_dom
 		}
 		// A branch target must hang its answered phone up on a cancelled consult
 		// (DetachConsult only stopped the transcode relay; the phone dialog is still
-		// up). AbortConsult BYEs it. A browser target does not implement it — no-op.
+		// up). AbortConsult BYEs it. A browser target does not implement it, no-op.
 		if ab, ok := targetSess.(consultAborter); ok {
 			ab.AbortConsult()
 		}

@@ -134,7 +134,7 @@ type MetricDefinitionsResponse struct {
 	Disposition  string `json:"disposition" example:"pilhas de calls.status + end_reason / surrender_reason"`
 	ByMember     string `json:"by_member" example:"CDR humano por agente (usuário do discador) agrupado"`
 	Persistence  string `json:"persistence" example:"métricas de tabelas duráveis exceto o registro ao vivo"`
-	Gaps         string `json:"gaps" example:"captura real de espera/ACW no caminho quente — ver docs"`
+	Gaps         string `json:"gaps" example:"captura real de espera/ACW no caminho quente, ver docs"`
 }
 
 type OverviewResponse struct {

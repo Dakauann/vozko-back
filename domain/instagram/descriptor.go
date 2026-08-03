@@ -16,7 +16,7 @@ func Descriptor() *channel.Descriptor {
 		Kind:      channel.KindInstagram,
 		EntryType: shared.EntryTypeInstagram,
 		Capabilities: channel.Capabilities{
-			// A user must message the account first — there is no template or
+			// A user must message the account first, there is no template or
 			// opt-in list that lets us open a thread.
 			CanInitiateConversation: false,
 			SupportsTemplates:       false,
@@ -34,7 +34,7 @@ func Descriptor() *channel.Descriptor {
 			SignatureFormat: "%s:\n%s",
 
 			MediaLimits: map[channel.MediaKind]channel.MediaLimit{
-				// Images cap at 8MB — the odd one out — and gif is unsupported.
+				// Images cap at 8MB, the odd one out, and gif is unsupported.
 				channel.MediaImage: {
 					MaxBytes:  8 * 1024 * 1024,
 					MIMETypes: []string{"image/png", "image/jpeg"},
@@ -71,13 +71,13 @@ func Descriptor() *channel.Descriptor {
 				MaxOptionsButtons: MaxQuickReplies,
 				MaxOptionsList:    MaxQuickReplies,
 				// "Each quick reply allows up to 20 characters before being
-				// truncated" — truncated by Instagram, silently, which is
+				// truncated", truncated by Instagram, silently, which is
 				// exactly the kind of thing the editor must warn about.
 				MaxLabelRunes: MaxQuickReplyTitleRunes,
 				// Instagram's own docs do not state a payload bound; this is the
 				// Messenger Platform limit the Instagram surface inherits.
 				MaxPayloadBytes: MaxQuickReplyPayloadBytes,
-				// Quick replies are label-only — there is no description slot.
+				// Quick replies are label-only, there is no description slot.
 				SupportsOptionDescriptions: false,
 			},
 		},

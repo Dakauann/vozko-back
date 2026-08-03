@@ -720,7 +720,7 @@ func (f *mockWhatsAppClientFactory) ClientForPhone(_ string) (conversation.Whats
 	if f.returnReal {
 		return f.client, nil
 	}
-	return nil, fmt.Errorf("not a full client — use sendTemplateMessage path")
+	return nil, fmt.Errorf("not a full client, use sendTemplateMessage path")
 }
 
 func (f *mockWhatsAppClientFactory) ClientForWABA(_ string) (conversation.WhatsAppClient, error) {
@@ -1832,7 +1832,7 @@ func TestInflight_OtherServiceReservedBudget_StillFitsOneCampaign(t *testing.T) 
 		t.Fatal("expected ack on success")
 	}
 	if h.consumeTempl.consumed.Load() != 1 {
-		t.Error("expected 1 debit — budget should have fit the campaign message")
+		t.Error("expected 1 debit, budget should have fit the campaign message")
 	}
 
 	inflight, _ := h.inflightReserver.GetInflight("ws-1")
@@ -2043,7 +2043,7 @@ func TestInflight_PanicDuringDebit_DeferReleasesInflight(t *testing.T) {
 
 	inflight, _ := h.inflightReserver.GetInflight("ws-panic")
 	if inflight != 0 {
-		t.Fatalf("expected 0 inflight after panic, got %d — defer Release did not fire", inflight)
+		t.Fatalf("expected 0 inflight after panic, got %d, defer Release did not fire", inflight)
 	}
 }
 

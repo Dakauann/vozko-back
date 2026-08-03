@@ -244,7 +244,7 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	//
 	// But only when the permission list was actually REPORTED. The long-lived
 	// exchange does not return `permissions` at all, and the code exchange has been
-	// observed omitting it too — in which case an absent list means "unknown", not
+	// observed omitting it too, in which case an absent list means "unknown", not
 	// "declined". Rejecting on unknown would refuse a perfectly good connection, so
 	// we record the scopes we requested, let the messaging health probe below be the
 	// real signal, and surface the truth on the first API call.
@@ -290,7 +290,7 @@ func (uc *ConnectAccountUseCase) persist(ctx context.Context, account *igdomain.
 	existing, err := uc.accounts.FindByIGUserIDUnscoped(ctx, account.IGUserID)
 	switch {
 	case err == nil:
-		log.Printf("[instagram] ig_user_id=%s already exists (id=%s workspace=%s) — restoring and updating",
+		log.Printf("[instagram] ig_user_id=%s already exists (id=%s workspace=%s), restoring and updating",
 			account.IGUserID, existing.ID, existing.WorkspaceID)
 		if existing.WorkspaceID != account.WorkspaceID {
 			// Connected elsewhere. Surfacing this beats silently moving an
@@ -322,7 +322,7 @@ func (uc *ConnectAccountUseCase) persist(ctx context.Context, account *igdomain.
 		return true, nil
 
 	case errors.Is(err, igdomain.ErrAccountNotFound):
-		log.Printf("[instagram] ig_user_id=%s is new — creating", account.IGUserID)
+		log.Printf("[instagram] ig_user_id=%s is new, creating", account.IGUserID)
 		if err := uc.accounts.Create(ctx, account); err != nil {
 			return false, err
 		}
@@ -354,7 +354,7 @@ func (uc *ConnectAccountUseCase) subscribeWebhooks(ctx context.Context, account 
 // toggle being off.
 //
 // There is no API for that flag, and when it is off DMs and messaging webhooks
-// fail SILENTLY despite a fully successful OAuth — a classic invisible failure.
+// fail SILENTLY despite a fully successful OAuth, a classic invisible failure.
 // Reading the conversations edge is the closest available signal: a
 // permission-shaped error means messaging will not work. This is a heuristic, so
 // a transient failure is not treated as unhealthy.

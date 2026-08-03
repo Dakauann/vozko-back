@@ -259,7 +259,7 @@ func scheduleMeetingFailure(ctx *workflow.NodeContext, message string) *workflow
 		scheduleMeetingNodeID(ctx), scheduleMeetingRunID(ctx), message)
 	return &workflow.NodeResult{
 		// STRICT: route to "erro" only if that edge is actually wired. Never fall
-		// back to the first edge — a failed schedule must not flow down the
+		// back to the first edge, a failed schedule must not flow down the
 		// success path. With no "erro" edge wired the run ends here.
 		NextNodeID: scheduleMeetingResolveEdgeStrict(ctx, "erro"),
 		Output: map[string]interface{}{

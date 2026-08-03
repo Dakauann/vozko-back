@@ -122,7 +122,7 @@ func TestCodecForPayloadType(t *testing.T) {
 	}{
 		{0, true, "PCMU"},
 		{8, true, "PCMA"},
-		{9, false, ""},   // G722 — unsupported in the media plane
+		{9, false, ""},   // G722, unsupported in the media plane
 		{96, false, ""},  // Opus
 		{101, false, ""}, // telephone-event
 	}

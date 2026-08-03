@@ -205,7 +205,7 @@ func (e *TextExtractor) extractCSV(data []byte) (string, error) {
 	r.LazyQuotes = true
 	rows, err := r.ReadAll()
 	if err != nil && len(rows) == 0 {
-		// Not valid CSV — fall back to raw text so nothing is lost.
+		// Not valid CSV, fall back to raw text so nothing is lost.
 		return string(data), nil
 	}
 	result := serializeRecords("", rows)

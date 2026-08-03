@@ -53,7 +53,7 @@ type StreamEvent struct {
 	Usage            *Usage
 	// FinishReason is the provider's stop reason for the turn (e.g. "stop",
 	// "tool_calls", "length"). Set on StreamEventDone. "length" means the output
-	// was truncated by the token budget — for reasoning models this commonly means
+	// was truncated by the token budget, for reasoning models this commonly means
 	// thinking consumed the whole budget and no usable output (or tool call) was
 	// produced. Callers should treat that differently from a deliberate stop.
 	FinishReason string

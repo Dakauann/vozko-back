@@ -107,7 +107,7 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if account.Mode == tgdomain.ModeBusiness {
 		if !account.BusinessEnabled || !account.Rights().CanReply {
 			// The owner disconnected the bot or revoked the reply right. No clock
-			// is involved, so no expiry is reported — the UI must say "permission
+			// is involved, so no expiry is reported, the UI must say "permission
 			// revoked", not "window closed".
 			return false, nil, nil
 		}
@@ -123,7 +123,7 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if err != nil {
 		return false, nil, err
 	}
-	// A nil expiry with open=false is what tells the UI "this is not a clock" —
+	// A nil expiry with open=false is what tells the UI "this is not a clock",
 	// there is no moment at which it reopens on its own, only the customer
 	// unblocking us.
 	return !contact.Blocked, nil, nil
@@ -164,8 +164,8 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 		account.BotUsername, result.ChatID, result.MessageID)
 	a.recordOutbound(ctx, ec)
 
-	// The provider id is known synchronously — Telegram answers a send with the
-	// full Message — so there is no echo webhook to reconcile against, unlike
+	// The provider id is known synchronously, Telegram answers a send with the
+	// full Message, so there is no echo webhook to reconcile against, unlike
 	// every Meta channel.
 	return &conversation.SendOutcome{
 		ProviderMessageID: tgdomain.ProviderMessageID(result.ChatID, result.MessageID),
@@ -253,7 +253,7 @@ func (a *channelAdapter) SendReaction(ctx context.Context, ec *conversation.Entr
 }
 
 func (a *channelAdapter) RemoveReaction(ctx context.Context, ec *conversation.EntryContext, targetProviderMessageID string) error {
-	// An empty emoji clears the reaction — the same call, no separate method.
+	// An empty emoji clears the reaction, the same call, no separate method.
 	return a.SendReaction(ctx, ec, targetProviderMessageID, "")
 }
 
@@ -280,7 +280,7 @@ func (a *channelAdapter) SendTyping(ctx context.Context, ec *conversation.EntryC
 
 // MarkSeen marks the customer's message read on the account owner's behalf.
 //
-// Business mode only, and only with the can_read_messages right — a bot has no
+// Business mode only, and only with the can_read_messages right, a bot has no
 // read receipts of its own. Bot mode reports the capability as unsupported
 // rather than silently doing nothing, so a caller cannot believe it worked.
 func (a *channelAdapter) MarkSeen(ctx context.Context, ec *conversation.EntryContext, upToProviderMessageID string) error {
@@ -332,7 +332,7 @@ func (a *channelAdapter) EditText(ctx context.Context, ec *conversation.EntryCon
 	return nil
 }
 
-// Retract implements conversation.RetractingAdapter — a real unsend.
+// Retract implements conversation.RetractingAdapter, a real unsend.
 //
 // Bounded by Telegram's rule: "A message can only be deleted if it was sent less
 // than 48 hours ago." The bound is enforced here as well as upstream so the
@@ -437,7 +437,7 @@ func (a *channelAdapter) validateMedia(req conversation.SendMediaRequest) error 
 // mediaKindFor picks the send method.
 //
 // A voice note is not just "audio": sendVoice renders an in-chat waveform, and
-// Telegram requires audio/ogg for it — anything else "will be sent as files". So
+// Telegram requires audio/ogg for it, anything else "will be sent as files". So
 // the ogg check decides the method rather than the caller.
 func mediaKindFor(kind, mimeType string) tgdomain.MediaKind {
 	switch kind {

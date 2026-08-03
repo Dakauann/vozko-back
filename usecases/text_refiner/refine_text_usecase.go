@@ -54,7 +54,7 @@ const (
 		`CONTEXT: The TEXT is the SYSTEM PROMPT (instruction set) of an AI ` +
 		`MESSAGING AGENT that replies in chat (WhatsApp, web). The user's ` +
 		`instruction describes desired AGENT BEHAVIOUR; rewrite the ` +
-		`INSTRUCTIONS accordingly — you are NOT writing the message body that ` +
+		`INSTRUCTIONS accordingly, you are NOT writing the message body that ` +
 		`will be sent.` + "\n" +
 		`Keep the prompt concise and direct (LLM-readable, not human copy). ` +
 		`Address the agent in the second person ("You answer messages ..."). ` +
@@ -224,7 +224,7 @@ func buildUserMessage(kind text_refiner.TextKind, instruction, text string) stri
 	case text_refiner.TextKindMessagingPrompt:
 		b.WriteString("USER REQUEST (describes how the AI agent should behave):\n")
 		b.WriteString(instruction)
-		b.WriteString("\n\nCURRENT AGENT SYSTEM PROMPT (you must rewrite THIS so the agent behaves as requested — do NOT inject the user request as content):\n")
+		b.WriteString("\n\nCURRENT AGENT SYSTEM PROMPT (you must rewrite THIS so the agent behaves as requested, do NOT inject the user request as content):\n")
 	case text_refiner.TextKindInitialMessage:
 		b.WriteString("USER INSTRUCTION (how to rewrite the greeting):\n")
 		b.WriteString(instruction)

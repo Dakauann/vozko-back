@@ -53,7 +53,7 @@ func (h *WebhookHandler) SetCallWebhookHandler(handler conversation.WhatsAppCall
 
 // NewWebhookHandler builds the webhook handler. whatsappAppSecrets is variadic and
 // normalized (trimmed, de-duplicated, empties dropped) so existing single-secret call
-// sites — including NewWebhookHandler(..., "") — keep their exact behavior. Pass more than
+// sites, including NewWebhookHandler(..., ""), keep their exact behavior. Pass more than
 // one secret to verify inbound webhooks signed by any of several apps (e.g. an app migration).
 func NewWebhookHandler(
 	publishWebhook webhook.PublishWebhookUseCase,
@@ -62,11 +62,11 @@ func NewWebhookHandler(
 	whatsappAppSecrets ...string,
 ) *WebhookHandler {
 	if expectedToken == "" {
-		log.Println("[WARN] ASAAS_WEBHOOK_TOKEN is empty — all Asaas webhook requests will be rejected")
+		log.Println("[WARN] ASAAS_WEBHOOK_TOKEN is empty, all Asaas webhook requests will be rejected")
 	}
 	secrets := normalizeAppSecrets(whatsappAppSecrets)
 	if len(secrets) == 0 {
-		log.Println("[WARN] META_APP_SECRET is empty — WhatsApp webhook signature verification disabled")
+		log.Println("[WARN] META_APP_SECRET is empty, WhatsApp webhook signature verification disabled")
 	} else {
 		log.Printf("[webhook] WhatsApp signature verification enabled (%d app secret(s))", len(secrets))
 	}

@@ -64,7 +64,7 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 	out := make([]export.ChannelEntry, 0, len(rows))
 	for _, rw := range rows {
 		// An Instagram contact has no phone number, so the handle fills the
-		// identity slot — that is what an operator recognises.
+		// identity slot, that is what an operator recognises.
 		identity := rw.IGSID
 		if rw.Username != "" {
 			identity = "@" + rw.Username

@@ -10,7 +10,7 @@
 //  1. Instagram lands here first, greenfield, so the abstraction is proven
 //     against a real second channel instead of being designed in the abstract.
 //  2. WhatsApp follows by lifting the `case "whatsapp"` bodies verbatim into a
-//     whatsappChannelAdapter — behaviour-preserving, so its existing tests must
+//     whatsappChannelAdapter, behaviour-preserving, so its existing tests must
 //     pass untouched.
 //  3. The support widget follows.
 //  4. Only then do the switches get deleted.
@@ -43,7 +43,7 @@ const (
 
 	// Registered here for reference so callers can reason about the full set
 	// while the migration is in flight. These are NOT yet backed by a
-	// Descriptor — Registry.Get returns ErrUnknownKind for them until their
+	// Descriptor, Registry.Get returns ErrUnknownKind for them until their
 	// migration step lands.
 	KindWhatsApp Kind = "whatsapp"
 	KindSupport  Kind = "support"
@@ -56,7 +56,7 @@ func (k Kind) String() string { return string(k) }
 // a switch somewhere else.
 type Capabilities struct {
 	// CanInitiateConversation reports whether we may send the first message.
-	// Instagram: false — a user must message the account first, and there is no
+	// Instagram: false, a user must message the account first, and there is no
 	// template-initiated conversation as there is on WhatsApp.
 	CanInitiateConversation bool
 
@@ -113,7 +113,7 @@ type InteractiveLimits struct {
 	// MaxOptionsButtons and MaxOptionsList are separate because some channels
 	// present a short button row and a longer scrollable list as two different
 	// message types (WhatsApp: 3 and 10). Channels with a single mechanism that
-	// serves both — Instagram quick replies, Telegram inline keyboards — set
+	// serves both, Instagram quick replies, Telegram inline keyboards, set
 	// both fields to the same number.
 	//
 	// Zero in both means the channel cannot present a choice.
@@ -135,7 +135,7 @@ type InteractiveLimits struct {
 	//
 	// Only WhatsApp's list rows have that slot. Telegram inline buttons and
 	// Instagram quick replies are label-only, so a description written by an
-	// author is simply not shown there — which the editor must say out loud,
+	// author is simply not shown there, which the editor must say out loud,
 	// because the author cannot tell from the config panel alone.
 	SupportsOptionDescriptions bool
 }
@@ -175,7 +175,7 @@ const (
 type MediaLimit struct {
 	MaxBytes int64
 	// MIMETypes is the accepted set. A nil/empty slice means the channel accepts
-	// ANY type for this kind — Telegram's sendDocument does, unlike Instagram's
+	// ANY type for this kind, Telegram's sendDocument does, unlike Instagram's
 	// PDF-only file attachment. Treating empty as "accept nothing" would reject
 	// every document on such a channel.
 	MIMETypes []string
@@ -198,7 +198,7 @@ func (l MediaLimit) Allows(mime string) bool {
 // whichever measurement the channel actually documents.
 //
 // This exists so no caller has to remember that Instagram counts bytes and
-// Telegram counts characters — getting it wrong is invisible until a customer
+// Telegram counts characters, getting it wrong is invisible until a customer
 // sends an emoji-heavy message.
 func (c Capabilities) TextTooLong(body string) bool {
 	if c.MaxTextBytes > 0 && len(body) > c.MaxTextBytes {
@@ -214,7 +214,7 @@ func (c Capabilities) TextTooLong(body string) bool {
 // exists so infra/repositories/conversation stops hardcoding one channel's
 // tables; see the `switch entryType` that builds these today.
 //
-// These are trusted, code-authored constants — never user input — and are
+// These are trusted, code-authored constants, never user input, and are
 // interpolated into the query text. Bind parameters still carry all values.
 type InboxSQL struct {
 	// EntryTable is the table holding the entry (== the conversation) and its

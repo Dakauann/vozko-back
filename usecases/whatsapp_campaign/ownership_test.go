@@ -320,7 +320,7 @@ func TestUpdateCampaignUseCase_AllowsOrganicCampaignWithoutTemplate(t *testing.T
 
 // TestUpdateCampaignUseCase_PersistsArchivedFromInput guards the archive bug:
 // the Archive/Unarchive handlers load the campaign, flip Archived, and call
-// Execute. If the usecase drops input.Archived, archiving silently no-ops — the
+// Execute. If the usecase drops input.Archived, archiving silently no-ops, the
 // card disappears optimistically but reappears on reload. This asserts both
 // transitions actually persist.
 func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {

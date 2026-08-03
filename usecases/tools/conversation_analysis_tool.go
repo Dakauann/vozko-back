@@ -68,7 +68,7 @@ func (t *conversationAnalysisTool) Definition() tools.Definition {
 	}
 	required := []string{"summary"}
 
-	// Classification fields — values, criteria and required-ness all come from
+	// Classification fields, values, criteria and required-ness all come from
 	// the domain rubric (single source of truth, objective-relative wording), so
 	// the schema and the analysis prompts can never diverge.
 	for _, f := range analysis.ClassificationFields() {
@@ -84,7 +84,7 @@ func (t *conversationAnalysisTool) Definition() tools.Definition {
 
 	// Attendance quality is decomposed into ordinal dimensions (also single
 	// source of truth). The model rates each; the 0-100 score is computed
-	// deterministically in Execute — LLMs are far more consistent rating
+	// deterministically in Execute, LLMs are far more consistent rating
 	// "none/low/medium/high" than emitting an arbitrary number.
 	for _, d := range analysis.QualityDimensions() {
 		params[d.Key] = tools.Parameter{

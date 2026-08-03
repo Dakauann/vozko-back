@@ -21,7 +21,7 @@ const (
 //
 // Today the only implementations are µ-law (PCMU) and A-law (PCMA). The
 // interface is the seam through which a future wideband codec (e.g. Opus on
-// all-IP legs — see docs/SIP_AUDIO_PIPELINE.md §8.2/§10 P5) would be added
+// all-IP legs, see docs/SIP_AUDIO_PIPELINE.md §8.2/§10 P5) would be added
 // without touching the RTP plumbing.
 type Codec interface {
 	// Name is the SDP encoding name ("PCMU" / "PCMA").
@@ -93,7 +93,7 @@ var (
 )
 
 // CodecForPayloadType resolves a codec from an RTP payload type. ok is false
-// for anything other than PCMU (0) / PCMA (8) — callers should treat that as
+// for anything other than PCMU (0) / PCMA (8), callers should treat that as
 // "unsupported payload" and skip it (the existing decode sites already do).
 func CodecForPayloadType(pt uint8) (Codec, bool) {
 	switch pt {

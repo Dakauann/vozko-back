@@ -92,9 +92,9 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 	}
 	if len(connectedUsers) == 0 {
 		if departmentID != "" {
-			log.Printf("[InboxAssignment] no connected eligible users for workspace %s department %s — entry %s stays unassigned", workspaceID, departmentID, entryID)
+			log.Printf("[InboxAssignment] no connected eligible users for workspace %s department %s, entry %s stays unassigned", workspaceID, departmentID, entryID)
 		} else {
-			log.Printf("[InboxAssignment] no connected eligible users for workspace %s — entry %s stays unassigned (visible to all)", workspaceID, entryID)
+			log.Printf("[InboxAssignment] no connected eligible users for workspace %s, entry %s stays unassigned (visible to all)", workspaceID, entryID)
 		}
 		return ""
 	}

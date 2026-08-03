@@ -14,7 +14,7 @@ import "strings"
 //   - the frontend custom-tool editor's type dropdown mirrors AllowedParamTypes.
 //
 // "What the builder accepts" and "what the runtime maps" are then the same set by
-// construction — adding a type here updates both at once.
+// construction, adding a type here updates both at once.
 
 // paramTypeAlias is a platform semantic parameter type expressed as the underlying
 // JSON-Schema type plus a human format hint appended to the parameter description
@@ -64,7 +64,7 @@ func ResolveParamType(raw string) (schemaType, formatHint string) {
 // IsValidParamType reports whether a custom-tool parameter type is one the platform
 // accepts: a semantic alias (date, time, datetime, email, phone, enum) or a base
 // JSON-Schema type (string, number, integer, boolean, array, object). An empty
-// type is allowed — it defaults to "string" at run time. Match is case-insensitive
+// type is allowed, it defaults to "string" at run time. Match is case-insensitive
 // and trims surrounding space.
 func IsValidParamType(raw string) bool {
 	key := strings.ToLower(strings.TrimSpace(raw))

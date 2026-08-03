@@ -108,7 +108,7 @@ func (uc *consumeRunWakeUseCase) Start() error {
 		}
 
 		if !uc.engine.TryLockRun(run.ID) {
-			log.Printf("[workflow][wake] skipping run=%s — already locked", run.ID)
+			log.Printf("[workflow][wake] skipping run=%s, already locked", run.ID)
 			_ = ack.Nack(true)
 			return
 		}

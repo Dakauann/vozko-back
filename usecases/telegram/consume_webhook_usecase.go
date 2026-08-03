@@ -21,7 +21,7 @@ const (
 
 // ConsumeWebhookUseCase subscribes the Telegram topics.
 //
-// Both topics carry the same unit of work — one update for one account — so they
+// Both topics carry the same unit of work, one update for one account, so they
 // share the generic ConsumerRunner and differ only in concurrency.
 type ConsumeWebhookUseCase struct {
 	runners []interface{ Start() error }
@@ -72,7 +72,7 @@ func (uc *ConsumeWebhookUseCase) Start() error {
 //
 // This is markedly simpler than the Meta channels': Telegram assigns exactly one
 // update_id per event, so there is no composite key to build. The account id
-// scopes it because update_id is unique per BOT, not globally — two workspaces'
+// scopes it because update_id is unique per BOT, not globally, two workspaces'
 // bots will otherwise collide on low update ids on their first day.
 func dedupKeyForUpdate(q *QueuedUpdate) string {
 	if q == nil || len(q.Update) == 0 {

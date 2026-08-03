@@ -53,7 +53,7 @@ type knowledgeBaseLookup interface {
 // a workflow pointed at a non-existent model is rejected at activation instead of
 // failing at run time. It is expected to be backed by a TTL cache (see
 // openrouter.ModelValidator) so validation is a cheap membership check on the few
-// models actually used — not a per-call fetch of the whole catalog.
+// models actually used, not a per-call fetch of the whole catalog.
 type ModelLookup interface {
 	IsValidModel(ctx context.Context, modelID string) (bool, error)
 }
@@ -176,7 +176,7 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 			validators = append(validators, &modelValidator{lookup: uc.modelLookup})
 		}
 		// NOTE: tts_model validity is a PURE rule (workflow.ValidatePublicTTSModel
-		// in PureGraphRules), so it runs in the builder lint AND activation — the AI
+		// in PureGraphRules), so it runs in the builder lint AND activation, the AI
 		// sees an invalid tts_model while building, not only here.
 		validators = append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
 		if err := workflow.ValidateNodeConfigs(&w.Graph, catalog, validators...); err != nil {
@@ -185,14 +185,14 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 	}
 
 	// The SAME pure blocking rules the builder lint enforces, from the one shared
-	// registry — so "the builder said valid" and "activation accepts it" can never
+	// registry, so "the builder said valid" and "activation accepts it" can never
 	// disagree on a pure rule. Repo-backed VALIDITY (does the id exist?) is the
 	// only thing layered above, via the ConfigValidators run earlier.
 	if err := workflow.RunPureGraphRules(&w.Graph); err != nil {
 		return nil, err
 	}
 
-	// Required DYNAMIC output edges (e.g. an AI-agent's response/"default" path) —
+	// Required DYNAMIC output edges (e.g. an AI-agent's response/"default" path),
 	// the SAME rule the builder lint runs, enforced here so the backend is the
 	// source of truth: a workflow with an unhandled response path cannot activate.
 	if err := workflow.ValidateRequiredDynamicOutputs(&w.Graph, builderHandleResolver); err != nil {
@@ -316,11 +316,11 @@ func (v *agentValidator) Validate(n *workflow.Node) error {
 		return nil
 	}
 
-	// Conditional required-field PRESENCE per source mode — prompt-mode
-	// model/instructions AND agent-mode agent_id — is a PURE rule, enforced by
+	// Conditional required-field PRESENCE per source mode, prompt-mode
+	// model/instructions AND agent-mode agent_id, is a PURE rule, enforced by
 	// BOTH the builder lint and activation via workflow.ValidateAIAgentSourceConfig
 	// (in PureGraphRules). The repo-backed validator only needs to check AGENT-mode
-	// id VALIDITY here — the one thing the pure lint can't do (it needs the DB).
+	// id VALIDITY here, the one thing the pure lint can't do (it needs the DB).
 	source, _ := n.Config["source"].(string)
 	if source != "prompt" {
 		if agentID, _ := n.Config["agent_id"].(string); strings.TrimSpace(agentID) != "" {

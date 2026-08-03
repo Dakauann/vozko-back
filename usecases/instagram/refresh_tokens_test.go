@@ -95,7 +95,7 @@ func TestRefreshTokens_DeadTokenMarksReconnectRequired(t *testing.T) {
 }
 
 // TestRefreshTokens_TransientFailureIsRetriedLater: a transient error must NOT mark
-// the account expired — that would send a working tenant to a reconnect screen.
+// the account expired, that would send a working tenant to a reconnect screen.
 func TestRefreshTokens_TransientFailureIsRetriedLater(t *testing.T) {
 	accounts := &fakeAccountRepo{
 		ListDueFn: func(context.Context, time.Time, int) ([]*igdomain.Account, error) {

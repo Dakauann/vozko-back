@@ -15,7 +15,7 @@ import (
 // RFC3339 timestamp (used as-is, timezone honored) or a date-only "2006-01-02"
 // value. For a date-only upper bound, endOfDay extends it to the final instant
 // of that day so the range stays inclusive. Returns nil for blank/unparseable
-// input — an absent bound means unbounded.
+// input, an absent bound means unbounded.
 func parseSummaryDate(raw string, endOfDay bool) *time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

@@ -48,7 +48,7 @@ func (uc *setTemplateHeaderMediaUseCase) Execute(input template.SetTemplateHeade
 	}
 
 	if tmpl.WABAId == "" {
-		return fmt.Errorf("template has no WABA ID — cannot upload media")
+		return fmt.Errorf("template has no WABA ID, cannot upload media")
 	}
 
 	client, err := uc.clientFactory.ClientForWABA(tmpl.WABAId)

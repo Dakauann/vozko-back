@@ -55,7 +55,7 @@ func NewDocumentProcessor(
 }
 
 func (p *documentProcessor) Process(ctx context.Context, doc *rag.Document) error {
-	log.Printf("[RAG] processing document %s (%s, type=%s) — %d bytes", doc.ID, doc.Name, doc.Type, doc.SizeBytes)
+	log.Printf("[RAG] processing document %s (%s, type=%s), %d bytes", doc.ID, doc.Name, doc.Type, doc.SizeBytes)
 
 	if err := p.docRepo.UpdateStatus(ctx, doc.ID, rag.DocumentStatusProcessing, ""); err != nil {
 		return p.fail(ctx, doc.ID, "status update failed: %v", err)
@@ -70,12 +70,12 @@ func (p *documentProcessor) Process(ctx context.Context, doc *rag.Document) erro
 		return p.fail(ctx, doc.ID, "no extractable text found in document")
 	}
 
-	log.Printf("[RAG] document %s — extracted %d characters of text", doc.ID, len(content))
+	log.Printf("[RAG] document %s, extracted %d characters of text", doc.ID, len(content))
 
 	textChunks := ChunkDocument(p.textChunker, content, doc.Name)
 
 	if len(textChunks) == 0 {
-		log.Printf("[RAG] document %s produced 0 chunks — marking ready", doc.ID)
+		log.Printf("[RAG] document %s produced 0 chunks, marking ready", doc.ID)
 		return p.markReady(ctx, doc, 0)
 	}
 
@@ -117,7 +117,7 @@ func (p *documentProcessor) Process(ctx context.Context, doc *rag.Document) erro
 			})
 		}
 
-		log.Printf("[RAG] document %s — embedded batch %d/%d", doc.ID, end, len(textChunks))
+		log.Printf("[RAG] document %s, embedded batch %d/%d", doc.ID, end, len(textChunks))
 	}
 
 	if err := p.chunkRepo.CreateBatch(ctx, allChunks); err != nil {
@@ -141,7 +141,7 @@ func (p *documentProcessor) markReady(ctx context.Context, doc *rag.Document, ch
 		_ = p.kbRepo.IncrementChunkCount(ctx, doc.KnowledgeBaseID, chunkCount)
 	}
 
-	log.Printf("[RAG] document %s ready — %d chunks stored", doc.ID, chunkCount)
+	log.Printf("[RAG] document %s ready, %d chunks stored", doc.ID, chunkCount)
 	return nil
 }
 
@@ -161,7 +161,7 @@ func ResolveDocumentContent(extractor rag.TextExtractor, doc *rag.Document) (str
 		if err != nil {
 			return "", fmt.Errorf("failed to decode base64 content: %w", err)
 		}
-		log.Printf("[RAG] document %s — decoded %d bytes from base64", doc.ID, len(decoded))
+		log.Printf("[RAG] document %s, decoded %d bytes from base64", doc.ID, len(decoded))
 
 		extracted, err := extractor.Extract(decoded, doc.Name)
 		if err != nil {
@@ -176,7 +176,7 @@ func ResolveDocumentContent(extractor rag.TextExtractor, doc *rag.Document) (str
 		extracted, err := extractor.Extract([]byte(content), doc.Name)
 		if err != nil {
 
-			log.Printf("[RAG] document %s — extraction failed, using raw content: %v", doc.ID, err)
+			log.Printf("[RAG] document %s, extraction failed, using raw content: %v", doc.ID, err)
 			return content, nil
 		}
 		return extracted, nil

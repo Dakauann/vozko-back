@@ -62,7 +62,7 @@ func (s *AsyncSessionService) TouchInbound(workspaceID, entryID, entryType strin
 	})
 }
 
-// Ensure compatibility with SetAIAttendance(*SessionService) — WhatsApp use case
+// Ensure compatibility with SetAIAttendance(*SessionService), WhatsApp use case
 // should switch to interface. Provide adapter methods matching SessionService surface
 // used on hot path only.
 

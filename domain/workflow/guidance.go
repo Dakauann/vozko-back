@@ -9,7 +9,7 @@ package workflow
 // so it references upstream data correctly instead of guessing. Surfaced in the
 // builder system prompt. Mirrors the n8n-style dot-notation expression standard.
 func VariableSystemGuide() string {
-	return `SISTEMA DE VARIÁVEIS ({{ ... }}) — como referenciar dados em tempo de execução:
+	return `SISTEMA DE VARIÁVEIS ({{ ... }}), como referenciar dados em tempo de execução:
 
 CHAVES DE SAÍDA: todo nó executado grava um conjunto de "chaves de saída" (listadas no catálogo e em get_node_spec). Referencie-as por:
 - {{node.<id>.<chave>}} → chave de saída de QUALQUER nó ANTERIOR, pelo id. Forma preferida (explícita e estável). Ex.: {{node.n4.logradouro}}.
@@ -27,7 +27,7 @@ OUTROS ESCOPOS:
 - {{message}}    → texto recebido do contato.
 - {{sys.date}}, {{sys.time}}, {{sys.timestamp}} → data/hora atuais.
 
-ACESSO PROFUNDO (dot-notation, como no n8n): use pontos para entrar em objetos/listas — {{node.<id>.tool_args.cep}}, {{node.<id>.dados.0.nome}}.
+ACESSO PROFUNDO (dot-notation, como no n8n): use pontos para entrar em objetos/listas, {{node.<id>.tool_args.cep}}, {{node.<id>.dados.0.nome}}.
 
 REGRA: só referencie chaves de nós que sejam ANCESTRAIS no fluxo; uma referência inválida não resolve e permanece literal em tempo de execução.`
 }
