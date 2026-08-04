@@ -19,12 +19,15 @@ type RateLimiters struct {
 }
 
 func RegisterPublicRoutes(public *mux.Router, h *AuthHandler, rl RateLimiters) {
-	public.Handle("/auth/register", rl.Register.Validate(http.HandlerFunc(h.Register))).Methods(http.MethodPost)
+	// Public self-registration is disabled for now: new users are created only by
+	// admins via POST /admin/users/register (see RegisterAdminRoutes below).
+	// Re-enable by uncommenting this line.
+	// public.Handle("/auth/register", rl.Register.Validate(http.HandlerFunc(h.Register))).Methods(http.MethodPost)
 	public.Handle("/auth/login", rl.Login.Validate(http.HandlerFunc(h.Login))).Methods(http.MethodPost)
 	public.HandleFunc("/auth/refresh", h.RefreshToken).Methods(http.MethodPost)
-	public.Handle("/auth/forgot-password", rl.ForgotPassword.Validate(http.HandlerFunc(h.ForgotPassword))).Methods(http.MethodPost)
-	public.Handle("/auth/reset-password", rl.ResetPassword.Validate(http.HandlerFunc(h.ResetPassword))).Methods(http.MethodPost)
-	public.Handle("/auth/send-email-verification", rl.EmailVerification.Validate(http.HandlerFunc(h.SendEmailVerification))).Methods(http.MethodPost)
+	// public.Handle("/auth/forgot-password", rl.ForgotPassword.Validate(http.HandlerFunc(h.ForgotPassword))).Methods(http.MethodPost)
+	// public.Handle("/auth/reset-password", rl.ResetPassword.Validate(http.HandlerFunc(h.ResetPassword))).Methods(http.MethodPost)
+	// public.Handle("/auth/send-email-verification", rl.EmailVerification.Validate(http.HandlerFunc(h.SendEmailVerification))).Methods(http.MethodPost)
 }
 
 func RegisterProtectedRoutes(protected *mux.Router, h *AuthHandler) {
