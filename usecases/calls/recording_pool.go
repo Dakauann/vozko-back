@@ -222,7 +222,7 @@ func (p *RecordingUploadPool) uploadAndPublish(callID string, wavData []byte, me
 
 	var lastErr error
 	for attempt := 0; attempt < maxRecordingUploadRetries; attempt++ {
-		if err := p.fileStorage.UploadFile(recordingKey, wavData); err != nil {
+		if err := p.fileStorage.UploadFile(recordingKey, wavData, "audio/wav"); err != nil {
 			lastErr = err
 			if attempt < maxRecordingUploadRetries-1 {
 				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)

@@ -53,7 +53,7 @@ func newFailingStorage() *failingStorage {
 	return &failingStorage{attempts: make(chan struct{}, 16)}
 }
 
-func (s *failingStorage) UploadFile(key string, data []byte) error {
+func (s *failingStorage) UploadFile(key string, data []byte, _ string) error {
 	s.mu.Lock()
 	s.calls++
 	s.mu.Unlock()

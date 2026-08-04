@@ -74,7 +74,7 @@ func (uc *uploadTicketDocumentUseCase) Execute(userID, ticketID, documentType, f
 	}
 	key := fmt.Sprintf("tickets/%s/%s/%s", t.ID, docType, safeName)
 
-	if err := uc.fileStorage.UploadFile(key, content); err != nil {
+	if err := uc.fileStorage.UploadFile(key, content, contentType); err != nil {
 		return nil, err
 	}
 

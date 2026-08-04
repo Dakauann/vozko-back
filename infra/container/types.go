@@ -12,7 +12,6 @@ import (
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
-	branchhttp "vozko/delivery/http/branch"
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
@@ -23,7 +22,6 @@ import (
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
-	dialerringchannelshttp "vozko/delivery/http/dialerringchannels"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	holdmusichttp "vozko/delivery/http/holdmusic"
@@ -41,11 +39,9 @@ import (
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
 	shortlinkhttp "vozko/delivery/http/shortlink"
-	siptrunkhttp "vozko/delivery/http/siptrunk"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	telephonyhttp "vozko/delivery/http/telephony"
 	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
@@ -958,9 +954,6 @@ type handlers_ struct {
 	balance                 *balancehttp.BalanceHandler
 	workspaceTemplateAccess *workspacetemplateaccesshttp.WorkspaceTemplateAccessHandler
 	workspacePhoneAccess    *workspacephoneaccesshttp.WorkspacePhoneAccessHandler
-	sipTrunk                *siptrunkhttp.SIPTrunkHandler
-	branch                  *branchhttp.BranchHandler
-	dialerRingChannels      *dialerringchannelshttp.DialerRingChannelsHandler
 	conversation            *conversationhttp.ConversationHandler
 	conversationWS          *wsdelivery.ConversationWSHandler
 	dialerWS                *wsdelivery.DialerWSHandler
@@ -981,7 +974,6 @@ type handlers_ struct {
 	workspacePlan           *handlers.WorkspacePlanHandler
 	workspaceAddon          *workspaceaddonhttp.WorkspaceAddonHandler
 	attendance              *attendancehttp.AttendanceHandler
-	telephony               *telephonyhttp.TelephonyHandler
 	knowledgeBase           *handlers.KnowledgeBaseHandler
 	shortLink               *shortlinkhttp.ShortLinkHandler
 	export                  *exporthttp.ExportHandler

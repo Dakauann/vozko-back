@@ -719,7 +719,7 @@ type stubFileStorage struct {
 	uploads map[string][]byte
 }
 
-func (s *stubFileStorage) UploadFile(key string, data []byte) error {
+func (s *stubFileStorage) UploadFile(key string, data []byte, _ string) error {
 	if s.uploads == nil {
 		s.uploads = map[string][]byte{}
 	}

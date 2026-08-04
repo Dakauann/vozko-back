@@ -860,7 +860,7 @@ func (uc *HandleWebhookUseCase) storeAttachments(ctx context.Context, conv *igdo
 		key := fmt.Sprintf("conversations/%s/%s/%s%s",
 			shared.EntryTypeInstagram, conv.ID, mediaID, extensionFor(contentType, att.Payload.URL))
 
-		if err := uc.fileStorage.UploadFile(key, data); err != nil {
+		if err := uc.fileStorage.UploadFile(key, data, contentType); err != nil {
 			log.Printf("[instagram] attachment upload failed key=%s: %v", key, err)
 			continue
 		}

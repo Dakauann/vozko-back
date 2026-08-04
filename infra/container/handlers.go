@@ -15,7 +15,6 @@ import (
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
-	branchhttp "vozko/delivery/http/branch"
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
@@ -26,7 +25,6 @@ import (
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
-	dialerringchannelshttp "vozko/delivery/http/dialerringchannels"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	holdmusichttp "vozko/delivery/http/holdmusic"
@@ -44,11 +42,9 @@ import (
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
 	shortlinkhttp "vozko/delivery/http/shortlink"
-	siptrunkhttp "vozko/delivery/http/siptrunk"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	telephonyhttp "vozko/delivery/http/telephony"
 	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
@@ -299,35 +295,6 @@ func (c *Container) initHandlers() {
 			c.useCases.listWorkspacePhoneAccess,
 			c.useCases.listPhoneAccess,
 		),
-		sipTrunk: siptrunkhttp.NewSIPTrunkHandler(
-			c.useCases.createSIPTrunk,
-			c.useCases.updateSIPTrunk,
-			c.useCases.deleteSIPTrunk,
-			c.useCases.getSIPTrunk,
-			c.useCases.listSIPTrunks,
-			c.useCases.listSIPTrunksByIDs,
-			c.useCases.listAccessibleSIPTrunks,
-			c.useCases.enableSIPTrunk,
-			c.useCases.getSIPTrunkStatus,
-			c.useCases.assignOwnerSIPTrunk,
-		),
-		dialerRingChannels: dialerringchannelshttp.NewDialerRingChannelsHandler(c.services.setRingChannelsUC),
-		branch: branchhttp.NewBranchHandler(
-			c.useCases.createBranch,
-			c.useCases.updateBranch,
-			c.useCases.getBranch,
-			c.useCases.listBranchesByWorkspace,
-			c.useCases.listBranchesByUser,
-			c.useCases.deleteBranch,
-			c.useCases.enableBranch,
-			c.useCases.rotateBranchSecret,
-			branchhttp.BranchSIPConnConfig{
-				Server:    c.cfg.PublicSIPHost,
-				Port:      c.cfg.BranchSIPListenPort,
-				Transport: "UDP",
-				Realm:     c.cfg.SIPRealm,
-			},
-		),
 		conversation: func() *conversationhttp.ConversationHandler {
 			h := conversationhttp.NewConversationHandler(
 				c.useCases.sendConversationMessage,
@@ -494,11 +461,6 @@ func (c *Container) initHandlers() {
 			h.SetOverview(c.useCases.getOverview)
 			h.SetQueueRepo(c.repositories.queueEvent)
 			h.SetPresenceRepo(c.repositories.agentPresence)
-			return h
-		}(),
-		telephony: func() *telephonyhttp.TelephonyHandler {
-			h := telephonyhttp.NewTelephonyHandler(c.useCases.getTelephonyOverview)
-			h.SetBoard(c.useCases.getTelephonyBoard)
 			return h
 		}(),
 		knowledgeBase: handlers.NewKnowledgeBaseHandler(

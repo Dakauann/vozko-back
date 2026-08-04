@@ -327,13 +327,23 @@ func (c *Container) wireInstagramConversationStack() {
 		c.services.conversationStatusService.SetConversationCounter(
 			shared.EntryTypeInstagram, bundle.Conversations.CountByStatus)
 	}
+	// The parameter is spelled as the NAMED type on purpose.
+	//
+	// This previously asserted a method taking an inline `interface{ ... }`
+	// literal with the same two methods. A defined type is never identical to a
+	// type literal, so the signatures did not match, the assertion was always
+	// false, and Instagram's tenant lookup was never registered. Every inbound
+	// message then failed to resolve its workspace: no inbox assignment, no
+	// initial tag, and no agent reply. Telegram's equivalent used the named type
+	// and worked, which is what made this look Instagram-specific.
 	if setter, ok := c.services.campaignWorkspaceResolver.(interface {
-		SetInstagramEntryResolver(interface {
-			WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
-			DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
-		})
+		SetEntryOwnerResolver(shared.EntryType, conversation_usecase.EntryOwnerResolver)
 	}); ok {
-		setter.SetInstagramEntryResolver(bundle.Conversations)
+		setter.SetEntryOwnerResolver(shared.EntryTypeInstagram, bundle.Conversations)
+	} else {
+		// Never silently: without this the channel looks connected and simply
+		// never answers.
+		log.Printf("[instagram] workspace resolver exposes no SetEntryOwnerResolver; inbound messages will not resolve a workspace")
 	}
 	// The history provider is held as the domain interface, so the optional
 	// identity port is attached by assertion, the same pattern the resolver

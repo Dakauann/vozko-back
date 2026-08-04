@@ -978,7 +978,7 @@ func (uc *HandleWebhookUseCase) storeAttachments(
 		key := fmt.Sprintf("conversations/%s/%s/%s%s",
 			shared.EntryTypeTelegram, conv.ID, mediaID, extensionFor(contentType, att.FileName, file.Path))
 
-		if err := uc.fileStorage.UploadFile(key, data); err != nil {
+		if err := uc.fileStorage.UploadFile(key, data, contentType); err != nil {
 			log.Printf("[telegram] attachment upload failed key=%s: %v", key, err)
 			continue
 		}
@@ -1055,7 +1055,7 @@ func (uc *HandleWebhookUseCase) storeAvatar(ctx context.Context, account *tgdoma
 	}
 	key := fmt.Sprintf("contacts/%s/%s/avatar%s",
 		shared.EntryTypeTelegram, contact.ID, extensionFor(contentType, "", file.Path))
-	if err := uc.fileStorage.UploadFile(key, data); err != nil {
+	if err := uc.fileStorage.UploadFile(key, data, contentType); err != nil {
 		return ""
 	}
 	return uc.fileStorage.GetFileURL(key)

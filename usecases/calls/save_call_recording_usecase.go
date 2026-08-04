@@ -43,7 +43,7 @@ func (uc *saveCallRecordingUseCase) SaveRecording(input calls.SaveRecordingInput
 	} else if len(input.RecordingData) > 0 {
 		timestamp := time.Now().Format("20060102_150405")
 		recordingKey := fmt.Sprintf("recordings/%s_%s.wav", input.CallID, timestamp)
-		if err := uc.fileStorage.UploadFile(recordingKey, input.RecordingData); err != nil {
+		if err := uc.fileStorage.UploadFile(recordingKey, input.RecordingData, "audio/wav"); err != nil {
 			return nil, fmt.Errorf("failed to upload recording to storage: %w", err)
 		}
 		recordingURL = uc.fileStorage.GetFileURL(recordingKey)

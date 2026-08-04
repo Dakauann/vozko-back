@@ -51,7 +51,7 @@ func newCapturingStorage() *capturingStorage {
 	return &capturingStorage{uploaded: make(chan struct{}, 1)}
 }
 
-func (s *capturingStorage) UploadFile(key string, data []byte) error {
+func (s *capturingStorage) UploadFile(key string, data []byte, _ string) error {
 	s.mu.Lock()
 	s.key = key
 	s.data = append([]byte(nil), data...)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os/exec"
 	"path"
@@ -2712,9 +2713,16 @@ func (uc *uploadConversationMediaUseCase) Execute(input conversation.UploadMedia
 	}
 
 	mediaID := uuid.NewString()
-	key := fmt.Sprintf("conversations/%s/%s/%s", input.EntryType, input.EntryID, mediaID)
+	// The extension is part of the key on purpose. The stored object's URL is
+	// handed to Telegram and Meta, which fetch it themselves, and a bare UUID
+	// with no extension gives their fetchers nothing to identify the asset by.
+	// The inbound Telegram and Instagram paths already key their objects this
+	// way; the operator upload path did not.
+	key := fmt.Sprintf("conversations/%s/%s/%s%s",
+		input.EntryType, input.EntryID, mediaID,
+		storageExtensionFor(input.MimeType, input.Filename))
 
-	if err := uc.fileStorage.UploadFile(key, input.Data); err != nil {
+	if err := uc.fileStorage.UploadFile(key, input.Data, input.MimeType); err != nil {
 		return nil, err
 	}
 
@@ -3082,4 +3090,26 @@ func (s *HistoryProviderService) SetAutomationReader(
 		s.automationReaders = make(map[shared.EntryType]func(context.Context, string) (*bool, error))
 	}
 	s.automationReaders[entryType] = read
+}
+
+// storageExtensionFor picks the file extension an object key should carry.
+//
+// The URL of a stored asset is what Telegram and Meta fetch, and both decide
+// from the extension and the Content-Type whether the asset is sendable. An
+// object keyed as a bare UUID gives them neither.
+//
+// The uploader's own filename wins, because it is the only source that knows
+// the difference between formats sharing one media type.
+func storageExtensionFor(mimeType, filename string) string {
+	if filename != "" {
+		if ext := path.Ext(filename); ext != "" {
+			return ext
+		}
+	}
+	if mimeType != "" {
+		if exts, err := mime.ExtensionsByType(mimeType); err == nil && len(exts) > 0 {
+			return exts[0]
+		}
+	}
+	return ""
 }

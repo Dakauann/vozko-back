@@ -2140,7 +2140,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 				cdnKey = fmt.Sprintf("conversations/unknown/%s/%s%s", message.From, cdnMediaID, extension)
 			}
 
-			if err := uc.fileStorage.UploadFile(cdnKey, mediaBytes); err != nil {
+			if err := uc.fileStorage.UploadFile(cdnKey, mediaBytes, mimeType); err != nil {
 				log.Printf("[whatsapp-media] Failed to upload media to CDN: %v", err)
 				cdnMediaID = ""
 			} else {
@@ -2555,7 +2555,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		inboundMediaID = uuid.NewString()
 		ext := getExtensionFromMimeType(mimeType)
 		key := fmt.Sprintf("conversations/%s/%s/%s%s", audioEntryType, audioEntryID, inboundMediaID, ext)
-		if err := uc.fileStorage.UploadFile(key, audioBytes); err != nil {
+		if err := uc.fileStorage.UploadFile(key, audioBytes, mimeType); err != nil {
 			log.Printf("[whatsapp-audio] Failed to upload incoming audio to CDN: %v", err)
 		} else {
 			inboundMediaURL = uc.fileStorage.GetFileURL(key)

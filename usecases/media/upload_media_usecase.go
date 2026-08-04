@@ -89,7 +89,7 @@ func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, 
 		mediaName = strings.TrimSuffix(mediaName, filepath.Ext(mediaName)) + ".mp3"
 	}
 
-	err = uc.fileStorage.UploadFile(mediaName, mediaData)
+	err = uc.fileStorage.UploadFile(mediaName, mediaData, "")
 	if err != nil {
 		return media.Media{}, fmt.Errorf("failed to upload media: %w", err)
 	}
@@ -104,7 +104,7 @@ func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, 
 		previewMediaData, previewMediaName = uc.createPreviewMedia(mediaData, mediaName)
 
 		if previewMediaData != nil && previewMediaName != "" {
-			err = uc.fileStorage.UploadFile(previewMediaName, previewMediaData)
+			err = uc.fileStorage.UploadFile(previewMediaName, previewMediaData, "")
 			if err != nil {
 				return media.Media{}, fmt.Errorf("failed to upload preview media: %w", err)
 			}

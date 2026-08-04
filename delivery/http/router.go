@@ -13,7 +13,6 @@ import (
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
-	branchhttp "vozko/delivery/http/branch"
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
@@ -24,7 +23,6 @@ import (
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
-	dialerringchannelshttp "vozko/delivery/http/dialerringchannels"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	holdmusichttp "vozko/delivery/http/holdmusic"
@@ -43,12 +41,10 @@ import (
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
 	shortlinkhttp "vozko/delivery/http/shortlink"
-	siptrunkhttp "vozko/delivery/http/siptrunk"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
-	telephonyhttp "vozko/delivery/http/telephony"
 	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
@@ -115,9 +111,6 @@ type router struct {
 	balanceHandler                 *balancehttp.BalanceHandler
 	workspaceTemplateAccessHandler *workspacetemplateaccesshttp.WorkspaceTemplateAccessHandler
 	workspacePhoneAccessHandler    *workspacephoneaccesshttp.WorkspacePhoneAccessHandler
-	sipTrunkHandler                *siptrunkhttp.SIPTrunkHandler
-	branchHandler                  *branchhttp.BranchHandler
-	dialerRingChannelsHandler      *dialerringchannelshttp.DialerRingChannelsHandler
 	conversationHandler            *conversationhttp.ConversationHandler
 	conversationWSHandler          *wsdelivery.ConversationWSHandler
 	dialerWSHandler                *wsdelivery.DialerWSHandler
@@ -134,7 +127,6 @@ type router struct {
 	messageShortcutHandler         *messageshortcuthttp.MessageShortcutHandler
 	textRefinerHandler             *textrefinerhttp.TextRefinerHandler
 	attendanceHandler              *attendancehttp.AttendanceHandler
-	telephonyHandler               *telephonyhttp.TelephonyHandler
 	knowledgeBaseHandler           *handlers.KnowledgeBaseHandler
 	shortLinkHandler               *shortlinkhttp.ShortLinkHandler
 	exportHandler                  *exporthttp.ExportHandler
@@ -219,9 +211,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	balanceHandler *balancehttp.BalanceHandler,
 	workspaceTemplateAccessHandler *workspacetemplateaccesshttp.WorkspaceTemplateAccessHandler,
 	workspacePhoneAccessHandler *workspacephoneaccesshttp.WorkspacePhoneAccessHandler,
-	sipTrunkHandler *siptrunkhttp.SIPTrunkHandler,
-	branchHandler *branchhttp.BranchHandler,
-	dialerRingChannelsHandler *dialerringchannelshttp.DialerRingChannelsHandler,
 	conversationHandler *conversationhttp.ConversationHandler,
 	conversationWSHandler *wsdelivery.ConversationWSHandler,
 	dialerWSHandler *wsdelivery.DialerWSHandler,
@@ -238,7 +227,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	messageShortcutHandler *messageshortcuthttp.MessageShortcutHandler,
 	textRefinerHandler *textrefinerhttp.TextRefinerHandler,
 	attendanceHandler *attendancehttp.AttendanceHandler,
-	telephonyHandler *telephonyhttp.TelephonyHandler,
 	knowledgeBaseHandler *handlers.KnowledgeBaseHandler,
 	shortLinkHandler *shortlinkhttp.ShortLinkHandler,
 	exportHandler *exporthttp.ExportHandler,
@@ -316,9 +304,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		balanceHandler:                 balanceHandler,
 		workspaceTemplateAccessHandler: workspaceTemplateAccessHandler,
 		workspacePhoneAccessHandler:    workspacePhoneAccessHandler,
-		sipTrunkHandler:                sipTrunkHandler,
-		branchHandler:                  branchHandler,
-		dialerRingChannelsHandler:      dialerRingChannelsHandler,
 		conversationHandler:            conversationHandler,
 		conversationWSHandler:          conversationWSHandler,
 		dialerWSHandler:                dialerWSHandler,
@@ -335,7 +320,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		messageShortcutHandler:         messageShortcutHandler,
 		textRefinerHandler:             textRefinerHandler,
 		attendanceHandler:              attendanceHandler,
-		telephonyHandler:               telephonyHandler,
 		knowledgeBaseHandler:           knowledgeBaseHandler,
 		shortLinkHandler:               shortLinkHandler,
 		exportHandler:                  exportHandler,
@@ -442,8 +426,6 @@ func (r *router) setupRoutes() {
 	r.setupInstagramRoutes(protected)
 	r.setupTelegramRoutes(protected)
 	r.setupWABARoutes(protected)
-	r.setupSIPTrunkRoutes(protected)
-	r.setupBranchRoutes(protected)
 	r.setupAgentRoutes(protected)
 	r.setupAIChatRoutes(protected)
 	r.setupMCPRoutes(protected)
@@ -478,8 +460,6 @@ func (r *router) setupRoutes() {
 	r.setupAdminBalanceRoutes(adminRoutes)
 	r.setupAdminWorkspaceTemplateAccessRoutes(adminRoutes)
 	r.setupAdminWorkspacePhoneAccessRoutes(adminRoutes)
-	r.setupAdminSIPTrunkRoutes(adminRoutes)
-	r.setupAdminBranchRoutes(adminRoutes)
 	r.setupAdminWorkspaceMembersRoutes(adminRoutes)
 	r.setupAdminWorkspacePricingRoutes(adminRoutes)
 	r.setupAdminWorkspacesConfigRoutes(adminRoutes)
@@ -884,19 +864,6 @@ func (r *router) setupWhatsAppTemplateRoutes(protected *mux.Router) {
 	whatsapptemplatehttp.RegisterProtectedRoutes(protected, r.whatsappTemplateHandler, r.ac)
 }
 
-func (r *router) setupSIPTrunkRoutes(protected *mux.Router) {
-	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
-}
-
-func (r *router) setupBranchRoutes(protected *mux.Router) {
-	branchhttp.RegisterProtectedRoutes(protected, r.branchHandler, r.ac)
-	dialerringchannelshttp.RegisterRoutes(protected, r.dialerRingChannelsHandler, r.ac)
-}
-
-func (r *router) setupAdminBranchRoutes(adminRoutes *mux.Router) {
-	branchhttp.RegisterAdminRoutes(adminRoutes, r.branchHandler)
-}
-
 func (r *router) setupAgentRoutes(protected *mux.Router) {
 	ag := workspace_domain.ResourceAgents
 	protected.HandleFunc("/agents", r.ac(ag, workspace_domain.ActionRead, r.agentHandler.List)).Methods(http.MethodGet)
@@ -962,10 +929,6 @@ func (r *router) setupAdminWorkspaceTemplateAccessRoutes(adminRoutes *mux.Router
 
 func (r *router) setupAdminWorkspacePhoneAccessRoutes(adminRoutes *mux.Router) {
 	workspacephoneaccesshttp.RegisterAdminRoutes(adminRoutes, r.workspacePhoneAccessHandler)
-}
-
-func (r *router) setupAdminSIPTrunkRoutes(adminRoutes *mux.Router) {
-	siptrunkhttp.RegisterAdminRoutes(adminRoutes, r.sipTrunkHandler)
 }
 
 func (r *router) setupAdminWorkspaceMembersRoutes(adminRoutes *mux.Router) {
@@ -1102,11 +1065,6 @@ func (r *router) setupWorkspaceConfigRoutes(protected *mux.Router) {
 
 func (r *router) setupAttendanceRoutes(protected *mux.Router) {
 	attendancehttp.RegisterProtectedRoutes(protected, r.attendanceHandler, r.ac)
-
-	// Telephony metrics dashboard (volume, queue, occupancy, voice AI).
-	// Gated by attendance:read, same metrics RBAC as omnichannel service metrics.
-	// Dialer:use remains only for placing/transferring calls, not for viewing stats.
-	telephonyhttp.RegisterRoutes(protected, r.telephonyHandler, r.ac)
 }
 
 func (r *router) GetHandler() http.Handler {

@@ -106,7 +106,7 @@ type fakeStorage struct {
 	names map[string][]byte
 }
 
-func (f *fakeStorage) UploadFile(name string, data []byte) error {
+func (f *fakeStorage) UploadFile(name string, data []byte, _ string) error {
 	if f.names == nil {
 		f.names = map[string][]byte{}
 	}

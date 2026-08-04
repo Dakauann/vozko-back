@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"runtime/debug"
 	"time"
 
 	"vozko/domain/cache"
@@ -166,11 +167,21 @@ func (r *ConsumerRunner[T]) dispatch(raw []byte, ack messaging.MessageAck) {
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Printf("[%s] panic in handler: %v", r.name, rec)
+				// With the stack: a bare "invalid memory address or nil pointer
+				// dereference" names neither the site nor the channel and is not
+				// actionable from a production log.
+				log.Printf("[%s] panic in handler: %v\n%s", r.name, rec, debug.Stack())
 				if key != "" {
 					_ = r.dedup.Release(key)
 				}
-				_ = ack.Nack(true)
+				// Dead-letter, never Nack(requeue=true). See the retry path below
+				// for the full reason: a plain requeue carries no x-death header,
+				// so DeliveryCount() reports attempt 1 forever and the exhaustion
+				// check can never fire. A panic is deterministic, so the
+				// redelivered message panics again and the consumer spins at full
+				// CPU on one payload indefinitely. That is the exact incident the
+				// retry path was rewritten to prevent, still reproduced here.
+				r.deadLetter(raw, ack)
 			}
 		}()
 		defer func() { <-r.semaphore }()
