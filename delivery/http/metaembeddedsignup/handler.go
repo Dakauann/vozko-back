@@ -217,36 +217,39 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
     <title>%s - Conectar WhatsApp Business</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            /* Signal Blue, one action voice */
-            --primary: #2463eb;
-            --primary-hover: #1d4fd7;
-            --primary-active: #1e3fae;
-            --primary-50: #eef3ff;
-            --primary-100: #dce7ff;
-            --foreground: #344256;          /* Ink, never pure black */
-            --slate-50: #f5f5f5;            /* Canvas */
-            --slate-100: #f1f5f9;           /* Mist */
+            /* Mirrors vozko-front/src/app/globals.css. This page is served by
+               the API rather than the app, so it carries its own copy of the
+               tokens; keep the two in step when either changes. */
+            --primary: #d63d00;             /* Brand. Hue 17, 4.6:1 on white */
+            --primary-hover: #b83300;
+            --primary-active: #9e2c00;
+            --foreground: #1a2038;          /* Ink, never pure black */
+            --canvas: #f7f9fc;              /* Cool near-white, not grey */
+            --slate-100: #f2f5f9;           /* Quiet fill */
             --slate-200: #e1e7ef;           /* Hairline */
-            --slate-300: #cbd5e1;
+            --slate-300: #c6cfdb;           /* Field edge */
             --slate-400: #94a3b8;
-            --slate-500: #65758b;           /* Slate Mute */
-            --slate-700: #344256;
-            --slate-900: #1d2433;
-            --success-tint: #eef7f3;
-            --success-ink: #2f604b;
-            --danger: #ef4444;
+            --slate-500: #616b80;           /* Secondary ink, 5.5:1 on white */
+            --success-ink: #076c4c;
+            --danger-ink: #b3123c;
             --whatsapp: #25D366;
-            --whatsapp-dark: #128C7E;
-            --radius: 12px;
-            /* Soft, slate-tinted layered elevation + inner highlight */
-            --shadow-soft: 0 18px 32px -18px rgba(15,23,42,0.18), 0 8px 20px -12px rgba(15,23,42,0.14);
-            --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.14);
-            --shadow-hover: 0 24px 40px -18px rgba(15,23,42,0.2), 0 10px 24px -12px rgba(15,23,42,0.16);
+            --radius: 6px;                  /* Controls */
+            --radius-lg: 8px;               /* Surfaces */
+            --radius-xl: 12px;              /* The page card */
+            /* Two layers per step, tinted slate rather than black: a pure-black
+               shadow over a cool canvas goes grey and dirty. */
+            --elev-1: 0 1px 1px 0 rgba(43,54,100,0.06), 0 1px 2px 0 rgba(43,54,100,0.04);
+            --elev-3: 0 2px 5px -1px rgba(43,54,100,0.10), 0 1px 3px -1px rgba(0,0,0,0.06);
+            --elev-4: 0 4px 12px -2px rgba(43,54,100,0.12), 0 2px 6px -2px rgba(0,0,0,0.06);
+            /* A filled button carries an inset bottom rule as well as its drop.
+               That single dark line is what makes it read as a key. */
+            --elev-button: 0 1px 1px 0 rgba(43,54,100,0.11), 0 1px 2px 0 rgba(0,0,0,0.08), inset 0 -1px 0 0 rgba(0,0,0,0.12);
+            --elev-button-hover: 0 2px 4px -1px rgba(43,54,100,0.16), 0 3px 8px -2px rgba(0,0,0,0.10), inset 0 -1px 0 0 rgba(0,0,0,0.12);
         }
 
         body {
@@ -254,7 +257,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             color: var(--foreground);
-            background: var(--slate-50);
+            background: var(--canvas);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -263,23 +266,6 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             padding: 24px;
             position: relative;
             overflow-x: hidden;
-        }
-
-        /* Faint engineered grid + a single soft blue wash, Quiet Infrastructure */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            background-image:
-                radial-gradient(110%% 70%% at 50%% -8%%, rgba(36,99,235,0.07), transparent 62%%),
-                linear-gradient(var(--slate-200) 1px, transparent 1px),
-                linear-gradient(90deg, var(--slate-200) 1px, transparent 1px);
-            background-size: 100%% 100%%, 38px 38px, 38px 38px;
-            opacity: 0.55;
-            -webkit-mask-image: radial-gradient(78%% 56%% at 50%% 42%%, #000 28%%, transparent 76%%);
-            mask-image: radial-gradient(78%% 56%% at 50%% 42%%, #000 28%%, transparent 76%%);
         }
 
         .page-container {
@@ -298,9 +284,9 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         .card {
             background: #ffffff;
             border: 1px solid var(--slate-200);
-            border-radius: 16px;
-            padding: 34px 32px;
-            box-shadow: var(--shadow-soft), var(--shadow-inset);
+            border-radius: var(--radius-xl);
+            padding: 32px;
+            box-shadow: var(--elev-4);
         }
 
         /* Brand logo (single CDN asset) */
@@ -317,8 +303,8 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         }
 
         h1 {
-            font-size: 23px;
-            font-weight: 700;
+            font-size: 22px;
+            font-weight: 600;
             color: var(--foreground);
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -350,9 +336,8 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         .step-number {
             width: 24px;
             height: 24px;
-            border-radius: 7px;
+            border-radius: var(--radius);
             background: var(--primary);
-            box-shadow: var(--shadow-inset);
             color: #fff;
             font-size: 12px;
             font-weight: 600;
@@ -368,24 +353,24 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             justify-content: center;
             gap: 9px;
             width: 100%%;
-            height: 46px;
+            height: 40px;
             padding: 0 22px;
             border: none;
-            border-radius: 12px;
+            border-radius: var(--radius);
             background: var(--primary);
             color: #fff;
             font-family: inherit;
-            font-size: 14.5px;
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: 500;
             letter-spacing: -0.01em;
             cursor: pointer;
-            box-shadow: var(--shadow-soft), var(--shadow-inset);
-            transition: background 0.18s ease, box-shadow 0.18s ease;
+            box-shadow: var(--elev-button);
+            transition: background-color 0.15s cubic-bezier(0.33,0,0.67,1), box-shadow 0.15s cubic-bezier(0.33,0,0.67,1), transform 0.15s cubic-bezier(0.33,0,0.67,1);
         }
-        .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--shadow-hover), var(--shadow-inset); }
-        .btn-primary:active { background: var(--primary-active); }
-        .btn-primary:disabled { background: #aebfd9; cursor: default; box-shadow: none; }
-        .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(36,99,235,0.45); }
+        .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--elev-button-hover); transform: translateY(-1px); }
+        .btn-primary:active { background: var(--primary-active); box-shadow: var(--elev-button); transform: translateY(0); }
+        .btn-primary:disabled { background: var(--slate-100); color: var(--slate-500); border: 1px solid var(--slate-200); cursor: default; box-shadow: none; transform: none; }
+        .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(214,61,0,0.4); }
         .btn-primary svg { width: 18px; height: 18px; }
 
         .divider {
@@ -410,7 +395,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         .status {
             margin-top: 18px;
             padding: 12px 14px;
-            border-radius: 12px;
+            border-radius: var(--radius-lg);
             font-size: 13px;
             line-height: 1.5;
             display: none;
@@ -419,8 +404,8 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             border: 1px solid transparent;
         }
         .status.info    { display: block; background: var(--slate-100); border-color: var(--slate-200); color: var(--foreground); }
-        .status.success { display: block; background: var(--success-tint); border-color: #cfe6db; color: var(--success-ink); }
-        .status.error   { display: block; background: #fef2f2; border-color: #fbd5d5; color: #b42318; }
+        .status.success { display: block; background: var(--slate-100); border-color: var(--slate-200); color: var(--success-ink); }
+        .status.error   { display: block; background: var(--slate-100); border-color: var(--slate-200); color: var(--danger-ink); }
 
         .status-icon { font-weight: 600; margin-right: 5px; }
 
