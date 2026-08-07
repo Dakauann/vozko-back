@@ -131,12 +131,64 @@ services:
       - ./docker/ollama/entrypoint.sh:/entrypoint.sh:ro
     environment:
       OLLAMA_HOST: 0.0.0.0
-      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
-      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}
-      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-2}
+      # 30m, matching the keep_alive the Go embedding client sends on every
+      # request. A shorter default here just means the model can be evicted
+      # between the client's own 4-minute keep-alive pings, and reloading
+      # bge-m3 from disk costs seconds on CPU.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      # One slot with every core, which is measurably better than several.
+      #
+      # The default of 4 is wrong here: on CPU one embed already saturates the
+      # cores it is given, so extra slots add no throughput, they only divide
+      # them. Two slots were tried explicitly, on the theory that a customer's
+      # query could take a free lane while indexing held the other. It does not
+      # work: an embed request carrying a whole batch is atomic to the scheduler,
+      # so the query still waits for the in-flight batch AND every batch is now
+      # half as fast. Measured, query while indexing: 1.1s at 1 slot x 12
+      # threads, 8.1s at 2 slots x 6. The lever for that latency is making each
+      # batch finish sooner, not adding lanes.
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      # The whole cpuset, since there is only ever one slot to feed.
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-12}
+      # The single biggest win on CPU, and it is not obvious.
+      #
+      # bge-m3 is an ENCODER: llama.cpp runs the forward pass over the slot's
+      # whole allocated context, not over the tokens actually sent. At Ollama's
+      # 4096 default that meant a 7-token query cost the same as a 4096-token
+      # one, a flat ~4.5s per request no matter how short the question. Chunks
+      # here are 800 chars (~200 tokens) and queries are one sentence, so 1024
+      # keeps a 4x safety margin over the largest real input while cutting that
+      # fixed cost proportionally. Raise it only if a knowledge base is
+      # configured with a chunkSize above ~3000 characters, since anything
+      # longer than the context is silently truncated before embedding.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-1024}
+      # Only bge-m3 is ever requested; allowing a second resident model would
+      # double the memory floor for nothing.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-bge-m3}
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     restart: unless-stopped
+    # Pinned to the 12 cores of ONE NUMA node, not to a range.
+    #
+    # Two reasons, and the second is easy to get backwards. First, llama.cpp
+    # sizes its thread pool from the CPU count it detects and a cgroup cpus quota
+    # does not change that count, so without a cpuset the container saw all 24
+    # cores, spawned 24 threads, and had them throttled into a fraction of the
+    # machine. Second, this box is dual-socket: node0 is 0-5,12-17 and node1 is
+    # 6-11,18-23. A natural-looking "0-11" straddles both sockets, so half the
+    # threads read the weights across the interconnect. Embedding is memory
+    # bandwidth bound, and that split measured ~10x SLOWER than no pinning at
+    # all. Keep every core in this list inside one node; check `lscpu` before
+    # changing it, the numbering is not contiguous per node.
+    cpuset: "${OLLAMA_CPUSET:-0-5,12-17}"
+    # Deprioritised, not merely capped. The cpuset already leaves node1's 12
+    # cores permanently free for Postgres, the API and RabbitMQ, and the
+    # scheduler migrates those unpinned processes onto the idle node when this
+    # one is busy. cpu_shares then decides what happens on the shared cores when
+    # both want them at once: at half the default weight, embedding yields to
+    # anything serving a customer instead of competing with it. It costs nothing
+    # while the box is idle, which is almost always.
+    cpu_shares: ${OLLAMA_CPU_SHARES:-512}
     healthcheck:
       test:
         ["CMD-SHELL", "ollama list | grep -q ${OLLAMA_MODEL:-bge-m3} || exit 1"]
@@ -144,16 +196,21 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    # CPU-only. This host has no NVIDIA device and the Docker daemon exposes
+    # only the runc runtime, so a `reservations.devices` block asking for a gpu
+    # capability makes the service fail to create outright ("could not select
+    # device driver"), which is why it had never started here. Re-add the block
+    # only on a host that actually has the nvidia runtime.
     deploy:
       resources:
         limits:
-          memory: ${OLLAMA_MEMORY_LIMIT:-4G}
-          cpus: "4.0"
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["${OLLAMA_GPU:-0}"]
-              capabilities: [gpu]
+          # bge-m3 is ~1.2G resident; the rest is headroom for concurrent
+          # batches. Capped so a runaway embed job cannot reach the API,
+          # Postgres or RabbitMQ, which share this box.
+          memory: ${OLLAMA_MEMORY_LIMIT:-6G}
+          # Matches the cpuset width below, so the quota is never the binding
+          # constraint and threads are not throttled mid-batch.
+          cpus: "${OLLAMA_CPUS:-12.0}"
 
   rabbitmq:
     image: rabbitmq:3-management
