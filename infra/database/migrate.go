@@ -166,6 +166,10 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.TelegramConversation{},
 			&schema.TelegramDeepLink{},
 			&schema.TelegramFileCache{},
+			&schema.UnofficialWhatsAppServer{},
+			&schema.UnofficialWhatsAppInstance{},
+			&schema.UnofficialWhatsAppContact{},
+			&schema.UnofficialWhatsAppConversation{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {
 			return err

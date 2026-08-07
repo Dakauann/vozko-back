@@ -353,17 +353,17 @@ type UnreadCountPayload struct {
 }
 
 type SubscribedPayload struct {
-	EntryID            string                 `json:"entry_id"`
-	EntryType          string                 `json:"entry_type"`
-	LeadName           string                 `json:"lead_name,omitempty"`
-	LeadNumber         string                 `json:"lead_number,omitempty"`
-	LeadPicture        string                 `json:"lead_picture,omitempty"`
-	LeadMetadata       map[string]interface{} `json:"lead_metadata,omitempty"`
-	EntryVariables     []string               `json:"entry_variables,omitempty"`
-	UnreadCount        int64                  `json:"unread_count"`
+	EntryID           string                 `json:"entry_id"`
+	EntryType         string                 `json:"entry_type"`
+	LeadName          string                 `json:"lead_name,omitempty"`
+	LeadNumber        string                 `json:"lead_number,omitempty"`
+	LeadPicture       string                 `json:"lead_picture,omitempty"`
+	LeadMetadata      map[string]interface{} `json:"lead_metadata,omitempty"`
+	EntryVariables    []string               `json:"entry_variables,omitempty"`
+	UnreadCount       int64                  `json:"unread_count"`
 	AutomationEnabled bool                   `json:"automation_enabled"`
-	WindowOpen         bool                   `json:"window_open"`
-	WindowExpiresAt    *time.Time             `json:"window_expires_at,omitempty"`
+	WindowOpen        bool                   `json:"window_open"`
+	WindowExpiresAt   *time.Time             `json:"window_expires_at,omitempty"`
 }
 
 type ErrorPayload struct {

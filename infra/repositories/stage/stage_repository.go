@@ -33,6 +33,8 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 		WHERE igc.workspace_id = ?::uuid AND igc.deleted_at IS NULL`,
 	shared.EntryTypeTelegram: `SELECT tgc.id::text FROM telegram_conversations tgc
 		WHERE tgc.workspace_id = ?::uuid AND tgc.deleted_at IS NULL`,
+	shared.EntryTypeUnofficialWhatsApp: `SELECT uwc.id::text FROM unofficial_whatsapp_conversations uwc
+		WHERE uwc.workspace_id = ?::uuid AND uwc.deleted_at IS NULL`,
 	shared.EntryTypeSupport: `SELECT se.id::text FROM support_entries se
 		JOIN support_inboxes si ON si.id = se.inbox_id
 		WHERE si.workspace_id = ?::uuid AND se.deleted_at IS NULL`,

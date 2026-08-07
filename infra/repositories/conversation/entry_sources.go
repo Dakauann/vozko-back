@@ -160,6 +160,30 @@ var entrySources = []entrySource{
 		Department: "tga.department_id",
 	},
 	{
+		// The instance plays the container role: it carries the department and
+		// the automation config. There is no campaign — a broadcast on this
+		// channel writes into whichever conversation already exists rather than
+		// owning one — and the contact id rides the lead slot, which the usecase
+		// layer resolves to a name.
+		EntryType:     shared.EntryTypeUnofficialWhatsApp,
+		From:          "unofficial_whatsapp_conversations uwc",
+		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",
+
+		EntryID: "uwc.id",
+		LeadID:  "uwc.contact_id",
+		Account: "COALESCE(uwc.instance_id::text, '')",
+
+		ConversationStatus: "uwc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "uwc.created_at",
+		UpdatedAt:     "uwc.updated_at",
+		LastMessageAt: "uwc.last_message_at",
+		Deleted:       "uwc.deleted_at IS NULL",
+
+		Department: "uwi.department_id",
+	},
+	{
 		// Support entries have neither campaign nor conversation status; the
 		// literals below keep them visible under a default status filter, which
 		// uses IS DISTINCT FROM.

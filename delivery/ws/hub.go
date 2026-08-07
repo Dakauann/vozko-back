@@ -2316,15 +2316,19 @@ func (h *ConversationHub) handleTyping(conn *WSConnection, payload json.RawMessa
 
 	h.BroadcastTyping(p.EntryID, p.EntryType, conn.UserID, isTyping)
 
-	if !isTyping || h.messageMarker == nil || p.EntryType != string(shared.EntryTypeWhatsApp) {
+	// Every channel, not just the official WhatsApp one. The marker routes by
+	// entry type and no-ops for channels without a presence API, so the gate that
+	// used to live here only ever meant "no other channel may show typing" —
+	// including the two that can.
+	if !isTyping || h.messageMarker == nil {
 		return
 	}
 
-	go func(entryID string) {
-		if err := h.messageMarker.SendTypingIndicator(entryID, shared.EntryTypeWhatsApp); err != nil {
-			log.Printf("[ConversationHub] Error sending WhatsApp typing indicator for %s:%s: %v", p.EntryType, entryID, err)
+	go func(entryID string, entryType shared.EntryType) {
+		if err := h.messageMarker.SendTypingIndicator(entryID, entryType); err != nil {
+			log.Printf("[ConversationHub] Error sending typing indicator for %s:%s: %v", entryType, entryID, err)
 		}
-	}(p.EntryID)
+	}(p.EntryID, shared.EntryType(p.EntryType))
 }
 
 func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.RawMessage) {

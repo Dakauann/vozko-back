@@ -63,6 +63,14 @@ type SendTextRequest struct {
 	// ReplyToProviderMessageID quotes an earlier message when the channel
 	// supports it.
 	ReplyToProviderMessageID string
+	// HumanInitiated marks a send an OPERATOR made by hand, as opposed to an AI
+	// reply or any other automated dispatch.
+	//
+	// Deliberately phrased so the zero value means "automated": a channel that
+	// paces its sends to avoid a ban must treat an unmarked caller as a bot. A
+	// new automated path that forgets this field is merely slow; an operator
+	// path that forgets it would send unpaced and risk the number.
+	HumanInitiated bool
 }
 
 // SendMediaRequest is a channel-agnostic media send. Exactly one of URL or
@@ -77,6 +85,14 @@ type SendMediaRequest struct {
 	Caption  string
 
 	ReplyToProviderMessageID string
+	// HumanInitiated marks a send an OPERATOR made by hand, as opposed to an AI
+	// reply or any other automated dispatch.
+	//
+	// Deliberately phrased so the zero value means "automated": a channel that
+	// paces its sends to avoid a ban must treat an unmarked caller as a bot. A
+	// new automated path that forgets this field is merely slow; an operator
+	// path that forgets it would send unpaced and risk the number.
+	HumanInitiated bool
 }
 
 // ChannelAdapter is the send-side port for one channel.
@@ -160,6 +176,31 @@ type SendInteractiveRequest struct {
 	// Style is buttons | list. Channels with one native mechanism ignore it;
 	// it exists because WhatsApp picks a different message type from it.
 	Style string
+}
+
+// TypingAdapter is implemented by channels that can show the contact that
+// someone is composing a reply.
+//
+// Optional for the same reason as the others. Declaring it is what lets the
+// marker service find it: the unofficial WhatsApp adapter has had a working
+// SendTyping that nothing could reach, because the hub refused every entry type
+// but the official WhatsApp one before it ever got that far.
+type TypingAdapter interface {
+	SendTyping(ctx context.Context, ec *EntryContext, on bool) error
+}
+
+// SeenAdapter is implemented by channels that can report the OPERATOR's read
+// back to the contact — the blue ticks on the customer's phone.
+//
+// Optional, like the other capability interfaces: a channel without read
+// receipts simply is not asserted to this type, and the local read state still
+// works. Declaring it is what lets the marker service find it; before this
+// existed the unofficial WhatsApp adapter already had a working MarkSeen that
+// nothing could ever call.
+type SeenAdapter interface {
+	// MarkSeen marks the contact's messages read up to and including the given
+	// provider message id.
+	MarkSeen(ctx context.Context, ec *EntryContext, upToProviderMessageID string) error
 }
 
 // InteractiveAdapter is implemented by channels that can ask the contact to

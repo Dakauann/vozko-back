@@ -119,6 +119,29 @@ type Config struct {
 	// https://api.telegram.org, so this one stays optional.
 	TelegramBotAPIBaseURL string
 
+	// Unofficial WhatsApp (linked-device sessions).
+	//
+	// UnofficialWhatsAppWebhookBaseURL is our own public origin; the provider
+	// POSTs events to {base}/webhooks/unofficial-whatsapp/{deliveryToken}.
+	//
+	// REQUIRED for the same reason Telegram's is: a half-configured deployment
+	// that silently 404s every inbound event is worse than failing at boot. The
+	// stakes are higher here — the provider does NOT sign webhook bodies, so the
+	// delivery token in that path is the channel's only authenticity control,
+	// which is why unofficial_whatsapp.ValidateWebhookBaseURL insists on https.
+	UnofficialWhatsAppWebhookBaseURL string
+	// The platform provider host seeded at boot. Instances are placed on it, and
+	// its admin token can create and delete every instance it holds, so it is
+	// deployment configuration rather than tenant data.
+	//
+	// ALL REQUIRED, matching WhatsApp, Instagram and Telegram: a half-configured
+	// channel that accepts a connect click and then fails on capacity is worse
+	// than a boot that refuses to start and names the missing variable.
+	UnofficialWhatsAppServerURL   string
+	UnofficialWhatsAppAdminToken  string
+	UnofficialWhatsAppServerName  string
+	UnofficialWhatsAppMaxSessions int
+
 	// 360dialog partner (BSP) integration. New onboarding goes through 360dialog;
 	// the reconciliation backstop activates when Dialog360PartnerAPIKey is set.
 	Dialog360PartnerID          string
@@ -265,6 +288,17 @@ func LoadConfig() Config {
 		// deployment that does not run its own Bot API server.
 		TelegramBotAPIBaseURL: strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),
 
+		UnofficialWhatsAppWebhookBaseURL: strings.TrimRight(
+			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_WEBHOOK_BASE_URL"), "/"),
+		UnofficialWhatsAppServerURL: strings.TrimRight(
+			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_URL"), "/"),
+		UnofficialWhatsAppAdminToken: mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_ADMIN_TOKEN"),
+		UnofficialWhatsAppServerName: getEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_NAME", "platform"),
+		// Required rather than defaulted: zero capacity is read as "unknown" and
+		// treated as full, so a missing value would make every connect answer
+		// "no capacity" — a silent, confusing failure instead of a loud one.
+		UnofficialWhatsAppMaxSessions: mustGetEnvInt("UNOFFICIAL_WHATSAPP_MAX_SESSIONS"),
+
 		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
 
@@ -364,6 +398,40 @@ func parseCSVEnv(key string) []string {
 		}
 	}
 	return out
+}
+
+// envInt reads an integer setting, falling back when unset.
+//
+// A malformed value aborts boot rather than silently falling back: a capacity
+// of "one hundred" quietly read as the fallback is how a host ends up
+// overfilled by a typo nobody sees.
+func envInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Fatalf("invalid integer for %s: %v", key, err)
+	}
+	return parsed
+}
+
+// mustGetEnvInt reads a required integer setting, aborting boot when absent.
+//
+// Separate from envInt because a fallback is exactly what must not happen here:
+// silently defaulting a capacity to zero produces a channel that boots fine and
+// refuses every connection.
+func mustGetEnvInt(key string) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		log.Fatalf("required env var %s is not set", key)
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Fatalf("invalid integer for %s: %v", key, err)
+	}
+	return parsed
 }
 
 func mustGetEnv(key string) string {

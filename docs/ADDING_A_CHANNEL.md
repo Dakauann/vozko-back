@@ -13,6 +13,20 @@ for one of them and mirror it. Telegram is the better model for a channel with
 no campaign concept and no publishing surface; Instagram is the better model for
 one that also has posts and comments.
 
+`unofficial_whatsapp` is the third, and it is the model for a channel that is a
+second TRANSPORT for a channel we already carry. Two things it does differently
+are worth copying rather than re-deriving:
+
+- **It is named after the channel, not the vendor.** The provider (uazapi) is a
+  column on the instance row and the only package that names it is
+  `infra/uazapi`. A second provider is another implementation of
+  `domain/unofficial_whatsapp.ProviderAPI`, not a second entry type and a second
+  pass over every registry below.
+- **Its container is provisioned by us, not pasted by the operator.** It has a
+  server pool with capacity (`unofficial_whatsapp_servers`), because instances
+  live on hosts that refuse past a ceiling. If your channel is self-hosted
+  rather than SaaS, start there.
+
 **Read §0.5 first.** Registering a channel in the sets below gets it into the
 inbox and onto the board. It does NOT get it analysis, analytics, export, the AI
 finish/stage tools or webhook-triggered workflows — those used to fail closed and

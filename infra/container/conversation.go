@@ -3,6 +3,8 @@ package container
 import (
 	"context"
 	"log"
+	"sort"
+	"strings"
 
 	wsdelivery "vozko/delivery/ws"
 	balance_domain "vozko/domain/balance"
@@ -80,6 +82,9 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.wcEntry,
 	)
 	c.services.conversationHub.SetMessageMarker(messageMarker)
+	// Held so registerChannelAdapter can hand it the accumulated registry; this
+	// service is built before any channel exists.
+	c.services.messageMarker = messageMarker
 
 	StageProvider := stage_usecase.NewStageProviderService(c.repositories.stage)
 	c.services.conversationHub.SetStageProvider(StageProvider)
@@ -243,7 +248,20 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 
 }
 
-func (c *Container) startConversationHub() {
+// initConversationSenders builds the message sender and the channel-agnostic AI
+// attendance service.
+//
+// Called from initUseCases rather than from startConversationHub, and that
+// ordering is load-bearing: every channel captures c.services.channelAIReply
+// while initUseCases wires its runtime, so building it afterwards handed all of
+// them a nil. Because the field is a concrete pointer assigned into an interface,
+// the result was a NON-nil interface holding a nil pointer — every `!= nil` guard
+// passed and the first inbound message that had an agent panicked.
+//
+// Its dependencies are ready by then: the repositories exist from
+// initRepositories, and the AI service and tool registry are built at the top of
+// initUseCases, well before any channel runtime.
+func (c *Container) initConversationSenders() {
 	messageSender := conversation_usecase.NewMessageSenderService(
 		c.repositories.conversation,
 		c.repositories.lead,
@@ -262,6 +280,36 @@ func (c *Container) startConversationHub() {
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	c.services.messageSender = messageSender
 
+	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
+	// this serves every adapter-backed channel so a channel gains an agent by
+	// wiring rather than by growing AI code.
+	c.services.channelAIReply = conversation_usecase.NewChannelAIReplyService(
+		c.repositories.agent,
+		c.services.ai,
+		c.repositories.conversation,
+		messageSender,
+	)
+}
+
+// mustChannelAIReply returns the AI attendance service, refusing to boot if it
+// does not exist yet.
+//
+// The channels capture this BY VALUE while initUseCases wires their runtimes, so
+// reading it too early hands them a nil that no `!= nil` check can catch (a nil
+// pointer in an interface is not nil). That shipped once and cost every channel
+// its agent replies; asserting here turns the same mistake into a boot failure
+// that names itself.
+func (c *Container) mustChannelAIReply() *conversation_usecase.ChannelAIReplyService {
+	if c.services.channelAIReply == nil {
+		log.Fatal("[container] channel AI reply service read before initConversationSenders; " +
+			"channels would silently never answer with an agent")
+	}
+	return c.services.channelAIReply
+}
+
+func (c *Container) startConversationHub() {
+	messageSender := c.services.messageSender
+
 	// The per-conversation automation override, for every channel. Each channel
 	// registers its own setter as it initialises; WhatsApp is registered here
 	// because its entry repository already exists at this point.
@@ -278,15 +326,6 @@ func (c *Container) startConversationHub() {
 		)
 	}
 
-	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
-	// this serves every adapter-backed channel (Instagram today, Telegram next)
-	// so a channel gains an agent by wiring rather than by growing AI code.
-	c.services.channelAIReply = conversation_usecase.NewChannelAIReplyService(
-		c.repositories.agent,
-		c.services.ai,
-		c.repositories.conversation,
-		messageSender,
-	)
 	c.services.conversationHub.SetMessageSender(messageSender)
 	c.services.requestCallPermission = messageSender
 
@@ -350,6 +389,12 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	if c.services.messageSender != nil {
 		c.services.messageSender.SetChannelAdapters(registry)
 	}
+	// Read receipts travel the same registry as sends. Refreshed here for the
+	// same reason: a snapshot taken at build time would hold only the channels
+	// registered before this one.
+	if c.services.messageMarker != nil {
+		c.services.messageMarker.SetChannelAdapters(registry)
+	}
 	// The HTTP send endpoint shares the same sender rather than carrying a second
 	// per-channel implementation. Without this it stays WhatsApp-only while its
 	// route accepts every known entry type, which fails as a misleading
@@ -379,4 +424,34 @@ func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegist
 		c.services.liveChannelAdapters = conversation_domain.NewLiveAdapterRegistry()
 	}
 	return c.services.liveChannelAdapters
+}
+
+// logChannelCapabilities reports which optional capabilities a channel got.
+//
+// Shared rather than per-channel because the failure it guards against is not
+// channel-specific: every channel wires the same set behind nil checks, and a
+// capability that quietly went missing looks identical to a quiet channel.
+func logChannelCapabilities(channel string, capabilities map[string]bool) {
+	names := make([]string, 0, len(capabilities))
+	for name := range capabilities {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	active, missing := make([]string, 0, len(names)), make([]string, 0)
+	for _, name := range names {
+		if capabilities[name] {
+			active = append(active, name)
+			continue
+		}
+		missing = append(missing, name)
+	}
+
+	log.Printf("[%s] capabilities: %s", channel, strings.Join(active, ", "))
+	if len(missing) > 0 {
+		// Warned, not fatal: a deployment may legitimately run without workflows
+		// or media. Naming them beats an operator wondering why nothing fires.
+		log.Printf("[%s] WARNING: inactive capabilities: %s (these fail silently at runtime)",
+			channel, strings.Join(missing, ", "))
+	}
 }

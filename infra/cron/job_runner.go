@@ -73,6 +73,17 @@ type ctxJob interface {
 	Execute(ctx context.Context) error
 }
 
+// CtxJobFunc adapts a plain method to ctxJob.
+//
+// It exists because a use case can own more than one periodic sweep — the
+// unofficial WhatsApp health check runs a cheap session backstop and a slower
+// integrity pass over the same dependencies — and only one of them can be
+// called Execute. The alternative, a wrapper type per extra sweep, is
+// boilerplate that says nothing.
+type CtxJobFunc func(ctx context.Context) error
+
+func (f CtxJobFunc) Execute(ctx context.Context) error { return f(ctx) }
+
 // channelJobs are the optional per-channel periodic jobs.
 //
 // Every one of them is the same shape, a distributed lock, a ticker, a
@@ -105,6 +116,29 @@ func (r *JobRunner) SetTelegramJobs(webhookHealth, eventPurge ctxJob) {
 	// So the hourly job here is the data-loss alarm, not hygiene.
 	r.addChannelJob("telegram_webhook_health", time.Hour, webhookHealth)
 	r.addChannelJob("telegram_event_purge", 24*time.Hour, eventPurge)
+}
+
+// SetUnofficialWhatsAppJobs registers the linked-device WhatsApp periodic jobs.
+//
+// Three cadences, and the split is deliberate rather than cosmetic:
+//
+//   - Session health is a BACKSTOP, every 15 minutes. The provider pushes a
+//     `connection` event on every state change, so a dropped session is already
+//     known within seconds through the normal pipeline; this only covers the
+//     case where that pipeline is itself broken, and it skips any instance the
+//     webhook recently spoke for.
+//   - Integrity is hourly. It answers the two questions no event can — is our
+//     webhook still registered on the host, and is WhatsApp restricting this
+//     number — plus reads the host's short delivery-failure log. Three extra
+//     calls per instance, so it does not belong on the backstop's schedule.
+//   - Capacity reconciliation is daily: it corrects counter drift and names
+//     instances stranded on a host. Neither is urgent, and both sweep every
+//     configured host.
+func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, reconcileCapacity, purgeEvents ctxJob) {
+	r.addChannelJob("unofficial_whatsapp_session_health", 15*time.Minute, sessionHealth)
+	r.addChannelJob("unofficial_whatsapp_integrity", time.Hour, verifyIntegrity)
+	r.addChannelJob("unofficial_whatsapp_capacity_reconcile", 24*time.Hour, reconcileCapacity)
+	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
 }
 
 func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob) {

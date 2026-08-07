@@ -19,12 +19,12 @@ type eligibilityFakeSharedState struct {
 func (s *eligibilityFakeSharedState) SetNX(string, string, time.Duration) (bool, error) {
 	return true, nil
 }
-func (s *eligibilityFakeSharedState) SetString(string, string, time.Duration) error  { return nil }
-func (s *eligibilityFakeSharedState) GetString(string) (string, error)               { return "", nil }
-func (s *eligibilityFakeSharedState) Del(...string) error                            { return nil }
-func (s *eligibilityFakeSharedState) Exists(string) (bool, error)                    { return false, nil }
-func (s *eligibilityFakeSharedState) Incr(string) (int64, error)                     { return 0, nil }
-func (s *eligibilityFakeSharedState) Decr(string) (int64, error)                     { return 0, nil }
+func (s *eligibilityFakeSharedState) SetString(string, string, time.Duration) error { return nil }
+func (s *eligibilityFakeSharedState) GetString(string) (string, error)              { return "", nil }
+func (s *eligibilityFakeSharedState) Del(...string) error                           { return nil }
+func (s *eligibilityFakeSharedState) Exists(string) (bool, error)                   { return false, nil }
+func (s *eligibilityFakeSharedState) Incr(string) (int64, error)                    { return 0, nil }
+func (s *eligibilityFakeSharedState) Decr(string) (int64, error)                    { return 0, nil }
 func (s *eligibilityFakeSharedState) IncrWithTTL(string, time.Duration) (int64, error) {
 	return 0, nil
 }
@@ -37,16 +37,16 @@ func (s *eligibilityFakeSharedState) SMembers(key string) ([]string, error) {
 	}
 	return s.members[key], nil
 }
-func (s *eligibilityFakeSharedState) Publish(string, []byte) error                  { return nil }
+func (s *eligibilityFakeSharedState) Publish(string, []byte) error                    { return nil }
 func (s *eligibilityFakeSharedState) Subscribe(context.Context, string, func([]byte)) {}
-func (s *eligibilityFakeSharedState) HSet(string, string, string) error             { return nil }
-func (s *eligibilityFakeSharedState) HDel(string, string) error                     { return nil }
-func (s *eligibilityFakeSharedState) HGetAll(string) (map[string]string, error)     { return nil, nil }
-func (s *eligibilityFakeSharedState) HIncrBy(string, string, int64) (int64, error)  { return 0, nil }
-func (s *eligibilityFakeSharedState) IncrBy(string, int64) (int64, error)           { return 0, nil }
-func (s *eligibilityFakeSharedState) DecrBy(string, int64) (int64, error)           { return 0, nil }
-func (s *eligibilityFakeSharedState) TryIncrBy(string, int64, int64) (bool, error)  { return true, nil }
-func (s *eligibilityFakeSharedState) Expire(string, time.Duration) (bool, error)    { return true, nil }
+func (s *eligibilityFakeSharedState) HSet(string, string, string) error               { return nil }
+func (s *eligibilityFakeSharedState) HDel(string, string) error                       { return nil }
+func (s *eligibilityFakeSharedState) HGetAll(string) (map[string]string, error)       { return nil, nil }
+func (s *eligibilityFakeSharedState) HIncrBy(string, string, int64) (int64, error)    { return 0, nil }
+func (s *eligibilityFakeSharedState) IncrBy(string, int64) (int64, error)             { return 0, nil }
+func (s *eligibilityFakeSharedState) DecrBy(string, int64) (int64, error)             { return 0, nil }
+func (s *eligibilityFakeSharedState) TryIncrBy(string, int64, int64) (bool, error)    { return true, nil }
+func (s *eligibilityFakeSharedState) Expire(string, time.Duration) (bool, error)      { return true, nil }
 
 // noopWSMetricsRecorder is a do-nothing metrics.WSMetricsRecorder for tests that
 // construct ws handlers/hubs but don't assert on metrics.

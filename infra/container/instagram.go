@@ -243,7 +243,7 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		FileStorage:   c.services.fileStorage,
 		Broadcaster:   c.services.conversationHub,
 		Assignments:   c.services.assignmentService,
-		AIReply:       c.services.channelAIReply,
+		AIReply:       c.mustChannelAIReply(),
 		Workflows:     c.useCases.triggerEvaluator,
 		CommentRules:  bundle.CommentRuleEval,
 		Analysis:      conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),

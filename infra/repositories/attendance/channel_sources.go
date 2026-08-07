@@ -95,6 +95,22 @@ var channelSources = []channelSource{
 		ContainerIDColumn: "tgc.account_id",
 		WorkspaceColumn:   "tgc.workspace_id",
 	},
+	{
+		// The instance is the container: it carries the department, and a
+		// "campaign" filter on this channel means an instance filter.
+		EntryType:      shared.EntryTypeUnofficialWhatsApp,
+		EntryTable:     "unofficial_whatsapp_conversations uwc",
+		EntryAlias:     "uwc",
+		ContainerTable: "unofficial_whatsapp_instances uwi",
+		ContainerAlias: "uwi",
+		ContainerJoin:  "uwi.id = uwc.instance_id",
+
+		StatusColumn:      "uwc.conversation_status",
+		CloseSourceColumn: "uwc.close_source",
+		DepartmentColumn:  "uwi.department_id",
+		ContainerIDColumn: "uwc.instance_id",
+		WorkspaceColumn:   "uwc.workspace_id",
+	},
 }
 
 // selectedChannelSources returns the channels a filter reads.

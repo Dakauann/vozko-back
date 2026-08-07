@@ -7,6 +7,7 @@ import (
 	export_domain "vozko/domain/export"
 	instagram_repository "vozko/infra/repositories/instagram"
 	telegram_repository "vozko/infra/repositories/telegram"
+	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
 	conversation_usecase "vozko/usecases/conversation"
 	export_usecase "vozko/usecases/export"
 )
@@ -103,6 +104,10 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	}
 	if c.telegram != nil && c.telegram.Enabled {
 		setter.SetChannelEntryLister(export_domain.EntryTypeTelegram, telegram_repository.NewExportRepository(c.db))
+	}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		setter.SetChannelEntryLister(export_domain.EntryTypeUnofficialWhatsApp,
+			unofficial_whatsapp_repository.NewExportRepository(c.db))
 	}
 	return uc
 }

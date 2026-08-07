@@ -186,14 +186,17 @@ type Container struct {
 	// telegram is the Telegram channel, wired as one self-contained bundle for
 	// the same reason: it can be enabled or skipped without threading a dozen
 	// fields through the god-structs.
-	telegram      *telegramBundle
-	mcpCollection domainmcp.CollectionRepository
-	mcpRegistry   *ucmcp.Registry
-	router        deliveryHttp.Router
-	server        deliveryHttp.HTTPServer
-	metricsHTTP   *metricsServer
-	jobRunner     *cronPackage.JobRunner
-	recordingPool *calls_usecase.RecordingUploadPool
+	telegram *telegramBundle
+	// unofficialWhatsApp is WhatsApp over a linked-device session, wired as one
+	// self-contained bundle like the other two channels.
+	unofficialWhatsApp *unofficialWhatsAppBundle
+	mcpCollection      domainmcp.CollectionRepository
+	mcpRegistry        *ucmcp.Registry
+	router             deliveryHttp.Router
+	server             deliveryHttp.HTTPServer
+	metricsHTTP        *metricsServer
+	jobRunner          *cronPackage.JobRunner
+	recordingPool      *calls_usecase.RecordingUploadPool
 
 	cfPublisher       *cloudflare.Publisher
 	cfPublisherCancel context.CancelFunc
@@ -384,24 +387,26 @@ type services struct {
 	inboxService              conversation_domain.InboxService
 	conversationAuth          conversation_domain.ConversationAuthorizer
 	assignmentService         *ia_usecase.AssignmentService
-	aiAttendanceService       *aa_usecase.AsyncSessionService
-	callRouletteService       *cu_usecase.AssignmentService
-	ragEmbedding              rag_domain.EmbeddingService
-	ragTextChunker            rag_domain.TextChunker
-	ragDocProcessor           rag_domain.DocumentProcessor
-	ragTextExtractor          rag_domain.TextExtractor
-	ragQueuePub               messaging.MessageQueuePub
-	ragQueueSub               messaging.MessageQueueSub
-	shortlinkQueuePub         messaging.MessageQueuePub
-	shortlinkQueueSub         messaging.MessageQueueSub
-	webhookQueuePub           messaging.MessageQueuePub
-	webhookQueueSub           messaging.MessageQueueSub
-	billingQueuePub           messaging.MessageQueuePub
-	billingQueueSub           messaging.MessageQueueSub
-	recordingQueuePub         messaging.MessageQueuePub
-	recordingQueueSub         messaging.MessageQueueSub
-	googleCalendar            calendar_domain.GoogleOAuthService
-	cachedBalanceChecker      balance_domain.CachedBalanceChecker
+	// messageMarker owns read state and read receipts for every channel.
+	messageMarker        *conversation_usecase.MessageMarkerService
+	aiAttendanceService  *aa_usecase.AsyncSessionService
+	callRouletteService  *cu_usecase.AssignmentService
+	ragEmbedding         rag_domain.EmbeddingService
+	ragTextChunker       rag_domain.TextChunker
+	ragDocProcessor      rag_domain.DocumentProcessor
+	ragTextExtractor     rag_domain.TextExtractor
+	ragQueuePub          messaging.MessageQueuePub
+	ragQueueSub          messaging.MessageQueueSub
+	shortlinkQueuePub    messaging.MessageQueuePub
+	shortlinkQueueSub    messaging.MessageQueueSub
+	webhookQueuePub      messaging.MessageQueuePub
+	webhookQueueSub      messaging.MessageQueueSub
+	billingQueuePub      messaging.MessageQueuePub
+	billingQueueSub      messaging.MessageQueueSub
+	recordingQueuePub    messaging.MessageQueuePub
+	recordingQueueSub    messaging.MessageQueueSub
+	googleCalendar       calendar_domain.GoogleOAuthService
+	cachedBalanceChecker balance_domain.CachedBalanceChecker
 
 	dialerSessions         dialer_domain.DialerSessionRegistry
 	dialerCalls            dialer_domain.DialerCallRegistry

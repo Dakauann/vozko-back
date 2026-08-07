@@ -78,6 +78,11 @@ var (
 	ResourceShortLinks        = registerResource("short_links")
 	ResourceInstagramAccounts = registerResource("instagram_accounts")
 	ResourceTelegramAccounts  = registerResource("telegram_accounts")
+	// The QR-session WhatsApp channel splits into two resources for the same
+	// reason WhatsApp does: connecting a number and blasting it are different
+	// privileges, and an attendant who may reply must not thereby be able to
+	// start a 40.000-number broadcast.
+	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 )
 
 func (r Resource) IsValid() bool {
@@ -304,6 +309,19 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar bots e links de atribuição do Telegram"},
 		{ActionName: ActionUpdate, Description: "Editar configurações e links do Telegram"},
 		{ActionName: ActionDelete, Description: "Desconectar bots do Telegram"},
+	},
+	ResourceUnofficialWhatsAppInstances: {
+		{ActionName: ActionCreate, Description: "Conectar números de WhatsApp por QR Code"},
+		{ActionName: ActionRead, Description: "Visualizar números de WhatsApp conectados por QR Code"},
+		{ActionName: ActionUpdate, Description: "Editar configurações e reconectar números de WhatsApp por QR Code"},
+		{ActionName: ActionDelete, Description: "Desconectar números de WhatsApp por QR Code"},
+		// A SEPARATE privilege from update, and the distinction is the point:
+		// replying to someone who wrote to us is ordinary attendance, while
+		// messaging a number that never contacted us is cold outbound — the
+		// action most likely to get an unofficial number banned. An attendant
+		// who may answer must not thereby be able to start conversations with
+		// arbitrary numbers.
+		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo pelo WhatsApp não oficial"},
 	},
 	ResourceIssues: {
 		{ActionName: ActionCreate, Description: "Criar issues"},

@@ -266,6 +266,71 @@ var channelQueries = []channelQuery{
 			LIMIT 1
 		`,
 	},
+	{
+		// The instance is the container that carries the automation config, so
+		// a "campaign" filter on this channel is an instance filter.
+		EntryType:  shared.EntryTypeUnofficialWhatsApp,
+		EntryTable: "unofficial_whatsapp_conversations",
+
+		EntryJoin: `JOIN unofficial_whatsapp_conversations uwc ON uwc.id = %[1]s AND uwc.deleted_at IS NULL
+		             JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id`,
+		// Unlike Instagram and Telegram, this channel's contact HAS a phone
+		// number, so the number slot carries a real dialable number and the CRM's
+		// existing search-by-number works unchanged. The display name still falls
+		// back through the same preference order the entity uses, so a contact
+		// seen before its profile resolved renders as a number rather than blank.
+		ContactJoin: `JOIN (
+	SELECT id,
+	       COALESCE(NULLIF(contact_name, ''), NULLIF(verified_name, ''), NULLIF(name, ''), phone_number) AS name,
+	       phone_number AS number,
+	       picture_url AS profile_picture_url, blocked, deleted_at
+	FROM unofficial_whatsapp_contacts
+) l ON l.id = uwc.contact_id AND l.deleted_at IS NULL`,
+
+		ContactIDField:     "uwc.contact_id::text",
+		AccountIDField:     "COALESCE(uwc.instance_id::text, '')",
+		ContainerIDField:   "uwi.id::text",
+		ContainerNameField: "uwi.display_name",
+		AutomationFields: "COALESCE(uwi.agent_id::text, '') AS agent_id, " +
+			"COALESCE(uwi.workflow_id::text, '') AS workflow_id, " +
+			"uwi.enable_agent_responses AS agent_responses_enabled, " +
+			"uwi.enable_workflow AS workflow_enabled",
+
+		AutomationColumn: "uwc.automation_enabled",
+		StatusColumn:     "uwc.conversation_status",
+
+		ContainerCTE:         `SELECT uwc_f.id AS entry_id FROM unofficial_whatsapp_conversations uwc_f WHERE uwc_f.instance_id = ? AND uwc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "uwc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT uwc_f.id::text FROM unofficial_whatsapp_conversations uwc_f
+				JOIN unofficial_whatsapp_instances uwi_f ON uwi_f.id = uwc_f.instance_id
+				WHERE uwc_f.instance_id = ? AND uwc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "uwi_f.department_id",
+		DepartmentEntryCol: "uwc_f.id",
+
+		// EMPTY, and that is the point of the channel: there is no messaging
+		// window and no template gate, so cold outbound is always permitted by
+		// the platform. An empty subquery makes the window filter a no-op instead
+		// of excluding every row. What actually closes the composer — a dead
+		// session, a WhatsApp restriction, a block — is per-instance and
+		// per-contact state, resolved in ChannelAdapter.WindowState, which is the
+		// single authority both the send path and the UI consult.
+		WindowSubquery: "",
+
+		EntryInfoSQL: `
+			SELECT uwc.contact_id::text AS lead_id, COALESCE(uwc.instance_id::text, '') AS business_phone_id,
+			       uwi.id::text AS campaign_id, uwi.display_name AS campaign_name,
+			       COALESCE(uwi.agent_id::text, '') AS agent_id, COALESCE(uwi.workflow_id::text, '') AS workflow_id,
+			       uwi.enable_agent_responses AS agent_responses_enabled, uwi.enable_workflow AS workflow_enabled,
+			       uwc.automation_enabled AS automation_enabled
+			FROM unofficial_whatsapp_conversations uwc
+			JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id
+			WHERE uwc.id = ?::uuid AND uwc.deleted_at IS NULL
+			LIMIT 1
+		`,
+	},
 }
 
 // entryRef is one matched row from a workspace-wide query: which entry, and on

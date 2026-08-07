@@ -62,7 +62,13 @@ func TestEntryTypeMatchingIsExact(t *testing.T) {
 
 func TestConversationViewableEntryTypesIsStableAndComplete(t *testing.T) {
 	got := ConversationViewableEntryTypes()
-	want := []EntryType{EntryTypeInstagram, EntryTypeTelegram, EntryTypeVoice, EntryTypeWhatsApp}
+	want := []EntryType{
+		EntryTypeInstagram,
+		EntryTypeTelegram,
+		EntryTypeUnofficialWhatsApp,
+		EntryTypeVoice,
+		EntryTypeWhatsApp,
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ConversationViewableEntryTypes() = %v, want %v (sorted)", got, want)
 	}
@@ -121,7 +127,7 @@ func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 		t.Error("registering the type should make it viewable")
 	}
 	// The user-facing message picks the new channel up with no other edit.
-	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'voice' or 'whatsapp'" {
+	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'unofficial_whatsapp', 'voice' or 'whatsapp'" {
 		t.Errorf("error text did not follow the set: %q", got)
 	}
 	// Viewability must not imply messaging-pipeline membership.

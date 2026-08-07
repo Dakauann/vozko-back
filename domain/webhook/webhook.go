@@ -28,7 +28,44 @@ const (
 	// logged rather than discarded.
 	TopicTelegramMessage = "webhook.telegram.message"
 	TopicTelegramAccount = "webhook.telegram.account"
+
+	// Unofficial WhatsApp topics. Three, and the third is the reason:
+	// connecting an instance replays up to seven days of history in one burst,
+	// and a live customer's message must not queue behind a backfill.
+	//
+	// TopicUnofficialWhatsAppInstance is the catch-all. This provider ships new
+	// event kinds without notice, so an unrecognised one lands here and is
+	// logged rather than discarded.
+	TopicUnofficialWhatsAppMessage  = "webhook.unofficialwhatsapp.message"
+	TopicUnofficialWhatsAppHistory  = "webhook.unofficialwhatsapp.history"
+	TopicUnofficialWhatsAppInstance = "webhook.unofficialwhatsapp.instance"
 )
+
+// UnofficialWhatsAppTopics lists every topic, for consumer registration and
+// queue provisioning.
+func UnofficialWhatsAppTopics() []string {
+	return []string{
+		TopicUnofficialWhatsAppMessage,
+		TopicUnofficialWhatsAppHistory,
+		TopicUnofficialWhatsAppInstance,
+	}
+}
+
+// TopicForUnofficialWhatsAppEvent routes a provider event to its queue.
+//
+// An unrecognised event deliberately lands on the instance topic instead of
+// being discarded: the provider's catalogue grows, and a silent drop is
+// indistinguishable from a working integration.
+func TopicForUnofficialWhatsAppEvent(event string) string {
+	switch event {
+	case "messages", "messages_update":
+		return TopicUnofficialWhatsAppMessage
+	case "history":
+		return TopicUnofficialWhatsAppHistory
+	default:
+		return TopicUnofficialWhatsAppInstance
+	}
+}
 
 // TelegramTopics lists every Telegram topic, for consumer registration and queue
 // provisioning.

@@ -31,6 +31,10 @@ var ownershipQueries = map[shared.EntryType]string{
 		SELECT 1 FROM telegram_conversations c
 		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
 	)`,
+	shared.EntryTypeUnofficialWhatsApp: `SELECT EXISTS (
+		SELECT 1 FROM unofficial_whatsapp_conversations c
+		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
+	)`,
 	shared.EntryTypeSupport: `SELECT EXISTS (
 		SELECT 1 FROM support_entries e
 		JOIN support_inboxes i ON i.id = e.inbox_id

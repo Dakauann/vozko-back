@@ -15,6 +15,20 @@ const (
 	EntryTypeSupport   EntryType = "support"
 	EntryTypeInstagram EntryType = "instagram"
 	EntryTypeTelegram  EntryType = "telegram"
+	// EntryTypeUnofficialWhatsApp is WhatsApp reached through a linked-device session
+	// (a QR-scanned "WhatsApp Web" pairing) rather than through Meta's Cloud
+	// API.
+	//
+	// It is the same CHANNEL as EntryTypeWhatsApp and a different TRANSPORT, and
+	// the two cannot share an entry type: the Cloud API path resolves templates,
+	// consumes template balance and reads lead_message_windows for its 24h gate,
+	// none of which exists here. Conflating them would route every QR reply into
+	// that machinery.
+	//
+	// Named after the channel rather than the vendor (uazapi is the first
+	// provider, stored as a column) so a second provider is another adapter
+	// rather than another entry type and another pass over every set below.
+	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
 	// EntryTypeVoice is a telephony conversation. It is written to
 	// conversation_messages like any other entry type, but it is not a messaging
 	// channel: it carries no inbound/outbound message pipeline, which is why it
@@ -28,10 +42,11 @@ const (
 // Voice is deliberately excluded: it has no message pipeline, and several call
 // sites rely on Valid() rejecting it.
 var messagingEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeSupport:   {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeSupport:            {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // conversationViewableEntryTypes are the entry types whose conversations the CRM
@@ -43,10 +58,11 @@ var messagingEntryTypes = map[EntryType]struct{}{
 // a channel (Telegram, say) means adding its constant and listing it here, no
 // delivery-layer or usecase code changes.
 var conversationViewableEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeVoice:     {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeVoice:              {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // crmTaggableEntryTypes are the entry types whose conversations can carry CRM
@@ -59,11 +75,12 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 // that renders but cannot be moved or labelled is worse than no card, so adding
 // a channel to entry_sources.go without listing it here ships exactly that.
 var crmTaggableEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeVoice:     {},
-	EntryTypeSupport:   {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeVoice:              {},
+	EntryTypeSupport:            {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // conversationClosableEntryTypes are the entry types whose conversations can be
@@ -78,10 +95,11 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 // no-op; removing it here would be a behaviour change unrelated to adding a
 // channel.
 var conversationClosableEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeVoice:     {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeVoice:              {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // Valid reports whether the entry type is a messaging channel the shared
@@ -142,11 +160,12 @@ func ConversationViewableEntryTypes() []EntryType {
 // Instagram with a 400 on nine endpoints. entry_type_test.go asserts this stays
 // the union, so a channel added to any set above cannot be missing here.
 var knownEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeSupport:   {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
-	EntryTypeVoice:     {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeSupport:            {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeVoice:              {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // IsKnown reports whether this is an entry type the system recognises.
@@ -176,11 +195,12 @@ func KnownEntryTypes() []EntryType {
 // `!= "voice" && != "whatsapp" && != "support"`, which rejected Instagram with a
 // 400 and would have rejected Telegram the same way.
 var inboxScopableEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeVoice:     {},
-	EntryTypeSupport:   {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeVoice:              {},
+	EntryTypeSupport:            {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // SupportsInboxScope reports whether the inbox can be narrowed to this channel.
@@ -210,9 +230,10 @@ func InboxScopableEntryTypes() []EntryType {
 // today. infra/repositories/conversation/channel_queries.go is the registry that
 // actually serves these, and entry_type_test.go pins the two in step.
 var containerScopedInboxEntryTypes = map[EntryType]struct{}{
-	EntryTypeWhatsApp:  {},
-	EntryTypeInstagram: {},
-	EntryTypeTelegram:  {},
+	EntryTypeWhatsApp:           {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
 }
 
 // SupportsContainerScopedInbox reports whether the inbox can be narrowed to one

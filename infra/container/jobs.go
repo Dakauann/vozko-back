@@ -39,6 +39,10 @@ func (c *Container) initJobRunner() {
 		if c.telegram != nil && c.telegram.Enabled {
 			setter.SetAnalysisSubjectResolver(shared.EntryTypeTelegram, telegramAnalysisResolver(c.telegram))
 		}
+		if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+			setter.SetAnalysisSubjectResolver(shared.EntryTypeUnofficialWhatsApp,
+				unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp))
+		}
 	}
 
 	autoCloseJob := conversation_usecase.NewAutoCloseJob(
@@ -54,6 +58,48 @@ func (c *Container) initJobRunner() {
 	}
 	if c.telegram != nil && c.telegram.Enabled {
 		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth, c.telegram.PurgeEvents)
+	}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		c.jobRunner.SetUnofficialWhatsAppJobs(
+			c.unofficialWhatsApp.CheckHealth,
+			cronPackage.CtxJobFunc(c.unofficialWhatsApp.CheckHealth.VerifyIntegrity),
+			c.unofficialWhatsApp.ReconcileCapacity,
+			c.unofficialWhatsApp.PurgeEvents,
+		)
+	}
+}
+
+// unofficialWhatsAppAnalysisResolver loads a conversation's analysis subject.
+//
+// The instance is the container, and the contact label is a real phone number —
+// which is why the job's original phone-number precondition, the thing that
+// excluded Instagram and Telegram, is satisfied here without special-casing.
+func unofficialWhatsAppAnalysisResolver(bundle *unofficialWhatsAppBundle) conversation_usecase.AnalysisSubjectResolver {
+	return func(ctx context.Context, entryID string) (*conversation_usecase.AnalysisSubject, error) {
+		conv, err := bundle.Conversations.FindByID(ctx, entryID)
+		if err != nil || conv == nil {
+			return nil, err
+		}
+		instance, err := bundle.Instances.FindByID(ctx, conv.InstanceID)
+		if err != nil || instance == nil {
+			return nil, err
+		}
+
+		label := instance.Label()
+		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
+			label = contact.DisplayName()
+		}
+
+		return &conversation_usecase.AnalysisSubject{
+			EntryID:           conv.ID,
+			EntryType:         shared.EntryTypeUnofficialWhatsApp,
+			WorkspaceID:       conv.WorkspaceID,
+			ContainerID:       instance.ID,
+			ContainerName:     instance.Label(),
+			ContactLabel:      label,
+			EnableAnalysis:    instance.EnableAnalysis,
+			EnableAutoStaging: instance.EnableAutoStaging,
+		}, nil
 	}
 }
 

@@ -1,7 +1,6 @@
 package conversation_usecase
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"os/exec"
 	"path"
 	"strings"
 	"sync"
@@ -36,6 +34,7 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/domain/workflow"
+	media_infra "vozko/infra/media"
 
 	balance_domain "vozko/domain/balance"
 )
@@ -1338,8 +1337,18 @@ type MessageMarkerService struct {
 	messageRepo           conversation.MessageRepository
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	whatsappRepo          wce.Repository
-	typingMu              sync.Mutex
-	lastTypingIndicator   map[string]time.Time
+	// channelAdapters serves every migrated channel's read receipts. Held as the
+	// LIVE registry rather than a snapshot, because channels register their
+	// adapters after this service is built.
+	channelAdapters     conversation.AdapterRegistry
+	typingMu            sync.Mutex
+	lastTypingIndicator map[string]time.Time
+}
+
+// SetChannelAdapters wires the adapter registry, so read receipts reach every
+// migrated channel rather than only the official WhatsApp client.
+func (s *MessageMarkerService) SetChannelAdapters(registry conversation.AdapterRegistry) {
+	s.channelAdapters = registry
 }
 
 const whatsappTypingIndicatorThrottle = 8 * time.Second
@@ -1368,9 +1377,111 @@ func (s *MessageMarkerService) MarkAsRead(entryID string, entryType shared.Entry
 		return err
 	}
 
-	go s.sendWhatsAppReadReceipts(entryID, string(entryType), messageIDs)
+	// Off the request path: a receipt is a courtesy to the contact, and an
+	// operator's inbox must never wait on the provider to mark a chat read.
+	go s.sendReadReceipts(entryID, entryType, messageIDs)
 
 	return nil
+}
+
+// sendReadReceipts tells the contact's app that we read their messages.
+//
+// Routed by channel: the official WhatsApp integration keeps its dedicated
+// client, and everything adapter-backed goes through the SeenAdapter capability.
+// Without this branch, opening an unofficial WhatsApp or Telegram conversation
+// marked it read for the OPERATOR only — the customer's ticks never turned blue,
+// which reads to them as being ignored.
+func (s *MessageMarkerService) sendReadReceipts(
+	entryID string,
+	entryType shared.EntryType,
+	messageIDs []string,
+) {
+	if entryType == shared.EntryTypeWhatsApp {
+		s.sendWhatsAppReadReceipts(entryID, string(entryType), messageIDs)
+		return
+	}
+	s.sendAdapterReadReceipts(entryID, entryType, messageIDs)
+}
+
+// sendAdapterTyping shows the composing indicator on a migrated channel.
+//
+// Throttled through the same reservation the WhatsApp path uses: an operator
+// typing a paragraph emits a websocket event per keystroke burst, and every one
+// of them would otherwise become a provider call on the instance's send budget.
+func (s *MessageMarkerService) sendAdapterTyping(entryID string, entryType shared.EntryType) error {
+	if s.channelAdapters == nil {
+		return nil
+	}
+	adapter, err := s.channelAdapters.For(entryType)
+	if err != nil || adapter == nil {
+		return nil
+	}
+	typing, ok := adapter.(conversation.TypingAdapter)
+	if !ok {
+		return nil
+	}
+
+	if !s.reserveTypingIndicator(fmt.Sprintf("%s:%s", entryType, entryID), time.Now().UTC()) {
+		return nil
+	}
+
+	ctx := context.Background()
+	ec, err := adapter.ResolveEntry(ctx, entryID)
+	if err != nil || ec == nil {
+		return nil
+	}
+	return typing.SendTyping(ctx, ec, true)
+}
+
+func (s *MessageMarkerService) sendAdapterReadReceipts(
+	entryID string,
+	entryType shared.EntryType,
+	messageIDs []string,
+) {
+	if s.channelAdapters == nil || len(messageIDs) == 0 {
+		return
+	}
+	adapter, err := s.channelAdapters.For(entryType)
+	if err != nil || adapter == nil {
+		return
+	}
+	// A channel without read receipts is a normal channel, not an error.
+	seen, ok := adapter.(conversation.SeenAdapter)
+	if !ok {
+		return
+	}
+
+	providerID := s.latestInboundProviderID(messageIDs)
+	if providerID == "" {
+		return
+	}
+
+	ctx := context.Background()
+	ec, err := adapter.ResolveEntry(ctx, entryID)
+	if err != nil || ec == nil {
+		return
+	}
+	if err := seen.MarkSeen(ctx, ec, providerID); err != nil {
+		log.Printf("[MessageMarker] %s read receipt failed for entry %s: %v", entryType, entryID, err)
+	}
+}
+
+// latestInboundProviderID finds the newest INBOUND message with a provider id.
+//
+// Newest-first and inbound-only, both load-bearing: the receipt marks everything
+// up to one message, so an older id would leave later messages unread forever,
+// and our own outbound ids are not ours to mark as read.
+func (s *MessageMarkerService) latestInboundProviderID(messageIDs []string) string {
+	for i := len(messageIDs) - 1; i >= 0; i-- {
+		msg, err := s.messageRepo.GetByID(messageIDs[i])
+		if err != nil || msg == nil {
+			continue
+		}
+		if msg.MessageType.IsInbound() && msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
+			return *msg.WhatsAppMessageID
+		}
+	}
+	return ""
 }
 
 func (s *MessageMarkerService) sendWhatsAppReadReceipts(entryID, entryType string, messageIDs []string) {
@@ -1413,7 +1524,15 @@ func (s *MessageMarkerService) sendWhatsAppReadReceipts(entryID, entryType strin
 }
 
 func (s *MessageMarkerService) SendTypingIndicator(entryID string, entryType shared.EntryType) error {
-	if s == nil || s.whatsappClientFactory == nil || entryType != shared.EntryTypeWhatsApp {
+	if s == nil {
+		return nil
+	}
+	// Migrated channels carry their own presence API; only the official
+	// WhatsApp integration needs the business-phone lookup below.
+	if entryType != shared.EntryTypeWhatsApp {
+		return s.sendAdapterTyping(entryID, entryType)
+	}
+	if s.whatsappClientFactory == nil {
 		return nil
 	}
 
@@ -1673,6 +1792,7 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{
+					HumanInitiated:           true,
 					Body:                     text,
 					ReplyToProviderMessageID: replyProviderID,
 				})
@@ -1954,6 +2074,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
+					HumanInitiated:           true,
 					Kind:                     mediaKindForChannel(mediaType),
 					URL:                      mediaRecord.URL,
 					MIMEType:                 mediaRecord.MimeType,
@@ -2025,7 +2146,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	case conversation.MediaTypeAudio:
 		log.Printf("[MessageSender] Converting audio to OGG Opus format...")
-		oggData, err := convertAudioToOGGOpus(mediaData)
+		oggData, err := media_infra.ConvertToOGGOpus(mediaData)
 		if err != nil {
 			log.Printf("[MessageSender] Failed to convert audio: %v", err)
 			return nil, fmt.Errorf("failed to convert audio: %w", err)
@@ -2776,41 +2897,6 @@ func (uc *getConversationMediaUseCase) Execute(mediaID string) (*conversation.Co
 	}
 
 	return mediaRecord, nil
-}
-
-func convertAudioToOGGOpus(audioData []byte) ([]byte, error) {
-	cmd := exec.Command("ffmpeg",
-		"-hide_banner",
-		"-loglevel", "error",
-		"-i", "pipe:0",
-		"-vn",
-		"-map", "0:a:0",
-		"-c:a", "libopus",
-		"-b:a", "48k",
-		"-ar", "48000",
-		"-ac", "1",
-		"-application", "voip",
-		"-frame_duration", "20",
-		"-f", "ogg",
-		"pipe:1",
-	)
-
-	cmd.Stdin = bytes.NewReader(audioData)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("ffmpeg conversion failed: %w, stderr: %s", err, stderr.String())
-	}
-
-	if stdout.Len() == 0 {
-		return nil, fmt.Errorf("ffmpeg produced empty output")
-	}
-
-	return stdout.Bytes(), nil
 }
 
 type TemplateSenderService struct {

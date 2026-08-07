@@ -10,6 +10,11 @@ const (
 	EntryTypeWhatsApp  EntryType = "whatsapp"
 	EntryTypeInstagram EntryType = "instagram"
 	EntryTypeTelegram  EntryType = "telegram"
+	// EntryTypeUnofficialWhatsApp is WhatsApp over a linked-device session. Its
+	// export matters more than the other added channels': the contact identity
+	// is a real phone number, so the rows are directly usable by whatever the
+	// tenant is migrating to.
+	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
 )
 
 // ChannelEntry is one conversation as a channel-neutral export row source.

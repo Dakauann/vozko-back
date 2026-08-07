@@ -206,6 +206,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.services.ai = openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
 	log.Printf("AI provider: OpenRouter (model: %s)", c.cfg.OpenRouterDefaultModel)
 
+	// Before ANY channel runtime below: each one captures channelAIReply by
+	// value, so it has to exist first or the channel silently gets a nil.
+	c.initConversationSenders()
+
 	llmPriceFetcher := openrouter_service.NewLLMPriceFetcher(c.services.ai.(*openrouter_service.Service), 1*time.Hour)
 
 	createTicketUC := ticket_usecase.NewCreateTicketUseCase(c.repositories.ticket)
@@ -1377,6 +1381,15 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			log.Printf("[telegram] failed to start webhook consumers: %v", err)
 		} else {
 			log.Printf("[telegram] webhook consumers started")
+		}
+	}
+
+	c.initUnofficialWhatsAppRuntime(messageHistoryManager)
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled && c.unofficialWhatsApp.Consume != nil {
+		if err := c.unofficialWhatsApp.Consume.Start(); err != nil {
+			log.Printf("[unofficial-whatsapp] failed to start webhook consumers: %v", err)
+		} else {
+			log.Printf("[unofficial-whatsapp] webhook consumers started")
 		}
 	}
 

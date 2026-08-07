@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"sync"
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
@@ -72,6 +73,10 @@ func (s *ChannelAIReplyService) SetAssembler(a *agentturn.Assembler) {
 // conversation.
 const historyDepth = 20
 
+// nilServiceWarning keeps the nil-receiver report to one line per process. See
+// Reply for why the condition is reported at all rather than just handled.
+var nilServiceWarning sync.Once
+
 // Reply generates and sends an agent response, or returns nil when the message
 // must not be answered.
 //
@@ -79,6 +84,27 @@ const historyDepth = 20
 // "the bot did not answer" is one of the hardest support questions to
 // reconstruct after the fact.
 func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error) {
+	// Nil RECEIVER, not a nil field. Every channel stores this service behind its
+	// own small interface, so a container that hands over a nil *ChannelAIReplyService
+	// produces a non-nil interface wrapping a nil pointer — and every caller's
+	// `!= nil` guard passes before panicking here. Answering "no reply" instead
+	// keeps a wiring mistake from taking down inbound message handling for a
+	// whole channel.
+	//
+	// LOUDLY, though: silently declining to answer is exactly the symptom nobody
+	// can diagnose from the outside — the operator sees an agent configured, an
+	// enabled toggle, and no replies. Once per process, because the receiver is
+	// nil for the process's whole life and one message per inbound would bury
+	// the log it needs to appear in.
+	if s == nil {
+		nilServiceWarning.Do(func() {
+			log.Printf("[channel-ai-reply] BUG: the AI reply service is nil; no channel will "+
+				"answer with an agent until it is wired before the channel runtimes "+
+				"(first seen on entry %s/%s, workspace %s)",
+				req.EntryType, req.EntryID, req.WorkspaceID)
+		})
+		return nil, nil
+	}
 	if !s.enabled(req) {
 		return nil, nil
 	}

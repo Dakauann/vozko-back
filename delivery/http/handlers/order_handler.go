@@ -40,7 +40,7 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		AddressID        string `json:"addressId"`
 		CustomerName     string `json:"customerName"`
 		CustomerDocument string `json:"customerDocument"`
-		DirectItem *struct {
+		DirectItem       *struct {
 			ProductID string `json:"productId"`
 			VariantID string `json:"variantId"`
 			Quantity  int    `json:"quantity"`

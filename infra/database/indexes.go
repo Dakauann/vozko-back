@@ -534,6 +534,68 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON telegram_file_cache (account_id, source_key)`,
 		},
 
+		// One WhatsApp number connected once, globally. A number linked to two
+		// workspaces would deliver every message to both, which is a tenancy
+		// breach rather than a duplicate.
+		{
+			name: "ux_uw_instance_jid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_jid
+				ON unofficial_whatsapp_instances (jid)
+				WHERE jid <> '' AND deleted_at IS NULL`,
+		},
+		// The instance a webhook resolves to. Unique because the digest IS the
+		// credential: two rows sharing one would make delivery ambiguous and the
+		// tenancy check meaningless.
+		{
+			name: "ux_uw_instance_delivery_token",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_delivery_token
+				ON unofficial_whatsapp_instances (delivery_token_hash)
+				WHERE deleted_at IS NULL`,
+		},
+		// One row per instance on a host, so a re-provision cannot orphan the
+		// previous one behind a duplicate.
+		{
+			name: "ux_uw_instance_server_provider_id",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_server_provider_id
+				ON unofficial_whatsapp_instances (server_id, provider_instance_id)
+				WHERE deleted_at IS NULL`,
+		},
+		// Contact identity is (instance, jid). A JID is global to WhatsApp, but
+		// scoping to the instance is what stops one workspace reading another's
+		// contact row for the same person.
+		{
+			name: "ux_uw_contact_instance_jid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_contact_instance_jid
+				ON unofficial_whatsapp_contacts (instance_id, jid)
+				WHERE deleted_at IS NULL`,
+		},
+		// The LID is the second identifier WhatsApp uses for the same human.
+		// Unique per instance so the reconciliation that merges the two forms
+		// cannot itself create a duplicate.
+		{
+			name: "ux_uw_contact_instance_lid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_contact_instance_lid
+				ON unofficial_whatsapp_contacts (instance_id, lid)
+				WHERE lid <> '' AND deleted_at IS NULL`,
+		},
+		// One conversation per (instance, contact): one real WhatsApp chat is
+		// one CRM conversation, always.
+		{
+			name: "ux_uw_conversation_instance_contact",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_contact
+				ON unofficial_whatsapp_conversations (instance_id, contact_id)
+				WHERE deleted_at IS NULL`,
+		},
+
+		// One number per broadcast. A product rule rather than hygiene:
+		// receiving the same blast twice is the most common thing a recipient
+		// reports, and a report is what gets a number banned.
+		{
+			name: "ux_uw_broadcast_target_number",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_broadcast_target_number
+				ON unofficial_whatsapp_broadcast_targets (broadcast_id, phone_number)`,
+		},
+
 		// Durable duplicate protection for provider message ids. Webhook
 		// delivery is at-least-once, and the Redis dedup guard has a 5-minute
 		// TTL, so the database is the only thing that still rejects a replay

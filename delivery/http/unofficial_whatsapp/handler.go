@@ -1,0 +1,436 @@
+// Package unofficial_whatsapp serves the unofficial WhatsApp channel's HTTP
+// surface.
+//
+// It decodes, enforces that a workspace is present, delegates, and maps domain
+// errors onto status codes. Every rule about what is allowed lives below this
+// layer, so a second caller — the cron, a workflow — cannot get a different
+// answer than an HTTP client.
+package unofficial_whatsapp
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/gorilla/mux"
+
+	"vozko/delivery/http/httpx"
+	"vozko/delivery/http/response"
+	"vozko/domain/shared"
+	uw "vozko/domain/unofficial_whatsapp"
+	"vozko/infra/http/middleware"
+	uwuc "vozko/usecases/unofficial_whatsapp"
+)
+
+// Handler serves the connected-number endpoints.
+type Handler struct {
+	provision   *uwuc.ProvisionInstanceUseCase
+	connect     *uwuc.ConnectInstanceUseCase
+	list        *uwuc.ListInstancesUseCase
+	get         *uwuc.GetInstanceUseCase
+	updateCfg   *uwuc.UpdateInstanceConfigUseCase
+	rotateToken *uwuc.RotateDeliveryTokenUseCase
+	remove      *uwuc.DeleteInstanceUseCase
+	startConv   *uwuc.StartConversationUseCase
+}
+
+// HandlerDeps groups the usecases.
+type HandlerDeps struct {
+	Provision   *uwuc.ProvisionInstanceUseCase
+	Connect     *uwuc.ConnectInstanceUseCase
+	List        *uwuc.ListInstancesUseCase
+	Get         *uwuc.GetInstanceUseCase
+	UpdateCfg   *uwuc.UpdateInstanceConfigUseCase
+	RotateToken *uwuc.RotateDeliveryTokenUseCase
+	Remove      *uwuc.DeleteInstanceUseCase
+	StartConv   *uwuc.StartConversationUseCase
+}
+
+func NewHandler(d HandlerDeps) *Handler {
+	return &Handler{
+		provision:   d.Provision,
+		startConv:   d.StartConv,
+		connect:     d.Connect,
+		list:        d.List,
+		get:         d.Get,
+		updateCfg:   d.UpdateCfg,
+		rotateToken: d.RotateToken,
+		remove:      d.Remove,
+	}
+}
+
+// ---------------------------------------------------------------- instances
+
+type createInstanceRequest struct {
+	DisplayName  string  `json:"displayName"`
+	DepartmentID *string `json:"departmentId,omitempty"`
+}
+
+// CreateInstance provisions a number slot, ready to be linked.
+//
+// It deliberately does NOT start the linking attempt: provisioning talks to a
+// host with an admin credential and can fail on capacity, while linking is a
+// user-paced flow the customer drives from their phone. Collapsing them would
+// mean a capacity failure and an expired QR code arrive through the same call
+// and read the same way.
+func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+		return
+	}
+
+	var req createInstanceRequest
+	// An empty body is valid here: every field is optional.
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	instance, err := h.provision.Execute(r.Context(), uwuc.ProvisionInput{
+		WorkspaceID:  workspaceID,
+		DepartmentID: req.DepartmentID,
+		DisplayName:  req.DisplayName,
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusCreated, toInstanceDTO(instance))
+}
+
+// ListInstances returns the workspace's numbers.
+func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+		return
+	}
+
+	query := r.URL.Query()
+	in := uw.ListInstancesInput{
+		WorkspaceID: workspaceID,
+		Search:      query.Get("search"),
+		Options:     shared.QueryOptions{Pagination: httpx.ParsePagination(query)},
+	}
+	if v := query.Get("status"); v != "" {
+		status := uw.Status(v)
+		in.Status = &status
+	}
+
+	result, err := h.list.Execute(r.Context(), in)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	items := make([]instanceDTO, 0, len(result.Items))
+	for _, instance := range result.Items {
+		items = append(items, toInstanceDTO(instance))
+	}
+	// WritePaginated, not WriteSuccess: every paginated list in this API answers
+	// {"data": [...], "meta": {...}} and the browser client reads exactly that.
+	response.WritePaginated(w, http.StatusOK, items, response.PaginationMeta{
+		Page:       result.Page,
+		PageSize:   result.PageSize,
+		TotalItems: result.TotalItems,
+		TotalPages: result.TotalPages,
+	})
+}
+
+// GetInstance returns one number.
+func (h *Handler) GetInstance(w http.ResponseWriter, r *http.Request) {
+	instance, err := h.get.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toInstanceDTO(instance))
+}
+
+type updateInstanceRequest struct {
+	DisplayName  *string `json:"displayName"`
+	DepartmentID *string `json:"departmentId"`
+
+	AgentID    *string `json:"agentId"`
+	WorkflowID *string `json:"workflowId"`
+	PipelineID *string `json:"pipelineId"`
+
+	EnableAgentResponses *bool `json:"enableAgentResponses"`
+	EnableWorkflow       *bool `json:"enableWorkflow"`
+	EnableAnalysis       *bool `json:"enableAnalysis"`
+	EnableAutoStaging    *bool `json:"enableAutoStaging"`
+	HandleGroups         *bool `json:"handleGroups"`
+
+	DailySendCap    *int  `json:"dailySendCap"`
+	SendDelayMinMS  *int  `json:"sendDelayMinMs"`
+	SendDelayMaxMS  *int  `json:"sendDelayMaxMs"`
+	AutoRejectCalls *bool `json:"autoRejectCalls"`
+}
+
+// UpdateInstance edits automation and pacing settings.
+//
+// The request uses raw JSON presence to distinguish "not supplied" from
+// "cleared", which is why the nullable ids are re-wrapped below: a PATCH that
+// omitted agentId must leave it alone, while one that sent null must clear it.
+func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalid request body", nil)
+		return
+	}
+
+	var req updateInstanceRequest
+	if err := remarshal(raw, &req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "invalid request body", nil)
+		return
+	}
+
+	in := uwuc.UpdateInstanceConfigInput{
+		InstanceID:  mux.Vars(r)["id"],
+		WorkspaceID: middleware.GetWorkspaceID(r),
+
+		DisplayName: req.DisplayName,
+
+		EnableAgentResponses: req.EnableAgentResponses,
+		EnableWorkflow:       req.EnableWorkflow,
+		EnableAnalysis:       req.EnableAnalysis,
+		EnableAutoStaging:    req.EnableAutoStaging,
+		HandleGroups:         req.HandleGroups,
+
+		DailySendCap:    req.DailySendCap,
+		SendDelayMinMS:  req.SendDelayMinMS,
+		SendDelayMaxMS:  req.SendDelayMaxMS,
+		AutoRejectCalls: req.AutoRejectCalls,
+	}
+	// Present-in-body decides whether a nullable field is touched at all.
+	if _, ok := raw["departmentId"]; ok {
+		in.DepartmentID = &req.DepartmentID
+	}
+	if _, ok := raw["agentId"]; ok {
+		in.AgentID = &req.AgentID
+	}
+	if _, ok := raw["workflowId"]; ok {
+		in.WorkflowID = &req.WorkflowID
+	}
+	if _, ok := raw["pipelineId"]; ok {
+		in.PipelineID = &req.PipelineID
+	}
+
+	instance, err := h.updateCfg.Execute(r.Context(), in)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toInstanceDTO(instance))
+}
+
+// DeleteInstance removes a number from the workspace.
+func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
+	err := h.remove.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// ---------------------------------------------------------------- linking
+
+type connectRequest struct {
+	// Mode is "qr" or "pairing". Anything else falls back to QR, which needs no
+	// extra input and therefore cannot fail on a missing field.
+	Mode string `json:"mode"`
+	// Phone is required for pairing mode.
+	Phone      string `json:"phone,omitempty"`
+	SystemName string `json:"systemName,omitempty"`
+}
+
+// Connect starts a linking attempt and returns the code to act on.
+func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
+	var req connectRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	challenge, err := h.connect.Connect(r.Context(), uwuc.ConnectRequest{
+		InstanceID:  mux.Vars(r)["id"],
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		Mode:        uw.ConnectMode(req.Mode),
+		Phone:       req.Phone,
+		SystemName:  req.SystemName,
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toLinkChallengeDTO(challenge))
+}
+
+// LinkStatus polls the host. The connect screen calls this on a timer because
+// the code rotates and the provider hands out the current one here rather than
+// pushing it.
+func (h *Handler) LinkStatus(w http.ResponseWriter, r *http.Request) {
+	challenge, err := h.connect.Status(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toLinkChallengeDTO(challenge))
+}
+
+// Disconnect ends the session without removing the instance, so the same slot
+// can be relinked to a different number.
+func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
+	err := h.connect.Disconnect(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "disconnected"})
+}
+
+// Reset restarts a wedged runtime on the host. The host enforces a cooldown and
+// refuses inside it; that refusal reaches the client as a 409, not a 500,
+// because it is a normal answer.
+func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
+	err := h.connect.Reset(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "resetting"})
+}
+
+// RotateWebhookToken mints a new delivery URL and re-registers it.
+func (h *Handler) RotateWebhookToken(w http.ResponseWriter, r *http.Request) {
+	instance, err := h.rotateToken.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toInstanceDTO(instance))
+}
+
+// ---------------------------------------------------------------- errors
+
+// writeDomainError maps a domain error onto a status code.
+//
+// The provider's own refusals are translated rather than forwarded: a host at
+// capacity is a 503 the customer should retry, and a WhatsApp restriction is a
+// 409 they must wait out — surfacing either as a 500 would send them to support
+// for something the screen can explain.
+func writeDomainError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, uw.ErrInstanceNotFound), errors.Is(err, uw.ErrServerNotFound),
+		errors.Is(err, uw.ErrContactNotFound), errors.Is(err, uw.ErrConversationNotFound):
+		response.WriteError(w, http.StatusNotFound, "not found", nil)
+
+	case errors.Is(err, uw.ErrNoServerCapacity):
+		response.WriteError(w, http.StatusServiceUnavailable,
+			"no capacity to connect a new number right now; try again shortly", nil)
+
+	case errors.Is(err, uw.ErrNumberAlreadyLinked):
+		response.WriteError(w, http.StatusConflict,
+			"this WhatsApp number is already connected to a workspace", nil)
+
+	case errors.Is(err, uw.ErrRestrictedByWA):
+		response.WriteError(w, http.StatusConflict,
+			"WhatsApp is currently restricting this number", nil)
+
+	case errors.Is(err, uw.ErrStatusTransition), errors.Is(err, uw.ErrInstanceNotConnected):
+		response.WriteError(w, http.StatusConflict, err.Error(), nil)
+
+	case errors.Is(err, uw.ErrWorkspaceIDRequired), errors.Is(err, uw.ErrPhoneRequired),
+		errors.Is(err, uw.ErrPhoneInvalid), errors.Is(err, uw.ErrInvalidStatus),
+		errors.Is(err, uw.ErrInstanceNameRequired):
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+
+	default:
+		if provErr, ok := uw.AsProviderError(err); ok {
+			writeProviderError(w, provErr)
+			return
+		}
+		response.WriteError(w, http.StatusInternalServerError, err.Error(), nil)
+	}
+}
+
+// writeProviderError surfaces a provider failure the caller can act on.
+func writeProviderError(w http.ResponseWriter, provErr *uw.ProviderError) {
+	// The provider's own pt-BR wording describes a state the customer can
+	// verify in their WhatsApp; rewording it would drift from what they see.
+	message := provErr.LocalizedMessage
+	if message == "" {
+		message = provErr.Message
+	}
+
+	switch {
+	case provErr.IsRestriction():
+		response.WriteError(w, http.StatusConflict, message, nil)
+	case provErr.AtCapacity():
+		response.WriteError(w, http.StatusServiceUnavailable, message, nil)
+	case provErr.NeedsReconnect():
+		response.WriteError(w, http.StatusConflict,
+			"this number's session is no longer valid; reconnect it", nil)
+	default:
+		response.WriteError(w, http.StatusBadGateway, message, nil)
+	}
+}
+
+// remarshal re-decodes a raw field map into a typed struct, so presence and
+// value can both be read from one body without decoding the request twice.
+func remarshal(raw map[string]json.RawMessage, out any) error {
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(encoded, out)
+}
+
+// startConversationRequest is an operator reaching a number by hand.
+type startConversationRequest struct {
+	PhoneNumber string `json:"phoneNumber"`
+	Name        string `json:"name"`
+}
+
+type startedConversationDTO struct {
+	ConversationID string `json:"conversationId"`
+	ContactID      string `json:"contactId"`
+	PhoneNumber    string `json:"phoneNumber"`
+	DisplayName    string `json:"displayName"`
+	EntryType      string `json:"entryType"`
+	AlreadyExisted bool   `json:"alreadyExisted"`
+}
+
+// StartConversation opens a conversation with a number that never wrote to us.
+//
+// Gated by ActionSend rather than ActionUpdate: replying is attendance, but
+// messaging a stranger is cold outbound, which is what gets an unofficial number
+// banned. The route enforces that; this handler only translates.
+func (h *Handler) StartConversation(w http.ResponseWriter, r *http.Request) {
+	var req startConversationRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	started, err := h.startConv.Execute(r.Context(), uwuc.StartConversationInput{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		InstanceID:  mux.Vars(r)["id"],
+		PhoneNumber: req.PhoneNumber,
+		Name:        req.Name,
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	response.WriteSuccess(w, http.StatusOK, startedConversationDTO{
+		ConversationID: started.ConversationID,
+		ContactID:      started.ContactID,
+		PhoneNumber:    started.PhoneNumber,
+		DisplayName:    started.DisplayName,
+		// Returned so the CRM can route straight to the inbox without having to
+		// know this channel's entry type by heart.
+		EntryType:      string(shared.EntryTypeUnofficialWhatsApp),
+		AlreadyExisted: started.AlreadyExisted,
+	})
+}

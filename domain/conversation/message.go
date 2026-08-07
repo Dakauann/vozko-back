@@ -16,12 +16,18 @@ const (
 	MessageChannelSupport   MessageChannel = "support"
 	MessageChannelInstagram MessageChannel = "instagram"
 	MessageChannelTelegram  MessageChannel = "telegram"
+	// MessageChannelUnofficialWhatsApp is WhatsApp over a linked-device session. It is
+	// distinct from MessageChannelWhatsApp because the transport, not the
+	// channel, is what a message row has to record: the two have different
+	// provider ids, different delivery semantics and different send paths, and a
+	// report grouped by channel must be able to tell them apart.
+	MessageChannelUnofficialWhatsApp MessageChannel = "unofficial_whatsapp"
 )
 
 func (c MessageChannel) Valid() bool {
 	switch c {
 	case MessageChannelVoice, MessageChannelWhatsApp, MessageChannelSupport,
-		MessageChannelInstagram, MessageChannelTelegram:
+		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp:
 		return true
 	}
 	return false

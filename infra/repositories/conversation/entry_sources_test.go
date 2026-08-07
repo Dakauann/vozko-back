@@ -29,6 +29,7 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		shared.EntryTypeWhatsApp,
 		shared.EntryTypeInstagram,
 		shared.EntryTypeTelegram,
+		shared.EntryTypeUnofficialWhatsApp,
 		shared.EntryTypeSupport,
 	}
 	if len(entrySources) != len(want) {

@@ -111,6 +111,45 @@ func TestTelegramIsFullyRegistered(t *testing.T) {
 	}
 }
 
+// The unofficial WhatsApp channel is registered everywhere a messaging channel
+// belongs.
+//
+// It needs its own concrete assertion for the same reason Telegram does — the
+// abstract invariants above can all be satisfied by a channel that is absent
+// from every set — and for one more: it is the first entry type whose name
+// contains another entry type's name, so a sloppy prefix or contains check
+// anywhere would make it collide with `whatsapp` and silently route its
+// conversations into the Cloud API's template-and-balance path.
+func TestUnofficialWhatsAppIsFullyRegistered(t *testing.T) {
+	uw := EntryTypeUnofficialWhatsApp
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   uw.Valid(),
+		"SupportsConversationView":     uw.SupportsConversationView(),
+		"SupportsCRMTagging":           uw.SupportsCRMTagging(),
+		"SupportsConversationClosing":  uw.SupportsConversationClosing(),
+		"SupportsInboxScope":           uw.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": uw.SupportsContainerScopedInbox(),
+		"IsKnown":                      uw.IsKnown(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("unofficial_whatsapp fails %s", name)
+		}
+	}
+
+	// The two WhatsApp transports must stay distinct everywhere it matters.
+	// Sharing an entry type would send every linked-device reply through the
+	// Cloud API adapter, which resolves templates and consumes balance.
+	if uw == EntryTypeWhatsApp {
+		t.Fatal("the two WhatsApp transports must not share an entry type")
+	}
+	if uw.EventChannel() != string(uw) {
+		t.Errorf("EventChannel() = %q, want %q: timeline events would be labelled as another channel",
+			uw.EventChannel(), uw)
+	}
+}
+
 // Instagram must keep everything Telegram gained. The parity work was done once,
 // generically; a later change that re-narrows a predicate would silently take
 // these back from Instagram too.
@@ -247,7 +286,13 @@ func messagingTypesSorted() []EntryType {
 // A guard against silently dropping a channel from the messaging set, which would
 // make Valid() reject its messages on write.
 func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
-	want := []EntryType{EntryTypeInstagram, EntryTypeSupport, EntryTypeTelegram, EntryTypeWhatsApp}
+	want := []EntryType{
+		EntryTypeInstagram,
+		EntryTypeSupport,
+		EntryTypeTelegram,
+		EntryTypeUnofficialWhatsApp,
+		EntryTypeWhatsApp,
+	}
 	got := messagingTypesSorted()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("messaging entry types = %v, want %v", got, want)

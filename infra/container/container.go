@@ -53,6 +53,7 @@ func New() *Container {
 	// is wired from inside initUseCases, where the shared history manager exists.
 	c.initInstagram()
 	c.initTelegram()
+	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
 	c.startConversationHub()
 	// Registered after the hub so the message sender exists: this is the strangler
@@ -60,6 +61,7 @@ func New() *Container {
 	// existing code path.
 	c.wireInstagramConversationStack()
 	c.wireTelegramConversationStack()
+	c.wireUnofficialWhatsAppConversationStack()
 	c.initHandlers()
 	c.initRouter()
 	c.initServer()

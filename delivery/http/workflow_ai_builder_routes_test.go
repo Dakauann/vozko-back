@@ -5,8 +5,8 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"vozko/domain/metrics"
 	wsdelivery "vozko/delivery/ws"
+	"vozko/domain/metrics"
 	"vozko/infra/http/middleware"
 	workflow_usecase "vozko/usecases/workflow"
 )

@@ -40,6 +40,12 @@ type Kind string
 const (
 	KindInstagram Kind = "instagram"
 	KindTelegram  Kind = "telegram"
+	// KindUnofficialWhatsApp is WhatsApp over a linked-device (QR) session, as opposed
+	// to KindWhatsApp's Cloud API. Same channel, different transport, and the
+	// capability sets differ enough — no template, no messaging window, real
+	// delivery receipts, editable messages — that they cannot share a
+	// descriptor.
+	KindUnofficialWhatsApp Kind = "unofficial_whatsapp"
 
 	// Registered here for reference so callers can reason about the full set
 	// while the migration is in flight. These are NOT yet backed by a
