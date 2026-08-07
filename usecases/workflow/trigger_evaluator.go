@@ -38,13 +38,25 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	// trigger-matched workflows (the loop below) silently fails for workflows
 	// started by trigger_first_message, leaving them stuck until their timeout.
 	// This is the same resume the simulator does; here we route the real message.
+	//
+	// The workflow id is remembered alongside the run id, and it is the workflow
+	// that the loop below keys on. The resume runs the engine SYNCHRONOUSLY, so a
+	// reply that carries its run to an end node leaves that run completed before
+	// the loop looks for it: FindActiveByEntryAndTrigger finds nothing, the
+	// "already resumed" guard keyed on the run id never fires, and the very same
+	// message starts a fresh run from the entry node. On a menu flow that reads as
+	// the bot re-sending the menu the instant an option is tapped, as if the
+	// contact had typed again after clicking. Keyed by workflow, the message stays
+	// consumed whether or not the run it woke survived it.
 	handledReplyRun := ""
+	handledReplyWorkflow := ""
 	if event.TriggerType == workflow.TriggerMessageReceived && event.EntryID != "" {
 		if run, lerr := te.runRepo.FindWaitingReplyByEntry(event.EntryID); lerr != nil {
 			log.Printf("[workflow] trigger: failed to look up waiting-reply run for entry=%s: %v", event.EntryID, lerr)
 		} else if run != nil {
 			if w, werr := te.workflowRepo.FindByID(run.WorkflowID); werr == nil && w != nil {
 				handledReplyRun = run.ID
+				handledReplyWorkflow = run.WorkflowID
 				te.wakeRunForReply(run, w, event)
 			}
 		}
@@ -59,6 +71,18 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	log.Printf("[workflow] trigger: found %d active workflows for trigger=%s", len(workflows), event.TriggerType)
 
 	for _, w := range workflows {
+
+		// Scoped to the ONE workflow whose parked run took this message. Every
+		// other workflow in the list is evaluated exactly as before, so a second
+		// workflow on the same entry is not suppressed by another's resume. The
+		// empty check matters because no waiting run leaves this blank.
+		if handledReplyWorkflow != "" && w.ID == handledReplyWorkflow {
+			// This message was already delivered to this workflow's parked run.
+			// Starting a second run from it would replay the flow from its entry
+			// node against a message the conversation has already answered.
+			log.Printf("[workflow] trigger: workflow=%s already consumed this message via run=%s, not starting another", w.ID, handledReplyRun)
+			continue
+		}
 
 		if !te.matchesTriggerConfig(w, event) {
 			continue
