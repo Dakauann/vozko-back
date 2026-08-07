@@ -621,14 +621,14 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON unofficial_whatsapp_group_participants (group_id, jid)`,
 		},
 
-		// One number per broadcast. A product rule rather than hygiene:
-		// receiving the same blast twice is the most common thing a recipient
-		// reports, and a report is what gets a number banned.
-		{
-			name: "ux_uw_broadcast_target_number",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_broadcast_target_number
-				ON unofficial_whatsapp_broadcast_targets (broadcast_id, phone_number)`,
-		},
+		// // One number per broadcast. A product rule rather than hygiene:
+		// // receiving the same blast twice is the most common thing a recipient
+		// // reports, and a report is what gets a number banned.
+		// {
+		// 	name: "ux_uw_broadcast_target_number",
+		// 	sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_broadcast_target_number
+		// 		ON unofficial_whatsapp_broadcast_targets (broadcast_id, phone_number)`,
+		// },
 
 		// Durable duplicate protection for provider message ids. Webhook
 		// delivery is at-least-once, and the Redis dedup guard has a 5-minute

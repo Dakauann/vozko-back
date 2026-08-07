@@ -1,6 +1,7 @@
 package unofficial_whatsapp
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -273,14 +274,17 @@ type providerMessage struct {
 	ButtonOrListText    string `json:"buttonOrListText"`
 	SelectedDisplayText string `json:"selectedDisplayText"`
 	Title               string `json:"title"`
-	Content             string `json:"content"`
-	Edited              string `json:"edited"`
-	WasSentByAPI        bool   `json:"wasSentByApi"`
-	TrackSource         string `json:"track_source"`
-	TrackID             string `json:"track_id"`
-	MIMEType            string `json:"mimetype"`
-	FileName            string `json:"fileName"`
-	FileURL             string `json:"fileURL"`
+	// Content is polymorphic in the vendor's payload, which is why it has its own
+	// type. See contentField: declaring it as a plain string silently discarded
+	// every message whose content arrived as an object.
+	Content      contentField `json:"content"`
+	Edited       string       `json:"edited"`
+	WasSentByAPI bool         `json:"wasSentByApi"`
+	TrackSource  string       `json:"track_source"`
+	TrackID      string       `json:"track_id"`
+	MIMEType     string       `json:"mimetype"`
+	FileName     string       `json:"fileName"`
+	FileURL      string       `json:"fileURL"`
 }
 
 // DecodeEnvelope parses the outer webhook body.
@@ -438,6 +442,53 @@ func NormalizeEnvelope(instanceID string, env *Envelope) []*Event {
 	}}
 }
 
+// contentField is the vendor's `content`, which is NOT one type.
+//
+// A plain text message sends it as a string ("bom dia"). Anything richer — an
+// ExtendedTextMessage, which is what a reply, a quote or a message carrying a
+// link becomes, and every media type — sends an OBJECT instead, with the words
+// under `text` or `caption`.
+//
+// Declaring it `string` made encoding/json fail the whole struct on the object
+// form, and decodeMessages turns any unmarshal failure into "no messages at
+// all". So one field of the wrong type silently discarded entire conversations:
+// group chatter survived because it is mostly plain text, while a direct thread
+// where people quote and link each other vanished completely. No error, no log,
+// nothing written.
+//
+// UnmarshalJSON therefore never returns an error. A shape we have not seen must
+// cost the words in that one field, never the message: this provider has no
+// replay endpoint, so a message dropped here is gone for good.
+type contentField struct {
+	Text string
+}
+
+func (c *contentField) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+	switch b[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(b, &s); err == nil {
+			c.Text = s
+		}
+	case '{':
+		var obj struct {
+			Text    string `json:"text"`
+			Caption string `json:"caption"`
+			Title   string `json:"title"`
+		}
+		if err := json.Unmarshal(b, &obj); err == nil {
+			c.Text = firstNonEmptyString(obj.Text, obj.Caption, obj.Title)
+		}
+	}
+	return nil
+}
+
+func (c contentField) String() string { return c.Text }
+
 // decodeMessages accepts either a single message object or an array of them.
 func decodeMessages(data json.RawMessage) []providerMessage {
 	trimmed := strings.TrimSpace(string(data))
@@ -498,7 +549,7 @@ func normalizeMessage(instanceID string, env *Envelope, msg *providerMessage) *E
 	// better than one that lost the customer's reply.
 	if strings.TrimSpace(ev.Text) == "" && ev.OptionID != "" {
 		ev.Text = firstNonEmptyString(
-			msg.ButtonOrListText, msg.SelectedDisplayText, msg.Title, msg.Content, ev.OptionID)
+			msg.ButtonOrListText, msg.SelectedDisplayText, msg.Title, msg.Content.Text, ev.OptionID)
 	}
 
 	ev.Media = mediaKindFor(msg.MessageType)

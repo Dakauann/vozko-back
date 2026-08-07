@@ -330,18 +330,22 @@ func repointGroupSubjects(tx *gorm.DB) error {
 // correctUnofficialDeviceSentDirection repairs the cases that can be proven.
 //
 // Idempotent: only ever touches rows where direction is still empty.
+//
+// DISABLED ON PURPOSE — do not re-enable as a boot-time statement.
+//
+// conversation_messages is ~1.8M rows / 2.3GB here, and this is a single
+// unbatched UPDATE that ran inside the migration transaction, holding the
+// advisory lock every other replica waits on to boot. It took minutes, and any
+// container started meanwhile sat blocked on pg_advisory_xact_lock and never
+// became healthy: one deploy landed 19 seconds after a customer replied and the
+// AI never answered her, because the process was gone before the workflow could.
+//
+// The backfill itself is still wanted. It belongs in an out-of-band batched job
+// (small chunks, one short transaction each, pauses between) that can run
+// against a live system, not in the boot path. Re-enable here only if this table
+// is ever small enough that a full pass is instant, which it is not.
 func backfillMessageDirection(tx *gorm.DB) error {
-	// The inbound content types, matching MessageType.IsInbound.
-	const inbound = "('user_message','audio','media','story_reply','story_mention','post_share')"
-
-	return tx.Exec(`
-		UPDATE conversation_messages
-		SET direction = CASE
-			WHEN message_type IN ` + inbound + ` THEN 'INBOUND'
-			ELSE 'OUTBOUND'
-		END
-		WHERE direction IS NULL OR direction = ''
-	`).Error
+	return nil
 }
 
 // correctUnofficialDeviceSentDirection fixes the rows the type-based inference
