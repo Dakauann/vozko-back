@@ -99,6 +99,7 @@ func (c *Container) initRouter() {
 		telegramWebhookHandler(c),
 		unofficialWhatsAppHandler(c),
 		unofficialWhatsAppWebhookHandler(c),
+		unofficialWhatsAppGroupHandler(c),
 	)
 }
 

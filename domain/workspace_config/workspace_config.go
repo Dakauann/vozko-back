@@ -16,7 +16,20 @@ var (
 	// ErrInvalidQueueOverflow means the queue overflow action is not one of the
 	// accepted values ("hangup" | "recall").
 	ErrInvalidQueueOverflow = errors.New("invalid queue overflow action")
+	// ErrInvalidIncludedInstances means a negative allowance was submitted.
+	// Negative is not "none" — it is a typo, and silently clamping it would hide
+	// an admin's mistake behind a number they did not choose.
+	ErrInvalidIncludedInstances = errors.New("included unofficial whatsapp instances cannot be negative")
 )
+
+// MaxIncludedUnofficialWhatsAppInstances bounds what one workspace may be
+// granted directly.
+//
+// A guard against a fat-fingered admin, not a product limit: every connected
+// number occupies a slot on a host with a hard ceiling, so an accidental 1000
+// would exhaust a shared host's capacity for every other tenant on it. A
+// workspace that genuinely needs more than this is a conversation, not a form.
+const MaxIncludedUnofficialWhatsAppInstances = 100
 
 const DefaultCampaignSpamProtectionDays = 3
 
@@ -50,6 +63,21 @@ type WorkspaceConfig struct {
 	WorkspaceID                string `json:"workspaceId"`
 	CampaignSpamProtectionDays int    `json:"campaignSpamProtectionDays"`
 	SkipAdminAssignment        bool   `json:"skipAdminAssignment"`
+	// IncludedUnofficialWhatsAppInstances is how many linked-device WhatsApp
+	// numbers this workspace may connect before buying more.
+	//
+	// PLATFORM-ADMIN ONLY, and it lives here rather than on the plan for the
+	// reason the entitlement kind documents: the channel has no per-plan pricing,
+	// every number occupies a slot on a host we operate, and connecting one that
+	// gets banned costs a real customer their WhatsApp. Granting the allowance
+	// per workspace keeps that a decision somebody makes rather than a side
+	// effect of a plan change.
+	//
+	// Zero is the default and means "none included": a workspace connects
+	// nothing until it is granted an allowance or buys an addon. Defaulting to
+	// anything else would hand every existing workspace capacity nobody decided
+	// to give them.
+	IncludedUnofficialWhatsAppInstances int `json:"includedUnofficialWhatsAppInstances"`
 	// HoldMusicTrack is what a caller hears while held/parked during transfers:
 	// "" (system default), "builtin:<key>" (shipped track) or an uploaded
 	// hold_music media id.
@@ -147,10 +175,33 @@ type Repository interface {
 	GetByWorkspaceID(ctx context.Context, workspaceID string) (*WorkspaceConfig, error)
 	Upsert(ctx context.Context, cfg *WorkspaceConfig) error
 	EnsureExists(ctx context.Context, workspaceID string) error
+	// GetIncludedUnofficialInstancesByWorkspaceIDs reads one config field for
+	// many workspaces in a single query.
+	//
+	// Declared on the interface rather than reached for by type assertion so the
+	// compiler forces every implementation to provide it: the entitlement sweep
+	// that uses it would otherwise fall back to zero for every tenant and report
+	// that nobody is entitled to anything, silently.
+	//
+	// A workspace with no config row is absent from the result, which the caller
+	// reads as zero — the same thing it must already assume for a workspace that
+	// was never granted anything.
+	GetIncludedUnofficialInstancesByWorkspaceIDs(ctx context.Context, workspaceIDs []string) (map[string]int, error)
 }
 
+// UpdateWorkspaceConfigInput is the PLATFORM-ADMIN update.
+//
+// It is reachable only through the /admin routes, which the router gates on
+// RoleAdmin and the usecase re-checks. The workspace-facing update takes
+// UpdateWorkspaceConfigOwnerInput and cannot reach any field here — which is the
+// whole point for the entitlement below: a workspace administrator must not be
+// able to grant themselves more connected numbers.
 type UpdateWorkspaceConfigInput struct {
 	CampaignSpamProtectionDays *int `json:"campaignSpamProtectionDays,omitempty"`
+	// IncludedUnofficialWhatsAppInstances is a pointer so "not sent" and "set it
+	// to zero" stay distinguishable — revoking an allowance is a real action and
+	// must not be indistinguishable from an unrelated edit.
+	IncludedUnofficialWhatsAppInstances *int `json:"includedUnofficialWhatsAppInstances,omitempty"`
 }
 
 type UpdateWorkspaceConfigOwnerInput struct {

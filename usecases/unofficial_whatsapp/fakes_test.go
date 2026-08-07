@@ -242,6 +242,20 @@ func (f *fakeInstanceRepo) ListConnected(context.Context, int) ([]*uw.Instance, 
 }
 func (f *fakeInstanceRepo) CountByServer(context.Context, string) (int, error) { return 0, nil }
 
+// CountByWorkspace counts every instance a workspace holds, connected or not:
+// the entitlement measures slots held, and a dead session still holds one.
+func (f *fakeInstanceRepo) CountByWorkspace(_ context.Context, workspaceID string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	count := 0
+	for _, inst := range f.instances {
+		if inst.WorkspaceID == workspaceID {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (f *fakeInstanceRepo) Delete(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -372,15 +386,17 @@ type fakeMessaging struct {
 	SendTextFn     func(ctx context.Context, ref uw.InstanceRef, in uw.SendTextInput) (*uw.SendResult, error)
 	SendMenuFn     func(ctx context.Context, ref uw.InstanceRef, in uw.SendMenuInput) (*uw.SendResult, error)
 	CheckNumbersFn func(ctx context.Context, ref uw.InstanceRef, numbers []string) ([]uw.NumberCheck, error)
+	ChatDetailsFn  func(ctx context.Context, ref uw.InstanceRef, chatID string) (*uw.ChatProfile, error)
 
-	texts    []uw.SendTextInput
-	media    []uw.SendMediaInput
-	menus    []uw.SendMenuInput
-	presence []uw.Presence
-	reacts   []string
-	edits    []string
-	deletes  []string
-	reads    [][]string
+	texts       []uw.SendTextInput
+	media       []uw.SendMediaInput
+	menus       []uw.SendMenuInput
+	presence    []uw.Presence
+	reacts      []string
+	edits       []string
+	deletes     []string
+	reads       [][]string
+	chatDetails []string
 }
 
 func (f *fakeMessaging) SendText(ctx context.Context, ref uw.InstanceRef, in uw.SendTextInput) (*uw.SendResult, error) {
@@ -460,7 +476,266 @@ func (f *fakeMessaging) CheckNumbers(ctx context.Context, ref uw.InstanceRef, nu
 	return out, nil
 }
 
+// ChatDetails counts its calls, because how OFTEN it is reached is the thing
+// worth asserting: it is the channel's only profile read, and one per message
+// instead of one per week is the difference between an enriched inbox and a
+// number that looks automated to WhatsApp.
+func (f *fakeMessaging) ChatDetails(ctx context.Context, ref uw.InstanceRef, chatID string) (*uw.ChatProfile, error) {
+	f.mu.Lock()
+	f.chatDetails = append(f.chatDetails, chatID)
+	fn := f.ChatDetailsFn
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, ref, chatID)
+	}
+	return &uw.ChatProfile{
+		JID:        chatID,
+		Name:       "Perfil",
+		PictureURL: "https://pps.whatsapp.net/avatar.jpg",
+		IsGroup:    uw.IsGroupJID(chatID),
+	}, nil
+}
+
+func (f *fakeMessaging) chatDetailCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.chatDetails...)
+}
+
 var _ uw.MessagingAPI = (*fakeMessaging)(nil)
+
+// ---------------------------------------------------------------- assets
+
+// fakeAssets stands in for the profile-picture download.
+type fakeAssets struct {
+	mu    sync.Mutex
+	urls  []string
+	err   error
+	bytes []byte
+}
+
+func (f *fakeAssets) FetchAsset(_ context.Context, url string) ([]byte, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.urls = append(f.urls, url)
+	if f.err != nil {
+		return nil, "", f.err
+	}
+	data := f.bytes
+	if data == nil {
+		data = []byte("jpeg-bytes")
+	}
+	return data, "image/jpeg", nil
+}
+
+func (f *fakeAssets) fetched() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.urls...)
+}
+
+var _ uw.RemoteAssetFetcher = (*fakeAssets)(nil)
+
+// fakeStorage records what was written, so a test can assert the stored avatar
+// is OURS rather than a link to the provider's short-lived CDN.
+type fakeStorage struct {
+	mu      sync.Mutex
+	uploads map[string][]byte
+	types   map[string]string
+}
+
+func newFakeStorage() *fakeStorage {
+	return &fakeStorage{uploads: map[string][]byte{}, types: map[string]string{}}
+}
+
+func (f *fakeStorage) UploadFile(key string, data []byte, contentType string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uploads[key] = data
+	f.types[key] = contentType
+	return nil
+}
+
+func (f *fakeStorage) GetFileURL(key string) string { return "https://cdn.test/" + key }
+
+func (f *fakeStorage) keys() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.uploads))
+	for k := range f.uploads {
+		out = append(out, k)
+	}
+	return out
+}
+
+// ---------------------------------------------------------------- groups
+
+type fakeGroupAPI struct {
+	mu sync.Mutex
+
+	GroupInfoFn func(ctx context.Context, ref uw.InstanceRef, jid string, opts uw.GroupInfoOptions) (*uw.Group, error)
+
+	infoCalls    []string
+	participants []uw.UpdateParticipantsInput
+	renames      []string
+	left         []string
+}
+
+func (f *fakeGroupAPI) GroupInfo(ctx context.Context, ref uw.InstanceRef, jid string, opts uw.GroupInfoOptions) (*uw.Group, error) {
+	f.mu.Lock()
+	f.infoCalls = append(f.infoCalls, jid)
+	fn := f.GroupInfoFn
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, ref, jid, opts)
+	}
+	g := &uw.Group{
+		JID:        jid,
+		Subject:    "Time Comercial",
+		WeAreAdmin: true,
+		WeCanSend:  true,
+		Participants: []uw.GroupParticipant{
+			{JID: "5511111111111@s.whatsapp.net", PhoneNumber: "5511111111111", DisplayName: "Ana", Role: uw.GroupRoleAdmin},
+			{JID: "5522222222222@s.whatsapp.net", PhoneNumber: "5522222222222", DisplayName: "Bruno", Role: uw.GroupRoleMember},
+		},
+	}
+	g.Normalize()
+	return g, nil
+}
+
+func (f *fakeGroupAPI) infoCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.infoCalls)
+}
+
+func (f *fakeGroupAPI) ListGroups(context.Context, uw.InstanceRef, bool) ([]*uw.Group, error) {
+	return nil, nil
+}
+
+func (f *fakeGroupAPI) UpdateGroupName(_ context.Context, _ uw.InstanceRef, jid, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.renames = append(f.renames, jid+":"+name)
+	return nil
+}
+
+func (f *fakeGroupAPI) UpdateGroupDescription(context.Context, uw.InstanceRef, string, string) error {
+	return nil
+}
+func (f *fakeGroupAPI) UpdateGroupImage(context.Context, uw.InstanceRef, string, string) error {
+	return nil
+}
+
+func (f *fakeGroupAPI) UpdateParticipants(_ context.Context, _ uw.InstanceRef, in uw.UpdateParticipantsInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.participants = append(f.participants, in)
+	return nil
+}
+
+func (f *fakeGroupAPI) UpdateAnnounce(context.Context, uw.InstanceRef, string, bool) error {
+	return nil
+}
+func (f *fakeGroupAPI) UpdateLocked(context.Context, uw.InstanceRef, string, bool) error { return nil }
+
+func (f *fakeGroupAPI) LeaveGroup(_ context.Context, _ uw.InstanceRef, jid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.left = append(f.left, jid)
+	return nil
+}
+
+var _ uw.GroupAPI = (*fakeGroupAPI)(nil)
+
+// fakeGroupRepo is an in-memory group read model.
+type fakeGroupRepo struct {
+	mu     sync.Mutex
+	groups map[string]*uw.Group
+}
+
+func newFakeGroupRepo(groups ...*uw.Group) *fakeGroupRepo {
+	byJID := make(map[string]*uw.Group, len(groups))
+	for _, g := range groups {
+		byJID[g.InstanceID+"|"+g.JID] = g
+	}
+	return &fakeGroupRepo{groups: byJID}
+}
+
+func (f *fakeGroupRepo) Upsert(_ context.Context, g *uw.Group) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now().UTC()
+	g.ID = "group-" + g.JID
+	g.SyncedAt = &now
+	f.groups[g.InstanceID+"|"+g.JID] = g
+	return nil
+}
+
+func (f *fakeGroupRepo) FindByJID(_ context.Context, instanceID, jid string) (*uw.Group, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g, ok := f.groups[instanceID+"|"+jid]; ok {
+		return g, nil
+	}
+	return nil, uw.ErrGroupNotFound
+}
+
+func (f *fakeGroupRepo) FindByID(_ context.Context, id string) (*uw.Group, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, g := range f.groups {
+		if g.ID == id {
+			return g, nil
+		}
+	}
+	return nil, uw.ErrGroupNotFound
+}
+
+func (f *fakeGroupRepo) ListByInstance(_ context.Context, instanceID string) ([]*uw.Group, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []*uw.Group{}
+	for _, g := range f.groups {
+		if g.InstanceID == instanceID {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeGroupRepo) Participants(_ context.Context, groupID string) ([]uw.GroupParticipant, error) {
+	g, err := f.FindByID(context.Background(), groupID)
+	if err != nil {
+		return nil, err
+	}
+	return g.Participants, nil
+}
+
+func (f *fakeGroupRepo) MarkStale(_ context.Context, instanceID, jid string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g, ok := f.groups[instanceID+"|"+jid]; ok {
+		stale := at
+		g.StaleAt = &stale
+	}
+	return nil
+}
+
+func (f *fakeGroupRepo) LinkParticipantContacts(context.Context, string, string) error { return nil }
+
+func (f *fakeGroupRepo) Delete(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for key, g := range f.groups {
+		if g.ID == id {
+			delete(f.groups, key)
+		}
+	}
+	return nil
+}
+
+var _ uw.GroupRepository = (*fakeGroupRepo)(nil)
 
 // ---------------------------------------------------------------- contacts
 
@@ -489,6 +764,10 @@ func (f *fakeContactRepo) FindOrCreate(_ context.Context, in uw.FindOrCreateCont
 	contact := &uw.Contact{
 		ID: "contact-" + in.JID, WorkspaceID: in.WorkspaceID, InstanceID: in.InstanceID,
 		JID: in.JID, LID: in.LID, PhoneNumber: in.PhoneNumber, Name: in.Name,
+		// Mirrors the real repository, which derives it from the JID when the
+		// caller did not say. A fake that only honoured the flag would let a
+		// caller that forgot to set it pass here and fail in production.
+		IsGroup: in.IsGroup || uw.IsGroupJID(in.JID),
 	}
 	f.contacts[contact.ID] = contact
 	f.created = append(f.created, contact)
@@ -555,16 +834,32 @@ func newFakeConversationRepo(convs ...*uw.Conversation) *fakeConversationRepo {
 	return &fakeConversationRepo{convs: byID}
 }
 
+// FindOrCreate keys on the CHAT, matching the real repository.
+//
+// The fake used to key on the contact, which is exactly the bug the production
+// repository had: a group message resolved its contact from the participant who
+// sent it, so every member who spoke minted another conversation for the same
+// chat. Keying the fake the old way would let that regression pass its tests.
 func (f *fakeConversationRepo) FindOrCreate(_ context.Context, in uw.FindOrCreateConversationInput) (*uw.Conversation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, c := range f.convs {
-		if c.InstanceID == in.InstanceID && c.ContactID == in.ContactID {
+		if c.InstanceID != in.InstanceID {
+			continue
+		}
+		if in.ChatID != "" && c.ChatID == in.ChatID {
+			return c, nil
+		}
+		if in.ChatID == "" && c.ContactID == in.ContactID {
 			return c, nil
 		}
 	}
+	key := in.ChatID
+	if key == "" {
+		key = in.ContactID
+	}
 	conv := &uw.Conversation{
-		ID: "conv-" + in.ContactID, WorkspaceID: in.WorkspaceID,
+		ID: "conv-" + key, WorkspaceID: in.WorkspaceID,
 		InstanceID: in.InstanceID, ContactID: in.ContactID,
 		ChatID: in.ChatID, IsGroup: in.IsGroup,
 	}

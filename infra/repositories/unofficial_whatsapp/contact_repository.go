@@ -22,21 +22,34 @@ func NewContactRepository(db *gorm.DB) uw.ContactRepository {
 	return &contactRepository{db: db}
 }
 
-// FindOrCreate resolves a contact and reconciles WhatsApp's two identifier
-// forms.
+// FindOrCreate resolves a conversation subject and reconciles WhatsApp's two
+// identifier forms.
 //
 // The same human reaches us under a phone-number JID and under a LID, and which
 // one arrives depends on privacy settings and on whether the number is saved.
 // Creating a second row for the second form would split one real chat into two
 // CRM conversations, which reads to an operator as data loss rather than as a
-// bug — so a lookup misses on the JID falls back to the LID (and vice versa) and
-// backfills whichever identifier was missing.
+// bug — so a lookup that misses on the JID falls back to the LID (and vice
+// versa) and backfills whichever identifier was missing.
+//
+// A group subject takes the same path with none of the reconciliation: a group
+// has exactly one identifier, no phone number and no LID, so it resolves by JID
+// alone.
 func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreateContactInput) (*uw.Contact, error) {
 	jid := strings.TrimSpace(in.JID)
 	lid := strings.TrimSpace(in.LID)
-	phone := uw.NormalizePhone(in.PhoneNumber)
-	if phone == "" {
-		phone = uw.PhoneFromJID(jid)
+	isGroup := in.IsGroup || uw.IsGroupJID(jid)
+
+	// A group has no number. PhoneFromJID already refuses to derive one from a
+	// group id, and the explicit zeroing here says so at the boundary rather
+	// than relying on that: this column is what the dialer, the lead bridge and
+	// broadcast targeting read, and a group id in it is addressable nonsense.
+	phone := ""
+	if !isGroup {
+		phone = uw.NormalizePhone(in.PhoneNumber)
+		if phone == "" {
+			phone = uw.PhoneFromJID(jid)
+		}
 	}
 
 	if existing, err := r.resolveExisting(ctx, in.InstanceID, jid, lid, phone); err != nil {
@@ -50,6 +63,7 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreate
 		InstanceID:  in.InstanceID,
 		JID:         jid,
 		LID:         lid,
+		IsGroup:     isGroup,
 		PhoneNumber: phone,
 		Name:        truncate(strings.TrimSpace(in.Name), 255),
 	}
@@ -185,18 +199,36 @@ func (r *contactRepository) FindByJID(ctx context.Context, instanceID, jid strin
 
 // UpdateProfile refreshes the enrichable fields.
 //
-// Empty values are skipped rather than written: a profile read that came back
-// partial must not blank the name an earlier one resolved, which is how a named
-// contact turns back into a bare number.
+// Empty values are skipped rather than written, ALL of them: a profile read that
+// came back partial must not blank what an earlier one resolved, which is how a
+// named contact turns back into a bare number.
+//
+// That rule used to hold for the strings only. `is_business` and
+// `profile_fetched_at` were written unconditionally, so every caller that
+// updated one field reset both — a contacts-webhook rename demoted a verified
+// business account to an ordinary one, and any caller that did not mean to
+// advance the staleness clock advanced it anyway.
 func (r *contactRepository) UpdateProfile(ctx context.Context, id string, p uw.ContactProfile) error {
-	update := map[string]any{
-		"is_business":        p.IsBusiness,
-		"profile_fetched_at": p.FetchedAt,
+	update := map[string]any{}
+	// A false here means "this read did not establish it", never "this account
+	// stopped being a business".
+	if p.IsBusiness {
+		update["is_business"] = true
+	}
+	// The zero time means "not a profile read" — the caller touched one field
+	// and must not consume the subject's refresh budget for a week.
+	if !p.FetchedAt.IsZero() {
+		update["profile_fetched_at"] = p.FetchedAt
 	}
 	setIfPresent(update, "name", truncate(p.Name, 255))
 	setIfPresent(update, "contact_name", truncate(p.ContactName, 255))
 	setIfPresent(update, "verified_name", truncate(p.VerifiedName, 255))
 	setIfPresent(update, "picture_url", truncate(p.PictureURL, 1024))
+	setIfPresent(update, "picture_source_url", truncate(p.PictureSourceURL, 1024))
+
+	if len(update) == 0 {
+		return nil
+	}
 
 	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppContact{}).
 		Where("id = ?", id).

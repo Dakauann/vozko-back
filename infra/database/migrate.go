@@ -170,8 +170,18 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.UnofficialWhatsAppInstance{},
 			&schema.UnofficialWhatsAppContact{},
 			&schema.UnofficialWhatsAppConversation{},
+			&schema.UnofficialWhatsAppGroup{},
+			&schema.UnofficialWhatsAppGroupParticipant{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {
+			return err
+		}
+
+		// Data repairs run BEFORE the constraints, because a constraint that
+		// codifies a rule the existing rows break cannot be created until they
+		// stop breaking it. Each one is idempotent and a no-op on a database
+		// that never had the defect.
+		if err := runDataRepairs(tx); err != nil {
 			return err
 		}
 

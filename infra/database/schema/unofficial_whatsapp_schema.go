@@ -164,7 +164,15 @@ func (i *UnofficialWhatsAppInstance) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// UnofficialWhatsAppContact is a person on the other side of one of our numbers.
+// UnofficialWhatsAppContact is the SUBJECT of a conversation: a person on the
+// other side of one of our numbers, or a group.
+//
+// Groups share this table because every conversation surface asks the same four
+// things of a subject — name, handle, picture, blocked — and a group answers all
+// four. What only a group has (roster, admin rules, subject history) lives in
+// UnofficialWhatsAppGroup, which the inbox query never joins. Giving groups
+// their own subject table would have forced a polymorphic key or a UNION into
+// the hottest read path in the product.
 //
 // WhatsApp addresses the same human by two identifiers, a phone-number JID and a
 // LID. Both are stored: treating them as two people splits one real chat into
@@ -180,17 +188,30 @@ type UnofficialWhatsAppContact struct {
 	// otherwise derive `j_id` and `l_id` from these all-caps names.
 	JID string `gorm:"column:jid;size:64;not null;index:idx_uw_contact_jid"`
 	LID string `gorm:"column:lid;size:64;index:idx_uw_contact_lid"`
-	// PhoneNumber is E.164 digits with no leading +. It is the CRM bridge, and
-	// the reason this channel's contacts are first-class where Instagram's and
-	// Telegram's are not: a lead, a boleto and the dialer can all address it.
+	// IsGroup marks this subject as a group rather than a person.
+	//
+	// A stored column rather than a suffix check on the JID: every person-only
+	// path (lead bridging, the dialer, broadcast targeting) reads one predicate
+	// instead of re-deriving it, and a predicate re-derived at four call sites
+	// is one that will be missed at the fifth.
+	IsGroup bool `gorm:"not null;default:false;index"`
+	// PhoneNumber is E.164 digits with no leading +, and is EMPTY for a group.
+	// It is the CRM bridge, and the reason this channel's contacts are
+	// first-class where Instagram's and Telegram's are not: a lead, a boleto and
+	// the dialer can all address it — which is exactly why a group id must never
+	// be written here.
 	PhoneNumber string `gorm:"size:32;index"`
-	// LeadID links this contact to the CRM lead it is.
+	// LeadID links this contact to the CRM lead it is. Always NULL for a group.
 	LeadID *string `gorm:"type:uuid;index"`
 
-	Name             string     `gorm:"size:255"`
-	ContactName      string     `gorm:"size:255"`
-	VerifiedName     string     `gorm:"size:255"`
+	Name         string `gorm:"size:255"`
+	ContactName  string `gorm:"size:255"`
+	VerifiedName string `gorm:"size:255"`
+	// PictureURL is our re-hosted copy; PictureSourceURL is the provider url it
+	// was made from, kept as the change detector. An unchanged source url means
+	// an unchanged photo, which is what lets a refresh skip the download.
 	PictureURL       string     `gorm:"size:1024"`
+	PictureSourceURL string     `gorm:"size:1024"`
 	IsBusiness       bool       `gorm:"not null;default:false"`
 	ProfileFetchedAt *time.Time `gorm:"type:timestamptz"`
 
@@ -255,6 +276,100 @@ func (UnofficialWhatsAppConversation) TableName() string {
 func (c *UnofficialWhatsAppConversation) BeforeCreate(tx *gorm.DB) error {
 	if c.ID == "" {
 		c.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// UnofficialWhatsAppGroup is the cached metadata of one WhatsApp group.
+//
+// Keyed by (instance, jid) and NOT by conversation, because the two have
+// different lifetimes: a number can belong to a group that has never spoken, and
+// a conversation only exists once a message arrives. The JID joins them.
+//
+// Every column here is a CACHE of an explicit provider read. The provider offers
+// no push we can trust — its `groups` webhook payload is documented only as "a
+// map, the shape varies" — so freshness is a staleness clock plus an
+// invalidation flag, never a subscription.
+type UnofficialWhatsAppGroup struct {
+	ID          string `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string `gorm:"type:uuid;not null;index"`
+	InstanceID  string `gorm:"type:uuid;not null;index:idx_uw_group_instance"`
+
+	JID string `gorm:"column:jid;size:64;not null;index:idx_uw_group_jid"`
+
+	Subject     string `gorm:"size:255"`
+	Description string `gorm:"size:1024"`
+	OwnerJID    string `gorm:"column:owner_jid;size:64"`
+
+	// Announce restricts posting to admins; the composer reads it so a member
+	// is told they cannot post instead of discovering it from a failed send.
+	Announce bool `gorm:"not null;default:false"`
+	// Locked restricts editing the group's name/picture/topic to admins.
+	Locked           bool `gorm:"not null;default:false"`
+	JoinApproval     bool `gorm:"not null;default:false"`
+	Ephemeral        bool `gorm:"not null;default:false"`
+	DisappearingSecs int  `gorm:"not null;default:0"`
+	Community        bool `gorm:"not null;default:false"`
+
+	// WeAreAdmin and WeCanSend describe OUR connected number in this group, not
+	// the group in the abstract. Every admin control in the UI is gated on them.
+	WeAreAdmin bool `gorm:"not null;default:false"`
+	WeCanSend  bool `gorm:"not null;default:true"`
+
+	ParticipantCount int        `gorm:"not null;default:0"`
+	GroupCreatedAt   *time.Time `gorm:"type:timestamptz"`
+
+	// SyncedAt is when the provider last confirmed everything above. NULL means
+	// never, which reads as stale rather than as fresh.
+	SyncedAt *time.Time `gorm:"type:timestamptz;index"`
+	// StaleAt is set by the `groups` webhook. A StaleAt later than SyncedAt
+	// means "re-read before trusting this row" — which is the only honest thing
+	// an unspecified payload can tell us.
+	StaleAt *time.Time `gorm:"type:timestamptz"`
+
+	CreatedAt time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+func (UnofficialWhatsAppGroup) TableName() string { return "unofficial_whatsapp_groups" }
+
+func (g *UnofficialWhatsAppGroup) BeforeCreate(tx *gorm.DB) error {
+	if g.ID == "" {
+		g.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// UnofficialWhatsAppGroupParticipant is one member, as of the last roster sync.
+//
+// Members are NOT contacts. A 200-member group would otherwise put 200 rows into
+// the table the dialer and the lead bridge read, for people who have never
+// messaged the business and cannot be attended. ContactID links the ones we do
+// know from a direct chat, and is legitimately NULL for everyone else.
+type UnofficialWhatsAppGroupParticipant struct {
+	ID      string `gorm:"primaryKey;type:uuid"`
+	GroupID string `gorm:"type:uuid;not null;index:idx_uw_gp_group"`
+
+	JID         string `gorm:"column:jid;size:64;not null"`
+	LID         string `gorm:"column:lid;size:64"`
+	PhoneNumber string `gorm:"size:32;index"`
+	DisplayName string `gorm:"size:255"`
+	// Role is member | admin | superadmin.
+	Role      string  `gorm:"size:16;not null;default:'member'"`
+	ContactID *string `gorm:"type:uuid;index"`
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+}
+
+func (UnofficialWhatsAppGroupParticipant) TableName() string {
+	return "unofficial_whatsapp_group_participants"
+}
+
+func (p *UnofficialWhatsAppGroupParticipant) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == "" {
+		p.ID = uuid.New().String()
 	}
 	return nil
 }

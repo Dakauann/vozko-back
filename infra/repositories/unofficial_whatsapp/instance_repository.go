@@ -353,3 +353,19 @@ func setIfPresent(update map[string]any, column, value string) {
 		update[column] = value
 	}
 }
+
+// CountByWorkspace counts the instances a workspace occupies.
+//
+// Every non-deleted row, regardless of session state: the entitlement measures
+// slots held, and a disconnected instance still holds one on the host until it
+// is removed. Soft-deleted rows are excluded by GORM's own scope.
+func (r *instanceRepository) CountByWorkspace(ctx context.Context, workspaceID string) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppInstance{}).
+		Where("workspace_id = ?", workspaceID).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}

@@ -493,8 +493,8 @@ func (r *mockEntryRepo) ListByLeadID(_ string) ([]wce.WhatsAppCampaignEntry, err
 func (r *mockEntryRepo) ListRecentlyUpdated(_ string, _ int) ([]wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
-func (r *mockEntryRepo) CountByCampaignID(_ string) (int64, error)                { return 0, nil }
-func (r *mockEntryRepo) CountByStatus(_ string) (*wce.StatusCounts, error)        { return nil, nil }
+func (r *mockEntryRepo) CountByCampaignID(_ string) (int64, error)         { return 0, nil }
+func (r *mockEntryRepo) CountByStatus(_ string) (*wce.StatusCounts, error) { return nil, nil }
 func (r *mockEntryRepo) CountByStatusForCampaigns(_ []string) (map[string]*wce.StatusCounts, error) {
 	return nil, nil
 }
@@ -530,9 +530,13 @@ func (r *mockEntryRepo) GetCampaignForEntry(_ string) (*wce.EntryCampaignInfo, e
 	return nil, nil
 }
 func (r *mockEntryRepo) UpdateAutomationEnabled(_ string, _ *bool) error { return nil }
-func (r *mockEntryRepo) UpdateConversationStatus(_ string, _ wce.ConversationStatusWrite) error { return nil }
-func (r *mockEntryRepo) ListEligibleForAutoClose(int) ([]wce.AutoCloseCandidate, error)         { return nil, nil }
-func (r *mockEntryRepo) ListEligibleForMaxAge(int) ([]wce.AutoCloseCandidate, error)         { return nil, nil }
+func (r *mockEntryRepo) UpdateConversationStatus(_ string, _ wce.ConversationStatusWrite) error {
+	return nil
+}
+func (r *mockEntryRepo) ListEligibleForAutoClose(int) ([]wce.AutoCloseCandidate, error) {
+	return nil, nil
+}
+func (r *mockEntryRepo) ListEligibleForMaxAge(int) ([]wce.AutoCloseCandidate, error) { return nil, nil }
 func (r *mockEntryRepo) CountByConversationStatus(_ string) (map[string]int64, error) {
 	return nil, nil
 }
@@ -619,7 +623,7 @@ func (r *mockBusinessPhoneRepo) SyncFromMeta(_ *businessphone.WhatsAppBusinessPh
 	return nil
 }
 func (r *mockBusinessPhoneRepo) ClearAccessToken(_ string) error { return nil }
-func (r *mockBusinessPhoneRepo) ClearOwner(_ string) error { return nil }
+func (r *mockBusinessPhoneRepo) ClearOwner(_ string) error       { return nil }
 func (r *mockBusinessPhoneRepo) FindByMetaPhoneNumberIDUnscoped(_ string) (*businessphone.WhatsAppBusinessPhoneNumber, error) {
 	return nil, businessphone.ErrPhoneNumberNotFound
 }
@@ -879,6 +883,12 @@ func (m *mockWorkspaceConfigRepo) GetByWorkspaceID(_ context.Context, _ string) 
 
 func (m *mockWorkspaceConfigRepo) Upsert(_ context.Context, _ *wsc.WorkspaceConfig) error { return nil }
 func (m *mockWorkspaceConfigRepo) EnsureExists(_ context.Context, _ string) error         { return nil }
+
+// The entitlement sweep's batch read; this mock only needs to satisfy the
+// interface.
+func (m *mockWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
 
 type mockLeadCampaignSendRepo struct{}
 

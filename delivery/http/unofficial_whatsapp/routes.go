@@ -5,10 +5,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"vozko/delivery/http/response"
-	user_domain "vozko/domain/user"
 	workspace_domain "vozko/domain/workspace"
-	"vozko/infra/http/middleware"
 )
 
 // RegisterProtectedRoutes wires the authenticated endpoints.
@@ -35,25 +32,25 @@ func RegisterProtectedRoutes(
 	res := workspace_domain.ResourceUnofficialWhatsAppInstances
 	r := protected.PathPrefix("/unofficial-whatsapp").Subrouter()
 
-	// TEMPORARY: provisioning is platform-admin only until pricing is decided.
+	// Provisioning is workspace RBAC plus an ENTITLEMENT, no longer a
+	// platform-admin lockout.
 	//
-	// Every other verb below keeps its normal workspace RBAC. Only CREATE is
-	// held back, because creating an instance is the one action that consumes a
-	// slot on the shared host and would bill a workspace under a model that does
-	// not exist yet. Linking, resetting and messaging an already-provisioned
-	// number cost nothing extra, so an attendant keeps them.
+	// It used to be admin-only, as a holding position "until pricing is decided",
+	// because creating an instance consumes a slot on a host we operate and there
+	// was no model for who may have how many. That model now exists: a platform
+	// administrator grants an allowance per workspace and addons top it up, and
+	// ProvisionInstanceUseCase refuses past it — so the restriction that stood in
+	// for pricing is replaced by the pricing.
 	//
-	// The gate sits INSIDE the RBAC guard, not around it. Both must pass either
-	// way, so the nesting is not a security choice — it keeps ActionCreate the
-	// outermost wrapper, which is the invariant routes_test asserts for every
-	// route here. Wrapping the other way makes the RBAC undetectable to that
-	// test, and a test that can no longer see a missing RBAC guard is worse than
-	// the temporary restriction is valuable.
-	//
-	// A platform admin still needs ActionCreate on the workspace, so this cannot
-	// accidentally widen anyone's access. To lift it, unwrap h.CreateInstance
-	// and delete requirePlatformAdmin — nothing else references either.
-	r.HandleFunc("/instances", ac(res, workspace_domain.ActionCreate, requirePlatformAdmin(h.CreateInstance))).Methods(http.MethodPost)
+	// The gate moved DOWN a layer deliberately. A route guard could only ever
+	// answer "is this person an admin"; the use case answers "does this workspace
+	// have a slot left", which is the question, and it answers it identically for
+	// every caller — the HTTP client, a future self-serve flow, an internal tool.
+	r.HandleFunc("/instances", ac(res, workspace_domain.ActionCreate, h.CreateInstance)).Methods(http.MethodPost)
+
+	// What the connect screen reads before offering the button. ActionRead: it
+	// reports a limit and a usage, not a way to change either.
+	r.HandleFunc("/instances/allowance", ac(res, workspace_domain.ActionRead, h.GetAllowance)).Methods(http.MethodGet)
 	r.HandleFunc("/instances", ac(res, workspace_domain.ActionRead, h.ListInstances)).Methods(http.MethodGet)
 	r.HandleFunc("/instances/{id}", ac(res, workspace_domain.ActionRead, h.GetInstance)).Methods(http.MethodGet)
 	r.HandleFunc("/instances/{id}", ac(res, workspace_domain.ActionUpdate, h.UpdateInstance)).Methods(http.MethodPut)
@@ -78,32 +75,62 @@ func RegisterProtectedRoutes(
 
 }
 
-// requirePlatformAdmin rejects everyone but a platform admin.
+// RegisterGroupRoutes wires the group panel.
 //
-// TEMPORARY, paired with the CREATE route above: unofficial numbers occupy
-// capacity on a shared host and there is no pricing for them yet, so the only
-// people allowed to consume that capacity are the ones who own the host.
+// The permission split is the point of this function, and it is sharper than the
+// one above. Everything here acts inside the CUSTOMER'S OWN WhatsApp groups, on
+// people who are not our users and did not consent to our RBAC:
 //
-// It denies by default. Absent claims mean the request did not come through the
-// auth middleware, which on a protected route is a wiring fault, and the safe
-// reading of a wiring fault on a provisioning endpoint is "no".
+//	ActionRead   — list, open, read the roster
+//	ActionUpdate — rename, describe, re-picture, invite, promote, demote, approve
+//	ActionDelete — remove a member, reject a request, leave the group
 //
-// 403 rather than 404: the caller is authenticated and the resource exists, so
-// hiding it would only cost them the round trips of guessing. The message names
-// the restriction and that it is temporary, because "forbidden" alone reads as
-// a permissions bug to an admin who knows they have the right role.
-func requirePlatformAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		claims := middleware.GetClaims(r)
-		if claims == nil || claims.Role != string(user_domain.RoleAdmin) {
-			response.WriteError(
-				w,
-				http.StatusForbidden,
-				"provisioning unofficial WhatsApp numbers is temporarily restricted to platform administrators",
-				nil,
-			)
-			return
-		}
-		next(w, r)
+// Removal is ActionDelete rather than ActionUpdate deliberately. Evicting a
+// customer from a group they are in is irreversible from our side and visible to
+// everyone in it, and an attendant trusted to invite people is not thereby
+// trusted to throw them out. The handler re-checks which class of verb the body
+// asked for, so the two participant routes cannot be used interchangeably.
+//
+// The group id travels in the path as its JID rather than as our row id: a
+// workspace can act on a group the CRM has never opened and therefore has no row
+// for, and requiring one would make "sync this group for the first time"
+// impossible to express.
+func RegisterGroupRoutes(
+	protected *mux.Router,
+	h *GroupHandler,
+	ac func(workspace_domain.Resource, workspace_domain.Action, http.HandlerFunc) http.HandlerFunc,
+) {
+	if h == nil {
+		return
 	}
+
+	res := workspace_domain.ResourceUnofficialWhatsAppInstances
+	r := protected.PathPrefix("/unofficial-whatsapp").Subrouter()
+
+	r.HandleFunc("/instances/{id}/groups", ac(res, workspace_domain.ActionRead, h.ListGroups)).Methods(http.MethodGet)
+	r.HandleFunc("/instances/{id}/groups/{groupJid}", ac(res, workspace_domain.ActionRead, h.GetGroup)).Methods(http.MethodGet)
+	r.HandleFunc("/instances/{id}/groups/{groupJid}/invite-link", ac(res, workspace_domain.ActionRead, h.GetInviteLink)).Methods(http.MethodGet)
+
+	r.HandleFunc("/instances/{id}/groups/{groupJid}", ac(res, workspace_domain.ActionUpdate, h.UpdateGroup)).Methods(http.MethodPatch)
+	r.HandleFunc("/instances/{id}/groups/{groupJid}/participants", ac(res, workspace_domain.ActionUpdate, h.UpdateParticipants)).Methods(http.MethodPost)
+
+	r.HandleFunc("/instances/{id}/groups/{groupJid}/participants", ac(res, workspace_domain.ActionDelete, h.RemoveParticipants)).Methods(http.MethodDelete)
+	r.HandleFunc("/instances/{id}/groups/{groupJid}/leave", ac(res, workspace_domain.ActionDelete, h.LeaveGroup)).Methods(http.MethodPost)
+
+	// The same endpoints addressed by CONVERSATION.
+	//
+	// The CRM holds an entry id and an entry type, never a WhatsApp JID. Giving
+	// it a second route shape costs one lookup per call; the alternative was
+	// leaking a channel-specific `group_jid` into InboxEntry, the
+	// channel-neutral shape every list in the CRM renders — which would have
+	// made a WhatsApp detail visible to Instagram, Telegram and the Cloud API.
+	//
+	// Identical RBAC, deliberately: the same act must not become cheaper by
+	// being reached through a different id.
+	r.HandleFunc("/conversations/{entryId}/group", ac(res, workspace_domain.ActionRead, h.GetGroup)).Methods(http.MethodGet)
+	r.HandleFunc("/conversations/{entryId}/group/invite-link", ac(res, workspace_domain.ActionRead, h.GetInviteLink)).Methods(http.MethodGet)
+	r.HandleFunc("/conversations/{entryId}/group", ac(res, workspace_domain.ActionUpdate, h.UpdateGroup)).Methods(http.MethodPatch)
+	r.HandleFunc("/conversations/{entryId}/group/participants", ac(res, workspace_domain.ActionUpdate, h.UpdateParticipants)).Methods(http.MethodPost)
+	r.HandleFunc("/conversations/{entryId}/group/participants", ac(res, workspace_domain.ActionDelete, h.RemoveParticipants)).Methods(http.MethodDelete)
+	r.HandleFunc("/conversations/{entryId}/group/leave", ac(res, workspace_domain.ActionDelete, h.LeaveGroup)).Methods(http.MethodPost)
 }

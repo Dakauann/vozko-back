@@ -15,15 +15,24 @@ const (
 )
 
 type InboxEntry struct {
-	EntryID                 string                 `json:"entry_id"`
-	EntryType               string                 `json:"entry_type"`
-	CampaignID              string                 `json:"campaign_id,omitempty"`
-	CampaignName            string                 `json:"campaign_name,omitempty"`
-	LeadID                  string                 `json:"lead_id,omitempty"`
-	LeadName                string                 `json:"lead_name,omitempty"`
-	LeadNumber              string                 `json:"lead_number,omitempty"`
-	Blocked                 bool                   `json:"blocked"`
-	LeadPicture             string                 `json:"lead_picture,omitempty"`
+	EntryID      string `json:"entry_id"`
+	EntryType    string `json:"entry_type"`
+	CampaignID   string `json:"campaign_id,omitempty"`
+	CampaignName string `json:"campaign_name,omitempty"`
+	LeadID       string `json:"lead_id,omitempty"`
+	LeadName     string `json:"lead_name,omitempty"`
+	LeadNumber   string `json:"lead_number,omitempty"`
+	Blocked      bool   `json:"blocked"`
+	LeadPicture  string `json:"lead_picture,omitempty"`
+	// IsGroup marks a conversation whose other side is a group chat rather than
+	// a person.
+	//
+	// The UI needs this for more than a badge. A group has no number to dial, no
+	// lead to open and no single person to attribute the thread to, so the row's
+	// affordances have to be suppressed rather than relabelled — and until this
+	// existed a group was indistinguishable from a contact in every list the CRM
+	// renders.
+	IsGroup                 bool                   `json:"is_group,omitempty"`
 	LeadMetadata            map[string]interface{} `json:"lead_metadata,omitempty"`
 	EntryVariables          []string               `json:"entry_variables,omitempty"`
 	UnreadCount             int64                  `json:"unread_count"`

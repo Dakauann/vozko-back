@@ -2,6 +2,7 @@ package unofficial_whatsapp
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +120,10 @@ func TestIntegritySweepLeavesAHealthyWebhookAlone(t *testing.T) {
 		GetWebhooksFn: func(context.Context, uw.InstanceRef) ([]uw.WebhookSubscription, error) {
 			return []uw.WebhookSubscription{{
 				URL: uw.WebhookURLFor(testWebhookBase, "dtok"), Enabled: true,
+				// The full event set: a "correctly registered" webhook is one
+				// pointed at us AND subscribed to everything we consume, and the
+				// fixture has to say both or it is not describing a healthy one.
+				Events: uw.SubscribedEvents(),
 			}}, nil
 		},
 	}
@@ -130,6 +135,57 @@ func TestIntegritySweepLeavesAHealthyWebhookAlone(t *testing.T) {
 	}
 	if len(provider.webhookSets) != 0 {
 		t.Error("a correctly registered webhook must not be rewritten")
+	}
+}
+
+// A webhook pointed at us but subscribed to FEWER events than we consume must be
+// re-registered.
+//
+// The URL match alone used to satisfy this check, and it cost a real bug: an
+// instance connected before an event was added to the subscription never
+// received that event. The host was pointed at us, the probe was happy, and the
+// new event type stayed unsubscribed forever — which is how `groups` failed to
+// arrive on already-connected numbers, leaving a renamed or re-pictured group
+// showing its old identity until somebody pressed refresh by hand.
+func TestIntegritySweepResubscribesWhenEventsAreMissing(t *testing.T) {
+	instance := &uw.Instance{
+		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
+		Status: uw.StatusConnected, InstanceToken: "tok", DeliveryToken: "dtok",
+	}
+	instances := newFakeInstanceRepo(instance)
+	provider := &fakeProvider{
+		GetWebhooksFn: func(context.Context, uw.InstanceRef) ([]uw.WebhookSubscription, error) {
+			return []uw.WebhookSubscription{{
+				URL: uw.WebhookURLFor(testWebhookBase, "dtok"), Enabled: true,
+				// What an instance provisioned before `groups` existed looks like.
+				Events: []string{"messages", "messages_update", "connection"},
+			}}, nil
+		},
+	}
+
+	uc := NewCheckInstanceHealthUseCase(
+		instances, newFakeServerRepo(healthyServer("srv-a", 10, 1)), provider, testWebhookBase)
+	if err := uc.VerifyIntegrity(context.Background()); err != nil {
+		t.Fatalf("VerifyIntegrity: %v", err)
+	}
+	if len(provider.webhookSets) != 1 {
+		t.Fatal("a webhook missing events we consume must be re-registered")
+	}
+	if missing := missingEvents(provider.webhookSets[0].Events, uw.SubscribedEvents()); len(missing) > 0 {
+		t.Errorf("re-registered without %v", missing)
+	}
+}
+
+// Casing must not cause a needless rewrite: the provider is inconsistent about
+// the case of its own event names, and a false "missing" would re-register on
+// every hourly pass, hiding a real one in the noise.
+func TestWebhookEventComparisonIgnoresCasing(t *testing.T) {
+	upper := make([]string, 0, len(uw.SubscribedEvents()))
+	for _, e := range uw.SubscribedEvents() {
+		upper = append(upper, strings.ToUpper(e))
+	}
+	if missing := missingEvents(upper, uw.SubscribedEvents()); len(missing) > 0 {
+		t.Errorf("case difference reported as missing: %v", missing)
 	}
 }
 

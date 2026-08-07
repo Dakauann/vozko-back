@@ -586,6 +586,40 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON unofficial_whatsapp_conversations (instance_id, contact_id)
 				WHERE deleted_at IS NULL`,
 		},
+		// The same rule stated the other way round, and the one that actually
+		// caught the bug: one conversation per CHAT.
+		//
+		// Both are needed because they fail differently. The subject index above
+		// is satisfied by a group thread that has forked into one conversation
+		// per participant — each row has a distinct contact — while this one
+		// rejects it outright. It is the invariant the channel always claimed to
+		// have ("one real WhatsApp chat is one CRM conversation") and never
+		// enforced, and the merge in datarepairs.go exists to make it buildable
+		// on a database that shipped without it.
+		{
+			name: "ux_uw_conversation_instance_chat",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_chat
+				ON unofficial_whatsapp_conversations (instance_id, chat_id)
+				WHERE chat_id <> '' AND deleted_at IS NULL`,
+		},
+
+		// A group is identified by (instance, jid), for the same tenancy reason
+		// contacts are: a JID is global to WhatsApp, and scoping to the instance
+		// is what stops one workspace reading another's cached roster.
+		{
+			name: "ux_uw_group_instance_jid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_group_instance_jid
+				ON unofficial_whatsapp_groups (instance_id, jid)
+				WHERE deleted_at IS NULL`,
+		},
+		// One roster row per member. The sync replaces a roster wholesale rather
+		// than diffing it, and this is what makes a partially-failed replace
+		// impossible to leave behind as a member listed twice.
+		{
+			name: "ux_uw_group_participant",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_group_participant
+				ON unofficial_whatsapp_group_participants (group_id, jid)`,
+		},
 
 		// One number per broadcast. A product rule rather than hygiene:
 		// receiving the same blast twice is the most common thing a recipient

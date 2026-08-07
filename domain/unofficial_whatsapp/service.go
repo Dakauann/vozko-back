@@ -186,9 +186,15 @@ type WebhookSubscription struct {
 //
 //   - `presence` is NOT subscribed. It is the highest-volume event the provider
 //     emits and it has no CRM meaning.
-//   - `groups` and `newsletter_messages` are NOT subscribed. Groups are stored
-//     inert (see Conversation.RunsAutomation) and newsletters are a publishing
-//     surface we do not attend.
+//   - `newsletter_messages` is NOT subscribed: a channel is a publishing
+//     surface, not an attendance surface.
+//   - `groups` IS subscribed, and it is consumed as an INVALIDATION rather than
+//     as data. The provider documents the payload only as "a map, the shape
+//     varies", so parsing a rename or a membership change out of it would be
+//     guessing; what the event reliably says is "something about this group
+//     changed", which is enough to mark the cached row stale and let the next
+//     read re-sync from /group/info. Without it a rename stays invisible for a
+//     whole TTL.
 //   - `messages_update` IS subscribed, and no exclusion filter is set. The
 //     provider's docs recommend excluding messages the API itself sent, to
 //     break automation loops. Doing that would cost the delivery-status track
@@ -209,6 +215,7 @@ func SubscribedEvents() []string {
 		"history",
 		"labels",
 		"chat_labels",
+		"groups",
 	}
 }
 
@@ -248,6 +255,65 @@ type DiagnosticsAPI interface {
 	// other. Asserted at provisioning and re-asserted by the health cron,
 	// because a tenant with console access to the host can turn it back on.
 	DisableBuiltInChatbot(ctx context.Context, ref InstanceRef) error
+}
+
+// ---------------------------------------------------------------- groups
+
+// UpdateParticipantsInput is one membership mutation.
+type UpdateParticipantsInput struct {
+	GroupJID string
+	Action   GroupAction
+	// Participants are phone numbers or JIDs. The adapter normalizes them; the
+	// caller may pass whichever form the UI collected.
+	Participants []string
+}
+
+// GroupAPI is the group management surface.
+//
+// Split from MessagingAPI because the two have different blast radii and
+// different callers: sending a message is the product's normal work, while
+// removing a participant or leaving a group is an irreversible act on the
+// customer's own WhatsApp. A test double for the send path should not be able to
+// evict anyone.
+//
+// Every method is addressed by the group's JID rather than by our conversation
+// id, because a workspace can administer a group that has never spoken and
+// therefore has no conversation row.
+type GroupAPI interface {
+	// GroupInfo reads a group's full metadata and roster.
+	//
+	// force bypasses the provider's own cache. Reserved for an explicit operator
+	// refresh: it is the expensive path, and a background sync that always
+	// forced would defeat the caching on both sides.
+	GroupInfo(ctx context.Context, ref InstanceRef, groupJID string, opts GroupInfoOptions) (*Group, error)
+	// ListGroups enumerates every group the connected number is in.
+	//
+	// Used to bootstrap a freshly connected instance. noparticipants is the
+	// normal call: a workspace in 200 groups does not need 200 rosters to render
+	// a list of names.
+	ListGroups(ctx context.Context, ref InstanceRef, withParticipants bool) ([]*Group, error)
+
+	UpdateGroupName(ctx context.Context, ref InstanceRef, groupJID, name string) error
+	UpdateGroupDescription(ctx context.Context, ref InstanceRef, groupJID, description string) error
+	// UpdateGroupImage sets the picture from a URL or base64, or removes it when
+	// image is empty.
+	UpdateGroupImage(ctx context.Context, ref InstanceRef, groupJID, image string) error
+	UpdateParticipants(ctx context.Context, ref InstanceRef, in UpdateParticipantsInput) error
+	// UpdateAnnounce restricts posting to admins.
+	UpdateAnnounce(ctx context.Context, ref InstanceRef, groupJID string, adminsOnly bool) error
+	// UpdateLocked restricts editing the group's info to admins.
+	UpdateLocked(ctx context.Context, ref InstanceRef, groupJID string, adminsOnly bool) error
+	LeaveGroup(ctx context.Context, ref InstanceRef, groupJID string) error
+}
+
+// GroupInfoOptions controls how much a metadata read costs.
+type GroupInfoOptions struct {
+	// WithInviteLink fetches the join link. Off by default and never set by a
+	// background sync: the link is a credential — anyone holding it can join —
+	// so it is read on explicit request and not cached.
+	WithInviteLink bool
+	// Force bypasses the provider's cache.
+	Force bool
 }
 
 // ProviderAPI is the whole provider surface, for wiring convenience.

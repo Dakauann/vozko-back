@@ -257,3 +257,30 @@ func applyPtr(target **string, value **string) {
 		*target = *value
 	}
 }
+
+// GetAllowanceUseCase reports how many numbers a workspace may connect.
+//
+// Its own endpoint rather than a field on the instance list, for two reasons:
+// the connect screen needs it before any list is rendered, and folding it into
+// a paginated list would make "how many may I have" a property of page 1.
+//
+// It is the SAME reader the provisioning gate consults, so the number an
+// operator sees and the number that refuses them cannot disagree — which is the
+// whole failure mode a separate read-side calculation would introduce.
+type GetAllowanceUseCase struct {
+	entitlements uw.InstanceEntitlementReader
+}
+
+func NewGetAllowanceUseCase(entitlements uw.InstanceEntitlementReader) *GetAllowanceUseCase {
+	return &GetAllowanceUseCase{entitlements: entitlements}
+}
+
+func (uc *GetAllowanceUseCase) Execute(ctx context.Context, workspaceID string) (uw.InstanceAllowance, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return uw.InstanceAllowance{}, uw.ErrWorkspaceIDRequired
+	}
+	if uc.entitlements == nil {
+		return uw.InstanceAllowance{}, uw.ErrEntitlementUnavailable
+	}
+	return uc.entitlements.AllowanceFor(ctx, workspaceID)
+}

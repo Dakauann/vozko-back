@@ -1,16 +1,13 @@
 package unofficial_whatsapp
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gorilla/mux"
 
-	"vozko/domain/auth"
 	workspace_domain "vozko/domain/workspace"
-	"vozko/infra/http/middleware"
 )
 
 // recordingAC captures the RBAC resource/action each route was registered with,
@@ -96,48 +93,152 @@ func TestRegisterProtectedRoutes_NilHandlerRegistersNothing(t *testing.T) {
 	}
 }
 
-// TestCreateInstanceIsPlatformAdminOnly pins the temporary provisioning gate.
+// Provisioning is workspace RBAC now, not a platform-admin lockout.
 //
-// Delete this test in the same change that lifts the restriction; a passing
-// test for a rule nobody wants any more is how the rule survives its own
-// deprecation.
-func TestCreateInstanceIsPlatformAdminOnly(t *testing.T) {
-	reached := false
-	guarded := requirePlatformAdmin(func(w http.ResponseWriter, r *http.Request) {
-		reached = true
-		w.WriteHeader(http.StatusCreated)
-	})
+// The restriction it replaces was explicitly temporary — "until pricing is
+// decided" — and its own test asked to be deleted in the change that lifted it.
+// This is that change: an allowance granted per workspace, topped up by addons
+// and enforced in ProvisionInstanceUseCase, is the pricing the lockout stood in
+// for. What is asserted here is only that the ROUTE no longer carries a second
+// guard; that the limit is honoured is asserted where the limit lives.
+func TestCreateInstanceUsesWorkspaceRBACOnly(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
 
+	const res = "unofficial_whatsapp_instances"
+	req := httptest.NewRequest(http.MethodPost, "/unofficial-whatsapp/instances", nil)
+
+	var match mux.RouteMatch
+	if !router.Match(req, &match) {
+		t.Fatal("POST /instances is not registered")
+	}
+	router.ServeHTTP(httptest.NewRecorder(), req)
+
+	if got := ac.calls["POST /unofficial-whatsapp/instances"]; got != res+":create" {
+		t.Errorf("guarded by %q, want %q", got, res+":create")
+	}
+}
+
+// The allowance read must be a READ.
+//
+// It reports a limit and a usage and changes neither, so gating it on anything
+// stronger would hide the number from exactly the attendants who need to know
+// why the connect button is disabled.
+func TestAllowanceRouteIsARead(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
+
+	req := httptest.NewRequest(http.MethodGet, "/unofficial-whatsapp/instances/allowance", nil)
+	var match mux.RouteMatch
+	if !router.Match(req, &match) {
+		t.Fatal("GET /instances/allowance is not registered")
+	}
+	router.ServeHTTP(httptest.NewRecorder(), req)
+
+	want := "unofficial_whatsapp_instances:read"
+	if got := ac.calls["GET /unofficial-whatsapp/instances/allowance"]; got != want {
+		t.Errorf("guarded by %q, want %q", got, want)
+	}
+}
+
+// The group routes carry a SHARPER permission split than the instance ones, and
+// this pins it.
+//
+// Everything here acts inside the customer's own WhatsApp groups, on people who
+// are not our users. Removal is ActionDelete rather than ActionUpdate
+// deliberately: evicting someone from a group is irreversible from our side and
+// visible to everyone in it, and an attendant trusted to invite people is not
+// thereby trusted to throw them out. Collapsing the two would make the split in
+// the handler advisory.
+func TestRegisterGroupRoutes_SplitsReadEditAndEvict(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+
+	RegisterGroupRoutes(router, &GroupHandler{}, ac.fn)
+
+	const res = "unofficial_whatsapp_instances"
+	// The literal JID, not a percent-encoded one. The client encodes it, gorilla
+	// matches on the DECODED path, and this map is keyed by URL.Path — which is
+	// also decoded. Spelling it encoded here only tested the test.
+	const jid = "120363012345678901@g.us"
 	cases := []struct {
-		name     string
-		claims   *auth.Claims
-		wantCode int
-		wantThru bool
+		method string
+		path   string
+		want   string
 	}{
-		{"platform admin passes", &auth.Claims{Role: "admin"}, http.StatusCreated, true},
-		{"workspace user denied", &auth.Claims{Role: "user"}, http.StatusForbidden, false},
-		{"empty role denied", &auth.Claims{Role: ""}, http.StatusForbidden, false},
-		// No claims means the request never went through auth. On a provisioning
-		// endpoint the safe reading of that wiring fault is "no".
-		{"absent claims denied", nil, http.StatusForbidden, false},
+		{http.MethodGet, "/unofficial-whatsapp/instances/i-1/groups", res + ":read"},
+		{http.MethodGet, "/unofficial-whatsapp/instances/i-1/groups/" + jid, res + ":read"},
+		{http.MethodGet, "/unofficial-whatsapp/instances/i-1/groups/" + jid + "/invite-link", res + ":read"},
+
+		{http.MethodPatch, "/unofficial-whatsapp/instances/i-1/groups/" + jid, res + ":update"},
+		{http.MethodPost, "/unofficial-whatsapp/instances/i-1/groups/" + jid + "/participants", res + ":update"},
+
+		{http.MethodDelete, "/unofficial-whatsapp/instances/i-1/groups/" + jid + "/participants", res + ":delete"},
+		{http.MethodPost, "/unofficial-whatsapp/instances/i-1/groups/" + jid + "/leave", res + ":delete"},
+
+		// The conversation-scoped twins. The CRM holds an entry id and never a
+		// WhatsApp JID, and the same act must not become cheaper for being
+		// reached through a different id — so the guards are identical.
+		{http.MethodGet, "/unofficial-whatsapp/conversations/e-1/group", res + ":read"},
+		{http.MethodGet, "/unofficial-whatsapp/conversations/e-1/group/invite-link", res + ":read"},
+		{http.MethodPatch, "/unofficial-whatsapp/conversations/e-1/group", res + ":update"},
+		{http.MethodPost, "/unofficial-whatsapp/conversations/e-1/group/participants", res + ":update"},
+		{http.MethodDelete, "/unofficial-whatsapp/conversations/e-1/group/participants", res + ":delete"},
+		{http.MethodPost, "/unofficial-whatsapp/conversations/e-1/group/leave", res + ":delete"},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			reached = false
-			req := httptest.NewRequest(http.MethodPost, "/unofficial-whatsapp/instances", nil)
-			if tc.claims != nil {
-				req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsContextKey, tc.claims))
-			}
-			rec := httptest.NewRecorder()
-			guarded(rec, req)
+	for _, c := range cases {
+		var match mux.RouteMatch
+		req := httptest.NewRequest(c.method, c.path, nil)
 
-			if rec.Code != tc.wantCode {
-				t.Fatalf("status = %d, want %d", rec.Code, tc.wantCode)
-			}
-			if reached != tc.wantThru {
-				t.Fatalf("handler reached = %v, want %v", reached, tc.wantThru)
-			}
-		})
+		if !router.Match(req, &match) {
+			t.Errorf("%s %s is not registered", c.method, c.path)
+			continue
+		}
+		router.ServeHTTP(httptest.NewRecorder(), req)
+
+		if got := ac.calls[c.method+" "+c.path]; got != c.want {
+			t.Errorf("%s %s guarded by %q, want %q", c.method, c.path, got, c.want)
+		}
+	}
+}
+
+func TestRegisterGroupRoutes_NilHandlerRegistersNothing(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+
+	RegisterGroupRoutes(router, nil, ac.fn)
+
+	var match mux.RouteMatch
+	req := httptest.NewRequest(http.MethodGet, "/unofficial-whatsapp/instances/i-1/groups", nil)
+	if router.Match(req, &match) {
+		t.Error("a nil group handler registered routes that would nil-panic on the first request")
+	}
+}
+
+// /instances/allowance must not be swallowed by /instances/{id}.
+//
+// gorilla matches in registration order and "allowance" is a perfectly good
+// value for {id}, so the two routes overlap. Registering them the other way
+// round makes the allowance read resolve as "get the instance whose id is
+// 'allowance'" — a 404 that looks like the endpoint was never deployed, and one
+// nothing in a type checker or a build can catch.
+func TestAllowanceRouteIsNotShadowedByTheInstanceLookup(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
+
+	req := httptest.NewRequest(http.MethodGet, "/unofficial-whatsapp/instances/allowance", nil)
+	var match mux.RouteMatch
+	if !router.Match(req, &match) {
+		t.Fatal("GET /instances/allowance is not registered")
+	}
+
+	// The decisive assertion: if {id} had captured it, Vars would carry id.
+	if id, captured := match.Vars["id"]; captured {
+		t.Errorf("the allowance path was captured by /instances/{id} as id=%q; "+
+			"register the literal path first", id)
 	}
 }

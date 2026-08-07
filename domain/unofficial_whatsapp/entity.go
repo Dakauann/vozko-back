@@ -442,12 +442,19 @@ func (i *Instance) SendDelayRange() (minMS, maxMS int) {
 
 // ---------------------------------------------------------------- contact
 
-// Contact is a person on the other side of one of our numbers.
+// Contact is the SUBJECT of a conversation: the person on the other side of one
+// of our numbers, or the group the chat is.
 //
-// WhatsApp now addresses the same human by two identifiers: a phone-number JID
-// and a LID. Both are stored, because treating them as two people splits one
-// real chat into two CRM conversations, which reads to an operator as data loss
-// rather than as a bug.
+// Groups live here rather than in a table of their own because the CRM asks one
+// question of every conversation — "who is this with?" — and answers it with a
+// name, a handle, a picture and a blocked flag. A group answers all four. The
+// facts that are genuinely group-shaped (subject history, roster, admin rules)
+// are NOT here; they live in Group, which the inbox never reads.
+//
+// WhatsApp addresses the same human by two identifiers: a phone-number JID and a
+// LID. Both are stored, because treating them as two people splits one real chat
+// into two CRM conversations, which reads to an operator as data loss rather
+// than as a bug.
 type Contact struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
@@ -455,6 +462,13 @@ type Contact struct {
 
 	JID string `json:"jid"`
 	LID string `json:"lid,omitempty"`
+	// IsGroup marks this subject as a group chat rather than a person.
+	//
+	// It is the predicate every person-only path reads — lead bridging, the
+	// dialer, broadcast targeting — instead of each of them re-deriving it from
+	// the JID suffix. A predicate re-derived at four call sites is a predicate
+	// that will be missed at the fifth.
+	IsGroup bool `json:"isGroup"`
 	// PhoneNumber is E.164 without a leading +. It is the CRM bridge, and the
 	// reason this channel's contacts are first-class where Instagram's and
 	// Telegram's are not.
@@ -462,10 +476,25 @@ type Contact struct {
 	// LeadID links to the CRM lead this contact is. Resolved on first inbound.
 	LeadID *string `json:"leadId,omitempty"`
 
-	Name             string     `json:"name,omitempty"`
-	ContactName      string     `json:"contactName,omitempty"`
-	VerifiedName     string     `json:"verifiedName,omitempty"`
-	PictureURL       string     `json:"pictureUrl,omitempty"`
+	Name         string `json:"name,omitempty"`
+	ContactName  string `json:"contactName,omitempty"`
+	VerifiedName string `json:"verifiedName,omitempty"`
+	// PictureURL is OUR re-hosted copy — the only one anything renders.
+	PictureURL string `json:"pictureUrl,omitempty"`
+	// PictureSourceURL is the PROVIDER's url the copy above was made from.
+	//
+	// It is the change detector, and it is what makes a profile picture update
+	// nearly free. WhatsApp's avatar urls carry a content id, so a url that has
+	// not changed means a picture that has not changed: seeing the same value
+	// again skips the download and the upload entirely. Without it there is no
+	// way to tell "the same photo, read again" from "a new photo", so either
+	// every read re-downloads or a change is invisible until the TTL expires —
+	// which is exactly the bug where an operator changed a group's picture and
+	// the CRM kept the old one.
+	//
+	// Never rendered: it is short-lived and unauthenticated, which is why the
+	// bytes are re-hosted in the first place.
+	PictureSourceURL string     `json:"-"`
 	IsBusiness       bool       `json:"isBusiness"`
 	ProfileFetchedAt *time.Time `json:"profileFetchedAt,omitempty"`
 
@@ -479,19 +508,51 @@ type Contact struct {
 // DisplayName prefers the name the operator's own phone knows, then the
 // business-verified name, then the WhatsApp profile name, and only then the
 // number. A row is never blank.
+//
+// A group whose subject has not synced yet falls back to UnnamedGroupLabel
+// rather than to its JID: the first inbound message creates the conversation and
+// the metadata sync lands moments later, and "120363…@g.us" in the inbox for
+// those moments looks like a broken row rather than a pending one.
 func (c *Contact) DisplayName() string {
 	for _, candidate := range []string{c.ContactName, c.VerifiedName, c.Name} {
 		if v := strings.TrimSpace(candidate); v != "" {
 			return v
 		}
 	}
+	if c.IsGroup {
+		return UnnamedGroupLabel
+	}
 	return c.Handle()
 }
 
 // Handle fills the CRM's "number" slot, which is what an operator searches by.
+//
+// A group has no number, and it returns empty rather than its JID: the slot is
+// rendered as a phone number everywhere it appears, and a group id shown there
+// reads as a number an operator could dial.
 func (c *Contact) Handle() string {
+	if c.IsGroup {
+		return ""
+	}
 	if c.PhoneNumber != "" {
 		return "+" + c.PhoneNumber
+	}
+	return c.JID
+}
+
+// ProfileRef is how this subject is addressed when READING its profile.
+//
+// The bare phone number is preferred over the JID, and that is not cosmetic: the
+// provider's chat-details endpoint documents its argument as "a phone number or
+// a group id", and a subject first seen under a LID has a JID of the form
+// "…@lid" that identifies nobody outside WhatsApp's own privacy layer. Asking
+// with that yields nothing, which looks exactly like "this person has no
+// picture".
+//
+// A group is addressed by its JID, because that IS its id.
+func (c *Contact) ProfileRef() string {
+	if !c.IsGroup && c.PhoneNumber != "" {
+		return c.PhoneNumber
 	}
 	return c.JID
 }
@@ -537,13 +598,30 @@ type Conversation struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// InScope reports whether this conversation is ATTENDED at all — whether it
+// enters the round-robin, gets analysed, and counts as work.
+//
+// Separate from RunsAutomation because the two answer different questions and
+// folding them cost both: an operator pausing the AI on one conversation must
+// not also un-assign it, and a group that automation ignores must still be
+// visible, repliable and manually assignable.
+//
+// A group is out of scope unless its instance opts in, because auto-assigning
+// group threads to a random agent is almost never what a workspace wants.
+// Sending is never gated by this: the send path checks the session, the
+// restriction and the block, and nothing else.
+func (c *Conversation) InScope(instanceHandlesGroups bool) bool {
+	return !c.IsGroup || instanceHandlesGroups
+}
+
 // RunsAutomation reports whether AI replies and workflows may act here.
 //
-// Groups are excluded by construction rather than by configuration: with a
-// partial view of a group thread, an agent would be answering a conversation it
-// cannot see.
+// Two gates, in order: the conversation has to be in scope at all, and the
+// per-conversation override has to allow it. With a partial view of a group
+// thread an agent answers a conversation it cannot see, which is why the group
+// gate is an instance-level opt-in rather than a default.
 func (c *Conversation) RunsAutomation(instanceHandlesGroups bool) bool {
-	if c.IsGroup && !instanceHandlesGroups {
+	if !c.InScope(instanceHandlesGroups) {
 		return false
 	}
 	return c.AutomationEnabled == nil || *c.AutomationEnabled
@@ -569,16 +647,23 @@ func NormalizePhone(raw string) string {
 
 // PhoneFromJID extracts the phone number from a JID.
 //
-// A LID-form JID ("…@lid") carries no phone number at all, and returning its
-// numeric part would invent one: that value is an opaque identifier, and
-// matching a lead against it would attach a conversation to the wrong person.
+// Only a user JID carries one. Every other form is an opaque identifier whose
+// numeric part is NOT a number, and returning it would invent one:
+//
+//   - "…@lid" is WhatsApp's privacy identifier for a person;
+//   - "…@g.us" is a group's id, and treating it as a phone produced contacts
+//     that rendered as "+120363…" and could be handed to the dialer;
+//   - "…@newsletter" is a channel id.
+//
+// Matching a lead against any of them attaches a conversation to the wrong
+// person, so they all return empty.
 func PhoneFromJID(jid string) string {
 	jid = strings.TrimSpace(jid)
 	if jid == "" {
 		return ""
 	}
 	user, domain, found := strings.Cut(jid, "@")
-	if found && strings.EqualFold(domain, DomainLID) {
+	if found && !strings.EqualFold(domain, DomainUser) {
 		return ""
 	}
 	// Multi-device JIDs carry a device suffix ("5511999999999:12@…").

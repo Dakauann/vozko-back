@@ -513,4 +513,3 @@ func TestNewPurchaseAddonUseCase_Constructor(t *testing.T) {
 		t.Fatal("expected a non-nil use case")
 	}
 }
-

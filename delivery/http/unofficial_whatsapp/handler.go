@@ -32,6 +32,7 @@ type Handler struct {
 	rotateToken *uwuc.RotateDeliveryTokenUseCase
 	remove      *uwuc.DeleteInstanceUseCase
 	startConv   *uwuc.StartConversationUseCase
+	allowance   *uwuc.GetAllowanceUseCase
 }
 
 // HandlerDeps groups the usecases.
@@ -44,6 +45,7 @@ type HandlerDeps struct {
 	RotateToken *uwuc.RotateDeliveryTokenUseCase
 	Remove      *uwuc.DeleteInstanceUseCase
 	StartConv   *uwuc.StartConversationUseCase
+	Allowance   *uwuc.GetAllowanceUseCase
 }
 
 func NewHandler(d HandlerDeps) *Handler {
@@ -56,7 +58,54 @@ func NewHandler(d HandlerDeps) *Handler {
 		updateCfg:   d.UpdateCfg,
 		rotateToken: d.RotateToken,
 		remove:      d.Remove,
+		allowance:   d.Allowance,
 	}
+}
+
+// allowanceDTO is what the connect screen needs to decide what to offer.
+//
+// `canConnect` and `remaining` are derived SERVER-side from the same value the
+// provisioning gate enforces. Deriving them in the browser would be one more
+// place for the rule to live, and the first time the two disagreed an operator
+// would be shown a button that cannot work.
+type allowanceDTO struct {
+	Limit int `json:"limit"`
+	Used  int `json:"used"`
+	// The two halves of Limit, so the meter can say "2 included + 3 purchased"
+	// rather than only "5" — one is a decision we made, the other is something
+	// the workspace bought, and they have different remedies when the meter fills.
+	Granted    int  `json:"granted"`
+	Purchased  int  `json:"purchased"`
+	Remaining  int  `json:"remaining"`
+	CanConnect bool `json:"canConnect"`
+	// OverLimit is reachable without anyone doing anything wrong — an addon
+	// lapses, or an administrator lowers a grant. Surfaced so the UI can explain
+	// it rather than silently disabling a button.
+	OverLimit bool `json:"overLimit"`
+}
+
+// GetAllowance reports the workspace's number allowance and current usage.
+func (h *Handler) GetAllowance(w http.ResponseWriter, r *http.Request) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+		return
+	}
+
+	allowance, err := h.allowance.Execute(r.Context(), workspaceID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, allowanceDTO{
+		Limit:      allowance.Limit,
+		Used:       allowance.Used,
+		Granted:    allowance.Granted,
+		Purchased:  allowance.Purchased,
+		Remaining:  allowance.Remaining(),
+		CanConnect: allowance.CanProvision(),
+		OverLimit:  allowance.OverLimit(),
+	})
 }
 
 // ---------------------------------------------------------------- instances
@@ -322,8 +371,39 @@ func (h *Handler) RotateWebhookToken(w http.ResponseWriter, r *http.Request) {
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, uw.ErrInstanceNotFound), errors.Is(err, uw.ErrServerNotFound),
-		errors.Is(err, uw.ErrContactNotFound), errors.Is(err, uw.ErrConversationNotFound):
+		errors.Is(err, uw.ErrContactNotFound), errors.Is(err, uw.ErrConversationNotFound),
+		errors.Is(err, uw.ErrGroupNotFound), errors.Is(err, uwuc.ErrGroupNotInWorkspace):
 		response.WriteError(w, http.StatusNotFound, "not found", nil)
+
+	// 403, not 400: the request is well-formed and the group exists, the
+	// connected number simply is not an admin of it. The UI already hides these
+	// controls, so reaching this means state changed under the operator, and
+	// "you are not an admin of this group" is the only useful thing to say.
+	case errors.Is(err, uw.ErrNotGroupAdmin):
+		response.WriteError(w, http.StatusForbidden,
+			"the connected number is not an admin of this group", nil)
+
+	case errors.Is(err, uw.ErrNotAGroupJID), errors.Is(err, uw.ErrGroupNameRequired),
+		errors.Is(err, uw.ErrGroupNameTooLong), errors.Is(err, uw.ErrGroupTopicTooLong),
+		errors.Is(err, uw.ErrNoParticipants), errors.Is(err, uw.ErrInvalidGroupAction):
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+
+	// 402, not 403: the caller has permission, they have run out of allowance.
+	// The distinction is what lets the UI offer an upsell instead of "contact
+	// your administrator", and the two errors are kept apart because their
+	// remedies are — one needs a grant, the other needs a purchase.
+	case errors.Is(err, uw.ErrNoInstanceAllowance):
+		response.WriteError(w, http.StatusPaymentRequired,
+			"this workspace has no unofficial WhatsApp numbers included; ask your account manager to grant an allowance", nil)
+
+	case errors.Is(err, uw.ErrInstanceLimitReached):
+		response.WriteError(w, http.StatusPaymentRequired, err.Error(), nil)
+
+	// 503, not 500: the request was fine and retrying may work. Provisioning
+	// fails closed on an unreadable entitlement rather than assuming unlimited.
+	case errors.Is(err, uw.ErrEntitlementUnavailable):
+		response.WriteError(w, http.StatusServiceUnavailable,
+			"could not verify this workspace's number allowance; try again shortly", nil)
 
 	case errors.Is(err, uw.ErrNoServerCapacity):
 		response.WriteError(w, http.StatusServiceUnavailable,

@@ -67,6 +67,10 @@ func (s *stubConfigRepo) EnsureExists(ctx context.Context, workspaceID string) e
 	return s.ensureErr
 }
 
+func (s *stubConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
 type stubTrackReferral struct {
 	calls  []affiliate.TrackReferralInput
 	result *affiliate.Referral

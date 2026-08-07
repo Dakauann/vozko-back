@@ -12,6 +12,18 @@ type WorkspaceConfig struct {
 	WorkspaceID                string `gorm:"type:uuid;not null;uniqueIndex:idx_wsc_workspace"`
 	CampaignSpamProtectionDays int    `gorm:"type:int;not null;default:3"`
 	SkipAdminAssignment        bool   `gorm:"not null;default:false"`
+	// IncludedUnofficialWhatsAppInstances is the platform-granted allowance of
+	// linked-device WhatsApp numbers. Default 0 — "none included" — so an
+	// existing workspace is not silently handed capacity nobody decided to give
+	// it when this column appears.
+	//
+	// The explicit column name is load-bearing, not style, and is the same trap
+	// the unofficial-WhatsApp schema documents for `jid`: GORM's naming strategy
+	// runs a common-initialism replacer before snake-casing, so "WhatsApp"
+	// derives `whats_app` and the column would be
+	// `included_unofficial_whats_app_instances`. Any hand-written SQL that spells
+	// it the obvious way then fails with "column does not exist".
+	IncludedUnofficialWhatsAppInstances int `gorm:"column:included_unofficial_whatsapp_instances;type:int;not null;default:0"`
 	// HoldMusicTrack: "" | "builtin:<key>" | hold_music media uuid. varchar (not
 	// uuid) because builtin keys and the empty default are not uuids.
 	HoldMusicTrack string `gorm:"type:varchar(80);not null;default:''"`

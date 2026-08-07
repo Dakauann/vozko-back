@@ -2,6 +2,7 @@ package unofficial_whatsapp
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -177,14 +178,31 @@ func (uc *CheckInstanceHealthUseCase) verifyWebhook(ctx context.Context, ref uw.
 	}
 
 	expected := uw.WebhookURLFor(uc.webhookBaseURL, instance.DeliveryToken)
+	reason := "missing or disabled"
 	for _, sub := range subs {
-		if sub.Enabled && sub.URL == expected {
-			return
+		if !sub.Enabled || sub.URL != expected {
+			continue
 		}
+		// The URL matching is not enough, and assuming it was cost a real bug.
+		//
+		// This used to return here on a URL match alone, so an instance
+		// registered before an event was ADDED to the subscription never
+		// received that event — the host was pointed at us, the check was
+		// satisfied, and the new event type stayed unsubscribed forever. That is
+		// what kept `groups` from arriving on already-connected numbers: a
+		// group's picture changed, no invalidation was ever delivered, and the
+		// CRM went on showing the old one until somebody pressed refresh.
+		//
+		// Re-registering is an upsert and therefore safe to repeat.
+		if missing := missingEvents(sub.Events, uw.SubscribedEvents()); len(missing) > 0 {
+			reason = fmt.Sprintf("not subscribed to %v", missing)
+			break
+		}
+		return
 	}
 
-	log.Printf("[unofficial-whatsapp] instance %s: webhook missing or disabled on the host; re-registering",
-		instance.ID)
+	log.Printf("[unofficial-whatsapp] instance %s: webhook %s on the host; re-registering",
+		instance.ID, reason)
 	err = uc.provider.SetWebhook(ctx, ref, uw.WebhookSubscription{
 		URL:             expected,
 		Enabled:         true,
@@ -266,4 +284,25 @@ func (c *serverCache) get(ctx context.Context, id string) (*uw.Server, error) {
 	}
 	c.loaded[id] = server
 	return server, nil
+}
+
+// missingEvents reports which of `want` the host is not currently sending.
+//
+// Case-insensitive, because the provider is not consistent about the casing of
+// its own event names — the envelope decoder already works around the same
+// thing. A false "missing" here would re-register the webhook on every health
+// run, which is harmless but noisy enough to hide a real one.
+func missingEvents(have, want []string) []string {
+	subscribed := make(map[string]struct{}, len(have))
+	for _, e := range have {
+		subscribed[strings.ToLower(strings.TrimSpace(e))] = struct{}{}
+	}
+
+	var missing []string
+	for _, e := range want {
+		if _, ok := subscribed[strings.ToLower(strings.TrimSpace(e))]; !ok {
+			missing = append(missing, e)
+		}
+	}
+	return missing
 }

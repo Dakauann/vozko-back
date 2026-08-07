@@ -3,6 +3,7 @@ package unofficial_whatsapp_repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -21,10 +22,31 @@ func NewConversationRepository(db *gorm.DB) uw.ConversationRepository {
 	return &conversationRepository{db: db}
 }
 
+// FindOrCreate resolves the conversation a chat belongs to.
+//
+// Keyed on the CHAT, not on the subject. The two are equivalent for a private
+// chat — the chat id is the person's JID — but only one of them is right for a
+// group, and keying on the subject is what let a group thread fork into one
+// conversation per participant that spoke. The chat id is the identity the
+// provider itself uses for addressing, so it is the honest key for both.
+//
+// The subject lookup remains as a fallback for rows written before chat ids were
+// enforced; it can only match when the chat lookup missed, which on a repaired
+// database means the row predates the column.
 func (r *conversationRepository) FindOrCreate(
 	ctx context.Context,
 	in uw.FindOrCreateConversationInput,
 ) (*uw.Conversation, error) {
+	if chatID := strings.TrimSpace(in.ChatID); chatID != "" {
+		existing, err := r.FindByChatID(ctx, in.InstanceID, chatID)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, uw.ErrConversationNotFound) {
+			return nil, err
+		}
+	}
+
 	existing, err := r.findByContact(ctx, in.InstanceID, in.ContactID)
 	if err == nil {
 		return existing, nil
@@ -34,24 +56,28 @@ func (r *conversationRepository) FindOrCreate(
 	}
 
 	record := &schema.UnofficialWhatsAppConversation{
-		WorkspaceID:         in.WorkspaceID,
-		InstanceID:          in.InstanceID,
-		ContactID:           in.ContactID,
-		ChatID:              in.ChatID,
-		IsGroup:             in.IsGroup,
+		WorkspaceID: in.WorkspaceID,
+		InstanceID:  in.InstanceID,
+		ContactID:   in.ContactID,
+		ChatID:      in.ChatID,
+		IsGroup:     in.IsGroup,
 	}
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "instance_id"}, {Name: "contact_id"}},
+			Columns: []clause.Column{{Name: "instance_id"}, {Name: "chat_id"}},
 			// Partial unique index: the predicate must be repeated or Postgres
 			// refuses to use it as the conflict arbiter (42P10).
 			TargetWhere: clause.Where{
-				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},
+				Exprs: []clause.Expression{clause.Expr{SQL: "chat_id <> '' AND deleted_at IS NULL"}},
 			},
 			DoNothing: true,
 		}).
 		Create(record).Error; err != nil {
 		return nil, err
+	}
+
+	if chatID := strings.TrimSpace(in.ChatID); chatID != "" {
+		return r.FindByChatID(ctx, in.InstanceID, chatID)
 	}
 	return r.findByContact(ctx, in.InstanceID, in.ContactID)
 }

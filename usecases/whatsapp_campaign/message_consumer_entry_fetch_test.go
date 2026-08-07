@@ -112,3 +112,9 @@ func (m recentLeadSendRepo) GetLastSendTime(_, _ string) (*time.Time, error) {
 func (m recentLeadSendRepo) GetLastSendTimesBatch(_ []string, _ string) (map[string]time.Time, error) {
 	return nil, nil
 }
+
+// The entitlement sweep's batch read. This fake serves an unrelated use case and
+// only needs to satisfy the interface.
+func (m spamWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}

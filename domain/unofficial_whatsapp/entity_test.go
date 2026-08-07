@@ -141,24 +141,93 @@ func TestNormalizePhoneKeepsOnlyDigits(t *testing.T) {
 	}
 }
 
-// PhoneFromJID must refuse to invent a number from a LID.
+// PhoneFromJID must refuse to invent a number out of anything that is not one.
 //
-// A LID's numeric part is an opaque identifier, not a phone number. Returning it
-// would match a lead by coincidence and attach one person's conversation to
-// another's CRM record — a silent, high-damage error.
-func TestPhoneFromJIDRefusesLIDs(t *testing.T) {
+// Only a user JID carries a phone number. Every other form's numeric part is an
+// opaque identifier, and returning it matches a lead by coincidence and attaches
+// one party's conversation to another's CRM record — a silent, high-damage
+// error.
+//
+// The group case is a real bug this pins, not a hypothetical: a group id used to
+// come back as digits and get stored as a contact's phone number, so the CRM
+// rendered groups as "+120363…" and handed that to the dialer and the lead
+// bridge.
+func TestPhoneFromJIDOnlyReadsUserJIDs(t *testing.T) {
 	cases := map[string]string{
 		"5511999999999@s.whatsapp.net":    "5511999999999",
 		"5511999999999:12@s.whatsapp.net": "5511999999999",
 		"189923456789012@lid":             "",
 		"189923456789012@LID":             "",
-		"120363012345678901@g.us":         "120363012345678901",
-		"":                                "",
+		"120363012345678901@g.us":         "",
+		"120363012345678901@newsletter":   "",
+		// No domain at all is a bare number, which several provider fields carry.
+		"+55 11 99999-9999": "5511999999999",
+		"":                  "",
 	}
 	for in, want := range cases {
 		if got := PhoneFromJID(in); got != want {
 			t.Errorf("PhoneFromJID(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A group is a conversation subject with no number and no lead.
+//
+// Both halves matter. The empty handle keeps a group id out of the CRM's number
+// column, which is rendered as a dialable phone everywhere it appears; the
+// labelled fallback keeps a freshly-created group from rendering as a blank row
+// in the seconds before its metadata read lands.
+func TestGroupSubjectHasNoNumber(t *testing.T) {
+	group := &Contact{JID: "120363012345678901@g.us", IsGroup: true}
+	if got := group.Handle(); got != "" {
+		t.Errorf("group Handle() = %q, want empty", got)
+	}
+	if got := group.DisplayName(); got != UnnamedGroupLabel {
+		t.Errorf("unnamed group DisplayName() = %q, want %q", got, UnnamedGroupLabel)
+	}
+
+	group.Name = "Time Comercial"
+	if got := group.DisplayName(); got != "Time Comercial" {
+		t.Errorf("named group DisplayName() = %q, want the subject", got)
+	}
+
+	person := &Contact{JID: "5511999999999@s.whatsapp.net", PhoneNumber: "5511999999999"}
+	if got := person.Handle(); got != "+5511999999999" {
+		t.Errorf("person Handle() = %q, want the number", got)
+	}
+}
+
+// InScope and RunsAutomation answer different questions, and folding them cost
+// both: an operator pausing the AI on one conversation must not also un-assign
+// it, and a group automation ignores must still be visible and assignable.
+func TestGroupScopeAndAutomationAreSeparate(t *testing.T) {
+	off := false
+	group := &Conversation{IsGroup: true}
+	private := &Conversation{}
+
+	if group.InScope(false) {
+		t.Error("a group is out of scope unless its instance opts in")
+	}
+	if !group.InScope(true) {
+		t.Error("HandleGroups must bring a group into scope")
+	}
+	if !private.InScope(false) {
+		t.Error("a private chat is always in scope")
+	}
+
+	if group.RunsAutomation(false) {
+		t.Error("an out-of-scope group must not run automation")
+	}
+	if !group.RunsAutomation(true) {
+		t.Error("an opted-in group with no override must run automation")
+	}
+
+	paused := &Conversation{IsGroup: true, AutomationEnabled: &off}
+	if paused.RunsAutomation(true) {
+		t.Error("the per-conversation override must still win")
+	}
+	if !paused.InScope(true) {
+		t.Error("pausing the AI must not take the conversation out of scope")
 	}
 }
 

@@ -32,6 +32,10 @@ func (m *memWscRepo) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 }
 func (m *memWscRepo) EnsureExists(ctx context.Context, workspaceID string) error { return nil }
 
+func (m *memWscRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
 type memWsOwner struct {
 	ownerID string
 }

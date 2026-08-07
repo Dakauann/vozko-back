@@ -155,6 +155,7 @@ type router struct {
 	telegramHandler            *telegramhttp.Handler
 	telegramWebhookHandler     *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler  *unofficialwahttp.Handler
+	unofficialWhatsAppGroups   *unofficialwahttp.GroupHandler
 	unofficialWhatsAppWebhook  *unofficialwahttp.WebhookHandler
 	workspaceHandler           *workspacehttp.WorkspaceHandler
 	workspacePricingHandler    *workspacepricinghttp.WorkspacePricingHandler
@@ -270,6 +271,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	telegramWebhookHandler *telegramhttp.WebhookHandler,
 	unofficialWhatsAppHandler *unofficialwahttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
+	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
 ) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
@@ -278,6 +280,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
 		unofficialWhatsAppHandler:      unofficialWhatsAppHandler,
 		unofficialWhatsAppWebhook:      unofficialWhatsAppWebhook,
+		unofficialWhatsAppGroups:       unofficialWhatsAppGroups,
 		mux:                            mux.NewRouter(),
 		productHandler:                 productHandler,
 		propertyHandler:                propertyHandler,
@@ -598,6 +601,10 @@ func (r *router) setupUnofficialWhatsAppRoutes(protected *mux.Router) {
 		return
 	}
 	unofficialwahttp.RegisterProtectedRoutes(protected, r.unofficialWhatsAppHandler, r.ac)
+	// Registered separately because the group endpoints carry their own RBAC
+	// split — reading a roster, editing a group, and evicting someone from it
+	// are three different privileges. See RegisterGroupRoutes.
+	unofficialwahttp.RegisterGroupRoutes(protected, r.unofficialWhatsAppGroups, r.ac)
 }
 
 func (r *router) setupMetaEmbeddedSignupRoutes(protected *mux.Router) {

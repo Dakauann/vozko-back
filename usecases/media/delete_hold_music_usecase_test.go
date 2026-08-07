@@ -89,3 +89,9 @@ func TestDeleteHoldMusic_RefusesOtherMediaTypes(t *testing.T) {
 		t.Fatalf("err=%v, want ErrNotHoldMusic (workflow-referenced media must not be deletable here)", err)
 	}
 }
+
+// The entitlement sweep's batch read. This fake serves an unrelated use case and
+// only needs to satisfy the interface.
+func (f *fakeConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}

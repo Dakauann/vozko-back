@@ -89,6 +89,15 @@ type InstanceRepository interface {
 	// any event can tell us, so recency of contact is irrelevant.
 	ListConnected(ctx context.Context, limit int) ([]*Instance, error)
 	CountByServer(ctx context.Context, serverID string) (int, error)
+	// CountByWorkspace is what the entitlement gate measures against.
+	//
+	// It counts EVERY non-deleted instance, not only connected ones, and that is
+	// the point: a provisioned instance holds a slot on a host whether or not its
+	// session is currently alive — the host's own capacity counter is claimed at
+	// provisioning and released at deletion, never at disconnect. Counting only
+	// live sessions would let a workspace provision without limit by letting its
+	// numbers drop.
+	CountByWorkspace(ctx context.Context, workspaceID string) (int, error)
 
 	Delete(ctx context.Context, id string) error
 }
@@ -141,8 +150,9 @@ type ContactRepository interface {
 	LinkLead(ctx context.Context, id, leadID string) error
 }
 
-// FindOrCreateContactInput identifies a contact and seeds what the event
-// already told us, so a first message yields a named contact with no extra call.
+// FindOrCreateContactInput identifies a conversation subject and seeds what the
+// event already told us, so a first message yields a named subject with no extra
+// call.
 type FindOrCreateContactInput struct {
 	WorkspaceID string
 	InstanceID  string
@@ -150,16 +160,29 @@ type FindOrCreateContactInput struct {
 	LID         string
 	PhoneNumber string
 	Name        string
+	// IsGroup marks the subject as a group chat. Set at creation and never
+	// changed: a JID does not stop being a group.
+	IsGroup bool
 }
 
-// ContactProfile is the mutable, refreshable part of a contact.
+// ContactProfile is the mutable, refreshable part of a conversation subject.
+//
+// FetchedAt is written on EVERY attempt, including failures. A subject whose
+// profile read errors or returns nothing must not be retried on the next
+// inbound message and the one after that: the TTL is the budget, and a fetch
+// that only stamps on success turns every unphotographed contact into a
+// permanent per-message provider call.
 type ContactProfile struct {
 	Name         string
 	ContactName  string
 	VerifiedName string
 	PictureURL   string
-	IsBusiness   bool
-	FetchedAt    time.Time
+	// PictureSourceURL is the provider url PictureURL was re-hosted from, and is
+	// written together with it so the pair can never disagree about which photo
+	// the stored copy is.
+	PictureSourceURL string
+	IsBusiness       bool
+	FetchedAt        time.Time
 }
 
 // ConversationRepository persists conversation entries.
@@ -198,6 +221,45 @@ type FindOrCreateConversationInput struct {
 	ContactID   string
 	ChatID      string
 	IsGroup     bool
+}
+
+// GroupRepository persists the group read model.
+//
+// Deliberately separate from ContactRepository even though a group is also a
+// conversation subject: the inbox reads subjects on every render and must never
+// pay for a roster it does not display, while the group panel reads a roster and
+// does not care about inbox projections. One repository serving both would put
+// the expensive half behind the hot half.
+type GroupRepository interface {
+	// Upsert writes one synced group and replaces its roster atomically.
+	//
+	// Replace rather than merge: a member who left is absent from the new roster
+	// and no diff we could compute locally would remove them. A roster that only
+	// ever grows is worse than no roster, because it reads as authoritative.
+	Upsert(ctx context.Context, g *Group) error
+
+	FindByJID(ctx context.Context, instanceID, jid string) (*Group, error)
+	FindByID(ctx context.Context, id string) (*Group, error)
+	// ListByInstance returns the groups a number belongs to, most recently
+	// active first. Rosters are NOT loaded: a list view shows names.
+	ListByInstance(ctx context.Context, instanceID string) ([]*Group, error)
+	// Participants loads one group's roster.
+	Participants(ctx context.Context, groupID string) ([]GroupParticipant, error)
+
+	// MarkStale records that something about this group changed, without saying
+	// what. This is how the provider's `groups` webhook is consumed — as a
+	// signal, never as a payload — and it is a no-op for a group we do not track.
+	MarkStale(ctx context.Context, instanceID, jid string, at time.Time) error
+
+	// LinkParticipantContacts attaches contact rows to roster entries whose
+	// phone number we already know from a direct chat.
+	//
+	// Run after a roster sync rather than during it, and best-effort: the link
+	// only powers "open the direct conversation" in the roster, and a member we
+	// have never spoken to legitimately has none.
+	LinkParticipantContacts(ctx context.Context, groupID, instanceID string) error
+
+	Delete(ctx context.Context, id string) error
 }
 
 // ProcessedEventRepository is the durable webhook dedup store, identical in

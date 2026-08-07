@@ -381,9 +381,21 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, notifierUC, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
 
-	entitlementResolverUC := workspace_addon_usecase.NewEntitlementResolver(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription)
-	batchEntitlementResolverUC := workspace_addon_usecase.NewBatchEntitlementResolver(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription)
-	getWorkspaceEntitlementsUC := workspace_addon_usecase.NewGetWorkspaceEntitlementsUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription)
+	// The workspace-config source is attached separately because exactly ONE
+	// entitlement kind takes its base from there rather than from the plan:
+	// unofficial WhatsApp numbers, whose allowance a platform administrator
+	// grants per workspace. Without this the kind resolves to zero and no
+	// workspace can connect a number however many it was granted — so it is
+	// attached to all three resolvers, not just the one the gate happens to use.
+	entitlementResolverUC := workspace_addon_usecase.NewEntitlementResolver(
+		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
+		c.repositories.addonSubscription, c.repositories.workspaceConfig)
+	batchEntitlementResolverUC := workspace_addon_usecase.NewBatchEntitlementResolver(
+		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
+		c.repositories.addonSubscription, c.repositories.workspaceConfig)
+	getWorkspaceEntitlementsUC := workspace_addon_usecase.NewGetWorkspaceEntitlementsUseCase(
+		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
+		c.repositories.addonSubscription, c.repositories.workspaceConfig)
 
 	// Branch (branch) provisioning cap is plan-driven via the entitlement resolver
 	// (PlanDefinition.MaxBranches + addons under EntitlementBranches), mirroring

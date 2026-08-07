@@ -27,17 +27,33 @@ type unofficialWhatsAppBundle struct {
 	Instances     uw.InstanceRepository
 	Contacts      uw.ContactRepository
 	Conversations uw.ConversationRepository
+	Groups        uw.GroupRepository
 
 	Provider uw.ProviderAPI
 	// Messaging is the send/media surface. Satisfied by the same client as
 	// Provider, but held separately so the halves stay independently
 	// substitutable — the health cron has no business sending.
 	Messaging uw.MessagingAPI
+	// GroupAPI is the group management surface, held separately for the same
+	// reason and a sharper one: these calls evict people from the customer's own
+	// WhatsApp groups, and nothing that only needs to send should be able to
+	// reach them.
+	GroupAPI uw.GroupAPI
+	// Assets downloads provider-hosted profile pictures so they can be re-hosted
+	// on our storage instead of linked.
+	Assets uw.RemoteAssetFetcher
+
+	// Entitlements answers how many numbers this workspace may connect.
+	//
+	// The concrete type, not the interface, because its source is attached in the
+	// runtime pass and the boot log asserts that it was.
+	Entitlements *uwuc.InstanceEntitlementReader
 
 	ProcessedEvts uw.ProcessedEventRepository
 
 	Handler        *uwhttp.Handler
 	WebhookHandler *uwhttp.WebhookHandler
+	GroupHandler   *uwhttp.GroupHandler
 
 	Consume            *uwuc.ConsumeWebhookUseCase
 	CheckHealth        *uwuc.CheckInstanceHealthUseCase
@@ -64,17 +80,30 @@ func (c *Container) initUnofficialWhatsApp() {
 	provider := uazapi.NewClient(uazapi.Config{})
 	bundle.Provider = provider
 	bundle.Messaging = provider
+	bundle.GroupAPI = provider
+	bundle.Assets = provider
 
 	bundle.Servers = uwrepo.NewServerRepository(c.db)
 	bundle.Instances = uwrepo.NewInstanceRepository(c.db)
 	bundle.Contacts = uwrepo.NewContactRepository(c.db)
 	bundle.Conversations = uwrepo.NewConversationRepository(c.db)
+	bundle.Groups = uwrepo.NewGroupRepository(c.db)
 	bundle.ProcessedEvts = uwrepo.NewProcessedEventRepository(c.db)
+
+	// The number allowance: a per-workspace grant a platform administrator sets,
+	// plus whatever addons the workspace bought.
+	//
+	// Created here so the provisioning use case and the HTTP handler can hold it,
+	// but its SOURCE is attached in the runtime pass — this function runs before
+	// initUseCases, so the billing stack does not exist yet. Until then the
+	// reader answers zero, which refuses provisioning rather than permitting it.
+	bundle.Entitlements = uwuc.NewInstanceEntitlementReader(bundle.Instances)
 
 	c.seedUnofficialWhatsAppServer(bundle)
 
 	provision := uwuc.NewProvisionInstanceUseCase(
 		bundle.Servers, bundle.Instances, provider, c.cfg.UnofficialWhatsAppWebhookBaseURL)
+	provision.SetEntitlements(bundle.Entitlements)
 	bundle.ProvisionInstances = provision
 
 	bundle.Handler = uwhttp.NewHandler(uwhttp.HandlerDeps{
@@ -88,7 +117,23 @@ func (c *Container) initUnofficialWhatsApp() {
 		StartConv: uwuc.NewStartConversationUseCase(
 			bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
 			bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead)),
+		Allowance: uwuc.NewGetAllowanceUseCase(bundle.Entitlements),
 	})
+
+	// The group panel. Wired here rather than in the runtime pass because it
+	// depends on nothing from the conversation stack: a group's roster and admin
+	// rules are the provider's state, not the CRM's.
+	bundle.GroupHandler = uwhttp.NewGroupHandler(uwuc.NewGroupUseCases(uwuc.GroupUseCaseDeps{
+		Instances:     bundle.Instances,
+		Servers:       bundle.Servers,
+		Contacts:      bundle.Contacts,
+		Conversations: bundle.Conversations,
+		Groups:        bundle.Groups,
+		GroupAPI:      bundle.GroupAPI,
+		Messaging:     bundle.Messaging,
+		Assets:        bundle.Assets,
+		FileStorage:   c.services.fileStorage,
+	}))
 
 	// Built with a nil publisher: the queue only exists once the usecases are
 	// assembled, so the handler is rebuilt with both halves in the runtime pass.
@@ -152,6 +197,14 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		log.Fatalf("[unofficial-whatsapp] runtime wiring ran before useCases were built")
 	}
 
+	// The entitlement source, now that the billing use cases exist.
+	//
+	// Without this the reader answers zero for every workspace and nobody can
+	// connect a number, however many a platform administrator granted them. It
+	// fails closed rather than open, which is the right direction, but it is
+	// still broken — hence the capability line below.
+	bundle.Entitlements.SetSource(c.useCases.getWorkspaceEntitlements)
+
 	// Rebuilt now that the publisher exists. Without this the ingest endpoint
 	// would accept events and drop them, which looks exactly like a channel
 	// nobody is messaging.
@@ -165,7 +218,10 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Servers:       bundle.Servers,
 		Contacts:      bundle.Contacts,
 		Conversations: bundle.Conversations,
+		Groups:        bundle.Groups,
 		Messaging:     bundle.Messaging,
+		GroupAPI:      bundle.GroupAPI,
+		Assets:        bundle.Assets,
 		History:       history,
 		Messages:      c.repositories.conversation,
 		ConvMedia:     c.repositories.conversationMedia,
@@ -192,6 +248,17 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		"assignment":  c.services.assignmentService != nil,
 		"broadcaster": c.services.conversationHub != nil,
 		"media":       c.services.fileStorage != nil,
+		// Named for the same reason as the rest: without storage or a fetcher
+		// the channel still works, it just renders initials where every other
+		// channel renders a face, and that is not something to learn from a
+		// customer.
+		"avatars": c.services.fileStorage != nil && bundle.Assets != nil,
+		"groups":  bundle.Groups != nil && bundle.GroupAPI != nil,
+		// Named because its absence does not degrade — it OPENS. An unwired
+		// entitlement reader means provisioning is not gated at all, and slots on
+		// hosts we pay for get handed out with nothing recording that they were
+		// never authorised.
+		"entitlement-gate": bundle.Entitlements.HasSource(),
 	})
 
 	bundle.Consume = uwuc.NewConsumeWebhookUseCase(
@@ -328,6 +395,10 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 			Handle:     c.Handle(),
 			Name:       c.DisplayName(),
 			PictureURL: c.PictureURL,
+			// The one channel that has groups, so far. Carried on the identity
+			// lookup rather than through the inbox SQL registry, so declaring it
+			// costs this adapter one line and the other channels nothing.
+			IsGroup: c.IsGroup,
 		}
 	}
 
@@ -367,6 +438,15 @@ func unofficialWhatsAppHandler(c *Container) *uwhttp.Handler {
 		return nil
 	}
 	return c.unofficialWhatsApp.Handler
+}
+
+// unofficialWhatsAppGroupHandler returns the group panel's handler, or nil when
+// the channel is disabled.
+func unofficialWhatsAppGroupHandler(c *Container) *uwhttp.GroupHandler {
+	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
+		return nil
+	}
+	return c.unofficialWhatsApp.GroupHandler
 }
 
 // unofficialWhatsAppWebhookHandler returns the public ingest handler, or nil

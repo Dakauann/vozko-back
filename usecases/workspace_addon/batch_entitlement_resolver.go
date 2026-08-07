@@ -1,6 +1,7 @@
 package workspace_addon_usecase
 
 import (
+	"context"
 	"time"
 
 	workspace_addon "vozko/domain/workspace/workspace_addon"
@@ -22,18 +23,27 @@ type batchEntitlementResolver struct {
 	subscriptions batchSubscriptionReader
 	plans         workspace_plan.PlanReader
 	addons        batchAddonReader
+	configs       batchIncludedInstanceReader
 	now           clockFn
 }
 
+// NewBatchEntitlementResolver builds the sweep resolver.
+//
+// `configs` is batched — one query for every workspace in the sweep rather than
+// one each — because a reconciliation over a few thousand tenants is exactly
+// where an N+1 stops being a style question. Required for the same reason as in
+// the per-workspace resolver.
 func NewBatchEntitlementResolver(
 	subscriptions batchSubscriptionReader,
 	plans workspace_plan.PlanReader,
 	addons batchAddonReader,
+	configs batchIncludedInstanceReader,
 ) workspace_addon.BatchEntitlementResolver {
 	return &batchEntitlementResolver{
 		subscriptions: subscriptions,
 		plans:         plans,
 		addons:        addons,
+		configs:       configs,
 		now:           utcNow,
 	}
 }
@@ -52,9 +62,21 @@ func (r *batchEntitlementResolver) ResolveMany(workspaceIDs []string, kind works
 	if err != nil {
 		return nil, err
 	}
+	// The one kind whose base is per-workspace configuration. Read in a single
+	// query up front, and — like the per-workspace resolver — it does not require
+	// an active subscription: a granted allowance is revoked by an administrator,
+	// not by a lapsed plan.
+	var included map[string]int
+	if kind == workspace_addon.EntitlementUnofficialWhatsAppInstances && r.configs != nil {
+		included, err = r.configs.GetIncludedUnofficialInstancesByWorkspaceIDs(context.Background(), workspaceIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	planCache := map[string]*workspace_plan.PlanDefinition{}
 	for _, ws := range workspaceIDs {
-		base := 0
+		base := included[ws]
 		// Plan base counts only while the subscription is active; no plan (or an
 		// inactive one) means base 0, mirroring the per-workspace resolver and the
 		// GetWorkspaceEntitlements semantics.

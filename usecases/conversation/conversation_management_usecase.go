@@ -85,6 +85,19 @@ type ContactDisplay struct {
 	Handle     string
 	Name       string
 	PictureURL string
+	// IsGroup marks a conversation whose subject is a group chat rather than a
+	// person.
+	//
+	// It rides on the identity lookup rather than through the inbox SQL because
+	// this is already the one place that answers "who is this conversation with"
+	// for every channel whose subject is not a lead — so a channel that grows
+	// group support declares it in one adapter instead of touching the registry
+	// the other channels' queries share.
+	//
+	// The UI needs it for more than a badge: a group has no phone number to dial,
+	// no lead to open, and no single person to attribute the thread to, so
+	// several affordances have to be suppressed rather than merely relabelled.
+	IsGroup bool
 }
 
 // ContactIdentityLookup is the narrow read port for one channel's sender
@@ -198,6 +211,7 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 				entries[i].LeadName = name
 				entries[i].LeadNumber = handle
 				entries[i].LeadPicture = contact.PictureURL
+				entries[i].IsGroup = contact.IsGroup
 
 				// The sender label is replaced when it is blank OR when it is the
 				// raw provider id. Story replies, mentions, shares and unsupported
@@ -221,7 +235,11 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 // to the channel name so a row is never blank.
 func contactDisplayNames(entryType shared.EntryType, c ContactDisplay) (name, handle string) {
 	handle = strings.TrimSpace(c.Handle)
-	if handle != "" && !strings.HasPrefix(handle, "@") {
+	// The "@" is a SOCIAL HANDLE marker, not decoration: it is what makes an
+	// @instagram or @telegram username read as one. A phone number is not a
+	// handle, and this used to prefix one anyway — every unofficial WhatsApp
+	// conversation rendered its contact as "@+5511999999999".
+	if handle != "" && !strings.HasPrefix(handle, "@") && !strings.HasPrefix(handle, "+") {
 		handle = "@" + handle
 	}
 	name = strings.TrimSpace(c.Name)

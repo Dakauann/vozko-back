@@ -106,6 +106,35 @@ type NumberCheck struct {
 	VerifiedName string
 }
 
+// ChatProfile is the refreshable identity of a chat SUBJECT — a person or a
+// group.
+//
+// One type for both because the provider answers both from one endpoint and the
+// CRM asks both the same question. The alternative was two near-identical
+// structs and two near-identical fetch paths, which is how the name half and the
+// picture half of "who is this" drift apart.
+//
+// PictureURL is the PROVIDER's URL and is never persisted as-is: WhatsApp's
+// avatar links are short-lived and unauthenticated, so the bytes are re-hosted
+// before anything stores a link. See the profile sync in the usecase layer.
+type ChatProfile struct {
+	JID string
+	LID string
+	// Name is the WhatsApp profile name (the "push name"), or a group's subject.
+	Name string
+	// ContactName is what the connected phone has this person saved as. It only
+	// exists when the number is in the owner's address book, and it outranks
+	// every other name because it is what the operator already calls them.
+	ContactName string
+	// VerifiedName is a WhatsApp Business verified display name.
+	VerifiedName string
+	PictureURL   string
+	PhoneNumber  string
+	IsBusiness   bool
+	IsGroup      bool
+	IsBlocked    bool
+}
+
 // VoiceTranscoder turns a stored audio file into a sendable WhatsApp voice note.
 //
 // A port rather than a helper because both halves of the job are infrastructure:
@@ -119,6 +148,27 @@ type NumberCheck struct {
 type VoiceTranscoder interface {
 	// ToVoiceNote fetches the audio at url and returns it as ogg/opus bytes.
 	ToVoiceNote(ctx context.Context, url string) ([]byte, error)
+}
+
+// MaxAvatarBytes bounds what will be pulled into memory for one profile picture.
+//
+// A WhatsApp avatar is a small square; anything approaching this is not one, and
+// an unbounded read of a remote body on the webhook path is an availability bug
+// waiting for a bad day.
+const MaxAvatarBytes = 8 << 20
+
+// RemoteAssetFetcher fetches bytes from a URL the provider handed us.
+//
+// A port rather than an inline HTTP call because the usecase layer must not open
+// sockets, and because the thing being fetched is provider-hosted: the URL came
+// from the vendor, it is short-lived, and only the vendor package should know
+// how to reach it.
+//
+// Optional. Without it, profile enrichment stores names and skips pictures,
+// which is a degraded avatar rather than a broken channel.
+type RemoteAssetFetcher interface {
+	// FetchAsset returns the bytes and the server's content type.
+	FetchAsset(ctx context.Context, url string) (data []byte, contentType string, err error)
 }
 
 // Presence is a typing/recording indicator.
@@ -147,6 +197,15 @@ type MessagingAPI interface {
 
 	// DownloadMedia fetches an inbound attachment's bytes.
 	DownloadMedia(ctx context.Context, ref InstanceRef, providerMessageID string) (*RemoteMedia, error)
+	// ChatDetails reads one chat subject's profile — name and avatar — for a
+	// person or a group.
+	//
+	// The ONLY profile read in the system, and it is deliberately expensive to
+	// reach: it costs a provider round trip on the same instance the send budget
+	// belongs to, so callers gate it behind a staleness clock and never invoke
+	// it from a read path. An inbox page that fetched a profile per row would
+	// fan one render into fifty provider calls.
+	ChatDetails(ctx context.Context, ref InstanceRef, chatID string) (*ChatProfile, error)
 	// CheckNumbers reports which of these numbers are on WhatsApp.
 	//
 	// Checked before opening a conversation with a number nobody has messaged

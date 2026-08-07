@@ -36,9 +36,21 @@ type ProvisionInstanceUseCase struct {
 	servers   uw.ServerRepository
 	instances uw.InstanceRepository
 	provider  uw.ProviderAPI
+	// entitlements answers how many numbers this workspace may hold.
+	//
+	// Optional in the constructor and wired separately because the billing stack
+	// is assembled after this use case is built. A nil reader means NO
+	// entitlement check — which is only ever correct in a test, so the container
+	// logs the capability at boot rather than leaving it silently unwired.
+	entitlements uw.InstanceEntitlementReader
 	// webhookBaseURL is the public origin the host will POST to. Validated at
 	// boot: a wrong scheme produces silence rather than an error.
 	webhookBaseURL string
+}
+
+// SetEntitlements wires the allowance check.
+func (uc *ProvisionInstanceUseCase) SetEntitlements(r uw.InstanceEntitlementReader) {
+	uc.entitlements = r
 }
 
 func NewProvisionInstanceUseCase(
@@ -70,6 +82,16 @@ func (uc *ProvisionInstanceUseCase) Execute(ctx context.Context, in ProvisionInp
 		return nil, uw.ErrWorkspaceIDRequired
 	}
 
+	// The entitlement is checked BEFORE any host capacity is claimed.
+	//
+	// Ordering matters: claiming first would take a slot on a shared host from
+	// the tenants entitled to it, then hand it back through the compensation
+	// path — a window in which a paying workspace can be told "no capacity"
+	// because of an attempt that was never allowed to succeed.
+	if err := uc.checkAllowance(ctx, in.WorkspaceID); err != nil {
+		return nil, err
+	}
+
 	server, err := uc.claimServer(ctx, in.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -85,6 +107,30 @@ func (uc *ProvisionInstanceUseCase) Execute(ctx context.Context, in ProvisionInp
 		return nil, err
 	}
 	return instance, nil
+}
+
+// checkAllowance refuses a workspace that is at or over its entitlement.
+//
+// FAILS CLOSED on an unreadable entitlement. Treating a billing outage as
+// "unlimited" would hand out slots on hosts we pay for, and every slot handed out
+// that way is one a paying workspace cannot use — a failure that is invisible
+// until a customer cannot connect and nobody can say why.
+//
+// A nil reader means no check at all, which is a wiring fault rather than a
+// policy: it is logged loudly instead of silently permitting.
+func (uc *ProvisionInstanceUseCase) checkAllowance(ctx context.Context, workspaceID string) error {
+	if uc.entitlements == nil {
+		log.Printf("[unofficial-whatsapp] WARNING: provisioning for workspace %s ran with no "+
+			"entitlement reader wired; the number allowance was NOT enforced", workspaceID)
+		return nil
+	}
+
+	allowance, err := uc.entitlements.AllowanceFor(ctx, workspaceID)
+	if err != nil {
+		log.Printf("[unofficial-whatsapp] entitlement lookup failed for workspace %s: %v", workspaceID, err)
+		return uw.ErrEntitlementUnavailable
+	}
+	return allowance.Enforce()
 }
 
 // claimServer picks a host and takes a slot on it.

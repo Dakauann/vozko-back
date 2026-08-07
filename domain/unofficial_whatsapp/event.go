@@ -52,6 +52,15 @@ const (
 	EventContactUpdate EventKind = "contact_update"
 	EventBlockToggle   EventKind = "block_toggle"
 	EventCall          EventKind = "call"
+	// EventGroupChanged says that something about a group changed, and
+	// deliberately does not say what.
+	//
+	// The provider documents the payload only as "a map, the shape varies", so
+	// parsing a rename or a membership delta out of it would be guessing — and a
+	// guess that is wrong writes a roster nobody can tell is wrong. The event is
+	// consumed as an invalidation: mark the cached group stale, re-read from the
+	// authoritative endpoint. That costs one call and cannot be subtly incorrect.
+	EventGroupChanged EventKind = "group_changed"
 
 	// EventIgnored is a real event we deliberately do not act on: a newsletter
 	// post, a presence tick. Classified rather than dropped so the volume is
@@ -87,6 +96,7 @@ const (
 	providerEventCall           = "call"
 	providerEventPresence       = "presence"
 	providerEventNewsletter     = "newsletter_messages"
+	providerEventGroups         = "groups"
 )
 
 // TrackSource is stamped on every message we send, so the echo is recognisable.
@@ -146,6 +156,14 @@ type Event struct {
 	MIMEType string
 	FileName string
 
+	// PictureURL is the PROVIDER's avatar url, when an event volunteered one.
+	//
+	// The `chats` and `contacts` events carry the vendor's Chat object, which
+	// includes the picture — so a profile-photo change arrives as a push and
+	// costs no provider call at all. It is a source url, never something to
+	// store: the bytes are re-hosted first.
+	PictureURL string
+
 	// Emoji is the reaction body; empty on a reaction REMOVAL, which is a
 	// meaningful state rather than a missing field.
 	Emoji string
@@ -192,16 +210,37 @@ func (e *Event) Outbound() bool {
 	return e.Kind == EventOutboundEcho || e.Kind == EventOutboundFromDevice
 }
 
-// RunsAutomation reports whether this event may trigger AI replies and
-// workflows.
+// RunsAutomation reports whether this event may trigger attendance at all.
 //
 // Only a genuine inbound message from a live (non-backfilled) delivery
 // qualifies. Every other answer here is a loop or a burst waiting to happen: an
 // echo would have the AI answer itself, an owner's phone message would have it
 // answer a colleague, and a backfill would have it answer seven days of history
 // all at once.
+//
+// It deliberately says NOTHING about groups. It used to, and that was the bug:
+// an event cannot know whether its instance opted into group attendance, so the
+// hard exclusion here ran before Instance.HandleGroups was ever consulted and
+// made that setting unreachable. The group decision belongs to
+// Conversation.InScope, which has both facts.
 func (e *Event) RunsAutomation() bool {
-	return e.Kind == EventInboundMessage && !e.Backfill && !e.IsGroup
+	return e.Kind == EventInboundMessage && !e.Backfill
+}
+
+// SubjectJID is the identity of the chat this event belongs to.
+//
+// For a private chat that is the person; for a group it is the GROUP, not the
+// participant who happened to speak. Resolving the subject from the sender is
+// what turned one group thread into one CRM conversation per member, each
+// labelled with a random participant's name.
+func (e *Event) SubjectJID() string {
+	if e.IsGroup {
+		return e.ChatID
+	}
+	if e.SenderJID != "" {
+		return e.SenderJID
+	}
+	return e.ChatID
 }
 
 // providerMessage is the vendor's stored message object, narrowed to what we
@@ -367,6 +406,9 @@ func NormalizeEnvelope(instanceID string, env *Envelope) []*Event {
 	case providerEventContacts, providerEventChats:
 		return []*Event{normalizeContact(instanceID, env)}
 
+	case providerEventGroups:
+		return []*Event{normalizeGroupChange(instanceID, env)}
+
 	case providerEventCall:
 		return []*Event{{
 			Kind: EventCall, ProviderEvent: env.Event, InstanceID: instanceID,
@@ -516,11 +558,17 @@ func classifyMessage(env *Envelope, msg *providerMessage, ev *Event) EventKind {
 	return EventOutboundFromDevice
 }
 
-// resolveSenderIdentity fills every identifier form the payload offers.
+// resolveSenderIdentity fills every identifier form the payload offers for the
+// AUTHOR — whoever actually spoke.
 //
-// For an outbound message the "sender" is the connected account, not the
-// contact, so the CHAT is what identifies the other party — using the sender
-// there would attribute the conversation to the business's own number.
+// The author is not the same thing as the conversation's subject, and conflating
+// them is what split one group thread into one conversation per member. In a
+// group the author is a participant while the subject is the group; in a private
+// chat they are the same person. SubjectJID answers the other half.
+//
+// For an outbound message the "sender" is the connected account rather than the
+// contact, so the CHAT identifies the other party — using the sender there would
+// attribute the conversation to the business's own number.
 func resolveSenderIdentity(ev *Event, msg *providerMessage) {
 	contactRef := strings.TrimSpace(msg.Sender)
 	if msg.FromMe || contactRef == "" {
@@ -539,13 +587,16 @@ func resolveSenderIdentity(ev *Event, msg *providerMessage) {
 		ev.SenderLID = lid
 	}
 
-	// A group message's sender is a participant, but the CONVERSATION is the
+	// A group message's author is a participant, but the CONVERSATION is the
 	// group, so the chat id stays authoritative for addressing.
 	if ev.SenderJID == "" && ev.SenderLID == "" {
 		ev.SenderJID = ev.ChatID
 	}
 	ev.SenderPhone = PhoneFromJID(ev.SenderJID)
 	if ev.SenderPhone == "" {
+		// PhoneFromJID returns empty for a group id, so this fallback resolves a
+		// private chat whose sender arrived only as a LID and never invents a
+		// number out of "120363…@g.us".
 		ev.SenderPhone = PhoneFromJID(ev.ChatID)
 	}
 }
@@ -577,6 +628,32 @@ func normalizeBlock(instanceID string, env *Envelope) *Event {
 	}
 }
 
+// normalizeGroupChange turns a `groups` delivery into an invalidation.
+//
+// Only ONE field is read — which group — and everything else in the payload is
+// deliberately ignored. The provider specifies no schema for this event, and a
+// normalizer that guessed at "name changed to X" or "participant Y left" would
+// write a roster that is confidently wrong, which is strictly worse than one
+// that is briefly stale. The handler re-reads /group/info, which cannot be.
+//
+// The JID is looked for under every spelling the provider has been seen to use,
+// for the same reason DecodeEnvelope does: there is no contract to rely on.
+func normalizeGroupChange(instanceID string, env *Envelope) *Event {
+	chatID := stringField(env.Data, "groupjid", "groupJID", "JID", "jid", "chatid", "id")
+	return &Event{
+		Kind:          EventGroupChanged,
+		ProviderEvent: env.Event,
+		InstanceID:    instanceID,
+		ChatID:        chatID,
+		IsGroup:       true,
+		Timestamp:     time.Now().UTC(),
+		// Not deduplicated by payload digest: two identical notifications are
+		// two separate "something changed" facts, and suppressing the second
+		// would drop a real change that happened to look like the first.
+		Raw: env.Data,
+	}
+}
+
 func normalizeContact(instanceID string, env *Envelope) *Event {
 	chatID := stringField(env.Data, "wa_chatid", "chatid", "jid", "id")
 	return &Event{
@@ -587,7 +664,11 @@ func normalizeContact(instanceID string, env *Envelope) *Event {
 		SenderJID:     chatID,
 		SenderPhone:   PhoneFromJID(chatID),
 		SenderName:    stringField(env.Data, "wa_contactName", "wa_name", "name", "verifiedName"),
-		Timestamp:     time.Now().UTC(),
+		// The preview size first: it is what a 40px avatar needs, and the full
+		// original is several hundred kilobytes for an identical result.
+		PictureURL: stringField(env.Data, "imagePreview", "image", "profilePicUrl"),
+		IsGroup:    IsGroupJID(chatID),
+		Timestamp:  time.Now().UTC(),
 		// Deliberately NOT deduplicated by payload digest: a profile refresh is
 		// idempotent by nature, and suppressing a repeat would stop a renamed
 		// contact from ever updating.

@@ -9,11 +9,23 @@ const (
 	// workspace may create. Plan base (PlanDefinition.MaxBranches) plus active
 	// addons, resolved like every other entitlement.
 	EntitlementBranches EntitlementKind = "branches"
+	// EntitlementUnofficialWhatsAppInstances is how many linked-device WhatsApp
+	// numbers a workspace may connect.
+	//
+	// Its base comes from the WORKSPACE CONFIG, not from the plan, and it is the
+	// only kind that does. That is deliberate: this channel has no per-plan
+	// pricing, every connected number occupies a slot on a host we operate, and
+	// its abuse cost is a customer's number being banned — so the included
+	// allowance is granted per workspace by a platform administrator rather than
+	// implied by whichever plan they happen to be on. Addons top it up exactly
+	// like every other kind.
+	EntitlementUnofficialWhatsAppInstances EntitlementKind = "unofficial_whatsapp_instances"
 )
 
 func (k EntitlementKind) IsValid() bool {
 	switch k {
-	case EntitlementCallChannels, EntitlementWhatsAppBusinessPhones, EntitlementBranches:
+	case EntitlementCallChannels, EntitlementWhatsAppBusinessPhones, EntitlementBranches,
+		EntitlementUnofficialWhatsAppInstances:
 		return true
 	default:
 		return false
@@ -25,6 +37,7 @@ func AllEntitlementKinds() []EntitlementKind {
 		EntitlementCallChannels,
 		EntitlementWhatsAppBusinessPhones,
 		EntitlementBranches,
+		EntitlementUnofficialWhatsAppInstances,
 	}
 }
 

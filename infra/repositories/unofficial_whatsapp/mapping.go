@@ -205,12 +205,14 @@ func toContactDomain(record *schema.UnofficialWhatsAppContact) *uw.Contact {
 		InstanceID:       record.InstanceID,
 		JID:              record.JID,
 		LID:              record.LID,
+		IsGroup:          record.IsGroup,
 		PhoneNumber:      record.PhoneNumber,
 		LeadID:           record.LeadID,
 		Name:             record.Name,
 		ContactName:      record.ContactName,
 		VerifiedName:     record.VerifiedName,
 		PictureURL:       record.PictureURL,
+		PictureSourceURL: record.PictureSourceURL,
 		IsBusiness:       record.IsBusiness,
 		ProfileFetchedAt: record.ProfileFetchedAt,
 		Blocked:          record.Blocked,
@@ -243,6 +245,59 @@ func toConversationDomain(record *schema.UnofficialWhatsAppConversation) *uw.Con
 		LastAgentMessageAt:    record.LastAgentMessageAt,
 		CreatedAt:             record.CreatedAt,
 		UpdatedAt:             record.UpdatedAt,
+	}
+}
+
+// ---------------------------------------------------------------- group
+
+func toGroupDomain(
+	record *schema.UnofficialWhatsAppGroup,
+	participants []schema.UnofficialWhatsAppGroupParticipant,
+) *uw.Group {
+	if record == nil {
+		return nil
+	}
+	g := &uw.Group{
+		ID:               record.ID,
+		WorkspaceID:      record.WorkspaceID,
+		InstanceID:       record.InstanceID,
+		JID:              record.JID,
+		Subject:          record.Subject,
+		Description:      record.Description,
+		OwnerJID:         record.OwnerJID,
+		Announce:         record.Announce,
+		Locked:           record.Locked,
+		JoinApproval:     record.JoinApproval,
+		Ephemeral:        record.Ephemeral,
+		DisappearingSecs: record.DisappearingSecs,
+		Community:        record.Community,
+		WeAreAdmin:       record.WeAreAdmin,
+		WeCanSend:        record.WeCanSend,
+		ParticipantCount: record.ParticipantCount,
+		GroupCreatedAt:   record.GroupCreatedAt,
+		SyncedAt:         record.SyncedAt,
+		StaleAt:          record.StaleAt,
+		CreatedAt:        record.CreatedAt,
+		UpdatedAt:        record.UpdatedAt,
+	}
+	for i := range participants {
+		g.Participants = append(g.Participants, toGroupParticipantDomain(&participants[i]))
+	}
+	return g
+}
+
+func toGroupParticipantDomain(record *schema.UnofficialWhatsAppGroupParticipant) uw.GroupParticipant {
+	return uw.GroupParticipant{
+		ID:          record.ID,
+		GroupID:     record.GroupID,
+		JID:         record.JID,
+		LID:         record.LID,
+		PhoneNumber: record.PhoneNumber,
+		DisplayName: record.DisplayName,
+		Role:        uw.GroupRole(record.Role),
+		ContactID:   record.ContactID,
+		CreatedAt:   record.CreatedAt,
+		UpdatedAt:   record.UpdatedAt,
 	}
 }
 

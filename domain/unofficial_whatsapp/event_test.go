@@ -85,8 +85,14 @@ func TestMessageClassification(t *testing.T) {
 	}
 }
 
-// Only a live inbound message may trigger the AI and workflows. Every other
-// answer here is a loop or a burst.
+// Only a live inbound message may trigger attendance. Every other answer here is
+// a loop or a burst.
+//
+// A group is deliberately NOT excluded here, and that is a fix rather than an
+// omission: an event cannot know whether its instance opted into group
+// attendance, so the hard exclusion that used to live here ran before
+// Instance.HandleGroups was ever consulted and made that setting unreachable.
+// Conversation.InScope owns the group decision because it has both facts.
 func TestRunsAutomationGating(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -97,7 +103,7 @@ func TestRunsAutomationGating(t *testing.T) {
 		{"echo would have the AI answer itself", Event{Kind: EventOutboundEcho}, false},
 		{"owner's phone would have it answer a colleague", Event{Kind: EventOutboundFromDevice}, false},
 		{"backfill would answer seven days at once", Event{Kind: EventInboundMessage, Backfill: true}, false},
-		{"group would answer the wrong audience", Event{Kind: EventInboundMessage, IsGroup: true}, false},
+		{"a group defers to the instance, not to the event", Event{Kind: EventInboundMessage, IsGroup: true}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,6 +111,56 @@ func TestRunsAutomationGating(t *testing.T) {
 				t.Errorf("RunsAutomation() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// The conversation's subject is the CHAT, never the participant who spoke.
+//
+// Resolving it from the sender is what forked one group thread into one CRM
+// conversation per member, each labelled with a random participant.
+func TestSubjectJIDIsTheChatForGroups(t *testing.T) {
+	group := Event{
+		IsGroup:   true,
+		ChatID:    "120363012345678901@g.us",
+		SenderJID: "5511999999999@s.whatsapp.net",
+	}
+	if got := group.SubjectJID(); got != group.ChatID {
+		t.Errorf("group SubjectJID() = %q, want the chat id", got)
+	}
+
+	private := Event{
+		ChatID:    "5511999999999@s.whatsapp.net",
+		SenderJID: "5511999999999@s.whatsapp.net",
+	}
+	if got := private.SubjectJID(); got != private.SenderJID {
+		t.Errorf("private SubjectJID() = %q, want the sender", got)
+	}
+}
+
+// A `groups` delivery is an INVALIDATION, not data.
+//
+// The provider documents its payload only as "a map, the shape varies", so the
+// normalizer reads one field — which group — and ignores everything else. A
+// normalizer that guessed at "renamed to X" would write a roster that is
+// confidently wrong, which is worse than one that is briefly stale.
+func TestGroupEventIsInvalidationOnly(t *testing.T) {
+	body := envelopeJSON(t, "groups", map[string]any{
+		"groupjid": "120363012345678901@g.us",
+		"subject":  "a name we deliberately do not trust",
+	})
+	ev := onlyEvent(t, NormalizeEnvelope("inst-1", body))
+
+	if ev.Kind != EventGroupChanged {
+		t.Fatalf("kind = %q, want %q", ev.Kind, EventGroupChanged)
+	}
+	if ev.ChatID != "120363012345678901@g.us" {
+		t.Errorf("chat id = %q, want the group jid", ev.ChatID)
+	}
+	if !ev.IsGroup {
+		t.Error("a group event must be flagged as one")
+	}
+	if ev.Text != "" {
+		t.Errorf("the payload must not be interpreted; got text %q", ev.Text)
 	}
 }
 
@@ -601,5 +657,23 @@ func TestInteractiveReplyKeepsExplicitText(t *testing.T) {
 	})))
 	if ev.Text != "o que o cliente digitou" {
 		t.Errorf("text = %q; the label overwrote real text", ev.Text)
+	}
+}
+
+// A message with a sender but no chat id is still filable: the sender IS the
+// chat in a private conversation, which is what SubjectJID falls back to.
+func TestMessageWithSenderButNoChatStillResolves(t *testing.T) {
+	body := envelopeJSON(t, "messages", map[string]any{
+		"messageid": "m1",
+		"sender":    "5511999999999@s.whatsapp.net",
+		"text":      "oi",
+	})
+	ev := onlyEvent(t, NormalizeEnvelope("inst-1", body))
+
+	if ev.Kind != EventInboundMessage {
+		t.Fatalf("kind = %q, want an inbound message", ev.Kind)
+	}
+	if ev.SubjectJID() != "5511999999999@s.whatsapp.net" {
+		t.Errorf("subject = %q, want the sender", ev.SubjectJID())
 	}
 }

@@ -3,6 +3,7 @@ package unofficial_whatsapp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"path"
@@ -15,11 +16,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/domain/workflow"
 )
-
-// profileTTL bounds how stale a cached contact profile may get before the next
-// inbound message refreshes it. Enrichment is lazy because profile reads compete
-// with the send budget on the same instance.
-const profileTTL = 7 * 24 * time.Hour
 
 // AssignmentService is the round-robin port. Narrow by design so this package
 // does not depend on the whole conversation usecase package.
@@ -78,6 +74,11 @@ type HandleWebhookUseCase struct {
 	leads       LeadLinker
 	analysis    AnalysisScheduler
 	sync        sessionSync
+	// profiles fills the name and avatar the CRM shows for a conversation. Not
+	// a job — see subject_profile.go for the per-message call budget.
+	profiles subjectProfile
+	// groups keeps a group chat's subject, roster and admin rules current.
+	groups groupMetadata
 }
 
 // HandleWebhookDeps groups the dependencies so the constructor stays readable.
@@ -86,7 +87,14 @@ type HandleWebhookDeps struct {
 	Servers       uw.ServerRepository
 	Contacts      uw.ContactRepository
 	Conversations uw.ConversationRepository
+	Groups        uw.GroupRepository
 	Messaging     uw.MessagingAPI
+	GroupAPI      uw.GroupAPI
+	// Assets downloads a provider-hosted profile picture so it can be re-hosted
+	// on our own storage. Optional: without it the channel stores names and
+	// falls back to initials, which is a degraded avatar rather than a broken
+	// inbox.
+	Assets uw.RemoteAssetFetcher
 
 	History     conversation.MessageHistoryManager
 	Messages    conversation.MessageRepository
@@ -101,6 +109,7 @@ type HandleWebhookDeps struct {
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
+	profiles := newSubjectProfile(d)
 	return &HandleWebhookUseCase{
 		instances:     d.Instances,
 		servers:       d.Servers,
@@ -118,6 +127,8 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		leads:         d.Leads,
 		analysis:      d.Analysis,
 		sync:          sessionSync{instances: d.Instances},
+		profiles:      profiles,
+		groups:        newGroupMetadata(d, profiles),
 	}
 }
 
@@ -157,7 +168,23 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, q *QueuedEvent) err
 	return firstErr
 }
 
+// errUnattributableEvent marks an event that names no chat and no sender.
+//
+// Terminal by nature: the consumer retries errors, and no number of retries will
+// give an event an identity it never carried. handleEvent swallows it so a
+// sibling event in the same delivery is not failed alongside it.
+var errUnattributableEvent = errors.New("unofficial whatsapp: event identifies no chat")
+
 func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
+	err := uc.dispatch(ctx, instance, ev)
+	if errors.Is(err, errUnattributableEvent) {
+		// Already logged with its payload shape at the point of detection.
+		return nil
+	}
+	return err
+}
+
+func (uc *HandleWebhookUseCase) dispatch(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
 	switch ev.Kind {
 	case uw.EventInboundMessage:
 		return uc.handleInbound(ctx, instance, ev)
@@ -173,6 +200,8 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, instance *uw.In
 		return uc.handleBlockToggle(ctx, instance, ev)
 	case uw.EventContactUpdate:
 		return uc.handleContactUpdate(ctx, instance, ev)
+	case uw.EventGroupChanged:
+		return uc.handleGroupChanged(ctx, instance, ev)
 	case uw.EventCall:
 		return uc.handleCall(ctx, instance, ev)
 	case uw.EventIgnored:
@@ -181,8 +210,14 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, instance *uw.In
 		// Never dropped silently: this provider ships new event kinds without
 		// notice, and an unlogged drop is indistinguishable from a working
 		// integration.
-		log.Printf("[unofficial-whatsapp] instance %s: unhandled provider event %q: %s",
-			instance.ID, ev.ProviderEvent, truncateRaw(ev.Raw, 400))
+		//
+		// KEYS ONLY for the payload, never values. An unreadable body is usually
+		// a real customer message, and logging its values would put message text
+		// and phone numbers into the log sink — the precise data this channel
+		// exists to protect. The key names alone identify a shape change, which
+		// is the only reason to look.
+		log.Printf("[unofficial-whatsapp] instance %s: unhandled provider event %q, payload keys: %v",
+			instance.ID, ev.ProviderEvent, uw.DescribeUnknownBody(ev.Raw))
 		return nil
 	}
 }
@@ -190,32 +225,42 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, instance *uw.In
 // ---------------------------------------------------------------- inbound
 
 func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
-	contact, conv, err := uc.resolveContext(ctx, instance, ev)
+	sub, err := uc.resolveContext(ctx, instance, ev)
 	if err != nil {
 		return err
 	}
 
-	if err := uc.conversations.RecordInbound(ctx, conv.ID, ev.Timestamp); err != nil {
+	if err := uc.conversations.RecordInbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
 		return err
 	}
-	if err := uc.recordMessage(ctx, instance, conv, contact, ev, conversation.MessageDirectionInbound); err != nil {
+	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.MessageDirectionInbound); err != nil {
 		return err
 	}
 
-	// Everything below is ATTENDANCE, and a backfilled message must not trigger
-	// any of it: a connect replays up to seven days at once, and assigning,
-	// answering and analysing that burst would bury an operator under
-	// conversations nobody has triaged. The transcript above is still complete.
-	if !ev.RunsAutomation() {
-		uc.broadcastEntryUpdate(conv.ID)
+	// Everything below is ATTENDANCE, and two things must not trigger any of it.
+	//
+	// A backfilled message: a connect replays up to seven days at once, and
+	// assigning, answering and analysing that burst would bury an operator under
+	// conversations nobody has triaged.
+	//
+	// A group whose instance has not opted in: it stays visible and repliable —
+	// sending is gated by the session and the block, never by this — but it does
+	// not enter anyone's queue. Auto-assigning group threads to a random agent
+	// is almost never what a workspace wants, which is why HandleGroups exists.
+	//
+	// The group half of that decision used to live on the EVENT, where it ran
+	// before the instance was ever consulted and made HandleGroups unreachable.
+	// The transcript above is written either way.
+	if !ev.RunsAutomation() || !sub.conversation.InScope(instance.HandleGroups) {
+		uc.broadcastEntryUpdate(sub.conversation.ID)
 		return nil
 	}
 
-	uc.ensureAssignment(conv, instance)
-	uc.fireWorkflowTriggers(instance, conv, ev)
-	uc.maybeReplyWithAgent(ctx, instance, conv, ev)
-	uc.scheduleAnalysis(instance, conv)
-	uc.broadcastEntryUpdate(conv.ID)
+	uc.ensureAssignment(sub.conversation, instance)
+	uc.fireWorkflowTriggers(instance, sub.conversation, ev)
+	uc.maybeReplyWithAgent(ctx, instance, sub.conversation, ev)
+	uc.scheduleAnalysis(instance, sub.conversation)
+	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
 }
 
@@ -227,23 +272,53 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 // typed on their phone is genuinely new. Neither may trigger automation — the
 // first would have the AI answer itself, the second answer a colleague.
 func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
-	contact, conv, err := uc.resolveContext(ctx, instance, ev)
+	sub, err := uc.resolveContext(ctx, instance, ev)
 	if err != nil {
 		return err
 	}
 
-	if err := uc.conversations.RecordOutbound(ctx, conv.ID, ev.Timestamp); err != nil {
+	if err := uc.conversations.RecordOutbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
 		return err
 	}
-	if err := uc.recordMessage(ctx, instance, conv, contact, ev, conversation.MessageDirectionOutbound); err != nil {
+	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.MessageDirectionOutbound); err != nil {
 		return err
 	}
-	uc.broadcastEntryUpdate(conv.ID)
+	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
 }
 
-// resolveContext resolves the contact and conversation an event belongs to,
-// bridging the contact to a CRM lead on the way.
+// chatContext is everything one event needs resolving to, and the reason it is a
+// struct is the distinction it carries.
+//
+// The SUBJECT is who the conversation is with; the AUTHOR is who spoke. In a
+// private chat they are the same person and every downstream branch collapses.
+// In a group they are not: the subject is the group, the author is a
+// participant, and conflating them is what forked one group thread into one CRM
+// conversation per member — each labelled with whichever member happened to
+// speak first, with the delivery-receipt lookup then picking one of them at
+// random.
+type chatContext struct {
+	// subject is the conversation's identity: the person, or the group. It is
+	// the row the inbox renders and the row the avatar hangs off.
+	subject *uw.Contact
+	// authorName / authorHandle label the individual MESSAGE. In a group they
+	// name the participant so the transcript reads like the chat does on a
+	// phone, rather than attributing every line to the group itself.
+	authorName   string
+	authorHandle string
+	// authorAvatar is only ever the subject's. Group participants deliberately
+	// get none: fetching a picture per member would be one provider call per
+	// person in the group, on a channel where traffic that looks automated
+	// costs the customer their number. Their bubbles fall back to initials.
+	authorAvatar string
+
+	conversation *uw.Conversation
+	// group is the cached metadata when this is a group chat, nil otherwise.
+	group *uw.Group
+}
+
+// resolveContext resolves the subject, the author and the conversation an event
+// belongs to, bridging the subject to a CRM lead on the way.
 //
 // The lead bridge is what separates this channel from Instagram's and
 // Telegram's: their contacts are opaque provider ids that no other subsystem can
@@ -252,86 +327,178 @@ func (uc *HandleWebhookUseCase) resolveContext(
 	ctx context.Context,
 	instance *uw.Instance,
 	ev *uw.Event,
-) (*uw.Contact, *uw.Conversation, error) {
-	contact, err := uc.contacts.FindOrCreate(ctx, uw.FindOrCreateContactInput{
-		WorkspaceID: instance.WorkspaceID,
-		InstanceID:  instance.ID,
-		JID:         ev.SenderJID,
-		LID:         ev.SenderLID,
-		PhoneNumber: ev.SenderPhone,
-		Name:        ev.SenderName,
-	})
-	if err != nil {
-		return nil, nil, err
+) (*chatContext, error) {
+	// SubjectJID, not SenderJID: in a group the sender is a participant and the
+	// subject is the chat.
+	subjectJID := ev.SubjectJID()
+
+	// An event that identifies nobody cannot be filed, and must not be filed
+	// anyway.
+	//
+	// This is the guard behind a live symptom. Contact identity is uniquely
+	// (instance, jid), so an event with no chat and no sender resolved to a
+	// contact with an EMPTY jid — and because that row is unique, every later
+	// unattributable event resolved to the same one. The result was a single
+	// catch-all conversation per connected number, sitting in the operator's
+	// inbox titled "unofficial_whatsapp" (the last-resort label for a contact
+	// with no name and no handle to show) and filling up with
+	// "[mensagem sem conteúdo]".
+	//
+	// The check lives here rather than in the normalizer on purpose: decoding
+	// and attributing are different jobs, and a normalizer that refused to
+	// classify an incomplete payload would also stop reporting what shape it
+	// arrived in.
+	//
+	// Returned as nil, not an error: the consumer retries errors, and no number
+	// of retries will give this event an identity.
+	if subjectJID == "" {
+		log.Printf("[unofficial-whatsapp] instance %s: %s event names no chat and no sender, "+
+			"dropping it rather than filing it under a nameless contact; payload keys: %v",
+			instance.ID, ev.ProviderEvent, uw.DescribeUnknownBody(ev.Raw))
+		return nil, errUnattributableEvent
 	}
 
-	uc.bridgeLead(ctx, instance, contact, ev)
-	uc.enrichContact(ctx, contact, ev)
+	subject, err := uc.contacts.FindOrCreate(ctx, uw.FindOrCreateContactInput{
+		WorkspaceID: instance.WorkspaceID,
+		InstanceID:  instance.ID,
+		JID:         subjectJID,
+		LID:         subjectLID(ev),
+		PhoneNumber: subjectPhone(ev),
+		Name:        subjectSeedName(ev),
+		IsGroup:     ev.IsGroup,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	conv, err := uc.conversations.FindOrCreate(ctx, uw.FindOrCreateConversationInput{
 		WorkspaceID: instance.WorkspaceID,
 		InstanceID:  instance.ID,
-		ContactID:   contact.ID,
+		ContactID:   subject.ID,
 		ChatID:      ev.ChatID,
 		IsGroup:     ev.IsGroup,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return contact, conv, nil
+
+	out := &chatContext{subject: subject, conversation: conv}
+	uc.enrich(ctx, instance, ev, out)
+	uc.resolveAuthor(ev, out)
+	return out, nil
 }
 
-// bridgeLead attaches the CRM lead this contact is.
+// enrich fills in whatever the event did not already carry.
 //
-// Best-effort: a failure here must never drop a customer's message. A contact
-// without a lead still renders (the identity lookup covers it) and the next
-// inbound message retries the bridge.
-func (uc *HandleWebhookUseCase) bridgeLead(ctx context.Context, instance *uw.Instance, contact *uw.Contact, ev *uw.Event) {
-	if uc.leads == nil || contact.LeadID != nil || contact.PhoneNumber == "" {
-		return
-	}
-	// A group's chat id is not a person's number, so there is no lead to bridge
-	// to; linking one would attach the group's transcript to a random contact.
-	if ev.IsGroup {
+// Skipped entirely for a backfill. A connect replays up to seven days of history
+// in one burst, and a profile read per replayed message would be hundreds of
+// provider calls in a few seconds on a number that has just come online — the
+// most automated-looking thing this channel could possibly do.
+func (uc *HandleWebhookUseCase) enrich(
+	ctx context.Context,
+	instance *uw.Instance,
+	ev *uw.Event,
+	out *chatContext,
+) {
+	if ev.Backfill {
 		return
 	}
 
-	leadID, err := uc.leads.EnsureLeadForPhone(ctx, instance.WorkspaceID, contact.PhoneNumber, contact.DisplayName())
+	if ev.IsGroup {
+		// One call at most, and only when the group is unknown or its metadata
+		// was invalidated. The subject's name and avatar are refreshed inside,
+		// so a rename lands in the inbox and the group panel together.
+		out.group = uc.groups.ensureFresh(ctx, instance, ev.ChatID)
+		return
+	}
+
+	uc.bridgeLead(ctx, instance, out.subject)
+	// Free: the name rode in on the event itself.
+	uc.profiles.applyEventName(ctx, out.subject, ev.SenderName)
+	// TTL-gated: zero calls for a subject we already have a picture for, which
+	// is almost all traffic.
+	uc.profiles.refresh(ctx, instance, out.subject, false)
+}
+
+// resolveAuthor decides how the individual message is labelled.
+func (uc *HandleWebhookUseCase) resolveAuthor(ev *uw.Event, out *chatContext) {
+	if !ev.IsGroup {
+		// One person, one label. Everything downstream stays branch-free.
+		out.authorName = out.subject.DisplayName()
+		out.authorHandle = out.subject.Handle()
+		out.authorAvatar = out.subject.PictureURL
+		return
+	}
+
+	// A group participant, named from the event alone. No lookup, no row, no
+	// provider call: the push name is what WhatsApp itself shows next to their
+	// message, and a member who has never written to us directly is not someone
+	// the CRM can attend anyway.
+	out.authorHandle = ev.SenderPhone
+	if out.authorHandle != "" {
+		out.authorHandle = "+" + out.authorHandle
+	} else {
+		out.authorHandle = ev.SenderJID
+	}
+	out.authorName = firstNonEmpty(ev.SenderName, out.authorHandle)
+}
+
+// subjectSeedName is the name to create a NEW subject with.
+//
+// A group's is left empty on purpose: the push name on a group message belongs
+// to whoever spoke, and seeding the group with it would name the chat after its
+// most recent talker until the metadata read lands.
+func subjectSeedName(ev *uw.Event) string {
+	if ev.IsGroup {
+		return ""
+	}
+	return ev.SenderName
+}
+
+// subjectLID and subjectPhone carry the sender's identifiers only when the
+// sender IS the subject. A group has neither, and attaching a participant's to
+// it would make one member's LID resolve to the whole group.
+func subjectLID(ev *uw.Event) string {
+	if ev.IsGroup {
+		return ""
+	}
+	return ev.SenderLID
+}
+
+func subjectPhone(ev *uw.Event) string {
+	if ev.IsGroup {
+		return ""
+	}
+	return ev.SenderPhone
+}
+
+// bridgeLead attaches the CRM lead this subject is.
+//
+// Best-effort: a failure here must never drop a customer's message. A subject
+// without a lead still renders (the identity lookup covers it) and the next
+// inbound message retries the bridge.
+//
+// Never called for a group, and never for a group's participants. A group has no
+// number to bridge to, and auto-creating a lead for every member of a
+// two-hundred-person thread would flood the CRM with people who have never
+// contacted the business.
+func (uc *HandleWebhookUseCase) bridgeLead(ctx context.Context, instance *uw.Instance, subject *uw.Contact) {
+	if uc.leads == nil || subject.IsGroup || subject.LeadID != nil || subject.PhoneNumber == "" {
+		return
+	}
+
+	leadID, err := uc.leads.EnsureLeadForPhone(ctx, instance.WorkspaceID, subject.PhoneNumber, subject.DisplayName())
 	if err != nil || leadID == "" {
 		if err != nil {
-			log.Printf("[unofficial-whatsapp] lead bridge failed for contact %s: %v", contact.ID, err)
+			log.Printf("[unofficial-whatsapp] lead bridge failed for contact %s: %v", subject.ID, err)
 		}
 		return
 	}
-	if err := uc.contacts.LinkLead(ctx, contact.ID, leadID); err != nil {
-		log.Printf("[unofficial-whatsapp] lead link failed for contact %s: %v", contact.ID, err)
+	if err := uc.contacts.LinkLead(ctx, subject.ID, leadID); err != nil {
+		log.Printf("[unofficial-whatsapp] lead link failed for contact %s: %v", subject.ID, err)
 		return
 	}
-	contact.LeadID = &leadID
-}
-
-// enrichContact refreshes a stale profile from what the event already carried.
-//
-// Free enrichment only: the event brought a display name, so no extra provider
-// call is made. Anything richer waits for the profile fetch the send path can
-// afford.
-func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, contact *uw.Contact, ev *uw.Event) {
-	name := strings.TrimSpace(ev.SenderName)
-	if name == "" || name == contact.Name {
-		return
-	}
-	if !contact.ProfileIsStale(time.Now().UTC(), profileTTL) && contact.Name != "" {
-		return
-	}
-	err := uc.contacts.UpdateProfile(ctx, contact.ID, uw.ContactProfile{
-		Name:      name,
-		FetchedAt: time.Now().UTC(),
-	})
-	if err != nil {
-		log.Printf("[unofficial-whatsapp] profile refresh failed for contact %s: %v", contact.ID, err)
-		return
-	}
-	contact.Name = name
+	subject.LeadID = &leadID
 }
 
 // ---------------------------------------------------------------- messages
@@ -344,8 +511,7 @@ func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, contact *uw.C
 func (uc *HandleWebhookUseCase) recordMessage(
 	ctx context.Context,
 	instance *uw.Instance,
-	conv *uw.Conversation,
-	contact *uw.Contact,
+	sub *chatContext,
 	ev *uw.Event,
 	direction conversation.MessageHistoryDirection,
 ) error {
@@ -353,6 +519,7 @@ func (uc *HandleWebhookUseCase) recordMessage(
 		return nil
 	}
 
+	conv := sub.conversation
 	record := conversation.MessageHistoryRecord{
 		EntryID:           conv.ID,
 		EntryType:         shared.EntryTypeUnofficialWhatsApp,
@@ -362,13 +529,16 @@ func (uc *HandleWebhookUseCase) recordMessage(
 		Text:              ev.Text,
 		Timestamp:         ev.Timestamp,
 		Metadata:          inboundMetadata(ev),
-		SenderName:        contact.DisplayName(),
-		SenderAvatar:      contact.PictureURL,
+		// The AUTHOR, not the subject. In a group these differ, and labelling
+		// every bubble with the subject would attribute the whole thread to the
+		// group instead of to the people in it.
+		SenderName:   sub.authorName,
+		SenderAvatar: sub.authorAvatar,
 	}
 	if direction == conversation.MessageDirectionInbound {
-		record.From, record.To = contact.Handle(), instance.Label()
+		record.From, record.To = sub.authorHandle, instance.Label()
 	} else {
-		record.From, record.To = instance.Label(), contact.Handle()
+		record.From, record.To = instance.Label(), sub.subject.Handle()
 	}
 	if ev.QuotedProviderMessageID != "" {
 		record.ReplyToWAMessageID = ev.QuotedProviderMessageID
@@ -579,7 +749,7 @@ func crmDeliveryStatus(status uw.DeliveryStatus) conversation.DeliveryStatus {
 // An empty emoji is a REMOVAL, not a missing field, and both are recorded so the
 // UI can drop the reaction rather than leaving a stale one on screen.
 func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
-	contact, conv, err := uc.resolveContext(ctx, instance, ev)
+	sub, err := uc.resolveContext(ctx, instance, ev)
 	if err != nil {
 		return err
 	}
@@ -587,22 +757,22 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, instance *uw
 		return nil
 	}
 	err = uc.history.Record(ctx, conversation.MessageDirectionInbound, conversation.MessageHistoryRecord{
-		EntryID:           conv.ID,
+		EntryID:           sub.conversation.ID,
 		EntryType:         shared.EntryTypeUnofficialWhatsApp,
 		Channel:           conversation.MessageChannelUnofficialWhatsApp,
 		MessageType:       conversation.MessageTypeReaction,
 		ProviderMessageID: ev.ProviderMessageID,
 		Text:              ev.Emoji,
-		From:              contact.Handle(),
+		From:              sub.authorHandle,
 		To:                instance.Label(),
 		Timestamp:         ev.Timestamp,
 		Metadata:          inboundMetadata(ev),
-		SenderName:        contact.DisplayName(),
+		SenderName:        sub.authorName,
 	})
 	if err != nil {
 		return err
 	}
-	uc.broadcastEntryUpdate(conv.ID)
+	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
 }
 
@@ -630,15 +800,77 @@ func (uc *HandleWebhookUseCase) handleBlockToggle(ctx context.Context, instance 
 	return uc.contacts.SetBlocked(ctx, contact.ID, ev.Blocked, time.Now().UTC())
 }
 
+// handleContactUpdate consumes a pushed profile change.
+//
+// This is the cheapest enrichment path there is: the `chats` and `contacts`
+// events carry the vendor's whole Chat object — saved name AND picture — so a
+// customer changing their photo or their display name reaches the CRM as a PUSH,
+// with no call back to WhatsApp at all. The picture is re-hosted only when its
+// source url actually changed, so an event that merely re-states what we already
+// have costs one string comparison.
 func (uc *HandleWebhookUseCase) handleContactUpdate(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
 	contact, err := uc.contacts.FindByJID(ctx, instance.ID, ev.ChatID)
-	if err != nil || strings.TrimSpace(ev.SenderName) == "" {
+	if err != nil {
+		// A chat we have never opened. Creating a contact from a directory sync
+		// would fill the CRM with every number in the owner's address book.
 		return nil
 	}
-	return uc.contacts.UpdateProfile(ctx, contact.ID, uw.ContactProfile{
-		ContactName: ev.SenderName,
-		FetchedAt:   time.Now().UTC(),
-	})
+
+	if name := strings.TrimSpace(ev.SenderName); name != "" {
+		// FetchedAt is deliberately left zero. The provider pushed a name, which
+		// is not a profile read: stamping the clock here would consume the
+		// subject's weekly refresh budget and suppress the picture fetch that is
+		// due.
+		field := uw.ContactProfile{ContactName: name}
+		if contact.IsGroup {
+			// A group's identity is its subject, not a saved-contact name.
+			field = uw.ContactProfile{Name: name}
+		}
+		if err := uc.contacts.UpdateProfile(ctx, contact.ID, field); err != nil {
+			return err
+		}
+	}
+
+	uc.profiles.applyPushedPicture(ctx, contact, ev.PictureURL)
+	uc.broadcastSubjectUpdate(ctx, instance, contact)
+	return nil
+}
+
+// broadcastSubjectUpdate pushes a refreshed identity to open inboxes.
+//
+// Without it a renamed contact or a new profile picture only appears on the next
+// reload, which reads as "the CRM did not notice" — the same complaint that
+// produced this whole path.
+func (uc *HandleWebhookUseCase) broadcastSubjectUpdate(ctx context.Context, instance *uw.Instance, subject *uw.Contact) {
+	if uc.broadcaster == nil || uc.conversations == nil {
+		return
+	}
+	conv, err := uc.conversations.FindByChatID(ctx, instance.ID, subject.JID)
+	if err != nil || conv == nil {
+		return
+	}
+	uc.broadcastEntryUpdate(conv.ID)
+}
+
+// handleGroupChanged consumes a `groups` delivery as an INVALIDATION.
+//
+// It marks the cached row stale and stops. It does not parse the payload, does
+// not re-read the group, and does not touch the roster — deliberately, for two
+// separate reasons:
+//
+//   - The provider specifies no schema for this event, so any field we read is a
+//     guess. A guess that is wrong writes a roster nobody can tell is wrong,
+//     which is worse than one that is briefly stale.
+//   - Re-reading here would put a provider call on an event we do not control
+//     the rate of. WhatsApp emits these for every group the number is in,
+//     including ones nobody in the CRM has ever opened. Marking stale costs one
+//     UPDATE, and the re-read happens on the next message in that group — so a
+//     group nobody talks in is never read at all.
+func (uc *HandleWebhookUseCase) handleGroupChanged(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
+	if err := uc.groups.markStale(ctx, instance.ID, ev.ChatID); err != nil {
+		log.Printf("[unofficial-whatsapp] could not flag group %s as stale: %v", ev.ChatID, err)
+	}
+	return nil
 }
 
 // handleCall records an inbound call as a timeline marker.
