@@ -78,12 +78,19 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		EntryType:   entryType,
 		Channel:     channel,
 		MessageType: msgType,
-		From:        strings.TrimSpace(record.From),
-		To:          strings.TrimSpace(record.To),
-		Text:        strings.TrimSpace(record.Text),
-		MediaID:     mediaID,
-		MediaType:   mediaType,
-		Metadata:    record.Metadata,
+		// Stated, not derived. Every producer already passes a direction to
+		// Record and it was previously used only as a fallback for an invalid
+		// message type — so a channel that named its content honestly (an
+		// unofficial WhatsApp text is MessageTypeUserMessage whoever sent it)
+		// silently lost the one fact that says which side of the thread it
+		// belongs on. Persisting it here covers every channel at once.
+		Direction: direction,
+		From:      strings.TrimSpace(record.From),
+		To:        strings.TrimSpace(record.To),
+		Text:      strings.TrimSpace(record.Text),
+		MediaID:   mediaID,
+		MediaType: mediaType,
+		Metadata:  record.Metadata,
 		// Transient: carried to the broadcast, dropped by the repository. When
 		// the producer knew the sender, the hub does no lookup at all.
 		SenderName:   strings.TrimSpace(record.SenderName),

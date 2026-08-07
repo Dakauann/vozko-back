@@ -155,16 +155,22 @@ type Message struct {
 	EntryType   shared.EntryType `json:"entryType"`
 	Channel     MessageChannel   `json:"channel"`
 	MessageType MessageType      `json:"messageType"`
-	From        string           `json:"from"`
-	To          string           `json:"to"`
-	Text        string           `json:"text"`
-	Image       []byte           `json:"image,omitempty"`
-	Video       []byte           `json:"video,omitempty"`
-	MediaID     *string          `json:"mediaId,omitempty"`
-	MediaType   MediaType        `json:"mediaType,omitempty"`
-	Read        bool             `json:"read"`
-	ReadAt      *time.Time       `json:"readAt,omitempty"`
-	ReadBy      *string          `json:"readBy,omitempty"`
+	// Direction is who sent this, independent of what it contained.
+	//
+	// Empty on rows written before the column existed; readers must treat that
+	// as "not stated" and fall back, never as inbound. See
+	// MessageHistoryDirection for why this is stored rather than derived.
+	Direction MessageHistoryDirection `json:"direction,omitempty"`
+	From      string                  `json:"from"`
+	To        string                  `json:"to"`
+	Text      string                  `json:"text"`
+	Image     []byte                  `json:"image,omitempty"`
+	Video     []byte                  `json:"video,omitempty"`
+	MediaID   *string                 `json:"mediaId,omitempty"`
+	MediaType MediaType               `json:"mediaType,omitempty"`
+	Read      bool                    `json:"read"`
+	ReadAt    *time.Time              `json:"readAt,omitempty"`
+	ReadBy    *string                 `json:"readBy,omitempty"`
 
 	WhatsAppMessageID *string `json:"whatsappMessageId,omitempty" bson:"whatsappMessageId,omitempty"`
 
@@ -183,6 +189,33 @@ type Message struct {
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	UpdatedAt      time.Time       `json:"updatedAt"`
+}
+
+// ResolvedDirection is the direction to persist for this message.
+//
+// A stated direction always wins. When none was stated — the direct
+// messageRepo.Create paths, which never took one — it is derived from the
+// message type, which is exactly the old inference and therefore exactly the old
+// behaviour for those callers. That derivation is sound for them: they are the
+// official WhatsApp and coexistence paths, where an operator reply really is
+// MessageTypeOperator and a customer's really is MessageTypeUserMessage.
+//
+// It is NOT sound for a channel that names its content honestly, which is the
+// whole reason direction is now stored: an owner answering on their own
+// WhatsApp sends a message whose content type is a plain text one, and deriving
+// from that puts their reply on the customer's side of the thread. Those
+// channels go through MessageHistoryManager, which states it.
+func (m *Message) ResolvedDirection() MessageHistoryDirection {
+	if m == nil {
+		return MessageDirectionUnknown
+	}
+	if m.Direction.Valid() {
+		return m.Direction
+	}
+	if m.MessageType.IsInbound() {
+		return MessageDirectionInbound
+	}
+	return MessageDirectionOutbound
 }
 
 func (m *Message) Normalize() {

@@ -392,7 +392,7 @@ func (h *ConversationHub) BroadcastNewMessage(entryID, entryType string, message
 	}
 
 	if h.statusUpdater != nil && message != nil {
-		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType); err != nil {
+		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType, message.ResolvedDirection()); err != nil {
 			log.Printf("[ConversationHub] Error transitioning conversation status for %s (%s): %v", entryID, entryType, err)
 		}
 	}
@@ -2162,7 +2162,7 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 
 func (h *ConversationHub) afterOperatorSend(conn *WSConnection, entryID, entryType string, message *conversation.Message) {
 	if h.statusUpdater != nil && message != nil {
-		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType); err != nil {
+		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType, message.ResolvedDirection()); err != nil {
 			log.Printf("[ConversationHub] Error transitioning conversation status for %s (%s): %v", entryID, entryType, err)
 		}
 	}

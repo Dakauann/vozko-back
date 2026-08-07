@@ -31,7 +31,7 @@ func (m *finishStatusMock) Finish(entryID, entryType string, opts conversation.F
 	m.lastOpts = opts
 	return m.err
 }
-func (m *finishStatusMock) TransitionOnMessage(string, string, conversation.MessageType) error {
+func (m *finishStatusMock) TransitionOnMessage(string, string, conversation.MessageType, conversation.MessageHistoryDirection) error {
 	return nil
 }
 func (m *finishStatusMock) GetStatusCounts(string, string, string) (map[string]int64, error) {

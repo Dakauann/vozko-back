@@ -14,15 +14,27 @@ import (
 // recordingHistory captures what the webhook path persisted, so a test can
 // assert who a message was attributed to.
 type recordingHistory struct {
-	mu      sync.Mutex
-	records []conversation.MessageHistoryRecord
+	mu         sync.Mutex
+	records    []conversation.MessageHistoryRecord
+	directions []conversation.MessageHistoryDirection
 }
 
-func (h *recordingHistory) Record(_ context.Context, _ conversation.MessageHistoryDirection, r conversation.MessageHistoryRecord) error {
+func (h *recordingHistory) Record(_ context.Context, d conversation.MessageHistoryDirection, r conversation.MessageHistoryRecord) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, r)
+	h.directions = append(h.directions, d)
 	return nil
+}
+
+// directionOf returns the direction recorded alongside record i.
+func (h *recordingHistory) directionOf(i int) conversation.MessageHistoryDirection {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if i < 0 || i >= len(h.directions) {
+		return conversation.MessageDirectionUnknown
+	}
+	return h.directions[i]
 }
 
 func (h *recordingHistory) all() []conversation.MessageHistoryRecord {

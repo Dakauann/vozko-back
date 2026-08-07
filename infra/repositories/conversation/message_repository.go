@@ -481,11 +481,15 @@ func mapDomainToSchema(message *conversation.Message) *schema.ConversationMessag
 	}
 
 	return &schema.ConversationMessage{
-		ID:                message.ID,
-		EntryID:           message.EntryID,
-		EntryType:         string(message.EntryType),
-		Channel:           string(message.Channel),
-		MessageType:       string(message.MessageType),
+		ID:          message.ID,
+		EntryID:     message.EntryID,
+		EntryType:   string(message.EntryType),
+		Channel:     string(message.Channel),
+		MessageType: string(message.MessageType),
+		// Resolved, never copied raw: a row written with no direction at all
+		// would force every reader back to the inference this column exists to
+		// remove. The direct Create paths state none, so they derive here.
+		Direction:         string(message.ResolvedDirection()),
 		FromParticipant:   message.From,
 		ToParticipant:     message.To,
 		Text:              message.Text,
@@ -517,6 +521,7 @@ func mapSchemaToDomain(message *schema.ConversationMessage) *conversation.Messag
 		EntryType:         shared.EntryType(message.EntryType),
 		Channel:           conversation.MessageChannel(message.Channel),
 		MessageType:       conversation.MessageType(message.MessageType),
+		Direction:         conversation.MessageHistoryDirection(message.Direction),
 		From:              message.FromParticipant,
 		To:                message.ToParticipant,
 		Text:              message.Text,

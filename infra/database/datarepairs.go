@@ -26,6 +26,8 @@ func runDataRepairs(tx *gorm.DB) error {
 		{"uw_merge_split_group_conversations", mergeSplitGroupConversations},
 		{"uw_retire_unattributable_conversations", retireUnattributableConversations},
 		{"uw_reset_never_read_profile_clocks", resetNeverReadProfileClocks},
+		{"cm_backfill_message_direction", backfillMessageDirection},
+		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
 	}
 
 	for _, r := range repairs {
@@ -315,5 +317,72 @@ func repointGroupSubjects(tx *gorm.DB) error {
 		  AND g.jid = c.chat_id
 		  AND g.deleted_at IS NULL
 		  AND c.contact_id <> g.id
+	`).Error
+}
+
+// backfillMessageDirection fills the direction column on rows written before it
+// existed, from the message type.
+//
+// That is precisely the inference every reader used to make, so this changes
+// nothing about how a historical conversation renders — it just moves the
+// derivation from read time to one write, so the readers can stop guessing.
+// Where the inference was wrong it is still wrong after this, and
+// correctUnofficialDeviceSentDirection repairs the cases that can be proven.
+//
+// Idempotent: only ever touches rows where direction is still empty.
+func backfillMessageDirection(tx *gorm.DB) error {
+	// The inbound content types, matching MessageType.IsInbound.
+	const inbound = "('user_message','audio','media','story_reply','story_mention','post_share')"
+
+	return tx.Exec(`
+		UPDATE conversation_messages
+		SET direction = CASE
+			WHEN message_type IN ` + inbound + ` THEN 'INBOUND'
+			ELSE 'OUTBOUND'
+		END
+		WHERE direction IS NULL OR direction = ''
+	`).Error
+}
+
+// correctUnofficialDeviceSentDirection fixes the rows the type-based inference
+// got backwards: a message the owner typed on their own WhatsApp app.
+//
+// Those arrive over the webhook with the honest content type of what they
+// contained — a text is a text — so the inference filed the owner's own reply on
+// the customer's side of the thread, showed it with the customer's name and
+// picture, and left the conversation sitting in NEW as though nobody had
+// answered.
+//
+// Proving one is outbound without trusting anything mutable: within a single
+// conversation, compare the sender string against the sender string of a
+// message we KNOW we sent — an operator reply, an agent reply, a template. Those
+// carry the number's own label in from_participant. A row whose sender is byte
+// for byte that same label came from the same place, so it is ours.
+//
+// Deliberately NOT derived from the instance's label column: an operator can
+// rename a number at any time, and matching against today's name would miss
+// every message sent under the old one while silently claiming completeness.
+// Learning the label from the conversation's own history has no such drift.
+//
+// The limit, stated plainly: a conversation where nobody ever replied through
+// the CRM has no known-outbound row to learn from, so its device-sent messages
+// stay as they were. That is the status quo rather than a regression, and the
+// next CRM reply makes them repairable on the following boot.
+func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
+	return tx.Exec(`
+		UPDATE conversation_messages AS m
+		SET direction = 'OUTBOUND'
+		WHERE m.entry_type = 'unofficial_whatsapp'
+		  AND m.direction = 'INBOUND'
+		  AND m.message_type IN ('user_message','audio','media')
+		  AND COALESCE(m.from_participant, '') <> ''
+		  AND EXISTS (
+			SELECT 1
+			FROM conversation_messages AS ours
+			WHERE ours.entry_id = m.entry_id
+			  AND ours.entry_type = m.entry_type
+			  AND ours.message_type IN ('operator','ai_response','template')
+			  AND ours.from_participant = m.from_participant
+		  )
 	`).Error
 }

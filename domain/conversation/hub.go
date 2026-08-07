@@ -218,7 +218,7 @@ type ConversationStatusUpdater interface {
 	// Finish moves to finished with required close_source / close_reason.
 	Finish(entryID, entryType string, opts FinishOptions) error
 
-	TransitionOnMessage(entryID, entryType string, msgType MessageType) error
+	TransitionOnMessage(entryID, entryType string, msgType MessageType, direction MessageHistoryDirection) error
 
 	GetStatusCounts(workspaceID, campaignID, entryType string) (map[string]int64, error)
 }

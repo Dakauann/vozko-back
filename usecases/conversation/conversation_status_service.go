@@ -284,10 +284,29 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	s.events.Log(builder.Build())
 }
 
-func (s *ConversationStatusService) TransitionOnMessage(entryID, entryType string, msgType conversation.MessageType) error {
+// TransitionOnMessage moves a conversation's status when a message lands.
+//
+// It takes the direction because the message TYPE cannot answer the question it
+// is asked here. An owner who replies on their own WhatsApp app sends a message
+// whose content type is an ordinary text one, and reading that as "the customer
+// wrote" left the conversation sitting in NEW after it had been answered — so
+// the queue kept nagging about a conversation somebody had already handled.
+//
+// An unstated direction falls back to the old type-based reading, which is what
+// rows written before the column carry.
+func (s *ConversationStatusService) TransitionOnMessage(
+	entryID, entryType string,
+	msgType conversation.MessageType,
+	direction conversation.MessageHistoryDirection,
+) error {
 	current := s.GetConversationStatus(entryID, entryType)
 
-	if msgType.IsInbound() {
+	inbound := msgType.IsInbound()
+	if direction.Valid() {
+		inbound = !direction.IsOutbound()
+	}
+
+	if inbound {
 		switch current {
 		case "", conversation.ConversationStatusFinished:
 			// Reopen: finished → new and clear close provenance on the entry.
@@ -296,14 +315,34 @@ func (s *ConversationStatusService) TransitionOnMessage(entryID, entryType strin
 		return nil
 	}
 
-	switch msgType {
-	case conversation.MessageTypeOperator, conversation.MessageTypeAIResponse, conversation.MessageTypeTemplate:
-		if current == conversation.ConversationStatusNew || current == "" {
-			return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", false)
-		}
+	if !answersTheCustomer(msgType) {
+		return nil
 	}
-
+	if current == conversation.ConversationStatusNew || current == "" {
+		return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", false)
+	}
 	return nil
+}
+
+// answersTheCustomer reports whether an outbound message is somebody actually
+// replying, as opposed to the machinery talking to itself.
+//
+// Tool calls, tool results and system notices are outbound but are not an
+// answer: marking a conversation handled because a workflow logged a step would
+// hide it from the queue while the customer still waits. The content types are
+// here because an owner replying from their own phone sends a plain text or a
+// photo, and that is as real an answer as one typed in the CRM.
+func answersTheCustomer(msgType conversation.MessageType) bool {
+	switch msgType {
+	case conversation.MessageTypeOperator,
+		conversation.MessageTypeAIResponse,
+		conversation.MessageTypeTemplate,
+		conversation.MessageTypeUserMessage,
+		conversation.MessageTypeAudio,
+		conversation.MessageTypeMedia:
+		return true
+	}
+	return false
 }
 
 var _ conversation.ConversationStatusUpdater = (*ConversationStatusService)(nil)

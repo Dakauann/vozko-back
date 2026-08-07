@@ -50,7 +50,7 @@ func (m *mockStatusUpdater) Finish(entryID, entryType string, opts conversation.
 	return m.SetConversationStatus(entryID, entryType, conversation.ConversationStatusFinished)
 }
 
-func (m *mockStatusUpdater) TransitionOnMessage(entryID, entryType string, msgType conversation.MessageType) error {
+func (m *mockStatusUpdater) TransitionOnMessage(entryID, entryType string, msgType conversation.MessageType, _ conversation.MessageHistoryDirection) error {
 	return m.transitionErr
 }
 

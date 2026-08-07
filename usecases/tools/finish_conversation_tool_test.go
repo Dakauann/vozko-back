@@ -32,7 +32,7 @@ func (s *finishStatusStub) Finish(entryID, entryType string, opts conversation.F
 	s.lastOpts = opts
 	return s.err
 }
-func (s *finishStatusStub) TransitionOnMessage(string, string, conversation.MessageType) error {
+func (s *finishStatusStub) TransitionOnMessage(string, string, conversation.MessageType, conversation.MessageHistoryDirection) error {
 	return nil
 }
 func (s *finishStatusStub) GetStatusCounts(string, string, string) (map[string]int64, error) {

@@ -8,11 +8,20 @@ import (
 )
 
 type ConversationMessage struct {
-	ID                string     `gorm:"primaryKey;type:text"`
-	EntryID           string     `gorm:"index:idx_message_entry;index:idx_cm_entry_composite,priority:1;index:idx_cm_unread,priority:1;index:idx_cm_type_entry_created,priority:2;index:idx_cm_entry_del_created,priority:1;type:uuid;not null"`
-	EntryType         string     `gorm:"index:idx_message_entry_type;index:idx_cm_entry_composite,priority:2;index:idx_cm_unread,priority:2;index:idx_cm_type_entry_created,priority:1;index:idx_cm_entry_del_created,priority:2;type:varchar(20);not null"`
-	Channel           string     `gorm:"type:varchar(20)"`
-	MessageType       string     `gorm:"type:varchar(30);index:idx_cm_unread,priority:4"`
+	ID          string `gorm:"primaryKey;type:text"`
+	EntryID     string `gorm:"index:idx_message_entry;index:idx_cm_entry_composite,priority:1;index:idx_cm_unread,priority:1;index:idx_cm_type_entry_created,priority:2;index:idx_cm_entry_del_created,priority:1;type:uuid;not null"`
+	EntryType   string `gorm:"index:idx_message_entry_type;index:idx_cm_entry_composite,priority:2;index:idx_cm_unread,priority:2;index:idx_cm_type_entry_created,priority:1;index:idx_cm_entry_del_created,priority:2;type:varchar(20);not null"`
+	Channel     string `gorm:"type:varchar(20)"`
+	MessageType string `gorm:"type:varchar(30);index:idx_cm_unread,priority:4"`
+	// Direction is INBOUND or OUTBOUND, and '' on rows written before this
+	// column existed. Not derivable from MessageType: that is the kind of
+	// CONTENT, and a channel forced to encode direction in it has to discard
+	// one of the two facts. See conversation.MessageHistoryDirection.
+	//
+	// Unindexed on purpose: nothing filters by it, every read that needs it is
+	// already narrowed by (entry_id, entry_type), and an index on a two-value
+	// column would only cost writes.
+	Direction         string     `gorm:"type:varchar(10);default:''"`
 	FromParticipant   string     `gorm:"size:120"`
 	ToParticipant     string     `gorm:"size:120"`
 	Text              string     `gorm:"type:text"`
