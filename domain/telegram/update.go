@@ -624,18 +624,32 @@ func SortByUpdateID(events []*Event) {
 // ProviderMessageID renders the durable id stored as
 // conversation_messages.external_message_id.
 //
-// message_id is unique only INSIDE a chat, so pairing it with the chat id is
-// what makes the partial unique index on (entry_type, external_message_id)
-// actually prevent duplicates instead of rejecting unrelated messages.
-func ProviderMessageID(chatID, messageID int64) string {
-	return strconv.FormatInt(chatID, 10) + ":" + strconv.FormatInt(messageID, 10)
+// message_id is unique only INSIDE a chat, and the chat id of a private chat is
+// just the contact's own user id, so the (chat, message) pair is NOT unique
+// across bots: the same person's first message to two different bots is
+// "<their user id>:1" both times. The unique index on
+// (entry_type, external_message_id) is global, so without the bot id the second
+// bot's message is read as a replay of the first bot's and silently dropped -
+// the contact writes and nothing reaches the inbox. Prefixing the bot's own id
+// is what makes that index reject genuine replays only.
+func ProviderMessageID(botUserID, chatID, messageID int64) string {
+	return strconv.FormatInt(botUserID, 10) + ":" +
+		strconv.FormatInt(chatID, 10) + ":" +
+		strconv.FormatInt(messageID, 10)
 }
 
 // ParseProviderMessageID is ProviderMessageID's inverse, for the edit and delete
 // paths that need the pair back.
+//
+// Rows written before the bot id was prefixed are still in the table and still
+// editable, so the two-field form is accepted as well.
 func ParseProviderMessageID(id string) (chatID, messageID int64, ok bool) {
-	parts := strings.SplitN(id, ":", 2)
-	if len(parts) != 2 {
+	parts := strings.Split(id, ":")
+	switch len(parts) {
+	case 2: // legacy "<chat>:<message>"
+	case 3: // current "<bot>:<chat>:<message>"
+		parts = parts[1:]
+	default:
 		return 0, 0, false
 	}
 	c, err := strconv.ParseInt(parts[0], 10, 64)

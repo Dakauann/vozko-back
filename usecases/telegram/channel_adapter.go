@@ -168,7 +168,7 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 	// full Message, so there is no echo webhook to reconcile against, unlike
 	// every Meta channel.
 	return &conversation.SendOutcome{
-		ProviderMessageID: tgdomain.ProviderMessageID(result.ChatID, result.MessageID),
+		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
 	}, nil
 }
 
@@ -227,7 +227,7 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 	a.recordOutbound(ctx, ec)
 
 	return &conversation.SendOutcome{
-		ProviderMessageID: tgdomain.ProviderMessageID(result.ChatID, result.MessageID),
+		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
 	}, nil
 }
 

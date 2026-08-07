@@ -358,21 +358,56 @@ func TestDecodeUpdateRejectsMalformed(t *testing.T) {
 // makes the partial unique index on (entry_type, external_message_id) actually
 // prevent duplicates instead of rejecting unrelated messages.
 func TestProviderMessageIDRoundTrips(t *testing.T) {
-	cases := [][2]int64{
-		{5041234567, 4821},
-		{-1001234567890, 55},
-		{4503599627370495, 9007199254740991},
+	cases := [][3]int64{
+		{77777, 5041234567, 4821},
+		{88888, -1001234567890, 55},
+		{4503599627370495, 4503599627370495, 9007199254740991},
 	}
 	for _, c := range cases {
-		id := ProviderMessageID(c[0], c[1])
+		id := ProviderMessageID(c[0], c[1], c[2])
 		chatID, messageID, ok := ParseProviderMessageID(id)
-		if !ok || chatID != c[0] || messageID != c[1] {
-			t.Errorf("round trip of (%d,%d) via %q gave (%d,%d,%t)", c[0], c[1], id, chatID, messageID, ok)
+		if !ok || chatID != c[1] || messageID != c[2] {
+			t.Errorf("round trip of (%d,%d,%d) via %q gave (%d,%d,%t)", c[0], c[1], c[2], id, chatID, messageID, ok)
 		}
 	}
 
 	if _, _, ok := ParseProviderMessageID("not-an-id"); ok {
 		t.Error("a malformed provider id must not parse")
+	}
+	if _, _, ok := ParseProviderMessageID("1:2:3:4"); ok {
+		t.Error("an over-long provider id must not parse")
+	}
+}
+
+// The id must differ per bot. A private chat's id IS the contact's user id and
+// message_id restarts at 1 for every new bot chat, so the same person's first
+// message to two bots produced the identical id. The unique index on
+// (entry_type, external_message_id) is global, so the second bot's message was
+// read as a replay of the first bot's and dropped: the contact wrote and
+// nothing ever reached the inbox.
+func TestProviderMessageIDIsScopedToTheBot(t *testing.T) {
+	const chatID, messageID = 6979451734, 1
+
+	first := ProviderMessageID(8672697827, chatID, messageID)
+	second := ProviderMessageID(7811345678, chatID, messageID)
+
+	if first == second {
+		t.Fatalf("two bots produced the same provider id %q for the same chat and message", first)
+	}
+	for _, id := range []string{first, second} {
+		gotChat, gotMessage, ok := ParseProviderMessageID(id)
+		if !ok || gotChat != chatID || gotMessage != messageID {
+			t.Errorf("parse of %q gave (%d,%d,%t)", id, gotChat, gotMessage, ok)
+		}
+	}
+}
+
+// Ids written before the bot id was prefixed are still stored, and an operator
+// editing or deleting one of those messages must still resolve it.
+func TestParseProviderMessageIDAcceptsLegacyTwoFieldForm(t *testing.T) {
+	chatID, messageID, ok := ParseProviderMessageID("6979451734:4")
+	if !ok || chatID != 6979451734 || messageID != 4 {
+		t.Errorf("legacy id parsed as (%d,%d,%t)", chatID, messageID, ok)
 	}
 }
 

@@ -337,7 +337,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	if ev.Text == "" && len(stored) == 0 {
 		return uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 			MessageType:       conversation.MessageTypeUnsupported,
-			ProviderMessageID: tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID),
+			ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 			From:              from,
 			To:                to,
 			Text:              placeholderFor(ev),
@@ -351,7 +351,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	if ev.Text != "" || len(stored) == 0 {
 		if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 			MessageType:       conversation.MessageTypeUserMessage,
-			ProviderMessageID: tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID),
+			ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 			From:              from,
 			To:                to,
 			Text:              ev.Text,
@@ -367,7 +367,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	for i, item := range stored {
 		// Each attachment needs a distinct provider id or the partial unique
 		// index on (entry_type, external_message_id) rejects the second one.
-		providerID := tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID)
+		providerID := tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID)
 		if len(stored) > 1 || ev.Text != "" {
 			providerID = fmt.Sprintf("%s:att%d", providerID, i)
 		}
@@ -415,7 +415,7 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, account *tgd
 
 	return uc.record(ctx, conv, conversation.MessageDirectionOutbound, historyInput{
 		MessageType:       messageType,
-		ProviderMessageID: tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID),
+		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 		From:              strconv.FormatInt(account.BotUserID, 10),
 		To:                strconv.FormatInt(ev.ChatID, 10),
 		Text:              ev.Text,
@@ -429,7 +429,7 @@ func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *tgdom
 	if uc.messages == nil {
 		return nil
 	}
-	providerID := tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID)
+	providerID := tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID)
 	existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeTelegram, providerID)
 	if err != nil {
 		if errors.Is(err, conversation.ErrMessageNotFound) {
@@ -456,7 +456,7 @@ func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *tgdo
 		return nil
 	}
 	for _, messageID := range ev.DeletedMessageIDs {
-		providerID := tgdomain.ProviderMessageID(ev.ChatID, messageID)
+		providerID := tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, messageID)
 		existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeTelegram, providerID)
 		if err != nil {
 			if errors.Is(err, conversation.ErrMessageNotFound) {
@@ -565,7 +565,7 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 
 	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
-		ProviderMessageID: tgdomain.ProviderMessageID(ev.ChatID, ev.MessageID),
+		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 		From:              strconv.FormatInt(contact.TGUserID, 10),
 		To:                strconv.FormatInt(account.BotUserID, 10),
 		Text:              text,

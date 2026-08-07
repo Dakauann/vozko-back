@@ -246,7 +246,7 @@ func TestSendTextReplyUsesMessageIDOnly(t *testing.T) {
 	if _, err := adapter.SendText(context.Background(), entryContext(conv, nil),
 		conversation.SendTextRequest{
 			Body:                     "sim",
-			ReplyToProviderMessageID: tgdomain.ProviderMessageID(5041234567, 4820),
+			ReplyToProviderMessageID: tgdomain.ProviderMessageID(77777, 5041234567, 4820),
 		}); err != nil {
 		t.Fatalf("SendText: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestMarkSeenIsBusinessOnly(t *testing.T) {
 	}
 
 	err := presence.MarkSeen(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(5041234567, 1))
+		tgdomain.ProviderMessageID(77777, 5041234567, 1))
 	if !errors.Is(err, conversation.ErrCapabilityUnsupported) {
 		t.Errorf("err = %v, want ErrCapabilityUnsupported in bot mode", err)
 	}
@@ -484,14 +484,14 @@ func TestRetractRefusesBeyond48Hours(t *testing.T) {
 
 	old := time.Now().UTC().Add(-49 * time.Hour)
 	err := retracting.Retract(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(5041234567, 1), old)
+		tgdomain.ProviderMessageID(77777, 5041234567, 1), old)
 	if !errors.Is(err, conversation.ErrCapabilityUnsupported) {
 		t.Errorf("err = %v, want ErrCapabilityUnsupported past the 48h limit", err)
 	}
 
 	recent := time.Now().UTC().Add(-time.Hour)
 	if err := retracting.Retract(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(5041234567, 1), recent); err != nil {
+		tgdomain.ProviderMessageID(77777, 5041234567, 1), recent); err != nil {
 		t.Errorf("a one-hour-old message must be retractable: %v", err)
 	}
 }
@@ -507,7 +507,7 @@ func TestAdapterImplementsEditing(t *testing.T) {
 		t.Fatal("the Telegram adapter must implement EditingAdapter")
 	}
 	if err := editing.EditText(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(5041234567, 1), "corrigido"); err != nil {
+		tgdomain.ProviderMessageID(77777, 5041234567, 1), "corrigido"); err != nil {
 		t.Errorf("EditText: %v", err)
 	}
 }

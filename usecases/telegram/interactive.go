@@ -85,7 +85,7 @@ func (a *channelAdapter) SendInteractive(
 	a.recordOutbound(ctx, ec)
 
 	return &conversation.SendOutcome{
-		ProviderMessageID: tgdomain.ProviderMessageID(result.ChatID, result.MessageID),
+		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
 	}, nil
 }
 
