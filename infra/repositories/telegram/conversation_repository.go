@@ -2,6 +2,7 @@ package telegram_repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -115,20 +116,24 @@ func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryI
 // DepartmentIDForEntry reads the department from the owning account, which is
 // the config carrier for its conversations.
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
-	var departmentID *string
-	err := r.db.WithContext(ctx).
+	// Plucked into a slice of NullString, not a *string: Pluck writes through a
+	// slice, and handing it a **string made every call fail with "sql: Scan
+	// called without calling Next" even when the row existed. Assignment then
+	// logged "cannot resolve department" for every inbound message. The column
+	// is nullable, so the element type has to tolerate NULL as well.
+	var departmentIDs []sql.NullString
+	if err := r.db.WithContext(ctx).
 		Table("telegram_conversations tgc").
 		Joins("JOIN telegram_accounts tga ON tga.id = tgc.account_id").
 		Where("tgc.id = ?", entryID).
 		Limit(1).
-		Pluck("tga.department_id", &departmentID).Error
-	if err != nil {
+		Pluck("tga.department_id", &departmentIDs).Error; err != nil {
 		return "", err
 	}
-	if departmentID == nil {
+	if len(departmentIDs) == 0 || !departmentIDs[0].Valid {
 		return "", nil
 	}
-	return *departmentID, nil
+	return departmentIDs[0].String, nil
 }
 
 func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {
