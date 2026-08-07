@@ -488,9 +488,12 @@ func (f *fakeMessaging) ChatDetails(ctx context.Context, ref uw.InstanceRef, cha
 	if fn != nil {
 		return fn(ctx, ref, chatID)
 	}
+	// No name, only a picture. That is the common real shape — most WhatsApp
+	// accounts have a picture and leave the profile name to the push name the
+	// message already carried — and a canned name here would mask whether a
+	// caller kept the right one.
 	return &uw.ChatProfile{
 		JID:        chatID,
-		Name:       "Perfil",
 		PictureURL: "https://pps.whatsapp.net/avatar.jpg",
 		IsGroup:    uw.IsGroupJID(chatID),
 	}, nil
@@ -785,6 +788,25 @@ func (f *fakeContactRepo) FindByID(_ context.Context, id string) (*uw.Contact, e
 
 func (f *fakeContactRepo) FindByIDs(context.Context, []string) ([]*uw.Contact, error) {
 	return nil, nil
+}
+
+func (f *fakeContactRepo) FindByHandles(_ context.Context, instanceID string, handles []string) ([]*uw.Contact, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wanted := make(map[string]struct{}, len(handles))
+	for _, h := range handles {
+		wanted[h] = struct{}{}
+	}
+	var out []*uw.Contact
+	for _, c := range f.contacts {
+		if c.InstanceID != instanceID {
+			continue
+		}
+		if _, ok := wanted[c.Handle()]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeContactRepo) FindByJID(_ context.Context, instanceID, jid string) (*uw.Contact, error) {

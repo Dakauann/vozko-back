@@ -184,6 +184,63 @@ func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.
 	return out, nil
 }
 
+// FindByHandles resolves a page of group authors from the handles their message
+// rows carry.
+//
+// Two columns, because Handle has two forms: a person with a known number reads
+// as "+<digits>", and one first seen under a LID — no number yet — reads as the
+// raw JID. Both are indexed, and the query is scoped to the instance so a handle
+// can never resolve to a contact of another connected number.
+func (r *contactRepository) FindByHandles(
+	ctx context.Context,
+	instanceID string,
+	handles []string,
+) ([]*uw.Contact, error) {
+	if instanceID == "" || len(handles) == 0 {
+		return nil, nil
+	}
+
+	phones := make([]string, 0, len(handles))
+	jids := make([]string, 0, len(handles))
+	for _, handle := range handles {
+		handle = strings.TrimSpace(handle)
+		if handle == "" {
+			continue
+		}
+		if digits := strings.TrimPrefix(handle, "+"); digits != handle {
+			phones = append(phones, digits)
+			continue
+		}
+		jids = append(jids, handle)
+	}
+	if len(phones) == 0 && len(jids) == 0 {
+		return nil, nil
+	}
+
+	query := r.db.WithContext(ctx).Where("instance_id = ?", instanceID)
+	switch {
+	case len(phones) > 0 && len(jids) > 0:
+		query = query.Where("phone_number IN ? OR jid IN ?", phones, jids)
+	case len(phones) > 0:
+		// Never an unqualified `phone_number IN ?` with an empty list, and never
+		// a bare OR against one: a group's phone_number is '', so a degenerate
+		// predicate here would return every group on the instance.
+		query = query.Where("phone_number IN ?", phones)
+	default:
+		query = query.Where("jid IN ?", jids)
+	}
+
+	var records []schema.UnofficialWhatsAppContact
+	if err := query.Find(&records).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*uw.Contact, 0, len(records))
+	for i := range records {
+		out = append(out, toContactDomain(&records[i]))
+	}
+	return out, nil
+}
+
 func (r *contactRepository) FindByJID(ctx context.Context, instanceID, jid string) (*uw.Contact, error) {
 	var record schema.UnofficialWhatsAppContact
 	err := r.db.WithContext(ctx).

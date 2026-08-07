@@ -223,8 +223,24 @@ func (r *instanceRepository) ListByWorkspace(
 	ctx context.Context,
 	input uw.ListInstancesInput,
 ) (*shared.PaginatedResult[*uw.Instance], error) {
+	// A restricted caller in no department matches nothing, and saying so here
+	// avoids building an IN () — a syntax error in some dialects and a silent
+	// match-ALL in others. Failing closed is the whole point.
+	if input.Scope.BlocksEverything() {
+		return shared.NewPaginatedResult([]*uw.Instance{}, input.Options.Pagination, 0), nil
+	}
+
 	query := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppInstance{}).
 		Where("workspace_id = ?", input.WorkspaceID)
+
+	// Department scope, matching the conversation machinery's own SQL: a
+	// restricted operator sees numbers in their departments and nothing else.
+	// A number with NO department is excluded, exactly as `= ANY(...)` excludes
+	// a NULL in the inbox union — a number whose conversations they cannot read
+	// has no business appearing in their list.
+	if input.Scope.Restrict {
+		query = query.Where("department_id IN ?", input.Scope.DepartmentIDs)
+	}
 
 	if s := strings.TrimSpace(input.Search); s != "" {
 		like := "%" + strings.ToLower(s) + "%"

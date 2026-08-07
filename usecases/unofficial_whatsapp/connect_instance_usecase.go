@@ -54,6 +54,10 @@ type ConnectRequest struct {
 	// Phone is required for pairing mode and ignored for QR.
 	Phone      string
 	SystemName string
+	// Scope limits which numbers this caller may link. Linking is what turns a
+	// provisioned slot into a live WhatsApp session, so it belongs to the
+	// department that owns the number.
+	Scope uw.DepartmentScope
 }
 
 // Connect asks the host for a QR code or a pairing code.
@@ -62,7 +66,7 @@ func (uc *ConnectInstanceUseCase) Connect(ctx context.Context, req ConnectReques
 		req.Mode = uw.ConnectModeQR
 	}
 
-	instance, server, err := uc.load(ctx, req.InstanceID, req.WorkspaceID)
+	instance, server, err := uc.load(ctx, req.InstanceID, req.WorkspaceID, req.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +97,8 @@ func (uc *ConnectInstanceUseCase) Connect(ctx context.Context, req ConnectReques
 //
 // This is what the connect screen calls on a timer: the QR rotates, and the
 // provider hands out the current one here rather than pushing it.
-func (uc *ConnectInstanceUseCase) Status(ctx context.Context, instanceID, workspaceID string) (*LinkChallenge, error) {
-	instance, server, err := uc.load(ctx, instanceID, workspaceID)
+func (uc *ConnectInstanceUseCase) Status(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) (*LinkChallenge, error) {
+	instance, server, err := uc.load(ctx, instanceID, workspaceID, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +127,8 @@ func (uc *ConnectInstanceUseCase) Status(ctx context.Context, instanceID, worksp
 
 // Disconnect ends the session without removing the instance, so the same slot
 // can be relinked to a different number.
-func (uc *ConnectInstanceUseCase) Disconnect(ctx context.Context, instanceID, workspaceID string) error {
-	instance, server, err := uc.load(ctx, instanceID, workspaceID)
+func (uc *ConnectInstanceUseCase) Disconnect(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) error {
+	instance, server, err := uc.load(ctx, instanceID, workspaceID, scope)
 	if err != nil {
 		return err
 	}
@@ -143,8 +147,8 @@ func (uc *ConnectInstanceUseCase) Disconnect(ctx context.Context, instanceID, wo
 //
 // The host enforces a cooldown between resets and refuses inside it. That
 // refusal is a normal answer, not a failure, so it is surfaced as one.
-func (uc *ConnectInstanceUseCase) Reset(ctx context.Context, instanceID, workspaceID string) error {
-	instance, server, err := uc.load(ctx, instanceID, workspaceID)
+func (uc *ConnectInstanceUseCase) Reset(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) error {
+	instance, server, err := uc.load(ctx, instanceID, workspaceID, scope)
 	if err != nil {
 		return err
 	}
@@ -166,19 +170,29 @@ func (uc *ConnectInstanceUseCase) markDisconnected(ctx context.Context, instance
 	return nil
 }
 
-// load resolves an instance and its host, enforcing workspace ownership.
+// load resolves an instance and its host, enforcing workspace ownership AND
+// department scope.
 //
-// The tenancy check is here rather than in the handler because every caller
-// needs it and one that forgets would expose another workspace's number.
-func (uc *ConnectInstanceUseCase) load(ctx context.Context, instanceID, workspaceID string) (*uw.Instance, *uw.Server, error) {
+// Both checks are here rather than in the handler because all four linking
+// verbs — connect, poll, disconnect, reset — need them, and one that forgot
+// would let an operator outside the department relink or drop another team's
+// number.
+func (uc *ConnectInstanceUseCase) load(
+	ctx context.Context,
+	instanceID, workspaceID string,
+	scope uw.DepartmentScope,
+) (*uw.Instance, *uw.Server, error) {
 	instance, err := uc.instances.FindByID(ctx, instanceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if workspaceID != "" && instance.WorkspaceID != workspaceID {
+	if workspaceID != "" {
 		// Not found rather than forbidden: confirming existence would let a
-		// caller enumerate other tenants' instance ids.
-		return nil, nil, uw.ErrInstanceNotFound
+		// caller enumerate other tenants' instance ids, or discover which
+		// numbers another department runs.
+		if err := EnsureVisible(instance, workspaceID, scope); err != nil {
+			return nil, nil, err
+		}
 	}
 	server, err := uc.servers.FindByID(ctx, instance.ServerID)
 	if err != nil {

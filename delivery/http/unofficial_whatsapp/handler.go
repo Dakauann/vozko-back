@@ -16,8 +16,10 @@ import (
 
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
+	user_domain "vozko/domain/user"
 	"vozko/infra/http/middleware"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
@@ -33,6 +35,22 @@ type Handler struct {
 	remove      *uwuc.DeleteInstanceUseCase
 	startConv   *uwuc.StartConversationUseCase
 	allowance   *uwuc.GetAllowanceUseCase
+	// departments answers which departments the caller may act within. Optional:
+	// a nil resolver means UNRESTRICTED, which is only correct in a test — the
+	// container logs the capability at boot so an unwired one is visible there
+	// rather than discovered as one department reading another's numbers.
+	departments DepartmentScopeResolver
+}
+
+// DepartmentScopeResolver reports the caller's department scope.
+//
+// A narrow port satisfied by the platform's conversation authorizer, which
+// already owns this question for every channel: membership, role and the
+// conversations:read permission all feed it. Re-deriving any of that here would
+// be a second implementation of an access rule, and the two would diverge the
+// first time the platform's changed.
+type DepartmentScopeResolver interface {
+	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
 }
 
 // HandlerDeps groups the usecases.
@@ -46,6 +64,7 @@ type HandlerDeps struct {
 	Remove      *uwuc.DeleteInstanceUseCase
 	StartConv   *uwuc.StartConversationUseCase
 	Allowance   *uwuc.GetAllowanceUseCase
+	Departments DepartmentScopeResolver
 }
 
 func NewHandler(d HandlerDeps) *Handler {
@@ -59,7 +78,56 @@ func NewHandler(d HandlerDeps) *Handler {
 		rotateToken: d.RotateToken,
 		remove:      d.Remove,
 		allowance:   d.Allowance,
+		departments: d.Departments,
 	}
+}
+
+// scopeFor resolves which departments this request may act within.
+//
+// Returns false when the caller may not be here at all — not a member, or
+// without the conversations:read permission the platform requires to see any
+// conversation. The handler answers 403 in that case rather than an empty list,
+// because "you have no departments" and "you may not ask" are different answers.
+//
+// An absent resolver yields UNRESTRICTED. That is the pre-existing behaviour and
+// it fails OPEN, which is why the container asserts the wiring at boot: a silent
+// nil here would quietly undo every check below.
+func (h *Handler) scopeFor(r *http.Request) (uw.DepartmentScope, bool) {
+	if h.departments == nil {
+		return uw.Unrestricted(), true
+	}
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return uw.DepartmentScope{}, false
+	}
+	workspaceID := middleware.GetWorkspaceID(r)
+
+	scope, allowed := h.departments.GetDepartmentScope(
+		claims.UserID, workspaceID, claims.Role == string(user_domain.RoleAdmin))
+	if !allowed {
+		return uw.DepartmentScope{}, false
+	}
+	return uw.DepartmentScope{
+		DepartmentIDs: scope.DepartmentIDs,
+		Restrict:      scope.Restrict,
+	}, true
+}
+
+// requireScope resolves the scope or writes the refusal. The pair every
+// instance endpoint opens with, so none of them can forget the second half.
+func (h *Handler) requireScope(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, bool) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+		return "", uw.DepartmentScope{}, false
+	}
+	scope, allowed := h.scopeFor(r)
+	if !allowed {
+		response.WriteError(w, http.StatusForbidden,
+			"you do not have access to this workspace's numbers", nil)
+		return "", uw.DepartmentScope{}, false
+	}
+	return workspaceID, scope, true
 }
 
 // allowanceDTO is what the connect screen needs to decide what to offer.
@@ -149,17 +217,19 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 
 // ListInstances returns the workspace's numbers.
 func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
 		return
 	}
 
 	query := r.URL.Query()
 	in := uw.ListInstancesInput{
 		WorkspaceID: workspaceID,
-		Search:      query.Get("search"),
-		Options:     shared.QueryOptions{Pagination: httpx.ParsePagination(query)},
+		// The caller sees only their own departments' numbers. An owner or an
+		// admin is unrestricted; a member in no department sees none.
+		Scope:   scope,
+		Search:  query.Get("search"),
+		Options: shared.QueryOptions{Pagination: httpx.ParsePagination(query)},
 	}
 	if v := query.Get("status"); v != "" {
 		status := uw.Status(v)
@@ -188,7 +258,11 @@ func (h *Handler) ListInstances(w http.ResponseWriter, r *http.Request) {
 
 // GetInstance returns one number.
 func (h *Handler) GetInstance(w http.ResponseWriter, r *http.Request) {
-	instance, err := h.get.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	instance, err := h.get.Execute(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -222,6 +296,11 @@ type updateInstanceRequest struct {
 // "cleared", which is why the nullable ids are re-wrapped below: a PATCH that
 // omitted agentId must leave it alone, while one that sent null must clear it.
 func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "invalid request body", nil)
@@ -236,7 +315,8 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 
 	in := uwuc.UpdateInstanceConfigInput{
 		InstanceID:  mux.Vars(r)["id"],
-		WorkspaceID: middleware.GetWorkspaceID(r),
+		WorkspaceID: workspaceID,
+		Scope:       scope,
 
 		DisplayName: req.DisplayName,
 
@@ -275,7 +355,11 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 
 // DeleteInstance removes a number from the workspace.
 func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
-	err := h.remove.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	err := h.remove.Execute(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -296,6 +380,11 @@ type connectRequest struct {
 
 // Connect starts a linking attempt and returns the code to act on.
 func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+
 	var req connectRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -303,7 +392,8 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 
 	challenge, err := h.connect.Connect(r.Context(), uwuc.ConnectRequest{
 		InstanceID:  mux.Vars(r)["id"],
-		WorkspaceID: middleware.GetWorkspaceID(r),
+		WorkspaceID: workspaceID,
+		Scope:       scope,
 		Mode:        uw.ConnectMode(req.Mode),
 		Phone:       req.Phone,
 		SystemName:  req.SystemName,
@@ -319,7 +409,11 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 // the code rotates and the provider hands out the current one here rather than
 // pushing it.
 func (h *Handler) LinkStatus(w http.ResponseWriter, r *http.Request) {
-	challenge, err := h.connect.Status(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	challenge, err := h.connect.Status(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -330,7 +424,11 @@ func (h *Handler) LinkStatus(w http.ResponseWriter, r *http.Request) {
 // Disconnect ends the session without removing the instance, so the same slot
 // can be relinked to a different number.
 func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
-	err := h.connect.Disconnect(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	err := h.connect.Disconnect(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -342,7 +440,11 @@ func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
 // refuses inside it; that refusal reaches the client as a 409, not a 500,
 // because it is a normal answer.
 func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
-	err := h.connect.Reset(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	err := h.connect.Reset(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -352,7 +454,11 @@ func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
 
 // RotateWebhookToken mints a new delivery URL and re-registers it.
 func (h *Handler) RotateWebhookToken(w http.ResponseWriter, r *http.Request) {
-	instance, err := h.rotateToken.Execute(r.Context(), mux.Vars(r)["id"], middleware.GetWorkspaceID(r))
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+	instance, err := h.rotateToken.Execute(r.Context(), mux.Vars(r)["id"], workspaceID, scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -487,13 +593,19 @@ type startedConversationDTO struct {
 // messaging a stranger is cold outbound, which is what gets an unofficial number
 // banned. The route enforces that; this handler only translates.
 func (h *Handler) StartConversation(w http.ResponseWriter, r *http.Request) {
+	workspaceID, scope, ok := h.requireScope(w, r)
+	if !ok {
+		return
+	}
+
 	var req startConversationRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
 
 	started, err := h.startConv.Execute(r.Context(), uwuc.StartConversationInput{
-		WorkspaceID: middleware.GetWorkspaceID(r),
+		WorkspaceID: workspaceID,
+		Scope:       scope,
 		InstanceID:  mux.Vars(r)["id"],
 		PhoneNumber: req.PhoneNumber,
 		Name:        req.Name,

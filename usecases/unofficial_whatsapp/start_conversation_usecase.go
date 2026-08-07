@@ -75,6 +75,13 @@ type StartConversationInput struct {
 	// Name is optional and only used when the contact is new; a number already
 	// known keeps the name WhatsApp gave it.
 	Name string
+	// Scope limits which numbers this caller may send from.
+	//
+	// Cold outbound is the sharpest reason department scoping exists on this
+	// channel: it messages someone who never wrote in, from a number that
+	// belongs to a specific team, and it is the fastest way to get that number
+	// banned. Someone outside the department must not be able to spend it.
+	Scope uw.DepartmentScope
 }
 
 // StartedConversation is where the operator should be taken.
@@ -110,8 +117,8 @@ func (uc *StartConversationUseCase) Execute(
 	// Ownership is checked here as well as by the route's permission gate: the
 	// gate proves the caller may send from SOME instance in their workspace,
 	// not from this one.
-	if instance.WorkspaceID != in.WorkspaceID {
-		return nil, uw.ErrInstanceNotFound
+	if err := EnsureVisible(instance, in.WorkspaceID, in.Scope); err != nil {
+		return nil, err
 	}
 	if ok, err := instance.CanSend(time.Now().UTC()); !ok {
 		return nil, err

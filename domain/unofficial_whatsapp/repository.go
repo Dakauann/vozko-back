@@ -126,7 +126,15 @@ type ListInstancesInput struct {
 	WorkspaceID string
 	Search      string
 	Status      *Status
-	Options     shared.QueryOptions
+	// Scope limits the result to the caller's departments.
+	//
+	// The zero value is UNRESTRICTED, which is correct for the internal callers
+	// that legitimately see every number — the health cron, capacity
+	// reconciliation, the entitlement count. Only the HTTP path narrows it, and
+	// it does so from the platform authorizer's answer rather than deriving
+	// membership itself.
+	Scope   DepartmentScope
+	Options shared.QueryOptions
 }
 
 // ContactRepository persists the people on the other side of our numbers.
@@ -143,6 +151,13 @@ type ContactRepository interface {
 	// costs one query rather than one per conversation.
 	FindByIDs(ctx context.Context, ids []string) ([]*Contact, error)
 	FindByJID(ctx context.Context, instanceID, jid string) (*Contact, error)
+	// FindByHandles batch-loads the people who WROTE a page of group messages.
+	//
+	// A message row stores its author as a handle (Contact.Handle) rather than a
+	// contact id, so reading a group thread back needs the reverse direction of
+	// FindByIDs. Batched for the same reason: a lookup per bubble would make
+	// opening a busy group an N+1.
+	FindByHandles(ctx context.Context, instanceID string, handles []string) ([]*Contact, error)
 
 	UpdateProfile(ctx context.Context, id string, p ContactProfile) error
 	SetBlocked(ctx context.Context, id string, blocked bool, at time.Time) error

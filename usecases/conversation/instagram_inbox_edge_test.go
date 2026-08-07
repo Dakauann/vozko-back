@@ -321,6 +321,10 @@ func (c *concurrentSafeContacts) ContactsByIDs(ctx context.Context, ids []string
 	return out, nil
 }
 
+func (c *concurrentSafeContacts) AuthorsByHandle(context.Context, string, []string) (map[string]InstagramContactDisplay, error) {
+	return nil, nil
+}
+
 func (c *concurrentSafeContacts) ContactForConversation(ctx context.Context, id string) (InstagramContactDisplay, string, error) {
 	return c.inner.ContactForConversation(ctx, id)
 }

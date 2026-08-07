@@ -29,6 +29,10 @@ import (
 type contactIdentityFuncs struct {
 	byIDs           func(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error)
 	forConversation func(ctx context.Context, conversationID string) (conversation_usecase.ContactDisplay, string, error)
+	// authorsByHandle is optional: only a channel with group conversations has
+	// an author distinct from the subject. Left nil elsewhere, and a nil one
+	// resolves nobody, which is precisely the right answer there.
+	authorsByHandle func(ctx context.Context, entryID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error)
 }
 
 func (f contactIdentityFuncs) ContactsByIDs(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error) {
@@ -43,6 +47,13 @@ func (f contactIdentityFuncs) ContactForConversation(ctx context.Context, conver
 		return conversation_usecase.ContactDisplay{}, "", nil
 	}
 	return f.forConversation(ctx, conversationID)
+}
+
+func (f contactIdentityFuncs) AuthorsByHandle(ctx context.Context, entryID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error) {
+	if f.authorsByHandle == nil {
+		return nil, nil
+	}
+	return f.authorsByHandle(ctx, entryID, handles)
 }
 
 var _ conversation_usecase.ContactIdentityLookup = contactIdentityFuncs{}

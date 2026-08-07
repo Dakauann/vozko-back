@@ -41,15 +41,29 @@ func NewGetInstanceUseCase(instances uw.InstanceRepository) *GetInstanceUseCase 
 	return &GetInstanceUseCase{instances: instances}
 }
 
-func (uc *GetInstanceUseCase) Execute(ctx context.Context, instanceID, workspaceID string) (*uw.Instance, error) {
+// Execute reads one instance, scoped to its workspace AND the caller's
+// departments.
+//
+// The scope argument is required rather than optional because this endpoint is
+// reachable by URL: a member who cannot see a number in the list could
+// otherwise open it by guessing its id, and read its configuration, its
+// restriction state and its department.
+func (uc *GetInstanceUseCase) Execute(
+	ctx context.Context,
+	instanceID, workspaceID string,
+	scope uw.DepartmentScope,
+) (*uw.Instance, error) {
 	instance, err := uc.instances.FindByID(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	if workspaceID != "" && instance.WorkspaceID != workspaceID {
-		// Not found rather than forbidden: confirming existence would let a
-		// caller enumerate other tenants' instance ids.
-		return nil, uw.ErrInstanceNotFound
+	if workspaceID != "" {
+		// Tenancy and department in one check, both answering not-found:
+		// confirming existence would let a caller enumerate other tenants'
+		// instance ids, or discover which numbers another department runs.
+		if err := EnsureVisible(instance, workspaceID, scope); err != nil {
+			return nil, err
+		}
 	}
 	return instance, nil
 }
@@ -89,6 +103,12 @@ type UpdateInstanceConfigInput struct {
 	SendDelayMinMS  *int
 	SendDelayMaxMS  *int
 	AutoRejectCalls *bool
+
+	// Scope limits which numbers this caller may edit — including which
+	// department the number itself belongs to. Reassigning a number to another
+	// department is how a member could otherwise move it out of their own reach,
+	// or pull another team's number into it.
+	Scope uw.DepartmentScope
 }
 
 func (uc *UpdateInstanceConfigUseCase) Execute(ctx context.Context, in UpdateInstanceConfigInput) (*uw.Instance, error) {
@@ -96,8 +116,10 @@ func (uc *UpdateInstanceConfigUseCase) Execute(ctx context.Context, in UpdateIns
 	if err != nil {
 		return nil, err
 	}
-	if in.WorkspaceID != "" && instance.WorkspaceID != in.WorkspaceID {
-		return nil, uw.ErrInstanceNotFound
+	if in.WorkspaceID != "" {
+		if err := EnsureVisible(instance, in.WorkspaceID, in.Scope); err != nil {
+			return nil, err
+		}
 	}
 
 	applyString(&instance.DisplayName, in.DisplayName)
@@ -147,13 +169,15 @@ func NewRotateDeliveryTokenUseCase(
 	return &RotateDeliveryTokenUseCase{instances: instances, servers: servers, provision: provision}
 }
 
-func (uc *RotateDeliveryTokenUseCase) Execute(ctx context.Context, instanceID, workspaceID string) (*uw.Instance, error) {
+func (uc *RotateDeliveryTokenUseCase) Execute(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) (*uw.Instance, error) {
 	instance, err := uc.instances.FindByID(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	if workspaceID != "" && instance.WorkspaceID != workspaceID {
-		return nil, uw.ErrInstanceNotFound
+	if workspaceID != "" {
+		if err := EnsureVisible(instance, workspaceID, scope); err != nil {
+			return nil, err
+		}
 	}
 	server, err := uc.servers.FindByID(ctx, instance.ServerID)
 	if err != nil {
@@ -195,13 +219,15 @@ func NewDeleteInstanceUseCase(
 	return &DeleteInstanceUseCase{instances: instances, servers: servers, provider: provider}
 }
 
-func (uc *DeleteInstanceUseCase) Execute(ctx context.Context, instanceID, workspaceID string) error {
+func (uc *DeleteInstanceUseCase) Execute(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) error {
 	instance, err := uc.instances.FindByID(ctx, instanceID)
 	if err != nil {
 		return err
 	}
-	if workspaceID != "" && instance.WorkspaceID != workspaceID {
-		return uw.ErrInstanceNotFound
+	if workspaceID != "" {
+		if err := EnsureVisible(instance, workspaceID, scope); err != nil {
+			return err
+		}
 	}
 	server, err := uc.servers.FindByID(ctx, instance.ServerID)
 	if err != nil {
@@ -267,6 +293,25 @@ func applyPtr(target **string, value **string) {
 // It is the SAME reader the provisioning gate consults, so the number an
 // operator sees and the number that refuses them cannot disagree — which is the
 // whole failure mode a separate read-side calculation would introduce.
+// EnsureVisible refuses an instance the caller's departments do not cover.
+//
+// Shared by every endpoint that acts on one number — read, edit, connect,
+// reset, rotate, delete, start a conversation — because they all need the same
+// answer and a per-handler check is a check that will be forgotten on the
+// seventh one.
+//
+// Returns the not-found error rather than a distinct forbidden one: whether a
+// number exists inside a department you are not in is itself information.
+func EnsureVisible(instance *uw.Instance, workspaceID string, scope uw.DepartmentScope) error {
+	if instance == nil || instance.WorkspaceID != workspaceID {
+		return uw.ErrInstanceNotFound
+	}
+	if !scope.AllowsInstance(instance) {
+		return uw.ErrInstanceNotFound
+	}
+	return nil
+}
+
 type GetAllowanceUseCase struct {
 	entitlements uw.InstanceEntitlementReader
 }

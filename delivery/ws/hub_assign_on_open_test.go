@@ -112,6 +112,13 @@ func (c *assignOnOpenConfigRepo) GetByWorkspaceID(context.Context, string) (*wsc
 func (c *assignOnOpenConfigRepo) Upsert(context.Context, *wsc.WorkspaceConfig) error { return nil }
 func (c *assignOnOpenConfigRepo) EnsureExists(context.Context, string) error         { return nil }
 
+// Entitlements have no bearing on who a conversation opens for.
+func (c *assignOnOpenConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(
+	context.Context, []string,
+) (map[string]int, error) {
+	return nil, nil
+}
+
 func buildHubForAssignOnOpen(auth *assignOnOpenAuthorizer, repo *assignOnOpenRepo, resolver *assignOnOpenResolver, cfgRepo *assignOnOpenConfigRepo) *ConversationHub {
 	hub := NewConversationHub(auth, nil, nil, "test-replica", "")
 	hub.SetAssignmentRepo(repo)

@@ -111,6 +111,20 @@ type ContactIdentityLookup interface {
 	// ContactForConversation resolves the sender plus the owning workspace for a
 	// single conversation, backing the open-conversation header.
 	ContactForConversation(ctx context.Context, conversationID string) (ContactDisplay, string, error)
+	// AuthorsByHandle resolves who WROTE each message on a page, keyed by the
+	// handle stored in from_participant.
+	//
+	// Needed only where the conversation's subject is not the author: a group,
+	// where the subject is the group itself and each message came from a
+	// different member. Everywhere else the subject answers it and this is never
+	// called.
+	//
+	// Batched because it runs per page of history: a lookup per bubble would make
+	// opening a busy group conversation an N+1.
+	//
+	// A channel with no such concept returns an empty map, and the reader falls
+	// back to the subject exactly as before.
+	AuthorsByHandle(ctx context.Context, entryID string, handles []string) (map[string]ContactDisplay, error)
 }
 
 // InstagramContactDisplay is the previous name of ContactDisplay.
@@ -387,12 +401,109 @@ func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.Ent
 	}
 
 	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
+	authors := s.authorsFor(entryType, entryID, leadNumber, messages)
 
 	for _, msg := range messages {
 		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
+		applyAuthor(msg, authors)
 	}
 
 	return messages, hasMore, total, nil
+}
+
+// authorsFor resolves who wrote each message on a page.
+//
+// Returns nil for every conversation whose subject IS the author, which is all
+// of them except a group — and nil costs the caller nothing, because applyAuthor
+// leaves the subject-derived name in place.
+//
+// This exists because SenderName is deliberately never persisted on a message
+// row (a frozen name goes stale after a rename), so it only ever reached the
+// live websocket push. On reload the reader fell back to the conversation's
+// subject, and in a group that is the GROUP — every bubble in a group thread was
+// labelled with the group's own name and picture.
+func (s *HistoryProviderService) authorsFor(
+	entryType shared.EntryType,
+	entryID string,
+	subjectHandle string,
+	messages []*conversation.Message,
+) map[string]ContactDisplay {
+	lookup, ok := s.contactLookupFor(entryType)
+	if !ok || len(messages) == 0 {
+		return nil
+	}
+
+	subjectHandle = strings.TrimSpace(subjectHandle)
+	handles := make([]string, 0, len(messages))
+	seen := make(map[string]struct{}, len(messages))
+	for _, msg := range messages {
+		// Inbound only. An operator's or an agent's message is already
+		// attributed by getSenderInfo, from the user or agent record.
+		if !isInboundMessageType(msg.MessageType) {
+			continue
+		}
+		from := strings.TrimSpace(msg.From)
+		if from == "" {
+			continue
+		}
+		// The author IS the subject — every ordinary one-to-one conversation.
+		// getSenderInfo already named them, so there is nothing to resolve, and
+		// skipping them here means a non-group thread issues no query at all.
+		//
+		// A group never takes this branch: a group's handle is empty, because the
+		// "number" slot it would fill does not exist for one, so no participant
+		// can match it.
+		if subjectHandle != "" && from == subjectHandle {
+			continue
+		}
+		if _, dup := seen[from]; dup {
+			continue
+		}
+		seen[from] = struct{}{}
+		handles = append(handles, from)
+	}
+	if len(handles) == 0 {
+		return nil
+	}
+
+	authors, err := lookup.AuthorsByHandle(context.Background(), entryID, handles)
+	if err != nil {
+		// Cosmetic: a failure leaves the subject's name in place, which is what
+		// it was before this existed. Never a reason to fail a history read.
+		log.Printf("[HistoryProvider] %s author lookup failed for entry %s: %v", entryType, entryID, err)
+		return nil
+	}
+	return authors
+}
+
+// applyAuthor overrides the subject-derived identity when the page resolved a
+// real author for this message.
+func applyAuthor(msg *conversation.Message, authors map[string]ContactDisplay) {
+	if len(authors) == 0 || msg == nil {
+		return
+	}
+	author, ok := authors[strings.TrimSpace(msg.From)]
+	if !ok {
+		return
+	}
+	if author.Name != "" {
+		msg.SenderName = author.Name
+	}
+	// The picture is replaced even when empty: a participant with no photo must
+	// not inherit the GROUP's, which is exactly the confusion this fixes.
+	msg.SenderAvatar = author.PictureURL
+}
+
+// isInboundMessageType reports whether a message came from the other side.
+// The same three types getSenderInfo attributes to the conversation's subject.
+func isInboundMessageType(t conversation.MessageType) bool {
+	switch t {
+	case conversation.MessageTypeUserMessage,
+		conversation.MessageTypeAudio,
+		conversation.MessageTypeMedia:
+		return true
+	}
+	return false
 }
 
 func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shared.EntryType, before time.Time, limit int) ([]*conversation.Message, bool, error) {
@@ -421,9 +532,11 @@ func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shar
 	reverseMessages(messages)
 
 	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
+	authors := s.authorsFor(entryType, entryID, leadNumber, messages)
 
 	for _, msg := range messages {
 		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
+		applyAuthor(msg, authors)
 	}
 
 	return messages, hasMore, nil
@@ -483,8 +596,10 @@ func (s *HistoryProviderService) GetHistoryAround(entryID string, entryType shar
 	total, _ := s.messageRepo.CountByEntry(entryID, entryType)
 
 	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
+	authors := s.authorsFor(entryType, entryID, leadNumber, combined)
 	for _, msg := range combined {
 		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
+		applyAuthor(msg, authors)
 	}
 
 	return combined, hasBefore, hasAfter, total, nil
@@ -1312,6 +1427,10 @@ func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string
 	}
 
 	message.SenderName, message.SenderAvatar = s.getSenderInfo(message.From, message.MessageType, leadName, leadNumber, leadPicture)
+	// One message is still a page of one: a group's bubble must name whoever
+	// wrote it here too, or the live fallback re-labels it with the group.
+	applyAuthor(message, s.authorsFor(shared.EntryType(message.EntryType), message.EntryID, leadNumber,
+		[]*conversation.Message{message}))
 }
 
 func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLastMessage) string {

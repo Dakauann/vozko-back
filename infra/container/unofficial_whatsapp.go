@@ -118,6 +118,15 @@ func (c *Container) initUnofficialWhatsApp() {
 			bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
 			bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead)),
 		Allowance: uwuc.NewGetAllowanceUseCase(bundle.Entitlements),
+		// Department scope comes from the platform's conversation authorizer,
+		// which already owns membership, role and the conversations:read
+		// permission for every channel. Deriving it here would be a second
+		// implementation of an access rule, and the two would diverge.
+		//
+		// A nil resolver means UNRESTRICTED — it fails OPEN — which is why the
+		// capability is asserted at boot rather than left to be discovered as
+		// one department reading another's numbers.
+		Departments: c.services.conversationAuthImpl,
 	})
 
 	// The group panel. Wired here rather than in the runtime pass because it
@@ -259,6 +268,10 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		// hosts we pay for get handed out with nothing recording that they were
 		// never authorised.
 		"entitlement-gate": bundle.Entitlements.HasSource(),
+		// Absence does not degrade here, it OPENS: without the resolver every
+		// caller is treated as unrestricted and a number dedicated to one
+		// department is visible to the whole workspace.
+		"department-scope": c.services.conversationAuthImpl != nil,
 	})
 
 	bundle.Consume = uwuc.NewConsumeWebhookUseCase(
@@ -427,6 +440,33 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 				return conversation_usecase.ContactDisplay{}, conv.WorkspaceID, err
 			}
 			return display(contact), conv.WorkspaceID, nil
+		},
+		authorsByHandle: func(ctx context.Context, entryID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error) {
+			conv, err := conversations.FindByID(ctx, entryID)
+			if err != nil {
+				return nil, err
+			}
+			// Only a group has authors distinct from its subject. Checked here
+			// rather than by the reader, because "what is a group" is this
+			// channel's own knowledge — and the reader already skips any author
+			// that IS the subject, so a one-to-one thread never gets this far.
+			if !conv.IsGroup {
+				return nil, nil
+			}
+			found, err := contacts.FindByHandles(ctx, conv.InstanceID, handles)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[string]conversation_usecase.ContactDisplay, len(found))
+			for _, contact := range found {
+				if contact == nil {
+					continue
+				}
+				// Keyed by the same Handle the message row stored, so the
+				// reader's map hit needs no second normalisation pass.
+				out[contact.Handle()] = display(contact)
+			}
+			return out, nil
 		},
 	}
 }

@@ -128,7 +128,7 @@ func TestStatusPromotesToConnectedAndCapturesIdentity(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusAwaitingScan)
 	uc := NewConnectInstanceUseCase(instances, servers, &fakeProvider{})
 
-	if _, err := uc.Status(context.Background(), "inst-1", "ws-1"); err != nil {
+	if _, err := uc.Status(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err != nil {
 		t.Fatalf("Status: %v", err)
 	}
 
@@ -160,7 +160,7 @@ func TestStatusIgnoresAnUnknownProviderState(t *testing.T) {
 	}
 	uc := NewConnectInstanceUseCase(instances, servers, provider)
 
-	if _, err := uc.Status(context.Background(), "inst-1", "ws-1"); err != nil {
+	if _, err := uc.Status(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err != nil {
 		t.Fatalf("Status: %v", err)
 	}
 	if instance.Status != uw.StatusConnected {
@@ -186,7 +186,7 @@ func TestStatusDoesNotBlankAKnownIdentity(t *testing.T) {
 	}
 	uc := NewConnectInstanceUseCase(instances, servers, provider)
 
-	if _, err := uc.Status(context.Background(), "inst-1", "ws-1"); err != nil {
+	if _, err := uc.Status(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err != nil {
 		t.Fatalf("Status: %v", err)
 	}
 	if instance.Status != uw.StatusDisconnected {
@@ -208,7 +208,7 @@ func TestStatusRecordsAHostThatNoLongerKnowsTheInstance(t *testing.T) {
 	}
 	uc := NewConnectInstanceUseCase(instances, servers, provider)
 
-	if _, err := uc.Status(context.Background(), "inst-1", "ws-1"); err != nil {
+	if _, err := uc.Status(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err != nil {
 		t.Fatalf("a lost session is a state, not a request failure: %v", err)
 	}
 	if instance.Status != uw.StatusDisconnected {
@@ -228,7 +228,7 @@ func TestDisconnectToleratesAnAlreadyGoneSession(t *testing.T) {
 	}
 	uc := NewConnectInstanceUseCase(instances, servers, provider)
 
-	if err := uc.Disconnect(context.Background(), "inst-1", "ws-1"); err != nil {
+	if err := uc.Disconnect(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	if instance.Status != uw.StatusDisconnected {
@@ -245,7 +245,7 @@ func TestDisconnectSurfacesARealFailure(t *testing.T) {
 	}
 	uc := NewConnectInstanceUseCase(instances, servers, provider)
 
-	if err := uc.Disconnect(context.Background(), "inst-1", "ws-1"); err == nil {
+	if err := uc.Disconnect(context.Background(), "inst-1", "ws-1", uw.Unrestricted()); err == nil {
 		t.Fatal("a transport failure must surface")
 	}
 	if instance.Status == uw.StatusDisconnected {
@@ -270,7 +270,7 @@ func TestRotateDeliveryTokenPersistsBeforeReRegistering(t *testing.T) {
 	provision := NewProvisionInstanceUseCase(servers, instances, provider, testWebhookBase)
 	uc := NewRotateDeliveryTokenUseCase(instances, servers, provision)
 
-	rotated, err := uc.Execute(context.Background(), "inst-1", "ws-1")
+	rotated, err := uc.Execute(context.Background(), "inst-1", "ws-1", uw.Unrestricted())
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

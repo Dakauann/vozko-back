@@ -306,11 +306,13 @@ type chatContext struct {
 	// phone, rather than attributing every line to the group itself.
 	authorName   string
 	authorHandle string
-	// authorAvatar is only ever the subject's. Group participants deliberately
-	// get none: fetching a picture per member would be one provider call per
-	// person in the group, on a channel where traffic that looks automated
-	// costs the customer their number. Their bubbles fall back to initials.
+	// authorAvatar is the picture shown beside the bubble.
 	authorAvatar string
+	// author is the participant's own contact row in a group, and nil in a
+	// private chat where the subject already IS the author. It is what lets the
+	// history read resolve who spoke after a reload, when the live push's
+	// SenderName is long gone.
+	author *uw.Contact
 
 	conversation *uw.Conversation
 	// group is the cached metadata when this is a group chat, nil otherwise.
@@ -384,7 +386,7 @@ func (uc *HandleWebhookUseCase) resolveContext(
 
 	out := &chatContext{subject: subject, conversation: conv}
 	uc.enrich(ctx, instance, ev, out)
-	uc.resolveAuthor(ev, out)
+	uc.resolveAuthor(ctx, instance, ev, out)
 	return out, nil
 }
 
@@ -421,7 +423,29 @@ func (uc *HandleWebhookUseCase) enrich(
 }
 
 // resolveAuthor decides how the individual message is labelled.
-func (uc *HandleWebhookUseCase) resolveAuthor(ev *uw.Event, out *chatContext) {
+//
+// In a group this resolves — and PERSISTS — the participant as a contact of
+// their own. That is a change from naming them off the event alone, and the
+// reason is that the event's name only ever reached the live websocket push:
+// SenderName is deliberately never stored on a message row (a frozen name goes
+// stale after a rename), so on reload the reader fell back to the conversation's
+// subject and every bubble in a group was labelled with the GROUP.
+//
+// The cost is bounded by who TALKS, not by who is a member. A two-hundred-person
+// group where five people speak resolves five contacts, each enriched at most
+// once a week and behind the same per-instance burst gate as everyone else. That
+// is a very different bill from enriching a roster, which is what the earlier
+// decision was avoiding.
+//
+// These rows are never bridged to a CRM lead: bridgeLead runs on the SUBJECT and
+// a group's subject is the group, so a member of a customer's group does not
+// silently become a lead in their pipeline.
+func (uc *HandleWebhookUseCase) resolveAuthor(
+	ctx context.Context,
+	instance *uw.Instance,
+	ev *uw.Event,
+	out *chatContext,
+) {
 	if !ev.IsGroup {
 		// One person, one label. Everything downstream stays branch-free.
 		out.authorName = out.subject.DisplayName()
@@ -430,10 +454,8 @@ func (uc *HandleWebhookUseCase) resolveAuthor(ev *uw.Event, out *chatContext) {
 		return
 	}
 
-	// A group participant, named from the event alone. No lookup, no row, no
-	// provider call: the push name is what WhatsApp itself shows next to their
-	// message, and a member who has never written to us directly is not someone
-	// the CRM can attend anyway.
+	// Fall back to the event before anything else, so a failed lookup still
+	// names the person rather than the group.
 	out.authorHandle = ev.SenderPhone
 	if out.authorHandle != "" {
 		out.authorHandle = "+" + out.authorHandle
@@ -441,6 +463,36 @@ func (uc *HandleWebhookUseCase) resolveAuthor(ev *uw.Event, out *chatContext) {
 		out.authorHandle = ev.SenderJID
 	}
 	out.authorName = firstNonEmpty(ev.SenderName, out.authorHandle)
+
+	if ev.SenderJID == "" || ev.SenderJID == ev.ChatID {
+		// No participant to resolve — an outbound message, or a payload that
+		// named no sender. The group is the right label for the first and the
+		// only one available for the second.
+		return
+	}
+
+	author, err := uc.contacts.FindOrCreate(ctx, uw.FindOrCreateContactInput{
+		WorkspaceID: instance.WorkspaceID,
+		InstanceID:  instance.ID,
+		JID:         ev.SenderJID,
+		LID:         ev.SenderLID,
+		PhoneNumber: ev.SenderPhone,
+		Name:        ev.SenderName,
+	})
+	if err != nil {
+		log.Printf("[unofficial-whatsapp] could not resolve group author %s: %v", ev.SenderJID, err)
+		return
+	}
+
+	if !ev.Backfill {
+		uc.profiles.applyEventName(ctx, author, ev.SenderName)
+		uc.profiles.refresh(ctx, instance, author, false)
+	}
+
+	out.author = author
+	out.authorName = author.DisplayName()
+	out.authorHandle = author.Handle()
+	out.authorAvatar = author.PictureURL
 }
 
 // subjectSeedName is the name to create a NEW subject with.

@@ -34,6 +34,11 @@ func (f *fakeInstagramContacts) ContactsByIDs(_ context.Context, ids []string) (
 	return out, nil
 }
 
+// No group conversations on this channel, so nobody is ever resolved here.
+func (f *fakeInstagramContacts) AuthorsByHandle(context.Context, string, []string) (map[string]InstagramContactDisplay, error) {
+	return nil, nil
+}
+
 func (f *fakeInstagramContacts) ContactForConversation(_ context.Context, conversationID string) (InstagramContactDisplay, string, error) {
 	if f.err != nil {
 		return InstagramContactDisplay{}, "", f.err
