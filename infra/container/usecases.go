@@ -146,18 +146,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	queryAgentKBUC := rag_usecase.NewQueryAgentKnowledgeBaseUseCase(c.repositories.ragAgentKB, queryKnowledgeBaseUC)
 	ragService := rag_usecase.NewRAGService(queryKnowledgeBaseUC, queryAgentKBUC)
 
-	// The single agent-turn recipe. Wired here rather than at construction time
-	// because the tool registry and RAG service only exist at this point, and
-	// the channel AI service is built earlier in initConversation.
-	//
-	// Without it, Instagram and Telegram agents could only send plain text: no
-	// tools, no knowledge base, no channel identity, while WhatsApp had all
-	// three. That is exactly the drift this package was written to prevent.
-	turnAssembler := agentturn.New(c.services.toolRegistry, ragService)
-	if c.services.channelAIReply != nil {
-		c.services.channelAIReply.SetAssembler(turnAssembler)
-	}
-
 	// Reschedule engine (reagendamento): reused by both the AI tool and the workflow
 	// node executor so the move logic lives in one place.
 	rescheduleEventUC := calendar_usecase.NewRescheduleEventUseCase(
@@ -209,6 +197,20 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// Before ANY channel runtime below: each one captures channelAIReply by
 	// value, so it has to exist first or the channel silently gets a nil.
 	c.initConversationSenders()
+
+	// The single agent-turn recipe, wired here because this is the first point
+	// where all three of its inputs exist: the tool registry and AI service
+	// above, and the channel AI service from initConversationSenders.
+	//
+	// Without it the service can only ever send plain text. Instagram and
+	// Telegram agents ran with no tools, no knowledge base and no channel
+	// identity, while WhatsApp had all three because it builds its own
+	// assembler, and an agent configured with a knowledge base in the UI simply
+	// ignored it everywhere else. That is exactly the drift the agentturn
+	// package was written to prevent, so it is asserted rather than guarded:
+	// a nil here is a wiring bug, not a supported configuration.
+	turnAssembler := agentturn.New(c.services.toolRegistry, ragService)
+	c.mustChannelAIReply().SetAssembler(turnAssembler)
 
 	llmPriceFetcher := openrouter_service.NewLLMPriceFetcher(c.services.ai.(*openrouter_service.Service), 1*time.Hour)
 

@@ -203,9 +203,33 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 		return nil, err
 	}
 
+	// ListByEntryPaginated orders created_at DESC, which is what makes Limit take
+	// the most RECENT historyDepth messages instead of the oldest. The model
+	// needs them chronologically, so the page is walked backwards.
+	//
+	// Replaying it as returned handed the model the conversation reversed: the
+	// turn immediately before the one being answered was the OLDEST message in
+	// the window, usually "/start" or the first greeting, so the agent answered
+	// every message with its opening line and never appeared to remember
+	// anything. WhatsApp never had this because it loads history ASC.
 	out := make([]ai.Message, 0, len(history)+1)
-	for _, m := range history {
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
 		if m == nil {
+			continue
+		}
+		// Tool bookkeeping and call events are transcript rows, not turns in the
+		// dialogue. WhatsApp filters them out of its prompt; without the same
+		// filter here the model reads a tool result as something the operator
+		// said. Reactions carry an emoji, not speech.
+		switch m.MessageType {
+		case conversation.MessageTypeToolCall,
+			conversation.MessageTypeToolResult,
+			conversation.MessageTypeSystem,
+			conversation.MessageTypeReaction:
+			continue
+		}
+		if m.MessageType.IsCallEvent() {
 			continue
 		}
 		body := strings.TrimSpace(m.Text)
