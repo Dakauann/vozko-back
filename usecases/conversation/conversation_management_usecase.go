@@ -2146,7 +2146,12 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	case conversation.MediaTypeAudio:
 		log.Printf("[MessageSender] Converting audio to OGG Opus format...")
-		oggData, err := media_infra.ConvertToOGGOpus(mediaData)
+		// Declared with var rather than `:=` on purpose. A short declaration here opens a
+		// new scope for err, so the SendAudioBytes failure below would land in the shadow
+		// and the `if err != nil` guard after the switch would read the outer err as nil,
+		// falling through to dereference a nil output.
+		var oggData []byte
+		oggData, err = convertAudioToOGGOpusFn(mediaData)
 		if err != nil {
 			log.Printf("[MessageSender] Failed to convert audio: %v", err)
 			return nil, fmt.Errorf("failed to convert audio: %w", err)
@@ -2178,6 +2183,14 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 	if err != nil {
 		log.Printf("[MessageSender] WhatsApp send failed: %v", err)
 		return nil, err
+	}
+
+	// Belt and braces behind the err check: a provider path that ever returns
+	// (nil, nil) must surface as a failed send, not as a nil dereference that takes
+	// the whole process down.
+	if output == nil {
+		log.Printf("[MessageSender] WhatsApp send returned no output for media type %s", mediaType)
+		return nil, fmt.Errorf("whatsapp send returned no output for media type %s", mediaType)
 	}
 
 	now := time.Now().UTC()
@@ -2898,6 +2911,11 @@ func (uc *getConversationMediaUseCase) Execute(mediaID string) (*conversation.Co
 
 	return mediaRecord, nil
 }
+
+// convertAudioToOGGOpusFn indirects the ffmpeg conversion so the audio send path
+// can be exercised in tests on machines without ffmpeg installed. The conversion
+// itself lives in infra/media; only the seam belongs here.
+var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
 
 type TemplateSenderService struct {
 	whatsappClientFactory   conversation.WhatsAppClientFactory

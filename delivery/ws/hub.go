@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -2109,6 +2110,18 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 	}
 
 	go func() {
+		// This goroutine is detached, so an unrecovered panic here does not just fail
+		// the send: it takes the whole process down, dropping every WebSocket and
+		// stopping HTTP, webhooks and campaign consumers with it. Contain it and
+		// report the failure back to the sender instead.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[ConversationHub] PANIC in send goroutine (entry=%s type=%s user=%s): %v\n%s",
+					p.EntryID, p.EntryType, conn.UserID, r, debug.Stack())
+				h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, "Internal error sending message", "internal_error")
+			}
+		}()
+
 		var message *conversation.Message
 		var err error
 
@@ -2117,11 +2130,15 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 			replyTo = *p.ReplyToMessageID
 		}
 
+		// Resolve-and-continue, as before, but without dereferencing a nil user: a
+		// lookup failure only costs the signature prefix, it must not crash the send.
+		userUsername := ""
 		user, err := h.userRepo.FindByID(conn.UserID)
-		if err != nil {
+		if err != nil || user == nil {
 			log.Printf("[ConversationHub] Error resolving user for sending message: %v", err)
+		} else {
+			userUsername = user.Username
 		}
-		userUsername := user.Username
 		text := strings.TrimSpace(p.Text)
 		if p.Signed {
 			text = fmt.Sprintf(signatureFormatFor(p.EntryType), userUsername, text)
