@@ -552,6 +552,23 @@ func normalizeMessage(instanceID string, env *Envelope, msg *providerMessage) *E
 			msg.ButtonOrListText, msg.SelectedDisplayText, msg.Title, msg.Content.Text, ev.OptionID)
 	}
 
+	// A photo with something written under it.
+	//
+	// The words live in `content.caption`, never in `text`. contentField has
+	// always decoded them, but the only fallback that read it was the
+	// interactive one above — gated on an option id a captioned photo does not
+	// have. So the caption was parsed, held in memory, and dropped: the operator
+	// saw the image and nothing the customer had written about it.
+	//
+	// It runs AFTER the interactive fallback so a tapped button's visible label
+	// keeps its precedence, and only when `text` is empty so a plain message
+	// still records exactly what the provider sent. This channel has no replay
+	// endpoint, so a normalizer that preferred content over text would rewrite
+	// history with no way back.
+	if strings.TrimSpace(ev.Text) == "" {
+		ev.Text = msg.Content.Text
+	}
+
 	ev.Media = mediaKindFor(msg.MessageType)
 	resolveSenderIdentity(ev, msg)
 	ev.IdempotencyKey = messageIdempotencyKey(instanceID, env.Event, providerID, ev)

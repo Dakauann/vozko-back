@@ -21,7 +21,7 @@ import (
 
 func newIdentityHub(t *testing.T, provider *statusTestHistoryProvider) *ConversationHub {
 	t.Helper()
-	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: map[string]bool{}}, nil, nil, "test-replica", "")
+	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: map[string]bool{}}, nil, nil, nil, "test-replica", "")
 	hub.historyProvider = provider
 	return hub
 }
@@ -86,7 +86,7 @@ func TestBroadcastKeepsTheProducersLabelAndSkipsTheLookup(t *testing.T) {
 // Without a provider the hub must still deliver the message. Broadcasting is
 // not worth failing over an identity we could not resolve.
 func TestBroadcastSurvivesWithoutAHistoryProvider(t *testing.T) {
-	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: map[string]bool{}}, nil, nil, "test-replica", "")
+	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: map[string]bool{}}, nil, nil, nil, "test-replica", "")
 
 	hub.BroadcastNewMessage("entry-1", string(shared.EntryTypeTelegram), &conversation.Message{
 		ID: "m1", EntryID: "entry-1", EntryType: shared.EntryTypeTelegram,

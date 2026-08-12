@@ -95,38 +95,40 @@ func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 //
 // Both the send path and the composer's UI state consult this, so there is
 // exactly one definition of "can I reply right now".
-func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (bool, *time.Time, error) {
+func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
-		return false, nil, conversation.ErrNoAdapterForEntryType
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
 	account, err := a.accounts.FindByID(ctx, ec.AccountID)
 	if err != nil {
-		return false, nil, err
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
 
 	if account.Mode == tgdomain.ModeBusiness {
 		if !account.BusinessEnabled || !account.Rights().CanReply {
-			// The owner disconnected the bot or revoked the reply right. No clock
-			// is involved, so no expiry is reported, the UI must say "permission
-			// revoked", not "window closed".
-			return false, nil, nil
+			// The owner disconnected the bot or revoked the reply right. No
+			// clock is involved, and no amount of waiting fixes it.
+			return conversation.ClosedWindow(conversation.WindowReasonReplyRevoked), nil
 		}
 		if ec.LastInboundAt == nil {
-			return false, nil, nil
+			return conversation.ClosedWindow(conversation.WindowReasonNoInbound), nil
 		}
 		expires := ec.LastInboundAt.Add(tgdomain.BusinessMessagingWindow)
-		return time.Now().UTC().Before(expires), &expires, nil
+		if time.Now().UTC().Before(expires) {
+			return conversation.OpenWindow(&expires), nil
+		}
+		return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 	}
 
-	// Bot mode: the gate is reachability, not time.
+	// Bot mode: the gate is reachability, not time. There is no clock at all.
 	contact, err := a.contacts.FindByID(ctx, ec.ContactID)
 	if err != nil {
-		return false, nil, err
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
-	// A nil expiry with open=false is what tells the UI "this is not a clock",
-	// there is no moment at which it reopens on its own, only the customer
-	// unblocking us.
-	return !contact.Blocked, nil, nil
+	if contact.Blocked {
+		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked), nil
+	}
+	return conversation.OpenWindow(nil), nil
 }
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
@@ -383,11 +385,11 @@ func (a *channelAdapter) sendable(ctx context.Context, ec *conversation.EntryCon
 		return nil, nil, err
 	}
 
-	open, _, err := a.WindowState(ctx, ec)
+	window, err := a.WindowState(ctx, ec)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !open {
+	if !window.Open {
 		return nil, nil, conversation.ErrOutboundWindowClosed
 	}
 	return account, conv, nil

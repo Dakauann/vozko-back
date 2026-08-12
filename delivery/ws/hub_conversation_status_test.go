@@ -90,8 +90,8 @@ func (p *statusTestHistoryProvider) GetHistoryAround(string, shared.EntryType, t
 func (p *statusTestHistoryProvider) GetUnreadCount(string, shared.EntryType) (int64, error) {
 	return 0, nil
 }
-func (p *statusTestHistoryProvider) GetWindowStatusForEntry(string, string) (bool, *time.Time) {
-	return false, nil
+func (p *statusTestHistoryProvider) GetWindowStatusForEntry(string, string) conversation.WindowState {
+	return conversation.ClosedWindow(conversation.WindowReasonExpired)
 }
 func (p *statusTestHistoryProvider) GetInboxEntries(string, string, string, string, int, int) ([]conversation.InboxEntry, int64, error) {
 	return nil, 0, nil
@@ -147,7 +147,7 @@ func TestBroadcastEntryUpdateLocal_FiltersConnectionsByConversationStatus(t *tes
 		},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 
 	hub.historyProvider = &statusTestHistoryProvider{
 		entries: map[string]*conversation.InboxEntry{
@@ -184,7 +184,7 @@ func TestBroadcastEntryUpdateLocal_NoStatusFilterReceivesAllStatuses(t *testing.
 		viewOthers:  map[string]bool{"user-1": true},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.historyProvider = &statusTestHistoryProvider{
 		entries: map[string]*conversation.InboxEntry{
 			"e-new|whatsapp":      {EntryID: "e-new", EntryType: "whatsapp", ConversationStatus: conversation.ConversationStatusNew},
@@ -211,7 +211,7 @@ func TestHandleSetConversationStatus_CannotSetNewManually(t *testing.T) {
 	statusMock := newMockStatusUpdater()
 	statusMock.statuses["entry-1|whatsapp"] = conversation.ConversationStatusOngoing
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 
 	conn := &WSConnection{
@@ -243,7 +243,7 @@ func TestHandleSetConversationStatus_FinishedCannotReturnToOngoingManually(t *te
 	statusMock := newMockStatusUpdater()
 	statusMock.statuses["entry-1|whatsapp"] = conversation.ConversationStatusFinished
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 
 	conn := &WSConnection{
@@ -270,7 +270,7 @@ func TestHandleSetConversationStatus_NonAdminCanSetOngoing(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
@@ -298,7 +298,7 @@ func TestHandleSetConversationStatus_NonAdminCanSetFinished(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
@@ -323,7 +323,7 @@ func TestHandleSetConversationStatus_InvalidStatusRejected(t *testing.T) {
 	authorizer := &hubDepartmentTestAuthorizer{
 		entryAccess: map[string]bool{"user-1": true},
 	}
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = newMockStatusUpdater()
 
 	conn := &WSConnection{
@@ -345,7 +345,7 @@ func TestHandleSetConversationStatus_InvalidStatusRejected(t *testing.T) {
 
 func TestHandleSetConversationStatus_MissingFieldsRejected(t *testing.T) {
 	authorizer := &hubDepartmentTestAuthorizer{}
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = newMockStatusUpdater()
 
 	conn := &WSConnection{
@@ -369,7 +369,7 @@ func TestHandleSetConversationStatus_UnauthorizedAccess(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 
 	conn := &WSConnection{
@@ -396,7 +396,7 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	hub.statusUpdater = statusMock
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
@@ -435,7 +435,7 @@ func TestHandleSwitchView_SetsConversationStatusOnConnection(t *testing.T) {
 		entryAccess: map[string]bool{"user-1": true},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 
 	conn := &WSConnection{
 		ID: "conn-1", UserID: "user-1", WorkspaceID: "ws-1",
@@ -465,7 +465,7 @@ func TestHandleSwitchView_ClearsConversationStatusWhenEmpty(t *testing.T) {
 		entryAccess: map[string]bool{"user-1": true},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 
 	conn := &WSConnection{
 		ID: "conn-1", UserID: "user-1", WorkspaceID: "ws-1",

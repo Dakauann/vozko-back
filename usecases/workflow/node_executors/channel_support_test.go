@@ -25,8 +25,8 @@ func (a supportAdapter) EntryType() shared.EntryType { return a.entryType }
 func (a supportAdapter) ResolveEntry(context.Context, string) (*conversation.EntryContext, error) {
 	return &conversation.EntryContext{EntryID: "e1"}, nil
 }
-func (a supportAdapter) WindowState(context.Context, *conversation.EntryContext) (bool, *time.Time, error) {
-	return true, nil, nil
+func (a supportAdapter) WindowState(context.Context, *conversation.EntryContext) (conversation.WindowState, error) {
+	return conversation.OpenWindow(nil), nil
 }
 func (a supportAdapter) SendText(context.Context, *conversation.EntryContext, conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	return &conversation.SendOutcome{}, nil

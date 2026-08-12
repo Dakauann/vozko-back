@@ -137,11 +137,11 @@ func sendOptionsViaAdapter(
 }
 
 func assertWindowOpen(ctx context.Context, adapter conversation.ChannelAdapter, ec *conversation.EntryContext) error {
-	open, _, err := adapter.WindowState(ctx, ec)
+	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return err
 	}
-	if !open {
+	if !window.Open {
 		return fmt.Errorf("a janela de resposta do canal %s está fechada; o contato precisa escrever novamente", ec.EntryType)
 	}
 	return nil

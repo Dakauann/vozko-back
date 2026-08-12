@@ -279,29 +279,16 @@ func buildPeriodBuckets(rows []profitTimeRow, granularity analytics_domain.Granu
 }
 
 type callTotalsRow struct {
-	STTRevenueMicros         int64   `gorm:"column:stt_revenue_micros"`
-	STTCostMicros            int64   `gorm:"column:stt_cost_micros"`
-	STTProfitMicros          int64   `gorm:"column:stt_profit_micros"`
-	TTSRevenueMicros         int64   `gorm:"column:tts_revenue_micros"`
-	TTSCostMicros            int64   `gorm:"column:tts_cost_micros"`
-	TTSProfitMicros          int64   `gorm:"column:tts_profit_micros"`
-	LLMRevenueMicros         int64   `gorm:"column:llm_revenue_micros"`
-	LLMCostMicros            int64   `gorm:"column:llm_cost_micros"`
-	LLMProfitMicros          int64   `gorm:"column:llm_profit_micros"`
-	TelephonyRevenueMicros   int64   `gorm:"column:telephony_revenue_micros"`
-	TelephonyCostMicros      int64   `gorm:"column:telephony_cost_micros"`
-	TelephonyProfitMicros    int64   `gorm:"column:telephony_profit_micros"`
-	TotalRevenueMicros       int64   `gorm:"column:total_revenue_micros"`
-	TotalCostMicros          int64   `gorm:"column:total_cost_micros"`
-	TotalProfitMicros        int64   `gorm:"column:total_profit_micros"`
-	TotalCalls               int64   `gorm:"column:total_calls"`
-	TotalDurationSec         int64   `gorm:"column:total_duration_sec"`
-	TotalSTTAudioSec         float64 `gorm:"column:total_stt_audio_sec"`
-	TotalTTSChars            int64   `gorm:"column:total_tts_chars"`
-	TotalLLMPromptTokens     int64   `gorm:"column:total_llm_prompt_tokens"`
-	TotalLLMCompletionTokens int64   `gorm:"column:total_llm_completion_tokens"`
-	BySIPCount               int64   `gorm:"column:by_sip_count"`
-	ByWebSocketCount         int64   `gorm:"column:by_web_socket_count"`
+	TelephonyRevenueMicros int64 `gorm:"column:telephony_revenue_micros"`
+	TelephonyCostMicros    int64 `gorm:"column:telephony_cost_micros"`
+	TelephonyProfitMicros  int64 `gorm:"column:telephony_profit_micros"`
+	TotalRevenueMicros     int64 `gorm:"column:total_revenue_micros"`
+	TotalCostMicros        int64 `gorm:"column:total_cost_micros"`
+	TotalProfitMicros      int64 `gorm:"column:total_profit_micros"`
+	TotalCalls             int64 `gorm:"column:total_calls"`
+	TotalDurationSec       int64 `gorm:"column:total_duration_sec"`
+	BySIPCount             int64 `gorm:"column:by_sip_count"`
+	ByWebSocketCount       int64 `gorm:"column:by_web_socket_count"`
 }
 
 type callTimeBucketRow struct {
@@ -314,16 +301,14 @@ type callAgentRow struct {
 	callTotalsRow
 }
 
-const callSelectCols = `COALESCE(SUM(stt_revenue_micros), 0) as stt_revenue_micros,
-	COALESCE(SUM(stt_cost_micros), 0) as stt_cost_micros,
-	COALESCE(SUM(stt_profit_micros), 0) as stt_profit_micros,
-	COALESCE(SUM(tts_revenue_micros), 0) as tts_revenue_micros,
-	COALESCE(SUM(tts_cost_micros), 0) as tts_cost_micros,
-	COALESCE(SUM(tts_profit_micros), 0) as tts_profit_micros,
-	COALESCE(SUM(llm_revenue_micros), 0) as llm_revenue_micros,
-	COALESCE(SUM(llm_cost_micros), 0) as llm_cost_micros,
-	COALESCE(SUM(llm_profit_micros), 0) as llm_profit_micros,
-	COALESCE(SUM(telephony_revenue_micros), 0) as telephony_revenue_micros,
+// callSelectCols sums what call_billing_records actually stores.
+//
+// It used to sum stt_/tts_/llm_ columns as well. Those columns do not exist —
+// the table carries telephony and total only — so EVERY call analytics query
+// failed with `column "stt_revenue_micros" does not exist`. They were the
+// residue of a voice-AI cost model the product does not have: AI runs on
+// messaging channels, never on a call.
+const callSelectCols = `COALESCE(SUM(telephony_revenue_micros), 0) as telephony_revenue_micros,
 	COALESCE(SUM(telephony_cost_micros), 0) as telephony_cost_micros,
 	COALESCE(SUM(telephony_profit_micros), 0) as telephony_profit_micros,
 	COALESCE(SUM(total_revenue_micros), 0) as total_revenue_micros,
@@ -331,10 +316,6 @@ const callSelectCols = `COALESCE(SUM(stt_revenue_micros), 0) as stt_revenue_micr
 	COALESCE(SUM(total_profit_micros), 0) as total_profit_micros,
 	COUNT(*) as total_calls,
 	COALESCE(SUM(duration_sec), 0) as total_duration_sec,
-	COALESCE(SUM(stt_audio_sec), 0) as total_stt_audio_sec,
-	COALESCE(SUM(tts_chars), 0) as total_tts_chars,
-	COALESCE(SUM(llm_prompt_tokens), 0) as total_llm_prompt_tokens,
-	COALESCE(SUM(llm_completion_tokens), 0) as total_llm_completion_tokens,
 	COUNT(CASE WHEN call_source = 'sip' THEN 1 END) as by_sip_count,
 	COUNT(CASE WHEN call_source = 'websocket' THEN 1 END) as by_web_socket_count`
 
@@ -363,9 +344,6 @@ func (r *repository) callBase(input analytics_domain.CallAnalyticsInput) *gorm.D
 
 func toCallDimensions(row callTotalsRow) analytics_domain.CallDimensionBreakdown {
 	return analytics_domain.CallDimensionBreakdown{
-		STT:       analytics_domain.CallDimensionTotals{RevenueMicros: row.STTRevenueMicros, CostMicros: row.STTCostMicros, ProfitMicros: row.STTProfitMicros},
-		TTS:       analytics_domain.CallDimensionTotals{RevenueMicros: row.TTSRevenueMicros, CostMicros: row.TTSCostMicros, ProfitMicros: row.TTSProfitMicros},
-		LLM:       analytics_domain.CallDimensionTotals{RevenueMicros: row.LLMRevenueMicros, CostMicros: row.LLMCostMicros, ProfitMicros: row.LLMProfitMicros},
 		Telephony: analytics_domain.CallDimensionTotals{RevenueMicros: row.TelephonyRevenueMicros, CostMicros: row.TelephonyCostMicros, ProfitMicros: row.TelephonyProfitMicros},
 		Total:     analytics_domain.CallDimensionTotals{RevenueMicros: row.TotalRevenueMicros, CostMicros: row.TotalCostMicros, ProfitMicros: row.TotalProfitMicros},
 	}
@@ -373,14 +351,10 @@ func toCallDimensions(row callTotalsRow) analytics_domain.CallDimensionBreakdown
 
 func toCallUsage(row callTotalsRow) analytics_domain.CallUsageTotals {
 	return analytics_domain.CallUsageTotals{
-		TotalCalls:               row.TotalCalls,
-		TotalDurationSec:         row.TotalDurationSec,
-		TotalSTTAudioSec:         row.TotalSTTAudioSec,
-		TotalTTSChars:            row.TotalTTSChars,
-		TotalLLMPromptTokens:     row.TotalLLMPromptTokens,
-		TotalLLMCompletionTokens: row.TotalLLMCompletionTokens,
-		BySIPCount:               row.BySIPCount,
-		ByWebSocketCount:         row.ByWebSocketCount,
+		TotalCalls:       row.TotalCalls,
+		TotalDurationSec: row.TotalDurationSec,
+		BySIPCount:       row.BySIPCount,
+		ByWebSocketCount: row.ByWebSocketCount,
 	}
 }
 

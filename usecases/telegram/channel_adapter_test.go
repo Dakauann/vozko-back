@@ -88,18 +88,18 @@ func TestWindowStateBotModeHasNoClock(t *testing.T) {
 	contact := &tgdomain.Contact{ID: "contact-1", TGUserID: 5041234567}
 	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, contact)
 
-	// An inbound from a week ago must still leave the window open.
+	// An inbound from a week ago must still leave the window window.Open.
 	old := time.Now().UTC().Add(-7 * 24 * time.Hour)
-	open, expires, err := adapter.WindowState(context.Background(), entryContext(conv, &old))
+	window, err := adapter.WindowState(context.Background(), entryContext(conv, &old))
 	if err != nil {
 		t.Fatalf("WindowState: %v", err)
 	}
-	if !open {
+	if !window.Open {
 		t.Error("bot mode has no window; a week-old conversation is still repliable")
 	}
 	// A nil expiry is what tells the UI "this is not a clock".
-	if expires != nil {
-		t.Errorf("expiry = %v, want nil, there is no moment at which bot mode reopens", expires)
+	if window.ExpiresAt != nil {
+		t.Errorf("expiry = %v, want nil, there is no moment at which bot mode reopens", window.ExpiresAt)
 	}
 }
 
@@ -110,14 +110,14 @@ func TestWindowStateBotModeClosesWhenBlocked(t *testing.T) {
 	contact := &tgdomain.Contact{ID: "contact-1", TGUserID: 5041234567, Blocked: true}
 	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, contact)
 
-	open, expires, err := adapter.WindowState(context.Background(), entryContext(conv, nil))
+	window, err := adapter.WindowState(context.Background(), entryContext(conv, nil))
 	if err != nil {
 		t.Fatalf("WindowState: %v", err)
 	}
-	if open {
+	if window.Open {
 		t.Error("a blocked contact closes the composer")
 	}
-	if expires != nil {
+	if window.ExpiresAt != nil {
 		t.Error("being blocked is not a clock; there is no expiry to show")
 	}
 }
@@ -130,16 +130,16 @@ func TestWindowStateBusinessModeUsesTheClock(t *testing.T) {
 	adapter, _, _, _, _, _ := newAdapter(businessAccount(true), conv, contact)
 
 	fresh := time.Now().UTC().Add(-time.Hour)
-	open, expires, err := adapter.WindowState(context.Background(), entryContext(conv, &fresh))
+	window, err := adapter.WindowState(context.Background(), entryContext(conv, &fresh))
 	if err != nil {
 		t.Fatalf("WindowState: %v", err)
 	}
-	if !open || expires == nil {
+	if !window.Open || window.ExpiresAt == nil {
 		t.Fatal("a recent inbound leaves the business window open, with an expiry to show")
 	}
 
 	stale := time.Now().UTC().Add(-25 * time.Hour)
-	if open, _, _ := adapter.WindowState(context.Background(), entryContext(conv, &stale)); open {
+	if stale, _ := adapter.WindowState(context.Background(), entryContext(conv, &stale)); stale.Open {
 		t.Error("a 25-hour-old inbound closes the business window")
 	}
 }
@@ -152,14 +152,14 @@ func TestWindowStateBusinessModeWithoutCanReply(t *testing.T) {
 	adapter, _, _, _, _, _ := newAdapter(businessAccount(false), conv, contact)
 
 	fresh := time.Now().UTC().Add(-time.Minute)
-	open, expires, err := adapter.WindowState(context.Background(), entryContext(conv, &fresh))
+	window, err := adapter.WindowState(context.Background(), entryContext(conv, &fresh))
 	if err != nil {
 		t.Fatalf("WindowState: %v", err)
 	}
-	if open {
+	if window.Open {
 		t.Error("without can_reply the composer is closed even inside the 24h window")
 	}
-	if expires != nil {
+	if window.ExpiresAt != nil {
 		t.Error("a revoked right has no expiry")
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -32,8 +31,11 @@ func (a *fakeAdapter) ResolveEntry(_ context.Context, entryID string) (*conversa
 	}, nil
 }
 
-func (a *fakeAdapter) WindowState(_ context.Context, _ *conversation.EntryContext) (bool, *time.Time, error) {
-	return a.windowOpen, nil, nil
+func (a *fakeAdapter) WindowState(_ context.Context, _ *conversation.EntryContext) (conversation.WindowState, error) {
+	if a.windowOpen {
+		return conversation.OpenWindow(nil), nil
+	}
+	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
 func (a *fakeAdapter) SendText(_ context.Context, _ *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {

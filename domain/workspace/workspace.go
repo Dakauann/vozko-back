@@ -43,7 +43,6 @@ func registerResource(res string) Resource {
 
 var (
 	ResourceAgents            = registerResource("agents")
-	ResourceCampaigns         = registerResource("campaigns")
 	ResourceWhatsAppCampaigns = registerResource("whatsapp_campaigns")
 	ResourceWhatsAppTemplates = registerResource("whatsapp_templates")
 	ResourceBusinessPhones    = registerResource("business_phones")
@@ -55,13 +54,11 @@ var (
 	ResourceMedia             = registerResource("media")
 	ResourceLeads             = registerResource("leads")
 	ResourceAnalysis          = registerResource("analysis")
-	ResourceSIPTrunks         = registerResource("sip_trunks")
 	ResourceCallRecordings    = registerResource("call_recordings")
 	ResourceMembers           = registerResource("members")
 	ResourceAssignments       = registerResource("assignments")
 	ResourceAttendance        = registerResource("attendance")
 	ResourceKnowledgeBases    = registerResource("knowledge_bases")
-	ResourceUsage             = registerResource("usage")
 	ResourceRoles             = registerResource("roles")
 	ResourceSupportInboxes    = registerResource("support_inboxes")
 	ResourceIssues            = registerResource("issues")
@@ -70,11 +67,9 @@ var (
 	ResourceDepartments       = registerResource("departments")
 	ResourceMessageShortcuts  = registerResource("message_shortcuts")
 	ResourceDialer            = registerResource("dialer")
-	ResourceAffiliate         = registerResource("affiliate")
 	ResourceMCP               = registerResource("mcp")
 	ResourcePlans             = registerResource("plans")
 	ResourceAIChat            = registerResource("ai_chat")
-	ResourceBranches          = registerResource("branches")
 	ResourceShortLinks        = registerResource("short_links")
 	ResourceInstagramAccounts = registerResource("instagram_accounts")
 	ResourceTelegramAccounts  = registerResource("telegram_accounts")
@@ -147,14 +142,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionCreate, Description: "Criar conversas e enviar mensagens no chat de IA"},
 		{ActionName: ActionUpdate, Description: "Renomear conversas do chat de IA"},
 		{ActionName: ActionDelete, Description: "Excluir conversas do chat de IA"},
-	},
-	ResourceCampaigns: {
-		{ActionName: ActionCreate, Description: "Criar campanhas de chamadas telefônicas"},
-		{ActionName: ActionRead, Description: "Visualizar campanhas e seus resultados"},
-		{ActionName: ActionUpdate, Description: "Editar configurações de campanhas"},
-		{ActionName: ActionDelete, Description: "Excluir campanhas"},
-		{ActionName: ActionStart, Description: "Iniciar execução de campanhas"},
-		{ActionName: ActionStop, Description: "Parar campanhas em execução"},
 	},
 	ResourceWhatsAppCampaigns: {
 		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp"},
@@ -236,23 +223,8 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceAnalysis: {
 		{ActionName: ActionRead, Description: "Visualizar relatórios e análises de desempenho"},
 	},
-	ResourceSIPTrunks: {
-		{ActionName: ActionRead, Description: "Visualizar canais de telefonia disponíveis para o workspace"},
-		{ActionName: ActionCreate, Description: "Criar novos canais de telefonia para o workspace"},
-		{ActionName: ActionUpdate, Description: "Editar canais de telefonia do próprio workspace"},
-		{ActionName: ActionDelete, Description: "Excluir canais de telefonia do próprio workspace"},
-	},
 	ResourceCallRecordings: {
 		{ActionName: ActionRead, Description: "Ouvir e baixar gravações de chamadas"},
-	},
-	ResourceBranches: {
-		{ActionName: ActionRead, Description: "Visualizar branches (extensões SIP) do workspace"},
-		{ActionName: ActionCreate, Description: "Criar branches para membros do workspace"},
-		{ActionName: ActionUpdate, Description: "Editar branches do workspace"},
-		{ActionName: ActionDelete, Description: "Excluir branches do workspace"},
-		{ActionName: ActionUse, Description: "Usar o próprio branch (registrar um softphone ou telefone IP)", Requires: []PermissionEntry{
-			{Resource: ResourceDialer, Action: ActionUse},
-		}},
 	},
 	ResourceMembers: {
 		{ActionName: ActionCreate, Description: "Convidar novos membros ao workspace"},
@@ -269,7 +241,10 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Remover atribuições de recursos"},
 	},
 	ResourceAttendance: {
-		{ActionName: ActionRead, Description: "Visualizar métricas de atendimento e telefonia (volume, tempos, canais, fila, ocupação, equipe e IA)"},
+		// "IA" is scoped to MESSAGING here on purpose. Listing it in one breath
+		// with telephony read as "AI handles calls", which the product does not
+		// do and no surface may imply.
+		{ActionName: ActionRead, Description: "Visualizar métricas de atendimento: conversas, tempos, filas, ocupação, canais, equipe e atendimentos por IA nos canais de mensagens, além do volume de telefonia"},
 	},
 	ResourceKnowledgeBases: {
 		{ActionName: ActionCreate, Description: "Criar bases de conhecimento"},
@@ -282,9 +257,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar links curtos e suas métricas de acesso"},
 		{ActionName: ActionUpdate, Description: "Editar links curtos"},
 		{ActionName: ActionDelete, Description: "Excluir links curtos"},
-	},
-	ResourceUsage: {
-		{ActionName: ActionRead, Description: "Visualizar consumo e custos do workspace"},
 	},
 	ResourceRoles: {
 		{ActionName: ActionCreate, Description: "Criar cargos personalizados"},
@@ -350,9 +322,11 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Excluir departamentos"},
 	},
 	ResourceDialer: {
-		{ActionName: ActionUse, Description: "Realizar chamadas pelo discador (SIP e ligações WhatsApp). Não inclui métricas, use a permissão de atendimento para dashboards.", Requires: []PermissionEntry{
-			{Resource: ResourceSIPTrunks, Action: ActionRead},
-		}},
+		// No longer requires reading SIP trunks: trunk MANAGEMENT was removed
+		// (no API, no UI), so the dependency named a permission that can no
+		// longer be granted — which would have made the dialer ungrantable too.
+		// The trunk runtime itself is untouched and still carries every call.
+		{ActionName: ActionUse, Description: "Realizar chamadas pelo discador. Não inclui métricas, use a permissão de atendimento para dashboards."},
 		{ActionName: ActionListMembers, Description: "Visualizar membros conectados ao discador em tempo real (necessário para selecionar destino de transferência)", Requires: []PermissionEntry{
 			{Resource: ResourceDialer, Action: ActionUse},
 		}},
@@ -360,9 +334,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceDialer, Action: ActionUse},
 			{Resource: ResourceDialer, Action: ActionListMembers},
 		}},
-	},
-	ResourceAffiliate: {
-		{ActionName: ActionUse, Description: "Acessar o programa de afiliados, visualizar indicações e comissões"},
 	},
 	ResourceMCP: {
 		{ActionName: ActionRead, Description: "Visualizar servidores MCP integrados e remotos do workspace"},

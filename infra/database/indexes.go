@@ -401,6 +401,26 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				ON short_link_daily_stats (short_link_id, dimension, day)`,
 		},
 
+		// The scheduled-message sweep's only query. Partial on status, so its
+		// cost tracks the number of messages actually DUE rather than the size
+		// of the table: a workspace with a million delivered rows still pays for
+		// the handful that are pending.
+		{
+			name: "idx_sched_msg_due",
+			sql: `CREATE INDEX IF NOT EXISTS idx_sched_msg_due
+				ON scheduled_messages (scheduled_at)
+				WHERE status = 'pending' AND deleted_at IS NULL`,
+		},
+
+		// The conversation's own scheduled messages, which the composer reads
+		// every time an operator opens a chat.
+		{
+			name: "idx_sched_msg_entry_status",
+			sql: `CREATE INDEX IF NOT EXISTS idx_sched_msg_entry_status
+				ON scheduled_messages (entry_id, entry_type, status)
+				WHERE deleted_at IS NULL`,
+		},
+
 		// Vector search for RAG. It lived at the end of the migration with its
 		// error explicitly discarded, which was load-bearing: a failed statement
 		// poisons a Postgres transaction, so anything added after it would have
@@ -639,6 +659,18 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_type_external_msgid
 				ON conversation_messages (entry_type, external_message_id)
 				WHERE external_message_id IS NOT NULL AND deleted_at IS NULL`,
+		},
+
+		// Create-idempotency for scheduled messages. Partial, because the vast
+		// majority of rows carry no key and would otherwise all collide on NULL
+		// (Postgres would allow that, but the index would be pure overhead).
+		// Scoped to the workspace so two tenants cannot collide on a
+		// client-chosen key.
+		{
+			name: "ux_sched_msg_idem",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_sched_msg_idem
+				ON scheduled_messages (workspace_id, idempotency_key)
+				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
 		},
 	}
 

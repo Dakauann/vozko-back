@@ -128,29 +128,35 @@ func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 //
 // Consulted by BOTH the send path and the composer's UI state, so this is the
 // single definition of "can I reply right now".
-func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (bool, *time.Time, error) {
+func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
-		return false, nil, conversation.ErrNoAdapterForEntryType
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
 	instance, err := a.instances.FindByID(ctx, ec.AccountID)
 	if err != nil {
-		return false, nil, err
+		// Most often a number that was REMOVED: the row is soft-deleted, so the
+		// lookup misses. Naming it beats a bare refusal that reads like a clock.
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
 
 	if !instance.SessionLive() {
-		return false, nil, nil
+		return conversation.ClosedWindow(conversation.WindowReasonSessionDown), nil
 	}
 	if instance.Restriction.Active(time.Now().UTC()) {
-		// The only case with an expiry: the UI renders a countdown here and
-		// nowhere else on this channel.
-		return false, instance.Restriction.Until, nil
+		// The only case with a time attached, and it is a countdown to when the
+		// restriction LIFTS — never a deadline to schedule against.
+		return conversation.ClosedWindowUntil(conversation.WindowReasonAccountRestricted, instance.Restriction.Until), nil
 	}
 
 	contact, err := a.contacts.FindByID(ctx, ec.ContactID)
 	if err != nil {
-		return false, nil, err
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
-	return !contact.Blocked, nil, nil
+	if contact.Blocked {
+		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked), nil
+	}
+	// No clock on this channel: no template, no 24h rule. Groups included.
+	return conversation.OpenWindow(nil), nil
 }
 
 // SendText delivers a text message.

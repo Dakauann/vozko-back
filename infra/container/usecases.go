@@ -507,7 +507,21 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
 	opportunitySvc := opportunity_usecase.NewService(c.repositories.opportunity, c.repositories.opportunityLink, c.repositories.customField)
 
+	// Built here rather than inside initConversationSenders: its inputs exist by
+	// then, but the useCases struct below does not, so writing onto it from
+	// there dereferenced a nil pointer at boot.
+	scheduledMessages := c.buildScheduledMessages()
+
 	c.useCases = &useCases{
+		scheduleMessage:          scheduledMessages.schedule,
+		rescheduleMessage:        scheduledMessages.reschedule,
+		cancelScheduledMessage:   scheduledMessages.cancel,
+		listScheduledMessages:    scheduledMessages.list,
+		dispatchScheduledMessage: scheduledMessages.dispatch,
+		consumeScheduledMessage:  scheduledMessages.consume,
+		sweepScheduledMessages:   scheduledMessages.sweep,
+		purgeScheduledMessages:   scheduledMessages.purge,
+
 		opportunity:           opportunitySvc,
 		customField:           customFieldSvc,
 		consumeNotifications:  consumeEmailUC,
@@ -1349,6 +1363,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	if err := c.useCases.consumeShortLinkClick.Start(); err != nil {
 		log.Fatal("Failed to start short link click consumer:", err)
+	}
+
+	// Scheduled messages: this is the timely trigger. The sweep would still
+	// deliver everything within a minute if it never started, which is why a
+	// failure here is loud but not fatal — degraded latency beats refusing to
+	// boot the whole platform.
+	if err := c.useCases.consumeScheduledMessage.Start(); err != nil {
+		log.Printf("Failed to start the scheduled message consumer: %v; the sweep will deliver messages up to a minute late", err)
 	}
 
 	if err := c.useCases.consumeWhatsAppMsgWebhook.Start(); err != nil {

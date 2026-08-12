@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	aa "vozko/domain/ai_attendance"
 	ap "vozko/domain/agent_presence"
+	aa "vozko/domain/ai_attendance"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/crm_telemetry"
 	ia "vozko/domain/inbox_assignment"
@@ -60,7 +60,7 @@ func (m *memEvents) ListByEntryFiltered(string, string, string, ce.ListFilter) (
 }
 
 type memHistory struct {
-	closed int
+	closed   int
 	appended []*ia.AssignmentHistory
 }
 
@@ -167,17 +167,17 @@ type fakeAck struct {
 	count                  int
 }
 
-func (a *fakeAck) Ack() error                  { a.acked = true; return nil }
-func (a *fakeAck) Nack(requeue bool) error     { a.nacked = true; a.requeue = requeue; return nil }
-func (a *fakeAck) DeliveryCount() int          { return a.count }
+func (a *fakeAck) Ack() error              { a.acked = true; return nil }
+func (a *fakeAck) Nack(requeue bool) error { a.nacked = true; a.requeue = requeue; return nil }
+func (a *fakeAck) DeliveryCount() int      { return a.count }
 
 func TestConsumer_ConversationEvent_Idempotent(t *testing.T) {
 	evRepo := &memEvents{}
 	dedupe := &memDedupe{}
 	c := NewConsumerWithDeps(ConsumerDeps{
-		Events:  evRepo,
-		History: &memHistory{},
-		AIRepo:  newMemAI(),
+		Events:    evRepo,
+		History:   &memHistory{},
+		AIRepo:    newMemAI(),
 		QueueRepo: &memQueue{},
 		Presence:  &memPresence{},
 		Dedupe:    dedupe,

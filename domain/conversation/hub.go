@@ -43,17 +43,21 @@ type InboxEntry struct {
 	LastMessageSenderAvatar string                 `json:"last_message_sender_avatar,omitempty"`
 	WindowOpen              bool                   `json:"window_open"`
 	WindowExpiresAt         *time.Time             `json:"window_expires_at,omitempty"`
-	BusinessPhoneID         string                 `json:"business_phone_id,omitempty"`
-	AssignedUserID          string                 `json:"assigned_user_id,omitempty"`
-	AssignedUsername        string                 `json:"assigned_username,omitempty"`
-	AutomationEnabled       bool                   `json:"automation_enabled"`
-	Stage                   *InboxEntryStage       `json:"stage,omitempty"`
-	Labels                  []InboxEntryLabel      `json:"labels,omitempty"`
-	AvailableStages         []InboxEntryStage      `json:"available_stages,omitempty"`
-	MatchedMessages         []MatchedMessage       `json:"matched_messages,omitempty"`
-	TotalMatches            int                    `json:"total_matches,omitempty"`
-	LatestAnalysis          *analysis.Analysis     `json:"latest_analysis,omitempty"`
-	ConversationStatus      ConversationStatus     `json:"conversation_status,omitempty"`
+	// WindowClosedReason names WHY sending is blocked, so the composer can say
+	// something true instead of inferring it from the absence of an expiry.
+	// Empty when the window is open. See WindowClosedReason.
+	WindowClosedReason string             `json:"window_closed_reason,omitempty"`
+	BusinessPhoneID    string             `json:"business_phone_id,omitempty"`
+	AssignedUserID     string             `json:"assigned_user_id,omitempty"`
+	AssignedUsername   string             `json:"assigned_username,omitempty"`
+	AutomationEnabled  bool               `json:"automation_enabled"`
+	Stage              *InboxEntryStage   `json:"stage,omitempty"`
+	Labels             []InboxEntryLabel  `json:"labels,omitempty"`
+	AvailableStages    []InboxEntryStage  `json:"available_stages,omitempty"`
+	MatchedMessages    []MatchedMessage   `json:"matched_messages,omitempty"`
+	TotalMatches       int                `json:"total_matches,omitempty"`
+	LatestAnalysis     *analysis.Analysis `json:"latest_analysis,omitempty"`
+	ConversationStatus ConversationStatus `json:"conversation_status,omitempty"`
 	// Close provenance when status is finished (omitted when open / cleared on reopen).
 	CloseSource CloseSource `json:"close_source,omitempty"`
 	CloseReason CloseReason `json:"close_reason,omitempty"`
@@ -279,7 +283,7 @@ type HistoryProvider interface {
 	// because resolving a sender is a lookup across leads, contacts, agents and
 	// users, the provider already owns all four.
 	ResolveSenderIdentity(entryID, entryType string, message *Message)
-	GetWindowStatusForEntry(entryID, entryType string) (windowOpen bool, windowExpiresAt *time.Time)
+	GetWindowStatusForEntry(entryID, entryType string) WindowState
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)
 	GetInboxEntry(entryID, entryType string) (*InboxEntry, error)
 	SearchInboxEntries(input SearchInboxInput) ([]InboxEntry, int64, error)

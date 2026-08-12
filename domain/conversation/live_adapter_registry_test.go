@@ -3,7 +3,6 @@ package conversation
 import (
 	"context"
 	"testing"
-	"time"
 
 	"vozko/domain/channel"
 	"vozko/domain/shared"
@@ -15,8 +14,8 @@ func (f fakeAdapter) EntryType() shared.EntryType { return f.entryType }
 func (f fakeAdapter) ResolveEntry(context.Context, string) (*EntryContext, error) {
 	return nil, nil
 }
-func (f fakeAdapter) WindowState(context.Context, *EntryContext) (bool, *time.Time, error) {
-	return true, nil, nil
+func (f fakeAdapter) WindowState(context.Context, *EntryContext) (WindowState, error) {
+	return OpenWindow(nil), nil
 }
 func (f fakeAdapter) SendText(context.Context, *EntryContext, SendTextRequest) (*SendOutcome, error) {
 	return nil, nil

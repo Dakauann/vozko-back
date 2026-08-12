@@ -95,6 +95,73 @@ type SendMediaRequest struct {
 	HumanInitiated bool
 }
 
+// WindowClosedReason names WHY a conversation cannot be replied to.
+//
+// It exists because "closed" alone is not actionable. Every consumer needs a
+// different sentence and a different remedy: reconnect the number, wait for the
+// clock, wait for the customer to write, or nothing-you-can-do. Before this,
+// callers inferred the reason from whether an expiry accompanied the false —
+// and that inference shipped a bug where every clockless channel reported "the
+// 24-hour window is closed" on a channel that has no 24-hour window.
+//
+// The reason travels with the state so the composer, the send error and the
+// scheduler all say the same true thing without any of them guessing.
+type WindowClosedReason string
+
+const (
+	// WindowReasonNone accompanies an open window.
+	WindowReasonNone WindowClosedReason = ""
+	// WindowReasonExpired: a clock ran out. This is the only reason that
+	// reopens on its own, when the customer writes again.
+	WindowReasonExpired WindowClosedReason = "expired"
+	// WindowReasonNoInbound: the customer has never written, and this channel
+	// forbids initiating.
+	WindowReasonNoInbound WindowClosedReason = "no_inbound"
+	// WindowReasonContactBlocked: the contact blocked us.
+	WindowReasonContactBlocked WindowClosedReason = "contact_blocked"
+	// WindowReasonSessionDown: the linked device is offline. Reconnect it.
+	WindowReasonSessionDown WindowClosedReason = "session_down"
+	// WindowReasonAccountRestricted: the provider restricted the account. This
+	// is the one closed state that carries an expiry — a countdown to when the
+	// restriction lifts, NOT a deadline to schedule against.
+	WindowReasonAccountRestricted WindowClosedReason = "account_restricted"
+	// WindowReasonReplyRevoked: the connection lost its right to reply.
+	WindowReasonReplyRevoked WindowClosedReason = "reply_revoked"
+	// WindowReasonChannelUnavailable: the account, instance or conversation
+	// could not be resolved — most often a number that was removed.
+	WindowReasonChannelUnavailable WindowClosedReason = "channel_unavailable"
+)
+
+// WindowState is the single answer to "may we send right now, and if not, why".
+//
+// ExpiresAt means two different things depending on Open, which is why the two
+// fields must travel together and never be read apart:
+//   - Open  + ExpiresAt: a deadline. Sending is allowed until then.
+//   - Closed + ExpiresAt: a countdown. Sending is forbidden UNTIL then.
+//
+// Reading a closed window's expiry as a deadline inverts it exactly.
+type WindowState struct {
+	Open      bool
+	ExpiresAt *time.Time
+	Reason    WindowClosedReason
+}
+
+// OpenWindow reports a window that permits sending until expiresAt (nil = no
+// clock on this channel).
+func OpenWindow(expiresAt *time.Time) WindowState {
+	return WindowState{Open: true, ExpiresAt: expiresAt, Reason: WindowReasonNone}
+}
+
+// ClosedWindow reports a window that forbids sending, with the reason.
+func ClosedWindow(reason WindowClosedReason) WindowState {
+	return WindowState{Reason: reason}
+}
+
+// ClosedWindowUntil reports a closed window that lifts at a known time.
+func ClosedWindowUntil(reason WindowClosedReason, until *time.Time) WindowState {
+	return WindowState{ExpiresAt: until, Reason: reason}
+}
+
 // ChannelAdapter is the send-side port for one channel.
 //
 // Instagram is the first implementation. WhatsApp keeps its current code path
@@ -106,10 +173,10 @@ type ChannelAdapter interface {
 	// ResolveEntry loads everything needed to send to this entry.
 	ResolveEntry(ctx context.Context, entryID string) (*EntryContext, error)
 
-	// WindowState reports whether an outbound message is currently allowed and,
-	// when known, when the window closes. A channel without a window returns
-	// (true, nil, nil).
-	WindowState(ctx context.Context, ec *EntryContext) (open bool, expiresAt *time.Time, err error)
+	// WindowState reports whether an outbound message is currently allowed,
+	// when the state changes, and why it is closed. A channel with no window
+	// returns OpenWindow(nil).
+	WindowState(ctx context.Context, ec *EntryContext) (WindowState, error)
 
 	SendText(ctx context.Context, ec *EntryContext, req SendTextRequest) (*SendOutcome, error)
 	SendMedia(ctx context.Context, ec *EntryContext, req SendMediaRequest) (*SendOutcome, error)

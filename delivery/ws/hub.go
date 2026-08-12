@@ -77,7 +77,6 @@ type ConversationHub struct {
 	userRepo             user.UserRepository
 	waCampaignRepo       whatsapp_campaign.Repository
 	workspaceResolver    conversation.CampaignWorkspaceResolver
-	messageSender        conversation.MessageSender
 	historyProvider      conversation.HistoryProvider
 	messageMarker        conversation.MessageMarker
 	StageProvider        conversation.StageProvider
@@ -99,6 +98,10 @@ type ConversationHub struct {
 	memberVisibility     memberVisibilityChecker
 	statusUpdater        conversation.ConversationStatusUpdater
 	wsMetrics            metrics.WSMetricsRecorder
+	// operatorSend delivers a human's message and applies everything that
+	// follows from it. Injected at construction rather than through a setter:
+	// it is not optional, and the send frames are unanswerable without it.
+	operatorSend conversation.OperatorSendUseCase
 
 	connections map[string]*WSConnection
 	connMu      sync.RWMutex
@@ -125,10 +128,23 @@ type ConversationHub struct {
 	publicAddress string
 }
 
-func NewConversationHub(authorizer conversation.ConversationAuthorizer, userRepo user.UserRepository, sharedState cache.SharedState, replicaID, publicAddress string) *ConversationHub {
+// NewConversationHub builds the WebSocket transport.
+//
+// operatorSend is a constructor parameter rather than one more setter because
+// the send frames are the hub's reason to exist and are unanswerable without
+// it. Passing it here makes forgetting it a compile error; the hub's remaining
+// setters are for genuinely optional collaborators.
+func NewConversationHub(
+	authorizer conversation.ConversationAuthorizer,
+	userRepo user.UserRepository,
+	operatorSend conversation.OperatorSendUseCase,
+	sharedState cache.SharedState,
+	replicaID, publicAddress string,
+) *ConversationHub {
 	hub := &ConversationHub{
 		authorizer:        authorizer,
 		userRepo:          userRepo,
+		operatorSend:      operatorSend,
 		connections:       make(map[string]*WSConnection),
 		userConnections:   make(map[string]map[string]bool),
 		userSubscriptions: make(map[string]map[entrySubscription]bool),
@@ -147,9 +163,6 @@ func NewConversationHub(authorizer conversation.ConversationAuthorizer, userRepo
 	return hub
 }
 
-func (h *ConversationHub) SetMessageSender(sender conversation.MessageSender) {
-	h.messageSender = sender
-}
 func (h *ConversationHub) SetHistoryProvider(provider conversation.HistoryProvider) {
 	h.historyProvider = provider
 }
@@ -1695,6 +1708,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	var unreadCount int64
 	var windowOpen bool
 	var windowExpiresAt *time.Time
+	var windowClosedReason string
 	var messages []*conversation.Message
 	var hasMore bool
 	var total int64
@@ -1702,7 +1716,8 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	if h.historyProvider != nil {
 		leadName, leadNumber, leadPicture, leadMetadata, entryVariables, automationEnabled, _ = h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
 		unreadCount, _ = h.historyProvider.GetUnreadCount(p.EntryID, shared.EntryType(p.EntryType))
-		windowOpen, windowExpiresAt = h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
+		window := h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
+		windowOpen, windowExpiresAt, windowClosedReason = window.Open, window.ExpiresAt, string(window.Reason)
 
 		pageSize := p.PageSize
 		if pageSize <= 0 {
@@ -1734,17 +1749,18 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	h.sendToConnection(conn, &WSOutgoingMessage{
 		Type: WSEventSubscribed,
 		Payload: SubscribedPayload{
-			EntryID:           p.EntryID,
-			EntryType:         p.EntryType,
-			LeadName:          leadName,
-			LeadNumber:        leadNumber,
-			LeadPicture:       leadPicture,
-			LeadMetadata:      leadMetadata,
-			EntryVariables:    entryVariables,
-			UnreadCount:       unreadCount,
-			AutomationEnabled: automationEnabled,
-			WindowOpen:        windowOpen,
-			WindowExpiresAt:   windowExpiresAt,
+			EntryID:            p.EntryID,
+			EntryType:          p.EntryType,
+			LeadName:           leadName,
+			LeadNumber:         leadNumber,
+			LeadPicture:        leadPicture,
+			LeadMetadata:       leadMetadata,
+			EntryVariables:     entryVariables,
+			UnreadCount:        unreadCount,
+			AutomationEnabled:  automationEnabled,
+			WindowOpen:         windowOpen,
+			WindowExpiresAt:    windowExpiresAt,
+			WindowClosedReason: windowClosedReason,
 		},
 	})
 
@@ -2070,18 +2086,6 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 	log.Printf("[ConversationHub] User %s unsubscribed from %s:%s", conn.UserID, p.EntryType, p.EntryID)
 }
 
-// signatureFormatFor returns the operator-signature template for a channel.
-//
-// WhatsApp renders *bold* markup; Instagram DMs do not, so the same asterisks
-// would be shown literally to the customer. The format is therefore chosen per
-// channel rather than hardcoded.
-func signatureFormatFor(entryType string) string {
-	if entryType == string(shared.EntryTypeInstagram) {
-		return "%s:\n%s"
-	}
-	return "*%s*:\n%s"
-}
-
 func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage) {
 	var p SendMessagePayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -2104,7 +2108,7 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 		return
 	}
 
-	if h.messageSender == nil {
+	if h.operatorSend == nil {
 		h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, "Message sending not configured", "not_configured")
 		return
 	}
@@ -2122,79 +2126,39 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 			}
 		}()
 
-		var message *conversation.Message
-		var err error
-
-		replyTo := ""
+		in := conversation.OperatorSendInput{
+			EntryID:      p.EntryID,
+			EntryType:    p.EntryType,
+			WorkspaceID:  conn.WorkspaceID,
+			SenderUserID: conn.UserID,
+			Text:         p.Text,
+			Signed:       p.Signed,
+		}
 		if p.ReplyToMessageID != nil {
-			replyTo = *p.ReplyToMessageID
+			in.ReplyToMessageID = *p.ReplyToMessageID
 		}
-
-		// Resolve-and-continue, as before, but without dereferencing a nil user: a
-		// lookup failure only costs the signature prefix, it must not crash the send.
-		userUsername := ""
-		user, err := h.userRepo.FindByID(conn.UserID)
-		if err != nil || user == nil {
-			log.Printf("[ConversationHub] Error resolving user for sending message: %v", err)
-		} else {
-			userUsername = user.Username
-		}
-		text := strings.TrimSpace(p.Text)
-		if p.Signed {
-			text = fmt.Sprintf(signatureFormatFor(p.EntryType), userUsername, text)
-		}
-
 		if p.MediaID != nil && p.MediaType != nil {
-			message, err = h.messageSender.SendMediaMessage(p.EntryID, p.EntryType, *p.MediaID, *p.MediaType, conn.UserID, replyTo, text)
-		} else {
-			message, err = h.messageSender.SendTextMessage(p.EntryID, p.EntryType, text, conn.UserID, replyTo)
+			in.MediaID, in.MediaType = *p.MediaID, *p.MediaType
 		}
 
+		message, err := h.operatorSend.Execute(context.Background(), in)
 		if err != nil {
 			h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, err.Error(), "send_failed")
 			return
 		}
 
-		h.BroadcastMessageSent(conn.UserID, p.RequestID, p.EntryID, p.EntryType, message)
-		h.afterOperatorSend(conn, p.EntryID, p.EntryType, message)
+		h.announceOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, message)
 	}()
 }
 
-func (h *ConversationHub) afterOperatorSend(conn *WSConnection, entryID, entryType string, message *conversation.Message) {
-	if h.statusUpdater != nil && message != nil {
-		if err := h.statusUpdater.TransitionOnMessage(entryID, entryType, message.MessageType, message.ResolvedDirection()); err != nil {
-			log.Printf("[ConversationHub] Error transitioning conversation status for %s (%s): %v", entryID, entryType, err)
-		}
-	}
-
-	wsID := conn.WorkspaceID
-	if h.workspaceResolver != nil {
-		if resolved, err := h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType); err == nil && resolved != "" {
-			wsID = resolved
-		}
-	}
-
-	if h.eventLogger != nil {
-		details := map[string]string{}
-		if message != nil && message.ID != "" {
-			details["message_id"] = message.ID
-		}
-		// Every entry type names its own channel. This was a switch that listed
-		// three of them and defaulted to "whatsapp", so an operator's Telegram
-		// reply was recorded as a WhatsApp event.
-		channel := shared.EntryType(entryType).EventChannel()
-		h.eventLogger.Log(ce.New(wsID, entryID, entryType, ce.EventReplied).
-			WithActorHuman(conn.UserID).
-			WithChannel(channel).
-			WithDetails(details).
-			Build())
-	}
-
-	if h.aiSessions != nil && wsID != "" {
-		h.aiSessions.EndOpenRaw(wsID, entryID, entryType, "handed_off", "human_reply", conn.UserID)
-	}
-
-	h.ensureInitialTag(entryID, entryType)
+// announceOperatorSend tells the connected clients about a delivered reply.
+//
+// Broadcasting is the transport's own job and stays here: everything a
+// delivered message means to the CONVERSATION (status, timeline, AI handoff,
+// initial stage) belongs to the send use case and is already done by the time
+// this runs.
+func (h *ConversationHub) announceOperatorSend(conn *WSConnection, requestID, entryID, entryType string, message *conversation.Message) {
+	h.BroadcastMessageSent(conn.UserID, requestID, entryID, entryType, message)
 	go h.BroadcastEntryUpdate(entryID, entryType, message)
 }
 
@@ -2225,31 +2189,36 @@ func (h *ConversationHub) handleSendButton(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	if h.messageSender == nil {
+	if h.operatorSend == nil {
 		h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, "Message sending not configured", "not_configured")
 		return
 	}
 
 	go func() {
-		replyTo := ""
+		in := conversation.OperatorSendInput{
+			EntryID:      p.EntryID,
+			EntryType:    p.EntryType,
+			WorkspaceID:  conn.WorkspaceID,
+			SenderUserID: conn.UserID,
+			Buttons: &conversation.SendButtonInput{
+				HeaderType: p.HeaderType,
+				HeaderText: p.HeaderText,
+				BodyText:   p.BodyText,
+				FooterText: p.FooterText,
+				Buttons:    p.Buttons,
+			},
+		}
 		if p.ReplyToMessageID != nil {
-			replyTo = *p.ReplyToMessageID
+			in.ReplyToMessageID = *p.ReplyToMessageID
 		}
 
-		message, err := h.messageSender.SendButtonMessage(p.EntryID, p.EntryType, conn.UserID, replyTo, conversation.SendButtonInput{
-			HeaderType: p.HeaderType,
-			HeaderText: p.HeaderText,
-			BodyText:   p.BodyText,
-			FooterText: p.FooterText,
-			Buttons:    p.Buttons,
-		})
+		message, err := h.operatorSend.Execute(context.Background(), in)
 		if err != nil {
 			h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, err.Error(), "send_failed")
 			return
 		}
 
-		h.BroadcastMessageSent(conn.UserID, p.RequestID, p.EntryID, p.EntryType, message)
-		h.afterOperatorSend(conn, p.EntryID, p.EntryType, message)
+		h.announceOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, message)
 	}()
 }
 

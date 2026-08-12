@@ -141,6 +141,23 @@ func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, re
 	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
 }
 
+// SetScheduledMessageJobs registers the scheduled-message periodic jobs.
+//
+// Registration rather than construction, for the reason the channel jobs above
+// give: these are data (a name, a period, a ctxJob), and threading two more
+// positional arguments through a 17-argument constructor buys nothing. Neither
+// can arrive nil — the container validates both at construction and refuses to
+// boot without them.
+//
+//   - The sweep is the BACKSTOP that makes delivery correct without a broker: a
+//     lost delayed message, an outage during create, a consumer that was down.
+//     A minute is the worst-case lateness an operator would ever see.
+//   - The purge is hygiene on terminal rows only; daily is ample.
+func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {
+	r.addChannelJob("scheduled_message_sweep", time.Minute, sweep)
+	r.addChannelJob("scheduled_message_purge", 24*time.Hour, purge)
+}
+
 func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob) {
 	if job == nil {
 		return

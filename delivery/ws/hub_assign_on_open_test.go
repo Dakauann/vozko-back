@@ -120,7 +120,7 @@ func (c *assignOnOpenConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(
 }
 
 func buildHubForAssignOnOpen(auth *assignOnOpenAuthorizer, repo *assignOnOpenRepo, resolver *assignOnOpenResolver, cfgRepo *assignOnOpenConfigRepo) *ConversationHub {
-	hub := NewConversationHub(auth, nil, nil, "test-replica", "")
+	hub := NewConversationHub(auth, nil, nil, nil, "test-replica", "")
 	hub.SetAssignmentRepo(repo)
 	hub.SetCampaignWorkspaceResolver(resolver)
 	if cfgRepo != nil {
@@ -260,7 +260,7 @@ func TestTryAssignOnOpen_AllowsUserWithRoulettePermission(t *testing.T) {
 
 func TestTryAssignOnOpen_NoOpWhenNoAssignmentRepo(t *testing.T) {
 	auth := &assignOnOpenAuthorizer{}
-	hub := NewConversationHub(auth, nil, nil, "test-replica", "")
+	hub := NewConversationHub(auth, nil, nil, nil, "test-replica", "")
 
 	conn := makeConn("user-1", "ws-1", false)
 
@@ -270,7 +270,7 @@ func TestTryAssignOnOpen_NoOpWhenNoAssignmentRepo(t *testing.T) {
 func TestTryAssignOnOpen_NoOpWhenNoWorkspaceResolver(t *testing.T) {
 	repo := newAssignOnOpenRepo()
 	auth := &assignOnOpenAuthorizer{}
-	hub := NewConversationHub(auth, nil, nil, "test-replica", "")
+	hub := NewConversationHub(auth, nil, nil, nil, "test-replica", "")
 	hub.SetAssignmentRepo(repo)
 
 	conn := makeConn("user-1", "ws-1", false)

@@ -615,14 +615,20 @@ func reverseMessages(msgs []*conversation.Message) {
 	}
 }
 
-func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType string) (windowOpen bool, windowExpiresAt *time.Time) {
+// GetWindowStatusForEntry is the ONE answer to "may we send on this
+// conversation right now, and if not, why".
+//
+// Every surface reads it through this: the composer's disabled state and copy,
+// the WebSocket subscribe frame, and the scheduled-message rules. Nothing else
+// may re-derive the answer, or two of them will disagree.
+func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType string) conversation.WindowState {
 	var leadID, businessPhoneID string
 
 	switch shared.EntryType(entryType) {
 	case shared.EntryTypeWhatsApp:
 		entry, err := s.whatsappRepo.FindByID(entryID)
 		if err != nil || entry == nil {
-			return false, nil
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 		}
 		leadID = entry.LeadID
 		campaign, err := s.whatsappRepo.GetCampaignForEntry(entryID)
@@ -630,23 +636,29 @@ func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType stri
 			businessPhoneID = campaign.BusinessPhoneID
 		}
 	default:
-		// Channels with an adapter own their own window rule (Instagram's 24h
-		// clock runs from the contact's last message). Reusing the adapter keeps
-		// one definition of "can we send right now" for the composer and the
-		// sender service, instead of two that can disagree.
-		if adapter := s.adapterFor(entryType); adapter != nil {
-			ctx := context.Background()
-			ec, err := adapter.ResolveEntry(ctx, entryID)
-			if err != nil {
-				return false, nil
-			}
-			open, expiresAt, err := adapter.WindowState(ctx, ec)
-			if err != nil {
-				return false, nil
-			}
-			return open, expiresAt
+		// Channels with an adapter own their own window rule. Reusing the
+		// adapter keeps one definition of "can we send right now" for the
+		// composer, the sender service and the scheduler.
+		adapter := s.adapterFor(entryType)
+		if adapter == nil {
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 		}
-		return false, nil
+
+		ctx := context.Background()
+		ec, err := adapter.ResolveEntry(ctx, entryID)
+		if err != nil {
+			// The account, instance or conversation is gone — most often a
+			// number that was removed. That is a different sentence from any
+			// clock, and the operator can act on it.
+			log.Printf("[window] cannot resolve %s (%s): %v", entryID, entryType, err)
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+		}
+		window, err := adapter.WindowState(ctx, ec)
+		if err != nil {
+			log.Printf("[window] %s (%s) window lookup failed: %v", entryID, entryType, err)
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+		}
+		return window
 	}
 
 	return s.getWindowStatus(leadID, businessPhoneID)
@@ -1238,11 +1250,12 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	// Channels with an adapter own their window rule; getWindowStatus below is
 	// the WhatsApp lead/business-phone rule and reports closed for anything else,
 	// which would lock the composer on an Instagram update.
+	window := s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
 	if s.adapterFor(entryType) != nil {
-		entry.WindowOpen, entry.WindowExpiresAt = s.GetWindowStatusForEntry(entryID, entryType)
-	} else {
-		entry.WindowOpen, entry.WindowExpiresAt = s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
+		window = s.GetWindowStatusForEntry(entryID, entryType)
 	}
+	entry.WindowOpen, entry.WindowExpiresAt = window.Open, window.ExpiresAt
+	entry.WindowClosedReason = string(window.Reason)
 	entry.BusinessPhoneID = e.BusinessPhoneID
 
 	// Reuse the same assignee enrichment the inbox list uses, so the build logic
@@ -1269,36 +1282,44 @@ func (s *HistoryProviderService) getLeadInfo(workspaceID, leadID string) (name, 
 	return lead.Name, lead.Number, lead.ProfilePictureURL, nil, lead.Blocked
 }
 
-func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string) (windowOpen bool, windowExpiresAt *time.Time) {
+// getWindowStatus is the official WhatsApp rule: a 24-hour clock anchored on
+// the customer's last inbound message.
+//
+// Every closure here is the clock running out or never having started, so the
+// reasons are only ever "expired" or "never wrote" — never a session or a
+// block, which this channel does not have.
+func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string) conversation.WindowState {
 	if leadID == "" || s.messageWindowRepo == nil {
-		return false, nil
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 	}
 
 	if businessPhoneID == "" {
 		windows, err := s.messageWindowRepo.FindAllByLead(leadID)
 		if err != nil || len(windows) == 0 {
-			return false, nil
+			return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
 		}
 		for _, w := range windows {
 			if w.IsWindowOpen() {
 				expiresAt := w.WindowExpiresAt()
-				return true, &expiresAt
+				return conversation.OpenWindow(&expiresAt)
 			}
 		}
-		return false, nil
+		return conversation.ClosedWindow(conversation.WindowReasonExpired)
 	}
 
 	window, err := s.messageWindowRepo.FindByLeadAndBusinessPhone(leadID, businessPhoneID)
 	if err != nil || window == nil {
-		return false, nil
+		// No window row at all means the customer has never written to this
+		// number, which is a different thing from a clock that ran out: only a
+		// template can open it.
+		return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
 	}
 
 	if window.IsWindowOpen() {
 		expiresAt := window.WindowExpiresAt()
-		return true, &expiresAt
+		return conversation.OpenWindow(&expiresAt)
 	}
-
-	return false, nil
+	return conversation.ClosedWindow(conversation.WindowReasonExpired)
 }
 
 type windowStatus struct {
@@ -1839,11 +1860,11 @@ func (s *MessageSenderService) sendViaAdapter(
 	// A closed window is an expected state, not a fault: on Instagram it closes
 	// 24h after the contact's last message and only a new inbound message reopens
 	// it. Surfacing the sentinel lets the UI explain it.
-	open, _, err := adapter.WindowState(ctx, ec)
+	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
 	}
-	if !open {
+	if !window.Open {
 		return nil, conversation.ErrOutboundWindowClosed
 	}
 

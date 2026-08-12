@@ -38,6 +38,7 @@ import (
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
+	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
@@ -115,6 +116,7 @@ import (
 	qe_domain "vozko/domain/queue_event"
 	rag_domain "vozko/domain/rag"
 	savedview_domain "vozko/domain/savedview"
+	scheduled_message_domain "vozko/domain/scheduled_message"
 	"vozko/domain/shipping"
 	"vozko/domain/shop"
 	shortlink_domain "vozko/domain/shortlink"
@@ -255,6 +257,7 @@ type repositories struct {
 	customField             customfield_domain.Repository
 	label                   label_domain.Repository
 	messageShortcut         msg_shortcut_domain.Repository
+	scheduledMessage        scheduled_message_domain.Repository
 	workspace               workspace_domain.Repository
 	customRole              workspace_domain.CustomRoleRepository
 	attendance              attendance_domain.Repository
@@ -384,24 +387,37 @@ type services struct {
 	conversationHub   *wsdelivery.ConversationHub
 	// conversationStatusUpdater is the single choke point for finish/reopen/auto-close.
 	conversationStatusUpdater conversation_domain.ConversationStatusUpdater
-	inboxService              conversation_domain.InboxService
-	conversationAuth          conversation_domain.ConversationAuthorizer
-	assignmentService         *ia_usecase.AssignmentService
+	// operatorSendFinalizer is the single definition of what happens after a
+	// human reply is delivered. Held because more than one send surface needs it:
+	// the WebSocket composer and the scheduled-message dispatcher.
+	operatorSendFinalizer conversation_domain.OperatorSendFinalizer
+	// operatorSend delivers a human-authored message on any channel. The live
+	// wrapper is what the hub is constructed with; initConversationSenders points
+	// it at the real use case once the message sender exists.
+	operatorSend      conversation_domain.OperatorSendUseCase
+	liveOperatorSend  *conversation_domain.LiveOperatorSend
+	inboxService      conversation_domain.InboxService
+	conversationAuth  conversation_domain.ConversationAuthorizer
+	assignmentService *ia_usecase.AssignmentService
 	// messageMarker owns read state and read receipts for every channel.
-	messageMarker        *conversation_usecase.MessageMarkerService
-	aiAttendanceService  *aa_usecase.AsyncSessionService
-	callRouletteService  *cu_usecase.AssignmentService
-	ragEmbedding         rag_domain.EmbeddingService
-	ragTextChunker       rag_domain.TextChunker
-	ragDocProcessor      rag_domain.DocumentProcessor
-	ragTextExtractor     rag_domain.TextExtractor
-	ragQueuePub          messaging.MessageQueuePub
-	ragQueueSub          messaging.MessageQueueSub
-	shortlinkQueuePub    messaging.MessageQueuePub
-	shortlinkQueueSub    messaging.MessageQueueSub
-	webhookQueuePub      messaging.MessageQueuePub
-	webhookQueueSub      messaging.MessageQueueSub
-	billingQueuePub      messaging.MessageQueuePub
+	messageMarker       *conversation_usecase.MessageMarkerService
+	aiAttendanceService *aa_usecase.AsyncSessionService
+	callRouletteService *cu_usecase.AssignmentService
+	ragEmbedding        rag_domain.EmbeddingService
+	ragTextChunker      rag_domain.TextChunker
+	ragDocProcessor     rag_domain.DocumentProcessor
+	ragTextExtractor    rag_domain.TextExtractor
+	ragQueuePub         messaging.MessageQueuePub
+	ragQueueSub         messaging.MessageQueueSub
+	shortlinkQueuePub   messaging.MessageQueuePub
+	shortlinkQueueSub   messaging.MessageQueueSub
+	webhookQueuePub     messaging.MessageQueuePub
+	webhookQueueSub     messaging.MessageQueueSub
+	billingQueuePub     messaging.MessageQueuePub
+	// Scheduled messages get their own exchange so a backlog of delayed sends
+	// cannot sit behind another feature's traffic.
+	scheduledMsgQueuePub messaging.MessageQueuePub
+	scheduledMsgQueueSub messaging.MessageQueueSub
 	billingQueueSub      messaging.MessageQueueSub
 	recordingQueuePub    messaging.MessageQueuePub
 	recordingQueueSub    messaging.MessageQueueSub
@@ -822,6 +838,18 @@ type useCases struct {
 	shortLinkQR           shortlink_domain.GenerateQRUseCase
 	purgeShortLinkClicks  shortlink_domain.PurgeClicksUseCase
 
+	// Scheduled messages. The dispatch use case is held because three surfaces
+	// reach it: the HTTP layer (never directly), the queue consumer and the
+	// sweep job.
+	scheduleMessage          scheduled_message_domain.ScheduleUseCase
+	rescheduleMessage        scheduled_message_domain.RescheduleUseCase
+	cancelScheduledMessage   scheduled_message_domain.CancelUseCase
+	listScheduledMessages    scheduled_message_domain.ListUseCase
+	dispatchScheduledMessage scheduled_message_domain.DispatchUseCase
+	consumeScheduledMessage  scheduled_message_domain.ConsumeFireUseCase
+	sweepScheduledMessages   scheduled_message_domain.SweepJob
+	purgeScheduledMessages   scheduled_message_domain.PurgeJob
+
 	exportEntries export_domain.ExportEntriesUseCase
 
 	publishWebhook              webhook_domain.PublishWebhookUseCase
@@ -973,6 +1001,7 @@ type handlers_ struct {
 	crmBulk                 *crmbulkhttp.CRMBulkHandler
 	label                   *labelhttp.LabelHandler
 	messageShortcut         *messageshortcuthttp.MessageShortcutHandler
+	scheduledMessage        *scheduledmessagehttp.ScheduledMessageHandler
 	textRefiner             *textrefinerhttp.TextRefinerHandler
 	workspace               *workspacehttp.WorkspaceHandler
 	workspacePricing        *workspacepricinghttp.WorkspacePricingHandler

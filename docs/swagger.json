@@ -1665,536 +1665,6 @@
                 }
             }
         },
-        "/branches": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os ramais do workspace atual, com paginação por page e pageSize. As senhas SIP nunca são retornadas na listagem.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Listar ramais",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Número da página (padrão 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Itens por página (padrão 20, máximo 200)",
-                        "name": "pageSize",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Cria um novo ramal (extensão SIP) para um membro do workspace atual. Retorna a senha SIP de uso único, exibida apenas nesta resposta, para configurar o softphone.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Criar ramal",
-                "parameters": [
-                    {
-                        "description": "Dados do ramal a criar",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/branch.CreateBranchInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/branch.SecretResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/mine": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os ramais que pertencem ao usuário autenticado no workspace atual, para configurar seu próprio softphone.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Listar meus ramais",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/mine/{branchId}/rotate-secret": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Permite que um membro gere uma nova senha SIP para um ramal que lhe pertence, sem depender de um gestor. A propriedade é verificada contra o usuário autenticado.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Rotacionar senha do meu ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/branch.SecretResult"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/sip-config": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna o endpoint SIP do sistema (servidor, porta, transporte e realm) para o qual um softphone deve se registrar. Não reexibe a senha de uso único; o usuário do ramal é o sipUser do próprio ramal.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Obter configuração SIP de registro",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/{branchId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os detalhes de um ramal do workspace atual. A senha SIP não é incluída.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Obter ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/branch.Branch"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Atualiza os atributos de um ramal do workspace. Todos os campos são opcionais; os campos de identidade (usuário SIP) não são alteráveis aqui.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Atualizar ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Campos do ramal a atualizar",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/branch.UpdateBranchInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/branch.Branch"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Exclui um ramal do workspace atual.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Remover ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/{branchId}/enable": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Ativa ou desativa um ramal do workspace conforme o campo enabled informado.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Ativar ou desativar ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Estado desejado do ramal",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/branch.EnableBranchRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/branch.Branch"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/branches/{branchId}/rotate-secret": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Gera uma nova senha SIP para o ramal do workspace e a retorna uma única vez, para reconfigurar o softphone.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Ramais"
-                ],
-                "summary": "Rotacionar senha do ramal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ramal",
-                        "name": "branchId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/branch.SecretResult"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/builder-sessions": {
             "get": {
                 "security": [
@@ -3121,6 +2591,55 @@
                 }
             }
         },
+        "/conversations/{entryType}/{entryId}/automation": {
+            "patch": {
+                "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Conversas"
+                ],
+                "summary": "Ativar/desativar automação de uma conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo estado",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/conversation.SetAutomationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/conversations/{entryType}/{entryId}/call-permission": {
             "get": {
                 "security": [
@@ -3705,6 +3224,164 @@
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{entryType}/{entryId}/scheduled-messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as mensagens agendadas de uma conversa e o estado atual da janela de atendimento. Use o parâmetro `status` (separado por vírgula) para filtrar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mensagens Agendadas"
+                ],
+                "summary": "Listar mensagens agendadas de uma conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro de status: pending,sending,sent,failed,canceled",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.ScheduledMessageListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Agenda uma mensagem para ser enviada em uma conversa. O horário precisa estar dentro da janela de atendimento aberta e a pelo menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não crie uma segunda mensagem.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mensagens Agendadas"
+                ],
+                "summary": "Agendar uma mensagem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Chave para tornar a criação idempotente",
+                        "name": "Idempotency-Key",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Mensagem e horário do agendamento",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.ScheduleMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A chave de idempotência já havia sido usada; nada novo foi criado",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.ScheduledMessageEnvelope"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.ScheduledMessageEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "A janela de atendimento está fechada",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.WindowErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "O horário escolhido está fora dos limites",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.WindowErrorResponse"
                         }
                     }
                 }
@@ -4605,110 +4282,6 @@
                 }
             }
         },
-        "/dialer/ring-channels": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna a seleção de canais de dispositivo que tocam nas chamadas recebidas pelo membro autenticado (dialer no navegador, ramal SIP, ...).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Dialer"
-                ],
-                "summary": "Consultar os canais de toque do próprio membro",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dialerringchannels.RingChannelsResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Define quais canais de dispositivo tocam nas chamadas recebidas pelo membro autenticado.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Dialer"
-                ],
-                "summary": "Atualizar os canais de toque do próprio membro",
-                "parameters": [
-                    {
-                        "description": "Canais que devem tocar",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dialerringchannels.SetRingChannelsRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dialerringchannels.RingChannelsResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/entries/{entryId}/conversation": {
             "get": {
                 "security": [
@@ -4820,6 +4393,403 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/instagram/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Listar contas do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.AccountResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/instagram/accounts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Obter conta do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.AccountResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Atualizar configuração da conta do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.AccountResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Desconectar conta do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/avatar": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Faz proxy da foto de perfil, cuja URL de CDN expira.",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Foto de perfil da conta",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/instagram/accounts/{id}/comment-rules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Listar regras de automação de comentários",
+                "responses": {}
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Criar regra de automação de comentários",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/comment-rules/{ruleId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Atualizar regra de automação de comentários",
+                "responses": {}
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Remover regra de automação de comentários",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/comments/{commentId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só é possível excluir comentários criados pela própria conta; para os demais, use ocultar.",
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Excluir comentário do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/comments/{commentId}/hide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Ocultar/exibir comentário do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/comments/{commentId}/private-reply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Responder comentário por mensagem privada",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/comments/{commentId}/replies": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Responder comentário do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/media": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna as publicações da conta com paginação por cursor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Listar publicações do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.PageResponse-instagram_MediaResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria o container, aguarda o processamento e publica.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Publicar no Instagram",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.MediaResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/instagram/accounts/{id}/media/{mediaId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Obter publicação do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.MediaResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Somente habilitar/desabilitar comentários. A legenda não pode ser editada pela API.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Atualizar publicação do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/media/{mediaId}/asset": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Proxy de mídia do Instagram",
+                "responses": {}
+            }
+        },
+        "/instagram/accounts/{id}/media/{mediaId}/comments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Listar comentários de uma publicação",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.PageResponse-instagram_CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/instagram/oauth/start": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna a URL de autorização do Instagram para conectar uma conta profissional.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Iniciar conexão de conta do Instagram",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/instagram.ConnectStartResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -6546,6 +6516,15 @@
                         }
                     }
                 }
+            }
+        },
+        "/oauth/instagram/callback": {
+            "get": {
+                "tags": [
+                    "Instagram"
+                ],
+                "summary": "Callback de conexão do Instagram",
+                "responses": {}
             }
         },
         "/oauth/meta/embedded": {
@@ -8436,6 +8415,174 @@
                 }
             }
         },
+        "/scheduled-messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as mensagens agendadas de todo o workspace, com paginação.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mensagens Agendadas"
+                ],
+                "summary": "Listar mensagens agendadas do workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filtro de status separado por vírgula",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (padrão 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (padrão 50, máximo 200)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.WorkspaceScheduledMessagesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/scheduled-messages/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cancela uma mensagem ainda pendente. Uma mensagem já enviada não pode ser cancelada — o cliente já a recebeu.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mensagens Agendadas"
+                ],
+                "summary": "Cancelar uma mensagem agendada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem agendada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Cancelada"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "A mensagem já foi enviada ou já não está pendente",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Altera o horário de uma mensagem ainda pendente. O novo horário é validado contra a janela de atendimento como ela está agora.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mensagens Agendadas"
+                ],
+                "summary": "Reagendar uma mensagem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem agendada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo horário",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.RescheduleMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.ScheduledMessageEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "A mensagem já foi enviada, cancelada ou está em envio",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/scheduledmessage.WindowErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/short-links": {
             "get": {
                 "security": [
@@ -8877,461 +9024,6 @@
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/sip-trunks": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os troncos SIP acessíveis ao workspace (próprios e os de visibilidade global). Administradores recebem todos os troncos. Suporta paginação por page e pageSize.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Listar troncos SIP",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Número da página (padrão 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Itens por página (padrão 20, máximo 200)",
-                        "name": "pageSize",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Cria um novo tronco SIP no workspace atual. As credenciais informadas são validadas e o usuário que cria fica registrado como proprietário do tronco.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Criar tronco SIP",
-                "parameters": [
-                    {
-                        "description": "Dados do tronco a criar",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.CreateTrunkInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.SIPTrunk"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/sip-trunks/codecs": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna o catálogo de codecs de áudio que um tronco pode selecionar, na ordem de preferência padrão do sistema.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Listar codecs suportados",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/sip_trunk.CodecInfo"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/sip-trunks/{trunkId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os detalhes de um tronco SIP. Credenciais e dados sensíveis são omitidos quando o solicitante não é o proprietário do tronco.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Obter tronco SIP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do tronco SIP",
-                        "name": "trunkId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.SIPTrunk"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Atualiza os dados de um tronco SIP do workspace. Todos os campos são opcionais; apenas os campos informados são alterados.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Atualizar tronco SIP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do tronco SIP",
-                        "name": "trunkId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Campos do tronco a atualizar",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.UpdateTrunkInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.SIPTrunk"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Exclui um tronco SIP do workspace atual.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Remover tronco SIP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do tronco SIP",
-                        "name": "trunkId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/sip-trunks/{trunkId}/enable": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Ativa ou desativa um tronco SIP do workspace conforme o campo enabled informado.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Ativar ou desativar tronco SIP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do tronco SIP",
-                        "name": "trunkId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Estado desejado do tronco",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/siptrunk.EnableTrunkRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/sip_trunk.SIPTrunk"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/sip-trunks/{trunkId}/status": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna o status de registro atual de um tronco SIP. A mensagem de erro é omitida quando o solicitante não é o proprietário do tronco.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Troncos SIP"
-                ],
-                "summary": "Obter status do tronco SIP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do tronco SIP",
-                        "name": "trunkId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -10197,130 +9889,6 @@
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/telephony/board": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna a foto ao vivo das posições de atendimento (humanos e IA), capacidade de canais simultâneos e profundidade de fila. Lido apenas do Redis, sem consulta ao banco.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Telefonia"
-                ],
-                "summary": "Painel de concorrência ao vivo",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/telephony.BoardSnapshotResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/telephony/overview": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os indicadores do painel operacional de telefonia: volume de chamadas, fila, ocupação, nível de serviço e voz por IA, agregados a partir do CDR. Aceita filtros opcionais por período, direção, tipo, campanha, agente e membro.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Telefonia"
-                ],
-                "summary": "Painel de telefonia (VoIP / discador)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data inicial no formato AAAA-MM-DD",
-                        "name": "date_from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Data final no formato AAAA-MM-DD",
-                        "name": "date_to",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Direção da chamada (inbound ou outbound)",
-                        "name": "direction",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Tipo de chamada (crm, trunk_inbound, trunk_outbound)",
-                        "name": "call_type",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtrar por campanha",
-                        "name": "campaign_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtrar por agente (humano ou IA)",
-                        "name": "agent_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtrar por membro (usuário do discador)",
-                        "name": "member_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Limiar de nível de serviço em segundos (1 a 300)",
-                        "name": "service_level_seconds",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/telephony.OverviewResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -16537,163 +16105,6 @@
                 "TransactionTypeDebit"
             ]
         },
-        "branch.Branch": {
-            "type": "object",
-            "properties": {
-                "codecs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/branch.CodecID"
-                    }
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "displayName": {
-                    "type": "string"
-                },
-                "dnd": {
-                    "type": "boolean"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "lastRegisteredAt": {
-                    "type": "string"
-                },
-                "maxContacts": {
-                    "type": "integer"
-                },
-                "memberId": {
-                    "description": "MemberID is the workspace membership this branch belongs to (the natural\nRBAC anchor; the branch is cascade-removed with the member). UserID is\ndenormalized so runtime routing can key on it like a dialer session does.",
-                    "type": "string"
-                },
-                "realm": {
-                    "type": "string"
-                },
-                "registrationStatus": {
-                    "$ref": "#/definitions/branch.RegistrationStatus"
-                },
-                "sipUser": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "userId": {
-                    "type": "string"
-                },
-                "workspaceId": {
-                    "type": "string"
-                }
-            }
-        },
-        "branch.CodecID": {
-            "type": "string",
-            "enum": [
-                "pcma",
-                "pcmu",
-                "telephone-event"
-            ],
-            "x-enum-varnames": [
-                "CodecPCMA",
-                "CodecPCMU",
-                "CodecTelephoneEvent"
-            ]
-        },
-        "branch.CreateBranchInput": {
-            "type": "object",
-            "properties": {
-                "codecs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/branch.CodecID"
-                    }
-                },
-                "displayName": {
-                    "type": "string"
-                },
-                "dnd": {
-                    "type": "boolean"
-                },
-                "maxContacts": {
-                    "type": "integer"
-                },
-                "sipUser": {
-                    "type": "string"
-                },
-                "userId": {
-                    "description": "TargetUserID is the workspace member (by user id) this branch is created for.",
-                    "type": "string"
-                }
-            }
-        },
-        "branch.EnableBranchRequest": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "example": true
-                }
-            }
-        },
-        "branch.RegistrationStatus": {
-            "type": "string",
-            "enum": [
-                "never_registered",
-                "registered",
-                "expired",
-                "unreachable"
-            ],
-            "x-enum-varnames": [
-                "RegistrationStatusNeverRegistered",
-                "RegistrationStatusRegistered",
-                "RegistrationStatusExpired",
-                "RegistrationStatusUnreachable"
-            ]
-        },
-        "branch.SecretResult": {
-            "type": "object",
-            "properties": {
-                "branch": {
-                    "$ref": "#/definitions/branch.Branch"
-                },
-                "realm": {
-                    "description": "Realm and SIPUser are echoed so the operator has the full credential set.",
-                    "type": "string"
-                },
-                "secret": {
-                    "description": "Secret is the plaintext SIP password to type into the phone, returned once.",
-                    "type": "string"
-                },
-                "sipUser": {
-                    "type": "string"
-                }
-            }
-        },
-        "branch.UpdateBranchInput": {
-            "type": "object",
-            "properties": {
-                "codecs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/branch.CodecID"
-                    }
-                },
-                "displayName": {
-                    "type": "string"
-                },
-                "dnd": {
-                    "type": "boolean"
-                },
-                "maxContacts": {
-                    "type": "integer"
-                }
-            }
-        },
         "buildersession.BuilderMessageResponse": {
             "type": "object",
             "properties": {
@@ -17794,6 +17205,10 @@
                     "description": "AssignedUserID is the entry's current inbox owner (from inbox_assignment),\nhydrated by the CRM board read model so the list/board cards can show a\nresponsável. Empty when unassigned. Not populated by the legacy inbox paths.",
                     "type": "string"
                 },
+                "automationEnabled": {
+                    "description": "AutomationEnabled is the PER-CONVERSATION override an operator flips when\ntaking over, distinct from the container's AgentResponsesEnabled above.\n\nnil means no override, so the conversation inherits the container switch.\nIt is read from SQL for every channel: it used to be looked up only for\nWhatsApp, and every other channel silently reported \"enabled\" no matter\nwhat was stored, so pausing a Telegram or Instagram conversation wrote\ncorrectly and then read back as still running.",
+                    "type": "boolean"
+                },
                 "businessPhoneID": {
                     "type": "string"
                 },
@@ -17923,6 +17338,10 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "is_group": {
+                    "description": "IsGroup marks a conversation whose other side is a group chat rather than\na person.\n\nThe UI needs this for more than a badge. A group has no number to dial, no\nlead to open and no single person to attribute the thread to, so the row's\naffordances have to be suppressed rather than relabelled — and until this\nexisted a group was indistinguishable from a contact in every list the CRM\nrenders.",
+                    "type": "boolean"
                 },
                 "labels": {
                     "type": "array",
@@ -18099,12 +17518,18 @@
             "enum": [
                 "voice",
                 "whatsapp",
-                "support"
+                "support",
+                "instagram",
+                "telegram",
+                "unofficial_whatsapp"
             ],
             "x-enum-varnames": [
                 "MessageChannelVoice",
                 "MessageChannelWhatsApp",
-                "MessageChannelSupport"
+                "MessageChannelSupport",
+                "MessageChannelInstagram",
+                "MessageChannelTelegram",
+                "MessageChannelUnofficialWhatsApp"
             ]
         },
         "conversation.MessageEnvelopeResponse": {
@@ -18214,7 +17639,12 @@
                 "call_received",
                 "call_answered",
                 "call_missed",
-                "call_ended"
+                "call_ended",
+                "story_reply",
+                "story_mention",
+                "reaction",
+                "unsupported",
+                "post_share"
             ],
             "x-enum-varnames": [
                 "MessageTypeUserMessage",
@@ -18232,7 +17662,12 @@
                 "MessageTypeCallReceived",
                 "MessageTypeCallAnswered",
                 "MessageTypeCallMissed",
-                "MessageTypeCallEnded"
+                "MessageTypeCallEnded",
+                "MessageTypeStoryReply",
+                "MessageTypeStoryMention",
+                "MessageTypeReaction",
+                "MessageTypeUnsupported",
+                "MessageTypePostShare"
             ]
         },
         "conversation.ReopenWindowRequest": {
@@ -18295,6 +17730,14 @@
                 "text": {
                     "type": "string",
                     "example": "Olá, como posso ajudar?"
+                }
+            }
+        },
+        "conversation.SetAutomationRequest": {
+            "type": "object",
+            "properties": {
+                "automationEnabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -18759,36 +18202,6 @@
                 }
             }
         },
-        "dialerringchannels.RingChannelsResponse": {
-            "type": "object",
-            "properties": {
-                "channels": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "browser",
-                        "branch"
-                    ]
-                }
-            }
-        },
-        "dialerringchannels.SetRingChannelsRequest": {
-            "type": "object",
-            "properties": {
-                "channels": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "browser",
-                        "branch"
-                    ]
-                }
-            }
-        },
         "holdmusic.HoldTrackListResponse": {
             "type": "object",
             "properties": {
@@ -18810,6 +18223,252 @@
                 "label": {
                     "type": "string",
                     "example": "Bossa Nova"
+                }
+            }
+        },
+        "instagram.AccountResponse": {
+            "type": "object",
+            "properties": {
+                "accountType": {
+                    "type": "string"
+                },
+                "agentId": {
+                    "type": "string"
+                },
+                "canManageComments": {
+                    "type": "boolean"
+                },
+                "canPublish": {
+                    "type": "boolean"
+                },
+                "canSendMessages": {
+                    "description": "Capability flags are derived server-side so the UI never has to reason\nabout scope strings.",
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "followersCount": {
+                    "type": "integer"
+                },
+                "followsCount": {
+                    "type": "integer"
+                },
+                "grantedScopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "igUserId": {
+                    "type": "string"
+                },
+                "mediaCount": {
+                    "type": "integer"
+                },
+                "messagingCheckedAt": {
+                    "type": "string"
+                },
+                "messagingHealthy": {
+                    "description": "MessagingHealthy is false when the Instagram-app \"Allow Access to\nMessages\" toggle is off, a state in which DMs and webhooks fail silently.",
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "needsReconnect": {
+                    "description": "NeedsReconnect tells the UI to show a Reconnect call to action.",
+                    "type": "boolean"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "profilePictureUrl": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "statusReason": {
+                    "type": "string"
+                },
+                "tokenExpiresAt": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                },
+                "webhookSubscribedAt": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "instagram.CommentResponse": {
+            "type": "object",
+            "properties": {
+                "canDelete": {
+                    "description": "CanDelete mirrors IsOurs so the UI does not have to know the rule.",
+                    "type": "boolean"
+                },
+                "fromIgsid": {
+                    "type": "string"
+                },
+                "fromUsername": {
+                    "type": "string"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isOurs": {
+                    "description": "IsOurs marks a comment we authored. It is also the only case in which\ndeletion is possible, because Instagram requires the comment creator's\ntoken to delete.",
+                    "type": "boolean"
+                },
+                "likeCount": {
+                    "type": "integer"
+                },
+                "parentId": {
+                    "type": "string"
+                },
+                "replies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/instagram.CommentResponse"
+                    }
+                },
+                "text": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "instagram.ConnectStartResponse": {
+            "type": "object",
+            "properties": {
+                "authorizeUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "instagram.MediaResponse": {
+            "type": "object",
+            "properties": {
+                "caption": {
+                    "type": "string"
+                },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/instagram.MediaResponse"
+                    }
+                },
+                "commentsCount": {
+                    "type": "integer"
+                },
+                "hasAsset": {
+                    "description": "HasAsset is false when Instagram omitted media_url, which happens for\ncopyrighted content.",
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isCarousel": {
+                    "type": "boolean"
+                },
+                "isCommentEnabled": {
+                    "type": "boolean"
+                },
+                "isReel": {
+                    "type": "boolean"
+                },
+                "likeCount": {
+                    "type": "integer"
+                },
+                "mediaProductType": {
+                    "type": "string"
+                },
+                "mediaType": {
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                },
+                "permalink": {
+                    "type": "string"
+                },
+                "shortcode": {
+                    "type": "string"
+                },
+                "thumbnailUrl": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "instagram.PageResponse-instagram_CommentResponse": {
+            "type": "object",
+            "properties": {
+                "hasNext": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/instagram.CommentResponse"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "instagram.PageResponse-instagram_MediaResponse": {
+            "type": "object",
+            "properties": {
+                "hasNext": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/instagram.MediaResponse"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
                 }
             }
         },
@@ -20309,15 +19968,201 @@
                 "VisibilityShared"
             ]
         },
+        "scheduledmessage.RescheduleMessageRequest": {
+            "type": "object",
+            "properties": {
+                "scheduled_at": {
+                    "type": "string",
+                    "example": "2026-08-13T16:00:00-03:00"
+                }
+            }
+        },
+        "scheduledmessage.ScheduleMessageRequest": {
+            "type": "object",
+            "properties": {
+                "media_id": {
+                    "type": "string",
+                    "example": "med_a1b2c3"
+                },
+                "media_type": {
+                    "type": "string",
+                    "example": "image"
+                },
+                "reply_to_message_id": {
+                    "type": "string",
+                    "example": "msg_a1b2c3"
+                },
+                "scheduled_at": {
+                    "description": "ScheduledAt is RFC3339 WITH the client's offset. The browser sends its\nreal timezone and the server stores UTC, so an operator in Manaus and one\nin São Paulo picking \"14:30\" get two different instants, which is what\nthey both mean.",
+                    "type": "string",
+                    "example": "2026-08-13T14:30:00-03:00"
+                },
+                "signed": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "text": {
+                    "type": "string",
+                    "example": "Bom dia! Seguindo nossa conversa..."
+                }
+            }
+        },
+        "scheduledmessage.ScheduledMessageEnvelope": {
+            "type": "object",
+            "properties": {
+                "scheduledMessage": {
+                    "$ref": "#/definitions/scheduledmessage.ScheduledMessageResponse"
+                },
+                "window": {
+                    "$ref": "#/definitions/scheduledmessage.WindowResponse"
+                }
+            }
+        },
+        "scheduledmessage.ScheduledMessageListResponse": {
+            "type": "object",
+            "properties": {
+                "scheduledMessages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scheduledmessage.ScheduledMessageResponse"
+                    }
+                },
+                "window": {
+                    "$ref": "#/definitions/scheduledmessage.WindowResponse"
+                }
+            }
+        },
+        "scheduledmessage.ScheduledMessageResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserId": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "failureDetail": {
+                    "type": "string"
+                },
+                "failureReason": {
+                    "description": "FailureReason is the machine-readable reason a message never arrived. The\nUI must render dispatch_interrupted differently from the rest: it means\ndelivery could not be CONFIRMED, not that it definitely failed.",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "mediaType": {
+                    "type": "string"
+                },
+                "replyToMessageId": {
+                    "type": "string"
+                },
+                "scheduledAt": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "sentMessageId": {
+                    "type": "string"
+                },
+                "signed": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "scheduledmessage.WindowErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "window": {
+                    "$ref": "#/definitions/scheduledmessage.WindowResponse"
+                }
+            }
+        },
+        "scheduledmessage.WindowResponse": {
+            "type": "object",
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "latestAllowedAt": {
+                    "type": "string"
+                },
+                "open": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scheduledmessage.WorkspaceScheduledMessagesResponse": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "scheduledMessages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scheduledmessage.ScheduledMessageResponse"
+                    }
+                },
+                "total_items": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
         "shared.EntryType": {
             "type": "string",
             "enum": [
                 "whatsapp",
-                "support"
+                "support",
+                "instagram",
+                "telegram",
+                "unofficial_whatsapp",
+                "voice"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
-                "EntryTypeSupport"
+                "EntryTypeSupport",
+                "EntryTypeInstagram",
+                "EntryTypeTelegram",
+                "EntryTypeUnofficialWhatsApp",
+                "EntryTypeVoice"
             ]
         },
         "shortlink.analyticsResponse": {
@@ -20542,450 +20387,6 @@
                 },
                 "totalLinks": {
                     "type": "integer"
-                }
-            }
-        },
-        "sip_trunk.AdvancedTrunkConfig": {
-            "type": "object",
-            "properties": {
-                "authUsername": {
-                    "type": "string"
-                },
-                "bindHost": {
-                    "type": "string"
-                },
-                "bindPort": {
-                    "type": "integer"
-                },
-                "codecs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/sip_trunk.CodecID"
-                    }
-                },
-                "dialPrefix": {
-                    "type": "string"
-                },
-                "dialStripDigits": {
-                    "type": "integer"
-                },
-                "dtmfPayloadType": {
-                    "type": "integer"
-                },
-                "hideCallerId": {
-                    "type": "boolean"
-                },
-                "minSESeconds": {
-                    "type": "integer"
-                },
-                "numberFormat": {
-                    "$ref": "#/definitions/sip_trunk.NumberFormat"
-                },
-                "outboundProxy": {
-                    "type": "string"
-                },
-                "ptimeMs": {
-                    "type": "integer"
-                },
-                "publicAddress": {
-                    "type": "string"
-                },
-                "registerEnabled": {
-                    "type": "boolean"
-                },
-                "registerExpirySeconds": {
-                    "type": "integer"
-                },
-                "registerRetrySeconds": {
-                    "type": "integer"
-                },
-                "ringingTimeoutSeconds": {
-                    "type": "integer"
-                },
-                "sessionRefresher": {
-                    "$ref": "#/definitions/sip_trunk.SessionRefresher"
-                },
-                "sessionTimerEnabled": {
-                    "type": "boolean"
-                },
-                "sessionTimerSeconds": {
-                    "type": "integer"
-                },
-                "srtpMode": {
-                    "$ref": "#/definitions/sip_trunk.SRTPMode"
-                },
-                "stunEnabled": {
-                    "type": "boolean"
-                },
-                "stunServers": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "userAgent": {
-                    "type": "string"
-                }
-            }
-        },
-        "sip_trunk.CodecID": {
-            "type": "string",
-            "enum": [
-                "opus",
-                "g722",
-                "pcmu",
-                "pcma",
-                "telephone-event"
-            ],
-            "x-enum-varnames": [
-                "CodecIDOpus",
-                "CodecIDG722",
-                "CodecIDPCMU",
-                "CodecIDPCMA",
-                "CodecIDTelephoneEvent"
-            ]
-        },
-        "sip_trunk.CodecInfo": {
-            "type": "object",
-            "properties": {
-                "default": {
-                    "description": "Default marks codecs that make up the system's default offer profile\n(used when a trunk has no explicit per-trunk codec list).",
-                    "type": "boolean"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "$ref": "#/definitions/sip_trunk.CodecID"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "recommended": {
-                    "description": "Recommended highlights the codec the UI should suggest by default.",
-                    "type": "boolean"
-                }
-            }
-        },
-        "sip_trunk.CreateTrunkInput": {
-            "type": "object",
-            "properties": {
-                "advanced": {
-                    "$ref": "#/definitions/sip_trunk.AdvancedTrunkConfig"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "domain": {
-                    "type": "string"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "isRotational": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "transport": {
-                    "$ref": "#/definitions/sip_trunk.TransportType"
-                },
-                "trunkType": {
-                    "$ref": "#/definitions/sip_trunk.TrunkType"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "sip_trunk.NumberFormat": {
-            "type": "string",
-            "enum": [
-                "passthrough",
-                "e164",
-                "national",
-                "local"
-            ],
-            "x-enum-varnames": [
-                "NumberFormatPassthrough",
-                "NumberFormatE164",
-                "NumberFormatNational",
-                "NumberFormatLocal"
-            ]
-        },
-        "sip_trunk.RegistrationStatus": {
-            "type": "string",
-            "enum": [
-                "pending",
-                "registering",
-                "registered",
-                "failed",
-                "unregistered"
-            ],
-            "x-enum-varnames": [
-                "RegistrationStatusPending",
-                "RegistrationStatusRegistering",
-                "RegistrationStatusRegistered",
-                "RegistrationStatusFailed",
-                "RegistrationStatusUnregistered"
-            ]
-        },
-        "sip_trunk.SIPTrunk": {
-            "type": "object",
-            "properties": {
-                "authUsername": {
-                    "type": "string"
-                },
-                "bindHost": {
-                    "type": "string"
-                },
-                "bindPort": {
-                    "type": "integer"
-                },
-                "codecs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/sip_trunk.CodecID"
-                    }
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "dialPrefix": {
-                    "type": "string"
-                },
-                "dialStripDigits": {
-                    "type": "integer"
-                },
-                "domain": {
-                    "type": "string"
-                },
-                "dtmfPayloadType": {
-                    "type": "integer"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "hideCallerId": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "isGloballyVisible": {
-                    "type": "boolean"
-                },
-                "isRotational": {
-                    "type": "boolean"
-                },
-                "lastError": {
-                    "type": "string"
-                },
-                "lastRegisteredAt": {
-                    "type": "string"
-                },
-                "minSESeconds": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "numberFormat": {
-                    "$ref": "#/definitions/sip_trunk.NumberFormat"
-                },
-                "outboundProxy": {
-                    "type": "string"
-                },
-                "ownerAssignedAt": {
-                    "type": "string"
-                },
-                "ownerAssignedBy": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "ptimeMs": {
-                    "type": "integer"
-                },
-                "publicAddress": {
-                    "type": "string"
-                },
-                "registerEnabled": {
-                    "type": "boolean"
-                },
-                "registerExpirySeconds": {
-                    "type": "integer"
-                },
-                "registerRetrySeconds": {
-                    "type": "integer"
-                },
-                "registrationStatus": {
-                    "$ref": "#/definitions/sip_trunk.RegistrationStatus"
-                },
-                "ringingTimeoutSeconds": {
-                    "type": "integer"
-                },
-                "sessionRefresher": {
-                    "$ref": "#/definitions/sip_trunk.SessionRefresher"
-                },
-                "sessionTimerEnabled": {
-                    "type": "boolean"
-                },
-                "sessionTimerSeconds": {
-                    "type": "integer"
-                },
-                "srtpMode": {
-                    "$ref": "#/definitions/sip_trunk.SRTPMode"
-                },
-                "stunEnabled": {
-                    "type": "boolean"
-                },
-                "stunServers": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "transport": {
-                    "$ref": "#/definitions/sip_trunk.TransportType"
-                },
-                "trunkType": {
-                    "$ref": "#/definitions/sip_trunk.TrunkType"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "userAgent": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                },
-                "workspaceId": {
-                    "type": "string"
-                }
-            }
-        },
-        "sip_trunk.SRTPMode": {
-            "type": "string",
-            "enum": [
-                "disabled",
-                "optional",
-                "required"
-            ],
-            "x-enum-varnames": [
-                "SRTPModeDisabled",
-                "SRTPModeOptional",
-                "SRTPModeRequired"
-            ]
-        },
-        "sip_trunk.SessionRefresher": {
-            "type": "string",
-            "enum": [
-                "",
-                "uac",
-                "uas"
-            ],
-            "x-enum-varnames": [
-                "SessionRefresherUnset",
-                "SessionRefresherUAC",
-                "SessionRefresherUAS"
-            ]
-        },
-        "sip_trunk.TransportType": {
-            "type": "string",
-            "enum": [
-                "udp",
-                "tcp",
-                "tls"
-            ],
-            "x-enum-varnames": [
-                "TransportUDP",
-                "TransportTCP",
-                "TransportTLS"
-            ]
-        },
-        "sip_trunk.TrunkType": {
-            "type": "string",
-            "enum": [
-                "mobile",
-                "fixed"
-            ],
-            "x-enum-varnames": [
-                "TrunkTypeMobile",
-                "TrunkTypeFixed"
-            ]
-        },
-        "sip_trunk.UpdateTrunkInput": {
-            "type": "object",
-            "properties": {
-                "advanced": {
-                    "$ref": "#/definitions/sip_trunk.AdvancedTrunkConfig"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "domain": {
-                    "type": "string"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "isRotational": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "phoneNumber": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "transport": {
-                    "$ref": "#/definitions/sip_trunk.TransportType"
-                },
-                "trunkType": {
-                    "$ref": "#/definitions/sip_trunk.TrunkType"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "siptrunk.EnableTrunkRequest": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "example": true
                 }
             }
         },
@@ -21419,613 +20820,6 @@
                 "widgetColor": {
                     "type": "string",
                     "example": "#2463eb"
-                }
-            }
-        },
-        "telephony.BoardSnapshotResponse": {
-            "type": "object",
-            "properties": {
-                "as_of": {
-                    "type": "string",
-                    "example": "2026-07-19T14:35:00Z"
-                },
-                "capacity": {
-                    "$ref": "#/definitions/telephony.CapacityResponse"
-                },
-                "free": {
-                    "type": "integer",
-                    "example": 3
-                },
-                "humans": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.HumanSeatResponse"
-                    }
-                },
-                "idle_pct": {
-                    "type": "number",
-                    "example": 37.5
-                },
-                "in_call": {
-                    "type": "integer",
-                    "example": 5
-                },
-                "online": {
-                    "type": "integer",
-                    "example": 8
-                },
-                "queue": {
-                    "$ref": "#/definitions/telephony.QueueStripResponse"
-                },
-                "rev": {
-                    "type": "integer",
-                    "example": 42
-                },
-                "ringing": {
-                    "type": "integer",
-                    "example": 0
-                },
-                "workspace_id": {
-                    "type": "string",
-                    "example": "ws_a1b2c3"
-                }
-            }
-        },
-        "telephony.CapacityResponse": {
-            "type": "object",
-            "properties": {
-                "max": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "pct": {
-                    "type": "number",
-                    "example": 50
-                },
-                "used": {
-                    "type": "integer",
-                    "example": 5
-                }
-            }
-        },
-        "telephony.DirectionSliceResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer",
-                    "example": 720
-                },
-                "direction": {
-                    "type": "string",
-                    "example": "inbound"
-                },
-                "pct": {
-                    "type": "number",
-                    "example": 58.1
-                }
-            }
-        },
-        "telephony.DispositionSliceResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "answered"
-                },
-                "count": {
-                    "type": "integer",
-                    "example": 1080
-                },
-                "label": {
-                    "type": "string",
-                    "example": "Atendida"
-                },
-                "pct": {
-                    "type": "number",
-                    "example": 87.1
-                }
-            }
-        },
-        "telephony.HourlyPointResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer",
-                    "example": 87
-                },
-                "hour": {
-                    "type": "integer",
-                    "example": 14
-                }
-            }
-        },
-        "telephony.HumanSeatResponse": {
-            "type": "object",
-            "properties": {
-                "has_branch": {
-                    "type": "boolean",
-                    "example": false
-                },
-                "has_browser": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "since": {
-                    "type": "string",
-                    "example": "2026-07-19T14:30:00Z"
-                },
-                "state": {
-                    "type": "string",
-                    "example": "on_call"
-                },
-                "user_id": {
-                    "type": "string",
-                    "example": "usr_a1b2c3"
-                },
-                "username": {
-                    "type": "string",
-                    "example": "Ana Souza"
-                }
-            }
-        },
-        "telephony.LiveAgentResponse": {
-            "type": "object",
-            "properties": {
-                "busy": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "has_branch": {
-                    "type": "boolean",
-                    "example": false
-                },
-                "has_browser": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "user_id": {
-                    "type": "string",
-                    "example": "usr_a1b2c3"
-                }
-            }
-        },
-        "telephony.LiveBlockResponse": {
-            "type": "object",
-            "properties": {
-                "agents": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.LiveAgentResponse"
-                    }
-                },
-                "as_of": {
-                    "type": "string",
-                    "example": "2026-07-19T14:35:00Z"
-                },
-                "busy_rate_pct": {
-                    "type": "number",
-                    "example": 62.5
-                },
-                "free": {
-                    "type": "integer",
-                    "example": 3
-                },
-                "has_data": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "idle_rate_pct": {
-                    "type": "number",
-                    "example": 37.5
-                },
-                "in_call": {
-                    "type": "integer",
-                    "example": 5
-                },
-                "online": {
-                    "type": "integer",
-                    "example": 8
-                }
-            }
-        },
-        "telephony.MemberRowResponse": {
-            "type": "object",
-            "properties": {
-                "abandoned": {
-                    "type": "integer",
-                    "example": 4
-                },
-                "answered": {
-                    "type": "integer",
-                    "example": 108
-                },
-                "avg_handle_mins": {
-                    "type": "number",
-                    "example": 3.8
-                },
-                "avg_ring_mins": {
-                    "type": "number",
-                    "example": 0.3
-                },
-                "avg_talk_mins": {
-                    "type": "number",
-                    "example": 3.5
-                },
-                "connect_rate": {
-                    "type": "number",
-                    "example": 90
-                },
-                "failed": {
-                    "type": "integer",
-                    "example": 8
-                },
-                "idle_pct": {
-                    "type": "number",
-                    "example": 25.8
-                },
-                "occupancy_pct": {
-                    "type": "number",
-                    "example": 74.2
-                },
-                "service_level_pct": {
-                    "type": "number",
-                    "example": 88.9
-                },
-                "total_calls": {
-                    "type": "integer",
-                    "example": 120
-                },
-                "user_id": {
-                    "type": "string",
-                    "example": "usr_a1b2c3"
-                },
-                "within_sl": {
-                    "type": "integer",
-                    "example": 96
-                }
-            }
-        },
-        "telephony.MetricDefinitionsResponse": {
-            "type": "object",
-            "properties": {
-                "aht": {
-                    "type": "string",
-                    "example": "conversa + espera + pós-atendimento (aproximação de TMA)"
-                },
-                "asa": {
-                    "type": "string",
-                    "example": "média de queue_events.waited_ms para conectados (min)"
-                },
-                "by_member": {
-                    "type": "string",
-                    "example": "CDR humano por agente (usuário do discador) agrupado"
-                },
-                "connect_rate": {
-                    "type": "string",
-                    "example": "chamadas atendidas / tentativas no período * 100"
-                },
-                "disposition": {
-                    "type": "string",
-                    "example": "pilhas de calls.status + end_reason / surrender_reason"
-                },
-                "gaps": {
-                    "type": "string",
-                    "example": "captura real de espera/ACW no caminho quente, ver docs"
-                },
-                "idle": {
-                    "type": "string",
-                    "example": "ao vivo: livres/online; histórico: 100 - ocupação"
-                },
-                "occupancy": {
-                    "type": "string",
-                    "example": "on_call_ms / online_ms dos intervalos de presença"
-                },
-                "persistence": {
-                    "type": "string",
-                    "example": "métricas de tabelas duráveis exceto o registro ao vivo"
-                },
-                "ring_time": {
-                    "type": "string",
-                    "example": "answered_at - started_at (min) para chamadas atendidas"
-                },
-                "service_level": {
-                    "type": "string",
-                    "example": "atendidas com toque \u003c= 20s / atendidas * 100"
-                },
-                "talk_time": {
-                    "type": "string",
-                    "example": "ended_at - answered_at (min) quando ambos definidos"
-                }
-            }
-        },
-        "telephony.OccupancyBlockResponse": {
-            "type": "object",
-            "properties": {
-                "agents_sampled": {
-                    "type": "integer",
-                    "example": 12
-                },
-                "available": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "avg_occupancy_pct": {
-                    "type": "number",
-                    "example": 72.5
-                },
-                "team_idle_pct": {
-                    "type": "number",
-                    "example": 29.9
-                },
-                "team_occupancy_pct": {
-                    "type": "number",
-                    "example": 70.1
-                }
-            }
-        },
-        "telephony.OverviewFilterResponse": {
-            "type": "object",
-            "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "example": "agt_a1b2c3"
-                },
-                "call_type": {
-                    "type": "string",
-                    "example": "crm"
-                },
-                "date_from": {
-                    "type": "string",
-                    "example": "2026-07-01T00:00:00Z"
-                },
-                "date_to": {
-                    "type": "string",
-                    "example": "2026-07-19T23:59:59Z"
-                },
-                "direction": {
-                    "type": "string",
-                    "example": "inbound"
-                },
-                "member_id": {
-                    "type": "string",
-                    "example": "usr_a1b2c3"
-                },
-                "service_level_seconds": {
-                    "type": "integer",
-                    "example": 20
-                }
-            }
-        },
-        "telephony.OverviewKPIsResponse": {
-            "type": "object",
-            "properties": {
-                "abandoned": {
-                    "type": "integer",
-                    "example": 70
-                },
-                "answered": {
-                    "type": "integer",
-                    "example": 1080
-                },
-                "answered_within_sl": {
-                    "type": "integer",
-                    "example": 890
-                },
-                "avg_acw_mins": {
-                    "type": "number",
-                    "example": 0.2
-                },
-                "avg_aht_mins": {
-                    "type": "number",
-                    "example": 4.1
-                },
-                "avg_handle_mins": {
-                    "type": "number",
-                    "example": 3.7
-                },
-                "avg_hold_mins": {
-                    "type": "number",
-                    "example": 0.5
-                },
-                "avg_ring_mins": {
-                    "type": "number",
-                    "example": 0.3
-                },
-                "avg_talk_mins": {
-                    "type": "number",
-                    "example": 3.4
-                },
-                "cdr_abandon_rate": {
-                    "type": "number",
-                    "example": 5.6
-                },
-                "connect_rate": {
-                    "type": "number",
-                    "example": 87.1
-                },
-                "failed": {
-                    "type": "integer",
-                    "example": 90
-                },
-                "human_crm_calls": {
-                    "type": "integer",
-                    "example": 510
-                },
-                "inbound": {
-                    "type": "integer",
-                    "example": 720
-                },
-                "outbound": {
-                    "type": "integer",
-                    "example": 520
-                },
-                "service_level_pct": {
-                    "type": "number",
-                    "example": 82.5
-                },
-                "service_level_seconds": {
-                    "type": "integer",
-                    "example": 20
-                },
-                "short_abandons": {
-                    "type": "integer",
-                    "example": 24
-                },
-                "total_calls": {
-                    "type": "integer",
-                    "example": 1240
-                },
-                "transfers": {
-                    "type": "integer",
-                    "example": 58
-                },
-                "trunk_inbound": {
-                    "type": "integer",
-                    "example": 180
-                },
-                "trunk_outbound": {
-                    "type": "integer",
-                    "example": 120
-                }
-            }
-        },
-        "telephony.OverviewResponse": {
-            "type": "object",
-            "properties": {
-                "by_direction": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.DirectionSliceResponse"
-                    }
-                },
-                "by_member": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.MemberRowResponse"
-                    }
-                },
-                "by_type": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.TypeSliceResponse"
-                    }
-                },
-                "definitions": {
-                    "$ref": "#/definitions/telephony.MetricDefinitionsResponse"
-                },
-                "dispositions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.DispositionSliceResponse"
-                    }
-                },
-                "filter": {
-                    "$ref": "#/definitions/telephony.OverviewFilterResponse"
-                },
-                "hourly": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/telephony.HourlyPointResponse"
-                    }
-                },
-                "kpis": {
-                    "$ref": "#/definitions/telephony.OverviewKPIsResponse"
-                },
-                "live": {
-                    "$ref": "#/definitions/telephony.LiveBlockResponse"
-                },
-                "occupancy": {
-                    "$ref": "#/definitions/telephony.OccupancyBlockResponse"
-                },
-                "queue": {
-                    "$ref": "#/definitions/telephony.QueueBlockResponse"
-                },
-                "sla_available": {
-                    "type": "boolean",
-                    "example": true
-                }
-            }
-        },
-        "telephony.QueueBlockResponse": {
-            "type": "object",
-            "properties": {
-                "abandon_rate": {
-                    "type": "number",
-                    "example": 7.8
-                },
-                "abandoned": {
-                    "type": "integer",
-                    "example": 50
-                },
-                "available": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "avg_asa_mins": {
-                    "type": "number",
-                    "example": 0.4
-                },
-                "cancelled": {
-                    "type": "integer",
-                    "example": 12
-                },
-                "connected": {
-                    "type": "integer",
-                    "example": 590
-                },
-                "enqueued": {
-                    "type": "integer",
-                    "example": 640
-                },
-                "max_wait_mins": {
-                    "type": "number",
-                    "example": 2.1
-                },
-                "overflow": {
-                    "type": "integer",
-                    "example": 0
-                },
-                "queue_full": {
-                    "type": "integer",
-                    "example": 0
-                },
-                "service_level_pct": {
-                    "type": "number",
-                    "example": 84
-                },
-                "service_level_seconds": {
-                    "type": "integer",
-                    "example": 20
-                }
-            }
-        },
-        "telephony.QueueStripResponse": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "depth": {
-                    "type": "integer",
-                    "example": 3
-                }
-            }
-        },
-        "telephony.TypeSliceResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer",
-                    "example": 430
-                },
-                "pct": {
-                    "type": "number",
-                    "example": 34.7
-                },
-                "type": {
-                    "type": "string",
-                    "example": "crm"
                 }
             }
         },
@@ -23550,12 +22344,14 @@
             "enum": [
                 "call_channels",
                 "whatsapp_business_phones",
-                "branches"
+                "branches",
+                "unofficial_whatsapp_instances"
             ],
             "x-enum-varnames": [
                 "EntitlementCallChannels",
                 "EntitlementWhatsAppBusinessPhones",
-                "EntitlementBranches"
+                "EntitlementBranches",
+                "EntitlementUnofficialWhatsAppInstances"
             ]
         },
         "workspace_addon.PurchaseAddonInput": {
@@ -23729,6 +22525,11 @@
                 "id": {
                     "type": "string",
                     "example": "cfg_a1b2c3"
+                },
+                "includedUnofficialWhatsAppInstances": {
+                    "description": "IncludedUnofficialWhatsAppInstances is the platform-granted allowance of\nlinked-device WhatsApp numbers. Readable by the workspace so its own\nscreens can explain why the connect button is disabled; writable only\nthrough the /admin route.",
+                    "type": "integer",
+                    "example": 2
                 },
                 "queueEnabled": {
                     "type": "boolean",

@@ -84,6 +84,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.Label{},
 			&schema.EntryLabel{},
 			&schema.MessageShortcut{},
+			&schema.ScheduledMessage{},
 			&schema.StageGroup{},
 			&schema.StageGroupItem{},
 			&schema.LabelGroup{},

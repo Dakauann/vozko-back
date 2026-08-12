@@ -63,6 +63,7 @@ func (c *Container) initServices() {
 	shortlinkClickExchange := shortlink_domain.ClickExchange
 	callBillingExchange := "call_events_exchange"
 	recordingExchange := recordings_domain.Exchange
+	scheduledMessageExchange := "scheduled_message_exchange"
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -108,6 +109,8 @@ func (c *Container) initServices() {
 		billingQueuePub:       queue.NewRabbitMQQueuePub(amqpPool, callBillingExchange),
 		billingQueueSub:       queue.NewRabbitMQQueueSub(amqpPool, callBillingExchange),
 		recordingQueuePub:     queue.NewRabbitMQQueuePub(amqpPool, recordingExchange),
+		scheduledMsgQueuePub:  queue.NewRabbitMQQueuePub(amqpPool, scheduledMessageExchange),
+		scheduledMsgQueueSub:  queue.NewRabbitMQQueueSub(amqpPool, scheduledMessageExchange),
 		recordingQueueSub:     queue.NewRabbitMQQueueSub(amqpPool, recordingExchange),
 		googleCalendar:        google_calendar.NewService(c.cfg.GoogleOAuthClientID, c.cfg.GoogleOAuthClientSecret),
 	}

@@ -57,6 +57,7 @@ func (c *Container) initRouter() {
 		c.handlers.crmBulk,
 		c.handlers.label,
 		c.handlers.messageShortcut,
+		c.handlers.scheduledMessage,
 		c.handlers.textRefiner,
 		c.handlers.attendance,
 		c.handlers.knowledgeBase,

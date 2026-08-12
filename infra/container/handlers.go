@@ -41,6 +41,7 @@ import (
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
+	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
@@ -393,6 +394,13 @@ func (c *Container) initHandlers() {
 			c.useCases.deleteMessageShortcut,
 			c.useCases.listMessageShortcuts,
 			c.useCases.getByShortcut,
+		),
+		scheduledMessage: scheduledmessagehttp.NewScheduledMessageHandler(
+			c.useCases.scheduleMessage,
+			c.useCases.rescheduleMessage,
+			c.useCases.cancelScheduledMessage,
+			c.useCases.listScheduledMessages,
+			c.services.conversationAuth,
 		),
 		textRefiner: textrefinerhttp.NewTextRefinerHandler(
 			c.useCases.refineText,

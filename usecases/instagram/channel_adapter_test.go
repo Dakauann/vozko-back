@@ -172,17 +172,17 @@ func TestChannelAdapter_WindowState(t *testing.T) {
 		f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
 		ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
 
-		open, expires, err := f.adapter.WindowState(context.Background(), ec)
+		window, err := f.adapter.WindowState(context.Background(), ec)
 		if err != nil {
 			t.Fatalf("WindowState: %v", err)
 		}
-		if !open {
+		if !window.Open {
 			t.Error("window should be open one hour after the last inbound message")
 		}
-		if expires == nil {
-			t.Fatal("expiry should be reported so the UI can explain the state")
+		if window.ExpiresAt == nil {
+			t.Fatal("an OPEN window must report its deadline so the UI can count down")
 		}
-		if got := expires.Sub(*ec.LastInboundAt); got != igdomain.MessagingWindow {
+		if got := window.ExpiresAt.Sub(*ec.LastInboundAt); got != igdomain.MessagingWindow {
 			t.Errorf("window length = %v, want %v", got, igdomain.MessagingWindow)
 		}
 	})
@@ -191,15 +191,21 @@ func TestChannelAdapter_WindowState(t *testing.T) {
 		f := newAdapterFixture(t, []*igdomain.Account{account}, closedWindow())
 		ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
 
-		open, expires, err := f.adapter.WindowState(context.Background(), ec)
+		window, err := f.adapter.WindowState(context.Background(), ec)
 		if err != nil {
 			t.Fatalf("WindowState: %v", err)
 		}
-		if open {
+		if window.Open {
 			t.Error("window should be closed 25 hours after the last inbound message")
 		}
-		if expires == nil {
-			t.Error("expiry should still be reported when closed, so the UI can say when it lapsed")
+		// The reason now carries what a past-dated expiry used to stand in for.
+		// A time on a CLOSED window means "blocked until then", so reporting the
+		// lapse here would invert it.
+		if window.Reason != conversation.WindowReasonExpired {
+			t.Errorf("reason = %q, want expired", window.Reason)
+		}
+		if window.ExpiresAt != nil {
+			t.Error("a lapsed clock must not report a time: on a closed window a time means a countdown to reopening")
 		}
 	})
 
@@ -207,11 +213,11 @@ func TestChannelAdapter_WindowState(t *testing.T) {
 		f := newAdapterFixture(t, []*igdomain.Account{account}, nil)
 		ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
 
-		open, _, err := f.adapter.WindowState(context.Background(), ec)
+		window, err := f.adapter.WindowState(context.Background(), ec)
 		if err != nil {
 			t.Fatalf("WindowState: %v", err)
 		}
-		if open {
+		if window.Open {
 			t.Error("Instagram forbids initiating a conversation, so the window must be closed")
 		}
 	})

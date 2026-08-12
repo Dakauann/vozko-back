@@ -185,8 +185,11 @@ func (a *fakeWindowAdapter) ResolveEntry(_ context.Context, entryID string) (*co
 	return &conversation.EntryContext{EntryID: entryID, EntryType: a.entryType}, nil
 }
 
-func (a *fakeWindowAdapter) WindowState(_ context.Context, _ *conversation.EntryContext) (bool, *time.Time, error) {
-	return a.open, a.expiresAt, nil
+func (a *fakeWindowAdapter) WindowState(_ context.Context, _ *conversation.EntryContext) (conversation.WindowState, error) {
+	if a.open {
+		return conversation.OpenWindow(a.expiresAt), nil
+	}
+	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
 func (a *fakeWindowAdapter) SendText(_ context.Context, _ *conversation.EntryContext, _ conversation.SendTextRequest) (*conversation.SendOutcome, error) {
@@ -208,7 +211,8 @@ func TestGetWindowStatusForEntryUsesChannelAdapter(t *testing.T) {
 		expiresAt: &expires,
 	}))
 
-	open, expiresAt := svc.GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
+	window := svc.GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
+	open, expiresAt := window.Open, window.ExpiresAt
 	if !open {
 		t.Error("expected the Instagram window to be reported open")
 	}
@@ -219,7 +223,8 @@ func TestGetWindowStatusForEntryUsesChannelAdapter(t *testing.T) {
 
 func TestGetWindowStatusForEntryClosedWithoutAdapter(t *testing.T) {
 	// No adapter registered: a channel we cannot evaluate must fail closed.
-	open, expiresAt := (&HistoryProviderService{}).GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
+	window := (&HistoryProviderService{}).GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
+	open, expiresAt := window.Open, window.ExpiresAt
 	if open || expiresAt != nil {
 		t.Errorf("expected a closed window without an adapter, got open=%v expiresAt=%v", open, expiresAt)
 	}
@@ -231,7 +236,14 @@ func TestGetWindowStatusForEntryClosedWithoutAdapter(t *testing.T) {
 		open:       true,
 		resolveErr: errors.New("entry gone"),
 	}))
-	if open, _ := svc.GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram)); open {
+	unresolved := svc.GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
+	if unresolved.Open {
 		t.Error("expected a closed window when the entry cannot be resolved")
+	}
+	// An unresolvable entry is a REMOVED account or number, not a clock. Saying
+	// so is what stopped the composer claiming a 24h window on a channel that
+	// has none.
+	if unresolved.Reason != conversation.WindowReasonChannelUnavailable {
+		t.Errorf("reason = %q, want channel_unavailable", unresolved.Reason)
 	}
 }

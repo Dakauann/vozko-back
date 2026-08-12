@@ -47,6 +47,7 @@ import (
 	qe_repository "vozko/infra/repositories/queue_event"
 	rag_repository "vozko/infra/repositories/rag"
 	savedview_repository "vozko/infra/repositories/savedview"
+	scheduled_message_repository "vozko/infra/repositories/scheduled_message"
 	shipping_repository "vozko/infra/repositories/shipping"
 	shop_repository "vozko/infra/repositories/shop"
 	shortlink_repository "vozko/infra/repositories/shortlink"
@@ -125,6 +126,7 @@ func (c *Container) initRepositories() {
 		customField:             customfield_repository.NewRepository(c.db),
 		label:                   label_repository.NewRepository(c.db),
 		messageShortcut:         msg_shortcut_repository.NewRepository(c.db),
+		scheduledMessage:        scheduled_message_repository.NewRepository(c.db),
 		workspace:               workspace_repository.NewCachedWorkspaceRepository(workspace_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		customRole:              workspace_repository.NewCustomRoleRepository(c.db),
 		attendance:              attendance_repository.New(c.db),

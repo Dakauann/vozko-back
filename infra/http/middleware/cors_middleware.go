@@ -20,7 +20,15 @@ func NewCORSMiddleware(trustedOrigins []string) *CORSMiddleware {
 }
 
 const (
-	corsAllowHeaders = "Authorization, Content-Type, X-Workspace-ID, X-Department-ID, X-Auth-Mode"
+	// corsAllowHeaders must list EVERY custom header the browser client sends.
+	//
+	// This list is a hard gate, not documentation: a header missing here fails
+	// the preflight, so the real request never leaves the browser and never
+	// reaches a handler or a log. The symptom is a bare "Failed to fetch" with
+	// zero bytes transferred, which looks like a broken route rather than a
+	// missing string. Adding a header to browser-client.ts means adding it here
+	// in the same change; cors_middleware_test.go pins the pairing.
+	corsAllowHeaders = "Authorization, Content-Type, X-Workspace-ID, X-Department-ID, X-Auth-Mode, Idempotency-Key"
 	corsAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	corsMaxAge       = "86400"
 )

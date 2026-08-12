@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	aa "vozko/domain/ai_attendance"
 	ap "vozko/domain/agent_presence"
+	aa "vozko/domain/ai_attendance"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/crm_telemetry"
 	ia "vozko/domain/inbox_assignment"

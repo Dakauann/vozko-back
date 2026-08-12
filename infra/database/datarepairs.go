@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"log"
 
 	"gorm.io/gorm"
 )
@@ -28,6 +29,8 @@ func runDataRepairs(tx *gorm.DB) error {
 		{"uw_reset_never_read_profile_clocks", resetNeverReadProfileClocks},
 		{"cm_backfill_message_direction", backfillMessageDirection},
 		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
+		{"cm_relink_uw_orphaned_media", relinkUnofficialOrphanedMedia},
+		{"wmp_drop_retired_resources", dropRetiredPermissionResources},
 	}
 
 	for _, r := range repairs {
@@ -348,6 +351,72 @@ func backfillMessageDirection(tx *gorm.DB) error {
 	return nil
 }
 
+// relinkUnofficialOrphanedMedia reattaches attachments the message rows lost.
+//
+// The defect: the inbound path asked the media repository to store a row, then
+// read the new id back off its own struct. The repository writes through a
+// separate schema value, so the id the database minted never reached the caller
+// and MediaID arrived empty — which made the history manager drop MediaType with
+// it. Every inbound photo, voice note and document on this channel was fetched
+// and uploaded correctly and then filed under a row nothing referenced: the
+// operator saw a bare "[imagem]" while the bytes sat in object storage.
+//
+// The pairing is exact rather than heuristic. The object key is
+// `conversations/unofficial_whatsapp/{entryID}/{providerMessageID}{ext}`, so
+// stripping the directory and the extension off the stored URL yields precisely
+// the value the message carries in external_message_id. Nothing here matches on
+// a timestamp window, so it cannot attach the wrong attachment to a message.
+//
+// Deliberately NOT matched on original_filename: that column holds the
+// CUSTOMER's filename when they sent a document, and only falls back to the
+// object key's basename. The URL is the one field that always carries the id.
+//
+// Cheap by construction, which matters after what backfillMessageDirection did
+// to a boot. The UPDATE is driven from conversation_media — a table with a
+// handful of rows per channel, not the multi-million-row message table — and
+// each row resolves its message through the existing partial unique index on
+// (entry_type, external_message_id). It is a few index lookups, not a scan.
+//
+// The placeholder text is cleared in the same pass, since it only exists to
+// stand in for media that could not be shown. Left behind, it would render as
+// the word "[imagem]" underneath the image it was apologising for. Only the
+// exact placeholders are touched, so a real caption is never destroyed.
+//
+// Idempotent: only rows whose media_id is still NULL are considered.
+func relinkUnofficialOrphanedMedia(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("conversation_media") ||
+		!tx.Migrator().HasTable("conversation_messages") {
+		return nil
+	}
+	return tx.Exec(`
+		UPDATE conversation_messages AS m
+		SET media_id   = src.media_id,
+		    media_type = src.media_type,
+		    text       = CASE
+		                   WHEN m.text IN ('[imagem]','[vídeo]','[áudio]','[documento]','[figurinha]')
+		                   THEN ''
+		                   ELSE m.text
+		                 END
+		FROM (
+			SELECT cm.id      AS media_id,
+			       cm.type    AS media_type,
+			       cm.entry_id,
+			       regexp_replace(
+			           regexp_replace(cm.url, '^.*/', ''),
+			           '\.[^.]*$', ''
+			       ) AS provider_message_id
+			FROM conversation_media AS cm
+			WHERE cm.entry_type = 'unofficial_whatsapp'
+			  AND cm.deleted_at IS NULL
+		) AS src
+		WHERE m.entry_type = 'unofficial_whatsapp'
+		  AND m.media_id IS NULL
+		  AND m.deleted_at IS NULL
+		  AND m.entry_id = src.entry_id
+		  AND m.external_message_id = src.provider_message_id
+	`).Error
+}
+
 // correctUnofficialDeviceSentDirection fixes the rows the type-based inference
 // got backwards: a message the owner typed on their own WhatsApp app.
 //
@@ -389,4 +458,48 @@ func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 			  AND ours.from_participant = m.from_participant
 		  )
 	`).Error
+}
+
+// retiredPermissionResources are workspace resources whose feature no longer has
+// a surface to gate.
+//
+// They were registered, granted to roles, and then their management API was
+// removed — leaving rows in workspace_member_permissions that name a resource
+// the code no longer knows. Those rows are not merely untidy: the permissions
+// editor renders one row per GRANTED resource it cannot label, and every
+// authorization check against them is dead weight.
+//
+// Keep this list append-only and never reuse a name. Re-registering a retired
+// resource later would silently resurrect grants this repair deleted.
+var retiredPermissionResources = []string{
+	// Telephony MANAGEMENT surfaces. The dialer and the SIP trunk runtime are
+	// untouched and still carry every call; only the CRUD APIs are gone.
+	"sip_trunks",
+	"branches",
+	// Superseded by the per-channel resources (whatsapp_campaigns).
+	"campaigns",
+	// The affiliate program is per-USER, not per-workspace-role: its routes are
+	// /affiliate/me and /affiliate/register, gated by authentication alone.
+	"affiliate",
+	// Never had a surface.
+	"usage",
+}
+
+// dropRetiredPermissionResources deletes grants for resources the code retired.
+//
+// Idempotent and a no-op on a database that never granted them, which is the
+// contract every repair here holds.
+func dropRetiredPermissionResources(tx *gorm.DB) error {
+	result := tx.Exec(
+		"DELETE FROM workspace_member_permissions WHERE resource IN ?",
+		retiredPermissionResources,
+	)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		log.Printf("[data-repair] removed %d permission grant(s) for retired resources %v",
+			result.RowsAffected, retiredPermissionResources)
+	}
+	return nil
 }

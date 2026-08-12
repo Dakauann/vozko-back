@@ -364,6 +364,9 @@ type SubscribedPayload struct {
 	AutomationEnabled bool                   `json:"automation_enabled"`
 	WindowOpen        bool                   `json:"window_open"`
 	WindowExpiresAt   *time.Time             `json:"window_expires_at,omitempty"`
+	// WindowClosedReason names WHY the composer is blocked, so the client says
+	// something true rather than inferring it from a missing expiry.
+	WindowClosedReason string `json:"window_closed_reason,omitempty"`
 }
 
 type ErrorPayload struct {

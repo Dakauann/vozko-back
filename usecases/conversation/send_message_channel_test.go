@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -55,8 +54,8 @@ func (s stubAdapter) EntryType() shared.EntryType { return s.entryType }
 func (s stubAdapter) ResolveEntry(context.Context, string) (*conversation.EntryContext, error) {
 	return nil, nil
 }
-func (s stubAdapter) WindowState(context.Context, *conversation.EntryContext) (bool, *time.Time, error) {
-	return true, nil, nil
+func (s stubAdapter) WindowState(context.Context, *conversation.EntryContext) (conversation.WindowState, error) {
+	return conversation.OpenWindow(nil), nil
 }
 func (s stubAdapter) SendText(context.Context, *conversation.EntryContext, conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	return nil, nil

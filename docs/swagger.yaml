@@ -1128,120 +1128,6 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
-  branch.Branch:
-    properties:
-      codecs:
-        items:
-          $ref: '#/definitions/branch.CodecID'
-        type: array
-      createdAt:
-        type: string
-      displayName:
-        type: string
-      dnd:
-        type: boolean
-      enabled:
-        type: boolean
-      id:
-        type: string
-      lastRegisteredAt:
-        type: string
-      maxContacts:
-        type: integer
-      memberId:
-        description: |-
-          MemberID is the workspace membership this branch belongs to (the natural
-          RBAC anchor; the branch is cascade-removed with the member). UserID is
-          denormalized so runtime routing can key on it like a dialer session does.
-        type: string
-      realm:
-        type: string
-      registrationStatus:
-        $ref: '#/definitions/branch.RegistrationStatus'
-      sipUser:
-        type: string
-      updatedAt:
-        type: string
-      userId:
-        type: string
-      workspaceId:
-        type: string
-    type: object
-  branch.CodecID:
-    enum:
-    - pcma
-    - pcmu
-    - telephone-event
-    type: string
-    x-enum-varnames:
-    - CodecPCMA
-    - CodecPCMU
-    - CodecTelephoneEvent
-  branch.CreateBranchInput:
-    properties:
-      codecs:
-        items:
-          $ref: '#/definitions/branch.CodecID'
-        type: array
-      displayName:
-        type: string
-      dnd:
-        type: boolean
-      maxContacts:
-        type: integer
-      sipUser:
-        type: string
-      userId:
-        description: TargetUserID is the workspace member (by user id) this branch
-          is created for.
-        type: string
-    type: object
-  branch.EnableBranchRequest:
-    properties:
-      enabled:
-        example: true
-        type: boolean
-    type: object
-  branch.RegistrationStatus:
-    enum:
-    - never_registered
-    - registered
-    - expired
-    - unreachable
-    type: string
-    x-enum-varnames:
-    - RegistrationStatusNeverRegistered
-    - RegistrationStatusRegistered
-    - RegistrationStatusExpired
-    - RegistrationStatusUnreachable
-  branch.SecretResult:
-    properties:
-      branch:
-        $ref: '#/definitions/branch.Branch'
-      realm:
-        description: Realm and SIPUser are echoed so the operator has the full credential
-          set.
-        type: string
-      secret:
-        description: Secret is the plaintext SIP password to type into the phone,
-          returned once.
-        type: string
-      sipUser:
-        type: string
-    type: object
-  branch.UpdateBranchInput:
-    properties:
-      codecs:
-        items:
-          $ref: '#/definitions/branch.CodecID'
-        type: array
-      displayName:
-        type: string
-      dnd:
-        type: boolean
-      maxContacts:
-        type: integer
-    type: object
   buildersession.BuilderMessageResponse:
     properties:
       at:
@@ -2044,6 +1930,17 @@ definitions:
           hydrated by the CRM board read model so the list/board cards can show a
           responsável. Empty when unassigned. Not populated by the legacy inbox paths.
         type: string
+      automationEnabled:
+        description: |-
+          AutomationEnabled is the PER-CONVERSATION override an operator flips when
+          taking over, distinct from the container's AgentResponsesEnabled above.
+
+          nil means no override, so the conversation inherits the container switch.
+          It is read from SQL for every channel: it used to be looked up only for
+          WhatsApp, and every other channel silently reported "enabled" no matter
+          what was stored, so pausing a Telegram or Instagram conversation wrote
+          correctly and then read back as still running.
+        type: boolean
       businessPhoneID:
         type: string
       campaignID:
@@ -2132,6 +2029,17 @@ definitions:
         items:
           type: string
         type: array
+      is_group:
+        description: |-
+          IsGroup marks a conversation whose other side is a group chat rather than
+          a person.
+
+          The UI needs this for more than a badge. A group has no number to dial, no
+          lead to open and no single person to attribute the thread to, so the row's
+          affordances have to be suppressed rather than relabelled — and until this
+          existed a group was indistinguishable from a contact in every list the CRM
+          renders.
+        type: boolean
       labels:
         items:
           $ref: '#/definitions/conversation.InboxEntryLabel'
@@ -2252,11 +2160,17 @@ definitions:
     - voice
     - whatsapp
     - support
+    - instagram
+    - telegram
+    - unofficial_whatsapp
     type: string
     x-enum-varnames:
     - MessageChannelVoice
     - MessageChannelWhatsApp
     - MessageChannelSupport
+    - MessageChannelInstagram
+    - MessageChannelTelegram
+    - MessageChannelUnofficialWhatsApp
   conversation.MessageEnvelopeResponse:
     properties:
       message:
@@ -2334,6 +2248,11 @@ definitions:
     - call_answered
     - call_missed
     - call_ended
+    - story_reply
+    - story_mention
+    - reaction
+    - unsupported
+    - post_share
     type: string
     x-enum-varnames:
     - MessageTypeUserMessage
@@ -2352,6 +2271,11 @@ definitions:
     - MessageTypeCallAnswered
     - MessageTypeCallMissed
     - MessageTypeCallEnded
+    - MessageTypeStoryReply
+    - MessageTypeStoryMention
+    - MessageTypeReaction
+    - MessageTypeUnsupported
+    - MessageTypePostShare
   conversation.ReopenWindowRequest:
     properties:
       parameters:
@@ -2394,6 +2318,11 @@ definitions:
       text:
         example: Olá, como posso ajudar?
         type: string
+    type: object
+  conversation.SetAutomationRequest:
+    properties:
+      automationEnabled:
+        type: boolean
     type: object
   conversation_event.ConversationEvent:
     properties:
@@ -2747,26 +2676,6 @@ definitions:
         example: select
         type: string
     type: object
-  dialerringchannels.RingChannelsResponse:
-    properties:
-      channels:
-        example:
-        - browser
-        - branch
-        items:
-          type: string
-        type: array
-    type: object
-  dialerringchannels.SetRingChannelsRequest:
-    properties:
-      channels:
-        example:
-        - browser
-        - branch
-        items:
-          type: string
-        type: array
-    type: object
   holdmusic.HoldTrackListResponse:
     properties:
       tracks:
@@ -2781,6 +2690,180 @@ definitions:
         type: string
       label:
         example: Bossa Nova
+        type: string
+    type: object
+  instagram.AccountResponse:
+    properties:
+      accountType:
+        type: string
+      agentId:
+        type: string
+      canManageComments:
+        type: boolean
+      canPublish:
+        type: boolean
+      canSendMessages:
+        description: |-
+          Capability flags are derived server-side so the UI never has to reason
+          about scope strings.
+        type: boolean
+      createdAt:
+        type: string
+      departmentId:
+        type: string
+      enableAgentResponses:
+        type: boolean
+      enableAnalysis:
+        type: boolean
+      enableAutoStaging:
+        type: boolean
+      enableWorkflow:
+        type: boolean
+      followersCount:
+        type: integer
+      followsCount:
+        type: integer
+      grantedScopes:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      igUserId:
+        type: string
+      mediaCount:
+        type: integer
+      messagingCheckedAt:
+        type: string
+      messagingHealthy:
+        description: |-
+          MessagingHealthy is false when the Instagram-app "Allow Access to
+          Messages" toggle is off, a state in which DMs and webhooks fail silently.
+        type: boolean
+      name:
+        type: string
+      needsReconnect:
+        description: NeedsReconnect tells the UI to show a Reconnect call to action.
+        type: boolean
+      pipelineId:
+        type: string
+      profilePictureUrl:
+        type: string
+      status:
+        type: string
+      statusReason:
+        type: string
+      tokenExpiresAt:
+        type: string
+      updatedAt:
+        type: string
+      username:
+        type: string
+      webhookSubscribedAt:
+        type: string
+      workflowId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  instagram.CommentResponse:
+    properties:
+      canDelete:
+        description: CanDelete mirrors IsOurs so the UI does not have to know the
+          rule.
+        type: boolean
+      fromIgsid:
+        type: string
+      fromUsername:
+        type: string
+      hidden:
+        type: boolean
+      id:
+        type: string
+      isOurs:
+        description: |-
+          IsOurs marks a comment we authored. It is also the only case in which
+          deletion is possible, because Instagram requires the comment creator's
+          token to delete.
+        type: boolean
+      likeCount:
+        type: integer
+      parentId:
+        type: string
+      replies:
+        items:
+          $ref: '#/definitions/instagram.CommentResponse'
+        type: array
+      text:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  instagram.ConnectStartResponse:
+    properties:
+      authorizeUrl:
+        type: string
+    type: object
+  instagram.MediaResponse:
+    properties:
+      caption:
+        type: string
+      children:
+        items:
+          $ref: '#/definitions/instagram.MediaResponse'
+        type: array
+      commentsCount:
+        type: integer
+      hasAsset:
+        description: |-
+          HasAsset is false when Instagram omitted media_url, which happens for
+          copyrighted content.
+        type: boolean
+      id:
+        type: string
+      isCarousel:
+        type: boolean
+      isCommentEnabled:
+        type: boolean
+      isReel:
+        type: boolean
+      likeCount:
+        type: integer
+      mediaProductType:
+        type: string
+      mediaType:
+        type: string
+      mediaUrl:
+        type: string
+      permalink:
+        type: string
+      shortcode:
+        type: string
+      thumbnailUrl:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  instagram.PageResponse-instagram_CommentResponse:
+    properties:
+      hasNext:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/instagram.CommentResponse'
+        type: array
+      nextCursor:
+        type: string
+    type: object
+  instagram.PageResponse-instagram_MediaResponse:
+    properties:
+      hasNext:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/instagram.MediaResponse'
+        type: array
+      nextCursor:
         type: string
     type: object
   invoice.CreateInvoiceRequest:
@@ -3831,14 +3914,148 @@ definitions:
     x-enum-varnames:
     - VisibilityPrivate
     - VisibilityShared
+  scheduledmessage.RescheduleMessageRequest:
+    properties:
+      scheduled_at:
+        example: "2026-08-13T16:00:00-03:00"
+        type: string
+    type: object
+  scheduledmessage.ScheduleMessageRequest:
+    properties:
+      media_id:
+        example: med_a1b2c3
+        type: string
+      media_type:
+        example: image
+        type: string
+      reply_to_message_id:
+        example: msg_a1b2c3
+        type: string
+      scheduled_at:
+        description: |-
+          ScheduledAt is RFC3339 WITH the client's offset. The browser sends its
+          real timezone and the server stores UTC, so an operator in Manaus and one
+          in São Paulo picking "14:30" get two different instants, which is what
+          they both mean.
+        example: "2026-08-13T14:30:00-03:00"
+        type: string
+      signed:
+        example: true
+        type: boolean
+      text:
+        example: Bom dia! Seguindo nossa conversa...
+        type: string
+    type: object
+  scheduledmessage.ScheduledMessageEnvelope:
+    properties:
+      scheduledMessage:
+        $ref: '#/definitions/scheduledmessage.ScheduledMessageResponse'
+      window:
+        $ref: '#/definitions/scheduledmessage.WindowResponse'
+    type: object
+  scheduledmessage.ScheduledMessageListResponse:
+    properties:
+      scheduledMessages:
+        items:
+          $ref: '#/definitions/scheduledmessage.ScheduledMessageResponse'
+        type: array
+      window:
+        $ref: '#/definitions/scheduledmessage.WindowResponse'
+    type: object
+  scheduledmessage.ScheduledMessageResponse:
+    properties:
+      createdAt:
+        type: string
+      createdByUserId:
+        type: string
+      entryId:
+        type: string
+      entryType:
+        type: string
+      failureDetail:
+        type: string
+      failureReason:
+        description: |-
+          FailureReason is the machine-readable reason a message never arrived. The
+          UI must render dispatch_interrupted differently from the rest: it means
+          delivery could not be CONFIRMED, not that it definitely failed.
+        type: string
+      id:
+        type: string
+      mediaId:
+        type: string
+      mediaType:
+        type: string
+      replyToMessageId:
+        type: string
+      scheduledAt:
+        type: string
+      sentAt:
+        type: string
+      sentMessageId:
+        type: string
+      signed:
+        type: boolean
+      status:
+        type: string
+      text:
+        type: string
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  scheduledmessage.WindowErrorResponse:
+    properties:
+      code:
+        type: string
+      error:
+        type: boolean
+      message:
+        type: string
+      window:
+        $ref: '#/definitions/scheduledmessage.WindowResponse'
+    type: object
+  scheduledmessage.WindowResponse:
+    properties:
+      expiresAt:
+        type: string
+      latestAllowedAt:
+        type: string
+      open:
+        type: boolean
+    type: object
+  scheduledmessage.WorkspaceScheduledMessagesResponse:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      scheduledMessages:
+        items:
+          $ref: '#/definitions/scheduledmessage.ScheduledMessageResponse'
+        type: array
+      total_items:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
   shared.EntryType:
     enum:
     - whatsapp
     - support
+    - instagram
+    - telegram
+    - unofficial_whatsapp
+    - voice
     type: string
     x-enum-varnames:
     - EntryTypeWhatsApp
     - EntryTypeSupport
+    - EntryTypeInstagram
+    - EntryTypeTelegram
+    - EntryTypeUnofficialWhatsApp
+    - EntryTypeVoice
   shortlink.analyticsResponse:
     properties:
       byBrowser:
@@ -3991,315 +4208,6 @@ definitions:
         type: integer
       totalLinks:
         type: integer
-    type: object
-  sip_trunk.AdvancedTrunkConfig:
-    properties:
-      authUsername:
-        type: string
-      bindHost:
-        type: string
-      bindPort:
-        type: integer
-      codecs:
-        items:
-          $ref: '#/definitions/sip_trunk.CodecID'
-        type: array
-      dialPrefix:
-        type: string
-      dialStripDigits:
-        type: integer
-      dtmfPayloadType:
-        type: integer
-      hideCallerId:
-        type: boolean
-      minSESeconds:
-        type: integer
-      numberFormat:
-        $ref: '#/definitions/sip_trunk.NumberFormat'
-      outboundProxy:
-        type: string
-      ptimeMs:
-        type: integer
-      publicAddress:
-        type: string
-      registerEnabled:
-        type: boolean
-      registerExpirySeconds:
-        type: integer
-      registerRetrySeconds:
-        type: integer
-      ringingTimeoutSeconds:
-        type: integer
-      sessionRefresher:
-        $ref: '#/definitions/sip_trunk.SessionRefresher'
-      sessionTimerEnabled:
-        type: boolean
-      sessionTimerSeconds:
-        type: integer
-      srtpMode:
-        $ref: '#/definitions/sip_trunk.SRTPMode'
-      stunEnabled:
-        type: boolean
-      stunServers:
-        items:
-          type: string
-        type: array
-      userAgent:
-        type: string
-    type: object
-  sip_trunk.CodecID:
-    enum:
-    - opus
-    - g722
-    - pcmu
-    - pcma
-    - telephone-event
-    type: string
-    x-enum-varnames:
-    - CodecIDOpus
-    - CodecIDG722
-    - CodecIDPCMU
-    - CodecIDPCMA
-    - CodecIDTelephoneEvent
-  sip_trunk.CodecInfo:
-    properties:
-      default:
-        description: |-
-          Default marks codecs that make up the system's default offer profile
-          (used when a trunk has no explicit per-trunk codec list).
-        type: boolean
-      description:
-        type: string
-      id:
-        $ref: '#/definitions/sip_trunk.CodecID'
-      label:
-        type: string
-      recommended:
-        description: Recommended highlights the codec the UI should suggest by default.
-        type: boolean
-    type: object
-  sip_trunk.CreateTrunkInput:
-    properties:
-      advanced:
-        $ref: '#/definitions/sip_trunk.AdvancedTrunkConfig'
-      description:
-        type: string
-      domain:
-        type: string
-      host:
-        type: string
-      isRotational:
-        type: boolean
-      name:
-        type: string
-      password:
-        type: string
-      phoneNumber:
-        type: string
-      port:
-        type: integer
-      transport:
-        $ref: '#/definitions/sip_trunk.TransportType'
-      trunkType:
-        $ref: '#/definitions/sip_trunk.TrunkType'
-      username:
-        type: string
-    type: object
-  sip_trunk.NumberFormat:
-    enum:
-    - passthrough
-    - e164
-    - national
-    - local
-    type: string
-    x-enum-varnames:
-    - NumberFormatPassthrough
-    - NumberFormatE164
-    - NumberFormatNational
-    - NumberFormatLocal
-  sip_trunk.RegistrationStatus:
-    enum:
-    - pending
-    - registering
-    - registered
-    - failed
-    - unregistered
-    type: string
-    x-enum-varnames:
-    - RegistrationStatusPending
-    - RegistrationStatusRegistering
-    - RegistrationStatusRegistered
-    - RegistrationStatusFailed
-    - RegistrationStatusUnregistered
-  sip_trunk.SIPTrunk:
-    properties:
-      authUsername:
-        type: string
-      bindHost:
-        type: string
-      bindPort:
-        type: integer
-      codecs:
-        items:
-          $ref: '#/definitions/sip_trunk.CodecID'
-        type: array
-      createdAt:
-        type: string
-      description:
-        type: string
-      dialPrefix:
-        type: string
-      dialStripDigits:
-        type: integer
-      domain:
-        type: string
-      dtmfPayloadType:
-        type: integer
-      enabled:
-        type: boolean
-      hideCallerId:
-        type: boolean
-      host:
-        type: string
-      id:
-        type: string
-      isGloballyVisible:
-        type: boolean
-      isRotational:
-        type: boolean
-      lastError:
-        type: string
-      lastRegisteredAt:
-        type: string
-      minSESeconds:
-        type: integer
-      name:
-        type: string
-      numberFormat:
-        $ref: '#/definitions/sip_trunk.NumberFormat'
-      outboundProxy:
-        type: string
-      ownerAssignedAt:
-        type: string
-      ownerAssignedBy:
-        type: string
-      phoneNumber:
-        type: string
-      port:
-        type: integer
-      ptimeMs:
-        type: integer
-      publicAddress:
-        type: string
-      registerEnabled:
-        type: boolean
-      registerExpirySeconds:
-        type: integer
-      registerRetrySeconds:
-        type: integer
-      registrationStatus:
-        $ref: '#/definitions/sip_trunk.RegistrationStatus'
-      ringingTimeoutSeconds:
-        type: integer
-      sessionRefresher:
-        $ref: '#/definitions/sip_trunk.SessionRefresher'
-      sessionTimerEnabled:
-        type: boolean
-      sessionTimerSeconds:
-        type: integer
-      srtpMode:
-        $ref: '#/definitions/sip_trunk.SRTPMode'
-      stunEnabled:
-        type: boolean
-      stunServers:
-        items:
-          type: string
-        type: array
-      transport:
-        $ref: '#/definitions/sip_trunk.TransportType'
-      trunkType:
-        $ref: '#/definitions/sip_trunk.TrunkType'
-      updatedAt:
-        type: string
-      userAgent:
-        type: string
-      username:
-        type: string
-      workspaceId:
-        type: string
-    type: object
-  sip_trunk.SRTPMode:
-    enum:
-    - disabled
-    - optional
-    - required
-    type: string
-    x-enum-varnames:
-    - SRTPModeDisabled
-    - SRTPModeOptional
-    - SRTPModeRequired
-  sip_trunk.SessionRefresher:
-    enum:
-    - ""
-    - uac
-    - uas
-    type: string
-    x-enum-varnames:
-    - SessionRefresherUnset
-    - SessionRefresherUAC
-    - SessionRefresherUAS
-  sip_trunk.TransportType:
-    enum:
-    - udp
-    - tcp
-    - tls
-    type: string
-    x-enum-varnames:
-    - TransportUDP
-    - TransportTCP
-    - TransportTLS
-  sip_trunk.TrunkType:
-    enum:
-    - mobile
-    - fixed
-    type: string
-    x-enum-varnames:
-    - TrunkTypeMobile
-    - TrunkTypeFixed
-  sip_trunk.UpdateTrunkInput:
-    properties:
-      advanced:
-        $ref: '#/definitions/sip_trunk.AdvancedTrunkConfig'
-      description:
-        type: string
-      domain:
-        type: string
-      host:
-        type: string
-      id:
-        type: string
-      isRotational:
-        type: boolean
-      name:
-        type: string
-      password:
-        type: string
-      phoneNumber:
-        type: string
-      port:
-        type: integer
-      transport:
-        $ref: '#/definitions/sip_trunk.TransportType'
-      trunkType:
-        $ref: '#/definitions/sip_trunk.TrunkType'
-      username:
-        type: string
-    type: object
-  siptrunk.EnableTrunkRequest:
-    properties:
-      enabled:
-        example: true
-        type: boolean
     type: object
   stage.AssignEntryTagRequest:
     properties:
@@ -4596,443 +4504,6 @@ definitions:
         type: array
       widgetColor:
         example: '#2463eb'
-        type: string
-    type: object
-  telephony.BoardSnapshotResponse:
-    properties:
-      as_of:
-        example: "2026-07-19T14:35:00Z"
-        type: string
-      capacity:
-        $ref: '#/definitions/telephony.CapacityResponse'
-      free:
-        example: 3
-        type: integer
-      humans:
-        items:
-          $ref: '#/definitions/telephony.HumanSeatResponse'
-        type: array
-      idle_pct:
-        example: 37.5
-        type: number
-      in_call:
-        example: 5
-        type: integer
-      online:
-        example: 8
-        type: integer
-      queue:
-        $ref: '#/definitions/telephony.QueueStripResponse'
-      rev:
-        example: 42
-        type: integer
-      ringing:
-        example: 0
-        type: integer
-      workspace_id:
-        example: ws_a1b2c3
-        type: string
-    type: object
-  telephony.CapacityResponse:
-    properties:
-      max:
-        example: 10
-        type: integer
-      pct:
-        example: 50
-        type: number
-      used:
-        example: 5
-        type: integer
-    type: object
-  telephony.DirectionSliceResponse:
-    properties:
-      count:
-        example: 720
-        type: integer
-      direction:
-        example: inbound
-        type: string
-      pct:
-        example: 58.1
-        type: number
-    type: object
-  telephony.DispositionSliceResponse:
-    properties:
-      code:
-        example: answered
-        type: string
-      count:
-        example: 1080
-        type: integer
-      label:
-        example: Atendida
-        type: string
-      pct:
-        example: 87.1
-        type: number
-    type: object
-  telephony.HourlyPointResponse:
-    properties:
-      count:
-        example: 87
-        type: integer
-      hour:
-        example: 14
-        type: integer
-    type: object
-  telephony.HumanSeatResponse:
-    properties:
-      has_branch:
-        example: false
-        type: boolean
-      has_browser:
-        example: true
-        type: boolean
-      since:
-        example: "2026-07-19T14:30:00Z"
-        type: string
-      state:
-        example: on_call
-        type: string
-      user_id:
-        example: usr_a1b2c3
-        type: string
-      username:
-        example: Ana Souza
-        type: string
-    type: object
-  telephony.LiveAgentResponse:
-    properties:
-      busy:
-        example: true
-        type: boolean
-      has_branch:
-        example: false
-        type: boolean
-      has_browser:
-        example: true
-        type: boolean
-      user_id:
-        example: usr_a1b2c3
-        type: string
-    type: object
-  telephony.LiveBlockResponse:
-    properties:
-      agents:
-        items:
-          $ref: '#/definitions/telephony.LiveAgentResponse'
-        type: array
-      as_of:
-        example: "2026-07-19T14:35:00Z"
-        type: string
-      busy_rate_pct:
-        example: 62.5
-        type: number
-      free:
-        example: 3
-        type: integer
-      has_data:
-        example: true
-        type: boolean
-      idle_rate_pct:
-        example: 37.5
-        type: number
-      in_call:
-        example: 5
-        type: integer
-      online:
-        example: 8
-        type: integer
-    type: object
-  telephony.MemberRowResponse:
-    properties:
-      abandoned:
-        example: 4
-        type: integer
-      answered:
-        example: 108
-        type: integer
-      avg_handle_mins:
-        example: 3.8
-        type: number
-      avg_ring_mins:
-        example: 0.3
-        type: number
-      avg_talk_mins:
-        example: 3.5
-        type: number
-      connect_rate:
-        example: 90
-        type: number
-      failed:
-        example: 8
-        type: integer
-      idle_pct:
-        example: 25.8
-        type: number
-      occupancy_pct:
-        example: 74.2
-        type: number
-      service_level_pct:
-        example: 88.9
-        type: number
-      total_calls:
-        example: 120
-        type: integer
-      user_id:
-        example: usr_a1b2c3
-        type: string
-      within_sl:
-        example: 96
-        type: integer
-    type: object
-  telephony.MetricDefinitionsResponse:
-    properties:
-      aht:
-        example: conversa + espera + pós-atendimento (aproximação de TMA)
-        type: string
-      asa:
-        example: média de queue_events.waited_ms para conectados (min)
-        type: string
-      by_member:
-        example: CDR humano por agente (usuário do discador) agrupado
-        type: string
-      connect_rate:
-        example: chamadas atendidas / tentativas no período * 100
-        type: string
-      disposition:
-        example: pilhas de calls.status + end_reason / surrender_reason
-        type: string
-      gaps:
-        example: captura real de espera/ACW no caminho quente — ver docs
-        type: string
-      idle:
-        example: 'ao vivo: livres/online; histórico: 100 - ocupação'
-        type: string
-      occupancy:
-        example: on_call_ms / online_ms dos intervalos de presença
-        type: string
-      persistence:
-        example: métricas de tabelas duráveis exceto o registro ao vivo
-        type: string
-      ring_time:
-        example: answered_at - started_at (min) para chamadas atendidas
-        type: string
-      service_level:
-        example: atendidas com toque <= 20s / atendidas * 100
-        type: string
-      talk_time:
-        example: ended_at - answered_at (min) quando ambos definidos
-        type: string
-    type: object
-  telephony.OccupancyBlockResponse:
-    properties:
-      agents_sampled:
-        example: 12
-        type: integer
-      available:
-        example: true
-        type: boolean
-      avg_occupancy_pct:
-        example: 72.5
-        type: number
-      team_idle_pct:
-        example: 29.9
-        type: number
-      team_occupancy_pct:
-        example: 70.1
-        type: number
-    type: object
-  telephony.OverviewFilterResponse:
-    properties:
-      agent_id:
-        example: agt_a1b2c3
-        type: string
-      call_type:
-        example: crm
-        type: string
-      date_from:
-        example: "2026-07-01T00:00:00Z"
-        type: string
-      date_to:
-        example: "2026-07-19T23:59:59Z"
-        type: string
-      direction:
-        example: inbound
-        type: string
-      member_id:
-        example: usr_a1b2c3
-        type: string
-      service_level_seconds:
-        example: 20
-        type: integer
-    type: object
-  telephony.OverviewKPIsResponse:
-    properties:
-      abandoned:
-        example: 70
-        type: integer
-      answered:
-        example: 1080
-        type: integer
-      answered_within_sl:
-        example: 890
-        type: integer
-      avg_acw_mins:
-        example: 0.2
-        type: number
-      avg_aht_mins:
-        example: 4.1
-        type: number
-      avg_handle_mins:
-        example: 3.7
-        type: number
-      avg_hold_mins:
-        example: 0.5
-        type: number
-      avg_ring_mins:
-        example: 0.3
-        type: number
-      avg_talk_mins:
-        example: 3.4
-        type: number
-      cdr_abandon_rate:
-        example: 5.6
-        type: number
-      connect_rate:
-        example: 87.1
-        type: number
-      failed:
-        example: 90
-        type: integer
-      human_crm_calls:
-        example: 510
-        type: integer
-      inbound:
-        example: 720
-        type: integer
-      outbound:
-        example: 520
-        type: integer
-      service_level_pct:
-        example: 82.5
-        type: number
-      service_level_seconds:
-        example: 20
-        type: integer
-      short_abandons:
-        example: 24
-        type: integer
-      total_calls:
-        example: 1240
-        type: integer
-      transfers:
-        example: 58
-        type: integer
-      trunk_inbound:
-        example: 180
-        type: integer
-      trunk_outbound:
-        example: 120
-        type: integer
-    type: object
-  telephony.OverviewResponse:
-    properties:
-      by_direction:
-        items:
-          $ref: '#/definitions/telephony.DirectionSliceResponse'
-        type: array
-      by_member:
-        items:
-          $ref: '#/definitions/telephony.MemberRowResponse'
-        type: array
-      by_type:
-        items:
-          $ref: '#/definitions/telephony.TypeSliceResponse'
-        type: array
-      definitions:
-        $ref: '#/definitions/telephony.MetricDefinitionsResponse'
-      dispositions:
-        items:
-          $ref: '#/definitions/telephony.DispositionSliceResponse'
-        type: array
-      filter:
-        $ref: '#/definitions/telephony.OverviewFilterResponse'
-      hourly:
-        items:
-          $ref: '#/definitions/telephony.HourlyPointResponse'
-        type: array
-      kpis:
-        $ref: '#/definitions/telephony.OverviewKPIsResponse'
-      live:
-        $ref: '#/definitions/telephony.LiveBlockResponse'
-      occupancy:
-        $ref: '#/definitions/telephony.OccupancyBlockResponse'
-      queue:
-        $ref: '#/definitions/telephony.QueueBlockResponse'
-      sla_available:
-        example: true
-        type: boolean
-    type: object
-  telephony.QueueBlockResponse:
-    properties:
-      abandon_rate:
-        example: 7.8
-        type: number
-      abandoned:
-        example: 50
-        type: integer
-      available:
-        example: true
-        type: boolean
-      avg_asa_mins:
-        example: 0.4
-        type: number
-      cancelled:
-        example: 12
-        type: integer
-      connected:
-        example: 590
-        type: integer
-      enqueued:
-        example: 640
-        type: integer
-      max_wait_mins:
-        example: 2.1
-        type: number
-      overflow:
-        example: 0
-        type: integer
-      queue_full:
-        example: 0
-        type: integer
-      service_level_pct:
-        example: 84
-        type: number
-      service_level_seconds:
-        example: 20
-        type: integer
-    type: object
-  telephony.QueueStripResponse:
-    properties:
-      available:
-        example: true
-        type: boolean
-      depth:
-        example: 3
-        type: integer
-    type: object
-  telephony.TypeSliceResponse:
-    properties:
-      count:
-        example: 430
-        type: integer
-      pct:
-        example: 34.7
-        type: number
-      type:
-        example: crm
         type: string
     type: object
   template.NamedParamExample:
@@ -6100,11 +5571,13 @@ definitions:
     - call_channels
     - whatsapp_business_phones
     - branches
+    - unofficial_whatsapp_instances
     type: string
     x-enum-varnames:
     - EntitlementCallChannels
     - EntitlementWhatsAppBusinessPhones
     - EntitlementBranches
+    - EntitlementUnofficialWhatsAppInstances
   workspace_addon.PurchaseAddonInput:
     properties:
       addonDefinitionId:
@@ -6227,6 +5700,14 @@ definitions:
       id:
         example: cfg_a1b2c3
         type: string
+      includedUnofficialWhatsAppInstances:
+        description: |-
+          IncludedUnofficialWhatsAppInstances is the platform-granted allowance of
+          linked-device WhatsApp numbers. Readable by the workspace so its own
+          screens can explain why the connect button is disabled; writable only
+          through the /admin route.
+        example: 2
+        type: integer
       queueEnabled:
         example: true
         type: boolean
@@ -7436,356 +6917,6 @@ paths:
       summary: Verificar um email com um token
       tags:
       - Autenticação
-  /branches:
-    get:
-      description: Retorna os ramais do workspace atual, com paginação por page e
-        pageSize. As senhas SIP nunca são retornadas na listagem.
-      parameters:
-      - description: Número da página (padrão 1)
-        in: query
-        name: page
-        type: integer
-      - description: Itens por página (padrão 20, máximo 200)
-        in: query
-        name: pageSize
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar ramais
-      tags:
-      - Ramais
-    post:
-      consumes:
-      - application/json
-      description: Cria um novo ramal (extensão SIP) para um membro do workspace atual.
-        Retorna a senha SIP de uso único, exibida apenas nesta resposta, para configurar
-        o softphone.
-      parameters:
-      - description: Dados do ramal a criar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/branch.CreateBranchInput'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/branch.SecretResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Criar ramal
-      tags:
-      - Ramais
-  /branches/{branchId}:
-    delete:
-      description: Exclui um ramal do workspace atual.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Remover ramal
-      tags:
-      - Ramais
-    get:
-      description: Retorna os detalhes de um ramal do workspace atual. A senha SIP
-        não é incluída.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/branch.Branch'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter ramal
-      tags:
-      - Ramais
-    put:
-      consumes:
-      - application/json
-      description: Atualiza os atributos de um ramal do workspace. Todos os campos
-        são opcionais; os campos de identidade (usuário SIP) não são alteráveis aqui.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      - description: Campos do ramal a atualizar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/branch.UpdateBranchInput'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/branch.Branch'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Atualizar ramal
-      tags:
-      - Ramais
-  /branches/{branchId}/enable:
-    put:
-      consumes:
-      - application/json
-      description: Ativa ou desativa um ramal do workspace conforme o campo enabled
-        informado.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      - description: Estado desejado do ramal
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/branch.EnableBranchRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/branch.Branch'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Ativar ou desativar ramal
-      tags:
-      - Ramais
-  /branches/{branchId}/rotate-secret:
-    post:
-      description: Gera uma nova senha SIP para o ramal do workspace e a retorna uma
-        única vez, para reconfigurar o softphone.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/branch.SecretResult'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Rotacionar senha do ramal
-      tags:
-      - Ramais
-  /branches/mine:
-    get:
-      description: Retorna os ramais que pertencem ao usuário autenticado no workspace
-        atual, para configurar seu próprio softphone.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar meus ramais
-      tags:
-      - Ramais
-  /branches/mine/{branchId}/rotate-secret:
-    post:
-      description: Permite que um membro gere uma nova senha SIP para um ramal que
-        lhe pertence, sem depender de um gestor. A propriedade é verificada contra
-        o usuário autenticado.
-      parameters:
-      - description: ID do ramal
-        in: path
-        name: branchId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/branch.SecretResult'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Rotacionar senha do meu ramal
-      tags:
-      - Ramais
-  /branches/sip-config:
-    get:
-      description: Retorna o endpoint SIP do sistema (servidor, porta, transporte
-        e realm) para o qual um softphone deve se registrar. Não reexibe a senha de
-        uso único; o usuário do ramal é o sipUser do próprio ramal.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter configuração SIP de registro
-      tags:
-      - Ramais
   /builder-sessions:
     get:
       description: Retorna as conversas mais recentes com o copiloto de IA em todo
@@ -8296,6 +7427,40 @@ paths:
       summary: Consultar um CEP
       tags:
       - CEP
+  /conversations/{entryType}/{entryId}/automation:
+    patch:
+      consumes:
+      - application/json
+      description: Liga ou desliga o atendimento automático desta conversa. Envie
+        null para voltar a herdar a configuração da conta/campanha.
+      parameters:
+      - description: Tipo da entrada
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: ID da entrada
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Novo estado
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/conversation.SetAutomationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Ativar/desativar automação de uma conversa
+      tags:
+      - Conversas
   /conversations/{entryType}/{entryId}/call-permission:
     get:
       description: Informa se o cliente da conversa permite atualmente ligações pelo
@@ -8689,6 +7854,115 @@ paths:
       summary: Reabrir janela de conversa
       tags:
       - Conversas
+  /conversations/{entryType}/{entryId}/scheduled-messages:
+    get:
+      description: Lista as mensagens agendadas de uma conversa e o estado atual da
+        janela de atendimento. Use o parâmetro `status` (separado por vírgula) para
+        filtrar.
+      parameters:
+      - description: Tipo da entrada
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: ID da entrada
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: 'Filtro de status: pending,sending,sent,failed,canceled'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/scheduledmessage.ScheduledMessageListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar mensagens agendadas de uma conversa
+      tags:
+      - Mensagens Agendadas
+    post:
+      consumes:
+      - application/json
+      description: Agenda uma mensagem para ser enviada em uma conversa. O horário
+        precisa estar dentro da janela de atendimento aberta e a pelo menos um minuto
+        de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição
+        não crie uma segunda mensagem.
+      parameters:
+      - description: Tipo da entrada
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: ID da entrada
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Chave para tornar a criação idempotente
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: Mensagem e horário do agendamento
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/scheduledmessage.ScheduleMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: A chave de idempotência já havia sido usada; nada novo foi
+            criado
+          schema:
+            $ref: '#/definitions/scheduledmessage.ScheduledMessageEnvelope'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/scheduledmessage.ScheduledMessageEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: A janela de atendimento está fechada
+          schema:
+            $ref: '#/definitions/scheduledmessage.WindowErrorResponse'
+        "422":
+          description: O horário escolhido está fora dos limites
+          schema:
+            $ref: '#/definitions/scheduledmessage.WindowErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Agendar uma mensagem
+      tags:
+      - Mensagens Agendadas
   /conversations/inbox/search:
     get:
       description: Lista e filtra as conversas da caixa de entrada de uma campanha
@@ -9371,74 +8645,6 @@ paths:
       summary: Remover um membro do departamento
       tags:
       - Departamentos
-  /dialer/ring-channels:
-    get:
-      description: Retorna a seleção de canais de dispositivo que tocam nas chamadas
-        recebidas pelo membro autenticado (dialer no navegador, ramal SIP, ...).
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dialerringchannels.RingChannelsResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Consultar os canais de toque do próprio membro
-      tags:
-      - Dialer
-    put:
-      consumes:
-      - application/json
-      description: Define quais canais de dispositivo tocam nas chamadas recebidas
-        pelo membro autenticado.
-      parameters:
-      - description: Canais que devem tocar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dialerringchannels.SetRingChannelsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dialerringchannels.RingChannelsResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Atualizar os canais de toque do próprio membro
-      tags:
-      - Dialer
   /entries/{entryId}/conversation:
     get:
       description: Retorna as mensagens de uma entrada específica (chamada ou conversa
@@ -9517,6 +8723,245 @@ paths:
       summary: Reproduzir uma música de espera padrão
       tags:
       - Música de espera
+  /instagram/accounts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.AccountResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar contas do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}:
+    delete:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Desconectar conta do Instagram
+      tags:
+      - Instagram
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.AccountResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter conta do Instagram
+      tags:
+      - Instagram
+    put:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.AccountResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar configuração da conta do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/avatar:
+    get:
+      description: Faz proxy da foto de perfil, cuja URL de CDN expira.
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: OK
+      security:
+      - BearerAuth: []
+      summary: Foto de perfil da conta
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comment-rules:
+    get:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Listar regras de automação de comentários
+      tags:
+      - Instagram
+    post:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Criar regra de automação de comentários
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comment-rules/{ruleId}:
+    delete:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Remover regra de automação de comentários
+      tags:
+      - Instagram
+    put:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Atualizar regra de automação de comentários
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comments/{commentId}:
+    delete:
+      description: Só é possível excluir comentários criados pela própria conta; para
+        os demais, use ocultar.
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Excluir comentário do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comments/{commentId}/hide:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Ocultar/exibir comentário do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comments/{commentId}/private-reply:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Responder comentário por mensagem privada
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/comments/{commentId}/replies:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Responder comentário do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/media:
+    get:
+      description: Retorna as publicações da conta com paginação por cursor.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.PageResponse-instagram_MediaResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar publicações do Instagram
+      tags:
+      - Instagram
+    post:
+      consumes:
+      - application/json
+      description: Cria o container, aguarda o processamento e publica.
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/instagram.MediaResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicar no Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/media/{mediaId}:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.MediaResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter publicação do Instagram
+      tags:
+      - Instagram
+    patch:
+      consumes:
+      - application/json
+      description: Somente habilitar/desabilitar comentários. A legenda não pode ser
+        editada pela API.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Atualizar publicação do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/media/{mediaId}/asset:
+    get:
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Proxy de mídia do Instagram
+      tags:
+      - Instagram
+  /instagram/accounts/{id}/media/{mediaId}/comments:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.PageResponse-instagram_CommentResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar comentários de uma publicação
+      tags:
+      - Instagram
+  /instagram/oauth/start:
+    get:
+      description: Retorna a URL de autorização do Instagram para conectar uma conta
+        profissional.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/instagram.ConnectStartResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Iniciar conexão de conta do Instagram
+      tags:
+      - Instagram
   /issues:
     get:
       description: Retorna os chamados do workspace, com paginação, ordenação e filtros
@@ -10646,6 +10091,12 @@ paths:
       summary: Obter atalho pelo gatilho
       tags:
       - Atalhos de Mensagem
+  /oauth/instagram/callback:
+    get:
+      responses: {}
+      summary: Callback de conexão do Instagram
+      tags:
+      - Instagram
   /oauth/meta/embedded:
     get:
       description: Renderiza a página de cadastro incorporado (Embedded Signup) da
@@ -11895,6 +11346,115 @@ paths:
       summary: Definir visão padrão
       tags:
       - Visões Salvas
+  /scheduled-messages:
+    get:
+      description: Lista as mensagens agendadas de todo o workspace, com paginação.
+      parameters:
+      - description: Filtro de status separado por vírgula
+        in: query
+        name: status
+        type: string
+      - description: Página (padrão 1)
+        in: query
+        name: page
+        type: integer
+      - description: Itens por página (padrão 50, máximo 200)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/scheduledmessage.WorkspaceScheduledMessagesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar mensagens agendadas do workspace
+      tags:
+      - Mensagens Agendadas
+  /scheduled-messages/{id}:
+    delete:
+      description: Cancela uma mensagem ainda pendente. Uma mensagem já enviada não
+        pode ser cancelada — o cliente já a recebeu.
+      parameters:
+      - description: ID da mensagem agendada
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Cancelada
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: A mensagem já foi enviada ou já não está pendente
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancelar uma mensagem agendada
+      tags:
+      - Mensagens Agendadas
+    patch:
+      consumes:
+      - application/json
+      description: Altera o horário de uma mensagem ainda pendente. O novo horário
+        é validado contra a janela de atendimento como ela está agora.
+      parameters:
+      - description: ID da mensagem agendada
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Novo horário
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/scheduledmessage.RescheduleMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/scheduledmessage.ScheduledMessageEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: A mensagem já foi enviada, cancelada ou está em envio
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/scheduledmessage.WindowErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reagendar uma mensagem
+      tags:
+      - Mensagens Agendadas
   /short-links:
     get:
       description: Lista os links curtos do workspace, com paginação e filtro opcional
@@ -12187,305 +11747,6 @@ paths:
       summary: Estatísticas de links curtos
       tags:
       - Links Curtos
-  /sip-trunks:
-    get:
-      description: Retorna os troncos SIP acessíveis ao workspace (próprios e os de
-        visibilidade global). Administradores recebem todos os troncos. Suporta paginação
-        por page e pageSize.
-      parameters:
-      - description: Número da página (padrão 1)
-        in: query
-        name: page
-        type: integer
-      - description: Itens por página (padrão 20, máximo 200)
-        in: query
-        name: pageSize
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar troncos SIP
-      tags:
-      - Troncos SIP
-    post:
-      consumes:
-      - application/json
-      description: Cria um novo tronco SIP no workspace atual. As credenciais informadas
-        são validadas e o usuário que cria fica registrado como proprietário do tronco.
-      parameters:
-      - description: Dados do tronco a criar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/sip_trunk.CreateTrunkInput'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/sip_trunk.SIPTrunk'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Criar tronco SIP
-      tags:
-      - Troncos SIP
-  /sip-trunks/{trunkId}:
-    delete:
-      description: Exclui um tronco SIP do workspace atual.
-      parameters:
-      - description: ID do tronco SIP
-        in: path
-        name: trunkId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Remover tronco SIP
-      tags:
-      - Troncos SIP
-    get:
-      description: Retorna os detalhes de um tronco SIP. Credenciais e dados sensíveis
-        são omitidos quando o solicitante não é o proprietário do tronco.
-      parameters:
-      - description: ID do tronco SIP
-        in: path
-        name: trunkId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/sip_trunk.SIPTrunk'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter tronco SIP
-      tags:
-      - Troncos SIP
-    put:
-      consumes:
-      - application/json
-      description: Atualiza os dados de um tronco SIP do workspace. Todos os campos
-        são opcionais; apenas os campos informados são alterados.
-      parameters:
-      - description: ID do tronco SIP
-        in: path
-        name: trunkId
-        required: true
-        type: string
-      - description: Campos do tronco a atualizar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/sip_trunk.UpdateTrunkInput'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/sip_trunk.SIPTrunk'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Atualizar tronco SIP
-      tags:
-      - Troncos SIP
-  /sip-trunks/{trunkId}/enable:
-    put:
-      consumes:
-      - application/json
-      description: Ativa ou desativa um tronco SIP do workspace conforme o campo enabled
-        informado.
-      parameters:
-      - description: ID do tronco SIP
-        in: path
-        name: trunkId
-        required: true
-        type: string
-      - description: Estado desejado do tronco
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/siptrunk.EnableTrunkRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/sip_trunk.SIPTrunk'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Ativar ou desativar tronco SIP
-      tags:
-      - Troncos SIP
-  /sip-trunks/{trunkId}/status:
-    get:
-      description: Retorna o status de registro atual de um tronco SIP. A mensagem
-        de erro é omitida quando o solicitante não é o proprietário do tronco.
-      parameters:
-      - description: ID do tronco SIP
-        in: path
-        name: trunkId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter status do tronco SIP
-      tags:
-      - Troncos SIP
-  /sip-trunks/codecs:
-    get:
-      description: Retorna o catálogo de codecs de áudio que um tronco pode selecionar,
-        na ordem de preferência padrão do sistema.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/sip_trunk.CodecInfo'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar codecs suportados
-      tags:
-      - Troncos SIP
   /stages:
     get:
       description: Retorna as etapas do pipeline de conversas do workspace, na ordem
@@ -13055,90 +12316,6 @@ paths:
       summary: Atualizar caixa de atendimento
       tags:
       - Caixas de atendimento
-  /telephony/board:
-    get:
-      description: Retorna a foto ao vivo das posições de atendimento (humanos e IA),
-        capacidade de canais simultâneos e profundidade de fila. Lido apenas do Redis,
-        sem consulta ao banco.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/telephony.BoardSnapshotResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Painel de concorrência ao vivo
-      tags:
-      - Telefonia
-  /telephony/overview:
-    get:
-      description: 'Retorna os indicadores do painel operacional de telefonia: volume
-        de chamadas, fila, ocupação, nível de serviço e voz por IA, agregados a partir
-        do CDR. Aceita filtros opcionais por período, direção, tipo, campanha, agente
-        e membro.'
-      parameters:
-      - description: Data inicial no formato AAAA-MM-DD
-        in: query
-        name: date_from
-        type: string
-      - description: Data final no formato AAAA-MM-DD
-        in: query
-        name: date_to
-        type: string
-      - description: Direção da chamada (inbound ou outbound)
-        in: query
-        name: direction
-        type: string
-      - description: Tipo de chamada (crm, trunk_inbound, trunk_outbound)
-        in: query
-        name: call_type
-        type: string
-      - description: Filtrar por campanha
-        in: query
-        name: campaign_id
-        type: string
-      - description: Filtrar por agente (humano ou IA)
-        in: query
-        name: agent_id
-        type: string
-      - description: Filtrar por membro (usuário do discador)
-        in: query
-        name: member_id
-        type: string
-      - description: Limiar de nível de serviço em segundos (1 a 300)
-        in: query
-        name: service_level_seconds
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/telephony.OverviewResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Painel de telefonia (VoIP / discador)
-      tags:
-      - Telefonia
   /text-refiner/models:
     get:
       description: Retorna os modelos de linguagem disponíveis para o refinamento

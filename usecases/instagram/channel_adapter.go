@@ -79,16 +79,22 @@ func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 // The window is a sliding deadline anchored on the contact's last inbound
 // message, so it reopens every time they write to us. Reporting expiresAt lets
 // the UI explain *why* the composer is disabled instead of failing the send.
-func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (bool, *time.Time, error) {
+func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
-		return false, nil, conversation.ErrNoAdapterForEntryType
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
 	if ec.LastInboundAt == nil {
-		// No inbound message ever: Instagram forbids initiating a conversation.
-		return false, nil, nil
+		// No inbound message ever: Instagram forbids initiating a conversation,
+		// and no amount of waiting changes that — only the customer writing does.
+		return conversation.ClosedWindow(conversation.WindowReasonNoInbound), nil
 	}
+
 	expires := ec.LastInboundAt.Add(a.caps.OutboundWindow)
-	return time.Now().UTC().Before(expires), &expires, nil
+	if time.Now().UTC().Before(expires) {
+		return conversation.OpenWindow(&expires), nil
+	}
+	// A real clock ran out. This is the one reason that reopens on its own.
+	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
@@ -231,11 +237,11 @@ func (a *channelAdapter) sendableAccount(ctx context.Context, ec *conversation.E
 }
 
 func (a *channelAdapter) assertWindowOpen(ctx context.Context, ec *conversation.EntryContext) error {
-	open, _, err := a.WindowState(ctx, ec)
+	window, err := a.WindowState(ctx, ec)
 	if err != nil {
 		return err
 	}
-	if !open {
+	if !window.Open {
 		return conversation.ErrOutboundWindowClosed
 	}
 	return nil

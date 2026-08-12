@@ -49,7 +49,21 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.services.conversationAuthImpl = impl
 	}
 
-	c.services.conversationHub = wsdelivery.NewConversationHub(c.services.conversationAuth, c.repositories.user, c.redisProvider.SharedState(), c.replicaID, c.cfg.PublicReplicaURL)
+	// Sending has a construction cycle: the hub needs the send use case, which
+	// needs the message sender, which needs the hub to broadcast through. The
+	// late binding is confined to this one object so every consumer around the
+	// ring still takes plain constructor injection. initConversationSenders
+	// points it at the real use case.
+	c.services.liveOperatorSend = conversation_domain.NewLiveOperatorSend()
+
+	c.services.conversationHub = wsdelivery.NewConversationHub(
+		c.services.conversationAuth,
+		c.repositories.user,
+		c.services.liveOperatorSend,
+		c.redisProvider.SharedState(),
+		c.replicaID,
+		c.cfg.PublicReplicaURL,
+	)
 	c.services.conversationHub.SetWSMetrics(c.services.metrics)
 
 	historyProvider := conversation_usecase.NewHistoryProviderService(
@@ -179,6 +193,21 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHub.SetAssignmentRepo(assignmentRepo)
 	c.services.conversationHub.SetAssignmentService(c.services.assignmentService)
 	c.services.conversationHub.SetAISessionEnder(c.services.aiAttendanceService)
+	// Everything a delivered human reply means to the conversation, shared by
+	// every send surface. Required dependencies are validated here, so a missing
+	// one stops the boot instead of silently costing every reply its status
+	// transition and its timeline entry.
+	operatorSendFinalizer, err := conversation_usecase.NewOperatorSendFinalizer(
+		conversationStatusUpdater,
+		workspaceResolver,
+		eventLoggerEarly,
+		c.services.aiAttendanceService,
+		InitialStageAssigner,
+	)
+	if err != nil {
+		log.Fatalf("[container] %v", err)
+	}
+	c.services.operatorSendFinalizer = operatorSendFinalizer
 	// Presence: publish only (no inline Transition/DB on WS register).
 	c.services.conversationHub.SetPresenceRecorder(crm_telemetry_usecase.NewPresenceAdapter(telemetryPub))
 	c.services.conversationHub.SetWorkspaceConfigRepo(c.repositories.workspaceConfig)
@@ -280,6 +309,19 @@ func (c *Container) initConversationSenders() {
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	c.services.messageSender = messageSender
 
+	// Close the send ring: the hub was constructed with the live wrapper, and
+	// this is the point where the real use case exists to fill it.
+	operatorSend, err := conversation_usecase.NewOperatorSendUseCase(
+		messageSender,
+		c.repositories.user,
+		c.services.operatorSendFinalizer,
+	)
+	if err != nil {
+		log.Fatalf("[container] %v", err)
+	}
+	c.services.operatorSend = operatorSend
+	c.services.liveOperatorSend.Use(operatorSend)
+
 	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
 	// this serves every adapter-backed channel so a channel gains an agent by
 	// wiring rather than by growing AI code.
@@ -326,7 +368,6 @@ func (c *Container) startConversationHub() {
 		)
 	}
 
-	c.services.conversationHub.SetMessageSender(messageSender)
 	c.services.requestCallPermission = messageSender
 
 	// Department-scoped guard for manual conversation assignment (resolved after

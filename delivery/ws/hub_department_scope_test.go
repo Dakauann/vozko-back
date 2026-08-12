@@ -114,7 +114,7 @@ func TestBroadcastEntryRemovedLocal_FiltersUnauthorizedAndViewOthersConnections(
 		},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	authorizedConn := &WSConnection{ID: "conn-1", UserID: "authorized-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
 	viewOthersConn := &WSConnection{ID: "conn-2", UserID: "view-others-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
 	blockedConn := &WSConnection{ID: "conn-3", UserID: "blocked-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
@@ -158,7 +158,7 @@ func TestBroadcastConnectedUsersToWorkspace_GlobalMemberSeesOnlyRelevantDepartme
 		},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	viewerConn := &WSConnection{ID: "viewer", UserID: "viewer", WorkspaceID: "ws-1", DepartmentID: "dept-1", ViewMode: "global", Send: make(chan []byte, 1)}
 	sameDeptConn := &WSConnection{ID: "same-dept", UserID: "same-dept", WorkspaceID: "ws-1", DepartmentID: "dept-1", ViewMode: "global", Send: make(chan []byte, 1)}
 	otherDeptConn := &WSConnection{ID: "other-dept", UserID: "other-dept", WorkspaceID: "ws-1", DepartmentID: "dept-2", ViewMode: "global", Send: make(chan []byte, 1)}
@@ -207,7 +207,7 @@ func TestBroadcastConnectedUsersToWorkspace_CampaignViewShowsUsersWhoCanAccessCa
 		},
 	}
 
-	hub := NewConversationHub(authorizer, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
 	viewerConn := &WSConnection{ID: "viewer", UserID: "viewer", WorkspaceID: "ws-1", CampaignID: "camp-1", CampaignType: "whatsapp", ViewMode: "campaign", Send: make(chan []byte, 1)}
 	sameCampaignConn := &WSConnection{ID: "same-campaign", UserID: "same-campaign", WorkspaceID: "ws-1", CampaignID: "camp-1", CampaignType: "whatsapp", ViewMode: "campaign", Send: make(chan []byte, 1)}
 	globalSameScopeConn := &WSConnection{ID: "global-same-scope", UserID: "global-same-scope", WorkspaceID: "ws-1", DepartmentID: "dept-1", ViewMode: "global", Send: make(chan []byte, 1)}

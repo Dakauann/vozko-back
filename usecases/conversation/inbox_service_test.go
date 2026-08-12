@@ -40,8 +40,8 @@ func (p *inboxServiceTestHistoryProvider) GetEntryInfo(string, string) (string, 
 func (p *inboxServiceTestHistoryProvider) ResolveSenderIdentity(string, string, *conversation.Message) {
 }
 
-func (p *inboxServiceTestHistoryProvider) GetWindowStatusForEntry(string, string) (bool, *time.Time) {
-	return false, nil
+func (p *inboxServiceTestHistoryProvider) GetWindowStatusForEntry(string, string) conversation.WindowState {
+	return conversation.ClosedWindow(conversation.WindowReasonExpired)
 }
 
 func (p *inboxServiceTestHistoryProvider) GetInboxEntries(string, string, string, string, int, int) ([]conversation.InboxEntry, int64, error) {

@@ -92,11 +92,11 @@ func (s *channelSender) SendText(
 
 	// The window is the channel's own rule, read from the same adapter the CRM
 	// composer reads, so a workflow can never send where an operator could not.
-	open, _, err := adapter.WindowState(ctx, ec)
+	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
 	}
-	if !open {
+	if !window.Open {
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, message withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
@@ -178,11 +178,11 @@ func (s *channelSender) SendMedia(
 		return nil, err
 	}
 
-	open, _, err := adapter.WindowState(ctx, ec)
+	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
 	}
-	if !open {
+	if !window.Open {
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, media withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
@@ -312,11 +312,11 @@ func (s *channelSender) SendInteractive(
 		return nil, err
 	}
 
-	open, _, err := base.WindowState(ctx, ec)
+	window, err := base.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
 	}
-	if !open {
+	if !window.Open {
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, prompt withheld",
 			run.ID, run.EntryType, run.EntryID)
 		return nil, nil
@@ -441,11 +441,11 @@ func (s *channelSender) SendSegments(
 	if err != nil {
 		return false, err
 	}
-	open, _, err := adapter.WindowState(ctx, ec)
+	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return false, err
 	}
-	if !open {
+	if !window.Open {
 		log.Printf("[workflow][run:%s] channel %s outbound window closed, %d segment(s) withheld",
 			run.ID, run.EntryType, len(segments))
 		return false, nil

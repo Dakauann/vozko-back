@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"path"
 	"strings"
@@ -693,6 +694,14 @@ func (uc *HandleWebhookUseCase) storeAttachment(
 	stored := &storedAttachment{mediaType: mediaType, url: url}
 	if uc.convMedia != nil {
 		row := &conversation.ConversationMedia{
+			// The id is minted HERE, as Telegram, Instagram and the upload
+			// endpoint all do. The repository maps this value onto a separate
+			// schema struct and the database hook stamps its id onto THAT copy,
+			// so a row created without one leaves this object's ID empty — and
+			// the message below then links to "" . The bytes upload, the row is
+			// written, and the CRM still renders a bare placeholder next to an
+			// object nothing can reference.
+			ID:               uuid.NewString(),
 			EntryID:          conv.ID,
 			EntryType:        shared.EntryTypeUnofficialWhatsApp,
 			Type:             mediaType,
@@ -1036,10 +1045,15 @@ func (uc *HandleWebhookUseCase) broadcastEntryUpdate(entryID string) {
 // ---------------------------------------------------------------- helpers
 
 // messageTypeFor maps an event onto the CRM's message vocabulary.
+//
+// The type describes CONTENT, never direction. Direction is its own column and
+// is set explicitly on every message this channel records, so encoding it in the
+// type buys nothing and costs the content: an outbound branch here returned
+// `operator` for everything, so a photo the owner sent from their phone read
+// back as a plain note, and a voice note lost the audio type that routes it into
+// speech-to-text. Telegram and Instagram still make that trade; this channel
+// keeps both facts.
 func messageTypeFor(ev *uw.Event) conversation.MessageType {
-	if ev.Outbound() {
-		return conversation.MessageTypeOperator
-	}
 	switch ev.Media {
 	case uw.MediaVoice, uw.MediaAudio:
 		// Audio, not media: the audio type is what routes a voice note into the

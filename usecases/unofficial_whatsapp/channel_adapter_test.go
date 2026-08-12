@@ -99,16 +99,16 @@ func TestSendTextStampsTheEchoTag(t *testing.T) {
 func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 	future := time.Now().UTC().Add(2 * time.Hour)
 
-	t.Run("live session with a reachable contact is open", func(t *testing.T) {
+	t.Run("live session with a reachable contact is window.Open", func(t *testing.T) {
 		adapter, _, ec, _ := adapterFixture(t, nil)
-		open, expires, err := adapter.WindowState(context.Background(), ec)
-		if err != nil || !open {
-			t.Fatalf("open = %v, err = %v", open, err)
+		window, err := adapter.WindowState(context.Background(), ec)
+		if err != nil || !window.Open {
+			t.Fatalf("window.Open = %v, err = %v", window.Open, err)
 		}
 		// No clock on this channel: an expiry here would make the UI render a
 		// countdown that means nothing.
-		if expires != nil {
-			t.Errorf("expiry = %v; this channel has no messaging window", expires)
+		if window.ExpiresAt != nil {
+			t.Errorf("expiry = %v; this channel has no messaging window", window.ExpiresAt)
 		}
 	})
 
@@ -116,11 +116,11 @@ func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 		adapter, _, ec, _ := adapterFixture(t, func(i *uw.Instance, _ *uw.Contact) {
 			i.Status = uw.StatusDisconnected
 		})
-		open, expires, _ := adapter.WindowState(context.Background(), ec)
-		if open {
+		window, _ := adapter.WindowState(context.Background(), ec)
+		if window.Open {
 			t.Error("a dead session must close the composer")
 		}
-		if expires != nil {
+		if window.ExpiresAt != nil {
 			t.Error("a dead session has no expiry: it needs a reconnect, not a wait")
 		}
 	})
@@ -129,11 +129,11 @@ func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 		adapter, _, ec, _ := adapterFixture(t, func(i *uw.Instance, _ *uw.Contact) {
 			i.Restriction = uw.Restriction{Until: &future}
 		})
-		open, expires, _ := adapter.WindowState(context.Background(), ec)
-		if open {
+		window, _ := adapter.WindowState(context.Background(), ec)
+		if window.Open {
 			t.Error("a restricted number must not send")
 		}
-		if expires == nil {
+		if window.ExpiresAt == nil {
 			t.Fatal("a restriction has an expiry, and the UI needs it to say when it lifts")
 		}
 	})
@@ -142,11 +142,11 @@ func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 		adapter, _, ec, _ := adapterFixture(t, func(_ *uw.Instance, c *uw.Contact) {
 			c.Blocked = true
 		})
-		open, expires, _ := adapter.WindowState(context.Background(), ec)
-		if open {
+		window, _ := adapter.WindowState(context.Background(), ec)
+		if window.Open {
 			t.Error("a blocked contact must close the composer")
 		}
-		if expires != nil {
+		if window.ExpiresAt != nil {
 			t.Error("being blocked has no expiry: nothing we do reopens it")
 		}
 	})
@@ -205,9 +205,12 @@ func TestSendCachesAWhatsAppRestriction(t *testing.T) {
 	}
 
 	// The next window check must already know, without another provider call.
-	open, _, _ := adapter.WindowState(context.Background(), ec)
-	if open {
+	cached, _ := adapter.WindowState(context.Background(), ec)
+	if cached.Open {
 		t.Error("the restriction was not cached; the next send would hit the provider again")
+	}
+	if cached.Reason != conversation.WindowReasonAccountRestricted {
+		t.Errorf("reason = %q, want account_restricted", cached.Reason)
 	}
 }
 

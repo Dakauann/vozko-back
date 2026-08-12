@@ -227,7 +227,7 @@ func TestGetWindowStatusForEntry_UnknownChannelFailsClosed(t *testing.T) {
 		open:      true,
 	}))
 	for _, entryType := range []string{"support", "email", "", "INSTAGRAM"} {
-		if open, _ := svc.GetWindowStatusForEntry("x", entryType); open {
+		if svc.GetWindowStatusForEntry("x", entryType).Open {
 			t.Errorf("entry type %q must fail closed", entryType)
 		}
 	}
@@ -241,7 +241,8 @@ func TestGetWindowStatusForEntry_InstagramClosedWindow(t *testing.T) {
 		entryType: shared.EntryTypeInstagram,
 		open:      false,
 	}))
-	open, expiresAt := svc.GetWindowStatusForEntry("ig-1", "instagram")
+	window := svc.GetWindowStatusForEntry("ig-1", "instagram")
+	open, expiresAt := window.Open, window.ExpiresAt
 	if open {
 		t.Error("an elapsed Instagram window must report closed")
 	}

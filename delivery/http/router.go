@@ -40,6 +40,7 @@ import (
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	savedviewhttp "vozko/delivery/http/savedview"
+	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
@@ -126,6 +127,7 @@ type router struct {
 	crmBulkHandler                 *crmbulkhttp.CRMBulkHandler
 	labelHandler                   *labelhttp.LabelHandler
 	messageShortcutHandler         *messageshortcuthttp.MessageShortcutHandler
+	scheduledMessageHandler        *scheduledmessagehttp.ScheduledMessageHandler
 	textRefinerHandler             *textrefinerhttp.TextRefinerHandler
 	attendanceHandler              *attendancehttp.AttendanceHandler
 	knowledgeBaseHandler           *handlers.KnowledgeBaseHandler
@@ -229,6 +231,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	crmBulkHandler *crmbulkhttp.CRMBulkHandler,
 	labelHandler *labelhttp.LabelHandler,
 	messageShortcutHandler *messageshortcuthttp.MessageShortcutHandler,
+	scheduledMessageHandler *scheduledmessagehttp.ScheduledMessageHandler,
 	textRefinerHandler *textrefinerhttp.TextRefinerHandler,
 	attendanceHandler *attendancehttp.AttendanceHandler,
 	knowledgeBaseHandler *handlers.KnowledgeBaseHandler,
@@ -329,6 +332,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		crmBulkHandler:                 crmBulkHandler,
 		labelHandler:                   labelHandler,
 		messageShortcutHandler:         messageShortcutHandler,
+		scheduledMessageHandler:        scheduledMessageHandler,
 		textRefinerHandler:             textRefinerHandler,
 		attendanceHandler:              attendanceHandler,
 		knowledgeBaseHandler:           knowledgeBaseHandler,
@@ -492,6 +496,7 @@ func (r *router) setupRoutes() {
 	r.setupCustomFieldRoutes(protected)
 	r.setupLabelRoutes(protected)
 	r.setupMessageShortcutRoutes(protected)
+	r.setupScheduledMessageRoutes(protected)
 	r.setupTextRefinerRoutes(protected)
 	r.setupAttendanceRoutes(protected)
 	r.setupWorkspaceRoutes(protected)
@@ -1022,6 +1027,10 @@ func (r *router) setupLabelRoutes(protected *mux.Router) {
 
 func (r *router) setupMessageShortcutRoutes(protected *mux.Router) {
 	messageshortcuthttp.RegisterRoutes(protected, r.messageShortcutHandler, r.ac)
+}
+
+func (r *router) setupScheduledMessageRoutes(protected *mux.Router) {
+	scheduledmessagehttp.RegisterRoutes(protected, r.scheduledMessageHandler, r.ac)
 }
 
 func (r *router) setupTextRefinerRoutes(protected *mux.Router) {

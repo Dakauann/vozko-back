@@ -83,7 +83,7 @@ func TestRouletteEligibility_MultiDepartmentMember_IsEligibleInAllDepartments(t 
 	}
 
 	authorizer := &hubDepartmentTestAuthorizer{} // roulette=true, not owner/admin, is member
-	hub := NewConversationHub(authorizer, nil, &eligibilityFakeSharedState{}, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.SetWorkspaceDepartmentRepo(deptRepo)
 
 	// All three operators are simply online in ws-1.
@@ -114,7 +114,7 @@ func TestRouletteEligibility_MultiDepartmentMember_CurrentViewDoesNotRestrict(t 
 	}
 
 	authorizer := &hubDepartmentTestAuthorizer{}
-	hub := NewConversationHub(authorizer, nil, &eligibilityFakeSharedState{}, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.SetWorkspaceDepartmentRepo(deptRepo)
 
 	// bob is currently *viewing* dept-a (conn.DepartmentID = "dept-a").

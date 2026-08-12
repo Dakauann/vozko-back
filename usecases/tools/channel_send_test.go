@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"vozko/domain/channel"
 	"vozko/domain/conversation"
@@ -35,8 +34,11 @@ func (a *toolAdapter) ResolveEntry(_ context.Context, id string) (*conversation.
 	}
 	return &conversation.EntryContext{EntryID: id, EntryType: a.entryType, ContactRef: "c1"}, nil
 }
-func (a *toolAdapter) WindowState(context.Context, *conversation.EntryContext) (bool, *time.Time, error) {
-	return a.windowOpen, nil, a.windowErr
+func (a *toolAdapter) WindowState(context.Context, *conversation.EntryContext) (conversation.WindowState, error) {
+	if a.windowOpen {
+		return conversation.OpenWindow(nil), a.windowErr
+	}
+	return conversation.ClosedWindow(conversation.WindowReasonExpired), a.windowErr
 }
 func (a *toolAdapter) SendText(context.Context, *conversation.EntryContext, conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	return &conversation.SendOutcome{ProviderMessageID: "t1"}, nil
