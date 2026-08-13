@@ -14,6 +14,9 @@ func RegisterRoutes(
 	ac func(workspace_domain.Resource, workspace_domain.Action, http.HandlerFunc) http.HandlerFunc,
 ) {
 	wc := workspace_domain.ResourceWhatsAppCampaigns
+	// Workspace-wide first: it is the more specific literal path, and reading it
+	// requires exactly what reading the disparos summary it mirrors requires.
+	protected.HandleFunc("/whatsapp/campaigns/entries/export", ac(wc, workspace_domain.ActionRead, h.ExportWhatsAppWorkspaceEntries)).Methods(http.MethodGet)
 	protected.HandleFunc("/whatsapp/campaigns/{id}/entries/export", ac(wc, workspace_domain.ActionRead, h.ExportWhatsAppEntries)).Methods(http.MethodGet)
 
 	// Channels with no campaign export per account, or workspace-wide when no

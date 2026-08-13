@@ -8,6 +8,7 @@ import (
 	instagram_repository "vozko/infra/repositories/instagram"
 	telegram_repository "vozko/infra/repositories/telegram"
 	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
+	wc_entry_repository "vozko/infra/repositories/whatsapp_campaign_entry"
 	conversation_usecase "vozko/usecases/conversation"
 	export_usecase "vozko/usecases/export"
 )
@@ -96,10 +97,13 @@ type entryResolver interface {
 // lived on another channel simply could not get their data out. Registering the
 // listers here keeps that a container concern rather than an import of every
 // channel's repositories into the export usecase.
+//
+// WhatsApp is registered the same way as the rest. It used to be hard-wired
+// into the usecase as the one channel that could not be a lister, which is what
+// made "export every campaign at once" a second code path instead of the same
+// one with an empty container id.
 func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCase {
 	uc := export_usecase.NewExportEntriesUseCase(
-		c.repositories.wcEntry,
-		c.repositories.lead,
 		c.repositories.analysis,
 		c.repositories.stage,
 	)
@@ -110,6 +114,8 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	if !ok {
 		return uc
 	}
+	setter.SetChannelEntryLister(export_domain.EntryTypeWhatsApp,
+		wc_entry_repository.NewExportRepository(c.db))
 	if c.instagram != nil && c.instagram.Enabled {
 		setter.SetChannelEntryLister(export_domain.EntryTypeInstagram, instagram_repository.NewExportRepository(c.db))
 	}

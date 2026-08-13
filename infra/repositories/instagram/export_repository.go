@@ -1,6 +1,7 @@
 package instagram_repository
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -24,9 +25,17 @@ func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 
 // ListForExport lists one account's conversations, or the whole workspace when
 // no account is named.
-func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]export.ChannelEntry, error) {
-	if strings.TrimSpace(workspaceID) == "" {
-		return nil, nil
+//
+// Instagram has no send statuses and no campaign period, so the corresponding
+// Scope fields are not applicable here and are ignored rather than faked.
+func (r *exportRepository) ListForExport(
+	ctx context.Context,
+	scope export.Scope,
+	emit func(export.ChannelEntry) error,
+) error {
+	workspaceID := strings.TrimSpace(scope.WorkspaceID)
+	if workspaceID == "" {
+		return nil
 	}
 
 	type row struct {
@@ -39,7 +48,7 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 		IGSID     string    `gorm:"column:igsid"`
 	}
 
-	query := r.db.
+	query := r.db.WithContext(ctx).
 		Table("instagram_conversations igc").
 		Select(`igc.id AS entry_id,
 			COALESCE(NULLIF(igc.conversation_status, ''), 'new') AS status,
@@ -52,16 +61,15 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 		Where("igc.workspace_id = ?", workspaceID).
 		Where("igc.deleted_at IS NULL")
 
-	if strings.TrimSpace(accountID) != "" {
+	if accountID := strings.TrimSpace(scope.ContainerID); accountID != "" {
 		query = query.Where("igc.ig_account_id = ?", accountID)
 	}
 
 	var rows []row
 	if err := query.Order("igc.created_at DESC").Scan(&rows).Error; err != nil {
-		return nil, err
+		return err
 	}
 
-	out := make([]export.ChannelEntry, 0, len(rows))
 	for _, rw := range rows {
 		// An Instagram contact has no phone number, so the handle fills the
 		// identity slot, that is what an operator recognises.
@@ -74,14 +82,16 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 			name = identity
 		}
 
-		out = append(out, export.ChannelEntry{
+		if err := emit(export.ChannelEntry{
 			EntryID:   rw.EntryID,
 			Number:    identity,
 			Name:      name,
 			Status:    rw.Status,
 			CreatedAt: rw.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: rw.UpdatedAt.Format(time.RFC3339),
-		})
+		}); err != nil {
+			return err
+		}
 	}
-	return out, nil
+	return nil
 }

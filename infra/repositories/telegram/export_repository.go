@@ -1,6 +1,7 @@
 package telegram_repository
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,17 @@ func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 
 // ListForExport lists one account's conversations, or the whole workspace when
 // no account is named.
-func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]export.ChannelEntry, error) {
-	if strings.TrimSpace(workspaceID) == "" {
-		return nil, nil
+//
+// Telegram has no send statuses and no campaign period, so the corresponding
+// Scope fields are not applicable here and are ignored rather than faked.
+func (r *exportRepository) ListForExport(
+	ctx context.Context,
+	scope export.Scope,
+	emit func(export.ChannelEntry) error,
+) error {
+	workspaceID := strings.TrimSpace(scope.WorkspaceID)
+	if workspaceID == "" {
+		return nil
 	}
 
 	type row struct {
@@ -43,7 +52,7 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 		TGUserID    int64     `gorm:"column:tg_user_id"`
 	}
 
-	query := r.db.
+	query := r.db.WithContext(ctx).
 		Table("telegram_conversations tgc").
 		Select(`tgc.id AS entry_id,
 			COALESCE(NULLIF(tgc.conversation_status, ''), 'new') AS status,
@@ -59,16 +68,15 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 		Where("tgc.workspace_id = ?", workspaceID).
 		Where("tgc.deleted_at IS NULL")
 
-	if strings.TrimSpace(accountID) != "" {
+	if accountID := strings.TrimSpace(scope.ContainerID); accountID != "" {
 		query = query.Where("tgc.account_id = ?", accountID)
 	}
 
 	var rows []row
 	if err := query.Order("tgc.created_at DESC").Scan(&rows).Error; err != nil {
-		return nil, err
+		return err
 	}
 
-	out := make([]export.ChannelEntry, 0, len(rows))
 	for _, rw := range rows {
 		name := strings.TrimSpace(strings.TrimSpace(rw.FirstName) + " " + strings.TrimSpace(rw.LastName))
 		if name == "" {
@@ -89,14 +97,16 @@ func (r *exportRepository) ListForExport(workspaceID, accountID string) ([]expor
 			identity = strconv.FormatInt(rw.TGUserID, 10)
 		}
 
-		out = append(out, export.ChannelEntry{
+		if err := emit(export.ChannelEntry{
 			EntryID:   rw.EntryID,
 			Number:    identity,
 			Name:      name,
 			Status:    rw.Status,
 			CreatedAt: rw.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: rw.UpdatedAt.Format(time.RFC3339),
-		})
+		}); err != nil {
+			return err
+		}
 	}
-	return out, nil
+	return nil
 }

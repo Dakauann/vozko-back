@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"vozko/delivery/http/httpx"
 	workspace_department "vozko/domain/workspace/workspace_department"
 	"vozko/infra/http/middleware"
 )
@@ -29,41 +30,18 @@ func withDepartmentCreationScope(r *http.Request, explicitDepartmentID string) *
 	return r.WithContext(workspace_department.WithCreationScope(r.Context(), scope))
 }
 
+// The two below are thin aliases: the definitions moved to httpx so the export
+// package can apply the caller's department scope with exactly the same rule
+// this package does, instead of re-deriving it from the middleware and drifting.
+
 func departmentFilterIDs(r *http.Request) []string {
-	filter := middleware.GetDepartmentFilter(r)
-	if filter == nil {
-		return nil
-	}
-	return filter.EffectiveDepartmentIDs()
+	return httpx.DepartmentFilterIDs(r)
 }
 
 func shouldReturnEmptyDepartmentList(r *http.Request) bool {
-	filter := middleware.GetDepartmentFilter(r)
-	if filter == nil || !filter.ShouldFilter() {
-		return false
-	}
-	return len(filter.EffectiveDepartmentIDs()) == 0
+	return httpx.ShouldReturnEmptyDepartmentList(r)
 }
 
 func canAccessDepartment(r *http.Request, resourceDepartmentID string) bool {
-	filter := middleware.GetDepartmentFilter(r)
-	if filter == nil {
-		return true
-	}
-	ids := filter.EffectiveDepartmentIDs()
-	if resourceDepartmentID == "" {
-		if filter.IsOwnerOrAdmin {
-			return len(ids) == 0
-		}
-		return !filter.ShouldFilter()
-	}
-	if len(ids) == 0 {
-		return !filter.ShouldFilter() || filter.IsOwnerOrAdmin
-	}
-	for _, id := range ids {
-		if id == resourceDepartmentID {
-			return true
-		}
-	}
-	return false
+	return httpx.CanAccessDepartment(r, resourceDepartmentID)
 }

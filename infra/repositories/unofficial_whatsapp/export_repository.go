@@ -1,6 +1,7 @@
 package unofficial_whatsapp_repository
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -26,9 +27,18 @@ func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 
 // ListForExport lists one instance's conversations, or the whole workspace when
 // no instance is named.
-func (r *exportRepository) ListForExport(workspaceID, instanceID string) ([]export.ChannelEntry, error) {
-	if strings.TrimSpace(workspaceID) == "" {
-		return nil, nil
+//
+// A linked-device session has no send statuses and no campaign period, so the
+// corresponding Scope fields are not applicable here and are ignored rather
+// than faked.
+func (r *exportRepository) ListForExport(
+	ctx context.Context,
+	scope export.Scope,
+	emit func(export.ChannelEntry) error,
+) error {
+	workspaceID := strings.TrimSpace(scope.WorkspaceID)
+	if workspaceID == "" {
+		return nil
 	}
 
 	type row struct {
@@ -43,7 +53,7 @@ func (r *exportRepository) ListForExport(workspaceID, instanceID string) ([]expo
 		Name         string    `gorm:"column:name"`
 	}
 
-	query := r.db.
+	query := r.db.WithContext(ctx).
 		Table("unofficial_whatsapp_conversations uwc").
 		Select(`uwc.id AS entry_id,
 			COALESCE(NULLIF(uwc.conversation_status, ''), 'new') AS status,
@@ -59,16 +69,15 @@ func (r *exportRepository) ListForExport(workspaceID, instanceID string) ([]expo
 		Where("uwc.workspace_id = ?", workspaceID).
 		Where("uwc.deleted_at IS NULL")
 
-	if strings.TrimSpace(instanceID) != "" {
+	if instanceID := strings.TrimSpace(scope.ContainerID); instanceID != "" {
 		query = query.Where("uwc.instance_id = ?", instanceID)
 	}
 
 	var rows []row
 	if err := query.Order("uwc.created_at DESC").Scan(&rows).Error; err != nil {
-		return nil, err
+		return err
 	}
 
-	out := make([]export.ChannelEntry, 0, len(rows))
 	for _, rw := range rows {
 		// The same preference order the Contact entity uses for a display name,
 		// so an exported spreadsheet and the inbox agree on who someone is.
@@ -85,16 +94,18 @@ func (r *exportRepository) ListForExport(workspaceID, instanceID string) ([]expo
 			identity = "+" + identity
 		}
 
-		out = append(out, export.ChannelEntry{
+		if err := emit(export.ChannelEntry{
 			EntryID:   rw.EntryID,
 			Number:    identity,
 			Name:      name,
 			Status:    rw.Status,
 			CreatedAt: rw.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: rw.UpdatedAt.Format(time.RFC3339),
-		})
+		}); err != nil {
+			return err
+		}
 	}
-	return out, nil
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

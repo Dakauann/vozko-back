@@ -27,13 +27,69 @@ const (
 	SendStatusNotEligiblePossibleSpam SendStatus = "NOT_ELIGIBLE_POSSIBLE_SPAM"
 )
 
-func (s SendStatus) Valid() bool {
-	switch s {
-	case SendStatusPending, SendStatusSent, SendStatusDelivered, SendStatusRead, SendStatusFailed, SendStatusNotEligiblePossibleSpam:
-		return true
-	default:
-		return false
+// AllStatuses is the closed set of send statuses, and the single place a new
+// one gets added. Valid, NonDispatchStatuses and DispatchedStatuses all derive
+// from it, so a status can never be accepted by one and forgotten by another.
+func AllStatuses() []SendStatus {
+	return []SendStatus{
+		SendStatusPending,
+		SendStatusSent,
+		SendStatusDelivered,
+		SendStatusRead,
+		SendStatusFailed,
+		SendStatusNotEligiblePossibleSpam,
 	}
+}
+
+// NonDispatchStatuses are the buckets a workspace is never charged for:
+// not-yet-sent, spam-protection skips, and failed sends. This is the same
+// exclusion set StatusCounts.Dispatches subtracts, named once so the SQL that
+// filters billed volume and the domain that counts it cannot drift apart.
+func NonDispatchStatuses() []SendStatus {
+	return []SendStatus{
+		SendStatusPending,
+		SendStatusFailed,
+		SendStatusNotEligiblePossibleSpam,
+	}
+}
+
+// DispatchedStatuses are the entries that actually left our system: today
+// SENT, DELIVERED and READ. Derived subtractively from AllStatuses for the
+// reason spelled out on StatusCounts.Dispatches — a future billed status joins
+// this set automatically instead of being silently dropped from every export
+// and filter that asks for "what we sent".
+func DispatchedStatuses() []SendStatus {
+	excluded := make(map[SendStatus]struct{}, 3)
+	for _, s := range NonDispatchStatuses() {
+		excluded[s] = struct{}{}
+	}
+
+	out := make([]SendStatus, 0, len(AllStatuses()))
+	for _, s := range AllStatuses() {
+		if _, skip := excluded[s]; skip {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// StatusStrings renders a status set for a repository IN clause.
+func StatusStrings(statuses []SendStatus) []string {
+	out := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		out = append(out, string(s))
+	}
+	return out
+}
+
+func (s SendStatus) Valid() bool {
+	for _, known := range AllStatuses() {
+		if s == known {
+			return true
+		}
+	}
+	return false
 }
 
 func (s SendStatus) IsTerminal() bool {

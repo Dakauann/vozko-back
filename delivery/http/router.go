@@ -447,6 +447,7 @@ func (r *router) setupRoutes() {
 	r.setupMCPRoutes(protected)
 	r.setupKnowledgeBaseRoutes(protected)
 	r.setupShortLinkRoutes(protected)
+	r.setupExportRoutes(protected)
 	r.setupWorkspaceConfigRoutes(protected)
 	r.setupWorkspaceSubscriptionRoutes(protected)
 	r.setupWorkspaceAddonRoutes(protected)
@@ -925,6 +926,16 @@ func (r *router) setupAIChatRoutes(protected *mux.Router) {
 
 func (r *router) setupShortLinkRoutes(protected *mux.Router) {
 	shortlinkhttp.RegisterRoutes(protected, r.shortLinkHandler, r.ac)
+}
+
+// setupExportRoutes mounts the CSV export endpoints.
+//
+// These were built, wired into the container and threaded into this struct, but
+// never registered, so every export in the product answered 404 — and the
+// frontend reads a 404 from this path as "nothing to export", which told
+// operators their campaigns were empty. Covered by TestExportRoutesRegistered.
+func (r *router) setupExportRoutes(protected *mux.Router) {
+	exporthttp.RegisterRoutes(protected, r.exportHandler, r.ac)
 }
 
 func (r *router) setupShortLinkPublicRoutes() {

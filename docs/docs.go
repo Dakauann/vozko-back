@@ -11536,6 +11536,153 @@ const docTemplate = `{
                 }
             }
         },
+        "/whatsapp/campaigns/entries/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Exporta em CSV os leads de TODAS as campanhas do workspace de uma só vez, no mesmo recorte do resumo de disparos (período de criação da campanha, tipo e departamento). Use status para escolher os envios desejados — por exemplo status=SENT,DELIVERED,READ para os leads que foram enviados, entregues e lidos. Sem status, retorna todos. O arquivo inclui uma coluna campaign identificando a origem de cada linha e BOM UTF-8 para abertura correta no Excel.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Campanhas do WhatsApp"
+                ],
+                "summary": "Exportar leads dos disparos do WhatsApp (CSV)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Status dos envios (lista: SENT,DELIVERED,READ). Vazio = todos",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data inicial de criação da campanha (YYYY-MM-DD ou RFC3339)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data final de criação da campanha (YYYY-MM-DD ou RFC3339)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tipo de campanha (standard/organic). Vazio = todos",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por etapa",
+                        "name": "stageId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Buscar por número",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por interesse",
+                        "name": "interest",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por disposição",
+                        "name": "disposition",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por sentimento",
+                        "name": "sentiment",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por qualificação",
+                        "name": "qualification",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por próxima ação",
+                        "name": "nextAction",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filtrar por presença de análise",
+                        "name": "hasAnalysis",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Qualidade de atendimento mínima",
+                        "name": "attendanceQualityMin",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Qualidade de atendimento máxima",
+                        "name": "attendanceQualityMax",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Arquivo CSV dos leads",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/whatsapp/campaigns/{id}/entries/export": {
             "get": {
                 "security": [
@@ -11543,7 +11690,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Exporta em CSV as entradas (contatos) de uma campanha do WhatsApp do workspace, aplicando os filtros informados na query. O arquivo inclui BOM UTF-8 para abertura correta no Excel.",
+                "description": "Exporta em CSV as entradas (contatos) de uma campanha do WhatsApp do workspace, aplicando os filtros informados na query. O parâmetro status aceita múltiplos valores, separados por vírgula ou repetidos. O arquivo inclui BOM UTF-8 para abertura correta no Excel.",
                 "produces": [
                     "text/csv"
                 ],
@@ -11561,14 +11708,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filtrar por status da entrada",
+                        "description": "Filtrar por status da entrada (aceita lista: SENT,DELIVERED,READ)",
                         "name": "status",
                         "in": "query"
                     },
                     {
                         "type": "string",
                         "description": "Filtrar por etapa",
-                        "name": "StageID",
+                        "name": "stageId",
                         "in": "query"
                     },
                     {
@@ -11647,6 +11794,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -17404,6 +17557,10 @@ const docTemplate = `{
                 },
                 "unread_count": {
                     "type": "integer"
+                },
+                "window_closed_reason": {
+                    "description": "WindowClosedReason names WHY sending is blocked, so the composer can say\nsomething true instead of inferring it from the absence of an expiry.\nEmpty when the window is open. See WindowClosedReason.",
+                    "type": "string"
                 },
                 "window_expires_at": {
                     "type": "string"
