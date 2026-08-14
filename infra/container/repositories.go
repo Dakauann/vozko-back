@@ -35,6 +35,7 @@ import (
 	label_repository "vozko/infra/repositories/label"
 	lead_repository "vozko/infra/repositories/lead"
 	lead_campaign_send_repository "vozko/infra/repositories/lead_campaign_send"
+	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	lead_message_window_repository "vozko/infra/repositories/lead_message_window"
 	media_repository "vozko/infra/repositories/media"
 	msg_shortcut_repository "vozko/infra/repositories/message_shortcut"
@@ -127,6 +128,7 @@ func (c *Container) initRepositories() {
 		label:                   label_repository.NewRepository(c.db),
 		messageShortcut:         msg_shortcut_repository.NewRepository(c.db),
 		scheduledMessage:        scheduled_message_repository.NewRepository(c.db),
+		leadMemory:              lead_memory_repository.NewRepository(c.db),
 		workspace:               workspace_repository.NewCachedWorkspaceRepository(workspace_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		customRole:              workspace_repository.NewCustomRoleRepository(c.db),
 		attendance:              attendance_repository.New(c.db),

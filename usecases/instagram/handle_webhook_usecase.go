@@ -342,7 +342,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 
 	uc.enrichContact(ctx, account, contact)
 	uc.fireWorkflowTriggers(ctx, account, conv, text, quickReplySelection(msg))
-	uc.maybeReplyWithAgent(ctx, account, conv, text)
+	uc.maybeReplyWithAgent(ctx, account, contact, conv, text)
 	uc.scheduleAnalysis(account, conv)
 	return nil
 }
@@ -456,11 +456,18 @@ func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv 
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	ctx context.Context,
 	account *igdomain.Account,
+	contact *igdomain.Contact,
 	conv *igdomain.Conversation,
 	text string,
 ) {
 	if uc.aiReply == nil || account.AgentID == nil {
 		return
+	}
+	// The contact's CRM bridge, when cross-channel identity established one.
+	// Nil keeps lead-scoped features (memory) inert for this conversation.
+	var leadID *string
+	if contact != nil {
+		leadID = contact.LeadID
 	}
 	if _, err := uc.aiReply.Reply(ctx, conversation.AIReplyRequest{
 		WorkspaceID:           account.WorkspaceID,
@@ -470,6 +477,7 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		AgentResponsesEnabled: account.EnableAgentResponses,
 		AutomationEnabled:     conv.AutomationEnabled,
 		Text:                  text,
+		LeadID:                leadID,
 	}); err != nil {
 		log.Printf("[instagram] agent reply failed conversation=%s: %v", conv.ID, err)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
+	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/rag"
 	"vozko/domain/tools"
 	shared_usecase "vozko/usecases/shared"
@@ -34,7 +35,7 @@ func (s stubRegistry) ExecuteWithConfig(ctx context.Context, name string, config
 func (s stubRegistry) Handler(name string) (tools.Handler, bool) { return nil, false }
 
 func TestAssemble_PromptOrderingAndRAG(t *testing.T) {
-	a := New(nil, fakeRAG{results: []rag.QueryResult{{DocumentName: "precos", Content: "Admin: R$ 500", Score: 0.9}}})
+	a := New(nil, fakeRAG{results: []rag.QueryResult{{DocumentName: "precos", Content: "Admin: R$ 500", Score: 0.9}}}, nil)
 
 	ag := &agent.Agent{
 		ID:               "a1",
@@ -87,7 +88,7 @@ func TestAssemble_PromptOrderingAndRAG(t *testing.T) {
 
 func TestAssemble_ResolvesToolsAndStampsSeeds(t *testing.T) {
 	reg := stubRegistry{defs: []tools.Definition{{Name: "book_meeting"}}}
-	a := New(reg, fakeRAG{})
+	a := New(reg, fakeRAG{}, nil)
 
 	ag := &agent.Agent{
 		ID:              "a1",
@@ -116,10 +117,92 @@ func TestAssemble_ResolvesToolsAndStampsSeeds(t *testing.T) {
 }
 
 func TestAssemble_NoRAGWhenDisabled(t *testing.T) {
-	a := New(nil, fakeRAG{results: []rag.QueryResult{{Content: "SHOULD NOT APPEAR"}}})
+	a := New(nil, fakeRAG{results: []rag.QueryResult{{Content: "SHOULD NOT APPEAR"}}}, nil)
 	ag := &agent.Agent{MessagingPrompt: "hi"} // RAG disabled
 	out := a.Assemble(context.Background(), Request{Agent: ag, RAGQuery: "x"})
 	if strings.Contains(out.Input.SystemPrompt, "SHOULD NOT APPEAR") {
 		t.Fatalf("RAG injected despite disabled agent: %q", out.Input.SystemPrompt)
+	}
+}
+
+// --- lead memory block ---
+
+type stubMemoryList struct {
+	items []leadmemory.MemoryView
+}
+
+func (s stubMemoryList) Execute(ctx context.Context, in leadmemory.ListInput) (*leadmemory.ListResult, error) {
+	return &leadmemory.ListResult{Items: s.items, Total: int64(len(s.items))}, nil
+}
+
+func memoryItem(content string) leadmemory.MemoryView {
+	return leadmemory.MemoryView{LeadMemory: &leadmemory.LeadMemory{
+		ID:       "11111111-2222-4333-8444-555555555555",
+		Category: leadmemory.CategoryPreference,
+		Content:  content,
+	}}
+}
+
+func TestAssemble_MemoryBlockAfterRAGBeforeSuffix(t *testing.T) {
+	a := New(nil,
+		fakeRAG{results: []rag.QueryResult{{DocumentName: "d", Content: "RAG-CHUNK", Score: 0.9}}},
+		stubMemoryList{items: []leadmemory.MemoryView{memoryItem("Prefere boleto.")}})
+
+	ag := &agent.Agent{ID: "a1", WorkspaceID: "ws1", MessagingPrompt: "base", RAGEnabled: true, KnowledgeBaseIDs: []string{"kb"}}
+	out := a.Assemble(context.Background(), Request{
+		Agent:        ag,
+		LeadID:       "lead-1",
+		RAGQuery:     "q",
+		PromptSuffix: "\n\n[SUFFIX]",
+	})
+
+	sp := out.Input.SystemPrompt
+	ragIdx := strings.Index(sp, "RAG-CHUNK")
+	memIdx := strings.Index(sp, "Memórias sobre este lead")
+	factIdx := strings.Index(sp, "Prefere boleto.")
+	sufIdx := strings.Index(sp, "[SUFFIX]")
+	if ragIdx < 0 || memIdx < 0 || factIdx < 0 || sufIdx < 0 {
+		t.Fatalf("a section is missing: %q", sp)
+	}
+	// The order IS the contract: grounding, then memories, then the caller's tail.
+	if !(ragIdx < memIdx && memIdx < sufIdx) {
+		t.Fatalf("wrong ordering rag=%d mem=%d suffix=%d", ragIdx, memIdx, sufIdx)
+	}
+}
+
+func TestAssemble_NoMemoryBlockWithoutLead(t *testing.T) {
+	a := New(nil, fakeRAG{}, stubMemoryList{items: []leadmemory.MemoryView{memoryItem("SHOULD NOT APPEAR")}})
+	// An Instagram/Telegram conversation not yet bridged to a lead: no LeadID,
+	// no block, and no error either.
+	out := a.Assemble(context.Background(), Request{Agent: &agent.Agent{MessagingPrompt: "hi"}})
+	if strings.Contains(out.Input.SystemPrompt, "SHOULD NOT APPEAR") {
+		t.Fatalf("memory injected without a lead: %q", out.Input.SystemPrompt)
+	}
+}
+
+func TestAssemble_MemoryToolLineFollowsBinding(t *testing.T) {
+	mem := stubMemoryList{items: []leadmemory.MemoryView{memoryItem("Prefere boleto.")}}
+
+	// Agent WITHOUT the tool: block renders, tool instruction does not.
+	a := New(nil, fakeRAG{}, mem)
+	out := a.Assemble(context.Background(), Request{Agent: &agent.Agent{WorkspaceID: "ws1", MessagingPrompt: "hi"}, LeadID: "lead-1"})
+	if !strings.Contains(out.Input.SystemPrompt, "Memórias sobre este lead") {
+		t.Fatal("memory block missing for agent without the tool")
+	}
+	if strings.Contains(out.Input.SystemPrompt, "manage_lead_memory") {
+		t.Fatal("tool instruction rendered for agent without the tool")
+	}
+
+	// Agent WITH the tool bound: instruction appears.
+	reg := stubRegistry{defs: []tools.Definition{{Name: "manage_lead_memory"}}}
+	a = New(reg, fakeRAG{}, mem)
+	out = a.Assemble(context.Background(), Request{
+		Agent:                &agent.Agent{WorkspaceID: "ws1", MessagingPrompt: "hi", InternalTools: []agent.ToolBinding{{Name: "manage_lead_memory"}}},
+		LeadID:               "lead-1",
+		ResolveInternalTools: true,
+		Visibility:           agent.ToolVisibilityMessaging,
+	})
+	if !strings.Contains(out.Input.SystemPrompt, "manage_lead_memory") {
+		t.Fatal("tool instruction missing for agent with the tool bound")
 	}
 }

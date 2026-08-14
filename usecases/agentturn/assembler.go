@@ -15,22 +15,26 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
+	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/rag"
 	"vozko/domain/tools"
+	lead_memory_usecase "vozko/usecases/lead_memory"
 	rag_usecase "vozko/usecases/rag"
 	shared_usecase "vozko/usecases/shared"
 	tools_usecase "vozko/usecases/tools"
 )
 
 // Assembler composes agent turns from the shared building blocks. It depends only
-// on the tool registry and the RAG service, so it stays transport-agnostic.
+// on the tool registry, the RAG service and the lead-memory reader, so it stays
+// transport-agnostic.
 type Assembler struct {
-	tools tools.Service
-	rag   rag.RAGService
+	tools    tools.Service
+	rag      rag.RAGService
+	memories leadmemory.ListUseCase
 }
 
-func New(toolRegistry tools.Service, ragService rag.RAGService) *Assembler {
-	return &Assembler{tools: toolRegistry, rag: ragService}
+func New(toolRegistry tools.Service, ragService rag.RAGService, memories leadmemory.ListUseCase) *Assembler {
+	return &Assembler{tools: toolRegistry, rag: ragService, memories: memories}
 }
 
 // Request is the channel-agnostic description of one turn. Adapters set the parts
@@ -75,6 +79,13 @@ type Request struct {
 	// query disables it.
 	RAGQuery         string
 	KnowledgeBaseIDs []string
+
+	// LeadID selects whose memories to inject after the RAG block. Empty means
+	// "no lead resolved" (e.g. an Instagram conversation not yet bridged to a
+	// CRM lead) and disables the memory block for this turn. Injection does NOT
+	// depend on the agent having the memory tool: operator-written memories
+	// must reach every agent that talks to this lead.
+	LeadID string
 
 	// PromptSuffix is appended after the RAG block (e.g. an "actions already taken"
 	// note). Kept separate so it always lands after grounding.
@@ -162,6 +173,18 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		systemPrompt += ragCtx
 	}
 
+	// 4.5. Lead memories, after knowledge grounding and before the caller's
+	// tail (single source of the memory block for all channels).
+	if req.LeadID != "" && req.Agent != nil {
+		if memCtx := lead_memory_usecase.BuildContext(ctx, a.memories, lead_memory_usecase.ContextInput{
+			WorkspaceID:   req.Agent.WorkspaceID,
+			LeadID:        req.LeadID,
+			HasMemoryTool: containsToolName(toolNames, tools_usecase.ManageLeadMemoryToolName),
+		}); memCtx != "" {
+			systemPrompt += memCtx
+		}
+	}
+
 	// 5. Caller-supplied tail (executed actions, etc.), always after grounding.
 	if strings.TrimSpace(req.PromptSuffix) != "" {
 		systemPrompt += req.PromptSuffix
@@ -191,6 +214,15 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		},
 		ToolNames: toolNames,
 	}
+}
+
+func containsToolName(names []string, want string) bool {
+	for _, n := range names {
+		if strings.EqualFold(n, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // copyConfigsInto deep-copies one level of tool config so the assembled request

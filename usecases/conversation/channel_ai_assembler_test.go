@@ -8,6 +8,7 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/conversation"
+	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/rag"
 	"vozko/domain/shared"
 	"vozko/domain/tools"
@@ -76,6 +77,7 @@ func newAssembledService(t *testing.T) *ChannelAIReplyService {
 		assemblerTestRAG{results: []rag.QueryResult{
 			{DocumentName: "entregas", Content: "Entregamos em todo o Nordeste.", Score: 0.9},
 		}},
+		nil,
 	))
 	return s
 }
@@ -206,5 +208,74 @@ func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 	}
 	if !strings.Contains(in.SystemPrompt, "Entregamos em todo o Nordeste") {
 		t.Error("Instagram must be grounded too")
+	}
+}
+
+// --- lead memory parity ---
+//
+// The memory block must reach EVERY channel through the same recipe. WhatsApp
+// has its own turn assembly; this pins the channel-agnostic path (Telegram,
+// Instagram, unofficial WhatsApp) so a lead-linked conversation carries the
+// block and the tool seeds, and an unlinked one degrades to no block.
+
+type assemblerTestMemories struct{ items []leadmemory.MemoryView }
+
+func (s assemblerTestMemories) Execute(context.Context, leadmemory.ListInput) (*leadmemory.ListResult, error) {
+	return &leadmemory.ListResult{Items: s.items, Total: int64(len(s.items))}, nil
+}
+
+func newAssembledServiceWithMemories(t *testing.T) *ChannelAIReplyService {
+	t.Helper()
+	s := &ChannelAIReplyService{}
+	s.SetAssembler(agentturn.New(
+		assemblerTestRegistry{defs: []tools.Definition{{Name: "finish_conversation"}}},
+		assemblerTestRAG{},
+		assemblerTestMemories{items: []leadmemory.MemoryView{{
+			LeadMemory: &leadmemory.LeadMemory{
+				ID:       "11111111-2222-4333-8444-555555555555",
+				Category: leadmemory.CategoryPreference,
+				Content:  "Prefere boleto a PIX.",
+			},
+		}}},
+	))
+	return s
+}
+
+func TestChannelTurnWithLeadCarriesMemoryBlockAndSeeds(t *testing.T) {
+	s := newAssembledServiceWithMemories(t)
+	req := telegramReplyRequest()
+	leadID := "lead-1"
+	req.LeadID = &leadID
+
+	in := s.generateInput(context.Background(), req, agentWithTools(),
+		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)
+
+	if !strings.Contains(in.SystemPrompt, "Memórias sobre este lead") ||
+		!strings.Contains(in.SystemPrompt, "Prefere boleto a PIX.") {
+		t.Fatalf("memory block missing from channel prompt:\n%s", in.SystemPrompt)
+	}
+
+	cfg := in.ToolConfigs["finish_conversation"]
+	if cfg["__lead_id"] != "lead-1" {
+		t.Errorf("__lead_id = %v, want the bridged lead", cfg["__lead_id"])
+	}
+	// Attribution seed: a memory the agent writes must say WHICH agent.
+	if cfg["__agent_id"] != "agent-1" {
+		t.Errorf("__agent_id = %v", cfg["__agent_id"])
+	}
+}
+
+func TestChannelTurnWithoutLeadHasNoMemoryBlock(t *testing.T) {
+	s := newAssembledServiceWithMemories(t)
+	req := telegramReplyRequest() // LeadID nil: not bridged yet
+
+	in := s.generateInput(context.Background(), req, agentWithTools(),
+		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)
+
+	if strings.Contains(in.SystemPrompt, "Memórias sobre este lead") {
+		t.Fatalf("memory block rendered without a lead:\n%s", in.SystemPrompt)
+	}
+	if _, ok := in.ToolConfigs["finish_conversation"]["__lead_id"]; ok {
+		t.Error("__lead_id seeded without a lead")
 	}
 }

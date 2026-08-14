@@ -81,6 +81,11 @@ func BuildRAGContext(ctx context.Context, ragService rag.RAGService, ag *agent.A
 	return BuildContext(ctx, ragService, ContextInput{Agent: ag, Query: userMessage})
 }
 
+// ContextHeader opens the knowledge-base block. Exported so surfaces that need
+// to know whether a prompt carries RAG grounding (the agent simulator's debug
+// view) test against the one real header instead of a copied literal.
+const ContextHeader = "# Contexto adicional (base de conhecimento)"
+
 // FormatRAGContext renders retrieved chunks as fenced reference context. Empty
 // results render as "". The framing is deliberately soft: the chunks are supporting
 // material, not a behavioral override. It guards against fabricating specific data,
@@ -92,7 +97,7 @@ func FormatRAGContext(results []rag.QueryResult) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\n\n# Contexto adicional (base de conhecimento)\n")
+	sb.WriteString("\n\n" + ContextHeader + "\n")
 	sb.WriteString("As informações abaixo foram recuperadas da base de conhecimento e podem ser relevantes. Trate-as como material de referência:\n")
 	sb.WriteString("- Baseie-se nelas para dados específicos (valores, preços, datas, nomes, cursos, disponibilidade) e não invente esse tipo de dado se não estiver presente aqui.\n")
 	sb.WriteString("- Se estes trechos não cobrirem a pergunta, responda normalmente seguindo as suas próprias instruções e persona. Não mencione esta base de conhecimento nem diga que \"não tem a informação\", a menos que suas instruções peçam.\n\n")

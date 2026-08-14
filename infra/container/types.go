@@ -29,6 +29,7 @@ import (
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
+	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	mediashttp "vozko/delivery/http/medias"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
@@ -43,7 +44,6 @@ import (
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
@@ -102,6 +102,7 @@ import (
 	label_domain "vozko/domain/label"
 	lead_domain "vozko/domain/lead"
 	lead_campaign_send_domain "vozko/domain/lead_campaign_send"
+	lead_memory_domain "vozko/domain/lead_memory"
 	lead_message_window_domain "vozko/domain/lead_message_window"
 	"vozko/domain/media"
 	msg_shortcut_domain "vozko/domain/message_shortcut"
@@ -124,7 +125,6 @@ import (
 	stage_domain "vozko/domain/stage"
 	si_domain "vozko/domain/support_inbox"
 	telephony_domain "vozko/domain/telephony"
-	text_refiner_domain "vozko/domain/text_refiner"
 	"vozko/domain/ticket"
 	"vozko/domain/tools"
 	"vozko/domain/user"
@@ -258,6 +258,7 @@ type repositories struct {
 	label                   label_domain.Repository
 	messageShortcut         msg_shortcut_domain.Repository
 	scheduledMessage        scheduled_message_domain.Repository
+	leadMemory              lead_memory_domain.Repository
 	workspace               workspace_domain.Repository
 	customRole              workspace_domain.CustomRoleRepository
 	attendance              attendance_domain.Repository
@@ -462,6 +463,7 @@ type useCases struct {
 	getCategory           category.GetCategoryUseCase
 	listCategories        category.ListCategoriesUseCase
 	createAgent           agent_domain.CreateAgentUseCase
+	simulateAgentTurn     agent_domain.SimulateTurnUseCase
 	aichat                *aichat_usecase.Service
 	copilot               *copilot_usecase.Service
 	updateAgent           agent_domain.UpdateAgentUseCase
@@ -728,7 +730,6 @@ type useCases struct {
 	listMessageShortcuts  msg_shortcut_domain.ListUseCase
 	getByShortcut         msg_shortcut_domain.GetByShortcutUseCase
 
-	refineText text_refiner_domain.RefineTextUseCase
 
 	createWorkspace                    workspace_domain.CreateWorkspaceUseCase
 	getWorkspace                       workspace_domain.GetWorkspaceUseCase
@@ -849,6 +850,14 @@ type useCases struct {
 	consumeScheduledMessage  scheduled_message_domain.ConsumeFireUseCase
 	sweepScheduledMessages   scheduled_message_domain.SweepJob
 	purgeScheduledMessages   scheduled_message_domain.PurgeJob
+
+	// Lead memories. The list use case is also held by the agentturn assembler
+	// (prompt injection) and the create/update/delete trio by the AI tool, so
+	// the same write model serves operators and agents.
+	createLeadMemory lead_memory_domain.CreateUseCase
+	updateLeadMemory lead_memory_domain.UpdateUseCase
+	deleteLeadMemory lead_memory_domain.DeleteUseCase
+	listLeadMemories lead_memory_domain.ListUseCase
 
 	exportEntries export_domain.ExportEntriesUseCase
 
@@ -1002,7 +1011,7 @@ type handlers_ struct {
 	label                   *labelhttp.LabelHandler
 	messageShortcut         *messageshortcuthttp.MessageShortcutHandler
 	scheduledMessage        *scheduledmessagehttp.ScheduledMessageHandler
-	textRefiner             *textrefinerhttp.TextRefinerHandler
+	leadMemory              *leadmemoryhttp.LeadMemoryHandler
 	workspace               *workspacehttp.WorkspaceHandler
 	workspacePricing        *workspacepricinghttp.WorkspacePricingHandler
 	workspacePlan           *handlers.WorkspacePlanHandler

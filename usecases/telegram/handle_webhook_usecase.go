@@ -291,7 +291,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 
 	if private {
 		uc.fireWorkflowTriggers(ctx, account, conv, ev.Text, nil)
-		uc.maybeReplyWithAgent(ctx, account, conv, ev.Text)
+		uc.maybeReplyWithAgent(ctx, account, contact, conv, ev.Text)
 		uc.scheduleAnalysis(account, conv)
 	}
 	return nil
@@ -527,7 +527,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 			Title: ev.Text,
 			Kind:  "callback_query",
 		})
-		uc.maybeReplyWithAgent(ctx, account, conv, ev.Text)
+		uc.maybeReplyWithAgent(ctx, account, contact, conv, ev.Text)
 	}
 	return nil
 }
@@ -579,7 +579,7 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 
 	if conv.IsPrivate() {
 		uc.fireWorkflowTriggers(ctx, account, conv, text, nil)
-		uc.maybeReplyWithAgent(ctx, account, conv, text)
+		uc.maybeReplyWithAgent(ctx, account, contact, conv, text)
 	}
 	return nil
 }
@@ -744,11 +744,18 @@ func (uc *HandleWebhookUseCase) isFirstInboundMessage(conv *tgdomain.Conversatio
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	ctx context.Context,
 	account *tgdomain.Account,
+	contact *tgdomain.Contact,
 	conv *tgdomain.Conversation,
 	text string,
 ) {
 	if uc.aiReply == nil || account.AgentID == nil {
 		return
+	}
+	// The contact's CRM bridge, when a shared phone has established one. Nil
+	// keeps lead-scoped features (memory) inert for this conversation.
+	var leadID *string
+	if contact != nil {
+		leadID = contact.LeadID
 	}
 	if _, err := uc.aiReply.Reply(ctx, conversation.AIReplyRequest{
 		WorkspaceID:           account.WorkspaceID,
@@ -758,6 +765,7 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		AgentResponsesEnabled: account.EnableAgentResponses,
 		AutomationEnabled:     conv.AutomationEnabled,
 		Text:                  text,
+		LeadID:                leadID,
 	}); err != nil {
 		// An AI failure must never fail the webhook: that would redeliver a
 		// message we already stored.

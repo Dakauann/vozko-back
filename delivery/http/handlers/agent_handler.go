@@ -31,6 +31,7 @@ type AgentHandler struct {
 	deleteUseCase           agent.DeleteAgentUseCase
 	getUseCase              agent.GetAgentUseCase
 	listUseCase             agent.ListAgentsUseCase
+	simulateUseCase         agent.SimulateTurnUseCase
 	toolRegistry            tools.Service
 	aiService               ai.Service
 	templateRepo            template.Repository
@@ -43,6 +44,7 @@ func NewAgentHandler(
 	deleteUC agent.DeleteAgentUseCase,
 	getUC agent.GetAgentUseCase,
 	listUC agent.ListAgentsUseCase,
+	simulateUC agent.SimulateTurnUseCase,
 	toolRegistry tools.Service,
 	aiService ai.Service,
 	templateRepo template.Repository,
@@ -54,6 +56,7 @@ func NewAgentHandler(
 		deleteUseCase:           deleteUC,
 		getUseCase:              getUC,
 		listUseCase:             listUC,
+		simulateUseCase:         simulateUC,
 		toolRegistry:            toolRegistry,
 		aiService:               aiService,
 		templateRepo:            templateRepo,

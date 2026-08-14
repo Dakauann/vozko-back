@@ -31,6 +31,7 @@ import (
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
+	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	mediashttp "vozko/delivery/http/medias"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
@@ -46,7 +47,6 @@ import (
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
-	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	unofficialwahttp "vozko/delivery/http/unofficial_whatsapp"
 	userhttp "vozko/delivery/http/user"
@@ -128,7 +128,7 @@ type router struct {
 	labelHandler                   *labelhttp.LabelHandler
 	messageShortcutHandler         *messageshortcuthttp.MessageShortcutHandler
 	scheduledMessageHandler        *scheduledmessagehttp.ScheduledMessageHandler
-	textRefinerHandler             *textrefinerhttp.TextRefinerHandler
+	leadMemoryHandler              *leadmemoryhttp.LeadMemoryHandler
 	attendanceHandler              *attendancehttp.AttendanceHandler
 	knowledgeBaseHandler           *handlers.KnowledgeBaseHandler
 	shortLinkHandler               *shortlinkhttp.ShortLinkHandler
@@ -232,7 +232,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	labelHandler *labelhttp.LabelHandler,
 	messageShortcutHandler *messageshortcuthttp.MessageShortcutHandler,
 	scheduledMessageHandler *scheduledmessagehttp.ScheduledMessageHandler,
-	textRefinerHandler *textrefinerhttp.TextRefinerHandler,
+	leadMemoryHandler *leadmemoryhttp.LeadMemoryHandler,
 	attendanceHandler *attendancehttp.AttendanceHandler,
 	knowledgeBaseHandler *handlers.KnowledgeBaseHandler,
 	shortLinkHandler *shortlinkhttp.ShortLinkHandler,
@@ -333,7 +333,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		labelHandler:                   labelHandler,
 		messageShortcutHandler:         messageShortcutHandler,
 		scheduledMessageHandler:        scheduledMessageHandler,
-		textRefinerHandler:             textRefinerHandler,
+		leadMemoryHandler:              leadMemoryHandler,
 		attendanceHandler:              attendanceHandler,
 		knowledgeBaseHandler:           knowledgeBaseHandler,
 		shortLinkHandler:               shortLinkHandler,
@@ -498,7 +498,7 @@ func (r *router) setupRoutes() {
 	r.setupLabelRoutes(protected)
 	r.setupMessageShortcutRoutes(protected)
 	r.setupScheduledMessageRoutes(protected)
-	r.setupTextRefinerRoutes(protected)
+	r.setupLeadMemoryRoutes(protected)
 	r.setupAttendanceRoutes(protected)
 	r.setupWorkspaceRoutes(protected)
 	r.setupIssueRoutes(protected)
@@ -906,6 +906,7 @@ func (r *router) setupAgentRoutes(protected *mux.Router) {
 	protected.HandleFunc("/agents/{id}", r.ac(ag, workspace_domain.ActionReadDetails, r.agentHandler.Get)).Methods(http.MethodGet)
 	protected.HandleFunc("/agents/{id}/required-variables", r.ac(ag, workspace_domain.ActionRead, r.agentHandler.RequiredVariables)).Methods(http.MethodGet)
 	protected.HandleFunc("/agents/{id}", r.ac(ag, workspace_domain.ActionUpdate, r.agentHandler.Update)).Methods(http.MethodPut)
+	protected.HandleFunc("/agents/{id}/simulate", r.ac(ag, workspace_domain.ActionUpdate, r.agentHandler.Simulate)).Methods(http.MethodPost)
 	protected.HandleFunc("/agents/{id}/department", r.ac(ag, workspace_domain.ActionUpdate, r.agentHandler.AssignDepartment)).Methods(http.MethodPatch)
 	protected.HandleFunc("/agents/{id}", r.ac(ag, workspace_domain.ActionDelete, r.agentHandler.Delete)).Methods(http.MethodDelete)
 	protected.HandleFunc("/agents/{id}/archive", r.ac(ag, workspace_domain.ActionUpdate, r.agentHandler.Archive)).Methods(http.MethodPatch)
@@ -1044,8 +1045,8 @@ func (r *router) setupScheduledMessageRoutes(protected *mux.Router) {
 	scheduledmessagehttp.RegisterRoutes(protected, r.scheduledMessageHandler, r.ac)
 }
 
-func (r *router) setupTextRefinerRoutes(protected *mux.Router) {
-	textrefinerhttp.RegisterProtectedRoutes(protected, r.textRefinerHandler)
+func (r *router) setupLeadMemoryRoutes(protected *mux.Router) {
+	leadmemoryhttp.RegisterRoutes(protected, r.leadMemoryHandler, r.ac)
 }
 
 func (r *router) setupWorkspaceRoutes(protected *mux.Router) {

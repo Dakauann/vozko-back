@@ -9,6 +9,7 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/conversation"
+	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
 	"vozko/usecases/conversation/loopguard"
 	shared_usecase "vozko/usecases/shared"
@@ -129,6 +130,12 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		log.Printf("[channel-ai] entry=%s agent %s unavailable: %v", req.EntryID, req.AgentID, err)
 		return nil, err
 	}
+
+	// Same per-request context the WhatsApp path installs: the agent for deep
+	// tool code (MCP resolution, attribution fallback) and the tracker that
+	// debounces a looping model re-firing the same side effect.
+	ctx = agentctx.WithAgent(ctx, agentRecord)
+	ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 
 	messages, err := s.buildPrompt(req, text)
 	if err != nil {
@@ -288,24 +295,38 @@ func (s *ChannelAIReplyService) generateInput(
 		ConversationID: req.EntryID,
 	}
 
+	// The seeds every conversation-scoped tool reads to know WHICH
+	// conversation it is acting on. finish_conversation and
+	// manage_entry_stage both require the entry pair; manage_lead_memory
+	// additionally needs the lead and the acting agent.
+	seed := map[string]interface{}{
+		"__entry_id":     req.EntryID,
+		"__entry_type":   string(req.EntryType),
+		"__workspace_id": req.WorkspaceID,
+		"__agent_id":     agentRecord.ID,
+	}
+	leadID := ""
+	if req.LeadID != nil {
+		leadID = strings.TrimSpace(*req.LeadID)
+	}
+	if leadID != "" {
+		seed["__lead_id"] = leadID
+	}
+
 	assembled := s.assembler.Assemble(ctx, agentturn.Request{
 		Agent:    agentRecord,
 		Identity: &identity,
 
 		ResolveInternalTools: true,
 		Visibility:           agent.ToolVisibilityMessaging,
-		// The seeds every conversation-scoped tool reads to know WHICH
-		// conversation it is acting on. finish_conversation and
-		// manage_entry_stage both require these two; without them a tool call
-		// either fails or, worse, resolves nothing and reports success.
-		ToolSeed: map[string]interface{}{
-			"__entry_id":     req.EntryID,
-			"__entry_type":   string(req.EntryType),
-			"__workspace_id": req.WorkspaceID,
-		},
+		ToolSeed:             seed,
 
 		// Ground on the message being answered.
 		RAGQuery: latest,
+
+		// Lead memories ride the same recipe: unresolved lead (nil/empty)
+		// simply renders no block.
+		LeadID: leadID,
 
 		// History already ends with the message being answered, so it is not
 		// passed again as UserMessage, that would duplicate the last turn.

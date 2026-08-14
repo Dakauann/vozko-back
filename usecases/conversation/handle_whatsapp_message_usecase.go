@@ -416,6 +416,14 @@ func (ctx *agentContext) getEntryInfo() (entryID string, entryType shared.EntryT
 	return "", ""
 }
 
+// getLeadID is the CRM identity behind this conversation; memories key on it.
+func (ctx *agentContext) getLeadID() string {
+	if ctx == nil || ctx.wcLeadRecord == nil {
+		return ""
+	}
+	return ctx.wcLeadRecord.ID
+}
+
 func (ctx *agentContext) getCampaignInfo() (campaignID string, campaignType string) {
 	if ctx == nil {
 		return "", ""
@@ -601,6 +609,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 	if agentCtx != nil && agentCtx.agent != nil {
 		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
+		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 	}
 
 	whatsappCtx := WhatsAppContext{
@@ -2332,6 +2341,7 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 	if agentCtx.agent != nil {
 		whatsappCtx.AgentName = agentCtx.agent.Name
 		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
+		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 	}
 	if agentCtx.wcLeadRecord != nil {
 		whatsappCtx.UserName = agentCtx.wcLeadRecord.Name
@@ -2697,6 +2707,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	if agentCtx != nil && agentCtx.agent != nil {
 		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
+		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 	}
 
 	whatsappCtx := WhatsAppContext{
@@ -3007,6 +3018,13 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 	}
 	if agentRecord != nil {
 		seed["__workspace_id"] = agentRecord.WorkspaceID
+		// Attribution seed: memory writes (and any future CRM-writing tool)
+		// record WHICH agent acted, not just that "the AI" did.
+		seed["__agent_id"] = agentRecord.ID
+	}
+	leadID := t.agentCtx.getLeadID()
+	if leadID != "" {
+		seed["__lead_id"] = leadID
 	}
 	campaignID, campaignType := "", ""
 	if t.agentCtx != nil {
@@ -3043,6 +3061,7 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 		PreResolvedConfigs: configs,
 		ToolSeed:           seed,
 		RAGQuery:           t.Query,
+		LeadID:             leadID,
 		History:            t.Messages,
 		Model:              t.Model,
 		Temperature:        t.Temperature,
@@ -3061,7 +3080,7 @@ func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
 	if uc.turnAssembler != nil {
 		return uc.turnAssembler
 	}
-	return agentturn.New(uc.toolRegistry, uc.ragService)
+	return agentturn.New(uc.toolRegistry, uc.ragService, nil)
 }
 
 // SetTurnAssembler wires the shared agent-turn recipe.

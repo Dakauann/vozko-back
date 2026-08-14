@@ -2375,6 +2375,9 @@ definitions:
     - stage_changed
     - finished
     - analysis_created
+    - lead_memory_created
+    - lead_memory_updated
+    - lead_memory_deleted
     - transfer_offered
     - transfer_accepted
     - transfer_declined
@@ -2406,6 +2409,9 @@ definitions:
     - EventStageChanged
     - EventFinished
     - EventAnalysisCreated
+    - EventLeadMemoryCreated
+    - EventLeadMemoryUpdated
+    - EventLeadMemoryDeleted
     - EventTransferOffered
     - EventTransferAccepted
     - EventTransferDeclined
@@ -2681,6 +2687,96 @@ definitions:
       type:
         example: select
         type: string
+    type: object
+  handlers.SimulateAgentHistoryMessage:
+    properties:
+      content:
+        example: quanto custa o plano?
+        type: string
+      role:
+        description: 'Role: "user" (o operador, no papel do lead) | "assistant" (o
+          agente).'
+        example: user
+        type: string
+    type: object
+  handlers.SimulateAgentRequest:
+    properties:
+      history:
+        items:
+          $ref: '#/definitions/handlers.SimulateAgentHistoryMessage'
+        type: array
+      lead_id:
+        description: |-
+          LeadID opcional: simula a conversa como se fosse com este lead: as
+          memórias reais dele são injetadas (somente leitura).
+        example: 5f1c…
+        type: string
+      message:
+        example: quero saber os preços
+        type: string
+      session_memories:
+        description: |-
+          SessionMemories: fatos que o agente "memorizou" nesta simulação (as
+          chamadas de manage_lead_memory são interceptadas e nada persiste; o
+          cliente as reapresenta aqui para que o agente as veja no próximo turno).
+        items:
+          $ref: '#/definitions/handlers.SimulateAgentSessionMemory'
+        type: array
+    type: object
+  handlers.SimulateAgentResponse:
+    properties:
+      debug:
+        $ref: '#/definitions/handlers.SimulationDebugResponse'
+      replies:
+        items:
+          type: string
+        type: array
+      toolCalls:
+        items:
+          $ref: '#/definitions/handlers.SimulatedToolCallResponse'
+        type: array
+    type: object
+  handlers.SimulateAgentSessionMemory:
+    properties:
+      category:
+        type: string
+      content:
+        type: string
+      id:
+        type: string
+    type: object
+  handlers.SimulatedToolCallResponse:
+    properties:
+      arguments:
+        additionalProperties: true
+        type: object
+      isError:
+        type: boolean
+      name:
+        type: string
+      result:
+        type: string
+    type: object
+  handlers.SimulationDebugResponse:
+    properties:
+      completionTokens:
+        type: integer
+      finishReason:
+        type: string
+      memoryInjected:
+        type: boolean
+      model:
+        type: string
+      promptTokens:
+        type: integer
+      ragInjected:
+        type: boolean
+      systemPrompt:
+        type: string
+      toolNames:
+        items:
+          type: string
+        type: array
     type: object
   holdmusic.HoldTrackListResponse:
     properties:
@@ -3275,6 +3371,69 @@ definitions:
       windowExpiresAt:
         type: string
       workspaceId:
+        type: string
+    type: object
+  leadmemory.CreateLeadMemoryRequest:
+    properties:
+      category:
+        description: 'Category: personal | preference | deal | objection | commitment
+          | event | other'
+        example: preference
+        type: string
+      content:
+        example: Prefere boleto a PIX
+        type: string
+    type: object
+  leadmemory.LeadMemoryEnvelope:
+    properties:
+      memory:
+        $ref: '#/definitions/leadmemory.LeadMemoryResponse'
+    type: object
+  leadmemory.LeadMemoryListResponse:
+    properties:
+      memories:
+        items:
+          $ref: '#/definitions/leadmemory.LeadMemoryResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  leadmemory.LeadMemoryResponse:
+    properties:
+      actorId:
+        type: string
+      actorKind:
+        description: |-
+          ActorKind + ActorID say who wrote the current version: "ai" with
+          "ai:{agentId}", "human" with a user id, or "system". ActorLabel is the
+          resolved display name, best-effort: empty means "render the kind".
+        type: string
+      actorLabel:
+        type: string
+      category:
+        type: string
+      content:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      leadId:
+        type: string
+      sourceEntryId:
+        type: string
+      sourceEntryType:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  leadmemory.UpdateLeadMemoryRequest:
+    properties:
+      category:
+        example: preference
+        type: string
+      content:
+        example: Prefere PIX desde ago/2026
         type: string
     type: object
   medias.MediaDeletedResponse:
@@ -4641,91 +4800,6 @@ definitions:
     - TemplateStatusRejected
     - TemplateStatusPaused
     - TemplateStatusDisabled
-  textrefiner.DiffSegmentResponse:
-    properties:
-      op:
-        example: insert
-        type: string
-      text:
-        example: 'Prezado cliente, '
-        type: string
-    type: object
-  textrefiner.ModelInfoResponse:
-    properties:
-      completionPrice:
-        example: 0.6
-        type: number
-      contextLength:
-        example: 128000
-        type: integer
-      created:
-        example: 1700000000
-        type: integer
-      id:
-        example: openai/gpt-4o-mini
-        type: string
-      name:
-        example: GPT-4o mini
-        type: string
-      promptPrice:
-        example: 0.15
-        type: number
-    type: object
-  textrefiner.RefineRequest:
-    properties:
-      instruction:
-        example: Deixe o texto mais formal e cordial.
-        type: string
-      kind:
-        example: messaging_prompt
-        type: string
-      maxTokens:
-        example: 512
-        type: integer
-      model:
-        example: openai/gpt-4o-mini
-        type: string
-      temperature:
-        example: 0.2
-        type: number
-      text:
-        example: Segue o retorno sobre o seu pedido.
-        type: string
-    type: object
-  textrefiner.RefineResponse:
-    properties:
-      actualPriceMicros:
-        example: 1420
-        type: integer
-      completionTokens:
-        example: 48
-        type: integer
-      estimatedPriceMicros:
-        example: 1500
-        type: integer
-      model:
-        example: openai/gpt-4o-mini
-        type: string
-      originalText:
-        example: Segue o retorno sobre o seu pedido.
-        type: string
-      promptTokens:
-        example: 120
-        type: integer
-      refinedText:
-        example: Prezado cliente, segue o retorno sobre o seu pedido.
-        type: string
-      requestId:
-        example: req_a1b2c3d4
-        type: string
-      segments:
-        items:
-          $ref: '#/definitions/textrefiner.DiffSegmentResponse'
-        type: array
-      unifiedDiff:
-        example: '@@ -1 +1 @@'
-        type: string
-    type: object
   ticket.Document:
     properties:
       contentType:
@@ -6012,6 +6086,60 @@ paths:
       summary: Validar um código de indicação
       tags:
       - Afiliados
+  /agents/{id}/simulate:
+    post:
+      consumes:
+      - application/json
+      description: 'Executa um turno de conversa contra o agente em modo simulação:
+        o prompt, as ferramentas, a base de conhecimento e as memórias do lead são
+        montados exatamente como em produção, mas TODA execução de ferramenta é interceptada:
+        nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de
+        ferramenta (com argumentos) e o raio-X do turno para depuração. Consome créditos
+        de IA normalmente.'
+      parameters:
+      - description: ID do agente
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Mensagem, histórico e lead opcional
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SimulateAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SimulateAgentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "502":
+          description: O provedor de IA recusou ou falhou o turno
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Simular uma conversa com o agente
+      tags:
+      - Agentes
   /analysis:
     get:
       description: Retorna as análises de conversas e chamadas do workspace do usuário.
@@ -9467,6 +9595,87 @@ paths:
       summary: Reordenar etiquetas
       tags:
       - Etiquetas
+  /lead-memories/{id}:
+    delete:
+      description: Apaga (soft delete) uma memória. Ela some do contexto da IA e do
+        painel; a exclusão definitiva acompanha o ciclo de vida do lead.
+      parameters:
+      - description: ID da memória
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Memória apagada
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Apagar uma memória de lead
+      tags:
+      - Memórias do Lead
+    patch:
+      consumes:
+      - application/json
+      description: Altera o conteúdo e/ou a categoria de uma memória. A autoria passa
+        a ser de quem editou; o histórico fica na linha do tempo da conversa.
+      parameters:
+      - description: ID da memória
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Novos valores (campos omitidos são mantidos)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/leadmemory.UpdateLeadMemoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/leadmemory.LeadMemoryEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: O novo conteúdo duplicaria outra memória
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Editar uma memória de lead
+      tags:
+      - Memórias do Lead
   /leads:
     get:
       description: Retorna a lista paginada de leads do workspace, com filtros por
@@ -9765,6 +9974,102 @@ paths:
       summary: Histórico de conversas do lead
       tags:
       - Leads
+  /leads/{id}/memories:
+    get:
+      description: Lista as memórias registradas sobre um lead (fatos salvos pela
+        IA e por operadores), da mais recente para a mais antiga.
+      parameters:
+      - description: ID do lead
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Filtro de categoria: personal | preference | deal | objection
+          | commitment | event | other'
+        in: query
+        name: category
+        type: string
+      - description: Máximo de itens (padrão 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Deslocamento de paginação
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/leadmemory.LeadMemoryListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar memórias de um lead
+      tags:
+      - Memórias do Lead
+    post:
+      consumes:
+      - application/json
+      description: Registra um fato sobre o lead. Um conteúdo equivalente a uma memória
+        já existente devolve a memória existente (200) em vez de criar uma duplicata.
+      parameters:
+      - description: ID do lead
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fato e categoria
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/leadmemory.CreateLeadMemoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Uma memória equivalente já existia; nada novo foi criado
+          schema:
+            $ref: '#/definitions/leadmemory.LeadMemoryEnvelope'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/leadmemory.LeadMemoryEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Limite de memórias do lead atingido
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Registrar uma memória sobre um lead
+      tags:
+      - Memórias do Lead
   /leads/search:
     get:
       description: Retorna os detalhes de um lead do workspace a partir do número
@@ -12322,74 +12627,6 @@ paths:
       summary: Atualizar caixa de atendimento
       tags:
       - Caixas de atendimento
-  /text-refiner/models:
-    get:
-      description: Retorna os modelos de linguagem disponíveis para o refinamento
-        de texto, com os respectivos preços por token, para seleção no editor.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/textrefiner.ModelInfoResponse'
-            type: array
-        "502":
-          description: Bad Gateway
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar modelos de IA disponíveis
-      tags:
-      - Refinador de texto
-  /text-refiner/refine:
-    post:
-      consumes:
-      - application/json
-      description: Reescreve um texto conforme a instrução informada e retorna o texto
-        refinado, os segmentos de diferença em relação ao original e a estimativa
-        de custo. Utilizado nos editores de prompts e de mensagens.
-      parameters:
-      - description: Texto original, instrução e opções de modelo
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/textrefiner.RefineRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/textrefiner.RefineResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "402":
-          description: Payment Required
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "502":
-          description: Bad Gateway
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Refinar um texto com IA
-      tags:
-      - Refinador de texto
   /tickets:
     get:
       description: Retorna a lista paginada dos tickets de envio do usuário autenticado,

@@ -496,6 +496,23 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON branches (sip_user)`,
 		},
 
+		// The prompt block and the panel both read "this lead's memories,
+		// newest first"; the partial index serves exactly that scan.
+		{
+			name: "idx_lead_memories_lead",
+			sql: `CREATE INDEX IF NOT EXISTS idx_lead_memories_lead
+				ON lead_memories (workspace_id, lead_id, created_at DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		// One active memory per normalized content per lead. Partial on
+		// deleted_at so forgetting a fact does not forbid re-learning it.
+		{
+			name: "ux_lead_memories_dedup",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_lead_memories_dedup
+				ON lead_memories (workspace_id, lead_id, content_norm)
+				WHERE deleted_at IS NULL`,
+		},
+
 		// An Instagram-scoped ID is unique only within the (app, professional
 		// account) pair, so contact identity is (ig_account_id, igsid) and never
 		// igsid alone.

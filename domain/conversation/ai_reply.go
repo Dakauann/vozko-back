@@ -26,4 +26,10 @@ type AIReplyRequest struct {
 	// Text is the inbound message body. Empty text (a bare media message) is not
 	// answered.
 	Text string
+
+	// LeadID is the CRM lead bridged to this conversation, when known. Channels
+	// whose contacts may not be bridged yet (Instagram, Telegram, unofficial
+	// WhatsApp groups) leave it nil, which keeps lead-scoped features, memory
+	// injection and the memory tool, inert for the conversation without failing it.
+	LeadID *string
 }

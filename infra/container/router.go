@@ -58,7 +58,7 @@ func (c *Container) initRouter() {
 		c.handlers.label,
 		c.handlers.messageShortcut,
 		c.handlers.scheduledMessage,
-		c.handlers.textRefiner,
+		c.handlers.leadMemory,
 		c.handlers.attendance,
 		c.handlers.knowledgeBase,
 		c.handlers.shortLink,

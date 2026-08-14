@@ -45,6 +45,11 @@ const (
 	EventFinished        EventType = "finished"
 	EventAnalysisCreated EventType = "analysis_created"
 
+	// Lead memory
+	EventLeadMemoryCreated EventType = "lead_memory_created"
+	EventLeadMemoryUpdated EventType = "lead_memory_updated"
+	EventLeadMemoryDeleted EventType = "lead_memory_deleted"
+
 	// Voice / transfer / queue
 	EventTransferOffered   EventType = "transfer_offered"
 	EventTransferAccepted  EventType = "transfer_accepted"
@@ -66,6 +71,7 @@ func (t EventType) Valid() bool {
 		EventUnassigned, EventAIReplied, EventAIEnabled, EventAIDisabled,
 		EventAISessionStarted, EventAISessionEnded, EventStatusChanged,
 		EventStageChanged, EventFinished, EventAnalysisCreated,
+		EventLeadMemoryCreated, EventLeadMemoryUpdated, EventLeadMemoryDeleted,
 		EventTransferOffered, EventTransferAccepted, EventTransferDeclined,
 		EventTransferCompleted, EventTransferFailed, EventTransferQueued,
 		EventQueueEnqueued, EventQueueConnected, EventQueueAbandoned,

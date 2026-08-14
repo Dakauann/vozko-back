@@ -101,7 +101,6 @@ import (
 	stage_usecase "vozko/usecases/stage"
 	si_usecase "vozko/usecases/support_inbox"
 	telephony_usecase "vozko/usecases/telephony"
-	text_refiner_usecase "vozko/usecases/text_refiner"
 	ticket_usecase "vozko/usecases/ticket"
 	tools_usecase "vozko/usecases/tools"
 	user_usecase "vozko/usecases/user"
@@ -167,6 +166,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
+	// Built before the tool registry because the memory tool is one of its
+	// consumers; the same values are spread into the useCases literal below and
+	// handed to the agentturn assembler, so agents and operators share one
+	// write model. The emitter it captures was wired in wireConversationHub.
+	leadMemories := c.buildLeadMemories()
+
 	toolHandlers := []tools.Handler{
 		tools_usecase.NewSendEmailToolUseCase(nil),
 		optionsTool,
@@ -181,6 +186,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			return at
 		}(),
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, c.services.conversationHub),
+		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, c.services.conversationHub),
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewScheduleMeetingToolUseCase(c.repositories.calendar, c.services.googleCalendar),
@@ -209,8 +215,19 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// ignored it everywhere else. That is exactly the drift the agentturn
 	// package was written to prevent, so it is asserted rather than guarded:
 	// a nil here is a wiring bug, not a supported configuration.
-	turnAssembler := agentturn.New(c.services.toolRegistry, ragService)
+	turnAssembler := agentturn.New(c.services.toolRegistry, ragService, leadMemories.list)
 	c.mustChannelAIReply().SetAssembler(turnAssembler)
+
+	// The agent simulator: the SAME provider and turn recipe, but its AI
+	// service is wired with the sandboxed registry, so every tool call the
+	// model makes is intercepted and answered with a canned result. This
+	// second service instance IS the sandbox boundary: never hand the
+	// simulator c.services.ai.
+	simulationAI := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	simulateAgentUC, err := agent_usecase.NewSimulateTurnUseCase(c.repositories.agent, turnAssembler, simulationAI)
+	if err != nil {
+		log.Fatalf("[container] agent simulator: %v", err)
+	}
 
 	llmPriceFetcher := openrouter_service.NewLLMPriceFetcher(c.services.ai.(*openrouter_service.Service), 1*time.Hour)
 
@@ -522,6 +539,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		sweepScheduledMessages:   scheduledMessages.sweep,
 		purgeScheduledMessages:   scheduledMessages.purge,
 
+		createLeadMemory: leadMemories.create,
+		updateLeadMemory: leadMemories.update,
+		deleteLeadMemory: leadMemories.delete,
+		listLeadMemories: leadMemories.list,
+
 		opportunity:           opportunitySvc,
 		customField:           customFieldSvc,
 		consumeNotifications:  consumeEmailUC,
@@ -551,6 +573,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getCategory:           getCategoryUC,
 		listCategories:        listCategoriesUC,
 		createAgent:           createAgentUC,
+		simulateAgentTurn:     simulateAgentUC,
 		updateAgent:           updateAgentUC,
 		assignAgentDepartment: assignAgentDepartmentUC,
 		deleteAgent:           deleteAgentUC,
@@ -838,7 +861,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listMessageShortcuts:  msg_shortcut_usecase.NewListUseCase(c.repositories.messageShortcut),
 		getByShortcut:         msg_shortcut_usecase.NewGetByShortcutUseCase(c.repositories.messageShortcut),
 
-		refineText: text_refiner_usecase.NewRefineTextUseCase(c.services.ai, pricer, cachedBalanceChecker),
 
 		createWorkspace:                    workspace_usecase.NewCreateWorkspaceUseCase(c.repositories.workspace),
 		getWorkspace:                       workspace_usecase.NewGetWorkspaceUseCase(c.repositories.workspace, c.repositories.user, c.repositories.workspaceSubscription),

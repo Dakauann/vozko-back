@@ -32,6 +32,8 @@ import (
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
+	leadmemoryhttp "vozko/delivery/http/leadmemory"
+	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	mediashttp "vozko/delivery/http/medias"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
@@ -46,7 +48,6 @@ import (
 	stagehttp "vozko/delivery/http/stage"
 	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	textrefinerhttp "vozko/delivery/http/textrefiner"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
@@ -119,7 +120,7 @@ func (c *Container) initHandlers() {
 		product:   handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
 		property:  handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
 		category:  handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
-		agent:     handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
+		agent:     handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
 		aichat:    handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
 		auth:      c.newAuthHandler(),
 		user:      userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
@@ -402,9 +403,12 @@ func (c *Container) initHandlers() {
 			c.useCases.listScheduledMessages,
 			c.services.conversationAuth,
 		),
-		textRefiner: textrefinerhttp.NewTextRefinerHandler(
-			c.useCases.refineText,
-			c.services.ai,
+		leadMemory: leadmemoryhttp.NewLeadMemoryHandler(
+			c.useCases.createLeadMemory,
+			c.useCases.updateLeadMemory,
+			c.useCases.deleteLeadMemory,
+			c.useCases.listLeadMemories,
+			lead_memory_repository.NewLeadRefResolver(c.db),
 		),
 		workspace: workspacehttp.NewWorkspaceHandler(
 			c.useCases.createWorkspace,

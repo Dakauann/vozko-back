@@ -294,6 +294,82 @@
                 }
             }
         },
+        "/agents/{id}/simulate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Executa um turno de conversa contra o agente em modo simulação: o prompt, as ferramentas, a base de conhecimento e as memórias do lead são montados exatamente como em produção, mas TODA execução de ferramenta é interceptada: nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de ferramenta (com argumentos) e o raio-X do turno para depuração. Consome créditos de IA normalmente.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agentes"
+                ],
+                "summary": "Simular uma conversa com o agente",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do agente",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Mensagem, histórico e lead opcional",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SimulateAgentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SimulateAgentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "O provedor de IA recusou ou falhou o turno",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/analysis": {
             "get": {
                 "security": [
@@ -5561,6 +5637,129 @@
                 }
             }
         },
+        "/lead-memories/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apaga (soft delete) uma memória. Ela some do contexto da IA e do painel; a exclusão definitiva acompanha o ciclo de vida do lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memórias do Lead"
+                ],
+                "summary": "Apagar uma memória de lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da memória",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Memória apagada"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Altera o conteúdo e/ou a categoria de uma memória. A autoria passa a ser de quem editou; o histórico fica na linha do tempo da conversa.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memórias do Lead"
+                ],
+                "summary": "Editar uma memória de lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da memória",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novos valores (campos omitidos são mantidos)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.UpdateLeadMemoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.LeadMemoryEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "O novo conteúdo duplicaria outra memória",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/leads": {
             "get": {
                 "security": [
@@ -6056,6 +6255,150 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{id}/memories": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as memórias registradas sobre um lead (fatos salvos pela IA e por operadores), da mais recente para a mais antiga.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memórias do Lead"
+                ],
+                "summary": "Listar memórias de um lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do lead",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro de categoria: personal | preference | deal | objection | commitment | event | other",
+                        "name": "category",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Máximo de itens (padrão 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Deslocamento de paginação",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.LeadMemoryListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Registra um fato sobre o lead. Um conteúdo equivalente a uma memória já existente devolve a memória existente (200) em vez de criar uma duplicata.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memórias do Lead"
+                ],
+                "summary": "Registrar uma memória sobre um lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do lead",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fato e categoria",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.CreateLeadMemoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Uma memória equivalente já existia; nada novo foi criado",
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.LeadMemoryEnvelope"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/leadmemory.LeadMemoryEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Limite de memórias do lead atingido",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -9895,109 +10238,6 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/text-refiner/models": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os modelos de linguagem disponíveis para o refinamento de texto, com os respectivos preços por token, para seleção no editor.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Refinador de texto"
-                ],
-                "summary": "Listar modelos de IA disponíveis",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/textrefiner.ModelInfoResponse"
-                            }
-                        }
-                    },
-                    "502": {
-                        "description": "Bad Gateway",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/text-refiner/refine": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Reescreve um texto conforme a instrução informada e retorna o texto refinado, os segmentos de diferença em relação ao original e a estimativa de custo. Utilizado nos editores de prompts e de mensagens.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Refinador de texto"
-                ],
-                "summary": "Refinar um texto com IA",
-                "parameters": [
-                    {
-                        "description": "Texto original, instrução e opções de modelo",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/textrefiner.RefineRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/textrefiner.RefineResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "402": {
-                        "description": "Payment Required",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "502": {
-                        "description": "Bad Gateway",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -17957,6 +18197,9 @@
                 "stage_changed",
                 "finished",
                 "analysis_created",
+                "lead_memory_created",
+                "lead_memory_updated",
+                "lead_memory_deleted",
                 "transfer_offered",
                 "transfer_accepted",
                 "transfer_declined",
@@ -17988,6 +18231,9 @@
                 "EventStageChanged",
                 "EventFinished",
                 "EventAnalysisCreated",
+                "EventLeadMemoryCreated",
+                "EventLeadMemoryUpdated",
+                "EventLeadMemoryDeleted",
                 "EventTransferOffered",
                 "EventTransferAccepted",
                 "EventTransferDeclined",
@@ -18356,6 +18602,131 @@
                 "type": {
                     "type": "string",
                     "example": "select"
+                }
+            }
+        },
+        "handlers.SimulateAgentHistoryMessage": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "quanto custa o plano?"
+                },
+                "role": {
+                    "description": "Role: \"user\" (o operador, no papel do lead) | \"assistant\" (o agente).",
+                    "type": "string",
+                    "example": "user"
+                }
+            }
+        },
+        "handlers.SimulateAgentRequest": {
+            "type": "object",
+            "properties": {
+                "history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.SimulateAgentHistoryMessage"
+                    }
+                },
+                "lead_id": {
+                    "description": "LeadID opcional: simula a conversa como se fosse com este lead: as\nmemórias reais dele são injetadas (somente leitura).",
+                    "type": "string",
+                    "example": "5f1c…"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "quero saber os preços"
+                },
+                "session_memories": {
+                    "description": "SessionMemories: fatos que o agente \"memorizou\" nesta simulação (as\nchamadas de manage_lead_memory são interceptadas e nada persiste; o\ncliente as reapresenta aqui para que o agente as veja no próximo turno).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.SimulateAgentSessionMemory"
+                    }
+                }
+            }
+        },
+        "handlers.SimulateAgentResponse": {
+            "type": "object",
+            "properties": {
+                "debug": {
+                    "$ref": "#/definitions/handlers.SimulationDebugResponse"
+                },
+                "replies": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "toolCalls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.SimulatedToolCallResponse"
+                    }
+                }
+            }
+        },
+        "handlers.SimulateAgentSessionMemory": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.SimulatedToolCallResponse": {
+            "type": "object",
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "isError": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "result": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.SimulationDebugResponse": {
+            "type": "object",
+            "properties": {
+                "completionTokens": {
+                    "type": "integer"
+                },
+                "finishReason": {
+                    "type": "string"
+                },
+                "memoryInjected": {
+                    "type": "boolean"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "promptTokens": {
+                    "type": "integer"
+                },
+                "ragInjected": {
+                    "type": "boolean"
+                },
+                "systemPrompt": {
+                    "type": "string"
+                },
+                "toolNames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -19211,6 +19582,94 @@
                 },
                 "workspaceId": {
                     "type": "string"
+                }
+            }
+        },
+        "leadmemory.CreateLeadMemoryRequest": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "description": "Category: personal | preference | deal | objection | commitment | event | other",
+                    "type": "string",
+                    "example": "preference"
+                },
+                "content": {
+                    "type": "string",
+                    "example": "Prefere boleto a PIX"
+                }
+            }
+        },
+        "leadmemory.LeadMemoryEnvelope": {
+            "type": "object",
+            "properties": {
+                "memory": {
+                    "$ref": "#/definitions/leadmemory.LeadMemoryResponse"
+                }
+            }
+        },
+        "leadmemory.LeadMemoryListResponse": {
+            "type": "object",
+            "properties": {
+                "memories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/leadmemory.LeadMemoryResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "leadmemory.LeadMemoryResponse": {
+            "type": "object",
+            "properties": {
+                "actorId": {
+                    "type": "string"
+                },
+                "actorKind": {
+                    "description": "ActorKind + ActorID say who wrote the current version: \"ai\" with\n\"ai:{agentId}\", \"human\" with a user id, or \"system\". ActorLabel is the\nresolved display name, best-effort: empty means \"render the kind\".",
+                    "type": "string"
+                },
+                "actorLabel": {
+                    "type": "string"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "sourceEntryId": {
+                    "type": "string"
+                },
+                "sourceEntryType": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "leadmemory.UpdateLeadMemoryRequest": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "example": "preference"
+                },
+                "content": {
+                    "type": "string",
+                    "example": "Prefere PIX desde ago/2026"
                 }
             }
         },
@@ -21168,124 +21627,6 @@
                 "TemplateStatusPaused",
                 "TemplateStatusDisabled"
             ]
-        },
-        "textrefiner.DiffSegmentResponse": {
-            "type": "object",
-            "properties": {
-                "op": {
-                    "type": "string",
-                    "example": "insert"
-                },
-                "text": {
-                    "type": "string",
-                    "example": "Prezado cliente, "
-                }
-            }
-        },
-        "textrefiner.ModelInfoResponse": {
-            "type": "object",
-            "properties": {
-                "completionPrice": {
-                    "type": "number",
-                    "example": 0.6
-                },
-                "contextLength": {
-                    "type": "integer",
-                    "example": 128000
-                },
-                "created": {
-                    "type": "integer",
-                    "example": 1700000000
-                },
-                "id": {
-                    "type": "string",
-                    "example": "openai/gpt-4o-mini"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "GPT-4o mini"
-                },
-                "promptPrice": {
-                    "type": "number",
-                    "example": 0.15
-                }
-            }
-        },
-        "textrefiner.RefineRequest": {
-            "type": "object",
-            "properties": {
-                "instruction": {
-                    "type": "string",
-                    "example": "Deixe o texto mais formal e cordial."
-                },
-                "kind": {
-                    "type": "string",
-                    "example": "messaging_prompt"
-                },
-                "maxTokens": {
-                    "type": "integer",
-                    "example": 512
-                },
-                "model": {
-                    "type": "string",
-                    "example": "openai/gpt-4o-mini"
-                },
-                "temperature": {
-                    "type": "number",
-                    "example": 0.2
-                },
-                "text": {
-                    "type": "string",
-                    "example": "Segue o retorno sobre o seu pedido."
-                }
-            }
-        },
-        "textrefiner.RefineResponse": {
-            "type": "object",
-            "properties": {
-                "actualPriceMicros": {
-                    "type": "integer",
-                    "example": 1420
-                },
-                "completionTokens": {
-                    "type": "integer",
-                    "example": 48
-                },
-                "estimatedPriceMicros": {
-                    "type": "integer",
-                    "example": 1500
-                },
-                "model": {
-                    "type": "string",
-                    "example": "openai/gpt-4o-mini"
-                },
-                "originalText": {
-                    "type": "string",
-                    "example": "Segue o retorno sobre o seu pedido."
-                },
-                "promptTokens": {
-                    "type": "integer",
-                    "example": 120
-                },
-                "refinedText": {
-                    "type": "string",
-                    "example": "Prezado cliente, segue o retorno sobre o seu pedido."
-                },
-                "requestId": {
-                    "type": "string",
-                    "example": "req_a1b2c3d4"
-                },
-                "segments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/textrefiner.DiffSegmentResponse"
-                    }
-                },
-                "unifiedDiff": {
-                    "type": "string",
-                    "example": "@@ -1 +1 @@"
-                }
-            }
         },
         "ticket.Document": {
             "type": "object",

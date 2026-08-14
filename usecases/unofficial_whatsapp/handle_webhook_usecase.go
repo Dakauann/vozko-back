@@ -259,7 +259,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 
 	uc.ensureAssignment(sub.conversation, instance)
 	uc.fireWorkflowTriggers(instance, sub.conversation, ev)
-	uc.maybeReplyWithAgent(ctx, instance, sub.conversation, ev)
+	uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev)
 	uc.scheduleAnalysis(instance, sub.conversation)
 	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
@@ -1011,6 +1011,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(instance *uw.Instance, conv
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	ctx context.Context,
 	instance *uw.Instance,
+	contact *uw.Contact,
 	conv *uw.Conversation,
 	ev *uw.Event,
 ) {
@@ -1021,6 +1022,12 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		return
 	}
 
+	// The subject's CRM lead, resolved by bridgeLead on the way in. Always nil
+	// for a group, which keeps lead-scoped features (memory) inert there.
+	var leadID *string
+	if contact != nil {
+		leadID = contact.LeadID
+	}
 	_, err := uc.aiReply.Reply(ctx, conversation.AIReplyRequest{
 		WorkspaceID:           instance.WorkspaceID,
 		EntryID:               conv.ID,
@@ -1029,6 +1036,7 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		AgentResponsesEnabled: instance.EnableAgentResponses,
 		AutomationEnabled:     conv.AutomationEnabled,
 		Text:                  ev.Text,
+		LeadID:                leadID,
 	})
 	if err != nil {
 		log.Printf("[unofficial-whatsapp] AI reply failed for entry %s: %v", conv.ID, err)
