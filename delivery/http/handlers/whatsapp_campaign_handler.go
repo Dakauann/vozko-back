@@ -138,6 +138,7 @@ type whatsappCampaignRequest struct {
 	EnableWorkflow       bool                               `json:"enableWorkflow"`
 	EnableAnalysis       bool                               `json:"enableAnalysis"`
 	EnableAutoStaging    bool                               `json:"EnableAutoStaging"`
+	EnableAutoMemory     bool                               `json:"enableAutoMemory"`
 	PreferAudio          bool                               `json:"preferAudio"`
 	ShowTemplateInCrm    bool                               `json:"showTemplateInCrm"`
 	AiModel              string                             `json:"aiModel,omitempty"`
@@ -201,6 +202,7 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 		EnableWorkflow:       req.EnableWorkflow,
 		EnableAnalysis:       req.EnableAnalysis && !req.EnableAgentResponses,
 		EnableAutoStaging:    req.EnableAutoStaging && !req.EnableAgentResponses,
+		EnableAutoMemory:     req.EnableAutoMemory && !req.EnableAgentResponses,
 		PreferAudio:          req.PreferAudio && req.AgentID != "",
 		ShowTemplateInCrm:    req.ShowTemplateInCrm,
 		AiModel:              req.AiModel,
@@ -288,6 +290,7 @@ func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request)
 		EnableWorkflow:       req.EnableWorkflow,
 		EnableAnalysis:       req.EnableAnalysis && !req.EnableAgentResponses,
 		EnableAutoStaging:    req.EnableAutoStaging && !req.EnableAgentResponses,
+		EnableAutoMemory:     req.EnableAutoMemory && !req.EnableAgentResponses,
 		PreferAudio:          req.PreferAudio && req.AgentID != "",
 		ShowTemplateInCrm:    req.ShowTemplateInCrm,
 		AiModel:              req.AiModel,

@@ -47,6 +47,7 @@ type AccountResponse struct {
 	EnableWorkflow       bool    `json:"enableWorkflow"`
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
+	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -86,6 +87,7 @@ func toAccountResponse(a *igdomain.Account) AccountResponse {
 		EnableWorkflow:       a.EnableWorkflow,
 		EnableAnalysis:       a.EnableAnalysis,
 		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
 		CreatedAt:            a.CreatedAt,
 		UpdatedAt:            a.UpdatedAt,
 	}
@@ -110,6 +112,7 @@ type UpdateAccountConfigRequest struct {
 	EnableWorkflow       *bool   `json:"enableWorkflow"`
 	EnableAnalysis       *bool   `json:"enableAnalysis"`
 	EnableAutoStaging    *bool   `json:"enableAutoStaging"`
+	EnableAutoMemory     *bool   `json:"enableAutoMemory"`
 }
 
 // MediaResponse is a post.

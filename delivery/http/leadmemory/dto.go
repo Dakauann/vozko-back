@@ -44,6 +44,12 @@ type LeadMemoryEnvelope struct {
 type LeadMemoryListResponse struct {
 	Memories []LeadMemoryResponse `json:"memories"`
 	Total    int64                `json:"total"`
+	// LeadLinked reports whether the id in the path resolved to a CRM lead.
+	// False means this conversation has no lead behind it (an Instagram or
+	// Telegram contact, or a WhatsApp contact whose bridge has not landed
+	// yet), so the list is empty and a write would be refused. It lets the
+	// panel distinguish "no memories yet" from "memories do not apply here".
+	LeadLinked bool `json:"leadLinked"`
 }
 
 func toResponse(m *leadmemory.LeadMemory, actorLabel string) LeadMemoryResponse {

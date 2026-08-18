@@ -179,6 +179,7 @@ type Campaign struct {
 	EnableWorkflow       bool                        `json:"enableWorkflow"`
 	EnableAnalysis       bool                        `json:"enableAnalysis"`
 	EnableAutoStaging    bool                        `json:"EnableAutoStaging"`
+	EnableAutoMemory     bool                        `json:"enableAutoMemory"`
 	PreferAudio          bool                        `json:"preferAudio"`
 	ShowTemplateInCrm    bool                        `json:"showTemplateInCrm"`
 	AiModel              string                      `json:"aiModel,omitempty"`

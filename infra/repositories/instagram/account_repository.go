@@ -54,6 +54,7 @@ func (r *accountRepository) Update(ctx context.Context, a *igdomain.Account) err
 		"enable_workflow":        a.EnableWorkflow,
 		"enable_analysis":        a.EnableAnalysis,
 		"enable_auto_staging":    a.EnableAutoStaging,
+		"enable_auto_memory":     a.EnableAutoMemory,
 		"status":                 string(a.Status),
 		"status_reason":          a.StatusReason,
 	}
@@ -277,6 +278,7 @@ func toAccountSchema(a *igdomain.Account) *schema.InstagramAccount {
 		EnableWorkflow:       a.EnableWorkflow,
 		EnableAnalysis:       a.EnableAnalysis,
 		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
 		Status:               string(a.Status),
 		StatusReason:         a.StatusReason,
 		WebhookSubscribedAt:  a.WebhookSubscribedAt,
@@ -312,6 +314,7 @@ func toAccountDomain(record *schema.InstagramAccount) *igdomain.Account {
 		EnableWorkflow:       record.EnableWorkflow,
 		EnableAnalysis:       record.EnableAnalysis,
 		EnableAutoStaging:    record.EnableAutoStaging,
+		EnableAutoMemory:     record.EnableAutoMemory,
 		Status:               igdomain.Status(record.Status),
 		StatusReason:         record.StatusReason,
 		WebhookSubscribedAt:  record.WebhookSubscribedAt,

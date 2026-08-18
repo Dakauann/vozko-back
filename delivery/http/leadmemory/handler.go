@@ -51,18 +51,26 @@ func NewLeadMemoryHandler(
 	}
 }
 
-// resolveLeadID maps the path ref onto the CRM lead. Without a resolver (or
-// when nothing matches) the ref passes through untouched, which preserves the
-// old behavior for plain lead ids: listing an unknown lead stays an empty
-// list rather than becoming an error.
-func (h *LeadMemoryHandler) resolveLeadID(workspaceID, ref string) string {
+// resolveLeadID maps the path ref onto the CRM lead, and reports whether a
+// lead was actually found.
+//
+// The second return exists because "no lead behind this ref" is a real state,
+// not an error: Instagram and Telegram contacts are never bridged to a lead,
+// so the panel addresses memories by a contact id that keys nothing. Passing
+// that id through as if it were a lead is what turned an answerable question
+// into a foreign-key failure at write time, after the operator had already
+// typed the memory.
+//
+// A nil resolver means "not configured", not "not linked": the ref passes
+// through as linked, preserving the plain-lead-id behaviour.
+func (h *LeadMemoryHandler) resolveLeadID(workspaceID, ref string) (string, bool) {
 	if h.leadRefs == nil {
-		return ref
+		return ref, true
 	}
 	if resolved := h.leadRefs.ResolveLeadRef(workspaceID, ref); resolved != "" {
-		return resolved
+		return resolved, true
 	}
-	return ref
+	return ref, false
 }
 
 // @Summary		Listar memórias de um lead
@@ -101,9 +109,23 @@ func (h *LeadMemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	workspaceID := middleware.GetWorkspaceID(r)
+	leadID, linked := h.resolveLeadID(workspaceID, mux.Vars(r)["id"])
+	if !linked {
+		// Answered, not failed: this conversation has no lead, so it has no
+		// memories and cannot gain any. Saying so lets the panel show that
+		// state instead of an empty list that invites a write which cannot
+		// land.
+		response.WriteSuccess(w, http.StatusOK, LeadMemoryListResponse{
+			Memories:   []LeadMemoryResponse{},
+			Total:      0,
+			LeadLinked: false,
+		})
+		return
+	}
+
 	result, err := h.listUC.Execute(r.Context(), leadmemory.ListInput{
 		WorkspaceID: workspaceID,
-		LeadID:      h.resolveLeadID(workspaceID, mux.Vars(r)["id"]),
+		LeadID:      leadID,
 		Query:       query,
 	})
 	if err != nil {
@@ -112,8 +134,9 @@ func (h *LeadMemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.WriteSuccess(w, http.StatusOK, LeadMemoryListResponse{
-		Memories: toResponses(result.Items),
-		Total:    result.Total,
+		Memories:   toResponses(result.Items),
+		Total:      result.Total,
+		LeadLinked: true,
 	})
 }
 
@@ -129,7 +152,7 @@ func (h *LeadMemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
-// @Failure		422	{object}	response.ErrorResponse	"Limite de memórias do lead atingido"
+// @Failure		422	{object}	response.ErrorResponse	"Limite de memórias do lead atingido, ou conversa sem lead vinculado (lead_not_linked)"
 // @Security		BearerAuth
 // @Router			/leads/{id}/memories [post]
 func (h *LeadMemoryHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -144,9 +167,19 @@ func (h *LeadMemoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
+	leadID, linked := h.resolveLeadID(workspaceID, mux.Vars(r)["id"])
+	if !linked {
+		// Refused up front and in the operator's language. The alternative is
+		// the storage layer rejecting a lead id that never existed, which
+		// reaches the UI as a generic 500 and loses what was typed.
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "lead_not_linked",
+			"Esta conversa ainda não está vinculada a um lead; não é possível salvar memórias.", nil)
+		return
+	}
+
 	result, err := h.createUC.Execute(r.Context(), leadmemory.CreateInput{
 		WorkspaceID: workspaceID,
-		LeadID:      h.resolveLeadID(workspaceID, mux.Vars(r)["id"]),
+		LeadID:      leadID,
 		Content:     req.Content,
 		Category:    leadmemory.Category(strings.ToLower(strings.TrimSpace(req.Category))),
 		Actor:       leadmemory.WriteActor{Kind: actor.KindHuman, ID: claims.UserID},

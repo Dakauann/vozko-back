@@ -146,6 +146,7 @@ type UnofficialWhatsAppInstance struct {
 	EnableWorkflow       bool    `gorm:"not null;default:false"`
 	EnableAnalysis       bool    `gorm:"not null;default:false"`
 	EnableAutoStaging    bool    `gorm:"not null;default:false"`
+	EnableAutoMemory     bool    `gorm:"not null;default:false"`
 	// HandleGroups is off by default and is a decision, not an oversight: a
 	// group conversation is stored and visible but runs no automation.
 	HandleGroups bool `gorm:"not null;default:false"`

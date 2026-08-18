@@ -883,6 +883,13 @@ func (h *AgentHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_PHONE_NOT_FOUND", "Business phone not found", map[string]string{"businessPhoneId": "business phone not found"})
 	case errors.Is(err, agent.ErrAgentBusinessPhoneNoAccess):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_PHONE_NO_ACCESS", "Phone does not belong to this workspace", map[string]string{"businessPhoneId": "phone does not belong to this workspace"})
+	// Not-found and foreign are reported identically, matching the use case:
+	// distinguishing them would confirm the existence of another workspace's
+	// knowledge base or MCP collection to anyone probing ids.
+	case errors.Is(err, agent.ErrAgentKnowledgeBaseNoAccess):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_KNOWLEDGE_BASE_NO_ACCESS", "Knowledge base not found in this workspace", map[string]string{"knowledgeBaseIds": "not found in this workspace"})
+	case errors.Is(err, agent.ErrAgentMCPCollectionNoAccess):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_MCP_COLLECTION_NO_ACCESS", "MCP collection not found in this workspace", map[string]string{"mcpCollectionIds": "not found in this workspace"})
 	case errors.Is(err, workspace_department.ErrDepartmentRequired):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_DEPARTMENT_REQUIRED", "Department is required when you belong to multiple departments", map[string]string{"departmentId": "required when you belong to multiple departments"})
 	case errors.Is(err, workspace_department.ErrDepartmentAccessDenied), errors.Is(err, workspace_department.ErrDepartmentNotFound):

@@ -68,6 +68,7 @@ type TelegramAccount struct {
 	EnableWorkflow       bool    `gorm:"not null;default:false"`
 	EnableAnalysis       bool    `gorm:"not null;default:false"`
 	EnableAutoStaging    bool    `gorm:"not null;default:false"`
+	EnableAutoMemory     bool    `gorm:"not null;default:false"`
 
 	Status       string `gorm:"size:24;not null;default:'PENDING';index"`
 	StatusReason string `gorm:"size:255"`

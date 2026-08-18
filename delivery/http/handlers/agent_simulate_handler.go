@@ -41,6 +41,10 @@ type SimulatedToolCallResponse struct {
 	Arguments map[string]interface{} `json:"arguments"`
 	Result    string                 `json:"result,omitempty"`
 	IsError   bool                   `json:"isError"`
+	// Stubbed: false quando a ferramenta rodou de verdade (busca na base de
+	// conhecimento, GET configurado) e o resultado é real; true quando foi
+	// interceptada e o resultado é simulado.
+	Stubbed bool `json:"stubbed"`
 }
 
 type SimulationDebugResponse struct {
@@ -61,7 +65,7 @@ type SimulateAgentResponse struct {
 }
 
 // @Summary		Simular uma conversa com o agente
-// @Description	Executa um turno de conversa contra o agente em modo simulação: o prompt, as ferramentas, a base de conhecimento e as memórias do lead são montados exatamente como em produção, mas TODA execução de ferramenta é interceptada: nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de ferramenta (com argumentos) e o raio-X do turno para depuração. Consome créditos de IA normalmente.
+// @Description	Executa um turno de conversa contra o agente em modo simulação: o prompt, as ferramentas, a base de conhecimento e as memórias do lead são montados exatamente como em produção. Ferramentas de leitura pura (busca na base de conhecimento, consulta de disponibilidade, CEP, HTTP GET) executam de verdade; qualquer ferramenta que possa alterar algo é interceptada e nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de ferramenta (com argumentos e o campo `stubbed`) e o raio-X do turno para depuração. Consome créditos de IA normalmente.
 // @Tags			Agentes
 // @Accept			json
 // @Produce		json
@@ -158,6 +162,7 @@ func (h *AgentHandler) Simulate(w http.ResponseWriter, r *http.Request) {
 			Arguments: call.Arguments,
 			Result:    call.Result,
 			IsError:   call.IsError,
+			Stubbed:   call.Stubbed,
 		})
 	}
 

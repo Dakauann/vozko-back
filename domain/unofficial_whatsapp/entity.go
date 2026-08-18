@@ -337,6 +337,7 @@ type Instance struct {
 	EnableWorkflow       bool    `json:"enableWorkflow"`
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
+	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 	// HandleGroups is off by default and is a decision, not an oversight: a
 	// group conversation is stored and visible but runs no automation, because
 	// an agent answering a group thread is answering the wrong audience.

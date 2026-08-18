@@ -11,7 +11,9 @@ import (
 	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/shared"
 	"vozko/domain/tools"
+	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
+	tools_usecase "vozko/usecases/tools"
 )
 
 // --- fakes ---
@@ -52,12 +54,14 @@ func (s simMemories) Execute(context.Context, leadmemory.ListInput) (*leadmemory
 
 type simAI struct {
 	lastInput ai.GenerateInput
+	lastCtx   context.Context
 	output    *ai.GenerateOutput
 	err       error
 }
 
-func (s *simAI) Generate(_ context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
+func (s *simAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
 	s.lastInput = in
+	s.lastCtx = ctx
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -264,6 +268,58 @@ func TestSimulateInjectsSessionMemories(t *testing.T) {
 	// The agent has manage_lead_memory bound, so the how-to-write line renders.
 	if !strings.Contains(sp, "manage_lead_memory") {
 		t.Fatalf("tool guidance missing for bound agent:\n%s", sp)
+	}
+}
+
+// The tool-execution chain reads the agent and the dedup tracker off the
+// context, so a simulated turn that omits them silently diverges from
+// production: default RAG settings instead of the agent's, no MCP workspace,
+// no in-turn dedup.
+func TestSimulateInstallsTheProductionRequestContext(t *testing.T) {
+	aiSvc := &simAI{output: simOutput()}
+	uc := newSimUC(t, simAgentRepo{agent: simAgent()}, aiSvc, nil)
+
+	if _, err := uc.Execute(context.Background(), agent.SimulateTurnInput{
+		WorkspaceID: "ws-1", AgentID: "agent-1", Message: "oi",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctxAgent, ok := agentctx.AgentFromContext(aiSvc.lastCtx)
+	if !ok || ctxAgent.ID != "agent-1" {
+		t.Fatalf("agent missing from the turn context: %v %+v", ok, ctxAgent)
+	}
+	if _, ok := agentctx.ToolExecutionTrackerFromContext(aiSvc.lastCtx); !ok {
+		t.Fatal("tool execution tracker missing from the turn context")
+	}
+}
+
+// The rail must not present a real knowledge-base result and a canned one the
+// same way: they look identical in the reply and mean opposite things.
+func TestSimulateLabelsRealAndStubbedToolCalls(t *testing.T) {
+	aiSvc := &simAI{output: &ai.GenerateOutput{
+		Messages: []string{"pronto"},
+		ToolCalls: []ai.ToolCall{
+			{Name: tools_usecase.SearchKnowledgeBaseToolName, Result: &tools.ExecutionResult{Result: "trechos reais"}},
+			{Name: tools_usecase.ManageLeadMemoryToolName, Result: &tools.ExecutionResult{Result: "(SIMULAÇÃO) ..."}},
+		},
+	}}
+	uc := newSimUC(t, simAgentRepo{agent: simAgent()}, aiSvc, nil)
+
+	out, err := uc.Execute(context.Background(), agent.SimulateTurnInput{
+		WorkspaceID: "ws-1", AgentID: "agent-1", Message: "quanto custa?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ToolCalls) != 2 {
+		t.Fatalf("tool calls = %+v", out.ToolCalls)
+	}
+	if out.ToolCalls[0].Stubbed {
+		t.Error("a knowledge-base search runs for real and must not be marked stubbed")
+	}
+	if !out.ToolCalls[1].Stubbed {
+		t.Error("a lead-memory write is intercepted and must be marked stubbed")
 	}
 }
 

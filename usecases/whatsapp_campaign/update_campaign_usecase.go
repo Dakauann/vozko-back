@@ -61,6 +61,7 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	existing.EnableWorkflow = input.EnableWorkflow
 	existing.EnableAnalysis = input.EnableAnalysis
 	existing.EnableAutoStaging = input.EnableAutoStaging
+	existing.EnableAutoMemory = input.EnableAutoMemory
 	existing.PreferAudio = input.PreferAudio
 	existing.AiModel = input.AiModel
 	// Archive/unarchive flows go through this usecase (the handler loads the

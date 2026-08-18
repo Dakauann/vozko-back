@@ -191,6 +191,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewScheduleMeetingToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewRescheduleMeetingToolUseCase(rescheduleEventUC),
+		tools_usecase.NewSearchKnowledgeBaseToolUseCase(ragService),
 	}
 	c.services.toolRegistry = tools_usecase.NewService(toolHandlers...)
 	if c.mcpRegistry != nil {
@@ -242,8 +243,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	listCategoriesUC := category_usecase.NewListCategoriesUseCase(c.repositories.category)
 	resolveCreationDepartmentUC := workspace_department_usecase.NewResolveCreationDepartmentUseCase(c.repositories.workspace, c.repositories.workspaceDepartment)
 
-	createAgentUC := agent_usecase.NewCreateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry, resolveCreationDepartmentUC)
-	updateAgentUC := agent_usecase.NewUpdateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry)
+	// The knowledge-base and MCP repositories are the workspace-ownership
+	// guards for attached ids: an agent must never be pointed at another
+	// workspace's knowledge base, and an id on its own carries no proof.
+	createAgentUC := agent_usecase.NewCreateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry, c.repositories.ragKnowledgeBase, c.mcpCollection, resolveCreationDepartmentUC)
+	updateAgentUC := agent_usecase.NewUpdateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry, c.repositories.ragKnowledgeBase, c.mcpCollection)
 	assignAgentDepartmentUC := agent_usecase.NewAssignDepartmentUseCase(c.repositories.agent, resolveCreationDepartmentUC)
 	deleteAgentUC := agent_usecase.NewDeleteAgentUseCase(c.repositories.agent)
 	getAgentUC := agent_usecase.NewGetAgentUseCase(c.repositories.agent)

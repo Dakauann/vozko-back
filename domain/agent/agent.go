@@ -34,6 +34,8 @@ var (
 	ErrAgentMetadataInvalid                 = errors.New("agent metadata must be valid JSON object")
 	ErrAgentInternalToolInvalid             = errors.New("agent internal tool is invalid")
 	ErrAgentInternalToolsRequired           = errors.New("agent internal tools are required")
+	ErrAgentKnowledgeBaseNoAccess           = errors.New("knowledge base does not belong to this workspace")
+	ErrAgentMCPCollectionNoAccess           = errors.New("mcp collection does not belong to this workspace")
 	ErrAgentWhatsAppTemplateRequiredForTool = errors.New("whatsappTemplateId is required when using send_whatsapp_message tool")
 	ErrAgentToolVisibilityInvalid           = errors.New("agent tool visibility is invalid")
 	ErrAgentVariableNameInvalid             = errors.New("agent variable names must contain only letters, digits, and underscores")

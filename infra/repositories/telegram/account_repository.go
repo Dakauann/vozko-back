@@ -67,6 +67,7 @@ func (r *accountRepository) Update(ctx context.Context, a *tgdomain.Account) err
 		"enable_workflow":         record.EnableWorkflow,
 		"enable_analysis":         record.EnableAnalysis,
 		"enable_auto_staging":     record.EnableAutoStaging,
+		"enable_auto_memory":      record.EnableAutoMemory,
 		"status":                  record.Status,
 		"status_reason":           record.StatusReason,
 	}
@@ -303,6 +304,7 @@ func toAccountSchema(a *tgdomain.Account) (*schema.TelegramAccount, error) {
 		EnableWorkflow:       a.EnableWorkflow,
 		EnableAnalysis:       a.EnableAnalysis,
 		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
 		Status:               string(a.Status),
 		StatusReason:         a.StatusReason,
 	}
@@ -352,6 +354,7 @@ func toAccountDomain(record *schema.TelegramAccount) *tgdomain.Account {
 		EnableWorkflow:       record.EnableWorkflow,
 		EnableAnalysis:       record.EnableAnalysis,
 		EnableAutoStaging:    record.EnableAutoStaging,
+		EnableAutoMemory:     record.EnableAutoMemory,
 		Status:               tgdomain.Status(record.Status),
 		StatusReason:         record.StatusReason,
 		CreatedAt:            record.CreatedAt,

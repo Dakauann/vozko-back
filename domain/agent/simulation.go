@@ -7,10 +7,12 @@ import (
 
 // Agent simulation: an operator plays the lead against a real agent in a
 // sandbox. The turn is assembled by the SAME recipe production uses (prompt,
-// tools, knowledge base, lead memories), and the model genuinely runs, but
-// every tool execution is intercepted and answered with a canned result, so
-// nothing touches CRM state, channels, or external systems. What the operator
-// debugs is exactly what production would have done.
+// tools, knowledge base, lead memories), and the model genuinely runs.
+//
+// Read-only tools execute for real, so a knowledge-base search really
+// searches; everything that could change something is intercepted and
+// answered with a canned result, so nothing touches CRM state, channels, or
+// external systems. What the operator debugs is what production would do.
 
 // MaxSimulationHistory bounds the transcript a client may replay per turn. The
 // simulator is stateless server-side; the client resends the conversation.
@@ -48,13 +50,20 @@ type SessionMemory struct {
 }
 
 // SimulatedToolCall is one tool invocation the model made during the turn,
-// with the sandbox's canned result. Arguments are the model's own: that is
+// with the result the sandbox gave it. Arguments are the model's own: that is
 // the thing being debugged.
 type SimulatedToolCall struct {
 	Name      string
 	Arguments map[string]interface{}
 	Result    string
 	IsError   bool
+	// Stubbed distinguishes the two kinds of result the sandbox produces:
+	// false means the real tool ran and Result is genuine (a knowledge-base
+	// search really searched), true means it was intercepted and Result is
+	// canned. Without it the rail cannot tell "the base returned nothing"
+	// from "the search never happened", which look identical in the reply and
+	// mean opposite things.
+	Stubbed bool
 }
 
 // SimulationDebug is the turn's X-ray: what the model was actually given and

@@ -57,6 +57,7 @@ type instanceDTO struct {
 	EnableWorkflow       bool    `json:"enableWorkflow"`
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
+	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 	HandleGroups         bool    `json:"handleGroups"`
 
 	CreatedAt time.Time `json:"createdAt"`
@@ -129,6 +130,7 @@ func toInstanceDTO(i *uw.Instance) instanceDTO {
 		EnableWorkflow:       i.EnableWorkflow,
 		EnableAnalysis:       i.EnableAnalysis,
 		EnableAutoStaging:    i.EnableAutoStaging,
+		EnableAutoMemory:     i.EnableAutoMemory,
 		HandleGroups:         i.HandleGroups,
 
 		CreatedAt: i.CreatedAt,

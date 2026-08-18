@@ -308,7 +308,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Executa um turno de conversa contra o agente em modo simulação: o prompt, as ferramentas, a base de conhecimento e as memórias do lead são montados exatamente como em produção, mas TODA execução de ferramenta é interceptada: nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de ferramenta (com argumentos) e o raio-X do turno para depuração. Consome créditos de IA normalmente.",
+                "description": "Executa um turno de conversa contra o agente em modo simulação: o prompt, as ferramentas, a base de conhecimento e as memórias do lead são montados exatamente como em produção. Ferramentas de leitura pura (busca na base de conhecimento, consulta de disponibilidade, CEP, HTTP GET) executam de verdade; qualquer ferramenta que possa alterar algo é interceptada e nenhuma ação real acontece. Retorna as respostas do agente, as chamadas de ferramenta (com argumentos e o campo ` + "`" + `stubbed` + "`" + `) e o raio-X do turno para depuração. Consome créditos de IA normalmente.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6405,7 +6405,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "Limite de memórias do lead atingido",
+                        "description": "Limite de memórias do lead atingido, ou conversa sem lead vinculado (lead_not_linked)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -18702,6 +18702,10 @@ const docTemplate = `{
                 },
                 "result": {
                     "type": "string"
+                },
+                "stubbed": {
+                    "description": "Stubbed: false quando a ferramenta rodou de verdade (busca na base de\nconhecimento, GET configurado) e o resultado é real; true quando foi\ninterceptada e o resultado é simulado.",
+                    "type": "boolean"
                 }
             }
         },
@@ -18790,6 +18794,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
                     "type": "boolean"
                 },
                 "enableAutoStaging": {
@@ -19617,6 +19624,10 @@ const docTemplate = `{
         "leadmemory.LeadMemoryListResponse": {
             "type": "object",
             "properties": {
+                "leadLinked": {
+                    "description": "LeadLinked reports whether the id in the path resolved to a CRM lead.\nFalse means this conversation has no lead behind it (an Instagram or\nTelegram contact, or a WhatsApp contact whose bridge has not landed\nyet), so the list is empty and a write would be refused. It lets the\npanel distinguish \"no memories yet\" from \"memories do not apply here\".",
+                    "type": "boolean"
+                },
                 "memories": {
                     "type": "array",
                     "items": {

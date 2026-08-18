@@ -307,6 +307,7 @@ func (uc *ConnectAccountUseCase) persist(ctx context.Context, account *igdomain.
 		account.EnableWorkflow = existing.EnableWorkflow
 		account.EnableAnalysis = existing.EnableAnalysis
 		account.EnableAutoStaging = existing.EnableAutoStaging
+		account.EnableAutoMemory = existing.EnableAutoMemory
 		account.DepartmentID = existing.DepartmentID
 
 		if err := uc.accounts.Restore(ctx, existing.ID); err != nil {

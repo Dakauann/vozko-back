@@ -8,21 +8,10 @@ import (
 	"vozko/domain/tools"
 )
 
-var agentToolDescriptions = map[string]string{
-	"name":              "nome do agente",
-	"description":       "descrição interna do agente",
-	"initialMessage":    "mensagem inicial enviada ao iniciar a conversa",
-	"useInitialMessage": "liga/desliga o envio da mensagem inicial",
-	"systemPrompt":      "prompt de sistema (comportamento base do agente)",
-	"messagingPrompt":   "prompt de mensagens (comportamento por texto)",
-	"baseSystemPrompt":  "prompt base anteposto ao prompt de sistema (opcional)",
-	"messagingModel":    "id do modelo de LLM para mensagens (use list_models para um id válido)",
-	"avatarUrl":         "URL do avatar do agente",
-	"provider":          "provedor do agente, ex.: platform",
-	"isActive":          "se o agente está ativo",
-	"businessPhoneId":   "id do número de WhatsApp Business vinculado ao agente",
-}
-
+// structParams builds a tool schema by reflection. It is only ever pointed at
+// a DTO owned by this package (see agentFields): reflecting off a domain input
+// struct made the schema a hostage of json tags written for HTTP binding, and
+// every `json:"-"` field silently disappeared from what the model could do.
 func structParams(t reflect.Type, descriptions map[string]string) (map[string]tools.Parameter, []string) {
 	params := make(map[string]tools.Parameter)
 	var required []string

@@ -282,6 +282,7 @@ type updateInstanceRequest struct {
 	EnableWorkflow       *bool `json:"enableWorkflow"`
 	EnableAnalysis       *bool `json:"enableAnalysis"`
 	EnableAutoStaging    *bool `json:"enableAutoStaging"`
+	EnableAutoMemory     *bool `json:"enableAutoMemory"`
 	HandleGroups         *bool `json:"handleGroups"`
 
 	DailySendCap    *int  `json:"dailySendCap"`
@@ -324,6 +325,7 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		EnableWorkflow:       req.EnableWorkflow,
 		EnableAnalysis:       req.EnableAnalysis,
 		EnableAutoStaging:    req.EnableAutoStaging,
+		EnableAutoMemory:     req.EnableAutoMemory,
 		HandleGroups:         req.HandleGroups,
 
 		DailySendCap:    req.DailySendCap,

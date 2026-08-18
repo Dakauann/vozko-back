@@ -44,15 +44,25 @@ type AnalysisSubject struct {
 	// which is why demanding a phone number was the wrong precondition.
 	ContactLabel string
 
+	// LeadID is the CRM lead behind the conversation, when one is linked.
+	// Auto-memorization is scoped to leads, so without it the memory pass is
+	// silently skipped: a conversation with no lead has nowhere to remember to.
+	LeadID string
+	// AgentID attributes auto-memorized facts to the container's agent
+	// (actor "ai:{id}"). Empty falls back to the system actor, which is the
+	// honest attribution for a background job with no agent configured.
+	AgentID string
+
 	EnableAnalysis    bool
 	EnableAutoStaging bool
+	EnableAutoMemory  bool
 	// AIModel overrides the default. Empty means the job's default.
 	AIModel string
 }
 
 // WantsWork reports whether this subject has anything enabled at all.
 func (s *AnalysisSubject) WantsWork() bool {
-	return s != nil && (s.EnableAnalysis || s.EnableAutoStaging)
+	return s != nil && (s.EnableAnalysis || s.EnableAutoStaging || (s.EnableAutoMemory && s.LeadID != ""))
 }
 
 // AnalysisSubjectResolver loads one channel's subject.

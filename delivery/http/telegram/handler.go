@@ -161,6 +161,7 @@ type updateAccountRequest struct {
 	EnableWorkflow       *bool   `json:"enableWorkflow"`
 	EnableAnalysis       *bool   `json:"enableAnalysis"`
 	EnableAutoStaging    *bool   `json:"enableAutoStaging"`
+	EnableAutoMemory     *bool   `json:"enableAutoMemory"`
 }
 
 // UpdateAccount edits a bot's automation configuration.
@@ -182,6 +183,7 @@ func (h *Handler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 		EnableWorkflow:       req.EnableWorkflow,
 		EnableAnalysis:       req.EnableAnalysis,
 		EnableAutoStaging:    req.EnableAutoStaging,
+		EnableAutoMemory:     req.EnableAutoMemory,
 	})
 	if err != nil {
 		writeDomainError(w, err)
@@ -323,6 +325,7 @@ type accountDTO struct {
 	EnableWorkflow       bool    `json:"enableWorkflow"`
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
+	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -357,6 +360,7 @@ func toAccountDTO(a *tgdomain.Account) accountDTO {
 		EnableWorkflow:       a.EnableWorkflow,
 		EnableAnalysis:       a.EnableAnalysis,
 		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
 		CreatedAt:            a.CreatedAt,
 		UpdatedAt:            a.UpdatedAt,
 	}

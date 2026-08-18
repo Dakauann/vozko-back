@@ -59,6 +59,7 @@ func (r *instanceRepository) Update(ctx context.Context, i *uw.Instance) error {
 		"enable_workflow":        record.EnableWorkflow,
 		"enable_analysis":        record.EnableAnalysis,
 		"enable_auto_staging":    record.EnableAutoStaging,
+		"enable_auto_memory":     record.EnableAutoMemory,
 		"handle_groups":          record.HandleGroups,
 		"warmup_started_at":      record.WarmupStartedAt,
 	}

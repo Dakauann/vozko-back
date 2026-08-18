@@ -969,7 +969,7 @@ func (uc *HandleWebhookUseCase) ensureAssignment(conv *uw.Conversation, instance
 }
 
 func (uc *HandleWebhookUseCase) scheduleAnalysis(instance *uw.Instance, conv *uw.Conversation) {
-	if uc.analysis == nil || (!instance.EnableAnalysis && !instance.EnableAutoStaging) {
+	if uc.analysis == nil || (!instance.EnableAnalysis && !instance.EnableAutoStaging && !instance.EnableAutoMemory) {
 		return
 	}
 	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeUnofficialWhatsApp)

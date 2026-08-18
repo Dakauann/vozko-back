@@ -613,3 +613,28 @@ func TestResolutionTakesPrecedenceOverPreResolved(t *testing.T) {
 		t.Errorf("ToolNames = %v, want only the resolved tool", out.ToolNames)
 	}
 }
+
+// A zero-tool agent must reach the AI service with an EXPLICIT empty tool set,
+// never a nil one.
+//
+// The service reads nil as "the caller expressed no preference" and answers it
+// by substituting the whole registry, so a nil here would hand an agent that
+// was configured with no tools every tool on the platform, silently, on every
+// turn. This is why the tool set may safely be empty at all: empty means empty.
+func TestAgentWithNoBoundToolsResolvesToAnExplicitlyEmptySet(t *testing.T) {
+	reg := stubRegistry{defs: []tools.Definition{{Name: "book_meeting"}, {Name: "http_request"}}}
+	a := New(reg, nil, nil)
+
+	out := a.Assemble(context.Background(), Request{
+		Agent:                &agent.Agent{InternalTools: []agent.ToolBinding{}},
+		ResolveInternalTools: true,
+		Visibility:           agent.ToolVisibilityMessaging,
+	})
+
+	if out.Input.Tools == nil {
+		t.Fatal("tools = nil for an agent that binds none; the AI service reads nil as 'use the full registry'")
+	}
+	if len(out.Input.Tools) != 0 {
+		t.Fatalf("tools = %v, want an empty set", out.ToolNames)
+	}
+}

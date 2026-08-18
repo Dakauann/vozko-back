@@ -24,6 +24,7 @@ type WhatsAppCampaign struct {
 	EnableWorkflow       bool           `gorm:"not null;default:false"`
 	EnableAnalysis       bool           `gorm:"not null;default:false"`
 	EnableAutoStaging    bool           `gorm:"not null;default:false"`
+	EnableAutoMemory     bool           `gorm:"not null;default:false"`
 	PreferAudio          bool           `gorm:"not null;default:false"`
 	ShowTemplateInCrm    bool           `gorm:"column:show_template_in_crm;not null;default:false"`
 	AiModel              string         `gorm:"size:120"`

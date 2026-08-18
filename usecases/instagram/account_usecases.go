@@ -61,6 +61,7 @@ type UpdateAccountConfigInput struct {
 	EnableWorkflow       *bool
 	EnableAnalysis       *bool
 	EnableAutoStaging    *bool
+	EnableAutoMemory     *bool
 }
 
 // UpdateAccountConfigUseCase edits the automation config an account carries for
@@ -107,6 +108,9 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, in UpdateAcco
 	}
 	if in.EnableAutoStaging != nil {
 		account.EnableAutoStaging = *in.EnableAutoStaging
+	}
+	if in.EnableAutoMemory != nil {
+		account.EnableAutoMemory = *in.EnableAutoMemory
 	}
 
 	account.Normalize()

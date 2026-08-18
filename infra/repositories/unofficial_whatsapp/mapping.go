@@ -115,6 +115,7 @@ func toInstanceSchema(i *uw.Instance) *schema.UnofficialWhatsAppInstance {
 		EnableWorkflow:       i.EnableWorkflow,
 		EnableAnalysis:       i.EnableAnalysis,
 		EnableAutoStaging:    i.EnableAutoStaging,
+		EnableAutoMemory:     i.EnableAutoMemory,
 		HandleGroups:         i.HandleGroups,
 	}
 	// Credentials are written only when supplied, so a config-only update
@@ -186,6 +187,7 @@ func toInstanceDomain(record *schema.UnofficialWhatsAppInstance) *uw.Instance {
 		EnableWorkflow:       record.EnableWorkflow,
 		EnableAnalysis:       record.EnableAnalysis,
 		EnableAutoStaging:    record.EnableAutoStaging,
+		EnableAutoMemory:     record.EnableAutoMemory,
 		HandleGroups:         record.HandleGroups,
 
 		CreatedAt: record.CreatedAt,

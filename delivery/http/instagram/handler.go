@@ -379,6 +379,7 @@ func (h *Handler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 		EnableWorkflow:       req.EnableWorkflow,
 		EnableAnalysis:       req.EnableAnalysis,
 		EnableAutoStaging:    req.EnableAutoStaging,
+		EnableAutoMemory:     req.EnableAutoMemory,
 	})
 	if err != nil {
 		writeDomainError(w, err, "Failed to update Instagram account")

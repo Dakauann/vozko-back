@@ -149,6 +149,76 @@ Transcrição:
 %s`, campaignName, userPhoneNumber, agentInstructions, analysis.ClassificationRubricPrompt(), analysis.QualityRubricPrompt(), transcript)
 }
 
+// autoMemoryRules mirrors the manage_lead_memory tool's own guidance. Kept in
+// one place so the ride-along section and the memory-only prompt cannot drift
+// from each other or from what the tool promises the model.
+const autoMemoryRules = `- Salve apenas FATOS duráveis e declarativos sobre o lead (preferências, orçamento, datas importantes, combinados, objeções, contexto pessoal relevante).
+- NÃO salve trivialidades, dados já visíveis (nome, telefone), instruções, nem trechos da conversa.
+- Antes de salvar, confira o bloco "Memórias sobre este lead": se o fato já existe, use action='update' com o memory_id em vez de criar outro.
+- Se um fato salvo deixou de valer ou o lead pediu para esquecer, use action='forget' com o memory_id.
+- Se a conversa não trouxe nenhum fato durável novo ou alterado, NÃO chame a ferramenta manage_lead_memory.`
+
+// BuildAutoMemorySection is appended to the analysis or auto-tag prompt when
+// memorization rides along in the same LLM call. currentMemories is the block
+// rendered by the lead-memory usecase, or "" when the lead has none yet.
+func BuildAutoMemorySection(currentMemories string) string {
+	memories := currentMemories
+	if strings.TrimSpace(memories) == "" {
+		memories = "\n(nenhuma memória salva sobre este lead até agora)\n"
+	}
+	return fmt.Sprintf(`
+
+═══════════════════════════════════════════════════
+MEMÓRIA DO LEAD (tarefa adicional)
+═══════════════════════════════════════════════════
+Além da tarefa acima, mantenha a memória de longo prazo deste lead usando a ferramenta manage_lead_memory:
+%s
+%s`, autoMemoryRules, memories)
+}
+
+// AutoMemoryPromptInput feeds the memory-only pass: a container with
+// auto-memorization enabled but analysis and auto-staging switched off.
+type AutoMemoryPromptInput struct {
+	ContainerName string
+	ContactLabel  string
+	MessageCount  int
+	// CurrentMemories is the rendered memory block, "" when the lead has none.
+	CurrentMemories string
+	Transcript      string
+}
+
+func BuildAutoMemoryPrompt(input AutoMemoryPromptInput) string {
+	memories := input.CurrentMemories
+	if strings.TrimSpace(memories) == "" {
+		memories = "\n(nenhuma memória salva sobre este lead até agora)\n"
+	}
+	return fmt.Sprintf(`Você é responsável por manter a memória de longo prazo sobre um lead em um CRM. Sua ÚNICA tarefa é ler a transcrição abaixo e, usando a ferramenta manage_lead_memory, registrar fatos duráveis novos, corrigir os que mudaram e apagar os que deixaram de valer.
+
+═══════════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════════
+- Campanha/canal: %s
+- Contato: %s
+- Total de mensagens na conversa: %d
+%s
+═══════════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════════
+%s
+
+═══════════════════════════════════════════════════
+TRANSCRIÇÃO COMPLETA DA CONVERSA
+═══════════════════════════════════════════════════
+%s`,
+		input.ContainerName,
+		input.ContactLabel,
+		input.MessageCount,
+		memories,
+		autoMemoryRules,
+		input.Transcript,
+	)
+}
+
 type AutoTagPromptInput struct {
 	CampaignName   string
 	MessageCount   int

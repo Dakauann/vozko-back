@@ -302,7 +302,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 // Gated on the account's own switch, exactly as the agent and workflows are, so
 // one toggle in the UI means one behaviour.
 func (uc *HandleWebhookUseCase) scheduleAnalysis(account *tgdomain.Account, conv *tgdomain.Conversation) {
-	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging) {
+	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging || account.EnableAutoMemory) {
 		return
 	}
 	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {

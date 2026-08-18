@@ -143,6 +143,7 @@ type Account struct {
 	EnableWorkflow       bool    `json:"enableWorkflow"`
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
+	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 
 	Status       Status `json:"status"`
 	StatusReason string `json:"statusReason,omitempty"`

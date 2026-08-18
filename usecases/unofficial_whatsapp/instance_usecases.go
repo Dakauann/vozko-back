@@ -97,6 +97,7 @@ type UpdateInstanceConfigInput struct {
 	EnableWorkflow       *bool
 	EnableAnalysis       *bool
 	EnableAutoStaging    *bool
+	EnableAutoMemory     *bool
 	HandleGroups         *bool
 
 	DailySendCap    *int
@@ -131,6 +132,7 @@ func (uc *UpdateInstanceConfigUseCase) Execute(ctx context.Context, in UpdateIns
 	applyBool(&instance.EnableWorkflow, in.EnableWorkflow)
 	applyBool(&instance.EnableAnalysis, in.EnableAnalysis)
 	applyBool(&instance.EnableAutoStaging, in.EnableAutoStaging)
+	applyBool(&instance.EnableAutoMemory, in.EnableAutoMemory)
 	applyBool(&instance.HandleGroups, in.HandleGroups)
 	applyBool(&instance.AutoRejectCalls, in.AutoRejectCalls)
 	applyInt(&instance.DailySendCap, in.DailySendCap)

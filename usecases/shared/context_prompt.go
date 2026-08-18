@@ -72,6 +72,15 @@ func (c ConversationContext) BuildContextPrompt() string {
 		sb.WriteString("FLUXO: 1) Cliente aceita → 2) Chame send_whatsapp_template → 3) Confirme o envio ao cliente.\n\n")
 	}
 
+	if c.hasTool("search_knowledge_base") {
+		sb.WriteString("BASE DE CONHECIMENTO (OBRIGATÓRIO):\n")
+		sb.WriteString("Você tem a ferramenta 'search_knowledge_base' para pesquisar nos documentos da empresa.\n")
+		sb.WriteString("Antes de responder perguntas sobre produtos, preços, políticas, prazos ou condições, chame a ferramenta — não responda esses dados de memória.\n")
+		sb.WriteString("Baseie a resposta nos trechos retornados. Busque pelos termos-chave do assunto em uma frase específica, não pela mensagem literal do cliente.\n")
+		sb.WriteString("Se a busca não trouxer nada útil, reformule com sinônimos ou termos mais amplos/específicos e tente de novo (até 2-3 buscas) antes de desistir.\n")
+		sb.WriteString("Só depois de esgotar as buscas responda com base nas suas próprias instruções; se a informação não estiver em lugar nenhum, diga que não a tem em vez de inventar.\n\n")
+	}
+
 	sb.WriteString("--- Lead/Contact Info (the person you are talking to) ---\n")
 	switch c.Channel {
 	case ChannelWhatsApp:

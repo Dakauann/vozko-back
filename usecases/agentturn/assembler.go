@@ -135,6 +135,17 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 			CampaignType: req.CampaignType,
 		})
 		toolDefs = resolved.Definitions
+		if toolDefs == nil {
+			// An agent that binds no tools must run with none.
+			//
+			// Downstream, a nil tool slice means "the caller expressed no
+			// preference", and the AI service answers that by substituting the
+			// entire registry. Resolving the agent's own bindings is an
+			// expressed preference even when it comes back empty, so the empty
+			// set is made explicit here: otherwise a zero-tool agent silently
+			// gains every tool on the platform.
+			toolDefs = []tools.Definition{}
+		}
 		copyConfigsInto(toolConfigs, resolved.Configs)
 
 	case len(req.PreResolved) > 0:

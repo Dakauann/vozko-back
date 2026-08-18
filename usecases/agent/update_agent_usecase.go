@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"vozko/domain/agent"
+	mcpdomain "vozko/domain/agent/mcp"
+	"vozko/domain/rag"
 	"vozko/domain/tools"
 	businessphone "vozko/domain/whatsapp/business_phone"
 )
@@ -12,17 +14,23 @@ type updateAgentUseCase struct {
 	repo              agent.Repository
 	businessPhoneRepo businessphone.Repository
 	toolRegistry      tools.Service
+	knowledgeBaseRepo rag.KnowledgeBaseRepository
+	mcpCollectionRepo mcpdomain.CollectionRepository
 }
 
 func NewUpdateAgentUseCase(
 	repo agent.Repository,
 	businessPhoneRepo businessphone.Repository,
 	toolRegistry tools.Service,
+	knowledgeBaseRepo rag.KnowledgeBaseRepository,
+	mcpCollectionRepo mcpdomain.CollectionRepository,
 ) agent.UpdateAgentUseCase {
 	return &updateAgentUseCase{
 		repo:              repo,
 		businessPhoneRepo: businessPhoneRepo,
 		toolRegistry:      toolRegistry,
+		knowledgeBaseRepo: knowledgeBaseRepo,
+		mcpCollectionRepo: mcpCollectionRepo,
 	}
 }
 
@@ -53,6 +61,17 @@ func (uc *updateAgentUseCase) Execute(ctx context.Context, agentID string, in ag
 	}
 
 	if err := validateBusinessPhoneOwnership(uc.businessPhoneRepo, current.WorkspaceID, current.BusinessPhoneID); err != nil {
+		return nil, err
+	}
+
+	// Validated against the MERGED agent, not the input: an update that omits
+	// these keeps whatever was already attached, and re-checking the effective
+	// set is what makes the guard hold even if something foreign slipped in
+	// before this check existed.
+	if err := validateKnowledgeBaseOwnership(ctx, uc.knowledgeBaseRepo, current.WorkspaceID, current.KnowledgeBaseIDs); err != nil {
+		return nil, err
+	}
+	if err := validateMCPCollectionOwnership(ctx, uc.mcpCollectionRepo, current.WorkspaceID, current.MCPCollectionIDs); err != nil {
 		return nil, err
 	}
 

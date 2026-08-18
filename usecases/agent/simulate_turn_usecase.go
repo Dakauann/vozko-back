@@ -10,6 +10,7 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	leadmemory "vozko/domain/lead_memory"
+	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
 	lead_memory_usecase "vozko/usecases/lead_memory"
 	rag_usecase "vozko/usecases/rag"
@@ -95,12 +96,22 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 		ConversationID: simulationEntryID,
 	}
 
+	// The same per-request context every production channel installs
+	// (handle_whatsapp_message_usecase, channel_ai_reply). Without it the
+	// simulator diverges from production in ways that look like tool bugs:
+	// search_knowledge_base falls back to default RAG settings instead of the
+	// agent's tuned ones, MCP execution cannot resolve its workspace, and the
+	// in-turn dedup that stops a looping model never engages.
+	ctx = agentctx.WithAgent(ctx, agentRecord)
+	ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
+
 	leadID := strings.TrimSpace(in.LeadID)
 	seed := map[string]interface{}{
 		"__workspace_id": agentRecord.WorkspaceID,
 		"__agent_id":     agentRecord.ID,
 		// Honest flag for anything downstream that ever wants to know; today
-		// nothing reads it because interception happens at the service.
+		// nothing reads it, because which tools may really run is decided at
+		// the service (SimulationRunsForReal), not by each tool.
 		"__simulation": true,
 	}
 	if leadID != "" {
@@ -146,7 +157,15 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 
 	toolCalls := make([]agent.SimulatedToolCall, 0, len(out.ToolCalls))
 	for _, call := range out.ToolCalls {
-		sim := agent.SimulatedToolCall{Name: call.Name, Arguments: call.Arguments}
+		sim := agent.SimulatedToolCall{
+			Name:      call.Name,
+			Arguments: call.Arguments,
+			// Re-asking the sandbox's own predicate, with the same inputs it
+			// was given, rather than plumbing a verdict back through
+			// tools.Service. It is a pure function of name and config, both
+			// fixed for the turn, so the answer here is the one it gave.
+			Stubbed: !tools_usecase.SimulationRunsForReal(call.Name, input.ToolConfigs[strings.ToLower(call.Name)]),
+		}
 		if call.Result != nil {
 			sim.Result = stringifyResult(call.Result.Result)
 			sim.IsError = call.Result.IsError

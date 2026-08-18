@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"testing"
 
-	"vozko/domain/agent"
 	"vozko/domain/tools"
 )
 
@@ -74,19 +73,21 @@ func TestBindArgsOnlyBindsSchemaFields(t *testing.T) {
 }
 
 func TestCreateInputRejectsScopeFromArgs(t *testing.T) {
-	var in agent.CreateAgentInput
-	bindArgs(map[string]interface{}{"name": "x", "workspaceId": "evil", "departmentId": "evil"}, &in)
-	if in.WorkspaceID != "" {
+	var f agentFields
+	bindArgs(map[string]interface{}{"name": "x", "workspaceId": "evil", "departmentId": "evil"}, &f)
+	if in := f.toCreateInput(); in.WorkspaceID != "" {
 		t.Fatal("workspace/department must never bind from model args")
 	}
-	if in.Name != "x" {
+	if f.Name == nil || *f.Name != "x" {
 		t.Fatal("real fields still bind")
 	}
 }
 
+// Asserted against the DEFINITIONS the model actually receives, not against a
+// reflection call a refactor could quietly repoint somewhere else.
 func TestAgentSchemasExcludeScope(t *testing.T) {
-	create, _ := structParams(reflect.TypeOf(agent.CreateAgentInput{}), agentToolDescriptions)
-	update, _ := structParams(reflect.TypeOf(agent.UpdateAgentInput{}), agentToolDescriptions)
+	create := NewCreateAgentTool(nil).Definition().Parameters
+	update := NewUpdateAgentTool(nil, nil).Definition().Parameters
 	for _, params := range []map[string]tools.Parameter{create, update} {
 		for _, k := range []string{"workspaceId", "workspaceID", "departmentId", "departmentID", "departmentIds"} {
 			if _, ok := params[k]; ok {

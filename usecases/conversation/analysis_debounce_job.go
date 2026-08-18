@@ -12,11 +12,13 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
+	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	toolsdomain "vozko/domain/tools"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	lead_memory_usecase "vozko/usecases/lead_memory"
 	tools_usecase "vozko/usecases/tools"
 )
 
@@ -35,6 +37,9 @@ type analysisDebounceJob struct {
 	toolRegistry         toolsdomain.Service
 	analysisRepo         analysisdomain.Repository
 	stageRepo            stage.Repository
+	// leadMemories renders the lead's current memory block into the memory
+	// pass, so the model updates existing facts instead of re-adding them.
+	leadMemories         leadmemory.ListUseCase
 	hub                  conversation.EventBroadcaster
 	cachedBalanceChecker balance.CachedBalanceChecker
 	// resolvers load an AnalysisSubject per channel. WhatsApp keeps its own
@@ -68,6 +73,7 @@ func NewAnalysisDebounceJob(
 	toolRegistry toolsdomain.Service,
 	analysisRepo analysisdomain.Repository,
 	stageRepo stage.Repository,
+	leadMemories leadmemory.ListUseCase,
 	hub conversation.EventBroadcaster,
 	cachedBalanceChecker balance.CachedBalanceChecker,
 ) conversation.AnalysisDebounceJob {
@@ -81,6 +87,7 @@ func NewAnalysisDebounceJob(
 		toolRegistry:         toolRegistry,
 		analysisRepo:         analysisRepo,
 		stageRepo:            stageRepo,
+		leadMemories:         leadMemories,
 		hub:                  hub,
 		cachedBalanceChecker: cachedBalanceChecker,
 	}
@@ -184,8 +191,11 @@ func (j *analysisDebounceJob) resolveWhatsAppSubject(entryID string) (*AnalysisS
 		ContainerID:       wcCampaign.ID,
 		ContainerName:     wcCampaign.Name,
 		ContactLabel:      contactLabel,
+		LeadID:            wcEntry.LeadID,
+		AgentID:           wcCampaign.AgentID,
 		EnableAnalysis:    wcCampaign.EnableAnalysis,
 		EnableAutoStaging: wcCampaign.EnableAutoStaging,
+		EnableAutoMemory:  wcCampaign.EnableAutoMemory,
 		AIModel:           wcCampaign.AiModel,
 	}, nil
 }
@@ -266,12 +276,48 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		}
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), analysisDebounceTimeout)
+	defer cancel()
+
+	// Auto-memorization is the third capability of this same pass: the seeded
+	// manage_lead_memory tool joins the call, so caps, dedup, attribution and
+	// timeline events all come from the one write model the operators and the
+	// live agent already use. A lead is required: without one there is nowhere
+	// to remember to.
+	wantMemory := subject.EnableAutoMemory && subject.LeadID != ""
+	var memoryBlock string
+	if wantMemory {
+		if h, ok := j.toolRegistry.Handler(tools_usecase.ManageLeadMemoryToolName); ok {
+			aiTools = append(aiTools, h.Definition())
+			toolConfigs[tools_usecase.ManageLeadMemoryToolName] = map[string]interface{}{
+				"__workspace_id": workspaceID,
+				"__lead_id":      subject.LeadID,
+				"__agent_id":     subject.AgentID,
+				"__entry_id":     entryID,
+				"__entry_type":   entryTypeStr,
+			}
+			// Injecting the current memories is what makes repeated extraction
+			// idempotent: the model sees what is already known and updates
+			// instead of re-adding.
+			memoryBlock = lead_memory_usecase.BuildContext(ctx, j.leadMemories, lead_memory_usecase.ContextInput{
+				WorkspaceID:   workspaceID,
+				LeadID:        subject.LeadID,
+				HasMemoryTool: true,
+			})
+		} else {
+			wantMemory = false
+		}
+	}
+
 	if len(aiTools) == 0 {
 		return nil
 	}
 
+	wantAutoTag := autoTagEnabled
+
 	var systemPrompt string
-	if wantAnalysis {
+	switch {
+	case wantAnalysis:
 		systemPrompt = BuildAnalysisPrompt(AnalysisPromptInput{
 			AnalysisType:    AnalysisTypeOngoing,
 			CampaignName:    campaignName,
@@ -279,7 +325,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			MessageCount:    int(totalCount),
 			History:         history,
 		})
-	} else {
+	case wantAutoTag:
 		transcript := BuildTranscript(history, userPhoneNumber)
 		var currentTagName string
 		var allTags []*stage.Stage
@@ -298,9 +344,23 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			CurrentTagName: currentTagName,
 			Tags:           allTags,
 		})
+	default:
+		// Memory-only container: one memory-focused call instead of grafting the
+		// task onto an analysis prompt that was never requested.
+		systemPrompt = BuildAutoMemoryPrompt(AutoMemoryPromptInput{
+			ContainerName:   campaignName,
+			ContactLabel:    userPhoneNumber,
+			MessageCount:    int(totalCount),
+			CurrentMemories: memoryBlock,
+			Transcript:      BuildTranscript(history, userPhoneNumber),
+		})
 	}
 
-	wantAutoTag := autoTagEnabled
+	// When analysis or auto-tag already runs for this entry, memory extraction
+	// joins the same call rather than paying for a second one.
+	if wantMemory && (wantAnalysis || wantAutoTag) {
+		systemPrompt += BuildAutoMemorySection(memoryBlock)
+	}
 
 	var userMessage string
 	switch {
@@ -310,10 +370,12 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		userMessage = "Analise a conversa acima e chame a ferramenta conversation_analysis com sua avaliação."
 	case wantAutoTag:
 		userMessage = "Siga os passos do sistema: leia a transcrição INTEIRA, identifique o estado MAIS RECENTE da negociação (foque nas últimas mensagens), compare com as descrições das etapas, e chame manage_entry_stage com a etapa correta. Se a etapa atual já está correta, passe a mesma etapa."
+	default:
+		userMessage = "Siga as instruções do sistema: leia a transcrição INTEIRA e gerencie a memória do lead com a ferramenta manage_lead_memory. Se não houver fatos duráveis novos ou alterados, não chame nenhuma ferramenta."
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), analysisDebounceTimeout)
-	defer cancel()
+	if wantMemory && (wantAnalysis || wantAutoTag) {
+		userMessage += " Além disso, registre na memória do lead, via manage_lead_memory, os fatos duráveis novos ou alterados desta conversa, se houver."
+	}
 
 	aiModel := "openai/gpt-4o-mini"
 	if subject.AIModel != "" {
@@ -363,6 +425,9 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		}
 		if toolCall.Name == tools_usecase.ManageEntryStageToolName && toolCall.Result != nil {
 			log.Printf("[analysis-debounce] auto-stage result for entry %s: %v", entryID, toolCall.Result.Result)
+		}
+		if toolCall.Name == tools_usecase.ManageLeadMemoryToolName && toolCall.Result != nil {
+			log.Printf("[analysis-debounce] auto-memory result for lead %s (entry %s): %v", subject.LeadID, entryID, toolCall.Result.Result)
 		}
 	}
 

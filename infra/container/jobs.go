@@ -22,6 +22,7 @@ func (c *Container) initJobRunner() {
 		c.services.toolRegistry,
 		c.repositories.analysis,
 		c.repositories.stage,
+		c.useCases.listLeadMemories,
 		c.services.conversationHub,
 		c.services.cachedBalanceChecker,
 	)
@@ -90,8 +91,10 @@ func unofficialWhatsAppAnalysisResolver(bundle *unofficialWhatsAppBundle) conver
 		}
 
 		label := instance.Label()
+		var leadID string
 		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
 			label = contact.DisplayName()
+			leadID = derefID(contact.LeadID)
 		}
 
 		return &conversation_usecase.AnalysisSubject{
@@ -101,8 +104,11 @@ func unofficialWhatsAppAnalysisResolver(bundle *unofficialWhatsAppBundle) conver
 			ContainerID:       instance.ID,
 			ContainerName:     instance.Label(),
 			ContactLabel:      label,
+			LeadID:            leadID,
+			AgentID:           derefID(instance.AgentID),
 			EnableAnalysis:    instance.EnableAnalysis,
 			EnableAutoStaging: instance.EnableAutoStaging,
+			EnableAutoMemory:  instance.EnableAutoMemory,
 		}, nil
 	}
 }
@@ -125,8 +131,10 @@ func instagramAnalysisResolver(bundle *instagramBundle) conversation_usecase.Ana
 		}
 
 		label := "@" + account.Username
+		var leadID string
 		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
 			label = contact.DisplayName()
+			leadID = derefID(contact.LeadID)
 		}
 
 		return &conversation_usecase.AnalysisSubject{
@@ -136,8 +144,11 @@ func instagramAnalysisResolver(bundle *instagramBundle) conversation_usecase.Ana
 			ContainerID:       account.ID,
 			ContainerName:     "@" + account.Username,
 			ContactLabel:      label,
+			LeadID:            leadID,
+			AgentID:           derefID(account.AgentID),
 			EnableAnalysis:    account.EnableAnalysis,
 			EnableAutoStaging: account.EnableAutoStaging,
+			EnableAutoMemory:  account.EnableAutoMemory,
 		}, nil
 	}
 }
@@ -155,8 +166,10 @@ func telegramAnalysisResolver(bundle *telegramBundle) conversation_usecase.Analy
 		}
 
 		label := account.DisplayName()
+		var leadID string
 		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
 			label = contact.DisplayName()
+			leadID = derefID(contact.LeadID)
 		}
 
 		return &conversation_usecase.AnalysisSubject{
@@ -166,8 +179,20 @@ func telegramAnalysisResolver(bundle *telegramBundle) conversation_usecase.Analy
 			ContainerID:       account.ID,
 			ContainerName:     account.DisplayName(),
 			ContactLabel:      label,
+			LeadID:            leadID,
+			AgentID:           derefID(account.AgentID),
 			EnableAnalysis:    account.EnableAnalysis,
 			EnableAutoStaging: account.EnableAutoStaging,
+			EnableAutoMemory:  account.EnableAutoMemory,
 		}, nil
 	}
+}
+
+// derefID flattens the nullable ids the channel entities use (*string) into
+// the plain strings AnalysisSubject carries; nil means "not linked".
+func derefID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
 }
