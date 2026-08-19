@@ -155,17 +155,17 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 			}
 
 			return &wc.EntryOutput{
-				EntryID:            newEntry.ID,
-				CampaignID:         newEntry.CampaignID,
-				LeadID:             newLead.ID,
-				Number:             newLead.Number,
-				Name:               newLead.Name,
-				Variables:          newEntry.Variables,
-				Status:             string(newEntry.Status),
+				EntryID:           newEntry.ID,
+				CampaignID:        newEntry.CampaignID,
+				LeadID:            newLead.ID,
+				Number:            newLead.Number,
+				Name:              newLead.Name,
+				Variables:         newEntry.Variables,
+				Status:            string(newEntry.Status),
 				AutomationEnabled: newEntry.AutomationEnabled,
-				Metadata:           entryMetadata,
-				CreatedAt:          newEntry.CreatedAt.Format(time.RFC3339),
-				UpdatedAt:          newEntry.UpdatedAt.Format(time.RFC3339),
+				Metadata:          entryMetadata,
+				CreatedAt:         newEntry.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:         newEntry.UpdatedAt.Format(time.RFC3339),
 			}, nil
 		}
 	}
@@ -212,17 +212,17 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 	}
 
 	return &wc.EntryOutput{
-		EntryID:            updatedEntry.ID,
-		CampaignID:         updatedEntry.CampaignID,
-		LeadID:             updatedLead.ID,
-		Number:             updatedLead.Number,
-		Name:               updatedLead.Name,
-		Variables:          updatedEntry.Variables,
-		Status:             string(updatedEntry.Status),
+		EntryID:           updatedEntry.ID,
+		CampaignID:        updatedEntry.CampaignID,
+		LeadID:            updatedLead.ID,
+		Number:            updatedLead.Number,
+		Name:              updatedLead.Name,
+		Variables:         updatedEntry.Variables,
+		Status:            string(updatedEntry.Status),
 		AutomationEnabled: updatedEntry.AutomationEnabled,
-		Metadata:           updatedEntry.Metadata,
-		CreatedAt:          updatedEntry.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:          updatedEntry.UpdatedAt.Format(time.RFC3339),
+		Metadata:          updatedEntry.Metadata,
+		CreatedAt:         updatedEntry.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         updatedEntry.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 

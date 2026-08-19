@@ -754,6 +754,7 @@ type mockConsumeWhatsappTemplate struct {
 	failDebit      bool
 	panicOnExecute bool
 	cost           int64
+	zeroCost       bool
 	costErr        error
 	executeErr     error
 	executeCalls   []string
@@ -788,6 +789,9 @@ func (m *mockConsumeWhatsappTemplate) GetTemplateCostMicros(_, templateCategory 
 	m.mu.Unlock()
 	if m.costErr != nil {
 		return 0, m.costErr
+	}
+	if m.zeroCost {
+		return 0, nil
 	}
 	if m.cost > 0 {
 		return m.cost, nil

@@ -509,6 +509,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		media_infra.NewXLSXParser(),
 		media_infra.NewPlainTextParser(),
 	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC)
+
+	// Let the status webhook settle single-target sends. Without this a failed
+	// delivery for a dialog send would fall through to the campaign refund, which
+	// credits the campaign id — a reference that send never debited.
+	handleWhatsAppMessageUC = conversation_usecase.AttachTemplateSendAttempts(
+		handleWhatsAppMessageUC, c.repositories.whatsappTemplateSend, c.repositories.balance)
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
 	// Shared by the PATCH /header-media endpoint and reused by template create so a
 	// media-header template always has its WhatsApp media id minted (URL -> /media
@@ -533,7 +539,25 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// there dereferenced a nil pointer at boot.
 	scheduledMessages := c.buildScheduledMessages()
 
+	// Cold outbound on the official channel. Built here for the same reason, and
+	// fatal on any wiring fault: its whole job is that a paid template is never
+	// sent unbilled, which a half-wired sender cannot promise.
+	whatsAppOutreach := c.buildWhatsAppOutreach(whatsAppOutreachDeps{
+		consume:       consumeWhatsappTemplateUC,
+		inflight:      inflightReserver,
+		history:       messageHistoryManager,
+		recordMetric:  recordMetricUC,
+		alerter:       opsAlerter,
+		ensureOrganic: wc_usecase.NewEnsureOrganicCoexistenceCampaignUseCase(c.repositories.wcCampaign),
+		templateGrant: workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
+	})
+
 	c.useCases = &useCases{
+		billedTemplateSend:        whatsAppOutreach.billedTemplateSend,
+		reconcileTemplateSends:    whatsAppOutreach.reconcileTemplateSends,
+		startOfficialConversation: whatsAppOutreach.startOfficialConversation,
+		quoteTemplateSend:         whatsAppOutreach.quoteTemplateSend,
+
 		scheduleMessage:          scheduledMessages.schedule,
 		rescheduleMessage:        scheduledMessages.reschedule,
 		cancelScheduledMessage:   scheduledMessages.cancel,
@@ -685,7 +709,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		reconcileWhatsAppTemplates:    whatsapp_template_usecase.NewReconcileTemplatesUseCase(c.repositories.businessPhone, whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)),
 		reconcileWhatsAppEntitlements: businessphone_usecase.NewReconcileWhatsAppEntitlementsUseCase(c.repositories.ownerPhoneReader, batchEntitlementResolverUC, addonPhoneDeactivatorUC),
 		syncWhatsAppTemplate:          whatsapp_template_usecase.NewSyncTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
-		sendWhatsAppTemplate:          whatsapp_template_usecase.NewSendTemplateMessageUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, recordMetricUC, consumeWhatsappTemplateUC),
 		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC),
 		replicateWhatsAppTemplate:     whatsapp_template_usecase.NewReplicateTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		setHeaderMediaWhatsApp:        setHeaderMediaUC,
@@ -864,7 +887,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		deleteMessageShortcut: msg_shortcut_usecase.NewDeleteUseCase(c.repositories.messageShortcut),
 		listMessageShortcuts:  msg_shortcut_usecase.NewListUseCase(c.repositories.messageShortcut),
 		getByShortcut:         msg_shortcut_usecase.NewGetByShortcutUseCase(c.repositories.messageShortcut),
-
 
 		createWorkspace:                    workspace_usecase.NewCreateWorkspaceUseCase(c.repositories.workspace),
 		getWorkspace:                       workspace_usecase.NewGetWorkspaceUseCase(c.repositories.workspace, c.repositories.user, c.repositories.workspaceSubscription),

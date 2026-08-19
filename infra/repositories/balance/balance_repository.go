@@ -419,11 +419,27 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		      SELECT 1 FROM whatsapp_campaigns c
 		      WHERE bt.reference_id = ('refund:' || c.id) AND ` + whereCamp + `
 		    )
+		    -- Single-target sends reference their send ATTEMPT, not a campaign, so
+		    -- the two branches above cannot see them and a department-filtered
+		    -- report would silently omit money the workspace actually spent. The
+		    -- attempt carries the campaign it was sent into, which is what puts it
+		    -- back under the right department.
+		    OR EXISTS (
+		      SELECT 1 FROM whatsapp_template_sends s
+		      JOIN whatsapp_campaigns c ON c.id = s.campaign_id
+		      WHERE bt.reference_id = ('waba:' || s.id) AND s.deleted_at IS NULL AND ` + whereCamp + `
+		    )
+		    OR EXISTS (
+		      SELECT 1 FROM whatsapp_template_sends s
+		      JOIN whatsapp_campaigns c ON c.id = s.campaign_id
+		      WHERE bt.reference_id = ('refund:waba:' || s.id) AND s.deleted_at IS NULL AND ` + whereCamp + `
+		    )
 		  )
 		`
-		// Duplicate campArgs for each EXISTS branch.
-		args = append(args, campArgs...)
-		args = append(args, campArgs...)
+		// One copy of campArgs per EXISTS branch, in order.
+		for i := 0; i < 4; i++ {
+			args = append(args, campArgs...)
+		}
 	}
 
 	sql += ` GROUP BY 1`

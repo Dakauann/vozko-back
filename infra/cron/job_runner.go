@@ -141,6 +141,18 @@ func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, re
 	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
 }
 
+// SetWhatsAppTemplateSendJobs registers the paid-send reconciliation sweep.
+//
+// Hourly, and the cadence is a money decision rather than a load one. The sweep
+// refunds sends that took a customer's balance and never reached a terminal
+// state — a crash between the debit and the provider call, or between the
+// provider's answer and our recording it. Every hour it does not run is an hour
+// somebody's money is held for a message that may not exist. Running it more
+// often would start refunding sends whose delivery webhook is merely late.
+func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
+	r.addChannelJob("whatsapp_template_send_reconcile", time.Hour, reconcile)
+}
+
 // SetScheduledMessageJobs registers the scheduled-message periodic jobs.
 //
 // Registration rather than construction, for the reason the channel jobs above

@@ -56,6 +56,16 @@ func (c *Container) initJobRunner() {
 	// makes delivery correct when the delayed queue loses a message.
 	c.jobRunner.SetScheduledMessageJobs(c.useCases.sweepScheduledMessages, c.useCases.purgeScheduledMessages)
 
+	// Paid-template reconciliation is likewise not optional: it is the sweep that
+	// returns money taken for sends that never completed. Without it those
+	// charges are simply kept.
+	if c.useCases.reconcileTemplateSends != nil {
+		c.jobRunner.SetWhatsAppTemplateSendJobs(cronPackage.CtxJobFunc(func(ctx context.Context) error {
+			_, err := c.useCases.reconcileTemplateSends.Execute(ctx)
+			return err
+		}))
+	}
+
 	// Instagram jobs are optional and registered after construction, so the
 	// channel can be absent without touching the constructor.
 	if c.instagram != nil && c.instagram.Enabled {

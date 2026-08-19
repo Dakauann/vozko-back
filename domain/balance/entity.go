@@ -6,8 +6,14 @@ import (
 )
 
 var (
-	ErrBalanceNotFound            = errors.New("balance not found")
-	ErrInsufficientBalance        = errors.New("insufficient balance")
+	ErrBalanceNotFound     = errors.New("balance not found")
+	ErrInsufficientBalance = errors.New("insufficient balance")
+	// ErrPriceUnavailable is a chargeable action with no configured price.
+	//
+	// It exists because the alternative was returning (nil, nil) — success with
+	// no charge — which every caller read as "billed" and none read as "this went
+	// out for free". An unpriced workspace must STOP, not send.
+	ErrPriceUnavailable           = errors.New("no price configured for this service")
 	ErrInvalidAmount              = errors.New("amount must be positive")
 	ErrTransactionNotFound        = errors.New("transaction not found")
 	ErrWorkspaceAlreadyHasBalance = errors.New("workspace already has a balance record")

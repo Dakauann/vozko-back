@@ -1340,6 +1340,7 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 				Code: lang,
 			},
 		},
+		BizOpaqueCallbackData: input.BizOpaqueCallbackData,
 	}
 
 	var components []templateComponentPayload
@@ -1453,7 +1454,20 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 
 	var decoded sendTextMessageResponse
 	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		return nil, err
+		// Meta ACCEPTED this send — the status was 2xx — and we could not read the
+		// answer. Returning a bare error here made this indistinguishable from a
+		// request that never arrived, so every caller refunded a message that had
+		// already been delivered: we pay Meta and collect nothing.
+		//
+		// The output is returned alongside the error so the caller can see the 2xx
+		// for itself, and the error is typed so it can be told apart from a
+		// transport failure. Callers must not refund and must not resend; the
+		// delivery-status webhook reconciles the attempt.
+		return &conversation.SendTextMessageOutput{
+			RequestPayload:  body,
+			ResponsePayload: respBody,
+			ResponseStatus:  resp.StatusCode,
+		}, fmt.Errorf("%w: %v", conversation.ErrSendOutcomeUnknown, err)
 	}
 
 	output := conversation.SendTextMessageOutput{
@@ -2314,6 +2328,11 @@ type sendTemplateMessageRequest struct {
 	To               string          `json:"to"`
 	Type             string          `json:"type"`
 	Template         templatePayload `json:"template"`
+	// BizOpaqueCallbackData rides along untouched and comes back on every
+	// delivery-status webhook for this message. It is how a status event finds
+	// the send attempt that paid for it. Same mechanism already used for call
+	// signalling in calls_signaling.go.
+	BizOpaqueCallbackData string `json:"biz_opaque_callback_data,omitempty"`
 }
 
 type templatePayload struct {

@@ -298,6 +298,10 @@ func (r *qsLeadRepo) List(_ lead.ListLeadsInput) (*shared.PaginatedResult[*lead.
 func (r *qsLeadRepo) ListWithSummary(_ lead.ListLeadsInput) (*shared.PaginatedResult[*lead.LeadWithSummary], error) {
 	return nil, nil
 }
+func (r *qsLeadRepo) Facets(_ lead.ListLeadsInput) (*lead.LeadFacets, error) {
+	return &lead.LeadFacets{}, nil
+}
+
 func (r *qsLeadRepo) ResolveCampaignNames(_ []string) map[string]string {
 	return nil
 }

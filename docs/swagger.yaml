@@ -2519,6 +2519,17 @@ definitions:
     - unread
     - window_open
     - query
+    - name
+    - number
+    - age
+    - blocked
+    - campaign_status
+    - campaign_count
+    - memory_category
+    - memory_author
+    - memory_text
+    - memory_count
+    - memory_updated_at
     - custom
     type: string
     x-enum-varnames:
@@ -2540,6 +2551,17 @@ definitions:
     - FieldUnread
     - FieldWindowOpen
     - FieldQuery
+    - FieldName
+    - FieldNumber
+    - FieldAge
+    - FieldBlocked
+    - FieldCampaignStatus
+    - FieldCampaignCount
+    - FieldMemoryCategory
+    - FieldMemoryAuthor
+    - FieldMemoryText
+    - FieldMemoryCount
+    - FieldMemoryUpdatedAt
     - FieldCustom
   crmfilter.Filter:
     properties:
@@ -3354,19 +3376,76 @@ definitions:
       workspaceId:
         type: string
     type: object
+  lead.LeadFacets:
+    properties:
+      active:
+        type: integer
+      blocked:
+        type: integer
+      campaignStatuses:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      channels:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      memoryCategories:
+        additionalProperties:
+          format: int64
+          type: integer
+        description: |-
+          Keyed breakdowns. Each counts DISTINCT leads, never rows: a lead with
+          four `deal` memories is one lead under "deal".
+        type: object
+      named:
+        type: integer
+      total:
+        type: integer
+      unnamed:
+        type: integer
+      windowClosed:
+        type: integer
+      windowOpen:
+        type: integer
+      withCampaign:
+        type: integer
+      withMemory:
+        type: integer
+      withoutCampaign:
+        type: integer
+      withoutMemory:
+        type: integer
+    type: object
   lead.LeadListResponseItem:
     properties:
       age:
         type: integer
+      blocked:
+        type: boolean
+      blockedAt:
+        type: string
       createdAt:
         type: string
       id:
         type: string
       lastActivityAt:
         type: string
+      lastMemoryAt:
+        type: string
+      memories:
+        description: |-
+          Memories are on the row, not one click away: the count is what makes
+          "we know 6 things about this person" visible while scanning, and it is
+          the same number the memory filters segment on.
+        type: integer
       name:
         type: string
       number:
+        type: string
+      profilePictureUrl:
         type: string
       totalCampaigns:
         type: integer
@@ -4000,10 +4079,12 @@ definitions:
     enum:
     - conversation
     - opportunity
+    - lead
     type: string
     x-enum-varnames:
     - ObjectConversation
     - ObjectOpportunity
+    - ObjectLead
   savedview.SavedView:
     properties:
       columns:
@@ -9696,20 +9777,36 @@ paths:
       - Memórias do Lead
   /leads:
     get:
-      description: Retorna a lista paginada de leads do workspace, com filtros por
-        número, nome, período de criação, faixa etária e presença em campanhas.
+      description: Retorna a lista paginada de leads do workspace. Aceita os filtros
+        simples por querystring (nome, número, período, faixa etária, campanha, canal,
+        bloqueio, janela, memórias) e/ou um filtro estruturado `filter` (crmfilter
+        em JSON, opcionalmente em base64) com grupos AND/OR. A ordenação aceita múltiplas
+        chaves.
       parameters:
       - description: Número da página (inicia em 1)
         in: query
         name: page
         type: integer
-      - description: Quantidade de itens por página
+      - description: Itens por página (máximo 200)
         in: query
         name: pageSize
         type: integer
-      - description: 'Ordenação (ex.: createdAt:desc, name:asc, number:asc)'
+      - description: 'Ordenação: createdAt, updatedAt, lastActivityAt, name, number,
+          age, campaigns, memories, lastMemoryAt (ex.: lastActivityAt:desc,name:asc)'
         in: query
         name: sort
+        type: string
+      - description: Direção padrão quando o sort não a informa ('asc' ou 'desc')
+        in: query
+        name: order
+        type: string
+      - description: Filtro crmfilter em JSON (opcionalmente codificado em base64)
+        in: query
+        name: filter
+        type: string
+      - description: Busca livre por nome, número ou conteúdo das memórias
+        in: query
+        name: q
         type: string
       - description: Filtrar por número de telefone
         in: query
@@ -9719,14 +9816,10 @@ paths:
         in: query
         name: name
         type: string
-      - description: Criados a partir de (RFC3339)
+      - description: Possui nome preenchido
         in: query
-        name: createdFrom
-        type: string
-      - description: Criados até (RFC3339)
-        in: query
-        name: createdTo
-        type: string
+        name: hasName
+        type: boolean
       - description: Idade mínima
         in: query
         name: ageFrom
@@ -9735,10 +9828,123 @@ paths:
         in: query
         name: ageTo
         type: integer
+      - description: Somente bloqueados / não bloqueados
+        in: query
+        name: blocked
+        type: boolean
+      - description: Janela de 24h aberta
+        in: query
+        name: windowOpen
+        type: boolean
+      - collectionFormat: csv
+        description: Canais (whatsapp, unofficial_whatsapp, telegram, instagram)
+        in: query
+        items:
+          type: string
+        name: channel
+        type: array
       - description: Possui campanha de WhatsApp
         in: query
         name: hasWhatsAppCampaign
         type: boolean
+      - collectionFormat: csv
+        description: IDs de campanha
+        in: query
+        items:
+          type: string
+        name: campaignId
+        type: array
+      - collectionFormat: csv
+        description: Status de envio na campanha
+        in: query
+        items:
+          type: string
+        name: campaignStatus
+        type: array
+      - description: Mínimo de campanhas
+        in: query
+        name: campaignsFrom
+        type: integer
+      - description: Máximo de campanhas
+        in: query
+        name: campaignsTo
+        type: integer
+      - collectionFormat: csv
+        description: IDs de etapa do CRM
+        in: query
+        items:
+          type: string
+        name: stageId
+        type: array
+      - collectionFormat: csv
+        description: IDs de etiqueta do CRM
+        in: query
+        items:
+          type: string
+        name: labelId
+        type: array
+      - description: Possui memórias registradas
+        in: query
+        name: hasMemory
+        type: boolean
+      - collectionFormat: csv
+        description: Categorias de memória
+        in: query
+        items:
+          type: string
+        name: memoryCategory
+        type: array
+      - collectionFormat: csv
+        description: Autor da memória (human, ai, system)
+        in: query
+        items:
+          type: string
+        name: memoryAuthor
+        type: array
+      - description: Busca no conteúdo das memórias
+        in: query
+        name: memoryText
+        type: string
+      - description: Mínimo de memórias
+        in: query
+        name: memoriesFrom
+        type: integer
+      - description: Máximo de memórias
+        in: query
+        name: memoriesTo
+        type: integer
+      - description: Memória atualizada a partir de (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: memoryFrom
+        type: string
+      - description: Memória atualizada até (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: memoryTo
+        type: string
+      - description: Criados a partir de (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: createdFrom
+        type: string
+      - description: Criados até (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: createdTo
+        type: string
+      - description: Atualizados a partir de (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: updatedFrom
+        type: string
+      - description: Atualizados até (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: updatedTo
+        type: string
+      - description: Última atividade a partir de (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: activityFrom
+        type: string
+      - description: Última atividade até (RFC3339 ou YYYY-MM-DD)
+        in: query
+        name: activityTo
+        type: string
       produces:
       - application/json
       responses:
@@ -10089,6 +10295,41 @@ paths:
       summary: Registrar uma memória sobre um lead
       tags:
       - Memórias do Lead
+  /leads/facets:
+    get:
+      description: Retorna as contagens agregadas do MESMO conjunto filtrado que a
+        listagem devolve, por bloqueio, janela, campanha, memória, canal, categoria
+        de memória e status de envio. Aceita exatamente os mesmos parâmetros de filtro
+        de GET /leads.
+      parameters:
+      - description: Filtro crmfilter em JSON (opcionalmente codificado em base64)
+        in: query
+        name: filter
+        type: string
+      - description: Busca livre por nome, número ou conteúdo das memórias
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/lead.LeadFacets'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Contagens dos filtros de leads
+      tags:
+      - Leads
   /leads/search:
     get:
       description: Retorna os detalhes de um lead do workspace a partir do número
@@ -11520,7 +11761,7 @@ paths:
       description: Retorna as visões salvas do usuário para o tipo de objeto informado
         (conversa por padrão), usadas para configurar o quadro do CRM.
       parameters:
-      - description: Tipo de objeto ('conversation' ou 'opportunity')
+      - description: Tipo de objeto ('conversation', 'opportunity' ou 'lead')
         in: query
         name: objectType
         type: string

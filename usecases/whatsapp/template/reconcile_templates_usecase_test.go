@@ -53,7 +53,7 @@ func (m *reconcilePhoneRepoMock) SyncFromMeta(*businessphone.WhatsAppBusinessPho
 	return nil
 }
 func (m *reconcilePhoneRepoMock) ClearAccessToken(string) error { return nil }
-func (m *reconcilePhoneRepoMock) ClearOwner(string) error { return nil }
+func (m *reconcilePhoneRepoMock) ClearOwner(string) error       { return nil }
 func (m *reconcilePhoneRepoMock) Restore(string) error          { return nil }
 
 type reconcileSyncUseCaseMock struct {

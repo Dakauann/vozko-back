@@ -19,18 +19,28 @@ type EntryResponse struct {
 }
 
 type LeadListResponseItem struct {
-	ID                 string  `json:"id"`
-	WorkspaceID        string  `json:"workspaceId"`
-	Number             string  `json:"number"`
-	Name               string  `json:"name,omitempty"`
-	Age                *int    `json:"age,omitempty"`
-	CreatedAt          string  `json:"createdAt"`
-	UpdatedAt          string  `json:"updatedAt"`
+	ID                string  `json:"id"`
+	WorkspaceID       string  `json:"workspaceId"`
+	Number            string  `json:"number"`
+	Name              string  `json:"name,omitempty"`
+	ProfilePictureURL string  `json:"profilePictureUrl,omitempty"`
+	Age               *int    `json:"age,omitempty"`
+	Blocked           bool    `json:"blocked"`
+	BlockedAt         *string `json:"blockedAt,omitempty"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+
 	WhatsAppCampaigns  int     `json:"whatsappCampaigns"`
 	TotalCampaigns     int     `json:"totalCampaigns"`
 	LastActivityAt     *string `json:"lastActivityAt,omitempty"`
 	WhatsAppWindowOpen bool    `json:"whatsappWindowOpen"`
 	WindowExpiresAt    *string `json:"windowExpiresAt,omitempty"`
+
+	// Memories are on the row, not one click away: the count is what makes
+	// "we know 6 things about this person" visible while scanning, and it is
+	// the same number the memory filters segment on.
+	Memories     int     `json:"memories"`
+	LastMemoryAt *string `json:"lastMemoryAt,omitempty"`
 }
 
 type LeadDetailResponse struct {
@@ -69,12 +79,14 @@ type CampaignEntryItem struct {
 func toLeadListItem(lws *leaddomain.LeadWithSummary) LeadListResponseItem {
 	l := lws.Lead
 	s := lws.Summary
-	return LeadListResponseItem{
+	item := LeadListResponseItem{
 		ID:                 l.ID,
 		WorkspaceID:        l.WorkspaceID,
 		Number:             l.Number,
 		Name:               l.Name,
+		ProfilePictureURL:  l.ProfilePictureURL,
 		Age:                l.Age,
+		Blocked:            l.Blocked,
 		CreatedAt:          fmtRFC3339(l.CreatedAt),
 		UpdatedAt:          fmtRFC3339(l.UpdatedAt),
 		WhatsAppCampaigns:  s.WhatsAppCampaigns,
@@ -82,5 +94,12 @@ func toLeadListItem(lws *leaddomain.LeadWithSummary) LeadListResponseItem {
 		LastActivityAt:     fmtTimePtr(s.LastActivityAt),
 		WhatsAppWindowOpen: s.WhatsAppWindowOpen,
 		WindowExpiresAt:    fmtTimePtr(s.WindowExpiresAt),
+		Memories:           s.Memories,
+		LastMemoryAt:       fmtTimePtr(s.LastMemoryAt),
 	}
+	if l.Blocked && !l.BlockedAt.IsZero() {
+		blockedAt := fmtRFC3339(l.BlockedAt)
+		item.BlockedAt = &blockedAt
+	}
+	return item
 }

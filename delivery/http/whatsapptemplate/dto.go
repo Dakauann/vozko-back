@@ -20,15 +20,6 @@ type UpdateHeaderMediaURLRequest struct {
 	HeaderMediaURL *string `json:"headerMediaUrl" example:"https://cdn.exemplo.com/cabecalho.jpg"`
 }
 
-type SendTemplateRequest struct {
-	To               string   `json:"to" example:"5511987654321"`
-	Template         string   `json:"template" example:"boas_vindas"`
-	Language         string   `json:"language" example:"pt_BR"`
-	Parameters       []string `json:"parameters"`
-	HeaderParameters []string `json:"headerParameters"`
-	BusinessPhoneID  string   `json:"businessPhoneId" example:"phone_a1b2c3"`
-}
-
 type CreateTemplateRequest struct {
 	BusinessPhoneID string                     `json:"businessPhoneId" example:"phone_a1b2c3"`
 	Name            string                     `json:"name" example:"boas_vindas"`

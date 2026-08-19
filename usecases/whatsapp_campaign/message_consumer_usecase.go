@@ -16,6 +16,7 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
+	lcs "vozko/domain/lead_campaign_send"
 	lead_campaign_send "vozko/domain/lead_campaign_send"
 	"vozko/domain/messaging"
 	"vozko/domain/shared"
@@ -332,8 +333,28 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 				c.completeCampaignByCounter(payload.CampaignID, topic)
 				return
 			}
+			if errors.Is(err, balance.ErrPriceUnavailable) {
+				// No price configured. Requeuing spins forever and sending would be
+				// free, so the entry fails and says why.
+				fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaign.WorkspaceID, payload.CampaignID)
+				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+				_ = ack.Ack()
+				c.completeCampaignByCounter(payload.CampaignID, topic)
+				return
+			}
 			fmt.Printf("whatsapp campaign consumer: failed to get template cost for workspace %s (campaign %s): %v\n", campaign.WorkspaceID, payload.CampaignID, err)
 			_ = ack.Nack(true)
+			return
+		}
+
+		// Belt as well as braces. The price guard lives in the billing use case so
+		// every sender inherits it, but this path sends at bulk volume and a zero
+		// slipping through here is a whole campaign delivered free.
+		if templateCostMicros <= 0 {
+			fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaign.WorkspaceID, payload.CampaignID)
+			c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+			_ = ack.Ack()
+			c.completeCampaignByCounter(payload.CampaignID, topic)
 			return
 		}
 
@@ -382,6 +403,13 @@ func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
 				return
 			}
 
+			if errors.Is(consumeErr, balance.ErrPriceUnavailable) {
+				fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaign.WorkspaceID, payload.CampaignID)
+				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+				_ = ack.Ack()
+				c.completeCampaignByCounter(payload.CampaignID, topic)
+				return
+			}
 			fmt.Printf("whatsapp campaign consumer: debit failed for workspace %s: %v, requeuing message\n", campaign.WorkspaceID, consumeErr)
 			_ = ack.Nack(true)
 			return
@@ -434,6 +462,11 @@ const (
 	sendResultSuccess sendTemplateMessageResult = iota
 	sendResultConfigError
 	sendResultAPIError
+	// sendResultUnknown is Meta ACCEPTING the send and our failing to read the
+	// answer. It is deliberately NOT an error result: refunding here would credit
+	// a message the customer has already received, so the charge stands and the
+	// delivery-status webhook settles the entry.
+	sendResultUnknown
 )
 
 func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl *template.Template, entryID, phoneNumber string) sendTemplateMessageResult {
@@ -511,6 +544,15 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	}
 
 	result, err := whatsappClient.SendTemplateMessage(ctx, sendInput)
+
+	if errors.Is(err, conversation.ErrSendOutcomeUnknown) {
+		// Delivered as far as Meta is concerned. Anything that looks like a
+		// failure from here — refund, retry, a failed entry status — acts on a
+		// message the recipient already has.
+		fmt.Printf("whatsapp campaign consumer: send outcome unknown for %s (Meta accepted, response unreadable), keeping the charge: %v\n", phoneNumber, err)
+		c.updateEntryStatus(entryID, wce.SendStatusSent, "")
+		return sendResultUnknown
+	}
 
 	if err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to send template to %s: %v\n", phoneNumber, err)
@@ -591,101 +633,13 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	return sendResultSuccess
 }
 
-// buildTemplateInfo renders the sent template (variables substituted) into the
-// structured template_info the CRM understands: every component (header text or
-// media, body, footer) plus all button types and any header media URL. It is
-// component-driven, so it captures ANY template shape.
-func (c *messageConsumerUseCase) buildTemplateInfo(tmpl *template.Template, params []string) map[string]interface{} {
-	bodyText := strings.TrimSpace(tmpl.GetBodyText())
-	paramNames := tmpl.GetParameterNames()
-	if bodyText != "" && len(params) > 0 {
-		for i, p := range params {
-			positional := fmt.Sprintf("{{%d}}", i+1)
-			bodyText = strings.ReplaceAll(bodyText, positional, p)
-			if i < len(paramNames) {
-				named := "{{" + paramNames[i] + "}}"
-				bodyText = strings.ReplaceAll(bodyText, named, p)
-			}
-		}
-	}
-	if bodyText == "" {
-		bodyText = fmt.Sprintf("[Template: %s]", tmpl.Name)
-	}
-
-	type metadataButton struct {
-		Type        string `json:"type"`
-		Text        string `json:"text"`
-		URL         string `json:"url,omitempty"`
-		PhoneNumber string `json:"phoneNumber,omitempty"`
-	}
-	type metadataComponent struct {
-		Type    string           `json:"type"`
-		Format  string           `json:"format,omitempty"`
-		Text    string           `json:"text,omitempty"`
-		Buttons []metadataButton `json:"buttons,omitempty"`
-	}
-
-	var components []metadataComponent
-	paramIdx := 0
-	for _, comp := range tmpl.Components {
-		mc := metadataComponent{
-			Type:   comp.Type,
-			Format: comp.Format,
-			Text:   comp.Text,
-		}
-
-		if (comp.Type == "BODY" || (comp.Type == "HEADER" && comp.Format == "TEXT")) && mc.Text != "" && len(params) > 0 {
-			for i := paramIdx; i < len(params); i++ {
-				positional := fmt.Sprintf("{{%d}}", i+1)
-				if strings.Contains(mc.Text, positional) {
-					mc.Text = strings.ReplaceAll(mc.Text, positional, params[i])
-					paramIdx = i + 1
-					continue
-				}
-				if i < len(paramNames) {
-					named := "{{" + paramNames[i] + "}}"
-					if strings.Contains(mc.Text, named) {
-						mc.Text = strings.ReplaceAll(mc.Text, named, params[i])
-						paramIdx = i + 1
-					}
-				}
-			}
-		}
-
-		if len(comp.Buttons) > 0 {
-			for _, btn := range comp.Buttons {
-				mc.Buttons = append(mc.Buttons, metadataButton{
-					Type:        btn.Type,
-					Text:        btn.Text,
-					URL:         btn.URL,
-					PhoneNumber: btn.PhoneNumber,
-				})
-			}
-		}
-
-		components = append(components, mc)
-	}
-
-	templateInfo := map[string]interface{}{
-		"template_name": tmpl.Name,
-		"language":      tmpl.Language,
-		"category":      string(tmpl.Category),
-		"body_text":     bodyText,
-		"components":    components,
-	}
-	if tmpl.HeaderMediaURL != nil {
-		templateInfo["header_media_url"] = *tmpl.HeaderMediaURL
-	}
-	return templateInfo
-}
-
 // storeTemplateInfoOnEntry renders the sent template and stores it on the entry
 // metadata (template_info), the source the CRM entry panel reads.
 func (c *messageConsumerUseCase) storeTemplateInfoOnEntry(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string) {
 	if entry == nil || tmpl == nil {
 		return
 	}
-	templateInfo := c.buildTemplateInfo(tmpl, params)
+	templateInfo := tmpl.RenderInfo(params)
 
 	meta := entry.Metadata
 	if meta == nil {
@@ -708,7 +662,7 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 	if c.MessageHistoryManager == nil || entry == nil || tmpl == nil {
 		return
 	}
-	templateInfo := c.buildTemplateInfo(tmpl, params)
+	templateInfo := tmpl.RenderInfo(params)
 	metaBytes, err := json.Marshal(templateInfo)
 	if err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to marshal template metadata for entry %s: %v\n", entry.ID, err)
@@ -743,24 +697,10 @@ func (c *messageConsumerUseCase) updateEntryStatusWithError(entryID string, stat
 	}
 }
 
+// parseMetaAPIError delegates to the domain so the campaign pipeline and cold
+// outbound report a provider failure the same way.
 func parseMetaAPIError(result *conversation.SendTextMessageOutput) (int, string) {
-	if result == nil || len(result.ResponsePayload) == 0 {
-		return 0, ""
-	}
-	var parsed struct {
-		Error struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(result.ResponsePayload, &parsed); err != nil {
-		return 0, ""
-	}
-	msg := parsed.Error.Message
-	if len(msg) > 500 {
-		msg = msg[:500]
-	}
-	return parsed.Error.Code, msg
+	return template.ParseProviderError(result)
 }
 
 func (c *messageConsumerUseCase) requeueWithDelay(topic string, message []byte, delay time.Duration) {
@@ -860,12 +800,11 @@ func (c *messageConsumerUseCase) isEntrySpam(entry *wce.WhatsAppCampaignEntry, b
 	}
 
 	lastSent, err := c.LeadCampaignSendRepo.GetLastSendTime(entry.LeadID, businessPhoneID)
-	if err != nil || lastSent == nil {
+	if err != nil {
 		return false
 	}
 
-	cutoff := time.Now().UTC().AddDate(0, 0, -cfg.CampaignSpamProtectionDays)
-	return lastSent.After(cutoff)
+	return lcs.WithinSpamWindow(lastSent, cfg.CampaignSpamProtectionDays, time.Now())
 }
 
 func (c *messageConsumerUseCase) recordCampaignSend(entry *wce.WhatsAppCampaignEntry, businessPhoneID, campaignID string) {

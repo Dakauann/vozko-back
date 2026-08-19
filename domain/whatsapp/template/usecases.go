@@ -31,26 +31,11 @@ type SyncTemplateUseCase interface {
 	Execute(input SyncTemplateInput) (*Template, error)
 }
 
-type SendTemplateMessageInput struct {
-	To              string
-	TemplateName    string
-	TemplateParams  []string
-	HeaderParams    []string
-	Language        string
-	BusinessPhoneID string
-	WorkspaceID     string
-}
-
-type SendTemplateResult struct {
-	MessageID       string
-	RequestPayload  []byte
-	ResponsePayload []byte
-	ResponseStatus  int
-}
-
-type SendTemplateMessageUseCase interface {
-	Execute(input SendTemplateMessageInput) (*SendTemplateResult, error)
-}
+// The single-target template sender used to live here as SendTemplateMessageInput
+// + SendTemplateMessageUseCase, with billing behind `if WorkspaceID != ""`. It
+// has been replaced by BilledTemplateSendUseCase (billed_sender.go), whose input
+// makes the workspace and the idempotency key required fields rather than
+// optional ones — so an unbilled send is not expressible.
 
 type CreateTemplateInput struct {
 	BusinessPhoneID string

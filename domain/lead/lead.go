@@ -12,6 +12,11 @@ var (
 	ErrLeadNotFound          = errors.New("lead: lead not found")
 	ErrLeadDuplicate         = errors.New("lead: phone number already exists")
 	ErrLeadWorkspaceRequired = errors.New("lead: workspace id is required")
+	// ErrLeadFilterInvalid means the caller sent a filter expression the lead
+	// object cannot answer (an unknown field, an operator the field does not
+	// support, a malformed date). It is a 400, never a 500: the query is wrong,
+	// not the database.
+	ErrLeadFilterInvalid = errors.New("lead: invalid filter")
 )
 
 type Lead struct {

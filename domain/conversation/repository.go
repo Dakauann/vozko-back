@@ -215,6 +215,9 @@ type MessageRepository interface {
 	// column.
 	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*Message, error)
 	UpdateDeliveryStatus(wamid string, status DeliveryStatus) error
+	// UpdateDeliveryStatusWithReason also records the provider's explanation, so
+	// the thread can say why rather than only that.
+	UpdateDeliveryStatusWithReason(wamid string, status DeliveryStatus, errorCode int, errorMessage string) error
 
 	ClearAll() error
 }

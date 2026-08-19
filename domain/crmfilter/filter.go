@@ -39,6 +39,34 @@ const (
 	FieldUnread         Field = "unread"
 	FieldWindowOpen     Field = "window_open"
 	FieldQuery          Field = "query"
+	// Lead-object fields. A lead is a person, not a conversation, so it has
+	// identity (name/number/age), a lifecycle flag (blocked), the campaigns it
+	// was reached by, and the memories written about it. Every one of these is
+	// resolved by the lead descriptor; other objects report them unsupported,
+	// exactly like lost_reason is opportunity-only and unread is
+	// conversation-only.
+	FieldName    Field = "name"
+	FieldNumber  Field = "number"
+	FieldAge     Field = "age"
+	FieldBlocked Field = "blocked"
+
+	// FieldCampaignStatus is the delivery outcome of the object in a campaign
+	// (SENT/DELIVERED/READ/FAILED...). It is distinct from FieldStatus, which
+	// is the object's own lifecycle: a lead is never "finished", its messages
+	// are.
+	FieldCampaignStatus Field = "campaign_status"
+	FieldCampaignCount  Field = "campaign_count"
+
+	// Memory fields address lead_memory rows from the lead they belong to:
+	// which categories were remembered, who wrote them, what they say, how
+	// many there are and how fresh they are. Together they make "leads we know
+	// something about" a first-class segment instead of a per-lead lookup.
+	FieldMemoryCategory  Field = "memory_category"
+	FieldMemoryAuthor    Field = "memory_author"
+	FieldMemoryText      Field = "memory_text"
+	FieldMemoryCount     Field = "memory_count"
+	FieldMemoryUpdatedAt Field = "memory_updated_at"
+
 	// FieldCustom targets a typed custom field. Predicate.Key must name the
 	// custom field; its value kind is resolved by the compiler from the
 	// custom-field definition, so validation here is intentionally permissive.
@@ -143,6 +171,10 @@ var (
 	dateOps   = []Operator{OpBefore, OpAfter, OpBetween, OpGreaterEq, OpLessEq, OpIsSet, OpIsEmpty}
 	boolOps   = []Operator{OpIsTrue, OpIsFalse, OpEquals}
 	textOps   = []Operator{OpContains}
+	// stringOps back plain text columns (a lead's name or number): set
+	// membership and substring match, plus presence. is_set / is_empty are what
+	// make "leads with no name yet" expressible.
+	stringOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpIsSet, OpIsEmpty}
 	customOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpGreaterEq, OpLessEq, OpBetween, OpIsSet, OpIsEmpty}
 )
 
@@ -165,7 +197,20 @@ var registry = map[Field]FieldSpec{
 	FieldUnread:         {FieldUnread, KindBool, boolOps, false},
 	FieldWindowOpen:     {FieldWindowOpen, KindBool, boolOps, false},
 	FieldQuery:          {FieldQuery, KindText, textOps, false},
-	FieldCustom:         {FieldCustom, KindString, customOps, true},
+
+	FieldName:            {FieldName, KindString, stringOps, true},
+	FieldNumber:          {FieldNumber, KindString, stringOps, true},
+	FieldAge:             {FieldAge, KindNumber, numberOps, false},
+	FieldBlocked:         {FieldBlocked, KindBool, boolOps, false},
+	FieldCampaignStatus:  {FieldCampaignStatus, KindEnum, enumOps, true},
+	FieldCampaignCount:   {FieldCampaignCount, KindNumber, numberOps, false},
+	FieldMemoryCategory:  {FieldMemoryCategory, KindEnum, enumOps, true},
+	FieldMemoryAuthor:    {FieldMemoryAuthor, KindEnum, enumOps, true},
+	FieldMemoryText:      {FieldMemoryText, KindText, textOps, false},
+	FieldMemoryCount:     {FieldMemoryCount, KindNumber, numberOps, false},
+	FieldMemoryUpdatedAt: {FieldMemoryUpdatedAt, KindDate, dateOps, false},
+
+	FieldCustom: {FieldCustom, KindString, customOps, true},
 }
 
 // SpecFor returns the static spec for a field.

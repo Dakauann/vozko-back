@@ -21,7 +21,6 @@ type WhatsAppTemplateHandler struct {
 	getUseCase                  whatsapptemplatedomain.GetUseCase
 	syncUseCase                 whatsapptemplatedomain.SyncTemplatesUseCase
 	syncOneUseCase              whatsapptemplatedomain.SyncTemplateUseCase
-	sendUseCase                 whatsapptemplatedomain.SendTemplateMessageUseCase
 	createUseCase               whatsapptemplatedomain.CreateTemplateUseCase
 	replicateUseCase            whatsapptemplatedomain.ReplicateTemplateUseCase
 	setHeaderMediaUC            whatsapptemplatedomain.SetTemplateHeaderMediaUseCase
@@ -36,7 +35,6 @@ func NewWhatsAppTemplateHandler(
 	getUC whatsapptemplatedomain.GetUseCase,
 	syncUC whatsapptemplatedomain.SyncTemplatesUseCase,
 	syncOneUC whatsapptemplatedomain.SyncTemplateUseCase,
-	sendUC whatsapptemplatedomain.SendTemplateMessageUseCase,
 	createUC whatsapptemplatedomain.CreateTemplateUseCase,
 	replicateUC whatsapptemplatedomain.ReplicateTemplateUseCase,
 	setHeaderMediaUC whatsapptemplatedomain.SetTemplateHeaderMediaUseCase,
@@ -50,7 +48,6 @@ func NewWhatsAppTemplateHandler(
 		getUseCase:                  getUC,
 		syncUseCase:                 syncUC,
 		syncOneUseCase:              syncOneUC,
-		sendUseCase:                 sendUC,
 		createUseCase:               createUC,
 		replicateUseCase:            replicateUC,
 		setHeaderMediaUC:            setHeaderMediaUC,
@@ -336,65 +333,6 @@ func (h *WhatsAppTemplateHandler) UpdateHeaderMediaURL(w http.ResponseWriter, r 
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"message": "Header media URL updated successfully",
 	})
-}
-
-func (h *WhatsAppTemplateHandler) Send(w http.ResponseWriter, r *http.Request) {
-	var req SendTemplateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
-		return
-	}
-
-	if req.To == "" {
-		response.WriteError(w, http.StatusBadRequest, "Phone number (to) is required", nil)
-		return
-	}
-	if req.Template == "" {
-		response.WriteError(w, http.StatusBadRequest, "Template name is required", nil)
-		return
-	}
-
-	if req.BusinessPhoneID == "" {
-		response.WriteError(w, http.StatusBadRequest, "businessPhoneId is required", nil)
-		return
-	}
-
-	input := whatsapptemplatedomain.SendTemplateMessageInput{
-		To:              req.To,
-		TemplateName:    req.Template,
-		Language:        req.Language,
-		TemplateParams:  req.Parameters,
-		HeaderParams:    req.HeaderParameters,
-		BusinessPhoneID: req.BusinessPhoneID,
-		WorkspaceID:     middleware.GetWorkspaceID(r),
-	}
-
-	result, err := h.sendUseCase.Execute(input)
-
-	resp := map[string]interface{}{
-		"message": "Template message sent successfully",
-	}
-
-	if result != nil {
-		resp["messageId"] = result.MessageID
-		if len(result.RequestPayload) > 0 {
-			resp["requestPayload"] = json.RawMessage(result.RequestPayload)
-		}
-		if len(result.ResponsePayload) > 0 {
-			resp["responsePayload"] = json.RawMessage(result.ResponsePayload)
-		}
-		if result.ResponseStatus > 0 {
-			resp["responseStatus"] = result.ResponseStatus
-		}
-	}
-
-	if err != nil {
-		resp["message"] = "Failed to send template message: " + err.Error()
-		response.WriteSuccess(w, http.StatusOK, resp)
-		return
-	}
-
-	response.WriteSuccess(w, http.StatusOK, resp)
 }
 
 func (h *WhatsAppTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {

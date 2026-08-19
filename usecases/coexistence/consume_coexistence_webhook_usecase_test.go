@@ -257,7 +257,10 @@ func (r *mockMessageRepo) GetByExternalMessageID(shared.EntryType, string) (*con
 	return nil, nil
 }
 func (r *mockMessageRepo) UpdateDeliveryStatus(string, conversation.DeliveryStatus) error { return nil }
-func (r *mockMessageRepo) ClearAll() error                                                { return nil }
+func (r *mockMessageRepo) UpdateDeliveryStatusWithReason(string, conversation.DeliveryStatus, int, string) error {
+	return nil
+}
+func (r *mockMessageRepo) ClearAll() error { return nil }
 
 type mockLeadRepo struct {
 	leads   map[string]*lead.Lead
@@ -289,6 +292,10 @@ func (r *mockLeadRepo) List(lead.ListLeadsInput) (*shared.PaginatedResult[*lead.
 func (r *mockLeadRepo) ListWithSummary(lead.ListLeadsInput) (*shared.PaginatedResult[*lead.LeadWithSummary], error) {
 	return nil, nil
 }
+func (r *mockLeadRepo) Facets(_ lead.ListLeadsInput) (*lead.LeadFacets, error) {
+	return &lead.LeadFacets{}, nil
+}
+
 func (r *mockLeadRepo) ResolveCampaignNames(_ []string) map[string]string { return nil }
 
 func TestConsumeCoexistenceWebhook_SubscribesToCorrectTopic(t *testing.T) {

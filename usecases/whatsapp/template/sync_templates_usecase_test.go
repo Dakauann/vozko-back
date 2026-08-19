@@ -211,4 +211,6 @@ func TestSyncTemplates_PaginatesAndNormalizesCategoryAndStatus(t *testing.T) {
 	}
 }
 
-func (m *syncTemplatesClientMock) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) { return &conversation.SendTextMessageOutput{}, nil }
+func (m *syncTemplatesClientMock) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
+	return &conversation.SendTextMessageOutput{}, nil
+}

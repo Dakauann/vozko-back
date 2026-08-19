@@ -52,6 +52,7 @@ import (
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
+	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
@@ -157,6 +158,7 @@ type router struct {
 	telegramHandler            *telegramhttp.Handler
 	telegramWebhookHandler     *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler  *unofficialwahttp.Handler
+	whatsappOutreachHandler    *whatsappoutreachhttp.Handler
 	unofficialWhatsAppGroups   *unofficialwahttp.GroupHandler
 	unofficialWhatsAppWebhook  *unofficialwahttp.WebhookHandler
 	workspaceHandler           *workspacehttp.WorkspaceHandler
@@ -273,6 +275,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	telegramHandler *telegramhttp.Handler,
 	telegramWebhookHandler *telegramhttp.WebhookHandler,
 	unofficialWhatsAppHandler *unofficialwahttp.Handler,
+	whatsappOutreachHandler *whatsappoutreachhttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
 	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
 ) Router {
@@ -282,6 +285,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		telegramHandler:                telegramHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
 		unofficialWhatsAppHandler:      unofficialWhatsAppHandler,
+		whatsappOutreachHandler:        whatsappOutreachHandler,
 		unofficialWhatsAppWebhook:      unofficialWhatsAppWebhook,
 		unofficialWhatsAppGroups:       unofficialWhatsAppGroups,
 		mux:                            mux.NewRouter(),
@@ -441,6 +445,7 @@ func (r *router) setupRoutes() {
 	r.setupInstagramRoutes(protected)
 	r.setupTelegramRoutes(protected)
 	r.setupUnofficialWhatsAppRoutes(protected)
+	r.setupWhatsAppOutreachRoutes(protected)
 	r.setupWABARoutes(protected)
 	r.setupAgentRoutes(protected)
 	r.setupAIChatRoutes(protected)
@@ -611,6 +616,14 @@ func (r *router) setupUnofficialWhatsAppRoutes(protected *mux.Router) {
 	// split — reading a roster, editing a group, and evicting someone from it
 	// are three different privileges. See RegisterGroupRoutes.
 	unofficialwahttp.RegisterGroupRoutes(protected, r.unofficialWhatsAppGroups, r.ac)
+}
+
+// setupWhatsAppOutreachRoutes registers cold outbound on the official channel:
+// sending a paid template to a number that never wrote to us. A nil handler
+// means the feature is not wired, in which case no routes exist — which is the
+// right failure, since every route here spends the workspace's balance.
+func (r *router) setupWhatsAppOutreachRoutes(protected *mux.Router) {
+	whatsappoutreachhttp.RegisterProtectedRoutes(protected, r.whatsappOutreachHandler, r.ac)
 }
 
 func (r *router) setupMetaEmbeddedSignupRoutes(protected *mux.Router) {

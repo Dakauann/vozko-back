@@ -212,6 +212,9 @@ func (r *simLeadRepo) List(_ lead_domain.ListLeadsInput) (*shared.PaginatedResul
 func (r *simLeadRepo) ListWithSummary(_ lead_domain.ListLeadsInput) (*shared.PaginatedResult[*lead_domain.LeadWithSummary], error) {
 	return &shared.PaginatedResult[*lead_domain.LeadWithSummary]{}, nil
 }
+func (r *simLeadRepo) Facets(_ lead_domain.ListLeadsInput) (*lead_domain.LeadFacets, error) {
+	return &lead_domain.LeadFacets{}, nil
+}
 func (r *simLeadRepo) ResolveCampaignNames(_ []string) map[string]string { return nil }
 
 type simWhatsAppEntryRepo struct {
@@ -517,6 +520,10 @@ func (r *simMessageRepo) GetByExternalMessageID(_ shared.EntryType, _ string) (*
 	return nil, nil
 }
 func (r *simMessageRepo) UpdateDeliveryStatus(_ string, _ conversation.DeliveryStatus) error {
+	return nil
+}
+
+func (r *simMessageRepo) UpdateDeliveryStatusWithReason(_ string, _ conversation.DeliveryStatus, _ int, _ string) error {
 	return nil
 }
 func (r *simMessageRepo) ClearAll() error { return nil }

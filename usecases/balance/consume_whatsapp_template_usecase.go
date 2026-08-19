@@ -35,6 +35,12 @@ func (uc *consumeWhatsappTemplateUseCase) GetTemplateCostMicros(workspaceID stri
 	if err != nil {
 		return 0, fmt.Errorf("failed to get WhatsApp pricing: %w", err)
 	}
+	if result.PriceMicros <= 0 {
+		// The pricer answers a missing item with a zero price and no error, so a
+		// caller that only checked err would reserve nothing, debit nothing, and
+		// send anyway.
+		return 0, fmt.Errorf("%w: whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
+	}
 
 	return result.PriceMicros, nil
 }
@@ -45,7 +51,10 @@ func (uc *consumeWhatsappTemplateUseCase) Refund(workspaceID string, referenceID
 		return fmt.Errorf("failed to get WhatsApp pricing for refund: %w", err)
 	}
 	if result.PriceMicros <= 0 {
-		return nil
+		// Returning nil here reported a refund that never happened, and the caller
+		// then recorded the attempt as refunded — money kept, with a record saying
+		// it was returned.
+		return fmt.Errorf("%w: cannot refund whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
 	}
 	refRef := "refund:" + referenceID
 	description := fmt.Sprintf("Reembolso: template WhatsApp %s não enviado (ref: %s)", strings.ToLower(templateCategory), referenceID)
@@ -72,7 +81,13 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 	}
 
 	if result.PriceMicros <= 0 {
-		return nil, nil
+		// Fail CLOSED. This used to return (nil, nil): success-shaped, no charge —
+		// so an unpriced workspace sent paid templates for free, at bulk volume,
+		// with nothing logged. Every caller read the nil error as "billed".
+		//
+		// Guarding here rather than in each caller is deliberate: there are four
+		// senders and only one of them had the check.
+		return nil, fmt.Errorf("%w: whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
 	}
 
 	description := fmt.Sprintf("Template WhatsApp %s (ref: %s)", strings.ToLower(templateCategory), referenceID)

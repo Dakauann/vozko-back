@@ -20,10 +20,14 @@ type ObjectType string
 const (
 	ObjectConversation ObjectType = "conversation"
 	ObjectOpportunity  ObjectType = "opportunity"
+	// ObjectLead targets the leads list. It has no board axis, so its views
+	// are saved with GroupByNone: a lead view is a named segment ("bloqueados
+	// com memória de objeção") plus its sort and columns.
+	ObjectLead ObjectType = "lead"
 )
 
 func (o ObjectType) Valid() bool {
-	return o == ObjectConversation || o == ObjectOpportunity
+	return o == ObjectConversation || o == ObjectOpportunity || o == ObjectLead
 }
 
 // Visibility governs who can see a view.
@@ -109,7 +113,13 @@ var (
 func (v *SavedView) Normalize() {
 	v.Name = strings.TrimSpace(v.Name)
 	if v.GroupBy == "" {
-		v.GroupBy = GroupByStage
+		// A lead has no pipeline to be grouped along, so its default axis is
+		// "no columns"; every other object keeps the classic stage board.
+		if v.ObjectType == ObjectLead {
+			v.GroupBy = GroupByNone
+		} else {
+			v.GroupBy = GroupByStage
+		}
 	}
 	if v.Visibility == "" {
 		v.Visibility = VisibilityPrivate

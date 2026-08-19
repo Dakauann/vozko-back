@@ -42,7 +42,7 @@ func NewSavedViewHandler(
 // @Description	Retorna as visões salvas do usuário para o tipo de objeto informado (conversa por padrão), usadas para configurar o quadro do CRM.
 // @Tags			Visões Salvas
 // @Produce		json
-// @Param			objectType	query	string	false	"Tipo de objeto ('conversation' ou 'opportunity')"
+// @Param			objectType	query	string	false	"Tipo de objeto ('conversation', 'opportunity' ou 'lead')"
 // @Success		200	{array}		savedview.SavedView
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
@@ -84,7 +84,7 @@ func (h *SavedViewHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", map[string]string{
 			"name":       "string (required)",
-			"objectType": "string (required: 'conversation' | 'opportunity')",
+			"objectType": "string (required: 'conversation' | 'opportunity' | 'lead')",
 			"filter":     "object (crmfilter)",
 		})
 		return

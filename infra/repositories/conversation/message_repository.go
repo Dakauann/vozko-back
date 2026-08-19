@@ -1,6 +1,7 @@
 package conversation_repository
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -1768,12 +1769,53 @@ func (r *repository) GetByExternalMessageID(entryType shared.EntryType, external
 }
 
 func (r *repository) UpdateDeliveryStatus(wamid string, status conversation.DeliveryStatus) error {
+	return r.UpdateDeliveryStatusWithReason(wamid, status, 0, "")
+}
+
+// UpdateDeliveryStatusWithReason records WHY a message failed, alongside the fact
+// that it did.
+//
+// The reason is merged into the existing metadata rather than given its own
+// columns: the thread already reads metadata for template rendering, so this
+// needs no migration, and a failure reason is exactly the kind of
+// channel-specific detail that column would have to keep growing to hold.
+//
+// It matters because "failed" on its own is unactionable. The provider's codes
+// separate things an operator can fix (a number not on WhatsApp) from things
+// only an admin can (a billing hold on the business account), and without the
+// code every failure looks like the same shrug.
+func (r *repository) UpdateDeliveryStatusWithReason(
+	wamid string,
+	status conversation.DeliveryStatus,
+	errorCode int,
+	errorMessage string,
+) error {
+	updates := map[string]interface{}{
+		"delivery_status": string(status),
+		"updated_at":      time.Now().UTC(),
+	}
+
+	if errorCode != 0 || strings.TrimSpace(errorMessage) != "" {
+		if len(errorMessage) > 500 {
+			errorMessage = errorMessage[:500]
+		}
+		// jsonb_strip_nulls keeps the merge from writing explicit nulls, and
+		// COALESCE covers rows whose metadata is NULL rather than '{}'.
+		payload, err := json.Marshal(map[string]interface{}{
+			"delivery_error": map[string]interface{}{
+				"code":    errorCode,
+				"message": errorMessage,
+			},
+		})
+		if err == nil {
+			updates["metadata"] = gorm.Expr(
+				"COALESCE(metadata, '{}'::jsonb) || ?::jsonb", string(payload))
+		}
+	}
+
 	result := r.db.Model(&schema.ConversationMessage{}).
 		Where("whatsapp_message_id = ?", wamid).
-		Updates(map[string]interface{}{
-			"delivery_status": string(status),
-			"updated_at":      time.Now().UTC(),
-		})
+		Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}

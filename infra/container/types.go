@@ -48,6 +48,7 @@ import (
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
+	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
@@ -135,6 +136,7 @@ import (
 	waba_domain "vozko/domain/whatsapp/waba"
 	wc_domain "vozko/domain/whatsapp_campaign"
 	wc_entry_domain "vozko/domain/whatsapp_campaign_entry"
+	whatsapp_outreach_domain "vozko/domain/whatsapp_outreach"
 	workflow_domain "vozko/domain/workflow"
 	workspace_domain "vozko/domain/workspace"
 	workspace_addon_domain "vozko/domain/workspace/workspace_addon"
@@ -207,25 +209,28 @@ type Container struct {
 }
 
 type repositories struct {
-	product                 product.ProductRepository
-	property                property.PropertyRepository
-	category                category.Repository
-	agent                   agent_domain.Repository
-	lead                    lead_domain.Repository
-	conversation            conversation_domain.MessageRepository
-	analysis                analysis.Repository
-	user                    user.UserRepository
-	media                   media.MediaRepository
-	cart                    cart.CartRepository
-	address                 address.AddressRepository
-	cep                     cep.CEPRepository
-	order                   order.OrderRepository
-	payment                 payment.PaymentRepository
-	paymentSplit            payment.PaymentSplitRepository
-	ticket                  ticket.Repository
-	shippingAccount         shipping.ProviderAccountRepository
-	insurance               insurance.InsuranceRepository
-	whatsappTemplate        whatsapp_template.Repository
+	product          product.ProductRepository
+	property         property.PropertyRepository
+	category         category.Repository
+	agent            agent_domain.Repository
+	lead             lead_domain.Repository
+	conversation     conversation_domain.MessageRepository
+	analysis         analysis.Repository
+	user             user.UserRepository
+	media            media.MediaRepository
+	cart             cart.CartRepository
+	address          address.AddressRepository
+	cep              cep.CEPRepository
+	order            order.OrderRepository
+	payment          payment.PaymentRepository
+	paymentSplit     payment.PaymentSplitRepository
+	ticket           ticket.Repository
+	shippingAccount  shipping.ProviderAccountRepository
+	insurance        insurance.InsuranceRepository
+	whatsappTemplate whatsapp_template.Repository
+	// whatsappTemplateSend is the paid-send attempt ledger: the row that makes
+	// a retried request cost money once.
+	whatsappTemplateSend    whatsapp_template.SendAttemptRepository
 	passwordResetToken      auth.PasswordResetTokenRepository
 	emailVerification       auth.EmailVerificationRepository
 	systemConfig            config_domain.SystemConfigRepository
@@ -556,12 +561,19 @@ type useCases struct {
 	reconcileWhatsAppTemplates    whatsapp_template.ReconcileTemplatesUseCase
 	reconcileWhatsAppEntitlements businessphone.EntitlementReconciler
 	syncWhatsAppTemplate          whatsapp_template.SyncTemplateUseCase
-	sendWhatsAppTemplate          whatsapp_template.SendTemplateMessageUseCase
 	createWhatsAppTemplate        whatsapp_template.CreateTemplateUseCase
-	replicateWhatsAppTemplate     whatsapp_template.ReplicateTemplateUseCase
-	setHeaderMediaWhatsApp        whatsapp_template.SetTemplateHeaderMediaUseCase
-	deleteWhatsAppTemplate        whatsapp_template.DeleteTemplateUseCase
-	handleTemplateWebhook         whatsapp_template.HandleTemplateWebhookUseCase
+
+	// Official-WhatsApp cold outbound. The billed sender is the one paid
+	// single-target template sender; the reconcile sweep and the dialog above it
+	// both hold it.
+	billedTemplateSend        whatsapp_template.BilledTemplateSendUseCase
+	reconcileTemplateSends    whatsapp_template.ReconcileSendAttemptsUseCase
+	startOfficialConversation whatsapp_outreach_domain.StartOfficialConversationUseCase
+	quoteTemplateSend         whatsapp_outreach_domain.QuoteTemplateSendUseCase
+	replicateWhatsAppTemplate whatsapp_template.ReplicateTemplateUseCase
+	setHeaderMediaWhatsApp    whatsapp_template.SetTemplateHeaderMediaUseCase
+	deleteWhatsAppTemplate    whatsapp_template.DeleteTemplateUseCase
+	handleTemplateWebhook     whatsapp_template.HandleTemplateWebhookUseCase
 
 	getSystemConfig    config_domain.GetSystemConfigUseCase
 	updateSystemConfig config_domain.UpdateSystemConfigUseCase
@@ -729,7 +741,6 @@ type useCases struct {
 	deleteMessageShortcut msg_shortcut_domain.DeleteUseCase
 	listMessageShortcuts  msg_shortcut_domain.ListUseCase
 	getByShortcut         msg_shortcut_domain.GetByShortcutUseCase
-
 
 	createWorkspace                    workspace_domain.CreateWorkspaceUseCase
 	getWorkspace                       workspace_domain.GetWorkspaceUseCase
@@ -982,6 +993,7 @@ type handlers_ struct {
 	shipping                *handlers.ShippingHandler
 	insurance               *handlers.InsuranceHandler
 	whatsappTemplate        *whatsapptemplatehttp.WhatsAppTemplateHandler
+	whatsappOutreach        *whatsappoutreachhttp.Handler
 	systemConfig            *systemconfighttp.SystemConfigHandler
 	metrics                 *handlers.MetricsHandler
 	metricsQuery            *handlers.MetricsQueryHandler

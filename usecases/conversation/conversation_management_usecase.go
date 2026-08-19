@@ -3185,6 +3185,11 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	}
 
 	result, err := client.SendTemplateMessage(context.Background(), sendInput)
+	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
+		// Meta took it. A refund here credits a message the customer already has.
+		log.Printf("[TemplateSender] send outcome unknown for entry %s (Meta accepted, response unreadable), keeping the charge: %v", entryID, err)
+		err = nil
+	}
 	if err != nil {
 
 		if refundErr := s.consumeWhatsappTemplate.Refund(workspaceID, entryID, templateCategory); refundErr != nil {
@@ -3196,95 +3201,14 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	log.Printf("[TemplateSender] Sent template '%s' to %s for entry %s (%s), messageID=%s",
 		tmpl.Name, phoneNumber, entryID, entryType, result.MessageID)
 
-	bodyText := strings.TrimSpace(tmpl.GetBodyText())
-	paramNames := tmpl.GetParameterNames()
-	if bodyText != "" && len(parameters) > 0 {
-		for i, p := range parameters {
-			positional := fmt.Sprintf("{{%d}}", i+1)
-			bodyText = strings.ReplaceAll(bodyText, positional, p)
-			if i < len(paramNames) {
-				named := "{{" + paramNames[i] + "}}"
-				bodyText = strings.ReplaceAll(bodyText, named, p)
-			}
-		}
-	}
-	if bodyText == "" {
-		bodyText = fmt.Sprintf("[Template: %s]", tmpl.Name)
-	}
-
-	type metadataButton struct {
-		Type        string `json:"type"`
-		Text        string `json:"text"`
-		URL         string `json:"url,omitempty"`
-		PhoneNumber string `json:"phoneNumber,omitempty"`
-	}
-	type metadataComponent struct {
-		Type    string           `json:"type"`
-		Format  string           `json:"format,omitempty"`
-		Text    string           `json:"text,omitempty"`
-		Buttons []metadataButton `json:"buttons,omitempty"`
-	}
-	type templateMetadata struct {
-		TemplateName   string              `json:"template_name"`
-		Language       string              `json:"language"`
-		Category       string              `json:"category"`
-		Components     []metadataComponent `json:"components"`
-		HeaderMediaURL string              `json:"header_media_url,omitempty"`
-	}
-
-	var metaComponents []metadataComponent
-	metaParamIdx := 0
-	for _, comp := range tmpl.Components {
-		mc := metadataComponent{
-			Type:   comp.Type,
-			Format: comp.Format,
-			Text:   comp.Text,
-		}
-
-		if (comp.Type == "BODY" || (comp.Type == "HEADER" && comp.Format == "TEXT")) && mc.Text != "" && len(parameters) > 0 {
-			for i := metaParamIdx; i < len(parameters); i++ {
-				positional := fmt.Sprintf("{{%d}}", i+1)
-				if strings.Contains(mc.Text, positional) {
-					mc.Text = strings.ReplaceAll(mc.Text, positional, parameters[i])
-					metaParamIdx = i + 1
-					continue
-				}
-				if i < len(paramNames) {
-					named := "{{" + paramNames[i] + "}}"
-					if strings.Contains(mc.Text, named) {
-						mc.Text = strings.ReplaceAll(mc.Text, named, parameters[i])
-						metaParamIdx = i + 1
-					}
-				}
-			}
-		}
-
-		if len(comp.Buttons) > 0 {
-			for _, btn := range comp.Buttons {
-				mc.Buttons = append(mc.Buttons, metadataButton{
-					Type:        btn.Type,
-					Text:        btn.Text,
-					URL:         btn.URL,
-					PhoneNumber: btn.PhoneNumber,
-				})
-			}
-		}
-
-		metaComponents = append(metaComponents, mc)
-	}
-
-	meta := templateMetadata{
-		TemplateName: tmpl.Name,
-		Language:     tmpl.Language,
-		Category:     string(tmpl.Category),
-		Components:   metaComponents,
-	}
-	if tmpl.HeaderMediaURL != nil {
-		meta.HeaderMediaURL = *tmpl.HeaderMediaURL
-	}
+	// One renderer for every template message on the platform. This block used to
+	// be a verbatim copy of the campaign consumer's, which meant the same template
+	// could render two different ways depending on which code path sent it.
+	templateInfo := tmpl.RenderInfo(parameters)
+	bodyText, _ := templateInfo["body_text"].(string)
 
 	var metadataJSON json.RawMessage
-	if metaBytes, jsonErr := json.Marshal(meta); jsonErr == nil {
+	if metaBytes, jsonErr := json.Marshal(templateInfo); jsonErr == nil {
 		metadataJSON = metaBytes
 	}
 
@@ -3307,8 +3231,12 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		CreatedAt:         time.Now().UTC(),
 	}
 	if err := s.messageRepo.Create(msg); err != nil {
-		log.Printf("[TemplateSender] Error recording template message: %v", err)
-		return "", fmt.Errorf("failed to save template message: %w", err)
+		// The template was SENT and PAID FOR. Returning an error here tells the
+		// caller the send failed, and a caller that believes that retries — a
+		// second delivered message and a second charge, caused by a bookkeeping
+		// failure. The message is lost from the thread, which is visible and
+		// fixable; the double charge would not be.
+		log.Printf("[TemplateSender] WARNING: template delivered but could not be recorded for entry %s: %v", entryID, err)
 	}
 
 	if s.hub != nil {

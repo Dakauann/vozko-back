@@ -1,12 +1,11 @@
 package crmboard
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
+	"vozko/delivery/http/httpx"
 	"vozko/domain/crmfilter"
 	"vozko/infra/http/middleware"
 	crmboard_usecase "vozko/usecases/crmboard"
@@ -50,16 +49,10 @@ func get(q map[string][]string, key string) string {
 	return ""
 }
 
+// decodeFilterParam is the shared httpx decoder; kept as a named function here
+// because the board handler calls it three times.
 func decodeFilterParam(raw string) (crmfilter.Filter, error) {
-	var f crmfilter.Filter
-	data := decodeMaybeBase64(raw)
-	if len(data) == 0 {
-		return f, nil
-	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		return crmfilter.Filter{}, err
-	}
-	return f, nil
+	return httpx.DecodeFilterParam(raw)
 }
 
 func decodeOwnersParam(raw string) ([]crmboard_usecase.Owner, error) {
@@ -75,15 +68,5 @@ func decodeOwnersParam(raw string) ([]crmboard_usecase.Owner, error) {
 }
 
 func decodeMaybeBase64(raw string) []byte {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(raw); err == nil {
-		return decoded
-	}
-	if decoded, err := base64.URLEncoding.DecodeString(raw); err == nil {
-		return decoded
-	}
-	return []byte(raw)
+	return httpx.DecodeMaybeBase64(raw)
 }

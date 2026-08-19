@@ -70,6 +70,19 @@ var (
 	ErrWhatsAppTemplateNameRequired = errors.New("template name is required")
 	ErrWhatsAppTemplateIDRequired   = errors.New("template ID is required")
 	ErrWhatsAppWABAIDRequired       = errors.New("whatsapp business account ID is required")
+
+	// ErrSendOutcomeUnknown means the provider ACCEPTED the send and we then
+	// failed to understand the answer.
+	//
+	// It exists because "we could not parse Meta's 200" and "the request never
+	// arrived" are opposite facts that used to arrive as the same bare error, and
+	// every caller treated both as a failure and refunded the customer. Refunding
+	// a message Meta has already accepted means we pay Meta and collect nothing —
+	// the one billing mistake that costs real money on every occurrence.
+	//
+	// A caller seeing this must NOT refund and must NOT resend. The charge stands
+	// and the attempt is reconciled from the delivery-status webhook.
+	ErrSendOutcomeUnknown = errors.New("whatsapp: send outcome unknown, provider accepted the request")
 )
 
 type WhatsAppClient interface {
@@ -485,6 +498,11 @@ type SendTemplateMessageInput struct {
 	HeaderFilename         string
 	HeaderTextParams       []string
 	FromPhoneNumberID      string
+	// BizOpaqueCallbackData is echoed back by Meta on every delivery-status
+	// webhook for this message. Carrying our own send-attempt id through it is
+	// what lets a status event be matched to the charge that paid for it, even
+	// when we never learned the provider message id.
+	BizOpaqueCallbackData string
 }
 
 func (in SendTemplateMessageInput) Validate() error {

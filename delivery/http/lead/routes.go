@@ -17,6 +17,9 @@ func RegisterRoutes(
 	ldRoutes := protected.PathPrefix("/leads").Subrouter()
 	ldRoutes.HandleFunc("", ac(ld, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
 	ldRoutes.HandleFunc("/search", ac(ld, workspace_domain.ActionRead, h.GetByNumber)).Methods(http.MethodGet)
+	// Registered before "/{id}" so the literal path is not swallowed by the id
+	// pattern, exactly like "/search" above it.
+	ldRoutes.HandleFunc("/facets", ac(ld, workspace_domain.ActionRead, h.Facets)).Methods(http.MethodGet)
 	ldRoutes.HandleFunc("/{id}", ac(ld, workspace_domain.ActionRead, h.GetByID)).Methods(http.MethodGet)
 	ldRoutes.HandleFunc("/{id}/block", ac(ld, workspace_domain.ActionBlock, h.BlockLead)).Methods(http.MethodPost)
 	ldRoutes.HandleFunc("/{id}/campaigns", ac(ld, workspace_domain.ActionRead, h.GetCampaignHistory)).Methods(http.MethodGet)

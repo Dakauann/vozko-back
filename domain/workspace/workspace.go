@@ -156,6 +156,21 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar modelos de mensagem"},
 		{ActionName: ActionUpdate, Description: "Editar modelos de mensagem"},
 		{ActionName: ActionDelete, Description: "Excluir modelos de mensagem"},
+		// A SEPARATE privilege, for the same reason the unofficial channel has one:
+		// answering someone who wrote to us is ordinary attendance, while messaging
+		// a number that never contacted us is cold outbound. Here it is sharper
+		// still, because on the official channel that first message is a template
+		// and every template SPENDS THE WORKSPACE'S BALANCE. An attendant trusted to
+		// reply must not thereby be able to spend money.
+		//
+		// A new action on an existing resource, deliberately: owners and admins
+		// short-circuit the check so nothing regresses on deploy, whereas a new
+		// resource would strip every existing role.
+		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo enviando um modelo pelo WhatsApp oficial (consome saldo)", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppTemplates, Action: ActionRead},
+			{Resource: ResourceBusinessPhones, Action: ActionRead},
+			{Resource: ResourceConversations, Action: ActionRead},
+		}},
 	},
 	ResourceBusinessPhones: {
 		{ActionName: ActionRead, Description: "Visualizar telefones comerciais do workspace"},

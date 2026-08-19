@@ -5774,7 +5774,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna a lista paginada de leads do workspace, com filtros por número, nome, período de criação, faixa etária e presença em campanhas.",
+                "description": "Retorna a lista paginada de leads do workspace. Aceita os filtros simples por querystring (nome, número, período, faixa etária, campanha, canal, bloqueio, janela, memórias) e/ou um filtro estruturado ` + "`" + `filter` + "`" + ` (crmfilter em JSON, opcionalmente em base64) com grupos AND/OR. A ordenação aceita múltiplas chaves.",
                 "produces": [
                     "application/json"
                 ],
@@ -5791,14 +5791,32 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Quantidade de itens por página",
+                        "description": "Itens por página (máximo 200)",
                         "name": "pageSize",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Ordenação (ex.: createdAt:desc, name:asc, number:asc)",
+                        "description": "Ordenação: createdAt, updatedAt, lastActivityAt, name, number, age, campaigns, memories, lastMemoryAt (ex.: lastActivityAt:desc,name:asc)",
                         "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Direção padrão quando o sort não a informa ('asc' ou 'desc')",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro crmfilter em JSON (opcionalmente codificado em base64)",
+                        "name": "filter",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Busca livre por nome, número ou conteúdo das memórias",
+                        "name": "q",
                         "in": "query"
                     },
                     {
@@ -5814,15 +5832,9 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Criados a partir de (RFC3339)",
-                        "name": "createdFrom",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Criados até (RFC3339)",
-                        "name": "createdTo",
+                        "type": "boolean",
+                        "description": "Possui nome preenchido",
+                        "name": "hasName",
                         "in": "query"
                     },
                     {
@@ -5839,8 +5851,174 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
+                        "description": "Somente bloqueados / não bloqueados",
+                        "name": "blocked",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Janela de 24h aberta",
+                        "name": "windowOpen",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Canais (whatsapp, unofficial_whatsapp, telegram, instagram)",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
                         "description": "Possui campanha de WhatsApp",
                         "name": "hasWhatsAppCampaign",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "IDs de campanha",
+                        "name": "campaignId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Status de envio na campanha",
+                        "name": "campaignStatus",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Mínimo de campanhas",
+                        "name": "campaignsFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Máximo de campanhas",
+                        "name": "campaignsTo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "IDs de etapa do CRM",
+                        "name": "stageId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "IDs de etiqueta do CRM",
+                        "name": "labelId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Possui memórias registradas",
+                        "name": "hasMemory",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Categorias de memória",
+                        "name": "memoryCategory",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Autor da memória (human, ai, system)",
+                        "name": "memoryAuthor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Busca no conteúdo das memórias",
+                        "name": "memoryText",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Mínimo de memórias",
+                        "name": "memoriesFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Máximo de memórias",
+                        "name": "memoriesTo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Memória atualizada a partir de (RFC3339 ou YYYY-MM-DD)",
+                        "name": "memoryFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Memória atualizada até (RFC3339 ou YYYY-MM-DD)",
+                        "name": "memoryTo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Criados a partir de (RFC3339 ou YYYY-MM-DD)",
+                        "name": "createdFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Criados até (RFC3339 ou YYYY-MM-DD)",
+                        "name": "createdTo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Atualizados a partir de (RFC3339 ou YYYY-MM-DD)",
+                        "name": "updatedFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Atualizados até (RFC3339 ou YYYY-MM-DD)",
+                        "name": "updatedTo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Última atividade a partir de (RFC3339 ou YYYY-MM-DD)",
+                        "name": "activityFrom",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Última atividade até (RFC3339 ou YYYY-MM-DD)",
+                        "name": "activityTo",
                         "in": "query"
                     }
                 ],
@@ -5852,6 +6030,57 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/lead.LeadListResponseItem"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/facets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna as contagens agregadas do MESMO conjunto filtrado que a listagem devolve, por bloqueio, janela, campanha, memória, canal, categoria de memória e status de envio. Aceita exatamente os mesmos parâmetros de filtro de GET /leads.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Contagens dos filtros de leads",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filtro crmfilter em JSON (opcionalmente codificado em base64)",
+                        "name": "filter",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Busca livre por nome, número ou conteúdo das memórias",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/lead.LeadFacets"
                         }
                     },
                     "400": {
@@ -8535,7 +8764,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo de objeto ('conversation' ou 'opportunity')",
+                        "description": "Tipo de objeto ('conversation', 'opportunity' ou 'lead')",
                         "name": "objectType",
                         "in": "query"
                     }
@@ -18387,6 +18616,17 @@ const docTemplate = `{
                 "unread",
                 "window_open",
                 "query",
+                "name",
+                "number",
+                "age",
+                "blocked",
+                "campaign_status",
+                "campaign_count",
+                "memory_category",
+                "memory_author",
+                "memory_text",
+                "memory_count",
+                "memory_updated_at",
                 "custom"
             ],
             "x-enum-varnames": [
@@ -18408,6 +18648,17 @@ const docTemplate = `{
                 "FieldUnread",
                 "FieldWindowOpen",
                 "FieldQuery",
+                "FieldName",
+                "FieldNumber",
+                "FieldAge",
+                "FieldBlocked",
+                "FieldCampaignStatus",
+                "FieldCampaignCount",
+                "FieldMemoryCategory",
+                "FieldMemoryAuthor",
+                "FieldMemoryText",
+                "FieldMemoryCount",
+                "FieldMemoryUpdatedAt",
                 "FieldCustom"
             ]
         },
@@ -19558,11 +19809,77 @@ const docTemplate = `{
                 }
             }
         },
+        "lead.LeadFacets": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "integer"
+                },
+                "blocked": {
+                    "type": "integer"
+                },
+                "campaignStatuses": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "channels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "memoryCategories": {
+                    "description": "Keyed breakdowns. Each counts DISTINCT leads, never rows: a lead with\nfour ` + "`" + `deal` + "`" + ` memories is one lead under \"deal\".",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "named": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "unnamed": {
+                    "type": "integer"
+                },
+                "windowClosed": {
+                    "type": "integer"
+                },
+                "windowOpen": {
+                    "type": "integer"
+                },
+                "withCampaign": {
+                    "type": "integer"
+                },
+                "withMemory": {
+                    "type": "integer"
+                },
+                "withoutCampaign": {
+                    "type": "integer"
+                },
+                "withoutMemory": {
+                    "type": "integer"
+                }
+            }
+        },
         "lead.LeadListResponseItem": {
             "type": "object",
             "properties": {
                 "age": {
                     "type": "integer"
+                },
+                "blocked": {
+                    "type": "boolean"
+                },
+                "blockedAt": {
+                    "type": "string"
                 },
                 "createdAt": {
                     "type": "string"
@@ -19573,10 +19890,20 @@ const docTemplate = `{
                 "lastActivityAt": {
                     "type": "string"
                 },
+                "lastMemoryAt": {
+                    "type": "string"
+                },
+                "memories": {
+                    "description": "Memories are on the row, not one click away: the count is what makes\n\"we know 6 things about this person\" visible while scanning, and it is\nthe same number the memory filters segment on.",
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
                 },
                 "number": {
+                    "type": "string"
+                },
+                "profilePictureUrl": {
                     "type": "string"
                 },
                 "totalCampaigns": {
@@ -20463,11 +20790,13 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "conversation",
-                "opportunity"
+                "opportunity",
+                "lead"
             ],
             "x-enum-varnames": [
                 "ObjectConversation",
-                "ObjectOpportunity"
+                "ObjectOpportunity",
+                "ObjectLead"
             ]
         },
         "savedview.SavedView": {

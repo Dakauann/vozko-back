@@ -3,7 +3,6 @@ package lead
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/analysis"
 	"vozko/domain/conversation"
@@ -160,77 +158,58 @@ func (h *LeadHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Listar leads
-// @Description	Retorna a lista paginada de leads do workspace, com filtros por número, nome, período de criação, faixa etária e presença em campanhas.
+// @Description	Retorna a lista paginada de leads do workspace. Aceita os filtros simples por querystring (nome, número, período, faixa etária, campanha, canal, bloqueio, janela, memórias) e/ou um filtro estruturado `filter` (crmfilter em JSON, opcionalmente em base64) com grupos AND/OR. A ordenação aceita múltiplas chaves.
 // @Tags			Leads
 // @Produce		json
 // @Param			page				query	int		false	"Número da página (inicia em 1)"
-// @Param			pageSize			query	int		false	"Quantidade de itens por página"
-// @Param			sort				query	string	false	"Ordenação (ex.: createdAt:desc, name:asc, number:asc)"
+// @Param			pageSize			query	int		false	"Itens por página (máximo 200)"
+// @Param			sort				query	string	false	"Ordenação: createdAt, updatedAt, lastActivityAt, name, number, age, campaigns, memories, lastMemoryAt (ex.: lastActivityAt:desc,name:asc)"
+// @Param			order				query	string	false	"Direção padrão quando o sort não a informa ('asc' ou 'desc')"
+// @Param			filter				query	string	false	"Filtro crmfilter em JSON (opcionalmente codificado em base64)"
+// @Param			q					query	string	false	"Busca livre por nome, número ou conteúdo das memórias"
 // @Param			number				query	string	false	"Filtrar por número de telefone"
 // @Param			name				query	string	false	"Filtrar por nome"
-// @Param			createdFrom			query	string	false	"Criados a partir de (RFC3339)"
-// @Param			createdTo			query	string	false	"Criados até (RFC3339)"
+// @Param			hasName				query	bool	false	"Possui nome preenchido"
 // @Param			ageFrom				query	int		false	"Idade mínima"
 // @Param			ageTo				query	int		false	"Idade máxima"
+// @Param			blocked				query	bool	false	"Somente bloqueados / não bloqueados"
+// @Param			windowOpen			query	bool	false	"Janela de 24h aberta"
+// @Param			channel				query	[]string	false	"Canais (whatsapp, unofficial_whatsapp, telegram, instagram)"
 // @Param			hasWhatsAppCampaign	query	bool	false	"Possui campanha de WhatsApp"
+// @Param			campaignId			query	[]string	false	"IDs de campanha"
+// @Param			campaignStatus		query	[]string	false	"Status de envio na campanha"
+// @Param			campaignsFrom		query	int		false	"Mínimo de campanhas"
+// @Param			campaignsTo			query	int		false	"Máximo de campanhas"
+// @Param			stageId				query	[]string	false	"IDs de etapa do CRM"
+// @Param			labelId				query	[]string	false	"IDs de etiqueta do CRM"
+// @Param			hasMemory			query	bool	false	"Possui memórias registradas"
+// @Param			memoryCategory		query	[]string	false	"Categorias de memória"
+// @Param			memoryAuthor		query	[]string	false	"Autor da memória (human, ai, system)"
+// @Param			memoryText			query	string	false	"Busca no conteúdo das memórias"
+// @Param			memoriesFrom		query	int		false	"Mínimo de memórias"
+// @Param			memoriesTo			query	int		false	"Máximo de memórias"
+// @Param			memoryFrom			query	string	false	"Memória atualizada a partir de (RFC3339 ou YYYY-MM-DD)"
+// @Param			memoryTo			query	string	false	"Memória atualizada até (RFC3339 ou YYYY-MM-DD)"
+// @Param			createdFrom			query	string	false	"Criados a partir de (RFC3339 ou YYYY-MM-DD)"
+// @Param			createdTo			query	string	false	"Criados até (RFC3339 ou YYYY-MM-DD)"
+// @Param			updatedFrom			query	string	false	"Atualizados a partir de (RFC3339 ou YYYY-MM-DD)"
+// @Param			updatedTo			query	string	false	"Atualizados até (RFC3339 ou YYYY-MM-DD)"
+// @Param			activityFrom		query	string	false	"Última atividade a partir de (RFC3339 ou YYYY-MM-DD)"
+// @Param			activityTo			query	string	false	"Última atividade até (RFC3339 ou YYYY-MM-DD)"
 // @Success		200	{array}		lead.LeadListResponseItem
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/leads [get]
 func (h *LeadHandler) List(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+	input, ok := h.listInput(w, r)
+	if !ok {
 		return
-	}
-	values := r.URL.Query()
-
-	opts := shared.QueryOptions{
-		Pagination: httpx.ParsePagination(values),
-		Sorts: parseSort(values, map[string]string{
-			"createdat": "created_at",
-			"name":      "name",
-			"number":    "number",
-		}),
-	}
-
-	input := leaddomain.ListLeadsInput{
-		WorkspaceID: workspaceID,
-		Number:      strings.TrimSpace(values.Get("number")),
-		Name:        strings.TrimSpace(values.Get("name")),
-		Options:     opts,
-	}
-
-	if v := strings.TrimSpace(values.Get("createdFrom")); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			input.CreatedFrom = &t
-		}
-	}
-	if v := strings.TrimSpace(values.Get("createdTo")); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			input.CreatedTo = &t
-		}
-	}
-	if v := strings.TrimSpace(values.Get("ageFrom")); v != "" {
-		if parsed, err := parseIntFromString(v); err == nil {
-			input.AgeFrom = parsed
-		}
-	}
-	if v := strings.TrimSpace(values.Get("ageTo")); v != "" {
-		if parsed, err := parseIntFromString(v); err == nil {
-			input.AgeTo = parsed
-		}
-	}
-	if v := strings.TrimSpace(values.Get("hasWhatsAppCampaign")); v != "" {
-		if b, err := parseBoolFromQuery(v); err == nil {
-			input.HasWhatsAppCampaign = &b
-		}
 	}
 
 	result, err := h.leadRepo.ListWithSummary(input)
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch leads", nil)
+		h.writeListError(w, err)
 		return
 	}
 
@@ -247,30 +226,61 @@ func (h *LeadHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func parseIntFromString(v string) (*int, error) {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return nil, nil
+// @Summary		Contagens dos filtros de leads
+// @Description	Retorna as contagens agregadas do MESMO conjunto filtrado que a listagem devolve, por bloqueio, janela, campanha, memória, canal, categoria de memória e status de envio. Aceita exatamente os mesmos parâmetros de filtro de GET /leads.
+// @Tags			Leads
+// @Produce		json
+// @Param			filter	query		string	false	"Filtro crmfilter em JSON (opcionalmente codificado em base64)"
+// @Param			q		query		string	false	"Busca livre por nome, número ou conteúdo das memórias"
+// @Success		200	{object}	lead.LeadFacets
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		500	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/leads/facets [get]
+func (h *LeadHandler) Facets(w http.ResponseWriter, r *http.Request) {
+	input, ok := h.listInput(w, r)
+	if !ok {
+		return
 	}
-	var val int
-	if _, err := fmt.Sscanf(v, "%d", &val); err != nil {
-		return nil, err
+
+	facets, err := h.leadRepo.Facets(input)
+	if err != nil {
+		h.writeListError(w, err)
+		return
 	}
-	if val < 0 {
-		return nil, nil
-	}
-	return &val, nil
+
+	response.WriteSuccess(w, http.StatusOK, facets)
 }
 
-func parseBoolFromQuery(v string) (bool, error) {
-	v = strings.ToLower(strings.TrimSpace(v))
-	switch v {
-	case "true", "1", "yes":
-		return true, nil
-	case "false", "0", "no":
-		return false, nil
+// listInput parses the shared read query for the list and its facet counts.
+//
+// Both endpoints must read the same query string the same way — a facet badge
+// counted over a different set than the rows below it is worse than no badge —
+// so there is one parser and both call it.
+func (h *LeadHandler) listInput(w http.ResponseWriter, r *http.Request) (leaddomain.ListLeadsInput, bool) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+		return leaddomain.ListLeadsInput{}, false
 	}
-	return false, errors.New("invalid boolean value")
+
+	input, err := listInputFromQuery(workspaceID, r.URL.Query())
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid filter parameter", nil)
+		return leaddomain.ListLeadsInput{}, false
+	}
+	return input, true
+}
+
+// writeListError separates "your query was wrong" from "we failed". A filter
+// naming a field the lead object cannot answer is a 400 the client can fix and
+// a message they can act on; anything else is ours.
+func (h *LeadHandler) writeListError(w http.ResponseWriter, err error) {
+	if errors.Is(err, leaddomain.ErrLeadFilterInvalid) {
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	response.WriteError(w, http.StatusInternalServerError, "Failed to fetch leads", nil)
 }
 
 // @Summary		Histórico de campanhas do lead

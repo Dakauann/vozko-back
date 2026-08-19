@@ -124,7 +124,7 @@ func (m *ownershipBusinessPhoneRepo) SyncFromMeta(*businessphone.WhatsAppBusines
 }
 
 func (m *ownershipBusinessPhoneRepo) ClearAccessToken(string) error { return nil }
-func (m *ownershipBusinessPhoneRepo) ClearOwner(string) error { return nil }
+func (m *ownershipBusinessPhoneRepo) ClearOwner(string) error       { return nil }
 func (m *ownershipBusinessPhoneRepo) FindByMetaPhoneNumberIDUnscoped(string) (*businessphone.WhatsAppBusinessPhoneNumber, error) {
 	return nil, businessphone.ErrPhoneNumberNotFound
 }

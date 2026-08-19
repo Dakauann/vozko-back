@@ -24,12 +24,19 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/whatsapp/templates/{id}/header-media", ac(wt, workspace_domain.ActionUpdate, h.UpdateHeaderMediaForWorkspace)).Methods(http.MethodPatch)
 }
 
+// RegisterAdminRoutes deliberately does NOT expose a template send endpoint.
+//
+// It used to: POST /whatsapp/templates/send, admin-only, reached by a page in
+// the ordinary workspace dashboard. It billed only when a workspace happened to
+// resolve from the request, created no conversation, recorded no message, and
+// checked neither the template's usability nor the workspace's spam cooldown.
+// Paid sending now has exactly one door — /whatsapp/outreach/conversations —
+// gated by whatsapp_templates:send.
 func RegisterAdminRoutes(admin *mux.Router, h *WhatsAppTemplateHandler) {
 	admin.HandleFunc("/admin/whatsapp/templates", h.ListAll).Methods(http.MethodGet)
 	admin.HandleFunc("/admin/whatsapp/templates/{id}", h.GetAdmin).Methods(http.MethodGet)
 	admin.HandleFunc("/whatsapp/templates", h.Create).Methods(http.MethodPost)
 	admin.HandleFunc("/whatsapp/templates/sync", h.Sync).Methods(http.MethodPost)
-	admin.HandleFunc("/whatsapp/templates/send", h.Send).Methods(http.MethodPost)
 	admin.HandleFunc("/whatsapp/templates/{id}/sync", h.SyncOne).Methods(http.MethodPost)
 	admin.HandleFunc("/whatsapp/templates/{id}/replicate", h.Replicate).Methods(http.MethodPost)
 	admin.HandleFunc("/whatsapp/templates/{id}/header-media", h.UpdateHeaderMediaURL).Methods(http.MethodPatch)

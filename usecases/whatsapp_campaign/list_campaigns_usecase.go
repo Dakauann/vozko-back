@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"vozko/domain/shared"
+	wa_template "vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
-	wa_template "vozko/domain/whatsapp/template"
 )
 
 type listCampaignsUseCase struct {

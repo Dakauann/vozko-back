@@ -33,7 +33,6 @@ import (
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
-	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	mediashttp "vozko/delivery/http/medias"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
@@ -52,6 +51,7 @@ import (
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
+	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
@@ -64,6 +64,7 @@ import (
 	wsdelivery "vozko/delivery/ws"
 	dialer_domain "vozko/domain/dialer"
 	"vozko/domain/user"
+	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
@@ -148,7 +149,6 @@ func (c *Container) initHandlers() {
 			c.useCases.getWhatsAppTemplate,
 			c.useCases.syncWhatsAppTemplates,
 			c.useCases.syncWhatsAppTemplate,
-			c.useCases.sendWhatsAppTemplate,
 			c.useCases.createWhatsAppTemplate,
 			c.useCases.replicateWhatsAppTemplate,
 			c.useCases.setHeaderMediaWhatsApp,
@@ -157,6 +157,16 @@ func (c *Container) initHandlers() {
 			c.repositories.workspaceTemplateAccess,
 			c.repositories.businessPhone,
 		),
+		// Cold outbound gets its own handler rather than another method on the
+		// template handler: the template surface is CRUD on a catalogue, this one
+		// spends money, and they are gated by different permissions.
+		whatsappOutreach: whatsappoutreachhttp.NewHandler(whatsappoutreachhttp.HandlerDeps{
+			Start: c.useCases.startOfficialConversation,
+			Quote: c.useCases.quoteTemplateSend,
+			// The platform's own conversation authorizer, so department scoping here
+			// is the same rule the inbox applies, not a second copy of it.
+			Departments: c.services.conversationAuthImpl,
+		}),
 		systemConfig:    systemconfighttp.NewSystemConfigHandler(c.useCases.getSystemConfig, c.useCases.updateSystemConfig),
 		workspaceConfig: workspaceconfighttp.NewWorkspaceConfigHandler(c.useCases.getWorkspaceConfig, c.useCases.updateWorkspaceConfig, c.useCases.updateWorkspaceConfigOwner),
 		workspacePlan: handlers.NewWorkspacePlanHandler(

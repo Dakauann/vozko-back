@@ -2,6 +2,7 @@ package container
 
 import (
 	deliveryHttp "vozko/delivery/http"
+	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	httpServerImpl "vozko/infra/http"
 	"vozko/infra/http/middleware"
 )
@@ -99,6 +100,7 @@ func (c *Container) initRouter() {
 		telegramHandler(c),
 		telegramWebhookHandler(c),
 		unofficialWhatsAppHandler(c),
+		whatsAppOutreachHandler(c),
 		unofficialWhatsAppWebhookHandler(c),
 		unofficialWhatsAppGroupHandler(c),
 	)
@@ -126,4 +128,16 @@ func (c *Container) initMetricsServer() {
 		return
 	}
 	c.metricsHTTP = newMetricsServer(c.cfg.MetricsListenAddr, c.services.metrics.Handler())
+}
+
+// whatsAppOutreachHandler returns the official-channel cold-outbound handler.
+//
+// Nil when the container could not build it, which registers no routes at all.
+// That is the correct failure for this feature: every route it owns spends the
+// workspace's balance, so absent is safer than present-and-half-wired.
+func whatsAppOutreachHandler(c *Container) *whatsappoutreachhttp.Handler {
+	if c.handlers == nil {
+		return nil
+	}
+	return c.handlers.whatsappOutreach
 }

@@ -219,6 +219,22 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				WHERE service_type = 'whatsapp_campaign'`,
 		},
 		{
+			// The reconcile sweep asks one question: which paid sends took money and
+			// never reached a terminal state. Partial, because that set is tiny and
+			// the table is dominated by settled rows.
+			name: "idx_wats_unsettled",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wats_unsettled
+				ON whatsapp_template_sends (updated_at)
+				WHERE status IN ('pending', 'charged', 'unknown') AND deleted_at IS NULL`,
+		},
+		{
+			// Delivery-status webhooks arrive knowing only Meta's message id.
+			name: "idx_wats_wamid",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wats_wamid
+				ON whatsapp_template_sends (workspace_id, provider_message_id)
+				WHERE provider_message_id <> '' AND deleted_at IS NULL`,
+		},
+		{
 			// Campaign list/summary filters by workspace + type + department while
 			// joining from ledger reference_id → campaign id.
 			name: "idx_wc_ws_type_dept",
@@ -687,6 +703,23 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			name: "ux_sched_msg_idem",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_sched_msg_idem
 				ON scheduled_messages (workspace_id, idempotency_key)
+				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
+		},
+		// Charge-idempotency for paid WhatsApp template sends. This is the single
+		// mechanism that makes a retried request, a redelivered queue message and
+		// a double-clicked button cost money once.
+		//
+		// It belongs HERE and not in CreatePerformanceIndexes: this is a rule, not
+		// a speed-up, and a warning-only failure would leave a database that
+		// happily accepts the duplicate charges the index exists to reject.
+		//
+		// Workspace-scoped for the same reason as the row above — the key is
+		// chosen by the caller, and one tenant must not be able to collide with
+		// another's by guessing it.
+		{
+			name: "ux_wa_tpl_send_idem",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_tpl_send_idem
+				ON whatsapp_template_sends (workspace_id, idempotency_key)
 				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
 		},
 	}

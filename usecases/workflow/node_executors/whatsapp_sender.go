@@ -2,6 +2,7 @@ package node_executors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -535,20 +536,27 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: template billing category unavailable: %w", err)
 	}
 	billingRefID := fmt.Sprintf("wf:%s:%s", run.ID, run.CurrentNodeID)
-	if s.deps.ConsumeWhatsappTemplate != nil {
-		_, consumeErr := s.deps.ConsumeWhatsappTemplate.Execute(run.WorkspaceID, billingRefID, templateCategory)
-		if consumeErr != nil {
-			return nil, usedBusinessPhoneID, fmt.Errorf("insufficient balance to send WhatsApp template: %w", consumeErr)
-		}
+	// Fail CLOSED on a missing billing dependency. This used to be
+	// `if s.deps.ConsumeWhatsappTemplate != nil`, which meant a mis-wired
+	// container silently sent paid templates for free — the failure mode nobody
+	// notices until the invoice arrives.
+	if s.deps.ConsumeWhatsappTemplate == nil {
+		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: billing dependency not configured, refusing to send a paid template")
+	}
+	if _, consumeErr := s.deps.ConsumeWhatsappTemplate.Execute(run.WorkspaceID, billingRefID, templateCategory); consumeErr != nil {
+		return nil, usedBusinessPhoneID, fmt.Errorf("insufficient balance to send WhatsApp template: %w", consumeErr)
 	}
 
 	output, err := client.SendTemplateMessage(ctx, apiInput)
+	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
+		// Accepted by Meta, unreadable to us. Never refund, never resend.
+		log.Printf("[workflow][whatsapp_sender] send outcome unknown for run=%s (Meta accepted), keeping the charge: %v", run.ID, err)
+		err = nil
+	}
 	if err != nil {
 
-		if s.deps.ConsumeWhatsappTemplate != nil {
-			if refundErr := s.deps.ConsumeWhatsappTemplate.Refund(run.WorkspaceID, billingRefID, templateCategory); refundErr != nil {
-				log.Printf("[workflow][whatsapp_sender] WARNING: failed to refund balance for template %s run=%s: %v", tmpl.Name, run.ID, refundErr)
-			}
+		if refundErr := s.deps.ConsumeWhatsappTemplate.Refund(run.WorkspaceID, billingRefID, templateCategory); refundErr != nil {
+			log.Printf("[workflow][whatsapp_sender] WARNING: failed to refund balance for template %s run=%s: %v", tmpl.Name, run.ID, refundErr)
 		}
 		return nil, usedBusinessPhoneID, err
 	}

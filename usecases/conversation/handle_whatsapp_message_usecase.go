@@ -31,6 +31,7 @@ import (
 	"vozko/domain/stage"
 	toolsdomain "vozko/domain/tools"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	whatsapp_template "vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workflow_domain "vozko/domain/workflow"
@@ -84,6 +85,12 @@ type handleWhatsAppMessageUseCase struct {
 	cachedBalanceChecker    balance.CachedBalanceChecker
 	llmPriceFetcher         workspace_pricing.LLMPriceFetcher
 	consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
+	// templateSendAttempts and ledger let a delivery-status webhook settle a
+	// SINGLE-TARGET send. Attached after construction rather than added to an
+	// already-vast constructor, and optional: without them the campaign path
+	// below still works exactly as before.
+	templateSendAttempts whatsapp_template.SendAttemptRepository
+	balanceLedger        balance.Repository
 
 	billingPub messaging.MessageQueuePub
 
@@ -1329,6 +1336,12 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 				}
 				deliveryStatus, hasDeliveryStatus := mapWhatsAppWebhookDeliveryStatus(status.Status)
 
+				// Settle the paid send FIRST, and independently of the campaign
+				// entry. The entry lookup keys on the message id, which an
+				// accepted-without-an-id send does not have — so gating settlement
+				// behind it stranded exactly the attempts that needed it most.
+				uc.settleTemplateSendAttempt(status, deliveryStatus, hasDeliveryStatus)
+
 				if uc.wcEntryRepo != nil && status.ID != "" {
 					if entryStatus == wce.SendStatusFailed {
 						errorCode, errorMessage := formatWhatsAppStatusError(status)
@@ -1358,7 +1371,14 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 				}
 
 				if uc.messageRepo != nil && status.ID != "" && hasDeliveryStatus {
-					if err := uc.messageRepo.UpdateDeliveryStatus(status.ID, deliveryStatus); err != nil {
+					// Carry the provider's own explanation onto the message. "Failed"
+					// with no reason is unactionable: a number that is not on WhatsApp
+					// is the operator's to fix, a billing hold on the business account
+					// is not, and the code is the only thing that tells them apart.
+					failureCode, failureMessage := formatWhatsAppStatusError(status)
+					if err := uc.messageRepo.UpdateDeliveryStatusWithReason(
+						status.ID, deliveryStatus, failureCode, failureMessage,
+					); err != nil {
 						log.Printf("[whatsapp-status] Failed to update delivery status for wamid %s: %v", status.ID, err)
 						statusErrors = append(statusErrors, fmt.Errorf("update delivery status for wamid %s: %w", status.ID, err))
 					}
@@ -1461,6 +1481,159 @@ func formatWhatsAppStatusError(status conversation.WhatsAppStatus) (int, string)
 	return errorCode, message
 }
 
+// AttachTemplateSendAttempts wires single-target settlement onto a use case that
+// was handed back as its domain interface.
+//
+// The assertion lives here, in the package that owns both types, rather than at
+// the call site: the container should not have to know which concrete type
+// implements the port in order to finish wiring it.
+func AttachTemplateSendAttempts(
+	uc conversation.HandleWhatsAppMessageUseCase,
+	attempts whatsapp_template.SendAttemptRepository,
+	ledger balance.Repository,
+) conversation.HandleWhatsAppMessageUseCase {
+	if concrete, ok := uc.(*handleWhatsAppMessageUseCase); ok {
+		return concrete.WithTemplateSendAttempts(attempts, ledger)
+	}
+	return uc
+}
+
+// WithTemplateSendAttempts lets the status webhook settle single-target sends.
+//
+// A fluent setter rather than two more constructor parameters: this use case's
+// constructor already takes more than thirty, and threading optional
+// bookkeeping through all of its call sites would obscure the change.
+func (uc *handleWhatsAppMessageUseCase) WithTemplateSendAttempts(
+	attempts whatsapp_template.SendAttemptRepository,
+	ledger balance.Repository,
+) *handleWhatsAppMessageUseCase {
+	uc.templateSendAttempts = attempts
+	uc.balanceLedger = ledger
+	return uc
+}
+
+// resolveSendAttempt finds the paid send this status is about.
+//
+// The correlation id first, because it is OURS: Meta echoes it on every status
+// for the message, and it arrives even when the send never told us a wamid —
+// which is exactly the case the message-id lookup cannot serve.
+func (uc *handleWhatsAppMessageUseCase) resolveSendAttempt(
+	ctx context.Context,
+	status conversation.WhatsAppStatus,
+) *whatsapp_template.SendAttempt {
+	if uc.templateSendAttempts == nil {
+		return nil
+	}
+	if ref := strings.TrimSpace(status.BizOpaqueCallbackData); ref != "" {
+		if attempt, _ := uc.templateSendAttempts.FindByID(ctx, ref); attempt != nil {
+			return attempt
+		}
+	}
+	if wamid := strings.TrimSpace(status.ID); wamid != "" {
+		if attempt, _ := uc.templateSendAttempts.FindByProviderMessageID(ctx, "", wamid); attempt != nil {
+			return attempt
+		}
+	}
+	return nil
+}
+
+// settleTemplateSendAttempt is what makes the reconcile backstop honest.
+//
+// It runs on EVERY status, independent of whether a campaign entry can be found
+// for the message. That independence is the point: a send Meta accepted without
+// giving us a message id stores no wamid, so gating this behind the entry lookup
+// made the correlation-id path — the one written precisely for that case —
+// unreachable.
+//
+// The promotion on success is the half the design claimed and did not have.
+// Without it, an attempt left `unknown` by a transport timeout stays unknown
+// forever, and the hourly sweep refunds it at the TTL. Meta bills on DELIVERY,
+// so that is the platform paying for a message the customer received and then
+// crediting them for it — the common flaky-network case, not a rare crash.
+func (uc *handleWhatsAppMessageUseCase) settleTemplateSendAttempt(
+	status conversation.WhatsAppStatus,
+	deliveryStatus conversation.DeliveryStatus,
+	hasDeliveryStatus bool,
+) {
+	if uc.templateSendAttempts == nil || !hasDeliveryStatus {
+		return
+	}
+	ctx := context.Background()
+
+	attempt := uc.resolveSendAttempt(ctx, status)
+	if attempt == nil {
+		return
+	}
+
+	switch deliveryStatus {
+	case conversation.DeliveryStatusSent,
+		conversation.DeliveryStatusDelivered,
+		conversation.DeliveryStatusRead:
+		// Meta has it. Anything still in flight is now settled, and the sweep must
+		// never see it again.
+		if attempt.Status.InFlight() || attempt.Status == whatsapp_template.SendAttemptUnknown {
+			if err := uc.templateSendAttempts.MarkSent(
+				ctx, attempt.ID, strings.TrimSpace(status.ID), 200, time.Now().UTC(),
+			); err != nil && !errors.Is(err, whatsapp_template.ErrSendAttemptConflict) {
+				log.Printf("[whatsapp-status] could not promote attempt %s to sent: %v", attempt.ID, err)
+			}
+		}
+
+	case conversation.DeliveryStatusFailed:
+		if _, err := uc.refundSingleTargetSend(status, nil); err != nil {
+			log.Printf("[whatsapp-status] could not settle failed attempt %s: %v", attempt.ID, err)
+		}
+	}
+}
+
+// refundSingleTargetSend settles a failed status for a send that carries its own
+// attempt row, and reports whether it handled it.
+//
+// It runs BEFORE the campaign refund because the two disagree about what to
+// credit. The campaign path refunds under the campaign id — correct for a bulk
+// send, where every recipient was debited under it — but a single-target send is
+// debited under its own attempt, so the campaign path would credit a reference
+// nothing ever charged. `Refund` does not read the debit, so that credit would
+// succeed and hand the workspace money it never spent.
+func (uc *handleWhatsAppMessageUseCase) refundSingleTargetSend(status conversation.WhatsAppStatus, _ *wce.WhatsAppCampaignEntry) (bool, error) {
+	if uc.templateSendAttempts == nil || uc.consumeWhatsappTemplate == nil {
+		return false, nil
+	}
+	ctx := context.Background()
+
+	attempt := uc.resolveSendAttempt(ctx, status)
+	if attempt == nil {
+		return false, nil
+	}
+	if attempt.Status == whatsapp_template.SendAttemptRefunded {
+		return true, nil
+	}
+
+	refundRef := whatsapp_template.RefundReferenceID(attempt.ID)
+	if uc.balanceLedger != nil {
+		already, err := uc.balanceLedger.ExistsTransactionByReferenceID(refundRef)
+		if err != nil {
+			return true, fmt.Errorf("check refund for send attempt %s: %w", attempt.ID, err)
+		}
+		if already {
+			_ = uc.templateSendAttempts.MarkRefunded(ctx, attempt.ID, time.Now().UTC())
+			return true, nil
+		}
+	}
+
+	// The STORED category, never the one on the status event. Meta re-categorises
+	// templates, and crediting at today's category refunds a different amount
+	// than was taken.
+	if err := uc.consumeWhatsappTemplate.Refund(attempt.WorkspaceID, whatsapp_template.ChargeReferenceID(attempt.ID), attempt.Category); err != nil {
+		return true, fmt.Errorf("refund send attempt %s: %w", attempt.ID, err)
+	}
+	if err := uc.templateSendAttempts.MarkRefunded(ctx, attempt.ID, time.Now().UTC()); err != nil {
+		log.Printf("[whatsapp-status] refunded attempt %s but could not mark it: %v", attempt.ID, err)
+	}
+	log.Printf("[whatsapp-status] refunded workspace %s for failed single-target send %s", attempt.WorkspaceID, attempt.ID)
+	return true, nil
+}
+
 func (uc *handleWhatsAppMessageUseCase) refundFailedWhatsAppCampaignEntry(status conversation.WhatsAppStatus, entry *wce.WhatsAppCampaignEntry) (returnErr error) {
 	if uc.consumeWhatsappTemplate == nil || uc.wcCampaignRepo == nil || entry == nil {
 		return nil
@@ -1504,9 +1677,20 @@ func (uc *handleWhatsAppMessageUseCase) refundFailedWhatsAppCampaignEntry(status
 		}
 	}()
 
+	if handled, err := uc.refundSingleTargetSend(status, entry); handled {
+		return err
+	}
+
 	campaign, err := uc.wcCampaignRepo.FindByID(entry.CampaignID)
 	if err != nil || campaign == nil {
 		return fmt.Errorf("resolve campaign %s for refund on message %s: %w", entry.CampaignID, messageID, err)
+	}
+
+	// An organic container is never debited under its own id — every send inside
+	// it is charged against its own attempt. Refunding under campaign.ID here
+	// would credit a reference nothing ever charged, and Refund does not check.
+	if campaign.IsOrganic() {
+		return nil
 	}
 
 	templateCategory, err := resolveWhatsAppRefundCategory(status, entry)

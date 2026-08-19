@@ -95,6 +95,7 @@ func (c *Container) initRepositories() {
 		shippingAccount:         shipping_repository.NewProviderAccountRepository(c.db),
 		insurance:               insurance_repository.NewRepository(c.db),
 		whatsappTemplate:        whatsapp_repository.NewCachedTemplateRepository(whatsapp_repository.NewTemplateRepository(c.db), c.redisProvider.SharedState()),
+		whatsappTemplateSend:    whatsapp_repository.NewTemplateSendRepository(c.db),
 		passwordResetToken:      auth_repository.NewPasswordResetTokenRepository(c.db),
 		emailVerification:       auth_repository.NewEmailVerificationRedisRepository(c.redisProvider.SharedState()),
 		systemConfig:            config_repository.NewSystemConfigRepository(c.db),
