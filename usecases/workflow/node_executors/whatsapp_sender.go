@@ -21,6 +21,7 @@ import (
 	template_domain "vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/domain/workflow"
+	media_infra "vozko/infra/media"
 )
 
 type leadLookup interface {
@@ -393,19 +394,20 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 		}
 		output, err = client.SendVideoMessage(ctx, input)
 	case "audio":
-		output, err = client.SendAudioMessage(ctx, conversation.SendAudioMessageInput{
-			To:       target.leadNumber,
-			AudioURL: mediaURL,
-		})
+		// Transcode and upload, exactly as the operator's own audio send does.
+		//
+		// Sending the CDN link instead is accepted by the Graph API and then
+		// silently never delivered: Cloud API voice notes must be OGG/Opus, and a
+		// stored .ogg is usually Vorbis. The workflow reported success, the
+		// customer got nothing, and the same file sent by hand from the inbox
+		// arrived — because that path transcodes first. The link remains the
+		// fallback so a host without ffmpeg degrades instead of going silent.
+		output, err = s.sendAudioAsVoiceNote(ctx, client, target.leadNumber, mediaURL)
 	default:
-		filename := path.Base(mediaURL)
-		if idx := strings.Index(filename, "?"); idx != -1 {
-			filename = filename[:idx]
-		}
 		input := conversation.SendDocumentMessageInput{
 			To:       target.leadNumber,
 			Caption:  caption,
-			Filename: filename,
+			Filename: mediaFilename(mediaURL),
 		}
 		if waMediaID != "" {
 			input.DocumentID = waMediaID
@@ -421,6 +423,13 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
+		// See bridgeConversationMedia: the node names a media-library row, but
+		// the transcript resolves against conversation_media. Without the bridge
+		// an attachment with no caption had no content for Message.Validate, and
+		// a delivered file was reported as a failed send.
+		mediaID, mediaKind := bridgeConversationMedia(
+			s.deps.ConversationMediaRepo, run.EntryID, shared.EntryTypeWhatsApp, mediaURL, mediaType)
+
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
@@ -429,6 +438,9 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 			MessageID:   strings.TrimSpace(output.MessageID),
 			From:        from,
 			To:          target.leadNumber,
+			MediaID:     mediaID,
+			MediaType:   mediaKind,
+			MediaURL:    mediaURL,
 			Text:        caption,
 			Timestamp:   time.Now().UTC(),
 		}
@@ -683,36 +695,48 @@ func (s *whatsappSender) resolveTemplateClientForPhone(businessPhoneID, template
 
 const maxMediaDownloadBytes = 25 * 1024 * 1024
 
+// downloadMedia fetches the attachment bytes, bounded by maxMediaDownloadBytes.
+//
+// Split out of downloadAndUpload because audio needs the bytes WITHOUT the
+// upload that follows: it is transcoded first, and the client's SendAudioBytes
+// then does its own upload as a voice note.
+func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mediaURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid media url: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMediaDownloadBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read failed: %w", err)
+	}
+	if len(data) > maxMediaDownloadBytes {
+		return nil, "", fmt.Errorf("media exceeds %d bytes", maxMediaDownloadBytes)
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
 func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversation.WhatsAppClient, mediaURL, mediaType string) (string, error) {
 	if mediaType == "audio" {
 		return "", fmt.Errorf("audio upload-first not supported")
 	}
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mediaURL, nil)
+	data, mimeType, err := s.downloadMedia(ctx, mediaURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid media url: %w", err)
+		return "", err
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("download returned status %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMediaDownloadBytes+1))
-	if err != nil {
-		return "", fmt.Errorf("read failed: %w", err)
-	}
-	if len(data) > maxMediaDownloadBytes {
-		return "", fmt.Errorf("media exceeds %d bytes", maxMediaDownloadBytes)
-	}
-
-	mimeType := resp.Header.Get("Content-Type")
 	if mimeType == "" || mimeType == "application/octet-stream" {
 		switch mediaType {
 		case "image":
@@ -724,12 +748,7 @@ func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversat
 		}
 	}
 
-	fileName := path.Base(strings.SplitN(mediaURL, "?", 2)[0])
-	if fileName == "" || fileName == "." || fileName == "/" {
-		fileName = "media"
-	}
-
-	waMediaID, err := client.UploadMedia(ctx, data, fileName, mimeType)
+	waMediaID, err := client.UploadMedia(ctx, data, mediaFilename(mediaURL), mimeType)
 	if err != nil {
 		return "", fmt.Errorf("whatsapp upload failed: %w", err)
 	}
@@ -750,6 +769,17 @@ func detectMediaType(mediaURL string) string {
 	default:
 		return "document"
 	}
+}
+
+// mediaFilename is the basename an attachment is sent and stored under, with any
+// query string dropped. The upload and the document send each derived this
+// separately and disagreed whenever the query itself contained a slash.
+func mediaFilename(mediaURL string) string {
+	name := path.Base(strings.SplitN(mediaURL, "?", 2)[0])
+	if name == "" || name == "." || name == "/" {
+		return "media"
+	}
+	return name
 }
 
 func (s *whatsappSender) resolveTarget(entryID, fallbackWorkspaceID string) (*whatsappSendTarget, error) {
@@ -882,4 +912,32 @@ func (s *whatsappSender) BuildMessagingToolConfig(run *workflow.WorkflowRun) map
 		"__entry_id":          run.EntryID,
 		"__entry_type":        run.EntryType,
 	}
+}
+
+// sendAudioAsVoiceNote delivers audio the way the Cloud API actually accepts it.
+//
+// convertAudioFn is indirected for tests: transcoding shells out to ffmpeg, and
+// a unit test must be able to exercise both the happy path and the fallback on a
+// machine that does not have it.
+var convertAudioFn = media_infra.ConvertToOGGOpus
+
+func (s *whatsappSender) sendAudioAsVoiceNote(
+	ctx context.Context,
+	client conversation.WhatsAppClient,
+	to, mediaURL string,
+) (*conversation.SendTextMessageOutput, error) {
+	data, _, err := s.downloadMedia(ctx, mediaURL)
+	if err != nil {
+		log.Printf("[workflow][whatsapp_sender] audio download failed for %s, falling back to link: %v", mediaURL, err)
+		return client.SendAudioMessage(ctx, conversation.SendAudioMessageInput{To: to, AudioURL: mediaURL})
+	}
+
+	ogg, err := convertAudioFn(data)
+	if err != nil {
+		log.Printf("[workflow][whatsapp_sender] audio transcode failed for %s, falling back to link: %v", mediaURL, err)
+		return client.SendAudioMessage(ctx, conversation.SendAudioMessageInput{To: to, AudioURL: mediaURL})
+	}
+
+	log.Printf("[workflow][whatsapp_sender] audio transcoded for voice note: %d bytes -> %d bytes", len(data), len(ogg))
+	return client.SendAudioBytes(ctx, to, ogg, "voice.ogg", "")
 }

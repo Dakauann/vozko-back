@@ -17,6 +17,7 @@ type fakeAdapter struct {
 	windowOpen bool
 	sendErr    error
 	sentBody   string
+	sentMedia  conversation.SendMediaRequest
 	sendCalls  int
 }
 
@@ -47,8 +48,13 @@ func (a *fakeAdapter) SendText(_ context.Context, _ *conversation.EntryContext, 
 	return &conversation.SendOutcome{ProviderMessageID: "provider-1"}, nil
 }
 
-func (a *fakeAdapter) SendMedia(_ context.Context, _ *conversation.EntryContext, _ conversation.SendMediaRequest) (*conversation.SendOutcome, error) {
-	return &conversation.SendOutcome{}, nil
+func (a *fakeAdapter) SendMedia(_ context.Context, _ *conversation.EntryContext, req conversation.SendMediaRequest) (*conversation.SendOutcome, error) {
+	a.sendCalls++
+	if a.sendErr != nil {
+		return nil, a.sendErr
+	}
+	a.sentMedia = req
+	return &conversation.SendOutcome{ProviderMessageID: "provider-media-1"}, nil
 }
 
 // recordingHistory captures what the sender persisted.
@@ -208,5 +214,69 @@ func TestChannelSenderFailsWhenTranscriptCannotBeWritten(t *testing.T) {
 
 	if _, err := sender.SendText(context.Background(), igRun(), "olá!", conversation.MessageTypeAIResponse); err == nil {
 		t.Error("expected the history failure to surface")
+	}
+}
+
+// The bridge is not WhatsApp-only: an Instagram or Telegram attachment sent
+// without a caption hit the same Message.Validate rejection, so the adapter path
+// must register its own conversation_media row too.
+func TestChannelSenderBridgesMediaOnTheAdapterPath(t *testing.T) {
+	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
+	history := &recordingHistory{}
+	mediaRepo := &recordingConversationMedia{}
+	sender := &channelSender{
+		adapters: conversation.NewAdapterRegistry(adapter),
+		history:  history,
+		media:    mediaRepo,
+	}
+
+	const mediaURL = "https://cdn.example.com/promo.png"
+	sent, err := sender.SendMedia(context.Background(), igRun(), mediaURL, "")
+	if err != nil {
+		t.Fatalf("SendMedia returned error: %v", err)
+	}
+	if sent == nil || sent.ProviderMessageID != "provider-media-1" {
+		t.Fatalf("unexpected send result: %+v", sent)
+	}
+	if adapter.sentMedia.URL != mediaURL || adapter.sentMedia.Kind != "image" {
+		t.Fatalf("adapter received %+v", adapter.sentMedia)
+	}
+
+	if len(mediaRepo.created) != 1 {
+		t.Fatalf("expected one conversation_media row, got %d", len(mediaRepo.created))
+	}
+	created := mediaRepo.created[0]
+	if created.EntryType != shared.EntryTypeInstagram || created.Type != conversation.MediaTypeImage {
+		t.Fatalf("row is wrong for the channel: %+v", created)
+	}
+
+	if len(history.records) != 1 {
+		t.Fatalf("expected one history record, got %d", len(history.records))
+	}
+	rec := history.records[0]
+	// Empty caption: the MediaID is the only content Message.Validate accepts.
+	if rec.Text != "" || rec.MediaID != created.ID {
+		t.Fatalf("captionless record has no content: %+v", rec)
+	}
+	if rec.MediaType != conversation.MediaTypeImage || rec.MediaURL != mediaURL {
+		t.Fatalf("unexpected media fields: %+v", rec)
+	}
+}
+
+// A channel with no media repository wired must still deliver and still record,
+// just without a thumbnail — the same degradation as a failed insert.
+func TestChannelSenderSendsMediaWithoutAMediaRepository(t *testing.T) {
+	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
+	history := &recordingHistory{}
+	sender := &channelSender{
+		adapters: conversation.NewAdapterRegistry(adapter),
+		history:  history,
+	}
+
+	if _, err := sender.SendMedia(context.Background(), igRun(), "https://cdn.example.com/a.pdf", "veja"); err != nil {
+		t.Fatalf("SendMedia returned error: %v", err)
+	}
+	if len(history.records) != 1 || history.records[0].MediaID != "" {
+		t.Fatalf("expected one record with no media id, got %+v", history.records)
 	}
 }

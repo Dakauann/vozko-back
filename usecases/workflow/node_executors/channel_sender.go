@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
+
 	"vozko/domain/channel"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -26,6 +28,7 @@ type channelSender struct {
 	whatsapp *whatsappSender
 	adapters conversation.AdapterRegistry
 	history  conversation.MessageHistoryManager
+	media    conversation.ConversationMediaRepository
 }
 
 func newChannelSender(deps SenderDeps) *channelSender {
@@ -33,6 +36,7 @@ func newChannelSender(deps SenderDeps) *channelSender {
 		whatsapp: newWhatsAppSender(deps),
 		adapters: deps.Adapters,
 		history:  deps.HistoryManager,
+		media:    deps.ConversationMediaRepo,
 	}
 }
 
@@ -205,6 +209,12 @@ func (s *channelSender) SendMedia(
 	}
 
 	if s.history != nil {
+		// The media-id bridge this comment used to say no channel had. Without
+		// it the record carried only the caption, so an attachment sent without
+		// one had no content for Message.Validate and the whole send was
+		// reported as failed.
+		mediaID, mediaKind := bridgeConversationMedia(s.media, run.EntryID, entryType, mediaURL, kind)
+
 		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
 			EntryID:           run.EntryID,
 			EntryType:         entryType,
@@ -213,14 +223,11 @@ func (s *channelSender) SendMedia(
 			ProviderMessageID: providerID,
 			From:              ec.AccountID,
 			To:                ec.ContactRef,
-			// Caption as the text, and no MediaID: the workflow's media id comes
-			// from the media library, not the conversation-media space the
-			// transcript renders from. This mirrors the WhatsApp media node
-			// exactly, the attachment reaches the customer, and the transcript
-			// records that a media message was sent. Rendering the thumbnail in
-			// the transcript needs a media-id bridge that no channel has today.
-			Text:      caption,
-			Timestamp: time.Now().UTC(),
+			MediaID:           mediaID,
+			MediaType:         mediaKind,
+			MediaURL:          mediaURL,
+			Text:              caption,
+			Timestamp:         time.Now().UTC(),
 		}); err != nil {
 			return nil, err
 		}
@@ -280,6 +287,7 @@ func newChannelSenderFromWhatsApp(wa *whatsappSender) *channelSender {
 	if wa != nil {
 		s.adapters = wa.deps.Adapters
 		s.history = wa.deps.HistoryManager
+		s.media = wa.deps.ConversationMediaRepo
 	}
 	return s
 }
@@ -496,4 +504,57 @@ func (s *channelSender) SendSegments(
 		}
 	}
 	return true, nil
+}
+
+// bridgeConversationMedia registers a library attachment in the conversation
+// media space, and returns the id the transcript renders from.
+//
+// The two spaces are different tables: a workflow node names a `medias` row
+// (workspace library, reusable across conversations) while
+// conversation_messages.media_id resolves against `conversation_media`, which is
+// scoped to one entry and is what GetMedia authorises by EntryID. Writing the
+// library id into the message would point the transcript at a row that does not
+// exist there.
+//
+// Without this bridge the record carried only the caption, so a media message
+// sent WITHOUT one had no content at all: Message.Validate rejected it, the
+// history write failed, and the send node reported the whole delivery as failed
+// even though the customer received the file. Every media node with an empty
+// caption, on every channel.
+//
+// Best effort by design: the attachment has already reached the customer by the
+// time this runs, so a bookkeeping failure must not turn a successful send into
+// a failed one. It degrades to the caption-only record it replaced.
+func bridgeConversationMedia(
+	repo conversation.ConversationMediaRepository,
+	entryID string,
+	entryType shared.EntryType,
+	mediaURL, mediaType string,
+) (string, conversation.MediaType) {
+	kind := conversation.MediaType(mediaType)
+	if repo == nil || entryID == "" || mediaURL == "" || !kind.Valid() {
+		return "", ""
+	}
+
+	media := &conversation.ConversationMedia{
+		ID:        uuid.NewString(),
+		EntryID:   entryID,
+		EntryType: entryType,
+		Type:      kind,
+		URL:       mediaURL,
+		// The filename is what a document renders as in the transcript; without
+		// it a sent PDF shows up nameless.
+		OriginalFilename: mediaFilename(mediaURL),
+		CreatedAt:        time.Now().UTC(),
+	}
+	media.Normalize()
+	if err := media.Validate(); err != nil {
+		log.Printf("[workflow][media-bridge] invalid conversation media for entry %s: %v", entryID, err)
+		return "", ""
+	}
+	if err := repo.Create(media); err != nil {
+		log.Printf("[workflow][media-bridge] could not register media for entry %s: %v", entryID, err)
+		return "", ""
+	}
+	return media.ID, kind
 }
