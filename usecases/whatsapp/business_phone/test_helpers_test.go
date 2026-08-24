@@ -12,6 +12,7 @@ type mockRepository struct {
 	createErr           error
 	updateErr           error
 	findErr             error
+	findByWABAErr       error
 	deleteErr           error
 	listErr             error
 }
@@ -183,6 +184,9 @@ func (m *mockRepository) ListAll() ([]*businessphone.WhatsAppBusinessPhoneNumber
 }
 
 func (m *mockRepository) FindByWABAId(wabaID string) ([]*businessphone.WhatsAppBusinessPhoneNumber, error) {
+	if m.findByWABAErr != nil {
+		return nil, m.findByWABAErr
+	}
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -265,6 +269,7 @@ type mockMetaAPIService struct {
 	getProfileErr          error
 	updateProfileErr       error
 	verifyResult           bool
+	unsubscribedWABAs      []string
 }
 
 func newMockMetaAPI() *mockMetaAPIService {
@@ -347,6 +352,9 @@ func (m *mockMetaAPIService) UnblockUser(phoneNumberID string, userNumber string
 }
 
 func (m *mockMetaAPIService) UnsubscribeApp(wabaID string, accessToken string) error {
+	// Recorded, not just counted: releasing one number must never unsubscribe a
+	// WABA that other numbers still use, so tests assert WHICH account was hit.
+	m.unsubscribedWABAs = append(m.unsubscribedWABAs, wabaID)
 	return m.unsubscribeErr
 }
 

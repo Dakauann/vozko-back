@@ -83,15 +83,12 @@ func (uc *releasePhoneUseCase) Execute(input businessphone.ReleasePhoneInput) (*
 		result.Deregistered = true
 	}
 
-	if accessToken != "" && phone.WABAId != "" {
-		if err := uc.metaClient.UnsubscribeApp(phone.WABAId, accessToken); err != nil {
-			log.Printf("[release-phone] Failed to unsubscribe app from WABA %s: %v (continuing)", phone.WABAId, err)
-			result.WebhooksError = err.Error()
-		} else {
-			result.WebhooksRemoved = true
-			log.Printf("[release-phone] Unsubscribed app from WABA %s webhooks", phone.WABAId)
-		}
-	}
+	// Unsubscribing does NOT belong here: Meta scopes webhook subscriptions to the
+	// WABA, never to one number (/{phone-number-id}/subscribed_apps does not exist),
+	// so doing it per release silenced every sibling number on the account. What
+	// this release owes the caller is already covered per-number by DeregisterPhone
+	// above, which makes the number unusable with the Cloud API. The subscription is
+	// dropped in cleanupOrphanedWABA instead, once no number is left to receive.
 
 	// dialog360-hosted numbers have no Meta token, so the Cloud API teardown above is a
 	// no-op for them, their billing lives at the 360dialog PARTNER, not Meta. We MUST
@@ -122,7 +119,7 @@ func (uc *releasePhoneUseCase) Execute(input businessphone.ReleasePhoneInput) (*
 	log.Printf("[release-phone] Deleted phone %s from local DB", phone.ID)
 
 	if phone.WABAId != "" {
-		uc.cleanupOrphanedWABA(phone.WABAId)
+		uc.cleanupOrphanedWABA(phone.WABAId, accessToken, result)
 		result.WABACleanedUp = true
 	}
 
@@ -185,16 +182,34 @@ func normalizePhoneDigits(s string) string {
 	return b.String()
 }
 
-func (uc *releasePhoneUseCase) cleanupOrphanedWABA(wabaID string) {
+// cleanupOrphanedWABA runs AFTER the phone row is deleted, so its count is what the
+// account is actually left with. It owns the webhook unsubscribe for that reason: the
+// subscription covers every number on the WABA, so it may only be dropped once none
+// of them is ours.
+func (uc *releasePhoneUseCase) cleanupOrphanedWABA(wabaID, accessToken string, result *businessphone.ReleasePhoneResult) {
 	remaining, err := uc.repo.FindByWABAId(wabaID)
 	if err != nil {
+		// Count unknown, so nothing is torn down. A subscription left in place
+		// costs nothing; one dropped while numbers still use it stops delivery
+		// receipts AND inbound messages for all of them, and Meta never replays
+		// what it did not send.
 		log.Printf("[release-phone] Failed to check remaining phones for WABA %s: %v", wabaID, err)
 		return
 	}
 
 	if len(remaining) > 0 {
-		log.Printf("[release-phone] WABA %s still has %d phone(s), keeping it", wabaID, len(remaining))
+		log.Printf("[release-phone] WABA %s still has %d phone(s), keeping it (webhooks stay subscribed)", wabaID, len(remaining))
 		return
+	}
+
+	if accessToken != "" {
+		if err := uc.metaClient.UnsubscribeApp(wabaID, accessToken); err != nil {
+			log.Printf("[release-phone] Failed to unsubscribe app from WABA %s: %v (continuing)", wabaID, err)
+			result.WebhooksError = err.Error()
+		} else {
+			result.WebhooksRemoved = true
+			log.Printf("[release-phone] Unsubscribed app from WABA %s webhooks (no phones left)", wabaID)
+		}
 	}
 
 	wabaRecord, err := uc.wabaRepo.FindByMetaWABAId(wabaID)

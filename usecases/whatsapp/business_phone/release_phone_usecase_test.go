@@ -389,6 +389,120 @@ func TestRelease_WABANotOrphaned_KeepsIt(t *testing.T) {
 	if !result.WABACleanedUp {
 		t.Error("expected WABACleanedUp=true (cleanup was attempted)")
 	}
+
+	// The half this test used to leave uncovered. Keeping the WABA RECORD while
+	// dropping its webhook SUBSCRIPTION is the shape the outage took: the record
+	// survived, and every sibling number went silent anyway.
+	if len(metaAPI.unsubscribedWABAs) != 0 {
+		t.Errorf("must not unsubscribe a WABA still serving phones, got %v", metaAPI.unsubscribedWABAs)
+	}
+	if result.WebhooksRemoved {
+		t.Error("expected WebhooksRemoved=false while sibling phones remain")
+	}
+}
+
+// Releasing one number of a shared account must leave the others receiving. This is
+// the franchise layout (one WABA, many units) and the exact shape of the incident:
+// removing a replaced number cut delivery receipts and inbound messages for two
+// unrelated numbers that were never touched.
+func TestRelease_SharedWABA_SiblingsKeepReceiving(t *testing.T) {
+	repo := newMockRepo()
+	wabaRepo := newMockWABARepo()
+	metaAPI := newMockMetaAPI()
+
+	seedPhoneForRelease(repo, "old", "meta_old", "shared-waba", businessphone.StatusConnected)
+	seedPhoneForRelease(repo, "sibling-a", "meta_a", "shared-waba", businessphone.StatusConnected)
+	seedPhoneForRelease(repo, "sibling-b", "meta_b", "shared-waba", businessphone.StatusConnected)
+	seedWABA(wabaRepo, "waba-internal-1", "shared-waba")
+
+	uc := NewReleasePhoneUseCase(repo, wabaRepo, metaAPI, nil)
+
+	result, err := uc.Execute(businessphone.ReleasePhoneInput{
+		PhoneID:     "old",
+		AccessToken: "token",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if len(metaAPI.unsubscribedWABAs) != 0 {
+		t.Errorf("siblings must keep receiving, but unsubscribed %v", metaAPI.unsubscribedWABAs)
+	}
+
+	// The released number is still fully torn down: that is what the operator
+	// asked for, and none of it depends on the WABA-wide unsubscribe.
+	if !result.Deregistered {
+		t.Error("released number must be deregistered from the Cloud API")
+	}
+	if !result.PhoneDeleted {
+		t.Error("released number must be gone locally")
+	}
+	if _, ok := repo.phoneNumbers["old"]; ok {
+		t.Error("released number should not be findable")
+	}
+	for _, id := range []string{"sibling-a", "sibling-b"} {
+		if _, ok := repo.phoneNumbers[id]; !ok {
+			t.Errorf("sibling %s must be untouched", id)
+		}
+	}
+}
+
+// The last number leaving is the one case where dropping the subscription is right:
+// nothing is left on the account to receive.
+func TestRelease_LastPhoneOfWABA_Unsubscribes(t *testing.T) {
+	repo := newMockRepo()
+	wabaRepo := newMockWABARepo()
+	metaAPI := newMockMetaAPI()
+
+	seedPhoneForRelease(repo, "only", "meta_only", "lonely-waba", businessphone.StatusConnected)
+	seedWABA(wabaRepo, "waba-internal-1", "lonely-waba")
+
+	uc := NewReleasePhoneUseCase(repo, wabaRepo, metaAPI, nil)
+
+	result, err := uc.Execute(businessphone.ReleasePhoneInput{
+		PhoneID:     "only",
+		AccessToken: "token",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if len(metaAPI.unsubscribedWABAs) != 1 || metaAPI.unsubscribedWABAs[0] != "lonely-waba" {
+		t.Errorf("expected exactly one unsubscribe of lonely-waba, got %v", metaAPI.unsubscribedWABAs)
+	}
+	if !result.WebhooksRemoved {
+		t.Error("expected WebhooksRemoved=true")
+	}
+}
+
+// An unreadable count must fail CLOSED on the destructive step. Guessing "probably
+// empty" and unsubscribing would silence numbers we simply could not see, and Meta
+// does not replay the webhooks missed in between.
+func TestRelease_UnknownPhoneCount_KeepsSubscription(t *testing.T) {
+	repo := newMockRepo()
+	wabaRepo := newMockWABARepo()
+	metaAPI := newMockMetaAPI()
+
+	seedPhoneForRelease(repo, "p1", "meta_p1", "waba1", businessphone.StatusConnected)
+	seedWABA(wabaRepo, "waba-internal-1", "waba1")
+	repo.findByWABAErr = errors.New("database unavailable")
+
+	uc := NewReleasePhoneUseCase(repo, wabaRepo, metaAPI, nil)
+
+	result, err := uc.Execute(businessphone.ReleasePhoneInput{
+		PhoneID:     "p1",
+		AccessToken: "token",
+	})
+	if err != nil {
+		t.Fatalf("Execute should not fail: %v", err)
+	}
+
+	if len(metaAPI.unsubscribedWABAs) != 0 {
+		t.Errorf("must not unsubscribe on an unknown count, got %v", metaAPI.unsubscribedWABAs)
+	}
+	if !result.PhoneDeleted {
+		t.Error("the local removal the operator asked for must still happen")
+	}
 }
 
 func TestRelease_NoWABAId_SkipsWebhooksAndCleanup(t *testing.T) {
