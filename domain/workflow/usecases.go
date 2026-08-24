@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"context"
+	"strings"
+
 	"vozko/domain/shared"
 )
 
@@ -131,6 +133,14 @@ const (
 	DataKeySelectedOptionID    = "selected_option_id"
 	DataKeySelectedOptionTitle = "selected_option_title"
 	DataKeySelectedOptionKind  = "selected_option_type"
+
+	// DataKeyContactNumber is the contact's address on the channel the message
+	// arrived through: the phone number on WhatsApp, the chat id on Telegram,
+	// the scoped user id (IGSID) on Instagram. It is the id the channel itself
+	// replies to — the same value each adapter carries as ContactRef — so a
+	// workflow can use {{contact_number}} in lookups and sends without knowing
+	// which channel it is running on.
+	DataKeyContactNumber = "contact_number"
 )
 
 // OptionSelection is the option a contact tapped, when the inbound event was a
@@ -165,6 +175,22 @@ func ApplySelection(data map[string]interface{}, sel *OptionSelection) {
 	if sel.Kind != "" {
 		data[DataKeySelectedOptionKind] = sel.Kind
 	}
+}
+
+// ApplyContactNumber writes the contact's channel address into a trigger's data
+// map. Same shape as ApplySelection, and for the same reason: the key is a
+// contract between four channel handlers and every {{contact_number}} an author
+// types, and a channel writing its own spelling would not fail loudly — the
+// variable would just interpolate to nothing on that one channel.
+//
+// An empty address writes nothing rather than an empty value, so a template
+// falls back the same way it does on channels that never learned the id.
+func ApplyContactNumber(data map[string]interface{}, number string) {
+	number = strings.TrimSpace(number)
+	if data == nil || number == "" {
+		return
+	}
+	data[DataKeyContactNumber] = number
 }
 
 type WorkflowDashboardUseCase interface {

@@ -230,7 +230,7 @@ func BuiltinDefinitions() []NodeDefinition {
 			ConfigSchema:  nil,
 			Guidance: NodeGuidance{
 				When:     "Inicia o fluxo na PRIMEIRA mensagem do contato (uma vez por contato). Ideal para boas-vindas/atendimento inicial.",
-				Behavior: "Disponibiliza {{message}} com o texto recebido do contato.",
+				Behavior: "Disponibiliza {{message}} com o texto recebido e {{contact_number}} com o endereço do contato no canal (telefone no WhatsApp, id do chat no Telegram/Instagram; ausente em grupos).",
 			},
 		},
 		{
@@ -244,7 +244,7 @@ func BuiltinDefinitions() []NodeDefinition {
 			ConfigSchema:  nil,
 			Guidance: NodeGuidance{
 				When:     "Inicia o fluxo a CADA mensagem recebida. Use para um atendente que sempre responde.",
-				Behavior: "Disponibiliza {{message}} com o texto recebido do contato.",
+				Behavior: "Disponibiliza {{message}} com o texto recebido e {{contact_number}} com o endereço do contato no canal (telefone no WhatsApp, id do chat no Telegram/Instagram; ausente em grupos).",
 			},
 		},
 		{

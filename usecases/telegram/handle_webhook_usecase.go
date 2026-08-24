@@ -694,6 +694,9 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		data["account_workflow_id"] = *account.WorkflowID
 	}
 	workflow.ApplySelection(data, sel)
+	// The chat id, not the user id: it is what the adapter's ContactRef holds,
+	// so {{contact_number}} names the same address a send node would reply to.
+	workflow.ApplyContactNumber(data, strconv.FormatInt(conv.TGChatID, 10))
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: account.WorkspaceID,

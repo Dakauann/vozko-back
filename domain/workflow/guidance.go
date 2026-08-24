@@ -25,6 +25,7 @@ OUTROS ESCOPOS:
 - {{var.<nome>}} → variáveis do fluxo: definidas por set_variable e pelos dados do gatilho/campanha. (Atenção: o response_variable de um agente guarda o OBJETO completo da resposta; para o texto prefira {{node.<idDoAgente>.response_text}}.)
 - {{ai.<chave>}} → saídas do último agente de IA (ex.: {{ai.response_text}}).
 - {{message}}    → texto recebido do contato.
+- {{contact_number}} → endereço do contato no canal: telefone (só dígitos) no WhatsApp, id do chat no Telegram, IGSID no Instagram. Ausente em grupos. Ideal para lookups por contato (ex.: URL de http_request).
 - {{sys.date}}, {{sys.time}}, {{sys.timestamp}} → data/hora atuais.
 
 ACESSO PROFUNDO (dot-notation, como no n8n): use pontos para entrar em objetos/listas, {{node.<id>.tool_args.cep}}, {{node.<id>.dados.0.nome}}.

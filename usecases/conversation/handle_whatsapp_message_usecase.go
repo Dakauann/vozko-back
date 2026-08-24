@@ -222,6 +222,9 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	data := map[string]interface{}{
 		"message": messageText,
 	}
+	if agentCtx != nil && agentCtx.wcLeadRecord != nil {
+		workflow_domain.ApplyContactNumber(data, agentCtx.wcLeadRecord.Number)
+	}
 	if msgType != "" {
 		data["message_type"] = msgType
 	}

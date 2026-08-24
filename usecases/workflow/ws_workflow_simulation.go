@@ -272,6 +272,9 @@ func (s *wsWorkflowSimulation) HandleSession(ctx context.Context, conn *websocke
 		case initialMsg := <-replyCh:
 
 			run.State.Set("message", initialMsg)
+			// Same fake contact the simulated transcript records as From/To, so
+			// {{contact_number}} previews with the number the tester is looking at.
+			run.State.Set(workflow.DataKeyContactNumber, "5511999990000")
 
 			_ = simMsgRepo.Create(&conversation.Message{
 				ID:          "sim-msg-" + uuid.New().String(),

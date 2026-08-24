@@ -341,7 +341,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	}
 
 	uc.enrichContact(ctx, account, contact)
-	uc.fireWorkflowTriggers(ctx, account, conv, text, quickReplySelection(msg))
+	uc.fireWorkflowTriggers(ctx, account, conv, contact.IGSID, text, quickReplySelection(msg))
 	uc.maybeReplyWithAgent(ctx, account, contact, conv, text)
 	uc.scheduleAnalysis(account, conv)
 	return nil
@@ -379,6 +379,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	ctx context.Context,
 	account *igdomain.Account,
 	conv *igdomain.Conversation,
+	contactRef string,
 	text string,
 	sel *workflow.OptionSelection,
 ) {
@@ -399,6 +400,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		data["account_workflow_id"] = *account.WorkflowID
 	}
 	workflow.ApplySelection(data, sel)
+	workflow.ApplyContactNumber(data, contactRef)
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: account.WorkspaceID,
@@ -659,7 +661,7 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 	// A postback tap fired no workflow trigger at all before this: the run
 	// stayed parked at the prompt until it timed out, even though the contact
 	// had answered. The payload is the option id, exactly as for quick replies.
-	uc.fireWorkflowTriggers(ctx, account, conv, ev.Postback.Title, &workflow.OptionSelection{
+	uc.fireWorkflowTriggers(ctx, account, conv, contact.IGSID, ev.Postback.Title, &workflow.OptionSelection{
 		ID:    ev.Postback.Payload,
 		Title: ev.Postback.Title,
 		Kind:  "postback",

@@ -626,6 +626,11 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 				"template_id":  campaign.TemplateID,
 				"message_id":   messageID,
 				"entry_id":     entryID,
+				// The canonical spelling every channel seeds on message_received.
+				// Kept alongside the legacy phone_number so one workflow can use
+				// {{contact_number}} on both triggers. Normalized, so it equals
+				// what a later inbound reply will seed for the same lead.
+				workflow_domain.DataKeyContactNumber: normalizedPhone,
 			},
 		})
 	}

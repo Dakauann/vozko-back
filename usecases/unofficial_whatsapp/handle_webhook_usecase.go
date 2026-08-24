@@ -993,6 +993,11 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(instance *uw.Instance, conv
 		data[workflow.DataKeySelectedOptionID] = ev.OptionID
 		data[workflow.DataKeySelectedOptionTitle] = ev.Text
 	}
+	// Bare digits, not the raw ChatID: production chat ids are JIDs
+	// ("558494409624@s.whatsapp.net"), and the suffix would leak into every
+	// {{contact_number}} lookup. Groups/lids/newsletters yield empty — a group
+	// has no contact number, and the variable stays absent rather than lying.
+	workflow.ApplyContactNumber(data, uw.PhoneFromJID(conv.ChatID))
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: instance.WorkspaceID,
