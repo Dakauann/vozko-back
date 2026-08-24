@@ -16,6 +16,7 @@ import (
 	agent_domain "vozko/domain/agent"
 	"vozko/domain/conversation"
 	"vozko/domain/media"
+	"vozko/domain/shared"
 	"vozko/domain/tools"
 )
 
@@ -618,17 +619,21 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 	if d.Name != ToolNameSendMedia {
 		t.Errorf("expected name %q, got %q", ToolNameSendMedia, d.Name)
 	}
-	for _, k := range []string{"to", "media_id", "caption"} {
+	for _, k := range []string{"to", "media_id", "media_url", "caption"} {
 		if _, ok := d.Parameters[k]; !ok {
 			t.Errorf("expected parameter %q", k)
 		}
 	}
-	// Only the media is required. "to" is a phone number, which does not exist
-	// on Telegram or Instagram, requiring it made the tool unusable there. It
-	// remains accepted for saved WhatsApp agents that were taught to pass one.
-	if !sliceContains(d.Required, "media_id") {
-		t.Errorf("expected media_id in Required, got %v", d.Required)
+	// media_id is no longer required: the media may come from the library OR from a
+	// direct CDN link, and a JSON schema cannot express "exactly one of these".
+	// Marking either one required would forbid the other, so the choice is enforced
+	// at execution instead, by an error that names both.
+	if sliceContains(d.Required, "media_id") || sliceContains(d.Required, "media_url") {
+		t.Errorf("neither media field may be required, got %v", d.Required)
 	}
+	// "to" is a phone number, which does not exist on Telegram or Instagram;
+	// requiring it made the tool unusable there. It remains accepted for saved
+	// WhatsApp agents that were taught to pass one.
 	if sliceContains(d.Required, "to") {
 		t.Errorf("\"to\" must be optional so the tool works without a phone number, got %v", d.Required)
 	}
@@ -639,4 +644,136 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 
 func (f *recordingWhatsAppClient) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
 	return &conversation.SendTextMessageOutput{}, nil
+}
+
+// An agent can now send a file it discovered rather than one an operator filed in
+// advance. The case this exists for: http_request finds an image keyed by the
+// contact's own number, so there is no library entry to point at and never will be
+// — one per customer is not a library.
+func TestSendWhatsappMediaTool_MediaURL_SendsWithoutALibraryEntry(t *testing.T) {
+	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
+
+	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{}) // no medias seeded
+	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
+
+	config := telegramSeeds()
+	const url = "https://cdn.vozkoia.com/eventobaleia/84994409624.jpeg"
+
+	if _, err := tool.ExecuteWithConfig(context.Background(), config, map[string]interface{}{
+		"media_url": url, "caption": "sua foto",
+	}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if adapter.sentMedia == nil {
+		t.Fatal("nothing was sent")
+	}
+	if adapter.sentMedia.URL != url {
+		t.Errorf("URL = %q, want %q", adapter.sentMedia.URL, url)
+	}
+	// .jpeg has to reach the channel as an image, not as a document attachment.
+	if adapter.sentMedia.Kind != "image" {
+		t.Errorf("Kind = %q, want image", adapter.sentMedia.Kind)
+	}
+	if adapter.sentMedia.Caption != "sua foto" {
+		t.Errorf("Caption = %q", adapter.sentMedia.Caption)
+	}
+}
+
+// A media_id is picked by an operator from a fixed list; a media_url is picked by
+// the model from text it just read. That difference is the whole reason for a host
+// check: without it, a crafted message could aim the fetch at an internal address.
+func TestSendWhatsappMediaTool_MediaURL_OnlyTheCDNIsAccepted(t *testing.T) {
+	cases := []struct {
+		name     string
+		endpoint string
+		url      string
+	}{
+		{"foreign host", "https://cdn.vozkoia.com", "https://evil.example.com/x.jpeg"},
+		{"internal address", "https://cdn.vozkoia.com", "https://169.254.169.254/latest/meta-data"},
+		{"loopback", "https://cdn.vozkoia.com", "https://127.0.0.1:8080/admin"},
+		{"plain http", "https://cdn.vozkoia.com", "http://cdn.vozkoia.com/x.jpeg"},
+		{"host is a prefix of ours", "https://cdn.vozkoia.com", "https://cdn.vozkoia.com.evil.net/x.jpeg"},
+		// No CDN configured must not mean "anything goes".
+		{"no cdn configured", "", "https://cdn.vozkoia.com/x.jpeg"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CLOUDFLARE_R2_ENDPOINT", tc.endpoint)
+
+			adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
+			tool := newMediaToolWith(t, &recordingWhatsAppClient{})
+			tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
+
+			_, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{
+				"media_url": tc.url,
+			})
+			if err == nil {
+				t.Fatalf("%s must be refused", tc.url)
+			}
+			if adapter.sentMedia != nil {
+				t.Errorf("refused URL must not reach the channel, got %q", adapter.sentMedia.URL)
+			}
+		})
+	}
+}
+
+// The schema cannot say "one of these two", so the refusal has to teach it.
+func TestSendWhatsappMediaTool_NeitherMediaIDNorURL_NamesBoth(t *testing.T) {
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
+
+	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
+		"caption": "sem mídia",
+	})
+	if err == nil {
+		t.Fatal("expected a refusal when no media is named")
+	}
+	for _, want := range []string{"media_id", "media_url"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error must name %q so the model can retry, got %q", want, err)
+		}
+	}
+}
+
+// A curated row beats a guessed link when both arrive.
+func TestSendWhatsappMediaTool_MediaIDWinsOverURL(t *testing.T) {
+	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
+
+	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{},
+		media.Media{ID: "m1", URL: "https://cdn.vozkoia.com/library.png", Type: media.MediaTypeProductImage})
+	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
+
+	if _, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{
+		"media_id": "m1", "media_url": "https://cdn.vozkoia.com/guessed.png",
+	}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if adapter.sentMedia == nil || adapter.sentMedia.URL != "https://cdn.vozkoia.com/library.png" {
+		t.Errorf("expected the library URL, got %+v", adapter.sentMedia)
+	}
+}
+
+// A library row declares its type; a bare URL has only its name to go on, and the
+// send switch needs one either way.
+func TestMediaTypeFromURL(t *testing.T) {
+	cases := map[string]media.MediaType{
+		"https://c/x.jpeg":           media.MediaTypeProductImage,
+		"https://c/x.PNG":            media.MediaTypeProductImage,
+		"https://c/x.webp":           media.MediaTypeProductImage,
+		"https://c/x.mp4":            media.MediaTypeProductVideo,
+		"https://c/x.ogg":            media.MediaTypeAudio,
+		"https://c/x.pdf":            media.MediaTypeDocumentPdf,
+		"https://c/x.docx":           media.MediaTypeDocumentDoc,
+		"https://c/x.zip":            media.MediaTypeDocument,
+		"https://c/x":                media.MediaTypeDocument,
+		"https://c/x.jpeg?v=2&w=100": media.MediaTypeProductImage,
+	}
+	for url, want := range cases {
+		if got := mediaTypeFromURL(url); got != want {
+			t.Errorf("mediaTypeFromURL(%q) = %q, want %q", url, got, want)
+		}
+	}
 }

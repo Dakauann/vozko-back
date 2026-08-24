@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -87,9 +88,17 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 			},
 			"media_id": {
 				Type:               "string",
-				Description:        "ID da mídia a ser enviada. Escolha um dos valores listados no enum.",
+				Description:        "ID da mídia a ser enviada. Escolha um dos valores listados no enum. Use este OU media_url, nunca os dois.",
 				DisplayName:        "ID da Mídia",
 				DisplayDescription: "ID da mídia a ser enviada",
+			},
+			"media_url": {
+				Type: "string",
+				Description: "URL direta da mídia, para arquivos que não estão na biblioteca do agente " +
+					"(por exemplo, um endereço descoberto com http_request). Aceita apenas https no domínio do próprio CDN. " +
+					"Use este OU media_id, nunca os dois.",
+				DisplayName:        "URL da Mídia",
+				DisplayDescription: "URL direta da mídia (apenas do CDN)",
 			},
 			"caption": {
 				Type:               "string",
@@ -98,9 +107,11 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 				DisplayDescription: "Legenda opcional (apenas para imagem, vídeo e documento)",
 			},
 		},
-		// Only the media is required. Requiring "to" would make the tool
-		// unusable on every channel that has no phone number.
-		Required: []string{"media_id"},
+		// Neither media field is listed: the tool takes media_id OR media_url, and a
+		// schema cannot express that choice. ExecuteWithConfig rejects a call that
+		// brings neither, with a message that names both. Requiring "to" would make
+		// the tool unusable on every channel that has no phone number.
+		Required: []string{},
 		Visibility: []tools.ToolVisibility{
 			tools.VisibilityMessaging,
 		},
@@ -161,18 +172,11 @@ func (uc *SendWhatsappMediaTool) Execute(ctx context.Context, params map[string]
 
 func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config map[string]interface{}, params map[string]interface{}) (tools.ExecutionResult, error) {
 	to, _ := params["to"].(string)
-	mediaID, _ := params["media_id"].(string)
 	caption, _ := params["caption"].(string)
 
-	mediaItem, err := uc.mediaRepo.GetMediaByID(mediaID)
+	mediaItem, err := uc.resolveMediaItem(params)
 	if err != nil {
 		return tools.ExecutionResult{}, err
-	}
-	if mediaItem == nil {
-		return tools.ExecutionResult{}, fmt.Errorf("media with ID %s not found", mediaID)
-	}
-	if strings.TrimSpace(mediaItem.URL) == "" {
-		return tools.ExecutionResult{}, fmt.Errorf("media with ID %s is missing a URL", mediaID)
 	}
 
 	// Every channel but WhatsApp sends through its adapter, addressed by the
@@ -199,6 +203,101 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 		return uc.sendSticker(ctx, whatsappClient, to, mediaItem)
 	default:
 		return tools.ExecutionResult{}, fmt.Errorf("unsupported media type %q for WhatsApp send", mediaItem.Type)
+	}
+}
+
+// resolveMediaItem picks what to send from either source. Everything downstream
+// already works off a URL alone, so a direct URL only has to skip the library
+// lookup and carry a type; nothing about fetching, normalizing or uploading changes.
+func (uc *SendWhatsappMediaTool) resolveMediaItem(params map[string]interface{}) (*media.Media, error) {
+	mediaID, _ := params["media_id"].(string)
+	mediaID = strings.TrimSpace(mediaID)
+	mediaURL, _ := params["media_url"].(string)
+	mediaURL = strings.TrimSpace(mediaURL)
+
+	// media_id wins when both arrive: it names a curated row, so it is the more
+	// deliberate of the two.
+	if mediaID != "" {
+		item, err := uc.mediaRepo.GetMediaByID(mediaID)
+		if err != nil {
+			return nil, err
+		}
+		if item == nil {
+			return nil, fmt.Errorf("media with ID %s not found", mediaID)
+		}
+		if strings.TrimSpace(item.URL) == "" {
+			return nil, fmt.Errorf("media with ID %s is missing a URL", mediaID)
+		}
+		return item, nil
+	}
+
+	if mediaURL != "" {
+		if err := allowedMediaURL(mediaURL); err != nil {
+			return nil, err
+		}
+		return &media.Media{URL: mediaURL, Type: mediaTypeFromURL(mediaURL)}, nil
+	}
+
+	return nil, fmt.Errorf("%s requires media_id (from the agent's library) or media_url (a direct CDN link)", ToolNameSendMedia)
+}
+
+// allowedMediaURL is the boundary that a media_id never needed. A library id is
+// chosen by an operator; a URL is chosen by the model from whatever it just read in
+// a conversation or an API response. Without this, a crafted message could steer
+// the fetch below at an internal address and have the reply mailed to the contact.
+// Fails closed: no configured CDN means no URL sends at all.
+func allowedMediaURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid media_url: %w", err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("media_url must use https, got %q", parsed.Scheme)
+	}
+
+	allowed := mediaURLAllowedHost()
+	if allowed == "" {
+		return fmt.Errorf("media_url is unavailable: no CDN host is configured")
+	}
+	if !strings.EqualFold(parsed.Hostname(), allowed) {
+		return fmt.Errorf("media_url host %q is not allowed, only %s may be sent by URL", parsed.Hostname(), allowed)
+	}
+	return nil
+}
+
+// mediaURLAllowedHost reads the host from the same setting that produces our media
+// URLs, so the allowlist follows the CDN instead of being a second value to keep in
+// sync with it.
+func mediaURLAllowedHost() string {
+	endpoint := strings.TrimSpace(os.Getenv("CLOUDFLARE_R2_ENDPOINT"))
+	if endpoint == "" {
+		return ""
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+// mediaTypeFromURL infers the send path from the extension. A library row carries a
+// declared type; a bare URL has only its name to go on, and the send switch needs
+// one. Anything unrecognized goes out as a document, which every channel accepts.
+func mediaTypeFromURL(raw string) media.MediaType {
+	ext := strings.ToLower(path.Ext(strings.SplitN(raw, "?", 2)[0]))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp":
+		return media.MediaTypeProductImage
+	case ".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp":
+		return media.MediaTypeProductVideo
+	case ".mp3", ".ogg", ".opus", ".wav", ".aac", ".m4a", ".amr":
+		return media.MediaTypeAudio
+	case ".pdf":
+		return media.MediaTypeDocumentPdf
+	case ".doc", ".docx":
+		return media.MediaTypeDocumentDoc
+	default:
+		return media.MediaTypeDocument
 	}
 }
 
