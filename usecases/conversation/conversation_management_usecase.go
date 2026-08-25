@@ -1629,17 +1629,43 @@ func (s *MessageMarkerService) sendAdapterReadReceipts(
 // Newest-first and inbound-only, both load-bearing: the receipt marks everything
 // up to one message, so an older id would leave later messages unread forever,
 // and our own outbound ids are not ours to mark as read.
+//
+// This runs only for adapter-backed channels, and NONE of them fills
+// whatsapp_message_id — that column belongs to the official integration. Reading
+// it alone returned "" every time, so the receipt was silently never sent and an
+// operator could read a whole conversation while the contact's ticks stayed
+// grey. Direction decides who sent it, because the message TYPE cannot: an
+// unofficial WhatsApp message is user_message whichever side wrote it, and
+// asking IsInbound() there would offer our own outbound ids to be marked read.
 func (s *MessageMarkerService) latestInboundProviderID(messageIDs []string) string {
 	for i := len(messageIDs) - 1; i >= 0; i-- {
 		msg, err := s.messageRepo.GetByID(messageIDs[i])
 		if err != nil || msg == nil {
 			continue
 		}
-		if msg.MessageType.IsInbound() && msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
+		if !isInboundMessage(msg) {
+			continue
+		}
+		if msg.ExternalMessageID != nil && *msg.ExternalMessageID != "" {
+			return *msg.ExternalMessageID
+		}
+		if msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
 			return *msg.WhatsAppMessageID
 		}
 	}
 	return ""
+}
+
+// isInboundMessage prefers the stored direction and falls back to the message
+// type, which is all the rows written before direction existed carry.
+func isInboundMessage(msg *conversation.Message) bool {
+	switch msg.Direction {
+	case conversation.MessageDirectionInbound:
+		return true
+	case conversation.MessageDirectionOutbound:
+		return false
+	}
+	return msg.MessageType.IsInbound()
 }
 
 func (s *MessageMarkerService) sendWhatsAppReadReceipts(entryID, entryType string, messageIDs []string) {
