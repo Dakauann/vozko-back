@@ -146,8 +146,6 @@ func (f *fakeRepo) UpdateMemberRole(memberID string, role workspace.Role) error 
 	return nil
 }
 
-func (f *fakeRepo) UpdateMemberRingChannels(string, []workspace.RingChannel) error { return nil }
-
 func (f *fakeRepo) UpdateMemberRoleID(memberID string, roleID string) error {
 	atomic.AddInt64(&f.updateRoleIDCalls, 1)
 	f.mu.Lock()
@@ -472,9 +470,9 @@ func TestCachedWS_HasPermission_CachesGrantSet(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
-	_ = repo.AddPermission(seedPerm("mem-1", "dialer", "list_members"))
+	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 
-	ok, err := cached.HasPermission("mem-1", "dialer", "list_members")
+	ok, err := cached.HasPermission("mem-1", "call_session", "list_members")
 	if err != nil || !ok {
 		t.Fatalf("first HasPermission: ok=%v err=%v", ok, err)
 	}
@@ -485,10 +483,10 @@ func TestCachedWS_HasPermission_CachesGrantSet(t *testing.T) {
 	// Repeated permission checks (granted, denied, and full-set reads) all serve
 	// from the single cached grant set: no further DB loads.
 	for i := 0; i < 10; i++ {
-		if ok, _ := cached.HasPermission("mem-1", "dialer", "list_members"); !ok {
+		if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); !ok {
 			t.Fatalf("cached grant check %d returned false", i)
 		}
-		if ok, _ := cached.HasPermission("mem-1", "dialer", "delete"); ok {
+		if ok, _ := cached.HasPermission("mem-1", "call_session", "delete"); ok {
 			t.Fatalf("cached deny check %d returned true", i)
 		}
 		if _, err := cached.GetPermissions("mem-1"); err != nil {
@@ -509,7 +507,7 @@ func TestCachedWS_HasPermission_NegativeCachesEmptyGrantSet(t *testing.T) {
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
 
 	for i := 0; i < 10; i++ {
-		if ok, err := cached.HasPermission("mem-empty", "dialer", "list_members"); err != nil || ok {
+		if ok, err := cached.HasPermission("mem-empty", "call_session", "list_members"); err != nil || ok {
 			t.Fatalf("empty-grant check %d: ok=%v err=%v (want false)", i, ok, err)
 		}
 	}
@@ -522,10 +520,10 @@ func TestCachedWS_SetPermissions_InvalidatesGrantCache(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
-	_ = repo.AddPermission(seedPerm("mem-1", "dialer", "list_members"))
+	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 
 	// Warm the cache, then a fresh grant set must be observed immediately.
-	_, _ = cached.HasPermission("mem-1", "dialer", "list_members")
+	_, _ = cached.HasPermission("mem-1", "call_session", "list_members")
 	if _, ok := shared.data[permCacheKey("mem-1")]; !ok {
 		t.Fatalf("expected grant cache entry after read")
 	}
@@ -537,7 +535,7 @@ func TestCachedWS_SetPermissions_InvalidatesGrantCache(t *testing.T) {
 		t.Fatalf("grant cache must be invalidated after SetPermissions")
 	}
 
-	if ok, _ := cached.HasPermission("mem-1", "dialer", "list_members"); ok {
+	if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); ok {
 		t.Fatalf("revoked grant must no longer be present")
 	}
 	if ok, _ := cached.HasPermission("mem-1", "billing", "view"); !ok {
@@ -551,27 +549,27 @@ func TestCachedWS_AddRemovePermission_InvalidatesGrantCache(t *testing.T) {
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
 
 	// Deny is cached; granting must invalidate so the new grant is seen at once.
-	if ok, _ := cached.HasPermission("mem-1", "dialer", "list_members"); ok {
+	if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); ok {
 		t.Fatalf("unexpected initial grant")
 	}
-	if err := cached.AddPermission(seedPerm("mem-1", "dialer", "list_members")); err != nil {
+	if err := cached.AddPermission(seedPerm("mem-1", "call_session", "list_members")); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 	if _, ok := shared.data[permCacheKey("mem-1")]; ok {
 		t.Fatalf("grant cache must be invalidated after AddPermission")
 	}
-	if ok, _ := cached.HasPermission("mem-1", "dialer", "list_members"); !ok {
+	if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); !ok {
 		t.Fatalf("added grant must be observed after invalidation")
 	}
 
 	// Revoking must invalidate so the removed grant stops being served.
-	if err := cached.RemovePermission("mem-1", "dialer", "list_members"); err != nil {
+	if err := cached.RemovePermission("mem-1", "call_session", "list_members"); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	if _, ok := shared.data[permCacheKey("mem-1")]; ok {
 		t.Fatalf("grant cache must be invalidated after RemovePermission")
 	}
-	if ok, _ := cached.HasPermission("mem-1", "dialer", "list_members"); ok {
+	if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); ok {
 		t.Fatalf("revoked grant must no longer be present")
 	}
 }
@@ -580,11 +578,11 @@ func TestCachedWS_HasPermission_NilSharedAndEmptyIDFallThrough(t *testing.T) {
 	// With no shared state every check must hit the inner repo (fail-open to the
 	// source of truth, never a silent deny).
 	repo := newFakeRepo()
-	_ = repo.AddPermission(seedPerm("mem-1", "dialer", "list_members"))
+	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 	cached := NewCachedWorkspaceRepository(repo, nil).(*CachedWorkspaceRepository)
 
 	for i := 0; i < 5; i++ {
-		if ok, err := cached.HasPermission("mem-1", "dialer", "list_members"); err != nil || !ok {
+		if ok, err := cached.HasPermission("mem-1", "call_session", "list_members"); err != nil || !ok {
 			t.Fatalf("nil shared HasPermission %d: ok=%v err=%v", i, ok, err)
 		}
 	}
@@ -595,7 +593,7 @@ func TestCachedWS_HasPermission_NilSharedAndEmptyIDFallThrough(t *testing.T) {
 	// Empty memberID must bypass the cache and never be persisted.
 	shared := newFakeSharedState()
 	cached2 := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
-	if _, err := cached2.HasPermission("", "dialer", "list_members"); err != nil {
+	if _, err := cached2.HasPermission("", "call_session", "list_members"); err != nil {
 		t.Fatalf("empty memberID: %v", err)
 	}
 	if len(shared.data) != 0 {
@@ -607,7 +605,7 @@ func TestCachedWS_HasPermission_ConcurrentRaceSafe(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
-	_ = repo.AddPermission(seedPerm("mem-1", "dialer", "list_members"))
+	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 
 	var wg sync.WaitGroup
 	for i := 0; i < 40; i++ {
@@ -615,13 +613,13 @@ func TestCachedWS_HasPermission_ConcurrentRaceSafe(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				if ok, err := cached.HasPermission("mem-1", "dialer", "list_members"); err != nil || !ok {
+				if ok, err := cached.HasPermission("mem-1", "call_session", "list_members"); err != nil || !ok {
 					t.Errorf("concurrent HasPermission: ok=%v err=%v", ok, err)
 					return
 				}
 				// Interleave a grant mutation so reads race against invalidation.
 				if n%8 == 0 && j == 50 {
-					_ = cached.SetPermissions("mem-1", []*workspace.Permission{seedPerm("mem-1", "dialer", "list_members")})
+					_ = cached.SetPermissions("mem-1", []*workspace.Permission{seedPerm("mem-1", "call_session", "list_members")})
 				}
 			}
 		}(i)
@@ -633,8 +631,8 @@ func TestCachedWS_SetPermissionsError_DoesNotInvalidate(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
-	_ = repo.AddPermission(seedPerm("mem-1", "dialer", "list_members"))
-	_, _ = cached.HasPermission("mem-1", "dialer", "list_members")
+	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
+	_, _ = cached.HasPermission("mem-1", "call_session", "list_members")
 	if _, ok := shared.data[permCacheKey("mem-1")]; !ok {
 		t.Fatalf("expected grant cache entry")
 	}

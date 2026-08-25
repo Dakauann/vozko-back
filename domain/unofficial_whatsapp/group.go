@@ -162,7 +162,7 @@ type Group struct {
 // person from a direct chat, a link to their contact row. The link is resolved
 // lazily and is allowed to be absent: most members of most groups have never
 // messaged us, and creating a contact for each would put hundreds of rows that
-// no CRM surface can act on into the table the dialer reads.
+// no CRM surface can act on into the table call sessions read.
 type GroupParticipant struct {
 	ID      string `json:"id"`
 	GroupID string `json:"groupId"`

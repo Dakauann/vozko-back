@@ -1,10 +1,9 @@
 package user
 
 type PlanResponse struct {
-	Name               string `json:"name" example:"Profissional"`
-	MaxCallChannels    int    `json:"maxCallChannels" example:"5"`
-	MaxBranches        int    `json:"maxBranches" example:"10"`
-	MaxHoldMusicTracks int    `json:"maxHoldMusicTracks" example:"3"`
+	Name            string `json:"name" example:"Profissional"`
+	MaxCallChannels int    `json:"maxCallChannels" example:"5"`
+	MaxBranches     int    `json:"maxBranches" example:"10"`
 }
 
 type UserInfoResponse struct {

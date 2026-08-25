@@ -137,15 +137,6 @@ func (r *CachedWorkspaceRepository) UpdateMemberRoleID(memberID string, roleID s
 	return err
 }
 
-func (r *CachedWorkspaceRepository) UpdateMemberRingChannels(memberID string, channels []workspace.RingChannel) error {
-	m, _ := r.inner.GetMemberByID(memberID)
-	err := r.inner.UpdateMemberRingChannels(memberID, channels)
-	if err == nil && m != nil {
-		r.invalidateMember(m.WorkspaceID, m.UserID)
-	}
-	return err
-}
-
 func (r *CachedWorkspaceRepository) RemoveMember(memberID string) error {
 	m, _ := r.inner.GetMemberByID(memberID)
 	err := r.inner.RemoveMember(memberID)

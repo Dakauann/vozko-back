@@ -33,8 +33,6 @@ type Repository interface {
 	ListMemberDepartments(workspaceID string, memberIDs []string, restrictToDeptIDs []string) (map[string][]DepartmentRef, error)
 	UpdateMemberRole(memberID string, role Role) error
 	UpdateMemberRoleID(memberID string, roleID string) error
-	// UpdateMemberRingChannels sets the member's ring-channel selection (AOR level).
-	UpdateMemberRingChannels(memberID string, channels []RingChannel) error
 	RemoveMember(memberID string) error
 
 	AddPermission(perm *Permission) error

@@ -13,8 +13,8 @@ type updateGroupRepoStub struct {
 
 func (s *updateGroupRepoStub) FindByID(string) (*stage.StageGroup, error) { return s.group, nil }
 func (s *updateGroupRepoStub) Update(*stage.StageGroup) error             { return nil }
-func (s *updateGroupRepoStub) RemoveItem(string) error                   { return nil }
-func (s *updateGroupRepoStub) AddItem(*stage.StageGroupItem) error       { return nil }
+func (s *updateGroupRepoStub) RemoveItem(string) error                    { return nil }
+func (s *updateGroupRepoStub) AddItem(*stage.StageGroupItem) error        { return nil }
 
 type updateStageRepoStub struct {
 	stage.Repository

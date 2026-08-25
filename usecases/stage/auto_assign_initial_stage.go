@@ -34,7 +34,7 @@ func AutoAssignInitialStage(repo stage.Repository, workspaceID, campaignID, camp
 
 	et := &stage.EntryStage{
 		ID:          uuid.New().String(),
-		StageID:       initialTag.ID,
+		StageID:     initialTag.ID,
 		EntryID:     entryID,
 		EntryType:   entryType,
 		WorkspaceID: workspaceID,

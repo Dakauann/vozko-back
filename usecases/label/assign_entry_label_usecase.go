@@ -28,11 +28,11 @@ func (uc *assignEntryLabelUseCase) Execute(workspaceID string, input label.Assig
 	}
 
 	el := &label.EntryLabel{
-		ID:        uuid.New().String(),
-		LabelID:   input.LabelID,
-		EntryID:   input.EntryID,
-		EntryType: input.EntryType,
-		WorkspaceID:    workspaceID,
+		ID:          uuid.New().String(),
+		LabelID:     input.LabelID,
+		EntryID:     input.EntryID,
+		EntryType:   input.EntryType,
+		WorkspaceID: workspaceID,
 	}
 
 	if err := uc.repo.AssignLabel(el); err != nil {

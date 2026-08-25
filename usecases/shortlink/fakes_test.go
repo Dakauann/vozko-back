@@ -85,12 +85,12 @@ func (f *fakeShortLinkRepo) ApplyClick(ctx context.Context, id string, uniqueDel
 }
 
 type fakeClickRepo struct {
-	RecordFn       func(ctx context.Context, c *shortlink.Click) (bool, error)
-	DailyFn        func(ctx context.Context, deltas []shortlink.DailyStatDelta) error
-	AnalyticsFn    func(ctx context.Context, in shortlink.AnalyticsInput) (*shortlink.Analytics, error)
-	RecentFn       func(ctx context.Context, ws, id string, opts shared.Pagination) (*shared.PaginatedResult[*shortlink.Click], error)
-	PurgeClicksFn  func(ctx context.Context, cutoff time.Time) (int64, error)
-	PurgeDailyFn   func(ctx context.Context, cutoff time.Time) (int64, error)
+	RecordFn      func(ctx context.Context, c *shortlink.Click) (bool, error)
+	DailyFn       func(ctx context.Context, deltas []shortlink.DailyStatDelta) error
+	AnalyticsFn   func(ctx context.Context, in shortlink.AnalyticsInput) (*shortlink.Analytics, error)
+	RecentFn      func(ctx context.Context, ws, id string, opts shared.Pagination) (*shared.PaginatedResult[*shortlink.Click], error)
+	PurgeClicksFn func(ctx context.Context, cutoff time.Time) (int64, error)
+	PurgeDailyFn  func(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 func (f *fakeClickRepo) RecordClick(ctx context.Context, c *shortlink.Click) (bool, error) {
@@ -224,8 +224,8 @@ func (f *fakeQueueSub) Subscribe(topic string, handler func([]byte, messaging.Me
 	f.handler = handler
 	return f.err
 }
-func (f *fakeQueueSub) DeleteQueue(topic string) error         { return nil }
-func (f *fakeQueueSub) ValidateConnection() error              { return nil }
+func (f *fakeQueueSub) DeleteQueue(topic string) error           { return nil }
+func (f *fakeQueueSub) ValidateConnection() error                { return nil }
 func (f *fakeQueueSub) GetQueueLength(topic string) (int, error) { return 0, nil }
 
 type fakeAck struct {
@@ -317,22 +317,22 @@ func (f *fakeSharedState) Del(keys ...string) error {
 	}
 	return nil
 }
-func (f *fakeSharedState) Exists(key string) (bool, error)                 { return false, nil }
-func (f *fakeSharedState) Incr(key string) (int64, error)                  { return 0, nil }
-func (f *fakeSharedState) Decr(key string) (int64, error)                  { return 0, nil }
+func (f *fakeSharedState) Exists(key string) (bool, error)                          { return false, nil }
+func (f *fakeSharedState) Incr(key string) (int64, error)                           { return 0, nil }
+func (f *fakeSharedState) Decr(key string) (int64, error)                           { return 0, nil }
 func (f *fakeSharedState) IncrWithTTL(key string, ttl time.Duration) (int64, error) { return 0, nil }
-func (f *fakeSharedState) TryIncr(key string, max int64) (bool, error)     { return true, nil }
-func (f *fakeSharedState) SAdd(key string, members ...string) error        { return nil }
-func (f *fakeSharedState) SRem(key string, members ...string) error        { return nil }
-func (f *fakeSharedState) SMembers(key string) ([]string, error)           { return nil, nil }
-func (f *fakeSharedState) Publish(channel string, data []byte) error       { return nil }
+func (f *fakeSharedState) TryIncr(key string, max int64) (bool, error)              { return true, nil }
+func (f *fakeSharedState) SAdd(key string, members ...string) error                 { return nil }
+func (f *fakeSharedState) SRem(key string, members ...string) error                 { return nil }
+func (f *fakeSharedState) SMembers(key string) ([]string, error)                    { return nil, nil }
+func (f *fakeSharedState) Publish(channel string, data []byte) error                { return nil }
 func (f *fakeSharedState) Subscribe(ctx context.Context, channel string, handler func(data []byte)) {
 }
-func (f *fakeSharedState) HSet(key, field, value string) error             { return nil }
-func (f *fakeSharedState) HDel(key, field string) error                    { return nil }
-func (f *fakeSharedState) HGetAll(key string) (map[string]string, error)   { return nil, nil }
+func (f *fakeSharedState) HSet(key, field, value string) error                  { return nil }
+func (f *fakeSharedState) HDel(key, field string) error                         { return nil }
+func (f *fakeSharedState) HGetAll(key string) (map[string]string, error)        { return nil, nil }
 func (f *fakeSharedState) HIncrBy(key, field string, incr int64) (int64, error) { return 0, nil }
-func (f *fakeSharedState) IncrBy(key string, amount int64) (int64, error)  { return 0, nil }
-func (f *fakeSharedState) DecrBy(key string, amount int64) (int64, error)  { return 0, nil }
+func (f *fakeSharedState) IncrBy(key string, amount int64) (int64, error)       { return 0, nil }
+func (f *fakeSharedState) DecrBy(key string, amount int64) (int64, error)       { return 0, nil }
 func (f *fakeSharedState) TryIncrBy(key string, delta, max int64) (bool, error) { return true, nil }
 func (f *fakeSharedState) Expire(key string, ttl time.Duration) (bool, error)   { return true, nil }

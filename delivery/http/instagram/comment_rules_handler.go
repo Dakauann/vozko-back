@@ -59,6 +59,9 @@ func (h *Handler) rulesReady(w http.ResponseWriter) bool {
 
 // @Summary	Listar regras de automação de comentários
 // @Tags		Instagram
+// @Param		id	path	string	true	"ID da conta do Instagram"
+// @Produce	json
+// @Success	200	{array}	map[string]interface{}
 // @Security	BearerAuth
 // @Router		/instagram/accounts/{id}/comment-rules [get]
 func (h *Handler) ListCommentRules(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +78,10 @@ func (h *Handler) ListCommentRules(w http.ResponseWriter, r *http.Request) {
 
 // @Summary	Criar regra de automação de comentários
 // @Tags		Instagram
+// @Param		id	path	string	true	"ID da conta do Instagram"
+// @Accept		json
+// @Produce	json
+// @Success	201	{object}	map[string]interface{}
 // @Security	BearerAuth
 // @Router		/instagram/accounts/{id}/comment-rules [post]
 func (h *Handler) CreateCommentRule(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +105,11 @@ func (h *Handler) CreateCommentRule(w http.ResponseWriter, r *http.Request) {
 
 // @Summary	Atualizar regra de automação de comentários
 // @Tags		Instagram
+// @Param		id	path	string	true	"ID da conta do Instagram"
+// @Param		ruleId	path	string	true	"ID da regra"
+// @Accept		json
+// @Produce	json
+// @Success	200	{object}	map[string]interface{}
 // @Security	BearerAuth
 // @Router		/instagram/accounts/{id}/comment-rules/{ruleId} [put]
 func (h *Handler) UpdateCommentRule(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +134,10 @@ func (h *Handler) UpdateCommentRule(w http.ResponseWriter, r *http.Request) {
 
 // @Summary	Remover regra de automação de comentários
 // @Tags		Instagram
+// @Param		id	path	string	true	"ID da conta do Instagram"
+// @Param		ruleId	path	string	true	"ID da regra"
+// @Produce	json
+// @Success	200	{object}	map[string]string
 // @Security	BearerAuth
 // @Router		/instagram/accounts/{id}/comment-rules/{ruleId} [delete]
 func (h *Handler) DeleteCommentRule(w http.ResponseWriter, r *http.Request) {

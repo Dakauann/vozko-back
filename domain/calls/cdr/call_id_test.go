@@ -14,8 +14,8 @@ func TestIsWhatsAppCallID(t *testing.T) {
 		"wacid.ABGGFjFVU2AfAgo6V",
 		"WA-CALL-123",
 		"prefix-wa-call-123",
-		// Receptive SIP inbound calls must NOT be treated as WhatsApp, so they
-		// bill at the sip_trunk telephony rate.
+		// Historical "sip-in-" CDR ids must NOT be treated as WhatsApp, so they
+		// keep classifying at the non-WhatsApp telephony rate.
 		"sip-in-9f2c1e4a-1234-4abc-8def-0123456789ab",
 	}
 	for _, id := range whatsapp {
@@ -27,22 +27,6 @@ func TestIsWhatsAppCallID(t *testing.T) {
 		if IsWhatsAppCallID(id) {
 			t.Errorf("IsWhatsAppCallID(%q) = true, want false", id)
 		}
-	}
-}
-
-func TestInboundSIPCallID(t *testing.T) {
-	id := NewInboundSIPCallID("9f2c1e4a")
-	if id != "sip-in-9f2c1e4a" {
-		t.Fatalf("NewInboundSIPCallID = %q, want %q", id, "sip-in-9f2c1e4a")
-	}
-	if !IsInboundSIPCallID(id) {
-		t.Errorf("IsInboundSIPCallID(%q) = false, want true", id)
-	}
-	if IsWhatsAppCallID(id) {
-		t.Errorf("IsWhatsAppCallID(%q) = true, want false (must bill as sip_trunk)", id)
-	}
-	if IsInboundSIPCallID("wa-in-abc") {
-		t.Errorf("IsInboundSIPCallID(wa-in-abc) = true, want false")
 	}
 }
 

@@ -11,20 +11,17 @@ import (
 	conversation_domain "vozko/domain/conversation"
 	"vozko/domain/shared"
 	workflow_domain "vozko/domain/workflow"
-	workspace_config "vozko/domain/workspace_config"
 	conversation_infra "vozko/infra/conversation"
 	whatsapp_infra "vozko/infra/conversation/whatsapp"
 	"vozko/infra/conversation/whatsapp/media"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	aa_usecase "vozko/usecases/ai_attendance"
 	analysis_usecase "vozko/usecases/analysis"
-	call_roulette_usecase "vozko/usecases/call_roulette"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	label_usecase "vozko/usecases/label"
-	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	stage_usecase "vozko/usecases/stage"
 )
 
@@ -162,14 +159,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	// Contained AI sessions when conversation is marked finished (WA or voice entry).
 	conversationStatusUpdater.SetAISessionEnder(c.services.aiAttendanceService)
 
-	c.services.callRouletteService = call_roulette_usecase.NewAssignmentService(
-		c.repositories.callRoulette,
-		c.services.conversationHub,
-		callRouletteCampaignResolverAdapter{workspaceResolver},
-		callRouletteConfigAdapter{c.repositories.workspaceConfig},
-	)
-	c.services.callRouletteService.SetTelemetry(telemetryPub)
-
 	templateSender := conversation_usecase.NewTemplateSenderService(
 		c.services.whatsappClientFactory,
 		c.repositories.whatsappTemplate,
@@ -212,16 +201,10 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHub.SetPresenceRecorder(crm_telemetry_usecase.NewPresenceAdapter(telemetryPub))
 	c.services.conversationHub.SetWorkspaceConfigRepo(c.repositories.workspaceConfig)
 	historyProvider.SetAssignmentRepo(assignmentRepo)
-	if c.services.sipTrunkManager != nil {
-		getSIPTrunkUC := sip_trunk_usecase.NewGetUseCase(c.repositories.sipTrunk)
-		sipCallSource := conversation_usecase.NewSIPTrunkCallSource(
-			c.services.sipTrunkManager,
-			c.repositories.sipTrunk,
-			getSIPTrunkUC,
-			c.services.trunkOwnership,
-			log.Default(),
-		)
-
+	// WhatsApp calling: the only voice channel. Built unconditionally, it used to
+	// hang off the SIP trunk manager's presence, which would have silently disabled
+	// calling once the trunk went away.
+	{
 		callRegistry := whatsapp_infra.NewInMemoryCallRegistry()
 		signaling := whatsapp_infra.NewCallSignalingClient(c.repositories.businessPhone, nil, "")
 
@@ -234,15 +217,10 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		}
 
 		muxPort := c.cfg.WhatsAppMediaUDPMuxPort
-		if media.PortRangeOverlaps(muxPort, muxPort, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd) {
-			log.Printf("[whatsapp-calls] WARNING: media UDP mux port %d is INSIDE the SIP RTP range %d-%d, choose a port outside it.",
-				muxPort, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd)
-		}
 		if bound, err := media.EnableSharedUDPMux(muxPort); err != nil {
 			log.Printf("[whatsapp-calls] WARNING: could not bind media UDP mux on :%d (%v), WhatsApp media falls back to per-call sockets, which does NOT scale. Fix WHATSAPP_MEDIA_UDP_MUX_PORT.", muxPort, err)
 		} else {
-			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d, one shared socket for all calls (scales to thousands; SIP RTP %d-%d)",
-				bound, c.cfg.SIPTrunkRTPPortStart, c.cfg.SIPTrunkRTPPortEnd)
+			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d, one shared socket for all calls (scales to thousands)", bound)
 		}
 
 		c.services.whatsappCallSignaling = signaling
@@ -267,7 +245,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 			c.services.conversationHub,
 		)
 
-		callSource := conversation_usecase.NewDispatchingCallSource(sipCallSource, whatsappCallSource)
+		callSource := conversation_usecase.NewDispatchingCallSource(whatsappCallSource)
 		c.services.crmCallSource = callSource
 		c.services.conversationHub.SetCallSource(callSource)
 	}
@@ -375,34 +353,6 @@ func (c *Container) startConversationHub() {
 	c.services.conversationHub.SetMemberVisibility(c.useCases.memberVisibility)
 
 	go c.services.conversationHub.Run()
-}
-
-type callRouletteCampaignResolverAdapter struct {
-	inner conversation_domain.CampaignWorkspaceResolver
-}
-
-func (a callRouletteCampaignResolverAdapter) GetEntryWorkspaceID(entryID string) (string, error) {
-	return a.inner.GetEntryWorkspaceID(entryID, "")
-}
-
-func (a callRouletteCampaignResolverAdapter) GetEntryDepartmentID(entryID string) (string, error) {
-	return a.inner.GetEntryDepartmentID(entryID, "")
-}
-
-func (a callRouletteCampaignResolverAdapter) GetEntrySIPTrunkID(_ string) (string, error) {
-	return "", nil
-}
-
-type callRouletteConfigAdapter struct {
-	inner workspace_config.Repository
-}
-
-func (a callRouletteConfigAdapter) GetByWorkspaceID(workspaceID string) (bool, error) {
-	cfg, err := a.inner.GetByWorkspaceID(context.Background(), workspaceID)
-	if err != nil {
-		return false, err
-	}
-	return cfg != nil, nil
 }
 
 // registerChannelAdapter adds one channel's send-side adapter and refreshes

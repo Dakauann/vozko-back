@@ -29,7 +29,7 @@ func (uc *AssignEntryStageUseCase) Execute(workspaceID string, input stage.Assig
 
 	et := &stage.EntryStage{
 		ID:          uuid.New().String(),
-		StageID:       input.StageID,
+		StageID:     input.StageID,
 		EntryID:     input.EntryID,
 		EntryType:   input.EntryType,
 		WorkspaceID: workspaceID,

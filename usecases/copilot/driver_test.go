@@ -47,7 +47,7 @@ func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-c
 	}()
 	return ch, nil
 }
-func (s *scriptAI) GetAvaibleModels(ctx context.Context) ([]string, error)          { return nil, nil }
+func (s *scriptAI) GetAvaibleModels(ctx context.Context) ([]string, error)           { return nil, nil }
 func (s *scriptAI) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, error) { return nil, nil }
 
 type fakeAccess struct {
@@ -71,8 +71,10 @@ type fakeTool struct {
 	gotArgs map[string]interface{}
 }
 
-func (f *fakeTool) Definition() tools.Definition { return tools.Definition{Name: f.name, Description: "x"} }
-func (f *fakeTool) Meta() copilot.Meta           { return f.meta }
+func (f *fakeTool) Definition() tools.Definition {
+	return tools.Definition{Name: f.name, Description: "x"}
+}
+func (f *fakeTool) Meta() copilot.Meta { return f.meta }
 func (f *fakeTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
 	f.calls++
 	f.gotCC = cc

@@ -6,18 +6,18 @@ import (
 
 	"vozko/domain/agent_presence"
 	"vozko/domain/attendance"
-	"vozko/domain/dialer"
+	"vozko/domain/callsession"
 	"vozko/domain/queue_event"
 )
 
 // getOverviewUseCase composes the attendance repository overview with optional
-// queue, presence, and live dialer ports. Keeps infra adapters out of the repository.
+// queue, presence, and live call session ports. Keeps infra adapters out of the repository.
 type getOverviewUseCase struct {
 	repo     attendance.Repository
 	queue    queue_event.Repository
 	presence agent_presence.Repository
-	// live is optional; when set, fills Overview.Live from dialer sessions.
-	live dialer.DialerSessionRegistry
+	// live is optional; when set, fills Overview.Live from live call sessions.
+	live callsession.CallSessionRegistry
 }
 
 // NewGetOverviewUseCase builds the overview use case (queue/presence/live optional).
@@ -25,12 +25,12 @@ func NewGetOverviewUseCase(repo attendance.Repository) attendance.GetOverviewUse
 	return &getOverviewUseCase{repo: repo}
 }
 
-// NewGetOverviewUseCaseWithDeps injects queue ASA/abandon, occupancy, and live dialer.
+// NewGetOverviewUseCaseWithDeps injects queue ASA/abandon, occupancy, and live callsession.
 func NewGetOverviewUseCaseWithDeps(
 	repo attendance.Repository,
 	queue queue_event.Repository,
 	presence agent_presence.Repository,
-	live dialer.DialerSessionRegistry,
+	live callsession.CallSessionRegistry,
 ) attendance.GetOverviewUseCase {
 	return &getOverviewUseCase{
 		repo:     repo,
@@ -145,7 +145,6 @@ func (uc *getOverviewUseCase) fillLive(workspaceID string, out *attendance.Overv
 			UserID:     p.UserID,
 			Busy:       p.Busy,
 			HasBrowser: p.HasBrowser,
-			HasBranch:  p.HasBranch,
 		})
 	}
 	if live.Online > 0 {

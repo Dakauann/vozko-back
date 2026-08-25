@@ -19,7 +19,6 @@ type HumanSeat struct {
 	Username   string    `json:"username,omitempty"`
 	State      SeatState `json:"state"`
 	HasBrowser bool      `json:"has_browser"`
-	HasBranch  bool      `json:"has_branch"`
 	Since      time.Time `json:"since,omitempty"`
 }
 
@@ -76,7 +75,7 @@ type GetBoardUseCase interface {
 	Execute(workspaceID string) (*BoardSnapshot, error)
 }
 
-// BoardSync rebuilds human seats from dialer presence (called on presence change).
+// BoardSync rebuilds human seats from call session presence (called on presence change).
 type BoardSync interface {
 	SyncHumansFromPresence(workspaceID string, seats []HumanSeat, used, max int64) (*BoardSnapshot, error)
 }

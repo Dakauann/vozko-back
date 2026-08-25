@@ -104,18 +104,20 @@ func TestUpdate_Errors(t *testing.T) {
 	pw := "p"
 
 	tests := []struct {
-		name    string
-		repo    *fakeShortLinkRepo
-		guard   fakeHostGuard
-		scanner fakeScanner
-		pass    *fakePasswordSvc
+		name     string
+		repo     *fakeShortLinkRepo
+		guard    fakeHostGuard
+		scanner  fakeScanner
+		pass     *fakePasswordSvc
 		baseHost string
-		input   shortlink.UpdateShortLinkInput
-		wantErr error
+		input    shortlink.UpdateShortLinkInput
+		wantErr  error
 	}{
 		{
-			name:    "not found",
-			repo:    &fakeShortLinkRepo{FindByIDFn: func(ctx context.Context, ws, id string) (*shortlink.ShortLink, error) { return nil, shortlink.ErrShortLinkNotFound }},
+			name: "not found",
+			repo: &fakeShortLinkRepo{FindByIDFn: func(ctx context.Context, ws, id string) (*shortlink.ShortLink, error) {
+				return nil, shortlink.ErrShortLinkNotFound
+			}},
 			scanner: okScanner(),
 			wantErr: shortlink.ErrShortLinkNotFound,
 		},

@@ -134,7 +134,7 @@ func (r *repository) StatsWithSL(workspaceID string, from, to *time.Time, slSeco
 	return st, nil
 }
 
-// Sink implements dialer queue EventSink asynchronously.
+// Sink implements the call session queue EventSink asynchronously.
 type Sink struct {
 	repo qe.Repository
 }
@@ -143,8 +143,8 @@ func NewSink(repo qe.Repository) *Sink {
 	return &Sink{repo: repo}
 }
 
-// QueueEvent is the dialer queue.EventSink method (duck-typed; package cannot import usecases).
-// Callers adapt dialer.queue.Event → domain via container wiring.
+// QueueEvent is the call session queue.EventSink method (duck-typed; package cannot import usecases).
+// Callers adapt callsession.queue.Event → domain via container wiring.
 func (s *Sink) Persist(workspaceID, transferID, callID, targetKind, targetID, typ string, position int, waitedMS int64, at time.Time) {
 	if s == nil || s.repo == nil || workspaceID == "" {
 		return

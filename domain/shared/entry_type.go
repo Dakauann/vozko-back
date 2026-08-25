@@ -190,7 +190,7 @@ func KnownEntryTypes() []EntryType {
 //
 // A fifth independent question, and it answers differently again: support IS a
 // valid inbox scope despite not being opened through the conversation view, and
-// voice IS one despite having no entry_sources branch (the dialer's inbox is
+// voice IS one despite having no entry_sources branch (the call inbox is
 // scoped separately). Spelled inline it read
 // `!= "voice" && != "whatsapp" && != "support"`, which rejected Instagram with a
 // 400 and would have rejected Telegram the same way.

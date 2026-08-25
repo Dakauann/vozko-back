@@ -327,7 +327,7 @@ func TestFormulaInjectionIsNeutralisedInTextCells(t *testing.T) {
 		t.Errorf("name cell = %q, want it prefixed out of formula position", got)
 	}
 
-	// The number column is the one operators paste into dialers. It is already
+	// The number column is the one operators paste into phone systems. It is already
 	// reduced to digits and a leading +, which cannot carry a payload, so it
 	// must come through untouched.
 	if got := row[1]; got != "+5511900000001" {

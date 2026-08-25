@@ -150,7 +150,7 @@ func TestNormalizePhoneKeepsOnlyDigits(t *testing.T) {
 //
 // The group case is a real bug this pins, not a hypothetical: a group id used to
 // come back as digits and get stored as a contact's phone number, so the CRM
-// rendered groups as "+120363…" and handed that to the dialer and the lead
+// rendered groups as "+120363…" and handed that to call sessions and the lead
 // bridge.
 func TestPhoneFromJIDOnlyReadsUserJIDs(t *testing.T) {
 	cases := map[string]string{

@@ -16,9 +16,9 @@ var legacyToolNames = map[string]string{
 	// what the MODEL saw, and a tool called "send_whatsapp_media" offered inside
 	// a Telegram conversation reads as inapplicable, the rename is a behaviour
 	// fix, not just tidying.
-	"send_whatsapp_media":          ToolNameSendMedia,
+	"send_whatsapp_media":           ToolNameSendMedia,
 	LegacyToolNameSendWhatsappImage: ToolNameSendMedia,
-	"send_whatsapp_button_message": ToolNameSendOptions,
+	"send_whatsapp_button_message":  ToolNameSendOptions,
 }
 
 // CanonicalToolName resolves a possibly-retired tool name to its current one.

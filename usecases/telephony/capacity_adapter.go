@@ -12,8 +12,8 @@ import (
 // SlotCapacityReader reads concurrent usage from Redis keys owned by CallSlotManager
 // and resolves max via CallSlotManager when provided.
 type SlotCapacityReader struct {
-	Shared  cache.SharedState
-	Slots   *workspace_domain.CallSlotManager
+	Shared cache.SharedState
+	Slots  *workspace_domain.CallSlotManager
 }
 
 func NewSlotCapacityReader(shared cache.SharedState, slots *workspace_domain.CallSlotManager) *SlotCapacityReader {

@@ -28,15 +28,15 @@ const (
 )
 
 type analysisDebounceJob struct {
-	sharedState          cache.SharedState
-	messageRepo          conversation.MessageRepository
-	wcEntryRepo          wce.Repository
-	wcCampaignRepo       wc.Repository
-	leadRepo             lead.Repository
-	aiService            ai.Service
-	toolRegistry         toolsdomain.Service
-	analysisRepo         analysisdomain.Repository
-	stageRepo            stage.Repository
+	sharedState    cache.SharedState
+	messageRepo    conversation.MessageRepository
+	wcEntryRepo    wce.Repository
+	wcCampaignRepo wc.Repository
+	leadRepo       lead.Repository
+	aiService      ai.Service
+	toolRegistry   toolsdomain.Service
+	analysisRepo   analysisdomain.Repository
+	stageRepo      stage.Repository
 	// leadMemories renders the lead's current memory block into the memory
 	// pass, so the model updates existing facts instead of re-adding them.
 	leadMemories         leadmemory.ListUseCase

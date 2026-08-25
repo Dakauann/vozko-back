@@ -262,7 +262,10 @@ func TestRun_ChurnStallB(t *testing.T) {
 	n := 0
 	drv := &fakeDriver{
 		dispatchFn: func(ai.ToolCall) StepResult { return StepResult{Result: "did", Mutated: true} },
-		progressFn: func() Progress { n++; return Progress{StateHash: fmt.Sprintf("h%d", n), BlockingSignature: "SIG", Valid: false} },
+		progressFn: func() Progress {
+			n++
+			return Progress{StateHash: fmt.Sprintf("h%d", n), BlockingSignature: "SIG", Valid: false}
+		},
 	}
 	out, _, _ := run(t, prov, drv, Config{FinishToolName: "finish", NoProgressStop: 2, MaxIterations: 20})
 	if out.Kind != OutcomeDone || out.Summary != reasonChurn {

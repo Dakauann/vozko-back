@@ -187,7 +187,9 @@ func TestProcess_Branches(t *testing.T) {
 	})
 
 	t.Run("apply click error", func(t *testing.T) {
-		linkRepo := &fakeShortLinkRepo{ApplyClickFn: func(ctx context.Context, id string, uniqueDelta int64, occurredAt time.Time) error { return errors.New("db") }}
+		linkRepo := &fakeShortLinkRepo{ApplyClickFn: func(ctx context.Context, id string, uniqueDelta int64, occurredAt time.Time) error {
+			return errors.New("db")
+		}}
 		uc := newConsumer(&fakeClickRepo{}, linkRepo, fakeUA{}, newFakeSharedState(), &fakeQueuePub{}, &fakeQueueSub{})
 		if err := uc.process(validClickMessage()); err == nil {
 			t.Fatal("expected apply click error")

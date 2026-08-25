@@ -434,7 +434,7 @@
     {
       "title": "WebSocket Connections by Endpoint (stacked)",
       "type": "timeseries",
-      "description": "Live WebSocket clients per endpoint, stacked so total height is all connections. Composition shows which endpoint (conversations/dialer/simulators) drives the load.",
+      "description": "Live WebSocket clients per endpoint, stacked so total height is all connections. Composition shows which endpoint (conversations/call_session/simulators) drives the load.",
       "gridPos": {
         "h": 8,
         "w": 12,

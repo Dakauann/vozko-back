@@ -69,13 +69,8 @@ type PlanDefinition struct {
 	// 0 means none included (the create gate fails closed until it is set, or an
 	// addon tops it up). Resolved via EntitlementBranches, exactly like
 	// MaxCallChannels via EntitlementCallChannels.
-	MaxBranches int `json:"maxBranches"`
-	// MaxHoldMusicTracks is how many CUSTOM hold music tracks this plan lets a
-	// workspace keep uploaded (builtins are always available). 0 disables custom
-	// uploads for the plan; the media layer hard-caps the effective value at 10.
-	// Resolved via EntitlementHoldMusicTracks.
-	MaxHoldMusicTracks int  `json:"maxHoldMusicTracks"`
-	IsGloballyVisible  bool `json:"isGloballyVisible"`
+	MaxBranches       int  `json:"maxBranches"`
+	IsGloballyVisible bool `json:"isGloballyVisible"`
 
 	ExclusiveAffiliateID *string            `json:"exclusiveAffiliateId,omitempty"`
 	PricingItems         []PlanPricingItem  `json:"pricingItems,omitempty"`

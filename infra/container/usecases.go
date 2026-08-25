@@ -17,7 +17,6 @@ import (
 
 	"vozko/domain/messaging"
 	"vozko/domain/tools"
-	"vozko/domain/voip"
 	workflow_domain "vozko/domain/workflow"
 	workspace_domain "vozko/domain/workspace"
 	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
@@ -37,11 +36,9 @@ import (
 	rag_infra "vozko/infra/ai/rag"
 	"vozko/infra/alerting"
 	asaas_service "vozko/infra/asaas"
-	dialer_infra "vozko/infra/dialer"
 	media_infra "vozko/infra/media"
 	"vozko/infra/netguard"
 	notification_service "vozko/infra/notifications"
-	branch_repository "vozko/infra/repositories/branch"
 	telemetry_dedupe_repository "vozko/infra/repositories/telemetry_dedupe"
 	shortlink_infra "vozko/infra/shortlink"
 	telephony_infra "vozko/infra/telephony"
@@ -59,12 +56,12 @@ import (
 	auth_usecase "vozko/usecases/auth"
 	balance_usecase "vozko/usecases/balance"
 	billing_usecase "vozko/usecases/billing"
-	branch_usecase "vozko/usecases/branch"
 	business_metrics_usecase "vozko/usecases/business_metrics"
 	calendar_usecase "vozko/usecases/calendar"
 	calls_usecase "vozko/usecases/calls"
 	calls_cdr_usecase "vozko/usecases/calls_cdr"
 	calls_query_usecase "vozko/usecases/calls_query"
+	callsession_usecase "vozko/usecases/callsession"
 	cart_usecase "vozko/usecases/cart"
 	category_usecase "vozko/usecases/category"
 	cep_usecase "vozko/usecases/cep"
@@ -77,7 +74,6 @@ import (
 	copilottools "vozko/usecases/copilot/copilottools"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
-	dialer_usecase "vozko/usecases/dialer"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	insurance_usecase "vozko/usecases/insurance"
 	invoice_usecase "vozko/usecases/invoice"
@@ -97,7 +93,6 @@ import (
 	shipping_usecase "vozko/usecases/shipping"
 	shop_usecase "vozko/usecases/shop"
 	shortlink_usecase "vozko/usecases/shortlink"
-	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	stage_usecase "vozko/usecases/stage"
 	si_usecase "vozko/usecases/support_inbox"
 	telephony_usecase "vozko/usecases/telephony"
@@ -348,21 +343,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.New(log.Writer(), "rec-pool ", log.LstdFlags),
 	)
 
-	if c.services.sipTrunkManager != nil {
-		pool := c.recordingPool
-		if setter, ok := c.services.sipTrunkManager.(interface {
-			SetMediaSessionRecorder(voip.MediaSessionRecorder)
-		}); ok {
-			setter.SetMediaSessionRecorder(func(inner voip.MediaSession, dialogID string, meta voip.RecordingMeta) voip.MediaSession {
-				callID := dialogID
-				if meta.CallID != "" {
-					callID = meta.CallID
-				}
-				return calls_usecase.NewRecordingMediaSession(inner, callID, meta.WorkspaceID, meta.EntryID, meta.LeadID).SetPool(pool)
-			})
-		}
-	}
-
 	insuranceProviders := c.services.insuranceProviders
 	describeRequirementsUC := insurance_usecase.NewDescribeRequirementsUseCase(insuranceProviders)
 
@@ -418,11 +398,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
 		c.repositories.addonSubscription, c.repositories.workspaceConfig)
 
-	// Branch (branch) provisioning cap is plan-driven via the entitlement resolver
-	// (PlanDefinition.MaxBranches + addons under EntitlementBranches), mirroring
-	// how MaxCallChannels gates concurrent calls.
-	branchMemberDirectory := branch_repository.NewMemberDirectory(c.repositories.workspace)
-	branchProvisioningGate := branch_usecase.NewProvisioningGate(entitlementResolverUC, c.repositories.branch)
 	dialog360PartnerForAddons := businessphone_infra.NewDialog360PartnerClient(c.cfg.Dialog360PartnerAPIBase, c.cfg.Dialog360PartnerID, c.cfg.Dialog360PartnerAPIKey, c.cfg.Dialog360SolutionID, &http.Client{Timeout: 30 * time.Second}).WithRateLimit(c.redisProvider.SharedState())
 	phoneProvisioningGateUC := businessphone_usecase.NewPhoneProvisioningGate(getWorkspaceEntitlementsUC, c.repositories.ownerPhoneReader)
 	addonPhoneDeactivatorUC := businessphone_usecase.NewDeactivateExcessPhonesUseCase(getWorkspaceEntitlementsUC, c.repositories.ownerPhoneReader, c.repositories.businessPhone, dialog360PartnerForAddons).
@@ -443,7 +418,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	go callSlotManager.RunHeartbeat(context.Background())
 	go callSlotManager.RunPeriodicCleanup(context.Background())
 
-	callAdmissionCoordinator := dialer_usecase.NewCallAdmissionCoordinator(
+	callAdmissionCoordinator := callsession_usecase.NewCallAdmissionCoordinator(
 		cachedBalanceChecker,
 		pricer,
 		inflightReserver,
@@ -452,14 +427,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Default(),
 	)
 	c.services.callAdmission = callAdmissionCoordinator
-	c.services.startOutboundCall = dialer_usecase.NewStartOutboundCallUseCase(
+	c.services.startOutboundCall = callsession_usecase.NewStartOutboundCallUseCase(
 		c.services.crmCallSource,
 		c.services.conversationHistory,
 		callAdmissionCoordinator,
 	)
-	c.services.endOutboundCall = dialer_usecase.NewEndOutboundCallUseCase(callAdmissionCoordinator)
+	c.services.endOutboundCall = callsession_usecase.NewEndOutboundCallUseCase(callAdmissionCoordinator)
 
-	c.services.dialerLifecycle = dialer_usecase.NewOutboundCallLifecycleRunner(
+	c.services.callLifecycle = callsession_usecase.NewOutboundCallLifecycleRunner(
 		callAdmissionCoordinator,
 		cachedBalanceChecker,
 		inflightReserver,
@@ -469,10 +444,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	// Temporary raw CDR until board-aware use cases are assigned below;
 	// re-wired after c.useCases.startCall is constructed.
-	c.services.dialerLifecycle.SetCDRStart(
+	c.services.callLifecycle.SetCDRStart(
 		calls_cdr_usecase.NewStartCallUseCase(c.repositories.callCDR),
 	)
-	c.services.dialerLifecycle.SetCDRAnswered(
+	c.services.callLifecycle.SetCDRAnswered(
 		calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR),
 	)
 	publishDocProcessingUC := rag_usecase.NewPublishDocumentProcessingUseCase(c.services.ragQueuePub)
@@ -636,12 +611,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		uploadMedia: media_usecase.NewUploadMediaUseCase(
 			c.repositories.media,
 			c.services.fileStorage,
-			media_infra.NewHoldMusicTranscoder(),
-			media_usecase.NewHoldMusicQuotaGate(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.media),
 		),
-		listMedia:       media_usecase.NewListMediaUseCase(c.repositories.media),
-		getMedia:        media_usecase.NewGetMediaUseCase(c.repositories.media),
-		deleteHoldMusic: media_usecase.NewDeleteHoldMusicUseCase(c.repositories.media, c.repositories.workspaceConfig),
+		listMedia: media_usecase.NewListMediaUseCase(c.repositories.media),
+		getMedia:  media_usecase.NewGetMediaUseCase(c.repositories.media),
 
 		getCart:           cart_usecase.NewGetCartUseCase(c.repositories.cart),
 		clearCart:         cart_usecase.NewClearCartUseCase(c.repositories.cart),
@@ -720,7 +692,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 		getWorkspaceConfig:         workspace_config_usecase.NewGetWorkspaceConfigUseCase(c.repositories.workspaceConfig),
 		updateWorkspaceConfig:      workspace_config_usecase.NewUpdateWorkspaceConfigUseCase(c.repositories.workspaceConfig),
-		updateWorkspaceConfigOwner: workspace_config_usecase.NewUpdateWorkspaceConfigOwnerUseCase(c.repositories.workspaceConfig, c.repositories.workspace, dialer_infra.NewHoldMusicTrackValidator(c.repositories.media)),
+		updateWorkspaceConfigOwner: workspace_config_usecase.NewUpdateWorkspaceConfigOwnerUseCase(c.repositories.workspaceConfig, c.repositories.workspace),
 
 		recordMetric:         recordMetricUC,
 		consumeMetric:        consumeMetricUC,
@@ -804,26 +776,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listWorkspacePhoneAccess: workspace_phone_access_usecase.NewListWorkspaceAccessUseCase(c.repositories.workspacePhoneAccess),
 		listPhoneAccess:          workspace_phone_access_usecase.NewListPhoneAccessUseCase(c.repositories.workspacePhoneAccess),
 		checkPhoneAccess:         workspace_phone_access_usecase.NewCheckAccessUseCase(c.repositories.workspacePhoneAccess),
-
-		createSIPTrunk:          sip_trunk_usecase.NewCreateUseCase(c.repositories.sipTrunk, c.services.sipTrunkManager, c.cfg.SIPTrunkMaxPerWorkspace, netguard.New()),
-		updateSIPTrunk:          sip_trunk_usecase.NewUpdateUseCase(c.repositories.sipTrunk, c.services.sipTrunkManager, netguard.New()),
-		deleteSIPTrunk:          sip_trunk_usecase.NewDeleteUseCase(c.repositories.sipTrunk, c.services.sipTrunkManager),
-		getSIPTrunk:             sip_trunk_usecase.NewGetUseCase(c.repositories.sipTrunk),
-		listSIPTrunks:           sip_trunk_usecase.NewListUseCase(c.repositories.sipTrunk),
-		listSIPTrunksByIDs:      sip_trunk_usecase.NewListByIDsUseCase(c.repositories.sipTrunk),
-		listAccessibleSIPTrunks: sip_trunk_usecase.NewListAccessibleUseCase(c.repositories.sipTrunk),
-		enableSIPTrunk:          sip_trunk_usecase.NewEnableUseCase(c.repositories.sipTrunk, c.services.sipTrunkManager),
-		getSIPTrunkStatus:       sip_trunk_usecase.NewGetStatusUseCase(c.services.sipTrunkManager),
-		assignOwnerSIPTrunk:     sip_trunk_usecase.NewAssignOwnerUseCase(c.repositories.sipTrunk),
-
-		createBranch:            branch_usecase.NewCreateUseCase(c.repositories.branch, branchMemberDirectory, branchProvisioningGate, c.cfg.SIPRealm),
-		updateBranch:            branch_usecase.NewUpdateUseCase(c.repositories.branch),
-		getBranch:               branch_usecase.NewGetUseCase(c.repositories.branch),
-		listBranchesByWorkspace: branch_usecase.NewListByWorkspaceUseCase(c.repositories.branch),
-		listBranchesByUser:      branch_usecase.NewListByUserUseCase(c.repositories.branch),
-		deleteBranch:            branch_usecase.NewDeleteUseCase(c.repositories.branch),
-		enableBranch:            branch_usecase.NewEnableUseCase(c.repositories.branch),
-		rotateBranchSecret:      branch_usecase.NewRotateSecretUseCase(c.repositories.branch, c.cfg.SIPRealm),
 
 		sendConversationMessage: conversation_usecase.NewSendConversationMessageUseCase(
 			c.repositories.conversation,
@@ -965,13 +917,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.repositories.attendance,
 			c.repositories.queueEvent,
 			c.repositories.agentPresence,
-			c.services.dialerSessions,
+			c.services.callSessions,
 		),
 		getTelephonyOverview: telephony_usecase.NewGetOverviewUseCaseWithDeps(
 			c.repositories.telephony,
 			c.repositories.queueEvent,
 			c.repositories.agentPresence,
-			c.services.dialerSessions,
+			c.services.callSessions,
 		),
 		getTelephonyBoard: c.services.telephonyBoardGet,
 		consumeCRMTelemetry: crm_telemetry_usecase.NewConsumerWithDeps(crm_telemetry_usecase.ConsumerDeps{
@@ -1116,12 +1068,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		affiliateAdminUpdate:   affiliate_usecase.NewAdminUpdateAffiliateUseCase(c.repositories.affiliate),
 	}
 
-	// Re-wire all call paths to board-aware CDR (AI campaign bridge, dialer, workflow).
+	// Re-wire all call paths to board-aware CDR (AI campaign bridge, call session, workflow).
 	// Bridges are constructed before startCall exists; SetCDR* swaps in the live hooks.
 	if c.useCases.startCall != nil {
-		if c.services.dialerLifecycle != nil {
-			c.services.dialerLifecycle.SetCDRStart(c.useCases.startCall)
-			c.services.dialerLifecycle.SetCDRAnswered(calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR))
+		if c.services.callLifecycle != nil {
+			c.services.callLifecycle.SetCDRStart(c.useCases.startCall)
+			c.services.callLifecycle.SetCDRAnswered(calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR))
 		}
 	}
 

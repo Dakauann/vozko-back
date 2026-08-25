@@ -35,13 +35,13 @@ type WorkspaceMember struct {
 	UserID      string  `gorm:"type:uuid;not null;index;uniqueIndex:idx_ws_member_ws_user,priority:2"`
 	Role        string  `gorm:"not null;size:50;default:''"`
 	RoleID      *string `gorm:"type:uuid;index"`
-	// RingChannels: comma-separated set of endpoint channels that ring for this
-	// member (e.g. "browser,branch"). New and existing rows default to all channels
-	// (the field is omitted on insert so the DB default applies); updated via a
-	// targeted column write.
-	RingChannels string    `gorm:"not null;default:'browser,branch'"`
-	CreatedAt    time.Time `gorm:"autoCreateTime"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+	// NOTE: the ring_channels column is deliberately orphaned. It selected which
+	// endpoint kinds (browser softphone / SIP branch) rang for a member; SIP
+	// telephony is retired and WhatsApp calling rings the browser session only.
+	// AutoMigrate never DROPs, so the column stays behind unused (same precedent
+	// as the retired branch forward_policy column).
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 
 	Workspace  Workspace            `gorm:"foreignKey:WorkspaceID;references:ID"`
 	User       User                 `gorm:"foreignKey:UserID;references:ID"`

@@ -50,7 +50,6 @@ type AssignmentHistoryPayload struct {
 	Trigger           string    `json:"trigger"`
 	AssignedByActorID string    `json:"assigned_by_actor_id,omitempty"`
 	BusinessPhoneID   string    `json:"business_phone_id,omitempty"`
-	SIPTrunkID        string    `json:"sip_trunk_id,omitempty"`
 	DepartmentID      string    `json:"department_id,omitempty"`
 	StartedAt         time.Time `json:"started_at"`
 }
@@ -82,7 +81,7 @@ type AISessionPayload struct {
 	HandoffTargetUserID string      `json:"handoff_target_user_id,omitempty"`
 }
 
-// QueueEventPayload mirrors dialer queue lifecycle for durable SLA stats.
+// QueueEventPayload mirrors call session queue lifecycle for durable SLA stats.
 type QueueEventPayload struct {
 	ID          string    `json:"id,omitempty"`
 	WorkspaceID string    `json:"workspace_id"`

@@ -165,11 +165,12 @@ func NewService(
 }
 
 // BulkApply enforces two gates, then fans the action out:
-//   1. HARD RBAC gate (once): the actor must hold the action's permission (the same
-//      one the single-entry route requires). Denied / unknown action → Forbidden,
-//      nothing is touched (handler → 403).
-//   2. PER-TARGET scope gate: CanAccessEntry blocks any entry in another workspace
-//      or outside the actor's department scope, reported in Failed, never mutated.
+//  1. HARD RBAC gate (once): the actor must hold the action's permission (the same
+//     one the single-entry route requires). Denied / unknown action → Forbidden,
+//     nothing is touched (handler → 403).
+//  2. PER-TARGET scope gate: CanAccessEntry blocks any entry in another workspace
+//     or outside the actor's department scope, reported in Failed, never mutated.
+//
 // Each surviving target is mutated via the existing single-entry usecase and then
 // broadcast, so every client stays in sync. One target never aborts the rest.
 func (s *Service) BulkApply(ctx context.Context, in BulkInput) BulkResult {

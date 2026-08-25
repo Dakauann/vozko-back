@@ -23,8 +23,8 @@ func (s *tagProviderService) GetEntryStage(entryID, entryType, workspaceID strin
 	}
 	return &conversation.InboxEntryStage{
 		StageID: et.StageID,
-		Name:  et.StageName,
-		Color: et.StageColor,
+		Name:    et.StageName,
+		Color:   et.StageColor,
 	}, nil
 }
 
@@ -38,8 +38,8 @@ func (s *tagProviderService) GetBatchEntryStages(entryIDs []string, entryType, w
 	for entryID, et := range batchStages {
 		result[entryID] = &conversation.InboxEntryStage{
 			StageID: et.StageID,
-			Name:  et.StageName,
-			Color: et.StageColor,
+			Name:    et.StageName,
+			Color:   et.StageColor,
 		}
 	}
 	return result, nil
@@ -88,8 +88,8 @@ func (s *tagProviderService) GetAvailableStageByCampaigns(workspaceID string, ca
 		for i, t := range tags {
 			mapped[i] = conversation.InboxEntryStage{
 				StageID: t.ID,
-				Name:  t.Name,
-				Color: t.Color,
+				Name:    t.Name,
+				Color:   t.Color,
 			}
 		}
 		result[campaignID] = mapped

@@ -13,7 +13,7 @@ import (
 // recently. An Instagram IGSID and a Telegram user id are opaque identifiers no
 // other subsystem can address, so their contacts stay a parallel address book.
 // Here the contact IS an E.164 number — the same key `leads` is already indexed
-// on — so the dialer, boletos, opportunities, campaigns and export all reach the
+// on — so call sessions, boletos, opportunities, campaigns and export all reach the
 // same person the inbox shows.
 //
 // It find-or-CREATES rather than only looking up, unlike Telegram's, and the

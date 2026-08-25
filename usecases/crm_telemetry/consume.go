@@ -310,7 +310,6 @@ func (c *consumer) applyAssignmentHistory(p crm_telemetry.AssignmentHistoryPaylo
 		Trigger:           p.Trigger,
 		AssignedByActorID: p.AssignedByActorID,
 		BusinessPhoneID:   p.BusinessPhoneID,
-		SIPTrunkID:        p.SIPTrunkID,
 		DepartmentID:      p.DepartmentID,
 		StartedAt:         at,
 	})

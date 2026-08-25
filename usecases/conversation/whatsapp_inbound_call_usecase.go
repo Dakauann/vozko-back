@@ -10,15 +10,15 @@ import (
 
 	"github.com/google/uuid"
 
+	callsession "vozko/domain/callsession"
 	conversation_domain "vozko/domain/conversation"
-	dialer "vozko/domain/dialer"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	wsc "vozko/domain/workspace_config"
 	"vozko/infra/conversation/whatsapp/media"
-	dialer_usecase "vozko/usecases/dialer"
+	callsession_usecase "vozko/usecases/callsession"
 )
 
 const (
@@ -73,10 +73,10 @@ type WhatsAppInboundCallUseCase struct {
 	assigner    inboundAssignmentWriter
 	departments inboundDepartmentResolver
 	eligible    inboundEligibleUsers
-	sessions    dialer.DialerSessionRegistry
-	admission   dialer.CallAdmissionCoordinator
-	broker      *dialer_usecase.InboundOfferBroker
-	executor    dialer.InboundCRMCallExecutor
+	sessions    callsession.CallSessionRegistry
+	admission   callsession.CallAdmissionCoordinator
+	broker      *callsession_usecase.InboundOfferBroker
+	executor    callsession.InboundCRMCallExecutor
 	messages    conversation_domain.MessageRepository
 	hub         conversation_domain.EventBroadcaster
 	users       inboundUserResolver
@@ -99,10 +99,10 @@ type WhatsAppInboundConfig struct {
 	Assigner    inboundAssignmentWriter
 	Departments inboundDepartmentResolver
 	Eligible    inboundEligibleUsers
-	Sessions    dialer.DialerSessionRegistry
-	Admission   dialer.CallAdmissionCoordinator
-	Broker      *dialer_usecase.InboundOfferBroker
-	Executor    dialer.InboundCRMCallExecutor
+	Sessions    callsession.CallSessionRegistry
+	Admission   callsession.CallAdmissionCoordinator
+	Broker      *callsession_usecase.InboundOfferBroker
+	Executor    callsession.InboundCRMCallExecutor
 	// Messages + Hub record the call lifecycle (received/answered/missed/ended)
 	// into the conversation thread and push it live. Optional.
 	Messages conversation_domain.MessageRepository
@@ -191,7 +191,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		return
 	}
 
-	lease, err := uc.admission.Acquire(ctx, dialer.CallAdmissionInput{
+	lease, err := uc.admission.Acquire(ctx, callsession.CallAdmissionInput{
 		WorkspaceID:      workspaceID,
 		SlotPollInterval: time.Second,
 		SlotPollTimeout:  5 * time.Second,
@@ -278,7 +278,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		}
 	}()
 
-	if err := uc.executor.AttachInboundCRMCall(ctx, dialer.AttachInboundCRMCallInput{
+	if err := uc.executor.AttachInboundCRMCall(ctx, callsession.AttachInboundCRMCallInput{
 		OfferID:     outcome.offerID,
 		WorkspaceID: workspaceID,
 		UserID:      outcome.session.UserID(),
@@ -323,20 +323,20 @@ func (uc *WhatsAppInboundCallUseCase) usernameOf(userID string) string {
 }
 
 type ringOutcome struct {
-	session          dialer.DialerSession
+	session          callsession.CallSession
 	offerID          string
 	terminated       bool
 	declinedByUserID string // last agent who explicitly declined (none accepted)
 }
 
-func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentID, assignedUserID string) ([]dialer.DialerSession, bool) {
+func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentID, assignedUserID string) ([]callsession.CallSession, bool) {
 	if strings.TrimSpace(assignedUserID) != "" {
 		s, ok := uc.sessions.FindByUser(workspaceID, assignedUserID)
 		online := ok && s != nil
 		busy := online && s.HasActiveCall()
 		if online && !busy {
 			uc.log.Printf("[WAInbound] resolveCandidates: assigned=%s online=true hasActiveCall=false → 1 candidate (owner-only)", assignedUserID)
-			return []dialer.DialerSession{s}, false
+			return []callsession.CallSession{s}, false
 		}
 		uc.log.Printf("[WAInbound] resolveCandidates: assigned=%s online=%t hasActiveCall=%t → 0 candidates (owner-only, no fallback)", assignedUserID, online, busy)
 		return nil, false
@@ -364,13 +364,13 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 	}
 
 	available := uc.sessions.ListAvailable(workspaceID)
-	dialerUserIDs := make([]string, 0, len(available))
-	var candidates []dialer.DialerSession
+	callSessionUserIDs := make([]string, 0, len(available))
+	var candidates []callsession.CallSession
 	for _, s := range available {
 		if s == nil || s.HasActiveCall() {
 			continue
 		}
-		dialerUserIDs = append(dialerUserIDs, s.UserID())
+		callSessionUserIDs = append(callSessionUserIDs, s.UserID())
 		if allowed[s.UserID()] {
 			candidates = append(candidates, s)
 		}
@@ -379,10 +379,10 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 	// is empty tells you the cause,
 	//   eligible=[]         → a roulette-permission / SkipAdminAssignment / inbox
 	//                         (/ws/conversations) presence problem (no one qualifies);
-	//   dialerAvailable=[]  → nobody is connected to the dialer (/ws/dialer);
-	//   both non-empty, 0   → the online dialer user isn't in the eligible (roulette) set.
-	uc.log.Printf("[WAInbound] resolveCandidates: department=%q skipAdmins=%t eligible=%v dialerAvailable=%v → %d candidate(s)",
-		departmentID, skipAdmins, eligible, dialerUserIDs, len(candidates))
+	//   callSessionAvailable=[]  → nobody is connected to a call session (/ws/call-session);
+	//   both non-empty, 0   → the online call session user is not in the eligible (roulette) set.
+	uc.log.Printf("[WAInbound] resolveCandidates: department=%q skipAdmins=%t eligible=%v callSessionAvailable=%v → %d candidate(s)",
+		departmentID, skipAdmins, eligible, callSessionUserIDs, len(candidates))
 	return candidates, true
 }
 
@@ -391,7 +391,7 @@ func (uc *WhatsAppInboundCallUseCase) ringSequentially(
 	c conversation_domain.WhatsAppInboundConnect,
 	businessPhoneID, workspaceID, entryID string,
 	roulette bool,
-	candidates []dialer.DialerSession,
+	candidates []callsession.CallSession,
 	signals <-chan conversation_domain.WhatsAppCallSignal,
 	deadline time.Time,
 ) *ringOutcome {
@@ -412,7 +412,7 @@ func (uc *WhatsAppInboundCallUseCase) ringSequentially(
 		}
 
 		offerID := uuid.NewString()
-		offer := dialer.InboundCallOffer{
+		offer := callsession.InboundCallOffer{
 			OfferID:     offerID,
 			CallID:      c.CallID,
 			WorkspaceID: workspaceID,
@@ -470,8 +470,8 @@ const (
 // secured and before the ring is sent (used to record the roulette assignment).
 func (uc *WhatsAppInboundCallUseCase) ringCandidate(
 	ctx context.Context,
-	cand dialer.DialerSession,
-	offer dialer.InboundCallOffer,
+	cand callsession.CallSession,
+	offer callsession.InboundCallOffer,
 	signals <-chan conversation_domain.WhatsAppCallSignal,
 	ring time.Duration,
 	onReserved func(),
@@ -486,11 +486,11 @@ func (uc *WhatsAppInboundCallUseCase) ringCandidate(
 		}
 	}()
 
-	state := &dialer_usecase.InboundOfferState{
+	state := &callsession_usecase.InboundOfferState{
 		Offer:           offer,
 		TargetUserID:    cand.UserID(),
 		TargetSessionID: cand.ID(),
-		Response:        make(chan dialer_usecase.InboundOfferResponse, 1),
+		Response:        make(chan callsession_usecase.InboundOfferResponse, 1),
 	}
 	remove := uc.broker.Store(state)
 	defer remove()
@@ -499,7 +499,7 @@ func (uc *WhatsAppInboundCallUseCase) ringCandidate(
 		onReserved()
 	}
 
-	if err := cand.Notify(dialer.DialerControlMessage{Type: dialer.DialerControlInboundCall, Payload: offer}); err != nil {
+	if err := cand.Notify(callsession.CallSessionControlMessage{Type: callsession.CallSessionInboundCall, Payload: offer}); err != nil {
 		return candUnavailable
 	}
 

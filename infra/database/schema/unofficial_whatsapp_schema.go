@@ -192,14 +192,14 @@ type UnofficialWhatsAppContact struct {
 	// IsGroup marks this subject as a group rather than a person.
 	//
 	// A stored column rather than a suffix check on the JID: every person-only
-	// path (lead bridging, the dialer, broadcast targeting) reads one predicate
+	// path (lead bridging, call sessions, broadcast targeting) reads one predicate
 	// instead of re-deriving it, and a predicate re-derived at four call sites
 	// is one that will be missed at the fifth.
 	IsGroup bool `gorm:"not null;default:false;index"`
 	// PhoneNumber is E.164 digits with no leading +, and is EMPTY for a group.
 	// It is the CRM bridge, and the reason this channel's contacts are
 	// first-class where Instagram's and Telegram's are not: a lead, a boleto and
-	// the dialer can all address it — which is exactly why a group id must never
+	// call sessions can all address it — which is exactly why a group id must never
 	// be written here.
 	PhoneNumber string `gorm:"size:32;index"`
 	// LeadID links this contact to the CRM lead it is. Always NULL for a group.
@@ -345,7 +345,7 @@ func (g *UnofficialWhatsAppGroup) BeforeCreate(tx *gorm.DB) error {
 // UnofficialWhatsAppGroupParticipant is one member, as of the last roster sync.
 //
 // Members are NOT contacts. A 200-member group would otherwise put 200 rows into
-// the table the dialer and the lead bridge read, for people who have never
+// the table call sessions and the lead bridge read, for people who have never
 // messaged the business and cannot be attended. ContactID links the ones we do
 // know from a direct chat, and is legitimately NULL for everyone else.
 type UnofficialWhatsAppGroupParticipant struct {

@@ -48,7 +48,7 @@ type AnalysisScheduler interface {
 // LeadLinker resolves a phone number to a CRM lead, creating one if needed.
 //
 // This is the port that makes the channel first-class: unlike Instagram's IGSID
-// or Telegram's user id, every contact here IS a phone number, so the dialer,
+// or Telegram's user id, every contact here IS a phone number, so call sessions,
 // boletos, opportunities and export all address the same person the inbox does.
 type LeadLinker interface {
 	EnsureLeadForPhone(ctx context.Context, workspaceID, phone, name string) (string, error)

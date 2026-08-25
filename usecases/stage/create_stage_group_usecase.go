@@ -46,12 +46,12 @@ func (uc *CreateStageGroupUseCase) Execute(ctx context.Context, workspaceID stri
 
 	for i, item := range input.Items {
 		group.Items[i] = stage.StageGroupItem{
-			ID:          uuid.New().String(),
-			StageGroupID:  group.ID,
-			Name:        strings.TrimSpace(item.Name),
-			Description: strings.TrimSpace(item.Description),
-			Color:       strings.TrimSpace(item.Color),
-			Position:    item.Position,
+			ID:           uuid.New().String(),
+			StageGroupID: group.ID,
+			Name:         strings.TrimSpace(item.Name),
+			Description:  strings.TrimSpace(item.Description),
+			Color:        strings.TrimSpace(item.Color),
+			Position:     item.Position,
 		}
 		if group.Items[i].Position == 0 {
 			group.Items[i].Position = i + 1

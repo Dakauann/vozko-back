@@ -52,12 +52,9 @@ func (m *assignMemberWorkspaceMock) ListMemberDepartments(string, []string, []st
 	return nil, nil
 }
 func (m *assignMemberWorkspaceMock) UpdateMemberRole(string, workspace.Role) error { return nil }
-func (m *assignMemberWorkspaceMock) UpdateMemberRingChannels(string, []workspace.RingChannel) error {
-	return nil
-}
-func (m *assignMemberWorkspaceMock) UpdateMemberRoleID(string, string) error   { return nil }
-func (m *assignMemberWorkspaceMock) RemoveMember(string) error                 { return nil }
-func (m *assignMemberWorkspaceMock) AddPermission(*workspace.Permission) error { return nil }
+func (m *assignMemberWorkspaceMock) UpdateMemberRoleID(string, string) error       { return nil }
+func (m *assignMemberWorkspaceMock) RemoveMember(string) error                     { return nil }
+func (m *assignMemberWorkspaceMock) AddPermission(*workspace.Permission) error     { return nil }
 func (m *assignMemberWorkspaceMock) RemovePermission(string, workspace.Resource, workspace.Action) error {
 	return nil
 }

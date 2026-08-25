@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"vozko/domain/agent_presence"
-	"vozko/domain/dialer"
+	"vozko/domain/callsession"
 	"vozko/domain/queue_event"
 	"vozko/domain/telephony"
 )
@@ -14,7 +14,7 @@ type getOverviewUseCase struct {
 	repo     telephony.Repository
 	queue    queue_event.Repository
 	presence agent_presence.Repository
-	live     dialer.DialerSessionRegistry
+	live     callsession.CallSessionRegistry
 }
 
 // NewGetOverviewUseCase builds a VoIP overview use case (extras optional).
@@ -22,12 +22,12 @@ func NewGetOverviewUseCase(repo telephony.Repository) telephony.GetOverviewUseCa
 	return &getOverviewUseCase{repo: repo}
 }
 
-// NewGetOverviewUseCaseWithDeps composes CDR aggregates with queue, presence, live dialer.
+// NewGetOverviewUseCaseWithDeps composes CDR aggregates with queue, presence, live callsession.
 func NewGetOverviewUseCaseWithDeps(
 	repo telephony.Repository,
 	queue queue_event.Repository,
 	presence agent_presence.Repository,
-	live dialer.DialerSessionRegistry,
+	live callsession.CallSessionRegistry,
 ) telephony.GetOverviewUseCase {
 	return &getOverviewUseCase{
 		repo:     repo,
@@ -193,7 +193,6 @@ func (uc *getOverviewUseCase) fillLive(workspaceID string, out *telephony.Overvi
 			UserID:     p.UserID,
 			Busy:       p.Busy,
 			HasBrowser: p.HasBrowser,
-			HasBranch:  p.HasBranch,
 		})
 	}
 	if live.Online > 0 {

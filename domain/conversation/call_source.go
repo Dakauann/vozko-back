@@ -14,7 +14,6 @@ type CallDialInput struct {
 	UserID      string
 	WorkspaceID string
 	IsAdmin     bool
-	SIPTrunkID  string
 
 	WhatsAppPhoneID string
 }

@@ -151,7 +151,7 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 	callStates.WithLabelValues("dialing").Set(0)
 	callStates.WithLabelValues("ongoing").Set(0)
 	wsConnections.WithLabelValues(metrics.WSEndpointConversations).Set(0)
-	wsConnections.WithLabelValues(metrics.WSEndpointDialer).Set(0)
+	wsConnections.WithLabelValues(metrics.WSEndpointCallSession).Set(0)
 	wsConnections.WithLabelValues(metrics.WSEndpointWorkflowSimulator).Set(0)
 
 	// Register the Go runtime and process collectors through the replica_id-wrapped

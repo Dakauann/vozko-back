@@ -696,7 +696,7 @@ definitions:
         description: Free is online and not busy (available to take a call).
         type: integer
       has_data:
-        description: HasData is true when the dialer registry was queried successfully.
+        description: HasData is true when the call session registry was queried successfully.
         type: boolean
       idle_rate_pct:
         description: 'IdleRatePct among online agents: free/online * 100 (ociosidade
@@ -706,14 +706,12 @@ definitions:
         description: busy (on a call or ringing)
         type: integer
       online:
-        description: connected to dialer
+        description: connected to a call session
         type: integer
     type: object
   attendance.OverviewLiveAgent:
     properties:
       busy:
-        type: boolean
-      has_branch:
         type: boolean
       has_browser:
         type: boolean
@@ -2806,22 +2804,6 @@ definitions:
           type: string
         type: array
     type: object
-  holdmusic.HoldTrackListResponse:
-    properties:
-      tracks:
-        items:
-          $ref: '#/definitions/holdmusic.HoldTrackResponse'
-        type: array
-    type: object
-  holdmusic.HoldTrackResponse:
-    properties:
-      key:
-        example: bossa_nova
-        type: string
-      label:
-        example: Bossa Nova
-        type: string
-    type: object
   instagram.AccountResponse:
     properties:
       accountType:
@@ -3529,12 +3511,6 @@ definitions:
         type: string
       content:
         example: Prefere PIX desde ago/2026
-        type: string
-    type: object
-  medias.MediaDeletedResponse:
-    properties:
-      deleted:
-        example: med_a1b2c3
         type: string
     type: object
   medias.MediaResponse:
@@ -4987,9 +4963,6 @@ definitions:
       maxCallChannels:
         example: 5
         type: integer
-      maxHoldMusicTracks:
-        example: 3
-        type: integer
       name:
         example: Profissional
         type: string
@@ -5178,6 +5151,87 @@ definitions:
         type: string
       value:
         example: FINANCE
+        type: string
+    type: object
+  whatsappoutreach.SendQuoteResponse:
+    properties:
+      affordable:
+        type: boolean
+      balanceMicros:
+        type: integer
+      category:
+        type: string
+      priceMicros:
+        type: integer
+    type: object
+  whatsappoutreach.StartConversationRequest:
+    properties:
+      businessPhoneId:
+        type: string
+      headerParameters:
+        description: |-
+          HeaderParameters fill a TEXT header. Kept separate from the body's because
+          Meta addresses them as different components.
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      parameters:
+        description: Parameters fill the template body, in order.
+        items:
+          type: string
+        type: array
+      phoneNumber:
+        type: string
+      templateId:
+        type: string
+    type: object
+  whatsappoutreach.StartedConversationResponse:
+    properties:
+      attemptId:
+        type: string
+      chargedMicros:
+        description: |-
+          ChargedMicros is what this send cost. Echoed back so the UI can show the
+          operator the price of the action they just took.
+        type: integer
+      conversationExisted:
+        type: boolean
+      entryId:
+        description: |-
+          EntryID and EntryType address the conversation the way the inbox does, so
+          the caller does not need to know this channel's storage by heart.
+        type: string
+      entryType:
+        type: string
+      leadId:
+        type: string
+      messageId:
+        type: string
+      recorded:
+        description: |-
+          Recorded is false when the message was delivered but could not be written
+          into the thread. The send still succeeded — reporting it as a failure would
+          invite a retry that charges twice.
+        type: boolean
+      replayed:
+        description: |-
+          Replayed reports that this exact request had already been sent, so nothing
+          was sent or charged a second time.
+        type: boolean
+    type: object
+  whatsappoutreach.WindowOpenResponse:
+    properties:
+      code:
+        type: string
+      entryId:
+        type: string
+      entryType:
+        type: string
+      error:
+        type: boolean
+      message:
         type: string
     type: object
   whatsapptemplate.CreateTemplateRequest:
@@ -5399,16 +5453,6 @@ definitions:
         type: string
       id:
         type: string
-      ringChannels:
-        description: |-
-          RingChannels is the member's AOR-level set of endpoint channels that ring on
-          offers/transfers: a session rings only if its channel is in this set. It is
-          intentionally extensible; today the channels are browser (web dialer) and
-          branch (SIP extension). Empty means the default (all channels). Registered
-          branches additionally honor their per-branch enabled/DND on top of this.
-        items:
-          $ref: '#/definitions/workspace.RingChannel'
-        type: array
       role:
         $ref: '#/definitions/workspace.Role'
       roleId:
@@ -5544,16 +5588,6 @@ definitions:
         type: string
       id:
         type: string
-      ringChannels:
-        description: |-
-          RingChannels is the member's AOR-level set of endpoint channels that ring on
-          offers/transfers: a session rings only if its channel is in this set. It is
-          intentionally extensible; today the channels are browser (web dialer) and
-          branch (SIP extension). Empty means the default (all channels). Registered
-          branches additionally honor their per-branch enabled/DND on top of this.
-        items:
-          $ref: '#/definitions/workspace.RingChannel'
-        type: array
       role:
         $ref: '#/definitions/workspace.Role'
       roleId:
@@ -5608,20 +5642,6 @@ definitions:
       workspaceId:
         type: string
     type: object
-  workspace.RingChannel:
-    enum:
-    - browser
-    - branch
-    type: string
-    x-enum-comments:
-      RingChannelBranch: a registered SIP extension (branch)
-      RingChannelBrowser: the web dialer session
-    x-enum-descriptions:
-    - the web dialer session
-    - a registered SIP extension (branch)
-    x-enum-varnames:
-    - RingChannelBrowser
-    - RingChannelBranch
   workspace.Role:
     enum:
     - owner
@@ -5787,21 +5807,6 @@ definitions:
       autoCloseMaxAgeEnabled:
         description: Absolute inactivity max-age (nil = not sent).
         type: boolean
-      holdMusicTrack:
-        description: |-
-          HoldMusicTrack: pointer distinguishes "not sent" from "clear" (empty string
-          resets to the system default).
-        type: string
-      queueEnabled:
-        description: 'Queue policy (all pointers: nil = not sent, so a partial update
-          is safe).'
-        type: boolean
-      queueMaxLength:
-        type: integer
-      queueMaxWaitSeconds:
-        type: integer
-      queueOverflow:
-        type: string
       skipAdminAssignment:
         type: boolean
     type: object
@@ -5871,9 +5876,6 @@ definitions:
         type: integer
       createdAt:
         type: string
-      holdMusicTrack:
-        example: builtin:bossa_nova
-        type: string
       id:
         example: cfg_a1b2c3
         type: string
@@ -5885,18 +5887,6 @@ definitions:
           through the /admin route.
         example: 2
         type: integer
-      queueEnabled:
-        example: true
-        type: boolean
-      queueMaxLength:
-        example: 10
-        type: integer
-      queueMaxWaitSeconds:
-        example: 120
-        type: integer
-      queueOverflow:
-        example: recall
-        type: string
       skipAdminAssignment:
         example: false
         type: boolean
@@ -8913,49 +8903,6 @@ paths:
       summary: Conversa por entrada
       tags:
       - Leads
-  /hold-music/builtins:
-    get:
-      description: Retorna o catálogo de faixas de música de espera já incluídas no
-        servidor, disponíveis para seleção nas configurações da conta.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/holdmusic.HoldTrackListResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar músicas de espera padrão
-      tags:
-      - Música de espera
-  /hold-music/builtins/{key}/audio:
-    get:
-      description: 'Transmite o áudio de uma faixa padrão para pré-visualização no
-        seletor de configurações. A busca no catálogo é a proteção contra travessia
-        de caminho: apenas chaves conhecidas resolvem para arquivos.'
-      parameters:
-      - description: 'Chave da faixa (ex.: bossa_nova)'
-        in: path
-        name: key
-        required: true
-        type: string
-      produces:
-      - audio/mpeg
-      responses:
-        "200":
-          description: Áudio MP3 da faixa
-          schema:
-            type: file
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Reproduzir uma música de espera padrão
-      tags:
-      - Música de espera
   /instagram/accounts:
     get:
       produces:
@@ -8972,13 +8919,41 @@ paths:
       - Instagram
   /instagram/accounts/{id}:
     delete:
-      responses: {}
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Desconectar conta do Instagram
       tags:
       - Instagram
     get:
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -8994,6 +8969,12 @@ paths:
     put:
       consumes:
       - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -9009,6 +8990,12 @@ paths:
   /instagram/accounts/{id}/avatar:
     get:
       description: Faz proxy da foto de perfil, cuja URL de CDN expira.
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
       - image/jpeg
       responses:
@@ -9021,14 +9008,44 @@ paths:
       - Instagram
   /instagram/accounts/{id}/comment-rules:
     get:
-      responses: {}
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
       security:
       - BearerAuth: []
       summary: Listar regras de automação de comentários
       tags:
       - Instagram
     post:
-      responses: {}
+      consumes:
+      - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - BearerAuth: []
       summary: Criar regra de automação de comentários
@@ -9036,14 +9053,53 @@ paths:
       - Instagram
   /instagram/accounts/{id}/comment-rules/{ruleId}:
     delete:
-      responses: {}
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da regra
+        in: path
+        name: ruleId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Remover regra de automação de comentários
       tags:
       - Instagram
     put:
-      responses: {}
+      consumes:
+      - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da regra
+        in: path
+        name: ruleId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - BearerAuth: []
       summary: Atualizar regra de automação de comentários
@@ -9053,7 +9109,26 @@ paths:
     delete:
       description: Só é possível excluir comentários criados pela própria conta; para
         os demais, use ocultar.
-      responses: {}
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID do comentário
+        in: path
+        name: commentId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Excluir comentário do Instagram
@@ -9063,9 +9138,26 @@ paths:
     post:
       consumes:
       - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID do comentário
+        in: path
+        name: commentId
+        required: true
+        type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
       security:
       - BearerAuth: []
       summary: Ocultar/exibir comentário do Instagram
@@ -9075,9 +9167,26 @@ paths:
     post:
       consumes:
       - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID do comentário
+        in: path
+        name: commentId
+        required: true
+        type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Responder comentário por mensagem privada
@@ -9087,9 +9196,26 @@ paths:
     post:
       consumes:
       - application/json
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID do comentário
+        in: path
+        name: commentId
+        required: true
+        type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Responder comentário do Instagram
@@ -9098,6 +9224,12 @@ paths:
   /instagram/accounts/{id}/media:
     get:
       description: Retorna as publicações da conta com paginação por cursor.
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -9114,6 +9246,12 @@ paths:
       consumes:
       - application/json
       description: Cria o container, aguarda o processamento e publica.
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -9128,6 +9266,17 @@ paths:
       - Instagram
   /instagram/accounts/{id}/media/{mediaId}:
     get:
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da publicação
+        in: path
+        name: mediaId
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -9145,9 +9294,26 @@ paths:
       - application/json
       description: Somente habilitar/desabilitar comentários. A legenda não pode ser
         editada pela API.
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da publicação
+        in: path
+        name: mediaId
+        required: true
+        type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
       security:
       - BearerAuth: []
       summary: Atualizar publicação do Instagram
@@ -9155,7 +9321,20 @@ paths:
       - Instagram
   /instagram/accounts/{id}/media/{mediaId}/asset:
     get:
-      responses: {}
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da publicação
+        in: path
+        name: mediaId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
       security:
       - BearerAuth: []
       summary: Proxy de mídia do Instagram
@@ -9163,6 +9342,17 @@ paths:
       - Instagram
   /instagram/accounts/{id}/media/{mediaId}/comments:
     get:
+      parameters:
+      - description: ID da conta do Instagram
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da publicação
+        in: path
+        name: mediaId
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -10366,8 +10556,8 @@ paths:
       - Leads
   /medias:
     get:
-      description: Retorna as mídias do workspace (imagens, vídeos, documentos, áudios
-        e músicas de espera personalizadas) usadas em campanhas, workflows e configurações.
+      description: Retorna as mídias do workspace (imagens, vídeos, documentos e áudios)
+        usadas em campanhas, workflows e configurações.
       produces:
       - application/json
       responses:
@@ -10389,11 +10579,9 @@ paths:
     post:
       consumes:
       - multipart/form-data
-      description: Envia um arquivo de mídia para o workspace via multipart. Músicas
-        de espera personalizadas exigem plano compatível e respeitam o limite de faixas
-        da conta.
+      description: Envia um arquivo de mídia para o workspace via multipart.
       parameters:
-      - description: 'Tipo da mídia (ex.: image, video, audio, hold_music)'
+      - description: 'Tipo da mídia (ex.: image, video, audio, document)'
         in: formData
         name: mediaType
         required: true
@@ -10437,44 +10625,6 @@ paths:
       tags:
       - Mídias
   /medias/{id}:
-    delete:
-      description: Remove uma música de espera personalizada do workspace, liberando
-        uma vaga da cota do plano. Apenas faixas do tipo hold_music podem ser excluídas
-        por esta rota.
-      parameters:
-      - description: ID da mídia
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/medias.MediaDeletedResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "501":
-          description: Not Implemented
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Excluir uma música de espera
-      tags:
-      - Mídias
     get:
       description: Retorna os detalhes de uma mídia do workspace pelo seu identificador.
       parameters:
@@ -10664,7 +10814,11 @@ paths:
       - Atalhos de Mensagem
   /oauth/instagram/callback:
     get:
-      responses: {}
+      description: 'Finaliza o OAuth: redireciona de volta ao painel ou devolve o
+        resultado ao popup.'
+      responses:
+        "302":
+          description: Found
       summary: Callback de conexão do Instagram
       tags:
       - Instagram
@@ -14105,6 +14259,107 @@ paths:
       summary: Configuração de onboarding do WhatsApp
       tags:
       - Cadastro incorporado do WhatsApp
+  /whatsapp/outreach/conversations:
+    post:
+      consumes:
+      - application/json
+      description: Envia um modelo aprovado para um número que nunca escreveu para
+        a empresa e abre a conversa no CRM. Consome saldo. Envie o cabeçalho `Idempotency-Key`
+        para que um reenvio da requisição não cobre nem envie duas vezes.
+      parameters:
+      - description: Chave que torna o envio idempotente
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Destinatário e modelo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/whatsappoutreach.StartConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Envio idêntico já realizado; nada foi cobrado novamente
+          schema:
+            $ref: '#/definitions/whatsappoutreach.StartedConversationResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/whatsappoutreach.StartedConversationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/whatsappoutreach.WindowOpenResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Iniciar conversa no WhatsApp oficial enviando um modelo
+      tags:
+      - whatsapp-outreach
+  /whatsapp/outreach/quote:
+    get:
+      description: Retorna o preço do modelo para o workspace e se o saldo atual cobre
+        o envio.
+      parameters:
+      - description: ID do modelo
+        in: query
+        name: templateId
+        required: true
+        type: string
+      - description: ID do número comercial
+        in: query
+        name: businessPhoneId
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsappoutreach.SendQuoteResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Consultar o custo de um envio de modelo
+      tags:
+      - whatsapp-outreach
   /whatsapp/templates:
     get:
       description: Retorna, de forma paginada, os modelos (templates) de mensagem

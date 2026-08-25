@@ -135,19 +135,21 @@ type mockRecordMetric struct{}
 
 type mockSessionRepo struct{}
 
-func (r *mockSessionRepo) Create(*auth.Session) error                                 { return nil }
-func (r *mockSessionRepo) FindByID(string) (*auth.Session, error)                     { return nil, nil }
-func (r *mockSessionRepo) FindByRefreshTokenHash(string) (*auth.Session, error)          { return nil, nil }
-func (r *mockSessionRepo) FindByPreviousRefreshTokenHash(string) (*auth.Session, error)  { return nil, nil }
-func (r *mockSessionRepo) FindByAccessJTI(string, string) (*auth.Session, error)         { return nil, nil }
-func (r *mockSessionRepo) FindActiveByUserID(string) ([]*auth.Session, error)            { return nil, nil }
+func (r *mockSessionRepo) Create(*auth.Session) error                           { return nil }
+func (r *mockSessionRepo) FindByID(string) (*auth.Session, error)               { return nil, nil }
+func (r *mockSessionRepo) FindByRefreshTokenHash(string) (*auth.Session, error) { return nil, nil }
+func (r *mockSessionRepo) FindByPreviousRefreshTokenHash(string) (*auth.Session, error) {
+	return nil, nil
+}
+func (r *mockSessionRepo) FindByAccessJTI(string, string) (*auth.Session, error) { return nil, nil }
+func (r *mockSessionRepo) FindActiveByUserID(string) ([]*auth.Session, error)    { return nil, nil }
 func (r *mockSessionRepo) UpdateRefreshToken(string, string, string, string, time.Time) (int64, error) {
 	return 1, nil
 }
-func (r *mockSessionRepo) UpdateSessionInfo(string, string, string) error             { return nil }
-func (r *mockSessionRepo) Revoke(string) error                                        { return nil }
-func (r *mockSessionRepo) RevokeAllByUserID(string) error                             { return nil }
-func (r *mockSessionRepo) DeleteExpired() error                                       { return nil }
+func (r *mockSessionRepo) UpdateSessionInfo(string, string, string) error { return nil }
+func (r *mockSessionRepo) Revoke(string) error                            { return nil }
+func (r *mockSessionRepo) RevokeAllByUserID(string) error                 { return nil }
+func (r *mockSessionRepo) DeleteExpired() error                           { return nil }
 
 func (m *mockRecordMetric) Execute(business_metrics.RecordMetricInput) error { return nil }
 

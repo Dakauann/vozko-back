@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// wsUpgrader is the shared websocket upgrader for every ws endpoint (dialer,
+// wsUpgrader is the shared websocket upgrader for every ws endpoint (call session,
 // conversation hub, workflow simulator/builder).
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,

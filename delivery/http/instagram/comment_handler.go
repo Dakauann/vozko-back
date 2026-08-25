@@ -19,6 +19,8 @@ import (
 //
 //	@Summary		Listar comentários de uma publicação
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			mediaId	path	string	true	"ID da publicação"
 //	@Produce		json
 //	@Success		200	{object}	PageResponse[CommentResponse]
 //	@Security		BearerAuth
@@ -54,8 +56,11 @@ func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 //
 //	@Summary		Responder comentário do Instagram
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			commentId	path	string	true	"ID do comentário"
 //	@Accept			json
 //	@Produce		json
+//	@Success		201	{object}	map[string]string
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/comments/{commentId}/replies [post]
 func (h *Handler) ReplyComment(w http.ResponseWriter, r *http.Request) {
@@ -85,8 +90,11 @@ func (h *Handler) ReplyComment(w http.ResponseWriter, r *http.Request) {
 //
 //	@Summary		Ocultar/exibir comentário do Instagram
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			commentId	path	string	true	"ID do comentário"
 //	@Accept			json
 //	@Produce		json
+//	@Success		200	{object}	map[string]bool
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/comments/{commentId}/hide [post]
 func (h *Handler) HideComment(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +117,10 @@ func (h *Handler) HideComment(w http.ResponseWriter, r *http.Request) {
 //	@Summary		Excluir comentário do Instagram
 //	@Description	Só é possível excluir comentários criados pela própria conta; para os demais, use ocultar.
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			commentId	path	string	true	"ID do comentário"
+//	@Produce		json
+//	@Success		200	{object}	map[string]string
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/comments/{commentId} [delete]
 func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
@@ -129,8 +141,11 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 //
 //	@Summary		Responder comentário por mensagem privada
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			commentId	path	string	true	"ID do comentário"
 //	@Accept			json
 //	@Produce		json
+//	@Success		200	{object}	map[string]string
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/comments/{commentId}/private-reply [post]
 func (h *Handler) PrivateReply(w http.ResponseWriter, r *http.Request) {

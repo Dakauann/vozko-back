@@ -13,13 +13,11 @@ import (
 	attendance_repository "vozko/infra/repositories/attendance"
 	auth_repository "vozko/infra/repositories/auth"
 	balance_repository "vozko/infra/repositories/balance"
-	branch_repository "vozko/infra/repositories/branch"
 	business_metrics_repository "vozko/infra/repositories/business_metrics"
 	calendar_repository "vozko/infra/repositories/calendar"
 	call_billing_repository "vozko/infra/repositories/call_billing"
 	call_cdr_repository "vozko/infra/repositories/call_cdr"
 	call_recording_repository "vozko/infra/repositories/call_recording"
-	call_roulette_repository "vozko/infra/repositories/call_roulette"
 	cart_repository "vozko/infra/repositories/cart"
 	category_repository "vozko/infra/repositories/category"
 	cep_repository "vozko/infra/repositories/cep"
@@ -52,7 +50,6 @@ import (
 	shipping_repository "vozko/infra/repositories/shipping"
 	shop_repository "vozko/infra/repositories/shop"
 	shortlink_repository "vozko/infra/repositories/shortlink"
-	sip_trunk_repository "vozko/infra/repositories/sip_trunk"
 	stage_repository "vozko/infra/repositories/stage"
 	si_entry_repository "vozko/infra/repositories/support_entry"
 	si_inbox_repository "vozko/infra/repositories/support_inbox"
@@ -108,13 +105,10 @@ func (c *Container) initRepositories() {
 		ownerPhoneReader:        whatsapp_repository.NewOwnerPhoneReader(c.db),
 		callRecording:           call_recording_repository.NewRepository(c.db),
 		callCDR:                 call_cdr_repository.NewRepository(c.db),
-		callRoulette:            call_roulette_repository.NewRepository(c.db),
 		balance:                 balance_repository.NewCachedBalanceRepository(balance_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		workspacePricing:        workspace_pricing_repository.NewRepository(c.db),
 		workspaceTemplateAccess: workspace_template_access_repository.NewRepository(c.db),
 		workspacePhoneAccess:    workspace_phone_access_repository.NewRepository(c.db),
-		sipTrunk:                sip_trunk_repository.NewRepository(c.db),
-		branch:                  branch_repository.NewCachedRepository(branch_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		leadMessageWindow:       lead_message_window_repository.NewRepository(c.db),
 		callPermission:          whatsapp_repository.NewCallPermissionRepository(c.db),
 		leadCampaignSend:        lead_campaign_send_repository.NewRepository(c.db),

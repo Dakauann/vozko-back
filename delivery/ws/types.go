@@ -68,33 +68,15 @@ const (
 	WSEventInboundCallAccept  WSEventType = "call:incoming_accept"
 	WSEventInboundCallDecline WSEventType = "call:incoming_decline"
 
-	WSEventTransferInitiate    WSEventType = "transfer:initiate"
-	WSEventTransferAccept      WSEventType = "transfer:accept"
-	WSEventTransferDecline     WSEventType = "transfer:decline"
-	WSEventTransferComplete    WSEventType = "transfer:complete"
-	WSEventTransferCancel      WSEventType = "transfer:cancel"
-	WSEventTransferListTargets WSEventType = "transfer:list_targets"
-
-	WSEventTransferOffer      WSEventType = "transfer:offer"
-	WSEventTransferStarted    WSEventType = "transfer:started"
-	WSEventTransferCompleted  WSEventType = "transfer:completed"
-	WSEventTransferDeclined   WSEventType = "transfer:declined"
-	WSEventTransferCancelled  WSEventType = "transfer:cancelled"
-	WSEventTransferConsulting WSEventType = "transfer:consulting"
-	WSEventTransferTimedOut   WSEventType = "transfer:timed_out"
-	WSEventTransferError      WSEventType = "transfer:error"
-	WSEventTransferTargets    WSEventType = "transfer:targets"
-
 	WSEventSetConversationStatus WSEventType = "set_conversation_status"
 
 	WSEventCallStatus      WSEventType = "call:status"
 	WSEventCallAudioS      WSEventType = "call:audio"
 	WSEventCallEnded       WSEventType = "call:ended"
 	WSEventInboundCall     WSEventType = "call:incoming"
-	WSEventCallTrunkBusy   WSEventType = "call:trunk_busy"
 	WSEventWaitingCallSlot WSEventType = "call:waiting_slot"
 
-	WSEventDialerPresence WSEventType = "dialer:presence"
+	WSEventCallSessionPresence WSEventType = "call-session:presence"
 	// Supervisor live concurrency board (humans + AI seats + capacity).
 	WSEventTelephonyBoard WSEventType = "telephony:board"
 )
@@ -415,7 +397,6 @@ type StartCallPayload struct {
 	EntryID     string `json:"entry_id"`
 	EntryType   string `json:"entry_type"`
 	PhoneNumber string `json:"phone_number,omitempty"`
-	SIPTrunkID  string `json:"sip_trunk_id,omitempty"`
 
 	WhatsAppPhoneID string `json:"whatsapp_phone_id,omitempty"`
 	RequestID       string `json:"request_id,omitempty"`
@@ -435,49 +416,19 @@ type InboundCallActionPayload struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-type TransferInitiatePayload struct {
-	CallID       string `json:"call_id"`
-	TargetUserID string `json:"target_user_id"`
-	Kind         string `json:"kind,omitempty"`
-	Note         string `json:"note,omitempty"`
-}
-
-type TransferActionPayload struct {
-	TransferID string `json:"transfer_id"`
-	Reason     string `json:"reason,omitempty"`
-}
-
-type TransferErrorPayload struct {
-	TransferID string `json:"transfer_id,omitempty"`
-	CallID     string `json:"call_id,omitempty"`
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-}
-
-type TransferTargetUser struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username,omitempty"`
-}
-
-type TransferTargetsPayload struct {
-	Users []TransferTargetUser `json:"users"`
-}
-
-type DialerPresenceUser struct {
+type CallSessionPresenceUser struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username,omitempty"`
 	Busy     bool   `json:"busy"`
 	OnCall   bool   `json:"on_call,omitempty"`
 	Ringing  bool   `json:"ringing,omitempty"`
-	// Endpoint kinds the member currently holds. A member can have both (a browser
-	// softphone AND a registered branch). The panel shows a device badge from these;
-	// offline members are the workspace roster minus this list.
+	// Endpoint kind the member currently holds. The panel shows a device badge
+	// from this; offline members are the workspace roster minus this list.
 	HasBrowser bool `json:"has_browser"`
-	HasBranch  bool `json:"has_branch"`
 }
 
-type DialerPresencePayload struct {
-	Users []DialerPresenceUser `json:"users"`
+type CallSessionPresencePayload struct {
+	Users []CallSessionPresenceUser `json:"users"`
 }
 
 type CallStatusPayload struct {
@@ -509,16 +460,6 @@ type WaitingCallSlotPayload struct {
 	EntryID   string `json:"entry_id"`
 	EntryType string `json:"entry_type"`
 	Reason    string `json:"reason,omitempty"`
-}
-
-type CallTrunkBusyPayload struct {
-	TrunkID      string `json:"trunk_id"`
-	RetryAfterMs int    `json:"retry_after_ms"`
-	Reason       string `json:"reason"`
-	EntryID      string `json:"entry_id,omitempty"`
-	EntryType    string `json:"entry_type,omitempty"`
-	Phone        string `json:"phone_number,omitempty"`
-	RequestID    string `json:"request_id,omitempty"`
 }
 
 type SetConversationStatusPayload struct {

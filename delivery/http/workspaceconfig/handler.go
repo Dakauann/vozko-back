@@ -93,10 +93,6 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 			response.WriteError(w, http.StatusForbidden, "Insufficient permissions to update workspace configuration", nil)
 			return
 		}
-		if errors.Is(err, workspaceconfigdomain.ErrInvalidHoldMusicTrack) || errors.Is(err, workspaceconfigdomain.ErrInvalidQueueOverflow) {
-			response.WriteError(w, http.StatusBadRequest, "Invalid workspace configuration value", nil)
-			return
-		}
 		response.WriteError(w, http.StatusInternalServerError, "Failed to update workspace configuration", nil)
 		return
 	}

@@ -26,7 +26,6 @@ const (
 type CallSource string
 
 const (
-	CallSourceSIP       CallSource = "sip"
 	CallSourceWebSocket CallSource = "websocket"
 )
 

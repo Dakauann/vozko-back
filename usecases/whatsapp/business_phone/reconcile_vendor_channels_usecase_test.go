@@ -167,9 +167,9 @@ func TestVendorReconcile_AlertsWhenClientIDMissing(t *testing.T) {
 // TestVendorReconcile_MixedFleetCounts drives every branch in one pass and asserts the aggregate report.
 func TestVendorReconcile_MixedFleetCounts(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{
-		live("ok"),     // consistent active
-		live("leak"),   // suspended in Vozko -> re-cancel
-		live("ghost"),  // no Vozko record -> orphan
+		live("ok"),                               // consistent active
+		live("leak"),                             // suspended in Vozko -> re-cancel
+		live("ghost"),                            // no Vozko record -> orphan
 		{ID: "gone", Status: "pending_deletion"}, // not billing -> ignored
 	}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{

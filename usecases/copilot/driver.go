@@ -55,7 +55,7 @@ func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
 // Reads and mutations carry no server-side mutable state, so the stall guards are
 // inert (empty hash/signature) and finish is always allowed, the copilot ends a
 // turn by replying conversationally (the engine's idle path) or pausing.
-func (d *Driver) Refresh()                {}
+func (d *Driver) Refresh()                   {}
 func (d *Driver) AfterTurn(_ agentloop.Emit) {}
 func (d *Driver) Progress() agentloop.Progress {
 	return agentloop.Progress{Valid: true}
@@ -167,4 +167,3 @@ func renderResult(r copilot.Result) string {
 	}
 	return string(b)
 }
-

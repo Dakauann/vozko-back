@@ -176,7 +176,7 @@ type OverviewAI struct {
 	Available       bool    `json:"available"` // true when any session in range
 }
 
-// OverviewQueue is dialer ACD queue KPIs from queue_events.
+// OverviewQueue is call session ACD queue KPIs from queue_events.
 type OverviewQueue struct {
 	Enqueued    int64    `json:"enqueued"`
 	Connected   int64    `json:"connected"`
@@ -202,10 +202,10 @@ type OverviewOccupancy struct {
 	Available   bool     `json:"available"`
 }
 
-// OverviewLive is a point-in-time dialer presence snapshot (not historical).
-// Source: dialer session registry ListPresence (browser softphone + SIP branch).
+// OverviewLive is a point-in-time call session presence snapshot (not historical).
+// Source: call session registry ListPresence (browser softphone).
 type OverviewLive struct {
-	Online int64 `json:"online"`  // connected to dialer
+	Online int64 `json:"online"`  // connected to a call session
 	InCall int64 `json:"in_call"` // busy (on a call or ringing)
 	// Free is online and not busy (available to take a call).
 	Free int64 `json:"free"`
@@ -213,17 +213,16 @@ type OverviewLive struct {
 	IdleRatePct *float64            `json:"idle_rate_pct"`
 	BusyRatePct *float64            `json:"busy_rate_pct"`
 	Agents      []OverviewLiveAgent `json:"agents,omitempty"`
-	// HasData is true when the dialer registry was queried successfully.
+	// HasData is true when the call session registry was queried successfully.
 	HasData bool      `json:"has_data"`
 	AsOf    time.Time `json:"as_of"`
 }
 
-// OverviewLiveAgent is one online dialer contact.
+// OverviewLiveAgent is one online call session contact.
 type OverviewLiveAgent struct {
 	UserID     string `json:"user_id"`
 	Busy       bool   `json:"busy"`
 	HasBrowser bool   `json:"has_browser"`
-	HasBranch  bool   `json:"has_branch"`
 }
 
 // ChannelSlice is volume share by channel (entry_type) among engaged entries.

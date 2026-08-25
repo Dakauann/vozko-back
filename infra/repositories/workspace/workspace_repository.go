@@ -380,40 +380,6 @@ func (r *repository) UpdateMemberRole(memberID string, role workspace.Role) erro
 	}).Error
 }
 
-func (r *repository) UpdateMemberRingChannels(memberID string, channels []workspace.RingChannel) error {
-	return r.db.Model(&schema.WorkspaceMember{}).Where("id = ?", memberID).
-		Update("ring_channels", serializeRingChannels(channels)).Error
-}
-
-// parseRingChannels turns the stored comma-separated column into the domain set,
-// dropping unknown tokens so a bad/legacy value can never inject an invalid channel.
-func parseRingChannels(s string) []workspace.RingChannel {
-	if strings.TrimSpace(s) == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]workspace.RingChannel, 0, len(parts))
-	for _, p := range parts {
-		c := workspace.RingChannel(strings.TrimSpace(p))
-		if workspace.IsValidRingChannel(c) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// serializeRingChannels renders the domain set to the stored comma-separated form,
-// keeping only valid channels.
-func serializeRingChannels(channels []workspace.RingChannel) string {
-	parts := make([]string, 0, len(channels))
-	for _, c := range channels {
-		if workspace.IsValidRingChannel(c) {
-			parts = append(parts, string(c))
-		}
-	}
-	return strings.Join(parts, ",")
-}
-
 func (r *repository) UpdateMemberRoleID(memberID string, roleID string) error {
 	return r.db.Model(&schema.WorkspaceMember{}).Where("id = ?", memberID).Updates(map[string]interface{}{
 		"role":    "",
@@ -728,14 +694,13 @@ func mapWorkspaceToDomain(dbWs *schema.Workspace) *workspace.Workspace {
 
 func mapMemberToDomain(dbMember *schema.WorkspaceMember) *workspace.Member {
 	m := &workspace.Member{
-		ID:           dbMember.ID,
-		WorkspaceID:  dbMember.WorkspaceID,
-		UserID:       dbMember.UserID,
-		Role:         workspace.Role(dbMember.Role),
-		RoleID:       derefString(dbMember.RoleID),
-		RingChannels: parseRingChannels(dbMember.RingChannels),
-		CreatedAt:    dbMember.CreatedAt,
-		UpdatedAt:    dbMember.UpdatedAt,
+		ID:          dbMember.ID,
+		WorkspaceID: dbMember.WorkspaceID,
+		UserID:      dbMember.UserID,
+		Role:        workspace.Role(dbMember.Role),
+		RoleID:      derefString(dbMember.RoleID),
+		CreatedAt:   dbMember.CreatedAt,
+		UpdatedAt:   dbMember.UpdatedAt,
 	}
 	if dbMember.User.ID != "" {
 		m.Email = dbMember.User.Email

@@ -22,8 +22,8 @@ func New() *Container {
 	c := &Container{}
 	c.cfg = config.LoadConfig()
 
-	// Refuse to start on an unsafe port plan (RTP inside the OS ephemeral range, SIP/RTP
-	// overlap, odd RTP start, a listener inside the RTP window) before anything binds.
+	// Refuse to start on an unsafe port plan (the WhatsApp media mux inside the OS
+	// ephemeral range) before anything binds.
 	c.validatePortLayout()
 
 	c.replicaID = c.cfg.ReplicaID
@@ -35,7 +35,6 @@ func New() *Container {
 	c.initRepositories()
 
 	c.seedPricingDefaults()
-	c.initSIPTrunkManager()
 	c.services.whatsappClientFactory = template_infra.NewWhatsAppClientFactory(c.repositories.businessPhone, &http.Client{Timeout: 30 * time.Second}, c.cfg.Dialog360MessagingBase, c.cfg.WhatsAppAppID)
 
 	currentSubscriptionUC := workspace_plan_usecase.NewEnsureCurrentWorkspaceSubscriptionUseCase(c.repositories.workspaceSubscription)
@@ -45,8 +44,7 @@ func New() *Container {
 	consumeWhatsappTemplateUC := balance_usecase.NewConsumeWhatsappTemplateUseCase(c.repositories.balance, whatsappPricer, activeSubscriptionUC)
 
 	c.wireConversationHub(consumeWhatsappTemplateUC)
-	c.initDialerTransferStack()
-	c.initBranchRegistrar()
+	c.initCallSessionRegistries()
 	c.agentMCP = c.initAgentMCP()
 	// The Instagram channel is built before the usecases so its handler is
 	// available to initHandlers/initRouter; its runtime half (webhook consumer)
@@ -108,25 +106,7 @@ func (c *Container) Shutdown() {
 		c.cfPublisherCancel()
 	}
 
-	if c.dialerTransferReaperCancel != nil {
-		c.dialerTransferReaperCancel()
-	}
-
 	c.metricsHTTP.Shutdown()
-
-	// Drain the branch registrar BEFORE the trunk manager: it BYEs active branch legs and
-	// CANCELs in-flight rings, and those bridges ride on trunk media sessions, so it must
-	// finish before the trunk manager closes them out from under a live call.
-	if c.services.branchRegistrar != nil {
-		c.services.branchRegistrar.Stop()
-		log.Println("branch registrar drained")
-	}
-
-	if c.services.sipTrunkManager != nil {
-		if err := c.services.sipTrunkManager.Stop(); err != nil {
-			log.Printf("SIP trunk manager shutdown error: %v", err)
-		}
-	}
 
 	if c.services.clusterRegistry != nil && c.replicaID != "" {
 		if err := c.services.clusterRegistry.Withdraw(c.replicaID); err != nil {

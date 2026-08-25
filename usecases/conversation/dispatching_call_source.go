@@ -2,27 +2,29 @@ package conversation_usecase
 
 import (
 	"context"
-	"strings"
 
 	conversation_domain "vozko/domain/conversation"
 )
 
+// DispatchingCallSource routes an outbound dial to a channel call source.
+// WhatsApp calling is the only channel left since SIP telephony was retired, so
+// the dispatch is a single hop; the indirection stays so a second channel can be
+// added back without touching every caller.
 type DispatchingCallSource struct {
-	sip      conversation_domain.CallSource
 	whatsapp conversation_domain.CallSource
 }
 
-func NewDispatchingCallSource(sip, whatsapp conversation_domain.CallSource) *DispatchingCallSource {
-	return &DispatchingCallSource{sip: sip, whatsapp: whatsapp}
+func NewDispatchingCallSource(whatsapp conversation_domain.CallSource) *DispatchingCallSource {
+	return &DispatchingCallSource{whatsapp: whatsapp}
 }
 
 func (d *DispatchingCallSource) Name() string { return "dispatch" }
 
 func (d *DispatchingCallSource) Dial(ctx context.Context, input conversation_domain.CallDialInput) (conversation_domain.CRMCall, error) {
-	if d.whatsapp != nil && strings.TrimSpace(input.WhatsAppPhoneID) != "" {
-		return d.whatsapp.Dial(ctx, input)
+	if d.whatsapp == nil {
+		return nil, conversation_domain.ErrNoCallSource
 	}
-	return d.sip.Dial(ctx, input)
+	return d.whatsapp.Dial(ctx, input)
 }
 
 var _ conversation_domain.CallSource = (*DispatchingCallSource)(nil)

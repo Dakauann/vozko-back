@@ -13,7 +13,7 @@
 //     number, or when the contact blocks it — never on a clock.
 //  2. The contact is an E.164 phone number, so it maps onto a CRM lead. That is
 //     the decisive difference from Instagram and Telegram, whose contacts are
-//     opaque provider ids that no dialer, boleto or export can address.
+//     opaque provider ids that no call session, boleto or export can address.
 //  3. The account can be BANNED. This is an unofficial transport, and abuse is
 //     not punished with a rejected API call but with the customer losing their
 //     number. Every rule below that looks conservative is that risk showing
@@ -466,7 +466,7 @@ type Contact struct {
 	// IsGroup marks this subject as a group chat rather than a person.
 	//
 	// It is the predicate every person-only path reads — lead bridging, the
-	// dialer, broadcast targeting — instead of each of them re-deriving it from
+	//     call sessions, broadcast targeting — instead of each of them re-deriving it from
 	// the JID suffix. A predicate re-derived at four call sites is a predicate
 	// that will be missed at the fifth.
 	IsGroup bool `json:"isGroup"`
@@ -653,7 +653,7 @@ func NormalizePhone(raw string) string {
 //
 //   - "…@lid" is WhatsApp's privacy identifier for a person;
 //   - "…@g.us" is a group's id, and treating it as a phone produced contacts
-//     that rendered as "+120363…" and could be handed to the dialer;
+//     that rendered as "+120363…" and could be handed to a call session;
 //   - "…@newsletter" is a channel id.
 //
 // Matching a lead against any of them attaches a conversation to the wrong

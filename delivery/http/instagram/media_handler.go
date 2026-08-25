@@ -20,6 +20,7 @@ import (
 //	@Summary		Listar publicações do Instagram
 //	@Description	Retorna as publicações da conta com paginação por cursor.
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
 //	@Produce		json
 //	@Success		200	{object}	PageResponse[MediaResponse]
 //	@Security		BearerAuth
@@ -55,6 +56,8 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 //
 //	@Summary		Obter publicação do Instagram
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			mediaId	path	string	true	"ID da publicação"
 //	@Produce		json
 //	@Success		200	{object}	MediaResponse
 //	@Security		BearerAuth
@@ -78,6 +81,9 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 //
 //	@Summary		Proxy de mídia do Instagram
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			mediaId	path	string	true	"ID da publicação"
+//	@Success		200
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/media/{mediaId}/asset [get]
 func (h *Handler) ProxyMedia(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +114,7 @@ func (h *Handler) ProxyMedia(w http.ResponseWriter, r *http.Request) {
 //	@Summary		Publicar no Instagram
 //	@Description	Cria o container, aguarda o processamento e publica.
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
 //	@Accept			json
 //	@Produce		json
 //	@Success		201	{object}	MediaResponse
@@ -143,8 +150,11 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 //	@Summary		Atualizar publicação do Instagram
 //	@Description	Somente habilitar/desabilitar comentários. A legenda não pode ser editada pela API.
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
+//	@Param			mediaId	path	string	true	"ID da publicação"
 //	@Accept			json
 //	@Produce		json
+//	@Success		200	{object}	map[string]bool
 //	@Security		BearerAuth
 //	@Router			/instagram/accounts/{id}/media/{mediaId} [patch]
 func (h *Handler) UpdateMedia(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +229,7 @@ func proxyPath(accountID, mediaID string, thumb bool) string {
 //	@Summary		Foto de perfil da conta
 //	@Description	Faz proxy da foto de perfil, cuja URL de CDN expira.
 //	@Tags			Instagram
+//	@Param			id	path	string	true	"ID da conta do Instagram"
 //	@Produce		image/jpeg
 //	@Success		200
 //	@Security		BearerAuth

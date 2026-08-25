@@ -66,7 +66,7 @@ var (
 	ResourceCalendar          = registerResource("calendar")
 	ResourceDepartments       = registerResource("departments")
 	ResourceMessageShortcuts  = registerResource("message_shortcuts")
-	ResourceDialer            = registerResource("dialer")
+	ResourceCallSession       = registerResource("call_session")
 	ResourceMCP               = registerResource("mcp")
 	ResourcePlans             = registerResource("plans")
 	ResourceAIChat            = registerResource("ai_chat")
@@ -214,9 +214,9 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceMembers, Action: ActionRead},
 		}},
 		{ActionName: ActionViewOthers, Description: "Visualizar conversas atribuídas a outros membros da equipe"},
-		{ActionName: ActionCall, Description: "Solicitar ao cliente permissão para receber ligações pelo WhatsApp. A ligação em si usa a permissão do discador.", Requires: []PermissionEntry{
+		{ActionName: ActionCall, Description: "Solicitar ao cliente permissão para receber ligações pelo WhatsApp. A ligação em si usa a permissão de chamadas.", Requires: []PermissionEntry{
 			{Resource: ResourceConversations, Action: ActionRead},
-			{Resource: ResourceDialer, Action: ActionUse},
+			{Resource: ResourceCallSession, Action: ActionUse},
 		}},
 		{ActionName: ActionRoulette, Description: "Participar da roleta de atribuição automática de conversas", Requires: []PermissionEntry{
 			{Resource: ResourceConversations, Action: ActionRead},
@@ -336,18 +336,18 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Editar departamentos"},
 		{ActionName: ActionDelete, Description: "Excluir departamentos"},
 	},
-	ResourceDialer: {
+	ResourceCallSession: {
 		// No longer requires reading SIP trunks: trunk MANAGEMENT was removed
 		// (no API, no UI), so the dependency named a permission that can no
-		// longer be granted — which would have made the dialer ungrantable too.
+		// longer be granted — which would have made the call session resource ungrantable too.
 		// The trunk runtime itself is untouched and still carries every call.
-		{ActionName: ActionUse, Description: "Realizar chamadas pelo discador. Não inclui métricas, use a permissão de atendimento para dashboards."},
-		{ActionName: ActionListMembers, Description: "Visualizar membros conectados ao discador em tempo real (necessário para selecionar destino de transferência)", Requires: []PermissionEntry{
-			{Resource: ResourceDialer, Action: ActionUse},
+		{ActionName: ActionUse, Description: "Realizar e atender chamadas de WhatsApp nas conversas. Não inclui métricas, use a permissão de atendimento para dashboards."},
+		{ActionName: ActionListMembers, Description: "Visualizar membros conectados às chamadas em tempo real", Requires: []PermissionEntry{
+			{Resource: ResourceCallSession, Action: ActionUse},
 		}},
 		{ActionName: ActionTransfer, Description: "Transferir chamadas ativas para outro atendente (cega ou atendida)", Requires: []PermissionEntry{
-			{Resource: ResourceDialer, Action: ActionUse},
-			{Resource: ResourceDialer, Action: ActionListMembers},
+			{Resource: ResourceCallSession, Action: ActionUse},
+			{Resource: ResourceCallSession, Action: ActionListMembers},
 		}},
 	},
 	ResourceMCP: {
@@ -421,42 +421,16 @@ type Workspace struct {
 }
 
 type Member struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspaceId"`
-	UserID      string `json:"userId"`
-	Role        Role   `json:"role"`
-	RoleID      string `json:"roleId,omitempty"`
-	RoleName    string `json:"roleName,omitempty"`
-	Email       string `json:"email,omitempty"`
-	Username    string `json:"username,omitempty"`
-	// RingChannels is the member's AOR-level set of endpoint channels that ring on
-	// offers/transfers: a session rings only if its channel is in this set. It is
-	// intentionally extensible; today the channels are browser (web dialer) and
-	// branch (SIP extension). Empty means the default (all channels). Registered
-	// branches additionally honor their per-branch enabled/DND on top of this.
-	RingChannels []RingChannel `json:"ringChannels"`
-	CreatedAt    time.Time     `json:"createdAt"`
-	UpdatedAt    time.Time     `json:"updatedAt"`
-}
-
-// RingChannel identifies a member endpoint kind that can ring on offers and
-// transfers. The set is intentionally open for future channels (mobile app, etc.).
-type RingChannel string
-
-const (
-	RingChannelBrowser RingChannel = "browser" // the web dialer session
-	RingChannelBranch  RingChannel = "branch"  // a registered SIP extension (branch)
-)
-
-// DefaultRingChannels rings every supported channel: the default for new members
-// and the fallback when a member has made no explicit selection.
-func DefaultRingChannels() []RingChannel {
-	return []RingChannel{RingChannelBrowser, RingChannelBranch}
-}
-
-// IsValidRingChannel reports whether c is a known ring channel.
-func IsValidRingChannel(c RingChannel) bool {
-	return c == RingChannelBrowser || c == RingChannelBranch
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspaceId"`
+	UserID      string    `json:"userId"`
+	Role        Role      `json:"role"`
+	RoleID      string    `json:"roleId,omitempty"`
+	RoleName    string    `json:"roleName,omitempty"`
+	Email       string    `json:"email,omitempty"`
+	Username    string    `json:"username,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type Permission struct {

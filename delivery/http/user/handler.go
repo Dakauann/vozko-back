@@ -81,10 +81,9 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil && subscription != nil && subscription.Plan != nil {
 			planResp = &PlanResponse{
-				Name:               subscription.Plan.Name,
-				MaxCallChannels:    subscription.Plan.MaxCallChannels,
-				MaxBranches:        subscription.Plan.MaxBranches,
-				MaxHoldMusicTracks: subscription.Plan.MaxHoldMusicTracks,
+				Name:            subscription.Plan.Name,
+				MaxCallChannels: subscription.Plan.MaxCallChannels,
+				MaxBranches:     subscription.Plan.MaxBranches,
 			}
 		}
 	}

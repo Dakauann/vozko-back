@@ -254,10 +254,10 @@ func TestParseSchemaToParams_CreatesValidDefinition(t *testing.T) {
 	}`)
 	params, required := parseSchemaToParams(schema)
 	def := tools.Definition{
-		Name:               "remote_abc__scrape",
-		Description:        "Scrape a URL",
-		Parameters:         params,
-		Required:           required,
+		Name:        "remote_abc__scrape",
+		Description: "Scrape a URL",
+		Parameters:  params,
+		Required:    required,
 	}
 
 	if def.Name != "remote_abc__scrape" {

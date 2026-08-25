@@ -42,7 +42,7 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreate
 
 	// A group has no number. PhoneFromJID already refuses to derive one from a
 	// group id, and the explicit zeroing here says so at the boundary rather
-	// than relying on that: this column is what the dialer, the lead bridge and
+	// than relying on that: this column is what call sessions, the lead bridge and
 	// broadcast targeting read, and a group id in it is addressable nonsense.
 	phone := ""
 	if !isGroup {

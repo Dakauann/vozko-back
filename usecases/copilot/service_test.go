@@ -22,14 +22,14 @@ type fakeThreads struct {
 	renamed string
 }
 
-func (f *fakeThreads) Create(*aichat.Thread) error                          { return nil }
-func (f *fakeThreads) GetByID(id string) (*aichat.Thread, error)            { return f.thread, nil }
+func (f *fakeThreads) Create(*aichat.Thread) error               { return nil }
+func (f *fakeThreads) GetByID(id string) (*aichat.Thread, error) { return f.thread, nil }
 func (f *fakeThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, int64, error) {
 	return nil, 0, nil
 }
-func (f *fakeThreads) Rename(id, title string) error                  { f.renamed = title; return nil }
-func (f *fakeThreads) Touch(id string, t time.Time, m string) error  { f.touched = true; return nil }
-func (f *fakeThreads) Delete(id string) error                        { return nil }
+func (f *fakeThreads) Rename(id, title string) error                { f.renamed = title; return nil }
+func (f *fakeThreads) Touch(id string, t time.Time, m string) error { f.touched = true; return nil }
+func (f *fakeThreads) Delete(id string) error                       { return nil }
 
 type fakeMessages struct {
 	created      []*aichat.Message

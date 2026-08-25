@@ -49,7 +49,7 @@ func (e *sendMediaExecutor) Definition() workflow.NodeDefinition {
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "media_id", Label: "Mídia Salva", Type: "select", OptionsSource: "medias"},
 			{Key: "media_url", Label: "URL da Mídia", Type: "text", Placeholder: "https://... ou {{last.image_url}}"},
-			{Key: "caption", Label: "Legenda", Type: "text", Placeholder: "Legenda da mídia"},
+			{Key: "caption", Label: "Legenda", Type: "textarea", Placeholder: "Legenda da mídia"},
 		},
 	}
 }

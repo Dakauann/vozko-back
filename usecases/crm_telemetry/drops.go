@@ -7,9 +7,9 @@ import (
 
 // LogDropRecorder is a process-local drop counter + log (safe when Prometheus not extended).
 type LogDropRecorder struct {
-	publishErrors  atomic.Int64
-	consumeErrors  atomic.Int64
-	dropped        atomic.Int64
+	publishErrors atomic.Int64
+	consumeErrors atomic.Int64
+	dropped       atomic.Int64
 }
 
 func NewLogDropRecorder() *LogDropRecorder {

@@ -5,14 +5,14 @@ import "time"
 // DefaultServiceLevelSeconds is the industry-classic 80/20 threshold (20 seconds).
 const DefaultServiceLevelSeconds = 20
 
-// OverviewFilter scopes the VoIP / dialer dashboard.
+// OverviewFilter scopes the call session dashboard.
 type OverviewFilter struct {
 	DateFrom  *time.Time `json:"date_from,omitempty"`
 	DateTo    *time.Time `json:"date_to,omitempty"`
 	Direction string     `json:"direction,omitempty"` // inbound | outbound | ""
 	CallType  string     `json:"call_type,omitempty"` // crm | trunk_inbound | trunk_outbound | ""
-	AgentID   string     `json:"agent_id,omitempty"`  // dialer member uuid on CDR
-	MemberID  string     `json:"member_id,omitempty"` // human dialer user (same column as agent_id on CRM)
+	AgentID   string     `json:"agent_id,omitempty"`  // call session member uuid on CDR
+	MemberID  string     `json:"member_id,omitempty"` // human call session user (same column as agent_id on CRM)
 	// ServiceLevelSeconds overrides DefaultServiceLevelSeconds when > 0.
 	ServiceLevelSeconds int `json:"service_level_seconds,omitempty"`
 }
@@ -103,7 +103,7 @@ type OccupancyBlock struct {
 	Available        bool     `json:"available"`
 }
 
-// LiveBlock is point-in-time dialer presence.
+// LiveBlock is point-in-time call session presence.
 type LiveBlock struct {
 	Online      int64       `json:"online"`
 	InCall      int64       `json:"in_call"`
@@ -115,12 +115,11 @@ type LiveBlock struct {
 	AsOf        time.Time   `json:"as_of"`
 }
 
-// LiveAgent is one online dialer contact.
+// LiveAgent is one online call session contact.
 type LiveAgent struct {
 	UserID     string `json:"user_id"`
 	Busy       bool   `json:"busy"`
 	HasBrowser bool   `json:"has_browser"`
-	HasBranch  bool   `json:"has_branch"`
 }
 
 // MemberRow is per human agent VoIP performance (CDR agent_id = user id on CRM/trunk).
@@ -157,7 +156,7 @@ type MetricDefinitions struct {
 	Gaps         string `json:"gaps"`
 }
 
-// Overview is the VoIP / dialer dashboard payload.
+// Overview is the call session dashboard payload.
 type Overview struct {
 	Filter       OverviewFilter     `json:"filter"`
 	KPIs         OverviewKPIs       `json:"kpis"`
@@ -187,8 +186,8 @@ func DefaultDefinitions() MetricDefinitions {
 		Occupancy:    "on_call_ms / online_ms from agent_presence_intervals",
 		Idle:         "live: free/online; historical: 100 - occupancy",
 		Disposition:  "calls.status + end_reason stacks",
-		ByMember:     "human CDR agent_id (dialer user) grouped: volume, connect, times, SL, occupancy",
-		Persistence:  "all metrics from durable tables except live dialer registry snapshot",
+		ByMember:     "human CDR agent_id (call session user) grouped: volume, connect, times, SL, occupancy",
+		Persistence:  "all metrics from durable tables except live call session registry snapshot",
 		Gaps:         "true hold/ACW capture on hot path, RPC disposition product codes, schedule adherence, see docs/VOIP_METRICS.md",
 	}
 }

@@ -26,5 +26,4 @@ func RegisterRoutes(
 
 	mediasRoutes.HandleFunc("/medias", ac(md, workspace_domain.ActionRead, h.ListMedias)).Methods(http.MethodGet)
 	mediasRoutes.HandleFunc("/medias/{id}", ac(md, workspace_domain.ActionRead, h.GetMedia)).Methods(http.MethodGet)
-	mediasRoutes.HandleFunc("/medias/{id}", ac(md, workspace_domain.ActionDelete, h.DeleteHoldMusic)).Methods(http.MethodDelete)
 }

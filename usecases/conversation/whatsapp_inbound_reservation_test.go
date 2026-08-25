@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	callsession "vozko/domain/callsession"
 	conversation_domain "vozko/domain/conversation"
-	dialer "vozko/domain/dialer"
-	dialer_usecase "vozko/usecases/dialer"
+	callsession_usecase "vozko/usecases/callsession"
 )
 
-// waSession is a fake dialer.DialerSession for the WhatsApp inbound ring tests.
+// waSession is a fake callsession.CallSession for the WhatsApp inbound ring tests.
 // Reserve/Release/HasActiveCall mirror the real session's token-scoped semantics
 // so the tests exercise the reservation handoff exactly as production does. All
 // mutation happens on the ringing goroutine; tests read s.reserved only after the
@@ -23,11 +23,11 @@ type waSession struct {
 	id, userID, ws string
 	reserved       string
 	notifyErr      error
-	notifyCh       chan dialer.DialerControlMessage
+	notifyCh       chan callsession.CallSessionControlMessage
 }
 
 func newWASession(id, userID string) *waSession {
-	return &waSession{id: id, userID: userID, ws: "ws-1", notifyCh: make(chan dialer.DialerControlMessage, 1)}
+	return &waSession{id: id, userID: userID, ws: "ws-1", notifyCh: make(chan callsession.CallSessionControlMessage, 1)}
 }
 
 func (s *waSession) ID() string           { return s.id }
@@ -47,7 +47,7 @@ func (s *waSession) Release(token string) {
 		s.reserved = ""
 	}
 }
-func (s *waSession) Notify(msg dialer.DialerControlMessage) error {
+func (s *waSession) Notify(msg callsession.CallSessionControlMessage) error {
 	if s.notifyErr != nil {
 		return s.notifyErr
 	}
@@ -59,13 +59,13 @@ func (s *waSession) Notify(msg dialer.DialerControlMessage) error {
 
 func newRingUseCase() *WhatsAppInboundCallUseCase {
 	return &WhatsAppInboundCallUseCase{
-		broker: dialer_usecase.NewInboundOfferBroker(),
+		broker: callsession_usecase.NewInboundOfferBroker(),
 		log:    log.New(io.Discard, "", 0),
 	}
 }
 
-func waOffer(offerID string, cand *waSession, ring time.Duration) dialer.InboundCallOffer {
-	return dialer.InboundCallOffer{
+func waOffer(offerID string, cand *waSession, ring time.Duration) callsession.InboundCallOffer {
+	return callsession.InboundCallOffer{
 		OfferID:     offerID,
 		CallID:      "wa-call-1",
 		WorkspaceID: cand.ws,
@@ -76,18 +76,18 @@ func waOffer(offerID string, cand *waSession, ring time.Duration) dialer.Inbound
 	}
 }
 
-func acceptOffer(t *testing.T, uc *WhatsAppInboundCallUseCase, offer dialer.InboundCallOffer, cand *waSession) {
+func acceptOffer(t *testing.T, uc *WhatsAppInboundCallUseCase, offer callsession.InboundCallOffer, cand *waSession) {
 	t.Helper()
-	if err := uc.broker.Accept(context.Background(), dialer.AcceptInboundCallInput{
+	if err := uc.broker.Accept(context.Background(), callsession.AcceptInboundCallInput{
 		OfferID: offer.OfferID, WorkspaceID: offer.WorkspaceID, UserID: cand.userID, SessionID: cand.id,
 	}); err != nil {
 		t.Fatalf("broker.Accept: %v", err)
 	}
 }
 
-func declineOffer(t *testing.T, uc *WhatsAppInboundCallUseCase, offer dialer.InboundCallOffer, cand *waSession) {
+func declineOffer(t *testing.T, uc *WhatsAppInboundCallUseCase, offer callsession.InboundCallOffer, cand *waSession) {
 	t.Helper()
-	if err := uc.broker.Decline(context.Background(), dialer.DeclineInboundCallInput{
+	if err := uc.broker.Decline(context.Background(), callsession.DeclineInboundCallInput{
 		OfferID: offer.OfferID, WorkspaceID: offer.WorkspaceID, UserID: cand.userID, SessionID: cand.id, Reason: "busy",
 	}); err != nil {
 		t.Fatalf("broker.Decline: %v", err)
@@ -263,21 +263,21 @@ func TestRingSequentially_FallsThroughDeclineToAccept(t *testing.T) {
 	resCh := make(chan *ringOutcome, 1)
 	go func() {
 		resCh <- uc.ringSequentially(context.Background(), connect, "bp-1", "ws-1", "", false,
-			[]dialer.DialerSession{c1, c2}, signals, deadline)
+			[]callsession.CallSession{c1, c2}, signals, deadline)
 	}()
 
 	// First agent rings and declines.
 	msg1 := <-c1.notifyCh
-	offer1 := msg1.Payload.(dialer.InboundCallOffer)
+	offer1 := msg1.Payload.(callsession.InboundCallOffer)
 	declineOffer(t, uc, offer1, c1)
 
 	// Roulette falls through to the second agent, who accepts.
 	msg2 := <-c2.notifyCh
-	offer2 := msg2.Payload.(dialer.InboundCallOffer)
+	offer2 := msg2.Payload.(callsession.InboundCallOffer)
 	acceptOffer(t, uc, offer2, c2)
 
 	outcome := <-resCh
-	if outcome.session != dialer.DialerSession(c2) {
+	if outcome.session != callsession.CallSession(c2) {
 		t.Fatalf("expected the accepting agent (c2) to be returned, got %v", outcome.session)
 	}
 	if outcome.offerID != offer2.OfferID {
@@ -302,7 +302,7 @@ func TestRingSequentially_AllTimeoutLeavesNobodyReserved(t *testing.T) {
 	deadline := time.Now().Add(40 * time.Millisecond)
 
 	outcome := uc.ringSequentially(context.Background(), connect, "bp-1", "ws-1", "", false,
-		[]dialer.DialerSession{c1}, signals, deadline)
+		[]callsession.CallSession{c1}, signals, deadline)
 
 	if outcome.session != nil {
 		t.Fatalf("no acceptance should yield a nil session, got %v", outcome.session)

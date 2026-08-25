@@ -32,7 +32,7 @@ type RateLimitMetricsRecorder interface {
 
 const (
 	WSEndpointConversations     = "conversations"
-	WSEndpointDialer            = "dialer"
+	WSEndpointCallSession       = "call_session"
 	WSEndpointWorkflowSimulator = "workflow_simulator"
 	WSEndpointWorkflowAIBuilder = "workflow_ai_builder"
 )

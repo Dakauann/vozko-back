@@ -65,14 +65,14 @@ func TestCreate_Errors(t *testing.T) {
 	base := shortlink.CreateShortLinkInput{WorkspaceID: "ws", TargetURL: "https://example.com"}
 
 	tests := []struct {
-		name    string
-		repo    *fakeShortLinkRepo
-		guard   fakeHostGuard
-		scanner fakeScanner
-		pass    *fakePasswordSvc
+		name     string
+		repo     *fakeShortLinkRepo
+		guard    fakeHostGuard
+		scanner  fakeScanner
+		pass     *fakePasswordSvc
 		baseHost string
-		input   shortlink.CreateShortLinkInput
-		wantErr error
+		input    shortlink.CreateShortLinkInput
+		wantErr  error
 	}{
 		{
 			name:    "missing workspace",

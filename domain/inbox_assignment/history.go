@@ -4,12 +4,11 @@ import "time"
 
 // Assignment triggers for history rows (stable codes for metrics).
 const (
-	TriggerInboundRR    = "inbound_rr"
-	TriggerOpen         = "open"
-	TriggerManual       = "manual"
-	TriggerBulk         = "bulk"
-	TriggerCallRoulette = "call_roulette"
-	TriggerSystem       = "system"
+	TriggerInboundRR = "inbound_rr"
+	TriggerOpen      = "open"
+	TriggerManual    = "manual"
+	TriggerBulk      = "bulk"
+	TriggerSystem    = "system"
 )
 
 // AssignmentHistory is an ownership interval for one entry.
@@ -25,7 +24,6 @@ type AssignmentHistory struct {
 	Trigger           string     `json:"trigger"`
 	AssignedByActorID string     `json:"assignedByActorId,omitempty"`
 	BusinessPhoneID   string     `json:"businessPhoneId,omitempty"`
-	SIPTrunkID        string     `json:"sipTrunkId,omitempty"`
 	DepartmentID      string     `json:"departmentId,omitempty"`
 	StartedAt         time.Time  `json:"startedAt"`
 	EndedAt           *time.Time `json:"endedAt,omitempty"`

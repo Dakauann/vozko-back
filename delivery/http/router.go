@@ -25,7 +25,6 @@ import (
 	customfieldhttp "vozko/delivery/http/customfield"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
-	holdmusichttp "vozko/delivery/http/holdmusic"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
@@ -87,7 +86,6 @@ type router struct {
 	authHandler                    *authhttp.AuthHandler
 	userHandler                    *userhttp.UserHandler
 	mediasHandler                  *mediashttp.MediasHandler
-	holdMusicHandler               *holdmusichttp.HoldMusicHandler
 	cartHandler                    *handlers.CartHandler
 	addressHandler                 *handlers.AddressHandler
 	orderHandler                   *handlers.OrderHandler
@@ -116,7 +114,7 @@ type router struct {
 	workspacePhoneAccessHandler    *workspacephoneaccesshttp.WorkspacePhoneAccessHandler
 	conversationHandler            *conversationhttp.ConversationHandler
 	conversationWSHandler          *wsdelivery.ConversationWSHandler
-	dialerWSHandler                *wsdelivery.DialerWSHandler
+	callSessionWSHandler           *wsdelivery.CallSessionWSHandler
 	stageHandler                   *stagehttp.StageHandler
 	stageGroupHandler              *handlers.StageGroupHandler
 	pipelineHandler                *pipelinehttp.PipelineHandler
@@ -193,7 +191,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	authHandler *authhttp.AuthHandler,
 	userHandler *userhttp.UserHandler,
 	mediasHandler *mediashttp.MediasHandler,
-	holdMusicHandler *holdmusichttp.HoldMusicHandler,
 	cartHandler *handlers.CartHandler,
 	addressHandler *handlers.AddressHandler,
 	orderHandler *handlers.OrderHandler,
@@ -221,7 +218,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	workspacePhoneAccessHandler *workspacephoneaccesshttp.WorkspacePhoneAccessHandler,
 	conversationHandler *conversationhttp.ConversationHandler,
 	conversationWSHandler *wsdelivery.ConversationWSHandler,
-	dialerWSHandler *wsdelivery.DialerWSHandler,
+	callSessionWSHandler *wsdelivery.CallSessionWSHandler,
 	stageHandler *stagehttp.StageHandler,
 	stageGroupHandler *handlers.StageGroupHandler,
 	pipelineHandler *pipelinehttp.PipelineHandler,
@@ -297,7 +294,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		authHandler:                    authHandler,
 		userHandler:                    userHandler,
 		mediasHandler:                  mediasHandler,
-		holdMusicHandler:               holdMusicHandler,
 		cartHandler:                    cartHandler,
 		addressHandler:                 addressHandler,
 		orderHandler:                   orderHandler,
@@ -324,7 +320,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		workspacePhoneAccessHandler:    workspacePhoneAccessHandler,
 		conversationHandler:            conversationHandler,
 		conversationWSHandler:          conversationWSHandler,
-		dialerWSHandler:                dialerWSHandler,
+		callSessionWSHandler:           callSessionWSHandler,
 		stageHandler:                   stageHandler,
 		stageGroupHandler:              stageGroupHandler,
 		pipelineHandler:                pipelineHandler,
@@ -824,7 +820,6 @@ func (r *router) setupMediaRoutes() {
 	mediasRoutes.Use(r.authMiddleware.Authenticate)
 	mediasRoutes.Use(r.workspaceMiddleware.ResolveWorkspace())
 	mediashttp.RegisterRoutes(mediasRoutes, r.mediasHandler, r.ac, r.mediaUploadRateLimiter)
-	holdmusichttp.RegisterRoutes(mediasRoutes, r.holdMusicHandler, r.ac)
 }
 
 func (r *router) setupShopProductRoutes(protected *mux.Router) {
@@ -1007,7 +1002,7 @@ func (r *router) setupConversationRoutes(protected *mux.Router) {
 	conversationhttp.RegisterProtectedRoutes(protected, r.conversationHandler, r.ac)
 
 	protected.HandleFunc("/ws/conversations", r.ac(cv, workspace_domain.ActionRead, r.conversationWSHandler.HandleWebSocket))
-	protected.HandleFunc("/ws/dialer", r.ac(cv, workspace_domain.ActionUpdate, r.dialerWSHandler.HandleWebSocket))
+	protected.HandleFunc("/ws/call-session", r.ac(cv, workspace_domain.ActionUpdate, r.callSessionWSHandler.HandleWebSocket))
 }
 
 func (r *router) setupStageRoutes(protected *mux.Router) {

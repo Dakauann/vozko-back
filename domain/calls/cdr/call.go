@@ -11,9 +11,7 @@ import (
 type CallType string
 
 const (
-	CallTypeCRM           CallType = "crm"
-	CallTypeTrunkInbound  CallType = "trunk_inbound"
-	CallTypeTrunkOutbound CallType = "trunk_outbound"
+	CallTypeCRM CallType = "crm"
 )
 
 type Direction string
@@ -26,7 +24,6 @@ const (
 type Source string
 
 const (
-	SourceSIP           Source = "sip"
 	SourceWebSocket     Source = "websocket"
 	SourceWhatsApp      Source = "whatsapp"
 	SourceBrowserDirect Source = "browser_direct"
@@ -77,7 +74,7 @@ type Call struct {
 	PhoneFrom      string
 	PhoneTo        string
 	TrunkID        *string
-	// AgentID is the dialer member who owned the leg (member metrics / filters).
+	// AgentID is the call session member who owned the leg (member metrics / filters).
 	AgentID      *string
 	ParentCallID *string
 	EndReason    *string

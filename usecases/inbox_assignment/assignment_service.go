@@ -267,7 +267,6 @@ type recordInput struct {
 	AssignedByActorID string
 	BusinessPhoneID   string
 	DepartmentID      string
-	SIPTrunkID        string
 	EventType         ce.EventType
 	Channel           string
 }
@@ -295,7 +294,6 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 			Trigger:           in.Trigger,
 			AssignedByActorID: in.AssignedByActorID,
 			BusinessPhoneID:   in.BusinessPhoneID,
-			SIPTrunkID:        in.SIPTrunkID,
 			DepartmentID:      in.DepartmentID,
 			StartedAt:         now,
 		})
@@ -313,7 +311,6 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 			Trigger:           in.Trigger,
 			AssignedByActorID: in.AssignedByActorID,
 			BusinessPhoneID:   in.BusinessPhoneID,
-			SIPTrunkID:        in.SIPTrunkID,
 			DepartmentID:      in.DepartmentID,
 			StartedAt:         now,
 		}

@@ -15,43 +15,23 @@ func TestCheckPortLayout(t *testing.T) {
 		want string // substring the first violation must contain; "" = must be safe
 	}{
 		{
-			name: "safe layout (fixed defaults)",
-			in:   portLayoutInputs{rtpStart: 16384, rtpEnd: 32767, sipStart: 15060, sipCount: 100, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
-			want: "",
-		},
-		{
-			name: "safe homolog layout (RTP 10000-20000, SIP 25060-30059)",
-			in:   portLayoutInputs{rtpStart: 10000, rtpEnd: 20000, sipStart: 25060, sipCount: 5000, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
+			name: "safe layout (fixed default mux)",
+			in:   portLayoutInputs{mux: 3092, ephLo: eLo, ephHi: eHi},
 			want: "",
 		},
 		{
 			name: "media disabled -> no checks",
-			in:   portLayoutInputs{rtpStart: 0, rtpEnd: 0, ephLo: eLo, ephHi: eHi},
+			in:   portLayoutInputs{mux: 0, ephLo: eLo, ephHi: eHi},
 			want: "",
 		},
 		{
-			name: "RTP inside the ephemeral range (the old 40000-50000 on Linux)",
-			in:   portLayoutInputs{rtpStart: 40000, rtpEnd: 50000, sipStart: 25060, sipCount: 5000, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
-			want: "overlaps the OS ephemeral range",
+			name: "mux inside the OS ephemeral range",
+			in:   portLayoutInputs{mux: 40000, ephLo: eLo, ephHi: eHi},
+			want: "WhatsApp media mux",
 		},
 		{
-			name: "odd RTP start",
-			in:   portLayoutInputs{rtpStart: 16385, rtpEnd: 32767, sipStart: 15060, sipCount: 100, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
-			want: "odd",
-		},
-		{
-			name: "SIP trunk range inside RTP",
-			in:   portLayoutInputs{rtpStart: 10000, rtpEnd: 30000, sipStart: 15060, sipCount: 100, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
-			want: "SIP trunk range",
-		},
-		{
-			name: "branch SIP listener inside RTP",
-			in:   portLayoutInputs{rtpStart: 5000, rtpEnd: 6000, sipStart: 25060, sipCount: 100, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
-			want: "branch SIP listener",
-		},
-		{
-			name: "mux inside RTP",
-			in:   portLayoutInputs{rtpStart: 3000, rtpEnd: 4000, sipStart: 25060, sipCount: 100, branchSIP: 5070, mux: 3092, ephLo: eLo, ephHi: eHi},
+			name: "mux exactly at the ephemeral floor",
+			in:   portLayoutInputs{mux: eLo, ephLo: eLo, ephHi: eHi},
 			want: "WhatsApp media mux",
 		},
 	}

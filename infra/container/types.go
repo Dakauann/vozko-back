@@ -24,7 +24,6 @@ import (
 	customfieldhttp "vozko/delivery/http/customfield"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
-	holdmusichttp "vozko/delivery/http/holdmusic"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
@@ -73,14 +72,13 @@ import (
 	"vozko/domain/auth"
 	balance_domain "vozko/domain/balance"
 	billing_domain "vozko/domain/billing"
-	branch_domain "vozko/domain/branch"
 	"vozko/domain/business_metrics"
 	cache "vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
-	call_roulette_domain "vozko/domain/call_roulette"
 	call_billing_domain "vozko/domain/calls/billing"
 	call_cdr_domain "vozko/domain/calls/cdr"
 	call_recordings "vozko/domain/calls/recordings"
+	callsession_domain "vozko/domain/callsession"
 	"vozko/domain/cart"
 	"vozko/domain/category"
 	"vozko/domain/cep"
@@ -92,7 +90,6 @@ import (
 	"vozko/domain/crm_telemetry"
 	"vozko/domain/customer"
 	customfield_domain "vozko/domain/customfield"
-	dialer_domain "vozko/domain/dialer"
 	export_domain "vozko/domain/export"
 	ia_domain "vozko/domain/inbox_assignment"
 	"vozko/domain/insurance"
@@ -122,7 +119,6 @@ import (
 	"vozko/domain/shipping"
 	"vozko/domain/shop"
 	shortlink_domain "vozko/domain/shortlink"
-	sip_trunk_domain "vozko/domain/sip_trunk"
 	stage_domain "vozko/domain/stage"
 	si_domain "vozko/domain/support_inbox"
 	telephony_domain "vozko/domain/telephony"
@@ -161,13 +157,12 @@ import (
 	aa_usecase "vozko/usecases/ai_attendance"
 	aichat_usecase "vozko/usecases/aichat"
 	balance_usecase "vozko/usecases/balance"
-	cu_usecase "vozko/usecases/call_roulette"
 	calls_usecase "vozko/usecases/calls"
+	callsession_usecase "vozko/usecases/callsession"
 	conversation_usecase "vozko/usecases/conversation"
 	copilot_usecase "vozko/usecases/copilot"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
-	dialer_usecase "vozko/usecases/dialer"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
@@ -204,8 +199,6 @@ type Container struct {
 
 	cfPublisher       *cloudflare.Publisher
 	cfPublisherCancel context.CancelFunc
-
-	dialerTransferReaperCancel context.CancelFunc
 }
 
 type repositories struct {
@@ -247,8 +240,6 @@ type repositories struct {
 	workspacePricing        workspace_pricing_domain.Repository
 	workspaceTemplateAccess workspace_template_access_domain.Repository
 	workspacePhoneAccess    workspace_phone_access_domain.Repository
-	sipTrunk                sip_trunk_domain.Repository
-	branch                  branch_domain.Repository
 	leadMessageWindow       lead_message_window_domain.Repository
 	callPermission          callpermission_domain.Repository
 	leadCampaignSend        lead_campaign_send_domain.Repository
@@ -284,7 +275,6 @@ type repositories struct {
 	invoice                 invoice_domain.Repository
 	callBilling             call_billing_domain.Repository
 	analytics               analytics_domain.Repository
-	callRoulette            call_roulette_domain.Repository
 	workspacePlan           workspace_plan_domain.PlanRepository
 	workspaceSubscription   workspace_plan_domain.SubscriptionRepository
 	addonDefinition         workspace_addon_domain.AddonDefinitionRepository
@@ -328,9 +318,6 @@ type services struct {
 	wcQueueSub                    messaging.MessageQueueSub
 	cache                         cache.Cache
 	rateLimiterFactory            cache.RateLimiterFactory
-	sipTrunkManager               sip_trunk_domain.TrunkManager
-	branchRegistrar               interface{ Stop() } // *voipinfra.BranchRegistrar; drained on Shutdown
-	trunkOwnership                *sip_trunk_domain.TrunkOwnershipManager
 	clusterRegistry               *cluster.Registry
 	metrics                       *prometheus_service.PrometheusService
 	ai                            ai.Service
@@ -386,10 +373,10 @@ type services struct {
 	conversationAutomation *conversation_usecase.ConversationAutomationService
 	// channelAIReply lets an agent attend any adapter-backed channel.
 	channelAIReply    *conversation_usecase.ChannelAIReplyService
-	callAdmission     dialer_domain.CallAdmissionCoordinator
-	startOutboundCall dialer_domain.StartOutboundCallUseCase
-	endOutboundCall   dialer_domain.EndOutboundCallUseCase
-	dialerLifecycle   *dialer_usecase.OutboundCallLifecycleRunner
+	callAdmission     callsession_domain.CallAdmissionCoordinator
+	startOutboundCall callsession_domain.StartOutboundCallUseCase
+	endOutboundCall   callsession_domain.EndOutboundCallUseCase
+	callLifecycle     *callsession_usecase.OutboundCallLifecycleRunner
 	conversationHub   *wsdelivery.ConversationHub
 	// conversationStatusUpdater is the single choke point for finish/reopen/auto-close.
 	conversationStatusUpdater conversation_domain.ConversationStatusUpdater
@@ -408,7 +395,6 @@ type services struct {
 	// messageMarker owns read state and read receipts for every channel.
 	messageMarker       *conversation_usecase.MessageMarkerService
 	aiAttendanceService *aa_usecase.AsyncSessionService
-	callRouletteService *cu_usecase.AssignmentService
 	ragEmbedding        rag_domain.EmbeddingService
 	ragTextChunker      rag_domain.TextChunker
 	ragDocProcessor     rag_domain.DocumentProcessor
@@ -430,13 +416,9 @@ type services struct {
 	googleCalendar       calendar_domain.GoogleOAuthService
 	cachedBalanceChecker balance_domain.CachedBalanceChecker
 
-	dialerSessions         dialer_domain.DialerSessionRegistry
-	dialerCalls            dialer_domain.DialerCallRegistry
-	dialerTransferStore    dialer_domain.TransferStore
-	dialerTransferUC       dialer_domain.CallTransferUseCase
-	setRingChannelsUC      *dialer_usecase.SetRingChannelsUseCase
-	dialerUsernameResolver *dialerUsernameResolver
-	receptiveInbound       dialer_domain.ReceptiveInboundHandler
+	callSessions                callsession_domain.CallSessionRegistry
+	calls                       callsession_domain.CallRegistry
+	callSessionUsernameResolver *callSessionUsernameResolver
 
 	// Live telephony concurrency board (Redis).
 	callSlotManager    *workspace_domain.CallSlotManager
@@ -484,10 +466,9 @@ type useCases struct {
 	updateUserRole           user.UpdateUserRoleUseCase
 	getWorkspaceSubscription workspace_plan_domain.GetWorkspaceSubscriptionUseCase
 
-	uploadMedia     media.UploadMediaUseCase
-	listMedia       media.ListMediaUseCase
-	getMedia        media.GetMediaUseCase
-	deleteHoldMusic media.DeleteHoldMusicUseCase
+	uploadMedia media.UploadMediaUseCase
+	listMedia   media.ListMediaUseCase
+	getMedia    media.GetMediaUseCase
 
 	getCart   cart.GetCartUseCase
 	clearCart cart.ClearCartUseCase
@@ -667,26 +648,6 @@ type useCases struct {
 	listWorkspacePhoneAccess workspace_phone_access_domain.ListWorkspaceAccessUseCase
 	listPhoneAccess          workspace_phone_access_domain.ListPhoneAccessUseCase
 	checkPhoneAccess         workspace_phone_access_domain.CheckAccessUseCase
-
-	createSIPTrunk          sip_trunk_domain.CreateUseCase
-	updateSIPTrunk          sip_trunk_domain.UpdateUseCase
-	deleteSIPTrunk          sip_trunk_domain.DeleteUseCase
-	getSIPTrunk             sip_trunk_domain.GetUseCase
-	listSIPTrunks           sip_trunk_domain.ListUseCase
-	listSIPTrunksByIDs      sip_trunk_domain.ListByIDsUseCase
-	listAccessibleSIPTrunks sip_trunk_domain.ListAccessibleUseCase
-	enableSIPTrunk          sip_trunk_domain.EnableUseCase
-	getSIPTrunkStatus       sip_trunk_domain.GetStatusUseCase
-	assignOwnerSIPTrunk     sip_trunk_domain.AssignOwnerUseCase
-
-	createBranch            branch_domain.CreateUseCase
-	updateBranch            branch_domain.UpdateUseCase
-	getBranch               branch_domain.GetUseCase
-	listBranchesByWorkspace branch_domain.ListByWorkspaceUseCase
-	listBranchesByUser      branch_domain.ListByUserUseCase
-	deleteBranch            branch_domain.DeleteUseCase
-	enableBranch            branch_domain.EnableUseCase
-	rotateBranchSecret      branch_domain.RotateSecretUseCase
 
 	sendConversationMessage conversation_domain.SendConversationMessageUseCase
 	uploadConversationMedia conversation_domain.UploadConversationMediaUseCase
@@ -981,7 +942,6 @@ type handlers_ struct {
 	auth                    *authhttp.AuthHandler
 	user                    *userhttp.UserHandler
 	media                   *mediashttp.MediasHandler
-	holdMusic               *holdmusichttp.HoldMusicHandler
 	cart                    *handlers.CartHandler
 	address                 *handlers.AddressHandler
 	order                   *handlers.OrderHandler
@@ -1010,7 +970,7 @@ type handlers_ struct {
 	workspacePhoneAccess    *workspacephoneaccesshttp.WorkspacePhoneAccessHandler
 	conversation            *conversationhttp.ConversationHandler
 	conversationWS          *wsdelivery.ConversationWSHandler
-	dialerWS                *wsdelivery.DialerWSHandler
+	callSessionWS           *wsdelivery.CallSessionWSHandler
 	stage                   *stagehttp.StageHandler
 	stageGroup              *handlers.StageGroupHandler
 	pipeline                *pipelinehttp.PipelineHandler

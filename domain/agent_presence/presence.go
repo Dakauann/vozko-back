@@ -25,7 +25,7 @@ type Interval struct {
 	WorkspaceID string     `json:"workspaceId"`
 	UserID      string     `json:"userId"`
 	State       State      `json:"state"`
-	Source      string     `json:"source"` // ws_hub | dialer
+	Source      string     `json:"source"` // ws_hub | call_session
 	StartedAt   time.Time  `json:"startedAt"`
 	EndedAt     *time.Time `json:"endedAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`

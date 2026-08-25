@@ -168,28 +168,9 @@ type Config struct {
 
 	MetricsListenAddr string
 
-	SIPTrunkPortStart    int
-	SIPTrunkPortCount    int
-	SIPTrunkRTPPortStart int
-	SIPTrunkRTPPortEnd   int
-	// SIPTrunkMaxPerWorkspace caps how many trunks a non-admin workspace may
-	// own (self-service). Admins are never capped. <= 0 disables the cap.
-	SIPTrunkMaxPerWorkspace int
-
-	// SIPRealm is the fixed digest realm branch credentials (HA1) are derived
-	// under. Keep it stable: changing it invalidates every phone's saved
-	// credential workspace-wide. (The per-workspace branch cap is a plan
-	// entitlement, PlanDefinition.MaxBranches, not a static config value.)
-	SIPRealm string
-
-	// Branch (branch) SIP registrar. Single-VPS model: one process owns all
-	// registrations + media. The registrar AUTO-ENABLES when PublicSIPHost is set
-	// (the reachable public IP advertised to phones, pinned so STUN is skipped); it
-	// stays off in dev/CI where no public host is configured. BranchSIPListenPort is
-	// the fixed public UDP port phones register to (distinct from the ephemeral
-	// trunk port pool).
-	PublicSIPHost       string
-	BranchSIPListenPort int
+	// NOTE: the SIP_TRUNK_*, SIP_REALM, PUBLIC_SIP_HOST and BRANCH_SIP_LISTEN_PORT
+	// variables are gone with SIP telephony. They are simply ignored if still set in
+	// a deployment's environment.
 
 	WhatsAppStunServers []string
 
@@ -314,19 +295,6 @@ func LoadConfig() Config {
 
 		PrometheusURL:     getEnvTrimmed("PROMETHEUS_URL", "http://localhost:9090"),
 		MetricsListenAddr: getEnvTrimmed("METRICS_LISTEN_ADDR", ":9213"),
-
-		SIPTrunkPortStart: getIntEnv("SIP_TRUNK_PORT_START", 15060),
-		SIPTrunkPortCount: getIntEnv("SIP_TRUNK_PORT_COUNT", 100),
-		// RTP window sits ENTIRELY below the Linux ephemeral floor (32768) and starts
-		// even (RFC 3550: RTP even, RTCP = RTP+1). 16384-32767 = 8191 pairs, disjoint
-		// from the SIP trunk range above. The boot-time port guard refuses to start if
-		// this ever overlaps the OS ephemeral range or the SIP range.
-		SIPTrunkRTPPortStart:    getIntEnv("SIP_TRUNK_RTP_PORT_START", 16384),
-		SIPTrunkRTPPortEnd:      getIntEnv("SIP_TRUNK_RTP_PORT_END", 32767),
-		SIPTrunkMaxPerWorkspace: getIntEnv("SIP_TRUNK_MAX_PER_WORKSPACE", 20),
-		SIPRealm:                getEnv("SIP_REALM", "vozko"),
-		PublicSIPHost:           getEnvTrimmed("PUBLIC_SIP_HOST", ""),
-		BranchSIPListenPort:     getIntEnv("BRANCH_SIP_LISTEN_PORT", 5070),
 
 		WhatsAppStunServers:     parseCSVEnv("WHATSAPP_STUN_SERVERS"),
 		WhatsAppMediaUDPMuxPort: mustGetIntEnv("WHATSAPP_MEDIA_UDP_MUX_PORT"),

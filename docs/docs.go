@@ -4418,71 +4418,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/hold-music/builtins": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna o catálogo de faixas de música de espera já incluídas no servidor, disponíveis para seleção nas configurações da conta.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Música de espera"
-                ],
-                "summary": "Listar músicas de espera padrão",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/holdmusic.HoldTrackListResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/hold-music/builtins/{key}/audio": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Transmite o áudio de uma faixa padrão para pré-visualização no seletor de configurações. A busca no catálogo é a proteção contra travessia de caminho: apenas chaves conhecidas resolvem para arquivos.",
-                "produces": [
-                    "audio/mpeg"
-                ],
-                "tags": [
-                    "Música de espera"
-                ],
-                "summary": "Reproduzir uma música de espera padrão",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Chave da faixa (ex.: bossa_nova)",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Áudio MP3 da faixa",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/instagram/accounts": {
             "get": {
                 "security": [
@@ -4521,6 +4456,15 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Obter conta do Instagram",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4546,6 +4490,15 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Atualizar configuração da conta do Instagram",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4561,11 +4514,45 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Desconectar conta do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/avatar": {
@@ -4583,6 +4570,15 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Foto de perfil da conta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK"
@@ -4597,11 +4593,34 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Listar regras de automação de comentários",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                }
             },
             "post": {
                 "security": [
@@ -4609,11 +4628,34 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Criar regra de automação de comentários",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/comment-rules/{ruleId}": {
@@ -4623,11 +4665,41 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Atualizar regra de automação de comentários",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             },
             "delete": {
                 "security": [
@@ -4635,11 +4707,40 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Remover regra de automação de comentários",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/comments/{commentId}": {
@@ -4650,11 +4751,40 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Só é possível excluir comentários criados pela própria conta; para os demais, use ocultar.",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Excluir comentário do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/comments/{commentId}/hide": {
@@ -4674,7 +4804,33 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Ocultar/exibir comentário do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/comments/{commentId}/private-reply": {
@@ -4694,7 +4850,33 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Responder comentário por mensagem privada",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/comments/{commentId}/replies": {
@@ -4714,7 +4896,33 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Responder comentário do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/media": {
@@ -4732,6 +4940,15 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Listar publicações do Instagram",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4758,6 +4975,15 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Publicar no Instagram",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "201": {
                         "description": "Created",
@@ -4782,6 +5008,22 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Obter publicação do Instagram",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "mediaId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4808,7 +5050,33 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Atualizar publicação do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "mediaId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/media/{mediaId}/asset": {
@@ -4822,7 +5090,27 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Proxy de mídia do Instagram",
-                "responses": {}
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "mediaId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
             }
         },
         "/instagram/accounts/{id}/media/{mediaId}/comments": {
@@ -4839,6 +5127,22 @@ const docTemplate = `{
                     "Instagram"
                 ],
                 "summary": "Listar comentários de uma publicação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Instagram",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "mediaId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -6649,7 +6953,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna as mídias do workspace (imagens, vídeos, documentos, áudios e músicas de espera personalizadas) usadas em campanhas, workflows e configurações.",
+                "description": "Retorna as mídias do workspace (imagens, vídeos, documentos e áudios) usadas em campanhas, workflows e configurações.",
                 "produces": [
                     "application/json"
                 ],
@@ -6681,7 +6985,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Envia um arquivo de mídia para o workspace via multipart. Músicas de espera personalizadas exigem plano compatível e respeitam o limite de faixas da conta.",
+                "description": "Envia um arquivo de mídia para o workspace via multipart.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -6695,7 +6999,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da mídia (ex.: image, video, audio, hold_music)",
+                        "description": "Tipo da mídia (ex.: image, video, audio, document)",
                         "name": "mediaType",
                         "in": "formData",
                         "required": true
@@ -6788,62 +7092,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Remove uma música de espera personalizada do workspace, liberando uma vaga da cota do plano. Apenas faixas do tipo hold_music podem ser excluídas por esta rota.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Mídias"
-                ],
-                "summary": "Excluir uma música de espera",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID da mídia",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/medias.MediaDeletedResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "501": {
-                        "description": "Not Implemented",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -7099,11 +7347,16 @@ const docTemplate = `{
         },
         "/oauth/instagram/callback": {
             "get": {
+                "description": "Finaliza o OAuth: redireciona de volta ao painel ou devolve o resultado ao popup.",
                 "tags": [
                     "Instagram"
                 ],
                 "summary": "Callback de conexão do Instagram",
-                "responses": {}
+                "responses": {
+                    "302": {
+                        "description": "Found"
+                    }
+                }
             }
         },
         "/oauth/meta/embedded": {
@@ -12307,6 +12560,154 @@ const docTemplate = `{
                 }
             }
         },
+        "/whatsapp/outreach/conversations": {
+            "post": {
+                "description": "Envia um modelo aprovado para um número que nunca escreveu para a empresa e abre a conversa no CRM. Consome saldo. Envie o cabeçalho ` + "`" + `Idempotency-Key` + "`" + ` para que um reenvio da requisição não cobre nem envie duas vezes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "whatsapp-outreach"
+                ],
+                "summary": "Iniciar conversa no WhatsApp oficial enviando um modelo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Chave que torna o envio idempotente",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Destinatário e modelo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappoutreach.StartConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Envio idêntico já realizado; nada foi cobrado novamente",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappoutreach.StartedConversationResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappoutreach.StartedConversationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappoutreach.WindowOpenResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/outreach/quote": {
+            "get": {
+                "description": "Retorna o preço do modelo para o workspace e se o saldo atual cobre o envio.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "whatsapp-outreach"
+                ],
+                "summary": "Consultar o custo de um envio de modelo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do modelo",
+                        "name": "templateId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do número comercial",
+                        "name": "businessPhoneId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappoutreach.SendQuoteResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/whatsapp/templates": {
             "get": {
                 "security": [
@@ -16125,7 +16526,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "has_data": {
-                    "description": "HasData is true when the dialer registry was queried successfully.",
+                    "description": "HasData is true when the call session registry was queried successfully.",
                     "type": "boolean"
                 },
                 "idle_rate_pct": {
@@ -16137,7 +16538,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "online": {
-                    "description": "connected to dialer",
+                    "description": "connected to a call session",
                     "type": "integer"
                 }
             }
@@ -16146,9 +16547,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "busy": {
-                    "type": "boolean"
-                },
-                "has_branch": {
                     "type": "boolean"
                 },
                 "has_browser": {
@@ -18992,30 +19390,6 @@ const docTemplate = `{
                 }
             }
         },
-        "holdmusic.HoldTrackListResponse": {
-            "type": "object",
-            "properties": {
-                "tracks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/holdmusic.HoldTrackResponse"
-                    }
-                }
-            }
-        },
-        "holdmusic.HoldTrackResponse": {
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "example": "bossa_nova"
-                },
-                "label": {
-                    "type": "string",
-                    "example": "Bossa Nova"
-                }
-            }
-        },
         "instagram.AccountResponse": {
             "type": "object",
             "properties": {
@@ -20015,15 +20389,6 @@ const docTemplate = `{
                 "content": {
                     "type": "string",
                     "example": "Prefere PIX desde ago/2026"
-                }
-            }
-        },
-        "medias.MediaDeletedResponse": {
-            "type": "object",
-            "properties": {
-                "deleted": {
-                    "type": "string",
-                    "example": "med_a1b2c3"
                 }
             }
         },
@@ -22105,10 +22470,6 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 5
                 },
-                "maxHoldMusicTracks": {
-                    "type": "integer",
-                    "example": 3
-                },
                 "name": {
                     "type": "string",
                     "example": "Profissional"
@@ -22369,6 +22730,110 @@ const docTemplate = `{
                 "value": {
                     "type": "string",
                     "example": "FINANCE"
+                }
+            }
+        },
+        "whatsappoutreach.SendQuoteResponse": {
+            "type": "object",
+            "properties": {
+                "affordable": {
+                    "type": "boolean"
+                },
+                "balanceMicros": {
+                    "type": "integer"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "priceMicros": {
+                    "type": "integer"
+                }
+            }
+        },
+        "whatsappoutreach.StartConversationRequest": {
+            "type": "object",
+            "properties": {
+                "businessPhoneId": {
+                    "type": "string"
+                },
+                "headerParameters": {
+                    "description": "HeaderParameters fill a TEXT header. Kept separate from the body's because\nMeta addresses them as different components.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parameters": {
+                    "description": "Parameters fill the template body, in order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "phoneNumber": {
+                    "type": "string"
+                },
+                "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappoutreach.StartedConversationResponse": {
+            "type": "object",
+            "properties": {
+                "attemptId": {
+                    "type": "string"
+                },
+                "chargedMicros": {
+                    "description": "ChargedMicros is what this send cost. Echoed back so the UI can show the\noperator the price of the action they just took.",
+                    "type": "integer"
+                },
+                "conversationExisted": {
+                    "type": "boolean"
+                },
+                "entryId": {
+                    "description": "EntryID and EntryType address the conversation the way the inbox does, so\nthe caller does not need to know this channel's storage by heart.",
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "messageId": {
+                    "type": "string"
+                },
+                "recorded": {
+                    "description": "Recorded is false when the message was delivered but could not be written\ninto the thread. The send still succeeded — reporting it as a failure would\ninvite a retry that charges twice.",
+                    "type": "boolean"
+                },
+                "replayed": {
+                    "description": "Replayed reports that this exact request had already been sent, so nothing\nwas sent or charged a second time.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "whatsappoutreach.WindowOpenResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -22685,13 +23150,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "ringChannels": {
-                    "description": "RingChannels is the member's AOR-level set of endpoint channels that ring on\noffers/transfers: a session rings only if its channel is in this set. It is\nintentionally extensible; today the channels are browser (web dialer) and\nbranch (SIP extension). Empty means the default (all channels). Registered\nbranches additionally honor their per-branch enabled/DND on top of this.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/workspace.RingChannel"
-                    }
-                },
                 "role": {
                     "$ref": "#/definitions/workspace.Role"
                 },
@@ -22893,13 +23351,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "ringChannels": {
-                    "description": "RingChannels is the member's AOR-level set of endpoint channels that ring on\noffers/transfers: a session rings only if its channel is in this set. It is\nintentionally extensible; today the channels are browser (web dialer) and\nbranch (SIP extension). Empty means the default (all channels). Registered\nbranches additionally honor their per-branch enabled/DND on top of this.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/workspace.RingChannel"
-                    }
-                },
                 "role": {
                     "$ref": "#/definitions/workspace.Role"
                 },
@@ -22982,25 +23433,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "workspace.RingChannel": {
-            "type": "string",
-            "enum": [
-                "browser",
-                "branch"
-            ],
-            "x-enum-comments": {
-                "RingChannelBranch": "a registered SIP extension (branch)",
-                "RingChannelBrowser": "the web dialer session"
-            },
-            "x-enum-descriptions": [
-                "the web dialer session",
-                "a registered SIP extension (branch)"
-            ],
-            "x-enum-varnames": [
-                "RingChannelBrowser",
-                "RingChannelBranch"
-            ]
         },
         "workspace.Role": {
             "type": "string",
@@ -23247,23 +23679,6 @@ const docTemplate = `{
                     "description": "Absolute inactivity max-age (nil = not sent).",
                     "type": "boolean"
                 },
-                "holdMusicTrack": {
-                    "description": "HoldMusicTrack: pointer distinguishes \"not sent\" from \"clear\" (empty string\nresets to the system default).",
-                    "type": "string"
-                },
-                "queueEnabled": {
-                    "description": "Queue policy (all pointers: nil = not sent, so a partial update is safe).",
-                    "type": "boolean"
-                },
-                "queueMaxLength": {
-                    "type": "integer"
-                },
-                "queueMaxWaitSeconds": {
-                    "type": "integer"
-                },
-                "queueOverflow": {
-                    "type": "string"
-                },
                 "skipAdminAssignment": {
                     "type": "boolean"
                 }
@@ -23363,10 +23778,6 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
-                "holdMusicTrack": {
-                    "type": "string",
-                    "example": "builtin:bossa_nova"
-                },
                 "id": {
                     "type": "string",
                     "example": "cfg_a1b2c3"
@@ -23375,22 +23786,6 @@ const docTemplate = `{
                     "description": "IncludedUnofficialWhatsAppInstances is the platform-granted allowance of\nlinked-device WhatsApp numbers. Readable by the workspace so its own\nscreens can explain why the connect button is disabled; writable only\nthrough the /admin route.",
                     "type": "integer",
                     "example": 2
-                },
-                "queueEnabled": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "queueMaxLength": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "queueMaxWaitSeconds": {
-                    "type": "integer",
-                    "example": 120
-                },
-                "queueOverflow": {
-                    "type": "string",
-                    "example": "recall"
                 },
                 "skipAdminAssignment": {
                     "type": "boolean",

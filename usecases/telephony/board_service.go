@@ -35,7 +35,7 @@ func (s *boardService) Execute(workspaceID string) (*telephony.BoardSnapshot, er
 	return s.store.Get(workspaceID)
 }
 
-// SyncHumansFromPresence rebuilds human seats and capacity after dialer presence change.
+// SyncHumansFromPresence rebuilds human seats and capacity after a call session presence change.
 func (s *boardService) SyncHumansFromPresence(workspaceID string, seats []telephony.HumanSeat, used, max int64) (*telephony.BoardSnapshot, error) {
 	if s == nil || s.store == nil {
 		return nil, nil

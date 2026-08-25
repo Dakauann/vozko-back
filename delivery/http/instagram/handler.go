@@ -156,7 +156,9 @@ func (h *Handler) StartConnect(w http.ResponseWriter, r *http.Request) {
 // session, which also blocks CSRF and replay.
 //
 //	@Summary		Callback de conexão do Instagram
+//	@Description	Finaliza o OAuth: redireciona de volta ao painel ou devolve o resultado ao popup.
 //	@Tags			Instagram
+//	@Success		302
 //	@Router			/oauth/instagram/callback [get]
 func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -342,6 +344,7 @@ func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 
 // @Summary		Obter conta do Instagram
 // @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
 // @Produce		json
 // @Success		200	{object}	AccountResponse
 // @Security		BearerAuth
@@ -357,6 +360,7 @@ func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 
 // @Summary		Atualizar configuração da conta do Instagram
 // @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
 // @Accept			json
 // @Produce		json
 // @Success		200	{object}	AccountResponse
@@ -390,6 +394,11 @@ func (h *Handler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 
 // @Summary		Desconectar conta do Instagram
 // @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Failure		404	{object}	response.ErrorResponse
+// @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/instagram/accounts/{id} [delete]
 func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {

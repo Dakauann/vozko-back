@@ -24,17 +24,10 @@ type WorkspaceConfig struct {
 	// `included_unofficial_whats_app_instances`. Any hand-written SQL that spells
 	// it the obvious way then fails with "column does not exist".
 	IncludedUnofficialWhatsAppInstances int `gorm:"column:included_unofficial_whatsapp_instances;type:int;not null;default:0"`
-	// HoldMusicTrack: "" | "builtin:<key>" | hold_music media uuid. varchar (not
-	// uuid) because builtin keys and the empty default are not uuids.
-	HoldMusicTrack string `gorm:"type:varchar(80);not null;default:''"`
-
-	// Call-queue (ACD) policy. 0 for the numeric bounds means "use the server
-	// default" (resolved + hard-capped when the policy is read). AutoMigrate adds
-	// these columns non-destructively on existing rows.
-	QueueEnabled        bool   `gorm:"not null;default:false"`
-	QueueMaxWaitSeconds int    `gorm:"type:int;not null;default:0"`
-	QueueMaxLength      int    `gorm:"type:int;not null;default:0"`
-	QueueOverflow       string `gorm:"type:varchar(16);not null;default:'hangup'"`
+	// NOTE: hold_music_track and the four queue_* columns (queue_enabled,
+	// queue_max_wait_seconds, queue_max_length, queue_overflow) are deliberately
+	// orphaned. Hold music and the ACD waiting line went out with SIP telephony,
+	// and AutoMigrate never DROPs, so the columns stay behind unread.
 
 	// Conversation auto-close: enabled by default; idle hours after last agent/AI message.
 	AutoCloseEnabled        bool `gorm:"not null;default:true"`

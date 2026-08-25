@@ -516,7 +516,7 @@ func formatMetaValue(v interface{}) string {
 //
 // The number column is deliberately not passed through this: formatNumber has
 // already reduced it to digits and a leading +, which cannot carry a payload,
-// and an apostrophe in the column operators paste into dialers would break the
+// and an apostrophe in the column operators paste into phone systems would break the
 // file's main job.
 func safeCSVText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")

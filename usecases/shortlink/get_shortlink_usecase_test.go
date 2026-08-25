@@ -69,7 +69,9 @@ func TestDeleteShortLink(t *testing.T) {
 
 	t.Run("delete error", func(t *testing.T) {
 		repo := &fakeShortLinkRepo{
-			FindByIDFn:   func(ctx context.Context, ws, id string) (*shortlink.ShortLink, error) { return &shortlink.ShortLink{Code: "abc"}, nil },
+			FindByIDFn: func(ctx context.Context, ws, id string) (*shortlink.ShortLink, error) {
+				return &shortlink.ShortLink{Code: "abc"}, nil
+			},
 			SoftDeleteFn: func(ctx context.Context, ws, id string) error { return errors.New("db") },
 		}
 		uc := NewDeleteShortLinkUseCase(repo, nil)

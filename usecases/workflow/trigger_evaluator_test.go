@@ -163,6 +163,8 @@ func (r *recordingRunRepo) Create(run *workflow.WorkflowRun) error {
 }
 func (r *recordingRunRepo) Update(*workflow.WorkflowRun) error { return nil }
 
-type stubRunLogRepo struct{ workflow.WorkflowRunLogRepository }
+type stubRunLogRepo struct {
+	workflow.WorkflowRunLogRepository
+}
 
 func (stubRunLogRepo) Create(*workflow.WorkflowRunLog) error { return nil }

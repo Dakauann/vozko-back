@@ -16,11 +16,6 @@ type WorkspaceConfigResponse struct {
 	// screens can explain why the connect button is disabled; writable only
 	// through the /admin route.
 	IncludedUnofficialWhatsAppInstances int       `json:"includedUnofficialWhatsAppInstances" example:"2"`
-	HoldMusicTrack                      string    `json:"holdMusicTrack" example:"builtin:bossa_nova"`
-	QueueEnabled                        bool      `json:"queueEnabled" example:"true"`
-	QueueMaxWaitSeconds                 int       `json:"queueMaxWaitSeconds" example:"120"`
-	QueueMaxLength                      int       `json:"queueMaxLength" example:"10"`
-	QueueOverflow                       string    `json:"queueOverflow" example:"recall"`
 	AutoCloseEnabled                    bool      `json:"autoCloseEnabled" example:"true"`
 	AutoCloseIdleAfterHours             int       `json:"autoCloseIdleAfterHours" example:"24"`
 	AutoCloseMaxAgeEnabled              bool      `json:"autoCloseMaxAgeEnabled" example:"true"`
@@ -37,11 +32,6 @@ func toWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) Workspa
 		CampaignSpamProtectionDays:          c.CampaignSpamProtectionDays,
 		SkipAdminAssignment:                 c.SkipAdminAssignment,
 		IncludedUnofficialWhatsAppInstances: c.IncludedUnofficialWhatsAppInstances,
-		HoldMusicTrack:                      c.HoldMusicTrack,
-		QueueEnabled:                        c.QueueEnabled,
-		QueueMaxWaitSeconds:                 c.QueueMaxWaitSeconds,
-		QueueMaxLength:                      c.QueueMaxLength,
-		QueueOverflow:                       c.QueueOverflow,
 		AutoCloseEnabled:                    c.AutoCloseEnabled,
 		AutoCloseIdleAfterHours:             c.AutoCloseIdleAfterHours,
 		AutoCloseMaxAgeEnabled:              c.AutoCloseMaxAgeEnabled,

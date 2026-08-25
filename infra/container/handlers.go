@@ -1,7 +1,6 @@
 package container
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,7 +26,6 @@ import (
 	customfieldhttp "vozko/delivery/http/customfield"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
-	holdmusichttp "vozko/delivery/http/holdmusic"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
@@ -62,15 +60,14 @@ import (
 	workspacepricinghttp "vozko/delivery/http/workspacepricing"
 	workspacetemplateaccesshttp "vozko/delivery/http/workspacetemplateaccess"
 	wsdelivery "vozko/delivery/ws"
-	dialer_domain "vozko/domain/dialer"
 	"vozko/domain/user"
 	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
+	callsession_usecase "vozko/usecases/callsession"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
-	dialer_usecase "vozko/usecases/dialer"
 	oppboard_usecase "vozko/usecases/oppboard"
 	"vozko/usecases/opportunityio"
 	payment_usecase "vozko/usecases/payment"
@@ -118,21 +115,20 @@ func (c *Container) initHandlers() {
 	}
 
 	c.handlers = &handlers_{
-		product:   handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
-		property:  handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
-		category:  handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
-		agent:     handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
-		aichat:    handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
-		auth:      c.newAuthHandler(),
-		user:      userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
-		media:     mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia, c.useCases.deleteHoldMusic),
-		holdMusic: holdmusichttp.NewHoldMusicHandler(builtinHoldMusicCatalog{}),
-		cart:      handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
-		address:   handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
-		order:     handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),
-		cep:       cephttp.NewCEPHandler(c.useCases.searchCEP),
-		webhook:   c.buildWebhookHandler(),
-		readMe:    readmehttp.NewHandler(c.cfg.ReadMeWebhookSecret, c.repositories.user, c.services.readMeTokenService),
+		product:  handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
+		property: handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
+		category: handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
+		agent:    handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
+		aichat:   handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
+		auth:     c.newAuthHandler(),
+		user:     userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
+		media:    mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia),
+		cart:     handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
+		address:  handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
+		order:    handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),
+		cep:      cephttp.NewCEPHandler(c.useCases.searchCEP),
+		webhook:  c.buildWebhookHandler(),
+		readMe:   readmehttp.NewHandler(c.cfg.ReadMeWebhookSecret, c.repositories.user, c.services.readMeTokenService),
 		paymentSplit: paymentsplithttp.NewPaymentSplitHandler(
 			c.useCases.createPaymentSplit,
 			c.useCases.updatePaymentSplit,
@@ -325,7 +321,7 @@ func (c *Container) initHandlers() {
 			c.services.conversationHub,
 			log.Default(),
 		),
-		dialerWS: buildDialerWSHandler(c),
+		callSessionWS: buildCallSessionWSHandler(c),
 		stage: stagehttp.NewStageHandler(
 			c.useCases.createStage,
 			c.useCases.updateStage,
@@ -619,11 +615,11 @@ func (c *Container) initHandlers() {
 	}
 }
 
-func buildDialerWSHandler(c *Container) *wsdelivery.DialerWSHandler {
-	base := wsdelivery.NewDialerWSHandler(
+func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
+	base := wsdelivery.NewCallSessionWSHandler(
 		c.services.startOutboundCall,
 		c.services.endOutboundCall,
-		c.services.dialerLifecycle,
+		c.services.callLifecycle,
 		c.services.conversationAuth,
 		log.Default(),
 		c.services.metrics,
@@ -638,41 +634,20 @@ func buildDialerWSHandler(c *Container) *wsdelivery.DialerWSHandler {
 		base.WithLiveBoard(c.services.telephonyBoardSync, c.services.telephonyCapacity)
 	}
 
-	sessions := c.services.dialerSessions
-	calls := c.services.dialerCalls
-	transferUC := c.services.dialerTransferUC
-	usernameResolver := c.services.dialerUsernameResolver
-	inboundExecutor := wsdelivery.NewDialerInboundExecutor(
+	sessions := c.services.callSessions
+	calls := c.services.calls
+	usernameResolver := c.services.callSessionUsernameResolver
+	inboundExecutor := wsdelivery.NewCallSessionInboundExecutor(
 		calls,
 		c.services.endOutboundCall,
-		c.services.dialerLifecycle,
-		c.services.sipTrunkManager,
+		c.services.callLifecycle,
 		c.recordingPool,
 		log.Default(),
 	)
-	if transferUC != nil {
-		// Customer-hangup funnel for inbound-attached calls: a transfer in flight
-		// aborts the instant the caller's leg dies.
-		inboundExecutor.SetTransferLegDeathHook(func(workspaceID, callID string) {
-			_ = transferUC.AbortByCallLegDeath(context.Background(), workspaceID, callID)
-		})
-	}
 
-	inboundBroker := dialer_usecase.NewInboundOfferBroker()
-	inboundUC, err := dialer_usecase.NewInboundCallUseCase(dialer_usecase.InboundCallUseCaseConfig{
-		Sessions:  sessions,
-		Admission: c.services.callAdmission,
-		Executor:  inboundExecutor,
-		Receptive: c.services.receptiveInbound,
-		Broker:    inboundBroker,
-		Logger:    log.Default(),
-	})
-	if err != nil {
-		panic("container: failed to build InboundCallUseCase: " + err.Error())
-	}
-	if c.services.sipTrunkManager != nil {
-		c.services.sipTrunkManager.SetInboundInviteHandler(inboundUC)
-	}
+	// The broker is the accept/decline rendezvous between the ringing agent's
+	// WebSocket and whichever channel raised the offer (today: WhatsApp calling).
+	inboundBroker := callsession_usecase.NewInboundOfferBroker()
 
 	if c.services.whatsappCallSignaling != nil && c.services.whatsappCallRegistry != nil {
 		whatsappInboundUC := conversation_usecase.NewWhatsAppInboundCallUseCase(conversation_usecase.WhatsAppInboundConfig{
@@ -690,7 +665,7 @@ func buildDialerWSHandler(c *Container) *wsdelivery.DialerWSHandler {
 			Executor:        inboundExecutor,
 			Messages:        c.repositories.conversation,
 			Hub:             c.services.conversationHub,
-			Users:           c.services.dialerUsernameResolver,
+			Users:           c.services.callSessionUsernameResolver,
 			WorkspaceConfig: c.repositories.workspaceConfig,
 			PublicIP:        c.services.whatsappPublicMediaIP,
 			StunServers:     c.cfg.WhatsAppStunServers,
@@ -702,8 +677,8 @@ func buildDialerWSHandler(c *Container) *wsdelivery.DialerWSHandler {
 	}
 
 	return base.
-		WithInboundCalls(inboundUC).
-		WithTransfer(sessions, calls, transferUC).
+		WithInboundCalls(inboundBroker).
+		WithRegistries(sessions, calls).
 		WithUserResolver(usernameResolver).
 		WithRecording(c.recordingPool)
 }
@@ -728,12 +703,12 @@ func (c *Container) buildWebhookHandler() *handlers.WebhookHandler {
 	return h
 }
 
-// dialerUsernameResolver maps user IDs to display names for the transfer picker and the
-// real-time presence panel. Names are slowly-changing display data, so it caches per id
-// with a TTL: after warmup a presence broadcast (which fires on every connect/disconnect
-// and branch online/offline) resolves entirely from memory and touches NO database. A
-// name edit propagates within cacheTTL.
-type dialerUsernameResolver struct {
+// callSessionUsernameResolver maps user IDs to display names for the real-time presence
+// panel and the inbound-call notifications. Names are slowly-changing display data, so
+// it caches per id with a TTL: after warmup a presence broadcast (which fires on every
+// connect/disconnect) resolves entirely from memory and touches NO database. A name
+// edit propagates within cacheTTL.
+type callSessionUsernameResolver struct {
 	repo  user.UserRepository
 	ttl   time.Duration
 	mu    sync.RWMutex
@@ -745,14 +720,14 @@ type cachedUsername struct {
 	exp  time.Time
 }
 
-func newDialerUsernameResolver(repo user.UserRepository) *dialerUsernameResolver {
+func newCallSessionUsernameResolver(repo user.UserRepository) *callSessionUsernameResolver {
 	if repo == nil {
 		return nil
 	}
-	return &dialerUsernameResolver{repo: repo, ttl: 5 * time.Minute, cache: make(map[string]cachedUsername)}
+	return &callSessionUsernameResolver{repo: repo, ttl: 5 * time.Minute, cache: make(map[string]cachedUsername)}
 }
 
-func (r *dialerUsernameResolver) ResolveUsernames(userIDs []string) map[string]string {
+func (r *callSessionUsernameResolver) ResolveUsernames(userIDs []string) map[string]string {
 	if r == nil || r.repo == nil || len(userIDs) == 0 {
 		return nil
 	}
@@ -800,39 +775,33 @@ func (r *dialerUsernameResolver) ResolveUsernames(userIDs []string) map[string]s
 	return out
 }
 
-const dialerTransferOfferTTL = 30 * time.Second
-
-const dialerTransferReaperTick = 5 * time.Second
-
-func runDialerTransferReaper(ctx context.Context, uc dialer_domain.CallTransferUseCase) {
-	t := time.NewTicker(dialerTransferReaperTick)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case now := <-t.C:
-			// Tick drives every time-based transition: stale offers (parked blind
-			// handles recall instead of dying), the recall ladder, park deadlines,
-			// and wedged completing handles.
-			n := uc.Tick(ctx, now.UTC())
-			if n > 0 {
-				log.Printf("[DialerTransfer] reaper transitioned %d transfer(s)", n)
-			}
-		}
-	}
-}
-
+// newAuthHandler builds the auth handler and applies the cookie policy the
+// browser session rides on. Cookie mode is opt-in per request (X-Auth-Mode) and
+// only works when a domain is configured, so the domain/TTLs here must match the
+// JWT lifetimes the token service issues, or a cookie would outlive (or expire
+// before) the token it carries. Secure is on everywhere except a local
+// development run, where there is no TLS to attach the cookie to.
 func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 	h := authhttp.NewAuthHandler(
 		c.useCases.credentialsLogin,
-		c.useCases.register, c.useCases.adminRegister,
-		c.useCases.refreshToken, c.useCases.requestPasswordReset, c.useCases.resetPassword,
-		c.useCases.sendEmailVerification, c.useCases.verifyEmailToken,
-		c.useCases.changePassword, c.useCases.logout, c.useCases.logoutAll,
-		c.useCases.listSessions, c.useCases.revokeSession,
+		c.useCases.register,
+		c.useCases.adminRegister,
+		c.useCases.refreshToken,
+		c.useCases.requestPasswordReset,
+		c.useCases.resetPassword,
+		c.useCases.sendEmailVerification,
+		c.useCases.verifyEmailToken,
+		c.useCases.changePassword,
+		c.useCases.logout,
+		c.useCases.logoutAll,
+		c.useCases.listSessions,
+		c.useCases.revokeSession,
 	)
-
+	// Restored verbatim from the pre-removal implementation. Two details are
+	// load-bearing and must not be "improved": the cookie policy is applied
+	// ONLY when a cookie domain is configured (otherwise the handler keeps its
+	// own defaults), and the dev check is an EXACT match so any unrecognised
+	// AppEnv falls through to Secure=true rather than silently disabling it.
 	if c.cfg.CookieDomain != "" {
 		secure := c.cfg.AppEnv != "development"
 		h.SetCookieConfig(authhttp.CookieConfig{

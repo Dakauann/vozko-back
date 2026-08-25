@@ -102,7 +102,8 @@ func (a *PresenceAdapter) Transition(workspaceID, userID, state, source string) 
 }
 
 // EmitEvent is the shared helper for timeline events (no duplication across handlers).
-func EmitEvent(pub crm_telemetry.Publisher, ev interface{ /* any */ }) {
+func EmitEvent(pub crm_telemetry.Publisher, ev interface { /* any */
+}) {
 	if pub == nil || ev == nil {
 		return
 	}

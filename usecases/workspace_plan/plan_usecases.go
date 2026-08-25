@@ -81,7 +81,6 @@ func (uc *createPlanDefinitionUseCase) Execute(input workspace_plan.PlanMutation
 		MaxCallChannels:                input.MaxCallChannels,
 		IncludedWhatsAppBusinessPhones: input.IncludedWhatsAppBusinessPhones,
 		MaxBranches:                    input.MaxBranches,
-		MaxHoldMusicTracks:             input.MaxHoldMusicTracks,
 		IsGloballyVisible:              isVisible,
 	}
 	if err := plan.Validate(); err != nil {
@@ -117,7 +116,6 @@ func (uc *updatePlanDefinitionUseCase) Execute(planID string, input workspace_pl
 	plan.MaxCallChannels = input.MaxCallChannels
 	plan.IncludedWhatsAppBusinessPhones = input.IncludedWhatsAppBusinessPhones
 	plan.MaxBranches = input.MaxBranches
-	plan.MaxHoldMusicTracks = input.MaxHoldMusicTracks
 	if input.IsGloballyVisible != nil {
 		plan.IsGloballyVisible = *input.IsGloballyVisible
 	}

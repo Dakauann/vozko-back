@@ -18,26 +18,15 @@ import (
 type UploadMediaUseCase struct {
 	mediaRepository media.MediaRepository
 	fileStorage     media.FileStorage
-	// holdMusic standardizes MediaTypeHoldMusic uploads (small mono MP3). Nil
-	// disables hold music uploads with a clear error rather than storing a raw
-	// file the hold path could not decode.
-	holdMusic media.HoldMusicTranscoder
-	// holdMusicGate enforces the plan cap on custom hold music tracks (nil fails
-	// closed: hold music uploads rejected).
-	holdMusicGate media.HoldMusicQuotaGate
 }
 
 func NewUploadMediaUseCase(
 	mediaRepository media.MediaRepository,
 	fileStorage media.FileStorage,
-	holdMusic media.HoldMusicTranscoder,
-	holdMusicGate media.HoldMusicQuotaGate,
 ) media.UploadMediaUseCase {
 	return &UploadMediaUseCase{
 		mediaRepository: mediaRepository,
 		fileStorage:     fileStorage,
-		holdMusic:       holdMusic,
-		holdMusicGate:   holdMusicGate,
 	}
 }
 
@@ -68,25 +57,6 @@ func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, 
 
 	if totalUploads >= 10000 {
 		return media.Media{}, fmt.Errorf("upload limit reached: you cannot upload more than 10000 images")
-	}
-
-	// Hold music is standardized at the door: the plan quota gate runs first
-	// (cheap), then whatever the user uploaded becomes a small mono MP3 bounded in
-	// duration, validated against the exact decoder the hold path uses. The stored
-	// object is always .mp3.
-	if mediaType == media.MediaTypeHoldMusic {
-		if uc.holdMusic == nil || uc.holdMusicGate == nil {
-			return media.Media{}, media.ErrHoldMusicNotIncluded
-		}
-		if err := uc.holdMusicGate.CanUploadHoldMusic(workspaceID); err != nil {
-			return media.Media{}, err
-		}
-		converted, err := uc.holdMusic.ToHoldMusicMP3(mediaData)
-		if err != nil {
-			return media.Media{}, fmt.Errorf("failed to process hold music audio: %w", err)
-		}
-		mediaData = converted
-		mediaName = strings.TrimSuffix(mediaName, filepath.Ext(mediaName)) + ".mp3"
 	}
 
 	err = uc.fileStorage.UploadFile(mediaName, mediaData, "")
@@ -162,7 +132,7 @@ func (uc *UploadMediaUseCase) isValidMediaType(mediaType media.MediaType) bool {
 	switch mediaType {
 	case media.MediaTypeProductImage, media.MediaTypeProductVideo, media.MediaTypeVslVideo, media.MediaTypeHtml5,
 		media.MediaTypeDocumentPdf, media.MediaTypeDocumentDoc, media.MediaTypeDocument,
-		media.MediaTypeAudio, media.MediaTypeSticker, media.MediaTypeHoldMusic:
+		media.MediaTypeAudio, media.MediaTypeSticker:
 		return true
 	default:
 		return false

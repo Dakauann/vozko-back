@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"vozko/domain/agent_presence"
-	"vozko/domain/dialer"
+	"vozko/domain/callsession"
 	"vozko/domain/queue_event"
 	"vozko/domain/telephony"
 )
@@ -42,21 +42,21 @@ func (s *stubPresence) Occupancy(string, *time.Time, *time.Time) ([]agent_presen
 }
 
 type stubLive struct {
-	rows []dialer.MemberPresence
+	rows []callsession.MemberPresence
 }
 
-func (s *stubLive) Register(dialer.DialerSession) (func(), error) { return func() {}, nil }
-func (s *stubLive) FindByUser(string, string) (dialer.DialerSession, bool) {
+func (s *stubLive) Register(callsession.CallSession) (func(), error) { return func() {}, nil }
+func (s *stubLive) FindByUser(string, string) (callsession.CallSession, bool) {
 	return nil, false
 }
-func (s *stubLive) FindSessionsByUser(string, string) []dialer.DialerSession { return nil }
-func (s *stubLive) FindByID(string) (dialer.DialerSession, bool)             { return nil, false }
-func (s *stubLive) ListAvailable(string) []dialer.DialerSession              { return nil }
-func (s *stubLive) ListAll(string) []dialer.DialerSession                    { return nil }
-func (s *stubLive) ListPresence(string) []dialer.MemberPresence              { return s.rows }
-func (s *stubLive) ListBrowserSessions(string) []dialer.DialerSession        { return nil }
-func (s *stubLive) SetPresenceListener(dialer.PresenceListener)              {}
-func (s *stubLive) NotifyPresenceChanged(string)                             {}
+func (s *stubLive) FindSessionsByUser(string, string) []callsession.CallSession { return nil }
+func (s *stubLive) FindByID(string) (callsession.CallSession, bool)             { return nil, false }
+func (s *stubLive) ListAvailable(string) []callsession.CallSession              { return nil }
+func (s *stubLive) ListAll(string) []callsession.CallSession                    { return nil }
+func (s *stubLive) ListPresence(string) []callsession.MemberPresence            { return s.rows }
+func (s *stubLive) ListBrowserSessions(string) []callsession.CallSession        { return nil }
+func (s *stubLive) SetPresenceListener(callsession.PresenceListener)            {}
+func (s *stubLive) NotifyPresenceChanged(string)                                {}
 
 func TestGetOverview_ComposesPorts(t *testing.T) {
 	uc := NewGetOverviewUseCaseWithDeps(
@@ -68,9 +68,9 @@ func TestGetOverview_ComposesPorts(t *testing.T) {
 		&stubPresence{rows: []agent_presence.OccupancyRow{
 			{UserID: "u1", OnlineMS: 1000, OnCallMS: 500, Occupancy: 50},
 		}},
-		&stubLive{rows: []dialer.MemberPresence{
+		&stubLive{rows: []callsession.MemberPresence{
 			{UserID: "u1", Busy: true, HasBrowser: true},
-			{UserID: "u2", Busy: false, HasBranch: true},
+			{UserID: "u2", Busy: false},
 		}},
 	)
 	got, err := uc.Execute("ws", telephony.OverviewFilter{})

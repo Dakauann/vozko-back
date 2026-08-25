@@ -1,8 +1,14 @@
 package media
 
 import (
+	"errors"
 	"time"
 )
+
+// ErrMediaNotFound: the requested media does not exist, or belongs to another
+// workspace (the two are deliberately indistinguishable so lookups cannot be
+// used to probe for existence across workspaces).
+var ErrMediaNotFound = errors.New("media not found")
 
 type MediaType string
 
@@ -16,11 +22,6 @@ const (
 	MediaTypeAudio        MediaType = "audio"
 	MediaTypeDocument     MediaType = "document"
 	MediaTypeSticker      MediaType = "sticker"
-	// MediaTypeHoldMusic is a workspace hold music track. Unlike plain audio it is
-	// STANDARDIZED at upload: transcoded to a small mono MP3 sized for telephony
-	// (the call media plane is 8kHz G.711), so the boot-style MP3 loader can decode
-	// it and a 25MB podcast can never sit on the hold path.
-	MediaTypeHoldMusic MediaType = "hold_music"
 )
 
 type Media struct {

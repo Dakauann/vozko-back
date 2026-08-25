@@ -29,17 +29,18 @@ const (
 )
 
 const (
-	TelephonyServiceSIPTrunk      = "sip_trunk"
 	TelephonyServiceWhatsAppCalls = "whatsapp_calls"
 )
 
 const TelephonyChannelWhatsApp = "whatsapp"
 
-func TelephonyServiceForChannel(channel string) string {
-	if strings.EqualFold(strings.TrimSpace(channel), TelephonyChannelWhatsApp) {
-		return TelephonyServiceWhatsAppCalls
-	}
-	return TelephonyServiceSIPTrunk
+// TelephonyServiceForChannel maps a call's channel onto its pricing service.
+// WhatsApp calling is the only telephony channel that remains, so an unset or
+// unrecognized channel resolves to it: the previous default (the now-removed
+// sip_trunk service) would name a pricing row that no longer exists, and a call
+// whose pricing lookup misses is REFUSED admission.
+func TelephonyServiceForChannel(_ string) string {
+	return TelephonyServiceWhatsAppCalls
 }
 
 type PricingItem struct {
@@ -91,10 +92,9 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceMarketing, Metric: "per_message", CostMicros: 62_500, PriceMicros: 66_667, Currency: "USD"},
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceAuthentication, Metric: "per_message", CostMicros: 6_800, PriceMicros: 16_667, Currency: "USD"},
 
-	{Category: CategoryTelephony, Service: TelephonyServiceSIPTrunk, Metric: "per_minute", CostMicros: 4_167, PriceMicros: 8_333, Currency: "USD"},
-
-	// WhatsApp calls are priced independently from the SIP trunk: cost $0.01080/min,
-	// price $0.013333/min (≈ R$0.08/min at the 6.0 USD→BRL default rate).
+	// WhatsApp calls: cost $0.01080/min, price $0.013333/min (≈ R$0.08/min at the
+	// 6.0 USD→BRL default rate). The only telephony row; the retired sip_trunk row
+	// is no longer seeded (existing rows are left in place, unused).
 	{Category: CategoryTelephony, Service: TelephonyServiceWhatsAppCalls, Metric: "per_minute", CostMicros: 10_800, PriceMicros: 13_333, Currency: "USD"},
 
 	{Category: CategoryLLM, Service: "default_markup", Metric: "percentage", MarkupPct: 0.20, Currency: "USD"},

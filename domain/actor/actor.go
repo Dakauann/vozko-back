@@ -1,7 +1,7 @@
 // Package actor provides a neutral identity model for humans, AI agents, and
 // system actors used across CRM timeline, assignment history, and attendance.
-// It reuses the dialer "ai:" owner prefix convention without importing dialer
-// (avoids import cycles).
+// It reuses the call session "ai:" owner prefix convention without importing
+// the callsession package (avoids import cycles).
 package actor
 
 import "strings"

@@ -46,7 +46,7 @@ func (m *memWsOwner) GetWorkspaceByID(id string) (*workspace.Workspace, error) {
 
 func TestUpdateOwner_AutoCloseDefaultsAndClamp(t *testing.T) {
 	repo := &memWscRepo{}
-	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"}, nil)
+	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
 
 	enabled := true
 	hours := 200
@@ -71,7 +71,7 @@ func TestUpdateOwner_AutoCloseDefaultsAndClamp(t *testing.T) {
 
 func TestUpdateOwner_ForbiddenNonOwner(t *testing.T) {
 	repo := &memWscRepo{}
-	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"}, nil)
+	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
 	enabled := false
 	_, err := uc.Execute(context.Background(), "ws-1", "other", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
 		AutoCloseEnabled: &enabled,

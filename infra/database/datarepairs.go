@@ -31,6 +31,8 @@ func runDataRepairs(tx *gorm.DB) error {
 		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
 		{"cm_relink_uw_orphaned_media", relinkUnofficialOrphanedMedia},
 		{"wmp_drop_retired_resources", dropRetiredPermissionResources},
+		{"cs_rename_dialer_resource_permissions", renameDialerResourcePermissions},
+		{"cs_rename_dialer_presence_source", renameDialerPresenceSource},
 	}
 
 	for _, r := range repairs {
@@ -45,8 +47,8 @@ func runDataRepairs(tx *gorm.DB) error {
 //
 // PhoneFromJID used to strip the domain off any JID, so "120363…@g.us" yielded
 // "120363…" and was stored as a phone number. Those rows render as "+120363…"
-// in the CRM's number column, and are addressable by the dialer and by the lead
-// bridge — neither of which can reach a group.
+// in the CRM's number column, and are addressable by a call session and by the
+// lead bridge — neither of which can reach a group.
 //
 // The type flag is set in the same pass, so a group subject that predates the
 // column is correctly typed rather than waiting for its next inbound message.
@@ -472,8 +474,8 @@ func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 // Keep this list append-only and never reuse a name. Re-registering a retired
 // resource later would silently resurrect grants this repair deleted.
 var retiredPermissionResources = []string{
-	// Telephony MANAGEMENT surfaces. The dialer and the SIP trunk runtime are
-	// untouched and still carry every call; only the CRUD APIs are gone.
+	// Telephony MANAGEMENT surfaces. The call session runtime is untouched and
+	// still carries every call; only the CRUD APIs are gone.
 	"sip_trunks",
 	"branches",
 	// Superseded by the per-channel resources (whatsapp_campaigns).
@@ -500,6 +502,129 @@ func dropRetiredPermissionResources(tx *gorm.DB) error {
 	if result.RowsAffected > 0 {
 		log.Printf("[data-repair] removed %d permission grant(s) for retired resources %v",
 			result.RowsAffected, retiredPermissionResources)
+	}
+	return nil
+}
+
+// The web call-session feature was called "dialer" until the rename. Both
+// repairs below exist for the same reason: a Go constant whose VALUE was
+// persisted. Renaming the constant alone would orphan every row that still
+// carries the old string, so the rows are migrated to the new value on boot.
+//
+// Neither is a schema change and neither can be expressed as a migration that
+// runs once: a replica still serving the previous build can write the old value
+// during a rolling deploy, so this has to be re-checked on every boot. That is
+// exactly the contract this file already holds.
+const (
+	// legacyCallSessionValue is the pre-rename string as it sits in the database.
+	legacyCallSessionValue = "dialer"
+	// callSessionResourceValue matches workspace_domain.ResourceCallSession.
+	callSessionResourceValue = "call_session"
+	// callSessionPresenceSource matches the source the call session emits into
+	// agent_presence_intervals.
+	callSessionPresenceSource = "call_session"
+)
+
+// renameDialerResourcePermissions moves granted permission rows onto the renamed
+// RBAC resource.
+//
+// workspace_member_permissions.resource stored the literal registered by
+// workspace_domain.ResourceCallSession, which was registerResource("dialer").
+// Left behind, those grants name a resource the code no longer knows: every
+// authorization check against the call session fails for members who HAD the
+// permission, and the permissions editor renders an unlabelled row.
+//
+// The collision delete runs first because (member_id, resource, action) is not
+// unique at the database level. On the first run nothing can collide — the new
+// value never existed before this deploy — but an old replica writing "dialer"
+// after a member was already granted "call_session" would otherwise leave a
+// duplicate grant behind.
+//
+// Idempotent and a no-op on a database that never held the old value.
+func renameDialerResourcePermissions(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("workspace_member_permissions") {
+		return nil
+	}
+
+	var stale int64
+	if err := tx.Raw(
+		"SELECT COUNT(*) FROM workspace_member_permissions WHERE resource = ?",
+		legacyCallSessionValue,
+	).Scan(&stale).Error; err != nil {
+		return err
+	}
+	if stale == 0 {
+		return nil
+	}
+
+	if err := tx.Exec(`
+		DELETE FROM workspace_member_permissions AS legacy
+		WHERE legacy.resource = ?
+		  AND EXISTS (
+			SELECT 1
+			FROM workspace_member_permissions AS existing
+			WHERE existing.member_id = legacy.member_id
+			  AND existing.action    = legacy.action
+			  AND existing.resource  = ?
+		  )
+	`, legacyCallSessionValue, callSessionResourceValue).Error; err != nil {
+		return err
+	}
+
+	result := tx.Exec(
+		"UPDATE workspace_member_permissions SET resource = ? WHERE resource = ?",
+		callSessionResourceValue, legacyCallSessionValue,
+	)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		log.Printf("[data-repair] renamed %d permission grant(s) from %q to %q",
+			result.RowsAffected, legacyCallSessionValue, callSessionResourceValue)
+	}
+	return nil
+}
+
+// renameDialerPresenceSource moves presence intervals onto the renamed source.
+//
+// agent_presence_intervals.source records WHICH surface put the agent in that
+// state — "ws_hub" for the inbox socket, and the call session's own value for
+// on_call/online transitions. That second value was "dialer".
+//
+// Left behind, historical occupancy is split across two names for one surface,
+// so any read that filters or groups by source under-counts every interval
+// written before the rename.
+//
+// The probe runs first so the steady-state cost is one cheap count rather than
+// an UPDATE that takes row locks and writes WAL on every boot.
+//
+// Idempotent and a no-op on a database that never held the old value.
+func renameDialerPresenceSource(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("agent_presence_intervals") {
+		return nil
+	}
+
+	var stale int64
+	if err := tx.Raw(
+		"SELECT COUNT(*) FROM agent_presence_intervals WHERE source = ?",
+		legacyCallSessionValue,
+	).Scan(&stale).Error; err != nil {
+		return err
+	}
+	if stale == 0 {
+		return nil
+	}
+
+	result := tx.Exec(
+		"UPDATE agent_presence_intervals SET source = ? WHERE source = ?",
+		callSessionPresenceSource, legacyCallSessionValue,
+	)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		log.Printf("[data-repair] renamed %d presence interval(s) from source %q to %q",
+			result.RowsAffected, legacyCallSessionValue, callSessionPresenceSource)
 	}
 	return nil
 }

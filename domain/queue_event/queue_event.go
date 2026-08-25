@@ -1,9 +1,9 @@
-// Package queue_event is the durable store for dialer ACD queue lifecycle events.
+// Package queue_event is the durable store for call session ACD queue lifecycle events.
 package queue_event
 
 import "time"
 
-// Event mirrors usecases/dialer/queue.Event for persistence (SLA / ASA / abandon).
+// Event mirrors usecases/callsession/queue.Event for persistence (SLA / ASA / abandon).
 type Event struct {
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspaceId"`

@@ -19,7 +19,6 @@ type PlanMutationInput struct {
 	MaxCallChannels                int                    `json:"maxCallChannels"`
 	IncludedWhatsAppBusinessPhones int                    `json:"includedWhatsAppBusinessPhones,omitempty"`
 	MaxBranches                    int                    `json:"maxBranches,omitempty"`
-	MaxHoldMusicTracks             int                    `json:"maxHoldMusicTracks,omitempty"`
 	IsGloballyVisible              *bool                  `json:"isGloballyVisible,omitempty"`
 	PricingItems                   []PlanPricingItemInput `json:"pricingItems"`
 }

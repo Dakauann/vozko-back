@@ -18,10 +18,8 @@ type WorkspacePlanDefinition struct {
 	// member extension out of the box; an admin raises it per plan. AutoMigrate
 	// backfills existing rows (see migrate.go, which also lifts legacy 0 rows to 1).
 	MaxBranches int `gorm:"not null;default:1"`
-	// MaxHoldMusicTracks (custom hold music uploads) defaults to 3 so the feature
-	// works out of the box on every plan; an admin raises or zeroes it per plan.
-	// The media layer hard-caps the effective value at 10.
-	MaxHoldMusicTracks   int        `gorm:"not null;default:3"`
+	// NOTE: the max_hold_music_tracks column is deliberately orphaned. Custom hold
+	// music went out with SIP telephony, and AutoMigrate never DROPs.
 	IsGloballyVisible    bool       `gorm:"not null;default:true"`
 	ExclusiveAffiliateID *string    `gorm:"type:uuid;index"`
 	ArchivedAt           *time.Time `gorm:"index"`
