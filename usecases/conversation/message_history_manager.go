@@ -124,15 +124,17 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		return m.persist(message, entryID, entryType)
 	}
 
-	// Key the singleflight by entry type too, so ids from different channels can
-	// never collide in the in-flight map.
-	_, err, _ := m.wamid.Do(string(entryType)+":"+dedupID, func() (interface{}, error) {
+	// Key the singleflight by entry as well as channel. Two entries can hold the
+	// same provider id when both ends of the chat are accounts we host, and a
+	// key without the entry would make the inbound copy wait on the outbound
+	// one and then be dropped as its duplicate.
+	_, err, _ := m.wamid.Do(string(entryType)+":"+entryID+":"+dedupID, func() (interface{}, error) {
 		var (
 			existing *conversation.Message
 			err      error
 		)
 		if providerID != "" {
-			existing, err = m.repo.GetByExternalMessageID(entryType, providerID)
+			existing, err = m.repo.GetByEntryAndExternalMessageID(entryType, entryID, providerID)
 		} else {
 			existing, err = m.repo.GetByWhatsAppMessageID(dedupID)
 		}

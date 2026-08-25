@@ -1751,14 +1751,29 @@ func (r *repository) GetByWhatsAppMessageID(wamid string) (*conversation.Message
 	return mapSchemaToDomain(&dbMessage), nil
 }
 
-// GetByExternalMessageID is the channel-agnostic dedup lookup. It is scoped by
-// entry type because a provider message id is only unique within its own
-// channel, matching the partial unique index
-// ux_cm_entry_type_external_msgid.
+// GetByExternalMessageID finds the message an edit/delete/reaction/read event
+// refers to. Channel-wide because those events name an id without a
+// conversation; see the domain interface.
 func (r *repository) GetByExternalMessageID(entryType shared.EntryType, externalID string) (*conversation.Message, error) {
 	var dbMessage schema.ConversationMessage
 	if err := r.db.
 		Where("entry_type = ? AND external_message_id = ?", string(entryType), externalID).
+		First(&dbMessage).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, conversation.ErrMessageNotFound
+		}
+		return nil, err
+	}
+	return mapSchemaToDomain(&dbMessage), nil
+}
+
+// GetByEntryAndExternalMessageID is the dedup lookup, matching the partial
+// unique index ux_cm_entry_external_msgid. See the domain interface for why the
+// entry belongs in the key.
+func (r *repository) GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error) {
+	var dbMessage schema.ConversationMessage
+	if err := r.db.
+		Where("entry_type = ? AND entry_id = ? AND external_message_id = ?", string(entryType), entryID, externalID).
 		First(&dbMessage).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, conversation.ErrMessageNotFound
@@ -1813,8 +1828,15 @@ func (r *repository) UpdateDeliveryStatusWithReason(
 		}
 	}
 
+	// Either id column, because only official WhatsApp writes whatsapp_message_id.
+	// Every channel added since — Instagram, Telegram, unofficial WhatsApp — puts
+	// its provider id in external_message_id, so matching the WhatsApp column
+	// alone silently updated NOTHING for them: zero rows affected is not an
+	// error, so the receipt was accepted, classified, and dropped, and the ticks
+	// stayed on "sent" forever. Both columns are indexed, so this plans as a
+	// BitmapOr over the two rather than a scan.
 	result := r.db.Model(&schema.ConversationMessage{}).
-		Where("whatsapp_message_id = ?", wamid).
+		Where("whatsapp_message_id = ? OR external_message_id = ?", wamid, wamid).
 		Updates(updates)
 	if result.Error != nil {
 		return result.Error

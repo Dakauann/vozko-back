@@ -522,7 +522,7 @@ func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *igdo
 	if ev.Message == nil || uc.messages == nil {
 		return nil
 	}
-	existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, ev.Message.MID)
+	existing, err := uc.messageByProviderID(ctx, account, ev, ev.Message.MID)
 	if err != nil {
 		if errors.Is(err, conversation.ErrMessageNotFound) {
 			return nil
@@ -541,7 +541,7 @@ func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *igdom
 	if ev.Edit == nil || uc.messages == nil {
 		return nil
 	}
-	existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, ev.Edit.MID)
+	existing, err := uc.messageByProviderID(ctx, account, ev, ev.Edit.MID)
 	if err != nil {
 		if errors.Is(err, conversation.ErrMessageNotFound) {
 			return nil
@@ -568,7 +568,7 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igd
 	if ev.Reaction == nil || uc.messages == nil {
 		return nil
 	}
-	existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, ev.Reaction.MID)
+	existing, err := uc.messageByProviderID(ctx, account, ev, ev.Reaction.MID)
 	if err != nil {
 		if errors.Is(err, conversation.ErrMessageNotFound) {
 			return nil
@@ -605,7 +605,7 @@ func (uc *HandleWebhookUseCase) handleRead(ctx context.Context, account *igdomai
 	if ev.Read == nil || uc.messages == nil {
 		return nil
 	}
-	existing, err := uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, ev.Read.MID)
+	existing, err := uc.messageByProviderID(ctx, account, ev, ev.Read.MID)
 	if err != nil {
 		if errors.Is(err, conversation.ErrMessageNotFound) {
 			return nil
@@ -750,6 +750,54 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 }
 
 // ---------------------------------------------------------------- helpers
+
+// messageByProviderID finds the message an edit, delete, reaction or read event
+// refers to, preferring this account's own conversation.
+//
+// The entry-scoped lookup is the correct one. A provider message id is unique
+// per conversation, not per platform: when both ends of a thread are accounts we
+// host, the same mid lives on two entries, and a channel-wide match could patch
+// the OTHER tenant's copy.
+//
+// It cannot always be used, though. These events name their SENDER as the
+// contact, so one the business itself raised — unsending its own message — hands
+// us the business id, and no contact resolves from it. Falling back to the
+// channel-wide lookup keeps those working exactly as they did rather than
+// silently skipping the tombstone.
+func (uc *HandleWebhookUseCase) messageByProviderID(
+	ctx context.Context,
+	account *igdomain.Account,
+	ev *igdomain.Event,
+	mid string,
+) (*conversation.Message, error) {
+	if conv, err := uc.findConversation(ctx, account, ev.ContactIGSID); err == nil && conv != nil {
+		return uc.messages.GetByEntryAndExternalMessageID(shared.EntryTypeInstagram, conv.ID, mid)
+	}
+	return uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, mid)
+}
+
+// findConversation resolves the conversation an event refers to WITHOUT creating
+// anything.
+//
+// resolveConversation's FindOrCreate is right when a contact is arriving; it is
+// wrong for an edit, a delete, a reaction or a read receipt, which name a
+// message that must already exist. A miss there has to stay a miss rather than
+// leave an empty conversation behind for a message we never held.
+//
+// It exists so those events can scope their message lookup to ONE entry. A
+// provider message id is unique per conversation, not per platform: when both
+// ends of a thread are accounts we host, the same id lives on two entries, and a
+// channel-wide lookup could patch the other tenant's copy.
+func (uc *HandleWebhookUseCase) findConversation(ctx context.Context, account *igdomain.Account, igsid string) (*igdomain.Conversation, error) {
+	if strings.TrimSpace(igsid) == "" {
+		return nil, igdomain.ErrConversationNotFound
+	}
+	contact, err := uc.contacts.FindByIGSID(ctx, account.ID, igsid)
+	if err != nil {
+		return nil, err
+	}
+	return uc.conversations.FindByContact(ctx, account.ID, contact.ID)
+}
 
 func (uc *HandleWebhookUseCase) resolveConversation(ctx context.Context, account *igdomain.Account, igsid string) (*igdomain.Contact, *igdomain.Conversation, error) {
 	if igsid == "" {

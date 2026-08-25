@@ -87,6 +87,7 @@ func (f *fakeAccountRepo) Delete(context.Context, string) error { return nil }
 
 type fakeContactRepo struct {
 	FindByIDFn     func(ctx context.Context, id string) (*igdomain.Contact, error)
+	FindByIGSIDFn  func(ctx context.Context, igAccountID, igsid string) (*igdomain.Contact, error)
 	FindOrCreateFn func(ctx context.Context, workspaceID, igAccountID, igsid string) (*igdomain.Contact, error)
 
 	Created []string
@@ -127,7 +128,10 @@ func (f *fakeContactRepo) FindByIDs(ctx context.Context, ids []string) ([]*igdom
 	return out, nil
 }
 
-func (f *fakeContactRepo) FindByIGSID(context.Context, string, string) (*igdomain.Contact, error) {
+func (f *fakeContactRepo) FindByIGSID(ctx context.Context, igAccountID, igsid string) (*igdomain.Contact, error) {
+	if f.FindByIGSIDFn != nil {
+		return f.FindByIGSIDFn(ctx, igAccountID, igsid)
+	}
 	return nil, igdomain.ErrContactNotFound
 }
 func (f *fakeContactRepo) UpdateProfile(context.Context, string, igdomain.ContactProfile) error {
@@ -136,8 +140,9 @@ func (f *fakeContactRepo) UpdateProfile(context.Context, string, igdomain.Contac
 func (f *fakeContactRepo) SetBlocked(context.Context, string, bool) error { return nil }
 
 type fakeConversationRepo struct {
-	FindByIDFn     func(ctx context.Context, id string) (*igdomain.Conversation, error)
-	FindOrCreateFn func(ctx context.Context, workspaceID, igAccountID, contactID string) (*igdomain.Conversation, error)
+	FindByIDFn      func(ctx context.Context, id string) (*igdomain.Conversation, error)
+	FindByContactFn func(ctx context.Context, igAccountID, contactID string) (*igdomain.Conversation, error)
+	FindOrCreateFn  func(ctx context.Context, workspaceID, igAccountID, contactID string) (*igdomain.Conversation, error)
 
 	InboundRecorded  int
 	OutboundRecorded int
@@ -162,7 +167,10 @@ func (f *fakeConversationRepo) FindByID(ctx context.Context, id string) (*igdoma
 	return nil, igdomain.ErrConversationNotFound
 }
 
-func (f *fakeConversationRepo) FindByContact(context.Context, string, string) (*igdomain.Conversation, error) {
+func (f *fakeConversationRepo) FindByContact(ctx context.Context, igAccountID, contactID string) (*igdomain.Conversation, error) {
+	if f.FindByContactFn != nil {
+		return f.FindByContactFn(ctx, igAccountID, contactID)
+	}
 	return nil, igdomain.ErrConversationNotFound
 }
 

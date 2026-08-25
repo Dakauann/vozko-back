@@ -209,11 +209,22 @@ type MessageRepository interface {
 
 	GetByWhatsAppMessageID(wamid string) (*Message, error)
 
-	// GetByExternalMessageID is the channel-agnostic form, scoped by entry type
-	// because a provider message id is only unique within its own channel.
-	// Channels added from Instagram onward use this instead of the WhatsApp
-	// column.
+	// GetByExternalMessageID finds the message an event REFERS to, anywhere in
+	// the channel. Edit, delete, reaction and read events name a provider id
+	// without saying which conversation holds it, so the lookup is what
+	// discovers the entry; it cannot be scoped by one.
 	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*Message, error)
+
+	// GetByEntryAndExternalMessageID is the DEDUP lookup, and it is scoped to
+	// one entry on purpose.
+	//
+	// A provider message id is unique per conversation, not per platform. When
+	// both ends of a chat are accounts we host — one tenant messaging another —
+	// the provider stamps one id and it legitimately arrives twice: outbound on
+	// the sender's entry, inbound on the receiver's. Matching on (entry type,
+	// id) alone read the second as a replay and dropped it, so the receiving
+	// tenant never saw the message at all.
+	GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*Message, error)
 	UpdateDeliveryStatus(wamid string, status DeliveryStatus) error
 	// UpdateDeliveryStatusWithReason also records the provider's explanation, so
 	// the thread can say why rather than only that.

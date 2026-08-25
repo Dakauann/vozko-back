@@ -256,6 +256,9 @@ func (r *mockMessageRepo) GetByWhatsAppMessageID(string) (*conversation.Message,
 func (r *mockMessageRepo) GetByExternalMessageID(shared.EntryType, string) (*conversation.Message, error) {
 	return nil, nil
 }
+func (r *mockMessageRepo) GetByEntryAndExternalMessageID(shared.EntryType, string, string) (*conversation.Message, error) {
+	return nil, nil
+}
 func (r *mockMessageRepo) UpdateDeliveryStatus(string, conversation.DeliveryStatus) error { return nil }
 func (r *mockMessageRepo) UpdateDeliveryStatusWithReason(string, conversation.DeliveryStatus, int, string) error {
 	return nil

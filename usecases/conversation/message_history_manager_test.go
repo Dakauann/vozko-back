@@ -173,3 +173,76 @@ func TestMessageHistoryManager_Record_EmptyWamidStillPersists(t *testing.T) {
 		t.Fatalf("dedup lookup should be skipped when wamid is empty; got %d GetByWhatsAppMessageID calls", got)
 	}
 }
+
+// GetByEntryAndExternalMessageID mirrors the production dedup lookup and the
+// partial unique index behind it: (entry_type, entry_id, external_message_id).
+func (m *dedupMessageRepo) GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error) {
+	atomic.AddInt32(&m.getCalls, 1)
+	if externalID == "" {
+		return nil, conversation.ErrMessageNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, msg := range m.created {
+		if msg.EntryType == entryType && msg.EntryID == entryID && msg.ExternalMessageID != nil && *msg.ExternalMessageID == externalID {
+			return msg, nil
+		}
+	}
+	return nil, conversation.ErrMessageNotFound
+}
+
+func providerRecord(entryID, providerID string, dir conversation.MessageHistoryDirection) conversation.MessageHistoryRecord {
+	return conversation.MessageHistoryRecord{
+		EntryID:           entryID,
+		EntryType:         shared.EntryTypeUnofficialWhatsApp,
+		Channel:           conversation.MessageChannelUnofficialWhatsApp,
+		MessageType:       conversation.MessageTypeUserMessage,
+		ProviderMessageID: providerID,
+		From:              "a",
+		To:                "b",
+		Text:              "oi",
+		Timestamp:         time.Now().UTC(),
+	}
+}
+
+// Both ends of a conversation can be OUR instances: one tenant messages another
+// tenant that is also on the platform. The provider stamps ONE message id, which
+// then legitimately arrives twice — outbound on the sender's entry, inbound on
+// the receiver's. Deduping across entries drops the inbound copy, and the
+// receiving tenant simply never sees the message.
+func TestMessageHistoryManager_Record_SameProviderIDOnAnotherEntryIsNotADuplicate(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	const providerID = "3EB027B8F1853217E3B8BB"
+
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionOutbound,
+		providerRecord("sender-entry", providerID, conversation.MessageDirectionOutbound)); err != nil {
+		t.Fatalf("outbound: %v", err)
+	}
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound,
+		providerRecord("receiver-entry", providerID, conversation.MessageDirectionInbound)); err != nil {
+		t.Fatalf("inbound: %v", err)
+	}
+
+	if got := len(repo.created); got != 2 {
+		t.Fatalf("both entries must keep their copy, got %d message(s)", got)
+	}
+}
+
+// A genuine replay: the SAME entry, the same id. Webhook delivery is
+// at-least-once, so this must still collapse to one row.
+func TestMessageHistoryManager_Record_SameProviderIDOnSameEntryStaysDeduped(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	rec := providerRecord("entry-1", "PROVIDER-1", conversation.MessageDirectionInbound)
+	for i := 0; i < 2; i++ {
+		if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+	if got := len(repo.created); got != 1 {
+		t.Fatalf("a replay must not duplicate, got %d", got)
+	}
+}

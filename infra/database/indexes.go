@@ -687,10 +687,26 @@ func createSchemaConstraints(tx *gorm.DB) error {
 		// delivery is at-least-once, and the Redis dedup guard has a 5-minute
 		// TTL, so the database is the only thing that still rejects a replay
 		// after eviction.
+		//
+		// Scoped to the ENTRY, like ux_sched_msg_idem below is scoped to the
+		// workspace and for the same reason: the id is chosen by someone else,
+		// so two conversations must not be able to collide on it. A replay is
+		// the same message on the SAME entry; the same id on a different entry
+		// is what happens when both ends of a chat are accounts we host — the
+		// provider stamps one id, it arrives outbound on the sender's entry and
+		// inbound on the receiver's, and the old key rejected the inbound copy.
+		//
+		// The predecessor is dropped first: it keyed on (entry_type,
+		// external_message_id) and would keep rejecting those inbound copies at
+		// insert time no matter what the read-before-insert check decides.
 		{
-			name: "ux_cm_entry_type_external_msgid",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_type_external_msgid
-				ON conversation_messages (entry_type, external_message_id)
+			name: "ux_cm_entry_type_external_msgid (superseded)",
+			sql:  `DROP INDEX IF EXISTS ux_cm_entry_type_external_msgid`,
+		},
+		{
+			name: "ux_cm_entry_external_msgid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_external_msgid
+				ON conversation_messages (entry_type, entry_id, external_message_id)
 				WHERE external_message_id IS NOT NULL AND deleted_at IS NULL`,
 		},
 
