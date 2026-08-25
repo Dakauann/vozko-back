@@ -2,6 +2,7 @@ package unofficial_whatsapp_repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -140,20 +141,25 @@ func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryI
 // DepartmentIDForEntry reads the department from the owning instance, which is
 // the config carrier for its conversations.
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
-	var departmentID *string
-	err := r.db.WithContext(ctx).
+	// Plucked into a slice of NullString, not a *string: Pluck writes through a
+	// slice, and handing it a **string made every call fail with "sql: Scan
+	// called without calling Next" even when the row existed. Assignment is
+	// fail-closed on that error, so this channel silently assigned NOBODY —
+	// the same bug already fixed in the Telegram copy of this lookup. The
+	// column is nullable, so the element type has to tolerate NULL as well.
+	var departmentIDs []sql.NullString
+	if err := r.db.WithContext(ctx).
 		Table("unofficial_whatsapp_conversations uwc").
 		Joins("JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id").
 		Where("uwc.id = ?", entryID).
 		Limit(1).
-		Pluck("uwi.department_id", &departmentID).Error
-	if err != nil {
+		Pluck("uwi.department_id", &departmentIDs).Error; err != nil {
 		return "", err
 	}
-	if departmentID == nil {
+	if len(departmentIDs) == 0 || !departmentIDs[0].Valid {
 		return "", nil
 	}
-	return *departmentID, nil
+	return departmentIDs[0].String, nil
 }
 
 func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {
