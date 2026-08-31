@@ -8,8 +8,8 @@ import (
 
 func TestCreateInvoice_IdempotentReturnsExistingWithoutSecondCharge(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasSvc := &stubAsaasService{}
-	uc := newCreditableUC(repo, asaasSvc)
+	gw := newStubGateway()
+	uc := newCreditableUC(repo, gw)
 
 	key := "monthly:ws-1:2026-03"
 	in := invoice.CreateInvoiceInput{
@@ -25,8 +25,8 @@ func TestCreateInvoice_IdempotentReturnsExistingWithoutSecondCharge(t *testing.T
 	if first.Invoice.IdempotencyKey != key {
 		t.Fatalf("first invoice should carry the idempotency key, got %q", first.Invoice.IdempotencyKey)
 	}
-	if asaasSvc.createCalls != 1 {
-		t.Fatalf("first emit should charge Asaas exactly once, got %d", asaasSvc.createCalls)
+	if gw.createCalls != 1 {
+		t.Fatalf("first emit should charge Asaas exactly once, got %d", gw.createCalls)
 	}
 
 	// Re-run with the same key (an emit retry): must return the existing invoice and NOT charge again.
@@ -34,8 +34,8 @@ func TestCreateInvoice_IdempotentReturnsExistingWithoutSecondCharge(t *testing.T
 	if err != nil {
 		t.Fatalf("second Execute: %v", err)
 	}
-	if asaasSvc.createCalls != 1 {
-		t.Fatalf("re-emit with the same key must not charge Asaas again, got %d calls", asaasSvc.createCalls)
+	if gw.createCalls != 1 {
+		t.Fatalf("re-emit with the same key must not charge Asaas again, got %d calls", gw.createCalls)
 	}
 	if second.Invoice.ID != first.Invoice.ID {
 		t.Fatalf("re-emit should return the same invoice, got %q want %q", second.Invoice.ID, first.Invoice.ID)
@@ -44,8 +44,8 @@ func TestCreateInvoice_IdempotentReturnsExistingWithoutSecondCharge(t *testing.T
 
 func TestCreateInvoice_EmptyKeySkipsIdempotencyLookup(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasSvc := &stubAsaasService{}
-	uc := newCreditableUC(repo, asaasSvc)
+	gw := newStubGateway()
+	uc := newCreditableUC(repo, gw)
 
 	in := invoice.CreateInvoiceInput{
 		WorkspaceID: "ws-1", UserID: "user-1",
@@ -57,7 +57,7 @@ func TestCreateInvoice_EmptyKeySkipsIdempotencyLookup(t *testing.T) {
 	if _, err := uc.Execute(in); err != nil {
 		t.Fatalf("second Execute: %v", err)
 	}
-	if asaasSvc.createCalls != 2 {
-		t.Fatalf("without an idempotency key each call charges, got %d", asaasSvc.createCalls)
+	if gw.createCalls != 2 {
+		t.Fatalf("without an idempotency key each call charges, got %d", gw.createCalls)
 	}
 }

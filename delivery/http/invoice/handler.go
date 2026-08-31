@@ -290,6 +290,8 @@ func (h *InvoiceHandler) writeCreateInvoiceError(w http.ResponseWriter, err erro
 	switch {
 	case errors.Is(err, invoicedomain.ErrCustomerDocumentRequired):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "customer_document_required", err.Error(), nil)
+	case errors.Is(err, invoicedomain.ErrBillingAddressRequired):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "billing_address_required", err.Error(), nil)
 	case errors.Is(err, invoicedomain.ErrInvalidAmount), errors.Is(err, invoicedomain.ErrInvalidPurpose), errors.Is(err, invoicedomain.ErrPlanDefinitionRequired):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, invoicedomain.ErrActiveSubscriptionRequired):

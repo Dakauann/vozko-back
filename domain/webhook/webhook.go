@@ -8,6 +8,10 @@ const (
 	TopicWhatsAppTemplate    = "webhook.whatsapp.template"
 	TopicWhatsAppCoexistence = "webhook.whatsapp.coexistence"
 	TopicAsaasPayment        = "webhook.asaas.payment"
+	// TopicMercadoPagoPayment carries the raw Mercado Pago notification envelope.
+	// Unlike Asaas, that envelope holds only a resource id, so the consumer must fetch
+	// the payment from the API before it can act on it.
+	TopicMercadoPagoPayment = "webhook.mercadopago.payment"
 
 	// Instagram topics. Split by event family so a burst of comment moderation
 	// cannot delay DM delivery, and so each family can carry its own prefetch.

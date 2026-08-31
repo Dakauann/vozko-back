@@ -16,6 +16,11 @@ var (
 	// create a charge for a customer without a document, so we reject up front with a clear 4xx
 	// (and a stable machine code) instead of letting it surface as an opaque 500.
 	ErrCustomerDocumentRequired = errors.New("CPF/CNPJ obrigatório para gerar a cobrança")
+	// ErrBillingAddressRequired is returned when a boleto is requested but the user has
+	// no address on file and the active provider needs one. Mercado Pago rejects a
+	// boleto without a full payer address; Asaas derives it from the stored customer.
+	// Checking up front turns an opaque provider 500 into a 422 the UI can act on.
+	ErrBillingAddressRequired = errors.New("endereço obrigatório para gerar boleto")
 )
 
 type Purpose string

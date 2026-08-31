@@ -40,7 +40,7 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditsOnlyPlanPortionAndExtends(t *te
 	}}
 	credit := &webhookCreditBalance{}
 	confirm := &webhookConfirmMonthly{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
 		WithMonthlyBilling(confirm)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-m"}}); err != nil {
@@ -70,7 +70,7 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditableFallsBackToAmount(t *testing
 		},
 	}}
 	credit := &webhookCreditBalance{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil)
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-old"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -89,7 +89,7 @@ func TestHandleAsaasWebhook_MonthlyBillingAlreadyPaidDoesNotReprocess(t *testing
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{"pay-p": paid}}
 	credit := &webhookCreditBalance{}
 	confirm := &webhookConfirmMonthly{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
 		WithMonthlyBilling(confirm)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-p"}}); err != nil {
@@ -105,7 +105,7 @@ func TestHandleAsaasWebhook_MonthlyBillingOverdueMarksOverdue(t *testing.T) {
 		"pay-o": {ID: "inv-o", ExternalID: "pay-o", WorkspaceID: "ws-1", Purpose: invoice.PurposeMonthlyBilling, AmountUSD: 10_000_000, ExchangeRate: 6},
 	}}
 	credit := &webhookCreditBalance{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil)
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_OVERDUE", Payment: payment.AsaasWebhookPayment{ID: "pay-o"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -124,7 +124,7 @@ func TestHandleAsaasWebhook_MonthlyBillingRefundDebitsWhenPaid(t *testing.T) {
 			AmountBRL: 1099, AmountUSD: 10_000_000, CreditableUSD: 8_000_000, Status: invoice.StatusPaid, ExchangeRate: 6},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, &webhookCreditBalance{}, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, &webhookCreditBalance{}, debit, nil)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-r"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -147,7 +147,7 @@ func TestHandleAsaasWebhook_MonthlyBillingRefundSkipsDebitWhenNeverPaid(t *testi
 			AmountUSD: 10_000_000, CreditableUSD: 8_000_000, Status: invoice.StatusPending, ExchangeRate: 6},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, &webhookCreditBalance{}, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, &webhookCreditBalance{}, debit, nil)
 
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_PARTIALLY_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-rn"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -168,7 +168,7 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditFailureRollsBackToPending(t *tes
 	}}
 	credit := &erroringCreditBalance{err: errors.New("ledger down")}
 	confirm := &webhookConfirmMonthly{}
-	uc := NewHandleAsaasWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
+	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, &webhookDebitBalance{}, nil).
 		WithMonthlyBilling(confirm)
 
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-f"}})

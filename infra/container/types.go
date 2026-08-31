@@ -30,6 +30,7 @@ import (
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	mediashttp "vozko/delivery/http/medias"
+	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	opportunityhttp "vozko/delivery/http/opportunity"
@@ -303,31 +304,36 @@ type repositories struct {
 }
 
 type services struct {
-	amqpPool                      *queue.ConnectionPool
-	workflowWakePub               messaging.MessageQueuePub
-	workflowWakeSub               messaging.MessageQueueSub
-	metricsQueuePub               messaging.MessageQueuePub
-	metricsQueueSub               messaging.MessageQueueSub
-	crmTelemetryPub               messaging.MessageQueuePub
-	crmTelemetrySub               messaging.MessageQueueSub
-	crmTelemetryPublisher         crm_telemetry.Publisher
-	crmTelemetryEmitter           *crm_telemetry_usecase.Emitter
-	notificationsQueuePub         messaging.MessageQueuePub
-	notificationQueueSub          messaging.MessageQueueSub
-	wcQueuePub                    messaging.MessageQueuePub
-	wcQueueSub                    messaging.MessageQueueSub
-	cache                         cache.Cache
-	rateLimiterFactory            cache.RateLimiterFactory
-	clusterRegistry               *cluster.Registry
-	metrics                       *prometheus_service.PrometheusService
-	ai                            ai.Service
-	whatsapp                      conversation_domain.WhatsAppClient
-	password                      auth.PasswordService
-	tokenService                  *security.JWTTokenService
-	readMeTokenService            *security.JWTTokenService
-	fileStorage                   media.FileStorage
-	ticketFileStorage             ticket.FileStorage
-	asaasService                  asaas_service.AsaasServiceUseCases
+	amqpPool              *queue.ConnectionPool
+	workflowWakePub       messaging.MessageQueuePub
+	workflowWakeSub       messaging.MessageQueueSub
+	metricsQueuePub       messaging.MessageQueuePub
+	metricsQueueSub       messaging.MessageQueueSub
+	crmTelemetryPub       messaging.MessageQueuePub
+	crmTelemetrySub       messaging.MessageQueueSub
+	crmTelemetryPublisher crm_telemetry.Publisher
+	crmTelemetryEmitter   *crm_telemetry_usecase.Emitter
+	notificationsQueuePub messaging.MessageQueuePub
+	notificationQueueSub  messaging.MessageQueueSub
+	wcQueuePub            messaging.MessageQueuePub
+	wcQueueSub            messaging.MessageQueueSub
+	cache                 cache.Cache
+	rateLimiterFactory    cache.RateLimiterFactory
+	clusterRegistry       *cluster.Registry
+	metrics               *prometheus_service.PrometheusService
+	ai                    ai.Service
+	whatsapp              conversation_domain.WhatsAppClient
+	password              auth.PasswordService
+	tokenService          *security.JWTTokenService
+	readMeTokenService    *security.JWTTokenService
+	fileStorage           media.FileStorage
+	ticketFileStorage     ticket.FileStorage
+	asaasService          asaas_service.AsaasServiceUseCases
+	// paymentGateway is the provider-agnostic port every charging use case depends on.
+	// Which adapter sits behind it is decided once, from cfg.PaymentProvider.
+	paymentGateway payment.Gateway
+	// mercadoPagoWebhookResolver is nil unless Mercado Pago is the active provider.
+	mercadoPagoWebhookResolver    payment.WebhookResolver
 	emailService                  notification.EmailService
 	templateLoaderService         notification.TemplateLoader
 	inventory                     inventory.VariantStockService
@@ -431,7 +437,7 @@ type useCases struct {
 	createProduct         product.CreateProductUseCase
 	updateProduct         product.UpdateProductUseCase
 	launchVariantStock    product.LaunchVariantStockUseCase
-	handleAsaasWebhook    payment.HandleAsaasWebhookUseCase
+	handlePaymentWebhook  payment.HandlePaymentWebhookUseCase
 	handleWhatsAppMessage conversation_domain.HandleWhatsAppMessageUseCase
 	getProduct            product.GetProductUseCase
 	listProducts          product.ListProductsUseCase
@@ -838,7 +844,10 @@ type useCases struct {
 	consumeWhatsAppPhoneWebhook businessphone.ConsumePhoneWebhookUseCase
 	consumeWhatsAppTplWebhook   whatsapp_template.ConsumeTemplateWebhookUseCase
 	consumeCoexistenceWebhook   coexistence_domain.ConsumeCoexistenceWebhookUseCase
-	consumeAsaasWebhook         payment.ConsumeAsaasWebhookUseCase
+	// Exactly one of these is non-nil, matching cfg.PaymentProvider: starting a consumer
+	// for an unconfigured provider would subscribe to a queue nothing ever feeds.
+	consumeAsaasWebhook       payment.ConsumePaymentWebhookUseCase
+	consumeMercadoPagoWebhook payment.ConsumePaymentWebhookUseCase
 
 	listBillingRecords call_billing_domain.ListBillingRecordsUseCase
 
@@ -934,19 +943,22 @@ type useCases struct {
 }
 
 type handlers_ struct {
-	product                 *handlers.ProductHandler
-	property                *handlers.PropertyHandler
-	category                *handlers.CategoryHandler
-	agent                   *handlers.AgentHandler
-	aichat                  *handlers.AIChatHandler
-	auth                    *authhttp.AuthHandler
-	user                    *userhttp.UserHandler
-	media                   *mediashttp.MediasHandler
-	cart                    *handlers.CartHandler
-	address                 *handlers.AddressHandler
-	order                   *handlers.OrderHandler
-	cep                     *cephttp.CEPHandler
-	webhook                 *handlers.WebhookHandler
+	product  *handlers.ProductHandler
+	property *handlers.PropertyHandler
+	category *handlers.CategoryHandler
+	agent    *handlers.AgentHandler
+	aichat   *handlers.AIChatHandler
+	auth     *authhttp.AuthHandler
+	user     *userhttp.UserHandler
+	media    *mediashttp.MediasHandler
+	cart     *handlers.CartHandler
+	address  *handlers.AddressHandler
+	order    *handlers.OrderHandler
+	cep      *cephttp.CEPHandler
+	webhook  *handlers.WebhookHandler
+	// mercadoPagoWebhook is nil unless Mercado Pago is the active provider; the route
+	// is then not mounted at all rather than answering 401 to every call.
+	mercadoPagoWebhook      *mercadopagohttp.WebhookHandler
 	readMe                  *readmehttp.Handler
 	paymentSplit            *paymentsplithttp.PaymentSplitHandler
 	ticket                  *tickethttp.TicketHandler

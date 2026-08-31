@@ -10,20 +10,27 @@ import (
 	"time"
 
 	"vozko/brand"
+	"vozko/domain/address"
 	"vozko/domain/affiliate"
 	"vozko/domain/invoice"
+	"vozko/domain/payment"
 	"vozko/domain/user"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
-	"vozko/infra/asaas"
 
 	"github.com/google/uuid"
 )
 
 type createInvoiceUseCase struct {
-	invoiceRepo         invoice.Repository
-	userRepo            user.UserRepository
-	asaasService        asaas.AsaasServiceUseCases
+	invoiceRepo invoice.Repository
+	userRepo    user.UserRepository
+	// addressRepo supplies the payer address a boleto charge needs on providers that
+	// require one. Nil-safe: a PIX charge never consults it.
+	addressRepo address.AddressRepository
+	// gateway is the provider-agnostic payment port. This use case deliberately knows
+	// nothing about which provider is wired: swapping Asaas for Mercado Pago changes
+	// only what is injected here.
+	gateway             payment.Gateway
 	exchangeRateRepo    workspace_pricing.Repository
 	currentSubscription workspace_plan.EnsureCurrentWorkspaceSubscriptionUseCase
 	affiliateRepo       affiliate.Repository
@@ -33,7 +40,8 @@ type createInvoiceUseCase struct {
 func NewCreateInvoiceUseCase(
 	invoiceRepo invoice.Repository,
 	userRepo user.UserRepository,
-	asaasService asaas.AsaasServiceUseCases,
+	addressRepo address.AddressRepository,
+	gateway payment.Gateway,
 	exchangeRateRepo workspace_pricing.Repository,
 	currentSubscription workspace_plan.EnsureCurrentWorkspaceSubscriptionUseCase,
 	affiliateRepo affiliate.Repository,
@@ -42,7 +50,8 @@ func NewCreateInvoiceUseCase(
 	return &createInvoiceUseCase{
 		invoiceRepo:         invoiceRepo,
 		userRepo:            userRepo,
-		asaasService:        asaasService,
+		addressRepo:         addressRepo,
+		gateway:             gateway,
 		exchangeRateRepo:    exchangeRateRepo,
 		currentSubscription: currentSubscription,
 		affiliateRepo:       affiliateRepo,
@@ -72,7 +81,8 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		}
 	}
 
-	// Idempotency: if an invoice already exists for this key, return it without charging Asaas again.
+	// Idempotency: if an invoice already exists for this key, return it without charging the
+	// provider again.
 	// This makes a monthly-emit re-run safe (no double charge).
 	if key := strings.TrimSpace(input.IdempotencyKey); key != "" {
 		existing, err := uc.invoiceRepo.GetByIdempotencyKey(key)
@@ -116,7 +126,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	if input.DueDate != nil {
 		dueDate = *input.DueDate
 	}
-	dueDateStr := dueDate.Format("2006-01-02")
 	description := strings.TrimSpace(input.Description)
 	if description == "" {
 		switch purpose {
@@ -143,9 +152,10 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	if cpf == "" {
 		cpf = strings.TrimSpace(u.CNPJ)
 	}
-	// Asaas requires a document to create any charge. Without one, GetOrCreateCustomer would issue a
-	// wildcard search (cpfCnpj=<empty>) that resolves to an unrelated document-less customer and then
-	// fail, or worse, bill the wrong customer. Reject here so the caller gets a clear, actionable error.
+	// Every supported provider needs a document to create a charge in Brazil, and each
+	// fails badly without one: Asaas would issue a wildcard customer search that
+	// resolves to an unrelated document-less customer, and Mercado Pago rejects the
+	// payment outright. Reject here so the caller gets a clear, actionable error.
 	if cpf == "" {
 		return nil, invoice.ErrCustomerDocumentRequired
 	}
@@ -155,40 +165,74 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		customerName = u.Email
 	}
 
-	asaasPayment := &asaas.AsaasPayment{
-		BillingType:       billingType,
-		Value:             input.AmountBRL,
-		DueDate:           dueDateStr,
+	method := payment.NormalizeMethod(billingType)
+
+	billingAddress := uc.billingAddress(method, input.UserID)
+	// Reject a boleto the provider is certain to refuse, before spending a round trip
+	// on it. Surfacing this as a domain error is what lets the API answer 422 with the
+	// missing fields named, instead of the opaque 500 a provider rejection produces.
+	if method == payment.MethodBoleto && uc.gateway.Capabilities().BoletoRequiresAddress && !billingAddress.Complete() {
+		log.Printf("[invoice] boleto rejected for user %s: address incomplete (missing %v)",
+			input.UserID, payment.MissingAddressFields(billingAddress))
+		return nil, invoice.ErrBillingAddressRequired
+	}
+
+	chargeReq := payment.ChargeRequest{
+		Method:            method,
+		Amount:            input.AmountBRL,
+		DueDate:           dueDate,
 		Description:       paymentDescription,
 		ExternalReference: externalRef,
+		Customer: payment.GatewayCustomer{
+			Name:     customerName,
+			Email:    strings.TrimSpace(u.Email),
+			Document: cpf,
+			// Attached only for boleto: PIX needs no address on any provider.
+			Address: billingAddress,
+		},
+		// The invoice id is a natural idempotency key: a retried create for the same
+		// invoice must never produce a second charge.
+		IdempotencyKey: externalRef,
 	}
 
 	uc.attributeReferralIfNew(input.WorkspaceID, input.UserID, input.ReferralCode)
 
 	if split := uc.buildAffiliateSplit(input.WorkspaceID); split != nil {
-		asaasPayment.Split = []asaas.AsaasSplit{*split}
+		// A provider that cannot split must not receive one, or it would reject the
+		// charge and block the customer's payment entirely. The commission is still
+		// recorded in our own affiliate ledger when the invoice is paid; only the
+		// automatic payout leg is lost, which is a payout problem, not a billing one.
+		if uc.gateway.Capabilities().Split {
+			chargeReq.Splits = []payment.SplitRecipient{*split}
+		} else {
+			log.Printf("[invoice] WARNING: provider %s cannot split charges; affiliate commission for workspace %s must be paid out manually",
+				uc.gateway.Provider(), input.WorkspaceID)
+		}
 	}
 
-	createdPayment, err := uc.asaasService.CreatePayment(customerName, cpf, asaasPayment)
+	createdPayment, err := uc.gateway.CreateCharge(context.Background(), chargeReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
 	var pixQrCode, pixCopy *string
-	if billingType == "PIX" {
-		qr, copy, err := uc.asaasService.GetPaymentQrCode(createdPayment.ID)
-		if err == nil {
-			pixQrCode = &qr
-			pixCopy = &copy
-		}
+	if createdPayment.PixQRCodeBase64 != "" {
+		qr := createdPayment.PixQRCodeBase64
+		pixQrCode = &qr
+	}
+	if createdPayment.PixCopyPaste != "" {
+		copyPaste := createdPayment.PixCopyPaste
+		pixCopy = &copyPaste
 	}
 
 	var bankSlipUrl, invoiceUrl *string
-	if createdPayment.BankSlipUrl != "" {
-		bankSlipUrl = &createdPayment.BankSlipUrl
+	if createdPayment.BoletoURL != "" {
+		slip := createdPayment.BoletoURL
+		bankSlipUrl = &slip
 	}
-	if createdPayment.InvoiceUrl != "" {
-		invoiceUrl = &createdPayment.InvoiceUrl
+	if createdPayment.InvoiceURL != "" {
+		hosted := createdPayment.InvoiceURL
+		invoiceUrl = &hosted
 	}
 
 	var planDefinitionIDPtr *string
@@ -250,7 +294,7 @@ func (uc *createInvoiceUseCase) getExchangeRate() float64 {
 	return workspace_pricing.USDToBRLRate(defaults)
 }
 
-func (uc *createInvoiceUseCase) buildAffiliateSplit(workspaceID string) *asaas.AsaasSplit {
+func (uc *createInvoiceUseCase) buildAffiliateSplit(workspaceID string) *payment.SplitRecipient {
 	if uc.affiliateRepo == nil || strings.TrimSpace(workspaceID) == "" {
 		return nil
 	}
@@ -267,9 +311,9 @@ func (uc *createInvoiceUseCase) buildAffiliateSplit(workspaceID string) *asaas.A
 		return nil
 	}
 
-	return &asaas.AsaasSplit{
-		WalletID:        aff.AsaasWalletID,
-		PercentualValue: aff.CommissionPct * 100,
+	return &payment.SplitRecipient{
+		RecipientID: aff.AsaasWalletID,
+		Percentage:  aff.CommissionPct * 100,
 	}
 }
 
@@ -290,5 +334,43 @@ func (uc *createInvoiceUseCase) attributeReferralIfNew(workspaceID, userID, rawC
 		WorkspaceOwnerUserID: userID,
 	}); err != nil {
 		log.Printf("[invoice] referral attribution on conversion failed ws=%s code=%s: %v", workspaceID, code, err)
+	}
+}
+
+// billingAddress resolves the payer address a boleto charge needs, preferring the
+// user's default address and otherwise taking the first one on file.
+//
+// A nil return is not an error here: the gateway decides whether it can issue the
+// charge without one, and its rejection names exactly what is missing. Making this
+// fatal would break boleto on providers that do not need an address at all.
+func (uc *createInvoiceUseCase) billingAddress(method payment.Method, userID string) *payment.GatewayAddress {
+	if method != payment.MethodBoleto || uc.addressRepo == nil || strings.TrimSpace(userID) == "" {
+		return nil
+	}
+	addresses, err := uc.addressRepo.GetAllByUserID(userID)
+	if err != nil || len(addresses) == 0 {
+		if err != nil {
+			log.Printf("[invoice] WARNING: could not load billing address for user %s: %v", userID, err)
+		}
+		return nil
+	}
+
+	chosen := addresses[0]
+	for _, a := range addresses {
+		if a != nil && a.IsDefault {
+			chosen = a
+			break
+		}
+	}
+	if chosen == nil {
+		return nil
+	}
+	return &payment.GatewayAddress{
+		ZipCode:      chosen.ZipCode,
+		StreetName:   chosen.Street,
+		StreetNumber: chosen.Number,
+		Neighborhood: chosen.District,
+		City:         chosen.City,
+		FederalUnit:  chosen.State,
 	}
 }

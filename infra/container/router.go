@@ -23,6 +23,7 @@ func (c *Container) initRouter() {
 		c.handlers.order,
 		c.handlers.cep,
 		c.handlers.webhook,
+		c.handlers.mercadoPagoWebhook,
 		c.handlers.readMe,
 		c.handlers.paymentSplit,
 		c.handlers.ticket,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"vozko/brand"
+	"vozko/domain/payment"
 )
 
 type Config struct {
@@ -34,9 +35,51 @@ type Config struct {
 
 	OllamaURL string
 
-	AsaasAPIKey         string
-	AsaasBaseURL        string
-	AsaasWebhookToken   string
+	// PaymentProvider selects which gateway backs every charge in this deployment:
+	// "asaas" (default) or "mercadopago". Only the selected provider's credentials are
+	// required at boot, so a Mercado Pago deployment need not carry Asaas secrets and
+	// vice versa.
+	PaymentProvider payment.Provider
+
+	AsaasAPIKey       string
+	AsaasBaseURL      string
+	AsaasWebhookToken string
+
+	// MercadoPagoAccessToken is the account access token. It alone decides whether
+	// charges are real: a TEST-prefixed token issues sandbox payments against the same
+	// api.mercadopago.com host, so there is no separate sandbox base URL to configure.
+	MercadoPagoAccessToken string
+	// MercadoPagoWebhookSecret is the per-application secret from the Webhooks panel,
+	// used to verify the x-signature HMAC. Distinct from the access token.
+	MercadoPagoWebhookSecret string
+	// MercadoPagoBaseURL overrides the API host. Empty uses the production host; its
+	// only real use is pointing tests or a proxy somewhere else.
+	MercadoPagoBaseURL string
+	// MercadoPagoNotificationURL is our own public webhook URL, sent as notification_url
+	// on every charge. Setting it per payment rather than relying on the dashboard-wide
+	// value is what guarantees the data.id query parameter the signature is built over.
+	MercadoPagoNotificationURL string
+	// MercadoPagoSignatureTolerance optionally bounds signature age. Zero (the default)
+	// disables the check because Mercado Pago retries for hours without re-signing.
+	MercadoPagoSignatureTolerance time.Duration
+	// MercadoPagoSandboxPayerEmail replaces the real payer email on every charge.
+	//
+	// It exists because Mercado Pago's sandbox refuses a charge whose payer is not one
+	// of its own test users, while this system takes the payer from the signed-in
+	// user's account. Without an override there is no way to exercise the real billing
+	// flow end to end against sandbox credentials.
+	//
+	// It is honoured ONLY when APP_ENV=development, and is forced empty otherwise, so a
+	// value left in a production environment file cannot silently redirect who a real
+	// charge is addressed to.
+	MercadoPagoSandboxPayerEmail string
+	// MercadoPagoSandboxPayerStatus forces every sandbox charge into a chosen final
+	// state (APRO approved, CONT pending, OTHE rejected) by sending the keyword as
+	// payer.first_name. It is the only way to drive a PIX payment to completion in
+	// sandbox, because test QR codes cannot be paid by a real bank app. Honoured under
+	// the same APP_ENV=development gate as the payer override.
+	MercadoPagoSandboxPayerStatus string
+
 	ReadMeWebhookSecret string
 
 	// Resend is the sole transactional email provider (auth, orders, tickets,
@@ -207,6 +250,9 @@ func LoadConfig() Config {
 	// is not fully provided via env (white-label; see package brand).
 	brand.MustLoad()
 
+	provider, asaasAPIKey, asaasBaseURL, asaasWebhookToken,
+		mpAccessToken, mpWebhookSecret, mpNotificationURL := loadPaymentProvider()
+
 	return Config{
 
 		AppEnv: os.Getenv("APP_ENV"),
@@ -232,9 +278,20 @@ func LoadConfig() Config {
 
 		OllamaURL: getEnvTrimmed("OLLAMA_URL", "http://localhost:11434"),
 
-		AsaasAPIKey:         mustGetEnv("ASAAS_API_KEY"),
-		AsaasBaseURL:        mustGetEnv("ASAAS_BASE_URL"),
-		AsaasWebhookToken:   mustGetEnv("ASAAS_WEBHOOK_TOKEN"),
+		PaymentProvider: provider,
+
+		AsaasAPIKey:       asaasAPIKey,
+		AsaasBaseURL:      asaasBaseURL,
+		AsaasWebhookToken: asaasWebhookToken,
+
+		MercadoPagoAccessToken:        mpAccessToken,
+		MercadoPagoWebhookSecret:      mpWebhookSecret,
+		MercadoPagoBaseURL:            trimEnv("MERCADOPAGO_BASE_URL"),
+		MercadoPagoNotificationURL:    mpNotificationURL,
+		MercadoPagoSignatureTolerance: optionalDurationEnv("MERCADOPAGO_SIGNATURE_TOLERANCE"),
+		MercadoPagoSandboxPayerEmail:  sandboxPayerEmail(),
+		MercadoPagoSandboxPayerStatus: sandboxPayerStatus(),
+
 		ReadMeWebhookSecret: trimEnv("README_WEBHOOK_SECRET"),
 
 		ResendAPIKey:    mustGetEnvTrimmed("RESEND_API_KEY"),
@@ -492,4 +549,95 @@ func splitTrimmed(s string) []string {
 		}
 	}
 	return out
+}
+
+// loadPaymentProvider resolves PAYMENT_PROVIDER and enforces the credentials that
+// provider actually needs.
+//
+// The requirement is conditional on purpose. Making every provider's secrets mandatory
+// would force a Mercado Pago deployment to invent Asaas credentials it will never use,
+// and a placeholder there is worse than a missing value: it boots fine and fails at the
+// first charge. Only the selected provider's variables abort boot when absent.
+func loadPaymentProvider() (
+	provider payment.Provider,
+	asaasAPIKey, asaasBaseURL, asaasWebhookToken string,
+	mpAccessToken, mpWebhookSecret, mpNotificationURL string,
+) {
+	raw := trimEnv("PAYMENT_PROVIDER")
+	provider, err := payment.ParseProvider(raw)
+	if err != nil {
+		log.Fatalf("invalid PAYMENT_PROVIDER %q: must be one of %q, %q", raw, payment.ProviderAsaas, payment.ProviderMercadoPago)
+	}
+
+	switch provider {
+	case payment.ProviderMercadoPago:
+		mpAccessToken = mustGetEnvTrimmed("MERCADOPAGO_ACCESS_TOKEN")
+		mpWebhookSecret = mustGetEnvTrimmed("MERCADOPAGO_WEBHOOK_SECRET")
+		// Required, not optional: without a per-payment notification_url Mercado Pago
+		// falls back to the dashboard URL, which may omit the data.id query parameter
+		// the signature is computed over. Every webhook would then fail verification,
+		// and paid invoices would silently never be credited.
+		mpNotificationURL = strings.TrimRight(mustGetEnvTrimmed("MERCADOPAGO_NOTIFICATION_URL"), "/")
+		// Asaas stays optional here. A deployment migrating off it keeps its keys so
+		// historical charges remain refundable and inspectable, but must not be forced to.
+		asaasAPIKey = trimEnv("ASAAS_API_KEY")
+		asaasBaseURL = trimEnv("ASAAS_BASE_URL")
+		asaasWebhookToken = trimEnv("ASAAS_WEBHOOK_TOKEN")
+
+	default:
+		asaasAPIKey = mustGetEnv("ASAAS_API_KEY")
+		asaasBaseURL = mustGetEnv("ASAAS_BASE_URL")
+		asaasWebhookToken = mustGetEnv("ASAAS_WEBHOOK_TOKEN")
+		mpAccessToken = trimEnv("MERCADOPAGO_ACCESS_TOKEN")
+		mpWebhookSecret = trimEnv("MERCADOPAGO_WEBHOOK_SECRET")
+		mpNotificationURL = strings.TrimRight(trimEnv("MERCADOPAGO_NOTIFICATION_URL"), "/")
+	}
+
+	log.Printf("[config] payment provider: %s", provider)
+	return provider, asaasAPIKey, asaasBaseURL, asaasWebhookToken, mpAccessToken, mpWebhookSecret, mpNotificationURL
+}
+
+// sandboxPayerEmail resolves MERCADOPAGO_SANDBOX_PAYER_EMAIL, refusing to honour it
+// outside development.
+//
+// The gate is deliberately at load time rather than at the call site: once the value is
+// empty, no amount of downstream wiring can reintroduce it, so a stray line in a
+// production environment file is inert instead of quietly rewriting who every charge is
+// addressed to. Being ignored is logged, because silently dropping a setting an
+// operator deliberately set is its own kind of bug.
+func sandboxPayerEmail() string {
+	email := trimEnv("MERCADOPAGO_SANDBOX_PAYER_EMAIL")
+	if email == "" {
+		return ""
+	}
+	if os.Getenv("APP_ENV") != "development" {
+		log.Printf("[config] IGNORING MERCADOPAGO_SANDBOX_PAYER_EMAIL: it is honoured only when APP_ENV=development")
+		return ""
+	}
+	log.Printf("[config] Mercado Pago sandbox payer override active: every charge will be addressed to %s", email)
+	return email
+}
+
+// sandboxPayerStatus resolves MERCADOPAGO_SANDBOX_PAYER_STATUS under the same
+// development-only gate as sandboxPayerEmail, and rejects anything that is not one of
+// Mercado Pago's documented keywords. An unrecognised value would be sent as a literal
+// first name and silently produce an ordinary pending charge, which looks exactly like
+// the keyword not working.
+func sandboxPayerStatus() string {
+	status := strings.ToUpper(trimEnv("MERCADOPAGO_SANDBOX_PAYER_STATUS"))
+	if status == "" {
+		return ""
+	}
+	if os.Getenv("APP_ENV") != "development" {
+		log.Printf("[config] IGNORING MERCADOPAGO_SANDBOX_PAYER_STATUS: it is honoured only when APP_ENV=development")
+		return ""
+	}
+	switch status {
+	case "APRO", "CONT", "OTHE":
+		log.Printf("[config] Mercado Pago sandbox status override active: every charge forced to %s", status)
+		return status
+	default:
+		log.Fatalf("invalid MERCADOPAGO_SANDBOX_PAYER_STATUS %q: must be APRO (approved), CONT (pending) or OTHE (rejected)", status)
+		return ""
+	}
 }

@@ -21,7 +21,7 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-type handleAsaasWebhookUseCase struct {
+type handlePaymentWebhookUseCase struct {
 	paymentRepo           payment.PaymentRepository
 	orderRepo             order.OrderRepository
 	emailService          notification.EmailService
@@ -37,7 +37,7 @@ type handleAsaasWebhookUseCase struct {
 	confirmMonthlyBilling billing.ConfirmMonthlyBillingUseCase
 }
 
-func NewHandleAsaasWebhookUseCase(
+func NewHandlePaymentWebhookUseCase(
 	paymentRepo payment.PaymentRepository,
 	orderRepo order.OrderRepository,
 	emailService notification.EmailService,
@@ -48,8 +48,8 @@ func NewHandleAsaasWebhookUseCase(
 	creditBalance balance.CreditBalanceUseCase,
 	debitBalance balance.DebitBalanceUseCase,
 	recordEarning affiliate.RecordEarningUseCase,
-) *handleAsaasWebhookUseCase {
-	return &handleAsaasWebhookUseCase{
+) *handlePaymentWebhookUseCase {
+	return &handlePaymentWebhookUseCase{
 		paymentRepo:          paymentRepo,
 		orderRepo:            orderRepo,
 		emailService:         emailService,
@@ -63,11 +63,11 @@ func NewHandleAsaasWebhookUseCase(
 	}
 }
 
-var _ payment.HandleAsaasWebhookUseCase = (*handleAsaasWebhookUseCase)(nil)
+var _ payment.HandlePaymentWebhookUseCase = (*handlePaymentWebhookUseCase)(nil)
 
 // WithNotifier enables the "wallet top-up confirmed" email. Returns the use case
 // for chaining at wiring time.
-func (uc *handleAsaasWebhookUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *handleAsaasWebhookUseCase {
+func (uc *handlePaymentWebhookUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *handlePaymentWebhookUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL
 	return uc
@@ -75,12 +75,12 @@ func (uc *handleAsaasWebhookUseCase) WithNotifier(n notification.Notifier, dashb
 
 // WithMonthlyBilling enables extending plan and addon subscription periods when a unified
 // MONTHLY_BILLING invoice is confirmed paid. Returns the use case for chaining at wiring time.
-func (uc *handleAsaasWebhookUseCase) WithMonthlyBilling(confirmer billing.ConfirmMonthlyBillingUseCase) *handleAsaasWebhookUseCase {
+func (uc *handlePaymentWebhookUseCase) WithMonthlyBilling(confirmer billing.ConfirmMonthlyBillingUseCase) *handlePaymentWebhookUseCase {
 	uc.confirmMonthlyBilling = confirmer
 	return uc
 }
 
-func (uc *handleAsaasWebhookUseCase) notifyTopUpConfirmed(inv *invoice.Invoice, amountUSDMicros int64) {
+func (uc *handlePaymentWebhookUseCase) notifyTopUpConfirmed(inv *invoice.Invoice, amountUSDMicros int64) {
 	if uc.notifier == nil {
 		return
 	}
@@ -97,7 +97,7 @@ func (uc *handleAsaasWebhookUseCase) notifyTopUpConfirmed(inv *invoice.Invoice, 
 	})
 }
 
-func (uc *handleAsaasWebhookUseCase) Execute(event *payment.AsaasWebhookEvent) error {
+func (uc *handlePaymentWebhookUseCase) Execute(event *payment.WebhookEvent) error {
 	if event == nil || event.Payment.ID == "" {
 		return nil
 	}
@@ -108,7 +108,7 @@ func (uc *handleAsaasWebhookUseCase) Execute(event *payment.AsaasWebhookEvent) e
 		return uc.handleInvoicePayment(event, normalizedEvent)
 	}
 
-	paymentStatus, orderStatus := mapAsaasEventToStatuses(normalizedEvent)
+	paymentStatus, orderStatus := mapWebhookEventToStatuses(normalizedEvent)
 
 	orderID := ""
 	shouldSendPaymentEmail := false
@@ -177,7 +177,7 @@ func (uc *handleAsaasWebhookUseCase) Execute(event *payment.AsaasWebhookEvent) e
 	return nil
 }
 
-func (uc *handleAsaasWebhookUseCase) sendPaymentConfirmationEmail(ord *order.Order, amount float64, billingType string) {
+func (uc *handlePaymentWebhookUseCase) sendPaymentConfirmationEmail(ord *order.Order, amount float64, billingType string) {
 	if ord == nil || uc.emailService == nil {
 		return
 	}
@@ -206,7 +206,7 @@ func (uc *handleAsaasWebhookUseCase) sendPaymentConfirmationEmail(ord *order.Ord
 	}
 }
 
-func (uc *handleAsaasWebhookUseCase) getUserEmail(userID string) string {
+func (uc *handlePaymentWebhookUseCase) getUserEmail(userID string) string {
 	if userID == "" || uc.userRepo == nil {
 		return ""
 	}
@@ -236,7 +236,7 @@ func formatPaymentMethod(method string) string {
 	}
 }
 
-func mapAsaasEventToStatuses(event string) (*payment.Status, *order.Status) {
+func mapWebhookEventToStatuses(event string) (*payment.Status, *order.Status) {
 	var payStatus *payment.Status
 	var ordStatus *order.Status
 
@@ -266,7 +266,7 @@ func mapAsaasEventToStatuses(event string) (*payment.Status, *order.Status) {
 		os := order.StatusProcessing
 		payStatus = &ps
 		ordStatus = &os
-	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED":
+	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED", "PAYMENT_CHARGEBACK":
 		ps := payment.StatusRefunded
 		os := order.StatusRefunded
 		payStatus = &ps
@@ -279,7 +279,7 @@ func mapAsaasEventToStatuses(event string) (*payment.Status, *order.Status) {
 		os := order.StatusPaid
 		payStatus = &ps
 		ordStatus = &os
-	case "PAYMENT_DELETED":
+	case "PAYMENT_DELETED", "PAYMENT_REJECTED":
 		ps := payment.StatusCancelled
 		os := order.StatusCancelled
 		payStatus = &ps
@@ -290,15 +290,15 @@ func mapAsaasEventToStatuses(event string) (*payment.Status, *order.Status) {
 	return payStatus, ordStatus
 }
 
-func (uc *handleAsaasWebhookUseCase) isInvoicePayment(asaasPaymentID string) bool {
-	inv, err := uc.invoiceRepo.GetByExternalID(asaasPaymentID)
+func (uc *handlePaymentWebhookUseCase) isInvoicePayment(providerChargeID string) bool {
+	inv, err := uc.invoiceRepo.GetByExternalID(providerChargeID)
 	if err != nil || inv == nil {
 		return false
 	}
 	return true
 }
 
-func (uc *handleAsaasWebhookUseCase) handleInvoicePayment(event *payment.AsaasWebhookEvent, normalizedEvent string) error {
+func (uc *handlePaymentWebhookUseCase) handleInvoicePayment(event *payment.WebhookEvent, normalizedEvent string) error {
 	inv, err := uc.invoiceRepo.GetByExternalID(event.Payment.ID)
 	if err != nil {
 		return fmt.Errorf("invoice lookup failed: %w", err)
@@ -307,15 +307,15 @@ func (uc *handleAsaasWebhookUseCase) handleInvoicePayment(event *payment.AsaasWe
 		return nil
 	}
 
-	asaasInvoiceNumber := strings.TrimSpace(event.Payment.InvoiceNumber)
+	providerInvoiceNumber := strings.TrimSpace(event.Payment.InvoiceNumber)
 
 	switch inv.NormalizedPurpose() {
 	case invoice.PurposeSubscription:
-		return uc.handleSubscriptionInvoicePayment(inv, normalizedEvent, asaasInvoiceNumber)
+		return uc.handleSubscriptionInvoicePayment(inv, normalizedEvent, providerInvoiceNumber)
 	case invoice.PurposeMonthlyBilling:
-		return uc.handleMonthlyBillingInvoicePayment(inv, normalizedEvent, asaasInvoiceNumber)
+		return uc.handleMonthlyBillingInvoicePayment(inv, normalizedEvent, providerInvoiceNumber)
 	default:
-		return uc.handleTopUpInvoicePayment(inv, normalizedEvent, asaasInvoiceNumber)
+		return uc.handleTopUpInvoicePayment(inv, normalizedEvent, providerInvoiceNumber)
 	}
 }
 
@@ -328,7 +328,7 @@ func monthlyBillingCreditableUSD(inv *invoice.Invoice) int64 {
 	return inv.AmountUSD
 }
 
-func (uc *handleAsaasWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *invoice.Invoice, normalizedEvent, asaasInvoiceNumber string) error {
+func (uc *handlePaymentWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *invoice.Invoice, normalizedEvent, providerInvoiceNumber string) error {
 	switch normalizedEvent {
 	case "PAYMENT_RECEIVED", "PAYMENT_RECEIVED_IN_CASH":
 		transitioned, err := uc.invoiceRepo.MarkPaid(inv.ID, inv.AmountUSD)
@@ -369,7 +369,7 @@ func (uc *handleAsaasWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *inv
 			return err
 		}
 
-	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED":
+	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED", "PAYMENT_CHARGEBACK":
 		if creditable := monthlyBillingCreditableUSD(inv); inv.Status == invoice.StatusPaid && creditable > 0 {
 			refID := inv.ID
 			if _, err := uc.debitBalance.Execute(balance.DebitBalanceInput{
@@ -388,7 +388,7 @@ func (uc *handleAsaasWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *inv
 			return err
 		}
 
-	case "PAYMENT_DELETED":
+	case "PAYMENT_DELETED", "PAYMENT_REJECTED":
 		if err := uc.invoiceRepo.UpdateStatus(inv.ID, invoice.StatusCancelled); err != nil {
 			return err
 		}
@@ -396,7 +396,7 @@ func (uc *handleAsaasWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *inv
 	return nil
 }
 
-func (uc *handleAsaasWebhookUseCase) handleTopUpInvoicePayment(inv *invoice.Invoice, normalizedEvent, asaasInvoiceNumber string) error {
+func (uc *handlePaymentWebhookUseCase) handleTopUpInvoicePayment(inv *invoice.Invoice, normalizedEvent, providerInvoiceNumber string) error {
 
 	switch normalizedEvent {
 	case "PAYMENT_RECEIVED", "PAYMENT_RECEIVED_IN_CASH":
@@ -442,7 +442,7 @@ func (uc *handleAsaasWebhookUseCase) handleTopUpInvoicePayment(inv *invoice.Invo
 			return err
 		}
 
-	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED":
+	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED", "PAYMENT_CHARGEBACK":
 
 		if inv.Status == invoice.StatusPaid && inv.AmountUSD > 0 {
 			refID := inv.ID
@@ -463,7 +463,7 @@ func (uc *handleAsaasWebhookUseCase) handleTopUpInvoicePayment(inv *invoice.Invo
 			return err
 		}
 
-	case "PAYMENT_DELETED":
+	case "PAYMENT_DELETED", "PAYMENT_REJECTED":
 		if err := uc.invoiceRepo.UpdateStatus(inv.ID, invoice.StatusCancelled); err != nil {
 			return err
 		}
@@ -475,7 +475,7 @@ func (uc *handleAsaasWebhookUseCase) handleTopUpInvoicePayment(inv *invoice.Invo
 	return nil
 }
 
-func (uc *handleAsaasWebhookUseCase) handleSubscriptionInvoicePayment(inv *invoice.Invoice, normalizedEvent, asaasInvoiceNumber string) error {
+func (uc *handlePaymentWebhookUseCase) handleSubscriptionInvoicePayment(inv *invoice.Invoice, normalizedEvent, providerInvoiceNumber string) error {
 	switch normalizedEvent {
 	case "PAYMENT_RECEIVED", "PAYMENT_RECEIVED_IN_CASH":
 		transitioned, err := uc.invoiceRepo.MarkPaid(inv.ID, inv.AmountUSD)
@@ -533,7 +533,7 @@ func (uc *handleAsaasWebhookUseCase) handleSubscriptionInvoicePayment(inv *invoi
 			return err
 		}
 
-	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED":
+	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED", "PAYMENT_CHARGEBACK":
 
 		if inv.Status == invoice.StatusPaid && inv.AmountUSD > 0 {
 			refID := inv.ID
@@ -554,7 +554,7 @@ func (uc *handleAsaasWebhookUseCase) handleSubscriptionInvoicePayment(inv *invoi
 			return err
 		}
 
-	case "PAYMENT_DELETED":
+	case "PAYMENT_DELETED", "PAYMENT_REJECTED":
 		if err := uc.invoiceRepo.UpdateStatus(inv.ID, invoice.StatusCancelled); err != nil {
 			return err
 		}
@@ -563,7 +563,7 @@ func (uc *handleAsaasWebhookUseCase) handleSubscriptionInvoicePayment(inv *invoi
 	return nil
 }
 
-func (uc *handleAsaasWebhookUseCase) recordAffiliateEarning(inv *invoice.Invoice, purpose string) {
+func (uc *handlePaymentWebhookUseCase) recordAffiliateEarning(inv *invoice.Invoice, purpose string) {
 	if uc.recordEarning == nil || inv == nil {
 		return
 	}

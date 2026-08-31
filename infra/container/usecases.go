@@ -21,11 +21,13 @@ import (
 	workspace_domain "vozko/domain/workspace"
 	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
 
+	affiliate_domain "vozko/domain/affiliate"
 	agent_domain "vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
 	conversation_domain "vozko/domain/conversation"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
+	payment_domain "vozko/domain/payment"
 	rag_domain "vozko/domain/rag"
 	shortlink_domain "vozko/domain/shortlink"
 	businessphone_domain "vozko/domain/whatsapp/business_phone"
@@ -277,7 +279,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	subscribeWorkspacePlanUC := workspace_plan_usecase.NewSubscribeWorkspaceUseCase(c.repositories.workspacePlan, c.repositories.workspaceSubscription)
 	trackReferralUC := affiliate_usecase.NewTrackReferralUseCase(c.repositories.affiliate)
 	ensureDefaultWorkspaceUC := workspace_usecase.NewEnsureDefaultWorkspaceUseCase(c.repositories.workspace, c.repositories.workspaceConfig, trackReferralUC)
-	createInvoiceUC := invoice_usecase.NewCreateInvoiceUseCase(c.repositories.invoice, c.repositories.user, c.services.asaasService, c.repositories.workspacePricing, currentSubscriptionUC, c.repositories.affiliate, trackReferralUC)
+	createInvoiceUC := invoice_usecase.NewCreateInvoiceUseCase(c.repositories.invoice, c.repositories.user, c.repositories.address, c.services.paymentGateway, c.repositories.workspacePricing, currentSubscriptionUC, c.repositories.affiliate, trackReferralUC)
 	workspaceReferralReader := workspace_plan_usecase.NewWorkspaceReferralReader(c.repositories.affiliate, newWorkspaceOwnerReaderAdapter(c.repositories.workspace))
 	createSubscriptionInvoiceUC := workspace_plan_usecase.NewCreateSubscriptionInvoiceUseCase(c.repositories.workspacePlan, c.repositories.workspaceSubscription, createInvoiceUC, workspaceReferralReader)
 	planPricingAdapter := workspace_plan_usecase.NewPlanPricingAdapter(c.repositories.workspaceSubscription, c.repositories.workspacePlan)
@@ -476,7 +478,37 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	vendorChannelReconcilerUC := businessphone_usecase.NewReconcileVendorChannelsUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, opsAlerter)
 	channelStatusReconcilerUC := businessphone_usecase.NewReconcileChannelStatusUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, c.repositories.businessPhone, c.repositories.waba)
 
-	handleAsaasWebhookUC := payment_usecase.NewHandleAsaasWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifier(notifierUC, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
+	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifier(notifierUC, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
+
+	// Both handlers share the single business use case above: the provider difference
+	// lives entirely in how a raw notification becomes a canonical payment.WebhookEvent.
+	//
+	// The Mercado Pago consumer runs only when Mercado Pago is the active provider, but
+	// the Asaas consumer runs whenever Asaas is configured AT ALL — including on a
+	// deployment that has already cut over.
+	//
+	// That asymmetry is deliberate and it matters. /webhooks/asaas is mounted
+	// unconditionally, so after a cutover Asaas keeps delivering notifications for
+	// charges issued before the switch. With no consumer draining that queue those
+	// messages pile up in RabbitMQ and the payments they represent are never credited:
+	// a customer pays, and the money silently never lands. Draining a queue that turns
+	// out to be empty costs nothing; not draining one costs a customer their balance.
+	var asaasConsumer, mercadoPagoConsumer payment_domain.ConsumePaymentWebhookUseCase
+	if c.cfg.PaymentProvider == payment_domain.ProviderMercadoPago {
+		mercadoPagoConsumer = payment_usecase.NewConsumeMercadoPagoWebhookUseCase(
+			c.services.webhookQueueSub,
+			c.services.mercadoPagoWebhookResolver,
+			handlePaymentWebhookUC,
+			c.redisProvider.SharedState(),
+		)
+	}
+	if c.cfg.AsaasWebhookToken != "" {
+		asaasConsumer = payment_usecase.NewConsumeAsaasWebhookUseCase(
+			c.services.webhookQueueSub,
+			handlePaymentWebhookUC,
+			c.redisProvider.SharedState(),
+		)
+	}
 	handleWhatsAppMessageUC := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, recordMetricUC, c.services.whisperPool, c.repositories.analysis, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
@@ -499,7 +531,19 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	affiliateStatsUC := affiliate_usecase.NewGetAffiliateStatsUseCase(c.repositories.affiliate)
 
-	affiliateWalletValidator := asaas_service.NewWalletValidator(c.services.asaasService)
+	// Affiliate wallet ids are an Asaas concept (a walletId identifies an Asaas
+	// subaccount), so validation always goes to Asaas no matter which gateway bills
+	// customers. On a Mercado Pago deployment that has kept its Asaas keys this still
+	// works; without them the validator is left nil, and the affiliate use cases treat
+	// that as "cannot verify" rather than failing every registration with an opaque
+	// credentials error.
+	var affiliateWalletValidator affiliate_domain.WalletValidator
+	if c.cfg.AsaasAPIKey != "" && c.cfg.AsaasBaseURL != "" {
+		affiliateWalletValidator = asaas_service.NewWalletValidator(c.services.asaasService)
+	} else {
+		log.Printf("[container] affiliate wallet validation disabled: Asaas credentials are not configured " +
+			"(wallet ids are an Asaas concept and cannot be verified through another provider)")
+	}
 
 	// Single source of truth for member-visibility policy, shared by the HTTP
 	// assignable-members endpoint and the realtime conversation-assign guard.
@@ -557,7 +601,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		createProduct:         product_usecase.NewCreateProductUseCase(c.repositories.product, c.repositories.category, c.repositories.shop),
 		updateProduct:         product_usecase.NewUpdateProductUseCase(c.repositories.product, c.repositories.category, c.repositories.shop),
 		launchVariantStock:    product_usecase.NewLaunchVariantStockUseCase(c.repositories.product, c.services.inventory),
-		handleAsaasWebhook:    handleAsaasWebhookUC,
+		handlePaymentWebhook:  handlePaymentWebhookUC,
 		handleWhatsAppMessage: handleWhatsAppMessageUC,
 		getProduct:            product_usecase.NewGetProductUseCase(c.repositories.product),
 		listProducts:          product_usecase.NewListProductsUseCase(c.repositories.product),
@@ -627,7 +671,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		updateAddress: address_usecase.NewUpdateAddressUseCase(c.repositories.address),
 		deleteAddress: address_usecase.NewDeleteAddressUseCase(c.repositories.address),
 
-		checkout:           order_usecase.NewCheckoutUseCase(c.repositories.order, c.repositories.cart, c.repositories.address, c.repositories.product, c.repositories.payment, c.repositories.paymentSplit, c.services.documentValidator, c.services.asaasService, c.services.emailService, c.repositories.user, c.services.pricingService),
+		checkout:           order_usecase.NewCheckoutUseCase(c.repositories.order, c.repositories.cart, c.repositories.address, c.repositories.product, c.repositories.payment, c.repositories.paymentSplit, c.services.documentValidator, c.services.paymentGateway, c.services.emailService, c.repositories.user, c.services.pricingService),
 		getOrder:           order_usecase.NewGetOrderUseCase(c.repositories.order),
 		listOrders:         order_usecase.NewListOrdersUseCase(c.repositories.order),
 		cancelExpiredOrder: order_usecase.NewCancelExpiredOrderUseCase(c.repositories.order, c.repositories.payment, c.services.emailService, c.repositories.user, c.repositories.product),
@@ -986,7 +1030,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		consumeWhatsAppPhoneWebhook: businessphone_usecase.NewConsumePhoneWebhookUseCase(c.services.webhookQueueSub, handlePhoneWebhookUC, c.redisProvider.SharedState()),
 		consumeWhatsAppTplWebhook:   whatsapp_template_usecase.NewConsumeTemplateWebhookUseCase(c.services.webhookQueueSub, handleTemplateWebhookUC, c.redisProvider.SharedState()),
 		consumeCoexistenceWebhook:   coexistence_usecase.NewConsumeCoexistenceWebhookUseCase(c.services.webhookQueueSub, c.repositories.businessPhone, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.conversation, c.repositories.lead),
-		consumeAsaasWebhook:         payment_usecase.NewConsumeAsaasWebhookUseCase(c.services.webhookQueueSub, handleAsaasWebhookUC, c.redisProvider.SharedState()),
+		consumeAsaasWebhook:         asaasConsumer,
+		consumeMercadoPagoWebhook:   mercadoPagoConsumer,
 
 		createSupportInbox: si_usecase.NewCreateInboxUseCase(c.repositories.supportInbox),
 		updateSupportInbox: si_usecase.NewUpdateInboxUseCase(c.repositories.supportInbox),
@@ -1389,8 +1434,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatal("Failed to start coexistence webhook consumer:", err)
 	}
 
-	if err := c.useCases.consumeAsaasWebhook.Start(); err != nil {
-		log.Fatal("Failed to start Asaas webhook consumer:", err)
+	// Only the configured provider's consumer is started. A fatal on failure is
+	// correct here: with no payment consumer running, every paid invoice would be
+	// silently dropped, which is worse than not booting.
+	if c.useCases.consumeAsaasWebhook != nil {
+		if err := c.useCases.consumeAsaasWebhook.Start(); err != nil {
+			log.Fatal("Failed to start Asaas webhook consumer:", err)
+		}
+	}
+	if c.useCases.consumeMercadoPagoWebhook != nil {
+		if err := c.useCases.consumeMercadoPagoWebhook.Start(); err != nil {
+			log.Fatal("Failed to start Mercado Pago webhook consumer:", err)
+		}
 	}
 
 	// Instagram's runtime half is wired here rather than earlier: it needs both the
