@@ -78,6 +78,10 @@ var (
 	// privileges, and an attendant who may reply must not thereby be able to
 	// start a 40.000-number broadcast.
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
+	// Campaigns are a SEPARATE resource from instances, for exactly the reason
+	// the comment above gives: connecting a number and blasting from it are
+	// different privileges. This is where that sentence becomes enforceable.
+	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 )
 
 func (r Resource) IsValid() bool {
@@ -309,6 +313,14 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		// who may answer must not thereby be able to start conversations with
 		// arbitrary numbers.
 		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo pelo WhatsApp não oficial"},
+	},
+	ResourceUnofficialWhatsAppCampaigns: {
+		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp não oficial"},
+		{ActionName: ActionRead, Description: "Visualizar campanhas de WhatsApp não oficial"},
+		{ActionName: ActionUpdate, Description: "Editar campanhas de WhatsApp não oficial"},
+		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp não oficial"},
+		{ActionName: ActionStart, Description: "Iniciar disparos de campanhas de WhatsApp não oficial"},
+		{ActionName: ActionStop, Description: "Pausar ou parar campanhas de WhatsApp não oficial em execução"},
 	},
 	ResourceIssues: {
 		{ActionName: ActionCreate, Description: "Criar issues"},

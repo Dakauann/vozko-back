@@ -103,3 +103,43 @@ func (r *repository) Occupancy(workspaceID string, from, to *time.Time) ([]ap.Oc
 	}
 	return out, nil
 }
+
+// LastSeen implements the presence read the roulette's last_seen mode needs.
+//
+// COALESCE(ended_at, started_at) — not NOW() — is the load-bearing detail. An
+// open interval means one of two things: the user is connected right now, in
+// which case the caller's live connected-set overlay already reports them as
+// online and this value is never consulted; or a replica died without
+// unregistering, in which case the row will stay open forever and reading it as
+// "present now" would pin a departed user to the head of the ring for good.
+// started_at is the last moment we can prove they were there.
+func (r *repository) LastSeen(workspaceID string, userIDs []string) (map[string]time.Time, error) {
+	out := make(map[string]time.Time, len(userIDs))
+	if workspaceID == "" || len(userIDs) == 0 {
+		return out, nil
+	}
+
+	type row struct {
+		UserID   string    `gorm:"column:user_id"`
+		LastSeen time.Time `gorm:"column:last_seen"`
+	}
+	var rows []row
+	// The state filter is a no-op today (offline never creates a row) and is
+	// spelled out so a future state cannot silently start counting as presence.
+	err := r.db.Model(&schema.AgentPresenceInterval{}).
+		Select("user_id, MAX(COALESCE(ended_at, started_at)) AS last_seen").
+		Where("workspace_id = ? AND user_id IN ? AND state IN ?",
+			workspaceID, userIDs, []string{string(ap.StateOnline), string(ap.StateOnCall), string(ap.StateWrapUp)}).
+		Group("user_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		if item.UserID == "" || item.LastSeen.IsZero() {
+			continue
+		}
+		out[item.UserID] = item.LastSeen.UTC()
+	}
+	return out, nil
+}

@@ -22,6 +22,14 @@ type EntryOwnerResolver interface {
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
+// EntryCampaignResolver is the optional half of EntryOwnerResolver, implemented
+// only by channels whose conversations can belong to a campaign. Instagram and
+// Telegram have none and do not implement it, which is why this is a separate
+// interface rather than a third method.
+type EntryCampaignResolver interface {
+	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
+}
+
 // instagramEntryResolver is the previous name of EntryOwnerResolver.
 //
 // Deprecated: use EntryOwnerResolver.
@@ -145,6 +153,18 @@ func (r *campaignWorkspaceResolver) GetEntryCampaignID(entryID, entryType string
 			return "", fmt.Errorf("get campaign for whatsapp entry: %w", err)
 		}
 		return info.CampaignID, nil
+	}
+	// A channel whose conversations CAN belong to a campaign answers for itself.
+	//
+	// The Cloud API entry is the campaign row, so the lookup above reads a
+	// column. Every other channel's entry only POINTS AT a conversation, so the
+	// campaign has to be walked backwards from it — and until that walk existed
+	// this returned "" for them, which silently disabled funnel placement
+	// (ensureInitialTag) and campaign attribution on the live CRM.
+	if resolver, ok := r.resolverFor(entryType); ok {
+		if withCampaign, ok := resolver.(EntryCampaignResolver); ok {
+			return withCampaign.CampaignIDForEntry(context.Background(), entryID)
+		}
 	}
 	// Channels with no campaign concept return empty; callers that need the
 	// container use the account id instead.

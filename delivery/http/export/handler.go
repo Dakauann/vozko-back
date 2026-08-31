@@ -15,7 +15,9 @@ import (
 
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
+	"vozko/domain/campaign"
 	exportdomain "vozko/domain/export"
+	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	whatsappcampaign_usecase "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/http/middleware"
@@ -180,6 +182,21 @@ func (h *ExportHandler) ExportTelegramEntries(w http.ResponseWriter, r *http.Req
 	h.exportChannelEntries(w, r, exportdomain.EntryTypeTelegram, "telegram-account")
 }
 
+// ExportUnofficialWhatsAppCampaignEntries exports one campaign's conversations.
+//
+// The path id is a CAMPAIGN, not the channel's primary container, which is why
+// the container type is pinned here rather than read from the query: an export
+// route that let the caller choose which container its path id meant would
+// happily export a whole NUMBER when asked for one campaign.
+func (h *ExportHandler) ExportUnofficialWhatsAppCampaignEntries(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	q.Set("type", "campaign")
+	r.URL.RawQuery = q.Encode()
+
+	h.exportChannelEntries(w, r,
+		exportdomain.EntryTypeUnofficialWhatsApp, "unofficial-whatsapp-campaign")
+}
+
 func (h *ExportHandler) exportChannelEntries(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -285,9 +302,18 @@ func parseStatuses(values url.Values, entryType exportdomain.EntryType) ([]strin
 			if part == "" {
 				continue
 			}
-			if entryType == exportdomain.EntryTypeWhatsApp {
+			// Channels with a send-status vocabulary validate against their OWN
+			// set. A status one channel cannot produce is a typo, not a filter
+			// that silently matches nothing.
+			switch entryType {
+			case exportdomain.EntryTypeWhatsApp:
 				part = strings.ToUpper(part)
-				if !wce.SendStatus(part).Valid() {
+				if !wce.ValidStatus(wce.SendStatus(part)) {
+					return nil, fmt.Errorf("unknown status %q", part)
+				}
+			case exportdomain.EntryTypeUnofficialWhatsApp:
+				part = strings.ToUpper(part)
+				if !uwc.ValidStatus(campaign.SendStatus(part)) {
 					return nil, fmt.Errorf("unknown status %q", part)
 				}
 			}

@@ -279,15 +279,15 @@ func (h *ConversationHub) collectEligibleUsers(workspaceID string, allowedUsers 
 			continue
 		}
 
-		if skipAdmins && h.authorizer.IsWorkspaceOwnerOrAdmin(conn.UserID, workspaceID) {
-			continue
-		}
-
+		// Connection-scoped, so it stays here rather than moving into
+		// inbox_assignment.CanReceiveRoulette: it is a property of THIS socket
+		// (a platform admin viewing a workspace they do not belong to), not of
+		// the member, and it has no meaning for an offline candidate.
 		if conn.IsAdmin && !h.authorizer.IsWorkspaceMember(conn.UserID, workspaceID) {
 			continue
 		}
 
-		if h.authorizer.HasWorkspacePermission(conn.UserID, workspaceID, "conversations", "roulette", false) {
+		if inbox_assignment.CanReceiveRoulette(h.authorizer, conn.UserID, workspaceID, skipAdmins) {
 			eligible[conn.UserID] = true
 		}
 	}
@@ -306,10 +306,7 @@ func (h *ConversationHub) collectEligibleUsers(workspaceID string, allowedUsers 
 			if eligible[uid] || h.authorizer == nil {
 				continue
 			}
-			if skipAdmins && h.authorizer.IsWorkspaceOwnerOrAdmin(uid, workspaceID) {
-				continue
-			}
-			if h.authorizer.HasWorkspacePermission(uid, workspaceID, "conversations", "roulette", false) {
+			if inbox_assignment.CanReceiveRoulette(h.authorizer, uid, workspaceID, skipAdmins) {
 				eligible[uid] = true
 			}
 		}
@@ -798,13 +795,16 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 		return
 	}
 
+	// The config read stays lazy — only an owner/admin can be excluded by
+	// SkipAdminAssignment, so an ordinary member's open never costs a query.
+	skipAdmins := false
 	if h.workspaceConfigRepo != nil && h.authorizer != nil && h.authorizer.IsWorkspaceOwnerOrAdmin(conn.UserID, workspaceID) {
-		if cfg, err := h.workspaceConfigRepo.GetByWorkspaceID(context.Background(), workspaceID); err == nil && cfg != nil && cfg.SkipAdminAssignment {
-			return
+		if cfg, err := h.workspaceConfigRepo.GetByWorkspaceID(context.Background(), workspaceID); err == nil && cfg != nil {
+			skipAdmins = cfg.SkipAdminAssignment
 		}
 	}
 
-	if h.authorizer != nil && !h.authorizer.HasWorkspacePermission(conn.UserID, workspaceID, "conversations", "roulette", false) {
+	if h.authorizer != nil && !inbox_assignment.CanReceiveRoulette(h.authorizer, conn.UserID, workspaceID, skipAdmins) {
 		return
 	}
 
@@ -1023,6 +1023,7 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 		departmentID := conn.DepartmentID
 		campaignType := conn.CampaignType
 		whatsAppCampaignType := conn.WhatsAppCampaignType
+		containerKind := conn.ContainerKind
 		campaignID := conn.CampaignID
 		campaignWorkspaceID := conn.CampaignWorkspaceID
 		conversationStatus := conn.ConversationStatus
@@ -1042,6 +1043,7 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 					CampaignID:           campaignID,
 					CampaignType:         campaignType,
 					WhatsAppCampaignType: whatsAppCampaignType,
+					ContainerKind:        conversation.ContainerKind(containerKind),
 					ConversationStatus:   conversation.ConversationStatus(conversationStatus),
 					AssignedUserID:       userID,
 					IsAdmin:              isAdmin,
@@ -1072,6 +1074,7 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 					userID, conversation.SearchInboxInput{
 						CampaignID:           campaignID,
 						CampaignType:         campaignType,
+						ContainerKind:        conversation.ContainerKind(containerKind),
 						WorkspaceID:          campaignWorkspaceID,
 						SelectedDepartmentID: departmentID,
 						AssignedUserID:       userID,
@@ -1942,6 +1945,7 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 	departmentID := conn.DepartmentID
 	campaignType := conn.CampaignType
 	whatsAppCampaignType := conn.WhatsAppCampaignType
+	containerKind := conn.ContainerKind
 	campaignID := conn.CampaignID
 	campaignWorkspaceID := conn.CampaignWorkspaceID
 	conversationStatus := conn.ConversationStatus
@@ -1961,6 +1965,7 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 				CampaignID:           campaignID,
 				CampaignType:         campaignType,
 				WhatsAppCampaignType: whatsAppCampaignType,
+				ContainerKind:        conversation.ContainerKind(containerKind),
 				ConversationStatus:   conversation.ConversationStatus(conversationStatus),
 				AssignedUserID:       userID,
 				IsAdmin:              isAdmin,
@@ -1991,6 +1996,7 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 				userID, conversation.SearchInboxInput{
 					CampaignID:           campaignID,
 					CampaignType:         campaignType,
+					ContainerKind:        conversation.ContainerKind(containerKind),
 					WorkspaceID:          campaignWorkspaceID,
 					SelectedDepartmentID: departmentID,
 					AssignedUserID:       userID,
@@ -2365,6 +2371,7 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 			UserID:                conn.UserID,
 			CampaignID:            conn.CampaignID,
 			CampaignType:          conn.CampaignType,
+			ContainerKind:         conversation.ContainerKind(conn.ContainerKind),
 			SelectedDepartmentID:  conn.DepartmentID,
 			Query:                 p.Query,
 			StageID:               p.StageID,
@@ -2436,8 +2443,21 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	if p.CampaignType != "" && p.CampaignType != "voice" && p.CampaignType != "whatsapp" {
-		h.sendError(conn, "invalid_campaign_type", "campaign_type must be 'voice' or 'whatsapp'")
+	// The scopable set, not a hardcoded pair.
+	//
+	// Spelled inline this read `!= "voice" && != "whatsapp"`, which rejected
+	// Instagram, Telegram and the unofficial WhatsApp channel outright — all
+	// three of which shared.InboxScopableEntryTypes has listed as scopable since
+	// they shipped. The set is the single declaration; restating it here is how
+	// a channel silently loses its inbox filter.
+	if p.CampaignType != "" && !shared.EntryType(p.CampaignType).SupportsInboxScope() {
+		h.sendError(conn, "invalid_campaign_type",
+			"campaign_type must be one of "+shared.FormatEntryTypes(shared.InboxScopableEntryTypes()))
+		return
+	}
+
+	if p.ContainerKind != "" && !conversation.ContainerKind(p.ContainerKind).Valid() {
+		h.sendError(conn, "invalid_container_kind", "container_kind must be 'campaign' or empty")
 		return
 	}
 
@@ -2461,6 +2481,15 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		}
 		if p.CampaignType == "whatsapp" && !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "whatsapp_campaigns", "read", false) {
 			h.sendError(conn, "forbidden", "You don't have permission to view WhatsApp campaigns")
+			return
+		}
+		// Scoping to an unofficial CAMPAIGN needs the campaign permission, not
+		// the numbers one: an attendant who may answer on a number is not
+		// thereby entitled to see what a campaign sent from it.
+		if p.CampaignType == string(shared.EntryTypeUnofficialWhatsApp) &&
+			p.ContainerKind == string(conversation.ContainerKindCampaign) &&
+			!h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "unofficial_whatsapp_campaigns", "read", false) {
+			h.sendError(conn, "forbidden", "You don't have permission to view unofficial WhatsApp campaigns")
 			return
 		}
 	}
@@ -2505,6 +2534,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		conn.CampaignID = p.CampaignID
 		conn.CampaignType = p.CampaignType
 		conn.WhatsAppCampaignType = p.WhatsAppCampaignType
+		conn.ContainerKind = p.ContainerKind
 		conn.ViewMode = "campaign"
 
 		if h.workspaceResolver != nil {
@@ -2517,6 +2547,9 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		conn.CampaignID = ""
 		conn.CampaignType = p.CampaignType
 		conn.WhatsAppCampaignType = p.WhatsAppCampaignType
+		// A global view has no container to narrow to; clearing it stops a
+		// previous campaign scope leaking into the workspace-wide inbox.
+		conn.ContainerKind = ""
 		conn.ViewMode = "global"
 	}
 
@@ -2528,6 +2561,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 			CampaignID:           conn.CampaignID,
 			CampaignType:         conn.CampaignType,
 			WhatsAppCampaignType: conn.WhatsAppCampaignType,
+			ContainerKind:        conn.ContainerKind,
 			ViewMode:             conn.ViewMode,
 			ConversationStatus:   conn.ConversationStatus,
 		},
@@ -2543,6 +2577,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		departmentID := conn.DepartmentID
 		campaignType := conn.CampaignType
 		whatsAppCampaignType := conn.WhatsAppCampaignType
+		containerKind := conn.ContainerKind
 		campaignID := conn.CampaignID
 		campaignWorkspaceID := conn.CampaignWorkspaceID
 		conversationStatus := conn.ConversationStatus
@@ -2562,6 +2597,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 					CampaignID:           campaignID,
 					CampaignType:         campaignType,
 					WhatsAppCampaignType: whatsAppCampaignType,
+					ContainerKind:        conversation.ContainerKind(containerKind),
 					ConversationStatus:   conversation.ConversationStatus(conversationStatus),
 					AssignedUserID:       userID,
 					IsAdmin:              isAdmin,
@@ -2592,6 +2628,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 					userID, conversation.SearchInboxInput{
 						CampaignID:           campaignID,
 						CampaignType:         campaignType,
+						ContainerKind:        conversation.ContainerKind(containerKind),
 						WorkspaceID:          campaignWorkspaceID,
 						SelectedDepartmentID: departmentID,
 						AssignedUserID:       userID,
@@ -2967,6 +3004,7 @@ func (h *ConversationHub) handleRequestFunnelColumn(conn *WSConnection, payload 
 	campaignID := conn.CampaignID
 	campaignType := conn.CampaignType
 	whatsAppCampaignType := conn.WhatsAppCampaignType
+	containerKind := conn.ContainerKind
 	viewMode := conn.ViewMode
 	workspaceID := conn.WorkspaceID
 	isAdmin := conn.IsAdmin
@@ -2979,6 +3017,7 @@ func (h *ConversationHub) handleRequestFunnelColumn(conn *WSConnection, payload 
 			CampaignID:           campaignID,
 			CampaignType:         campaignType,
 			WhatsAppCampaignType: whatsAppCampaignType,
+			ContainerKind:        conversation.ContainerKind(containerKind),
 			StageID:              p.StageID,
 			Page:                 p.Page,
 			PageSize:             pageSize,
@@ -3043,6 +3082,7 @@ func (h *ConversationHub) handleRequestFunnelSummary(conn *WSConnection, payload
 	campaignID := conn.CampaignID
 	campaignType := conn.CampaignType
 	whatsAppCampaignType := conn.WhatsAppCampaignType
+	containerKind := conn.ContainerKind
 	viewMode := conn.ViewMode
 	workspaceID := conn.WorkspaceID
 	isAdmin := conn.IsAdmin
@@ -3064,6 +3104,7 @@ func (h *ConversationHub) handleRequestFunnelSummary(conn *WSConnection, payload
 					CampaignID:           campaignID,
 					CampaignType:         campaignType,
 					WhatsAppCampaignType: whatsAppCampaignType,
+					ContainerKind:        conversation.ContainerKind(containerKind),
 					StageID:              tid,
 					Page:                 1,
 					PageSize:             1,

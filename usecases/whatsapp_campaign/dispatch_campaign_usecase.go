@@ -1,16 +1,15 @@
 package whatsapp_campaign_usecase
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
-	"time"
 
 	"vozko/domain/cache"
+	"vozko/domain/campaign"
 	"vozko/domain/messaging"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/usecases/campaignqueue"
 )
 
 type dispatchCampaignUseCase struct {
@@ -19,6 +18,7 @@ type dispatchCampaignUseCase struct {
 	EntryRepo         wce.Repository
 	messageConsumerUC wc.MessageConsumerUseCase
 	shared            cache.SharedState
+	dispatcher        *campaignqueue.Dispatcher
 }
 
 func NewDispatchCampaignUseCase(
@@ -34,6 +34,7 @@ func NewDispatchCampaignUseCase(
 		EntryRepo:         entryRepo,
 		messageConsumerUC: messageConsumerUC,
 		shared:            shared,
+		dispatcher:        campaignqueue.NewDispatcher(messageQueuePub, shared, wc.QueueNamespace),
 	}
 }
 
@@ -61,42 +62,17 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 
 	currentStatus := campaignItem.Status
 
-	var (
-		targetStatus wc.Status
-		revertStatus wc.Status
-	)
-
-	switch action {
-	case wc.CampaignActionStart:
-		switch currentStatus {
-		case wc.CampaignStatusRunning:
-			return wc.ErrDispatchCampaignAlreadyRunning
-		case wc.CampaignStatusPaused, wc.CampaignStatusStopped, wc.CampaignStatusCompleted:
-			targetStatus = wc.CampaignStatusRunning
-			revertStatus = currentStatus
-		default:
-			return wc.ErrCampaignStatusInvalid
-		}
-	case wc.CampaignActionPause:
+	// The state machine is the shared one. It was previously a switch here and a
+	// second switch in the unofficial channel would have been the first place
+	// the two transports could disagree about what pausing a stopped campaign
+	// means.
+	transition, err := campaign.ResolveTransition(currentStatus, action)
+	if err != nil {
+		return err
+	}
+	targetStatus, revertStatus := transition.Target, transition.Revert
+	if !transition.FansOutWork {
 		input.Entries = nil
-		if currentStatus != wc.CampaignStatusRunning {
-			return wc.ErrDispatchCampaignNotRunning
-		}
-		targetStatus = wc.CampaignStatusPaused
-		revertStatus = currentStatus
-	case wc.CampaignActionStop:
-		input.Entries = nil
-		switch currentStatus {
-		case wc.CampaignStatusStopped:
-			return wc.ErrDispatchCampaignAlreadyStopped
-		case wc.CampaignStatusRunning, wc.CampaignStatusPaused:
-			targetStatus = wc.CampaignStatusStopped
-			revertStatus = currentStatus
-		default:
-			return wc.ErrCampaignStatusInvalid
-		}
-	default:
-		return wc.ErrDispatchActionRequired
 	}
 
 	if targetStatus != "" {
@@ -105,16 +81,10 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 			return err
 		}
 		if !updated {
-			switch action {
-			case wc.CampaignActionStart:
-				return wc.ErrDispatchCampaignAlreadyRunning
-			case wc.CampaignActionPause:
-				return wc.ErrDispatchCampaignNotRunning
-			case wc.CampaignActionStop:
-				return wc.ErrDispatchCampaignAlreadyStopped
-			default:
-				return wc.ErrCampaignStatusInvalid
-			}
+			// Another request won the race. Report the refusal the operator
+			// would have seen had we read the winning status first, so one
+			// click cannot report two different things depending on timing.
+			return campaign.SwapFailure(action)
 		}
 
 		if c.messageConsumerUC != nil {
@@ -169,39 +139,28 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 		}
 	}
 
+	messages := make([]campaignqueue.Message, 0, len(input.Entries))
 	for _, entry := range input.Entries {
 		if entry.PhoneNumber == "" {
 			return wc.ErrDispatchPhoneNumbersRequired
 		}
-
-		payload, err := json.Marshal(wc.DispatchQueueMessage{
+		messages = append(messages, campaignqueue.Message{
 			CampaignID:  input.CampaignID,
 			EntryID:     entry.EntryID,
 			PhoneNumber: entry.PhoneNumber,
 		})
-
-		if err != nil {
-			return fmt.Errorf("failed to marshal whatsapp campaign dispatch payload: %w", err)
-		}
-
-		queueMessage := messaging.QueueMessage{
-			Topic:   fmt.Sprintf("%s.%s", wc.WhatsAppCampaignDispatchTopic, input.CampaignID),
-			Payload: payload,
-		}
-
-		if err := c.MessageQueuePub.Publish(queueMessage.Topic, queueMessage.Payload); err != nil {
-			if targetStatus != "" {
-				if _, revertErr := c.CampaignRepo.UpdateStatus(input.CampaignID, revertStatus, targetStatus); revertErr != nil {
-					return fmt.Errorf("failed to publish whatsapp campaign dispatch payload: %w (status revert failed: %v)", err, revertErr)
-				}
-			}
-			return err
-		}
 	}
 
-	if c.shared != nil && len(input.Entries) > 0 {
-		key := "campaign:whatsapp:remaining:" + input.CampaignID
-		_ = c.shared.SetString(key, strconv.Itoa(len(input.Entries)), 72*time.Hour)
+	if err := c.dispatcher.Enqueue(input.CampaignID, messages); err != nil {
+		// The status was already swapped, so a failed fan-out has to put it
+		// back: leaving a campaign RUNNING with nothing queued is a campaign
+		// that can never complete and never restart.
+		if targetStatus != "" {
+			if _, revertErr := c.CampaignRepo.UpdateStatus(input.CampaignID, revertStatus, targetStatus); revertErr != nil {
+				return fmt.Errorf("failed to publish whatsapp campaign dispatch payload: %w (status revert failed: %v)", err, revertErr)
+			}
+		}
+		return err
 	}
 
 	return nil

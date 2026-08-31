@@ -1,11 +1,10 @@
 package whatsapp_campaign_usecase
 
 import (
-	"crypto/rand"
 	"fmt"
-	"math/big"
 
-	"vozko/domain/conversation"
+	"vozko/domain/campaign"
+	conversation "vozko/domain/conversation"
 	"vozko/domain/shared"
 	wc "vozko/domain/whatsapp_campaign"
 )
@@ -44,7 +43,7 @@ func (uc *clearHistoryUseCase) PrepareClearHistory(campaignID string) (*wc.Prepa
 		return nil, fmt.Errorf("failed to count messages: %w", err)
 	}
 
-	clearCode, err := generateClearCode()
+	clearCode, err := campaign.NewConfirmationCode()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate clear code: %w", err)
 	}
@@ -101,17 +100,4 @@ func (uc *clearHistoryUseCase) ConfirmClearHistory(input wc.ClearHistoryInput) (
 		Campaign:     updated,
 		DeletedCount: deletedCount,
 	}, nil
-}
-
-func generateClearCode() (string, error) {
-	const digits = "0123456789"
-	code := make([]byte, 6)
-	for i := range code {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
-		if err != nil {
-			return "", err
-		}
-		code[i] = digits[n.Int64()]
-	}
-	return string(code), nil
 }

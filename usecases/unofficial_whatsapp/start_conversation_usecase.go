@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	uw "vozko/domain/unofficial_whatsapp"
@@ -148,10 +147,10 @@ func (uc *StartConversationUseCase) Execute(
 
 	// From here the flow is the INBOUND flow, deliberately. Same repositories,
 	// same lead bridge, same conversation resolution — so a contact opened by an
-	// operator and one opened by an incoming message are the same record.
-	contact, err := uc.contacts.FindOrCreate(ctx, uw.FindOrCreateContactInput{
-		WorkspaceID: instance.WorkspaceID,
-		InstanceID:  instance.ID,
+	// operator, one opened by a campaign and one opened by an incoming message
+	// are the same record. The body lives in ConversationResolver because a
+	// second implementation would duplicate every contact it touched.
+	resolved, err := uc.resolver().Resolve(ctx, instance, ResolveInput{
 		JID:         check.JID,
 		LID:         check.LID,
 		PhoneNumber: phone,
@@ -160,22 +159,7 @@ func (uc *StartConversationUseCase) Execute(
 	if err != nil {
 		return nil, err
 	}
-
-	uc.bridgeContactLead(ctx, instance, contact)
-
-	existing, findErr := uc.conversations.FindByChatID(ctx, instance.ID, check.JID)
-	alreadyExisted := findErr == nil && existing != nil
-
-	conv, err := uc.conversations.FindOrCreate(ctx, uw.FindOrCreateConversationInput{
-		WorkspaceID: instance.WorkspaceID,
-		InstanceID:  instance.ID,
-		ContactID:   contact.ID,
-		ChatID:      check.JID,
-		IsGroup:     false,
-	})
-	if err != nil {
-		return nil, err
-	}
+	contact, conv, alreadyExisted := resolved.Contact, resolved.Conversation, resolved.AlreadyExisted
 
 	return &StartedConversation{
 		ConversationID: conv.ID,
@@ -186,29 +170,8 @@ func (uc *StartConversationUseCase) Execute(
 	}, nil
 }
 
-// bridgeContactLead attaches the CRM lead, exactly as the inbound path does.
-//
-// Best-effort for the same reason it is there: a lead that could not be created
-// must not stop an operator from reaching someone. The next inbound message
-// retries the bridge.
-func (uc *StartConversationUseCase) bridgeContactLead(
-	ctx context.Context,
-	instance *uw.Instance,
-	contact *uw.Contact,
-) {
-	if uc.leads == nil || contact.LeadID != nil || contact.PhoneNumber == "" {
-		return
-	}
-	leadID, err := uc.leads.EnsureLeadForPhone(
-		ctx, instance.WorkspaceID, contact.PhoneNumber, contact.DisplayName())
-	if err != nil || leadID == "" {
-		log.Printf("[unofficial-whatsapp] could not bridge a lead for contact %s: %v", contact.ID, err)
-		return
-	}
-	if err := uc.contacts.LinkLead(ctx, contact.ID, leadID); err != nil {
-		log.Printf("[unofficial-whatsapp] could not attach lead %s to contact %s: %v",
-			leadID, contact.ID, err)
-		return
-	}
-	contact.LeadID = &leadID
+// resolver builds the shared resolution path from this use case's own
+// dependencies, so the two cannot be wired differently.
+func (uc *StartConversationUseCase) resolver() *ConversationResolver {
+	return NewConversationResolver(uc.contacts, uc.conversations, uc.leads)
 }

@@ -553,6 +553,20 @@ func cloneBytes(src []byte) []byte {
 }
 
 func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string, entryType shared.EntryType, page, pageSize int, assignedUserID string) ([]conversation.EntryWithLastMessage, int64, error) {
+	return r.getEntriesWithMessages(campaignID, conversation.ContainerKindAccount, entryIDs, entryType, page, pageSize, assignedUserID)
+}
+
+// GetEntriesWithMessagesForContainer is the same read, narrowed to a specific
+// container kind.
+//
+// A second method rather than a seventh positional parameter on a signature that
+// already carries two bare ints: every existing caller wants the primary
+// container, and only the campaign-scoped CRM view wants the other.
+func (r *repository) GetEntriesWithMessagesForContainer(campaignID string, containerKind conversation.ContainerKind, entryIDs []string, entryType shared.EntryType, page, pageSize int, assignedUserID string) ([]conversation.EntryWithLastMessage, int64, error) {
+	return r.getEntriesWithMessages(campaignID, containerKind, entryIDs, entryType, page, pageSize, assignedUserID)
+}
+
+func (r *repository) getEntriesWithMessages(campaignID string, containerKind conversation.ContainerKind, entryIDs []string, entryType shared.EntryType, page, pageSize int, assignedUserID string) ([]conversation.EntryWithLastMessage, int64, error) {
 	useCampaignFilter := campaignID != ""
 
 	var filteredIDs []string
@@ -607,7 +621,7 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 	entryJoin := ch.entryJoinOn("e.entry_id")
 
 	if useCampaignFilter {
-		entryCTE = ch.containerCTE(assignmentFilterFor(ch.ContainerCTEEntryCol))
+		entryCTE = ch.cteForKind(containerKind, assignmentFilterFor)
 		cteArgs = append([]interface{}{campaignID}, assignmentArgs...)
 	} else {
 		entryCTE = `SELECT u.entry_id FROM unnest(?::uuid[]) AS u(entry_id) WHERE 1=1` + assignmentFilterFor("u.entry_id")
@@ -765,12 +779,15 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	leadJoin := ch.ContactJoin
 
 	if useCampaignFilter {
-		// "Campaign" here means the channel's container: a WhatsApp campaign, or
-		// the account row for channels that have no campaign concept.
-		departmentFilter, departmentArgs := departmentScopeClause(
-			ch.DepartmentColumn, ch.DepartmentEntryCol,
-			input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-		campaignFilter = ch.containerFilter(departmentFilter)
+		// Which container "CampaignID" means is the caller's choice. For most
+		// channels there is only one; the unofficial WhatsApp channel has both a
+		// number and a campaign, and they scope to different departments.
+		var departmentArgs []interface{}
+		campaignFilter, departmentArgs = ch.filterForKind(input.ContainerKind,
+			func(column, entryCol string) (string, []interface{}) {
+				return departmentScopeClause(column, entryCol,
+					input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
+			})
 		campaignFilterArgs = append([]interface{}{input.CampaignID}, departmentArgs...)
 	}
 

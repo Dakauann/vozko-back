@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/campaign"
 	"vozko/domain/lead"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
@@ -13,18 +14,20 @@ import (
 const MaxCampaignPhoneNumbers = 150000
 
 var (
-	ErrCampaignNameRequired              = errors.New("whatsapp campaign name is required")
-	ErrCampaignTemplateIDRequired        = errors.New("whatsapp campaign template id is required")
-	ErrCampaignBusinessPhoneIDRequired   = errors.New("whatsapp campaign business phone id is required")
-	ErrCampaignScheduledStartInvalid     = errors.New("whatsapp campaign scheduled start time is invalid")
-	ErrCampaignScheduledStartTooSoon     = errors.New("whatsapp campaign scheduled start time must be at least 5 minutes in the future and no more than 1 year from now")
-	ErrCampaignBusinessPhoneNotFound     = errors.New("whatsapp campaign business phone not found")
-	ErrCampaignBusinessPhoneNoAccess     = errors.New("user does not have access to this business phone number")
-	ErrCampaignPhoneNumbersRequired      = errors.New("whatsapp campaign must contain at least one phone number")
-	ErrCampaignPhoneNumbersTooMany       = errors.New("whatsapp campaign phone numbers exceed allowed limit")
-	ErrCampaignPhoneNumberInvalid        = errors.New("whatsapp campaign phone number is invalid, must be E.164 format starting with 55 (e.g., 558499999999)")
-	ErrCampaignNotFound                  = errors.New("whatsapp campaign not found")
-	ErrCampaignStatusInvalid             = errors.New("whatsapp campaign status is invalid")
+	ErrCampaignNameRequired            = errors.New("whatsapp campaign name is required")
+	ErrCampaignTemplateIDRequired      = errors.New("whatsapp campaign template id is required")
+	ErrCampaignBusinessPhoneIDRequired = errors.New("whatsapp campaign business phone id is required")
+	ErrCampaignScheduledStartInvalid   = errors.New("whatsapp campaign scheduled start time is invalid")
+	ErrCampaignScheduledStartTooSoon   = errors.New("whatsapp campaign scheduled start time must be at least 5 minutes in the future and no more than 1 year from now")
+	ErrCampaignBusinessPhoneNotFound   = errors.New("whatsapp campaign business phone not found")
+	ErrCampaignBusinessPhoneNoAccess   = errors.New("user does not have access to this business phone number")
+	ErrCampaignPhoneNumbersRequired    = errors.New("whatsapp campaign must contain at least one phone number")
+	ErrCampaignPhoneNumbersTooMany     = errors.New("whatsapp campaign phone numbers exceed allowed limit")
+	ErrCampaignPhoneNumberInvalid      = errors.New("whatsapp campaign phone number is invalid, must be E.164 format starting with 55 (e.g., 558499999999)")
+	ErrCampaignNotFound                = errors.New("whatsapp campaign not found")
+	// Aliased to the kernel so a refusal raised by campaign.ResolveTransition
+	// still matches the name the HTTP layer checks.
+	ErrCampaignStatusInvalid             = campaign.ErrStatusInvalid
 	ErrCampaignResetCodeInvalid          = errors.New("invalid reset confirmation code")
 	ErrCampaignResetNotAllowed           = errors.New("whatsapp campaign reset not allowed while running")
 	ErrCampaignTemplateNotFound          = errors.New("whatsapp campaign template not found or not approved")
@@ -71,85 +74,31 @@ func (t CampaignType) IsValid() bool {
 	}
 }
 
-type Status string
+// Status is the campaign lifecycle, shared with every channel.
+//
+// The transition rules live in domain/campaign and are resolved by
+// campaign.ResolveTransition, so the Cloud API campaign and the linked-device
+// campaign cannot disagree about what "pause a stopped campaign" means.
+type Status = campaign.Status
 
 const (
-	CampaignStatusRunning   Status = "RUNNING"
-	CampaignStatusPaused    Status = "PAUSED"
-	CampaignStatusStopped   Status = "STOPPED"
-	CampaignStatusCompleted Status = "COMPLETED"
+	CampaignStatusRunning   = campaign.StatusRunning
+	CampaignStatusPaused    = campaign.StatusPaused
+	CampaignStatusStopped   = campaign.StatusStopped
+	CampaignStatusCompleted = campaign.StatusCompleted
 )
 
-func (s Status) IsValid() bool {
-	switch s {
-	case CampaignStatusRunning, CampaignStatusPaused, CampaignStatusStopped, CampaignStatusCompleted:
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeStatus(value Status) Status {
-	trimmed := Status(strings.ToUpper(strings.TrimSpace(string(value))))
-	if trimmed == "" {
-		return CampaignStatusStopped
-	}
-	return trimmed
-}
-
-type CampaignMetrics struct {
-	TotalNumbers            int64 `json:"totalNumbers"`
-	Pending                 int64 `json:"pending"`
-	Sent                    int64 `json:"sent"`
-	Delivered               int64 `json:"delivered"`
-	Read                    int64 `json:"read"`
-	Failed                  int64 `json:"failed"`
-	NotEligiblePossibleSpam int64 `json:"notEligiblePossibleSpam"`
-	Processed               int64 `json:"processed"`
-	// Dispatches ("disparos") is the real outbound send count: excludes
-	// spam-protection skips and failed sends. See StatusCounts.Dispatches.
-	// This is CURRENT entry status, not a ledger: a campaign reset zeroes it.
-	Dispatches     int64   `json:"dispatches"`
-	CompletionRate float64 `json:"completionRate"`
-	SuccessRate    float64 `json:"successRate"`
-	// ByCategory splits Dispatches by the campaign template's Meta category
-	// (volume only, no money). Same current-state caveat as Dispatches.
-	ByCategory *CategoryDispatches `json:"byCategory,omitempty"`
-}
+// CampaignMetrics is what the campaign card and the summary bar render. Shared
+// across channels; see campaign.Metrics.
+type CampaignMetrics = campaign.Metrics
 
 // CategoryDispatches is billed-send volume by WhatsApp template category.
 // Populated on workspace summary; values are current entry statuses (reset clears).
-type CategoryDispatches struct {
-	Marketing      int64 `json:"marketing"`
-	Utility        int64 `json:"utility"`
-	Authentication int64 `json:"authentication"`
-}
+type CategoryDispatches = campaign.CategoryDispatches
 
+// NewCampaignMetrics derives the rendered metrics from a status tally.
 func NewCampaignMetrics(counts *wce.StatusCounts) *CampaignMetrics {
-	if counts == nil {
-		return &CampaignMetrics{}
-	}
-
-	metrics := &CampaignMetrics{
-		TotalNumbers:            counts.Total,
-		Pending:                 counts.Pending,
-		Sent:                    counts.Sent,
-		Delivered:               counts.Delivered,
-		Read:                    counts.Read,
-		Failed:                  counts.Failed,
-		NotEligiblePossibleSpam: counts.NotEligiblePossibleSpam,
-		Processed:               counts.Processed(),
-		Dispatches:              counts.Dispatches(),
-	}
-
-	if metrics.TotalNumbers > 0 {
-		metrics.CompletionRate = float64(metrics.Processed) / float64(metrics.TotalNumbers) * 100
-	}
-	if metrics.Processed > 0 {
-		metrics.SuccessRate = float64(counts.Sent+counts.Delivered+counts.Read) / float64(metrics.Processed) * 100
-	}
-
-	return metrics
+	return campaign.NewMetrics(counts)
 }
 
 type PhoneInput struct {
@@ -209,7 +158,7 @@ func (c *Campaign) Normalize() {
 	c.AgentID = strings.TrimSpace(c.AgentID)
 	c.WorkflowID = strings.TrimSpace(c.WorkflowID)
 	c.PipelineID = strings.TrimSpace(c.PipelineID)
-	c.Status = normalizeStatus(c.Status)
+	c.Status = campaign.NormalizeStatus(c.Status)
 	if c.Type == "" {
 		c.Type = CampaignTypeStandard
 	}

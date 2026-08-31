@@ -335,3 +335,7 @@ func TestAssignMember_NoErrorEdge(t *testing.T) {
 		t.Error("expected success=false")
 	}
 }
+
+func (m *assignMemberAssignmentMock) CompareAndSwapRoundRobinState(*ia.RoundRobinState, string) (bool, error) {
+	return true, nil
+}

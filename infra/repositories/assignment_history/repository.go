@@ -116,3 +116,73 @@ func toSchema(h *ia.AssignmentHistory) *schema.AssignmentHistory {
 	}
 	return rec
 }
+
+func (r *repository) ListOpenOlderThan(workspaceIDs []string, trigger string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
+	if len(workspaceIDs) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	var recs []schema.AssignmentHistory
+	err := r.db.
+		Where("workspace_id IN ? AND ended_at IS NULL AND trigger = ? AND started_at < ?", workspaceIDs, trigger, olderThan).
+		Order("started_at ASC").
+		Limit(limit).
+		Find(&recs).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ia.AssignmentHistory, len(recs))
+	for i := range recs {
+		out[i] = toDomain(&recs[i])
+	}
+	return out, nil
+}
+
+// CountRescuesSinceHandout counts rescue hops since the roulette last handed
+// this entry out.
+//
+// One query, not two. The rescue sweep calls this once per stalled
+// conversation, so a second round-trip per candidate is a per-candidate cost on
+// the one path that is already the most query-hungry in the feature.
+//
+// Reading the tail newest-first and stopping at the roulette hand-out is
+// correct for any real chain — the hop cap is a single digit — and the LIMIT
+// bounds an entry that has been reassigned by hand hundreds of times. An entry
+// whose history holds no hand-out at all (it began as a manual assignment) has
+// no rescue chain to bound, so it counts zero.
+func (r *repository) CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error) {
+	type row struct {
+		Trigger string `gorm:"column:trigger"`
+	}
+	var rows []row
+	err := r.db.Model(&schema.AssignmentHistory{}).
+		Select("trigger").
+		Where("workspace_id = ? AND entry_id = ? AND entry_type = ?", workspaceID, entryID, entryType).
+		Order("started_at DESC").
+		Limit(rescueChainScanLimit).
+		Scan(&rows).Error
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, item := range rows {
+		switch item.Trigger {
+		case ia.TriggerInboundRR:
+			// The hand-out that opened the current chain: everything older
+			// belongs to a previous one.
+			return count, nil
+		case ia.TriggerRescue:
+			count++
+		}
+	}
+	// No hand-out in the scanned tail: nothing to bound.
+	return 0, nil
+}
+
+// rescueChainScanLimit bounds the tail read above. The hop cap is
+// MaxRescueHops, so a real chain is at most a handful of rows; this only has to
+// survive an entry somebody reassigned by hand many times.
+const rescueChainScanLimit = 50

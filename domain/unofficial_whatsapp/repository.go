@@ -213,6 +213,10 @@ type ConversationRepository interface {
 
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
+	// CampaignIDForEntry reports the campaign that owns this conversation, or ""
+	// when none targeted it. Funnel placement and campaign attribution both need
+	// it, and unlike the Cloud API channel it cannot be read off the entry row.
+	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 
 	RecordInbound(ctx context.Context, id string, at time.Time) error

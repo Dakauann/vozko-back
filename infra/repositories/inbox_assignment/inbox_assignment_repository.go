@@ -2,6 +2,7 @@ package inbox_assignment_repository
 
 import (
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -158,4 +159,44 @@ func toSchema(a *ia.InboxAssignment) *schema.InboxAssignment {
 		rec.BusinessPhoneID = &bp
 	}
 	return rec
+}
+
+func (r *repository) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
+	res := r.db.Model(&schema.InboxRoundRobinState{}).
+		Where("workspace_id = ? AND business_phone_id = ? AND department_id = ? AND last_assigned_user_id = ?",
+			state.WorkspaceID, state.BusinessPhoneID, state.DepartmentID, expected).
+		Updates(map[string]interface{}{
+			"last_assigned_user_id": state.LastAssignedUserID,
+			"updated_at":            time.Now().UTC(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	if res.RowsAffected == 1 {
+		return true, nil
+	}
+	if expected != "" {
+		// Zero rows with a non-empty expectation means somebody else advanced
+		// the pointer between our read and this write.
+		return false, nil
+	}
+
+	// No pointer yet. DO NOTHING rather than DO UPDATE so a concurrent inserter
+	// is reported as the winner instead of both callers believing they claimed
+	// the first turn.
+	rec := schema.InboxRoundRobinState{
+		ID:                 state.ID,
+		WorkspaceID:        state.WorkspaceID,
+		BusinessPhoneID:    state.BusinessPhoneID,
+		DepartmentID:       state.DepartmentID,
+		LastAssignedUserID: state.LastAssignedUserID,
+	}
+	res = r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "business_phone_id"}, {Name: "department_id"}},
+		DoNothing: true,
+	}).Create(&rec)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }

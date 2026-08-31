@@ -37,7 +37,33 @@ type SearchMessagesByEntryInput struct {
 	PageSize  int
 }
 
+// ContainerKind selects WHICH container a scoped inbox query narrows to.
+//
+// Most channels have exactly one: a WhatsApp campaign, or the account row. The
+// unofficial WhatsApp channel has two genuinely different ones — a conversation
+// belongs to a NUMBER forever, while a campaign is one run across many numbers —
+// and the CRM has to be able to ask for either.
+//
+// The zero value is the channel's primary container, so every existing caller
+// and every channel that declares only one keeps its exact behaviour.
+type ContainerKind string
+
+const (
+	ContainerKindAccount  ContainerKind = ""
+	ContainerKindCampaign ContainerKind = "campaign"
+)
+
+// Valid reports whether this is a kind the system recognises. An unknown value
+// must fall back to the primary container rather than matching nothing.
+func (k ContainerKind) Valid() bool {
+	return k == ContainerKindAccount || k == ContainerKindCampaign
+}
+
 type SearchEntriesInput struct {
+	// ContainerKind narrows CampaignID to a campaign rather than to the
+	// channel's primary container. Empty keeps today's behaviour.
+	ContainerKind ContainerKind
+
 	CampaignID           string
 	WorkspaceID          string
 	WhatsAppCampaignType string

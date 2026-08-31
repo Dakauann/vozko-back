@@ -188,14 +188,15 @@ type Container struct {
 	telegram *telegramBundle
 	// unofficialWhatsApp is WhatsApp over a linked-device session, wired as one
 	// self-contained bundle like the other two channels.
-	unofficialWhatsApp *unofficialWhatsAppBundle
-	mcpCollection      domainmcp.CollectionRepository
-	mcpRegistry        *ucmcp.Registry
-	router             deliveryHttp.Router
-	server             deliveryHttp.HTTPServer
-	metricsHTTP        *metricsServer
-	jobRunner          *cronPackage.JobRunner
-	recordingPool      *calls_usecase.RecordingUploadPool
+	unofficialWhatsApp          *unofficialWhatsAppBundle
+	unofficialWhatsAppCampaigns *unofficialWhatsAppCampaignBundle
+	mcpCollection               domainmcp.CollectionRepository
+	mcpRegistry                 *ucmcp.Registry
+	router                      deliveryHttp.Router
+	server                      deliveryHttp.HTTPServer
+	metricsHTTP                 *metricsServer
+	jobRunner                   *cronPackage.JobRunner
+	recordingPool               *calls_usecase.RecordingUploadPool
 
 	cfPublisher       *cloudflare.Publisher
 	cfPublisherCancel context.CancelFunc

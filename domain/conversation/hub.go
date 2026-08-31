@@ -126,8 +126,11 @@ type SearchFilters struct {
 }
 
 type SearchInboxInput struct {
-	UserID               string
-	CampaignID           string
+	UserID     string
+	CampaignID string
+	// ContainerKind narrows CampaignID to a campaign rather than the channel's
+	// primary container. Empty is today's behaviour for every channel.
+	ContainerKind        ContainerKind
 	CampaignType         string
 	WhatsAppCampaignType string
 	WorkspaceID          string

@@ -26,4 +26,13 @@ func RegisterRoutes(
 		ac(workspace_domain.ResourceInstagramAccounts, workspace_domain.ActionRead, h.ExportInstagramEntries)).Methods(http.MethodGet)
 	protected.HandleFunc("/telegram/accounts/{id}/entries/export",
 		ac(workspace_domain.ResourceTelegramAccounts, workspace_domain.ActionRead, h.ExportTelegramEntries)).Methods(http.MethodGet)
+
+	// The unofficial channel exports by CAMPAIGN rather than by number, because
+	// it is the one channel with both: a conversation belongs to a number
+	// forever, while a campaign is one run across many of them. Gated on the
+	// campaigns resource, not the numbers one — exporting who a campaign reached
+	// is not something answering on a number should grant.
+	protected.HandleFunc("/unofficial-whatsapp/campaigns/{id}/entries/export",
+		ac(workspace_domain.ResourceUnofficialWhatsAppCampaigns, workspace_domain.ActionRead,
+			h.ExportUnofficialWhatsAppCampaignEntries)).Methods(http.MethodGet)
 }

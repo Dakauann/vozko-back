@@ -3,7 +3,7 @@ package inbox_assignment_usecase
 import (
 	"context"
 	"log"
-	"sort"
+
 	"time"
 
 	"vozko/domain/actor"
@@ -26,6 +26,12 @@ type AssignmentService struct {
 	eligibleUsers     conversation.EligibleUserProvider
 	workspaceResolver conversation.CampaignWorkspaceResolver
 	workspaceConfig   WorkspaceConfigProvider
+	// candidates builds the roulette ring. Always non-nil: the constructor
+	// gives it the connected-user provider, which is enough to serve the
+	// default (online) mode, and SetRoster/SetPresence upgrade the same
+	// instance to also serve last_seen. One implementation, no second copy of
+	// the online path to drift.
+	candidates *CandidateResolver
 }
 
 func NewAssignmentService(
@@ -39,7 +45,35 @@ func NewAssignmentService(
 		eligibleUsers:     eligibleUsers,
 		workspaceResolver: workspaceResolver,
 		workspaceConfig:   workspaceConfig,
+		candidates:        NewCandidateResolver(eligibleUsers),
 	}
+}
+
+// SetRoster enables the last_seen mode's membership-based pool. Without it a
+// workspace configured for last_seen degrades to the online pool with a logged
+// reason rather than stopping distribution.
+func (s *AssignmentService) SetRoster(roster ia.RosterProvider) { s.candidates.SetRoster(roster) }
+
+// SetPresence enables the last_seen mode's presence reader.
+func (s *AssignmentService) SetPresence(seen ia.LastSeenReader) { s.candidates.SetPresence(seen) }
+
+// Candidates exposes the resolver so the rescue sweep can rebuild the same ring
+// this service assigns from — the alternative, a second resolver built from the
+// same parts, is exactly the drift this seam exists to prevent.
+func (s *AssignmentService) Candidates() *CandidateResolver { return s.candidates }
+
+// workspaceConfigFor reads the workspace policy once per assignment. A missing
+// provider or a failed read yields nil, and every consumer of the result treats
+// nil as "the defaults", which are the historical behaviour.
+func (s *AssignmentService) workspaceConfigFor(workspaceID string) *wsc.WorkspaceConfig {
+	if s.workspaceConfig == nil {
+		return nil
+	}
+	cfg, err := s.workspaceConfig.GetByWorkspaceID(context.Background(), workspaceID)
+	if err != nil {
+		return nil
+	}
+	return cfg
 }
 
 // SetHistory enables direct ownership interval recording (tests / consumer only).
@@ -69,11 +103,10 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return existing.AssignedUserID
 	}
 
+	cfg := s.workspaceConfigFor(workspaceID)
 	skipAdmins := false
-	if s.workspaceConfig != nil {
-		if cfg, err := s.workspaceConfig.GetByWorkspaceID(context.Background(), workspaceID); err == nil && cfg != nil {
-			skipAdmins = cfg.SkipAdminAssignment
-		}
+	if cfg != nil {
+		skipAdmins = cfg.SkipAdminAssignment
 	}
 
 	log.Printf("[InboxAssignment] workspace %s: skipAdmins=%v for entry %s (%s)", workspaceID, skipAdmins, entryID, entryType)
@@ -84,13 +117,8 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return ""
 	}
 
-	var connectedUsers []string
-	if departmentID != "" {
-		connectedUsers = s.eligibleUsers.GetEligibleUsersForWorkspaceDepartment(workspaceID, departmentID, skipAdmins)
-	} else {
-		connectedUsers = s.eligibleUsers.GetEligibleUsersForWorkspace(workspaceID, skipAdmins)
-	}
-	if len(connectedUsers) == 0 {
+	pool := s.candidates.Resolve(workspaceID, departmentID, skipAdmins, cfg)
+	if len(pool.Ring) == 0 {
 		if departmentID != "" {
 			log.Printf("[InboxAssignment] no connected eligible users for workspace %s department %s, entry %s stays unassigned", workspaceID, departmentID, entryID)
 		} else {
@@ -99,32 +127,11 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return ""
 	}
 
-	sort.Strings(connectedUsers)
-
-	state, err := s.repo.GetRoundRobinState(workspaceID, businessPhoneID, departmentID)
+	assignedUserID, nextIndex, err := s.claimNextInRing(workspaceID, businessPhoneID, departmentID, pool)
 	if err != nil {
 		log.Printf("[InboxAssignment] error getting round-robin state: %v", err)
 		return ""
 	}
-
-	nextIndex := 0
-	if state != nil && state.LastAssignedUserID != "" {
-		found := false
-
-		for i, u := range connectedUsers {
-			if u == state.LastAssignedUserID {
-				nextIndex = (i + 1) % len(connectedUsers)
-				found = true
-				break
-			}
-		}
-		if !found {
-
-			nextIndex = sort.SearchStrings(connectedUsers, state.LastAssignedUserID) % len(connectedUsers)
-		}
-	}
-
-	assignedUserID := connectedUsers[nextIndex]
 
 	assignment := &ia.InboxAssignment{
 		WorkspaceID:     workspaceID,
@@ -138,22 +145,8 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return ""
 	}
 
-	newState := &ia.RoundRobinState{
-		WorkspaceID:        workspaceID,
-		BusinessPhoneID:    businessPhoneID,
-		DepartmentID:       departmentID,
-		LastAssignedUserID: assignedUserID,
-	}
-	if state != nil {
-		newState.ID = state.ID
-	}
-	if err := s.repo.SaveRoundRobinState(newState); err != nil {
-		log.Printf("[InboxAssignment] error saving round-robin state: %v", err)
-
-	}
-
-	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (index %d/%d, phone %s)",
-		entryID, entryType, assignedUserID, nextIndex, len(connectedUsers), businessPhoneID)
+	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (index %d/%d, mode=%s reason=%s, phone %s)",
+		entryID, entryType, assignedUserID, nextIndex, len(pool.Ring), pool.Mode, pool.Reason, businessPhoneID)
 
 	s.recordHistoryAndEvent(recordInput{
 		WorkspaceID:       workspaceID,
@@ -257,6 +250,54 @@ func (s *AssignmentService) AssignOnOpen(entryID, entryType, businessPhoneID, wo
 	return true, nil
 }
 
+// UnassignSystem drops ownership and records it.
+//
+// It exists for the one case where keeping an owner is worse than having none:
+// the rescue sweep has walked the whole ring and nobody took the conversation.
+// Unassigned means "visible to the whole department", so the conversation stops
+// being one away agent's private backlog and someone can pick it up.
+//
+// reason is stamped on the timeline event so the customer-facing history says
+// why ownership disappeared, rather than showing an unexplained gap.
+func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reason string) error {
+	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return nil
+	}
+	prev := existing.AssignedUserID
+
+	if err := s.repo.Unassign(workspaceID, entryID, entryType); err != nil {
+		return err
+	}
+
+	dept := ""
+	if s.workspaceResolver != nil {
+		if d, err := s.workspaceResolver.GetEntryDepartmentID(entryID, entryType); err == nil {
+			dept = d
+		}
+	}
+
+	// An empty AssignedUserID is what tells the history writer to close the
+	// open interval without opening a new one — see the consumer.
+	s.recordHistoryAndEvent(recordInput{
+		WorkspaceID:       workspaceID,
+		EntryID:           entryID,
+		EntryType:         entryType,
+		AssignedUserID:    "",
+		PreviousUserID:    prev,
+		Trigger:           reason,
+		AssignedByActorID: actor.SystemID,
+		BusinessPhoneID:   existing.BusinessPhoneID,
+		DepartmentID:      dept,
+		EventType:         ce.EventUnassigned,
+		Channel:           channelForEntryType(entryType),
+	})
+	return nil
+}
+
 type recordInput struct {
 	WorkspaceID       string
 	EntryID           string
@@ -301,6 +342,12 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 		if err := s.history.CloseOpen(in.WorkspaceID, in.EntryID, in.EntryType, now); err != nil {
 			log.Printf("[InboxAssignment] history CloseOpen: %v", err)
 		}
+		// Unassignment closes the interval and opens nothing — an owner-less
+		// open interval would read as "still assigned" in every report. Mirrors
+		// the same guard in the telemetry consumer.
+		if in.AssignedUserID == "" {
+			return
+		}
 		h := &ia.AssignmentHistory{
 			WorkspaceID:       in.WorkspaceID,
 			EntryID:           in.EntryID,
@@ -320,9 +367,9 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 	}
 
 	if s.events != nil {
-		details := map[string]string{
-			"to_user_id": in.AssignedUserID,
-			"trigger":    in.Trigger,
+		details := map[string]string{"trigger": in.Trigger}
+		if in.AssignedUserID != "" {
+			details["to_user_id"] = in.AssignedUserID
 		}
 		if in.PreviousUserID != "" {
 			details["from_user_id"] = in.PreviousUserID
@@ -350,4 +397,67 @@ func channelForEntryType(entryType string) string {
 	default:
 		return "whatsapp"
 	}
+}
+
+// maxRoundRobinAttempts bounds the compare-and-swap retry. Three is generous:
+// contention here is two webhooks landing in the same millisecond, and each
+// retry re-reads a pointer that has just been written.
+const maxRoundRobinAttempts = 3
+
+// claimNextInRing picks the next owner and claims the round-robin pointer in
+// the same breath.
+//
+// The pointer now advances BEFORE the assignment row is written, which is the
+// deliberate half of this trade: if the assignment write then fails, one
+// position of the rotation is skipped. Skipping a turn costs one agent one
+// conversation's worth of fairness; the alternative — the unguarded
+// read-modify-write this replaces — handed two simultaneous conversations to
+// the same agent and skipped somebody entirely.
+//
+// When the retries are spent it assigns anyway against the last pointer it
+// read. A slightly unfair assignment is better than a conversation nobody owns.
+func (s *AssignmentService) claimNextInRing(workspaceID, businessPhoneID, departmentID string, pool Pool) (string, int, error) {
+	var (
+		userID string
+		idx    int
+	)
+	for attempt := 1; attempt <= maxRoundRobinAttempts; attempt++ {
+		state, err := s.repo.GetRoundRobinState(workspaceID, businessPhoneID, departmentID)
+		if err != nil {
+			return "", 0, err
+		}
+
+		lastAssigned, stateID := "", ""
+		if state != nil {
+			lastAssigned = state.LastAssignedUserID
+			stateID = state.ID
+		}
+
+		idx = ia.NextIndex(pool.Ring, lastAssigned, pool.Resume)
+		userID = pool.Ring[idx]
+
+		claimed, err := s.repo.CompareAndSwapRoundRobinState(&ia.RoundRobinState{
+			ID:                 stateID,
+			WorkspaceID:        workspaceID,
+			BusinessPhoneID:    businessPhoneID,
+			DepartmentID:       departmentID,
+			LastAssignedUserID: userID,
+		}, lastAssigned)
+		if err != nil {
+			// A failed pointer WRITE has always been non-fatal: the rotation
+			// loses a step, the conversation still gets an owner. Only a failed
+			// READ aborts, because without the pointer there is no pick to make.
+			log.Printf("[InboxAssignment] error saving round-robin state: %v", err)
+			return userID, idx, nil
+		}
+		if claimed {
+			return userID, idx, nil
+		}
+		log.Printf("[InboxAssignment] round-robin pointer moved under us for workspace %s (phone %s, department %q, attempt %d/%d); recomputing",
+			workspaceID, businessPhoneID, departmentID, attempt, maxRoundRobinAttempts)
+	}
+
+	log.Printf("[InboxAssignment] round-robin contention unresolved for workspace %s after %d attempts; assigning %s anyway",
+		workspaceID, maxRoundRobinAttempts, userID)
+	return userID, idx, nil
 }

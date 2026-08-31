@@ -5,7 +5,9 @@ import (
 
 	"vozko/domain/shared"
 	cronPackage "vozko/infra/cron"
+	ia_repo "vozko/infra/repositories/inbox_assignment"
 	conversation_usecase "vozko/usecases/conversation"
+	ia_usecase "vozko/usecases/inbox_assignment"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
 )
 
@@ -56,6 +58,19 @@ func (c *Container) initJobRunner() {
 	// makes delivery correct when the delayed queue loses a message.
 	c.jobRunner.SetScheduledMessageJobs(c.useCases.sweepScheduledMessages, c.useCases.purgeScheduledMessages)
 
+	// Roulette rescue. Registered unconditionally: it filters itself down to the
+	// workspaces running the last_seen mode with rescue on, so a deployment with
+	// none of them pays one indexed read a minute.
+	if c.services.assignmentService != nil {
+		c.jobRunner.SetAssignmentJobs(ia_usecase.NewRescueJob(
+			c.repositories.workspaceConfig,
+			c.repositories.assignmentHistory,
+			ia_repo.NewAttentionRepository(c.db),
+			c.services.conversationStatusUpdater,
+			c.services.assignmentService,
+		))
+	}
+
 	// Paid-template reconciliation is likewise not optional: it is the sweep that
 	// returns money taken for sends that never completed. Without it those
 	// charges are simply kept.
@@ -73,6 +88,13 @@ func (c *Container) initJobRunner() {
 	}
 	if c.telegram != nil && c.telegram.Enabled {
 		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth, c.telegram.PurgeEvents)
+	}
+	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
+		c.jobRunner.SetUnofficialWhatsAppCampaignJobs(
+			cronPackage.CtxJobFunc(func(context.Context) error {
+				return c.unofficialWhatsAppCampaigns.ScheduleJob.StartScheduledCampaigns()
+			}),
+		)
 	}
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		c.jobRunner.SetUnofficialWhatsAppJobs(

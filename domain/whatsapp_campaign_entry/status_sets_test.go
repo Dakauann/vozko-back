@@ -10,14 +10,14 @@ import "testing"
 
 func TestAllStatusesIsTheSetValidAccepts(t *testing.T) {
 	for _, s := range AllStatuses() {
-		if !s.Valid() {
+		if !ValidStatus(s) {
 			t.Errorf("AllStatuses contains %q but Valid() rejects it", s)
 		}
 	}
-	if SendStatus("SOMETHING_ELSE").Valid() {
+	if ValidStatus(SendStatus("SOMETHING_ELSE")) {
 		t.Error("Valid() accepted a status that is not in AllStatuses")
 	}
-	if SendStatus("").Valid() {
+	if ValidStatus(SendStatus("")) {
 		t.Error("Valid() accepted the empty status")
 	}
 }

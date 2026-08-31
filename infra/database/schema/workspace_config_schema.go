@@ -36,6 +36,18 @@ type WorkspaceConfig struct {
 	AutoCloseMaxAgeEnabled    bool `gorm:"not null;default:true"`
 	AutoCloseMaxAgeAfterHours int  `gorm:"type:int;not null;default:168"`
 
+	// Roulette distribution policy. The default is the historical behaviour
+	// ('online'), so AutoMigrate adding these columns changes nothing for any
+	// existing workspace — the feature ships dark until an admin opts in.
+	//
+	// Rescue defaults ON but only acts in last_seen mode (see
+	// WorkspaceConfig.RouletteRescueActive), which is what keeps the default
+	// true here from being a behaviour change for everyone.
+	RouletteMode                string `gorm:"type:varchar(16);not null;default:'online'"`
+	RouletteLastSeenWindowHours int    `gorm:"type:int;not null;default:48"`
+	RouletteRescueEnabled       bool   `gorm:"not null;default:true"`
+	RouletteRescueAfterMinutes  int    `gorm:"type:int;not null;default:15"`
+
 	UpdatedBy string    `gorm:"type:uuid"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`

@@ -958,8 +958,8 @@ func newTestHarness() *testHarness {
 		LeadCampaignSendRepo:    &mockLeadCampaignSendRepo{},
 		InflightReserver:        inflightReserver,
 		CachedBalanceChecker:    cachedBal,
-		subscribedCamps:         make(map[string]bool),
 	}
+	uc.attachRunner(queueSub, queuePub, sharedState)
 
 	return &testHarness{
 		consumer:             uc,
@@ -1210,7 +1210,7 @@ func TestStop_DeletesQueueAndSetsFlag(t *testing.T) {
 	}
 
 	if h.consumer.IsSubscribed(campID) {
-		t.Error("expected campaign to no longer be in subscribedCamps")
+		t.Error("expected campaign to no longer be subscribed")
 	}
 }
 
@@ -2978,4 +2978,8 @@ func (r *mockBusinessPhoneRepo) UpdateCallsEnabled(string, bool) error { return 
 
 func (f *mockWhatsAppClient) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
 	return &conversation.SendTextMessageOutput{}, nil
+}
+
+func (m *mockWorkspaceConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
+	return nil, nil
 }

@@ -102,12 +102,15 @@ type WSConnection struct {
 	CampaignID           string
 	CampaignType         string
 	WhatsAppCampaignType string
-	CampaignWorkspaceID  string
-	ViewMode             string
-	ConversationStatus   string
-	Done                 chan struct{}
-	viewSeq              uint64
-	connectedAt          time.Time
+	// ContainerKind narrows CampaignID to a campaign rather than the channel's
+	// primary container. Empty is every channel's existing behaviour.
+	ContainerKind       string
+	CampaignWorkspaceID string
+	ViewMode            string
+	ConversationStatus  string
+	Done                chan struct{}
+	viewSeq             uint64
+	connectedAt         time.Time
 }
 
 type SubscribePayload struct {
@@ -513,6 +516,7 @@ type SwitchViewPayload struct {
 	CampaignID           string `json:"campaign_id,omitempty"`
 	CampaignType         string `json:"campaign_type,omitempty"`
 	WhatsAppCampaignType string `json:"whatsapp_campaign_type,omitempty"`
+	ContainerKind        string `json:"container_kind,omitempty"`
 	ConversationStatus   string `json:"conversation_status,omitempty"`
 }
 
@@ -520,6 +524,7 @@ type ViewSwitchedPayload struct {
 	CampaignID           string `json:"campaign_id,omitempty"`
 	CampaignType         string `json:"campaign_type,omitempty"`
 	WhatsAppCampaignType string `json:"whatsapp_campaign_type,omitempty"`
+	ContainerKind        string `json:"container_kind,omitempty"`
 	ViewMode             string `json:"view_mode"`
 	ConversationStatus   string `json:"conversation_status,omitempty"`
 }

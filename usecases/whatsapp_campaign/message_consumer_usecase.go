@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"vozko/domain/balance"
@@ -27,6 +25,7 @@ import (
 	workflow_domain "vozko/domain/workflow"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	wsc "vozko/domain/workspace_config"
+	"vozko/usecases/campaignqueue"
 
 	"github.com/google/uuid"
 )
@@ -66,9 +65,9 @@ type messageConsumerUseCase struct {
 	CachedBalanceChecker    balance.CachedBalanceChecker
 	triggerEvaluator        workflow_domain.TriggerEvaluator
 
-	subscribedMu    sync.RWMutex
-	subscribedCamps map[string]bool
-	pausedCamps     map[string]bool
+	// runner owns the queue: subscription bookkeeping, pause/stop, requeue and
+	// completion. Everything above is what this channel adds on top.
+	runner *campaignqueue.Runner
 }
 
 func NewMessageConsumerUseCase(
@@ -90,7 +89,7 @@ func NewMessageConsumerUseCase(
 	cachedBalanceChecker balance.CachedBalanceChecker,
 ) wc.MessageConsumerUseCase {
 	waSharedStateRef = sharedState
-	return &messageConsumerUseCase{
+	uc := &messageConsumerUseCase{
 		MessageQueueSub:         messageQueueSub,
 		MessageQueuePub:         messageQueuePub,
 		CampaignRepo:            campaignRepo,
@@ -107,353 +106,270 @@ func NewMessageConsumerUseCase(
 		LeadCampaignSendRepo:    leadCampaignSendRepo,
 		InflightReserver:        inflightReserver,
 		CachedBalanceChecker:    cachedBalanceChecker,
-		subscribedCamps:         make(map[string]bool),
-		pausedCamps:             make(map[string]bool),
 	}
+
+	uc.attachRunner(messageQueueSub, messageQueuePub, sharedState)
+	return uc
 }
 
-func (c *messageConsumerUseCase) ensureCampaignStateMapsLocked() {
-	if c.subscribedCamps == nil {
-		c.subscribedCamps = make(map[string]bool)
-	}
-	if c.pausedCamps == nil {
-		c.pausedCamps = make(map[string]bool)
-	}
+// attachRunner builds the shared queue runner for this consumer.
+//
+// Separate from the constructor so the test harness, which assembles the struct
+// field by field to inject doubles, gets the SAME runner configuration as
+// production instead of a second copy that can drift from it.
+func (c *messageConsumerUseCase) attachRunner(
+	sub messaging.MessageQueueSub,
+	pub messaging.MessageQueuePub,
+	sharedState cache.SharedState,
+) {
+	c.runner = campaignqueue.New(
+		sub, pub, sharedState,
+		campaignStatusStore{repo: c.CampaignRepo},
+		pendingEntryCounter{repo: c.EntryRepo},
+		campaignqueue.Config{
+			Namespace:         wc.QueueNamespace,
+			PauseRequeueDelay: pauseRequeueDelay,
+			Precheck:          c.precheck,
+			// Meta throttles this channel, so the pace is a token delay rather
+			// than a ban-avoidance control.
+			Pace: func(string) time.Duration { return messageSendDelay },
+			Logf: func(format string, args ...any) {
+				fmt.Printf("whatsapp "+format+"\n", args...)
+			},
+		},
+		c.handle,
+	)
 }
 
-func (c *messageConsumerUseCase) PauseCampaignConsumer(campaignID string) error {
-	if err := c.shared.SetString("campaign:whatsapp:paused:"+campaignID, "1", 0); err != nil {
-		return err
+// campaignStatusStore and pendingEntryCounter adapt this channel's repositories
+// onto the two narrow ports the shared runner needs, so the runner never sees a
+// campaign repository and cannot start depending on one.
+type campaignStatusStore struct{ repo wc.Repository }
+
+func (s campaignStatusStore) ListRunningCampaignIDs() ([]string, error) {
+	items, err := s.repo.ListByStatus(wc.CampaignStatusRunning)
+	if err != nil {
+		return nil, err
 	}
-
-	c.subscribedMu.RLock()
-	isSubscribed := c.subscribedCamps[campaignID]
-	c.subscribedMu.RUnlock()
-	if !isSubscribed {
-		return nil
+	ids := make([]string, 0, len(items))
+	for _, c := range items {
+		if c != nil && c.ID != "" {
+			ids = append(ids, c.ID)
+		}
 	}
+	return ids, nil
+}
 
-	stopper, ok := c.MessageQueueSub.(interface{ StopConsumer(string) error })
-	if !ok {
-		return nil
+func (s campaignStatusStore) CompleteCampaign(campaignID string) (bool, error) {
+	return s.repo.UpdateStatus(campaignID, wc.CampaignStatusCompleted, wc.CampaignStatusRunning)
+}
+
+type pendingEntryCounter struct{ repo wce.Repository }
+
+func (p pendingEntryCounter) CountPendingEntries(campaignID string) (int64, error) {
+	counts, err := p.repo.CountByStatus(campaignID)
+	if err != nil || counts == nil {
+		return 0, err
 	}
-
-	topic := fmt.Sprintf("%s.%s", wc.WhatsAppCampaignDispatchTopic, campaignID)
-	if err := stopper.StopConsumer(topic); err != nil {
-		return fmt.Errorf("failed to pause whatsapp campaign %s: %w", campaignID, err)
-	}
-
-	c.subscribedMu.Lock()
-	c.ensureCampaignStateMapsLocked()
-	delete(c.subscribedCamps, campaignID)
-	c.pausedCamps[campaignID] = true
-	c.subscribedMu.Unlock()
-
-	return nil
+	return counts.Pending, nil
 }
 
 func (c *messageConsumerUseCase) SetTriggerEvaluator(eval workflow_domain.TriggerEvaluator) {
 	c.triggerEvaluator = eval
 }
 
-func (c *messageConsumerUseCase) StopCampaignConsumer(campaignID string) error {
-	topic := fmt.Sprintf("%s.%s", wc.WhatsAppCampaignDispatchTopic, campaignID)
-
-	_ = c.shared.SetString("campaign:whatsapp:stopped:"+campaignID, "1", 0)
-	_ = c.shared.Del("campaign:whatsapp:paused:"+campaignID, "campaign:whatsapp:remaining:"+campaignID)
-
-	if err := c.MessageQueueSub.DeleteQueue(topic); err != nil {
-		return fmt.Errorf("failed to delete queue for whatsapp campaign %s: %w", campaignID, err)
-	}
-
-	c.subscribedMu.Lock()
-	c.ensureCampaignStateMapsLocked()
-	delete(c.subscribedCamps, campaignID)
-	delete(c.pausedCamps, campaignID)
-	c.subscribedMu.Unlock()
-
-	fmt.Printf("whatsapp campaign consumer: stopped and deleted queue for campaign %s\n", campaignID)
-	return nil
-}
-
-func (c *messageConsumerUseCase) ResumeCampaignConsumer(campaignID string) error {
-	if err := c.shared.Del("campaign:whatsapp:paused:" + campaignID); err != nil {
-		return err
-	}
-
-	c.subscribedMu.Lock()
-	c.ensureCampaignStateMapsLocked()
-	wasPaused := c.pausedCamps[campaignID]
-	delete(c.pausedCamps, campaignID)
-	c.subscribedMu.Unlock()
-	if !wasPaused {
-		return nil
-	}
-
-	return c.SubscribeToCampaign(campaignID)
-}
-
+// The queue lifecycle is the shared runner's. Everything this consumer still
+// owns below is about Meta: templates, billing categories and balance.
+// Start asserts this channel's own wiring, then hands the queue to the runner.
+//
+// The two preconditions are deliberately checked here rather than in the shared
+// runner: a WhatsApp client factory is a Cloud API concept, and a runner that
+// knew about one could not serve a channel that has none.
 func (c *messageConsumerUseCase) Start() error {
 	if c.MessageQueueSub == nil {
 		return fmt.Errorf("whatsapp campaign consumer: message queue subscriber is required")
 	}
-
 	if c.WhatsAppClientFactory == nil {
 		fmt.Println("whatsapp campaign consumer: WhatsApp client factory not configured; skipping subscription")
 		return nil
 	}
 
-	go c.shared.Subscribe(context.Background(), "signal:wa_sendings", func(_ []byte) {
+	// Paired with SignalSendingsAvailable, which publishes on this channel.
+	go c.shared.Subscribe(context.Background(), "signal:wa_sendings", func(_ []byte) {})
 
-	})
-
-	activeCampaigns, err := c.CampaignRepo.ListByStatus(wc.CampaignStatusRunning)
-	if err != nil {
-		return fmt.Errorf("whatsapp campaign consumer: failed to list active campaigns: %w", err)
-	}
-
-	var wg sync.WaitGroup
-	subErrors := make([]error, len(activeCampaigns))
-	for i, camp := range activeCampaigns {
-		wg.Add(1)
-		go func(idx int, campaignID string) {
-			defer wg.Done()
-			topic := fmt.Sprintf("%s.%s", wc.WhatsAppCampaignDispatchTopic, campaignID)
-			if c.isQueueEmpty(topic) {
-				if updated, err := c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusCompleted, wc.CampaignStatusRunning); err == nil && updated {
-					fmt.Printf("whatsapp campaign consumer: campaign %s completed on startup (queue empty)\n", campaignID)
-				}
-				return
-			}
-			c.seedCounterIfMissing(campaignID)
-			if err := c.SubscribeToCampaign(campaignID); err != nil {
-				subErrors[idx] = fmt.Errorf("whatsapp campaign consumer: failed to subscribe to campaign %s: %w", campaignID, err)
-			}
-		}(i, camp.ID)
-	}
-	wg.Wait()
-
-	for _, subErr := range subErrors {
-		if subErr != nil {
-			return subErr
-		}
-	}
-	return nil
+	return c.runner.Start()
 }
+func (c *messageConsumerUseCase) SubscribeToCampaign(id string) error {
+	return c.runner.SubscribeToCampaign(id)
+}
+func (c *messageConsumerUseCase) PauseCampaignConsumer(id string) error {
+	return c.runner.PauseCampaignConsumer(id)
+}
+func (c *messageConsumerUseCase) ResumeCampaignConsumer(id string) error {
+	return c.runner.ResumeCampaignConsumer(id)
+}
+func (c *messageConsumerUseCase) StopCampaignConsumer(id string) error {
+	return c.runner.StopCampaignConsumer(id)
+}
+func (c *messageConsumerUseCase) IsSubscribed(id string) bool { return c.runner.IsSubscribed(id) }
 
-func (c *messageConsumerUseCase) SubscribeToCampaign(campaignID string) error {
-	c.subscribedMu.RLock()
-	if c.subscribedCamps[campaignID] {
-		c.subscribedMu.RUnlock()
-		fmt.Printf("whatsapp campaign consumer: already subscribed to campaign %s\n", campaignID)
-		return nil
-	}
-	c.subscribedMu.RUnlock()
-
-	_ = c.shared.Del("campaign:whatsapp:stopped:" + campaignID)
-	_ = c.shared.Del("campaign:whatsapp:paused:" + campaignID)
-
-	initialCampaign, err := c.CampaignRepo.FindByID(campaignID)
-	if err != nil || initialCampaign == nil {
+// precheck refuses to subscribe a campaign whose template can no longer be sent.
+//
+// The campaign is STOPPED here rather than left running, because an unapproved
+// template is not a transient condition: every entry would fail identically, and
+// a campaign that fails 40.000 times is worse than one that refuses to start.
+func (c *messageConsumerUseCase) precheck(campaignID string) error {
+	initial, err := c.CampaignRepo.FindByID(campaignID)
+	if err != nil || initial == nil {
 		return fmt.Errorf("whatsapp campaign consumer: campaign %s not found: %w", campaignID, err)
 	}
-	cachedTemplate, err := c.TemplateRepo.FindByID(initialCampaign.TemplateID)
+	cachedTemplate, err := c.TemplateRepo.FindByID(initial.TemplateID)
 	if err != nil || cachedTemplate == nil {
-		fmt.Printf("whatsapp campaign consumer: template %s not found for campaign %s, stopping campaign\n", initialCampaign.TemplateID, campaignID)
 		_, _ = c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusStopped, wc.CampaignStatusRunning)
-		return fmt.Errorf("whatsapp campaign consumer: template %s not found for campaign %s", initialCampaign.TemplateID, campaignID)
+		return fmt.Errorf("whatsapp campaign consumer: template %s not found for campaign %s", initial.TemplateID, campaignID)
 	}
 	if !cachedTemplate.IsReadyToSend() {
-		fmt.Printf("whatsapp campaign consumer: template %s is not ready to send (status: %s) for campaign %s, stopping campaign\n", cachedTemplate.Name, cachedTemplate.Status, campaignID)
 		_, _ = c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusStopped, wc.CampaignStatusRunning)
 		return fmt.Errorf("whatsapp campaign consumer: template %s not ready for campaign %s", cachedTemplate.Name, campaignID)
 	}
-
-	topic := fmt.Sprintf("%s.%s", wc.WhatsAppCampaignDispatchTopic, campaignID)
-
-	err = c.MessageQueueSub.Subscribe(topic, func(message []byte, ack messaging.MessageAck) {
-		var payload wc.DispatchQueueMessage
-		if err := json.Unmarshal(message, &payload); err != nil {
-			fmt.Println("failed to decode whatsapp campaign dispatch payload:", err)
-			_ = ack.Nack(false)
-			return
-		}
-
-		paused, _ := c.shared.Exists("campaign:whatsapp:paused:" + payload.CampaignID)
-		if paused {
-
-			c.requeueWithDelay(topic, message, pauseRequeueDelay)
-			_ = ack.Ack()
-			return
-		}
-
-		campaign, err := c.CampaignRepo.FindByID(payload.CampaignID)
-		if err != nil || campaign == nil {
-			fmt.Printf("whatsapp campaign consumer: failed to find campaign %s for balance check: %v\n", payload.CampaignID, err)
-			_ = ack.Nack(true)
-			return
-		}
-
-		currentTemplate, err := c.TemplateRepo.FindByID(campaign.TemplateID)
-		if err != nil || currentTemplate == nil {
-			fmt.Printf("whatsapp campaign consumer: current template %s not found for campaign %s: %v\n", campaign.TemplateID, payload.CampaignID, err)
-			c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateUnavailable, "Template metadata unavailable")
-			_ = ack.Ack()
-			c.completeCampaignByCounter(payload.CampaignID, topic)
-			return
-		}
-
-		if !currentTemplate.IsReadyToSend() {
-			errorMessage := currentTemplate.GetUsabilityMessage()
-			if errorMessage == "" {
-				errorMessage = fmt.Sprintf("Template is not ready to send. Current status: %s", currentTemplate.Status)
-			}
-			fmt.Printf("whatsapp campaign consumer: template %s is not ready for campaign %s: %s\n", currentTemplate.Name, payload.CampaignID, errorMessage)
-			c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateNotReady, errorMessage)
-			_ = ack.Ack()
-			c.completeCampaignByCounter(payload.CampaignID, topic)
-			return
-		}
-
-		templateCategory, err := currentTemplate.BillingCategory()
-		if err != nil {
-			fmt.Printf("whatsapp campaign consumer: invalid billing category for template %s in campaign %s: %v\n", currentTemplate.Name, payload.CampaignID, err)
-			c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateUnavailable, "Template billing category unavailable")
-			_ = ack.Ack()
-			c.completeCampaignByCounter(payload.CampaignID, topic)
-			return
-		}
-
-		templateCostMicros, err := c.ConsumeWhatsappTemplate.GetTemplateCostMicros(campaign.WorkspaceID, templateCategory)
-		if err != nil {
-			if errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(err, workspace_plan.ErrSubscriptionNotActive) {
-				fmt.Printf("whatsapp campaign consumer: no active subscription for workspace %s (campaign %s), failing entry\n", campaign.WorkspaceID, payload.CampaignID)
-				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
-				_ = ack.Ack()
-				c.completeCampaignByCounter(payload.CampaignID, topic)
-				return
-			}
-			if errors.Is(err, balance.ErrPriceUnavailable) {
-				// No price configured. Requeuing spins forever and sending would be
-				// free, so the entry fails and says why.
-				fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaign.WorkspaceID, payload.CampaignID)
-				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
-				_ = ack.Ack()
-				c.completeCampaignByCounter(payload.CampaignID, topic)
-				return
-			}
-			fmt.Printf("whatsapp campaign consumer: failed to get template cost for workspace %s (campaign %s): %v\n", campaign.WorkspaceID, payload.CampaignID, err)
-			_ = ack.Nack(true)
-			return
-		}
-
-		// Belt as well as braces. The price guard lives in the billing use case so
-		// every sender inherits it, but this path sends at bulk volume and a zero
-		// slipping through here is a whole campaign delivered free.
-		if templateCostMicros <= 0 {
-			fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaign.WorkspaceID, payload.CampaignID)
-			c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
-			_ = ack.Ack()
-			c.completeCampaignByCounter(payload.CampaignID, topic)
-			return
-		}
-
-		if c.InflightReserver == nil || c.CachedBalanceChecker == nil {
-			fmt.Printf("CRITICAL: whatsapp campaign consumer, inflightReserver or cachedBalanceChecker is nil, blocking send for workspace %s (fail-closed)\n", campaign.WorkspaceID)
-			_ = ack.Nack(true)
-			return
-		}
-
-		budget, balErr := c.CachedBalanceChecker.GetBalance(campaign.WorkspaceID)
-		if balErr != nil {
-			fmt.Printf("whatsapp campaign consumer: balance read error for workspace %s: %v, blocking send (fail-closed)\n", campaign.WorkspaceID, balErr)
-			_ = ack.Nack(true)
-			return
-		}
-
-		reserved, reserveErr := c.InflightReserver.Reserve(campaign.WorkspaceID, templateCostMicros, budget)
-		if reserveErr != nil {
-			fmt.Printf("whatsapp campaign consumer: reserve error for workspace %s: %v, blocking send (fail-closed)\n", campaign.WorkspaceID, reserveErr)
-			_ = ack.Nack(true)
-			return
-		}
-		if !reserved {
-			c.requeueWithDelay(topic, message, balanceRequeueDelay)
-			_ = ack.Ack()
-			return
-		}
-
-		defer func() {
-			_ = c.InflightReserver.Release(campaign.WorkspaceID, templateCostMicros)
-		}()
-
-		_, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaign.WorkspaceID, payload.CampaignID, templateCategory)
-		if consumeErr != nil {
-			if errors.Is(consumeErr, balance.ErrInsufficientBalance) || errors.Is(consumeErr, balance.ErrBalanceNotFound) {
-				fmt.Printf("whatsapp campaign consumer: debit failed (insufficient balance) for workspace %s (campaign %s), requeuing with delay\n", campaign.WorkspaceID, payload.CampaignID)
-				c.requeueWithDelay(topic, message, balanceRequeueDelay)
-				_ = ack.Ack()
-				return
-			}
-			if errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotActive) {
-				fmt.Printf("whatsapp campaign consumer: subscription expired during debit for workspace %s (campaign %s), failing entry\n", campaign.WorkspaceID, payload.CampaignID)
-				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
-				_ = ack.Ack()
-				c.completeCampaignByCounter(payload.CampaignID, topic)
-				return
-			}
-
-			if errors.Is(consumeErr, balance.ErrPriceUnavailable) {
-				fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaign.WorkspaceID, payload.CampaignID)
-				c.updateEntryStatusWithError(payload.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
-				_ = ack.Ack()
-				c.completeCampaignByCounter(payload.CampaignID, topic)
-				return
-			}
-			fmt.Printf("whatsapp campaign consumer: debit failed for workspace %s: %v, requeuing message\n", campaign.WorkspaceID, consumeErr)
-			_ = ack.Nack(true)
-			return
-		}
-
-		fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s), now sending\n", campaign.WorkspaceID, payload.CampaignID, templateCategory)
-
-		sendResult := c.sendTemplateMessage(campaign, currentTemplate, payload.EntryID, payload.PhoneNumber)
-
-		if sendResult == sendResultConfigError || sendResult == sendResultAPIError {
-			if refundErr := c.ConsumeWhatsappTemplate.Refund(campaign.WorkspaceID, payload.CampaignID, templateCategory); refundErr != nil {
-				fmt.Printf("whatsapp campaign consumer: WARNING: failed to refund balance for workspace %s after send failure: %v\n", campaign.WorkspaceID, refundErr)
-			} else {
-				fmt.Printf("whatsapp campaign consumer: refunded balance for workspace %s (campaign %s), send failed, message not delivered\n", campaign.WorkspaceID, payload.CampaignID)
-			}
-		}
-
-		if err := ack.Ack(); err != nil {
-			fmt.Printf("whatsapp campaign consumer: failed to ack message for %s/%s: %v\n", payload.CampaignID, payload.PhoneNumber, err)
-		}
-
-		time.Sleep(messageSendDelay)
-
-		c.completeCampaignByCounter(payload.CampaignID, topic)
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to whatsapp campaign %s: %w", campaignID, err)
-	}
-
-	c.subscribedMu.Lock()
-	c.ensureCampaignStateMapsLocked()
-	c.subscribedCamps[campaignID] = true
-	delete(c.pausedCamps, campaignID)
-	c.subscribedMu.Unlock()
-
-	fmt.Printf("whatsapp campaign consumer: subscribed to campaign %s messages\n", campaignID)
 	return nil
 }
 
-func (c *messageConsumerUseCase) IsSubscribed(campaignID string) bool {
-	c.subscribedMu.RLock()
-	defer c.subscribedMu.RUnlock()
-	return c.subscribedCamps[campaignID]
+// handle is this channel's send step: resolve the template, charge the
+// workspace, send, and refund if the send never reached the customer.
+//
+// Every return is one of the four shared outcomes. The distinction that matters
+// most is Drop versus RetryLater: a Drop resolves the entry and counts it toward
+// completion, while a RetryLater leaves it pending and must NOT count, or the
+// campaign completes with work still queued.
+func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue.Result {
+	campaignItem, err := c.CampaignRepo.FindByID(msg.CampaignID)
+	if err != nil || campaignItem == nil {
+		fmt.Printf("whatsapp campaign consumer: failed to find campaign %s: %v\n", msg.CampaignID, err)
+		return campaignqueue.Requeue
+	}
+
+	currentTemplate, err := c.TemplateRepo.FindByID(campaignItem.TemplateID)
+	if err != nil || currentTemplate == nil {
+		fmt.Printf("whatsapp campaign consumer: current template %s not found for campaign %s: %v\n", campaignItem.TemplateID, msg.CampaignID, err)
+		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateUnavailable, "Template metadata unavailable")
+		return campaignqueue.Drop
+	}
+
+	if !currentTemplate.IsReadyToSend() {
+		errorMessage := currentTemplate.GetUsabilityMessage()
+		if errorMessage == "" {
+			errorMessage = fmt.Sprintf("Template is not ready to send. Current status: %s", currentTemplate.Status)
+		}
+		fmt.Printf("whatsapp campaign consumer: template %s is not ready for campaign %s: %s\n", currentTemplate.Name, msg.CampaignID, errorMessage)
+		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateNotReady, errorMessage)
+		return campaignqueue.Drop
+	}
+
+	templateCategory, err := currentTemplate.BillingCategory()
+	if err != nil {
+		fmt.Printf("whatsapp campaign consumer: invalid billing category for template %s in campaign %s: %v\n", currentTemplate.Name, msg.CampaignID, err)
+		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrTemplateUnavailable, "Template billing category unavailable")
+		return campaignqueue.Drop
+	}
+
+	templateCostMicros, err := c.ConsumeWhatsappTemplate.GetTemplateCostMicros(campaignItem.WorkspaceID, templateCategory)
+	if err != nil {
+		if errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(err, workspace_plan.ErrSubscriptionNotActive) {
+			fmt.Printf("whatsapp campaign consumer: no active subscription for workspace %s (campaign %s), failing entry\n", campaignItem.WorkspaceID, msg.CampaignID)
+			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
+			return campaignqueue.Drop
+		}
+		if errors.Is(err, balance.ErrPriceUnavailable) {
+			// No price configured. Requeuing spins forever and sending would be
+			// free, so the entry fails and says why.
+			fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaignItem.WorkspaceID, msg.CampaignID)
+			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+			return campaignqueue.Drop
+		}
+		fmt.Printf("whatsapp campaign consumer: failed to get template cost for workspace %s (campaign %s): %v\n", campaignItem.WorkspaceID, msg.CampaignID, err)
+		return campaignqueue.Requeue
+	}
+
+	// Belt as well as braces. The price guard lives in the billing use case so
+	// every sender inherits it, but this path sends at bulk volume and a zero
+	// slipping through here is a whole campaign delivered free.
+	if templateCostMicros <= 0 {
+		fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaignItem.WorkspaceID, msg.CampaignID)
+		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+		return campaignqueue.Drop
+	}
+
+	if c.InflightReserver == nil || c.CachedBalanceChecker == nil {
+		fmt.Printf("CRITICAL: whatsapp campaign consumer, inflightReserver or cachedBalanceChecker is nil, blocking send for workspace %s (fail-closed)\n", campaignItem.WorkspaceID)
+		return campaignqueue.Requeue
+	}
+
+	budget, balErr := c.CachedBalanceChecker.GetBalance(campaignItem.WorkspaceID)
+	if balErr != nil {
+		fmt.Printf("whatsapp campaign consumer: balance read error for workspace %s: %v, blocking send (fail-closed)\n", campaignItem.WorkspaceID, balErr)
+		return campaignqueue.Requeue
+	}
+
+	reserved, reserveErr := c.InflightReserver.Reserve(campaignItem.WorkspaceID, templateCostMicros, budget)
+	if reserveErr != nil {
+		fmt.Printf("whatsapp campaign consumer: reserve error for workspace %s: %v, blocking send (fail-closed)\n", campaignItem.WorkspaceID, reserveErr)
+		return campaignqueue.Requeue
+	}
+	if !reserved {
+		return campaignqueue.RetryLater(balanceRequeueDelay)
+	}
+
+	defer func() {
+		_ = c.InflightReserver.Release(campaignItem.WorkspaceID, templateCostMicros)
+	}()
+
+	// The debit is keyed on the ENTRY, not the campaign.
+	//
+	// Every recipient of a campaign previously shared one reference — the
+	// campaign id — which is wrong in both directions. The ledger cannot tell two
+	// charges for one recipient apart from two recipients charged once each, so a
+	// redelivered queue message is indistinguishable from a legitimate second
+	// send; and any dedup keyed on the reference would collapse a whole campaign
+	// into a single charge. A per-entry reference is what makes a charge
+	// attributable to the person who received it.
+	_, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaignItem.WorkspaceID, msg.EntryID, templateCategory)
+	if consumeErr != nil {
+		if errors.Is(consumeErr, balance.ErrInsufficientBalance) || errors.Is(consumeErr, balance.ErrBalanceNotFound) {
+			fmt.Printf("whatsapp campaign consumer: debit failed (insufficient balance) for workspace %s (campaign %s), requeuing with delay\n", campaignItem.WorkspaceID, msg.CampaignID)
+			return campaignqueue.RetryLater(balanceRequeueDelay)
+		}
+		if errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotActive) {
+			fmt.Printf("whatsapp campaign consumer: subscription expired during debit for workspace %s (campaign %s), failing entry\n", campaignItem.WorkspaceID, msg.CampaignID)
+			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")
+			return campaignqueue.Drop
+		}
+		if errors.Is(consumeErr, balance.ErrPriceUnavailable) {
+			fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaignItem.WorkspaceID, msg.CampaignID)
+			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
+			return campaignqueue.Drop
+		}
+		fmt.Printf("whatsapp campaign consumer: debit failed for workspace %s: %v, requeuing message\n", campaignItem.WorkspaceID, consumeErr)
+		return campaignqueue.Requeue
+	}
+
+	fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s), now sending\n", campaignItem.WorkspaceID, msg.CampaignID, templateCategory)
+
+	sendResult := c.sendTemplateMessage(campaignItem, currentTemplate, msg.EntryID, msg.PhoneNumber)
+
+	if sendResult == sendResultConfigError || sendResult == sendResultAPIError {
+		// Refunded under the SAME reference the debit used, or the credit cannot
+		// be paired with the charge it reverses.
+		if refundErr := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, msg.EntryID, templateCategory); refundErr != nil {
+			fmt.Printf("whatsapp campaign consumer: WARNING: failed to refund balance for workspace %s after send failure: %v\n", campaignItem.WorkspaceID, refundErr)
+		} else {
+			fmt.Printf("whatsapp campaign consumer: refunded balance for workspace %s (campaign %s), send failed, message not delivered\n", campaignItem.WorkspaceID, msg.CampaignID)
+		}
+	}
+
+	// Done regardless of the send's own result: the entry has been resolved
+	// either way, and the pacing delay applies because a provider call was made.
+	return campaignqueue.Done
 }
 
 type sendTemplateMessageResult int
@@ -708,86 +624,10 @@ func parseMetaAPIError(result *conversation.SendTextMessageOutput) (int, string)
 	return template.ParseProviderError(result)
 }
 
-func (c *messageConsumerUseCase) requeueWithDelay(topic string, message []byte, delay time.Duration) {
-	if err := c.MessageQueuePub.PublishWithDelay(topic, message, delay); err != nil {
-		fmt.Printf("whatsapp campaign consumer: failed to requeue message with delay on topic %s: %v\n", topic, err)
-	}
-}
-
-func (c *messageConsumerUseCase) isQueueEmpty(topic string) bool {
-	mainLen, err := c.MessageQueueSub.GetQueueLength(topic)
-	if err != nil || mainLen > 0 {
-		return false
-	}
-	delayLen, err := c.MessageQueueSub.GetQueueLength(topic + messaging.DelayQueueSuffix)
-	return err == nil && delayLen == 0
-}
-
-func (c *messageConsumerUseCase) completeCampaignIfEmpty(campaignID, topic string) {
-	mainLen, err := c.MessageQueueSub.GetQueueLength(topic)
-	if err != nil || mainLen > 0 {
-		return
-	}
-	delayLen, err := c.MessageQueueSub.GetQueueLength(topic + messaging.DelayQueueSuffix)
-	if err != nil || delayLen > 0 {
-		return
-	}
-
-	updated, err := c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusCompleted, wc.CampaignStatusRunning)
-	if err != nil || !updated {
-		return
-	}
-
-	fmt.Printf("whatsapp campaign consumer: campaign %s completed (all entries processed)\n", campaignID)
-
-	_ = c.shared.Del("campaign:whatsapp:paused:" + campaignID)
-	_ = c.MessageQueueSub.DeleteQueue(topic)
-
-	c.subscribedMu.Lock()
-	delete(c.subscribedCamps, campaignID)
-	c.subscribedMu.Unlock()
-}
-
 func SignalSendingsAvailable() {
 	if waSharedStateRef != nil {
 		_ = waSharedStateRef.Publish("signal:wa_sendings", []byte("1"))
 	}
-}
-
-func (c *messageConsumerUseCase) seedCounterIfMissing(campaignID string) {
-	key := "campaign:whatsapp:remaining:" + campaignID
-	exists, err := c.shared.Exists(key)
-	if err != nil || exists {
-		return
-	}
-	counts, err := c.EntryRepo.CountByStatus(campaignID)
-	if err != nil || counts == nil || counts.Pending == 0 {
-		return
-	}
-	_ = c.shared.SetString(key, strconv.FormatInt(counts.Pending, 10), 72*time.Hour)
-}
-
-func (c *messageConsumerUseCase) completeCampaignByCounter(campaignID, topic string) {
-	key := "campaign:whatsapp:remaining:" + campaignID
-	remaining, err := c.shared.Decr(key)
-
-	if err != nil || remaining != 0 {
-		return
-	}
-
-	updated, err := c.CampaignRepo.UpdateStatus(campaignID, wc.CampaignStatusCompleted, wc.CampaignStatusRunning)
-	if err != nil || !updated {
-		return
-	}
-
-	fmt.Printf("whatsapp campaign consumer: campaign %s completed (all entries processed)\n", campaignID)
-
-	_ = c.shared.Del("campaign:whatsapp:paused:"+campaignID, key)
-	_ = c.MessageQueueSub.DeleteQueue(topic)
-
-	c.subscribedMu.Lock()
-	delete(c.subscribedCamps, campaignID)
-	c.subscribedMu.Unlock()
 }
 
 func (c *messageConsumerUseCase) isEntrySpam(entry *wce.WhatsAppCampaignEntry, businessPhoneID, workspaceID string) bool {

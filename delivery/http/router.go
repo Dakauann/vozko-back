@@ -151,32 +151,33 @@ type router struct {
 	metaEmbeddedSignupHandler      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler
 	// Instagram handlers are nil when the channel is disabled, so both route
 	// registrations are guarded.
-	instagramHandler           *instagramhttp.Handler
-	instagramWebhookHandler    *instagramhttp.WebhookHandler
-	telegramHandler            *telegramhttp.Handler
-	telegramWebhookHandler     *telegramhttp.WebhookHandler
-	unofficialWhatsAppHandler  *unofficialwahttp.Handler
-	whatsappOutreachHandler    *whatsappoutreachhttp.Handler
-	unofficialWhatsAppGroups   *unofficialwahttp.GroupHandler
-	unofficialWhatsAppWebhook  *unofficialwahttp.WebhookHandler
-	workspaceHandler           *workspacehttp.WorkspaceHandler
-	workspacePricingHandler    *workspacepricinghttp.WorkspacePricingHandler
-	workspaceConfigHandler     *workspaceconfighttp.WorkspaceConfigHandler
-	workspacePlanHandler       *handlers.WorkspacePlanHandler
-	workspaceAddonHandler      *workspaceaddonhttp.WorkspaceAddonHandler
-	supportInboxHandler        *supportinboxhttp.SupportInboxHandler
-	issueHandler               *issuehttp.IssueHandler
-	workflowHandler            *handlers.WorkflowHandler
-	workflowWebhookHandler     *workflowwebhookhttp.Handler
-	wsWorkflowSimulatorHandler *wsdelivery.WSWorkflowSimulatorHandler
-	wsWorkflowAIBuilderHandler *wsdelivery.WSWorkflowAIBuilderHandler
-	builderSessionHandler      *buildersessionhttp.BuilderSessionHandler
-	calendarHandler            *calendarhttp.CalendarHandler
-	workspaceDepartmentHandler *workspacedepartmenthttp.WorkspaceDepartmentHandler
-	affiliateHandler           *affiliatehttp.AffiliateHandler
-	agentMCP                   *handlers.AgentMCPBundle
-	workspaceMiddleware        *middleware.WorkspaceMiddleware
-	departmentMiddleware       *middleware.DepartmentMiddleware
+	instagramHandler            *instagramhttp.Handler
+	instagramWebhookHandler     *instagramhttp.WebhookHandler
+	telegramHandler             *telegramhttp.Handler
+	telegramWebhookHandler      *telegramhttp.WebhookHandler
+	unofficialWhatsAppHandler   *unofficialwahttp.Handler
+	whatsappOutreachHandler     *whatsappoutreachhttp.Handler
+	unofficialWhatsAppGroups    *unofficialwahttp.GroupHandler
+	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler
+	unofficialWhatsAppWebhook   *unofficialwahttp.WebhookHandler
+	workspaceHandler            *workspacehttp.WorkspaceHandler
+	workspacePricingHandler     *workspacepricinghttp.WorkspacePricingHandler
+	workspaceConfigHandler      *workspaceconfighttp.WorkspaceConfigHandler
+	workspacePlanHandler        *handlers.WorkspacePlanHandler
+	workspaceAddonHandler       *workspaceaddonhttp.WorkspaceAddonHandler
+	supportInboxHandler         *supportinboxhttp.SupportInboxHandler
+	issueHandler                *issuehttp.IssueHandler
+	workflowHandler             *handlers.WorkflowHandler
+	workflowWebhookHandler      *workflowwebhookhttp.Handler
+	wsWorkflowSimulatorHandler  *wsdelivery.WSWorkflowSimulatorHandler
+	wsWorkflowAIBuilderHandler  *wsdelivery.WSWorkflowAIBuilderHandler
+	builderSessionHandler       *buildersessionhttp.BuilderSessionHandler
+	calendarHandler             *calendarhttp.CalendarHandler
+	workspaceDepartmentHandler  *workspacedepartmenthttp.WorkspaceDepartmentHandler
+	affiliateHandler            *affiliatehttp.AffiliateHandler
+	agentMCP                    *handlers.AgentMCPBundle
+	workspaceMiddleware         *middleware.WorkspaceMiddleware
+	departmentMiddleware        *middleware.DepartmentMiddleware
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -275,6 +276,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	whatsappOutreachHandler *whatsappoutreachhttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
 	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
+	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler,
 ) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
@@ -285,6 +287,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		whatsappOutreachHandler:        whatsappOutreachHandler,
 		unofficialWhatsAppWebhook:      unofficialWhatsAppWebhook,
 		unofficialWhatsAppGroups:       unofficialWhatsAppGroups,
+		unofficialWhatsAppCampaigns:    unofficialWhatsAppCampaigns,
 		mux:                            mux.NewRouter(),
 		productHandler:                 productHandler,
 		propertyHandler:                propertyHandler,
@@ -612,6 +615,9 @@ func (r *router) setupUnofficialWhatsAppRoutes(protected *mux.Router) {
 	// split — reading a roster, editing a group, and evicting someone from it
 	// are three different privileges. See RegisterGroupRoutes.
 	unofficialwahttp.RegisterGroupRoutes(protected, r.unofficialWhatsAppGroups, r.ac)
+	// Campaigns are a separate RBAC resource: connecting a number and blasting
+	// from it are different privileges. See RegisterCampaignRoutes.
+	unofficialwahttp.RegisterCampaignRoutes(protected, r.unofficialWhatsAppCampaigns, r.ac)
 }
 
 // setupWhatsAppOutreachRoutes registers cold outbound on the official channel:

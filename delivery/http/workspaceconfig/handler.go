@@ -27,7 +27,7 @@ func NewWorkspaceConfigHandler(getConfig workspaceconfigdomain.GetWorkspaceConfi
 }
 
 // @Summary		Obter configuração do workspace
-// @Description	Retorna as configurações do workspace: proteção contra spam de campanha, atribuição de administradores, música de espera, política da fila de atendimento e encerramento automático de conversas.
+// @Description	Retorna as configurações do workspace: proteção contra spam de campanha, atribuição de administradores, modo da roleta, música de espera, política da fila de atendimento e encerramento automático de conversas.
 // @Tags			Configuração do workspace
 // @Produce		json
 // @Param			workspaceId	path		string	true	"ID do workspace"
@@ -53,7 +53,7 @@ func (h *WorkspaceConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Atualizar configuração do workspace
-// @Description	Atualiza as preferências do workspace: atribuição de administradores, música de espera, política da fila de atendimento e encerramento automático de conversas.
+// @Description	Atualiza as preferências do workspace: atribuição de administradores, modo da roleta (online ou última vez online, com janela e resgate), música de espera, política da fila de atendimento e encerramento automático de conversas.
 // @Tags			Configuração do workspace
 // @Accept			json
 // @Produce		json
@@ -82,7 +82,11 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 	var input workspaceconfigdomain.UpdateWorkspaceConfigOwnerInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		response.WriteInvalidBodyError(w, map[string]string{
-			"skipAdminAssignment": "boolean (optional)",
+			"skipAdminAssignment":         "boolean (optional)",
+			"rouletteMode":                "string (optional): online | last_seen",
+			"rouletteLastSeenWindowHours": "number (optional, 1..168)",
+			"rouletteRescueEnabled":       "boolean (optional)",
+			"rouletteRescueAfterMinutes":  "number (optional, 1..1440)",
 		})
 		return
 	}

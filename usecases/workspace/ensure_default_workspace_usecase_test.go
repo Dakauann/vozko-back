@@ -192,3 +192,7 @@ func TestEnsureDefaultWorkspace_GetDefaultError_Returned(t *testing.T) {
 		t.Fatal("must not create workspace when default lookup fails")
 	}
 }
+
+func (s *stubConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
+	return nil, nil
+}

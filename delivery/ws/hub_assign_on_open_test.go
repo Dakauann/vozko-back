@@ -362,3 +362,11 @@ func TestTryAssignOnOpen_CombinedEdgeCase_AdminMemberWithSkipEnabled(t *testing.
 
 	assert.Nil(t, repo.assignments["entry-1|whatsapp"])
 }
+
+func (r *assignOnOpenConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
+	return nil, nil
+}
+
+func (r *assignOnOpenRepo) CompareAndSwapRoundRobinState(*ia.RoundRobinState, string) (bool, error) {
+	return true, nil
+}

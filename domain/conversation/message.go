@@ -227,6 +227,35 @@ func (m *Message) Normalize() {
 	m.From = strings.TrimSpace(m.From)
 	m.To = strings.TrimSpace(m.To)
 	m.Text = strings.TrimSpace(m.Text)
+
+	// MediaID and ReadBy back uuid columns, so an empty string is not a weaker
+	// version of an id — it is a value Postgres refuses outright (22P02), and it
+	// refuses the whole INSERT, not just the column. A send that reached the
+	// provider then vanishes from the transcript: the customer has the message
+	// and we have no record of it.
+	//
+	// Both fields are pointers precisely so "absent" is expressible, but callers
+	// reach them through &someString and land on &"" whenever the source was
+	// blank — an automation send with no operator, a media send with no
+	// attachment. Collapsing that to nil here is the only fix that covers every
+	// writer, since every path normalizes before it persists.
+	m.MediaID = nilIfBlank(m.MediaID)
+	m.ReadBy = nilIfBlank(m.ReadBy)
+}
+
+// nilIfBlank collapses a pointer to a blank string down to no pointer at all.
+func nilIfBlank(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*v)
+	if trimmed == "" {
+		return nil
+	}
+	if trimmed == *v {
+		return v
+	}
+	return &trimmed
 }
 
 func (m *Message) Validate() error {

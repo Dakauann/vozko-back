@@ -3,6 +3,7 @@ package conversation_repository
 import (
 	"fmt"
 
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
 )
 
@@ -73,6 +74,13 @@ type channelQuery struct {
 
 	// ContainerFilter narrows conversation_messages to one container. One bind
 	// parameter (the container id) and one %[1]s verb for the department clause.
+	//
+	// The projected id must NOT be cast to text. conversation_messages.entry_id
+	// is a uuid, so `entry_id IN (SELECT x.id::text …)` compares uuid to text and
+	// Postgres raises 42883 — every container-scoped inbox request on that
+	// channel fails. Three channels shipped with the cast and only WhatsApp
+	// without it, which is why it stayed invisible: the one channel operators
+	// actually scoped by was the one that worked.
 	ContainerFilter string
 	// DepartmentColumn / DepartmentEntryCol build that department clause.
 	DepartmentColumn   string
@@ -82,6 +90,20 @@ type channelQuery struct {
 	// "" when the channel has no window (the filter is then a no-op instead of
 	// excluding every row).
 	WindowSubquery string
+
+	// CampaignCTE / CampaignFilter narrow to a CAMPAIGN rather than to the
+	// channel's primary container.
+	//
+	// A second container kind exists because on this channel they are genuinely
+	// different things: the conversation belongs to a NUMBER forever, while a
+	// campaign is one run across many of them. Where the campaign IS the
+	// container — the Cloud API — these are empty and the primary declaration is
+	// used, so nothing changes for a channel that does not declare them.
+	CampaignCTE          string
+	CampaignCTEEntryCol  string
+	CampaignFilter       string
+	CampaignDeptColumn   string
+	CampaignDeptEntryCol string
 
 	// EntryInfoSQL hydrates one entry's header: lead_id, business_phone_id,
 	// campaign_id, campaign_name and the automation quartet. One bind parameter,
@@ -174,7 +196,7 @@ var channelQueries = []channelQuery{
 		ContainerCTEEntryCol: "igc_f.id",
 
 		ContainerFilter: `cm.entry_id IN (
-				SELECT igc_f.id::text FROM instagram_conversations igc_f
+				SELECT igc_f.id FROM instagram_conversations igc_f
 				JOIN instagram_accounts iga_f ON iga_f.id = igc_f.ig_account_id
 				WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL%[1]s
 			)`,
@@ -236,7 +258,7 @@ var channelQueries = []channelQuery{
 		ContainerCTEEntryCol: "tgc_f.id",
 
 		ContainerFilter: `cm.entry_id IN (
-				SELECT tgc_f.id::text FROM telegram_conversations tgc_f
+				SELECT tgc_f.id FROM telegram_conversations tgc_f
 				JOIN telegram_accounts tga_f ON tga_f.id = tgc_f.account_id
 				WHERE tgc_f.account_id = ? AND tgc_f.deleted_at IS NULL%[1]s
 			)`,
@@ -272,8 +294,22 @@ var channelQueries = []channelQuery{
 		EntryType:  shared.EntryTypeUnofficialWhatsApp,
 		EntryTable: "unofficial_whatsapp_conversations",
 
+		// The instance is the DEFAULT container; a campaign takes over only for a
+		// conversation it actually targeted. Most recently sent wins, the same
+		// ordering CampaignIDForEntry and DepartmentIDForEntry use, so every
+		// surface agrees on which campaign owns a reply.
 		EntryJoin: `JOIN unofficial_whatsapp_conversations uwc ON uwc.id = %[1]s AND uwc.deleted_at IS NULL
-		             JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id`,
+		             JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id
+		             LEFT JOIN LATERAL (
+		             SELECT uwcamp.id, uwcamp.name, uwcamp.agent_id, uwcamp.workflow_id,
+		                    uwcamp.enable_agent_responses, uwcamp.enable_workflow
+		             FROM unofficial_whatsapp_campaign_entries uwce
+		             JOIN unofficial_whatsapp_campaigns uwcamp
+		               ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+		             WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
+		             ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
+		             LIMIT 1
+		         ) camp ON TRUE`,
 		// Unlike Instagram and Telegram, this channel's contact HAS a phone
 		// number, so the number slot carries a real dialable number and the CRM's
 		// existing search-by-number works unchanged. The display name still falls
@@ -289,12 +325,21 @@ var channelQueries = []channelQuery{
 
 		ContactIDField:     "uwc.contact_id::text",
 		AccountIDField:     "COALESCE(uwc.instance_id::text, '')",
-		ContainerIDField:   "uwi.id::text",
-		ContainerNameField: "uwi.display_name",
-		AutomationFields: "COALESCE(uwi.agent_id::text, '') AS agent_id, " +
-			"COALESCE(uwi.workflow_id::text, '') AS workflow_id, " +
-			"uwi.enable_agent_responses AS agent_responses_enabled, " +
-			"uwi.enable_workflow AS workflow_enabled",
+		ContainerIDField:   "COALESCE(camp.id::text, uwi.id::text)",
+		ContainerNameField: "COALESCE(camp.name, uwi.display_name)",
+		// All-or-nothing on whether a campaign owns the conversation, NOT a
+		// per-column COALESCE. A campaign that configured no automation answers
+		// with silence, so falling back to the instance's agent column would make
+		// this badge claim an AI is handling a conversation the runtime leaves
+		// alone — which is the disagreement this whole read path exists to avoid.
+		AutomationFields: "CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.agent_id::text, '') " +
+			"ELSE COALESCE(uwi.agent_id::text, '') END AS agent_id, " +
+			"CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.workflow_id::text, '') " +
+			"ELSE COALESCE(uwi.workflow_id::text, '') END AS workflow_id, " +
+			"CASE WHEN camp.id IS NOT NULL THEN camp.enable_agent_responses " +
+			"ELSE uwi.enable_agent_responses END AS agent_responses_enabled, " +
+			"CASE WHEN camp.id IS NOT NULL THEN camp.enable_workflow " +
+			"ELSE uwi.enable_workflow END AS workflow_enabled",
 
 		AutomationColumn: "uwc.automation_enabled",
 		StatusColumn:     "uwc.conversation_status",
@@ -303,7 +348,7 @@ var channelQueries = []channelQuery{
 		ContainerCTEEntryCol: "uwc_f.id",
 
 		ContainerFilter: `cm.entry_id IN (
-				SELECT uwc_f.id::text FROM unofficial_whatsapp_conversations uwc_f
+				SELECT uwc_f.id FROM unofficial_whatsapp_conversations uwc_f
 				JOIN unofficial_whatsapp_instances uwi_f ON uwi_f.id = uwc_f.instance_id
 				WHERE uwc_f.instance_id = ? AND uwc_f.deleted_at IS NULL%[1]s
 			)`,
@@ -319,14 +364,52 @@ var channelQueries = []channelQuery{
 		// single authority both the send path and the UI consult.
 		WindowSubquery: "",
 
+		// A campaign reaches its conversations through its ENTRY rows, which is
+		// the whole shape of this channel: the entry points at a conversation
+		// rather than being one. DISTINCT because two campaigns can legitimately
+		// have reached the same chat.
+		CampaignCTE: `SELECT DISTINCT uwce.conversation_id AS entry_id
+			FROM unofficial_whatsapp_campaign_entries uwce
+			JOIN unofficial_whatsapp_campaigns uwcamp ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+			WHERE uwce.campaign_id = ? AND uwce.deleted_at IS NULL
+			  AND uwce.conversation_id IS NOT NULL%[1]s`,
+		CampaignCTEEntryCol: "uwce.conversation_id",
+
+		CampaignFilter: `cm.entry_id IN (
+				SELECT DISTINCT uwce.conversation_id
+				FROM unofficial_whatsapp_campaign_entries uwce
+				JOIN unofficial_whatsapp_campaigns uwcamp ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+				WHERE uwce.campaign_id = ? AND uwce.deleted_at IS NULL
+				  AND uwce.conversation_id IS NOT NULL%[1]s
+			)`,
+		CampaignDeptColumn:   "uwcamp.department_id",
+		CampaignDeptEntryCol: "uwce.conversation_id",
+
 		EntryInfoSQL: `
 			SELECT uwc.contact_id::text AS lead_id, COALESCE(uwc.instance_id::text, '') AS business_phone_id,
-			       uwi.id::text AS campaign_id, uwi.display_name AS campaign_name,
-			       COALESCE(uwi.agent_id::text, '') AS agent_id, COALESCE(uwi.workflow_id::text, '') AS workflow_id,
-			       uwi.enable_agent_responses AS agent_responses_enabled, uwi.enable_workflow AS workflow_enabled,
+			       COALESCE(camp.id::text, uwi.id::text) AS campaign_id,
+			       COALESCE(camp.name, uwi.display_name) AS campaign_name,
+			       CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.agent_id::text, '')
+			            ELSE COALESCE(uwi.agent_id::text, '') END AS agent_id,
+			       CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.workflow_id::text, '')
+			            ELSE COALESCE(uwi.workflow_id::text, '') END AS workflow_id,
+			       CASE WHEN camp.id IS NOT NULL THEN camp.enable_agent_responses
+			            ELSE uwi.enable_agent_responses END AS agent_responses_enabled,
+			       CASE WHEN camp.id IS NOT NULL THEN camp.enable_workflow
+			            ELSE uwi.enable_workflow END AS workflow_enabled,
 			       uwc.automation_enabled AS automation_enabled
 			FROM unofficial_whatsapp_conversations uwc
 			JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id
+			LEFT JOIN LATERAL (
+			    SELECT uwcamp.id, uwcamp.name, uwcamp.agent_id, uwcamp.workflow_id,
+			           uwcamp.enable_agent_responses, uwcamp.enable_workflow
+			    FROM unofficial_whatsapp_campaign_entries uwce
+			    JOIN unofficial_whatsapp_campaigns uwcamp
+			      ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+			    WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
+			    ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
+			    LIMIT 1
+			) camp ON TRUE
 			WHERE uwc.id = ?::uuid AND uwc.deleted_at IS NULL
 			LIMIT 1
 		`,
@@ -396,6 +479,43 @@ func (q channelQuery) entryJoinOn(entryIDColumn string) string {
 // containerCTE renders the container-scoped entry CTE with an assignment clause.
 func (q channelQuery) containerCTE(assignmentClause string) string {
 	return fmt.Sprintf(q.ContainerCTE, assignmentClause)
+}
+
+// usesCampaignContainer reports whether this channel declares a campaign
+// container distinct from its primary one.
+//
+// A channel that does not falls back to the primary, which is exactly right for
+// the Cloud API: there the campaign IS the container, so "scope to this
+// campaign" and "scope to this container" are the same query.
+func (q channelQuery) usesCampaignContainer(kind conversation.ContainerKind) bool {
+	return kind == conversation.ContainerKindCampaign && q.CampaignCTE != ""
+}
+
+// cteForKind renders the entry-id CTE for the requested container kind, along
+// with the entry column its assignment clause has to reference.
+func (q channelQuery) cteForKind(kind conversation.ContainerKind, assignmentFor func(string) string) string {
+	if q.usesCampaignContainer(kind) {
+		return fmt.Sprintf(q.CampaignCTE, assignmentFor(q.CampaignCTEEntryCol))
+	}
+	return fmt.Sprintf(q.ContainerCTE, assignmentFor(q.ContainerCTEEntryCol))
+}
+
+// filterForKind renders the message filter for the requested container kind,
+// with the department clause built from that kind's own columns.
+//
+// The department columns differ per kind and getting them wrong is a scoping
+// hole rather than a broken query: a campaign's department lives on the campaign
+// row, a conversation's on its instance.
+func (q channelQuery) filterForKind(
+	kind conversation.ContainerKind,
+	departmentClause func(column, entryCol string) (string, []interface{}),
+) (string, []interface{}) {
+	if q.usesCampaignContainer(kind) {
+		clause, args := departmentClause(q.CampaignDeptColumn, q.CampaignDeptEntryCol)
+		return fmt.Sprintf(q.CampaignFilter, clause), args
+	}
+	clause, args := departmentClause(q.DepartmentColumn, q.DepartmentEntryCol)
+	return fmt.Sprintf(q.ContainerFilter, clause), args
 }
 
 // containerFilter renders the container-scoped message filter with a department

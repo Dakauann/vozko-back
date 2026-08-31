@@ -154,6 +154,20 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.assignmentService = ia_usecase.NewAssignmentService(assignmentRepo, c.services.conversationHub, workspaceResolver, c.repositories.workspaceConfig)
 	c.services.assignmentService.SetTelemetry(telemetryPub)
 	c.services.assignmentService.SetEventLogger(eventLoggerEarly)
+	// The last_seen roulette mode's two readers. The roster answers "who may
+	// receive a conversation" from workspace membership rather than from open
+	// sockets, using the SAME permission predicate the hub uses; presence
+	// answers "when were they last here". Both are optional at the type level
+	// so a workspace configured for last_seen degrades to the connected pool
+	// with a logged reason rather than stopping distribution — but they are
+	// wired unconditionally here, because there is no reason not to.
+	c.services.assignmentService.SetRoster(ia_usecase.NewRosterService(
+		c.repositories.workspace,
+		c.repositories.workspaceDepartment,
+		c.services.conversationAuth,
+		c.redisProvider.SharedState(),
+	))
+	c.services.assignmentService.SetPresence(c.repositories.agentPresence)
 	// Hot path: async queue only. Consumer runs the real SessionService against DB.
 	c.services.aiAttendanceService = aa_usecase.NewAsyncSessionService(telemetryPub)
 	// Contained AI sessions when conversation is marked finished (WA or voice entry).

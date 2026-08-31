@@ -434,10 +434,28 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		      JOIN whatsapp_campaigns c ON c.id = s.campaign_id
 		      WHERE bt.reference_id = ('refund:waba:' || s.id) AND s.deleted_at IS NULL AND ` + whereCamp + `
 		    )
+		    -- Campaign sends now reference their ENTRY, so a charge reaches its
+		    -- campaign through the entry row. Without these two branches a
+		    -- department- or type-filtered report would silently omit every
+		    -- campaign charge and show a workspace spending nothing.
+		    --
+		    -- The campaign-id branches above are KEPT rather than replaced: rows
+		    -- written before the reference changed still carry a campaign id, and
+		    -- dropping them would erase historical spend from every report.
+		    OR EXISTS (
+		      SELECT 1 FROM whatsapp_campaign_entries e
+		      JOIN whatsapp_campaigns c ON c.id = e.campaign_id
+		      WHERE e.id::text = bt.reference_id AND e.deleted_at IS NULL AND ` + whereCamp + `
+		    )
+		    OR EXISTS (
+		      SELECT 1 FROM whatsapp_campaign_entries e
+		      JOIN whatsapp_campaigns c ON c.id = e.campaign_id
+		      WHERE bt.reference_id = ('refund:' || e.id) AND e.deleted_at IS NULL AND ` + whereCamp + `
+		    )
 		  )
 		`
 		// One copy of campArgs per EXISTS branch, in order.
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 6; i++ {
 			args = append(args, campArgs...)
 		}
 	}

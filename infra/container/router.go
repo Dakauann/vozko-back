@@ -102,6 +102,7 @@ func (c *Container) initRouter() {
 		whatsAppOutreachHandler(c),
 		unofficialWhatsAppWebhookHandler(c),
 		unofficialWhatsAppGroupHandler(c),
+		unofficialWhatsAppCampaignHandler(c),
 	)
 }
 

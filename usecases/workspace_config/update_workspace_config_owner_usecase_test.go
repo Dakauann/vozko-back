@@ -78,3 +78,90 @@ func TestUpdateOwner_ForbiddenNonOwner(t *testing.T) {
 	})
 	require.ErrorIs(t, err, wsc.ErrForbidden)
 }
+
+func (m *memWscRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
+	return nil, nil
+}
+
+// E4/E5: an out-of-range value is normalized, not rejected, and the response
+// echoes what was stored — so the UI shows the value that will actually be
+// used rather than the one that was typed.
+func TestUpdateOwner_RouletteClampsAndNormalizes(t *testing.T) {
+	repo := &memWscRepo{}
+	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
+
+	garbage := "not_a_mode"
+	window := 9999
+	minutes := 0
+	rescue := true
+	cfg, err := uc.Execute(context.Background(), "ws-1", "owner-1", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
+		RouletteMode:                &garbage,
+		RouletteLastSeenWindowHours: &window,
+		RouletteRescueEnabled:       &rescue,
+		RouletteRescueAfterMinutes:  &minutes,
+	})
+	require.NoError(t, err)
+	require.Equal(t, wsc.RouletteModeOnline, cfg.RouletteMode)
+	require.Equal(t, wsc.MaxRouletteLastSeenWindowHours, cfg.RouletteLastSeenWindowHours)
+	require.Equal(t, wsc.DefaultRouletteRescueAfterMinutes, cfg.RouletteRescueAfterMinutes)
+	require.True(t, cfg.RouletteRescueEnabled)
+
+	lastSeen := wsc.RouletteModeLastSeen
+	window = 24
+	minutes = 30
+	cfg, err = uc.Execute(context.Background(), "ws-1", "owner-1", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
+		RouletteMode:                &lastSeen,
+		RouletteLastSeenWindowHours: &window,
+		RouletteRescueAfterMinutes:  &minutes,
+	})
+	require.NoError(t, err)
+	require.Equal(t, wsc.RouletteModeLastSeen, cfg.RouletteMode)
+	require.Equal(t, 24, cfg.RouletteLastSeenWindowHours)
+	require.Equal(t, 30, cfg.RouletteRescueAfterMinutes)
+	require.True(t, cfg.RouletteRescueActive())
+}
+
+// E6: an absent field means "leave it alone". Posting a whole form must never
+// reset a policy nobody touched.
+func TestUpdateOwner_RoulettePartialUpdateLeavesTheRestAlone(t *testing.T) {
+	repo := &memWscRepo{}
+	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
+
+	lastSeen := wsc.RouletteModeLastSeen
+	window := 12
+	minutes := 45
+	disabled := false
+	_, err := uc.Execute(context.Background(), "ws-1", "owner-1", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
+		RouletteMode:                &lastSeen,
+		RouletteLastSeenWindowHours: &window,
+		RouletteRescueEnabled:       &disabled,
+		RouletteRescueAfterMinutes:  &minutes,
+	})
+	require.NoError(t, err)
+
+	// An unrelated edit must not disturb any of it.
+	skip := true
+	cfg, err := uc.Execute(context.Background(), "ws-1", "owner-1", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
+		SkipAdminAssignment: &skip,
+	})
+	require.NoError(t, err)
+	require.Equal(t, wsc.RouletteModeLastSeen, cfg.RouletteMode)
+	require.Equal(t, 12, cfg.RouletteLastSeenWindowHours)
+	require.Equal(t, 45, cfg.RouletteRescueAfterMinutes)
+	require.False(t, cfg.RouletteRescueEnabled)
+	require.True(t, cfg.SkipAdminAssignment)
+}
+
+// E7: only the workspace owner (or a platform admin) may change how work is
+// distributed.
+func TestUpdateOwner_RouletteForbiddenForNonOwner(t *testing.T) {
+	repo := &memWscRepo{}
+	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
+
+	lastSeen := wsc.RouletteModeLastSeen
+	_, err := uc.Execute(context.Background(), "ws-1", "someone-else", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
+		RouletteMode: &lastSeen,
+	})
+	require.ErrorIs(t, err, wsc.ErrForbidden)
+	require.Nil(t, repo.cfg, "a forbidden update must not write anything")
+}

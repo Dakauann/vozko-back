@@ -118,3 +118,7 @@ func (m recentLeadSendRepo) GetLastSendTimesBatch(_ []string, _ string) (map[str
 func (m spamWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
 	return map[string]int{}, nil
 }
+
+func (spamWorkspaceConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
+	return nil, nil
+}

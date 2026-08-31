@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/campaign"
 	"vozko/domain/conversation"
 	"vozko/domain/media"
 	"vozko/domain/shared"
@@ -55,6 +56,36 @@ type LeadLinker interface {
 }
 
 // HandleWebhookUseCase turns one queued webhook body into CRM state.
+// CampaignDeliverySink advances a campaign target from a delivery receipt.
+//
+// A narrow port rather than the campaign repository, so this package — which the
+// whole channel depends on — does not acquire a dependency on the campaign
+// feature. A channel without campaigns wires nil and behaves exactly as before.
+type CampaignDeliverySink interface {
+	AdvanceFromDelivery(providerMessageID string, status uw.DeliveryStatus)
+}
+
+// CampaignAutomation is the campaign that owns replies on one conversation.
+type CampaignAutomation struct {
+	CampaignID string
+	Automation campaign.Automation
+}
+
+// CampaignAutomationSource answers "which campaign owns replies here".
+//
+// A narrow port for the same reason as CampaignDeliverySink: this package is
+// the whole channel, and it must not acquire a dependency on the campaign
+// feature. Nil means campaigns are not wired, and every conversation is treated
+// as organic — the behaviour this channel had before campaigns existed.
+//
+// Inbound on this transport carries a conversation and no campaign, so the link
+// is walked backwards through the campaign entry that targeted it. Absent
+// (false) means nobody was targeted here: an organic conversation, which the
+// INSTANCE configures.
+type CampaignAutomationSource interface {
+	AutomationForConversation(conversationID string) (*CampaignAutomation, bool)
+}
+
 type HandleWebhookUseCase struct {
 	instances     uw.InstanceRepository
 	servers       uw.ServerRepository
@@ -69,12 +100,18 @@ type HandleWebhookUseCase struct {
 	convMedia   conversation.ConversationMediaRepository
 	fileStorage media.FileStorage
 	broadcaster conversation.EventBroadcaster
-	assignments AssignmentService
-	aiReply     AIReplier
-	workflows   WorkflowTrigger
-	leads       LeadLinker
-	analysis    AnalysisScheduler
-	sync        sessionSync
+	// campaignStatus advances a campaign target when a delivery receipt arrives.
+	// Optional: nil where campaigns are not wired.
+	campaignStatus CampaignDeliverySink
+	// campaignAutomation says whether a campaign, rather than the instance,
+	// decides who answers a reply. Optional: nil where campaigns are not wired.
+	campaignAutomation CampaignAutomationSource
+	assignments        AssignmentService
+	aiReply            AIReplier
+	workflows          WorkflowTrigger
+	leads              LeadLinker
+	analysis           AnalysisScheduler
+	sync               sessionSync
 	// profiles fills the name and avatar the CRM shows for a conversation. Not
 	// a job — see subject_profile.go for the per-message call budget.
 	profiles subjectProfile
@@ -257,9 +294,13 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 		return nil
 	}
 
+	// Resolved ONCE and handed to both gates, so the workflow and the agent
+	// cannot disagree about which campaign owns this reply.
+	auto := uc.automationFor(sub.conversation.ID)
+
 	uc.ensureAssignment(sub.conversation, instance)
-	uc.fireWorkflowTriggers(instance, sub.conversation, ev)
-	uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev)
+	uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto)
+	uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, auto)
 	uc.scheduleAnalysis(instance, sub.conversation)
 	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
@@ -772,6 +813,14 @@ func (uc *HandleWebhookUseCase) advanceDeliveryStatus(
 	if status == conversation.DeliveryStatusNone {
 		return
 	}
+	// A campaign target advances with the message it belongs to. Optional and
+	// best-effort: a workspace with no campaigns has no sink wired, and a status
+	// that could not be written is a cosmetic tick — never a reason to fail (and
+	// so retry) a delivery that already succeeded.
+	if uc.campaignStatus != nil {
+		uc.campaignStatus.AdvanceFromDelivery(target, ev.DeliveryStatus)
+	}
+
 	if err := uc.messages.UpdateDeliveryStatus(target, status); err != nil {
 		// Best-effort by design: a status that could not be written is a
 		// cosmetic tick, never a reason to fail (and so retry) a delivery that
@@ -980,15 +1029,53 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(instance *uw.Instance, conv *uw
 // A tapped button carries its OPTION ID, which is what an interactive-prompt
 // node branches on. Sending only the visible label would route every press down
 // the no-match branch and read as "the customer typed something unexpected".
-func (uc *HandleWebhookUseCase) fireWorkflowTriggers(instance *uw.Instance, conv *uw.Conversation, ev *uw.Event) {
-	if uc.workflows == nil || !instance.EnableWorkflow {
+func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
+	instance *uw.Instance,
+	conv *uw.Conversation,
+	ev *uw.Event,
+	auto *CampaignAutomation,
+) {
+	if uc.workflows == nil {
 		return
 	}
 	if !conv.RunsAutomation(instance.HandleGroups) {
 		return
 	}
 
+	// Who decides: the campaign that sent here, or the instance for an organic
+	// conversation. A campaign that configured no workflow answers with
+	// silence — it must NOT inherit the instance's, which is how a campaign the
+	// operator deliberately left manual started replying by itself.
+	scopedWorkflowID := ""
+	if auto != nil {
+		if !auto.Automation.RunsWorkflow(conv.AutomationEnabled) {
+			return
+		}
+		scopedWorkflowID = auto.Automation.WorkflowID
+	} else {
+		if !instance.EnableWorkflow {
+			return
+		}
+		if instance.WorkflowID != nil {
+			scopedWorkflowID = strings.TrimSpace(*instance.WorkflowID)
+		}
+	}
+
 	data := map[string]any{"text": ev.Text}
+
+	// Without a scope key the evaluator has nothing to match on, so EVERY active
+	// workspace workflow with a message-received trigger attends EVERY
+	// conversation — two workflows means the customer gets two greetings.
+	// Instagram and Telegram seed account_workflow_id; the Cloud API campaign
+	// seeds campaign_workflow_id. This channel seeded neither.
+	if scopedWorkflowID != "" {
+		if auto != nil {
+			data["campaign_id"] = auto.CampaignID
+			data["campaign_workflow_id"] = scopedWorkflowID
+		} else {
+			data["account_workflow_id"] = scopedWorkflowID
+		}
+	}
 	if ev.OptionID != "" {
 		data[workflow.DataKeySelectedOptionID] = ev.OptionID
 		data[workflow.DataKeySelectedOptionTitle] = ev.Text
@@ -1019,12 +1106,30 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	contact *uw.Contact,
 	conv *uw.Conversation,
 	ev *uw.Event,
+	auto *CampaignAutomation,
 ) {
-	if uc.aiReply == nil || instance.AgentID == nil {
+	if uc.aiReply == nil {
 		return
 	}
 	if !conv.RunsAutomation(instance.HandleGroups) {
 		return
+	}
+
+	// Same precedence as the workflow gate, and the same reason. A campaign
+	// running a workflow suppresses the agent entirely (Automation.Mode), so
+	// one message never draws two answers.
+	agentID := ""
+	agentEnabled := false
+	if auto != nil {
+		if !auto.Automation.RunsAgent(conv.AutomationEnabled) {
+			return
+		}
+		agentID, agentEnabled = auto.Automation.AgentID, true
+	} else {
+		if instance.AgentID == nil {
+			return
+		}
+		agentID, agentEnabled = *instance.AgentID, instance.EnableAgentResponses
 	}
 
 	// The subject's CRM lead, resolved by bridgeLead on the way in. Always nil
@@ -1037,8 +1142,8 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		WorkspaceID:           instance.WorkspaceID,
 		EntryID:               conv.ID,
 		EntryType:             shared.EntryTypeUnofficialWhatsApp,
-		AgentID:               *instance.AgentID,
-		AgentResponsesEnabled: instance.EnableAgentResponses,
+		AgentID:               agentID,
+		AgentResponsesEnabled: agentEnabled,
 		AutomationEnabled:     conv.AutomationEnabled,
 		Text:                  ev.Text,
 		LeadID:                leadID,
@@ -1046,6 +1151,33 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	if err != nil {
 		log.Printf("[unofficial-whatsapp] AI reply failed for entry %s: %v", conv.ID, err)
 	}
+}
+
+// SetCampaignDeliverySink attaches the campaign status hook after construction.
+func (uc *HandleWebhookUseCase) SetCampaignDeliverySink(sink CampaignDeliverySink) {
+	uc.campaignStatus = sink
+}
+
+// SetCampaignAutomationSource attaches the campaign automation lookup after
+// construction, for the same reason the delivery sink is attached late: the
+// campaign feature is built on top of this channel, so it cannot be a
+// constructor argument without inverting the dependency.
+func (uc *HandleWebhookUseCase) SetCampaignAutomationSource(src CampaignAutomationSource) {
+	uc.campaignAutomation = src
+}
+
+// automationFor resolves who answers replies on this conversation.
+//
+// Returns nil for an organic conversation, which the instance configures.
+func (uc *HandleWebhookUseCase) automationFor(conversationID string) *CampaignAutomation {
+	if uc.campaignAutomation == nil {
+		return nil
+	}
+	found, ok := uc.campaignAutomation.AutomationForConversation(conversationID)
+	if !ok {
+		return nil
+	}
+	return found
 }
 
 func (uc *HandleWebhookUseCase) broadcastEntryUpdate(entryID string) {

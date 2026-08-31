@@ -905,6 +905,7 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 
 	searchInput := conversation.SearchEntriesInput{
 		CampaignID:             input.CampaignID,
+		ContainerKind:          input.ContainerKind,
 		WorkspaceID:            input.WorkspaceID,
 		WhatsAppCampaignType:   input.WhatsAppCampaignType,
 		DepartmentIDs:          input.DepartmentIDs,
@@ -1911,11 +1912,22 @@ func (s *MessageSenderService) sendViaAdapter(
 		Text:           text,
 		Read:           true,
 		ReadAt:         &now,
-		ReadBy:         &userID,
 		DeliveryStatus: conversation.DeliveryStatusSent,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
+	// read_by is a uuid column, so it may only carry a real id.
+	//
+	// It used to be set unconditionally to &userID, which is fine for an
+	// operator send and fatal for one with no author: a campaign message is not
+	// typed by anybody, so userID is "" and Postgres rejects the whole INSERT
+	// with 22P02 — the customer receives the message and the transcript loses
+	// it. Nil is also the honest value: nobody read it.
+	if userID != "" {
+		author := userID
+		message.ReadBy = &author
+	}
+
 	if outcome != nil && outcome.ProviderMessageID != "" {
 		providerID := outcome.ProviderMessageID
 		message.ExternalMessageID = &providerID

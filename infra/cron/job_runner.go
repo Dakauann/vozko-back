@@ -141,6 +141,29 @@ func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, re
 	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
 }
 
+// SetAssignmentJobs registers the roulette rescue sweep.
+//
+// One minute, because the shortest deadline an admin can set is one minute and
+// a rescue that fires five minutes late is a customer waiting five minutes
+// longer. The sweep is cheap when nothing is eligible: one indexed read over
+// workspace_configs, then nothing.
+//
+// It rides the channelJobs list, which by now is "optional periodic jobs
+// registered after construction" rather than anything channel-specific —
+// threading an eighteenth positional argument through NewJobRunner for it would
+// buy nothing, the same trade-off the Instagram setter already made.
+func (r *JobRunner) SetAssignmentJobs(rescue ctxJob) {
+	r.addChannelJob("assignment_rescue", time.Minute, rescue)
+}
+
+// SetUnofficialWhatsAppCampaignJobs registers the scheduled-start sweep.
+//
+// One minute, matching the official campaign's, because a campaign scheduled for
+// 09:00 that starts at 09:05 is a campaign an operator has to explain.
+func (r *JobRunner) SetUnofficialWhatsAppCampaignJobs(startScheduled ctxJob) {
+	r.addChannelJob("unofficial_whatsapp_campaign_scheduled_start", time.Minute, startScheduled)
+}
+
 // SetWhatsAppTemplateSendJobs registers the paid-send reconciliation sweep.
 //
 // Hourly, and the cadence is a money decision rather than a load one. The sweep

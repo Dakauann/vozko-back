@@ -138,8 +138,8 @@ func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryI
 	return workspaceID, nil
 }
 
-// DepartmentIDForEntry reads the department from the owning instance, which is
-// the config carrier for its conversations.
+// DepartmentIDForEntry reads the department that owns this conversation:
+// the campaign that created it if there is one, else the instance.
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
 	// Plucked into a slice of NullString, not a *string: Pluck writes through a
 	// slice, and handing it a **string made every call fail with "sql: Scan
@@ -147,19 +147,63 @@ func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entry
 	// fail-closed on that error, so this channel silently assigned NOBODY —
 	// the same bug already fixed in the Telegram copy of this lookup. The
 	// column is nullable, so the element type has to tolerate NULL as well.
+	//
+	// The campaign that put this conversation here outranks the instance.
+	// A campaign is scoped to a department deliberately, while the instance is
+	// just the number the message happened to leave from — assigning a
+	// department-A campaign to department B's operators because they share a
+	// phone is how a reply lands with someone who has no idea what was sent.
+	// The instance stays the fallback for organic conversations, which have no
+	// campaign to ask.
+	//
+	// Most recently sent campaign wins, matching FindLatestByConversationID:
+	// the person is answering the last thing they received.
 	var departmentIDs []sql.NullString
 	if err := r.db.WithContext(ctx).
 		Table("unofficial_whatsapp_conversations uwc").
 		Joins("JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id").
+		Joins(`LEFT JOIN LATERAL (
+			SELECT uwcamp.department_id
+			FROM unofficial_whatsapp_campaign_entries uwce
+			JOIN unofficial_whatsapp_campaigns uwcamp
+			  ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+			WHERE uwce.conversation_id = uwc.id
+			  AND uwce.deleted_at IS NULL
+			  AND uwcamp.department_id IS NOT NULL
+			ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
+			LIMIT 1
+		) camp ON TRUE`).
 		Where("uwc.id = ?", entryID).
 		Limit(1).
-		Pluck("uwi.department_id", &departmentIDs).Error; err != nil {
+		Pluck("COALESCE(camp.department_id, uwi.department_id)", &departmentIDs).Error; err != nil {
 		return "", err
 	}
 	if len(departmentIDs) == 0 || !departmentIDs[0].Valid {
 		return "", nil
 	}
 	return departmentIDs[0].String, nil
+}
+
+// CampaignIDForEntry reports the campaign that owns this conversation, or ""
+// when no campaign targeted it.
+//
+// Most recently sent wins, the same ordering DepartmentIDForEntry uses: the
+// person is answering the last thing they received.
+func (r *conversationRepository) CampaignIDForEntry(ctx context.Context, entryID string) (string, error) {
+	var ids []string
+	if err := r.db.WithContext(ctx).
+		Table("unofficial_whatsapp_campaign_entries uwce").
+		Joins("JOIN unofficial_whatsapp_campaigns uwcamp ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL").
+		Where("uwce.conversation_id = ? AND uwce.deleted_at IS NULL", entryID).
+		Order("uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC").
+		Limit(1).
+		Pluck("uwce.campaign_id::text", &ids).Error; err != nil {
+		return "", err
+	}
+	if len(ids) == 0 {
+		return "", nil
+	}
+	return ids[0], nil
 }
 
 func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {

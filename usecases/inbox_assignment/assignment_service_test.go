@@ -70,6 +70,22 @@ func (r *mockRepo) SaveRoundRobinState(state *ia.RoundRobinState) error {
 	return nil
 }
 
+// CompareAndSwapRoundRobinState records into savedStates like the plain save
+// above, so the assertions about what gets persisted keep their meaning. The
+// contention path is covered separately in round_robin_race_test.go.
+func (r *mockRepo) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
+	if r.saveStateErr != nil {
+		return false, r.saveStateErr
+	}
+	if r.roundRobin != nil && r.roundRobin.LastAssignedUserID != expected {
+		return false, nil
+	}
+	cp := *state
+	r.roundRobin = &cp
+	r.savedStates = append(r.savedStates, &cp)
+	return true, nil
+}
+
 type statefulRepo struct {
 	assignments map[string]*ia.InboxAssignment
 	rrStates    map[string]*ia.RoundRobinState
@@ -122,6 +138,16 @@ func (r *statefulRepo) SaveRoundRobinState(state *ia.RoundRobinState) error {
 	cp := *state
 	r.rrStates[rrKey(state.WorkspaceID, state.BusinessPhoneID, state.DepartmentID)] = &cp
 	return nil
+}
+
+func (r *statefulRepo) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
+	key := rrKey(state.WorkspaceID, state.BusinessPhoneID, state.DepartmentID)
+	if current := r.rrStates[key]; current != nil && current.LastAssignedUserID != expected {
+		return false, nil
+	}
+	cp := *state
+	r.rrStates[key] = &cp
+	return true, nil
 }
 
 type mockEligible struct {
@@ -1648,6 +1674,19 @@ func (r *constrainedRepo) SaveRoundRobinState(state *ia.RoundRobinState) error {
 	r.rrStates[threeColKey] = &cp
 	r.wsPhoneSeen[twoColKey] = true
 	return nil
+}
+
+// The compare-and-swap must hit the same simulated constraint, or this fixture
+// would stop reproducing the schema bug it exists to document.
+func (r *constrainedRepo) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
+	threeColKey := rrKey(state.WorkspaceID, state.BusinessPhoneID, state.DepartmentID)
+	if current := r.rrStates[threeColKey]; current != nil && current.LastAssignedUserID != expected {
+		return false, nil
+	}
+	if err := r.SaveRoundRobinState(state); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func TestEnsureAssignment_StaleIndex_DepartmentStateNeverSaved(t *testing.T) {

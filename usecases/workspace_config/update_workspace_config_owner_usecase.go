@@ -51,6 +51,22 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 	if input.AutoCloseMaxAgeAfterHours != nil {
 		existing.AutoCloseMaxAgeAfterHours = wsc.ClampAutoCloseMaxAgeHours(*input.AutoCloseMaxAgeAfterHours)
 	}
+	// An unknown mode or an out-of-range window is normalized, not rejected —
+	// the same treatment the auto-close hours above get. The response echoes
+	// what was stored, so the UI shows the value that will actually be used
+	// rather than the one that was typed.
+	if input.RouletteMode != nil {
+		existing.RouletteMode = wsc.NormalizeRouletteMode(*input.RouletteMode)
+	}
+	if input.RouletteLastSeenWindowHours != nil {
+		existing.RouletteLastSeenWindowHours = wsc.ClampRouletteLastSeenWindowHours(*input.RouletteLastSeenWindowHours)
+	}
+	if input.RouletteRescueEnabled != nil {
+		existing.RouletteRescueEnabled = *input.RouletteRescueEnabled
+	}
+	if input.RouletteRescueAfterMinutes != nil {
+		existing.RouletteRescueAfterMinutes = wsc.ClampRouletteRescueMinutes(*input.RouletteRescueAfterMinutes)
+	}
 
 	existing.UpdatedBy = callerID
 

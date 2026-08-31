@@ -98,6 +98,7 @@ import (
 	telephony_usecase "vozko/usecases/telephony"
 	ticket_usecase "vozko/usecases/ticket"
 	tools_usecase "vozko/usecases/tools"
+	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	user_usecase "vozko/usecases/user"
 	webhook_usecase "vozko/usecases/webhook"
 	businessphone_usecase "vozko/usecases/whatsapp/business_phone"
@@ -1306,6 +1307,16 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			setter.SetTriggerEvaluator(c.useCases.triggerEvaluator)
 		}
 
+		// The unofficial campaign consumer's workflow trigger, attached for the same
+		// reason the official one is: the workflow evaluator is built later.
+		if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
+			if setter, ok := c.unofficialWhatsAppCampaigns.Consumer.(interface {
+				SetWorkflows(uwcuc.WorkflowTrigger)
+			}); ok {
+				setter.SetWorkflows(&campaignWorkflowTrigger{evaluator: c.useCases.triggerEvaluator})
+			}
+		}
+
 		if setter, ok := c.useCases.messageConsumerWCCampaign.(interface {
 			SetTriggerEvaluator(workflow_domain.TriggerEvaluator)
 		}); ok {
@@ -1341,6 +1352,15 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	if err := c.useCases.consumeNotifications.Start(); err != nil {
 		log.Fatal("Failed to start email notification consumer:", err)
+	}
+
+	// The unofficial campaign consumer re-attaches to whatever was running when
+	// the process died. A failure here is logged rather than fatal: a campaign
+	// that cannot resume must not stop the rest of the platform from booting.
+	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
+		if err := c.unofficialWhatsAppCampaigns.Consumer.Start(); err != nil {
+			log.Printf("[unofficial-whatsapp-campaign] consumer failed to start: %v", err)
+		}
 	}
 
 	if err := c.useCases.messageConsumerWCCampaign.Start(); err != nil {
@@ -1419,6 +1439,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			log.Printf("[telegram] webhook consumers started")
 		}
 	}
+
+	// Campaigns are built HERE, not earlier in the pass: they need the metric
+	// recorder and the department resolver, and c.useCases is not assigned until
+	// this function is nearly done. initUnofficialWhatsAppRuntime below attaches
+	// the delivery hook onto them, so this has to come first.
+	c.initUnofficialWhatsAppCampaigns(
+		c.services.messageSender, resolveCreationDepartmentUC, recordMetricUC)
 
 	c.initUnofficialWhatsAppRuntime(messageHistoryManager)
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled && c.unofficialWhatsApp.Consume != nil {

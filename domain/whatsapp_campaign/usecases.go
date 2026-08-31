@@ -2,6 +2,8 @@ package whatsapp_campaign
 
 import (
 	"context"
+
+	"vozko/domain/campaign"
 	"vozko/domain/shared"
 
 	wce "vozko/domain/whatsapp_campaign_entry"
@@ -72,15 +74,25 @@ type ResetCampaignUseCase interface {
 	ConfirmReset(input ResetCampaignInput) (*ResetCampaignOutput, error)
 }
 
-type CampaignAction string
+// CampaignAction is the shared lifecycle verb.
+type CampaignAction = campaign.Action
 
 const (
-	CampaignActionStart CampaignAction = "START"
-	CampaignActionPause CampaignAction = "PAUSE"
-	CampaignActionStop  CampaignAction = "STOP"
+	CampaignActionStart = campaign.ActionStart
+	CampaignActionPause = campaign.ActionPause
+	CampaignActionStop  = campaign.ActionStop
 )
 
 const WhatsAppCampaignDispatchTopic = "whatsapp_campaign_dispatch"
+
+// QueueNamespace keys this channel's queue topic and coordination keys.
+//
+// Distinct prefixes per channel are what stop two campaigns with the same id —
+// impossible today, but only because both use UUIDs — from sharing a pause flag.
+var QueueNamespace = campaign.Namespace{
+	Topic: WhatsAppCampaignDispatchTopic,
+	Key:   "campaign:whatsapp",
+}
 
 type DispatchEntry struct {
 	EntryID     string

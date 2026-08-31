@@ -174,7 +174,16 @@ var entrySources = []entrySource{
 		Account: "COALESCE(uwc.instance_id::text, '')",
 
 		ConversationStatus: "uwc.conversation_status",
-		CampaignID:         "",
+		// The campaign that targeted this conversation, or NULL when none did and
+		// the instance is the container. A scalar subquery rather than a join so
+		// this row keeps its one-row-per-conversation shape in the UNION.
+		CampaignID: `(SELECT uwce.campaign_id::text
+		              FROM unofficial_whatsapp_campaign_entries uwce
+		              JOIN unofficial_whatsapp_campaigns uwcamp
+		                ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
+		              WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
+		              ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
+		              LIMIT 1)`,
 
 		CreatedAt:     "uwc.created_at",
 		UpdatedAt:     "uwc.updated_at",

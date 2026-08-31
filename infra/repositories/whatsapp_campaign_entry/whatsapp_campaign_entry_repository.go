@@ -189,7 +189,7 @@ func (r *repository) List(input wce.ListEntriesInput) (*shared.PaginatedResult[*
 	if input.LeadID != "" {
 		query = query.Where("lead_id = ?", input.LeadID)
 	}
-	if input.Status.Valid() {
+	if wce.ValidStatus(input.Status) {
 		query = query.Where("status = ?", string(input.Status))
 	}
 	if input.Number != "" {
@@ -514,7 +514,7 @@ func (r *repository) UpdateStatus(entryID string, status wce.SendStatus, message
 	if entryID == "" {
 		return wce.ErrEntryNotFound
 	}
-	if !status.Valid() {
+	if !wce.ValidStatus(status) {
 		return wce.ErrEntryStatusInvalid
 	}
 
@@ -552,7 +552,7 @@ func (r *repository) UpdateStatusByNumber(campaignID, number string, status wce.
 	if campaignID == "" || normalized == "" {
 		return wce.ErrEntryNotFound
 	}
-	if !status.Valid() {
+	if !wce.ValidStatus(status) {
 		return wce.ErrEntryStatusInvalid
 	}
 
@@ -571,7 +571,7 @@ func (r *repository) UpdateStatusByMessageID(messageID string, status wce.SendSt
 	if messageID == "" {
 		return wce.ErrEntryNotFound
 	}
-	if !status.Valid() {
+	if !wce.ValidStatus(status) {
 		return wce.ErrEntryStatusInvalid
 	}
 
@@ -834,7 +834,7 @@ func (r *repository) ListEntriesWithLeads(input wce.ListEntriesInput) (*shared.P
 	if input.LeadID != "" {
 		query = query.Where("whatsapp_campaign_entries.lead_id = ?", input.LeadID)
 	}
-	if input.Status.Valid() {
+	if wce.ValidStatus(input.Status) {
 		query = query.Where("whatsapp_campaign_entries.status = ?", string(input.Status))
 	}
 	if input.Number != "" {

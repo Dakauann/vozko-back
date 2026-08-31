@@ -153,6 +153,22 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_ah_ws_started
 				ON assignment_history (workspace_id, started_at DESC)`,
 		},
+		// Roulette rescue sweep: still-open roulette hand-outs, oldest first.
+		//
+		// Doubly partial on purpose. The schema's idx_assign_hist_open covers
+		// every open interval, which is every currently-assigned conversation on
+		// the platform — the sweep would scan all of them to find the handful
+		// that are stalled. Narrowing to (ended_at IS NULL AND trigger =
+		// 'inbound_rr') keeps the index to conversations the roulette handed out
+		// and nobody has reassigned, and started_at serves the ORDER BY.
+		//
+		// "trigger" is quoted because TRIGGER is a reserved word in SQL.
+		{
+			name: "idx_ah_rescue_scan",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ah_rescue_scan
+				ON assignment_history (workspace_id, started_at)
+				WHERE ended_at IS NULL AND "trigger" = 'inbound_rr'`,
+		},
 		// Classic attendance: assignments by workspace + created_at / assignee.
 		{
 			name: "idx_ia_ws_created",

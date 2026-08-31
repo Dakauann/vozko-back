@@ -46,6 +46,41 @@ const (
 	MaxAutoCloseMaxAgeAfterHours     = 2160 // 90 days (LivePerson-scale ceiling)
 )
 
+// Roulette modes: how the inbound roulette picks an owner.
+//
+//   - online: the pool is whoever holds an open conversation socket right now.
+//     The historical behaviour, and the default, so an upgrade changes nothing
+//     for any existing workspace.
+//   - last_seen: connection state stops being a filter. The pool is every
+//     roulette-eligible member who was online at least once inside the
+//     configured window, ordered most-recently-online first. A member past the
+//     window does not enter the ring at all.
+const (
+	RouletteModeOnline   = "online"
+	RouletteModeLastSeen = "last_seen"
+)
+
+const (
+	DefaultRouletteMode = RouletteModeOnline
+
+	// 48h is the product default: two days is the longest absence after which
+	// "was online once" still predicts "will read this soon". The ceiling is 7
+	// days rather than unbounded, because past a week the mode quietly degrades
+	// into "assign to anyone who ever logged in", which is not distribution.
+	DefaultRouletteLastSeenWindowHours = 48
+	MinRouletteLastSeenWindowHours     = 1
+	MaxRouletteLastSeenWindowHours     = 168
+
+	// Rescue reassigns a conversation whose owner never opened it. Default on,
+	// but only ACTIVE in last_seen mode (see RouletteRescueActive): in online
+	// mode the owner was connected when they got it, and rescuing there would
+	// be a behaviour change nobody asked for.
+	DefaultRouletteRescueEnabled      = true
+	DefaultRouletteRescueAfterMinutes = 15
+	MinRouletteRescueAfterMinutes     = 1
+	MaxRouletteRescueAfterMinutes     = 1440 // 24h
+)
+
 type WorkspaceConfig struct {
 	ID                         string `json:"id"`
 	WorkspaceID                string `json:"workspaceId"`
@@ -80,6 +115,19 @@ type WorkspaceConfig struct {
 	AutoCloseMaxAgeEnabled bool `json:"autoCloseMaxAgeEnabled"`
 	// AutoCloseMaxAgeAfterHours: no message either side for this many hours (24..2160).
 	AutoCloseMaxAgeAfterHours int `json:"autoCloseMaxAgeAfterHours"`
+
+	// RouletteMode selects how the inbound roulette builds its pool:
+	// RouletteModeOnline (default) or RouletteModeLastSeen.
+	RouletteMode string `json:"rouletteMode"`
+	// RouletteLastSeenWindowHours: how long after going offline a member stays
+	// in the ring (1..168). Only read in last_seen mode.
+	RouletteLastSeenWindowHours int `json:"rouletteLastSeenWindowHours"`
+	// RouletteRescueEnabled: reassign a conversation whose owner never opened
+	// it. Only acts in last_seen mode; see RouletteRescueActive.
+	RouletteRescueEnabled bool `json:"rouletteRescueEnabled"`
+	// RouletteRescueAfterMinutes: how long the owner has to open or answer
+	// before the conversation moves on (1..1440).
+	RouletteRescueAfterMinutes int `json:"rouletteRescueAfterMinutes"`
 
 	UpdatedBy string    `json:"updatedBy,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -124,6 +172,83 @@ func (c *WorkspaceConfig) EffectiveAutoCloseMaxAgeAfterHours() int {
 	return ClampAutoCloseMaxAgeHours(c.AutoCloseMaxAgeAfterHours)
 }
 
+// NormalizeRouletteMode resolves anything that is not a known mode to the
+// default.
+//
+// Unknown is normalized rather than rejected, matching how the auto-close hours
+// treat an out-of-range value: an admin cannot submit one through the API, so a
+// bad value can only arrive from hand-written SQL or an older writer, and
+// falling back to the historical behaviour is the safe reading of "we do not
+// know what this workspace wants".
+func NormalizeRouletteMode(mode string) string {
+	switch mode {
+	case RouletteModeOnline, RouletteModeLastSeen:
+		return mode
+	default:
+		return DefaultRouletteMode
+	}
+}
+
+// ClampRouletteLastSeenWindowHours normalizes the last-seen window.
+func ClampRouletteLastSeenWindowHours(hours int) int {
+	if hours < MinRouletteLastSeenWindowHours {
+		return DefaultRouletteLastSeenWindowHours
+	}
+	if hours > MaxRouletteLastSeenWindowHours {
+		return MaxRouletteLastSeenWindowHours
+	}
+	return hours
+}
+
+// ClampRouletteRescueMinutes normalizes the rescue deadline.
+func ClampRouletteRescueMinutes(minutes int) int {
+	if minutes < MinRouletteRescueAfterMinutes {
+		return DefaultRouletteRescueAfterMinutes
+	}
+	if minutes > MaxRouletteRescueAfterMinutes {
+		return MaxRouletteRescueAfterMinutes
+	}
+	return minutes
+}
+
+// EffectiveRouletteMode returns the mode this workspace actually runs.
+func (c *WorkspaceConfig) EffectiveRouletteMode() string {
+	if c == nil {
+		return DefaultRouletteMode
+	}
+	return NormalizeRouletteMode(c.RouletteMode)
+}
+
+// EffectiveRouletteLastSeenWindow returns the clamped last-seen window.
+func (c *WorkspaceConfig) EffectiveRouletteLastSeenWindow() time.Duration {
+	if c == nil {
+		return time.Duration(DefaultRouletteLastSeenWindowHours) * time.Hour
+	}
+	return time.Duration(ClampRouletteLastSeenWindowHours(c.RouletteLastSeenWindowHours)) * time.Hour
+}
+
+// EffectiveRouletteRescueAfter returns the clamped rescue deadline.
+func (c *WorkspaceConfig) EffectiveRouletteRescueAfter() time.Duration {
+	if c == nil {
+		return time.Duration(DefaultRouletteRescueAfterMinutes) * time.Minute
+	}
+	return time.Duration(ClampRouletteRescueMinutes(c.RouletteRescueAfterMinutes)) * time.Minute
+}
+
+// RouletteRescueActive is the single answer to "should the rescue sweep touch
+// this workspace".
+//
+// Rescue only means anything for a pool that can contain somebody who is not
+// looking at the screen, so it is gated on the mode as well as on its own
+// toggle. That gate is what keeps the default-mode workspaces — every existing
+// one — completely untouched by this feature.
+func (c *WorkspaceConfig) RouletteRescueActive() bool {
+	if c == nil {
+		return false
+	}
+	return c.EffectiveRouletteMode() == RouletteModeLastSeen && c.RouletteRescueEnabled
+}
+
 type Repository interface {
 	GetByWorkspaceID(ctx context.Context, workspaceID string) (*WorkspaceConfig, error)
 	Upsert(ctx context.Context, cfg *WorkspaceConfig) error
@@ -140,6 +265,22 @@ type Repository interface {
 	// reads as zero — the same thing it must already assume for a workspace that
 	// was never granted anything.
 	GetIncludedUnofficialInstancesByWorkspaceIDs(ctx context.Context, workspaceIDs []string) (map[string]int, error)
+	// ListRoulettePolicies returns ONLY the workspaces whose roulette runs in
+	// last_seen mode with rescue enabled.
+	//
+	// The rescue sweep drives off this, which is what makes it free for
+	// everyone else: a workspace on the default mode is filtered out by one
+	// indexed read, before any assignment table is touched. It is also why
+	// switching the mode back to online stops pending rescues on the next tick
+	// with no cleanup pass and no flag to unset on any row.
+	ListRoulettePolicies(ctx context.Context) ([]RoulettePolicy, error)
+}
+
+// RoulettePolicy is one workspace's resolved (already clamped) rescue settings.
+type RoulettePolicy struct {
+	WorkspaceID    string
+	RescueAfter    time.Duration
+	LastSeenWindow time.Duration
 }
 
 // UpdateWorkspaceConfigInput is the PLATFORM-ADMIN update.
@@ -165,6 +306,11 @@ type UpdateWorkspaceConfigOwnerInput struct {
 	// Absolute inactivity max-age (nil = not sent).
 	AutoCloseMaxAgeEnabled    *bool `json:"autoCloseMaxAgeEnabled,omitempty"`
 	AutoCloseMaxAgeAfterHours *int  `json:"autoCloseMaxAgeAfterHours,omitempty"`
+	// Roulette distribution policy (nil = not sent).
+	RouletteMode                *string `json:"rouletteMode,omitempty"`
+	RouletteLastSeenWindowHours *int    `json:"rouletteLastSeenWindowHours,omitempty"`
+	RouletteRescueEnabled       *bool   `json:"rouletteRescueEnabled,omitempty"`
+	RouletteRescueAfterMinutes  *int    `json:"rouletteRescueAfterMinutes,omitempty"`
 }
 
 type GetWorkspaceConfigUseCase interface {

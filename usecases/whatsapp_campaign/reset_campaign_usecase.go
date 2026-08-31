@@ -1,10 +1,9 @@
 package whatsapp_campaign_usecase
 
 import (
-	"crypto/rand"
 	"fmt"
-	"math/big"
 
+	"vozko/domain/campaign"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
@@ -38,7 +37,7 @@ func (uc *resetCampaignUseCase) PrepareReset(campaignID string) (*wc.PrepareRese
 		return nil, wc.ErrCampaignResetNotAllowed
 	}
 
-	resetCode, err := generateResetCode()
+	resetCode, err := campaign.NewConfirmationCode()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate reset code: %w", err)
 	}
@@ -90,7 +89,7 @@ func (uc *resetCampaignUseCase) ConfirmReset(input wc.ResetCampaignInput) (*wc.R
 		return nil, err
 	}
 
-	newResetCode, _ := generateResetCode()
+	newResetCode, _ := campaign.NewConfirmationCode()
 
 	updated, err := uc.campaignRepo.FindByID(input.CampaignID)
 	if err != nil {
@@ -108,17 +107,4 @@ func (uc *resetCampaignUseCase) ConfirmReset(input wc.ResetCampaignInput) (*wc.R
 		ResetCount:   resetCount,
 		NewResetCode: newResetCode,
 	}, nil
-}
-
-func generateResetCode() (string, error) {
-	const digits = "0123456789"
-	code := make([]byte, 6)
-	for i := range code {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
-		if err != nil {
-			return "", err
-		}
-		code[i] = digits[n.Int64()]
-	}
-	return string(code), nil
 }

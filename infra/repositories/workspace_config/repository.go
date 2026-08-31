@@ -3,6 +3,7 @@ package workspace_config_repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -32,6 +33,11 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 				AutoCloseIdleAfterHours:    wsc.DefaultAutoCloseIdleAfterHours,
 				AutoCloseMaxAgeEnabled:     wsc.DefaultAutoCloseMaxAgeEnabled,
 				AutoCloseMaxAgeAfterHours:  wsc.DefaultAutoCloseMaxAgeAfterHours,
+
+				RouletteMode:                wsc.DefaultRouletteMode,
+				RouletteLastSeenWindowHours: wsc.DefaultRouletteLastSeenWindowHours,
+				RouletteRescueEnabled:       wsc.DefaultRouletteRescueEnabled,
+				RouletteRescueAfterMinutes:  wsc.DefaultRouletteRescueAfterMinutes,
 			}, nil
 		}
 		return nil, err
@@ -54,9 +60,18 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 		AutoCloseIdleAfterHours:             idleHours,
 		AutoCloseMaxAgeEnabled:              row.AutoCloseMaxAgeEnabled,
 		AutoCloseMaxAgeAfterHours:           maxAgeHours,
-		UpdatedBy:                           row.UpdatedBy,
-		CreatedAt:                           row.CreatedAt,
-		UpdatedAt:                           row.UpdatedAt,
+
+		// Normalized on read, the same way the auto-close hours above are: a
+		// row written before these columns existed, or edited by hand, must
+		// not be able to put the roulette into a mode that does not exist.
+		RouletteMode:                wsc.NormalizeRouletteMode(row.RouletteMode),
+		RouletteLastSeenWindowHours: wsc.ClampRouletteLastSeenWindowHours(row.RouletteLastSeenWindowHours),
+		RouletteRescueEnabled:       row.RouletteRescueEnabled,
+		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(row.RouletteRescueAfterMinutes),
+
+		UpdatedBy: row.UpdatedBy,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}, nil
 }
 
@@ -73,7 +88,13 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 		AutoCloseIdleAfterHours:             idleHours,
 		AutoCloseMaxAgeEnabled:              cfg.AutoCloseMaxAgeEnabled,
 		AutoCloseMaxAgeAfterHours:           maxAgeHours,
-		UpdatedBy:                           cfg.UpdatedBy,
+
+		RouletteMode:                wsc.NormalizeRouletteMode(cfg.RouletteMode),
+		RouletteLastSeenWindowHours: wsc.ClampRouletteLastSeenWindowHours(cfg.RouletteLastSeenWindowHours),
+		RouletteRescueEnabled:       cfg.RouletteRescueEnabled,
+		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(cfg.RouletteRescueAfterMinutes),
+
+		UpdatedBy: cfg.UpdatedBy,
 	}
 	if row.ID == "" {
 		row.ID = uuid.New().String()
@@ -97,6 +118,11 @@ func (r *Repository) EnsureExists(ctx context.Context, workspaceID string) error
 		AutoCloseIdleAfterHours:    wsc.DefaultAutoCloseIdleAfterHours,
 		AutoCloseMaxAgeEnabled:     wsc.DefaultAutoCloseMaxAgeEnabled,
 		AutoCloseMaxAgeAfterHours:  wsc.DefaultAutoCloseMaxAgeAfterHours,
+
+		RouletteMode:                wsc.DefaultRouletteMode,
+		RouletteLastSeenWindowHours: wsc.DefaultRouletteLastSeenWindowHours,
+		RouletteRescueEnabled:       wsc.DefaultRouletteRescueEnabled,
+		RouletteRescueAfterMinutes:  wsc.DefaultRouletteRescueAfterMinutes,
 	}
 	return r.db.WithContext(ctx).Omit("UpdatedBy").Create(row).Error
 }
@@ -132,6 +158,40 @@ func (r *Repository) GetIncludedUnofficialInstancesByWorkspaceIDs(
 	}
 	for _, item := range rows {
 		out[item.WorkspaceID] = item.Included
+	}
+	return out, nil
+}
+
+// ListRoulettePolicies returns only the workspaces running the last_seen
+// roulette with rescue enabled.
+//
+// The rescue sweep drives off this: filtering here is what makes the sweep free
+// for every other tenant (one indexed read, then nothing), and what makes
+// switching a workspace back to the online mode stop its pending rescues on the
+// next tick without a cleanup pass or a flag to unset on any assignment row.
+func (r *Repository) ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePolicy, error) {
+	type row struct {
+		WorkspaceID string `gorm:"column:workspace_id"`
+		WindowHours int    `gorm:"column:roulette_last_seen_window_hours"`
+		AfterMinute int    `gorm:"column:roulette_rescue_after_minutes"`
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&schema.WorkspaceConfig{}).
+		Select("workspace_id, roulette_last_seen_window_hours, roulette_rescue_after_minutes").
+		Where("roulette_mode = ? AND roulette_rescue_enabled = ?", wsc.RouletteModeLastSeen, true).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]wsc.RoulettePolicy, 0, len(rows))
+	for _, item := range rows {
+		out = append(out, wsc.RoulettePolicy{
+			WorkspaceID:    item.WorkspaceID,
+			RescueAfter:    time.Duration(wsc.ClampRouletteRescueMinutes(item.AfterMinute)) * time.Minute,
+			LastSeenWindow: time.Duration(wsc.ClampRouletteLastSeenWindowHours(item.WindowHours)) * time.Hour,
+		})
 	}
 	return out, nil
 }

@@ -171,6 +171,10 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.UnofficialWhatsAppConversation{},
 			&schema.UnofficialWhatsAppGroup{},
 			&schema.UnofficialWhatsAppGroupParticipant{},
+			// Campaigns come after the instance and contact tables they
+			// reference, so the FK targets exist when these are created.
+			&schema.UnofficialWhatsAppCampaign{},
+			&schema.UnofficialWhatsAppCampaignEntry{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {
 			return err

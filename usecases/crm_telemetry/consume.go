@@ -299,6 +299,13 @@ func (c *consumer) applyAssignmentHistory(p crm_telemetry.AssignmentHistoryPaylo
 	if err := c.history.CloseOpen(p.WorkspaceID, p.EntryID, p.EntryType, at); err != nil {
 		return err
 	}
+	// An empty assigned actor means the entry was UNASSIGNED, not handed to
+	// nobody-in-particular: close the open interval and stop. Appending here
+	// would leave an owner-less interval open forever, which every ownership
+	// report would then read as "still assigned".
+	if p.AssignedActorID == "" {
+		return nil
+	}
 	return c.history.Append(&ia.AssignmentHistory{
 		ID:                p.ID,
 		WorkspaceID:       p.WorkspaceID,

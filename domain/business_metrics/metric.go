@@ -19,6 +19,12 @@ const (
 
 	EventWhatsAppMessageSent         MetricEventType = "whatsapp_message_sent"
 	EventWhatsAppTemplateMessageSent MetricEventType = "whatsapp_template_message_sent"
+	// EventUnofficialWhatsAppMessageSent meters linked-device campaign volume.
+	//
+	// Volume only, deliberately: Meta charges nothing for a linked-device send,
+	// so nothing in that channel debits a balance. This event exists so pricing
+	// can be added later without a gap in the history it would need to price.
+	EventUnofficialWhatsAppMessageSent MetricEventType = "unofficial_whatsapp_message_sent"
 
 	EventEmailSent MetricEventType = "email_sent"
 )

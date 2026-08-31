@@ -916,6 +916,9 @@ func (f *fakeConversationRepo) WorkspaceIDForEntry(context.Context, string) (str
 func (f *fakeConversationRepo) DepartmentIDForEntry(context.Context, string) (string, error) {
 	return "", nil
 }
+func (f *fakeConversationRepo) CampaignIDForEntry(context.Context, string) (string, error) {
+	return "", nil
+}
 func (f *fakeConversationRepo) ListEntryIDsByWorkspace(context.Context, string) ([]string, error) {
 	return nil, nil
 }

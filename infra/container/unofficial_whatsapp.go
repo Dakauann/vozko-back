@@ -13,6 +13,7 @@ import (
 	"vozko/infra/uazapi"
 	conversation_usecase "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
+	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
 
 // unofficialWhatsAppBundle groups everything the channel needs, so it can be
@@ -243,6 +244,25 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Analysis:      conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
 	})
 
+	// The campaign delivery hook, attached HERE rather than in the campaign
+	// wiring because this is where the dispatcher exists: campaigns are built
+	// earlier in the pass, the conversation stack later. A typed call rather
+	// than a type assertion, so a signature change is a compile error instead of
+	// a hook that silently stops firing.
+	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
+		handler.SetCampaignDeliverySink(
+			uwcuc.NewDeliverySink(c.unofficialWhatsAppCampaigns.Entries))
+
+		// Which campaign answers a reply, attached for the same reason and at
+		// the same seam. Without it the channel gates inbound automation on the
+		// INSTANCE, so a campaign with no agent and no workflow inherits
+		// whatever the number happens to have enabled and replies by itself.
+		handler.SetCampaignAutomationSource(
+			uwcuc.NewAutomationSource(
+				c.unofficialWhatsAppCampaigns.Entries,
+				c.unofficialWhatsAppCampaigns.Campaigns))
+	}
+
 	// Every optional capability, named at boot.
 	//
 	// All of these are guarded with `!= nil` at the call site, so a missing one
@@ -256,6 +276,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		"workflows":   c.useCases.triggerEvaluator != nil,
 		"assignment":  c.services.assignmentService != nil,
 		"broadcaster": c.services.conversationHub != nil,
+		"campaigns":   c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled,
 		"media":       c.services.fileStorage != nil,
 		// Named for the same reason as the rest: without storage or a fetcher
 		// the channel still works, it just renders initials where every other
@@ -377,6 +398,11 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 	if setter, ok := c.services.campaignWorkspaceResolver.(interface {
 		SetEntryOwnerResolver(shared.EntryType, conversation_usecase.EntryOwnerResolver)
 	}); ok {
+		// Campaign attribution reaches the resolver through an OPTIONAL interface,
+		// so a repository that stopped implementing it would degrade silently:
+		// funnel placement and campaign attribution would just go quiet again.
+		// Asserted here, at the registration seam, to make that a compile error.
+		var _ conversation_usecase.EntryCampaignResolver = bundle.Conversations
 		setter.SetEntryOwnerResolver(shared.EntryTypeUnofficialWhatsApp, bundle.Conversations)
 	}
 

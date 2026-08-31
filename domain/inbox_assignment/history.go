@@ -9,6 +9,11 @@ const (
 	TriggerManual    = "manual"
 	TriggerBulk      = "bulk"
 	TriggerSystem    = "system"
+	// TriggerRescue marks a hand-over the rescue sweep made because the
+	// previous owner never opened the conversation. Additive on purpose:
+	// TriggerInboundRR still marks the original roulette hand-out in both
+	// modes, so existing assignment-history metrics keep their meaning.
+	TriggerRescue = "rescue"
 )
 
 // AssignmentHistory is an ownership interval for one entry.
@@ -40,4 +45,19 @@ type HistoryRepository interface {
 	ListByEntry(workspaceID, entryID, entryType string, limit, offset int) ([]*AssignmentHistory, int64, error)
 	// GetOpen returns the open interval if any.
 	GetOpen(workspaceID, entryID, entryType string) (*AssignmentHistory, error)
+	// ListOpenOlderThan returns still-open ownership intervals for the given
+	// workspaces whose trigger matches and which started before olderThan,
+	// oldest first and capped at limit.
+	//
+	// The rescue sweep's candidate query. Oldest first so a saturated batch
+	// always makes progress on the conversations that have been waiting
+	// longest, rather than re-picking the same arbitrary page every tick.
+	ListOpenOlderThan(workspaceIDs []string, trigger string, olderThan time.Time, limit int) ([]*AssignmentHistory, error)
+	// CountRescuesSinceHandout counts how many times the sweep has already
+	// moved this entry since the roulette last handed it out.
+	//
+	// Derived from the interval chain rather than stored on the assignment, so
+	// there is no new state to keep consistent: a fresh roulette hand-out
+	// naturally resets the count by appearing later than every rescue before it.
+	CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error)
 }

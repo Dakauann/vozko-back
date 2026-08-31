@@ -100,3 +100,5 @@ func TestDefaultDefinitions(t *testing.T) {
 		t.Fatalf("%+v", d)
 	}
 }
+
+func (s *stubPresence) LastSeen(string, []string) (map[string]time.Time, error) { return nil, nil }

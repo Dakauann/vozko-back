@@ -10,6 +10,10 @@ import (
 	"vozko/domain/export"
 )
 
+// containerTypeCampaign is the Scope.ContainerType value that switches this
+// channel's export from "one number" to "one campaign".
+const containerTypeCampaign = "campaign"
+
 type exportRepository struct {
 	db *gorm.DB
 }
@@ -25,12 +29,18 @@ func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 	return &exportRepository{db: db}
 }
 
-// ListForExport lists one instance's conversations, or the whole workspace when
-// no instance is named.
+// ListForExport lists one container's conversations, or the whole workspace
+// when none is named.
 //
-// A linked-device session has no send statuses and no campaign period, so the
-// corresponding Scope fields are not applicable here and are ignored rather
-// than faked.
+// The container is normally a NUMBER. When Scope.ContainerType is "campaign" it
+// is a campaign instead, reached through its entry rows — which is the shape of
+// this channel: a campaign entry points at a conversation rather than being one.
+// ContainerType exists on Scope precisely so a channel can have more than one
+// kind of container, and this is the channel that does.
+//
+// Scope.Statuses is applied only in the campaign case: a conversation carries a
+// conversation status, while a campaign target carries a SEND status, and only
+// the latter is what "leads enviados" means.
 func (r *exportRepository) ListForExport(
 	ctx context.Context,
 	scope export.Scope,
@@ -69,8 +79,34 @@ func (r *exportRepository) ListForExport(
 		Where("uwc.workspace_id = ?", workspaceID).
 		Where("uwc.deleted_at IS NULL")
 
-	if instanceID := strings.TrimSpace(scope.ContainerID); instanceID != "" {
-		query = query.Where("uwc.instance_id = ?", instanceID)
+	containerID := strings.TrimSpace(scope.ContainerID)
+	byCampaign := strings.EqualFold(strings.TrimSpace(scope.ContainerType), containerTypeCampaign)
+
+	switch {
+	case byCampaign && containerID != "":
+		// Through the campaign's targets. DISTINCT because two campaigns can
+		// legitimately have reached the same chat, and a duplicated row in an
+		// exported spreadsheet reads as a duplicated customer.
+		sub := r.db.WithContext(ctx).
+			Table("unofficial_whatsapp_campaign_entries uwce").
+			Select("DISTINCT uwce.conversation_id").
+			Where("uwce.campaign_id = ?", containerID).
+			Where("uwce.conversation_id IS NOT NULL").
+			Where("uwce.deleted_at IS NULL")
+		if len(scope.Statuses) > 0 {
+			sub = sub.Where("uwce.status IN ?", scope.Statuses)
+		}
+		query = query.Where("uwc.id IN (?)", sub)
+
+	case containerID != "":
+		query = query.Where("uwc.instance_id = ?", containerID)
+	}
+
+	if len(scope.DepartmentIDs) > 0 {
+		// A department scope can never WIDEN what the caller may see, so it is
+		// applied on the instance regardless of which container was asked for.
+		query = query.Joins("JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id").
+			Where("uwi.department_id IN ?", scope.DepartmentIDs)
 	}
 
 	var rows []row

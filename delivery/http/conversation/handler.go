@@ -455,10 +455,19 @@ func (h *ConversationHandler) SearchInbox(w http.ResponseWriter, r *http.Request
 		selectedDepartmentID = *filter.SelectedDepartmentID
 	}
 
+	// container_kind narrows campaign_id to a CAMPAIGN rather than the channel's
+	// primary container. An unrecognised value falls back to the primary rather
+	// than matching nothing, so a stale client cannot produce an empty inbox.
+	containerKind := conversationdomain.ContainerKind(strings.TrimSpace(q.Get("container_kind")))
+	if !containerKind.Valid() {
+		containerKind = conversationdomain.ContainerKindAccount
+	}
+
 	input := conversationdomain.SearchInboxInput{
 		UserID:               claims.UserID,
 		CampaignID:           campaignID,
 		CampaignType:         campaignType,
+		ContainerKind:        containerKind,
 		SelectedDepartmentID: selectedDepartmentID,
 		Query:                q.Get("query"),
 		StageID:              q.Get("stage_id"),

@@ -245,3 +245,10 @@ func TestConsumer_PresenceAndAssignment(t *testing.T) {
 
 // silence unused messaging import if only MessageAck used via fake
 var _ messaging.MessageAck = (*fakeAck)(nil)
+
+func (m *memHistory) ListOpenOlderThan([]string, string, time.Time, int) ([]*ia.AssignmentHistory, error) {
+	return nil, nil
+}
+func (m *memHistory) CountRescuesSinceHandout(string, string, string) (int, error) { return 0, nil }
+
+func (m *memPresence) LastSeen(string, []string) (map[string]time.Time, error) { return nil, nil }

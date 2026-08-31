@@ -14445,7 +14445,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna as configurações do workspace: proteção contra spam de campanha, atribuição de administradores, música de espera, política da fila de atendimento e encerramento automático de conversas.",
+                "description": "Retorna as configurações do workspace: proteção contra spam de campanha, atribuição de administradores, modo da roleta, música de espera, política da fila de atendimento e encerramento automático de conversas.",
                 "produces": [
                     "application/json"
                 ],
@@ -14489,7 +14489,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza as preferências do workspace: atribuição de administradores, música de espera, política da fila de atendimento e encerramento automático de conversas.",
+                "description": "Atualiza as preferências do workspace: atribuição de administradores, modo da roleta (online ou última vez online, com janela e resgate), música de espera, política da fila de atendimento e encerramento automático de conversas.",
                 "consumes": [
                     "application/json"
                 ],
@@ -23679,6 +23679,19 @@ const docTemplate = `{
                     "description": "Absolute inactivity max-age (nil = not sent).",
                     "type": "boolean"
                 },
+                "rouletteLastSeenWindowHours": {
+                    "type": "integer"
+                },
+                "rouletteMode": {
+                    "description": "Roulette distribution policy (nil = not sent).",
+                    "type": "string"
+                },
+                "rouletteRescueAfterMinutes": {
+                    "type": "integer"
+                },
+                "rouletteRescueEnabled": {
+                    "type": "boolean"
+                },
                 "skipAdminAssignment": {
                     "type": "boolean"
                 }
@@ -23786,6 +23799,26 @@ const docTemplate = `{
                     "description": "IncludedUnofficialWhatsAppInstances is the platform-granted allowance of\nlinked-device WhatsApp numbers. Readable by the workspace so its own\nscreens can explain why the connect button is disabled; writable only\nthrough the /admin route.",
                     "type": "integer",
                     "example": 2
+                },
+                "rouletteLastSeenWindowHours": {
+                    "description": "RouletteLastSeenWindowHours is how long after going offline an agent stays\nin the ring (1..168). Only meaningful in last_seen mode.",
+                    "type": "integer",
+                    "example": 48
+                },
+                "rouletteMode": {
+                    "description": "RouletteMode is \"online\" (distribute among connected agents, the default)\nor \"last_seen\" (distribute among everyone online within the window).",
+                    "type": "string",
+                    "example": "online"
+                },
+                "rouletteRescueAfterMinutes": {
+                    "description": "RouletteRescueAfterMinutes is the owner's deadline (1..1440).",
+                    "type": "integer",
+                    "example": 15
+                },
+                "rouletteRescueEnabled": {
+                    "description": "RouletteRescueEnabled reassigns a conversation whose owner never opened\nit. Only acts in last_seen mode.",
+                    "type": "boolean",
+                    "example": true
                 },
                 "skipAdminAssignment": {
                     "type": "boolean",

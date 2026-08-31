@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/campaign"
 	"vozko/domain/lead"
 )
 
@@ -16,20 +17,41 @@ var (
 	ErrEntryDuplicate        = errors.New("whatsapp campaign entry: entry already exists for this campaign and lead")
 )
 
-type SendStatus string
+// SendStatus is this channel's send status. The type and its values are shared
+// with every other channel (domain/campaign); what is channel-specific is WHICH
+// of them this channel can produce, declared by StatusSet below.
+type SendStatus = campaign.SendStatus
 
 const (
-	SendStatusPending                 SendStatus = "PENDING"
-	SendStatusSent                    SendStatus = "SENT"
-	SendStatusDelivered               SendStatus = "DELIVERED"
-	SendStatusRead                    SendStatus = "READ"
-	SendStatusFailed                  SendStatus = "FAILED"
-	SendStatusNotEligiblePossibleSpam SendStatus = "NOT_ELIGIBLE_POSSIBLE_SPAM"
+	SendStatusPending                 = campaign.SendStatusPending
+	SendStatusSent                    = campaign.SendStatusSent
+	SendStatusDelivered               = campaign.SendStatusDelivered
+	SendStatusRead                    = campaign.SendStatusRead
+	SendStatusFailed                  = campaign.SendStatusFailed
+	SendStatusNotEligiblePossibleSpam = campaign.SendStatusNotEligiblePossibleSpam
 )
 
-// AllStatuses is the closed set of send statuses, and the single place a new
-// one gets added. Valid, NonDispatchStatuses and DispatchedStatuses all derive
-// from it, so a status can never be accepted by one and forgotten by another.
+// StatusSet is the closed vocabulary of the Cloud API campaign, and the single
+// place a new status gets added.
+//
+// SKIPPED_NOT_ON_WHATSAPP is deliberately absent: this transport cannot ask
+// whether a number is on WhatsApp before sending, so it can never produce that
+// answer.
+func StatusSet() campaign.StatusSet {
+	return campaign.StatusSet{
+		All: AllStatuses(),
+		// The buckets a workspace is never charged for: not-yet-sent,
+		// spam-protection skips, and failed sends. Named once so the SQL that
+		// filters billed volume and the domain that counts it cannot drift.
+		NonDispatch: []SendStatus{
+			SendStatusPending,
+			SendStatusFailed,
+			SendStatusNotEligiblePossibleSpam,
+		},
+	}
+}
+
+// AllStatuses is the closed set of send statuses this channel produces.
 func AllStatuses() []SendStatus {
 	return []SendStatus{
 		SendStatusPending,
@@ -41,65 +63,25 @@ func AllStatuses() []SendStatus {
 	}
 }
 
-// NonDispatchStatuses are the buckets a workspace is never charged for:
-// not-yet-sent, spam-protection skips, and failed sends. This is the same
-// exclusion set StatusCounts.Dispatches subtracts, named once so the SQL that
-// filters billed volume and the domain that counts it cannot drift apart.
-func NonDispatchStatuses() []SendStatus {
-	return []SendStatus{
-		SendStatusPending,
-		SendStatusFailed,
-		SendStatusNotEligiblePossibleSpam,
-	}
-}
+// NonDispatchStatuses are the buckets a workspace is never charged for.
+func NonDispatchStatuses() []SendStatus { return StatusSet().NonDispatch }
 
 // DispatchedStatuses are the entries that actually left our system: today
 // SENT, DELIVERED and READ. Derived subtractively from AllStatuses for the
-// reason spelled out on StatusCounts.Dispatches — a future billed status joins
-// this set automatically instead of being silently dropped from every export
-// and filter that asks for "what we sent".
-func DispatchedStatuses() []SendStatus {
-	excluded := make(map[SendStatus]struct{}, 3)
-	for _, s := range NonDispatchStatuses() {
-		excluded[s] = struct{}{}
-	}
-
-	out := make([]SendStatus, 0, len(AllStatuses()))
-	for _, s := range AllStatuses() {
-		if _, skip := excluded[s]; skip {
-			continue
-		}
-		out = append(out, s)
-	}
-	return out
-}
+// reason spelled out on campaign.Counts.Dispatches — a future billed status
+// joins this set automatically instead of being silently dropped from every
+// export and filter that asks for "what we sent".
+func DispatchedStatuses() []SendStatus { return StatusSet().Dispatched() }
 
 // StatusStrings renders a status set for a repository IN clause.
-func StatusStrings(statuses []SendStatus) []string {
-	out := make([]string, 0, len(statuses))
-	for _, s := range statuses {
-		out = append(out, string(s))
-	}
-	return out
-}
+func StatusStrings(statuses []SendStatus) []string { return campaign.Strings(statuses) }
 
-func (s SendStatus) Valid() bool {
-	for _, known := range AllStatuses() {
-		if s == known {
-			return true
-		}
-	}
-	return false
-}
-
-func (s SendStatus) IsTerminal() bool {
-	switch s {
-	case SendStatusDelivered, SendStatusRead, SendStatusFailed, SendStatusNotEligiblePossibleSpam:
-		return true
-	default:
-		return false
-	}
-}
+// ValidStatus reports whether this channel can produce that status.
+//
+// A package function rather than a method, because SendStatus is now shared
+// across channels and validity is not: the same value can be legal on one
+// transport and impossible on another.
+func ValidStatus(s SendStatus) bool { return StatusSet().Valid(s) }
 
 type WhatsAppCampaignEntry struct {
 	ID                      string                 `json:"id"`
@@ -139,7 +121,7 @@ func (e *WhatsAppCampaignEntry) Normalize() {
 	e.CampaignID = strings.TrimSpace(e.CampaignID)
 	e.LeadID = strings.TrimSpace(e.LeadID)
 	e.MessageID = strings.TrimSpace(e.MessageID)
-	if !e.Status.Valid() {
+	if !ValidStatus(e.Status) {
 		e.Status = SendStatusPending
 	}
 }
@@ -151,39 +133,12 @@ func (e *WhatsAppCampaignEntry) Validate() error {
 	if e.LeadID == "" {
 		return ErrEntryLeadRequired
 	}
-	if !e.Status.Valid() {
+	if !ValidStatus(e.Status) {
 		return ErrEntryStatusInvalid
 	}
 	return nil
 }
 
-type StatusCounts struct {
-	Total                   int64 `json:"total"`
-	Pending                 int64 `json:"pending"`
-	Sent                    int64 `json:"sent"`
-	Delivered               int64 `json:"delivered"`
-	Read                    int64 `json:"read"`
-	Failed                  int64 `json:"failed"`
-	NotEligiblePossibleSpam int64 `json:"notEligiblePossibleSpam"`
-}
-
-func (sc StatusCounts) Processed() int64 {
-	return sc.Sent + sc.Delivered + sc.Read + sc.Failed + sc.NotEligiblePossibleSpam
-}
-
-// Dispatches ("disparos") counts BILLED sends, the entries a workspace was
-// actually charged for. It is defined subtractively from billing eligibility,
-// NOT by summing the WhatsApp delivery lifecycle (SENT/DELIVERED/READ): we take
-// the whole campaign and remove the buckets that are never billed, not-yet-sent
-// (PENDING), spam-protection skips (NOT_ELIGIBLE_POSSIBLE_SPAM) and failed sends
-// (FAILED). Everything else that left our system counts, so a future billed
-// status is included automatically instead of being silently dropped. Today the
-// six statuses partition Total, so this equals SENT+DELIVERED+READ; the
-// subtractive form is what keeps it correct as statuses evolve.
-func (sc StatusCounts) Dispatches() int64 {
-	billed := sc.Total - sc.Pending - sc.Failed - sc.NotEligiblePossibleSpam
-	if billed < 0 {
-		return 0
-	}
-	return billed
-}
+// StatusCounts is the per-status tally. Shared with every channel; see
+// campaign.Counts for why Dispatches is defined subtractively.
+type StatusCounts = campaign.Counts

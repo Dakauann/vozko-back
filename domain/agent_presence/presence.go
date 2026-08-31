@@ -37,6 +37,19 @@ type Repository interface {
 	Transition(workspaceID, userID string, state State, source string, at time.Time) error
 	// Occupancy returns on_call_ms / online_ms for the window.
 	Occupancy(workspaceID string, from, to *time.Time) ([]OccupancyRow, error)
+	// LastSeen returns, per user, the last moment they were present in the
+	// workspace. Users with no presence history are ABSENT from the map rather
+	// than zero-valued, so "never online" stays distinguishable from "online at
+	// the zero time".
+	//
+	// An interval that is still open is reported at its started_at, never at
+	// now(): a replica that dies without unregistering leaves ended_at NULL
+	// forever, and reading that as "online right now" would make a crashed
+	// process's last user permanently the freshest candidate in the roulette.
+	// started_at is a lower bound that is always true, and a user who really is
+	// online is covered by the live connected-set overlay in the resolver, so
+	// nothing is lost by being conservative here.
+	LastSeen(workspaceID string, userIDs []string) (map[string]time.Time, error)
 }
 
 type OccupancyRow struct {

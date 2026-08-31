@@ -5807,6 +5807,15 @@ definitions:
       autoCloseMaxAgeEnabled:
         description: Absolute inactivity max-age (nil = not sent).
         type: boolean
+      rouletteLastSeenWindowHours:
+        type: integer
+      rouletteMode:
+        description: Roulette distribution policy (nil = not sent).
+        type: string
+      rouletteRescueAfterMinutes:
+        type: integer
+      rouletteRescueEnabled:
+        type: boolean
       skipAdminAssignment:
         type: boolean
     type: object
@@ -5887,6 +5896,28 @@ definitions:
           through the /admin route.
         example: 2
         type: integer
+      rouletteLastSeenWindowHours:
+        description: |-
+          RouletteLastSeenWindowHours is how long after going offline an agent stays
+          in the ring (1..168). Only meaningful in last_seen mode.
+        example: 48
+        type: integer
+      rouletteMode:
+        description: |-
+          RouletteMode is "online" (distribute among connected agents, the default)
+          or "last_seen" (distribute among everyone online within the window).
+        example: online
+        type: string
+      rouletteRescueAfterMinutes:
+        description: RouletteRescueAfterMinutes is the owner's deadline (1..1440).
+        example: 15
+        type: integer
+      rouletteRescueEnabled:
+        description: |-
+          RouletteRescueEnabled reassigns a conversation whose owner never opened
+          it. Only acts in last_seen mode.
+        example: true
+        type: boolean
       skipAdminAssignment:
         example: false
         type: boolean
@@ -15382,8 +15413,8 @@ paths:
   /workspaces/{workspaceId}/config:
     get:
       description: 'Retorna as configurações do workspace: proteção contra spam de
-        campanha, atribuição de administradores, música de espera, política da fila
-        de atendimento e encerramento automático de conversas.'
+        campanha, atribuição de administradores, modo da roleta, música de espera,
+        política da fila de atendimento e encerramento automático de conversas.'
       parameters:
       - description: ID do workspace
         in: path
@@ -15414,8 +15445,8 @@ paths:
       consumes:
       - application/json
       description: 'Atualiza as preferências do workspace: atribuição de administradores,
-        música de espera, política da fila de atendimento e encerramento automático
-        de conversas.'
+        modo da roleta (online ou última vez online, com janela e resgate), música
+        de espera, política da fila de atendimento e encerramento automático de conversas.'
       parameters:
       - description: ID do workspace
         in: path
