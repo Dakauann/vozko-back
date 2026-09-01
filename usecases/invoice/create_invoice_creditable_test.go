@@ -12,11 +12,12 @@ import (
 // unified monthly charge: only the plan portion of a MONTHLY_BILLING invoice may become saldo, the
 // channel-license repasse must not, and a caller error must never credit more than was charged.
 
-func newCreditableUC(repo *stubInvoiceRepo, asaasSvc *stubAsaasService) invoice.CreateInvoiceUseCase {
+func newCreditableUC(repo *stubInvoiceRepo, gw *stubGateway) invoice.CreateInvoiceUseCase {
 	return NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Tester", CPF: "12345678900"}},
-		asaasSvc,
+		nil,
+		gw,
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -26,8 +27,8 @@ func newCreditableUC(repo *stubInvoiceRepo, asaasSvc *stubAsaasService) invoice.
 
 func TestCreditableUSD_MonthlyBillingCreditsOnlyPlanPortion(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasSvc := &stubAsaasService{}
-	uc := newCreditableUC(repo, asaasSvc)
+	gw := newStubGateway()
+	uc := newCreditableUC(repo, gw)
 
 	// Plan R$1.099 + two channels R$150 each = R$1.399 total; only the plan becomes saldo.
 	out, err := uc.Execute(invoice.CreateInvoiceInput{
@@ -50,8 +51,8 @@ func TestCreditableUSD_MonthlyBillingCreditsOnlyPlanPortion(t *testing.T) {
 	if out.Invoice.CreditableUSD >= out.Invoice.AmountUSD {
 		t.Fatal("channel portion must be excluded: CreditableUSD must be strictly less than AmountUSD here")
 	}
-	if asaasSvc.createCalls != 1 || repo.created == nil {
-		t.Fatalf("expected exactly one Asaas charge and a persisted invoice, calls=%d created=%v", asaasSvc.createCalls, repo.created)
+	if gw.createCalls != 1 || repo.created == nil {
+		t.Fatalf("expected exactly one Asaas charge and a persisted invoice, calls=%d created=%v", gw.createCalls, repo.created)
 	}
 	if repo.created.NormalizedPurpose() != invoice.PurposeMonthlyBilling {
 		t.Fatalf("persisted purpose = %q, want MONTHLY_BILLING", repo.created.Purpose)
@@ -60,7 +61,7 @@ func TestCreditableUSD_MonthlyBillingCreditsOnlyPlanPortion(t *testing.T) {
 
 func TestCreditableUSD_MonthlyBillingZeroCreditsNothing(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	uc := newCreditableUC(repo, &stubAsaasService{})
+	uc := newCreditableUC(repo, newStubGateway())
 
 	// A channels-only charge (no plan portion) credits no saldo.
 	out, err := uc.Execute(invoice.CreateInvoiceInput{
@@ -80,7 +81,7 @@ func TestCreditableUSD_MonthlyBillingZeroCreditsNothing(t *testing.T) {
 
 func TestCreditableUSD_MonthlyBillingClampsOvercredit(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	uc := newCreditableUC(repo, &stubAsaasService{})
+	uc := newCreditableUC(repo, newStubGateway())
 
 	// A caller bug (plan portion > total) must never credit more saldo than was charged.
 	out, err := uc.Execute(invoice.CreateInvoiceInput{
@@ -97,7 +98,7 @@ func TestCreditableUSD_MonthlyBillingClampsOvercredit(t *testing.T) {
 
 func TestCreditableUSD_MonthlyBillingClampsNegative(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	uc := newCreditableUC(repo, &stubAsaasService{})
+	uc := newCreditableUC(repo, newStubGateway())
 
 	out, err := uc.Execute(invoice.CreateInvoiceInput{
 		WorkspaceID: "ws-1", UserID: "user-1",
@@ -113,7 +114,7 @@ func TestCreditableUSD_MonthlyBillingClampsNegative(t *testing.T) {
 
 func TestCreditableUSD_MonthlyBillingMatchesAmountWhenAllPlan(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	uc := newCreditableUC(repo, &stubAsaasService{})
+	uc := newCreditableUC(repo, newStubGateway())
 
 	// All-plan, no channels: the saldo portion equals the total, at the same exchange rate.
 	out, err := uc.Execute(invoice.CreateInvoiceInput{
@@ -141,7 +142,7 @@ func TestCreditableUSD_NonMonthlyPurposesCreditFullAmount(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &stubInvoiceRepo{}
-			uc := newCreditableUC(repo, &stubAsaasService{})
+			uc := newCreditableUC(repo, newStubGateway())
 
 			// A stray CreditableBRL must not reduce the credit for non-monthly purposes.
 			out, err := uc.Execute(invoice.CreateInvoiceInput{
@@ -165,7 +166,7 @@ func TestCreditableUSD_NonMonthlyPurposesCreditFullAmount(t *testing.T) {
 
 func TestCreditableUSD_MonthlyBillingRoundsHalfAwayLikeAmount(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	uc := newCreditableUC(repo, &stubAsaasService{})
+	uc := newCreditableUC(repo, newStubGateway())
 
 	// 10/6 = 1.6666... -> rounds to 1_666_667 micros, identically for amount and creditable.
 	out, err := uc.Execute(invoice.CreateInvoiceInput{

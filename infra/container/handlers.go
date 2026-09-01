@@ -32,6 +32,7 @@ import (
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	mediashttp "vozko/delivery/http/medias"
+	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	opportunityhttp "vozko/delivery/http/opportunity"
@@ -60,6 +61,7 @@ import (
 	workspacepricinghttp "vozko/delivery/http/workspacepricing"
 	workspacetemplateaccesshttp "vozko/delivery/http/workspacetemplateaccess"
 	wsdelivery "vozko/delivery/ws"
+	payment_domain "vozko/domain/payment"
 	"vozko/domain/user"
 	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
@@ -115,20 +117,21 @@ func (c *Container) initHandlers() {
 	}
 
 	c.handlers = &handlers_{
-		product:  handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
-		property: handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
-		category: handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
-		agent:    handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
-		aichat:   handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
-		auth:     c.newAuthHandler(),
-		user:     userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
-		media:    mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia),
-		cart:     handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
-		address:  handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
-		order:    handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),
-		cep:      cephttp.NewCEPHandler(c.useCases.searchCEP),
-		webhook:  c.buildWebhookHandler(),
-		readMe:   readmehttp.NewHandler(c.cfg.ReadMeWebhookSecret, c.repositories.user, c.services.readMeTokenService),
+		product:            handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
+		property:           handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
+		category:           handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
+		agent:              handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
+		aichat:             handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
+		auth:               c.newAuthHandler(),
+		user:               userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
+		media:              mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia),
+		cart:               handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
+		address:            handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
+		order:              handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),
+		cep:                cephttp.NewCEPHandler(c.useCases.searchCEP),
+		webhook:            c.buildWebhookHandler(),
+		mercadoPagoWebhook: c.buildMercadoPagoWebhookHandler(),
+		readMe:             readmehttp.NewHandler(c.cfg.ReadMeWebhookSecret, c.repositories.user, c.services.readMeTokenService),
 		paymentSplit: paymentsplithttp.NewPaymentSplitHandler(
 			c.useCases.createPaymentSplit,
 			c.useCases.updatePaymentSplit,
@@ -814,4 +817,19 @@ func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 	}
 
 	return h
+}
+
+// buildMercadoPagoWebhookHandler returns nil unless Mercado Pago is the active
+// provider. A nil handler leaves the route unmounted, which is a clearer signal to an
+// operator poking at a misconfigured deployment than an endpoint that exists and
+// rejects everything.
+func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHandler {
+	if c.cfg.PaymentProvider != payment_domain.ProviderMercadoPago {
+		return nil
+	}
+	return mercadopagohttp.NewWebhookHandler(
+		c.useCases.publishWebhook,
+		c.cfg.MercadoPagoWebhookSecret,
+		mercadopagohttp.WithSignatureTolerance(c.cfg.MercadoPagoSignatureTolerance),
+	)
 }

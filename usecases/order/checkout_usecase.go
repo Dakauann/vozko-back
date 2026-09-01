@@ -1,9 +1,11 @@
 package order_usecase
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +19,6 @@ import (
 	"vozko/domain/payment"
 	"vozko/domain/product"
 	"vozko/domain/user"
-	asaas_service "vozko/infra/asaas"
 )
 
 type checkoutUseCase struct {
@@ -30,8 +31,11 @@ type checkoutUseCase struct {
 	paymentSplitRepo payment.PaymentSplitRepository
 	pricingService   payment.PricingService
 	docValidator     customer.DocumentValidator
-	asaasService     asaas_service.AsaasServiceUseCases
-	emailService     notification.EmailService
+	// gateway is the provider-agnostic payment port. Checkout is the one flow that
+	// genuinely requires split support, so it checks Capabilities before charging
+	// rather than discovering the limitation at the provider.
+	gateway      payment.Gateway
+	emailService notification.EmailService
 }
 
 func NewCheckoutUseCase(
@@ -42,7 +46,7 @@ func NewCheckoutUseCase(
 	paymentRepo payment.PaymentRepository,
 	paymentSplitRepo payment.PaymentSplitRepository,
 	docValidator customer.DocumentValidator,
-	asaasService asaas_service.AsaasServiceUseCases,
+	gateway payment.Gateway,
 	emailService notification.EmailService,
 	userRepo user.UserRepository,
 	pricingService payment.PricingService) order.CheckoutUseCase {
@@ -54,7 +58,7 @@ func NewCheckoutUseCase(
 		paymentRepo:      paymentRepo,
 		paymentSplitRepo: paymentSplitRepo,
 		docValidator:     docValidator,
-		asaasService:     asaasService,
+		gateway:          gateway,
 		emailService:     emailService,
 		pricingService:   pricingService,
 		userRepo:         userRepo,
@@ -301,10 +305,9 @@ func (uc *checkoutUseCase) Execute(userID string, request *order.CheckoutRequest
 		}
 	}
 
-	dueDate := expiresAt.Format("2006-01-02")
 	paymentID := uuid.NewString()
 
-	paymentSplits := make([]asaas_service.AsaasSplit, 0)
+	paymentSplits := make([]payment.SplitRecipient, 0)
 
 	for ownerSplitID, amount := range ownerValues {
 		split, exists := ownerSplitsByID[ownerSplitID]
@@ -312,19 +315,19 @@ func (uc *checkoutUseCase) Execute(userID string, request *order.CheckoutRequest
 			return nil, fmt.Errorf("payment split not found for id: %s", ownerSplitID)
 		}
 
-		paymentSplits = append(paymentSplits, asaas_service.AsaasSplit{
-			WalletID:   split.WalletID,
-			FixedValue: amount,
+		paymentSplits = append(paymentSplits, payment.SplitRecipient{
+			RecipientID: split.WalletID,
+			FixedAmount: amount,
 		})
 	}
 
 	ownerSplitCount := 0
 	for i := range paymentSplits {
 		for _, osplit := range ownersSplits {
-			if paymentSplits[i].WalletID == osplit.WalletID {
+			if paymentSplits[i].RecipientID == osplit.WalletID {
 				ownerSplitCount++
 				if ownerSplitCount == 1 || ownerSplitCount == 2 {
-					paymentSplits[i].FixedValue -= 3.0
+					paymentSplits[i].FixedAmount -= 3.0
 					break
 				}
 			}
@@ -334,24 +337,40 @@ func (uc *checkoutUseCase) Execute(userID string, request *order.CheckoutRequest
 		}
 	}
 
-	asaasPayment := &asaas_service.AsaasPayment{
-		BillingType:       "PIX",
-		Value:             grossAmount,
-		DueDate:           dueDate,
+	// Marketplace checkout divides one charge among suppliers and owners. Unlike the
+	// affiliate commission on an invoice, that split IS the transaction: charging
+	// without it would deposit every supplier's money into the platform account. So
+	// this flow refuses to run on a provider that cannot split, rather than degrading.
+	if len(paymentSplits) > 0 && !uc.gateway.Capabilities().Split {
+		return nil, fmt.Errorf("%w: checkout requires split charges but provider %s cannot perform them",
+			payment.ErrSplitUnsupported, uc.gateway.Provider())
+	}
+
+	createdPayment, err := uc.gateway.CreateCharge(context.Background(), payment.ChargeRequest{
+		Method:            payment.MethodPix,
+		Amount:            grossAmount,
+		DueDate:           expiresAt,
 		Description:       "Pagamento de pedido",
 		ExternalReference: paymentID,
-		Split:             paymentSplits,
-	}
-
-	createdPayment, err := uc.asaasService.CreatePayment(request.CustomerName, sanitizedDocument, asaasPayment)
+		Customer: payment.GatewayCustomer{
+			Name:     request.CustomerName,
+			Email:    strings.TrimSpace(dbUser.Email),
+			Document: sanitizedDocument,
+		},
+		Splits:         paymentSplits,
+		IdempotencyKey: paymentID,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	pixQrCode, pixCopy, err := uc.asaasService.GetPaymentQrCode(createdPayment.ID)
-	if err != nil {
-		return nil, err
+	// PIX is the only method offered here, so a charge without a payable code is
+	// useless to the customer and must not be persisted as if it were fine.
+	if createdPayment.PixCopyPaste == "" {
+		return nil, fmt.Errorf("payment provider %s returned no PIX code for charge %s",
+			uc.gateway.Provider(), createdPayment.ID)
 	}
+	pixQrCode, pixCopy := createdPayment.PixQRCodeBase64, createdPayment.PixCopyPaste
 
 	domainPayment := &payment.Payment{
 		ID:          paymentID,

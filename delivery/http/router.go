@@ -32,6 +32,7 @@ import (
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	mediashttp "vozko/delivery/http/medias"
+	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	opportunityhttp "vozko/delivery/http/opportunity"
@@ -77,20 +78,22 @@ import (
 const enableRequestLogging = true
 
 type router struct {
-	mux                            *mux.Router
-	productHandler                 *handlers.ProductHandler
-	propertyHandler                *handlers.PropertyHandler
-	categoryHandler                *handlers.CategoryHandler
-	agentHandler                   *handlers.AgentHandler
-	aiChatHandler                  *handlers.AIChatHandler
-	authHandler                    *authhttp.AuthHandler
-	userHandler                    *userhttp.UserHandler
-	mediasHandler                  *mediashttp.MediasHandler
-	cartHandler                    *handlers.CartHandler
-	addressHandler                 *handlers.AddressHandler
-	orderHandler                   *handlers.OrderHandler
-	cepHandler                     *cephttp.CEPHandler
-	webhookHandler                 *handlers.WebhookHandler
+	mux             *mux.Router
+	productHandler  *handlers.ProductHandler
+	propertyHandler *handlers.PropertyHandler
+	categoryHandler *handlers.CategoryHandler
+	agentHandler    *handlers.AgentHandler
+	aiChatHandler   *handlers.AIChatHandler
+	authHandler     *authhttp.AuthHandler
+	userHandler     *userhttp.UserHandler
+	mediasHandler   *mediashttp.MediasHandler
+	cartHandler     *handlers.CartHandler
+	addressHandler  *handlers.AddressHandler
+	orderHandler    *handlers.OrderHandler
+	cepHandler      *cephttp.CEPHandler
+	webhookHandler  *handlers.WebhookHandler
+	// mercadoPagoWebhookHandler is nil unless Mercado Pago is the active provider.
+	mercadoPagoWebhookHandler      *mercadopagohttp.WebhookHandler
 	readMeHandler                  *readmehttp.Handler
 	paymentSplitHandler            *paymentsplithttp.PaymentSplitHandler
 	ticketHandler                  *tickethttp.TicketHandler
@@ -197,6 +200,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	orderHandler *handlers.OrderHandler,
 	cepHandler *cephttp.CEPHandler,
 	webhookHandler *handlers.WebhookHandler,
+	mercadoPagoWebhookHandler *mercadopagohttp.WebhookHandler,
 	readMeHandler *readmehttp.Handler,
 	paymentSplitHandler *paymentsplithttp.PaymentSplitHandler,
 	ticketHandler *tickethttp.TicketHandler,
@@ -302,6 +306,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		orderHandler:                   orderHandler,
 		cepHandler:                     cepHandler,
 		webhookHandler:                 webhookHandler,
+		mercadoPagoWebhookHandler:      mercadoPagoWebhookHandler,
 		readMeHandler:                  readMeHandler,
 		paymentSplitHandler:            paymentSplitHandler,
 		ticketHandler:                  ticketHandler,
@@ -651,6 +656,10 @@ func (r *router) setupPublicCategoryRoutes() {
 
 func (r *router) setupWebhookRoutes() {
 	r.mux.HandleFunc("/webhooks/asaas", r.webhookHandler.HandleAsaasWebhook).Methods(http.MethodPost)
+	// Mercado Pago's inbound payment webhook. Registered only when Mercado Pago is the
+	// active provider (the handler is nil otherwise), and authenticated by the
+	// x-signature HMAC rather than a shared header token.
+	mercadopagohttp.RegisterPublicRoutes(r.mux, r.mercadoPagoWebhookHandler)
 	readmehttp.RegisterPublicRoutes(r.mux, r.readMeHandler)
 	r.mux.HandleFunc("/webhooks/whatsapp", r.webhookHandler.HandleWhatsAppWebhook).Methods(http.MethodGet, http.MethodPost)
 	metaembeddedsignuphttp.RegisterPublicRoutes(r.mux, r.metaEmbeddedSignupHandler)

@@ -7,11 +7,11 @@ import (
 
 	"vozko/domain/affiliate"
 	"vozko/domain/invoice"
+	"vozko/domain/payment"
 	"vozko/domain/shared"
 	"vozko/domain/user"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
-	"vozko/infra/asaas"
 )
 
 type stubInvoiceRepo struct {
@@ -60,27 +60,63 @@ func (r *stubUserRepo) GetUserRole(string) (string, error)        { return "", n
 func (r *stubUserRepo) GetTokenVersion(string) (int, error)       { return 0, nil }
 func (r *stubUserRepo) IncrementTokenVersion(string) (int, error) { return 0, nil }
 
-type stubAsaasService struct {
-	createCalls int
+// stubGateway stands in for whichever provider is wired. It defaults to the Asaas
+// capability set (splits supported) so existing expectations are unchanged; tests that
+// care about a split-less provider set splitSupported to false.
+type stubGateway struct {
+	createCalls        int
+	provider           payment.Provider
+	splitSupported     bool
+	boletoNeedsAddress bool
+	createErr          error
+	lastRequest        payment.ChargeRequest
 }
 
-func (s *stubAsaasService) GetOrCreateCustomer(string, string) (*asaas.AsaasCustomer, error) {
-	return &asaas.AsaasCustomer{ID: "cust-1"}, nil
+func newStubGateway() *stubGateway {
+	return &stubGateway{provider: payment.ProviderAsaas, splitSupported: true}
 }
 
-func (s *stubAsaasService) CreatePayment(string, string, *asaas.AsaasPayment) (*asaas.AsaasPayment, error) {
+func (s *stubGateway) Provider() payment.Provider {
+	if s.provider == "" {
+		return payment.ProviderAsaas
+	}
+	return s.provider
+}
+
+func (s *stubGateway) Capabilities() payment.GatewayCapabilities {
+	return payment.GatewayCapabilities{
+		Split:                 s.splitSupported,
+		PartialRefund:         true,
+		BoletoRequiresAddress: s.boletoNeedsAddress,
+	}
+}
+
+func (s *stubGateway) CreateCharge(_ context.Context, req payment.ChargeRequest) (*payment.Charge, error) {
 	s.createCalls++
-	return &asaas.AsaasPayment{ID: "pay-1", InvoiceUrl: "https://asaas.test/invoices/pay-1"}, nil
+	s.lastRequest = req
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	return &payment.Charge{
+		ID:                "pay-1",
+		Provider:          s.Provider(),
+		Status:            payment.StatusPending,
+		Method:            req.Method,
+		Amount:            req.Amount,
+		ExternalReference: req.ExternalReference,
+		PixQRCodeBase64:   "qr-code",
+		PixCopyPaste:      "pix-copy",
+		InvoiceURL:        "https://provider.test/invoices/pay-1",
+	}, nil
 }
 
-func (s *stubAsaasService) GetPaymentQrCode(string) (string, string, error) {
-	return "qr-code", "pix-copy", nil
+func (s *stubGateway) GetCharge(context.Context, string) (*payment.Charge, error) {
+	return &payment.Charge{ID: "pay-1"}, nil
 }
+func (s *stubGateway) RefundCharge(context.Context, string, float64, string) error { return nil }
+func (s *stubGateway) CancelCharge(context.Context, string) error                  { return nil }
 
-func (s *stubAsaasService) GetPayment(string) (*asaas.AsaasPayment, error) { return nil, nil }
-func (s *stubAsaasService) RefundPayment(string, int64, string) error      { return nil }
-func (s *stubAsaasService) DeletePayment(string) error                     { return nil }
-func (s *stubAsaasService) ValidateWalletID(string, string, string) error  { return nil }
+var _ payment.Gateway = (*stubGateway)(nil)
 
 type stubPricingRepo struct{}
 
@@ -117,11 +153,12 @@ func (c *stubCurrentSubscriptionChecker) Execute(workspaceID string) (*workspace
 
 func TestCreateInvoiceUseCase_TopUpRequiresCurrentSubscription(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasService := &stubAsaasService{}
+	gw := newStubGateway()
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Tester", CPF: "12345678900"}},
-		asaasService,
+		nil,
+		gw,
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{err: workspace_plan.ErrSubscriptionNotCurrent},
 		nil,
@@ -138,8 +175,8 @@ func TestCreateInvoiceUseCase_TopUpRequiresCurrentSubscription(t *testing.T) {
 	if !errors.Is(err, invoice.ErrActiveSubscriptionRequired) {
 		t.Fatalf("expected ErrActiveSubscriptionRequired, got %v", err)
 	}
-	if asaasService.createCalls != 0 {
-		t.Fatalf("expected no Asaas payment creation when subscription gate fails, got %d", asaasService.createCalls)
+	if gw.createCalls != 0 {
+		t.Fatalf("expected no Asaas payment creation when subscription gate fails, got %d", gw.createCalls)
 	}
 	if repo.created != nil {
 		t.Fatal("expected invoice not to be persisted when subscription gate fails")
@@ -148,11 +185,12 @@ func TestCreateInvoiceUseCase_TopUpRequiresCurrentSubscription(t *testing.T) {
 
 func TestCreateInvoiceUseCase_SubscriptionInvoicePersistsPurposeMetadata(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasService := &stubAsaasService{}
+	gw := newStubGateway()
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Tester", CPF: "12345678900"}},
-		asaasService,
+		nil,
+		gw,
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{err: workspace_plan.ErrSubscriptionNotCurrent},
 		nil,
@@ -177,8 +215,8 @@ func TestCreateInvoiceUseCase_SubscriptionInvoicePersistsPurposeMetadata(t *test
 	if repo.created == nil || repo.created.PlanDefinitionID == nil || *repo.created.PlanDefinitionID != "plan-1" {
 		t.Fatalf("expected persisted plan definition ID plan-1, got %+v", repo.created)
 	}
-	if asaasService.createCalls != 1 {
-		t.Fatalf("expected one Asaas payment creation, got %d", asaasService.createCalls)
+	if gw.createCalls != 1 {
+		t.Fatalf("expected one Asaas payment creation, got %d", gw.createCalls)
 	}
 }
 
@@ -204,26 +242,48 @@ func (r *errStubUserRepo) FindByID(string) (*user.User, error) {
 	return nil, r.findErr
 }
 
-type errStubAsaasService struct {
-	stubAsaasService
+// errStubGateway shapes its response from the requested method, the way a real adapter
+// does: a boleto charge carries a slip URL and no PIX payload, and a PIX charge whose
+// QR-code lookup failed comes back with the PIX fields empty (adapters treat that as
+// non-fatal, since the charge itself exists and is payable through its hosted URL).
+type errStubGateway struct {
+	stubGateway
 	createErr error
 	qrErr     error
 }
 
-func (s *errStubAsaasService) CreatePayment(name, cpf string, p *asaas.AsaasPayment) (*asaas.AsaasPayment, error) {
+func newErrStubGateway() *errStubGateway {
+	return &errStubGateway{stubGateway: *newStubGateway()}
+}
+
+func (s *errStubGateway) CreateCharge(_ context.Context, req payment.ChargeRequest) (*payment.Charge, error) {
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
 	s.createCalls++
-	return &asaas.AsaasPayment{ID: "pay-1", BankSlipUrl: "https://boleto", InvoiceUrl: "https://invoice"}, nil
+	s.lastRequest = req
+	charge := &payment.Charge{
+		ID:                "pay-1",
+		Provider:          s.Provider(),
+		Status:            payment.StatusPending,
+		Method:            req.Method,
+		Amount:            req.Amount,
+		ExternalReference: req.ExternalReference,
+		InvoiceURL:        "https://invoice",
+	}
+	switch req.Method {
+	case payment.MethodBoleto:
+		charge.BoletoURL = "https://boleto"
+	default:
+		if s.qrErr == nil {
+			charge.PixQRCodeBase64 = "qr-code"
+			charge.PixCopyPaste = "pix-copy"
+		}
+	}
+	return charge, nil
 }
 
-func (s *errStubAsaasService) GetPaymentQrCode(string) (string, string, error) {
-	if s.qrErr != nil {
-		return "", "", s.qrErr
-	}
-	return "qr-code", "pix-copy", nil
-}
+var _ payment.Gateway = (*errStubGateway)(nil)
 
 type errStubPricingRepo struct {
 	stubPricingRepo
@@ -267,7 +327,7 @@ func TestListInvoicesUseCase(t *testing.T) {
 }
 
 func TestCreateInvoice_InvalidAmount(t *testing.T) {
-	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, &stubAsaasService{}, &stubPricingRepo{}, nil, nil, nil)
+	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, nil, newStubGateway(), &stubPricingRepo{}, nil, nil, nil)
 	_, err := uc.Execute(invoice.CreateInvoiceInput{AmountBRL: 0})
 	if !errors.Is(err, invoice.ErrInvalidAmount) {
 		t.Fatalf("expected ErrInvalidAmount, got %v", err)
@@ -275,7 +335,7 @@ func TestCreateInvoice_InvalidAmount(t *testing.T) {
 }
 
 func TestCreateInvoice_InvalidPurpose(t *testing.T) {
-	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, &stubAsaasService{}, &stubPricingRepo{}, nil, nil, nil)
+	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, nil, newStubGateway(), &stubPricingRepo{}, nil, nil, nil)
 	_, err := uc.Execute(invoice.CreateInvoiceInput{AmountBRL: 10, Purpose: "BOGUS"})
 	if !errors.Is(err, invoice.ErrInvalidPurpose) {
 		t.Fatalf("expected ErrInvalidPurpose, got %v", err)
@@ -283,7 +343,7 @@ func TestCreateInvoice_InvalidPurpose(t *testing.T) {
 }
 
 func TestCreateInvoice_SubscriptionMissingPlanID(t *testing.T) {
-	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, &stubAsaasService{}, &stubPricingRepo{}, nil, nil, nil)
+	uc := NewCreateInvoiceUseCase(&stubInvoiceRepo{}, &stubUserRepo{user: &user.User{}}, nil, newStubGateway(), &stubPricingRepo{}, nil, nil, nil)
 	_, err := uc.Execute(invoice.CreateInvoiceInput{AmountBRL: 10, Purpose: invoice.PurposeSubscription})
 	if !errors.Is(err, invoice.ErrPlanDefinitionRequired) {
 		t.Fatalf("expected ErrPlanDefinitionRequired, got %v", err)
@@ -291,10 +351,11 @@ func TestCreateInvoice_SubscriptionMissingPlanID(t *testing.T) {
 }
 
 func TestCreateInvoice_MissingCustomerDocument(t *testing.T) {
-	asaasStub := &stubAsaasService{}
+	asaasStub := newStubGateway()
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "NoDoc"}}, // no CPF/CNPJ on file
+		nil,
 		asaasStub,
 		&stubPricingRepo{},
 		nil, nil, nil,
@@ -315,7 +376,8 @@ func TestCreateInvoice_UserNotFound(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&errStubUserRepo{findErr: errors.New("not found")},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -333,7 +395,8 @@ func TestCreateInvoice_AsaasCreateError(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&errStubAsaasService{createErr: errors.New("gateway down")},
+		nil,
+		&errStubGateway{stubGateway: *newStubGateway(), createErr: errors.New("gateway down")},
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -351,7 +414,8 @@ func TestCreateInvoice_RepoCreateError(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&errStubInvoiceRepo{createErr: errors.New("db error")},
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -367,11 +431,12 @@ func TestCreateInvoice_RepoCreateError(t *testing.T) {
 
 func TestCreateInvoice_BOLETOSkipsQrCode(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasSvc := &errStubAsaasService{}
+	gw := newErrStubGateway()
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Email: "test@test.com", CNPJ: "12345"}},
-		asaasSvc,
+		nil,
+		gw,
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -397,11 +462,12 @@ func TestCreateInvoice_BOLETOSkipsQrCode(t *testing.T) {
 
 func TestCreateInvoice_PIXQrCodeError(t *testing.T) {
 	repo := &stubInvoiceRepo{}
-	asaasSvc := &errStubAsaasService{qrErr: errors.New("qr fail")}
+	gw := &errStubGateway{stubGateway: *newStubGateway(), qrErr: errors.New("qr fail")}
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		asaasSvc,
+		nil,
+		gw,
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -424,7 +490,8 @@ func TestCreateInvoice_DefaultBillingTypeAndDescription(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -450,7 +517,8 @@ func TestCreateInvoice_SubscriptionDefaultDescription(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		nil,
 		nil,
@@ -476,7 +544,8 @@ func TestCreateInvoice_UserFallbackToCNPJAndEmail(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Email: "a@b.com", CNPJ: "99999"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -498,7 +567,8 @@ func TestCreateInvoice_TopUp_EmptyWorkspaceID(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -516,7 +586,8 @@ func TestCreateInvoice_TopUp_NilSubscriptionChecker(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		nil,
 		nil,
@@ -534,7 +605,8 @@ func TestCreateInvoice_TopUp_SubscriptionNotFound(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{err: workspace_plan.ErrSubscriptionNotFound},
 		nil,
@@ -552,7 +624,8 @@ func TestCreateInvoice_TopUp_UnexpectedError(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{err: errors.New("db error")},
 		nil,
@@ -571,7 +644,8 @@ func TestCreateInvoice_ExchangeRate_RepoError_Fallback(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&errStubPricingRepo{listErr: errors.New("redis down")},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -597,7 +671,8 @@ func TestCreateInvoice_ExchangeRate_NoItem_Fallback(t *testing.T) {
 	uc := NewCreateInvoiceUseCase(
 		repo,
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Test", CPF: "123"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&errStubPricingRepo{items: []workspace_pricing.PricingItem{{Category: "other", Service: "other", PriceMicros: 1}}},
 		&stubCurrentSubscriptionChecker{},
 		nil,
@@ -672,7 +747,8 @@ func newInvoiceUCForReferral(affRepo affiliate.Repository, track affiliate.Track
 	return NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
 		&stubUserRepo{user: &user.User{ID: "user-1", Username: "Tester", CPF: "12345678900"}},
-		&stubAsaasService{},
+		nil,
+		newStubGateway(),
 		&stubPricingRepo{},
 		&stubCurrentSubscriptionChecker{},
 		affRepo,
