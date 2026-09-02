@@ -21,7 +21,7 @@ type AssignEntryLabelUseCase interface {
 }
 
 type RemoveEntryLabelUseCase interface {
-	Execute(workspaceID, labelID, entryID, entryType string) error
+	Execute(workspaceID string, input RemoveEntryLabelInput) error
 }
 
 type GetEntryLabelsUseCase interface {
@@ -42,10 +42,27 @@ type UpdateLabelInput struct {
 	Color *string `json:"color,omitempty"`
 }
 
+// AssignEntryLabelInput adds one label to an entry.
+//
+// ActorID names who is doing it, in the stored actor-id form: a user uuid, an
+// "ai:<agentID>" attendant, or "system"/empty for the platform. It is on the
+// INPUT because the use case writes the timeline event; while that write lived
+// in the HTTP handler, every other caller (bulk, the AI) left no trace.
 type AssignEntryLabelInput struct {
 	LabelID   string `json:"labelId"`
 	EntryID   string `json:"entryId"`
 	EntryType string `json:"entryType"`
+	ActorID   string `json:"-"`
+}
+
+// RemoveEntryLabelInput takes a label off an entry. See AssignEntryLabelInput
+// for ActorID; a struct for the same reason, so a new field cannot be silently
+// dropped by a caller passing positional strings.
+type RemoveEntryLabelInput struct {
+	LabelID   string `json:"labelId"`
+	EntryID   string `json:"entryId"`
+	EntryType string `json:"entryType"`
+	ActorID   string `json:"-"`
 }
 
 type ReorderLabelsInput struct {

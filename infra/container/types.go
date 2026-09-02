@@ -183,6 +183,9 @@ type Container struct {
 	// instagram is the Instagram channel, wired as one self-contained bundle so
 	// it can be disabled without threading nil checks through the god-structs.
 	instagram *instagramBundle
+	// commentAnalysis is the comment-classification engine, wired as one
+	// bundle like the channels; nil or disabled means no routes and no jobs.
+	commentAnalysis *commentAnalysisBundle
 	// telegram is the Telegram channel, wired as one self-contained bundle for
 	// the same reason: it can be enabled or skipped without threading a dozen
 	// fields through the god-structs.

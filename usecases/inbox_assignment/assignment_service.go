@@ -11,6 +11,7 @@ import (
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/crm_telemetry"
 	ia "vozko/domain/inbox_assignment"
+	"vozko/domain/shared"
 	wsc "vozko/domain/workspace_config"
 )
 
@@ -388,15 +389,12 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 	}
 }
 
+// channelForEntryType named the channel an assignment event belongs to. It
+// listed voice and support and defaulted everything else to "whatsapp", so an
+// Instagram or Telegram assignment was filed under WhatsApp on the timeline.
+// EventChannel keeps the same fallback for an unrecognised type.
 func channelForEntryType(entryType string) string {
-	switch entryType {
-	case "voice":
-		return "voice"
-	case "support":
-		return "support"
-	default:
-		return "whatsapp"
-	}
+	return shared.EntryType(entryType).EventChannel()
 }
 
 // maxRoundRobinAttempts bounds the compare-and-swap retry. Three is generous:

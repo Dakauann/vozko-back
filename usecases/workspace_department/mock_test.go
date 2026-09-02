@@ -196,3 +196,30 @@ func (m *mockRepository) IsMember(departmentID, memberID string) (bool, error) {
 	_, exists := deptMembers[memberID]
 	return exists, nil
 }
+
+// ListWorkingHours mirrors the repository: only departments that actually carry
+// their own schedule appear, so "inherits the workspace" stays distinguishable
+// from "has an empty policy".
+func (m *mockRepository) ListWorkingHours(workspaceIDs []string) ([]wd.DepartmentSchedule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.consumeErr(); err != nil {
+		return nil, err
+	}
+	wanted := map[string]bool{}
+	for _, id := range workspaceIDs {
+		wanted[id] = true
+	}
+	var out []wd.DepartmentSchedule
+	for _, dept := range m.departments {
+		if dept == nil || dept.WorkingHours == nil || !wanted[dept.WorkspaceID] {
+			continue
+		}
+		out = append(out, wd.DepartmentSchedule{
+			DepartmentID: dept.ID,
+			WorkspaceID:  dept.WorkspaceID,
+			WorkingHours: dept.WorkingHours,
+		})
+	}
+	return out, nil
+}

@@ -175,3 +175,92 @@ func TestExtractReferralCode_HeaderWhitespaceOnly_FallsBackToCookie(t *testing.T
 		t.Fatalf("expected cookie fallback when header is whitespace, got %q", got)
 	}
 }
+
+// The export regression.
+//
+// A file download is opened as a NAVIGATION (window.open), and a navigation
+// carries no custom headers — so X-Workspace-ID never arrives. Before the fix,
+// the frontend sent nothing else either, the resolver fell through to the
+// user's default workspace, and an operator viewing workspace B downloaded
+// workspace A's transactions with nothing on screen to suggest it.
+//
+// The frontend now sends ?workspace_id=. This asserts the resolver honours it
+// for a MEMBER, not just for an admin: the existing query-param test uses
+// Role "admin", which skips the membership branch entirely, so it could not
+// have caught a regression on this path.
+func TestResolveWorkspace_QueryParam_HonouredForMember_NotDefault(t *testing.T) {
+	membership := &stubMembershipChecker{member: &workspace.Member{ID: "m-1"}}
+	resolver := &stubDefaultResolver{ws: &workspace.Workspace{ID: "default-ws"}}
+	mw := NewWorkspaceMiddleware(nil, membership, resolver)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/user/balance/transactions/export?format=csv&workspace_id=ws-selected", nil)
+	ctx := context.WithValue(req.Context(), ClaimsContextKey,
+		&auth.Claims{UserID: "user-1", Role: "member"})
+	req = req.WithContext(ctx)
+
+	var resolved string
+	handler := mw.ResolveWorkspace()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolved = GetWorkspaceID(r)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if resolved != "ws-selected" {
+		t.Fatalf("resolved %q, want the workspace the operator selected (ws-selected); "+
+			"falling back to the default is the export leak", resolved)
+	}
+}
+
+// The header still wins when both are present: apiClient requests carry the
+// header, and a stale query param must not override the live selection.
+func TestResolveWorkspace_HeaderBeatsQueryParam(t *testing.T) {
+	membership := &stubMembershipChecker{member: &workspace.Member{ID: "m-1"}}
+	resolver := &stubDefaultResolver{ws: &workspace.Workspace{ID: "default-ws"}}
+	mw := NewWorkspaceMiddleware(nil, membership, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/anything?workspace_id=ws-query", nil)
+	req.Header.Set("X-Workspace-ID", "ws-header")
+	ctx := context.WithValue(req.Context(), ClaimsContextKey,
+		&auth.Claims{UserID: "user-1", Role: "member"})
+	req = req.WithContext(ctx)
+
+	var resolved string
+	handler := mw.ResolveWorkspace()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolved = GetWorkspaceID(r)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if resolved != "ws-header" {
+		t.Fatalf("resolved %q, want ws-header", resolved)
+	}
+}
+
+// The security property the fix must NOT weaken: a query param naming a
+// workspace the user does not belong to grants nothing. It is ignored exactly
+// like a stale header, and the resolver falls back to the default.
+func TestResolveWorkspace_QueryParam_ForeignWorkspaceGrantsNothing(t *testing.T) {
+	membership := &stubMembershipChecker{member: nil} // NOT a member
+	resolver := &stubDefaultResolver{ws: &workspace.Workspace{ID: "default-ws"}}
+	mw := NewWorkspaceMiddleware(nil, membership, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/export?workspace_id=someone-elses-ws", nil)
+	ctx := context.WithValue(req.Context(), ClaimsContextKey,
+		&auth.Claims{UserID: "user-1", Role: "member"})
+	req = req.WithContext(ctx)
+
+	var resolved string
+	handler := mw.ResolveWorkspace()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolved = GetWorkspaceID(r)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if resolved == "someone-elses-ws" {
+		t.Fatal("a non-member's workspace_id was honoured: the query param must not bypass membership")
+	}
+	if resolved != "default-ws" {
+		t.Fatalf("resolved %q, want the default workspace", resolved)
+	}
+}

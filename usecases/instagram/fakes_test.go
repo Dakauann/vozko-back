@@ -446,3 +446,27 @@ func connectedAccount() *igdomain.Account {
 		},
 	}
 }
+
+type fakeMediaRepo struct {
+	FindByIGMediaIDFn func(ctx context.Context, igAccountID, igMediaID string) (*igdomain.Media, error)
+	ListByAccountFn   func(ctx context.Context, igAccountID string, limit, offset int) ([]*igdomain.Media, error)
+}
+
+func (f *fakeMediaRepo) Upsert(context.Context, *igdomain.Media) error       { return nil }
+func (f *fakeMediaRepo) UpsertMany(context.Context, []*igdomain.Media) error { return nil }
+func (f *fakeMediaRepo) FindByIGMediaID(ctx context.Context, igAccountID, igMediaID string) (*igdomain.Media, error) {
+	if f.FindByIGMediaIDFn != nil {
+		return f.FindByIGMediaIDFn(ctx, igAccountID, igMediaID)
+	}
+	return nil, igdomain.ErrMediaNotFound
+}
+func (f *fakeMediaRepo) UpdateCounts(context.Context, string, string, int, int) error { return nil }
+func (f *fakeMediaRepo) SetCommentEnabled(context.Context, string, string, bool) error {
+	return nil
+}
+func (f *fakeMediaRepo) ListByAccount(ctx context.Context, igAccountID string, limit, offset int) ([]*igdomain.Media, error) {
+	if f.ListByAccountFn != nil {
+		return f.ListByAccountFn(ctx, igAccountID, limit, offset)
+	}
+	return nil, nil
+}

@@ -124,6 +124,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeWaitSchedule, node_executors.NewScheduleWaitExecutor())
 
 	registry.Register(workflow.NodeTypeConditionBranch, node_executors.NewConditionBranchExecutor())
+	registry.Register(workflow.NodeTypeConditionChannel, node_executors.NewChannelBranchExecutor())
 	registry.Register(workflow.NodeTypeConditionTextMatch, node_executors.NewTextMatchExecutor())
 	registry.Register(workflow.NodeTypeConditionFilter, node_executors.NewFilterExecutor())
 	registry.Register(workflow.NodeTypeConditionCheckLabel, node_executors.NewCheckLabelExecutor(deps.LabelRepo))

@@ -169,12 +169,21 @@ func (r *contactRepository) FindByID(ctx context.Context, id string) (*uw.Contac
 
 // FindByIDs batch-loads one page of inbox senders. A per-row lookup here would
 // make the inbox N+1 on every render.
+//
+// Matches on lead_id as well as id, because the ids handed to it are whatever
+// rode the inbox's lead slot — the CRM lead once a contact has resolved to one,
+// the contact's own id before that and for every group. Both are uuids from one
+// table's indexed columns, so this stays a single query either way. Without the
+// second column, linking a contact to a lead would make its avatar, handle and
+// group flag disappear from the inbox.
 func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.Contact, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	var records []schema.UnofficialWhatsAppContact
-	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&records).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Where("id IN ? OR lead_id IN ?", ids, ids).
+		Find(&records).Error; err != nil {
 		return nil, err
 	}
 	out := make([]*uw.Contact, 0, len(records))

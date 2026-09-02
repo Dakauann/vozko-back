@@ -1866,7 +1866,11 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	log.Printf("[whatsapp-template] Meta response for %q: status=%d body=%s", input.Name, resp.StatusCode, string(respBody))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp create template failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		// Structured, not the raw body. The full body is already on the line
+		// above for whoever is reading logs; what travels up the stack is an
+		// error the HTTP layer can classify and whose UserMessage is Meta's own
+		// localised sentence rather than a JSON dump in a toast.
+		return nil, newTemplateAPIError("create template", resp.StatusCode, respBody)
 	}
 
 	var decoded createTemplateResponse

@@ -14,8 +14,15 @@ type DeleteStageUseCase interface {
 	Execute(workspaceID, StageID string) error
 }
 
+// ListStagesUseCase lists the stages of ONE conversation funnel.
+//
+// pipelineID names it directly and wins when set — that is how the CRM asks for
+// the funnel the operator actually selected. Falling back to campaignID (or, with
+// neither, the workspace default) is the legacy resolution: it is what made every
+// stage list in the product show the default funnel's stages no matter which one
+// was on screen.
 type ListStagesUseCase interface {
-	Execute(workspaceID, campaignID, campaignType string) ([]*Stage, error)
+	Execute(workspaceID, campaignID, campaignType, pipelineID string) ([]*Stage, error)
 }
 
 type SetInitialStageUseCase interface {
@@ -27,7 +34,7 @@ type AssignEntryStageUseCase interface {
 }
 
 type RemoveEntryStageUseCase interface {
-	Execute(workspaceID, StageID, entryID, entryType string) error
+	Execute(workspaceID string, input RemoveEntryStageInput) error
 }
 
 type GetEntryStageUseCase interface {
@@ -48,6 +55,10 @@ type CreateStageInput struct {
 	Color        string `json:"color,omitempty"`
 	CampaignID   string `json:"campaignId,omitempty"`
 	CampaignType string `json:"campaignType,omitempty"`
+	// PipelineID puts the stage on a named funnel. Without it the stage lands on
+	// the workspace default, which is what made it impossible to add a column to a
+	// custom funnel from the CRM.
+	PipelineID string `json:"pipelineId,omitempty"`
 }
 
 type UpdateStageInput struct {
@@ -56,16 +67,37 @@ type UpdateStageInput struct {
 	Color       *string `json:"color,omitempty"`
 }
 
+// AssignEntryStageInput moves one entry onto a stage.
+//
+// ActorID names who is doing it, in the stored actor-id form: a user uuid, an
+// "ai:<agentID>" attendant, or "system"/empty for the platform. It is on the
+// INPUT rather than resolved by the caller because the use case writes the
+// timeline event, and an event with no actor is what the timeline showed while
+// that write lived in the HTTP handler and every other caller skipped it.
 type AssignEntryStageInput struct {
 	StageID   string `json:"StageID"`
 	EntryID   string `json:"entryId"`
 	EntryType string `json:"entryType"`
+	ActorID   string `json:"-"`
+}
+
+// RemoveEntryStageInput takes an entry off a stage. See AssignEntryStageInput
+// for ActorID; it is a struct for the same reason, so a new field cannot be
+// silently dropped by a caller passing positional strings.
+type RemoveEntryStageInput struct {
+	StageID   string `json:"StageID"`
+	EntryID   string `json:"entryId"`
+	EntryType string `json:"entryType"`
+	ActorID   string `json:"-"`
 }
 
 type ReorderStagesInput struct {
 	StageIDs     []string `json:"stageIds"`
 	CampaignID   string   `json:"campaignId"`
 	CampaignType string   `json:"campaignType"`
+	// PipelineID scopes the list returned after reordering, so the caller gets the
+	// funnel it just reordered rather than the default one.
+	PipelineID string `json:"pipelineId,omitempty"`
 }
 
 type CreateStageGroupUseCase interface {

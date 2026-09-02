@@ -66,6 +66,26 @@ func (d LeadDescriptor) CampaignCountExpr() string {
 		" WHERE wce_n.lead_id = " + d.id() + " AND wce_n.deleted_at IS NULL)"
 }
 
+// HasCampaignExpr reports whether the lead appears in any campaign at all.
+//
+// Separate from CampaignCountExpr because the questions have different costs.
+// "How many" has to walk every entry the lead has; "any at all" stops at the
+// first row the index yields. The facet strip only ever asks the second one,
+// once per lead in the workspace with no LIMIT above it, so asking it as
+// COUNT(*) > 0 made the tile strip scale with total campaign volume rather
+// than with the number of leads.
+func (d LeadDescriptor) HasCampaignExpr() string {
+	return "EXISTS (SELECT 1 FROM whatsapp_campaign_entries wce_p" +
+		" WHERE wce_p.lead_id = " + d.id() + " AND wce_p.deleted_at IS NULL)"
+}
+
+// HasMemoryExpr reports whether we remember anything about the lead. Same
+// reasoning as HasCampaignExpr.
+func (d LeadDescriptor) HasMemoryExpr() string {
+	return "EXISTS (SELECT 1 FROM lead_memories lm_p" +
+		" WHERE lm_p.lead_id = " + d.id() + " AND lm_p.deleted_at IS NULL)"
+}
+
 // MemoryCountExpr counts the lead's active memories.
 func (d LeadDescriptor) MemoryCountExpr() string {
 	return "(SELECT COUNT(*) FROM lead_memories lm_n" +

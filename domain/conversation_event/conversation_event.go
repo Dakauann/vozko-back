@@ -3,6 +3,7 @@ package conversation_event
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -93,6 +94,68 @@ type ConversationEvent struct {
 	CorrelationID string     `json:"correlation_id,omitempty"`
 	Details       string     `json:"details,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
+
+	// ActorName, FromName and ToName are display names resolved when the
+	// timeline is READ. They are never persisted: the repository's toSchema
+	// ignores them, so no migration and no new column.
+	//
+	// Stored events only ever carried ids — a `replied` event knows the
+	// sender's uuid, an `assigned` event knows from_user_id/to_user_id — so the
+	// timeline could say "a human replied" and "somebody was assigned" but
+	// never who, or to whom. Resolving on read rather than at emit time keeps
+	// the send/assign hot paths free of a user lookup, follows a rename, and,
+	// the reason it is worth doing at all, fills in every event already stored.
+	ActorName string `json:"actor_name,omitempty"`
+	FromName  string `json:"from_name,omitempty"`
+	ToName    string `json:"to_name,omitempty"`
+}
+
+// DetailsMap decodes the Details JSON blob into a flat string map.
+//
+// A malformed or empty blob yields an empty map: details are decoration on a
+// timeline row, never a reason to fail the read.
+func (e *ConversationEvent) DetailsMap() map[string]string {
+	if e == nil || strings.TrimSpace(e.Details) == "" {
+		return map[string]string{}
+	}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(e.Details), &raw); err != nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v == nil {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			out[k] = s
+			continue
+		}
+		out[k] = fmt.Sprint(v)
+	}
+	return out
+}
+
+// FromActorIDKeys and ToActorIDKeys are the details keys that name the two
+// sides of an ownership change.
+//
+// They are listed here, next to the events that write them, rather than in the
+// resolver: the assignment service writes from_user_id/to_user_id, the voice
+// transfer emitter writes target, and a new producer that spells it differently
+// belongs in this list, not in a switch somewhere downstream.
+var (
+	FromActorIDKeys = []string{"from_user_id", "from_actor_id", "previous_user_id"}
+	ToActorIDKeys   = []string{"to_user_id", "assigned_user_id", "to_actor_id", "target"}
+)
+
+// LookupDetailID returns the first non-empty value among keys.
+func LookupDetailID(details map[string]string, keys []string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(details[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // Validate reports whether the event can be persisted. workspace_id and entry_id
@@ -194,6 +257,24 @@ func (b *Builder) WithActorSystem() *Builder {
 	b.ev.ActorKind = actor.KindSystem
 	b.ev.ActorID = actor.SystemID
 	return b
+}
+
+// WithActor routes a stored actor id to the right kind: "ai:<id>" is an AI
+// attendant, "system" or empty is the platform, anything else is a user.
+//
+// It is for producers that carry an actor id WITHOUT knowing which kind it is —
+// a use case reached by an operator, the AI and a background job alike. Each of
+// them had written this same three-way switch inline, and a producer that
+// forgot it filed the AI's actions under a human id.
+func (b *Builder) WithActor(actorID string) *Builder {
+	switch actor.KindOf(actorID) {
+	case actor.KindAI:
+		return b.WithActorAI(actor.ParseAI(actorID))
+	case actor.KindHuman:
+		return b.WithActorHuman(actorID)
+	default:
+		return b.WithActorSystem()
+	}
 }
 
 func (b *Builder) WithChannel(channel string) *Builder {

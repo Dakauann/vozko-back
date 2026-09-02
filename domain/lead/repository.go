@@ -21,7 +21,26 @@ type Repository interface {
 
 	FindOrCreateMany(workspaceID string, inputs []BulkLeadInput) (map[string]*Lead, error)
 
+	// ImportMany is the operator-facing bulk create, and differs from
+	// FindOrCreateMany in the one way that matters to a person watching an
+	// import finish: it reports what actually happened per number.
+	//
+	// FindOrCreateMany returns a flat map with no created/matched distinction,
+	// which is right for a campaign upload (it only needs lead ids to attach
+	// entries to) and useless here: "1.000 importados" is a lie when 700 were
+	// already in the workspace. Rather than change a signature four call sites
+	// depend on, importing gets its own method.
+	ImportMany(workspaceID string, inputs []BulkLeadInput, policy ExistingPolicy) (*ImportOutcome, error)
+
 	Update(workspaceID, id string, update LeadUpdate) error
+
+	// Rename sets the lead name directly, and is the ONLY way to clear it.
+	//
+	// Update goes through Merge, where an empty name means "leave it alone" —
+	// correct when a webhook merges partial provider data, wrong when a person
+	// deliberately erases a name so the lead shows its number again. Same field,
+	// opposite meanings, so the human path is its own method rather than a flag.
+	Rename(workspaceID, id, name string) error
 
 	Delete(workspaceID, id string) error
 

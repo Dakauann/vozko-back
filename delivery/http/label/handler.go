@@ -10,7 +10,6 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/conversation"
-	ce "vozko/domain/conversation_event"
 	labeldomain "vozko/domain/label"
 	"vozko/infra/http/middleware"
 )
@@ -25,7 +24,6 @@ type LabelHandler struct {
 	getEntryLabels labeldomain.GetEntryLabelsUseCase
 	reorderUseCase labeldomain.ReorderLabelsUseCase
 	broadcaster    conversation.EventBroadcaster
-	eventLogger    ce.Logger
 }
 
 func NewLabelHandler(
@@ -38,7 +36,6 @@ func NewLabelHandler(
 	getEntryLabelsUC labeldomain.GetEntryLabelsUseCase,
 	reorderUC labeldomain.ReorderLabelsUseCase,
 	broadcaster conversation.EventBroadcaster,
-	eventLogger ce.Logger,
 ) *LabelHandler {
 	return &LabelHandler{
 		createUseCase:  createUC,
@@ -50,7 +47,6 @@ func NewLabelHandler(
 		getEntryLabels: getEntryLabelsUC,
 		reorderUseCase: reorderUC,
 		broadcaster:    broadcaster,
-		eventLogger:    eventLogger,
 	}
 }
 
@@ -269,10 +265,14 @@ func (h *LabelHandler) AssignEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
+	// The timeline event is written by the use case, not here. It used to be
+	// written in this handler, so the CRM's bulk "add label" — which calls the
+	// same use case directly — left no trace on any conversation it touched.
 	entryLabel, err := h.assignUseCase.Execute(wsID, labeldomain.AssignEntryLabelInput{
 		LabelID:   req.LabelID,
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
+		ActorID:   claims.UserID,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -281,17 +281,6 @@ func (h *LabelHandler) AssignEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	if h.broadcaster != nil {
 		go h.broadcaster.BroadcastLabelUpdate(wsID, req.EntryID, req.EntryType)
-	}
-
-	if h.eventLogger != nil {
-		h.eventLogger.Log(&ce.ConversationEvent{
-			WorkspaceID: wsID,
-			EntryID:     req.EntryID,
-			EntryType:   req.EntryType,
-			EventType:   ce.EventLabelAdded,
-			ActorID:     claims.UserID,
-			Details:     ce.DetailsJSON(map[string]string{"label_id": req.LabelID}),
-		})
 	}
 
 	response.WriteSuccess(w, http.StatusCreated, toEntryLabelResponse(entryLabel))
@@ -328,24 +317,18 @@ func (h *LabelHandler) RemoveEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.removeUseCase.Execute(wsID, req.LabelID, req.EntryID, req.EntryType); err != nil {
+	if err := h.removeUseCase.Execute(wsID, labeldomain.RemoveEntryLabelInput{
+		LabelID:   req.LabelID,
+		EntryID:   req.EntryID,
+		EntryType: req.EntryType,
+		ActorID:   claims.UserID,
+	}); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
 
 	if h.broadcaster != nil {
 		go h.broadcaster.BroadcastLabelUpdate(wsID, req.EntryID, req.EntryType)
-	}
-
-	if h.eventLogger != nil {
-		h.eventLogger.Log(&ce.ConversationEvent{
-			WorkspaceID: wsID,
-			EntryID:     req.EntryID,
-			EntryType:   req.EntryType,
-			EventType:   ce.EventLabelRemoved,
-			ActorID:     claims.UserID,
-			Details:     ce.DetailsJSON(map[string]string{"label_id": req.LabelID}),
-		})
 	}
 
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"message": "label removed"})

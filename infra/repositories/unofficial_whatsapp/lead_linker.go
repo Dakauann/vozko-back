@@ -2,6 +2,7 @@ package unofficial_whatsapp_repository
 
 import (
 	"context"
+	"strings"
 
 	lead_domain "vozko/domain/lead"
 	uwuc "vozko/usecases/unofficial_whatsapp"
@@ -44,6 +45,24 @@ func (l *leadLinker) EnsureLeadForPhone(_ context.Context, workspaceID, phone, n
 	normalized := lead_domain.NormalizeNumber(phone)
 	if normalized == "" {
 		return "", nil
+	}
+
+	// A lead that already has a name is returned as-is, and the pushname is
+	// dropped on the floor.
+	//
+	// FindOrCreate applies a non-empty name to an EXISTING lead, and on this
+	// channel that ran on every single inbound message with whatever the
+	// handset was advertising at the time. An operator renaming a lead in the
+	// CRM therefore had their name silently rewritten by the next message the
+	// customer sent — the rename was real, it just never survived. The provider
+	// name fills a blank; it does not overrule a person.
+	//
+	// Same matching rule as FindOrCreate (normalised number plus the Brazilian
+	// 9th-digit alternate), so this cannot miss a lead the create path would
+	// have found and then overwrite it anyway.
+	if existing, err := l.repo.FindByNumber(workspaceID, normalized); err == nil &&
+		existing != nil && strings.TrimSpace(existing.Name) != "" {
+		return existing.ID, nil
 	}
 
 	// FindOrCreate rather than Create: two messages arriving together from the

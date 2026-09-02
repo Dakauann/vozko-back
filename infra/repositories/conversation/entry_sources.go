@@ -37,10 +37,6 @@ type entrySource struct {
 
 	// EntryID identifies the conversation; it becomes entry_id.
 	EntryID string
-	// LeadID is the contact reference. WhatsApp projects its lead; channels whose
-	// contacts are not leads project their own contact id, which the usecase layer
-	// resolves per channel.
-	LeadID string
 	// Account is the channel account that owns the conversation (WhatsApp business
 	// phone, Instagram account). Carried in the business_phone_id slot.
 	Account string
@@ -98,7 +94,7 @@ var entrySources = []entrySource{
 		WorkspaceJoin: "JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.workspace_id = ?",
 
 		EntryID: "wce.id",
-		LeadID:  "wce.lead_id",
+
 		Account: "COALESCE(wc.business_phone_id::text, '')",
 
 		ConversationStatus: "wce.conversation_status",
@@ -123,7 +119,7 @@ var entrySources = []entrySource{
 		WorkspaceJoin: "JOIN instagram_accounts iga ON iga.id = igc.ig_account_id AND iga.workspace_id = ?",
 
 		EntryID: "igc.id",
-		LeadID:  "igc.contact_id",
+
 		Account: "COALESCE(igc.ig_account_id::text, '')",
 
 		ConversationStatus: "igc.conversation_status",
@@ -146,7 +142,7 @@ var entrySources = []entrySource{
 		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
 
 		EntryID: "tgc.id",
-		LeadID:  "tgc.contact_id",
+
 		Account: "COALESCE(tgc.account_id::text, '')",
 
 		ConversationStatus: "tgc.conversation_status",
@@ -170,7 +166,6 @@ var entrySources = []entrySource{
 		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",
 
 		EntryID: "uwc.id",
-		LeadID:  "uwc.contact_id",
 		Account: "COALESCE(uwc.instance_id::text, '')",
 
 		ConversationStatus: "uwc.conversation_status",
@@ -201,7 +196,7 @@ var entrySources = []entrySource{
 		WorkspaceJoin: "JOIN support_inboxes si ON si.id = se.inbox_id AND si.workspace_id = ?",
 
 		EntryID: "se.id",
-		LeadID:  "NULL::uuid",
+
 		Account: "''",
 
 		ConversationStatus: "",
@@ -304,7 +299,7 @@ func (src entrySource) inboxSelect(scope entrySourceScope, workspaceID string) (
 	join, args := src.joinClause(scope, workspaceID)
 	where, whereArgs := src.conditions(scope)
 	sql := "SELECT " + src.EntryID + " AS entry_id, '" + string(src.EntryType) + "'::text AS entry_type, " +
-		src.LeadID + " AS lead_id, " +
+		contactRefUUID(src.EntryType) + " AS lead_id, " +
 		src.Account + " AS business_phone_id, " +
 		src.LastMessageAt + " AS lm_created_at" +
 		" FROM " + src.From + " " + join + where
@@ -327,7 +322,7 @@ func (src entrySource) boardSelect(scope entrySourceScope, workspaceID string) (
 	}
 
 	sql := "SELECT " + src.EntryID + " AS entry_id, '" + string(src.EntryType) + "'::text AS entry_type, " +
-		src.LeadID + " AS lead_id, " +
+		contactRefUUID(src.EntryType) + " AS lead_id, " +
 		src.Account + " AS business_phone_id, " +
 		status + " AS conversation_status, " +
 		campaign + " AS campaign_id, " +

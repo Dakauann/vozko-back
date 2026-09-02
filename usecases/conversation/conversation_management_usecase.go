@@ -21,6 +21,7 @@ import (
 	analysisdomain "vozko/domain/analysis"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	ce "vozko/domain/conversation_event"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/lead"
 	lmw "vozko/domain/lead_message_window"
@@ -81,10 +82,21 @@ type ContactDisplay struct {
 	// Ref is the provider-facing id (an IGSID, a Telegram user id). It is what
 	// the message rows carry as the sender, so it is also how a raw id leaking
 	// into a display label is recognised.
-	Ref        string
-	Handle     string
+	Ref    string
+	Handle string
+	// Name is what the PROVIDER calls this contact — a pushname, a verified
+	// business name, a username. It is a guess about who someone is, and any
+	// name a person typed into the CRM outranks it. See LeadID.
 	Name       string
 	PictureURL string
+	// LeadID is the CRM lead this contact resolved to, empty when it has none.
+	//
+	// Only unofficial WhatsApp fills it: its contacts ARE leads, keyed on the
+	// same phone number, where an Instagram IGSID and a Telegram user id have no
+	// lead to point at. It exists so the header can prefer the lead's name over
+	// Name above — without it, renaming a contact in the CRM changed the list
+	// and left the open conversation still showing the pushname.
+	LeadID string
 	// IsGroup marks a conversation whose subject is a group chat rather than a
 	// person.
 	//
@@ -172,9 +184,12 @@ func (s *HistoryProviderService) contactLookupFor(entryType shared.EntryType) (C
 // hydrateContactSenders fills name/handle/avatar on inbox rows whose contacts are
 // not leads.
 //
-// EntryWithLastMessage.LeadID carries the channel's own contact id for those rows
-// (the repository projects it into the lead slot), so the id is already on hand
-// and only needs resolving.
+// The lead slot is what the lookup is keyed on, and what it holds depends on the
+// channel. Instagram and Telegram put their own contact id there, because there
+// is no lead to point at. Unofficial WhatsApp puts the CRM lead once the contact
+// has resolved to one — its contacts ARE leads — and falls back to the contact
+// id for a group or a contact seen for the first time. Its adapter answers to
+// both, so nothing here has to know which one it is holding.
 //
 // This must be applied at EVERY point that produces inbox rows, the
 // container-scoped list, the workspace list AND GetInboxEntry, which backs the
@@ -222,7 +237,23 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 			}
 			name, handle := contactDisplayNames(et, contact)
 			for _, i := range positions {
-				entries[i].LeadName = name
+				// The contact name FILLS IN, it does not overrule.
+				//
+				// On unofficial WhatsApp the contact and the lead are the same
+				// person, so overwriting here painted the provider pushname over
+				// whatever an operator had typed: a rename landed in the leads
+				// table and the inbox went on showing the old name, on every
+				// read, forever. This lookup exists to cover the gap BEFORE a
+				// contact resolves to a lead, which is precisely the blank case.
+				//
+				// Instagram and Telegram are unaffected: their rows arrive with
+				// no lead name at all, so the fallback still supplies one.
+				display := name
+				if existing := strings.TrimSpace(entries[i].LeadName); existing != "" {
+					display = existing
+				} else {
+					entries[i].LeadName = name
+				}
 				entries[i].LeadNumber = handle
 				entries[i].LeadPicture = contact.PictureURL
 				entries[i].IsGroup = contact.IsGroup
@@ -236,7 +267,7 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 				//
 				// Any other label (an operator's or agent's name) is left alone.
 				if entries[i].LastMessageSender == "" || entries[i].LastMessageSender == contact.Ref {
-					entries[i].LastMessageSender = name
+					entries[i].LastMessageSender = display
 					entries[i].LastMessageSenderAvatar = contact.PictureURL
 				}
 			}
@@ -714,11 +745,27 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 		if !ok {
 			return "", "", "", nil, nil, true, errors.New("invalid entry type")
 		}
-		contact, _, cErr := lookup.ContactForConversation(context.Background(), entryID)
+		contact, contactWorkspaceID, cErr := lookup.ContactForConversation(context.Background(), entryID)
 		if cErr != nil {
 			return "", "", "", nil, nil, true, cErr
 		}
 		name, handle := contactDisplayNames(et, contact)
+		// Same precedence the inbox list uses: a name someone typed into the CRM
+		// beats the one the handset advertises. Only reachable for a channel
+		// whose contacts are leads, and only when the lead actually has a name —
+		// so a group, an unresolved contact and every channel without a lead all
+		// keep the provider label they had.
+		//
+		// Without this the header was the last surface still disagreeing: the
+		// list said the new name, the conversation you opened from it said the
+		// old one.
+		if contact.LeadID != "" && contactWorkspaceID != "" && s.leadRepo != nil {
+			if l, lErr := s.leadRepo.FindByID(contactWorkspaceID, contact.LeadID); lErr == nil && l != nil {
+				if leadOwned := strings.TrimSpace(l.Name); leadOwned != "" {
+					name = leadOwned
+				}
+			}
+		}
 		// Read the override rather than assuming enabled. Returning a hard true
 		// here is what made a paused Telegram or Instagram conversation report
 		// itself as still automated: the write landed and every read denied it.
@@ -737,6 +784,153 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 	return leadRecord.Name, leadRecord.Number, leadRecord.ProfilePictureURL, entryMetadata, entryVariables, automationEnabled, nil
 }
 
+// buildInboxEntries turns repository rows into the inbox rows the CRM renders.
+//
+// ONE builder for both read paths. The campaign-scoped inbox and the
+// workspace-wide search each carried their own ~80-line copy of this, identical
+// but for variable names, and they had already drifted: the campaign one gated
+// the WhatsApp lookup on the request's entry type instead of the row's, which
+// is only equivalent while every row is the same channel — true there, and a
+// trap for the first caller where it is not.
+//
+// Everything is batched over the visible page: one lead query, one window pass,
+// one WhatsApp-entry query, regardless of page size.
+func (s *HistoryProviderService) buildInboxEntries(
+	rows []conversation.EntryWithLastMessage,
+	workspaceID string,
+) []conversation.InboxEntry {
+	if len(rows) == 0 {
+		return []conversation.InboxEntry{}
+	}
+
+	leadIDs := make([]string, 0, len(rows))
+	waEntryIDs := make([]string, 0, len(rows))
+	seenLead := make(map[string]struct{}, len(rows))
+	for _, e := range rows {
+		if e.LeadID != "" {
+			if _, dup := seenLead[e.LeadID]; !dup {
+				leadIDs = append(leadIDs, e.LeadID)
+				seenLead[e.LeadID] = struct{}{}
+			}
+		}
+		// Per ROW, not per request: a workspace-wide page mixes channels, and
+		// asking the WhatsApp repository for a Telegram id finds nothing.
+		if e.EntryType == shared.EntryTypeWhatsApp {
+			waEntryIDs = append(waEntryIDs, e.EntryID)
+		}
+	}
+
+	leadMap := make(map[string]*lead.Lead, len(leadIDs))
+	if len(leadIDs) > 0 {
+		// A failure here costs names, not rows. The conversation still has to
+		// render, and the identity hydration below covers channels whose
+		// contacts carry their own name.
+		if leads, err := s.leadRepo.FindByIDs(workspaceID, leadIDs); err == nil {
+			for _, l := range leads {
+				leadMap[l.ID] = l
+			}
+		}
+	}
+
+	windowMap := s.batchGetWindowStatus(rows)
+
+	waEntryMap := make(map[string]*wce.WhatsAppCampaignEntry, len(waEntryIDs))
+	if len(waEntryIDs) > 0 {
+		if waEntries, err := s.whatsappRepo.FindByIDs(waEntryIDs); err == nil {
+			for _, e := range waEntries {
+				waEntryMap[e.ID] = e
+			}
+		}
+	}
+
+	entries := make([]conversation.InboxEntry, 0, len(rows))
+	for _, e := range rows {
+		var leadName, leadNumber, leadPicture string
+		var leadBlocked bool
+		if l, ok := leadMap[e.LeadID]; ok {
+			leadName, leadNumber, leadPicture = l.Name, l.Number, l.ProfilePictureURL
+			leadBlocked = l.Blocked
+		}
+		senderName, senderAvatar := s.getSenderInfo(
+			e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
+
+		windowOpen := false
+		var windowExpiresAt *time.Time
+		if ws, ok := windowMap[e.EntryID]; ok {
+			windowOpen, windowExpiresAt = ws.open, ws.expiresAt
+		}
+
+		// From SQL for every channel. This used to be read only inside the
+		// WhatsApp branch below, so every other channel reported "enabled"
+		// regardless of the stored override.
+		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
+
+		var entryVariables []string
+		var convStatus conversation.ConversationStatus
+		var closeSource conversation.CloseSource
+		var closeReason conversation.CloseReason
+		var closedAt *time.Time
+		if waEntry, ok := waEntryMap[e.EntryID]; ok {
+			entryVariables = waEntry.Variables
+			automationEnabled = waEntry.IsAutomationEnabled()
+			convStatus = conversation.ConversationStatus(waEntry.ConversationStatus)
+			closeSource = conversation.CloseSource(waEntry.CloseSource)
+			closeReason = conversation.CloseReason(waEntry.CloseReason)
+			closedAt = waEntry.ClosedAt
+		}
+
+		var matchedMessages []conversation.MatchedMessage
+		for _, m := range e.MatchedMessages {
+			matchedMessages = append(matchedMessages, conversation.MatchedMessage{
+				MessageID:   m.MessageID,
+				Text:        m.Text,
+				From:        m.From,
+				MessageType: string(m.MsgType),
+				Channel:     string(m.Channel),
+				CreatedAt:   m.CreatedAt,
+				Position:    m.Position,
+				Page:        int(m.Position/int64(conversation.DefaultHistoryPageSize)) + 1,
+			})
+		}
+
+		entries = append(entries, conversation.InboxEntry{
+			EntryID:                 e.EntryID,
+			EntryType:               string(e.EntryType),
+			CampaignID:              e.CampaignID,
+			CampaignName:            e.CampaignName,
+			LeadID:                  e.LeadID,
+			LeadName:                leadName,
+			LeadNumber:              leadNumber,
+			LeadPicture:             leadPicture,
+			Blocked:                 leadBlocked,
+			EntryVariables:          entryVariables,
+			UnreadCount:             e.UnreadCount,
+			LastMessagePreview:      s.formatMessagePreview(e),
+			LastMessageAt:           e.LastMessageAt,
+			LastMessageType:         s.getDisplayMessageType(e),
+			LastMessageSender:       senderName,
+			LastMessageSenderAvatar: senderAvatar,
+			WindowOpen:              windowOpen,
+			WindowExpiresAt:         windowExpiresAt,
+			BusinessPhoneID:         e.BusinessPhoneID,
+			AutomationEnabled:       automationEnabled,
+			MatchedMessages:         matchedMessages,
+			TotalMatches:            e.TotalMatches,
+			ConversationStatus:      convStatus,
+			CloseSource:             closeSource,
+			CloseReason:             closeReason,
+			ClosedAt:                closedAt,
+		})
+	}
+
+	// Both enrichments belong to every inbox row, so they live with the builder
+	// rather than being remembered at each call site. Missing hydrateContactSenders
+	// at one of them is what made an Instagram conversation's name vanish on
+	// every new message.
+	s.hydrateContactSenders(entries)
+	s.enrichAssignments(entries, workspaceID)
+	return entries
+}
 func (s *HistoryProviderService) GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]conversation.InboxEntry, int64, error) {
 	if campaignID == "" || campaignType == "" {
 		return nil, 0, fmt.Errorf("campaignID and campaignType are required")
@@ -768,106 +962,7 @@ func (s *HistoryProviderService) GetInboxEntries(userID, workspaceID, campaignID
 		return nil, 0, fmt.Errorf("error getting entries with messages: %w", err)
 	}
 
-	leadIDs := make([]string, 0, len(campaignEntries))
-	entryIDs := make([]string, 0, len(campaignEntries))
-	leadIDSet := make(map[string]struct{})
-	for _, e := range campaignEntries {
-		entryIDs = append(entryIDs, e.EntryID)
-		if e.LeadID != "" {
-			if _, exists := leadIDSet[e.LeadID]; !exists {
-				leadIDs = append(leadIDs, e.LeadID)
-				leadIDSet[e.LeadID] = struct{}{}
-			}
-		}
-	}
-
-	leadMap := make(map[string]*lead.Lead)
-	if len(leadIDs) > 0 {
-		leads, err := s.leadRepo.FindByIDs(workspaceID, leadIDs)
-		if err == nil {
-			for _, l := range leads {
-				leadMap[l.ID] = l
-			}
-		}
-	}
-
-	windowMap := s.batchGetWindowStatus(campaignEntries)
-
-	waEntryMap := make(map[string]*wce.WhatsAppCampaignEntry)
-	if entryType == shared.EntryTypeWhatsApp && len(entryIDs) > 0 {
-		waEntries, err := s.whatsappRepo.FindByIDs(entryIDs)
-		if err == nil {
-			for _, e := range waEntries {
-				waEntryMap[e.ID] = e
-			}
-		}
-	}
-
-	entries := make([]conversation.InboxEntry, 0, len(campaignEntries))
-	for _, e := range campaignEntries {
-		var leadName, leadNumber, leadPicture string
-		var leadBlocked bool
-		if l, ok := leadMap[e.LeadID]; ok {
-			leadName, leadNumber, leadPicture = l.Name, l.Number, l.ProfilePictureURL
-			leadBlocked = l.Blocked
-		}
-		senderName, senderAvatar := s.getSenderInfo(e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
-
-		windowOpen := false
-		var windowExpiresAt *time.Time
-		if ws, ok := windowMap[e.EntryID]; ok {
-			windowOpen = ws.open
-			windowExpiresAt = ws.expiresAt
-		}
-
-		var entryVariables []string
-		// From SQL for every channel. It used to be resolved only inside the
-		// WhatsApp branch below, so every other channel reported "enabled"
-		// regardless of the stored override.
-		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
-		var convStatus conversation.ConversationStatus
-		var closeSource conversation.CloseSource
-		var closeReason conversation.CloseReason
-		var closedAt *time.Time
-		if entryType == shared.EntryTypeWhatsApp {
-			if waEntry, ok := waEntryMap[e.EntryID]; ok {
-				entryVariables = waEntry.Variables
-				automationEnabled = waEntry.IsAutomationEnabled()
-				convStatus = conversation.ConversationStatus(waEntry.ConversationStatus)
-				closeSource = conversation.CloseSource(waEntry.CloseSource)
-				closeReason = conversation.CloseReason(waEntry.CloseReason)
-				closedAt = waEntry.ClosedAt
-			}
-		}
-
-		entries = append(entries, conversation.InboxEntry{
-			EntryID:                 e.EntryID,
-			EntryType:               string(e.EntryType),
-			LeadID:                  e.LeadID,
-			LeadName:                leadName,
-			LeadNumber:              leadNumber,
-			LeadPicture:             leadPicture,
-			Blocked:                 leadBlocked,
-			UnreadCount:             e.UnreadCount,
-			LastMessagePreview:      s.formatMessagePreview(e),
-			LastMessageAt:           e.LastMessageAt,
-			LastMessageType:         s.getDisplayMessageType(e),
-			LastMessageSender:       senderName,
-			LastMessageSenderAvatar: senderAvatar,
-			WindowOpen:              windowOpen,
-			WindowExpiresAt:         windowExpiresAt,
-			BusinessPhoneID:         e.BusinessPhoneID,
-			AutomationEnabled:       automationEnabled,
-			EntryVariables:          entryVariables,
-			ConversationStatus:      convStatus,
-			CloseSource:             closeSource,
-			CloseReason:             closeReason,
-			ClosedAt:                closedAt,
-		})
-	}
-
-	s.hydrateContactSenders(entries)
-	s.enrichAssignments(entries, workspaceID)
+	entries := s.buildInboxEntries(campaignEntries, workspaceID)
 	return entries, totalWithMessages, nil
 }
 
@@ -940,127 +1035,7 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		return nil, 0, fmt.Errorf("error searching entries: %w", err)
 	}
 
-	leadIDs := make([]string, 0, len(results))
-	waEntryIDs := make([]string, 0)
-	leadIDSet := make(map[string]struct{})
-	for _, e := range results {
-		if e.LeadID != "" {
-			if _, exists := leadIDSet[e.LeadID]; !exists {
-				leadIDs = append(leadIDs, e.LeadID)
-				leadIDSet[e.LeadID] = struct{}{}
-			}
-		}
-		switch e.EntryType {
-		case shared.EntryTypeWhatsApp:
-			waEntryIDs = append(waEntryIDs, e.EntryID)
-		}
-	}
-
-	leadMap := make(map[string]*lead.Lead)
-	if len(leadIDs) > 0 {
-		leads, err := s.leadRepo.FindByIDs(input.WorkspaceID, leadIDs)
-		if err == nil {
-			for _, l := range leads {
-				leadMap[l.ID] = l
-			}
-		}
-	}
-
-	windowMap := s.batchGetWindowStatus(results)
-
-	waEntryMap := make(map[string]*wce.WhatsAppCampaignEntry)
-	if len(waEntryIDs) > 0 {
-		waEntries, err := s.whatsappRepo.FindByIDs(waEntryIDs)
-		if err == nil {
-			for _, e := range waEntries {
-				waEntryMap[e.ID] = e
-			}
-		}
-	}
-
-	entries := make([]conversation.InboxEntry, 0, len(results))
-	for _, e := range results {
-		var leadName, leadNumber, leadPicture string
-		var leadBlocked bool
-		if l, ok := leadMap[e.LeadID]; ok {
-			leadName, leadNumber, leadPicture = l.Name, l.Number, l.ProfilePictureURL
-			leadBlocked = l.Blocked
-		}
-		senderName, senderAvatar := s.getSenderInfo(e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
-
-		windowOpen := false
-		var windowExpiresAt *time.Time
-		if ws, ok := windowMap[e.EntryID]; ok {
-			windowOpen = ws.open
-			windowExpiresAt = ws.expiresAt
-		}
-
-		var entryVariables []string
-		// From SQL for every channel. It used to be resolved only inside the
-		// WhatsApp branch below, so every other channel reported "enabled"
-		// regardless of the stored override.
-		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
-		var convStatus conversation.ConversationStatus
-		var closeSource conversation.CloseSource
-		var closeReason conversation.CloseReason
-		var closedAt *time.Time
-		if e.EntryType == shared.EntryTypeWhatsApp {
-			if waEntry, ok := waEntryMap[e.EntryID]; ok {
-				entryVariables = waEntry.Variables
-				automationEnabled = waEntry.IsAutomationEnabled()
-				convStatus = conversation.ConversationStatus(waEntry.ConversationStatus)
-				closeSource = conversation.CloseSource(waEntry.CloseSource)
-				closeReason = conversation.CloseReason(waEntry.CloseReason)
-				closedAt = waEntry.ClosedAt
-			}
-		}
-
-		var matchedMessages []conversation.MatchedMessage
-		for _, m := range e.MatchedMessages {
-			matchedMessages = append(matchedMessages, conversation.MatchedMessage{
-				MessageID:   m.MessageID,
-				Text:        m.Text,
-				From:        m.From,
-				MessageType: string(m.MsgType),
-				Channel:     string(m.Channel),
-				CreatedAt:   m.CreatedAt,
-				Position:    m.Position,
-				Page:        int(m.Position/int64(conversation.DefaultHistoryPageSize)) + 1,
-			})
-		}
-
-		entries = append(entries, conversation.InboxEntry{
-			EntryID:                 e.EntryID,
-			EntryType:               string(e.EntryType),
-			CampaignID:              e.CampaignID,
-			CampaignName:            e.CampaignName,
-			LeadID:                  e.LeadID,
-			LeadName:                leadName,
-			LeadNumber:              leadNumber,
-			LeadPicture:             leadPicture,
-			Blocked:                 leadBlocked,
-			EntryVariables:          entryVariables,
-			UnreadCount:             e.UnreadCount,
-			LastMessagePreview:      s.formatMessagePreview(e),
-			LastMessageAt:           e.LastMessageAt,
-			LastMessageType:         s.getDisplayMessageType(e),
-			LastMessageSender:       senderName,
-			LastMessageSenderAvatar: senderAvatar,
-			WindowOpen:              windowOpen,
-			WindowExpiresAt:         windowExpiresAt,
-			BusinessPhoneID:         e.BusinessPhoneID,
-			AutomationEnabled:       automationEnabled,
-			MatchedMessages:         matchedMessages,
-			TotalMatches:            e.TotalMatches,
-			ConversationStatus:      convStatus,
-			CloseSource:             closeSource,
-			CloseReason:             closeReason,
-			ClosedAt:                closedAt,
-		})
-	}
-
-	s.hydrateContactSenders(entries)
-	s.enrichAssignments(entries, input.WorkspaceID)
+	entries := s.buildInboxEntries(results, input.WorkspaceID)
 	s.enrichAIHandlers(entries, results)
 	return entries, totalCount, nil
 }
@@ -2674,26 +2649,14 @@ func (s *MessageSenderService) checkMessageWindow(leadID, businessPhoneID string
 }
 
 func (s *MessageSenderService) getEntryInfo(entryID, entryType string) (leadID, leadNumber, businessPhoneID string, err error) {
-	switch entryType {
-	case "whatsapp":
-		entry, err := s.whatsappRepo.FindByID(entryID)
-		if err != nil {
-			return "", "", "", err
-		}
-		campaign, cErr := s.whatsappRepo.GetCampaignForEntry(entryID)
-		if cErr != nil || campaign == nil {
-			log.Printf("[MessageSender] Error getting campaign for entry %s: %v", entryID, cErr)
-			return "", "", "", errors.New("unable to resolve workspace for whatsapp entry")
-		}
-		leadRecord, err := s.leadRepo.FindByID(campaign.WorkspaceID, entry.LeadID)
-		if err != nil {
-			return "", "", "", err
-		}
-		return entry.LeadID, leadRecord.Number, campaign.BusinessPhoneID, nil
-
-	default:
+	if entryType != "whatsapp" {
 		return "", "", "", errors.New("invalid entry type")
 	}
+	leadID, leadNumber, businessPhoneID, _, err = whatsappEntryTarget(s.whatsappRepo, s.leadRepo, entryID)
+	if errors.Is(err, ErrEntryWorkspaceUnresolved) {
+		log.Printf("[MessageSender] Error getting campaign for entry %s", entryID)
+	}
+	return leadID, leadNumber, businessPhoneID, err
 }
 
 func (s *MessageSenderService) resolveEntryWorkspace(entryID, entryType string) (string, error) {
@@ -2973,31 +2936,11 @@ func (uc *sendConversationMessageUseCase) sendViaChannel(input conversation.Send
 }
 
 func (uc *sendConversationMessageUseCase) getEntryInfo(entryID, entryType string) (leadNumber, businessPhoneID string, err error) {
-	var leadID, workspaceID string
-
-	switch entryType {
-	case "whatsapp":
-		entry, err := uc.whatsappRepo.FindByID(entryID)
-		if err != nil {
-			return "", "", err
-		}
-		leadID = entry.LeadID
-		campaign, cErr := uc.whatsappRepo.GetCampaignForEntry(entryID)
-		if cErr != nil || campaign == nil {
-			return "", "", errors.New("unable to resolve workspace for whatsapp entry")
-		}
-		businessPhoneID = campaign.BusinessPhoneID
-		workspaceID = campaign.WorkspaceID
-	default:
+	if entryType != "whatsapp" {
 		return "", "", errors.New("invalid entry type")
 	}
-
-	leadRecord, err := uc.leadRepo.FindByID(workspaceID, leadID)
-	if err != nil {
-		return "", "", err
-	}
-
-	return leadRecord.Number, businessPhoneID, nil
+	_, leadNumber, businessPhoneID, _, err = whatsappEntryTarget(uc.whatsappRepo, uc.leadRepo, entryID)
+	return leadNumber, businessPhoneID, err
 }
 
 func (uc *sendConversationMessageUseCase) scheduleAnalysis(_ context.Context, entryID, entryType, _ string) {
@@ -3121,6 +3064,9 @@ type TemplateSenderService struct {
 	whatsappRepo            wce.Repository
 	hub                     conversation.EventBroadcaster
 	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase
+	// events records the reopen on the conversation's timeline. Optional: a
+	// delivered, paid-for template must never fail over its telemetry.
+	events ce.Logger
 }
 
 func NewTemplateSenderService(
@@ -3131,6 +3077,7 @@ func NewTemplateSenderService(
 	whatsappRepo wce.Repository,
 	hub conversation.EventBroadcaster,
 	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase,
+	events ce.Logger,
 ) *TemplateSenderService {
 	return &TemplateSenderService{
 		whatsappClientFactory:   whatsappClientFactory,
@@ -3140,6 +3087,7 @@ func NewTemplateSenderService(
 		whatsappRepo:            whatsappRepo,
 		hub:                     hub,
 		consumeWhatsappTemplate: consumeWhatsappTemplate,
+		events:                  events,
 	}
 }
 
@@ -3279,6 +3227,23 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 
 	if s.hub != nil {
 		s.hub.BroadcastNewMessage(entryID, entryType, msg)
+	}
+
+	// Sending a template is what reopens a closed 24h window, so this is the
+	// reopen. The event used to be written by the WebSocket hub's reopen frame
+	// handler, one of THREE callers of this method — the HTTP send-template
+	// endpoint and the hub's own SendTemplateForEntry wrote nothing, so the same
+	// action left a timeline entry or not depending on which button was pressed.
+	if s.events != nil {
+		s.events.Log(ce.New(workspaceID, entryID, entryType, ce.EventReopened).
+			WithActor(userID).
+			WithChannel(shared.EntryType(entryType).EventChannel()).
+			WithDetails(map[string]string{
+				"template_id":   templateID,
+				"template_name": tmpl.Name,
+				"message_id":    result.MessageID,
+			}).
+			Build())
 	}
 
 	return result.MessageID, nil

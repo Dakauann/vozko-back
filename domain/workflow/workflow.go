@@ -105,6 +105,7 @@ const (
 	NodeTypeConditionTextMatch  NodeType = "condition_text_match"
 	NodeTypeConditionFilter     NodeType = "condition_filter"
 	NodeTypeConditionCheckLabel NodeType = "condition_check_label"
+	NodeTypeConditionChannel    NodeType = "condition_channel"
 	NodeTypeEnd                 NodeType = "end"
 
 	NodeTypeDecorationBackground NodeType = "decoration_background"
@@ -134,6 +135,7 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionTransferDepartment,
 		NodeTypeActionFinishConversation,
 		NodeTypeConditionCheckLabel,
+		NodeTypeConditionChannel,
 		NodeTypeEnd,
 		NodeTypeDecorationBackground:
 		return true
@@ -227,7 +229,7 @@ func (n *NodeType) UnmarshalJSON(data []byte) error {
 
 func (n NodeType) IsCondition() bool {
 	switch n {
-	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel:
+	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionChannel:
 		return true
 	}
 	return false

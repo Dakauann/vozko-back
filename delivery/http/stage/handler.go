@@ -10,7 +10,6 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/conversation"
-	ce "vozko/domain/conversation_event"
 	stagedomain "vozko/domain/stage"
 	"vozko/infra/http/middleware"
 )
@@ -27,7 +26,6 @@ type StageHandler struct {
 	getBatchEntryTagsUC stagedomain.GetBatchEntryStagesUseCase
 	reorderUseCase      stagedomain.ReorderStagesUseCase
 	broadcaster         conversation.EventBroadcaster
-	eventLogger         ce.Logger
 }
 
 func NewStageHandler(
@@ -42,7 +40,6 @@ func NewStageHandler(
 	getBatchEntryTagsUC stagedomain.GetBatchEntryStagesUseCase,
 	reorderUC stagedomain.ReorderStagesUseCase,
 	broadcaster conversation.EventBroadcaster,
-	eventLogger ce.Logger,
 ) *StageHandler {
 	return &StageHandler{
 		createUseCase:       createUC,
@@ -56,7 +53,6 @@ func NewStageHandler(
 		getBatchEntryTagsUC: getBatchEntryTagsUC,
 		reorderUseCase:      reorderUC,
 		broadcaster:         broadcaster,
-		eventLogger:         eventLogger,
 	}
 }
 
@@ -97,6 +93,7 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Color:        strings.TrimSpace(req.Color),
 		CampaignID:   strings.TrimSpace(req.CampaignID),
 		CampaignType: strings.TrimSpace(req.CampaignType),
+		PipelineID:   strings.TrimSpace(req.PipelineID),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -184,9 +181,10 @@ func (h *StageHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Listar etapas
-// @Description	Retorna as etapas do pipeline de conversas do workspace, na ordem de exibição. Os parâmetros campaignId e campaignType são aceitos por compatibilidade, mas não são obrigatórios.
+// @Description	Retorna as etapas de UM funil de conversas, na ordem de exibição. Informe pipelineId para escolher o funil explicitamente — é o que o CRM usa para que a lista de etapas acompanhe o funil selecionado. Sem ele, o funil é resolvido pela campanha e, na ausência dela, pelo funil padrão do workspace; campaignId e campaignType seguem aceitos por compatibilidade.
 // @Tags			Etapas
 // @Produce		json
+// @Param			pipelineId		query	string	false	"ID do funil (tem precedência sobre a campanha)"
 // @Param			campaignId		query	string	false	"ID da campanha (compatibilidade)"
 // @Param			campaignType	query	string	false	"Tipo da campanha (compatibilidade)"
 // @Success		200	{array}		stage.Stage
@@ -204,8 +202,9 @@ func (h *StageHandler) List(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.GetWorkspaceID(r)
 	campaignID := r.URL.Query().Get("campaignId")
 	campaignType := r.URL.Query().Get("campaignType")
+	pipelineID := r.URL.Query().Get("pipelineId")
 
-	tags, err := h.listUseCase.Execute(wsID, campaignID, campaignType)
+	tags, err := h.listUseCase.Execute(wsID, campaignID, campaignType, pipelineID)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -285,6 +284,7 @@ func (h *StageHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 		StageIDs:     req.StageIDs,
 		CampaignID:   req.CampaignID,
 		CampaignType: req.CampaignType,
+		PipelineID:   strings.TrimSpace(req.PipelineID),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -325,10 +325,15 @@ func (h *StageHandler) AssignEntryStage(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
+	// The timeline event is written by the use case, not here. It used to be
+	// written in this handler, which meant the CRM's bulk move and the AI's
+	// manage_entry_stage tool — both of which call the same use case directly —
+	// changed the board and left the conversation's history blank.
 	EntryStage, err := h.assignUseCase.Execute(wsID, stagedomain.AssignEntryStageInput{
 		StageID:   req.StageID,
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
+		ActorID:   claims.UserID,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -337,17 +342,6 @@ func (h *StageHandler) AssignEntryStage(w http.ResponseWriter, r *http.Request) 
 
 	if h.broadcaster != nil {
 		go h.broadcaster.BroadcastStageUpdate(wsID, req.EntryID, req.EntryType)
-	}
-
-	if h.eventLogger != nil {
-		h.eventLogger.Log(ce.New(wsID, req.EntryID, req.EntryType, ce.EventStageChanged).
-			WithActorHuman(claims.UserID).
-			WithDetails(map[string]string{"stage_id": req.StageID, "to_stage_id": req.StageID}).
-			Build())
-		h.eventLogger.Log(ce.New(wsID, req.EntryID, req.EntryType, ce.EventTagAdded).
-			WithActorHuman(claims.UserID).
-			WithDetails(map[string]string{"stage_id": req.StageID}).
-			Build())
 	}
 
 	response.WriteSuccess(w, http.StatusCreated, EntryStage)
@@ -384,24 +378,18 @@ func (h *StageHandler) RemoveEntryStage(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.removeUseCase.Execute(wsID, req.StageID, req.EntryID, req.EntryType); err != nil {
+	if err := h.removeUseCase.Execute(wsID, stagedomain.RemoveEntryStageInput{
+		StageID:   req.StageID,
+		EntryID:   req.EntryID,
+		EntryType: req.EntryType,
+		ActorID:   claims.UserID,
+	}); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
 
 	if h.broadcaster != nil {
 		go h.broadcaster.BroadcastStageUpdate(wsID, req.EntryID, req.EntryType)
-	}
-
-	if h.eventLogger != nil {
-		h.eventLogger.Log(&ce.ConversationEvent{
-			WorkspaceID: wsID,
-			EntryID:     req.EntryID,
-			EntryType:   req.EntryType,
-			EventType:   ce.EventTagRemoved,
-			ActorID:     claims.UserID,
-			Details:     ce.DetailsJSON(map[string]string{"stage_id": req.StageID}),
-		})
 	}
 
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"message": "tag removed"})
@@ -507,6 +495,11 @@ func (h *StageHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, stagedomain.ErrInvalidEntryType):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+	case errors.Is(err, stagedomain.ErrStagePipelineMismatch):
+		// 409, not 400: the request is well-formed and the stage is real — it just
+		// conflicts with the funnel this conversation is already on.
+		response.WriteError(w, http.StatusConflict,
+			"Esta etapa pertence a outro funil. Mova a conversa de funil para usá-la.", nil)
 	case errors.Is(err, stagedomain.ErrUnauthorized):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
 	default:

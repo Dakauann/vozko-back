@@ -30,9 +30,19 @@ type webhookConfigResponse struct {
 // phone, que é resolvido para a conversa de WhatsApp mais recente da workspace.
 // Quaisquer outros campos enviados pelo provedor são preservados e expostos ao
 // workflow em {{webhook.body}}.
+//
+// O enum de entry_type é exatamente o conjunto de canais com consulta na
+// ownership map do engine (infra/repositories/workflow/entry_ownership_repository.go),
+// o portão que a chamada atravessa antes de existir um run. Um valor fora dela
+// não é "não suportado ainda": OwnsEntry responde false sem erro, e o chamador
+// recebe um 403 dizendo que a entrada não é da workspace — o que pode ser falso.
+// Voice e sip estiveram anunciados aqui sem nunca terem existido no engine;
+// telefonia não é canal de mensageria e nenhum gatilho publica um run de voz
+// (ver domain/workflow/channel_var.go). Ao somar um canal à ownership map,
+// some-o aqui também.
 type webhookTriggerRequest struct {
 	EntryID   string `json:"entry_id,omitempty" example:"c7f1e2a0-9b3d-4a1e-8f2c-1d2e3f4a5b6c"`
-	EntryType string `json:"entry_type,omitempty" enums:"whatsapp,voice,sip" example:"whatsapp"`
+	EntryType string `json:"entry_type,omitempty" enums:"whatsapp,unofficial_whatsapp,instagram,telegram,support" example:"whatsapp"`
 	Phone     string `json:"phone,omitempty" example:"+5511998887777"`
 }
 

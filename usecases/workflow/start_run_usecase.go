@@ -52,6 +52,14 @@ func (uc *startRunUseCase) Execute(input workflow.StartRunInput) (*workflow.Work
 	for k, v := range input.Variables {
 		state.Set(k, v)
 	}
+	// The channel is seeded AFTER the caller's variables, deliberately.
+	//
+	// It is a fact about the run, not an input to it, so a caller must not be
+	// able to start a run that reports a channel it is not on — every
+	// {{channel}} in the workflow would then be wrong, and the failure would
+	// surface as a customer receiving the wrong kind of message rather than as
+	// an error. Ordering it last is what makes the variable trustworthy.
+	state.Set(workflow.VarChannel, input.EntryType)
 
 	now := time.Now().UTC()
 	run := &workflow.WorkflowRun{

@@ -9,7 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
+	"vozko/domain/cache"
 	"vozko/domain/lead"
 	"vozko/domain/shared"
 	"vozko/infra/database/schema"
@@ -17,21 +19,38 @@ import (
 )
 
 type repository struct {
-	db *gorm.DB
+	db  *gorm.DB
+	agg *aggregateCache
 }
 
+// NewRepository builds a repository with no aggregate cache. Every count and
+// facet pass goes to the database, which is the correct behaviour for tests and
+// for any deployment without shared state.
 func NewRepository(db *gorm.DB) lead.Repository {
-	return &repository{db: db}
+	return &repository{db: db, agg: newAggregateCache(nil)}
+}
+
+// NewCachedRepository adds the aggregate cache. Separate constructor rather
+// than a nullable parameter on the old one so no existing call site changes
+// meaning, and so "no cache" stays the default a reader assumes.
+func NewCachedRepository(db *gorm.DB, state cache.SharedState) lead.Repository {
+	return &repository{db: db, agg: newAggregateCache(state)}
 }
 
 func (r *repository) scope(workspaceID string) *gorm.DB {
 	return r.db.Where("workspace_id = ?", workspaceID)
 }
 
-func (r *repository) Create(l *lead.Lead) error {
+func (r *repository) Create(l *lead.Lead) (err error) {
 	if l == nil {
 		return lead.ErrLeadRequired
 	}
+	defer func() {
+		if err == nil {
+			r.agg.bump(l.WorkspaceID)
+		}
+	}()
+
 	l.Normalize()
 	if err := l.Validate(); err != nil {
 		return err
@@ -112,11 +131,19 @@ func (r *repository) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, 
 	return leads, nil
 }
 
-func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {
+func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUpdate) (result *lead.Lead, created bool, err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, false, lead.ErrLeadWorkspaceRequired
 	}
+
+	// Merging provider data onto an existing lead moves the named/unnamed
+	// facet, so this bumps whether or not a row was created.
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
 	normalized := lead.NormalizeNumber(number)
 	if normalized == "" {
 		return nil, false, lead.ErrLeadInvalid
@@ -128,7 +155,7 @@ func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUp
 	}
 
 	var schemaLead schema.Lead
-	err := r.scope(workspaceID).Where("number IN ?", phoneFormats).First(&schemaLead).Error
+	err = r.scope(workspaceID).Where("number IN ?", phoneFormats).First(&schemaLead).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		newLead := &lead.Lead{
@@ -170,11 +197,17 @@ func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUp
 	return domainLead, false, nil
 }
 
-func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
+func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLeadInput) (result map[string]*lead.Lead, err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
+
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
 	if len(inputs) == 0 {
 		return make(map[string]*lead.Lead), nil
 	}
@@ -196,7 +229,7 @@ func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLead
 		return make(map[string]*lead.Lead), nil
 	}
 
-	result := make(map[string]*lead.Lead)
+	result = make(map[string]*lead.Lead)
 
 	allSearchNumbers := make([]string, 0, len(normalizedNumbers)*2)
 	for _, number := range normalizedNumbers {
@@ -279,12 +312,180 @@ func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLead
 	return result, nil
 }
 
-func (r *repository) Update(workspaceID, id string, update lead.LeadUpdate) error {
+// ImportMany creates the leads a file brought in and reports what happened.
+//
+// Three differences from FindOrCreateMany, all of them about an operator
+// watching a progress dialog rather than a campaign resolving lead ids:
+//
+//  1. It counts created vs matched, which is the whole point (see the interface).
+//  2. The insert is ON CONFLICT DO NOTHING on (workspace_id, number). The
+//     read-then-create shape is a race against ux_leads_workspace_number, and an
+//     import is the operation most likely to be running twice at once: the same
+//     file double-clicked, or two operators sent the same list. Losing the whole
+//     batch to a unique violation on one number is not an acceptable answer to
+//     that.
+//  3. It honours ExistingPolicy, so "skip" can leave known leads entirely alone.
+//
+// Numbers arriving here are already normalized and deduplicated by
+// PrepareImport; this re-normalizes anyway, because a repository that trusts its
+// caller to have done so is one refactor away from writing unnormalized rows.
+func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput, policy lead.ExistingPolicy) (outcome *lead.ImportOutcome, err error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, lead.ErrLeadWorkspaceRequired
+	}
+
+	// The one write an operator watches finish. A stale total here would read
+	// as the import having done nothing.
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
+	out := &lead.ImportOutcome{}
+	if len(inputs) == 0 {
+		return out, nil
+	}
+	if !policy.Valid() {
+		policy = lead.PolicyFillEmpty
+	}
+
+	normalizedNumbers := make([]string, 0, len(inputs))
+	inputByNumber := make(map[string]lead.BulkLeadInput, len(inputs))
+	for _, input := range inputs {
+		normalized := lead.NormalizeNumber(input.Number)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := inputByNumber[normalized]; !exists {
+			normalizedNumbers = append(normalizedNumbers, normalized)
+			inputByNumber[normalized] = input
+		}
+	}
+	if len(normalizedNumbers) == 0 {
+		return out, nil
+	}
+
+	// Both spellings of every mobile, so the 12- and 13-digit forms of one
+	// person match the row already stored under the other one.
+	searchNumbers := make([]string, 0, len(normalizedNumbers)*2)
+	for _, number := range normalizedNumbers {
+		searchNumbers = append(searchNumbers, number)
+		if alternate := lead.GetAlternatePhoneFormat(number); alternate != "" {
+			searchNumbers = append(searchNumbers, alternate)
+		}
+	}
+
+	const batchSize = 500
+
+	var existing []schema.Lead
+	for i := 0; i < len(searchNumbers); i += batchSize {
+		end := i + batchSize
+		if end > len(searchNumbers) {
+			end = len(searchNumbers)
+		}
+		var batch []schema.Lead
+		if err := r.scope(workspaceID).Where("number IN ?", searchNumbers[i:end]).Find(&batch).Error; err != nil {
+			return nil, err
+		}
+		existing = append(existing, batch...)
+	}
+
+	existingByNumber := make(map[string]*schema.Lead, len(existing)*2)
+	for i := range existing {
+		existingByNumber[existing[i].Number] = &existing[i]
+		if alt := lead.GetAlternatePhoneFormat(existing[i].Number); alt != "" {
+			if _, mapped := existingByNumber[alt]; !mapped {
+				existingByNumber[alt] = &existing[i]
+			}
+		}
+	}
+
+	var toCreate []schema.Lead
+	for _, number := range normalizedNumbers {
+		found, isExisting := existingByNumber[number]
+		if !isExisting {
+			input := inputByNumber[number]
+			toCreate = append(toCreate, schema.Lead{
+				ID:          uuid.New().String(),
+				WorkspaceID: workspaceID,
+				Number:      number,
+				Name:        input.Name,
+				Age:         input.Age,
+			})
+			continue
+		}
+
+		out.Matched++
+		if found.Blocked {
+			out.Blocked++
+		}
+		if policy == lead.PolicySkip {
+			continue
+		}
+
+		// Fill-empty only. A name an operator typed after actually speaking to
+		// the person outranks whatever the spreadsheet carries.
+		input := inputByNumber[number]
+		updates := map[string]interface{}{}
+		if found.Name == "" && input.Name != "" {
+			updates["name"] = input.Name
+			found.Name = input.Name
+		}
+		if input.Age != nil && found.Age == nil {
+			updates["age"] = *input.Age
+			found.Age = input.Age
+		}
+		if len(updates) > 0 {
+			if err := r.db.Model(found).Updates(updates).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if len(toCreate) > 0 {
+		// DoNothing rather than an upsert: a row that appeared between the read
+		// above and this insert was created by someone else with the same
+		// intent, and overwriting it would undo their write.
+		//
+		// No conflict TARGET, deliberately. ux_leads_workspace_number is a
+		// PARTIAL index (WHERE deleted_at IS NULL), and Postgres will only infer
+		// a partial index when the predicate is repeated in the ON CONFLICT
+		// clause. Naming the columns alone is rejected outright with 42P10,
+		// which would fail every import rather than a racing row. A bare
+		// ON CONFLICT DO NOTHING matches any constraint, which is exactly the
+		// intent: whatever we collided with, the row is already there.
+		tx := r.db.Clauses(clause.OnConflict{DoNothing: true}).
+			CreateInBatches(&toCreate, batchSize)
+		if tx.Error != nil {
+			return nil, tx.Error
+		}
+
+		// RowsAffected, not len(toCreate): the difference is exactly the rows a
+		// concurrent import won, and counting those as created here would report
+		// more new leads than the workspace gained.
+		out.Created = tx.RowsAffected
+		if raced := int64(len(toCreate)) - tx.RowsAffected; raced > 0 {
+			out.Matched += raced
+		}
+	}
+
+	return out, nil
+}
+
+func (r *repository) Update(workspaceID, id string, update lead.LeadUpdate) (err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	id = strings.TrimSpace(id)
 	if workspaceID == "" {
 		return lead.ErrLeadWorkspaceRequired
 	}
+
+	// Blocking a lead moves the blocked/active facet.
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
 	if id == "" {
 		return lead.ErrLeadRequired
 	}
@@ -313,12 +514,18 @@ func (r *repository) Update(workspaceID, id string, update lead.LeadUpdate) erro
 	return r.scope(workspaceID).Model(&schema.Lead{}).Where("id = ?", id).Updates(updateData).Error
 }
 
-func (r *repository) Delete(workspaceID, id string) error {
+func (r *repository) Delete(workspaceID, id string) (err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	id = strings.TrimSpace(id)
 	if workspaceID == "" {
 		return lead.ErrLeadWorkspaceRequired
 	}
+
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
 	if id == "" {
 		return lead.ErrLeadRequired
 	}
@@ -498,11 +705,22 @@ func (q *listQuery) selectList() string {
 		d.WindowExpiresAtExpr() + " AS window_expires_at"
 }
 
-func (r *repository) countLeads(q *listQuery) (int64, error) {
+// countLeads counts the filtered set, through the aggregate cache.
+//
+// The same number is asked for twice on every page load: once as the list's
+// pagination meta, once as the facet strip's total. They are counted over an
+// identical set, so the second one is a cache hit rather than a second scan.
+func (r *repository) countLeads(workspaceID string, q *listQuery) (int64, error) {
+	if cached, ok := r.agg.getCount(workspaceID, q); ok {
+		return cached, nil
+	}
+
 	var total int64
 	if err := r.db.Raw("SELECT COUNT(*) FROM leads WHERE "+q.where, q.args...).Scan(&total).Error; err != nil {
 		return 0, err
 	}
+
+	r.agg.setCount(workspaceID, q, total)
 	return total, nil
 }
 
@@ -529,7 +747,7 @@ func (r *repository) List(input lead.ListLeadsInput) (*shared.PaginatedResult[*l
 		return nil, err
 	}
 
-	total, err := r.countLeads(q)
+	total, err := r.countLeads(input.WorkspaceID, q)
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +771,7 @@ func (r *repository) ListWithSummary(input lead.ListLeadsInput) (*shared.Paginat
 		return nil, err
 	}
 
-	total, err := r.countLeads(q)
+	total, err := r.countLeads(input.WorkspaceID, q)
 	if err != nil {
 		return nil, err
 	}
@@ -615,6 +833,15 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 	if err != nil {
 		return nil, err
 	}
+
+	// Four queries, none of them bounded by the page size: one aggregate over
+	// every matching lead plus three grouped semi-joins. The answer depends on
+	// the filter alone, so paging or re-sorting re-asks a question already
+	// answered.
+	if cached, ok := r.agg.getFacets(input.WorkspaceID, q); ok {
+		return cached, nil
+	}
+
 	d := q.desc
 
 	// One pass for the boolean buckets: FILTER re-uses the single scan the
@@ -630,8 +857,8 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 	sql := "SELECT COUNT(*) AS total," +
 		" COUNT(*) FILTER (WHERE leads.blocked) AS blocked," +
 		" COUNT(*) FILTER (WHERE " + d.WindowOpenExpr() + ") AS window_open," +
-		" COUNT(*) FILTER (WHERE " + d.CampaignCountExpr() + " > 0) AS with_campaign," +
-		" COUNT(*) FILTER (WHERE " + d.MemoryCountExpr() + " > 0) AS with_memory," +
+		" COUNT(*) FILTER (WHERE " + d.HasCampaignExpr() + ") AS with_campaign," +
+		" COUNT(*) FILTER (WHERE " + d.HasMemoryExpr() + ") AS with_memory," +
 		" COUNT(*) FILTER (WHERE NULLIF(leads.name, '') IS NOT NULL) AS named" +
 		" FROM leads WHERE " + q.where
 	if err := r.db.Raw(sql, q.args...).Scan(&agg).Error; err != nil {
@@ -657,6 +884,11 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 	facets.MemoryCategories = r.groupedFacet(q, "lead_memories lm_g", "lm_g.lead_id", "lm_g.category", "lm_g.deleted_at IS NULL")
 	facets.CampaignStatuses = r.groupedFacet(q, "whatsapp_campaign_entries wce_g", "wce_g.lead_id", "wce_g.status", "wce_g.deleted_at IS NULL")
 	facets.Channels = r.groupedFacet(q, infracrmfilter.LeadChannelsSource(), "lead_id", "channel", "")
+
+	r.agg.setFacets(input.WorkspaceID, q, facets)
+	// The list asks for this same total as its pagination meta. Seeding it here
+	// means the pair costs one scan between them rather than two.
+	r.agg.setCount(input.WorkspaceID, q, facets.Total)
 
 	return facets, nil
 }
@@ -715,4 +947,47 @@ func toDomain(l *schema.Lead) *lead.Lead {
 		d.BlockedAt = *l.BlockedAt
 	}
 	return d
+}
+
+// Rename writes the name column directly.
+//
+// It does NOT go through Merge, which is the whole point: Merge reads an empty
+// name as "no new value, keep the old one" so a webhook carrying a partial
+// profile cannot wipe a name we already have. An operator clearing the field is
+// saying the opposite, and the only way to express that is to write the column.
+func (r *repository) Rename(workspaceID, id, name string) (err error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	id = strings.TrimSpace(id)
+	if workspaceID == "" {
+		return lead.ErrLeadWorkspaceRequired
+	}
+
+	// Naming a lead moves the named/unnamed facet.
+	defer func() {
+		if err == nil {
+			r.agg.bump(workspaceID)
+		}
+	}()
+	if id == "" {
+		return lead.ErrLeadRequired
+	}
+	if err := lead.ValidateName(name); err != nil {
+		return err
+	}
+
+	// Scoped by workspace as well as id: an id alone would let a caller that
+	// guessed one rename a lead in someone else's workspace.
+	res := r.db.Model(&schema.Lead{}).
+		Where("id = ? AND workspace_id = ?", id, workspaceID).
+		Updates(map[string]interface{}{
+			"name":       lead.NormalizeName(name),
+			"updated_at": time.Now().UTC(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return lead.ErrLeadNotFound
+	}
+	return nil
 }

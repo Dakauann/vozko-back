@@ -38,6 +38,9 @@ type instagramBundle struct {
 	CommentRuleEval *iguc.EvaluateCommentRulesUseCase
 	PrivateReplyUC  *iguc.SendPrivateReplyUseCase
 	ManageRules     *iguc.ManageCommentRulesUseCase
+	// ModerateComment is kept so the comment-analysis engine can attach its
+	// tombstone hook after both are built.
+	ModerateComment *iguc.ModerateCommentUseCase
 
 	OAuth        igdomain.OAuthService
 	Messaging    igdomain.MessagingService
@@ -150,6 +153,7 @@ func (c *Container) initInstagram() {
 		bundle.PrivateReplies, bundle.Contacts, bundle.Conversations,
 	)
 	bundle.PrivateReplyUC = privateReply
+	bundle.ModerateComment = moderateComment
 	bundle.CommentRuleEval = iguc.NewEvaluateCommentRulesUseCase(
 		bundle.CommentRules,
 		iguc.NewCommentActionRunner(replyComment, privateReply, moderateComment),
@@ -230,23 +234,24 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 	// the same persistence, dedup and websocket fan-out as every other channel
 	// rather than a parallel implementation.
 	handler := iguc.NewHandleWebhookUseCase(iguc.HandleWebhookDeps{
-		Accounts:      bundle.Accounts,
-		Contacts:      bundle.Contacts,
-		Conversations: bundle.Conversations,
-		Comments:      bundle.Comments,
-		Media:         bundle.Media,
-		Messaging:     bundle.Messaging,
-		MediaFetcher:  bundle.MediaService,
-		History:       history,
-		Messages:      c.repositories.conversation,
-		ConvMedia:     c.repositories.conversationMedia,
-		FileStorage:   c.services.fileStorage,
-		Broadcaster:   c.services.conversationHub,
-		Assignments:   c.services.assignmentService,
-		AIReply:       c.mustChannelAIReply(),
-		Workflows:     c.useCases.triggerEvaluator,
-		CommentRules:  bundle.CommentRuleEval,
-		Analysis:      conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
+		Accounts:        bundle.Accounts,
+		Contacts:        bundle.Contacts,
+		Conversations:   bundle.Conversations,
+		Comments:        bundle.Comments,
+		Media:           bundle.Media,
+		Messaging:       bundle.Messaging,
+		MediaFetcher:    bundle.MediaService,
+		History:         history,
+		Messages:        c.repositories.conversation,
+		ConvMedia:       c.repositories.conversationMedia,
+		FileStorage:     c.services.fileStorage,
+		Broadcaster:     c.services.conversationHub,
+		Assignments:     c.services.assignmentService,
+		AIReply:         c.mustChannelAIReply(),
+		Workflows:       c.useCases.triggerEvaluator,
+		CommentRules:    bundle.CommentRuleEval,
+		Analysis:        conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
+		CommentAnalysis: commentAnalysisEnqueuer(c),
 	})
 
 	bundle.Consume = iguc.NewConsumeWebhookUseCase(

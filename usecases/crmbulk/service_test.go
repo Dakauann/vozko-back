@@ -41,13 +41,15 @@ func (m *mockLabelAssigner) Execute(workspaceID string, input label.AssignEntryL
 type removeCall struct{ labelID, entryID, entryType string }
 
 type mockLabelRemover struct {
-	calls   []removeCall
-	failIDs map[string]error
+	calls    []removeCall
+	actorIDs []string
+	failIDs  map[string]error
 }
 
-func (m *mockLabelRemover) Execute(workspaceID, labelID, entryID, entryType string) error {
-	m.calls = append(m.calls, removeCall{labelID, entryID, entryType})
-	if err, ok := m.failIDs[entryID]; ok {
+func (m *mockLabelRemover) Execute(workspaceID string, in label.RemoveEntryLabelInput) error {
+	m.calls = append(m.calls, removeCall{in.LabelID, in.EntryID, in.EntryType})
+	m.actorIDs = append(m.actorIDs, in.ActorID)
+	if err, ok := m.failIDs[in.EntryID]; ok {
 		return err
 	}
 	return nil
@@ -376,4 +378,57 @@ func TestBulkApply_NilBroadcaster_StillSucceeds(t *testing.T) {
 	if res.Succeeded != 1 || len(sa.calls) != 1 {
 		t.Fatalf("mutation must succeed even without a broadcaster, got %+v", res)
 	}
+}
+
+// Every mutation must carry the actor down to the use case.
+//
+// The timeline event is written by the use case, which is the only layer all
+// three writers (the HTTP handler, this fan-out, the AI tool) pass through. A
+// bulk action that forgot to pass ActorID would still mutate and still
+// broadcast, and would record a change nobody performed — the quieter version
+// of the bug where the event lived in the HTTP handler and bulk wrote none at
+// all.
+func TestBulkApply_PassesTheActorToEveryUseCase(t *testing.T) {
+	const actorID = "user-42"
+
+	t.Run("move_stage", func(t *testing.T) {
+		sa := &mockStageAssigner{}
+		svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
+		svc.BulkApply(context.Background(), BulkInput{
+			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionMoveStage,
+			Targets: targets("e1", "e2"), Value: "stage-1",
+		})
+		if len(sa.calls) != 2 {
+			t.Fatalf("calls = %d, want 2", len(sa.calls))
+		}
+		for _, c := range sa.calls {
+			if c.ActorID != actorID {
+				t.Fatalf("ActorID = %q, want %q", c.ActorID, actorID)
+			}
+		}
+	})
+
+	t.Run("add_label", func(t *testing.T) {
+		la := &mockLabelAssigner{}
+		svc := NewService(&mockStageAssigner{}, la, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
+		svc.BulkApply(context.Background(), BulkInput{
+			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionAddLabel,
+			Targets: targets("e1"), Value: "label-1",
+		})
+		if len(la.calls) != 1 || la.calls[0].ActorID != actorID {
+			t.Fatalf("calls = %+v, want one carrying %q", la.calls, actorID)
+		}
+	})
+
+	t.Run("remove_label", func(t *testing.T) {
+		lr := &mockLabelRemover{}
+		svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, lr, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
+		svc.BulkApply(context.Background(), BulkInput{
+			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionRemoveLabel,
+			Targets: targets("e1"), Value: "label-1",
+		})
+		if len(lr.actorIDs) != 1 || lr.actorIDs[0] != actorID {
+			t.Fatalf("actorIDs = %v, want [%q]", lr.actorIDs, actorID)
+		}
+	})
 }

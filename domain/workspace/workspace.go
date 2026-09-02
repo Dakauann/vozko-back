@@ -72,7 +72,11 @@ var (
 	ResourceAIChat            = registerResource("ai_chat")
 	ResourceShortLinks        = registerResource("short_links")
 	ResourceInstagramAccounts = registerResource("instagram_accounts")
-	ResourceTelegramAccounts  = registerResource("telegram_accounts")
+	// Comment analysis is its own resource: reading a dashboard that names
+	// people and switching on a billed feature are different privileges from
+	// moderating a post.
+	ResourceCommentAnalysis  = registerResource("comment_analysis")
+	ResourceTelegramAccounts = registerResource("telegram_accounts")
 	// The QR-session WhatsApp channel splits into two resources for the same
 	// reason WhatsApp does: connecting a number and blasting it are different
 	// privileges, and an attendant who may reply must not thereby be able to
@@ -294,6 +298,10 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar contas, publicações e comentários do Instagram"},
 		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram"},
 		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram"},
+	},
+	ResourceCommentAnalysis: {
+		{ActionName: ActionRead, Description: "Visualizar a análise de comentários (audiência, temas, autores)"},
+		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários, moderar autores e iniciar reprocessamentos"},
 	},
 	ResourceTelegramAccounts: {
 		{ActionName: ActionCreate, Description: "Conectar bots do Telegram"},

@@ -67,7 +67,6 @@ import (
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	callsession_usecase "vozko/usecases/callsession"
 	conversation_usecase "vozko/usecases/conversation"
-	ce_usecase "vozko/usecases/conversation_event"
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
 	oppboard_usecase "vozko/usecases/oppboard"
@@ -85,6 +84,29 @@ func (c *Container) initHandlers() {
 	log.Printf("Prometheus metrics query URL: %s", c.cfg.PrometheusURL)
 	metricsQueryClient := &http.Client{Timeout: 30 * time.Second}
 	metricsQueryHandler := handlers.NewMetricsQueryHandler(c.cfg.PrometheusURL, metricsQueryClient)
+
+	// The CRM board read model, hoisted out of the handler literal because TWO
+	// surfaces need it: the board/table endpoints, and the bulk service, whose
+	// "apply to everything this filter matches" resolves its targets through this
+	// exact read path. Sharing the instance is what guarantees the operator's view
+	// and the bulk write agree on what the filter selects.
+	crmBoardService := crmboard_usecase.NewService(
+		c.repositories.conversation,    // EntrySearcher: SearchEntriesByFilter
+		c.repositories.stage,           // StageLister: ListByCampaign
+		c.useCases.listLabels,          // LabelLister: Execute(workspaceID)
+		c.services.conversationAuth,    // Authorizer: GetDepartmentScope
+		c.repositories.inboxAssignment, // AssignmentLookup: FindByEntries (responsável)
+	)
+
+	crmBulkService := crmbulk_usecase.NewService(
+		c.useCases.assignEntryStage,  // StageAssigner: move_stage
+		c.useCases.assignEntryLabel,  // LabelAssigner: add_label
+		c.useCases.removeEntryLabel,  // LabelRemover: remove_label
+		c.services.assignmentService, // EntryAssigner: assign (Reassign)
+		c.services.conversationAuth,  // Authorizer: RBAC + per-entry scope (reused)
+		c.services.conversationHub,   // Broadcaster: realtime updates (reused)
+	)
+	crmBulkService.SetTargetResolver(crmBoardTargetResolver{board: crmBoardService})
 
 	// 360dialog Partner Hosted onboarding service (repos are ready at this point).
 	c.services.dialog360Onboarding = businessphone_infra.NewDialog360OnboardingService(
@@ -337,7 +359,6 @@ func (c *Container) initHandlers() {
 			c.useCases.getBatchEntryStages,
 			c.useCases.reorderStages,
 			c.services.conversationHub,
-			ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
 		),
 		stageGroup: handlers.NewStageGroupHandler(
 			c.useCases.createStageGroup,
@@ -371,21 +392,8 @@ func (c *Container) initHandlers() {
 			c.services.conversationAuth, // Authorizer: GetDepartmentScope (access gate)
 		)),
 		customField: customfieldhttp.NewCustomFieldHandler(c.useCases.customField),
-		crmBoard: crmboardhttp.NewCRMBoardHandler(crmboard_usecase.NewService(
-			c.repositories.conversation,    // EntrySearcher: SearchEntriesByFilter
-			c.repositories.stage,           // StageLister: ListByCampaign
-			c.useCases.listLabels,          // LabelLister: Execute(workspaceID)
-			c.services.conversationAuth,    // Authorizer: GetDepartmentScope
-			c.repositories.inboxAssignment, // AssignmentLookup: FindByEntries (responsável)
-		)),
-		crmBulk: crmbulkhttp.NewCRMBulkHandler(crmbulk_usecase.NewService(
-			c.useCases.assignEntryStage,  // StageAssigner: move_stage
-			c.useCases.assignEntryLabel,  // LabelAssigner: add_label
-			c.useCases.removeEntryLabel,  // LabelRemover: remove_label
-			c.services.assignmentService, // EntryAssigner: assign (Reassign)
-			c.services.conversationAuth,  // Authorizer: RBAC + per-entry scope (reused)
-			c.services.conversationHub,   // Broadcaster: realtime updates (reused)
-		)),
+		crmBoard:    crmboardhttp.NewCRMBoardHandler(crmBoardService),
+		crmBulk:     crmbulkhttp.NewCRMBulkHandler(crmBulkService),
 		label: labelhttp.NewLabelHandler(
 			c.useCases.createLabel,
 			c.useCases.updateLabel,
@@ -396,7 +404,6 @@ func (c *Container) initHandlers() {
 			c.useCases.getEntryLabels,
 			c.useCases.reorderLabels,
 			c.services.conversationHub,
-			ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
 		),
 		messageShortcut: messageshortcuthttp.NewMessageShortcutHandler(
 			c.useCases.createMessageShortcut,

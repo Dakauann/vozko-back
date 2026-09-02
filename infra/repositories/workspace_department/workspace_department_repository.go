@@ -2,9 +2,11 @@ package workspace_department_repository
 
 import (
 	"errors"
+	"log"
 
 	"gorm.io/gorm"
 
+	"vozko/domain/working_hours"
 	workspace_department "vozko/domain/workspace/workspace_department"
 	"vozko/infra/database/schema"
 )
@@ -67,11 +69,19 @@ func (r *repositoryImpl) ListDepartmentsByIDs(ids []string) ([]workspace_departm
 }
 
 func (r *repositoryImpl) UpdateDepartment(dept *workspace_department.Department) error {
+	// Written through a map rather than a struct so a nil schedule reaches the
+	// column as NULL. Updates() on a struct skips zero values, which would make
+	// "clear these working hours" a silent no-op.
+	encoded, err := working_hours.EncodeSpec(dept.WorkingHours)
+	if err != nil {
+		return err
+	}
 	res := r.db.Model(&schema.WorkspaceDepartment{}).
 		Where("id = ?", dept.ID).
 		Updates(map[string]interface{}{
-			"name":        dept.Name,
-			"description": dept.Description,
+			"name":          dept.Name,
+			"description":   dept.Description,
+			"working_hours": encoded,
 		})
 	if res.Error != nil {
 		return res.Error
@@ -233,13 +243,63 @@ func (r *repositoryImpl) memberCounts(departmentIDs []string) (map[string]int, e
 
 func mapDepartment(row schema.WorkspaceDepartment) *workspace_department.Department {
 	return &workspace_department.Department{
-		ID:          row.ID,
-		WorkspaceID: row.WorkspaceID,
-		Name:        row.Name,
-		Description: row.Description,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		ID:           row.ID,
+		WorkspaceID:  row.WorkspaceID,
+		Name:         row.Name,
+		Description:  row.Description,
+		WorkingHours: decodeWorkingHours(row.ID, row.WorkingHours),
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
 	}
+}
+
+// ListWorkingHours reads every department override for these workspaces in one
+// query.
+//
+// The rescue sweep calls this once per tick, before its candidate query, and
+// uses the answer twice: to skip workspaces where nothing can be due, and as
+// the department schedule map for the rest of the tick. Fetching per stalled
+// conversation instead would put a lookup on the one path that is already the
+// most query-hungry in the feature.
+func (r *repositoryImpl) ListWorkingHours(workspaceIDs []string) ([]workspace_department.DepartmentSchedule, error) {
+	if len(workspaceIDs) == 0 {
+		return nil, nil
+	}
+	var rows []schema.WorkspaceDepartment
+	if err := r.db.
+		Select("id, workspace_id, working_hours").
+		Where("workspace_id IN ? AND working_hours IS NOT NULL", workspaceIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]workspace_department.DepartmentSchedule, 0, len(rows))
+	for _, row := range rows {
+		spec := decodeWorkingHours(row.ID, row.WorkingHours)
+		if spec == nil {
+			// Unreadable, already logged. Absent means "inherits the
+			// workspace", which is the safe reading.
+			continue
+		}
+		out = append(out, workspace_department.DepartmentSchedule{
+			DepartmentID: row.ID,
+			WorkspaceID:  row.WorkspaceID,
+			WorkingHours: spec,
+		})
+	}
+	return out, nil
+}
+
+// decodeWorkingHours mirrors the workspace-config repository: an unreadable
+// document costs the department its override rather than breaking the read, and
+// says so in the log.
+func decodeWorkingHours(departmentID string, raw *string) *working_hours.Spec {
+	spec, err := working_hours.DecodeSpec(raw)
+	if err != nil {
+		log.Printf("[workspace_department] department %s has an unreadable working-hours document; treating it as inheriting: %v", departmentID, err)
+		return nil
+	}
+	return spec
 }
 
 func isDuplicateKeyError(err error) bool {

@@ -41,6 +41,12 @@ import "time"
 //
 // Occupancy: on_call_ms / (online_ms + on_call_ms) from agent_presence_intervals.
 //
+// New leads: CRM contacts created in [from,to] (leads.created_at, workspace-wide,
+// excluding soft-deleted). NOT entry-scoped and NOT narrowed by department,
+// member, channel or campaign. A lead has none of those until it has a
+// conversation, and a contact acquired but not yet messaged is exactly what
+// this number is for.
+//
 // Channel mix: engaged entries by entry_type (whatsapp | voice).
 // Unassigned backlog: engaged entries with no assignee and not finished.
 // Messages per conversation: avg non-deleted messages per ENGAGED entry.
@@ -82,10 +88,26 @@ type OverviewKPIs struct {
 	// EntriesCreated: entries created in range (is_new_contact), including shells.
 	EntriesCreated int64 `json:"entries_created"`
 
-	Finished    int64 `json:"finished"`     // engaged only
-	Ongoing     int64 `json:"ongoing"`      // engaged only
-	Pending     int64 `json:"pending"`      // engaged only
-	NewContacts int64 `json:"new_contacts"` // engaged + created in range
+	Finished int64 `json:"finished"` // engaged only
+	Ongoing  int64 `json:"ongoing"`  // engaged only
+	Pending  int64 `json:"pending"`  // engaged only
+
+	// NewLeads: CRM contacts (leads) created in the range.
+	//
+	// The one KPI on this strip that is NOT entry-scoped, and deliberately so.
+	// A lead exists before any conversation does. It may be imported from a
+	// spreadsheet, created by an API integration, or loaded for a campaign that
+	// has not gone out yet, so counting acquisition through conversation entries
+	// reports zero for
+	// every contact the workspace has gained but not yet messaged, which is the
+	// population this number exists to show.
+	//
+	// It therefore answers to the DATE RANGE ONLY. Department, member, channel
+	// and campaign narrow CONVERSATIONS, and a lead carries none of those
+	// attributes until it has an entry; applying them would silently drop every
+	// imported contact the moment an operator touched a filter. The tile states
+	// this beside the number rather than leaving the reader to infer it.
+	NewLeads int64 `json:"new_leads"`
 	// UnassignedBacklog: engaged, no inbox assignee, not finished.
 	UnassignedBacklog int64 `json:"unassigned_backlog"`
 
@@ -289,6 +311,7 @@ type MetricDefinitions struct {
 	Queue            string `json:"queue"`
 	Occupancy        string `json:"occupancy"`
 	ChannelMix       string `json:"channel_mix"`
+	NewLeads         string `json:"new_leads"`
 	Messaging        string `json:"messaging"`
 	Reopen           string `json:"reopen"`
 	FinishedBySource string `json:"finished_by_source"`
@@ -336,6 +359,7 @@ func DefaultDefinitions() MetricDefinitions {
 		Queue:            "queue_events: ASA=avg waited_ms on connected; abandon=abandoned/enqueued",
 		Occupancy:        "on_call_ms / (online+on_call)_ms; idle=100-occupancy (historical ociosidade)",
 		ChannelMix:       "engaged entries grouped by entry_type (whatsapp|voice)",
+		NewLeads:         "leads created in range (leads.created_at, workspace-wide); date filter only, not narrowed by department/member/channel/campaign",
 		Messaging:        "avg messages per engaged entry; avg_messages_all_scoped includes shells",
 		Reopen:           "conversation_events reopened / engaged finished (KPI); finished_event_count is telemetry",
 		FinishedBySource: "engaged finished by close_source: human (incl empty/legacy), ai, system",

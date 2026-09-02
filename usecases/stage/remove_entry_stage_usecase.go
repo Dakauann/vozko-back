@@ -1,21 +1,31 @@
 package stage_usecase
 
-import "vozko/domain/stage"
+import (
+	ce "vozko/domain/conversation_event"
+	"vozko/domain/shared"
+	"vozko/domain/stage"
+)
 
 type RemoveEntryStageUseCase struct {
-	repo stage.Repository
+	repo   stage.Repository
+	events ce.Logger
 }
 
-func NewRemoveEntryStageUseCase(repo stage.Repository) stage.RemoveEntryStageUseCase {
-	return &RemoveEntryStageUseCase{repo: repo}
+// NewRemoveEntryStageUseCase wires the stage removal.
+//
+// events may be nil (unit tests). It is a dependency of the USE CASE and not of
+// the HTTP handler that used to hold it, so any future caller records the
+// removal without having to remember to.
+func NewRemoveEntryStageUseCase(repo stage.Repository, events ce.Logger) stage.RemoveEntryStageUseCase {
+	return &RemoveEntryStageUseCase{repo: repo, events: events}
 }
 
-func (uc *RemoveEntryStageUseCase) Execute(workspaceID, StageID, entryID, entryType string) error {
-	if err := stage.ValidateEntryType(entryType); err != nil {
+func (uc *RemoveEntryStageUseCase) Execute(workspaceID string, input stage.RemoveEntryStageInput) error {
+	if err := stage.ValidateEntryType(input.EntryType); err != nil {
 		return err
 	}
 
-	t, err := uc.repo.FindByID(StageID)
+	t, err := uc.repo.FindByID(input.StageID)
 	if err != nil {
 		return err
 	}
@@ -23,5 +33,16 @@ func (uc *RemoveEntryStageUseCase) Execute(workspaceID, StageID, entryID, entryT
 		return stage.ErrUnauthorized
 	}
 
-	return uc.repo.RemoveStage(StageID, entryID, entryType, workspaceID)
+	if err := uc.repo.RemoveStage(input.StageID, input.EntryID, input.EntryType, workspaceID); err != nil {
+		return err
+	}
+
+	if uc.events != nil {
+		uc.events.Log(ce.New(workspaceID, input.EntryID, input.EntryType, ce.EventTagRemoved).
+			WithActor(input.ActorID).
+			WithChannel(shared.EntryType(input.EntryType).EventChannel()).
+			WithDetails(map[string]string{"stage_id": input.StageID, "stage_name": t.Name}).
+			Build())
+	}
+	return nil
 }

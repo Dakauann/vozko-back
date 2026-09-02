@@ -119,6 +119,9 @@ type MediaRepository interface {
 	FindByIGMediaID(ctx context.Context, igAccountID, igMediaID string) (*Media, error)
 	UpdateCounts(ctx context.Context, igAccountID, igMediaID string, likeCount, commentsCount int) error
 	SetCommentEnabled(ctx context.Context, igAccountID, igMediaID string, enabled bool) error
+	// ListByAccount pages the local projection newest first. It is what a
+	// comment backfill enumerates: no Graph calls to list posts.
+	ListByAccount(ctx context.Context, igAccountID string, limit, offset int) ([]*Media, error)
 }
 
 // CommentRepository stores comments so the moderation queue is push-driven.

@@ -12,6 +12,7 @@ import (
 	"vozko/domain/actor"
 	"vozko/domain/conversation"
 	ia "vozko/domain/inbox_assignment"
+	wd "vozko/domain/workspace/workspace_department"
 	wsc "vozko/domain/workspace_config"
 )
 
@@ -43,13 +44,22 @@ type rescueConfigReader interface {
 
 // rescueHistoryReader is the ownership-interval slice the sweep needs.
 type rescueHistoryReader interface {
-	ListOpenOlderThan(workspaceIDs []string, trigger string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error)
+	ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error)
 	CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error)
 }
 
 // rescueStatusReader tells the sweep to leave finished conversations alone.
 type rescueStatusReader interface {
 	GetConversationStatus(entryID, entryType string) conversation.ConversationStatus
+}
+
+// rescueDepartmentScheduleReader supplies the department-level working-hours
+// overrides for a tick, in one read.
+//
+// Optional: when it is not wired, every department inherits its workspace's
+// schedule, which is also what happens when no department has an override.
+type rescueDepartmentScheduleReader interface {
+	ListWorkingHours(workspaceIDs []string) ([]wd.DepartmentSchedule, error)
 }
 
 // RescueJob moves a conversation on when the agent it was handed to never
@@ -64,14 +74,23 @@ type rescueStatusReader interface {
 // manual reassignment uses, so the history interval, the telemetry and the
 // timeline event cannot diverge from any other ownership change.
 type RescueJob struct {
-	cfg       rescueConfigReader
-	history   rescueHistoryReader
-	attention ia.EntryAttentionReader
-	status    rescueStatusReader
-	assign    *AssignmentService
-	batch     int
-	disabled  bool
-	now       func() time.Time
+	cfg         rescueConfigReader
+	history     rescueHistoryReader
+	attention   ia.EntryAttentionReader
+	status      rescueStatusReader
+	assign      *AssignmentService
+	departments rescueDepartmentScheduleReader
+	batch       int
+	disabled    bool
+	now         func() time.Time
+}
+
+// SetDepartmentSchedules enables department-level working hours. Without it
+// every department inherits its workspace's schedule.
+func (j *RescueJob) SetDepartmentSchedules(r rescueDepartmentScheduleReader) {
+	if j != nil {
+		j.departments = r
+	}
 }
 
 func NewRescueJob(
@@ -132,21 +151,42 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 		return nil
 	}
 
+	now := j.now().UTC()
+
+	// Working hours are resolved before the candidate query, not per candidate,
+	// and that ordering is the point rather than an optimisation.
+	//
+	// The batch is capped and ordered oldest-first. A closed workspace sitting
+	// on hundreds of stalled conversations would fill every batch with rows
+	// that cannot be due yet and starve conversations that ARE due in
+	// workspaces that are open. Dropping those workspaces from the query is
+	// what stops one shut office from blocking every other one.
+	schedules := j.resolveSchedules(policies)
+
 	byWorkspace := make(map[string]wsc.RoulettePolicy, len(policies))
 	workspaceIDs := make([]string, 0, len(policies))
 	minAfter := time.Duration(0)
+	closed := 0
 	for _, p := range policies {
+		if !schedules.workspaceCanHaveWorkNow(p.WorkspaceID, now) {
+			closed++
+			continue
+		}
 		byWorkspace[p.WorkspaceID] = p
 		workspaceIDs = append(workspaceIDs, p.WorkspaceID)
 		if minAfter == 0 || p.RescueAfter < minAfter {
 			minAfter = p.RescueAfter
 		}
 	}
-
-	now := j.now().UTC()
+	if closed > 0 {
+		log.Printf("[assignment_rescue] %d workspace(s) outside working hours this tick%s", closed, schedules.reopenHint(policies, now))
+	}
+	if len(workspaceIDs) == 0 {
+		return nil
+	}
 	// One query for every eligible workspace, bounded by the shortest deadline
 	// among them; each candidate is then re-checked against its own.
-	open, err := j.history.ListOpenOlderThan(workspaceIDs, ia.TriggerInboundRR, now.Add(-minAfter), j.batch)
+	open, err := j.history.ListOpenOlderThan(workspaceIDs, ia.RescueCandidateTriggers, now.Add(-minAfter), j.batch)
 	if err != nil {
 		log.Printf("[assignment_rescue] candidate list error: %v", err)
 		return nil
@@ -168,9 +208,10 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 	// cached for a minute, so resolving per candidate bought nothing and cost
 	// the database everything.
 	tick := &rescueTick{
-		now:     now,
-		configs: make(map[string]*wsc.WorkspaceConfig, len(policies)),
-		pools:   make(map[string]Pool, len(policies)),
+		now:       now,
+		configs:   make(map[string]*wsc.WorkspaceConfig, len(policies)),
+		pools:     make(map[string]Pool, len(policies)),
+		schedules: schedules,
 	}
 
 	moved, exhausted, skipped := 0, 0, 0
@@ -197,6 +238,9 @@ type rescueTick struct {
 	now     time.Time
 	configs map[string]*wsc.WorkspaceConfig
 	pools   map[string]Pool
+	// schedules is every working-hours answer this tick needs, compiled once
+	// before the candidate query ran.
+	schedules *tickSchedules
 	// configErr remembers a failed read so a broken workspace is not retried
 	// once per candidate.
 	configErr map[string]bool
@@ -248,8 +292,26 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 	if h == nil || h.EntryID == "" || h.AssignedActorID == "" {
 		return outcomeSkipped
 	}
-	// Each workspace's own deadline, not the shortest one the query used.
-	if now.Sub(h.StartedAt) <= policy.RescueAfter {
+	// The deadline is measured in OPEN time, not wall time.
+	//
+	// A conversation handed out at 17:55 with a fifteen-minute deadline has
+	// spent five minutes when the office closes at 18:00. It must not be taken
+	// away at 18:10 — the next agent went home too — and it must not arrive at
+	// 09:00 already fifteen hours overdue. Counting only the minutes the scope
+	// was open gives the owner the same fifteen working minutes they would have
+	// had at midday, and moves the conversation at 09:10.
+	//
+	// A workspace with no schedule has an always-open one, where this is
+	// exactly now.Sub(h.StartedAt) — the historical behaviour, unchanged.
+	schedule := tick.schedules.forEntry(h.WorkspaceID, h.DepartmentID)
+	if schedule.Elapsed(h.StartedAt, now) <= policy.RescueAfter {
+		return outcomeSkipped
+	}
+	// The scope can be closed even when the workspace passed the pre-filter:
+	// the filter keeps a workspace whose department is open, and this
+	// conversation may belong to a different, closed one. Moving it now would
+	// hand it to somebody who is not working either.
+	if !schedule.IsOpen(now) {
 		return outcomeSkipped
 	}
 	// An AI owner is not a roulette hand-out and has its own hand-off path.

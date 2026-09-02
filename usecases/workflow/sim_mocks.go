@@ -204,7 +204,11 @@ func (r *simLeadRepo) FindOrCreate(_ string, _ string, _ lead_domain.LeadUpdate)
 func (r *simLeadRepo) FindOrCreateMany(_ string, _ []lead_domain.BulkLeadInput) (map[string]*lead_domain.Lead, error) {
 	return nil, nil
 }
+func (r *simLeadRepo) ImportMany(_ string, _ []lead_domain.BulkLeadInput, _ lead_domain.ExistingPolicy) (*lead_domain.ImportOutcome, error) {
+	return &lead_domain.ImportOutcome{}, nil
+}
 func (r *simLeadRepo) Update(_ string, _ string, _ lead_domain.LeadUpdate) error { return nil }
+func (r *simLeadRepo) Rename(_ string, _ string, _ string) error                 { return nil }
 func (r *simLeadRepo) Delete(_ string, _ string) error                           { return nil }
 func (r *simLeadRepo) List(_ lead_domain.ListLeadsInput) (*shared.PaginatedResult[*lead_domain.Lead], error) {
 	return &shared.PaginatedResult[*lead_domain.Lead]{}, nil

@@ -68,6 +68,21 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 		existing.RouletteRescueAfterMinutes = wsc.ClampRouletteRescueMinutes(*input.RouletteRescueAfterMinutes)
 	}
 
+	// Working hours are REJECTED rather than normalized, unlike every field
+	// above. A window an admin cannot see is not a value that can be clamped
+	// into something sensible — silently rewriting "22:00-02:00" into some
+	// nearby legal thing would change who gets conversations at 1am without
+	// anyone being told. The error carries which rule was broken.
+	switch {
+	case input.ClearWorkingHours:
+		existing.WorkingHours = nil
+	case input.WorkingHours != nil:
+		if err := input.WorkingHours.Validate(); err != nil {
+			return nil, err
+		}
+		existing.WorkingHours = input.WorkingHours.Normalized()
+	}
+
 	existing.UpdatedBy = callerID
 
 	if err := uc.repo.Upsert(ctx, existing); err != nil {

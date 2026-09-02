@@ -3,14 +3,22 @@ package workspaceconfig
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/working_hours"
 	workspaceconfigdomain "vozko/domain/workspace_config"
 	"vozko/infra/http/middleware"
 )
+
+// maxConfigBodyBytes bounds the buffered body. A working-hours document is a
+// few hundred bytes at most — seven days of a handful of windows — so this is
+// generous, and it stops a body that has to be read into memory from being
+// unbounded.
+const maxConfigBodyBytes = 64 << 10
 
 type WorkspaceConfigHandler struct {
 	getConfig         workspaceconfigdomain.GetWorkspaceConfigUseCase
@@ -79,22 +87,46 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Buffered rather than streamed: the body is read twice, because
+	// "workingHours": null and an absent workingHours are opposite instructions
+	// and a decoded struct cannot tell them apart. See working_hours.DecodePatch.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxConfigBodyBytes))
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Could not read request body", nil)
+		return
+	}
+
 	var input workspaceconfigdomain.UpdateWorkspaceConfigOwnerInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := json.Unmarshal(body, &input); err != nil {
 		response.WriteInvalidBodyError(w, map[string]string{
 			"skipAdminAssignment":         "boolean (optional)",
 			"rouletteMode":                "string (optional): online | last_seen",
 			"rouletteLastSeenWindowHours": "number (optional, 1..168)",
 			"rouletteRescueEnabled":       "boolean (optional)",
 			"rouletteRescueAfterMinutes":  "number (optional, 1..1440)",
+			"workingHours":                "object (optional), or null to clear",
 		})
 		return
 	}
+
+	hours, clearHours, err := working_hours.DecodePatch(body, "workingHours")
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	input.WorkingHours = hours
+	input.ClearWorkingHours = clearHours
 
 	cfg, err := h.updateOwnerConfig.Execute(r.Context(), workspaceID, claims.UserID, claims.Role, input)
 	if err != nil {
 		if errors.Is(err, workspaceconfigdomain.ErrForbidden) || errors.Is(err, workspaceconfigdomain.ErrUnauthorized) {
 			response.WriteError(w, http.StatusForbidden, "Insufficient permissions to update workspace configuration", nil)
+			return
+		}
+		// A rejected schedule is the caller's mistake, not a server fault, and
+		// the message names the rule that was broken so the UI can show it.
+		if working_hours.IsPolicyError(err) {
+			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		response.WriteError(w, http.StatusInternalServerError, "Failed to update workspace configuration", nil)

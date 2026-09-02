@@ -3,7 +3,9 @@ package database
 import (
 	"fmt"
 	"log"
+	"strings"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -18,11 +20,25 @@ import (
 // Every repair below MUST be idempotent and MUST be a no-op on a database that
 // never had the defect: this runs on every boot, forever.
 
-func runDataRepairs(tx *gorm.DB) error {
-	repairs := []struct {
-		name string
-		run  func(*gorm.DB) error
-	}{
+type dataRepair struct {
+	name string
+	run  func(*gorm.DB) error
+}
+
+// repairNames lists the registered repairs in order. A repair only runs because
+// it is in this list, which is easy to forget and invisible when forgotten, so
+// tests assert their own registration through here.
+func repairNames() []string {
+	all := dataRepairs()
+	names := make([]string, 0, len(all))
+	for _, r := range all {
+		names = append(names, r.name)
+	}
+	return names
+}
+
+func dataRepairs() []dataRepair {
+	return []dataRepair{
 		{"uw_clear_group_contact_phone_numbers", clearGroupContactPhoneNumbers},
 		{"uw_merge_split_group_conversations", mergeSplitGroupConversations},
 		{"uw_retire_unattributable_conversations", retireUnattributableConversations},
@@ -33,9 +49,12 @@ func runDataRepairs(tx *gorm.DB) error {
 		{"wmp_drop_retired_resources", dropRetiredPermissionResources},
 		{"cs_rename_dialer_resource_permissions", renameDialerResourcePermissions},
 		{"cs_rename_dialer_presence_source", renameDialerPresenceSource},
+		{"stg_materialize_stage_group_pipelines", materializeStageGroupPipelines},
 	}
+}
 
-	for _, r := range repairs {
+func runDataRepairs(tx *gorm.DB) error {
+	for _, r := range dataRepairs() {
 		if err := r.run(tx); err != nil {
 			return fmt.Errorf("data repair %s: %w", r.name, err)
 		}
@@ -625,6 +644,119 @@ func renameDialerPresenceSource(tx *gorm.DB) error {
 	if result.RowsAffected > 0 {
 		log.Printf("[data-repair] renamed %d presence interval(s) from source %q to %q",
 			result.RowsAffected, legacyCallSessionValue, callSessionPresenceSource)
+	}
+	return nil
+}
+
+// materializeStageGroupPipelines gives every stage group a conversation funnel.
+//
+// A stage group used to become a funnel only when some campaign referenced it, so
+// a group created on its own produced no pipelines row: it was absent from the
+// CRM's funnel selector, from "Gerenciar Etapas" and from every stage filter,
+// with nothing to tell the operator why. Group creation now materializes its
+// funnel directly; this backfills the groups that predate that.
+//
+// Idempotent and additive. It touches only groups with no funnel of their own
+// (pipelines.stage_group_id is the link), never renames or moves an existing one,
+// and creates nothing when there are no orphan groups. No conversation changes
+// funnel here — entries are not reassigned.
+//
+// Ids are generated in Go, not by gen_random_uuid(): every other id in this
+// codebase is, the DB function needs PG13+ or pgcrypto, and depending on it here
+// would make this repair the only place that assumes either.
+func materializeStageGroupPipelines(tx *gorm.DB) error {
+	type orphanGroup struct {
+		ID          string
+		WorkspaceID string
+		Name        string
+	}
+
+	var orphans []orphanGroup
+	err := tx.Raw(`
+		SELECT g.id, g.workspace_id, g.name
+		FROM stage_groups g
+		WHERE g.deleted_at IS NULL
+		  AND NOT EXISTS (
+		      SELECT 1 FROM pipelines p
+		      WHERE p.stage_group_id::text = g.id
+		        AND p.workspace_id = g.workspace_id
+		        AND p.deleted_at IS NULL
+		  )
+	`).Scan(&orphans).Error
+	if err != nil {
+		// A deployment that has never used stage groups may not have the tables yet.
+		// Nothing to repair is not a boot failure.
+		log.Printf("[data-repair] stage-group funnels: skipped (%v)", err)
+		return nil
+	}
+	if len(orphans) == 0 {
+		return nil
+	}
+
+	type groupItem struct {
+		Name        string
+		Description string
+		Color       string
+		Position    int
+	}
+
+	created := 0
+	for _, g := range orphans {
+		name := strings.TrimSpace(g.Name)
+		if name == "" {
+			name = "Funil"
+		}
+
+		var items []groupItem
+		if err := tx.Raw(`
+			SELECT name, description, color, position
+			FROM stage_group_items
+			WHERE stage_group_id = ?
+			ORDER BY position ASC
+		`, g.ID).Scan(&items).Error; err != nil {
+			return fmt.Errorf("read items of stage group %s: %w", g.ID, err)
+		}
+		if len(items) == 0 {
+			// An empty group would produce an empty funnel: a board with no columns
+			// and no way to add the first one. Leave it alone.
+			continue
+		}
+
+		var maxPos int
+		if err := tx.Raw(`
+			SELECT COALESCE(MAX(position), 0) FROM pipelines
+			WHERE workspace_id = ? AND object_type = 'conversation' AND deleted_at IS NULL
+		`, g.WorkspaceID).Scan(&maxPos).Error; err != nil {
+			return fmt.Errorf("read funnel positions for workspace %s: %w", g.WorkspaceID, err)
+		}
+
+		pipelineID := uuid.New().String()
+		if err := tx.Exec(`
+			INSERT INTO pipelines (id, workspace_id, name, object_type, stage_group_id, position, is_default, created_at, updated_at)
+			VALUES (?, ?, ?, 'conversation', ?, ?, false, NOW(), NOW())
+		`, pipelineID, g.WorkspaceID, name, g.ID, maxPos+1).Error; err != nil {
+			return fmt.Errorf("create funnel for stage group %s: %w", g.ID, err)
+		}
+
+		// Same shape ensurePipelineForGroup produces for new groups: names lowered
+		// and trimmed, first column initial, positions kept from the group.
+		for i, it := range items {
+			if err := tx.Exec(`
+				INSERT INTO stages (id, workspace_id, pipeline_id, name, description, color, position, is_initial, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+			`,
+				uuid.New().String(), g.WorkspaceID, pipelineID,
+				strings.ToLower(strings.TrimSpace(it.Name)), it.Description, it.Color,
+				it.Position, i == 0,
+			).Error; err != nil {
+				return fmt.Errorf("clone stage %q of group %s: %w", it.Name, g.ID, err)
+			}
+		}
+		created++
+	}
+
+	if created > 0 {
+		log.Printf("[data-repair] stage-group funnels: materialized %d funnel(s) for groups that had none", created)
 	}
 	return nil
 }

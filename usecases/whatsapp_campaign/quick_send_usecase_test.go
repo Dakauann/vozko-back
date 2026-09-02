@@ -291,6 +291,7 @@ func (r *qsLeadRepo) FindByID(_ string, _ string) (*lead.Lead, error)      { ret
 func (r *qsLeadRepo) FindByIDs(_ string, _ []string) ([]*lead.Lead, error) { return nil, nil }
 func (r *qsLeadRepo) FindByNumber(_ string, _ string) (*lead.Lead, error)  { return nil, nil }
 func (r *qsLeadRepo) Update(_ string, _ string, _ lead.LeadUpdate) error   { return nil }
+func (r *qsLeadRepo) Rename(_ string, _ string, _ string) error            { return nil }
 func (r *qsLeadRepo) Delete(_ string, _ string) error                      { return nil }
 func (r *qsLeadRepo) List(_ lead.ListLeadsInput) (*shared.PaginatedResult[*lead.Lead], error) {
 	return nil, nil
@@ -307,6 +308,9 @@ func (r *qsLeadRepo) ResolveCampaignNames(_ []string) map[string]string {
 }
 func (r *qsLeadRepo) FindOrCreateMany(_ string, _ []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
 	return nil, nil
+}
+func (r *qsLeadRepo) ImportMany(_ string, _ []lead.BulkLeadInput, _ lead.ExistingPolicy) (*lead.ImportOutcome, error) {
+	return &lead.ImportOutcome{}, nil
 }
 func (r *qsLeadRepo) FindOrCreate(_ string, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {
 	r.mu.Lock()

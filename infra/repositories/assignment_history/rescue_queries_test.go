@@ -41,11 +41,11 @@ func TestListOpenOlderThan_QueryShape(t *testing.T) {
 	defer sqlDB.Close()
 
 	mock.ExpectQuery(`SELECT \* FROM "assignment_history" ` +
-		`WHERE workspace_id IN \(.*\) AND ended_at IS NULL AND trigger = \$\d+ AND started_at < \$\d+ ` +
+		`WHERE workspace_id IN \(.*\) AND ended_at IS NULL AND trigger IN \(.*\) AND started_at < \$\d+ ` +
 		`ORDER BY started_at ASC LIMIT`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	_, err := New(db).ListOpenOlderThan([]string{"ws-1", "ws-2"}, ia.TriggerInboundRR, time.Now(), 200)
+	_, err := New(db).ListOpenOlderThan([]string{"ws-1", "ws-2"}, ia.RescueCandidateTriggers, time.Now(), 200)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestListOpenOlderThan_NoWorkspacesSkipsTheQuery(t *testing.T) {
 	db, mock, sqlDB := newHistoryDB(t)
 	defer sqlDB.Close()
 
-	got, err := New(db).ListOpenOlderThan(nil, ia.TriggerInboundRR, time.Now(), 200)
+	got, err := New(db).ListOpenOlderThan(nil, ia.RescueCandidateTriggers, time.Now(), 200)
 	if err != nil {
 		t.Fatal(err)
 	}

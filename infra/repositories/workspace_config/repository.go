@@ -3,11 +3,13 @@ package workspace_config_repository
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"vozko/domain/working_hours"
 	wsc "vozko/domain/workspace_config"
 	"vozko/infra/database/schema"
 )
@@ -69,6 +71,8 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 		RouletteRescueEnabled:       row.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(row.RouletteRescueAfterMinutes),
 
+		WorkingHours: decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
+
 		UpdatedBy: row.UpdatedBy,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
@@ -96,10 +100,36 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 
 		UpdatedBy: cfg.UpdatedBy,
 	}
+
+	// An unencodable schedule aborts the write. Storing the rest of the config
+	// and dropping this one field would silently put the workspace back on
+	// around-the-clock rescuing without telling anyone.
+	encoded, err := working_hours.EncodeSpec(cfg.WorkingHours)
+	if err != nil {
+		return err
+	}
+	row.WorkingHours = encoded
+
 	if row.ID == "" {
 		row.ID = uuid.New().String()
 	}
 	return r.db.WithContext(ctx).Save(row).Error
+}
+
+// decodeWorkingHours reads a stored schedule, degrading to "none configured"
+// when the document cannot be parsed.
+//
+// Always open is the behaviour that predates the feature, so a corrupt row
+// costs a workspace its working-hours policy rather than its inbox: the sweep
+// keeps running, which is strictly the recoverable failure. It is logged with
+// the workspace id because nothing else would reveal it.
+func decodeWorkingHours(workspaceID string, raw *string) *working_hours.Spec {
+	spec, err := working_hours.DecodeSpec(raw)
+	if err != nil {
+		log.Printf("[workspace_config] workspace %s has an unreadable working-hours document; treating it as not configured: %v", workspaceID, err)
+		return nil
+	}
+	return spec
 }
 
 func (r *Repository) EnsureExists(ctx context.Context, workspaceID string) error {
@@ -171,14 +201,15 @@ func (r *Repository) GetIncludedUnofficialInstancesByWorkspaceIDs(
 // next tick without a cleanup pass or a flag to unset on any assignment row.
 func (r *Repository) ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePolicy, error) {
 	type row struct {
-		WorkspaceID string `gorm:"column:workspace_id"`
-		WindowHours int    `gorm:"column:roulette_last_seen_window_hours"`
-		AfterMinute int    `gorm:"column:roulette_rescue_after_minutes"`
+		WorkspaceID  string  `gorm:"column:workspace_id"`
+		WindowHours  int     `gorm:"column:roulette_last_seen_window_hours"`
+		AfterMinute  int     `gorm:"column:roulette_rescue_after_minutes"`
+		WorkingHours *string `gorm:"column:working_hours"`
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).
 		Model(&schema.WorkspaceConfig{}).
-		Select("workspace_id, roulette_last_seen_window_hours, roulette_rescue_after_minutes").
+		Select("workspace_id, roulette_last_seen_window_hours, roulette_rescue_after_minutes, working_hours").
 		Where("roulette_mode = ? AND roulette_rescue_enabled = ?", wsc.RouletteModeLastSeen, true).
 		Scan(&rows).Error
 	if err != nil {
@@ -191,6 +222,7 @@ func (r *Repository) ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePo
 			WorkspaceID:    item.WorkspaceID,
 			RescueAfter:    time.Duration(wsc.ClampRouletteRescueMinutes(item.AfterMinute)) * time.Minute,
 			LastSeenWindow: time.Duration(wsc.ClampRouletteLastSeenWindowHours(item.WindowHours)) * time.Hour,
+			WorkingHours:   decodeWorkingHours(item.WorkspaceID, item.WorkingHours),
 		})
 	}
 	return out, nil

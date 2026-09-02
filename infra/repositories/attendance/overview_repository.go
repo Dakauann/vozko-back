@@ -127,7 +127,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 			Finished       int64
 			Ongoing        int64
 			Pending        int64
-			NewContacts    int64
 		}
 		var sr statusRow
 		statusSQL := `
@@ -138,8 +137,7 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 				COUNT(*) FILTER (WHERE is_new_contact) AS entries_created,
 				COUNT(*) FILTER (WHERE total_msgs > 0 AND status_bucket = 'finished') AS finished,
 				COUNT(*) FILTER (WHERE total_msgs > 0 AND status_bucket = 'ongoing') AS ongoing,
-				COUNT(*) FILTER (WHERE total_msgs > 0 AND status_bucket = 'pending') AS pending,
-				COUNT(*) FILTER (WHERE total_msgs > 0 AND is_new_contact) AS new_contacts
+				COUNT(*) FILTER (WHERE total_msgs > 0 AND status_bucket = 'pending') AS pending
 			FROM ` + tmpMsg
 		if err := tx.Raw(statusSQL).Scan(&sr).Error; err != nil {
 			return err
@@ -151,7 +149,16 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		out.KPIs.Finished = sr.Finished
 		out.KPIs.Ongoing = sr.Ongoing
 		out.KPIs.Pending = sr.Pending
-		out.KPIs.NewContacts = sr.NewContacts
+
+		// Acquisition, counted on the CRM object rather than on conversations.
+		// Runs in the same transaction so the tile cannot report a period the
+		// entry KPIs beside it did not see.
+		newLeads, err := overviewNewLeadsTX(tx, workspaceID, filter)
+		if err != nil {
+			return err
+		}
+		out.KPIs.NewLeads = newLeads
+
 		out.StatusDistribution = attendance.StatusDistribution{
 			Finished: sr.Finished,
 			Ongoing:  sr.Ongoing,
@@ -384,6 +391,41 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 	}
 
 	return strings.Join(parts, " UNION ALL "), args
+}
+
+// overviewNewLeadsTX counts CRM contacts (leads) created in the period.
+//
+// This is the one KPI on the strip that does not read the entry temp tables,
+// and it must not: a lead exists before any conversation does, so counting
+// acquisition through entries would report zero for every contact imported from
+// a spreadsheet or pushed by an integration and not yet messaged. Those are
+// precisely the contacts this number exists to make visible.
+//
+// Scope is the workspace and the DATE RANGE, nothing else. The filter's
+// department, member, channel and campaign narrow CONVERSATIONS; a lead carries
+// none of those attributes until it has an entry, so honouring them here would
+// silently zero out every imported contact the moment an operator touched a
+// filter, producing a number that contradicts the tiles beside it. The UI states the
+// scope beside the tile rather than leaving it to be inferred.
+//
+// Bounds match createdInRange in overviewEntrySelect exactly (>= from, <= to),
+// so this tile and the entry-scoped ones read the same period.
+func overviewNewLeadsTX(tx *gorm.DB, workspaceID string, f attendance.OverviewFilter) (int64, error) {
+	q := tx.Table("leads").
+		Where("workspace_id = ?", workspaceID).
+		Where("deleted_at IS NULL")
+	if f.DateFrom != nil {
+		q = q.Where("created_at >= ?", *f.DateFrom)
+	}
+	if f.DateTo != nil {
+		q = q.Where("created_at <= ?", *f.DateTo)
+	}
+
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func overviewAvgWaitMinsTX(tx *gorm.DB, msgTmp string) (*float64, error) {

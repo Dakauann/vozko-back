@@ -606,7 +606,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 	var entryCTE string
 	var cteArgs []interface{}
 
-	leadField := ch.ContactIDField
+	leadField := contactRefText(ch.EntryType)
 	bphoneField := ch.AccountIDField
 	campaignIDField := ch.ContainerIDField
 	campaignNameField := ch.ContainerNameField
@@ -1580,7 +1580,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 	// Channels that carry no container (support) simply have no declaration, and
 	// the header stays empty exactly as it did before.
 	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
-		r.db.Raw(ch.EntryInfoSQL, entryID).Scan(&info)
+		r.db.Raw(ch.entryInfoSQL(), entryID).Scan(&info)
 	}
 	leadID = info.LeadID
 	businessPhoneID = info.BusinessPhoneID

@@ -3,6 +3,7 @@ package workspaceconfig
 import (
 	"time"
 
+	"vozko/domain/working_hours"
 	workspaceconfigdomain "vozko/domain/workspace_config"
 )
 
@@ -30,10 +31,17 @@ type WorkspaceConfigResponse struct {
 	// it. Only acts in last_seen mode.
 	RouletteRescueEnabled bool `json:"rouletteRescueEnabled" example:"true"`
 	// RouletteRescueAfterMinutes is the owner's deadline (1..1440).
-	RouletteRescueAfterMinutes int       `json:"rouletteRescueAfterMinutes" example:"15"`
-	UpdatedBy                  string    `json:"updatedBy,omitempty" example:"usr_a1b2c3"`
-	CreatedAt                  time.Time `json:"createdAt"`
-	UpdatedAt                  time.Time `json:"updatedAt"`
+	RouletteRescueAfterMinutes int `json:"rouletteRescueAfterMinutes" example:"15"`
+	// WorkingHours is the workspace's weekly schedule, or absent when none is
+	// set — which means the roulette rescue runs around the clock.
+	//
+	// While it is set, the rescue is paused outside these hours AND the owner's
+	// deadline only counts the minutes inside them, so a conversation handed out
+	// five minutes before closing still gets its full deadline the next morning.
+	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
+	UpdatedBy    string              `json:"updatedBy,omitempty" example:"usr_a1b2c3"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
 }
 
 func toWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) WorkspaceConfigResponse {
@@ -51,6 +59,7 @@ func toWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) Workspa
 		RouletteLastSeenWindowHours:         int(c.EffectiveRouletteLastSeenWindow() / time.Hour),
 		RouletteRescueEnabled:               c.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:          int(c.EffectiveRouletteRescueAfter() / time.Minute),
+		WorkingHours:                        c.WorkingHours,
 		UpdatedBy:                           c.UpdatedBy,
 		CreatedAt:                           c.CreatedAt,
 		UpdatedAt:                           c.UpdatedAt,

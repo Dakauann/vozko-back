@@ -3,9 +3,26 @@ package database
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"gorm.io/gorm"
+
+	ia "vozko/domain/inbox_assignment"
 )
+
+// sqlStringLiteralList renders values as a comma-separated SQL literal list.
+//
+// An index predicate cannot take bind parameters, so a partial index built from
+// domain constants has to inline them. The inputs are compile-time constants,
+// never request data; the quote doubling is belt-and-braces so this cannot
+// become an injection point if someone later feeds it something dynamic.
+func sqlStringLiteralList(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
 
 func CreatePerformanceIndexes(db *gorm.DB) {
 	indexes := []struct {
@@ -118,6 +135,15 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_leads_number
 				ON leads (number)`,
 		},
+		{
+			// Serves the new-leads KPI and the leads page's "criado em" filter:
+			// both count a workspace's leads over a date window, which the
+			// workspace-only index made a full scan of every lead the tenant has.
+			name: "idx_leads_workspace_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_leads_workspace_created
+				ON leads (workspace_id, created_at)
+				WHERE deleted_at IS NULL`,
+		},
 
 		{
 			name: "idx_wa_campaign_ws_del",
@@ -158,16 +184,37 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 		// Doubly partial on purpose. The schema's idx_assign_hist_open covers
 		// every open interval, which is every currently-assigned conversation on
 		// the platform — the sweep would scan all of them to find the handful
-		// that are stalled. Narrowing to (ended_at IS NULL AND trigger =
-		// 'inbound_rr') keeps the index to conversations the roulette handed out
-		// and nobody has reassigned, and started_at serves the ORDER BY.
+		// that are stalled. Narrowing to (ended_at IS NULL AND trigger IN
+		// (...)) keeps the index to conversations the roulette or a previous
+		// rescue handed out and nobody has since taken over, and started_at
+		// serves the ORDER BY.
+		//
+		// The predicate is rendered from ia.RescueCandidateTriggers rather than
+		// spelled out, because it has to stay a SUPERSET of the sweep's WHERE
+		// clause. An index predicate narrower than the query is worse than no
+		// index at all: Postgres cannot prove it covers the requested rows, so
+		// it silently declines the index and the sweep goes back to scanning
+		// every open assignment on the platform — with no error anywhere to say
+		// so. Deriving both from one constant is what makes that undriftable.
+		//
+		// idx_ah_rescue_scan is its predecessor, keyed on trigger = 'inbound_rr'
+		// alone. It is dropped rather than replaced in place: CREATE INDEX IF
+		// NOT EXISTS on the same name is a no-op against an existing index and
+		// would keep the old, too-narrow predicate forever. A new name makes
+		// both statements idempotent, so neither costs anything after the first
+		// boot that runs them.
 		//
 		// "trigger" is quoted because TRIGGER is a reserved word in SQL.
 		{
-			name: "idx_ah_rescue_scan",
-			sql: `CREATE INDEX IF NOT EXISTS idx_ah_rescue_scan
+			name: "idx_ah_rescue_scan (superseded by idx_ah_rescue_candidates)",
+			sql:  `DROP INDEX IF EXISTS idx_ah_rescue_scan`,
+		},
+		{
+			name: "idx_ah_rescue_candidates",
+			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_ah_rescue_candidates
 				ON assignment_history (workspace_id, started_at)
-				WHERE ended_at IS NULL AND "trigger" = 'inbound_rr'`,
+				WHERE ended_at IS NULL AND "trigger" IN (%s)`,
+				sqlStringLiteralList(ia.RescueCandidateTriggers)),
 		},
 		// Classic attendance: assignments by workspace + created_at / assignee.
 		{
@@ -465,6 +512,56 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				ON rag_chunks USING hnsw (embedding vector_cosine_ops)
 				WITH (m = 16, ef_construction = 64)`,
 		},
+
+		// Comment analysis. comment_analyses is a queue as well as a result
+		// store, and every queue read is a partial index over the rows in one
+		// status, so a workspace with a million analysed comments still pays
+		// for the handful that are pending.
+
+		// The flush job's claim: pending rows of one post, oldest first.
+		{
+			name: "idx_ca_pending",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_pending
+				ON comment_analyses (source, account_id, container_id, created_at)
+				WHERE status = 'pending' AND deleted_at IS NULL`,
+		},
+		// The backstop's reset of rows a dead replica left behind.
+		{
+			name: "idx_ca_inflight",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_inflight
+				ON comment_analyses (updated_at)
+				WHERE status = 'in_flight'`,
+		},
+		// Live stats and the feed: an account's analysed rows, newest first.
+		{
+			name: "idx_ca_stats",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_stats
+				ON comment_analyses (workspace_id, account_id, analyzed_at DESC)
+				WHERE status = 'analyzed' AND deleted_at IS NULL`,
+		},
+		// The flagged-comment slice: only rows at or above the high threshold.
+		{
+			name: "idx_ca_severity",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_severity
+				ON comment_analyses (account_id, severity DESC)
+				WHERE severity >= 60 AND deleted_at IS NULL`,
+		},
+		// The author projection rebuild and "this author's comments".
+		{
+			name: "idx_ca_author",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_author
+				ON comment_analyses (source, account_id, author_external_id)`,
+		},
+		{
+			name: "idx_ca_authors_rank",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_authors_rank
+				ON comment_analysis_authors (source, account_id, is_flagged, high_sev_count DESC, max_severity DESC)`,
+		},
+		{
+			name: "idx_ca_rollups_series",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_rollups_series
+				ON comment_analysis_rollups (workspace_id, scope, scope_id, bucket_date)`,
+		},
 	}
 
 	for _, idx := range indexes {
@@ -534,6 +631,20 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			name: "idx_lead_memories_lead",
 			sql: `CREATE INDEX IF NOT EXISTS idx_lead_memories_lead
 				ON lead_memories (workspace_id, lead_id, created_at DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			// Correlated subqueries on the leads list (memory count, last
+			// memory, the free-text search, the memory-category facet) all
+			// filter lm.lead_id = leads.id with NO workspace_id, so neither
+			// index above can serve them: both lead with workspace_id, and a
+			// composite index cannot be seeked on its second column. The
+			// foreign key does not help either, since Postgres never indexes
+			// the referencing side. Without this the list ran one sequential
+			// scan of lead_memories per lead on screen.
+			name: "idx_lead_memories_lead_id",
+			sql: `CREATE INDEX IF NOT EXISTS idx_lead_memories_lead_id
+				ON lead_memories (lead_id)
 				WHERE deleted_at IS NULL`,
 		},
 		// One active memory per normalized content per lead. Partial on
@@ -753,6 +864,21 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_tpl_send_idem
 				ON whatsapp_template_sends (workspace_id, idempotency_key)
 				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
+		},
+		// One analysis per source comment. This is what makes webhook
+		// redelivery free: ingest is INSERT ... ON CONFLICT DO NOTHING against
+		// it, so a comment delivered twice is classified (and billed) once.
+		{
+			name: "ux_ca_source_comment",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_source_comment
+				ON comment_analyses (source, source_comment_id)`,
+		},
+		// One projection row per author per account, the upsert target of the
+		// hourly rebuild.
+		{
+			name: "ux_ca_author",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_author
+				ON comment_analysis_authors (source, account_id, author_external_id)`,
 		},
 	}
 

@@ -43,21 +43,15 @@ func (d Disposition) Valid() bool {
 	return false
 }
 
-type Sentiment string
+// Sentiment is shared across channels (see domain/shared/sentiment.go); the
+// alias keeps this package's callers and its persisted values unchanged.
+type Sentiment = shared.Sentiment
 
 const (
-	SentimentPositive Sentiment = "positive"
-	SentimentNeutral  Sentiment = "neutral"
-	SentimentNegative Sentiment = "negative"
+	SentimentPositive = shared.SentimentPositive
+	SentimentNeutral  = shared.SentimentNeutral
+	SentimentNegative = shared.SentimentNegative
 )
-
-func (s Sentiment) Valid() bool {
-	switch s {
-	case SentimentPositive, SentimentNeutral, SentimentNegative:
-		return true
-	}
-	return false
-}
 
 type Qualification string
 

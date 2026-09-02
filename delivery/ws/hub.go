@@ -842,6 +842,7 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 		if h.eventLogger != nil {
 			h.eventLogger.Log(ce.New(workspaceID, entryID, entryType, ce.EventAutoAssigned).
 				WithActorHuman(conn.UserID).
+				WithChannel(shared.EntryType(entryType).EventChannel()).
 				WithDetails(map[string]string{"to_user_id": conn.UserID, "trigger": "open"}).
 				Build())
 		}
@@ -3178,16 +3179,10 @@ func (h *ConversationHub) handleReopenWindow(conn *WSConnection, payload json.Ra
 
 		log.Printf("[ConversationHub] Template sent to reopen window for entry %s (%s), messageID=%s", p.EntryID, p.EntryType, messageID)
 
-		if h.eventLogger != nil {
-			h.eventLogger.Log(&ce.ConversationEvent{
-				WorkspaceID: conn.WorkspaceID,
-				EntryID:     p.EntryID,
-				EntryType:   p.EntryType,
-				EventType:   ce.EventReopened,
-				ActorID:     conn.UserID,
-				Details:     ce.DetailsJSON(map[string]string{"template_id": p.TemplateID, "message_id": messageID}),
-			})
-		}
+		// The `reopened` event is written by the template sender, which is the
+		// one writer this frame, the HTTP send-template endpoint and
+		// SendTemplateForEntry all pass through. It was written here, so only
+		// the WebSocket reopen left a trace.
 
 		h.sendToConnection(conn, &WSOutgoingMessage{
 			Type: WSEventWindowReopened,
@@ -3271,6 +3266,14 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 			return
 		}
 	} else {
+		// Read the outgoing owner before overwriting it: without it the event
+		// says who received the conversation but not who lost it, and a handoff
+		// reads as a first assignment. AssignManual above does the same.
+		previousUserID := ""
+		if existing, err := h.assignmentRepo.FindByEntry(workspaceID, p.EntryID, p.EntryType); err == nil && existing != nil {
+			previousUserID = existing.AssignedUserID
+		}
+
 		assignment := &inbox_assignment.InboxAssignment{
 			WorkspaceID:     workspaceID,
 			BusinessPhoneID: businessPhoneID,
@@ -3284,9 +3287,14 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 			return
 		}
 		if h.eventLogger != nil {
+			details := map[string]string{"to_user_id": p.UserID, "trigger": "manual"}
+			if previousUserID != "" {
+				details["from_user_id"] = previousUserID
+			}
 			h.eventLogger.Log(ce.New(workspaceID, p.EntryID, p.EntryType, ce.EventAssigned).
 				WithActorHuman(conn.UserID).
-				WithDetails(map[string]string{"to_user_id": p.UserID, "trigger": "manual"}).
+				WithChannel(shared.EntryType(p.EntryType).EventChannel()).
+				WithDetails(details).
 				Build())
 		}
 	}

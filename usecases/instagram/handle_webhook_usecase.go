@@ -71,6 +71,16 @@ type CommentRuleEvaluator interface {
 	Execute(ctx context.Context, comment *igdomain.Comment)
 }
 
+// CommentAnalysisEnqueuer hands one mirrored comment to the comment-analysis
+// engine. Narrow port so this package never imports the engine; best effort,
+// because failing an inbound webhook over a queue hiccup would redeliver a
+// comment that was already stored.
+type CommentAnalysisEnqueuer interface {
+	Enqueue(ctx context.Context, comment *igdomain.Comment)
+	// Forget tombstones the comment's analysis when the mirror is deleted.
+	Forget(ctx context.Context, igCommentID string)
+}
+
 // MediaFetcher downloads an attachment from a signed CDN URL. Narrowed to one
 // method so the webhook usecase does not pull in the whole posts client.
 type MediaFetcher interface {
@@ -103,6 +113,8 @@ type HandleWebhookUseCase struct {
 	commentRules CommentRuleEvaluator
 	// analysis schedules deferred AI analysis. Optional.
 	analysis AnalysisScheduler
+	// commentAnalysis enqueues comments for classification. Optional.
+	commentAnalysis CommentAnalysisEnqueuer
 }
 
 // HandleWebhookDeps groups the dependencies so the constructor stays readable as
@@ -126,27 +138,30 @@ type HandleWebhookDeps struct {
 	Workflows    WorkflowTrigger
 	CommentRules CommentRuleEvaluator
 	Analysis     AnalysisScheduler
+	// CommentAnalysis enqueues comments for the comment-analysis engine. Optional.
+	CommentAnalysis CommentAnalysisEnqueuer
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 	return &HandleWebhookUseCase{
-		accounts:      d.Accounts,
-		contacts:      d.Contacts,
-		conversations: d.Conversations,
-		comments:      d.Comments,
-		mediaRepo:     d.Media,
-		messaging:     d.Messaging,
-		mediaFetcher:  d.MediaFetcher,
-		history:       d.History,
-		messages:      d.Messages,
-		convMedia:     d.ConvMedia,
-		fileStorage:   d.FileStorage,
-		broadcaster:   d.Broadcaster,
-		assignments:   d.Assignments,
-		aiReply:       d.AIReply,
-		workflows:     d.Workflows,
-		commentRules:  d.CommentRules,
-		analysis:      d.Analysis,
+		accounts:        d.Accounts,
+		contacts:        d.Contacts,
+		conversations:   d.Conversations,
+		comments:        d.Comments,
+		mediaRepo:       d.Media,
+		messaging:       d.Messaging,
+		mediaFetcher:    d.MediaFetcher,
+		history:         d.History,
+		messages:        d.Messages,
+		convMedia:       d.ConvMedia,
+		fileStorage:     d.FileStorage,
+		broadcaster:     d.Broadcaster,
+		assignments:     d.Assignments,
+		aiReply:         d.AIReply,
+		workflows:       d.Workflows,
+		commentRules:    d.CommentRules,
+		analysis:        d.Analysis,
+		commentAnalysis: d.CommentAnalysis,
 	}
 }
 
@@ -745,6 +760,9 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 	// rather than racing it.
 	if uc.commentRules != nil {
 		uc.commentRules.Execute(ctx, record)
+	}
+	if uc.commentAnalysis != nil {
+		uc.commentAnalysis.Enqueue(ctx, record)
 	}
 	return nil
 }

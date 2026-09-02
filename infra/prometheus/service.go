@@ -37,6 +37,8 @@ type PrometheusService struct {
 
 	WSConnections *prometheus.GaugeVec
 
+	commentAnalysis *commentAnalysisMetrics
+
 	registry *prometheus.Registry
 }
 
@@ -175,6 +177,7 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 		BillingSkippedTotal:   billingSkipped,
 		WSConnections:         wsConnections,
 		RateLimited:           rateLimited,
+		commentAnalysis:       newCommentAnalysisMetrics(reg),
 		registry:              registry,
 	}
 }

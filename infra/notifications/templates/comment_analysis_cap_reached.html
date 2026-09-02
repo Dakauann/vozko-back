@@ -1,0 +1,22 @@
+{{define "title"}}Limite diário de análise de comentários atingido - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A análise de comentários pausou por hoje ao atingir o limite diário configurado.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" "warning" "glyph" "alert"}}
+        {{template "heading" dict "title" "Limite diário atingido" "subtitle" "A análise de comentários pausou por hoje"}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            Uma publicação recebeu mais comentários do que o limite diário configurado para análise. Nenhum comentário foi perdido: os que ainda não foram analisados ficam na fila e são processados quando o limite reiniciar, ou antes, se o limite for aumentado.
+        </p>
+        {{template "details" dict "title" "Limite configurado" "k1" "Comentários por dia" "v1" .DailyCap "k2" "Data" "v2" .Date}}
+        <div style="height:20px; line-height:20px;">&nbsp;</div>
+        {{template "panel" dict "tone" "info" "title" "Por que existe um limite" "body" "Cada comentário analisado é cobrado. O limite diário evita que uma publicação viral gere uma cobrança que ninguém autorizou. Ajuste o limite nas configurações da conta se quiser analisar mais comentários por dia."}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .DashboardURL "label" "Ver configurações"}}
+    </td>
+</tr>
+{{end}}

@@ -45,7 +45,9 @@ func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 		OutputKeys: []workflow.OutputKeyDefinition{
 			{Key: "success", Description: "true quando a conversa foi finalizada (ou já estava)"},
 			{Key: "entry_id", Description: "ID da entrada finalizada"},
-			{Key: "entry_type", Description: "Tipo da entrada (whatsapp|voice)"},
+			// Never voice: a run's EntryType can only be one of the five channels
+			// in the engine's ownership map (domain/workflow/channel_var.go).
+			{Key: "entry_type", Description: "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram, telegram ou support)"},
 			{Key: "close_source", Description: "Proveniência do encerramento (system)"},
 			{Key: "close_reason", Description: "Motivo (workflow)"},
 			{Key: "error", Description: "Descrição do erro quando falha"},

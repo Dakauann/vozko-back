@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 )
 
 // WindowReader reports whether a conversation can be replied to right now, and
@@ -28,18 +29,10 @@ type WakeScheduler interface {
 	ScheduleFire(id string, fireAt time.Time) error
 }
 
-// Clock is the source of "now".
-//
-// Injected rather than called directly so the window arithmetic — the part of
-// this feature that is entirely about time — is testable without sleeping.
-type Clock interface {
-	Now() time.Time
-}
+// Clock is the source of "now" (see domain/shared/clock.go). Injected rather
+// than called directly so the window arithmetic, the part of this feature
+// that is entirely about time, is testable without sleeping.
+type Clock = shared.Clock
 
-// SystemClock is the real clock. Always UTC: every stored instant is UTC, and a
-// local-time leak here would shift a delivery by the server's offset.
-type SystemClock struct{}
-
-func (SystemClock) Now() time.Time { return time.Now().UTC() }
-
-var _ Clock = SystemClock{}
+// SystemClock is the real, always-UTC clock.
+type SystemClock = shared.SystemClock

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -762,4 +763,188 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 		"name":       leadRecord.Name,
 		"analyses":   analyses,
 	})
+}
+
+// @Summary		Renomear um lead
+// @Description	Define o nome de exibição de um lead. Enviar um nome vazio remove o nome, e o lead volta a ser exibido pelo número.
+// @Tags			Leads
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string				true	"Identificador do lead"
+// @Param			request	body		RenameLeadRequest	true	"Novo nome"
+// @Success		200	{object}	lead.Lead
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/leads/{id} [patch]
+func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
+	leadID := mux.Vars(r)["id"]
+	workspaceID := middleware.GetWorkspaceID(r)
+
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+		return
+	}
+	if leadID == "" {
+		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
+		return
+	}
+
+	var req RenameLeadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteInvalidBodyError(w, map[string]string{
+			"name": "string (empty clears the name)",
+		})
+		return
+	}
+	// A missing field is a malformed request. Treating it as an empty string
+	// would turn a client bug into a silent data loss: PATCH {} would erase the
+	// name of every lead it touched.
+	if req.Name == nil {
+		response.WriteInvalidBodyError(w, map[string]string{
+			"name": "string (required; send \"\" to clear the name)",
+		})
+		return
+	}
+
+	if err := leaddomain.ValidateName(*req.Name); err != nil {
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	// Rename is workspace-scoped in the query itself, so a guessed id from
+	// another workspace affects nothing and reports not-found.
+	if err := h.leadRepo.Rename(workspaceID, leadID, *req.Name); err != nil {
+		if errors.Is(err, leaddomain.ErrLeadNotFound) {
+			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
+			return
+		}
+		if errors.Is(err, leaddomain.ErrLeadNameTooLong) {
+			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		response.WriteError(w, http.StatusInternalServerError, "Failed to rename lead", nil)
+		return
+	}
+
+	updated, err := h.leadRepo.FindByID(workspaceID, leadID)
+	if err != nil {
+		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
+		return
+	}
+	// The stored value is echoed back, not the submitted one: the name was
+	// normalised on the way in, and the UI should show what it will see on the
+	// next load rather than what was typed.
+	response.WriteSuccess(w, http.StatusOK, updated)
+}
+
+// @Summary		Importar leads
+// @Description	Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como "matched" e nunca sobrescritos.
+// @Tags			Leads
+// @Accept			json
+// @Produce		json
+// @Param			request	body		lead.ImportLeadsRequest	true	"Linhas do arquivo"
+// @Success		200		{object}	lead.ImportLeadsResponse
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		413		{object}	response.ErrorResponse
+// @Failure		500		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/leads/import [post]
+func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+		return
+	}
+
+	var req ImportLeadsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteInvalidBodyError(w, map[string]string{
+			"rows": "array of {line, number, name?, age?}",
+		})
+		return
+	}
+
+	if len(req.Rows) == 0 {
+		response.WriteError(w, http.StatusBadRequest, "Import has no rows", nil)
+		return
+	}
+
+	// Refused, not truncated. Importing the first 20.000 of 50.000 rows and
+	// reporting success is how a campaign goes out to two-fifths of a list
+	// while everyone believes it reached all of it.
+	if len(req.Rows) > leaddomain.MaxImportRows {
+		response.WriteError(w, http.StatusRequestEntityTooLarge, "Too many rows for a single import", map[string]string{
+			"maxRows": strconv.Itoa(leaddomain.MaxImportRows),
+			"sent":    strconv.Itoa(len(req.Rows)),
+		})
+		return
+	}
+
+	policy, ok := leaddomain.ParseExistingPolicy(req.OnExisting)
+	if !ok {
+		response.WriteError(w, http.StatusBadRequest, "Invalid onExisting policy", map[string]string{
+			"onExisting": string(leaddomain.PolicyFillEmpty) + " | " + string(leaddomain.PolicySkip),
+		})
+		return
+	}
+
+	rows := make([]leaddomain.ImportRow, 0, len(req.Rows))
+	for i, row := range req.Rows {
+		line := row.Line
+		if line <= 0 {
+			// A client that did not send line numbers still gets usable
+			// rejections, counted from the order it sent.
+			line = i + 1
+		}
+		rows = append(rows, leaddomain.ImportRow{
+			Line:   line,
+			Number: row.Number,
+			Name:   row.Name,
+			Age:    row.Age,
+		})
+	}
+
+	// The browser vetted these already so the operator could see the outcome
+	// before committing. Vetting them again is not redundancy: this endpoint is
+	// reachable without that UI, and the rules that decide what a lead IS
+	// belong to the domain, not to a form.
+	prepared := leaddomain.PrepareImport(rows)
+
+	outcome, err := h.leadRepo.ImportMany(workspaceID, prepared.Inputs, policy)
+	if err != nil {
+		log.Printf("[leads] import failed for workspace %s: %v", workspaceID, err)
+		response.WriteError(w, http.StatusInternalServerError, "An error has occured when trying to import the leads", nil)
+		return
+	}
+
+	out := ImportLeadsResponse{
+		Created:  outcome.Created,
+		Matched:  outcome.Matched,
+		Blocked:  outcome.Blocked,
+		Rejected: []ImportRejection{},
+	}
+	for _, rejection := range prepared.Rejected {
+		switch rejection.Reason {
+		case leaddomain.ReasonInvalid:
+			out.Invalid++
+		case leaddomain.ReasonDuplicate:
+			out.Duplicate++
+		}
+	}
+	reported := prepared.Rejected
+	if len(reported) > MaxReportedRejections {
+		out.RejectedTruncated = len(reported) - MaxReportedRejections
+		reported = reported[:MaxReportedRejections]
+	}
+	for _, rejection := range reported {
+		out.Rejected = append(out.Rejected, ImportRejection{
+			Line:   rejection.Line,
+			Number: rejection.Number,
+			Reason: string(rejection.Reason),
+		})
+	}
+
+	response.WriteSuccess(w, http.StatusOK, out)
 }

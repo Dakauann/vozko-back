@@ -77,6 +77,12 @@ var (
 
 	ErrTagGroupNotFound     = errors.New("tag group not found")
 	ErrTagGroupNameRequired = errors.New("tag group name is required")
+
+	// ErrStagePipelineMismatch is returned when a stage from one funnel is assigned
+	// to an entry that currently sits on another. A lead belongs to exactly one
+	// funnel; crossing funnels is an explicit move that changes stage and funnel
+	// together, never a side effect of picking from the wrong list.
+	ErrStagePipelineMismatch = errors.New("stage belongs to a different funnel than this conversation")
 )
 
 func (t *Stage) Normalize() {

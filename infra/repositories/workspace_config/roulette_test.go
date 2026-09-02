@@ -41,12 +41,12 @@ func TestListRoulettePolicies_FiltersToLastSeenWithRescueOn(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
 
-	mock.ExpectQuery(`SELECT workspace_id, roulette_last_seen_window_hours, roulette_rescue_after_minutes ` +
+	mock.ExpectQuery(`SELECT workspace_id, roulette_last_seen_window_hours, roulette_rescue_after_minutes, working_hours ` +
 		`FROM "workspace_configs" ` +
 		`WHERE roulette_mode = \$1 AND roulette_rescue_enabled = \$2`).
 		WithArgs(wsc.RouletteModeLastSeen, true).
 		WillReturnRows(sqlmock.NewRows(
-			[]string{"workspace_id", "roulette_last_seen_window_hours", "roulette_rescue_after_minutes"}))
+			[]string{"workspace_id", "roulette_last_seen_window_hours", "roulette_rescue_after_minutes", "working_hours"}))
 
 	if _, err := NewRepository(db).ListRoulettePolicies(context.Background()); err != nil {
 		t.Fatal(err)

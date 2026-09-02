@@ -3,14 +3,20 @@ package workspacedepartment
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/working_hours"
 	workspacedepartmentdomain "vozko/domain/workspace/workspace_department"
 	"vozko/infra/http/middleware"
 )
+
+// maxDepartmentBodyBytes bounds the buffered update body, matching the
+// workspace-config handler. A weekly schedule is a few hundred bytes.
+const maxDepartmentBodyBytes = 64 << 10
 
 type WorkspaceDepartmentHandler struct {
 	create       workspacedepartmentdomain.CreateDepartmentUseCase
@@ -148,17 +154,39 @@ func (h *WorkspaceDepartmentHandler) List(w http.ResponseWriter, r *http.Request
 func (h *WorkspaceDepartmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 
+	// Buffered so the body can be read twice: "workingHours": null (clear this
+	// department's own hours, inherit the workspace's) and an absent
+	// workingHours (leave them alone) are opposite instructions that a decoded
+	// struct cannot tell apart. See working_hours.DecodePatch.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxDepartmentBodyBytes))
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Could not read request body", nil)
+		return
+	}
+
 	var req UpdateDepartmentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
 		return
 	}
 
+	hours, clearHours, err := working_hours.DecodePatch(body, "workingHours")
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
 	dept, err := h.update.Execute(id, workspacedepartmentdomain.UpdateDepartmentInput{
-		Name:        req.Name,
-		Description: req.Description,
+		Name:              req.Name,
+		Description:       req.Description,
+		WorkingHours:      hours,
+		ClearWorkingHours: clearHours,
 	})
 	if err != nil {
+		if working_hours.IsPolicyError(err) {
+			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
 		writeDepartmentError(w, err)
 		return
 	}

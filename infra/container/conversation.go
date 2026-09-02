@@ -181,6 +181,9 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.wcEntry,
 		c.services.conversationHub,
 		consumeWhatsappTemplate,
+		// Sending a template IS the window reopen, and this service is the one
+		// writer all three send paths go through.
+		eventLoggerEarly,
 	)
 	c.services.conversationHub.SetTemplateSender(templateSender)
 

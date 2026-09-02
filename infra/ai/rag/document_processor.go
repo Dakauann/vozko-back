@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/rag"
+	"vozko/domain/shared"
 )
 
 const (
@@ -112,7 +113,7 @@ func (p *documentProcessor) Process(ctx context.Context, doc *rag.Document) erro
 				StartOffset:     tc.StartOffset,
 				EndOffset:       tc.EndOffset,
 				Metadata:        doc.Metadata,
-				TokenCount:      estimateTokens(tc.Content),
+				TokenCount:      shared.EstimateTokens(tc.Content),
 				CreatedAt:       time.Now(),
 			})
 		}
@@ -289,12 +290,4 @@ func splitToMaxRunes(s string, maxRunes int) []string {
 		runes = runes[cut:]
 	}
 	return pieces
-}
-
-func estimateTokens(text string) int {
-	n := len(text) / 4
-	if n == 0 && len(text) > 0 {
-		n = 1
-	}
-	return n
 }

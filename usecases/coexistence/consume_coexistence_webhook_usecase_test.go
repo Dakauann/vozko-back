@@ -287,7 +287,11 @@ func (r *mockLeadRepo) FindByNumber(string, string) (*lead.Lead, error)  { retur
 func (r *mockLeadRepo) FindOrCreateMany(string, []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
 	return nil, nil
 }
+func (r *mockLeadRepo) ImportMany(string, []lead.BulkLeadInput, lead.ExistingPolicy) (*lead.ImportOutcome, error) {
+	return &lead.ImportOutcome{}, nil
+}
 func (r *mockLeadRepo) Update(string, string, lead.LeadUpdate) error { return nil }
+func (r *mockLeadRepo) Rename(string, string, string) error          { return nil }
 func (r *mockLeadRepo) Delete(string, string) error                  { return nil }
 func (r *mockLeadRepo) List(lead.ListLeadsInput) (*shared.PaginatedResult[*lead.Lead], error) {
 	return nil, nil

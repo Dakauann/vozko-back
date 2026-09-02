@@ -86,13 +86,14 @@ func TestNewTemplates_RenderAndFollowDesign(t *testing.T) {
 		"DashboardURL": "https://app.vozkoglobal.com/dashboard", "ResetURL": "https://app.vozkoglobal.com/reset",
 		"Email": "user@example.com", "Headline": "Conta verificada", "Subtitle": "tudo certo",
 		"Message": "Sua conta foi atualizada.", "StatusLabel": "Aprovado", "Tone": "success", "Glyph": "check",
+		"DailyCap": 20000, "Date": "2026-09-02",
 	}
 	templates := []string{
 		"addon_renewal_reminder.html", "plan_expiry_reminder.html", "addon_payment_failed.html",
 		"whatsapp_number_suspended.html", "low_balance_warning.html", "wallet_topup_confirmed.html",
 		"whatsapp_quality_alert.html", "whatsapp_number_banned.html", "whatsapp_scheduled_disable.html",
 		"whatsapp_number_live.html", "whatsapp_onboarding_failed.html", "whatsapp_account_update.html",
-		"password_changed.html", "login_locked.html",
+		"password_changed.html", "login_locked.html", "comment_analysis_cap_reached.html",
 	}
 	loader := loaderForTests()
 	forbidden := []string{"linear-gradient", "#4a90e2", "#1a1a1a", "border-left:4px", "border-left: 4px"}

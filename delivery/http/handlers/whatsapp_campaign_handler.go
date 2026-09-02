@@ -245,7 +245,15 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if req.StageGroupID != "" && h.cloneStagesUseCase != nil {
+	// A campaign is linked to ONE funnel, and pipelineId is how that is said.
+	//
+	// stageGroupId is the legacy spelling, kept for existing integrations: a stage
+	// group now materializes its funnel at creation, so naming the group is just an
+	// indirect way of naming that same funnel. It is honoured only when no
+	// pipelineId was given — previously BOTH were applied and the group silently
+	// won, because SetCampaignPipeline ran after the campaign had already been
+	// created with the requested pipeline and overwrote it.
+	if req.PipelineID == "" && req.StageGroupID != "" && h.cloneStagesUseCase != nil {
 		if err := h.cloneStagesUseCase.Execute(middleware.GetWorkspaceID(r), created.ID, "whatsapp", req.StageGroupID); err != nil {
 			log.Printf("[WhatsAppCampaignHandler] clone stages from group %s: %v", req.StageGroupID, err)
 		}

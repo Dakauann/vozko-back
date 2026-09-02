@@ -117,8 +117,11 @@ func toSchema(h *ia.AssignmentHistory) *schema.AssignmentHistory {
 	return rec
 }
 
-func (r *repository) ListOpenOlderThan(workspaceIDs []string, trigger string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
-	if len(workspaceIDs) == 0 {
+func (r *repository) ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
+	// An empty trigger set would render as IN (), which Postgres rejects, and
+	// an empty workspace set has nothing to ask about. Both mean "no candidates"
+	// rather than "everything".
+	if len(workspaceIDs) == 0 || len(triggers) == 0 {
 		return nil, nil
 	}
 	if limit <= 0 {
@@ -126,7 +129,7 @@ func (r *repository) ListOpenOlderThan(workspaceIDs []string, trigger string, ol
 	}
 	var recs []schema.AssignmentHistory
 	err := r.db.
-		Where("workspace_id IN ? AND ended_at IS NULL AND trigger = ? AND started_at < ?", workspaceIDs, trigger, olderThan).
+		Where("workspace_id IN ? AND ended_at IS NULL AND trigger IN ? AND started_at < ?", workspaceIDs, triggers, olderThan).
 		Order("started_at ASC").
 		Limit(limit).
 		Find(&recs).Error

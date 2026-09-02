@@ -42,15 +42,15 @@ type stubRescueHistory struct {
 	hopsErr  error
 	listArgs struct {
 		workspaceIDs []string
-		trigger      string
+		triggers     []string
 		olderThan    time.Time
 		limit        int
 	}
 }
 
-func (h *stubRescueHistory) ListOpenOlderThan(workspaceIDs []string, trigger string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
+func (h *stubRescueHistory) ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
 	h.listArgs.workspaceIDs = workspaceIDs
-	h.listArgs.trigger = trigger
+	h.listArgs.triggers = triggers
 	h.listArgs.olderThan = olderThan
 	h.listArgs.limit = limit
 	return h.open, h.openErr
@@ -365,7 +365,11 @@ func TestRescue_NoEligibleWorkspacesDoesNothing(t *testing.T) {
 	assert.Nil(t, f.history.listArgs.workspaceIDs, "the candidate query must not run when nothing is eligible")
 }
 
-func TestRescue_QueriesOnlyRouletteHandouts(t *testing.T) {
+// The candidate query must ask for the roulette's hand-outs AND the sweep's own
+// hops. Asking only for hand-outs is what stranded a conversation on the second
+// agent forever: the first hop rewrites the open interval to trigger=rescue, and
+// a query pinned to inbound_rr can never see it again.
+func TestRescue_QueriesHandoutsAndItsOwnHops(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob"},
 		map[string]time.Time{"ana": hoursAgo(1), "bob": hoursAgo(2)},
@@ -375,8 +379,13 @@ func TestRescue_QueriesOnlyRouletteHandouts(t *testing.T) {
 	require.NoError(t, f.job.Execute(context.Background()))
 
 	assert.Equal(t, []string{"ws-1"}, f.history.listArgs.workspaceIDs)
-	assert.Equal(t, ia.TriggerInboundRR, f.history.listArgs.trigger,
-		"a manual or on-open assignment is not the sweep's business")
+	assert.Equal(t, ia.RescueCandidateTriggers, f.history.listArgs.triggers)
+	assert.ElementsMatch(t, []string{ia.TriggerInboundRR, ia.TriggerRescue}, f.history.listArgs.triggers,
+		"a hand-out is a candidate, and so is a conversation a previous hop moved")
+	assert.NotContains(t, f.history.listArgs.triggers, ia.TriggerManual,
+		"a human took responsibility; the sweep must not take it back off them")
+	assert.NotContains(t, f.history.listArgs.triggers, ia.TriggerOpen,
+		"an agent opening a conversation ends the chain")
 	assert.Equal(t, testNow.Add(-15*time.Minute), f.history.listArgs.olderThan)
 	assert.Equal(t, DefaultRescueBatch, f.history.listArgs.limit)
 }
@@ -469,7 +478,7 @@ func (h *recordingHistory) ListByEntry(string, string, string, int, int) ([]*ia.
 func (h *recordingHistory) GetOpen(string, string, string) (*ia.AssignmentHistory, error) {
 	return nil, nil
 }
-func (h *recordingHistory) ListOpenOlderThan([]string, string, time.Time, int) ([]*ia.AssignmentHistory, error) {
+func (h *recordingHistory) ListOpenOlderThan([]string, []string, time.Time, int) ([]*ia.AssignmentHistory, error) {
 	return nil, nil
 }
 func (h *recordingHistory) CountRescuesSinceHandout(string, string, string) (int, error) {

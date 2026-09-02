@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -17,6 +18,9 @@ var (
 	// support, a malformed date). It is a 400, never a 500: the query is wrong,
 	// not the database.
 	ErrLeadFilterInvalid = errors.New("lead: invalid filter")
+	// ErrLeadNameTooLong is a name a person typed that will not fit the surfaces
+	// it has to render in.
+	ErrLeadNameTooLong = errors.New("lead: name is too long")
 )
 
 type Lead struct {
@@ -208,4 +212,35 @@ func normalizeRawInput(value string) string {
 	}
 
 	return number
+}
+
+// MaxLeadNameLength bounds a human-entered lead name.
+//
+// Generous — a full legal name with titles fits easily — but bounded, because
+// this string is rendered in the inbox row, the CRM header and the conversation
+// list, none of which have room for a pasted paragraph.
+const MaxLeadNameLength = 120
+
+// ValidateName checks a name an operator typed.
+//
+// Empty is VALID and meaningful: it clears the name so the lead shows its phone
+// number again, the way removing a contact's name in WhatsApp does. That is the
+// one thing LeadUpdate.Name cannot express — Merge reads empty as "leave it
+// alone", which is right for a webhook merging partial provider data and wrong
+// for a person deliberately erasing a name. The two callers want opposite
+// things from the same empty string, so renaming gets its own path rather than
+// a flag on the shared one.
+func ValidateName(name string) error {
+	trimmed := strings.TrimSpace(name)
+	if utf8.RuneCountInString(trimmed) > MaxLeadNameLength {
+		return ErrLeadNameTooLong
+	}
+	return nil
+}
+
+// NormalizeName is what gets stored: trimmed, with internal whitespace runs
+// collapsed so "Ana   Maria" and "Ana Maria" are not two different leads to the
+// eye in a list.
+func NormalizeName(name string) string {
+	return strings.Join(strings.Fields(name), " ")
 }

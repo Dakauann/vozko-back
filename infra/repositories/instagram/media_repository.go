@@ -137,3 +137,22 @@ func toMediaDomain(record *schema.InstagramMedia) *igdomain.Media {
 		UpdatedAt:        record.UpdatedAt,
 	}
 }
+
+func (r *mediaRepository) ListByAccount(ctx context.Context, igAccountID string, limit, offset int) ([]*igdomain.Media, error) {
+	if limit < 1 {
+		limit = 100
+	}
+	var records []schema.InstagramMedia
+	if err := r.db.WithContext(ctx).
+		Where("ig_account_id = ?", igAccountID).
+		Order("timestamp DESC NULLS LAST, created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&records).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*igdomain.Media, 0, len(records))
+	for i := range records {
+		out = append(out, toMediaDomain(&records[i]))
+	}
+	return out, nil
+}

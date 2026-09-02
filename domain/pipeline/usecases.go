@@ -26,6 +26,10 @@ type CreatePipelineInput struct {
 	DepartmentID string `json:"departmentId,omitempty"`
 	Position     int    `json:"position,omitempty"`
 	IsDefault    bool   `json:"isDefault,omitempty"`
+	// CopyStagesFromPipelineID duplicates an existing funnel's stages into the new
+	// one. Empty seeds the product's default stages instead. Conversation funnels
+	// only — a funnel with no stages renders an empty board nobody can add to.
+	CopyStagesFromPipelineID string `json:"copyStagesFromPipelineId,omitempty"`
 }
 
 type UpdatePipelineInput struct {

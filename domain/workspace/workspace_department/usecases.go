@@ -1,6 +1,10 @@
 package workspace_department
 
-import "context"
+import (
+	"context"
+
+	"vozko/domain/working_hours"
+)
 
 type CreateDepartmentInput struct {
 	WorkspaceID string `json:"workspaceId"`
@@ -11,6 +15,12 @@ type CreateDepartmentInput struct {
 type UpdateDepartmentInput struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
+	// WorkingHours sets this department's own schedule; nil means "not sent".
+	// ClearWorkingHours removes it so the department inherits the workspace's
+	// again — the distinction a pointer alone cannot carry. See the same pair on
+	// workspace_config.UpdateWorkspaceConfigOwnerInput.
+	WorkingHours      *working_hours.Spec `json:"workingHours,omitempty"`
+	ClearWorkingHours bool                `json:"-"`
 }
 
 type AddMemberInput struct {

@@ -16,11 +16,11 @@ const (
 	crmBoardMaxPageSize     = 200
 )
 
+// selectedDepartmentID is the shared middleware accessor; kept as a named
+// function here because the board handler calls it three times (same reason
+// decodeFilterParam below is).
 func selectedDepartmentID(r *http.Request) string {
-	if filter := middleware.GetDepartmentFilter(r); filter != nil && filter.SelectedDepartmentID != nil {
-		return *filter.SelectedDepartmentID
-	}
-	return ""
+	return middleware.SelectedDepartmentID(r)
 }
 
 func crmBoardPagination(q map[string][]string) (page, pageSize int) {

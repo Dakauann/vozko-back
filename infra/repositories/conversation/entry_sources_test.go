@@ -45,7 +45,7 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		// Every descriptor must be complete enough to build valid SQL.
 		for name, value := range map[string]string{
 			"From": src.From, "WorkspaceJoin": src.WorkspaceJoin, "EntryID": src.EntryID,
-			"LeadID": src.LeadID, "Account": src.Account, "CreatedAt": src.CreatedAt,
+			"Account": src.Account, "CreatedAt": src.CreatedAt,
 			"UpdatedAt": src.UpdatedAt, "LastMessageAt": src.LastMessageAt, "Deleted": src.Deleted,
 		} {
 			if strings.TrimSpace(value) == "" {
@@ -283,7 +283,7 @@ func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
 		From:          "messenger_conversations mgc",
 		WorkspaceJoin: "JOIN messenger_accounts mga ON mga.id = mgc.account_id AND mga.workspace_id = ?",
 		EntryID:       "tgc.id",
-		LeadID:        "tgc.contact_id",
+
 		Account:       "COALESCE(tgc.account_id::text, '')",
 		CreatedAt:     "tgc.created_at",
 		UpdatedAt:     "tgc.updated_at",
@@ -421,7 +421,7 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 	entrySources = append(entrySources, entrySource{
 		EntryType: "messenger", From: "messenger_conversations mgc",
 		WorkspaceJoin: "JOIN messenger_accounts mga ON mga.id = mgc.account_id AND mga.workspace_id = ?",
-		EntryID:       "tgc.id", LeadID: "tgc.contact_id", Account: "''",
+		EntryID:       "tgc.id", Account: "''",
 		CreatedAt: "tgc.created_at", UpdatedAt: "tgc.updated_at",
 		LastMessageAt: "tgc.last_message_at", Deleted: "tgc.deleted_at IS NULL",
 	})

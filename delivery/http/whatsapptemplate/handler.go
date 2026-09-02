@@ -409,15 +409,58 @@ func (h *WhatsAppTemplateHandler) Create(w http.ResponseWriter, r *http.Request)
 
 	result, err := h.createUseCase.Execute(input)
 	if err != nil {
-		if isTemplateValidationError(err) {
-			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to create template: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
 	response.WriteSuccess(w, http.StatusCreated, result)
+}
+
+// writeTemplateError turns a create/update failure into a response the UI can
+// act on: a stable code it translates, plus a message it can fall back to.
+//
+// Three classes, and they need different answers:
+//
+//   - our validation — the operator can fix it, 400, and the code names which
+//     rule so the UI shows the sentence in their language rather than the
+//     English one this codebase happens to be written in;
+//   - Meta refusing the template — also the operator's to fix, 422 because our
+//     request was well-formed, carrying Meta's own error_user_msg, which Meta
+//     already localises;
+//   - Meta unreachable or 5xx — ours, 502, and explicitly retryable, so the UI
+//     can say "try again" instead of "your template is wrong".
+//
+// The previous version had only two branches and put everything that was not a
+// hand-listed sentinel into a 500 whose message was "Failed to create template:"
+// concatenated with whatever Go string it received — including, for a Meta
+// rejection, the entire raw JSON envelope.
+func writeTemplateError(w http.ResponseWriter, err error) {
+	if whatsapptemplatedomain.IsValidationError(err) {
+		response.WriteErrorWithCode(w, http.StatusBadRequest,
+			whatsapptemplatedomain.ErrorCode(err), err.Error(), nil)
+		return
+	}
+
+	if apiErr, ok := whatsapptemplatedomain.AsProviderError(err); ok {
+		if apiErr.ProviderUnavailable() {
+			response.WriteErrorWithCode(w, http.StatusBadGateway,
+				whatsapptemplatedomain.CodeProviderUnavailable,
+				"WhatsApp is temporarily unavailable. Please try again.", nil)
+			return
+		}
+		// Meta's own words, already in the operator's language. When Meta sent
+		// nothing usable we say so plainly rather than echoing a status code.
+		message := apiErr.UserMessage()
+		if message == "" {
+			message = "WhatsApp rejected this template but gave no reason."
+		}
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity,
+			whatsapptemplatedomain.CodeProviderRejected, message, nil)
+		return
+	}
+
+	response.WriteErrorWithCode(w, http.StatusInternalServerError,
+		whatsapptemplatedomain.CodeUnknown, err.Error(), nil)
 }
 
 func isTemplateValidationError(err error) bool {

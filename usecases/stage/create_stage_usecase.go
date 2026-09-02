@@ -27,11 +27,13 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 		return nil, stage.ErrTagDescRequired
 	}
 
-	// The board is workspace-global now: a new stage becomes a canonical column on
-	// the default conversation pipeline (the repository attaches it), not a
-	// per-campaign clone. Uniqueness and position are computed over that same
-	// canonical set, which ListByCampaign returns regardless of the campaign args.
-	existing, err := uc.repo.ListByCampaign(workspaceID, input.CampaignID, input.CampaignType)
+	// A stage belongs to ONE funnel, so uniqueness and position are computed within
+	// that funnel — never across the workspace. pipelineID names it explicitly (the
+	// CRM sends the funnel the operator is looking at); without one the repository
+	// attaches the stage to the workspace default, which is the legacy behaviour and
+	// the reason a custom funnel could not be given a new column from the CRM.
+	pipelineID := strings.TrimSpace(input.PipelineID)
+	existing, err := uc.listSiblings(workspaceID, pipelineID, input)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +51,7 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 	t := &stage.Stage{
 		ID:          uuid.New().String(),
 		WorkspaceID: workspaceID,
+		PipelineID:  pipelineID,
 		Name:        lname,
 		Description: description,
 		Color:       strings.TrimSpace(input.Color),
@@ -60,4 +63,18 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 	}
 
 	return uc.repo.FindByID(t.ID)
+}
+
+// listSiblings returns the stages the new one must be unique and ordered against:
+// the named funnel's, or — with no funnel named — whatever the legacy campaign
+// resolution lands on. Scoping this per funnel is what lets two funnels each have
+// their own "fechado" without colliding.
+func (uc *CreateStageUseCase) listSiblings(
+	workspaceID, pipelineID string,
+	input stage.CreateStageInput,
+) ([]*stage.Stage, error) {
+	if pipelineID != "" {
+		return uc.repo.ListByPipeline(workspaceID, pipelineID)
+	}
+	return uc.repo.ListByCampaign(workspaceID, input.CampaignID, input.CampaignType)
 }

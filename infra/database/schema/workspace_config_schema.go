@@ -48,6 +48,15 @@ type WorkspaceConfig struct {
 	RouletteRescueEnabled       bool   `gorm:"not null;default:true"`
 	RouletteRescueAfterMinutes  int    `gorm:"type:int;not null;default:15"`
 
+	// WorkingHours is the workspace's weekly open/closed schedule, stored as the
+	// working_hours.Spec document.
+	//
+	// NULL — not a JSON null, an absent column value — means no working hours
+	// are configured, which the domain reads as always open. That is what keeps
+	// this additive: every existing row stays NULL and every existing workspace
+	// keeps distributing and rescuing around the clock exactly as before.
+	WorkingHours *string `gorm:"type:jsonb"`
+
 	UpdatedBy string    `gorm:"type:uuid"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`

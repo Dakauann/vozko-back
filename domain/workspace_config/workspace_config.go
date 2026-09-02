@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"vozko/domain/working_hours"
 )
 
 var (
@@ -128,6 +130,16 @@ type WorkspaceConfig struct {
 	// RouletteRescueAfterMinutes: how long the owner has to open or answer
 	// before the conversation moves on (1..1440).
 	RouletteRescueAfterMinutes int `json:"rouletteRescueAfterMinutes"`
+
+	// WorkingHours is the workspace's weekly schedule. Nil means none is
+	// configured, which is always open — the historical behaviour, and why this
+	// needs no migration of existing rows.
+	//
+	// It gates the rescue sweep two ways: a closed scope is not swept at all,
+	// and the rescue deadline accrues only while the scope is open, so an agent
+	// handed a conversation at 17:55 still gets their full fifteen working
+	// minutes rather than losing ten of them overnight.
+	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
 
 	UpdatedBy string    `json:"updatedBy,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -281,6 +293,14 @@ type RoulettePolicy struct {
 	WorkspaceID    string
 	RescueAfter    time.Duration
 	LastSeenWindow time.Duration
+	// WorkingHours rides along on the policy list rather than being fetched per
+	// workspace later. The sweep needs it BEFORE its candidate query, to drop
+	// workspaces where nothing can be due, and the policy query already reads
+	// exactly the rows it lives on — so carrying it here costs no extra query
+	// while a separate read would cost one per eligible workspace per minute.
+	//
+	// Nil means no schedule is configured, which is always open.
+	WorkingHours *working_hours.Spec
 }
 
 // UpdateWorkspaceConfigInput is the PLATFORM-ADMIN update.
@@ -311,6 +331,17 @@ type UpdateWorkspaceConfigOwnerInput struct {
 	RouletteLastSeenWindowHours *int    `json:"rouletteLastSeenWindowHours,omitempty"`
 	RouletteRescueEnabled       *bool   `json:"rouletteRescueEnabled,omitempty"`
 	RouletteRescueAfterMinutes  *int    `json:"rouletteRescueAfterMinutes,omitempty"`
+
+	// WorkingHours sets the workspace schedule. Nil means "not sent", exactly
+	// like every field above.
+	//
+	// ClearWorkingHours is separate because a pointer cannot tell "absent" from
+	// "explicitly null", and those mean opposite things here: leave the schedule
+	// alone, versus go back to operating around the clock. The HTTP layer, which
+	// is the only place that can see the difference, translates a JSON null into
+	// this flag.
+	WorkingHours      *working_hours.Spec `json:"workingHours,omitempty"`
+	ClearWorkingHours bool                `json:"-"`
 }
 
 type GetWorkspaceConfigUseCase interface {

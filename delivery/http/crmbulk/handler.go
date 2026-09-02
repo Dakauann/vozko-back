@@ -35,8 +35,9 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", map[string]string{
 			"action":  "string (required: move_stage | assign | add_label | remove_label)",
-			"targets": "[]{entryId, entryType} (required)",
+			"targets": "[]{entryId, entryType} (required unless filter is sent)",
 			"value":   "string (required: stageId | userId | labelId)",
+			"filter":  "crmfilter object (optional: apply to every entry the filter matches)",
 		})
 		return
 	}
@@ -47,8 +48,12 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Action) == "" || len(req.Targets) == 0 {
-		response.WriteError(w, http.StatusBadRequest, "action and targets are required", nil)
+	// One of the two targeting forms must be present. A filter is a legitimate way
+	// to say "everything my view is showing", including an EMPTY filter (the whole
+	// scoped workspace) — which is why the check is on the pointer, not on whether
+	// the filter has any groups.
+	if strings.TrimSpace(req.Action) == "" || (len(req.Targets) == 0 && req.Filter == nil) {
+		response.WriteError(w, http.StatusBadRequest, "action and either targets or filter are required", nil)
 		return
 	}
 
@@ -61,12 +66,14 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := h.service.BulkApply(r.Context(), crmbulk_usecase.BulkInput{
-		WorkspaceID: middleware.GetWorkspaceID(r),
-		ActorID:     claims.UserID,
-		IsAdmin:     claims.Role == "admin",
-		Action:      strings.TrimSpace(req.Action),
-		Targets:     targets,
-		Value:       strings.TrimSpace(req.Value),
+		WorkspaceID:          middleware.GetWorkspaceID(r),
+		ActorID:              claims.UserID,
+		IsAdmin:              claims.Role == "admin",
+		Action:               strings.TrimSpace(req.Action),
+		Targets:              targets,
+		Value:                strings.TrimSpace(req.Value),
+		Filter:               req.Filter,
+		SelectedDepartmentID: middleware.SelectedDepartmentID(r),
 	})
 
 	if result.Forbidden {

@@ -280,3 +280,68 @@ func TestLeadFilterGroupsCombine(t *testing.T) {
 		t.Errorf("bound %d args, want 2", len(args))
 	}
 }
+
+// The facet strip asks "does this lead have any campaign entry / any memory",
+// which is a presence question, not a counting one. Answered with COUNT(*) > 0
+// it walks every child row of every lead in the workspace before comparing
+// against zero; answered with EXISTS it stops at the first row. Same result,
+// and the facet query runs it once per lead with no LIMIT above it, so the
+// difference is the whole cost of the tile strip on a large tenant.
+func TestHasCampaignExprStopsAtFirstRow(t *testing.T) {
+	expr := leadDesc().HasCampaignExpr()
+
+	if !strings.HasPrefix(expr, "EXISTS (") {
+		t.Errorf("HasCampaignExpr() = %q, want an EXISTS form", expr)
+	}
+	if strings.Contains(expr, "COUNT(") {
+		t.Errorf("HasCampaignExpr() counts rows to answer a presence question: %q", expr)
+	}
+	// Soft-deleted entries are not reach, so presence must respect the same
+	// guard the count does.
+	if !strings.Contains(expr, "deleted_at IS NULL") {
+		t.Errorf("HasCampaignExpr() ignores soft deletes: %q", expr)
+	}
+	if !strings.Contains(expr, "lead_id = leads.id") {
+		t.Errorf("HasCampaignExpr() is not correlated to the lead: %q", expr)
+	}
+}
+
+func TestHasMemoryExprStopsAtFirstRow(t *testing.T) {
+	expr := leadDesc().HasMemoryExpr()
+
+	if !strings.HasPrefix(expr, "EXISTS (") {
+		t.Errorf("HasMemoryExpr() = %q, want an EXISTS form", expr)
+	}
+	if strings.Contains(expr, "COUNT(") {
+		t.Errorf("HasMemoryExpr() counts rows to answer a presence question: %q", expr)
+	}
+	if !strings.Contains(expr, "deleted_at IS NULL") {
+		t.Errorf("HasMemoryExpr() ignores soft deletes: %q", expr)
+	}
+	if !strings.Contains(expr, "lead_id = leads.id") {
+		t.Errorf("HasMemoryExpr() is not correlated to the lead: %q", expr)
+	}
+}
+
+// The presence and counting forms must agree about WHICH rows count, or the
+// "com campanha" facet and the campaign_count column would disagree on the
+// same lead.
+func TestPresenceAndCountExprsShareTheirScope(t *testing.T) {
+	d := leadDesc()
+
+	cases := []struct {
+		name     string
+		presence string
+		count    string
+		table    string
+	}{
+		{"campaign", d.HasCampaignExpr(), d.CampaignCountExpr(), "whatsapp_campaign_entries"},
+		{"memory", d.HasMemoryExpr(), d.MemoryCountExpr(), "lead_memories"},
+	}
+
+	for _, c := range cases {
+		if !strings.Contains(c.presence, c.table) || !strings.Contains(c.count, c.table) {
+			t.Errorf("%s: presence and count read different tables (%q vs %q)", c.name, c.presence, c.count)
+		}
+	}
+}

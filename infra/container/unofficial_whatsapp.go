@@ -425,8 +425,16 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 	contacts, conversations := bundle.Contacts, bundle.Conversations
 
 	display := func(c *uw.Contact) conversation_usecase.ContactDisplay {
+		// The CRM lead this contact resolved to, so the reader can prefer a name
+		// a person typed over the one the handset advertises. Empty for a group
+		// and for a contact whose first message has not been bridged yet.
+		leadID := ""
+		if c.LeadID != nil {
+			leadID = *c.LeadID
+		}
 		return conversation_usecase.ContactDisplay{
 			ContactID: c.ID,
+			LeadID:    leadID,
 			// Message rows carry the JID as the sender, so that is what the
 			// hydration compares against when deciding whether a label is a raw
 			// provider id leaking into the UI.
@@ -452,7 +460,16 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 				if contact == nil {
 					continue
 				}
-				out[contact.ID] = display(contact)
+				d := display(contact)
+				out[contact.ID] = d
+				// Keyed under BOTH ids, because the caller asked using whatever
+				// rode the lead slot and does not know which one it got: the CRM
+				// lead for a resolved contact, the contact id for a group or one
+				// that has not resolved yet. Keying only by contact id would
+				// leave every linked row unhydrated.
+				if d.LeadID != "" {
+					out[d.LeadID] = d
+				}
 			}
 			return out, nil
 		},

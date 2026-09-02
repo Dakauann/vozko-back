@@ -2521,6 +2521,642 @@
                 }
             }
         },
+        "/comment-analysis": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Listar comentários analisados",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.PaginatedPayload"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/authors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Autores ranqueados (quem comenta coisas ruins)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.PaginatedPayload"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/authors/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Um autor e seus comentários",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do autor",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.AuthorDetailResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Definir estado de moderação de um autor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do autor",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/backfill/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Progresso de um reprocessamento",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do reprocessamento",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/backfill/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Cancelar um reprocessamento",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do reprocessamento",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/backfill/{source}/{accountId}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Iniciar um reprocessamento de comentários antigos",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/backfill/{source}/{accountId}/estimate": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Estimar um reprocessamento de comentários antigos",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.BackfillEstimateResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Contas com análise de comentários configurada no workspace",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/settings/{source}/{accountId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Configuração da análise de comentários de uma conta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Atualizar configuração da análise de comentários",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/settings/{source}/{accountId}/containers/{containerId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Configuração de análise de uma publicação (override e efetiva)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "containerId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Substituir a configuração de análise de uma publicação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "containerId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Remover a configuração própria de uma publicação (volta a herdar)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal (instagram)",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "accountId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "containerId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/spend": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Gasto com análise de comentários no período",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.SpendResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Estatísticas ao vivo da análise de comentários",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.StatsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/trends": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Série diária (rollups) da análise de comentários",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "account|container|topic",
+                        "name": "scope",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do escopo",
+                        "name": "scopeId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/commentanalysis.TrendPointResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/{id}/retry": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Reprocessar um comentário com falha",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da análise",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations/inbox/search": {
             "get": {
                 "security": [
@@ -6395,6 +7031,63 @@
                 }
             }
         },
+        "/leads/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como \"matched\" e nunca sobrescritos.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Importar leads",
+                "parameters": [
+                    {
+                        "description": "Linhas do arquivo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/lead.ImportLeadsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/lead.ImportLeadsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/leads/search": {
             "get": {
                 "security": [
@@ -6492,6 +7185,68 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Define o nome de exibição de um lead. Enviar um nome vazio remove o nome, e o lead volta a ser exibido pelo número.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Renomear um lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Identificador do lead",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo nome",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/lead.RenameLeadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/lead.Lead"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -9863,7 +10618,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna as etapas do pipeline de conversas do workspace, na ordem de exibição. Os parâmetros campaignId e campaignType são aceitos por compatibilidade, mas não são obrigatórios.",
+                "description": "Retorna as etapas de UM funil de conversas, na ordem de exibição. Informe pipelineId para escolher o funil explicitamente — é o que o CRM usa para que a lista de etapas acompanhe o funil selecionado. Sem ele, o funil é resolvido pela campanha e, na ausência dela, pelo funil padrão do workspace; campaignId e campaignType seguem aceitos por compatibilidade.",
                 "produces": [
                     "application/json"
                 ],
@@ -9872,6 +10627,12 @@
                 ],
                 "summary": "Listar etapas",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do funil (tem precedência sobre a campanha)",
+                        "name": "pipelineId",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "ID da campanha (compatibilidade)",
@@ -16194,6 +16955,9 @@
                 "messaging": {
                     "type": "string"
                 },
+                "new_leads": {
+                    "type": "string"
+                },
                 "occupancy": {
                     "type": "string"
                 },
@@ -16467,8 +17231,8 @@
                     "description": "SLA placeholders (null until SLA policies exist)",
                     "type": "number"
                 },
-                "new_contacts": {
-                    "description": "engaged + created in range",
+                "new_leads": {
+                    "description": "NewLeads: CRM contacts (leads) created in the range.\n\nThe one KPI on this strip that is NOT entry-scoped, and deliberately so.\nA lead exists before any conversation does. It may be imported from a\nspreadsheet, created by an API integration, or loaded for a campaign that\nhas not gone out yet, so counting acquisition through conversation entries\nreports zero for\nevery contact the workspace has gained but not yet messaged, which is the\npopulation this number exists to show.\n\nIt therefore answers to the DATE RANGE ONLY. Department, member, channel\nand campaign narrow CONVERSATIONS, and a lead carries none of those\nattributes until it has an entry; applying them would silently drop every\nimported contact the moment an operator touched a filter. The tile states\nthis beside the number rather than leaving the reader to infer it.",
                     "type": "integer"
                 },
                 "ongoing": {
@@ -17048,7 +17812,8 @@
                 "ai",
                 "manual_adjustment",
                 "top_up",
-                "addon"
+                "addon",
+                "comment_analysis"
             ],
             "x-enum-varnames": [
                 "ServiceVoiceCampaign",
@@ -17058,7 +17823,8 @@
                 "ServiceAI",
                 "ServiceManualAdjustment",
                 "ServiceTopUp",
-                "ServiceAddon"
+                "ServiceAddon",
+                "ServiceCommentAnalysis"
             ]
         },
         "balance.Transaction": {
@@ -18067,6 +18833,646 @@
                 }
             }
         },
+        "comment_analysis.Counters": {
+            "type": "object",
+            "properties": {
+                "analyzed": {
+                    "type": "integer"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "comment_analysis.Topic": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "comment_analysis.TopicCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "topicKey": {
+                    "type": "string"
+                }
+            }
+        },
+        "comment_analysis.TopicStat": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "topicKey": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.AuthorDetailResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                },
+                "comments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commentanalysis.CommentResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.AuthorResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "authorExternalId": {
+                    "type": "string"
+                },
+                "authorHandle": {
+                    "type": "string"
+                },
+                "counters": {
+                    "$ref": "#/definitions/comment_analysis.Counters"
+                },
+                "derivedStance": {
+                    "type": "string"
+                },
+                "firstSeenAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isFlagged": {
+                    "type": "boolean"
+                },
+                "lastSeenAt": {
+                    "type": "string"
+                },
+                "moderationState": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "topTopics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/comment_analysis.TopicCount"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.BackfillEstimateResponse": {
+            "type": "object",
+            "properties": {
+                "containers": {
+                    "type": "integer"
+                },
+                "estimatedComments": {
+                    "type": "integer"
+                },
+                "estimatedMicros": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.BackfillResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "enqueued": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "estimatedComments": {
+                    "type": "integer"
+                },
+                "fetched": {
+                    "type": "integer"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.CommentResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "analyzedAt": {
+                    "type": "string"
+                },
+                "attempts": {
+                    "type": "integer"
+                },
+                "authorExternalId": {
+                    "type": "string"
+                },
+                "authorHandle": {
+                    "type": "string"
+                },
+                "commentedAt": {
+                    "type": "string"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "failureReason": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "intent": {
+                    "type": "string"
+                },
+                "isSpam": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "legalRisk": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "parentCommentId": {
+                    "type": "string"
+                },
+                "personalAttack": {
+                    "type": "string"
+                },
+                "requiresAction": {
+                    "type": "boolean"
+                },
+                "sentiment": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "sourceCommentId": {
+                    "type": "string"
+                },
+                "stance": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "topicKey": {
+                    "type": "string"
+                },
+                "toxicity": {
+                    "type": "string"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "commentanalysis.ContainerOverrideResponse": {
+            "type": "object",
+            "properties": {
+                "containerId": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "severityThreshold": {
+                    "type": "integer"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/comment_analysis.Topic"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.ContainerSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                },
+                "override": {
+                    "$ref": "#/definitions/commentanalysis.ContainerOverrideResponse"
+                }
+            }
+        },
+        "commentanalysis.SettingsResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "dailyCap": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "severityThreshold": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/comment_analysis.Topic"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "vertical": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.SpendResponse": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "integer"
+                },
+                "completionTokens": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "integer"
+                },
+                "priceMicros": {
+                    "type": "integer"
+                },
+                "promptTokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.StatsResponse": {
+            "type": "object",
+            "properties": {
+                "acceptanceScore": {
+                    "type": "integer"
+                },
+                "analyzed": {
+                    "type": "integer"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/comment_analysis.TopicStat"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.TrendPointResponse": {
+            "type": "object",
+            "properties": {
+                "acceptanceScore": {
+                    "type": "integer"
+                },
+                "analyzed": {
+                    "type": "integer"
+                },
+                "bucketDate": {
+                    "description": "YYYY-MM-DD, UTC",
+                    "type": "string"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "conversation.AIHandler": {
             "type": "object",
             "properties": {
@@ -18774,6 +20180,10 @@
                 "actor_kind": {
                     "$ref": "#/definitions/actor.Kind"
                 },
+                "actor_name": {
+                    "description": "ActorName, FromName and ToName are display names resolved when the\ntimeline is READ. They are never persisted: the repository's toSchema\nignores them, so no migration and no new column.\n\nStored events only ever carried ids — a `replied` event knows the\nsender's uuid, an `assigned` event knows from_user_id/to_user_id — so the\ntimeline could say \"a human replied\" and \"somebody was assigned\" but\nnever who, or to whom. Resolving on read rather than at emit time keeps\nthe send/assign hot paths free of a user lookup, follows a rename, and,\nthe reason it is worth doing at all, fills in every event already stored.",
+                    "type": "string"
+                },
                 "channel": {
                     "type": "string"
                 },
@@ -18795,7 +20205,13 @@
                 "event_type": {
                     "$ref": "#/definitions/conversation_event.EventType"
                 },
+                "from_name": {
+                    "type": "string"
+                },
                 "id": {
+                    "type": "string"
+                },
+                "to_name": {
                     "type": "string"
                 },
                 "workspace_id": {
@@ -18918,6 +20334,14 @@
                     "type": "string",
                     "example": "move_stage"
                 },
+                "filter": {
+                    "description": "Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the\nclient sends back verbatim the filter it rendered the table with. Used only\nwhen targets is empty; the server re-runs it under the caller's own scope\nrather than trusting a client-supplied id list.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/crmfilter.Filter"
+                        }
+                    ]
+                },
                 "targets": {
                     "type": "array",
                     "items": {
@@ -18956,9 +20380,18 @@
                     "type": "boolean",
                     "example": false
                 },
+                "matched": {
+                    "description": "Matched and Truncated are set only for a filter-addressed bulk: how many\nentries the filter selected, and whether the server's per-request cap stopped\nshort of all of them. Present so the UI can report \"2000 de 5300\" instead of\na bare count the operator cannot interpret.",
+                    "type": "integer",
+                    "example": 340
+                },
                 "succeeded": {
                     "type": "integer",
                     "example": 3
+                },
+                "truncated": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -20120,6 +21553,135 @@
                 }
             }
         },
+        "lead.ImportLeadRow": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer",
+                    "example": 34
+                },
+                "line": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Ana Maria"
+                },
+                "number": {
+                    "type": "string",
+                    "example": "5511987654321"
+                }
+            }
+        },
+        "lead.ImportLeadsRequest": {
+            "type": "object",
+            "properties": {
+                "onExisting": {
+                    "description": "OnExisting is \"fill_empty\" (default) or \"skip\". Never an overwrite:\nsee lead.ExistingPolicy.",
+                    "type": "string",
+                    "example": "fill_empty"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/lead.ImportLeadRow"
+                    }
+                }
+            }
+        },
+        "lead.ImportLeadsResponse": {
+            "type": "object",
+            "properties": {
+                "blocked": {
+                    "description": "Blocked: how many of the matched are blocked, and so unreachable by a\ncampaign built on this list.",
+                    "type": "integer"
+                },
+                "created": {
+                    "description": "Created: leads that did not exist in this workspace before.",
+                    "type": "integer"
+                },
+                "duplicate": {
+                    "description": "Duplicate: rows repeating a number that appeared earlier in the SAME file.",
+                    "type": "integer"
+                },
+                "invalid": {
+                    "description": "Invalid: rows whose number is not a reachable phone number.",
+                    "type": "integer"
+                },
+                "matched": {
+                    "description": "Matched: rows whose number the workspace already knew.",
+                    "type": "integer"
+                },
+                "rejected": {
+                    "description": "Rejected lists the rows that did not make it, capped at\nMaxReportedRejections. Rejections are reported, never silently dropped:\nan operator told \"480 importados\" out of 500 with no list of the other 20\nhas a file they cannot repair.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/lead.ImportRejection"
+                    }
+                },
+                "rejectedTruncated": {
+                    "description": "RejectedTruncated says the list above was cut, so the UI can say \"+N\"\nrather than implying it showed everything.",
+                    "type": "integer"
+                }
+            }
+        },
+        "lead.ImportRejection": {
+            "type": "object",
+            "properties": {
+                "line": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "number": {
+                    "type": "string",
+                    "example": "11987"
+                },
+                "reason": {
+                    "description": "Reason is \"invalid\" (not a reachable number) or \"duplicate\" (repeated\nearlier in the same file).",
+                    "type": "string",
+                    "example": "invalid"
+                }
+            }
+        },
+        "lead.Lead": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "blocked": {
+                    "type": "boolean"
+                },
+                "blockedAt": {
+                    "type": "string"
+                },
+                "blockedBy": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "string"
+                },
+                "profilePictureUrl": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
         "lead.LeadDetailResponse": {
             "type": "object",
             "properties": {
@@ -20289,6 +21851,14 @@
                     "type": "string"
                 },
                 "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "lead.RenameLeadRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
                     "type": "string"
                 }
             }
@@ -21748,6 +23318,11 @@
                 "name": {
                     "type": "string",
                     "example": "Em atendimento"
+                },
+                "pipelineId": {
+                    "description": "PipelineID is the funnel the new stage joins. Omit it and the stage lands on\nthe workspace default funnel.",
+                    "type": "string",
+                    "example": "pl_a1b2c3"
                 }
             }
         },
@@ -21814,6 +23389,10 @@
                 },
                 "campaignType": {
                     "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string",
+                    "example": "pl_a1b2c3"
                 },
                 "stageIds": {
                     "type": "array",
@@ -23064,8 +24643,10 @@
                     "type": "string",
                     "enum": [
                         "whatsapp",
-                        "voice",
-                        "sip"
+                        "unofficial_whatsapp",
+                        "instagram",
+                        "telegram",
+                        "support"
                     ],
                     "example": "whatsapp"
                 },
@@ -23090,6 +24671,37 @@
                         "already_running"
                     ],
                     "example": "accepted"
+                }
+            }
+        },
+        "working_hours.Spec": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/working_hours.Window"
+                        }
+                    }
+                },
+                "timezone": {
+                    "type": "string",
+                    "example": "America/Sao_Paulo"
+                }
+            }
+        },
+        "working_hours.Window": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "string",
+                    "example": "18:00"
+                },
+                "start": {
+                    "type": "string",
+                    "example": "09:00"
                 }
             }
         },
@@ -23687,6 +25299,14 @@
                 },
                 "skipAdminAssignment": {
                     "type": "boolean"
+                },
+                "workingHours": {
+                    "description": "WorkingHours sets the workspace schedule. Nil means \"not sent\", exactly\nlike every field above.\n\nClearWorkingHours is separate because a pointer cannot tell \"absent\" from\n\"explicitly null\", and those mean opposite things here: leave the schedule\nalone, versus go back to operating around the clock. The HTTP layer, which\nis the only place that can see the difference, translates a JSON null into\nthis flag.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/working_hours.Spec"
+                        }
+                    ]
                 }
             }
         },
@@ -23824,6 +25444,14 @@
                     "type": "string",
                     "example": "usr_a1b2c3"
                 },
+                "workingHours": {
+                    "description": "WorkingHours is the workspace's weekly schedule, or absent when none is\nset — which means the roulette rescue runs around the clock.\n\nWhile it is set, the rescue is paused outside these hours AND the owner's\ndeadline only counts the minutes inside them, so a conversation handed out\nfive minutes before closing still gets its full deadline the next morning.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/working_hours.Spec"
+                        }
+                    ]
+                },
                 "workspaceId": {
                     "type": "string",
                     "example": "ws_a1b2c3"
@@ -23913,6 +25541,14 @@
                 "updatedAt": {
                     "type": "string"
                 },
+                "workingHours": {
+                    "description": "WorkingHours is set only when this department overrides the workspace\nschedule; absent means it inherits.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/working_hours.Spec"
+                        }
+                    ]
+                },
                 "workspaceId": {
                     "type": "string",
                     "example": "ws_a1b2c3"
@@ -23929,6 +25565,14 @@
                 "name": {
                     "type": "string",
                     "example": "Suporte"
+                },
+                "workingHours": {
+                    "description": "WorkingHours is this department's own weekly schedule. Send null to clear\nit and inherit the workspace's; omit it to leave it unchanged.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/working_hours.Spec"
+                        }
+                    ]
                 }
             }
         },

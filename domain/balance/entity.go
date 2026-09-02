@@ -35,11 +35,14 @@ const (
 	ServiceManualAdjustment     ServiceType = "manual_adjustment"
 	ServiceTopUp                ServiceType = "top_up"
 	ServiceAddon                ServiceType = "addon"
+	// ServiceCommentAnalysis is the optional per-batch surcharge for comment
+	// analysis (plan §9.2). Token usage itself is billed as ServiceAI.
+	ServiceCommentAnalysis ServiceType = "comment_analysis"
 )
 
 func (s ServiceType) IsValid() bool {
 	switch s {
-	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon:
+	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon, ServiceCommentAnalysis:
 		return true
 	default:
 		return false
@@ -56,6 +59,7 @@ func AllServiceTypes() []ServiceType {
 		ServiceManualAdjustment,
 		ServiceTopUp,
 		ServiceAddon,
+		ServiceCommentAnalysis,
 	}
 }
 

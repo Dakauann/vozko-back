@@ -4,6 +4,7 @@
 package pipeline_usecase
 
 import (
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,12 +12,36 @@ import (
 	"vozko/domain/pipeline"
 )
 
-type CreatePipelineUseCase struct {
-	repo pipeline.Repository
+// StageSeeder gives a brand-new funnel its first columns.
+//
+// A funnel with no stages is not a funnel: the board renders nothing, no
+// conversation can be placed on it, and the operator has no way to add a column
+// without one already existing to anchor position. Seeding is therefore part of
+// creating one, not a follow-up the caller may forget.
+//
+// It is a port rather than a direct dependency because stages are another
+// aggregate — this package depends only on pipeline.Repository, and the
+// composition root supplies the adapter.
+type StageSeeder interface {
+	// SeedConversationPipeline fills pipelineID with stages. copyFromPipelineID
+	// duplicates that funnel's stages when set; empty means the product defaults.
+	SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string) error
 }
 
-func NewCreatePipelineUseCase(repo pipeline.Repository) pipeline.CreatePipelineUseCase {
+type CreatePipelineUseCase struct {
+	repo   pipeline.Repository
+	seeder StageSeeder
+}
+
+func NewCreatePipelineUseCase(repo pipeline.Repository) *CreatePipelineUseCase {
 	return &CreatePipelineUseCase{repo: repo}
+}
+
+// SetStageSeeder enables stage seeding on creation. Returned as the concrete type
+// from the constructor so the composition root can call this without a type
+// assertion; interface fields still accept it unchanged.
+func (uc *CreatePipelineUseCase) SetStageSeeder(s StageSeeder) {
+	uc.seeder = s
 }
 
 func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.CreatePipelineInput) (*pipeline.Pipeline, error) {
@@ -51,6 +76,18 @@ func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.Crea
 	if err := uc.repo.Create(p); err != nil {
 		return nil, err
 	}
+
+	// Seed only conversation funnels: the opportunity board has its own seeding
+	// path (EnsureDefaultOpportunityPipeline) and a different stage vocabulary.
+	if uc.seeder != nil && p.ObjectType == pipeline.ObjectConversation {
+		if err := uc.seeder.SeedConversationPipeline(workspaceID, p.ID, strings.TrimSpace(input.CopyStagesFromPipelineID)); err != nil {
+			// The funnel exists and is already listed; a seeding failure leaves it
+			// empty rather than orphaning it, and the operator can add columns by
+			// hand. Losing the funnel over it would be the worse outcome.
+			log.Printf("[pipeline] funnel %s created but not seeded: %v", p.ID, err)
+		}
+	}
+
 	return uc.repo.GetByID(workspaceID, p.ID)
 }
 

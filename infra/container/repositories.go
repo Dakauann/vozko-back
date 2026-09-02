@@ -77,7 +77,7 @@ func (c *Container) initRepositories() {
 		property:                property_repository.NewRepository(c.db),
 		category:                category_repository.NewRepository(c.db),
 		agent:                   agent_repository.NewCachedRepository(agent_repository.NewRepository(c.db), c.redisProvider.SharedState()),
-		lead:                    lead_repository.NewRepository(c.db),
+		lead:                    lead_repository.NewCachedRepository(c.db, c.redisProvider.SharedState()),
 		conversation:            conversation_repository.NewRepository(c.db),
 		analysis:                analysis_repository.NewRepository(c.db),
 		user:                    user_repository.NewUserRepository(c.db),

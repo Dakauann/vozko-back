@@ -62,13 +62,17 @@ func (c *Container) initJobRunner() {
 	// workspaces running the last_seen mode with rescue on, so a deployment with
 	// none of them pays one indexed read a minute.
 	if c.services.assignmentService != nil {
-		c.jobRunner.SetAssignmentJobs(ia_usecase.NewRescueJob(
+		rescue := ia_usecase.NewRescueJob(
 			c.repositories.workspaceConfig,
 			c.repositories.assignmentHistory,
 			ia_repo.NewAttentionRepository(c.db),
 			c.services.conversationStatusUpdater,
 			c.services.assignmentService,
-		))
+		)
+		// Department-level working hours. Without this the sweep still honours
+		// each workspace's schedule; departments simply all inherit it.
+		rescue.SetDepartmentSchedules(c.repositories.workspaceDepartment)
+		c.jobRunner.SetAssignmentJobs(rescue)
 	}
 
 	// Paid-template reconciliation is likewise not optional: it is the sweep that
@@ -85,6 +89,10 @@ func (c *Container) initJobRunner() {
 	// channel can be absent without touching the constructor.
 	if c.instagram != nil && c.instagram.Enabled {
 		c.jobRunner.SetInstagramJobs(c.instagram.RefreshTokens, c.instagram.PurgeEvents)
+	}
+	if c.commentAnalysis != nil && c.commentAnalysis.Enabled {
+		b := c.commentAnalysis
+		c.jobRunner.SetCommentAnalysisJobs(b.Flush, b.Backstop, b.Rollup, b.Purge, b.Backfill)
 	}
 	if c.telegram != nil && c.telegram.Enabled {
 		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth, c.telegram.PurgeEvents)

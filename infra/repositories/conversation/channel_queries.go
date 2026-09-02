@@ -47,7 +47,6 @@ type channelQuery struct {
 	ContactJoin string
 
 	// Projections, evaluated against the aliases EntryJoin introduces.
-	ContactIDField     string
 	AccountIDField     string
 	ContainerIDField   string
 	ContainerNameField string
@@ -104,11 +103,6 @@ type channelQuery struct {
 	CampaignFilter       string
 	CampaignDeptColumn   string
 	CampaignDeptEntryCol string
-
-	// EntryInfoSQL hydrates one entry's header: lead_id, business_phone_id,
-	// campaign_id, campaign_name and the automation quartet. One bind parameter,
-	// the entry id.
-	EntryInfoSQL string
 }
 
 // channelQueries is the registry.
@@ -123,7 +117,6 @@ var channelQueries = []channelQuery{
 		             JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id`,
 		ContactJoin: `JOIN leads l ON l.id = wce.lead_id AND l.deleted_at IS NULL`,
 
-		ContactIDField:     "wce.lead_id::text",
 		AccountIDField:     "COALESCE(wc.business_phone_id::text, '')",
 		ContainerIDField:   "wc.id::text",
 		ContainerNameField: "wc.name",
@@ -151,18 +144,6 @@ var channelQueries = []channelQuery{
 				JOIN whatsapp_campaigns wc_w ON wc_w.id = wce_w.campaign_id
 				JOIN lead_message_windows lmw ON lmw.lead_id = wce_w.lead_id AND lmw.business_phone_id = wc_w.business_phone_id
 				WHERE wce_w.deleted_at IS NULL AND lmw.last_message_at > NOW() - INTERVAL '24 hours'`,
-
-		EntryInfoSQL: `
-			SELECT wce.lead_id::text AS lead_id, COALESCE(wc.business_phone_id::text, '') AS business_phone_id,
-			       wc.id::text AS campaign_id, wc.name AS campaign_name,
-			       COALESCE(wc.agent_id::text, '') AS agent_id, COALESCE(wc.workflow_id::text, '') AS workflow_id,
-			       wc.enable_agent_responses AS agent_responses_enabled, wc.enable_workflow AS workflow_enabled,
-			       wce.automation_enabled AS automation_enabled
-			FROM whatsapp_campaign_entries wce
-			JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id
-			WHERE wce.id = ?::uuid AND wce.deleted_at IS NULL
-			LIMIT 1
-		`,
 	},
 	{
 		// The Instagram account plays the role whatsapp_campaigns plays for
@@ -180,7 +161,6 @@ var channelQueries = []channelQuery{
 	FROM instagram_contacts
 ) l ON l.id = igc.contact_id AND l.deleted_at IS NULL`,
 
-		ContactIDField:     "igc.contact_id::text",
 		AccountIDField:     "COALESCE(igc.ig_account_id::text, '')",
 		ContainerIDField:   "iga.id::text",
 		ContainerNameField: "iga.username",
@@ -210,18 +190,6 @@ var channelQueries = []channelQuery{
 				WHERE igc_w.deleted_at IS NULL
 				  AND igc_w.last_customer_message_at IS NOT NULL
 				  AND igc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
-
-		EntryInfoSQL: `
-			SELECT igc.contact_id::text AS lead_id, COALESCE(igc.ig_account_id::text, '') AS business_phone_id,
-			       iga.id::text AS campaign_id, iga.username AS campaign_name,
-			       COALESCE(iga.agent_id::text, '') AS agent_id, COALESCE(iga.workflow_id::text, '') AS workflow_id,
-			       iga.enable_agent_responses AS agent_responses_enabled, iga.enable_workflow AS workflow_enabled,
-			       igc.automation_enabled AS automation_enabled
-			FROM instagram_conversations igc
-			JOIN instagram_accounts iga ON iga.id = igc.ig_account_id
-			WHERE igc.id = ?::uuid AND igc.deleted_at IS NULL
-			LIMIT 1
-		`,
 	},
 	{
 		// Telegram mirrors Instagram's container shape: the bot account carries
@@ -242,7 +210,6 @@ var channelQueries = []channelQuery{
 	FROM telegram_contacts
 ) l ON l.id = tgc.contact_id AND l.deleted_at IS NULL`,
 
-		ContactIDField:     "tgc.contact_id::text",
 		AccountIDField:     "COALESCE(tgc.account_id::text, '')",
 		ContainerIDField:   "tga.id::text",
 		ContainerNameField: "tga.bot_username",
@@ -275,18 +242,6 @@ var channelQueries = []channelQuery{
 				WHERE tgc_w.deleted_at IS NULL
 				  AND tgc_w.last_customer_message_at IS NOT NULL
 				  AND tgc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
-
-		EntryInfoSQL: `
-			SELECT tgc.contact_id::text AS lead_id, COALESCE(tgc.account_id::text, '') AS business_phone_id,
-			       tga.id::text AS campaign_id, tga.bot_username AS campaign_name,
-			       COALESCE(tga.agent_id::text, '') AS agent_id, COALESCE(tga.workflow_id::text, '') AS workflow_id,
-			       tga.enable_agent_responses AS agent_responses_enabled, tga.enable_workflow AS workflow_enabled,
-			       tgc.automation_enabled AS automation_enabled
-			FROM telegram_conversations tgc
-			JOIN telegram_accounts tga ON tga.id = tgc.account_id
-			WHERE tgc.id = ?::uuid AND tgc.deleted_at IS NULL
-			LIMIT 1
-		`,
 	},
 	{
 		// The instance is the container that carries the automation config, so
@@ -315,15 +270,34 @@ var channelQueries = []channelQuery{
 		// existing search-by-number works unchanged. The display name still falls
 		// back through the same preference order the entity uses, so a contact
 		// seen before its profile resolved renders as a number rather than blank.
+		// The CRM lead's name comes FIRST in the chain, ahead of everything the
+		// handset advertises. This channel's contacts are leads, so a name an
+		// operator typed is a deliberate statement about who this is; the
+		// pushname is the provider's guess and only fills the gap before one
+		// exists. Reading the contact columns alone is what made a rename
+		// invisible here while the leads page showed it correctly.
 		ContactJoin: `JOIN (
-	SELECT id,
-	       COALESCE(NULLIF(contact_name, ''), NULLIF(verified_name, ''), NULLIF(name, ''), phone_number) AS name,
-	       phone_number AS number,
-	       picture_url AS profile_picture_url, blocked, deleted_at
-	FROM unofficial_whatsapp_contacts
+	SELECT c.id,
+	       COALESCE(NULLIF(ld.name, ''), NULLIF(c.contact_name, ''), NULLIF(c.verified_name, ''),
+	                NULLIF(c.name, ''), c.phone_number) AS name,
+	       c.phone_number AS number,
+	       c.picture_url AS profile_picture_url, c.blocked, c.deleted_at
+	FROM unofficial_whatsapp_contacts c
+	LEFT JOIN leads ld ON ld.id = c.lead_id AND ld.deleted_at IS NULL
 ) l ON l.id = uwc.contact_id AND l.deleted_at IS NULL`,
 
-		ContactIDField:     "uwc.contact_id::text",
+		// The CRM lead once the contact has resolved to one, the contact's own id
+		// until then and for every group.
+		//
+		// This is the id the UI addresses for rename, block and memories, and the
+		// id the inbox resolves a name from. Projecting the contact id outright
+		// pointed all of it at a row that is not in `leads`: PATCH /leads/{id}
+		// answered "Lead not found", and the name lookup came back empty so the
+		// list fell back to the pushname.
+		//
+		// A scalar subquery rather than a join because this descriptor is used by
+		// a read path that does not join contacts at all — it is a primary-key
+		// lookup per row, and the alternative is threading a join through both.
 		AccountIDField:     "COALESCE(uwc.instance_id::text, '')",
 		ContainerIDField:   "COALESCE(camp.id::text, uwi.id::text)",
 		ContainerNameField: "COALESCE(camp.name, uwi.display_name)",
@@ -384,35 +358,6 @@ var channelQueries = []channelQuery{
 			)`,
 		CampaignDeptColumn:   "uwcamp.department_id",
 		CampaignDeptEntryCol: "uwce.conversation_id",
-
-		EntryInfoSQL: `
-			SELECT uwc.contact_id::text AS lead_id, COALESCE(uwc.instance_id::text, '') AS business_phone_id,
-			       COALESCE(camp.id::text, uwi.id::text) AS campaign_id,
-			       COALESCE(camp.name, uwi.display_name) AS campaign_name,
-			       CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.agent_id::text, '')
-			            ELSE COALESCE(uwi.agent_id::text, '') END AS agent_id,
-			       CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.workflow_id::text, '')
-			            ELSE COALESCE(uwi.workflow_id::text, '') END AS workflow_id,
-			       CASE WHEN camp.id IS NOT NULL THEN camp.enable_agent_responses
-			            ELSE uwi.enable_agent_responses END AS agent_responses_enabled,
-			       CASE WHEN camp.id IS NOT NULL THEN camp.enable_workflow
-			            ELSE uwi.enable_workflow END AS workflow_enabled,
-			       uwc.automation_enabled AS automation_enabled
-			FROM unofficial_whatsapp_conversations uwc
-			JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id
-			LEFT JOIN LATERAL (
-			    SELECT uwcamp.id, uwcamp.name, uwcamp.agent_id, uwcamp.workflow_id,
-			           uwcamp.enable_agent_responses, uwcamp.enable_workflow
-			    FROM unofficial_whatsapp_campaign_entries uwce
-			    JOIN unofficial_whatsapp_campaigns uwcamp
-			      ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
-			    WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
-			    ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
-			    LIMIT 1
-			) camp ON TRUE
-			WHERE uwc.id = ?::uuid AND uwc.deleted_at IS NULL
-			LIMIT 1
-		`,
 	},
 }
 
@@ -474,6 +419,44 @@ func channelQueryFor(entryType shared.EntryType) (channelQuery, bool) {
 // entryJoinOn renders the entry join against the caller's entry-id column.
 func (q channelQuery) entryJoinOn(entryIDColumn string) string {
 	return fmt.Sprintf(q.EntryJoin, entryIDColumn)
+}
+
+// entryInfoSQL builds the single-entry header query: the same projection the
+// list paths use, for one entry id.
+//
+// COMPOSED, not declared. Each channel used to spell this out as a fifth SQL
+// literal that restated the contact slot, AccountIDField, ContainerIDField,
+// ContainerNameField, AutomationFields, AutomationColumn and the whole join
+// chain — the exact strings sitting a few lines above it in the same
+// descriptor. Two copies of one projection is two things to keep in step, and
+// they did not stay in step: pointing the unofficial WhatsApp contact slot at
+// its real lead needed the identical edit in both, and the header kept the old
+// answer until the second one was found.
+//
+// The anchor row exists so EntryJoin can be reused verbatim. EntryJoin renders
+// as a chain of JOINs against a caller-supplied entry-id column; giving it a
+// one-row FROM to hang off turns "join these tables onto that id" into "select
+// from these tables where the id is this", with no second spelling of either.
+func (q channelQuery) entryInfoSQL() string {
+	return fmt.Sprintf(`
+		SELECT %s AS lead_id,
+		       %s AS business_phone_id,
+		       %s AS campaign_id,
+		       %s AS campaign_name,
+		       %s,
+		       %s AS automation_enabled
+		FROM (SELECT 1) AS entry_anchor
+		%s
+		LIMIT 1
+	`,
+		contactRefText(q.EntryType),
+		q.AccountIDField,
+		q.ContainerIDField,
+		q.ContainerNameField,
+		q.AutomationFields,
+		q.AutomationColumn,
+		q.entryJoinOn("?::uuid"),
+	)
 }
 
 // containerCTE renders the container-scoped entry CTE with an assignment clause.

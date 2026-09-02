@@ -128,6 +128,16 @@ const (
 
 func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.ConsumeWhatsappTemplateUseCase) {
 
+	// The activity-timeline logger, shared by every use case that records a
+	// conversation event. Available here because wireConversationHub, which
+	// builds the telemetry publisher, runs before initUseCases.
+	//
+	// Use cases hold this, not handlers. Stage and label events used to be
+	// written by the HTTP handlers, so the CRM's bulk action and the AI's stage
+	// tool — which call the same use cases directly — changed the board and left
+	// the conversation's history blank.
+	timeline := ce_usecase.NewLogger(c.services.crmTelemetryPublisher)
+
 	searchCEPUC := cep_usecase.NewSearchCEPUseCase(c.repositories.cep, http.DefaultClient)
 
 	recordMetricUC := business_metrics_usecase.NewPublishMetricUseCase(c.services.metricsQueuePub)
@@ -170,6 +180,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// write model. The emitter it captures was wired in wireConversationHub.
 	leadMemories := c.buildLeadMemories()
 
+	// One instance, three consumers: the stage HTTP handler, the CRM's bulk action
+	// and the AI's stage tool. Sharing it is the point — it carries the rule that a
+	// lead's stage must belong to the lead's own funnel, and a writer that skipped
+	// it would be a writer that rule cannot reach.
+	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
+
 	toolHandlers := []tools.Handler{
 		tools_usecase.NewSendEmailToolUseCase(nil),
 		optionsTool,
@@ -183,7 +199,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			}
 			return at
 		}(),
-		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, c.services.conversationHub),
+		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, c.services.conversationHub),
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
@@ -240,6 +256,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	getCategoryUC := category_usecase.NewGetCategoryUseCase(c.repositories.category)
 	listCategoriesUC := category_usecase.NewListCategoriesUseCase(c.repositories.category)
 	resolveCreationDepartmentUC := workspace_department_usecase.NewResolveCreationDepartmentUseCase(c.repositories.workspace, c.repositories.workspaceDepartment)
+
+	// Built out here so the stage repository can be attached: with it, creating a
+	// stage group also materializes the conversation funnel it describes, which is
+	// what makes the new funnel appear in the CRM selector straight away instead of
+	// waiting for some campaign to reference the group.
+	createStageGroupUC := stage_usecase.NewCreateStageGroupUseCase(c.repositories.stageGroup, resolveCreationDepartmentUC)
+	createStageGroupUC.SetStageRepository(c.repositories.stage)
+
+	// Creating a funnel seeds its columns, so it arrives usable rather than as an
+	// empty board with no first column to anchor the next one against.
+	createPipelineUC := pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline)
+	createPipelineUC.SetStageSeeder(pipelineStageSeeder{stages: c.repositories.stage})
 
 	// The knowledge-base and MCP repositories are the workspace-ownership
 	// guards for attached ids: an agent must never be pointed at another
@@ -838,7 +866,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		uploadConversationMedia: conversation_usecase.NewUploadConversationMediaUseCase(c.repositories.conversationMedia, c.services.fileStorage),
 		getConversationMedia:    conversation_usecase.NewGetConversationMediaUseCase(c.repositories.conversationMedia),
 		searchMessagesByEntry:   conversation_usecase.NewSearchMessagesByEntryUseCase(c.repositories.conversation),
-		listConversationEvents:  ce_usecase.NewListEventsUseCase(c.repositories.conversationEvent),
+		listConversationEvents:  ce_usecase.NewListEventsUseCase(c.repositories.conversationEvent, c.repositories.user, c.repositories.agent, c.repositories.stage, c.repositories.label),
 
 		createStage:          stage_usecase.NewCreateStageUseCase(c.repositories.stage),
 		cloneStagesFromGroup: stage_usecase.NewCloneStagesFromGroupUseCase(c.repositories.stageGroup, c.repositories.stage),
@@ -846,19 +874,19 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		deleteStage:          stage_usecase.NewDeleteStageUseCase(c.repositories.stage),
 		listStages:           stage_usecase.NewListStagesUseCase(c.repositories.stage),
 		setInitialStage:      stage_usecase.NewSetInitialStageUseCase(c.repositories.stage),
-		assignEntryStage:     stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage),
-		removeEntryStage:     stage_usecase.NewRemoveEntryStageUseCase(c.repositories.stage),
+		assignEntryStage:     assignEntryStageUC,
+		removeEntryStage:     stage_usecase.NewRemoveEntryStageUseCase(c.repositories.stage, timeline),
 		getEntryStage:        stage_usecase.NewGetEntryStageUseCase(c.repositories.stage),
 		getBatchEntryStages:  stage_usecase.NewGetBatchEntryStagesUseCase(c.repositories.stage),
 		reorderStages:        stage_usecase.NewReorderStagesUseCase(c.repositories.stage),
 
-		createStageGroup: stage_usecase.NewCreateStageGroupUseCase(c.repositories.stageGroup, resolveCreationDepartmentUC),
+		createStageGroup: createStageGroupUC,
 		updateStageGroup: stage_usecase.NewUpdateStageGroupUseCase(c.repositories.stageGroup, c.repositories.stage),
 		deleteStageGroup: stage_usecase.NewDeleteStageGroupUseCase(c.repositories.stageGroup),
 		listStageGroups:  stage_usecase.NewListStageGroupsUseCase(c.repositories.stageGroup),
 		getStageGroup:    stage_usecase.NewGetStageGroupUseCase(c.repositories.stageGroup),
 
-		createPipeline: pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline),
+		createPipeline: createPipelineUC,
 		updatePipeline: pipeline_usecase.NewUpdatePipelineUseCase(c.repositories.pipeline),
 		deletePipeline: pipeline_usecase.NewDeletePipelineUseCase(c.repositories.pipeline),
 		listPipelines:  pipeline_usecase.NewListPipelinesUseCase(c.repositories.pipeline),
@@ -874,8 +902,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		updateLabel:      label_usecase.NewUpdateLabelUseCase(c.repositories.label),
 		deleteLabel:      label_usecase.NewDeleteLabelUseCase(c.repositories.label),
 		listLabels:       label_usecase.NewListLabelsUseCase(c.repositories.label),
-		assignEntryLabel: label_usecase.NewAssignEntryLabelUseCase(c.repositories.label),
-		removeEntryLabel: label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label),
+		assignEntryLabel: label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline),
+		removeEntryLabel: label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline),
 		getEntryLabels:   label_usecase.NewGetEntryLabelsUseCase(c.repositories.label),
 		reorderLabels:    label_usecase.NewReorderLabelsUseCase(c.repositories.label),
 
@@ -1471,6 +1499,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// Instagram's runtime half is wired here rather than earlier: it needs both the
 	// shared history manager (a local in this function) and c.useCases.publishWebhook,
 	// which only exists once the useCases struct literal above has been assigned.
+	// The comment-analysis engine is built first: the Instagram webhook use
+	// case built inside initInstagramRuntime takes its enqueuer.
+	c.initCommentAnalysis(pricer, notifierUC, dashboardURL)
 	c.initInstagramRuntime(messageHistoryManager)
 
 	// Instagram subscribes three topics (messages, comments, account events).
