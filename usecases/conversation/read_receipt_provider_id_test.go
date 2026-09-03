@@ -33,10 +33,15 @@ func (r *stubMessageReader) GetByID(id string) (*conversation.Message, error) {
 
 func strPtr(s string) *string { return &s }
 
+const testEntryID = "entry-1"
+
 func markerWith(msgs ...*conversation.Message) (*MessageMarkerService, []string) {
 	repo := &stubMessageReader{byID: map[string]*conversation.Message{}}
 	ids := make([]string, 0, len(msgs))
 	for _, m := range msgs {
+		if m.EntryID == "" {
+			m.EntryID = testEntryID
+		}
 		repo.byID[m.ID] = m
 		ids = append(ids, m.ID)
 	}
@@ -55,7 +60,7 @@ func TestReadReceiptResolvesAdapterChannelProviderID(t *testing.T) {
 		},
 	)
 
-	if got := marker.latestInboundProviderID(ids); got != "3EB027B8F1853217E3B8BB" {
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "3EB027B8F1853217E3B8BB" {
 		t.Errorf("provider id = %q, want the external id — an empty result skips the receipt entirely", got)
 	}
 }
@@ -79,7 +84,7 @@ func TestReadReceiptIgnoresOurOwnOutboundMessages(t *testing.T) {
 	)
 
 	// Newest-first: m2 is newest but ours, so the newest INBOUND must win.
-	if got := marker.latestInboundProviderID(ids); got != "INBOUND-1" {
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "INBOUND-1" {
 		t.Errorf("provider id = %q, want INBOUND-1", got)
 	}
 }
@@ -95,7 +100,7 @@ func TestReadReceiptStillResolvesOfficialWhatsAppWamid(t *testing.T) {
 		},
 	)
 
-	if got := marker.latestInboundProviderID(ids); got != "wamid.HBgMNTU=" {
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeWhatsApp, ids); got != "wamid.HBgMNTU=" {
 		t.Errorf("provider id = %q, want the wamid", got)
 	}
 }
@@ -116,7 +121,7 @@ func TestReadReceiptFallsBackToMessageTypeWhenDirectionIsUnset(t *testing.T) {
 		},
 	)
 
-	if got := marker.latestInboundProviderID(ids); got != "legacy-inbound" {
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeWhatsApp, ids); got != "legacy-inbound" {
 		t.Errorf("provider id = %q, want legacy-inbound", got)
 	}
 }
@@ -133,7 +138,79 @@ func TestReadReceiptReturnsNothingWhenNoInboundIDExists(t *testing.T) {
 		},
 	)
 
-	if got := marker.latestInboundProviderID(ids); got != "" {
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "" {
 		t.Errorf("provider id = %q, want empty", got)
+	}
+}
+
+// The message ids arrive from the client. The database write is already scoped
+// to the entry, but this receipt LEAVES the platform: a foreign id must not be
+// handed to the provider on this conversation's channel.
+func TestReadReceiptIgnoresMessagesFromAnotherEntry(t *testing.T) {
+	marker, ids := markerWith(
+		&conversation.Message{
+			ID: "mine", EntryID: testEntryID, EntryType: shared.EntryTypeUnofficialWhatsApp,
+			Direction:         conversation.MessageDirectionInbound,
+			MessageType:       conversation.MessageTypeUserMessage,
+			ExternalMessageID: strPtr("MINE-1"),
+		},
+		&conversation.Message{
+			ID: "foreign", EntryID: "someone-elses-entry", EntryType: shared.EntryTypeUnofficialWhatsApp,
+			Direction:         conversation.MessageDirectionInbound,
+			MessageType:       conversation.MessageTypeUserMessage,
+			ExternalMessageID: strPtr("FOREIGN-1"),
+		},
+	)
+
+	// The foreign one is newest, so without the check it would win.
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "MINE-1" {
+		t.Errorf("provider id = %q, want MINE-1 — a foreign id must never reach the provider", got)
+	}
+}
+
+// Same id, different channel: the entry type is part of a message's identity,
+// so a Telegram row must not answer a receipt going out on WhatsApp.
+func TestReadReceiptIgnoresAnotherChannelsMessage(t *testing.T) {
+	marker, ids := markerWith(
+		&conversation.Message{
+			ID: "tg", EntryID: testEntryID, EntryType: shared.EntryTypeTelegram,
+			Direction:         conversation.MessageDirectionInbound,
+			MessageType:       conversation.MessageTypeUserMessage,
+			ExternalMessageID: strPtr("TELEGRAM-1"),
+		},
+	)
+
+	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "" {
+		t.Errorf("provider id = %q, want empty", got)
+	}
+}
+
+// Official WhatsApp had its own copy of this resolution, testing the message
+// TYPE. Media we SENT carries message_type "media", which IsInbound() calls
+// inbound, so the receipt named our own message and Meta refused it:
+// "(#100) ... is outgoing. Please use an incoming message ID."
+func TestReadReceiptRejectsOutboundMediaOnOfficialWhatsApp(t *testing.T) {
+	marker, ids := markerWith(
+		&conversation.Message{
+			ID: "m1", EntryID: testEntryID, EntryType: shared.EntryTypeWhatsApp,
+			Direction:         conversation.MessageDirectionInbound,
+			MessageType:       conversation.MessageTypeUserMessage,
+			WhatsAppMessageID: strPtr("wamid.INBOUND"),
+		},
+		&conversation.Message{
+			ID: "m2", EntryID: testEntryID, EntryType: shared.EntryTypeWhatsApp,
+			Direction: conversation.MessageDirectionOutbound,
+			// The type that fooled the old check: ours, but "inbound" by type.
+			MessageType:       conversation.MessageTypeMedia,
+			WhatsAppMessageID: strPtr("wamid.OUR-MEDIA"),
+		},
+	)
+
+	got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeWhatsApp, ids)
+	if got == "wamid.OUR-MEDIA" {
+		t.Fatal("our own media must never be sent as a read receipt; Meta rejects it")
+	}
+	if got != "wamid.INBOUND" {
+		t.Errorf("provider id = %q, want wamid.INBOUND", got)
 	}
 }

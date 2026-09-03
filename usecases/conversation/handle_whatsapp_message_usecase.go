@@ -185,7 +185,7 @@ func selectedOptionFromMessage(msg *conversation.WhatsAppMessage) *selectedInter
 	return nil
 }
 
-func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, entryID string, entryType shared.EntryType, messageText string, msgType string, mediaType string, history []*conversation.Message, selected *selectedInteractiveOption) {
+func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, messageText string, msgType string, mediaType string, history []*conversation.Message, selected *selectedInteractiveOption) {
 	if uc.triggerEvaluator == nil || entryID == "" {
 		return
 	}
@@ -222,9 +222,24 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	data := map[string]interface{}{
 		"message": messageText,
 	}
+	// The lead row first, because its number is the CRM's canonical spelling, and
+	// the raw sender when there is no lead to read it from.
+	//
+	// The fallback is load-bearing, not defensive: the lead lookup is a
+	// best-effort FindByNumber whose error is discarded, and it is skipped
+	// entirely when the receiving workspace could not be resolved. Depending on
+	// it alone left {{contact_number}} EMPTY on live traffic — a workflow
+	// building a per-contact URL then fetched ".jpeg" with nothing in front of
+	// it. senderNumber comes straight off the inbound message, so it is present
+	// whenever the message is.
+	contact := ""
 	if agentCtx != nil && agentCtx.wcLeadRecord != nil {
-		workflow_domain.ApplyContactNumber(data, agentCtx.wcLeadRecord.Number)
+		contact = agentCtx.wcLeadRecord.Number
 	}
+	if contact == "" {
+		contact = lead.NormalizeWhatsAppNumber(senderNumber)
+	}
+	workflow_domain.ApplyContactNumber(data, contact)
 	if msgType != "" {
 		data["message_type"] = msgType
 	}
@@ -761,7 +776,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 		if agentCtx.wcCampaign != nil && agentCtx.wcCampaign.EnableWorkflow && strings.TrimSpace(agentCtx.wcCampaign.WorkflowID) != "" {
 			log.Printf("[whatsapp-usecase] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.wcCampaign.WorkflowID)
-			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.Text.Body, "text", "", history, selectedOptionFromMessage(message))
+			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.Text.Body, "text", "", history, selectedOptionFromMessage(message))
 		}
 		return nil
 	}
@@ -2479,7 +2494,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 	}
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, captionOrFilename, "media", mediaType, history, nil)
+	go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, captionOrFilename, "media", mediaType, history, nil)
 
 	log.Printf("[whatsapp-media] %s message processed", mediaType)
 	return nil
@@ -2928,7 +2943,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 		if agentCtx.wcCampaign != nil && agentCtx.wcCampaign.EnableWorkflow && strings.TrimSpace(agentCtx.wcCampaign.WorkflowID) != "" {
 			log.Printf("[whatsapp-audio] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.wcCampaign.WorkflowID)
-			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, transcribedText, "audio", "audio", history, nil)
+			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, transcribedText, "audio", "audio", history, nil)
 		}
 		return nil
 	}
@@ -3042,7 +3057,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		sttLatency.Milliseconds(), aiLatency.Milliseconds(), sendLatency.Milliseconds(), totalLatency.Milliseconds())
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, transcribedText, "audio", "audio", history, nil)
+	go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, transcribedText, "audio", "audio", history, nil)
 
 	return nil
 }

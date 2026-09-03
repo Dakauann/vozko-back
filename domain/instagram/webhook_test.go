@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // loadFixture reads a webhook payload captured verbatim from Meta's documentation.
@@ -97,9 +98,31 @@ func TestNormalizeEntry_TextDM(t *testing.T) {
 	if ev.IdempotencyKey != "ig:IGID:messages:MESSAGE-ID" {
 		t.Errorf("idempotency key = %q", ev.IdempotencyKey)
 	}
-	// timestamp is epoch MILLISECONDS.
+	// This fixture uses epoch milliseconds.
 	if ev.Timestamp.UnixMilli() != 1569262485349 {
 		t.Errorf("timestamp = %d, want 1569262485349", ev.Timestamp.UnixMilli())
+	}
+}
+
+func TestUnixTimestampToTimeAcceptsSecondsAndMilliseconds(t *testing.T) {
+	want := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	for _, value := range []int64{want.Unix(), want.UnixMilli()} {
+		if got := unixTimestampToTime(value); !got.Equal(want) {
+			t.Errorf("unixTimestampToTime(%d) = %v, want %v", value, got, want)
+		}
+	}
+}
+
+func TestNormalizeChange_UsesSecondsForCurrentMetaPayloads(t *testing.T) {
+	want := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	event := normalizeChange(&Entry{ID: "account-1", Time: want.Unix()}, "comments", json.RawMessage(`{
+		"id":"comment-1","text":"oi","media":{"id":"media-1"}
+	}`))
+	if event == nil {
+		t.Fatal("comment webhook was not normalized")
+	}
+	if !event.Timestamp.Equal(want) {
+		t.Fatalf("event timestamp = %v, want %v", event.Timestamp, want)
 	}
 }
 

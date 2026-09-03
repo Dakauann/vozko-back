@@ -367,6 +367,16 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 
 	waMediaID, uploadErr := s.downloadAndUpload(ctx, client, mediaURL, mediaType)
 	if uploadErr != nil {
+		// A missing object is reported, not worked around. The link fallback
+		// exists for media WhatsApp can fetch when we cannot; it cannot conjure
+		// a file that does not exist, so falling back on a 404 sent WhatsApp a
+		// URL that 404s for it too — the contact received nothing while the node
+		// reported sent=true and the flow carried on as if the photo had
+		// arrived. Failing here is what lets a workflow branch on it.
+		if errors.Is(uploadErr, errMediaNotFound) {
+			log.Printf("[workflow][whatsapp_sender] media does not exist at %s, not sending: %v", mediaURL, uploadErr)
+			return nil, usedBusinessPhoneID, fmt.Errorf("send media: %w", uploadErr)
+		}
 		log.Printf("[workflow][whatsapp_sender] upload-first failed for %s, will fall back to link: %v", mediaURL, uploadErr)
 	}
 
@@ -700,6 +710,11 @@ const maxMediaDownloadBytes = 25 * 1024 * 1024
 // Split out of downloadAndUpload because audio needs the bytes WITHOUT the
 // upload that follows: it is transcoded first, and the client's SendAudioBytes
 // then does its own upload as a voice note.
+// errMediaNotFound marks a media URL the origin says does not exist. Callers
+// use it to tell "we could not fetch this" from "there is nothing to fetch":
+// only the first is worth retrying through WhatsApp's own fetcher.
+var errMediaNotFound = errors.New("media not found at origin")
+
 func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mediaURL, nil)
@@ -714,6 +729,13 @@ func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// 404/410 are distinguished from every other failure because they are
+		// the provider agreeing with us: the object is not there. Any other
+		// status can still be worth handing to WhatsApp, which fetches from its
+		// own network and may succeed where we did not.
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+			return nil, "", fmt.Errorf("%w (status %d)", errMediaNotFound, resp.StatusCode)
+		}
 		return nil, "", fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
 

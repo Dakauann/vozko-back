@@ -456,9 +456,20 @@ func (uc *HandleWebhookUseCase) enrich(
 		return
 	}
 
+	// Name first, lead second. bridgeLead names the lead from the subject's
+	// DisplayName() and never revisits it — it returns early once the contact
+	// carries a LeadID — so whatever the contact is called at THIS moment is
+	// what the CRM shows forever. Running the rename afterwards meant a
+	// just-created contact was bridged while still nameless, and the lead kept
+	// the fallback while the contact itself was corrected seconds later.
+	//
+	// Skipped for an outbound event for the reason in subjectSeedName: the name
+	// on the wire there belongs to the connected account, not to the contact.
+	if !ev.Outbound() {
+		// Free: the name rode in on the event itself.
+		uc.profiles.applyEventName(ctx, out.subject, ev.SenderName)
+	}
 	uc.bridgeLead(ctx, instance, out.subject)
-	// Free: the name rode in on the event itself.
-	uc.profiles.applyEventName(ctx, out.subject, ev.SenderName)
 	// TTL-gated: zero calls for a subject we already have a picture for, which
 	// is almost all traffic.
 	uc.profiles.refresh(ctx, instance, out.subject, false)
@@ -544,6 +555,18 @@ func (uc *HandleWebhookUseCase) resolveAuthor(
 // most recent talker until the metadata read lands.
 func subjectSeedName(ev *uw.Event) string {
 	if ev.IsGroup {
+		return ""
+	}
+	// On an OUTBOUND message the provider puts the connected account's own
+	// WhatsApp name in senderName, not the contact's — the author of that
+	// message is the operator. Seeding a new contact with it names the customer
+	// after the business: a chat whose first synced event was something the
+	// operator had sent came out as "Lucas - Suporte PAJ" instead of "Dakauann".
+	//
+	// Returning empty is deliberate. The contact is created nameless and the
+	// chats/contacts sync fills the real name moments later, which is exactly
+	// what already repaired ContactName on every affected row.
+	if ev.Outbound() {
 		return ""
 	}
 	return ev.SenderName

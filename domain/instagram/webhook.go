@@ -350,9 +350,9 @@ func normalizeMessaging(entry *Entry, m *MessagingEvent, standby bool) []*Event 
 	if m == nil {
 		return nil
 	}
-	ts := millisToTime(m.Timestamp)
+	ts := unixTimestampToTime(m.Timestamp)
 	if ts.IsZero() {
-		ts = millisToTime(entry.Time)
+		ts = unixTimestampToTime(entry.Time)
 	}
 
 	// The business is identified by recipient.id for inbound traffic. Meta's own
@@ -441,7 +441,7 @@ func normalizeMessaging(entry *Entry, m *MessagingEvent, standby bool) []*Event 
 }
 
 func normalizeChange(entry *Entry, field string, value json.RawMessage) *Event {
-	ts := millisToTime(entry.Time)
+	ts := unixTimestampToTime(entry.Time)
 
 	switch field {
 	case "comments", "live_comments":
@@ -519,9 +519,15 @@ func midOf(m *MessagingEvent) string {
 
 func boolVal(b *bool) bool { return b != nil && *b }
 
-func millisToTime(ms int64) time.Time {
-	if ms <= 0 {
+// unixTimestampToTime accepts both timestamp units used by Meta. Older
+// examples and some integrations send milliseconds, while current Instagram
+// webhook examples send Unix seconds for entry.time.
+func unixTimestampToTime(value int64) time.Time {
+	if value <= 0 {
 		return time.Time{}
 	}
-	return time.UnixMilli(ms).UTC()
+	if value < 100_000_000_000 {
+		return time.Unix(value, 0).UTC()
+	}
+	return time.UnixMilli(value).UTC()
 }

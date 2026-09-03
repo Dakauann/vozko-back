@@ -46,11 +46,40 @@ func dataRepairs() []dataRepair {
 		{"cm_backfill_message_direction", backfillMessageDirection},
 		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
 		{"cm_relink_uw_orphaned_media", relinkUnofficialOrphanedMedia},
+		{"ig_repair_second_timestamps", repairInstagramSecondTimestamps},
 		{"wmp_drop_retired_resources", dropRetiredPermissionResources},
 		{"cs_rename_dialer_resource_permissions", renameDialerResourcePermissions},
 		{"cs_rename_dialer_presence_source", renameDialerPresenceSource},
 		{"stg_materialize_stage_group_pipelines", materializeStageGroupPipelines},
 	}
+}
+
+// repairInstagramSecondTimestamps fixes Instagram webhook rows written while
+// entry.time was incorrectly interpreted as milliseconds. Current Meta payloads
+// use Unix seconds, which otherwise rendered as January 1970 and excluded the
+// comments from every recent-period audience query. The original comment time
+// is not present in the webhook, so the ingest timestamp is the safest value
+// available for these legacy rows. Graph backfill timestamps are real dates and
+// are not touched.
+func repairInstagramSecondTimestamps(tx *gorm.DB) error {
+	if err := tx.Exec(`
+		UPDATE instagram_comments
+		   SET timestamp = created_at
+		 WHERE timestamp IS NOT NULL
+		   AND timestamp < TIMESTAMPTZ '2000-01-01'
+	`).Error; err != nil {
+		return err
+	}
+	if err := tx.Exec(`
+		UPDATE comment_analyses
+		   SET commented_at = created_at
+		 WHERE commented_at < TIMESTAMPTZ '2000-01-01'
+		   AND created_at >= TIMESTAMPTZ '2000-01-01'
+		   AND source = 'instagram'
+	`).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func runDataRepairs(tx *gorm.DB) error {

@@ -246,3 +246,122 @@ func TestMessageHistoryManager_Record_SameProviderIDOnSameEntryStaysDeduped(t *t
 		t.Fatalf("a replay must not duplicate, got %d", got)
 	}
 }
+
+// A quoted reply reaches the manager as the PROVIDER's message id, but the
+// transcript resolves a quote by matching reply_to_message_id against a
+// message's own id. Storing the provider id would fill the column and render
+// nothing, so the manager has to translate — and before this it did neither:
+// the field was read by nobody, and inbound quotes never reached the database
+// on any channel.
+
+func (m *dedupMessageRepo) seed(msg *conversation.Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.created = append(m.created, msg)
+}
+
+func TestMessageHistoryManager_Record_TranslatesQuotedProviderIDToOurID(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	quoted := &conversation.Message{
+		ID: "our-internal-id", EntryID: "entry-1",
+		EntryType:         shared.EntryTypeUnofficialWhatsApp,
+		ExternalMessageID: strPtrHM("PROVIDER-ORIGINAL"),
+	}
+	repo.seed(quoted)
+
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec.ReplyToWAMessageID = "PROVIDER-ORIGINAL"
+
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	saved := repo.created[len(repo.created)-1]
+	if saved.ReplyToMessageID == nil {
+		t.Fatal("the quote was dropped: an inbound reply must carry its reference")
+	}
+	if *saved.ReplyToMessageID != "our-internal-id" {
+		t.Errorf("reply_to = %q, want our internal id — the provider id renders nothing",
+			*saved.ReplyToMessageID)
+	}
+}
+
+// Official WhatsApp keeps its id in the other column, so the translation has to
+// consult both rather than only the one the newer channels use.
+func TestMessageHistoryManager_Record_TranslatesQuotedWamid(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	repo.seed(&conversation.Message{
+		ID: "wa-internal-id", EntryID: "entry-1",
+		EntryType:         shared.EntryTypeWhatsApp,
+		WhatsAppMessageID: strPtrHM("wamid.ORIGINAL"),
+	})
+
+	rec := newInboundRecord("wamid.REPLY")
+	rec.ReplyToWAMessageID = "wamid.ORIGINAL"
+
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	saved := repo.created[len(repo.created)-1]
+	if saved.ReplyToMessageID == nil || *saved.ReplyToMessageID != "wa-internal-id" {
+		t.Errorf("reply_to = %v, want wa-internal-id", saved.ReplyToMessageID)
+	}
+}
+
+// Quoting something older than our history is normal. It must land as an
+// ordinary message, not fail and not carry a reference nothing can resolve.
+func TestMessageHistoryManager_Record_UnknownQuoteStillPersistsTheMessage(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec.ReplyToWAMessageID = "NEVER-SEEN"
+
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		t.Fatalf("an unresolvable quote must not fail the message: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("the message itself must still be recorded, got %d", len(repo.created))
+	}
+	if repo.created[0].ReplyToMessageID != nil {
+		t.Errorf("a dangling reference must not be stored, got %v", *repo.created[0].ReplyToMessageID)
+	}
+}
+
+// The quoted message may live on another entry when both ends of a chat are
+// hosted here. The precise lookup runs first so a reply points at the copy in
+// its OWN conversation.
+func TestMessageHistoryManager_Record_QuotePrefersTheSameEntry(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	repo.seed(&conversation.Message{
+		ID: "theirs", EntryID: "other-entry",
+		EntryType:         shared.EntryTypeUnofficialWhatsApp,
+		ExternalMessageID: strPtrHM("SHARED-ID"),
+	})
+	repo.seed(&conversation.Message{
+		ID: "ours", EntryID: "entry-1",
+		EntryType:         shared.EntryTypeUnofficialWhatsApp,
+		ExternalMessageID: strPtrHM("SHARED-ID"),
+	})
+
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec.ReplyToWAMessageID = "SHARED-ID"
+
+	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	saved := repo.created[len(repo.created)-1]
+	if saved.ReplyToMessageID == nil || *saved.ReplyToMessageID != "ours" {
+		t.Errorf("reply_to = %v, want the copy in this conversation", saved.ReplyToMessageID)
+	}
+}
+
+func strPtrHM(s string) *string { return &s }

@@ -46,6 +46,11 @@ func (r *commentRepository) UpsertMany(ctx context.Context, items []*igdomain.Co
 	if len(records) == 0 {
 		return nil
 	}
+	// PostgreSQL cannot apply an ON CONFLICT DO UPDATE twice to the same
+	// existing row in one statement. Graph pages can contain the same comment
+	// more than once when threaded data overlaps, so collapse the batch by the
+	// conflict key before issuing the bulk upsert.
+	records = dedupeCommentRecords(records)
 	return r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "ig_comment_id"}},
@@ -55,6 +60,22 @@ func (r *commentRepository) UpsertMany(ctx context.Context, items []*igdomain.Co
 			}),
 		}).
 		CreateInBatches(records, 100).Error
+}
+
+func dedupeCommentRecords(records []*schema.InstagramComment) []*schema.InstagramComment {
+	unique := make([]*schema.InstagramComment, 0, len(records))
+	positions := make(map[string]int, len(records))
+	for _, record := range records {
+		position, exists := positions[record.IGCommentID]
+		if exists {
+			// Keep the last copy, which is the most recently observed state.
+			unique[position] = record
+			continue
+		}
+		positions[record.IGCommentID] = len(unique)
+		unique = append(unique, record)
+	}
+	return unique
 }
 
 func (r *commentRepository) FindByIGCommentID(ctx context.Context, igAccountID, igCommentID string) (*igdomain.Comment, error) {

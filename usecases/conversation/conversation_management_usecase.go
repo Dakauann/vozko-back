@@ -1585,7 +1585,7 @@ func (s *MessageMarkerService) sendAdapterReadReceipts(
 		return
 	}
 
-	providerID := s.latestInboundProviderID(messageIDs)
+	providerID := s.latestInboundProviderID(entryID, entryType, messageIDs)
 	if providerID == "" {
 		return
 	}
@@ -1613,10 +1613,23 @@ func (s *MessageMarkerService) sendAdapterReadReceipts(
 // grey. Direction decides who sent it, because the message TYPE cannot: an
 // unofficial WhatsApp message is user_message whichever side wrote it, and
 // asking IsInbound() there would offer our own outbound ids to be marked read.
-func (s *MessageMarkerService) latestInboundProviderID(messageIDs []string) string {
+//
+// Scoped to the entry as well, because the ids arrive from the CLIENT and this
+// receipt LEAVES the platform. The database write is already entry-scoped, but
+// a foreign id reaching MarkSeen would acknowledge someone else's message on
+// this conversation's channel. The entry type is part of the check for the same
+// reason: a Telegram row must not answer a receipt going out over WhatsApp.
+func (s *MessageMarkerService) latestInboundProviderID(
+	entryID string,
+	entryType shared.EntryType,
+	messageIDs []string,
+) string {
 	for i := len(messageIDs) - 1; i >= 0; i-- {
 		msg, err := s.messageRepo.GetByID(messageIDs[i])
 		if err != nil || msg == nil {
+			continue
+		}
+		if msg.EntryID != entryID || msg.EntryType != entryType {
 			continue
 		}
 		if !isInboundMessage(msg) {

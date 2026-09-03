@@ -114,6 +114,23 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		dedupID = wamid
 	}
 
+	// A quoted reply, translated from the provider's id to ours.
+	//
+	// Every channel already fills ReplyToWAMessageID on the record, and this is
+	// where it was being dropped: the field was read by nobody, so an INBOUND
+	// quote never reached the database on ANY channel — seven days of traffic
+	// held 1739 quotes and every one of them was outbound, written by the
+	// operator send path that bypasses this manager.
+	//
+	// Translation is required, not cosmetic: the transcript resolves a quote by
+	// matching reply_to_message_id against a message's OWN id, so storing the
+	// provider's id would satisfy the column and still render nothing.
+	if quoted := strings.TrimSpace(record.ReplyToWAMessageID); quoted != "" {
+		if id := m.resolveQuotedMessageID(entryType, entryID, quoted); id != "" {
+			message.ReplyToMessageID = &id
+		}
+	}
+
 	message.Normalize()
 
 	if err := message.Validate(); err != nil {
@@ -149,6 +166,28 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		return nil, m.persist(message, entryID, entryType)
 	})
 	return err
+}
+
+// resolveQuotedMessageID maps a provider's message id onto the row we hold for
+// it, in this entry.
+//
+// Both columns are consulted because the channels disagree on which one they
+// fill: official WhatsApp writes whatsapp_message_id, everything adapter-backed
+// writes external_message_id. The entry-scoped lookup goes first — it is the
+// precise one, and the same id can legitimately exist on another entry when both
+// ends of a chat are hosted here.
+//
+// A miss is normal and silent: quoting a message older than our history, or one
+// we never received, leaves the reply as an ordinary message rather than a
+// dangling reference the transcript could not render anyway.
+func (m *messageHistoryManager) resolveQuotedMessageID(entryType shared.EntryType, entryID, providerID string) string {
+	if existing, err := m.repo.GetByEntryAndExternalMessageID(entryType, entryID, providerID); err == nil && existing != nil {
+		return existing.ID
+	}
+	if existing, err := m.repo.GetByWhatsAppMessageID(providerID); err == nil && existing != nil {
+		return existing.ID
+	}
+	return ""
 }
 
 func (m *messageHistoryManager) persist(message *conversation.Message, entryID string, entryType shared.EntryType) error {
