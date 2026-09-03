@@ -228,14 +228,35 @@ func (uc *ProxyAvatarUseCase) Execute(ctx context.Context, workspaceID, accountI
 		return nil, "", err
 	}
 
+	// Keep the last URL returned at connect time as a fallback. Graph normally
+	// returns a fresh signed URL, but a temporary /me failure should not turn a
+	// previously known avatar into a blank placeholder.
+	avatarURL := account.ProfilePictureURL
 	profile, err := uc.oauth.GetProfile(ctx, account.AccessToken)
-	if err != nil {
-		return nil, "", err
-	}
-	if profile.ProfilePictureURL == "" {
+	if err == nil && profile.ProfilePictureURL != "" {
+		avatarURL = profile.ProfilePictureURL
+	} else if avatarURL == "" {
+		if err != nil {
+			log.Printf("[instagram] avatar profile lookup failed account=%s: %v", accountID, err)
+			return nil, "", err
+		}
 		return nil, "", ErrNoAvatar
 	}
-	return uc.media.FetchMediaBytes(ctx, profile.ProfilePictureURL)
+	if err != nil {
+		log.Printf("[instagram] avatar profile lookup failed account=%s; trying stored URL: %v", accountID, err)
+	}
+
+	data, contentType, err := uc.media.FetchMediaBytes(ctx, avatarURL)
+	if err == nil {
+		return data, contentType, nil
+	}
+	log.Printf("[instagram] avatar CDN fetch failed account=%s: %v", accountID, err)
+	// If Graph supplied a new URL but its CDN copy failed, one retry against the
+	// stored URL can bridge a transient or region-specific CDN miss.
+	if account.ProfilePictureURL != "" && account.ProfilePictureURL != avatarURL {
+		return uc.media.FetchMediaBytes(ctx, account.ProfilePictureURL)
+	}
+	return nil, "", err
 }
 
 // CreateMediaInput publishes a post.

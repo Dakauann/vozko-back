@@ -23,7 +23,8 @@ import (
 const (
 	defaultTimeout    = 30 * time.Second
 	defaultMaxRetries = 3
-	maxResponseBytes  = 16 << 20 // 16 MiB, media proxying reads larger bodies separately
+	maxResponseBytes  = 16 << 20 // JSON responses
+	maxMediaBytes     = 100 << 20
 )
 
 // Config configures a Graph client.
@@ -256,6 +257,8 @@ func (c *Client) FetchBytes(ctx context.Context, rawURL string) ([]byte, string,
 	if err != nil {
 		return nil, "", &RequestError{Op: "new media request", Err: err}
 	}
+	httpReq.Header.Set("Accept", "image/avif,image/webp,image/jpeg,image/*,video/*,*/*;q=0.8")
+	httpReq.Header.Set("User-Agent", "Vozko/InstagramMediaProxy")
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
 		return nil, "", &RequestError{Op: "fetch media", Err: err}
@@ -268,9 +271,12 @@ func (c *Client) FetchBytes(ctx context.Context, rawURL string) ([]byte, string,
 			Message:    "media fetch failed with status " + strconv.Itoa(resp.StatusCode),
 		}
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMediaBytes+1))
 	if err != nil {
 		return nil, "", &RequestError{Op: "read media", Err: err}
+	}
+	if len(data) > maxMediaBytes {
+		return nil, "", &RequestError{Op: "read media", Err: fmt.Errorf("media response exceeds %d bytes", maxMediaBytes)}
 	}
 	return data, resp.Header.Get("Content-Type"), nil
 }

@@ -204,9 +204,11 @@ func (h *Handler) toMediaResponse(accountID string, m *igdomain.RemoteMedia) Med
 		out.MediaURL = proxyPath(accountID, m.IGMediaID, false)
 	}
 	// IMAGE media has no thumbnail_url, so the full asset doubles as the thumb.
+	// A VIDEO without thumbnail_url must not advertise its MP4 as an image thumb;
+	// the frontend will render that asset as a video instead.
 	if m.ThumbnailURL != "" {
 		out.ThumbnailURL = proxyPath(accountID, m.IGMediaID, true)
-	} else if m.MediaURL != "" {
+	} else if m.MediaURL != "" && m.MediaType != igdomain.MediaTypeVideo {
 		out.ThumbnailURL = out.MediaURL
 	}
 
