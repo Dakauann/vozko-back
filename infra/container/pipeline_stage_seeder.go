@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	pipeline_domain "vozko/domain/pipeline"
 	stage_domain "vozko/domain/stage"
 )
 
@@ -20,14 +21,14 @@ type pipelineStageSeeder struct {
 	stages stage_domain.Repository
 }
 
-func (s pipelineStageSeeder) SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string) error {
+func (s pipelineStageSeeder) SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string, drawn []pipeline_domain.StageSeed) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	pipelineID = strings.TrimSpace(pipelineID)
 	if workspaceID == "" || pipelineID == "" {
 		return fmt.Errorf("seed funnel: workspace and pipeline are required")
 	}
 
-	seeds, err := s.resolveSeeds(workspaceID, strings.TrimSpace(copyFromPipelineID))
+	seeds, err := s.resolveSeeds(workspaceID, strings.TrimSpace(copyFromPipelineID), drawn)
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,29 @@ type stageSeed struct {
 	Color       string
 }
 
-func (s pipelineStageSeeder) resolveSeeds(workspaceID, copyFromPipelineID string) ([]stageSeed, error) {
+func (s pipelineStageSeeder) resolveSeeds(workspaceID, copyFromPipelineID string, drawn []pipeline_domain.StageSeed) ([]stageSeed, error) {
+	// The operator's own columns come first and are never mixed with a template.
+	// Blank rows are dropped rather than rejected: an empty trailing row is what a
+	// list editor produces when someone adds one and changes their mind, and
+	// failing the whole creation over it would lose the funnel they did draw.
+	if len(drawn) > 0 {
+		seeds := make([]stageSeed, 0, len(drawn))
+		for _, d := range drawn {
+			name := strings.TrimSpace(d.Name)
+			if name == "" {
+				continue
+			}
+			seeds = append(seeds, stageSeed{
+				Name:        name,
+				Description: strings.TrimSpace(d.Description),
+				Color:       strings.TrimSpace(d.Color),
+			})
+		}
+		if len(seeds) > 0 {
+			return seeds, nil
+		}
+	}
+
 	if copyFromPipelineID == "" {
 		return defaultStageSeeds(), nil
 	}

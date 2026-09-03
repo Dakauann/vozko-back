@@ -23,9 +23,13 @@ import (
 // aggregate — this package depends only on pipeline.Repository, and the
 // composition root supplies the adapter.
 type StageSeeder interface {
-	// SeedConversationPipeline fills pipelineID with stages. copyFromPipelineID
-	// duplicates that funnel's stages when set; empty means the product defaults.
-	SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string) error
+	// SeedConversationPipeline fills pipelineID with columns.
+	//
+	// `stages` wins when non-empty: those are the columns the operator drew, and
+	// nothing should second-guess them. Otherwise copyFromPipelineID duplicates
+	// that funnel's columns, and an empty one falls back to the product defaults
+	// so a funnel created by an integration is still usable.
+	SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string, stages []pipeline.StageSeed) error
 }
 
 type CreatePipelineUseCase struct {
@@ -80,7 +84,7 @@ func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.Crea
 	// Seed only conversation funnels: the opportunity board has its own seeding
 	// path (EnsureDefaultOpportunityPipeline) and a different stage vocabulary.
 	if uc.seeder != nil && p.ObjectType == pipeline.ObjectConversation {
-		if err := uc.seeder.SeedConversationPipeline(workspaceID, p.ID, strings.TrimSpace(input.CopyStagesFromPipelineID)); err != nil {
+		if err := uc.seeder.SeedConversationPipeline(workspaceID, p.ID, strings.TrimSpace(input.CopyStagesFromPipelineID), input.Stages); err != nil {
 			// The funnel exists and is already listed; a seeding failure leaves it
 			// empty rather than orphaning it, and the operator can add columns by
 			// hand. Losing the funnel over it would be the worse outcome.
@@ -129,15 +133,101 @@ func (uc *UpdatePipelineUseCase) Execute(workspaceID, id string, input pipeline.
 }
 
 type DeletePipelineUseCase struct {
-	repo pipeline.Repository
+	repo      pipeline.Repository
+	occupancy pipeline.Occupancy
 }
 
-func NewDeletePipelineUseCase(repo pipeline.Repository) pipeline.DeletePipelineUseCase {
-	return &DeletePipelineUseCase{repo: repo}
+func NewDeletePipelineUseCase(repo pipeline.Repository, occupancy pipeline.Occupancy) pipeline.DeletePipelineUseCase {
+	return &DeletePipelineUseCase{repo: repo, occupancy: occupancy}
 }
 
-func (uc *DeletePipelineUseCase) Execute(workspaceID, id string) error {
+// Execute removes a funnel, refusing every case where doing so would lose
+// something the operator did not agree to lose.
+//
+// The order is the guarantee. Existence, then the default check, then the
+// bindings, then the destination, and only then any write — so a refusal is
+// always reached before anything has moved, and a funnel is never left half
+// emptied by a check that could have run first. The move is the one write that
+// precedes the delete, and its failure aborts: conversations stranded on stages
+// that are about to disappear is the exact outcome this guard exists to prevent.
+//
+// occupancy may be nil in unit contexts that never exercise the guard; the
+// funnel then deletes as it did before, which is why every caller in the
+// composition root supplies one.
+func (uc *DeletePipelineUseCase) Execute(workspaceID, id string, input pipeline.DeletePipelineInput) error {
+	target, err := uc.repo.GetByID(workspaceID, id)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return pipeline.ErrNotFound
+	}
+	if target.IsDefault {
+		return pipeline.ErrDeleteDefault
+	}
+	if uc.occupancy == nil {
+		return uc.repo.Delete(workspaceID, id)
+	}
+
+	usage, err := uc.occupancy.Usage(workspaceID, id)
+	if err != nil {
+		return err
+	}
+	if !usage.Deletable() {
+		return pipeline.ErrDeleteBound
+	}
+
+	destination := ""
+	if usage.Entries > 0 {
+		destination = strings.TrimSpace(input.MoveEntriesTo)
+		if destination == "" {
+			return pipeline.ErrDeleteNeedsDestination
+		}
+		if destination == id {
+			return pipeline.ErrDeleteDestinationInvalid
+		}
+		into, err := uc.repo.GetByID(workspaceID, destination)
+		if err != nil {
+			return err
+		}
+		if into == nil {
+			return pipeline.ErrNotFound
+		}
+		if into.ObjectType != target.ObjectType {
+			return pipeline.ErrDeleteDestinationInvalid
+		}
+	}
+
+	if _, err := uc.occupancy.Vacate(workspaceID, id, destination); err != nil {
+		return err
+	}
 	return uc.repo.Delete(workspaceID, id)
+}
+
+type GetPipelineUsageUseCase struct {
+	repo      pipeline.Repository
+	occupancy pipeline.Occupancy
+}
+
+func NewGetPipelineUsageUseCase(repo pipeline.Repository, occupancy pipeline.Occupancy) pipeline.GetPipelineUsageUseCase {
+	return &GetPipelineUsageUseCase{repo: repo, occupancy: occupancy}
+}
+
+// Execute reports what the funnel holds, through the SAME port the guard reads.
+// One source is the point: a dialog that promised an empty funnel and a delete
+// that then refused would be worse than no dialog at all.
+func (uc *GetPipelineUsageUseCase) Execute(workspaceID, id string) (pipeline.Usage, error) {
+	p, err := uc.repo.GetByID(workspaceID, id)
+	if err != nil {
+		return pipeline.Usage{}, err
+	}
+	if p == nil {
+		return pipeline.Usage{}, pipeline.ErrNotFound
+	}
+	if uc.occupancy == nil {
+		return pipeline.Usage{}, nil
+	}
+	return uc.occupancy.Usage(workspaceID, id)
 }
 
 type ListPipelinesUseCase struct {

@@ -373,6 +373,7 @@ func (c *Container) initHandlers() {
 			c.useCases.deletePipeline,
 			c.useCases.listPipelines,
 			c.useCases.getPipeline,
+			c.useCases.pipelineUsage,
 		),
 		savedView: savedviewhttp.NewSavedViewHandler(
 			c.useCases.createSavedView,

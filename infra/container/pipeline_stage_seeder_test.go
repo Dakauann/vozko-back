@@ -3,6 +3,7 @@ package container
 import (
 	"testing"
 
+	pipeline_domain "vozko/domain/pipeline"
 	stage_domain "vozko/domain/stage"
 )
 
@@ -30,7 +31,7 @@ func TestSeedConversationPipeline_DefaultsWhenNoSourceGiven(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
 	seeder := pipelineStageSeeder{stages: repo}
 
-	if err := seeder.SeedConversationPipeline("ws", "pipe-new", ""); err != nil {
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,7 +71,7 @@ func TestSeedConversationPipeline_CopiesAnExistingFunnel(t *testing.T) {
 	}}
 	seeder := pipelineStageSeeder{stages: repo}
 
-	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src"); err != nil {
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +92,7 @@ func TestSeedConversationPipeline_FallsBackWhenTheSourceIsEmpty(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{"pipe-src": {}}}
 	seeder := pipelineStageSeeder{stages: repo}
 
-	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src"); err != nil {
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.created) != len(stage_domain.DefaultStages) {
@@ -105,7 +106,7 @@ func TestSeedConversationPipeline_NormalizesCopiedNames(t *testing.T) {
 	}}
 	seeder := pipelineStageSeeder{stages: repo}
 
-	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src"); err != nil {
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-src", nil); err != nil {
 		t.Fatal(err)
 	}
 	if repo.created[0].Name != "em atendimento" {
@@ -118,13 +119,91 @@ func TestSeedConversationPipeline_RequiresWorkspaceAndPipeline(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
 	seeder := pipelineStageSeeder{stages: repo}
 
-	if err := seeder.SeedConversationPipeline("", "pipe-new", ""); err == nil {
+	if err := seeder.SeedConversationPipeline("", "pipe-new", "", nil); err == nil {
 		t.Error("a missing workspace must be refused")
 	}
-	if err := seeder.SeedConversationPipeline("ws", "", ""); err == nil {
+	if err := seeder.SeedConversationPipeline("ws", "", "", nil); err == nil {
 		t.Error("a missing pipeline must be refused")
 	}
 	if len(repo.created) != 0 {
 		t.Error("a refused seed must write nothing")
+	}
+}
+
+// The composer's own columns are the funnel. Nothing merges a template into
+// them, and nothing reorders them: the operator drew the board they wanted.
+func TestSeedConversationPipeline_DrawnStagesWin(t *testing.T) {
+	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{
+		"pipe-source": {
+			{ID: "s1", Name: "herdada", Color: "#111111", Position: 1},
+		},
+	}}
+	seeder := pipelineStageSeeder{stages: repo}
+
+	drawn := []pipeline_domain.StageSeed{
+		{Name: "Triagem", Description: "Primeiro contato", Color: "#3B82F6"},
+		{Name: "Proposta enviada", Color: "#F59E0B"},
+		{Name: "Fechado"},
+	}
+
+	// A copy source is passed too, and must lose: a named list is the more
+	// specific intent.
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-source", drawn); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(repo.created) != 3 {
+		t.Fatalf("expected the 3 drawn columns, got %d", len(repo.created))
+	}
+	for i, want := range []string{"triagem", "proposta enviada", "fechado"} {
+		if repo.created[i].Name != want {
+			t.Errorf("column %d: want %q, got %q", i, want, repo.created[i].Name)
+		}
+		if repo.created[i].Position != i+1 {
+			t.Errorf("column %d: position %d", i, repo.created[i].Position)
+		}
+	}
+	if !repo.created[0].IsInitial {
+		t.Error("the first drawn column should receive arriving conversations")
+	}
+	if repo.created[1].IsInitial || repo.created[2].IsInitial {
+		t.Error("only one column may be the entry stage")
+	}
+	if repo.created[0].Description != "Primeiro contato" || repo.created[1].Color != "#F59E0B" {
+		t.Error("description and colour did not survive the seed")
+	}
+}
+
+// A list editor produces an empty trailing row whenever someone adds one and
+// changes their mind. Losing the funnel over it would be the worse outcome.
+func TestSeedConversationPipeline_BlankDrawnRowsAreDropped(t *testing.T) {
+	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
+	seeder := pipelineStageSeeder{stages: repo}
+
+	drawn := []pipeline_domain.StageSeed{
+		{Name: "  Triagem  "},
+		{Name: "   "},
+		{Name: ""},
+	}
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "", drawn); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.created) != 1 || repo.created[0].Name != "triagem" {
+		t.Fatalf("blank rows were not dropped: %+v", repo.created)
+	}
+}
+
+// All-blank is indistinguishable from "sent nothing", and a funnel with no
+// columns is not a funnel — so it falls back rather than shipping an empty board.
+func TestSeedConversationPipeline_AllBlankDrawnFallsBackToDefaults(t *testing.T) {
+	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
+	seeder := pipelineStageSeeder{stages: repo}
+
+	drawn := []pipeline_domain.StageSeed{{Name: "  "}, {Name: ""}}
+	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "", drawn); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.created) != len(stage_domain.DefaultStages) {
+		t.Fatalf("expected the defaults, got %d columns", len(repo.created))
 	}
 }

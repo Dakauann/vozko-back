@@ -688,6 +688,7 @@ type useCases struct {
 	deletePipeline pipeline_domain.DeletePipelineUseCase
 	listPipelines  pipeline_domain.ListPipelinesUseCase
 	getPipeline    pipeline_domain.GetPipelineUseCase
+	pipelineUsage  pipeline_domain.GetPipelineUsageUseCase
 
 	createSavedView     savedview_domain.CreateSavedViewUseCase
 	updateSavedView     savedview_domain.UpdateSavedViewUseCase

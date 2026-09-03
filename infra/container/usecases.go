@@ -41,6 +41,7 @@ import (
 	media_infra "vozko/infra/media"
 	"vozko/infra/netguard"
 	notification_service "vozko/infra/notifications"
+	pipeline_repository "vozko/infra/repositories/pipeline"
 	telemetry_dedupe_repository "vozko/infra/repositories/telemetry_dedupe"
 	shortlink_infra "vozko/infra/shortlink"
 	telephony_infra "vozko/infra/telephony"
@@ -268,6 +269,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// empty board with no first column to anchor the next one against.
 	createPipelineUC := pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline)
 	createPipelineUC.SetStageSeeder(pipelineStageSeeder{stages: c.repositories.stage})
+
+	// Deleting a funnel spans six tables that name a pipeline_id, none of which
+	// the pipeline package may import. This adapter is the one place allowed to
+	// see them all; both the delete guard and the usage read it, so the dialog
+	// and the refusal can never disagree about what a funnel holds.
+	pipelineOccupancy := pipeline_repository.NewOccupancy(c.db)
 
 	// The knowledge-base and MCP repositories are the workspace-ownership
 	// guards for attached ids: an agent must never be pointed at another
@@ -888,9 +895,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 		createPipeline: createPipelineUC,
 		updatePipeline: pipeline_usecase.NewUpdatePipelineUseCase(c.repositories.pipeline),
-		deletePipeline: pipeline_usecase.NewDeletePipelineUseCase(c.repositories.pipeline),
+		deletePipeline: pipeline_usecase.NewDeletePipelineUseCase(c.repositories.pipeline, pipelineOccupancy),
 		listPipelines:  pipeline_usecase.NewListPipelinesUseCase(c.repositories.pipeline),
 		getPipeline:    pipeline_usecase.NewGetPipelineUseCase(c.repositories.pipeline),
+		pipelineUsage:  pipeline_usecase.NewGetPipelineUsageUseCase(c.repositories.pipeline, pipelineOccupancy),
 
 		createSavedView:     savedview_usecase.NewCreateSavedViewUseCase(c.repositories.savedView),
 		updateSavedView:     savedview_usecase.NewUpdateSavedViewUseCase(c.repositories.savedView),

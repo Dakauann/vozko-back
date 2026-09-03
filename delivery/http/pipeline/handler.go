@@ -19,6 +19,7 @@ type PipelineHandler struct {
 	deleteUseCase pipelinedomain.DeletePipelineUseCase
 	listUseCase   pipelinedomain.ListPipelinesUseCase
 	getUseCase    pipelinedomain.GetPipelineUseCase
+	usageUseCase  pipelinedomain.GetPipelineUsageUseCase
 }
 
 func NewPipelineHandler(
@@ -27,6 +28,7 @@ func NewPipelineHandler(
 	deleteUC pipelinedomain.DeletePipelineUseCase,
 	listUC pipelinedomain.ListPipelinesUseCase,
 	getUC pipelinedomain.GetPipelineUseCase,
+	usageUC pipelinedomain.GetPipelineUsageUseCase,
 ) *PipelineHandler {
 	return &PipelineHandler{
 		createUseCase: createUC,
@@ -34,6 +36,7 @@ func NewPipelineHandler(
 		deleteUseCase: deleteUC,
 		listUseCase:   listUC,
 		getUseCase:    getUC,
+		usageUseCase:  usageUC,
 	}
 }
 
@@ -114,12 +117,23 @@ func (h *PipelineHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	wsID := middleware.GetWorkspaceID(r)
 
+	stages := make([]pipelinedomain.StageSeed, 0, len(req.Stages))
+	for _, s := range req.Stages {
+		stages = append(stages, pipelinedomain.StageSeed{
+			Name:        strings.TrimSpace(s.Name),
+			Description: strings.TrimSpace(s.Description),
+			Color:       strings.TrimSpace(s.Color),
+		})
+	}
+
 	created, err := h.createUseCase.Execute(wsID, pipelinedomain.CreatePipelineInput{
-		Name:         strings.TrimSpace(req.Name),
-		ObjectType:   strings.TrimSpace(req.ObjectType),
-		DepartmentID: strings.TrimSpace(req.DepartmentID),
-		Position:     req.Position,
-		IsDefault:    req.IsDefault,
+		Name:                     strings.TrimSpace(req.Name),
+		ObjectType:               strings.TrimSpace(req.ObjectType),
+		DepartmentID:             strings.TrimSpace(req.DepartmentID),
+		Position:                 req.Position,
+		IsDefault:                req.IsDefault,
+		Stages:                   stages,
+		CopyStagesFromPipelineID: strings.TrimSpace(req.CopyStagesFromPipelineID),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -188,11 +202,44 @@ func (h *PipelineHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.deleteUseCase.Execute(wsID, id); err != nil {
+	// The destination rides as a query parameter rather than a body: DELETE with
+	// a body is unevenly supported by proxies and client libraries, and this is
+	// one optional id, not a document.
+	input := pipelinedomain.DeletePipelineInput{
+		MoveEntriesTo: strings.TrimSpace(r.URL.Query().Get("moveEntriesTo")),
+	}
+
+	if err := h.deleteUseCase.Execute(wsID, id, input); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
 	response.WriteSuccess(w, http.StatusNoContent, nil)
+}
+
+// @Summary		Consultar o que um funil contém
+// @Description	Retorna quantas conversas, campanhas, canais e oportunidades ainda apontam para o funil, para que a exclusão seja confirmada com os números à vista.
+// @Tags			Funis
+// @Produce		json
+// @Param			id	path		string	true	"Identificador do funil"
+// @Success		200	{object}	pipeline.Usage
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/pipelines/{id}/usage [get]
+func (h *PipelineHandler) Usage(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	if middleware.GetClaims(r) == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
+	usage, err := h.usageUseCase.Execute(middleware.GetWorkspaceID(r), id)
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, usage)
 }
 
 func (h *PipelineHandler) handleDomainError(w http.ResponseWriter, err error) {
@@ -207,6 +254,14 @@ func (h *PipelineHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, pipelinedomain.ErrUnauthorized):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
+	// The delete guard. 409 rather than 400: nothing about the request is
+	// malformed, the funnel's current state is what refuses it, and the client
+	// fixes it by unlinking or by naming a destination and retrying.
+	case errors.Is(err, pipelinedomain.ErrDeleteDefault),
+		errors.Is(err, pipelinedomain.ErrDeleteBound),
+		errors.Is(err, pipelinedomain.ErrDeleteNeedsDestination),
+		errors.Is(err, pipelinedomain.ErrDeleteDestinationInvalid):
+		response.WriteError(w, http.StatusConflict, err.Error(), nil)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
