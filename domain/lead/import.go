@@ -13,7 +13,7 @@ import (
 // spreadsheet, are missing. The number is generous for a hand-managed list and
 // still small enough that FindOrCreateMany's 500-row batches stay a bounded
 // amount of work inside one request.
-const MaxImportRows = 20000
+const MaxImportRows = 100000
 
 var (
 	// ErrImportEmpty means the caller sent no rows at all. A 400: an empty
