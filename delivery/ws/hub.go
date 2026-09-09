@@ -108,7 +108,16 @@ type ConversationHub struct {
 
 	userConnections map[string]map[string]bool
 
-	userSubscriptions map[string]map[entrySubscription]bool
+	// Subscriptions are keyed by CONNECTION, not by user.
+	//
+	// An operator holds several conversations open at once (the web client's
+	// floating chat windows), and often in more than one tab. Keying by user
+	// conflated those: every connection was fed the traffic of every entry any
+	// of the user's connections had open, and one window closing removed the
+	// subscription for the whole user, silencing the same conversation
+	// elsewhere. Both are keyed on the connection now, so a window is opened
+	// and closed by the socket that owns it.
+	connSubscriptions map[string]map[entrySubscription]bool
 	entrySubscribers  map[entrySubscription]map[string]bool
 	subMu             sync.RWMutex
 
@@ -147,7 +156,7 @@ func NewConversationHub(
 		operatorSend:      operatorSend,
 		connections:       make(map[string]*WSConnection),
 		userConnections:   make(map[string]map[string]bool),
-		userSubscriptions: make(map[string]map[entrySubscription]bool),
+		connSubscriptions: make(map[string]map[entrySubscription]bool),
 		entrySubscribers:  make(map[entrySubscription]map[string]bool),
 		sentMessageIDs:    make(map[string]map[entrySubscription]map[string]bool),
 		register:          make(chan *WSConnection, 1024),
@@ -1006,8 +1015,8 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 	}
 
 	h.subMu.Lock()
-	if h.userSubscriptions[conn.UserID] == nil {
-		h.userSubscriptions[conn.UserID] = make(map[entrySubscription]bool)
+	if h.connSubscriptions[conn.ID] == nil {
+		h.connSubscriptions[conn.ID] = make(map[entrySubscription]bool)
 	}
 	h.subMu.Unlock()
 
@@ -1542,23 +1551,11 @@ func (h *ConversationHub) handleUnregister(conn *WSConnection) {
 		}
 	}
 
-	if !hasOtherConnections {
-		h.subMu.Lock()
-		if subs, exists := h.userSubscriptions[conn.UserID]; exists {
-			for sub := range subs {
-				if subscribers, ok := h.entrySubscribers[sub]; ok {
-					delete(subscribers, conn.UserID)
-					if len(subscribers) == 0 {
-						delete(h.entrySubscribers, sub)
-					}
-				}
-			}
-			delete(h.userSubscriptions, conn.UserID)
-		}
-		h.subMu.Unlock()
-
-		delete(h.sentMessageIDs, conn.UserID)
-	}
+	// Unconditionally: a closing tab takes only its OWN open conversations with
+	// it. This used to be gated on the user having no other connection left,
+	// which was the same conflation the per-user keying caused — the last tab
+	// standing cleaned up for everyone, and any earlier one cleaned up nothing.
+	h.dropConnectionSubscriptions(conn.ID)
 
 	delete(h.sentMessageIDs, conn.ID)
 
@@ -1694,15 +1691,15 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	sub := entrySubscription{entryID: p.EntryID, entryType: p.EntryType}
 
 	h.subMu.Lock()
-	if h.userSubscriptions[conn.UserID] == nil {
-		h.userSubscriptions[conn.UserID] = make(map[entrySubscription]bool)
+	if h.connSubscriptions[conn.ID] == nil {
+		h.connSubscriptions[conn.ID] = make(map[entrySubscription]bool)
 	}
-	h.userSubscriptions[conn.UserID][sub] = true
+	h.connSubscriptions[conn.ID][sub] = true
 
 	if h.entrySubscribers[sub] == nil {
 		h.entrySubscribers[sub] = make(map[string]bool)
 	}
-	h.entrySubscribers[sub][conn.UserID] = true
+	h.entrySubscribers[sub][conn.ID] = true
 	h.subMu.Unlock()
 
 	var leadName, leadNumber, leadPicture string
@@ -2054,6 +2051,32 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 	}()
 }
 
+// dropConnectionSubscriptions closes every conversation one socket had open.
+//
+// Used when that socket goes away, and when it switches view. It never touches
+// another connection's subscriptions, so a second tab keeps whatever windows it
+// has open.
+func (h *ConversationHub) dropConnectionSubscriptions(connID string) {
+	h.subMu.Lock()
+	defer h.subMu.Unlock()
+
+	subs, exists := h.connSubscriptions[connID]
+	if !exists {
+		return
+	}
+	for sub := range subs {
+		subscribers, ok := h.entrySubscribers[sub]
+		if !ok {
+			continue
+		}
+		delete(subscribers, connID)
+		if len(subscribers) == 0 {
+			delete(h.entrySubscribers, sub)
+		}
+	}
+	delete(h.connSubscriptions, connID)
+}
+
 func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.RawMessage) {
 	var p SubscribePayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -2063,12 +2086,14 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 
 	sub := entrySubscription{entryID: p.EntryID, entryType: p.EntryType}
 
+	// Only THIS connection stops listening. The same conversation may be open
+	// in another tab, which keeps its own subscription.
 	h.subMu.Lock()
-	if subs, exists := h.userSubscriptions[conn.UserID]; exists {
+	if subs, exists := h.connSubscriptions[conn.ID]; exists {
 		delete(subs, sub)
 	}
 	if subscribers, exists := h.entrySubscribers[sub]; exists {
-		delete(subscribers, conn.UserID)
+		delete(subscribers, conn.ID)
 		if len(subscribers) == 0 {
 			delete(h.entrySubscribers, sub)
 		}
@@ -2495,19 +2520,9 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		}
 	}
 
-	h.subMu.Lock()
-	if subs, exists := h.userSubscriptions[conn.UserID]; exists {
-		for sub := range subs {
-			if subscribers, ok := h.entrySubscribers[sub]; ok {
-				delete(subscribers, conn.UserID)
-				if len(subscribers) == 0 {
-					delete(h.entrySubscribers, sub)
-				}
-			}
-		}
-		delete(h.userSubscriptions, conn.UserID)
-	}
-	h.subMu.Unlock()
+	// Switching view resets what this socket is looking at, so it closes the
+	// conversations IT had open. Another tab's windows are untouched.
+	h.dropConnectionSubscriptions(conn.ID)
 
 	delete(h.sentMessageIDs, conn.ID)
 
@@ -3345,53 +3360,53 @@ func (h *ConversationHub) handleBroadcast(msg *broadcastMessage) {
 	h.connMu.RLock()
 	defer h.connMu.RUnlock()
 
-	for userID := range subscribers {
-		if msg.excludeUserID != "" && userID == msg.excludeUserID {
+	// Straight to the connections that have THIS conversation open. A socket
+	// that never opened it is not fed its traffic, even when it belongs to the
+	// same operator working other conversations in other windows.
+	for connID := range subscribers {
+		conn, exists := h.connections[connID]
+		if !exists {
 			continue
 		}
 
-		connIDs, ok := h.userConnections[userID]
-		if !ok {
+		// The exclusion stays per USER: an operator's own typing must not echo
+		// back to them on any of their tabs.
+		if msg.excludeUserID != "" && conn.UserID == msg.excludeUserID {
 			continue
 		}
 
-		for connID := range connIDs {
-
-			if broadcastMsgID != "" {
-				if connSubs, ok := h.sentMessageIDs[connID]; ok {
-					if ids, ok := connSubs[sub]; ok && ids[broadcastMsgID] {
-						delete(ids, broadcastMsgID)
-						continue
-					}
+		// This connection was already handed the message inline (the subscribe
+		// reply, or its own send), so the broadcast copy is dropped once.
+		if broadcastMsgID != "" {
+			if connSubs, ok := h.sentMessageIDs[connID]; ok {
+				if ids, ok := connSubs[sub]; ok && ids[broadcastMsgID] {
+					delete(ids, broadcastMsgID)
+					continue
 				}
 			}
+		}
 
-			if conn, exists := h.connections[connID]; exists {
-				select {
-				case conn.Send <- data:
-				default:
-					log.Printf("[ConversationHub] Send buffer full for user %s (connection %s)", userID, connID)
-				}
+		select {
+		case conn.Send <- data:
+		default:
+			log.Printf("[ConversationHub] Send buffer full for user %s (connection %s)", conn.UserID, connID)
+		}
+
+		if broadcastMsgID != "" {
+			if h.sentMessageIDs[connID] == nil {
+				h.sentMessageIDs[connID] = make(map[entrySubscription]map[string]bool)
 			}
+			if h.sentMessageIDs[connID][sub] == nil {
+				h.sentMessageIDs[connID][sub] = make(map[string]bool)
+			}
+			ids := h.sentMessageIDs[connID][sub]
+			ids[broadcastMsgID] = true
 
-			if broadcastMsgID != "" {
-				if h.sentMessageIDs[connID] == nil {
-					h.sentMessageIDs[connID] = make(map[entrySubscription]map[string]bool)
-				}
-				if h.sentMessageIDs[connID][sub] == nil {
-					h.sentMessageIDs[connID][sub] = make(map[string]bool)
-				}
-				ids := h.sentMessageIDs[connID][sub]
-				ids[broadcastMsgID] = true
-
-				if len(ids) > maxSentIDsPerSubscription {
-					count := 0
-					for k := range ids {
-						delete(ids, k)
-						count++
-						if len(ids) <= maxSentIDsPerSubscription {
-							break
-						}
+			if len(ids) > maxSentIDsPerSubscription {
+				for k := range ids {
+					delete(ids, k)
+					if len(ids) <= maxSentIDsPerSubscription {
+						break
 					}
 				}
 			}
