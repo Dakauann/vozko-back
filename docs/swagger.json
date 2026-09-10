@@ -2545,6 +2545,176 @@
                 }
             }
         },
+        "/comment-analysis/alerts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Listar regras de alerta",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/comment_analysis.AlertRule"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Criar uma regra de alerta",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/comment_analysis.AlertRule"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/alerts/options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Vocabulário de alertas (métricas e canais)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.AlertVocabularyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/alerts/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Editar uma regra de alerta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/comment_analysis.AlertRule"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Remover uma regra de alerta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/comment-analysis/alerts/{id}/test": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Disparar uma regra de alerta para teste",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted"
+                    }
+                }
+            }
+        },
         "/comment-analysis/authors": {
             "get": {
                 "security": [
@@ -2631,6 +2801,39 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/authors/{id}/containers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Posts em que um autor comentou",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do autor",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.AuthorContainersResponse"
                         }
                     }
                 }
@@ -2780,6 +2983,41 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/commentanalysis.BackfillEstimateResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/escalation-recipients": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Conversas para as quais um comentário pode ser encaminhado",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Busca por nome ou número",
+                        "name": "query",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/comment_analysis_usecase.EscalationRecipient"
+                            }
                         }
                     }
                 }
@@ -3119,6 +3357,111 @@
                             "items": {
                                 "$ref": "#/definitions/commentanalysis.TrendPointResponse"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/{id}/escalate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Encaminhar um comentário por WhatsApp",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da análise",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentanalysis.EscalationResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/{id}/reply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Publicar uma resposta ao comentário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da análise",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/comment_analysis.ReplySuggestion"
+                        }
+                    }
+                }
+            }
+        },
+        "/comment-analysis/{id}/reply/suggest": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CommentAnalysis"
+                ],
+                "summary": "Sugerir uma resposta ao comentário com IA",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da análise",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/comment_analysis.ReplySuggestion"
                         }
                     }
                 }
@@ -17134,6 +17477,9 @@
                 "sla": {
                     "type": "string"
                 },
+                "stages": {
+                    "type": "string"
+                },
                 "status_mapping": {
                     "type": "string"
                 },
@@ -17214,6 +17560,14 @@
                 },
                 "reopen": {
                     "$ref": "#/definitions/attendance.OverviewReopen"
+                },
+                "stages": {
+                    "description": "Stages is where the scoped conversations are sitting, grouped by the\nfunnel that owns each stage. See stage_distribution.go.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/attendance.OverviewStages"
+                        }
+                    ]
                 },
                 "status_distribution": {
                     "$ref": "#/definitions/attendance.StatusDistribution"
@@ -17592,6 +17946,37 @@
                 }
             }
         },
+        "attendance.OverviewStages": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "true when anything in scope is staged",
+                    "type": "boolean"
+                },
+                "funnels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.StageFunnelGroup"
+                    }
+                },
+                "staged_engaged": {
+                    "type": "integer"
+                },
+                "staged_shell": {
+                    "type": "integer"
+                },
+                "stuck": {
+                    "type": "integer"
+                },
+                "unstaged_engaged": {
+                    "description": "Unstaged is scoped minus staged: conversations carrying no stage at all.\nReported as a total rather than as a fake stage row.",
+                    "type": "integer"
+                },
+                "unstaged_shell": {
+                    "type": "integer"
+                }
+            }
+        },
         "attendance.ResponseTimeBucket": {
             "type": "object",
             "properties": {
@@ -17611,6 +17996,111 @@
                     "items": {
                         "$ref": "#/definitions/attendance.ResponseTimeBucket"
                     }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attendance.StageFunnelGroup": {
+            "type": "object",
+            "properties": {
+                "engaged": {
+                    "type": "integer"
+                },
+                "funnel_id": {
+                    "description": "FunnelID is empty for the single no-funnel bucket, which always sorts last.",
+                    "type": "string"
+                },
+                "funnel_name": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "pct_of_staged": {
+                    "type": "number"
+                },
+                "shell": {
+                    "type": "integer"
+                },
+                "stages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.StageRow"
+                    }
+                },
+                "stuck": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attendance.StageRow": {
+            "type": "object",
+            "properties": {
+                "avg_days_in_stage": {
+                    "description": "AvgDaysInStage and OldestDaysInStage measure OPEN engaged conversations\nagainst now, not against the period end. Null when nothing here is open,\nbecause 0 would read as \"everyone arrived today\".",
+                    "type": "number"
+                },
+                "color": {
+                    "description": "Color is the stage's own kanban colour when the workspace picked one.",
+                    "type": "string"
+                },
+                "engaged": {
+                    "description": "Engaged is THE number: conversations with at least one message, the same\nuniverse as the KPI strip and every other panel on the page.",
+                    "type": "integer"
+                },
+                "finished": {
+                    "type": "integer"
+                },
+                "is_lost": {
+                    "type": "boolean"
+                },
+                "is_won": {
+                    "type": "boolean"
+                },
+                "oldest_days_in_stage": {
+                    "type": "number"
+                },
+                "ongoing": {
+                    "type": "integer"
+                },
+                "pct_of_funnel": {
+                    "description": "PctOfFunnel answers \"where inside this path do they stop\", PctOfStaged\nanswers \"which funnel owns the workspace's volume\". Both over Engaged.",
+                    "type": "number"
+                },
+                "pct_of_staged": {
+                    "type": "number"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "rot_days_set": {
+                    "description": "RotDaysSet distinguishes a threshold the workspace chose from the product\ndefault, so the UI can name which one produced the count.",
+                    "type": "boolean"
+                },
+                "shell": {
+                    "description": "Shell is campaign/import rows parked here that were never messaged. Shown\nbeside Engaged, never added to it.",
+                    "type": "integer"
+                },
+                "stage_id": {
+                    "type": "string"
+                },
+                "stage_name": {
+                    "type": "string"
+                },
+                "stuck": {
+                    "description": "Stuck is open engaged conversations sitting longer than StuckAfterDays.",
+                    "type": "integer"
+                },
+                "stuck_after_days": {
+                    "type": "integer"
                 },
                 "total": {
                     "type": "integer"
@@ -18988,6 +19478,189 @@
                 }
             }
         },
+        "comment_analysis.AlertChannel": {
+            "type": "string",
+            "enum": [
+                "official",
+                "unofficial"
+            ],
+            "x-enum-varnames": [
+                "AlertChannelOfficial",
+                "AlertChannelUnofficial"
+            ]
+        },
+        "comment_analysis.AlertMetric": {
+            "type": "string",
+            "enum": [
+                "comment_severity",
+                "high_severity_count",
+                "hostile_count",
+                "comment_volume",
+                "acceptance_score"
+            ],
+            "x-enum-varnames": [
+                "AlertMetricCommentSeverity",
+                "AlertMetricHighSeverityCount",
+                "AlertMetricHostileCount",
+                "AlertMetricCommentVolume",
+                "AlertMetricAcceptanceScore"
+            ]
+        },
+        "comment_analysis.AlertRule": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "brief": {
+                    "description": "Brief asks the model to add its reading of what happened and how to\nrespond. Off by default: it is one AI call per firing, bounded by the\ncooldown and the daily cap but still billed.",
+                    "type": "boolean"
+                },
+                "businessPhoneId": {
+                    "description": "BusinessPhoneID and TemplateID are required for the official channel:\nwhich number it leaves from and which approved template it sends.",
+                    "type": "string"
+                },
+                "channel": {
+                    "$ref": "#/definitions/comment_analysis.AlertChannel"
+                },
+                "cooldownMinutes": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserId": {
+                    "description": "CreatedByUserID is who configured the rule, and therefore who its\nmessages are attributed to. An automated paid send with no author is a\nsupport ticket nobody can answer, so the person who armed the alert owns\nwhat it says.",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "firedDay": {
+                    "type": "string"
+                },
+                "firedToday": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "description": "InstanceID names the connected number for the unofficial channel. Empty\nmeans \"whichever one this workspace has\", resolved at send time.",
+                    "type": "string"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastFiredAt": {
+                    "description": "The firing history, kept on the rule rather than in a second table: it is\nwhat the cooldown and the cap are checked against, and it is also the\nanswer to \"por que não disparou\".",
+                    "type": "string"
+                },
+                "maxPerDay": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "$ref": "#/definitions/comment_analysis.AlertMetric"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "recipient": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/comment_analysis.Source"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "windowMinutes": {
+                    "description": "WindowMinutes is the span a windowed metric is counted over. Ignored for\na per-comment metric.",
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "comment_analysis.AuthorRole": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "politician",
+                "journalist",
+                "public_servant",
+                "business_owner",
+                "professional",
+                "activist"
+            ],
+            "x-enum-varnames": [
+                "RoleUnknown",
+                "RolePolitician",
+                "RoleJournalist",
+                "RolePublicServant",
+                "RoleBusinessOwner",
+                "RoleProfessional",
+                "RoleActivist"
+            ]
+        },
+        "comment_analysis.AuthorRoleInference": {
+            "type": "object",
+            "properties": {
+                "basedOnComments": {
+                    "description": "BasedOnComments is the corpus size the inference read. Shown to the\ncustomer, because \"politician, from 3 comments\" and \"politician, from 90\"\nare different claims and the UI must not present them as one.",
+                    "type": "integer"
+                },
+                "confidence": {
+                    "description": "Confidence is the model's own, on the shared ordinal rubric. Ordinal\nrather than a percentage for the reason the rubric header gives: a model\nasked for 0-100 returns a number nobody can defend.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/shared.QualityLevel"
+                        }
+                    ]
+                },
+                "rationale": {
+                    "description": "Rationale is one short sentence in the model's words, so an operator can\nsee WHY and disagree. Never used for anything but display.",
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/comment_analysis.AuthorRole"
+                }
+            }
+        },
+        "comment_analysis.BatchTotals": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "integer"
+                },
+                "byKind": {
+                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/comment_analysis.BatchTotals"
+                    }
+                },
+                "completionTokens": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "integer"
+                },
+                "priceMicros": {
+                    "type": "integer"
+                },
+                "promptTokens": {
+                    "type": "integer"
+                }
+            }
+        },
         "comment_analysis.Counters": {
             "type": "object",
             "properties": {
@@ -19075,6 +19748,61 @@
                 }
             }
         },
+        "comment_analysis.ReplyMode": {
+            "type": "string",
+            "enum": [
+                "off",
+                "suggest",
+                "auto"
+            ],
+            "x-enum-varnames": [
+                "ReplyModeOff",
+                "ReplyModeSuggest",
+                "ReplyModeAuto"
+            ]
+        },
+        "comment_analysis.ReplyPolicy": {
+            "type": "object",
+            "properties": {
+                "maxAutoSeverity": {
+                    "description": "MaxAutoSeverity is the ceiling for automatic replies. Above it a human\nanswers, whatever the intent says.",
+                    "type": "integer"
+                },
+                "mode": {
+                    "$ref": "#/definitions/comment_analysis.ReplyMode"
+                }
+            }
+        },
+        "comment_analysis.ReplySuggestion": {
+            "type": "object",
+            "properties": {
+                "auto": {
+                    "description": "Auto marks a draft the pipeline produced and posted without a human, so\nthe feed can say which replies nobody read first.",
+                    "type": "boolean"
+                },
+                "commentId": {
+                    "type": "string"
+                },
+                "draftedAt": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "comment_analysis.Source": {
+            "type": "string",
+            "enum": [
+                "instagram"
+            ],
+            "x-enum-varnames": [
+                "SourceInstagram"
+            ]
+        },
         "comment_analysis.Topic": {
             "type": "object",
             "properties": {
@@ -19120,6 +19848,214 @@
                 },
                 "topicKey": {
                     "type": "string"
+                }
+            }
+        },
+        "comment_analysis_usecase.EscalationRecipient": {
+            "type": "object",
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "lastMessageAt": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "string"
+                },
+                "windowOpen": {
+                    "description": "WindowOpen says whether a free-form message can reach them right now.\nShown rather than enforced: the channels differ, and the send path is\nthe authority on its own rules.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "commentanalysis.AlertChannelStatusResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "channel": {
+                    "type": "string"
+                },
+                "reason": {
+                    "description": "Reason is a stable key the client translates: \"no_sender\",\n\"not_enabled\". A greyed control with no explanation sends people to\nsupport instead of to the connect screen.",
+                    "type": "string"
+                },
+                "senders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commentanalysis.AlertSenderResponse"
+                    }
+                }
+            }
+        },
+        "commentanalysis.AlertLimitsResponse": {
+            "type": "object",
+            "properties": {
+                "defaultCooldownMinutes": {
+                    "type": "integer"
+                },
+                "defaultPerDay": {
+                    "type": "integer"
+                },
+                "defaultWindowMinutes": {
+                    "type": "integer"
+                },
+                "maxCooldownMinutes": {
+                    "type": "integer"
+                },
+                "maxPerDay": {
+                    "type": "integer"
+                },
+                "maxWindowMinutes": {
+                    "type": "integer"
+                },
+                "minCooldownMinutes": {
+                    "type": "integer"
+                },
+                "minWindowMinutes": {
+                    "type": "integer"
+                },
+                "templateParamCount": {
+                    "description": "TemplateParamCount is how many facts an alert can supply. NOT a\nrequirement on the template: one that declares fewer gets the first few,\none that declares more has the rest padded, and one with no variables is\nperfectly fine.",
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.AlertMetricOption": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string"
+                },
+                "triggersWhenBelow": {
+                    "type": "boolean"
+                },
+                "windowed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "commentanalysis.AlertSenderResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Label is what the operator recognises, never an internal id.",
+                    "type": "string"
+                }
+            }
+        },
+        "commentanalysis.AlertVocabularyResponse": {
+            "type": "object",
+            "properties": {
+                "channelStatus": {
+                    "description": "ChannelStatus narrows Channels to what this workspace can actually do.\nEmpty when the deployment has no directory wired, in which case the\nclient falls back to Channels exactly as it did before.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commentanalysis.AlertChannelStatusResponse"
+                    }
+                },
+                "channels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "facts": {
+                    "description": "Facts is what an alert can put into a template's variables, in the order\na POSITIONAL template is filled. Sent so the settings screen can tell an\noperator what their template will actually receive, and so a NAMED\ntemplate can be written with variables we recognise.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "limits": {
+                    "$ref": "#/definitions/commentanalysis.AlertLimitsResponse"
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commentanalysis.AlertMetricOption"
+                    }
+                }
+            }
+        },
+        "commentanalysis.AuthorContainerResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "comments": {
+                    "type": "integer"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "derivedStance": {
+                    "type": "string"
+                },
+                "firstCommentedAt": {
+                    "type": "string"
+                },
+                "lastCommentedAt": {
+                    "type": "string"
+                },
+                "reputation": {
+                    "type": "integer"
+                },
+                "severityHighCount": {
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commentanalysis.AuthorContainersResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                },
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commentanalysis.AuthorContainerResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -19178,6 +20114,21 @@
                 },
                 "moderationState": {
                     "type": "string"
+                },
+                "reputation": {
+                    "description": "Reputation is the signed ledger the ranking sorts on: negative means the\nauthor has cost more than they gave. Sent alongside the raw counters so\nthe client shows the score without re-deriving (and re-inventing) it.",
+                    "type": "integer"
+                },
+                "role": {
+                    "description": "Role is the §5 inference, sent WITH its evidence: a client that received\nonly a label would have no way to present it as the inference it is.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/comment_analysis.AuthorRoleInference"
+                        }
+                    ]
+                },
+                "roleDisplayable": {
+                    "type": "boolean"
                 },
                 "source": {
                     "type": "string"
@@ -19380,6 +20331,26 @@
                 }
             }
         },
+        "commentanalysis.EscalationResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "commentId": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
         "commentanalysis.SettingsResponse": {
             "type": "object",
             "properties": {
@@ -19397,6 +20368,9 @@
                 },
                 "model": {
                     "type": "string"
+                },
+                "replyPolicy": {
+                    "$ref": "#/definitions/comment_analysis.ReplyPolicy"
                 },
                 "severityThreshold": {
                     "type": "integer"
@@ -19423,6 +20397,13 @@
             "properties": {
                 "batches": {
                     "type": "integer"
+                },
+                "byKind": {
+                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/comment_analysis.BatchTotals"
+                    }
                 },
                 "completionTokens": {
                     "type": "integer"
@@ -23272,6 +24253,21 @@
                 "EntryTypeTelegram",
                 "EntryTypeUnofficialWhatsApp",
                 "EntryTypeVoice"
+            ]
+        },
+        "shared.QualityLevel": {
+            "type": "string",
+            "enum": [
+                "none",
+                "low",
+                "medium",
+                "high"
+            ],
+            "x-enum-varnames": [
+                "QualityLevelNone",
+                "QualityLevelLow",
+                "QualityLevelMedium",
+                "QualityLevelHigh"
             ]
         },
         "shortlink.analyticsResponse": {

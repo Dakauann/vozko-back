@@ -24,10 +24,20 @@ type fakeAlertRules struct {
 	claimErr   error
 	failures   []string
 	listErr    error
+	// created and updated record the writes, so a test can assert that a
+	// refused rule never reached the repository at all.
+	created *ca.AlertRule
+	updated *ca.AlertRule
 }
 
-func (f *fakeAlertRules) Create(context.Context, *ca.AlertRule) error { return nil }
-func (f *fakeAlertRules) Update(context.Context, *ca.AlertRule) error { return nil }
+func (f *fakeAlertRules) Create(_ context.Context, r *ca.AlertRule) error {
+	f.created = r
+	return nil
+}
+func (f *fakeAlertRules) Update(_ context.Context, r *ca.AlertRule) error {
+	f.updated = r
+	return nil
+}
 func (f *fakeAlertRules) Delete(context.Context, string, string) error {
 	return nil
 }

@@ -176,10 +176,37 @@ func (h *Handler) AlertOptions(w http.ResponseWriter, r *http.Request) {
 			Below:    m.TriggersWhenBelow(),
 		})
 	}
+	// Channels is the product's VOCABULARY, unchanged: what an alert can be
+	// written against. ChannelStatus is what THIS workspace can actually send
+	// on right now, which is a different question and the one that was never
+	// asked. Kept as two fields rather than one so existing clients keep
+	// working off the list they already read.
+	channelStatus := make([]AlertChannelStatusResponse, 0, 2)
+	if h.channels != nil {
+		statuses, err := h.channels.Execute(r.Context(), middleware.GetWorkspaceID(r))
+		if err != nil {
+			writeDomainError(w, err, "Failed to read the alert channels")
+			return
+		}
+		for _, s := range statuses {
+			senders := make([]AlertSenderResponse, 0, len(s.Senders))
+			for _, snd := range s.Senders {
+				senders = append(senders, AlertSenderResponse{ID: snd.ID, Label: snd.Label})
+			}
+			channelStatus = append(channelStatus, AlertChannelStatusResponse{
+				Channel:   string(s.Channel),
+				Available: s.Available,
+				Reason:    s.Reason,
+				Senders:   senders,
+			})
+		}
+	}
+
 	response.WriteSuccess(w, http.StatusOK, AlertVocabularyResponse{
-		Metrics:  metrics,
-		Channels: []string{string(ca.AlertChannelOfficial), string(ca.AlertChannelUnofficial)},
-		Facts:    ca.AlertFactKeys(),
+		Metrics:       metrics,
+		Channels:      []string{string(ca.AlertChannelOfficial), string(ca.AlertChannelUnofficial)},
+		ChannelStatus: channelStatus,
+		Facts:         ca.AlertFactKeys(),
 		Limits: AlertLimitsResponse{
 			MinCooldownMinutes:     ca.MinAlertCooldownMinutes,
 			DefaultCooldownMinutes: ca.DefaultAlertCooldownMinutes,
@@ -219,10 +246,37 @@ type AlertLimitsResponse struct {
 	TemplateParamCount int `json:"templateParamCount"`
 }
 
+// AlertSenderResponse is one number a channel can send from.
+type AlertSenderResponse struct {
+	ID string `json:"id"`
+	// Label is what the operator recognises, never an internal id.
+	Label string `json:"label"`
+}
+
+// AlertChannelStatusResponse is whether THIS workspace can use a channel now.
+//
+// The list beside it (Channels) is the product vocabulary and says nothing
+// about the tenant. Serving only that was the bug: a workspace with no
+// connected number was offered the unofficial channel, accepted, and armed a
+// rule that could never fire.
+type AlertChannelStatusResponse struct {
+	Channel   string `json:"channel"`
+	Available bool   `json:"available"`
+	// Reason is a stable key the client translates: "no_sender",
+	// "not_enabled". A greyed control with no explanation sends people to
+	// support instead of to the connect screen.
+	Reason  string                `json:"reason,omitempty"`
+	Senders []AlertSenderResponse `json:"senders"`
+}
+
 type AlertVocabularyResponse struct {
 	Metrics  []AlertMetricOption `json:"metrics"`
 	Channels []string            `json:"channels"`
-	Limits   AlertLimitsResponse `json:"limits"`
+	// ChannelStatus narrows Channels to what this workspace can actually do.
+	// Empty when the deployment has no directory wired, in which case the
+	// client falls back to Channels exactly as it did before.
+	ChannelStatus []AlertChannelStatusResponse `json:"channelStatus"`
+	Limits        AlertLimitsResponse          `json:"limits"`
 	// Facts is what an alert can put into a template's variables, in the order
 	// a POSITIONAL template is filled. Sent so the settings screen can tell an
 	// operator what their template will actually receive, and so a NAMED

@@ -46,7 +46,10 @@ func (uc *getOverviewUseCase) Execute(workspaceID string, filter attendance.Over
 		return nil, err
 	}
 	if out == nil {
-		out = &attendance.Overview{Definitions: attendance.DefaultDefinitions()}
+		out = &attendance.Overview{
+			Stages:      attendance.BuildStageDistribution(nil, 0, 0),
+			Definitions: attendance.DefaultDefinitions(),
+		}
 	}
 
 	uc.fillQueue(workspaceID, filter, out)

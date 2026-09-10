@@ -23,8 +23,11 @@ import (
 //     not EXISTS over every historical entry outside the window.
 func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewFilter) (*attendance.Overview, error) {
 	out := &attendance.Overview{
-		Filter:      filter,
-		Hourly:      make([]attendance.HourlyPoint, 24),
+		Filter: filter,
+		Hourly: make([]attendance.HourlyPoint, 24),
+		// Built empty up front so an early return still serialises funnels as []
+		// rather than null, which the panel would render as a broken chart.
+		Stages:      attendance.BuildStageDistribution(nil, 0, 0),
 		Definitions: attendance.DefaultDefinitions(),
 		KPIs: attendance.OverviewKPIs{
 			CSATAvailable: false,
@@ -232,6 +235,16 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 			return err
 		}
 		out.ByMember = memberRows
+
+		// Where the scoped conversations are sitting, by funnel. One more read of
+		// the same temp table, and the scoped totals it needs for "unstaged" are
+		// the ones the KPI pass above already counted, so the panel cannot report
+		// a universe the tiles beside it did not see.
+		tallies, err := overviewStageTalliesTX(tx, workspaceID, tmpMsg)
+		if err != nil {
+			return err
+		}
+		out.Stages = attendance.BuildStageDistribution(tallies, sr.Engaged, sr.ShellBacklog)
 
 		return overviewFillExtendedTX(tx, workspaceID, base, noArgs, tmpMsg, filter, out)
 	})

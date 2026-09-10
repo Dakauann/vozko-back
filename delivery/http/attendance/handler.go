@@ -342,6 +342,7 @@ func (h *AttendanceHandler) GetOverview(w http.ResponseWriter, r *http.Request) 
 	if h.getOverview == nil {
 		response.WriteSuccess(w, http.StatusOK, &attendancedomain.Overview{
 			Hourly:      make([]attendancedomain.HourlyPoint, 24),
+			Stages:      attendancedomain.BuildStageDistribution(nil, 0, 0),
 			Definitions: attendancedomain.DefaultDefinitions(),
 			KPIs: attendancedomain.OverviewKPIs{
 				CSATAvailable: false,

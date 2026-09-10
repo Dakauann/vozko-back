@@ -47,6 +47,16 @@ import "time"
 // conversation, and a contact acquired but not yet messaged is exactly what
 // this number is for.
 //
+// Stage distribution: the scoped entries' CURRENT stage (the live entry_stages
+// row), grouped by the funnel that owns the stage. Engaged is the headline, as
+// everywhere else on this page; shells are counted beside it so a bulk campaign
+// drop parked in one stage is visible without dominating it. Days-in-stage and
+// the stuck count are measured over OPEN engaged entries against NOW, not
+// against the period end: "9,4 days in Documentação" means as of this moment.
+// Stuck threshold is the stage's own rot_days, falling back to
+// DefaultStageStuckDays. Entries with no stage at all are reported as a total,
+// not as a stage row.
+//
 // Channel mix: engaged entries by entry_type (whatsapp | voice).
 // Unassigned backlog: engaged entries with no assignee and not finished.
 // Messages per conversation: avg non-deleted messages per ENGAGED entry.
@@ -315,6 +325,7 @@ type MetricDefinitions struct {
 	Messaging        string `json:"messaging"`
 	Reopen           string `json:"reopen"`
 	FinishedBySource string `json:"finished_by_source"`
+	Stages           string `json:"stages"`
 	Unassigned       string `json:"unassigned"`
 	CSAT             string `json:"csat"`
 	SLA              string `json:"sla"`
@@ -340,6 +351,9 @@ type Overview struct {
 	Reopen     OverviewReopen    `json:"reopen"`
 	// FinishedBySource splits KPIs.Finished by close_source for monthly review.
 	FinishedBySource OverviewFinishedBySource `json:"finished_by_source"`
+	// Stages is where the scoped conversations are sitting, grouped by the
+	// funnel that owns each stage. See stage_distribution.go.
+	Stages OverviewStages `json:"stages"`
 
 	Definitions MetricDefinitions `json:"definitions"`
 }
@@ -363,6 +377,7 @@ func DefaultDefinitions() MetricDefinitions {
 		Messaging:        "avg messages per engaged entry; avg_messages_all_scoped includes shells",
 		Reopen:           "conversation_events reopened / engaged finished (KPI); finished_event_count is telemetry",
 		FinishedBySource: "engaged finished by close_source: human (incl empty/legacy), ai, system",
+		Stages:           "scoped conversations by their current stage, grouped by owning funnel; engaged is the headline and shells are reported beside it; dwell and stuck are measured over OPEN engaged rows against now",
 		Unassigned:       "engaged entries with empty assignee and status != finished",
 		CSAT:             "not available (csat_available=false) until surveys ship",
 		SLA:              "not available (sla_available=false) until SLA policies ship",

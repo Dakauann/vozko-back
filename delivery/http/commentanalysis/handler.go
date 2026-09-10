@@ -35,6 +35,7 @@ type Handler struct {
 	escalate   ca.EscalateCommentUseCase
 	recipients cauc.ListEscalationRecipientsUseCase
 	alerts     *cauc.ManageAlertRulesUseCase
+	channels   *cauc.GetAlertChannelsUseCase
 	testAlert  *cauc.TestAlertRuleUseCase
 	suggest    ca.SuggestCommentReplyUseCase
 	postReply  ca.PostCommentReplyUseCase
@@ -65,6 +66,9 @@ type Deps struct {
 	Escalate   ca.EscalateCommentUseCase
 	Recipients cauc.ListEscalationRecipientsUseCase
 	Alerts     *cauc.ManageAlertRulesUseCase
+	// Channels reports which alert channels this workspace can actually send
+	// on, so the picker offers what the save will accept.
+	Channels   *cauc.GetAlertChannelsUseCase
 	TestAlert  *cauc.TestAlertRuleUseCase
 	Suggest    ca.SuggestCommentReplyUseCase
 	PostReply  ca.PostCommentReplyUseCase
@@ -87,7 +91,7 @@ type Deps struct {
 func NewHandler(d Deps) *Handler {
 	return &Handler{
 		list: d.List, stats: d.Stats, trends: d.Trends, authors: d.Authors, author: d.Author, containers: d.Containers, escalate: d.Escalate, recipients: d.Recipients,
-		alerts: d.Alerts, testAlert: d.TestAlert,
+		alerts: d.Alerts, testAlert: d.TestAlert, channels: d.Channels,
 		suggest: d.Suggest, postReply: d.PostReply, moderate: d.Moderate,
 		getSet: d.GetSet, updateSet: d.UpdateSet, retry: d.Retry, spend: d.Spend,
 		estimate: d.Estimate, start: d.Start, backfill: d.Backfill, cancel: d.Cancel,
@@ -696,6 +700,11 @@ func writeDomainError(w http.ResponseWriter, err error, fallback string) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, ca.ErrStatusTransition):
 		response.WriteErrorWithCode(w, http.StatusConflict, "invalid_state", err.Error(), nil)
+	// 422 rather than 400: the rule itself is well formed, the workspace just
+	// has nothing to send it from. The code lets the form point at the connect
+	// screen instead of printing a validation error against a field.
+	case errors.Is(err, ca.ErrChannelUnavailable):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "channel_unavailable", err.Error(), nil)
 	case errors.Is(err, cauc.ErrBackfillAlreadyActive):
 		response.WriteErrorWithCode(w, http.StatusConflict, "backfill_active", err.Error(), nil)
 	case errors.Is(err, cauc.ErrBackfillEstimateStale):

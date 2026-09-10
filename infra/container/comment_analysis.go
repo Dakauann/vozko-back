@@ -102,6 +102,15 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		alertDispatcher.unofficial = c.unofficialWhatsApp.StartConv
 	}
+
+	// What the workspace can actually SEND on, asked of the workspace instead
+	// of assumed from a constant. The picker and the save both read this, so
+	// they cannot disagree about whether a channel works.
+	senderDirectory := commentAlertSenderDirectory{phones: c.useCases.listBusinessPhones}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		senderDirectory.unofficialEnabled = true
+		senderDirectory.instances = c.unofficialWhatsApp.Instances
+	}
 	alertEvaluator := cauc.NewAlertEvaluator(cauc.AlertDeps{
 		Rules: alertRules, Repo: repo, Dispatcher: alertDispatcher, Clock: clock,
 		// So an alert can name the account and link the post instead of
@@ -194,7 +203,8 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		// implementation, whichever channel the conversation runs on.
 		Escalate:   cauc.NewEscalateCommentUseCase(repo, adapters, commentEscalationSender{send: c.services.liveOperatorSend}),
 		Recipients: cauc.NewListEscalationRecipientsUseCase(commentEscalationRecipients{inbox: c.services.conversationHistory}),
-		Alerts:     cauc.NewManageAlertRulesUseCase(alertRules, clock),
+		Alerts:     cauc.NewManageAlertRulesUseCase(alertRules, clock).WithSenderDirectory(senderDirectory),
+		Channels:   cauc.NewGetAlertChannelsUseCase(senderDirectory),
 		TestAlert:  cauc.NewTestAlertRuleUseCase(alertRules, alertDispatcher, clock),
 		Suggest:    suggestReply,
 		PostReply:  postReply,

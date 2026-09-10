@@ -25,6 +25,9 @@ func TestDefaultDefinitions_NotEmpty(t *testing.T) {
 	if d.FinishedBySource == "" {
 		t.Fatal("expected finished_by_source definition")
 	}
+	if d.Stages == "" {
+		t.Fatal("expected stage distribution definition")
+	}
 }
 
 func TestOverviewFinishedBySource_Shape(t *testing.T) {

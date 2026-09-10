@@ -19,10 +19,40 @@ import (
 type ManageAlertRulesUseCase struct {
 	rules ca.AlertRuleRepository
 	clock ca.Clock
+	// senders is optional. When wired, an ARMED rule is checked against what
+	// the workspace can actually send on before it is stored. See
+	// domain/comment_analysis/alert_channels.go for why that check exists.
+	senders ca.AlertSenderDirectory
 }
 
 func NewManageAlertRulesUseCase(rules ca.AlertRuleRepository, clock ca.Clock) *ManageAlertRulesUseCase {
 	return &ManageAlertRulesUseCase{rules: rules, clock: clock}
+}
+
+// WithSenderDirectory arms the channel-readiness check. Optional rather than a
+// constructor argument so a deployment that never wired one keeps saving rules
+// exactly as before instead of failing every write.
+func (uc *ManageAlertRulesUseCase) WithSenderDirectory(d ca.AlertSenderDirectory) *ManageAlertRulesUseCase {
+	uc.senders = d
+	return uc
+}
+
+// checkSender refuses a rule that claims to be armed on a channel this
+// workspace cannot send on.
+//
+// A directory ERROR is not a verdict on the rule: the instance table being
+// briefly unreachable must not block every alert edit in the product, so the
+// check stands down and the save proceeds. It guards against a silent lie, and
+// it is not worth trading that for a loud outage.
+func (uc *ManageAlertRulesUseCase) checkSender(ctx context.Context, rule ca.AlertRule) error {
+	if uc.senders == nil {
+		return nil
+	}
+	statuses, err := uc.senders.ChannelStatus(ctx, rule.WorkspaceID)
+	if err != nil {
+		return nil
+	}
+	return rule.ValidateSender(statuses)
 }
 
 func (uc *ManageAlertRulesUseCase) List(ctx context.Context, workspaceID string, source ca.Source, accountID string) ([]*ca.AlertRule, error) {
@@ -48,6 +78,9 @@ func (uc *ManageAlertRulesUseCase) Create(ctx context.Context, rule ca.AlertRule
 
 	rule.Normalize()
 	if err := rule.Validate(); err != nil {
+		return nil, err
+	}
+	if err := uc.checkSender(ctx, rule); err != nil {
 		return nil, err
 	}
 	if err := uc.rules.Create(ctx, &rule); err != nil {
@@ -81,6 +114,9 @@ func (uc *ManageAlertRulesUseCase) Update(ctx context.Context, workspaceID, id s
 
 	next.Normalize()
 	if err := next.Validate(); err != nil {
+		return nil, err
+	}
+	if err := uc.checkSender(ctx, next); err != nil {
 		return nil, err
 	}
 	if err := uc.rules.Update(ctx, &next); err != nil {

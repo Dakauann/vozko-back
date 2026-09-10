@@ -27,6 +27,11 @@ var (
 
 	ErrBudgetInvalid = errors.New("comment analysis: budget is invalid")
 
+	// ErrChannelUnavailable means the rule names a channel this workspace
+	// cannot actually send on. Distinct from ErrInvalidFilter because the fix
+	// is not to the rule: it is to connect a number.
+	ErrChannelUnavailable = errors.New("comment analysis: the alert channel has no number to send from")
+
 	// The three ways a cycle stops early. Each is a distinct error because the
 	// operator has to be told something different: the first two resolve on
 	// their own, the third needs money.
