@@ -128,7 +128,17 @@ func (a *CommentAnalysisAdapter) ReadContainerContext(ctx context.Context, ref c
 		}
 		return ca.ContainerContext{}, err
 	}
-	return ca.ContainerContext{Caption: m.Caption, Permalink: m.Permalink, PublishedAt: m.Timestamp}, nil
+	out := ca.ContainerContext{Caption: m.Caption, Permalink: m.Permalink, PublishedAt: m.Timestamp}
+	// The handle is best effort: it is only needed so an ALERT can name the
+	// account to a human, and the classifier does not care. accounts is nil in
+	// a deployment that never backfills, and a missing handle costs a line in
+	// a message rather than an analysis.
+	if a.accounts != nil {
+		if account, err := a.accounts.FindByID(ctx, ref.AccountID); err == nil && account != nil {
+			out.AccountName = account.Username
+		}
+	}
+	return out, nil
 }
 
 func (a *CommentAnalysisAdapter) ListContainers(ctx context.Context, accountID string, limit, offset int) ([]ca.ContainerSummary, error) {

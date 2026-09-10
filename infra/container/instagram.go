@@ -41,6 +41,10 @@ type instagramBundle struct {
 	// ModerateComment is kept so the comment-analysis engine can attach its
 	// tombstone hook after both are built.
 	ModerateComment *iguc.ModerateCommentUseCase
+	// ReplyComment is kept for the same reason: the comment-analysis engine
+	// publishes its drafted replies through THIS use case, with its scope check
+	// and its local mirror write, rather than calling the Graph edge again.
+	ReplyComment *iguc.ReplyToCommentUseCase
 
 	OAuth        igdomain.OAuthService
 	Messaging    igdomain.MessagingService
@@ -154,6 +158,7 @@ func (c *Container) initInstagram() {
 	)
 	bundle.PrivateReplyUC = privateReply
 	bundle.ModerateComment = moderateComment
+	bundle.ReplyComment = replyComment
 	bundle.CommentRuleEval = iguc.NewEvaluateCommentRulesUseCase(
 		bundle.CommentRules,
 		iguc.NewCommentActionRunner(replyComment, privateReply, moderateComment),

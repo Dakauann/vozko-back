@@ -90,6 +90,11 @@ type CommentAnalysisSettings struct {
 	SeverityThreshold int            `gorm:"not null;default:60"`
 	DailyCap          int            `gorm:"not null;default:20000"`
 	Instructions      string         `gorm:"type:text"`
+	// Replying (§6). Off by default at the column level too, so an account row
+	// written before this existed reads back as "does not reply" rather than
+	// inheriting whatever the zero value of a future default happens to be.
+	ReplyMode            string `gorm:"size:16;not null;default:'off'"`
+	ReplyMaxAutoSeverity int    `gorm:"not null;default:30"`
 
 	CreatedAt time.Time `gorm:"autoCreateTime;type:timestamptz"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime;type:timestamptz"`
@@ -117,10 +122,23 @@ type CommentAnalysisAuthor struct {
 	MaxSeverity     int            `gorm:"not null;default:0"`
 	HighSevCount    int            `gorm:"not null;default:0"`
 	StanceHostile   int            `gorm:"not null;default:0"`
+	StanceSupporter int            `gorm:"not null;default:0"`
+	// Reputation is the signed ledger, denormalised for the same reason the
+	// counts above it are: the ranking sorts on it, and parsing jsonb per row
+	// cannot use an index. Derived, never accumulated — AuthorStats.Derive
+	// recomputes it from the counters on every rollup.
+	Reputation      int            `gorm:"not null;default:0;index"`
 	TopTopics       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
 	DerivedStance   string         `gorm:"size:16;not null;default:'neutral'"`
 	IsFlagged       bool           `gorm:"not null;default:false"`
 	ModerationState string         `gorm:"size:16;not null;default:'none'"`
+	// The §5 role inference. Columns rather than jsonb because a customer will
+	// want to filter by role, and because these have to be preserved across the
+	// rollup's rebuild the way moderation_state is.
+	Role           string `gorm:"size:24;not null;default:'unknown'"`
+	RoleConfidence string `gorm:"size:8;not null;default:'none'"`
+	RoleComments   int    `gorm:"not null;default:0"`
+	RoleRationale  string `gorm:"size:220"`
 
 	CreatedAt time.Time `gorm:"autoCreateTime;type:timestamptz"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime;type:timestamptz"`
@@ -163,6 +181,10 @@ type CommentAnalysisBatch struct {
 	AccountID   string `gorm:"type:uuid;not null"`
 	ContainerID string `gorm:"size:64;not null"`
 
+	// Kind is which pass bought these tokens. Defaulted rather than nullable so
+	// every row written before the author pass existed reads as the comment
+	// pass, which is what it is.
+	Kind             string `gorm:"size:16;not null;default:'comment'"`
 	Model            string `gorm:"size:120"`
 	ItemCount        int    `gorm:"not null;default:0"`
 	PromptTokens     int    `gorm:"not null;default:0"`
@@ -230,4 +252,65 @@ type CommentAnalysisContainerSettings struct {
 
 func (CommentAnalysisContainerSettings) TableName() string {
 	return "comment_analysis_container_settings"
+}
+
+// CommentAnalysisAlertRule is one configured watch: "quando passar de X, manda
+// um WhatsApp para Y".
+//
+// The firing history lives on the rule rather than in a second table because
+// it is not an audit log, it is the state the cooldown and the daily cap are
+// checked against, and both are checked inside the same conditional UPDATE
+// that claims the firing. A separate table would put the guard and the counter
+// in two statements.
+type CommentAnalysisAlertRule struct {
+	ID          string `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string `gorm:"type:uuid;not null;index:idx_ca_alert_ws"`
+	Source      string `gorm:"size:32;not null;index:idx_ca_alert_armed,priority:1"`
+	AccountID   string `gorm:"type:uuid;not null;index:idx_ca_alert_armed,priority:2"`
+
+	Name string `gorm:"size:80;not null"`
+	// Enabled is part of the armed-rules index key: the engine asks for one
+	// account's live rules after every batch, and that read must not scan.
+	Enabled bool `gorm:"not null;default:false;index:idx_ca_alert_armed,priority:3"`
+	// The optional ids are POINTERS because they are uuid columns and an empty
+	// string is not a uuid: stored as a value they would be rejected outright
+	// on every rule that does not use them.
+	CreatedByUserID *string `gorm:"type:uuid"`
+
+	Metric        string `gorm:"size:32;not null"`
+	Threshold     int    `gorm:"not null;default:0"`
+	WindowMinutes int    `gorm:"not null;default:0"`
+
+	Channel         string  `gorm:"size:16;not null"`
+	Recipient       string  `gorm:"size:32;not null"`
+	BusinessPhoneID *string `gorm:"type:uuid"`
+	TemplateID      *string `gorm:"type:uuid"`
+	InstanceID      *string `gorm:"type:uuid"`
+
+	// Brief adds the model's reading to the message. Off by default: it is one
+	// AI call per firing.
+	Brief bool `gorm:"not null;default:false"`
+
+	CooldownMinutes int `gorm:"not null;default:60"`
+	MaxPerDay       int `gorm:"not null;default:6"`
+
+	LastFiredAt *time.Time `gorm:"type:timestamptz"`
+	// FiredDay is a plain date string rather than a date column: it is only
+	// ever compared for equality against today, and keeping it textual lets the
+	// claim's CASE expression stay readable.
+	FiredToday int    `gorm:"not null;default:0"`
+	FiredDay   string `gorm:"size:10;not null;default:''"`
+	LastError  string `gorm:"size:300;not null;default:''"`
+
+	CreatedAt time.Time `gorm:"autoCreateTime;type:timestamptz"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime;type:timestamptz"`
+}
+
+func (CommentAnalysisAlertRule) TableName() string { return "comment_analysis_alert_rules" }
+
+func (r *CommentAnalysisAlertRule) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == "" {
+		r.ID = uuid.New().String()
+	}
+	return nil
 }

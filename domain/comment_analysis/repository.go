@@ -59,6 +59,10 @@ type Repository interface {
 	CountPendingBySource(ctx context.Context) (map[Source]int, error)
 
 	List(ctx context.Context, in ListInput) (*shared.PaginatedResult[*CommentAnalysis], error)
+	// ListAuthorContainers groups one author's comments by post (§2): the
+	// inverse of the feed's container filter. The counts are the repository's;
+	// the standing on each post is AuthorContainer.Derive's.
+	ListAuthorContainers(ctx context.Context, in AuthorContainersInput) (*shared.PaginatedResult[*AuthorContainer], error)
 	// GetStats fills Counters and Topics with COUNT(*) FILTER; the use case
 	// calls Stats.Finalize.
 	GetStats(ctx context.Context, in ListInput) (*Stats, error)
@@ -113,6 +117,15 @@ type AuthorRepository interface {
 	FindByID(ctx context.Context, workspaceID, id string) (*AuthorStats, error)
 	List(ctx context.Context, in AuthorsInput) (*shared.PaginatedResult[*AuthorStats], error)
 	SetModerationState(ctx context.Context, workspaceID, id string, state ModerationState, now time.Time) error
+	// SetRole writes the §5 inference. Its own method for the same reason
+	// moderation state has one: UpsertMany rebuilds COUNTERS, and a claim about
+	// who a person is must not be erased by a rollup that merely recounted
+	// their comments.
+	SetRole(ctx context.Context, workspaceID, id string, role AuthorRoleInference, now time.Time) error
+	// ListForRoleInference returns authors of one account whose corpus is worth
+	// a look, biggest first, so a capped pass spends its budget on the people a
+	// customer is most likely to ask about.
+	ListForRoleInference(ctx context.Context, source Source, accountID string, minComments, limit int) ([]*AuthorStats, error)
 }
 
 // RollupRepository stores the daily snapshots.
@@ -141,4 +154,32 @@ type BackfillRepository interface {
 	// FindActive returns the non-terminal backfill for a container (or the
 	// account when containerID is empty), so two cannot run at once.
 	FindActive(ctx context.Context, source Source, accountID, containerID string) (*Backfill, error)
+}
+
+// AlertRuleRepository stores the configured alerts.
+type AlertRuleRepository interface {
+	Create(ctx context.Context, rule *AlertRule) error
+	Update(ctx context.Context, rule *AlertRule) error
+	Delete(ctx context.Context, workspaceID, id string) error
+	FindByID(ctx context.Context, workspaceID, id string) (*AlertRule, error)
+	ListByAccount(ctx context.Context, workspaceID string, source Source, accountID string) ([]*AlertRule, error)
+	// ListArmed returns the ENABLED rules of an account. Scoped by account
+	// rather than workspace because that is how the engine reaches it: once per
+	// batch, for the account the batch belongs to.
+	ListArmed(ctx context.Context, source Source, accountID string) ([]*AlertRule, error)
+
+	// ClaimFire is the conditional write that decides who actually sends.
+	//
+	// It must be ONE statement: an implementation that reads the rule, checks
+	// the cooldown and then writes would let two replicas both observe a quiet
+	// rule and both send. Same reason ClaimByIDs is a single conditional write.
+	// It re-checks enabled, the cooldown and the daily cap in SQL, so the
+	// domain's ShouldFire is an optimisation rather than the authority, and
+	// returns false when somebody else got there first.
+	ClaimFire(ctx context.Context, workspaceID, id string, now time.Time) (bool, error)
+
+	// RecordFailure stores why a send failed. The claim is NOT released: a
+	// released claim would retry on the next batch, which during an incident is
+	// every few seconds. The cooldown is the retry interval.
+	RecordFailure(ctx context.Context, workspaceID, id, message string, now time.Time) error
 }

@@ -97,9 +97,17 @@ type AuthorResponse struct {
 	Counters         comment_analysis.Counters     `json:"counters"`
 	TopTopics        []comment_analysis.TopicCount `json:"topTopics"`
 	DerivedStance    string                        `json:"derivedStance"`
-	IsFlagged        bool                          `json:"isFlagged"`
-	ModerationState  string                        `json:"moderationState"`
-	UpdatedAt        time.Time                     `json:"updatedAt"`
+	// Reputation is the signed ledger the ranking sorts on: negative means the
+	// author has cost more than they gave. Sent alongside the raw counters so
+	// the client shows the score without re-deriving (and re-inventing) it.
+	Reputation int `json:"reputation"`
+	// Role is the §5 inference, sent WITH its evidence: a client that received
+	// only a label would have no way to present it as the inference it is.
+	Role            comment_analysis.AuthorRoleInference `json:"role"`
+	RoleDisplayable bool                                 `json:"roleDisplayable"`
+	IsFlagged       bool                                 `json:"isFlagged"`
+	ModerationState string                               `json:"moderationState"`
+	UpdatedAt       time.Time                            `json:"updatedAt"`
 }
 
 func toAuthorResponse(a *comment_analysis.AuthorStats) AuthorResponse {
@@ -111,7 +119,9 @@ func toAuthorResponse(a *comment_analysis.AuthorStats) AuthorResponse {
 		ID: a.ID, Source: string(a.Source), AccountID: a.AccountID,
 		AuthorExternalID: a.AuthorExternalID, AuthorHandle: a.AuthorHandle,
 		FirstSeenAt: a.FirstSeenAt, LastSeenAt: a.LastSeenAt, Counters: a.Counters, TopTopics: top,
-		DerivedStance: string(a.DerivedStance), IsFlagged: a.IsFlagged, ModerationState: string(a.ModerationState),
+		DerivedStance: string(a.DerivedStance), Reputation: a.Reputation,
+		Role: a.Role, RoleDisplayable: a.Role.Displayable(),
+		IsFlagged: a.IsFlagged, ModerationState: string(a.ModerationState),
 		UpdatedAt: a.UpdatedAt,
 	}
 }
@@ -128,17 +138,49 @@ type ModerationRequest struct {
 	State string `json:"state"`
 }
 
+// EscalateRequest forwards one comment. The recipient is opaque here: whatever
+// channel the workspace escalates on is the only thing that resolves it.
+type EscalateRequest struct {
+	RecipientID   string `json:"recipientId"`
+	RecipientKind string `json:"recipientKind,omitempty"`
+	Note          string `json:"note,omitempty"`
+}
+
+// ReplyRequest publishes an answer the operator has read. The text is theirs,
+// whether they wrote it or edited a draft: nothing re-drafts at send time.
+type ReplyRequest struct {
+	Text string `json:"text"`
+}
+
+// EscalationResponse echoes what was actually sent, so the UI can show the
+// message rather than reassembling it and showing something slightly different.
+type EscalationResponse struct {
+	CommentID string `json:"commentId"`
+	Author    string `json:"author"`
+	Where     string `json:"where"`
+	Text      string `json:"text"`
+	SentAt    string `json:"sentAt"`
+}
+
+func toEscalationResponse(e comment_analysis.Escalation) EscalationResponse {
+	return EscalationResponse{
+		CommentID: e.CommentID, Author: e.Author(), Where: e.Where(),
+		Text: e.Message(), SentAt: time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
 type SettingsResponse struct {
-	Source            string                   `json:"source"`
-	AccountID         string                   `json:"accountId"`
-	Enabled           bool                     `json:"enabled"`
-	Model             string                   `json:"model,omitempty"`
-	Vertical          string                   `json:"vertical"`
-	Topics            []comment_analysis.Topic `json:"topics"`
-	SeverityThreshold int                      `json:"severityThreshold"`
-	DailyCap          int                      `json:"dailyCap"`
-	Instructions      string                   `json:"instructions,omitempty"`
-	UpdatedAt         time.Time                `json:"updatedAt"`
+	Source            string                       `json:"source"`
+	AccountID         string                       `json:"accountId"`
+	Enabled           bool                         `json:"enabled"`
+	Model             string                       `json:"model,omitempty"`
+	Vertical          string                       `json:"vertical"`
+	Topics            []comment_analysis.Topic     `json:"topics"`
+	SeverityThreshold int                          `json:"severityThreshold"`
+	DailyCap          int                          `json:"dailyCap"`
+	Instructions      string                       `json:"instructions,omitempty"`
+	ReplyPolicy       comment_analysis.ReplyPolicy `json:"replyPolicy"`
+	UpdatedAt         time.Time                    `json:"updatedAt"`
 }
 
 func toSettingsResponse(s *comment_analysis.Settings) SettingsResponse {
@@ -149,19 +191,21 @@ func toSettingsResponse(s *comment_analysis.Settings) SettingsResponse {
 	return SettingsResponse{
 		Source: string(s.Source), AccountID: s.AccountID, Enabled: s.Enabled, Model: s.Model,
 		Vertical: string(s.Vertical), Topics: topics, SeverityThreshold: s.ActionPolicy.SeverityThreshold,
-		DailyCap: s.DailyCap, Instructions: s.Instructions, UpdatedAt: s.UpdatedAt,
+		ReplyPolicy: s.ReplyPolicy,
+		DailyCap:    s.DailyCap, Instructions: s.Instructions, UpdatedAt: s.UpdatedAt,
 	}
 }
 
 // SettingsRequest is a PATCH-shaped update: absent fields are untouched.
 type SettingsRequest struct {
-	Enabled           *bool                     `json:"enabled,omitempty"`
-	Model             *string                   `json:"model,omitempty"`
-	Vertical          *string                   `json:"vertical,omitempty"`
-	Topics            *[]comment_analysis.Topic `json:"topics,omitempty"`
-	SeverityThreshold *int                      `json:"severityThreshold,omitempty"`
-	DailyCap          *int                      `json:"dailyCap,omitempty"`
-	Instructions      *string                   `json:"instructions,omitempty"`
+	Enabled           *bool                         `json:"enabled,omitempty"`
+	Model             *string                       `json:"model,omitempty"`
+	Vertical          *string                       `json:"vertical,omitempty"`
+	Topics            *[]comment_analysis.Topic     `json:"topics,omitempty"`
+	SeverityThreshold *int                          `json:"severityThreshold,omitempty"`
+	DailyCap          *int                          `json:"dailyCap,omitempty"`
+	Instructions      *string                       `json:"instructions,omitempty"`
+	ReplyPolicy       *comment_analysis.ReplyPolicy `json:"replyPolicy,omitempty"`
 }
 
 type SpendResponse struct {
@@ -246,4 +290,51 @@ func toContainerSettingsResponse(cs *comment_analysis.ContainerSettings) Contain
 		out.Override = r
 	}
 	return out
+}
+
+// AuthorContainerResponse is one post an author has commented on (§2).
+//
+// `comments` is deliberately named for what we actually know: comments. Likes
+// and other interactions are not in the webhook and are not stored, so nothing
+// here may be presented as "interactions".
+type AuthorContainerResponse struct {
+	Source      string `json:"source"`
+	AccountID   string `json:"accountId"`
+	ContainerID string `json:"containerId"`
+
+	Comments          int `json:"comments"`
+	StanceSupporter   int `json:"stanceSupporter"`
+	StanceNeutral     int `json:"stanceNeutral"`
+	StanceCritic      int `json:"stanceCritic"`
+	StanceHostile     int `json:"stanceHostile"`
+	SeverityMax       int `json:"severityMax"`
+	SeverityHighCount int `json:"severityHighCount"`
+
+	FirstCommentedAt time.Time `json:"firstCommentedAt"`
+	LastCommentedAt  time.Time `json:"lastCommentedAt"`
+
+	DerivedStance string `json:"derivedStance"`
+	Reputation    int    `json:"reputation"`
+}
+
+func toAuthorContainerResponse(c *comment_analysis.AuthorContainer) AuthorContainerResponse {
+	return AuthorContainerResponse{
+		Source: string(c.Source), AccountID: c.AccountID, ContainerID: c.ContainerID,
+		Comments:        c.Comments,
+		StanceSupporter: c.Stances.Supporter, StanceNeutral: c.Stances.Neutral,
+		StanceCritic: c.Stances.Critic, StanceHostile: c.Stances.Hostile,
+		SeverityMax: c.SeverityMax, SeverityHighCount: c.SeverityHighCount,
+		FirstCommentedAt: c.FirstCommentedAt, LastCommentedAt: c.LastCommentedAt,
+		DerivedStance: string(c.DerivedStance), Reputation: c.Reputation,
+	}
+}
+
+// AuthorContainersResponse is the author plus the page of posts, so the panel
+// heading and the list arrive together.
+type AuthorContainersResponse struct {
+	Author     AuthorResponse            `json:"author"`
+	Containers []AuthorContainerResponse `json:"containers"`
+	Page       int                       `json:"page"`
+	PageSize   int                       `json:"pageSize"`
+	Total      int64                     `json:"total"`
 }

@@ -66,7 +66,7 @@ func integrationDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&schema.CommentAnalysis{}, &schema.CommentAnalysisSettings{}, &schema.CommentAnalysisAuthor{},
 		&schema.CommentAnalysisRollup{}, &schema.CommentAnalysisBatch{}, &schema.CommentAnalysisBackfill{},
-		&schema.CommentAnalysisContainerSettings{},
+		&schema.CommentAnalysisContainerSettings{}, &schema.CommentAnalysisAlertRule{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -696,5 +696,362 @@ func TestIntegration_ContainerOverrideRoundTrip(t *testing.T) {
 	}
 	if err := settings.DeleteOverride(ctx, ref); err != nil {
 		t.Fatalf("deleting a missing override must be a no-op, got %v", err)
+	}
+}
+
+// Ranking (§1) and the reputation ledger (§8), against real SQL.
+//
+// The ordering is the whole feature: before this, the authors table returned
+// whatever the table gave it and "ranked" meant nothing. These pin that each
+// client-facing key maps to an order that actually holds, and that paging
+// cannot repeat or skip a row.
+
+func seedAuthor(t *testing.T, repo ca.AuthorRepository, ws, handle string, c ca.Counters) *ca.AuthorStats {
+	t.Helper()
+	a := &ca.AuthorStats{
+		WorkspaceID:      ws,
+		Source:           ca.SourceInstagram,
+		AccountID:        "11111111-1111-1111-1111-111111111111",
+		AuthorExternalID: "ext-" + handle,
+		AuthorHandle:     handle,
+		FirstSeenAt:      time.Now().UTC().Add(-72 * time.Hour),
+		LastSeenAt:       time.Now().UTC(),
+		Counters:         c,
+		TopTopics:        []ca.TopicCount{},
+	}
+	a.Derive()
+	if err := repo.UpsertMany(context.Background(), []*ca.AuthorStats{a}); err != nil {
+		t.Fatalf("seed %s: %v", handle, err)
+	}
+	return a
+}
+
+func handlesInOrder(t *testing.T, repo ca.AuthorRepository, ws string, sort ca.Sort) []string {
+	t.Helper()
+	in := ca.AuthorsInput{WorkspaceID: ws, Sort: sort}
+	in.Normalize()
+	page, err := repo.List(context.Background(), in)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	out := make([]string, 0, len(page.Items))
+	for _, a := range page.Items {
+		out = append(out, a.AuthorHandle)
+	}
+	return out
+}
+
+func TestAuthorRankingOrdersByReputation(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewAuthorRepository(db)
+	ws := "22222222-2222-2222-2222-222222222222"
+
+	// A devoted supporter, a mild critic, and someone genuinely hostile.
+	seedAuthor(t, repo, ws, "apoiador", ca.Counters{Total: 12, Analyzed: 12, StanceSupporter: 12})
+	seedAuthor(t, repo, ws, "critico", ca.Counters{Total: 4, Analyzed: 4, StanceCritic: 4})
+	seedAuthor(t, repo, ws, "hostil", ca.Counters{
+		Total: 6, Analyzed: 6, StanceHostile: 6, SeverityHighCount: 6,
+	})
+
+	// Default: worst first, because a moderation table opens on who needs
+	// attention.
+	if got, want := handlesInOrder(t, repo, ws, ca.Sort{}), []string{"hostil", "critico", "apoiador"}; !equalStrings(got, want) {
+		t.Fatalf("default order = %v, want %v", got, want)
+	}
+
+	// The other direction is the "who commented positive" ranking. One key,
+	// two questions.
+	if got, want := handlesInOrder(t, repo, ws, ca.Sort{Key: ca.SortAuthorReputation}), []string{"apoiador", "critico", "hostil"}; !equalStrings(got, want) {
+		t.Fatalf("descending order = %v, want %v", got, want)
+	}
+}
+
+// Raw volume is a different question from the net ledger, and both are offered:
+// someone can be a large source of hostility AND net positive.
+func TestAuthorRankingSeparatesVolumeFromTheLedger(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewAuthorRepository(db)
+	ws := "33333333-3333-3333-3333-333333333333"
+
+	seedAuthor(t, repo, ws, "misto", ca.Counters{
+		Total: 60, Analyzed: 60, StanceSupporter: 50, StanceHostile: 10,
+	})
+	seedAuthor(t, repo, ws, "pequeno-hostil", ca.Counters{
+		Total: 3, Analyzed: 3, StanceHostile: 3,
+	})
+
+	// By the ledger, "misto" is far and away the better citizen.
+	if got := handlesInOrder(t, repo, ws, ca.Sort{Key: ca.SortAuthorReputation}); got[0] != "misto" {
+		t.Errorf("by reputation, first = %q, want misto", got[0])
+	}
+	// By raw hostility, "misto" is the bigger source, which is exactly the
+	// reading a moderator asking "who is generating the abuse" wants.
+	if got := handlesInOrder(t, repo, ws, ca.Sort{Key: ca.SortAuthorNegative}); got[0] != "misto" {
+		t.Errorf("by hostile volume, first = %q, want misto", got[0])
+	}
+}
+
+// The reputation column has to keep up with the counters. A second rollup that
+// left it at the first rollup's value would rank on stale data forever.
+func TestAuthorReputationColumnRefreshesOnUpsert(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewAuthorRepository(db)
+	ws := "44444444-4444-4444-4444-444444444444"
+
+	seedAuthor(t, repo, ws, "virou", ca.Counters{Total: 5, Analyzed: 5, StanceSupporter: 5})
+	// The same person, later, after turning hostile.
+	seedAuthor(t, repo, ws, "virou", ca.Counters{
+		Total: 15, Analyzed: 15, StanceSupporter: 5, StanceHostile: 10, SeverityHighCount: 4,
+	})
+
+	in := ca.AuthorsInput{WorkspaceID: ws}
+	in.Normalize()
+	page, err := repo.List(context.Background(), in)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("rows = %d, want the upsert to have updated in place", len(page.Items))
+	}
+	if got, want := page.Items[0].Reputation, -9; got != want {
+		t.Fatalf("reputation = %d, want %d (5 supporter, 10 hostile, 4 severe)", got, want)
+	}
+}
+
+// Ties must break on something unique, or a row can appear on page 1 AND page 2
+// while another never appears at all.
+func TestAuthorRankingPagesWithoutRepeatingRows(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewAuthorRepository(db)
+	ws := "55555555-5555-5555-5555-555555555555"
+
+	// Six authors with IDENTICAL counters: every sort key ties.
+	for i := 0; i < 6; i++ {
+		seedAuthor(t, repo, ws, fmt.Sprintf("empate-%d", i),
+			ca.Counters{Total: 2, Analyzed: 2, StanceNeutral: 2})
+	}
+
+	seen := map[string]bool{}
+	for page := 1; page <= 3; page++ {
+		in := ca.AuthorsInput{WorkspaceID: ws}
+		in.Options.Pagination = shared.Pagination{Page: page, PageSize: 2}
+		in.Normalize()
+		res, err := repo.List(context.Background(), in)
+		if err != nil {
+			t.Fatalf("page %d: %v", page, err)
+		}
+		for _, a := range res.Items {
+			if seen[a.AuthorHandle] {
+				t.Fatalf("%s appeared on more than one page", a.AuthorHandle)
+			}
+			seen[a.AuthorHandle] = true
+		}
+	}
+	if len(seen) != 6 {
+		t.Fatalf("saw %d distinct authors across 3 pages, want 6", len(seen))
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// seedAnalyzedIn inserts one analysed comment on a given post, so a test can
+// build an author's history across several posts. The container ref varies;
+// everything else is the account of integrationRef.
+func seedAnalyzedIn(t *testing.T, repo ca.Repository, ws, containerID, author, sourceID string, c ca.Classification, at time.Time) {
+	t.Helper()
+	ref := integrationRef()
+	ref.ContainerID = containerID
+	a, err := ca.NewPending(ca.NewInput{
+		WorkspaceID: ws, Container: ref, SourceCommentID: sourceID,
+		AuthorExternalID: author, AuthorHandle: author, Text: "x", Now: at,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = uuid.New().String()
+	if _, err := repo.Insert(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Claim(at)
+	if err := a.Apply(c, ca.ActionPolicy{}, ca.Provenance{BatchID: uuid.New().String(), Model: "m"}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// classification builds one label set. `harm` drives both toxicity and
+// personal attack, because severity is a WEIGHTED score over the dimensions:
+// one high dimension alone does not clear HighSeverityThreshold, and a fixture
+// that assumed it would was asserting a threshold the domain never sets.
+func classification(st ca.Stance, sent shared.Sentiment, harm shared.QualityLevel) ca.Classification {
+	return ca.Classification{
+		Sentiment: sent, Stance: st, Intent: ca.IntentOther, TopicKey: "other", Language: "pt",
+		Toxicity: harm, PersonalAttack: harm, LegalRisk: shared.QualityLevelNone,
+	}
+}
+
+// §2: given one person, which posts do they turn up on, how often, and how do
+// they behave on each. The counts must be PER POST, not the author's totals.
+func TestIntegration_AuthorContainersGroupsByPost(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	ws := "11111111-1111-1111-1111-111111111111"
+
+	// media-1: three hostile comments (MinCommentsForHostile), one of them
+	// severe. Three, not two, because the per-post standing runs the SAME rule
+	// as the author's: below that count the label caps at critic.
+	seedAnalyzedIn(t, repo, ws, "media-1", "ext-1", "s-1", classification(ca.StanceHostile, shared.SentimentNegative, shared.QualityLevelHigh), now)
+	seedAnalyzedIn(t, repo, ws, "media-1", "ext-1", "s-2", classification(ca.StanceHostile, shared.SentimentNegative, shared.QualityLevelNone), now.Add(time.Minute))
+	seedAnalyzedIn(t, repo, ws, "media-1", "ext-1", "s-5", classification(ca.StanceHostile, shared.SentimentNegative, shared.QualityLevelNone), now.Add(2*time.Minute))
+	// media-2: one supportive comment, later.
+	seedAnalyzedIn(t, repo, ws, "media-2", "ext-1", "s-3", classification(ca.StanceSupporter, shared.SentimentPositive, shared.QualityLevelNone), now.Add(2*time.Hour))
+	// Another person on the same posts must not leak into these numbers.
+	seedAnalyzedIn(t, repo, ws, "media-1", "ext-2", "s-4", classification(ca.StanceHostile, shared.SentimentNegative, shared.QualityLevelHigh), now)
+
+	in := ca.AuthorContainersInput{WorkspaceID: ws, Source: ca.SourceInstagram, AccountID: integrationRef().AccountID, AuthorExternalID: "ext-1"}
+	in.Normalize()
+	page, err := repo.ListAuthorContainers(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalItems != 2 {
+		t.Fatalf("total = %d, want 2 posts (not %d comments)", page.TotalItems, 4)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("items = %d", len(page.Items))
+	}
+
+	// Most recent activity first.
+	first, second := page.Items[0], page.Items[1]
+	if first.ContainerID != "media-2" || second.ContainerID != "media-1" {
+		t.Fatalf("order = %s, %s; want media-2 then media-1", first.ContainerID, second.ContainerID)
+	}
+
+	if second.Comments != 3 || second.Stances.Hostile != 3 || second.Stances.Supporter != 0 {
+		t.Fatalf("media-1 = %+v", second)
+	}
+	if second.SeverityHighCount != 1 {
+		t.Fatalf("media-1 high severity = %d, want 1", second.SeverityHighCount)
+	}
+	if second.DerivedStance != ca.StanceHostile || second.Reputation >= 0 {
+		t.Fatalf("media-1 standing = %q / %d", second.DerivedStance, second.Reputation)
+	}
+	if first.Comments != 1 || first.Stances.Supporter != 1 || first.Reputation != 1 {
+		t.Fatalf("media-2 = %+v", first)
+	}
+	if !first.LastCommentedAt.After(second.LastCommentedAt) {
+		t.Fatalf("last commented: %v vs %v", first.LastCommentedAt, second.LastCommentedAt)
+	}
+	if second.FirstCommentedAt.After(second.LastCommentedAt) {
+		t.Fatalf("media-1 first %v after last %v", second.FirstCommentedAt, second.LastCommentedAt)
+	}
+}
+
+// The workspace scope is not advisory: another workspace's rows on the same
+// account and the same author id must be invisible.
+func TestIntegration_AuthorContainersIsWorkspaceScoped(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	mine := "11111111-1111-1111-1111-111111111111"
+	theirs := "33333333-3333-3333-3333-333333333333"
+
+	seedAnalyzedIn(t, repo, mine, "media-1", "ext-1", "s-1", classification(ca.StanceCritic, shared.SentimentNegative, shared.QualityLevelNone), now)
+	seedAnalyzedIn(t, repo, theirs, "media-9", "ext-1", "s-2", classification(ca.StanceCritic, shared.SentimentNegative, shared.QualityLevelNone), now)
+
+	in := ca.AuthorContainersInput{WorkspaceID: mine, AuthorExternalID: "ext-1"}
+	in.Normalize()
+	page, err := repo.ListAuthorContainers(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalItems != 1 || page.Items[0].ContainerID != "media-1" {
+		t.Fatalf("leaked across workspaces: total=%d items=%+v", page.TotalItems, page.Items)
+	}
+}
+
+// Paging over posts must not repeat or skip one, and the total must count
+// posts rather than comments, or the last page is unreachable.
+func TestIntegration_AuthorContainersPagesOverPosts(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	ws := "11111111-1111-1111-1111-111111111111"
+
+	// Five posts, three comments each, all at the SAME instant so the id
+	// tiebreak is what keeps paging stable.
+	for p := 0; p < 5; p++ {
+		for c := 0; c < 3; c++ {
+			seedAnalyzedIn(t, repo, ws, fmt.Sprintf("media-%d", p), "ext-1", fmt.Sprintf("s-%d-%d", p, c),
+				classification(ca.StanceNeutral, shared.SentimentNeutral, shared.QualityLevelNone), now)
+		}
+	}
+
+	seen := map[string]int{}
+	for page := 1; page <= 3; page++ {
+		in := ca.AuthorContainersInput{
+			WorkspaceID: ws, AuthorExternalID: "ext-1",
+			Options: shared.QueryOptions{Pagination: shared.Pagination{Page: page, PageSize: 2}},
+		}
+		in.Normalize()
+		got, err := repo.ListAuthorContainers(ctx, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.TotalItems != 5 {
+			t.Fatalf("total = %d, want 5 posts", got.TotalItems)
+		}
+		for _, c := range got.Items {
+			seen[c.ContainerID]++
+			if c.Comments != 3 {
+				t.Fatalf("%s comments = %d, want 3", c.ContainerID, c.Comments)
+			}
+		}
+	}
+	if len(seen) != 5 {
+		t.Fatalf("saw %d distinct posts across three pages: %v", len(seen), seen)
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Fatalf("%s appeared %d times", id, n)
+		}
+	}
+}
+
+// A soft-deleted comment is gone from this view too: a post someone commented
+// on only in a deleted comment must not still be listed.
+func TestIntegration_AuthorContainersIgnoresDeletedComments(t *testing.T) {
+	db := integrationDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	ws := "11111111-1111-1111-1111-111111111111"
+
+	seedAnalyzedIn(t, repo, ws, "media-1", "ext-1", "s-1", classification(ca.StanceCritic, shared.SentimentNegative, shared.QualityLevelNone), now)
+	seedAnalyzedIn(t, repo, ws, "media-2", "ext-1", "s-2", classification(ca.StanceCritic, shared.SentimentNegative, shared.QualityLevelNone), now)
+	if err := repo.SoftDeleteBySourceComment(ctx, ca.SourceInstagram, "s-2", now); err != nil {
+		t.Fatal(err)
+	}
+
+	in := ca.AuthorContainersInput{WorkspaceID: ws, AuthorExternalID: "ext-1"}
+	in.Normalize()
+	page, err := repo.ListAuthorContainers(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalItems != 1 || page.Items[0].ContainerID != "media-1" {
+		t.Fatalf("deleted comment still listed: %+v", page.Items)
 	}
 }

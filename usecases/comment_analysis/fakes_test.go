@@ -38,9 +38,10 @@ type fakeRepo struct {
 	Saved     int
 	InsertErr error
 
-	AggregateAuthorsFn  func(source ca.Source, accountID string, since time.Time) ([]*ca.AuthorStats, error)
-	AggregateRollupsFn  func(day time.Time) ([]*ca.Rollup, error)
-	DaysAnalyzedSinceFn func(since time.Time) ([]time.Time, error)
+	AggregateAuthorsFn     func(source ca.Source, accountID string, since time.Time) ([]*ca.AuthorStats, error)
+	AggregateRollupsFn     func(day time.Time) ([]*ca.Rollup, error)
+	DaysAnalyzedSinceFn    func(since time.Time) ([]time.Time, error)
+	ListAuthorContainersFn func(in ca.AuthorContainersInput) (*shared.PaginatedResult[*ca.AuthorContainer], error)
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[string]*ca.CommentAnalysis{}} }
@@ -187,8 +188,60 @@ func (f *fakeRepo) CountPendingBySource(context.Context) (map[ca.Source]int, err
 	return out, nil
 }
 
-func (f *fakeRepo) List(context.Context, ca.ListInput) (*shared.PaginatedResult[*ca.CommentAnalysis], error) {
-	return shared.NewPaginatedResult([]*ca.CommentAnalysis{}, shared.Pagination{}, 0), nil
+// List filters the stored rows on the fields the use cases actually pass. It
+// used to return an empty page unconditionally, which made anything reading a
+// corpus back (the author pass) silently see nothing and pass for the wrong
+// reason.
+func (f *fakeRepo) List(_ context.Context, in ca.ListInput) (*shared.PaginatedResult[*ca.CommentAnalysis], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	statuses := map[ca.Status]bool{}
+	for _, s := range in.Statuses {
+		statuses[s] = true
+	}
+
+	out := make([]*ca.CommentAnalysis, 0, len(f.rows))
+	for _, r := range f.rows {
+		if in.WorkspaceID != "" && r.WorkspaceID != in.WorkspaceID {
+			continue
+		}
+		if in.Source != "" && r.Source != in.Source {
+			continue
+		}
+		if in.AccountID != "" && r.AccountID != in.AccountID {
+			continue
+		}
+		if in.ContainerID != "" && r.ContainerID != in.ContainerID {
+			continue
+		}
+		if in.AuthorExternalID != "" && r.AuthorExternalID != in.AuthorExternalID {
+			continue
+		}
+		if len(statuses) > 0 && !statuses[r.Status] {
+			continue
+		}
+		out = append(out, f.clone(r))
+	}
+
+	total := int64(len(out))
+	pagination := shared.NormalizePagination(in.Options.Pagination)
+	if start := pagination.Offset(); start < len(out) {
+		end := start + pagination.PageSize
+		if end > len(out) {
+			end = len(out)
+		}
+		out = out[start:end]
+	} else {
+		out = nil
+	}
+	return shared.NewPaginatedResult(out, pagination, total), nil
+}
+func (f *fakeRepo) ListAuthorContainers(_ context.Context, in ca.AuthorContainersInput) (*shared.PaginatedResult[*ca.AuthorContainer], error) {
+	if f.ListAuthorContainersFn != nil {
+		return f.ListAuthorContainersFn(in)
+	}
+	return shared.NewPaginatedResult([]*ca.AuthorContainer{}, in.Options.Pagination, 0), nil
 }
 func (f *fakeRepo) GetStats(context.Context, ca.ListInput) (*ca.Stats, error) {
 	return &ca.Stats{}, nil
@@ -321,6 +374,9 @@ type fakeAdapter struct {
 	texts   map[string]string
 	caption string
 
+	permalink    string
+	containerErr error
+
 	containers []ca.ContainerSummary
 	// pages maps containerID -> cursor -> (items, next cursor)
 	pages    map[string]map[string]fakePage
@@ -343,7 +399,10 @@ func (f *fakeAdapter) ReadTexts(_ context.Context, _ ca.ContainerRef, ids []stri
 	return out, nil
 }
 func (f *fakeAdapter) ReadContainerContext(context.Context, ca.ContainerRef) (ca.ContainerContext, error) {
-	return ca.ContainerContext{Caption: f.caption}, nil
+	if f.containerErr != nil {
+		return ca.ContainerContext{}, f.containerErr
+	}
+	return ca.ContainerContext{Caption: f.caption, Permalink: f.permalink}, nil
 }
 func (f *fakeAdapter) ListContainers(_ context.Context, _ string, limit, offset int) ([]ca.ContainerSummary, error) {
 	if offset >= len(f.containers) {
@@ -608,35 +667,56 @@ func (f *fakeAI) GetModelsWithPricing(context.Context) ([]ai.ModelInfo, error) {
 // ---- test harness ----
 
 type harness struct {
-	repo       *fakeRepo
-	settings   *fakeSettings
-	batches    *fakeBatches
-	adapter    *fakeAdapter
-	classifier *fakeClassifier
-	scheduler  *fakeScheduler
-	charger    *fakeCharger
-	balance    *fakeBalance
-	state      *fakeState
-	engine     *Engine
+	repo        *fakeRepo
+	settings    *fakeSettings
+	batches     *fakeBatches
+	adapter     *fakeAdapter
+	classifier  *fakeClassifier
+	scheduler   *fakeScheduler
+	charger     *fakeCharger
+	balance     *fakeBalance
+	state       *fakeState
+	broadcaster *fakeBroadcaster
+	engine      *Engine
+}
+
+// fakeBroadcaster records what the live feed would have been sent.
+type fakeBroadcaster struct {
+	mu     sync.Mutex
+	events []ca.AnalysisBatchAnalyzed
+}
+
+func (f *fakeBroadcaster) BroadcastCommentsAnalyzed(e ca.AnalysisBatchAnalyzed) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, e)
+}
+
+func (f *fakeBroadcaster) all() []ca.AnalysisBatchAnalyzed {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ca.AnalysisBatchAnalyzed(nil), f.events...)
 }
 
 func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 	h := &harness{
-		repo:       newFakeRepo(),
-		settings:   newFakeSettings(enabledSettings()),
-		batches:    &fakeBatches{},
-		adapter:    &fakeAdapter{texts: map[string]string{}, caption: "Asfalto novo na Rua A"},
-		classifier: &fakeClassifier{},
-		scheduler:  newFakeScheduler(),
-		charger:    newFakeCharger(),
-		balance:    &fakeBalance{micros: 1_000_000},
-		state:      newFakeState(),
+		repo:        newFakeRepo(),
+		settings:    newFakeSettings(enabledSettings()),
+		batches:     &fakeBatches{},
+		adapter:     &fakeAdapter{texts: map[string]string{}, caption: "Asfalto novo na Rua A"},
+		classifier:  &fakeClassifier{},
+		scheduler:   newFakeScheduler(),
+		charger:     newFakeCharger(),
+		balance:     &fakeBalance{micros: 1_000_000},
+		state:       newFakeState(),
+		broadcaster: &fakeBroadcaster{},
 	}
 	engine, err := NewEngine(EngineDeps{
 		Repo: h.repo, Settings: NewSettingsResolver(h.settings), Batches: h.batches,
 		Adapters:   map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: h.adapter},
 		Classifier: h.classifier, Scheduler: h.scheduler, Charger: h.charger,
 		Balance: h.balance, State: h.state, Clock: fixedClock{now}, Budget: budget,
+		Broadcaster: h.broadcaster,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -23,9 +23,37 @@ func TestBatchTotals_Add(t *testing.T) {
 	var tot BatchTotals
 	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400, PriceMicros: 100})
 	tot.Add(Batch{ItemCount: 5, PromptTokens: 300, CompletionTokens: 90, PriceMicros: 25})
-	want := BatchTotals{Batches: 2, Items: 25, PromptTokens: 1300, CompletionTokens: 490, PriceMicros: 125}
-	if tot != want {
-		t.Fatalf("totals = %+v, want %+v", tot, want)
+	if tot.Batches != 2 || tot.Items != 25 || tot.PromptTokens != 1300 ||
+		tot.CompletionTokens != 490 || tot.PriceMicros != 125 {
+		t.Fatalf("totals = %+v", tot)
+	}
+}
+
+// The author pass (§5) buys tokens from the same budget as the comment pass,
+// and a customer asking what they are paying for is owed the split. The
+// per-kind parts must always add back up to the whole.
+func TestBatchTotals_SplitsByKind(t *testing.T) {
+	var tot BatchTotals
+	// An untagged row is the comment pass: that is what every row written
+	// before the author pass existed is.
+	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400, PriceMicros: 100})
+	tot.Add(Batch{Kind: BatchKindComment, ItemCount: 5, PromptTokens: 300, CompletionTokens: 90, PriceMicros: 25})
+	tot.Add(Batch{Kind: BatchKindAuthorRole, ItemCount: 40, PromptTokens: 2000, CompletionTokens: 60, PriceMicros: 200})
+
+	comments := tot.ByKind[BatchKindComment]
+	if comments.Batches != 2 || comments.Items != 25 || comments.PriceMicros != 125 {
+		t.Fatalf("comment pass = %+v", comments)
+	}
+	roles := tot.ByKind[BatchKindAuthorRole]
+	if roles.Batches != 1 || roles.Items != 40 || roles.PriceMicros != 200 {
+		t.Fatalf("author pass = %+v", roles)
+	}
+	if comments.PriceMicros+roles.PriceMicros != tot.PriceMicros {
+		t.Fatalf("the parts (%d + %d) must add up to the whole (%d)",
+			comments.PriceMicros, roles.PriceMicros, tot.PriceMicros)
+	}
+	if comments.Batches+roles.Batches != tot.Batches {
+		t.Fatal("batch counts must add up too")
 	}
 }
 

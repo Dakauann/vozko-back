@@ -516,3 +516,67 @@ func TestRedisScheduler_StampHintsClear(t *testing.T) {
 		t.Fatal("cleared hint still listed")
 	}
 }
+
+// The live feed (§7): one broadcast per BATCH, not per comment, and only after
+// the rows are stored. Per-comment events during a backfill are the failure
+// this coalescing exists to prevent.
+func TestEngine_BroadcastsOneEventPerBatch(t *testing.T) {
+	h := newHarness(t, smallBudget())
+	h.seed(20)
+	h.classifier.push(func(req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
+		res := &ca.ClassifyResult{FinishReason: "stop", Model: "m"}
+		for _, it := range req.Batch.Items {
+			res.Results = append(res.Results, okResult(it.Ref))
+		}
+		return res, nil
+	})
+
+	if _, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle()); err != nil {
+		t.Fatal(err)
+	}
+
+	events := h.broadcaster.all()
+	if len(events) != 1 {
+		t.Fatalf("broadcasts = %d, want exactly one for one batch of 20", len(events))
+	}
+	e := events[0]
+	if e.WorkspaceID != "ws-1" || e.ContainerID != ref().ContainerID {
+		t.Fatalf("scope = %+v", e)
+	}
+	if len(e.Items) == 0 {
+		t.Fatal("an empty broadcast is not worth sending")
+	}
+	// Everything broadcast must be a row that actually reached the store.
+	for _, item := range e.Items {
+		row, err := h.repo.FindByID(context.Background(), "ws-1", item.CommentID)
+		if err != nil {
+			t.Fatalf("broadcast row %s is not stored: %v", item.CommentID, err)
+		}
+		if row.Status != ca.StatusAnalyzed {
+			t.Fatalf("broadcast row %s is %q", item.CommentID, row.Status)
+		}
+	}
+}
+
+// A deployment with no socket classifies exactly the same. The broadcaster is
+// optional, and a nil one must not be a nil-pointer panic in the hot path.
+func TestEngine_WithoutABroadcasterStillClassifies(t *testing.T) {
+	h := newHarness(t, smallBudget())
+	h.engine.Broadcaster = nil
+	h.seed(5)
+	h.classifier.push(func(req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
+		res := &ca.ClassifyResult{FinishReason: "stop", Model: "m"}
+		for _, it := range req.Batch.Items {
+			res.Results = append(res.Results, okResult(it.Ref))
+		}
+		return res, nil
+	})
+
+	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Analyzed != 5 {
+		t.Fatalf("analysed = %d, want 5", res.Analyzed)
+	}
+}

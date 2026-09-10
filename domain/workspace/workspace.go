@@ -315,6 +315,15 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceCommentAnalysis: {
 		{ActionName: ActionRead, Description: "Visualizar a análise de comentários (audiência, temas, autores)"},
 		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários, moderar autores e iniciar reprocessamentos"},
+		// A SEPARATE privilege from update, and the distinction is the point:
+		// reading and moderating stay inside the dashboard, while this one puts
+		// a message on the workspace's own WhatsApp, to a real person. It rides
+		// the conversation send permission rather than inventing a second
+		// answer to "may this user message people".
+		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Requires: []PermissionEntry{
+			{Resource: ResourceCommentAnalysis, Action: ActionRead},
+			{Resource: ResourceConversations, Action: ActionSend},
+		}},
 	},
 	ResourceTelegramAccounts: {
 		{ActionName: ActionCreate, Description: "Conectar bots do Telegram"},

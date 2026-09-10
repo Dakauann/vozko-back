@@ -3,6 +3,7 @@ package comment_analysis_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -107,6 +108,47 @@ func (uc *getAuthorUseCase) Execute(ctx context.Context, workspaceID, authorID s
 		return nil, err
 	}
 	return &ca.AuthorDetail{Author: author, Comments: comments}, nil
+}
+
+// listAuthorContainersUseCase answers "which posts has this person commented
+// on" (§2).
+//
+// It resolves the author FIRST and then queries with that row's own
+// (workspace, source, account, external id). The caller supplies an author id
+// and never a scope, so a caller cannot read one workspace's author and then
+// ask for another workspace's posts.
+type listAuthorContainersUseCase struct {
+	authors ca.AuthorRepository
+	repo    ca.Repository
+}
+
+func NewListAuthorContainersUseCase(authors ca.AuthorRepository, repo ca.Repository) ca.ListAuthorContainersUseCase {
+	return &listAuthorContainersUseCase{authors: authors, repo: repo}
+}
+
+func (uc *listAuthorContainersUseCase) Execute(ctx context.Context, req ca.AuthorContainersRequest) (*ca.AuthorContainers, error) {
+	author, err := uc.authors.FindByID(ctx, strings.TrimSpace(req.WorkspaceID), strings.TrimSpace(req.AuthorID))
+	if err != nil {
+		return nil, err
+	}
+	in := ca.AuthorContainersInput{
+		WorkspaceID:      author.WorkspaceID,
+		Source:           author.Source,
+		AccountID:        author.AccountID,
+		AuthorExternalID: author.AuthorExternalID,
+		From:             req.From,
+		To:               req.To,
+		Options:          shared.QueryOptions{Pagination: req.Page},
+	}
+	in.Normalize()
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	containers, err := uc.repo.ListAuthorContainers(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return &ca.AuthorContainers{Author: author, Containers: containers}, nil
 }
 
 type setModerationStateUseCase struct {
@@ -219,6 +261,17 @@ func (uc *settingsUseCases) update(ctx context.Context, in ca.UpdateSettingsInpu
 	}
 	if in.ActionPolicy != nil {
 		next.ActionPolicy = *in.ActionPolicy
+	}
+	if in.ReplyPolicy != nil {
+		// The domain can express `auto` and its gate is tested, but no step
+		// posts on that policy yet: this cut ships suggest-only, per the plan.
+		// Accepting the value here would leave an operator with a switch that
+		// silently does nothing. Delete this refusal when the pipeline's
+		// auto-reply step lands, not before.
+		if in.ReplyPolicy.Mode == ca.ReplyModeAuto {
+			return nil, fmt.Errorf("%w: automatic replies are not available yet", ca.ErrInvalidFilter)
+		}
+		next.ReplyPolicy = *in.ReplyPolicy
 	}
 	if in.DailyCap != nil {
 		next.DailyCap = *in.DailyCap

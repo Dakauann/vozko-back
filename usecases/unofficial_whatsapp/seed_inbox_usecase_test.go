@@ -21,8 +21,8 @@ type fakePlaceholderWriter struct {
 	counts map[string]int64
 	// countErr, when set for an entry, makes the count fail. A conversation
 	// whose history cannot be read must be left alone, never assumed empty.
-	countErr map[string]error
-	created  []*conversation.Message
+	countErr  map[string]error
+	created   []*conversation.Message
 	createErr error
 }
 
@@ -59,9 +59,9 @@ func (f *fakePlaceholderWriter) writes() []*conversation.Message {
 // fakeLeadLinker is the CRM bridge. Seeding must take the same one the inbound
 // path takes, so the contact it creates is the lead the import created.
 type fakeLeadLinker struct {
-	mu     sync.Mutex
+	mu      sync.Mutex
 	byPhone map[string]string
-	err    error
+	err     error
 }
 
 func newFakeLeadLinker() *fakeLeadLinker {

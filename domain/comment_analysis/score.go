@@ -134,3 +134,52 @@ func DerivedStance(mix StanceMix) Stance {
 func IsFlagged(derived Stance, highSeverityCount int) bool {
 	return derived == StanceHostile && highSeverityCount >= FlagHighSeverityCount
 }
+
+// ---- Reputation (§8) ----
+
+// HighSeverityExtraPoints is what a comment at or above HighSeverityThreshold
+// costs a person ON TOP of its stance weight.
+//
+// This is the "aumenta conforme criticidade" half of the ask. It rides the
+// severity count the rollup already keeps, so a harsh comment is charged twice
+// — once as hostility, once as harm — without a new column or a second pass
+// over anyone's history.
+const HighSeverityExtraPoints = -1.0
+
+// AuthorReputation is the SIGNED ledger for one person.
+//
+// Deliberately not AcceptanceScore. That one rates an ACCOUNT on 0..100 and
+// damps small samples toward 50, which is right for comparing accounts and
+// wrong for a person: four hundred supportive comments really is four hundred
+// times one, and a bounded score cannot say so. This is unbounded and can go
+// negative, because a ledger of what somebody did is exactly that.
+//
+// It reuses StanceWeight* rather than restating the weights. The two numbers
+// are allowed to answer differently; they are not allowed to disagree about
+// what a hostile comment is.
+//
+// highSeverityCount is clamped to the mix: a count larger than the comments it
+// describes is a stale rollup or a caller bug, and it must not run the ledger
+// away to a number nobody can explain.
+func AuthorReputation(mix StanceMix, highSeverityCount int) int {
+	total := mix.Total()
+
+	points := float64(mix.Supporter)*StanceWeightSupporter +
+		float64(mix.Neutral)*StanceWeightNeutral +
+		float64(mix.Critic)*StanceWeightCritic +
+		float64(mix.Hostile)*StanceWeightHostile
+
+	if highSeverityCount > total {
+		highSeverityCount = total
+	}
+	if highSeverityCount > 0 {
+		points += float64(highSeverityCount) * HighSeverityExtraPoints
+	}
+
+	// Away from zero, so a lone critic reads -1 rather than rounding to the 0
+	// that a neutral comment earns. Half a point of hostility is not neutral.
+	if points < 0 {
+		return int(math.Floor(points + 0.5 - 1e-9))
+	}
+	return int(math.Round(points))
+}
