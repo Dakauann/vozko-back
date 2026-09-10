@@ -105,37 +105,72 @@ func TestListFunnelStagesKeepsAFunnelWithNoStages(t *testing.T) {
 	}
 }
 
-// A stage whose funnel is gone (or never set) must not vanish silently: it is
-// still assignable and still filters, so it rides a trailing group rather than
-// being dropped. Dropping it is how a filter quietly stops matching
-// conversations that are staged perfectly well.
-func TestListFunnelStagesKeepsOrphanStagesInATrailingGroup(t *testing.T) {
+// A stage that belongs to no CONVERSATION funnel is left out entirely.
+//
+// These used to ride a trailing "Sem funil" group, on the reasoning that such a
+// stage "still filters and is still assigned". Production refutes that, and the
+// numbers are not close: 24.158 of 27.845 live stages carry no pipeline_id,
+// they are per-campaign clones the pipeline migration left behind, and the
+// number of conversations sitting on ANY of them is ZERO — against 316.518 on
+// real funnel stages.
+//
+// Keeping them put 728 entries in Anhanguera's stage filter and 2.120 in CDT
+// IMPERATRIZ's, mostly the same handful of names repeated, which is exactly the
+// unusable dropdown this whole feature exists to fix. A guess about what might
+// be filterable lost to a measurement of what is.
+//
+// The same rule drops a stage on an OPPORTUNITY funnel, which is correct for a
+// different reason: a deal stage can never hold a conversation.
+func TestListFunnelStagesLeavesOutStagesWithNoConversationFunnel(t *testing.T) {
 	funnels := &fakeFunnelLister{funnels: []Funnel{{ID: "p1", Name: "Atendimento"}}}
 	stages := &fakeStageRepo{stages: []*stage.Stage{
 		st("s1", "p1", "novo lead", 1),
-		st("orphan", "", "legado", 1),
-		st("gone", "deleted-funnel", "antigo", 2),
+		// No funnel at all: the legacy per-campaign clone shape.
+		st("orphan", "", "em atendimento", 1),
+		// A funnel this workspace's conversation funnels do not include, which
+		// is what a sales funnel's stage looks like from here.
+		st("deal", "sales-funnel", "ganho", 2),
 	}}
 
 	got, err := NewListFunnelStagesUseCase(stages, funnels).Execute("ws")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("groups = %d, want the funnel plus a trailing group", len(got))
+	if len(got) != 1 {
+		t.Fatalf("groups = %d, want only the conversation funnel: %+v", len(got), got)
 	}
-	trailing := got[1]
-	if trailing.PipelineID != "" {
-		t.Errorf("the trailing group should carry no funnel id, got %q", trailing.PipelineID)
+	if got[0].PipelineID != "p1" || len(got[0].Stages) != 1 {
+		t.Fatalf("group = %+v, want p1 holding only s1", got[0])
 	}
-	if len(trailing.Stages) != 2 {
-		t.Fatalf("orphan stages = %+v, want both kept", trailing.Stages)
+	if got[0].Stages[0].ID != "s1" {
+		t.Errorf("kept the wrong stage: %+v", got[0].Stages[0])
 	}
 }
 
-// No orphans means no trailing group. An empty "outros" heading in the filter
-// is noise on every workspace that is healthy, which is almost all of them.
-func TestListFunnelStagesOmitsTheTrailingGroupWhenEverythingHasAFunnel(t *testing.T) {
+// A workspace whose stages ALL lack a funnel yields no groups at all, rather
+// than one enormous unusable one. The client falls back to its flat list, which
+// is a worse filter than the grouped one and a far better one than 2.000 rows
+// of the same four names.
+func TestListFunnelStagesReturnsNothingWhenNoStageHasAFunnel(t *testing.T) {
+	funnels := &fakeFunnelLister{}
+	stages := &fakeStageRepo{stages: []*stage.Stage{
+		st("a", "", "em atendimento", 1),
+		st("b", "", "em atendimento", 2),
+		st("c", "", "recebido", 3),
+	}}
+
+	got, err := NewListFunnelStagesUseCase(stages, funnels).Execute("ws")
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("groups = %d, want none: %+v", len(got), got)
+	}
+}
+
+// A funnel with no columns is still listed, so an operator who just created one
+// can see it. Unchanged.
+func TestListFunnelStagesKeepsAnEmptyFunnelListed(t *testing.T) {
 	funnels := &fakeFunnelLister{funnels: []Funnel{{ID: "p1", Name: "Atendimento"}}}
 	stages := &fakeStageRepo{stages: []*stage.Stage{st("s1", "p1", "novo lead", 1)}}
 

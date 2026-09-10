@@ -851,6 +851,10 @@ func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHan
 // keeps the lead handler from reaching into another channel's wiring to find
 // its publisher.
 func withLeadInboxSeeding(c *Container, h *leadhttp.LeadHandler) *leadhttp.LeadHandler {
+	// The gate goes on FIRST and unconditionally, so a handler that somehow
+	// receives a seeder without an authorizer refuses to seed rather than
+	// seeding unchecked.
+	h.SetAuthorizer(c.services.conversationAuth)
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return h
 	}

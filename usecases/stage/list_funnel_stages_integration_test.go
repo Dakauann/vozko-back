@@ -197,3 +197,51 @@ func TestListFunnelStagesIsWorkspaceScopedAgainstPostgres(t *testing.T) {
 		t.Fatalf("groups = %+v, want only this workspace's funnel", groups)
 	}
 }
+
+// The Anhanguera bug, pinned against real data shapes.
+//
+// That workspace carries 728 stages with no pipeline_id — legacy per-campaign
+// clones, zero conversations on any of them — and the stage filter rendered
+// every one, mostly repeats of four names. This asserts the listing offers only
+// what belongs to a conversation funnel, whatever junk sits beside it.
+func TestListFunnelStagesIgnoresLegacyCampaignClonesAgainstPostgres(t *testing.T) {
+	tx := funnelTx(t)
+	ws := uuid.New().String()
+
+	live := seedPipeline(t, tx, ws, "Funil Anhanguera", 0, true)
+	seedStage(t, tx, ws, live, "novo lead", 1)
+	seedStage(t, tx, ws, live, "em atendimento", 2)
+
+	// The clone shape: a campaign id, no pipeline, the same name over and over.
+	for i := 0; i < 40; i++ {
+		if err := tx.Exec(`
+			INSERT INTO stages (id, workspace_id, campaign_id, name, position, is_default, is_initial, created_at, updated_at)
+			VALUES (?, ?, ?, 'em atendimento', 1, false, false, NOW(), NOW())`,
+			uuid.New().String(), ws, uuid.New().String()).Error; err != nil {
+			t.Fatalf("seed legacy clone %d: %v", i, err)
+		}
+	}
+
+	groups, err := stage_usecase.NewListFunnelStagesUseCase(
+		stage_repository.NewRepository(tx),
+		conversationFunnels{repo: pipeline_repository.NewRepository(tx)},
+	).Execute(ws)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if len(groups) != 1 {
+		t.Fatalf("groups = %d, want only the real funnel: %+v", len(groups), groups)
+	}
+	if len(groups[0].Stages) != 2 {
+		t.Fatalf("stages = %d, want 2; the 40 clones must not be offered", len(groups[0].Stages))
+	}
+	// The whole point: the dropdown holds two rows, not forty-two.
+	total := 0
+	for _, g := range groups {
+		total += len(g.Stages)
+	}
+	if total != 2 {
+		t.Fatalf("filter would render %d rows, want 2", total)
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"vozko/domain/lead_message_window"
 	"vozko/domain/shared"
 	"vozko/domain/unofficial_whatsapp"
+	workspace_domain "vozko/domain/workspace"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	wc_entry "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/http/middleware"
@@ -36,6 +37,10 @@ type LeadHandler struct {
 	// open for the leads it created. Optional, and nil in a deployment without
 	// that channel: an import must still work when nothing can seed.
 	inboxSeeder InboxSeeder
+
+	// authorizer gates seeding, which is a CHANNEL privilege rather than a lead
+	// one. Nil refuses to seed, never allows it.
+	authorizer conversation.ConversationAuthorizer
 }
 
 // InboxSeeder hands an import's numbers to the background job that opens their
@@ -977,7 +982,17 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 	// every number matched and creates nothing, which looks like the CRM lost
 	// their file.
 	if req.SeedInbox {
-		out.InboxSeedQueued, out.InboxSeedError = h.queueInboxSeed(workspaceID, prepared.Inputs)
+		// A channel privilege, not a lead one. The route proved leads:create;
+		// opening conversations with numbers that never wrote in is
+		// unofficial_whatsapp_instances:send. Reported beside a successful
+		// import rather than failing it: the leads are already committed, and
+		// telling the operator the import failed would have them run it again.
+		claims := middleware.GetClaims(r)
+		if claims == nil || !h.maySeedInbox(claims.UserID, workspaceID, claims.Role) {
+			out.InboxSeedError = "You don't have permission to start conversations on the unofficial WhatsApp channel"
+		} else {
+			out.InboxSeedQueued, out.InboxSeedError = h.queueInboxSeed(workspaceID, prepared.Inputs)
+		}
 	}
 
 	response.WriteSuccess(w, http.StatusOK, out)
@@ -1011,4 +1026,36 @@ func (h *LeadHandler) queueInboxSeed(workspaceID string, inputs []leaddomain.Bul
 		return queued, "The leads were imported, but their conversations could not be queued"
 	}
 	return queued, ""
+}
+
+// SetAuthorizer attaches the gate seeding needs.
+//
+// The import route proves leads:create. Seeding is a different act on a
+// different resource: it OPENS conversations with numbers that never contacted
+// us, on a connected unofficial WhatsApp number, in bulk. That is precisely
+// what unofficial_whatsapp_instances:send exists to withhold — the catalogue
+// calls it out as separate from update so an attendant who may answer cannot
+// start conversations with arbitrary numbers.
+//
+// It reuses conversation.ConversationAuthorizer rather than declaring another
+// one-method port: the interface already exists in the domain, this package
+// already imports it, and a second declaration would be the same contract
+// written twice.
+func (h *LeadHandler) SetAuthorizer(a conversation.ConversationAuthorizer) {
+	h.authorizer = a
+}
+
+// maySeedInbox reports whether this caller may open conversations on the
+// unofficial WhatsApp channel. A nil authorizer refuses: an unwired gate must
+// fail closed, or a wiring mistake silently hands out the privilege.
+func (h *LeadHandler) maySeedInbox(userID, workspaceID, role string) bool {
+	if h.authorizer == nil {
+		return false
+	}
+	return h.authorizer.HasWorkspacePermission(
+		userID, workspaceID,
+		string(workspace_domain.ResourceUnofficialWhatsAppInstances),
+		string(workspace_domain.ActionSend),
+		role == "admin",
+	)
 }

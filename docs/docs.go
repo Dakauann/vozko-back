@@ -10991,6 +10991,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/stages/entries/funnel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Move a conversa para uma etapa de OUTRO funil. Rota separada de /stages/entries porque exige uma permissão distinta (stages:transfer): mover um card entre as colunas do próprio funil é atendimento comum, tirar a conversa do quadro de uma equipe e colocá-la no de outra não é.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Etapas"
+                ],
+                "summary": "Mover conversa para outro funil",
+                "parameters": [
+                    {
+                        "description": "Etapa de destino, em outro funil",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/stage.AssignEntryTagRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/stage.EntryStage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/stages/entries/{entryType}/{entryId}": {
             "get": {
                 "security": [
@@ -20434,16 +20497,12 @@ const docTemplate = `{
                     "example": "move_stage"
                 },
                 "filter": {
-                    "description": "Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the\nclient sends back verbatim the filter it rendered the table with. Used only\nwhen targets is empty; the server re-runs it under the caller's own scope\nrather than trusting a client-supplied id list.",
+                    "description": "client sends back verbatim the filter it rendered the table with. Used only\nwhen targets is empty; the server re-runs it under the caller's own scope\nrather than trusting a client-supplied id list.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/crmfilter.Filter"
                         }
                     ]
-                },
-                "moveToFunnel": {
-                    "description": "MoveToFunnel authorises a move_stage onto a stage of a DIFFERENT funnel,\nfor every target in this request. Without it the server refuses one, which\nis what stops a mis-scoped selection from reorganising a whole board.",
-                    "type": "boolean"
                 },
                 "targets": {
                     "type": "array",
@@ -20452,6 +20511,7 @@ const docTemplate = `{
                     }
                 },
                 "value": {
+                    "description": "Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the",
                     "type": "string",
                     "example": "stage_a1b2c3"
                 }
@@ -23460,10 +23520,6 @@ const docTemplate = `{
                 "entryType": {
                     "type": "string",
                     "example": "whatsapp"
-                },
-                "moveToFunnel": {
-                    "description": "MoveToFunnel authorises landing on a stage of a DIFFERENT funnel.\n\nWithout it a cross-funnel move is refused, which is what stops a stage\nlist showing the wrong funnel from stranding a lead on a board nobody\nlooks at. The UI sets it only after the operator has deliberately picked a\ntarget funnel, so an ordinary move between columns keeps the guard.",
-                    "type": "boolean"
                 }
             }
         },

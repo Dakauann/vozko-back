@@ -189,6 +189,19 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Editar etapas"},
 		{ActionName: ActionDelete, Description: "Excluir etapas"},
 		{ActionName: ActionAssign, Description: "Atribuir etapas a contatos e conversas"},
+		// A SEPARATE privilege from assign, for the same reason send is separate
+		// from update on an unofficial number: moving a card between the columns
+		// of the funnel you work in is ordinary attendance, while moving a
+		// conversation to ANOTHER funnel takes it off your team's board and puts
+		// it on someone else's. In bulk, one click does it to every conversation
+		// a filter matches.
+		//
+		// A new action on an existing resource, deliberately: owners and admins
+		// short-circuit the check so nothing regresses on deploy, whereas a new
+		// resource would strip every existing role.
+		{ActionName: ActionTransfer, Description: "Mover conversas para outro funil", Requires: []PermissionEntry{
+			{Resource: ResourceStages, Action: ActionAssign},
+		}},
 	},
 	ResourceStageGroups: {
 		{ActionName: ActionCreate, Description: "Criar funis de etapas"},

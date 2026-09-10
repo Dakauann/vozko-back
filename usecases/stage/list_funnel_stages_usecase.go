@@ -76,10 +76,8 @@ func (uc *ListFunnelStagesUseCase) Execute(workspaceID string) ([]stage.FunnelSt
 		byPipeline[strings.TrimSpace(st.PipelineID)] = append(byPipeline[strings.TrimSpace(st.PipelineID)], st)
 	}
 
-	out := make([]stage.FunnelStages, 0, len(funnels)+1)
-	claimed := make(map[string]struct{}, len(funnels))
+	out := make([]stage.FunnelStages, 0, len(funnels))
 	for _, f := range funnels {
-		claimed[f.ID] = struct{}{}
 		group := stage.FunnelStages{
 			PipelineID:   f.ID,
 			PipelineName: f.Name,
@@ -95,25 +93,24 @@ func (uc *ListFunnelStagesUseCase) Execute(workspaceID string) ([]stage.FunnelSt
 		out = append(out, group)
 	}
 
-	// Stages whose funnel is missing or unset still filter and are still
-	// assigned to live conversations, so they ride a trailing group rather than
-	// being dropped. Dropping them is how a filter quietly stops matching
-	// conversations that are staged perfectly well.
-	var orphans []*stage.Stage
-	for pipelineID, stages := range byPipeline {
-		if _, ok := claimed[pipelineID]; ok {
-			continue
-		}
-		orphans = append(orphans, stages...)
-	}
-	if len(orphans) > 0 {
-		out = append(out, stage.FunnelStages{
-			PipelineID: "",
-			Position:   len(funnels),
-			Stages:     sortedByPosition(orphans),
-		})
-	}
-
+	// A stage belonging to no conversation funnel is deliberately NOT listed.
+	//
+	// It used to ride a trailing "Sem funil" group, on the reasoning that such a
+	// stage still filters. Production refutes that and the numbers are not
+	// close: 24.158 of 27.845 live stages carry no pipeline_id, they are the
+	// per-campaign clones the pipeline migration left behind, and the number of
+	// conversations sitting on ANY of them is zero — against 316.518 on real
+	// funnel stages. Listing them put 728 rows in one workspace's stage filter
+	// and 2.120 in another's, mostly the same four names over and over, which is
+	// precisely the unusable dropdown this read exists to replace.
+	//
+	// The same omission correctly drops a stage on an OPPORTUNITY funnel, which
+	// this listing never sees among its conversation funnels: a deal stage
+	// cannot hold a conversation, so offering it as a conversation filter would
+	// only ever match nothing.
+	//
+	// A workspace whose stages all lack a funnel therefore yields no groups, and
+	// the client falls back to its flat list.
 	return out, nil
 }
 

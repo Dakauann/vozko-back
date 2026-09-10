@@ -2913,21 +2913,16 @@ definitions:
         allOf:
         - $ref: '#/definitions/crmfilter.Filter'
         description: |-
-          Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the
           client sends back verbatim the filter it rendered the table with. Used only
           when targets is empty; the server re-runs it under the caller's own scope
           rather than trusting a client-supplied id list.
-      moveToFunnel:
-        description: |-
-          MoveToFunnel authorises a move_stage onto a stage of a DIFFERENT funnel,
-          for every target in this request. Without it the server refuses one, which
-          is what stops a mis-scoped selection from reorganising a whole board.
-        type: boolean
       targets:
         items:
           $ref: '#/definitions/crmbulk.BulkTargetRequest'
         type: array
       value:
+        description: Filter is the same crmfilter.Filter shape GET /crm/entries takes,
+          so the
         example: stage_a1b2c3
         type: string
     type: object
@@ -5124,15 +5119,6 @@ definitions:
       entryType:
         example: whatsapp
         type: string
-      moveToFunnel:
-        description: |-
-          MoveToFunnel authorises landing on a stage of a DIFFERENT funnel.
-
-          Without it a cross-funnel move is refused, which is what stops a stage
-          list showing the wrong funnel from stranding a lead on a board nobody
-          looks at. The UI sets it only after the operator has deliberately picked a
-          target funnel, so an ordinary move between columns keeps the guard.
-        type: boolean
     type: object
   stage.CreateTagRequest:
     properties:
@@ -14094,6 +14080,49 @@ paths:
       security:
       - BearerAuth: []
       summary: Obter etapas de várias conversas
+      tags:
+      - Etapas
+  /stages/entries/funnel:
+    post:
+      consumes:
+      - application/json
+      description: 'Move a conversa para uma etapa de OUTRO funil. Rota separada de
+        /stages/entries porque exige uma permissão distinta (stages:transfer): mover
+        um card entre as colunas do próprio funil é atendimento comum, tirar a conversa
+        do quadro de uma equipe e colocá-la no de outra não é.'
+      parameters:
+      - description: Etapa de destino, em outro funil
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/stage.AssignEntryTagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/stage.EntryStage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mover conversa para outro funil
       tags:
       - Etapas
   /stages/initial:

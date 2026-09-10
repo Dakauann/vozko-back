@@ -311,6 +311,34 @@ func (h *StageHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/stages/entries [post]
 func (h *StageHandler) AssignEntryStage(w http.ResponseWriter, r *http.Request) {
+	h.assignEntryStage(w, r, false)
+}
+
+// @Summary		Mover conversa para outro funil
+// @Description	Move a conversa para uma etapa de OUTRO funil. Rota separada de /stages/entries porque exige uma permissão distinta (stages:transfer): mover um card entre as colunas do próprio funil é atendimento comum, tirar a conversa do quadro de uma equipe e colocá-la no de outra não é.
+// @Tags			Etapas
+// @Accept			json
+// @Produce		json
+// @Param			request	body		AssignEntryTagRequest	true	"Etapa de destino, em outro funil"
+// @Success		200	{object}	stage.EntryStage
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		409	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/stages/entries/funnel [post]
+func (h *StageHandler) MoveEntryToFunnel(w http.ResponseWriter, r *http.Request) {
+	h.assignEntryStage(w, r, true)
+}
+
+// assignEntryStage is the one body both routes share.
+//
+// The PRIVILEGE is carried by the route, not by a flag in the payload and not
+// by a permission check written here: `ac()` is where every other gate in this
+// codebase lives, and asking a second question inside the handler would put
+// authorization in two places for one endpoint. Two routes, two gates, one
+// implementation.
+func (h *StageHandler) assignEntryStage(w http.ResponseWriter, r *http.Request, crossFunnel bool) {
 	var req AssignEntryTagRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", map[string]string{
@@ -341,7 +369,7 @@ func (h *StageHandler) AssignEntryStage(w http.ResponseWriter, r *http.Request) 
 		// Only this endpoint can carry it, and only when the client asked. The
 		// bulk action and the AI tool build their own input and leave it false,
 		// so neither can move a conversation off its funnel.
-		AllowCrossPipeline: req.MoveToFunnel,
+		AllowCrossPipeline: crossFunnel,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)

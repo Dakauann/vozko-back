@@ -74,7 +74,6 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 		Value:                strings.TrimSpace(req.Value),
 		Filter:               req.Filter,
 		SelectedDepartmentID: middleware.SelectedDepartmentID(r),
-		MoveToFunnel:         req.MoveToFunnel,
 	})
 
 	if result.Forbidden {

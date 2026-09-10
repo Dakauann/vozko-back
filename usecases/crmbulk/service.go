@@ -108,6 +108,13 @@ func actionPermission(action string) (resource, act string, ok bool) {
 	switch action {
 	case ActionMoveStage:
 		return string(workspace.ResourceStages), string(workspace.ActionAssign), true
+	// Same fan-out, higher privilege: leaving the funnel takes conversations off
+	// one team's board and puts them on another's, and here it does so to every
+	// target at once. An ACTION rather than a flag on move_stage, so the
+	// permission it needs is answered by this same switch instead of by a second
+	// gate written beside it.
+	case ActionMoveFunnel:
+		return string(workspace.ResourceStages), string(workspace.ActionTransfer), true
 	case ActionAssign:
 		return string(workspace.ResourceConversations), string(workspace.ActionAssign), true
 	case ActionAddLabel, ActionRemoveLabel:
@@ -121,6 +128,7 @@ func actionPermission(action string) (resource, act string, ok bool) {
 
 const (
 	ActionMoveStage   = "move_stage"   // Value = stageID
+	ActionMoveFunnel  = "move_funnel"  // Value = stageID, in ANOTHER funnel
 	ActionAssign      = "assign"       // Value = userID
 	ActionAddLabel    = "add_label"    // Value = labelID
 	ActionRemoveLabel = "remove_label" // Value = labelID
@@ -169,19 +177,6 @@ type BulkInput struct {
 	// SelectedDepartmentID scopes the expansion exactly as the table's own read
 	// does, so bulk cannot reach a row the operator could not see.
 	SelectedDepartmentID string
-
-	// MoveToFunnel authorises ActionMoveStage to land on a stage of a DIFFERENT
-	// funnel, for every target in the request.
-	//
-	// Off by default, and this is the most consequential place that default
-	// matters: one click here reorganizes every selected conversation onto a
-	// board nobody was looking at, and there is no undo. The UI asks for an
-	// explicit confirmation naming the count before setting it.
-	//
-	// Forwarded to the stage use case unchanged. This service decides nothing
-	// about funnels itself — the rule lives in one place, and a second
-	// implementation here would be a second thing to keep in step.
-	MoveToFunnel bool
 }
 
 // BulkFailure records a single target that could not be updated.
@@ -359,16 +354,16 @@ func (s *Service) broadcast(in BulkInput, t EntryRef) {
 // history each one leaves has to be the history a single move leaves.
 func (s *Service) applyOne(_ context.Context, in BulkInput, t EntryRef) error {
 	switch in.Action {
-	case ActionMoveStage:
+	case ActionMoveStage, ActionMoveFunnel:
 		_, err := s.stageAssigner.Execute(in.WorkspaceID, stage.AssignEntryStageInput{
 			StageID:   in.Value,
 			EntryID:   t.EntryID,
 			EntryType: t.EntryType,
 			ActorID:   in.ActorID,
-			// Only ever what the request carried. Without it the stage use case
-			// refuses a cross-funnel landing, which is the behaviour every bulk
-			// move had before and still has unless the operator confirmed one.
-			AllowCrossPipeline: in.MoveToFunnel,
+			// Derived from the ACTION, so what was authorised and what is done
+			// cannot disagree: move_funnel cleared the transfer gate above,
+			// move_stage did not and keeps the guard.
+			AllowCrossPipeline: in.Action == ActionMoveFunnel,
 		})
 		return err
 

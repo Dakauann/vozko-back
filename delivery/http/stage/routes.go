@@ -23,6 +23,10 @@ func RegisterRoutes(
 	protected.HandleFunc("/stages/initial", ac(tg, workspace_domain.ActionUpdate, h.SetInitialStage)).Methods(http.MethodPut)
 	protected.HandleFunc("/stages/reorder", ac(tg, workspace_domain.ActionUpdate, h.Reorder)).Methods(http.MethodPut)
 	protected.HandleFunc("/stages/entries", ac(tg, workspace_domain.ActionAssign, h.AssignEntryStage)).Methods(http.MethodPost)
+	// Its own route because it is its own PRIVILEGE. Same body, same use case;
+	// only the gate differs, and the gate belongs here rather than as a second
+	// check inside a handler that already passed one.
+	protected.HandleFunc("/stages/entries/funnel", ac(tg, workspace_domain.ActionTransfer, h.MoveEntryToFunnel)).Methods(http.MethodPost)
 	protected.HandleFunc("/stages/entries", ac(tg, workspace_domain.ActionAssign, h.RemoveEntryStage)).Methods(http.MethodDelete)
 	protected.HandleFunc("/stages/entries/batch", ac(tg, workspace_domain.ActionRead, h.GetBatchEntryStages)).Methods(http.MethodPost)
 	protected.HandleFunc("/stages/entries/{entryType}/{entryId}", ac(tg, workspace_domain.ActionRead, h.GetEntryStage)).Methods(http.MethodGet)

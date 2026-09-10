@@ -17,12 +17,7 @@ type BulkTargetRequest struct {
 type BulkApplyRequest struct {
 	Action  string              `json:"action" example:"move_stage"`
 	Targets []BulkTargetRequest `json:"targets"`
-	Value   string              `json:"value" example:"stage_a1b2c3"`
-	// MoveToFunnel authorises a move_stage onto a stage of a DIFFERENT funnel,
-	// for every target in this request. Without it the server refuses one, which
-	// is what stops a mis-scoped selection from reorganising a whole board.
-	MoveToFunnel bool `json:"moveToFunnel,omitempty"`
-	// Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the
+	Value   string              `json:"value" example:"stage_a1b2c3"`	// Filter is the same crmfilter.Filter shape GET /crm/entries takes, so the
 	// client sends back verbatim the filter it rendered the table with. Used only
 	// when targets is empty; the server re-runs it under the caller's own scope
 	// rather than trusting a client-supplied id list.
