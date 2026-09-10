@@ -56,7 +56,13 @@ type EngineDeps struct {
 	State      cache.SharedState
 	Metrics    metrics.CommentAnalysisMetricsRecorder
 	Notifier   notification.Notifier
-	Clock      ca.Clock
+	// Broadcaster feeds the live view (§7). Optional: a deployment without a
+	// socket classifies exactly the same.
+	Broadcaster ca.AnalysisBroadcaster
+	// Alerts fires the configured rules. Optional, and best effort: a rule that
+	// cannot be evaluated must never fail an analysis.
+	Alerts ca.AlertEvaluator
+	Clock  ca.Clock
 
 	Budget       ca.Budget
 	Debounce     ca.DebouncePolicy
@@ -66,6 +72,9 @@ type EngineDeps struct {
 // Engine processes containers. Safe for concurrent use.
 type Engine struct {
 	EngineDeps
+	// guard is the shared balance floor, the same one the reply, briefing and
+	// author-role paths answer to.
+	guard balanceGuard
 }
 
 func NewEngine(deps EngineDeps) (*Engine, error) {
@@ -85,7 +94,7 @@ func NewEngine(deps EngineDeps) (*Engine, error) {
 	if deps.Adapters == nil {
 		deps.Adapters = map[ca.Source]ca.SourceAdapter{}
 	}
-	return &Engine{EngineDeps: deps}, nil
+	return &Engine{EngineDeps: deps, guard: newBalanceGuard(deps.Balance, "comment pass")}, nil
 }
 
 // RegisterSource attaches a channel. Without one, that source's comments
@@ -250,6 +259,15 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		if err := e.Repo.SaveMany(ctx, batchRows); err != nil {
 			return res, err
 		}
+		// After the rows are STORED, never before: a live row a viewer sees
+		// must be one that survived the write. Best effort, and deliberately
+		// last, so a socket having a bad day cannot fail an analysis that was
+		// already paid for.
+		e.broadcastAnalyzed(batchRows)
+		// Same point, same posture: alerts read facts that are on disk.
+		if e.Alerts != nil {
+			e.Alerts.EvaluateBatch(ctx, ref, workspaceID, batchRows)
+		}
 		if outcome.providerErr != nil {
 			// The rows were handed back without an attempt; nothing more this
 			// tick. Logged by the caller, retried next tick.
@@ -269,15 +287,11 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 // guards is every reason NOT to make the next call (plan §8): balance floor
 // (fail-closed) and the daily cap.
 func (e *Engine) guards(ctx context.Context, workspaceID string, settings *ca.Settings, items int, now time.Time) error {
-	if e.Balance != nil {
-		bal, err := e.Balance.GetBalance(workspaceID)
-		if err != nil || bal < minBalanceFloor {
-			if err != nil {
-				log.Printf("[comment-analysis] balance check for workspace %s failed, skipping (fail-closed): %v", workspaceID, err)
-			}
-			e.capHit(metrics.CommentCapBalance)
-			return ca.ErrBalanceBelowFloor
-		}
+	// The floor itself lives in balanceGuard, shared with every other path that
+	// spends tokens; the metric is this caller's own.
+	if err := e.guard.Allow(workspaceID); err != nil {
+		e.capHit(metrics.CommentCapBalance)
+		return err
 	}
 	ok, err := e.Charger.ReserveDaily(ctx, workspaceID, items, settings.DailyCap, now)
 	if err != nil {
@@ -480,10 +494,23 @@ func (e *Engine) skipAll(ctx context.Context, ref ca.ContainerRef, reason string
 	return res, nil
 }
 
-func (e *Engine) recordBatch(ctx context.Context, b ca.Batch) {
-	if err := e.Batches.Create(ctx, &b); err != nil {
-		log.Printf("[comment-analysis] batch receipt %s not recorded: %v", b.ID, err)
+// broadcastAnalyzed publishes one batch to the live feed. One event per batch
+// rather than per comment is the coalescing the plan asks for: the engine
+// already works in batches, so this is where a backfill's thousands of rows
+// become tens of messages instead of thousands.
+func (e *Engine) broadcastAnalyzed(rows []*ca.CommentAnalysis) {
+	if e.Broadcaster == nil {
+		return
 	}
+	event := ca.NewAnalysisBatchAnalyzed(rows)
+	if event == nil {
+		return
+	}
+	e.Broadcaster.BroadcastCommentsAnalyzed(*event)
+}
+
+func (e *Engine) recordBatch(ctx context.Context, b ca.Batch) {
+	writeBatch(ctx, e.Batches, &b)
 	if e.Metrics != nil {
 		e.Metrics.IncCommentBatches(b.Model, string(b.Outcome))
 	}

@@ -51,6 +51,33 @@ func (f *fakeAuthors) SetModerationState(_ context.Context, ws, id string, s ca.
 	return nil
 }
 
+func (f *fakeAuthors) SetRole(_ context.Context, ws, id string, role ca.AuthorRoleInference, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if r.ID == id && r.WorkspaceID == ws {
+			r.Role = role
+			return nil
+		}
+	}
+	return ca.ErrNotFound
+}
+
+func (f *fakeAuthors) ListForRoleInference(_ context.Context, source ca.Source, accountID string, minComments, limit int) ([]*ca.AuthorStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*ca.AuthorStats, 0, len(f.rows))
+	for _, r := range f.rows {
+		if r.Source == source && r.AccountID == accountID && r.Total >= minComments {
+			out = append(out, r)
+		}
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 type fakeRollups struct {
 	mu   sync.Mutex
 	rows []*ca.Rollup

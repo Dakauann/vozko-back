@@ -44,6 +44,12 @@ type unofficialWhatsAppBundle struct {
 	// on our storage instead of linked.
 	Assets uw.RemoteAssetFetcher
 
+	// StartConv is kept on the bundle so other features can OPEN a conversation
+	// with a number and then send through the ordinary composer, rather than
+	// growing a second send path. The comment-analysis alerts do exactly that.
+	// It deliberately does not send on its own.
+	StartConv *uwuc.StartConversationUseCase
+
 	// Entitlements answers how many numbers this workspace may connect.
 	//
 	// The concrete type, not the interface, because its source is attached in the
@@ -89,6 +95,11 @@ func (c *Container) initUnofficialWhatsApp() {
 	bundle.Messaging = provider
 	bundle.GroupAPI = provider
 	bundle.Assets = provider
+	// Built once and held, so the alert dispatcher can open a conversation
+	// through the SAME use case the handler exposes.
+	bundle.StartConv = uwuc.NewStartConversationUseCase(
+		bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
+		bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead))
 
 	bundle.Servers = uwrepo.NewServerRepository(c.db)
 	bundle.Instances = uwrepo.NewInstanceRepository(c.db)
@@ -121,10 +132,8 @@ func (c *Container) initUnofficialWhatsApp() {
 		UpdateCfg:   uwuc.NewUpdateInstanceConfigUseCase(bundle.Instances),
 		RotateToken: uwuc.NewRotateDeliveryTokenUseCase(bundle.Instances, bundle.Servers, provision),
 		Remove:      uwuc.NewDeleteInstanceUseCase(bundle.Instances, bundle.Servers, provider),
-		StartConv: uwuc.NewStartConversationUseCase(
-			bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
-			bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead)),
-		Allowance: uwuc.NewGetAllowanceUseCase(bundle.Entitlements),
+		StartConv:   bundle.StartConv,
+		Allowance:   uwuc.NewGetAllowanceUseCase(bundle.Entitlements),
 		// Department scope comes from the platform's conversation authorizer,
 		// which already owns membership, role and the conversations:read
 		// permission for every channel. Deriving it here would be a second

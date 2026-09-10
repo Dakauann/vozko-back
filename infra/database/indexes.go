@@ -552,6 +552,17 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_author
 				ON comment_analyses (source, account_id, author_external_id)`,
 		},
+		// The WINDOWED author ranking regroups the comments themselves rather
+		// than reading the lifetime projection, so it filters on the account
+		// and the comment's own timestamp before grouping by author. Without
+		// commented_at in the key that filter is a scan of the account's whole
+		// history to answer "esta semana".
+		{
+			name: "idx_ca_author_period",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_author_period
+				ON comment_analyses (workspace_id, account_id, commented_at DESC, author_external_id)
+				WHERE deleted_at IS NULL`,
+		},
 		{
 			name: "idx_ca_authors_rank",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_authors_rank

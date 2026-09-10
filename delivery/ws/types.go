@@ -61,6 +61,11 @@ const (
 	WSEventConversationStatusUpdate       WSEventType = "conversation:conversation_status_update"
 	WSEventConversationStatusCountsUpdate WSEventType = "conversation:conversation_status_counts_update"
 
+	// The live comment feed (§7). Its own namespace, not conversation:, because
+	// it is not about a conversation entry and is scoped by a different
+	// permission.
+	WSEventCommentAnalysisAnalyzed WSEventType = "comment_analysis:analyzed"
+
 	WSEventStartCall WSEventType = "start_call"
 	WSEventEndCall   WSEventType = "end_call"
 	WSEventCallAudio WSEventType = "call_audio"

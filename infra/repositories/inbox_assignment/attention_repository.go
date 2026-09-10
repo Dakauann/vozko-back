@@ -36,7 +36,7 @@ func NewAttentionRepository(db *gorm.DB) ia.EntryAttentionReader {
 //     they are not. Escalating a conversation the AI is actively handling is a
 //     different feature with its own hand-off machinery.
 //
-// direction = '' is the legacy-row fallback documented on the schema. Rows
+// direction = ” is the legacy-row fallback documented on the schema. Rows
 // created after a rescue-eligible assignment always carry it, so the message
 // type check is belt-and-braces rather than the main path.
 func (r *attentionRepository) AttendedSince(entryID, entryType, assignedUserID string, since time.Time) (bool, error) {

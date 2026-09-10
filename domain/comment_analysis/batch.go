@@ -29,12 +29,49 @@ func (o BatchOutcome) Valid() bool {
 // Batch is one model call as billed: what was sent, what came back, what it
 // cost. It is what lets the dashboard say "12.480 comentários analisados ·
 // R$ 37,44 este mês"; charging for something invisible is how disputes start.
+// BatchKind says which pass bought these tokens. The comment pass and the
+// author pass (§5) are separate consumers of the same budget, and a customer
+// asking "what am I paying for" is owed the split rather than one number.
+type BatchKind string
+
+const (
+	BatchKindComment    BatchKind = "comment"
+	BatchKindAuthorRole BatchKind = "author_role"
+	// BatchKindReply is a drafted public answer (§6).
+	BatchKindReply BatchKind = "reply"
+	// BatchKindAlertBrief is the model's reading attached to an alert.
+	BatchKindAlertBrief BatchKind = "alert_brief"
+)
+
+func AllBatchKinds() []BatchKind {
+	return []BatchKind{BatchKindComment, BatchKindAuthorRole, BatchKindReply, BatchKindAlertBrief}
+}
+
+func (k BatchKind) Valid() bool {
+	switch k {
+	case BatchKindComment, BatchKindAuthorRole, BatchKindReply, BatchKindAlertBrief:
+		return true
+	}
+	return false
+}
+
+// NormalizeBatchKind defaults to the comment pass, which is what every row
+// written before the author pass existed is.
+func NormalizeBatchKind(k BatchKind) BatchKind {
+	if !k.Valid() {
+		return BatchKindComment
+	}
+	return k
+}
+
 type Batch struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
 	Source      Source `json:"source"`
 	AccountID   string `json:"accountId"`
 	ContainerID string `json:"containerId"`
+	// Kind is the pass. Empty reads as the comment pass.
+	Kind BatchKind `json:"kind"`
 
 	Model            string       `json:"model"`
 	ItemCount        int          `json:"itemCount"`
@@ -54,6 +91,10 @@ type BatchTotals struct {
 	PromptTokens     int   `json:"promptTokens"`
 	CompletionTokens int   `json:"completionTokens"`
 	PriceMicros      int64 `json:"priceMicros"`
+	// ByKind splits the same period by pass, so the dashboard can show what
+	// the author inference cost separately from the comment classification.
+	// Always present for every kind, zeroed when a pass did not run.
+	ByKind map[BatchKind]BatchTotals `json:"byKind,omitempty"`
 }
 
 func (t *BatchTotals) Add(b Batch) {
@@ -62,6 +103,18 @@ func (t *BatchTotals) Add(b Batch) {
 	t.PromptTokens += b.PromptTokens
 	t.CompletionTokens += b.CompletionTokens
 	t.PriceMicros += b.PriceMicros
+
+	kind := NormalizeBatchKind(b.Kind)
+	if t.ByKind == nil {
+		t.ByKind = map[BatchKind]BatchTotals{}
+	}
+	part := t.ByKind[kind]
+	part.Batches++
+	part.Items += b.ItemCount
+	part.PromptTokens += b.PromptTokens
+	part.CompletionTokens += b.CompletionTokens
+	part.PriceMicros += b.PriceMicros
+	t.ByKind[kind] = part
 }
 
 // ---- Backfill (§10) ----

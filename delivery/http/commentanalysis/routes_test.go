@@ -39,6 +39,7 @@ func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 		{http.MethodGet, "/comment-analysis/spend", "comment_analysis:read"},
 		{http.MethodGet, "/comment-analysis/authors", "comment_analysis:read"},
 		{http.MethodGet, "/comment-analysis/authors/a-1", "comment_analysis:read"},
+		{http.MethodGet, "/comment-analysis/authors/a-1/containers", "comment_analysis:read"},
 		{http.MethodPatch, "/comment-analysis/authors/a-1", "comment_analysis:update"},
 		{http.MethodGet, "/comment-analysis/settings/instagram/acc-1", "comment_analysis:read"},
 		{http.MethodPatch, "/comment-analysis/settings/instagram/acc-1", "comment_analysis:update"},
@@ -235,5 +236,187 @@ func TestPutContainerSettings_BuildsOverrideFromPathSessionAndBody(t *testing.T)
 	}
 	if !strings.Contains(rec.Body.String(), `"override":{`) || !strings.Contains(rec.Body.String(), `"effective":{`) {
 		t.Fatalf("response must carry both the override and the effective settings: %s", rec.Body.String())
+	}
+}
+
+type captureAuthors struct{ in ca.AuthorsInput }
+
+func (c *captureAuthors) Execute(_ context.Context, in ca.AuthorsInput) (*shared.PaginatedResult[*ca.AuthorStats], error) {
+	c.in = in
+	return shared.NewPaginatedResult([]*ca.AuthorStats{}, in.Options.Pagination, 0), nil
+}
+
+// The ranking is a query parameter, not a second endpoint. An absent ?sort=
+// leaves the domain's own default in place; a known key is passed through with
+// its direction; an unknown one is refused rather than quietly defaulted, so a
+// client never reads a page ordered by something it did not ask for.
+func TestListAuthors_SortParsing(t *testing.T) {
+	t.Run("absent sort leaves the domain default", func(t *testing.T) {
+		uc := &captureAuthors{}
+		h := NewHandler(Deps{Authors: uc})
+		rec := httptest.NewRecorder()
+		h.ListAuthors(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/authors", nil), "ws-1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+		}
+		if uc.in.Sort != (ca.Sort{}) {
+			t.Fatalf("handler must not invent a sort: %+v", uc.in.Sort)
+		}
+	})
+
+	t.Run("known key and direction reach the use case", func(t *testing.T) {
+		uc := &captureAuthors{}
+		h := NewHandler(Deps{Authors: uc})
+		rec := httptest.NewRecorder()
+		h.ListAuthors(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/authors?sort=severity&order=asc", nil), "ws-1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d", rec.Code)
+		}
+		if uc.in.Sort.Key != ca.SortAuthorSeverity || !uc.in.Sort.Ascending {
+			t.Fatalf("sort = %+v", uc.in.Sort)
+		}
+	})
+
+	t.Run("descending is the default direction", func(t *testing.T) {
+		uc := &captureAuthors{}
+		h := NewHandler(Deps{Authors: uc})
+		rec := httptest.NewRecorder()
+		h.ListAuthors(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/authors?sort=comments", nil), "ws-1"))
+		if uc.in.Sort.Key != ca.SortAuthorComments || uc.in.Sort.Ascending {
+			t.Fatalf("sort = %+v", uc.in.Sort)
+		}
+	})
+
+	t.Run("unknown key is 400, not a silent default", func(t *testing.T) {
+		uc := &captureAuthors{}
+		h := NewHandler(Deps{Authors: uc})
+		rec := httptest.NewRecorder()
+		h.ListAuthors(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/authors?sort=karma", nil), "ws-1"))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if uc.in.WorkspaceID != "" {
+			t.Fatal("a refused sort must not reach the use case")
+		}
+		// The 400 lists what IS accepted, straight from the domain, so the
+		// message cannot drift from the parser.
+		for _, k := range ca.AllAuthorSortKeys() {
+			if !strings.Contains(rec.Body.String(), string(k)) {
+				t.Fatalf("body %s omits accepted key %q", rec.Body.String(), k)
+			}
+		}
+	})
+}
+
+// Resolving an @ to its author row is the navigation §2 hangs off: the feed
+// knows a handle and an external id, the author endpoints take an author id.
+func TestListAuthors_FiltersByExternalID(t *testing.T) {
+	uc := &captureAuthors{}
+	h := NewHandler(Deps{Authors: uc})
+	rec := httptest.NewRecorder()
+	h.ListAuthors(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/authors?authorExternalId=%20ig-99%20", nil), "ws-1"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if uc.in.AuthorExternalID != "ig-99" {
+		t.Fatalf("authorExternalId = %q, want it trimmed and passed through", uc.in.AuthorExternalID)
+	}
+}
+
+// Forwarding a comment puts a message on the workspace's own WhatsApp, so it
+// carries its own action rather than reusing the one that configures the
+// engine: an operator who may moderate must not thereby be able to message
+// people in the workspace's name.
+func TestOutboundRoutesRequireTheSendAction(t *testing.T) {
+	router := mux.NewRouter()
+	ac := &recordingAC{calls: map[string]string{}}
+	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
+
+	// Publishing a reply and forwarding a comment both speak in the
+	// workspace's name, and the recipient picker enumerates who it talks to.
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/comment-analysis/row-1/escalate"},
+		{http.MethodPost, "/comment-analysis/row-1/reply"},
+		{http.MethodPost, "/comment-analysis/row-1/reply/suggest"},
+		{http.MethodGet, "/comment-analysis/escalation-recipients"},
+		// Arming an automated sender is granting sends, so the alert routes
+		// carry the same action rather than the configuration one.
+		{http.MethodGet, "/comment-analysis/alerts"},
+		{http.MethodPost, "/comment-analysis/alerts"},
+		{http.MethodGet, "/comment-analysis/alerts/options"},
+		{http.MethodPut, "/comment-analysis/alerts/rule-1"},
+		{http.MethodDelete, "/comment-analysis/alerts/rule-1"},
+		{http.MethodPost, "/comment-analysis/alerts/rule-1/test"},
+	} {
+		req := httptest.NewRequest(c.method, c.path, nil)
+		var match mux.RouteMatch
+		if !router.Match(req, &match) {
+			t.Fatalf("%s %s: no route", c.method, c.path)
+			continue
+		}
+		func() {
+			defer func() { _ = recover() }()
+			match.Handler.ServeHTTP(httptest.NewRecorder(), req)
+		}()
+		if got := ac.calls[c.method+" "+c.path]; got != "comment_analysis:send" {
+			t.Errorf("%s %s: rbac = %q, want comment_analysis:send", c.method, c.path, got)
+		}
+	}
+}
+
+// Route ordering: "/alerts/options" must reach the options handler, not be
+// swallowed by the "/{id}" comment routes registered below it. Gorilla matches
+// in registration order, so this is a real ordering dependency and not a
+// theoretical one.
+func TestAlertOptionsRouteIsNotSwallowedByCommentIDRoutes(t *testing.T) {
+	router := mux.NewRouter()
+	RegisterProtectedRoutes(router, &Handler{}, (&recordingAC{calls: map[string]string{}}).fn)
+
+	var match mux.RouteMatch
+	req := httptest.NewRequest(http.MethodGet, "/comment-analysis/alerts/options", nil)
+	if !router.Match(req, &match) {
+		t.Fatal("no route")
+	}
+	if id, ok := match.Vars["id"]; ok {
+		t.Fatalf("matched a wildcard route with id = %q, want the options handler", id)
+	}
+}
+
+// The vocabulary is served from the domain, so a picker cannot offer a metric
+// the evaluator does not implement, or miss one it does.
+func TestAlertOptionsMirrorsTheDomain(t *testing.T) {
+	h := NewHandler(Deps{})
+	rec := httptest.NewRecorder()
+	h.AlertOptions(rec, withWorkspace(httptest.NewRequest(http.MethodGet, "/comment-analysis/alerts/options", nil), "ws-1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body AlertVocabularyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Metrics) != len(ca.AllAlertMetrics()) {
+		t.Fatalf("metrics = %d, want %d", len(body.Metrics), len(ca.AllAlertMetrics()))
+	}
+	for _, m := range body.Metrics {
+		metric := ca.AlertMetric(m.Metric)
+		if !metric.Valid() {
+			t.Fatalf("offered an unknown metric %q", m.Metric)
+		}
+		if m.Windowed != metric.IsWindowed() || m.Below != metric.TriggersWhenBelow() {
+			t.Fatalf("%q described as windowed=%v below=%v", m.Metric, m.Windowed, m.Below)
+		}
+	}
+	// The floors have to reach the client, or a form will offer a one-minute
+	// cooldown that the server silently clamps.
+	if body.Limits.MinCooldownMinutes != ca.MinAlertCooldownMinutes {
+		t.Fatalf("min cooldown = %d", body.Limits.MinCooldownMinutes)
+	}
+	if body.Limits.MaxPerDay != ca.MaxAlertsPerDay {
+		t.Fatalf("max per day = %d", body.Limits.MaxPerDay)
+	}
+	if body.Limits.TemplateParamCount != ca.AlertTemplateParamCount {
+		t.Fatalf("template params = %d", body.Limits.TemplateParamCount)
 	}
 }

@@ -26,20 +26,27 @@ const maxRequestBody = 256 << 10
 // caller's workspace INSIDE the use case; the handler only passes the
 // session's workspace through and never a query parameter's.
 type Handler struct {
-	list      ca.ListUseCase
-	stats     ca.StatsUseCase
-	trends    ca.TrendsUseCase
-	authors   ca.ListAuthorsUseCase
-	author    ca.GetAuthorUseCase
-	moderate  ca.SetModerationStateUseCase
-	getSet    ca.GetSettingsUseCase
-	updateSet ca.UpdateSettingsUseCase
-	retry     ca.RetryUseCase
-	spend     ca.SpendUseCase
-	estimate  ca.EstimateBackfillUseCase
-	start     ca.StartBackfillUseCase
-	backfill  ca.GetBackfillUseCase
-	cancel    ca.CancelBackfillUseCase
+	list       ca.ListUseCase
+	stats      ca.StatsUseCase
+	trends     ca.TrendsUseCase
+	authors    ca.ListAuthorsUseCase
+	author     ca.GetAuthorUseCase
+	containers ca.ListAuthorContainersUseCase
+	escalate   ca.EscalateCommentUseCase
+	recipients cauc.ListEscalationRecipientsUseCase
+	alerts     *cauc.ManageAlertRulesUseCase
+	testAlert  *cauc.TestAlertRuleUseCase
+	suggest    ca.SuggestCommentReplyUseCase
+	postReply  ca.PostCommentReplyUseCase
+	moderate   ca.SetModerationStateUseCase
+	getSet     ca.GetSettingsUseCase
+	updateSet  ca.UpdateSettingsUseCase
+	retry      ca.RetryUseCase
+	spend      ca.SpendUseCase
+	estimate   ca.EstimateBackfillUseCase
+	start      ca.StartBackfillUseCase
+	backfill   ca.GetBackfillUseCase
+	cancel     ca.CancelBackfillUseCase
 
 	accounts     ca.ListAccountSettingsUseCase
 	getContainer ca.GetContainerSettingsUseCase
@@ -49,20 +56,27 @@ type Handler struct {
 
 // Deps groups the use cases the handler serves.
 type Deps struct {
-	List      ca.ListUseCase
-	Stats     ca.StatsUseCase
-	Trends    ca.TrendsUseCase
-	Authors   ca.ListAuthorsUseCase
-	Author    ca.GetAuthorUseCase
-	Moderate  ca.SetModerationStateUseCase
-	GetSet    ca.GetSettingsUseCase
-	UpdateSet ca.UpdateSettingsUseCase
-	Retry     ca.RetryUseCase
-	Spend     ca.SpendUseCase
-	Estimate  ca.EstimateBackfillUseCase
-	Start     ca.StartBackfillUseCase
-	Backfill  ca.GetBackfillUseCase
-	Cancel    ca.CancelBackfillUseCase
+	List       ca.ListUseCase
+	Stats      ca.StatsUseCase
+	Trends     ca.TrendsUseCase
+	Authors    ca.ListAuthorsUseCase
+	Author     ca.GetAuthorUseCase
+	Containers ca.ListAuthorContainersUseCase
+	Escalate   ca.EscalateCommentUseCase
+	Recipients cauc.ListEscalationRecipientsUseCase
+	Alerts     *cauc.ManageAlertRulesUseCase
+	TestAlert  *cauc.TestAlertRuleUseCase
+	Suggest    ca.SuggestCommentReplyUseCase
+	PostReply  ca.PostCommentReplyUseCase
+	Moderate   ca.SetModerationStateUseCase
+	GetSet     ca.GetSettingsUseCase
+	UpdateSet  ca.UpdateSettingsUseCase
+	Retry      ca.RetryUseCase
+	Spend      ca.SpendUseCase
+	Estimate   ca.EstimateBackfillUseCase
+	Start      ca.StartBackfillUseCase
+	Backfill   ca.GetBackfillUseCase
+	Cancel     ca.CancelBackfillUseCase
 
 	Accounts     ca.ListAccountSettingsUseCase
 	GetContainer ca.GetContainerSettingsUseCase
@@ -72,7 +86,9 @@ type Deps struct {
 
 func NewHandler(d Deps) *Handler {
 	return &Handler{
-		list: d.List, stats: d.Stats, trends: d.Trends, authors: d.Authors, author: d.Author, moderate: d.Moderate,
+		list: d.List, stats: d.Stats, trends: d.Trends, authors: d.Authors, author: d.Author, containers: d.Containers, escalate: d.Escalate, recipients: d.Recipients,
+		alerts: d.Alerts, testAlert: d.TestAlert,
+		suggest: d.Suggest, postReply: d.PostReply, moderate: d.Moderate,
 		getSet: d.GetSet, updateSet: d.UpdateSet, retry: d.Retry, spend: d.Spend,
 		estimate: d.Estimate, start: d.Start, backfill: d.Backfill, cancel: d.Cancel,
 		accounts: d.Accounts, getContainer: d.GetContainer, putContainer: d.PutContainer, delContainer: d.DelContainer,
@@ -199,10 +215,31 @@ func (h *Handler) ListAuthors(w http.ResponseWriter, r *http.Request) {
 		FlaggedOnly:     v.Get("flagged") == "true",
 		Stance:          ca.Stance(strings.TrimSpace(v.Get("stance"))),
 		ModerationState: ca.ModerationState(strings.TrimSpace(v.Get("moderation"))),
-		Options:         shared.QueryOptions{Pagination: httpx.ParsePagination(v)},
+		// Resolves an @ seen in the feed to its author row, so clicking a
+		// handle anywhere can open that person's view.
+		AuthorExternalID: strings.TrimSpace(v.Get("authorExternalId")),
+		Options:          shared.QueryOptions{Pagination: httpx.ParsePagination(v)},
 	}
 	if n := intParam(v, "minComments"); n != nil {
 		in.MinComments = *n
+	}
+	// A window changes where the ranking is computed from, not just what it
+	// returns. Same parameter names the feed uses, so one period control on
+	// screen drives both.
+	in.From = timeParam(v, "from")
+	in.To = timeParam(v, "to")
+	// An unknown sort key is refused, not defaulted: a client asking for an
+	// ordering we do not have gets a 400 it can act on, rather than a page of
+	// plausible results in a different order that hides the bug.
+	if raw := strings.TrimSpace(v.Get("sort")); raw != "" {
+		key, ok := ca.ParseAuthorSortKey(raw)
+		if !ok {
+			response.WriteError(w, http.StatusBadRequest, "Unknown sort key", map[string]string{
+				"sort": strings.Join(authorSortKeyNames(), " | "),
+			})
+			return
+		}
+		in.Sort = ca.Sort{Key: key, Ascending: strings.EqualFold(strings.TrimSpace(v.Get("order")), "asc")}
 	}
 	result, err := h.authors.Execute(r.Context(), in)
 	if err != nil {
@@ -238,6 +275,36 @@ func (h *Handler) GetAuthor(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, AuthorDetailResponse{
 		Author: toAuthorResponse(detail.Author), Comments: comments,
 		Page: detail.Comments.Page, PageSize: detail.Comments.PageSize, Total: detail.Comments.TotalItems,
+	})
+}
+
+// @Summary	Posts em que um autor comentou
+// @Tags		CommentAnalysis
+// @Produce	json
+// @Param		id	path	string	true	"ID do autor"
+// @Success	200	{object}	AuthorContainersResponse
+// @Security	BearerAuth
+// @Router		/comment-analysis/authors/{id}/containers [get]
+func (h *Handler) ListAuthorContainers(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	out, err := h.containers.Execute(r.Context(), ca.AuthorContainersRequest{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		AuthorID:    mux.Vars(r)["id"],
+		From:        timeParam(v, "from"),
+		To:          timeParam(v, "to"),
+		Page:        httpx.ParsePagination(v),
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to load author posts")
+		return
+	}
+	containers := make([]AuthorContainerResponse, 0, len(out.Containers.Items))
+	for _, c := range out.Containers.Items {
+		containers = append(containers, toAuthorContainerResponse(c))
+	}
+	response.WriteSuccess(w, http.StatusOK, AuthorContainersResponse{
+		Author: toAuthorResponse(out.Author), Containers: containers,
+		Page: out.Containers.Page, PageSize: out.Containers.PageSize, Total: out.Containers.TotalItems,
 	})
 }
 
@@ -323,6 +390,9 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.SeverityThreshold != nil {
 		in.ActionPolicy = &ca.ActionPolicy{SeverityThreshold: *req.SeverityThreshold}
 	}
+	if req.ReplyPolicy != nil {
+		in.ReplyPolicy = req.ReplyPolicy
+	}
 	s, err := h.updateSet.Execute(r.Context(), in)
 	if err != nil {
 		writeDomainError(w, err, "Failed to update settings")
@@ -347,6 +417,121 @@ func (h *Handler) Retry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toCommentResponse(row))
+}
+
+// @Summary	Encaminhar um comentário por WhatsApp
+// @Tags		CommentAnalysis
+// @Accept		json
+// @Produce	json
+// @Param		id	path	string	true	"ID da análise"
+// @Success	200	{object}	EscalationResponse
+// @Security	BearerAuth
+// @Router		/comment-analysis/{id}/escalate [post]
+func (h *Handler) Escalate(w http.ResponseWriter, r *http.Request) {
+	var req EscalateRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	var userID string
+	if claims := middleware.GetClaims(r); claims != nil {
+		userID = claims.UserID
+	}
+	escalation, err := h.escalate.Execute(r.Context(), ca.EscalateCommentInput{
+		WorkspaceID:   middleware.GetWorkspaceID(r),
+		UserID:        userID,
+		CommentID:     mux.Vars(r)["id"],
+		RecipientID:   strings.TrimSpace(req.RecipientID),
+		RecipientKind: strings.TrimSpace(req.RecipientKind),
+		Note:          req.Note,
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to forward the comment")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toEscalationResponse(*escalation))
+}
+
+// @Summary	Conversas para as quais um comentário pode ser encaminhado
+// @Tags		CommentAnalysis
+// @Produce	json
+// @Param		query	query	string	false	"Busca por nome ou número"
+// @Success	200	{array}	comment_analysis_usecase.EscalationRecipient
+// @Security	BearerAuth
+// @Router		/comment-analysis/escalation-recipients [get]
+func (h *Handler) EscalationRecipients(w http.ResponseWriter, r *http.Request) {
+	var userID string
+	if claims := middleware.GetClaims(r); claims != nil {
+		userID = claims.UserID
+	}
+	rows, err := h.recipients.Execute(r.Context(), cauc.EscalationRecipientQuery{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		UserID:      userID,
+		Query:       strings.TrimSpace(r.URL.Query().Get("query")),
+		Limit:       intOrZero(intParam(r.URL.Query(), "limit")),
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to list recipients")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, rows)
+}
+
+// @Summary	Sugerir uma resposta ao comentário com IA
+// @Tags		CommentAnalysis
+// @Produce	json
+// @Param		id	path	string	true	"ID da análise"
+// @Success	200	{object}	comment_analysis.ReplySuggestion
+// @Security	BearerAuth
+// @Router		/comment-analysis/{id}/reply/suggest [post]
+func (h *Handler) SuggestReply(w http.ResponseWriter, r *http.Request) {
+	suggestion, err := h.suggest.Execute(r.Context(), ca.SuggestReplyInput{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		CommentID:   mux.Vars(r)["id"],
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to draft a reply")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, suggestion)
+}
+
+// @Summary	Publicar uma resposta ao comentário
+// @Tags		CommentAnalysis
+// @Accept		json
+// @Produce	json
+// @Param		id	path	string	true	"ID da análise"
+// @Success	200	{object}	comment_analysis.ReplySuggestion
+// @Security	BearerAuth
+// @Router		/comment-analysis/{id}/reply [post]
+func (h *Handler) PostReply(w http.ResponseWriter, r *http.Request) {
+	var req ReplyRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	var userID string
+	if claims := middleware.GetClaims(r); claims != nil {
+		userID = claims.UserID
+	}
+	posted, err := h.postReply.Execute(r.Context(), ca.PostReplyInput{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		UserID:      userID,
+		CommentID:   mux.Vars(r)["id"],
+		Text:        req.Text,
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to publish the reply")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, posted)
+}
+
+// intOrZero unwraps an optional query int; absent means "let the use case
+// choose", which is what zero means to it.
+func intOrZero(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // @Summary	Gasto com análise de comentários no período
@@ -614,4 +799,16 @@ func (h *Handler) DeleteContainerSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toContainerSettingsResponse(cs))
+}
+
+// authorSortKeyNames renders the accepted keys for a 400 body, straight from
+// the domain's own list. Restating them here would let the error message drift
+// from what the parser actually takes.
+func authorSortKeyNames() []string {
+	keys := ca.AllAuthorSortKeys()
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, string(k))
+	}
+	return out
 }

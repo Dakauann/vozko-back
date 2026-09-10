@@ -113,6 +113,10 @@ func settingsToDomain(row *schema.CommentAnalysisSettings) (*ca.Settings, error)
 		Model:        row.Model,
 		Vertical:     ca.Vertical(row.Vertical),
 		ActionPolicy: ca.ActionPolicy{SeverityThreshold: row.SeverityThreshold},
+		ReplyPolicy: ca.ReplyPolicy{
+			Mode:            ca.ReplyMode(row.ReplyMode),
+			MaxAutoSeverity: row.ReplyMaxAutoSeverity,
+		},
 		DailyCap:     row.DailyCap,
 		Instructions: row.Instructions,
 		UpdatedAt:    row.UpdatedAt,
@@ -132,17 +136,19 @@ func settingsFromDomain(s *ca.Settings) (*schema.CommentAnalysisSettings, error)
 		return nil, err
 	}
 	return &schema.CommentAnalysisSettings{
-		Source:            string(s.Source),
-		AccountID:         s.AccountID,
-		WorkspaceID:       s.WorkspaceID,
-		Enabled:           s.Enabled,
-		Model:             s.Model,
-		Vertical:          string(s.Vertical),
-		Topics:            datatypes.JSON(topics),
-		SeverityThreshold: s.ActionPolicy.SeverityThreshold,
-		DailyCap:          s.DailyCap,
-		Instructions:      s.Instructions,
-		UpdatedAt:         s.UpdatedAt,
+		Source:               string(s.Source),
+		AccountID:            s.AccountID,
+		WorkspaceID:          s.WorkspaceID,
+		Enabled:              s.Enabled,
+		Model:                s.Model,
+		Vertical:             string(s.Vertical),
+		Topics:               datatypes.JSON(topics),
+		SeverityThreshold:    s.ActionPolicy.SeverityThreshold,
+		ReplyMode:            string(s.ReplyPolicy.Mode),
+		ReplyMaxAutoSeverity: s.ReplyPolicy.MaxAutoSeverity,
+		DailyCap:             s.DailyCap,
+		Instructions:         s.Instructions,
+		UpdatedAt:            s.UpdatedAt,
 	}, nil
 }
 
@@ -161,7 +167,13 @@ func authorToDomain(row *schema.CommentAnalysisAuthor) (*ca.AuthorStats, error) 
 		DerivedStance:    ca.Stance(row.DerivedStance),
 		IsFlagged:        row.IsFlagged,
 		ModerationState:  ca.ModerationState(row.ModerationState),
-		UpdatedAt:        row.UpdatedAt,
+		Role: ca.AuthorRoleInference{
+			Role:            ca.AuthorRole(row.Role),
+			Confidence:      shared.QualityLevel(row.RoleConfidence),
+			BasedOnComments: row.RoleComments,
+			Rationale:       row.RoleRationale,
+		},
+		UpdatedAt: row.UpdatedAt,
 	}
 	if len(row.Counters) > 0 {
 		if err := json.Unmarshal(row.Counters, &a.Counters); err != nil {
@@ -176,6 +188,15 @@ func authorToDomain(row *schema.CommentAnalysisAuthor) (*ca.AuthorStats, error) 
 	if a.TopTopics == nil {
 		a.TopTopics = []ca.TopicCount{}
 	}
+	// Re-derive rather than trust the columns.
+	//
+	// The standing, the flag and the reputation are pure functions of the
+	// counters, so this returns the same values the writer stored — except on a
+	// row written before one of them existed, where the column is a default and
+	// the counters are still right. Deriving on read means such a row is
+	// correct immediately instead of waiting for its next rollup. The columns
+	// remain what the query FILTERS and SORTS on; this is what it returns.
+	a.Derive()
 	return a, nil
 }
 
@@ -208,10 +229,16 @@ func authorFromDomain(a *ca.AuthorStats) (*schema.CommentAnalysisAuthor, error) 
 		MaxSeverity:     a.SeverityMax,
 		HighSevCount:    a.SeverityHighCount,
 		StanceHostile:   a.StanceHostile,
+		StanceSupporter: a.StanceSupporter,
+		Reputation:      a.Reputation,
 		TopTopics:       datatypes.JSON(top),
 		DerivedStance:   string(a.DerivedStance),
 		IsFlagged:       a.IsFlagged,
 		ModerationState: string(a.ModerationState),
+		Role:            string(a.Role.Role),
+		RoleConfidence:  string(a.Role.Confidence),
+		RoleComments:    a.Role.BasedOnComments,
+		RoleRationale:   a.Role.Rationale,
 		UpdatedAt:       a.UpdatedAt,
 	}, nil
 }
@@ -264,6 +291,7 @@ func batchFromDomain(b *ca.Batch) *schema.CommentAnalysisBatch {
 		Source:           string(b.Source),
 		AccountID:        b.AccountID,
 		ContainerID:      b.ContainerID,
+		Kind:             string(ca.NormalizeBatchKind(b.Kind)),
 		Model:            b.Model,
 		ItemCount:        b.ItemCount,
 		PromptTokens:     b.PromptTokens,

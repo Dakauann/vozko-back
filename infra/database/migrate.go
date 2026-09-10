@@ -163,6 +163,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.CommentAnalysis{},
 			&schema.CommentAnalysisSettings{},
 			&schema.CommentAnalysisContainerSettings{},
+			&schema.CommentAnalysisAlertRule{},
 			&schema.CommentAnalysisAuthor{},
 			&schema.CommentAnalysisRollup{},
 			&schema.CommentAnalysisBatch{},

@@ -72,10 +72,10 @@ func (f *fakeSub) deliver(t *testing.T, topic string, msg Message) *fakeAck {
 }
 
 type fakePub struct {
-	mu       sync.Mutex
-	delayed  []time.Duration
+	mu        sync.Mutex
+	delayed   []time.Duration
 	published int
-	err      error
+	err       error
 }
 
 func (f *fakePub) Publish(string, []byte) error {
@@ -98,9 +98,9 @@ func (f *fakePub) PublishWithDelay(_ string, _ []byte, d time.Duration) error {
 func (f *fakePub) ValidateConnection() error { return nil }
 
 type fakeAck struct {
-	acked        bool
-	nacked       bool
-	nackRequeue  bool
+	acked       bool
+	nacked      bool
+	nackRequeue bool
 }
 
 func (a *fakeAck) Ack() error { a.acked = true; return nil }
@@ -178,20 +178,20 @@ func (m *memShared) IncrBy(k string, n int64) (int64, error) {
 	m.values[k] = strconv.FormatInt(v, 10)
 	return v, nil
 }
-func (m *memShared) DecrBy(k string, n int64) (int64, error)          { return m.IncrBy(k, -n) }
+func (m *memShared) DecrBy(k string, n int64) (int64, error)              { return m.IncrBy(k, -n) }
 func (m *memShared) IncrWithTTL(k string, _ time.Duration) (int64, error) { return m.IncrBy(k, 1) }
-func (m *memShared) TryIncr(string, int64) (bool, error)              { return true, nil }
-func (m *memShared) TryIncrBy(string, int64, int64) (bool, error)     { return true, nil }
-func (m *memShared) SAdd(string, ...string) error                     { return nil }
-func (m *memShared) SRem(string, ...string) error                     { return nil }
-func (m *memShared) SMembers(string) ([]string, error)                { return nil, nil }
-func (m *memShared) Publish(string, []byte) error                     { return nil }
-func (m *memShared) Subscribe(context.Context, string, func([]byte))  {}
-func (m *memShared) HSet(string, string, string) error                { return nil }
-func (m *memShared) HDel(string, string) error                        { return nil }
-func (m *memShared) HGetAll(string) (map[string]string, error)        { return nil, nil }
-func (m *memShared) HIncrBy(string, string, int64) (int64, error)     { return 0, nil }
-func (m *memShared) Expire(string, time.Duration) (bool, error)       { return true, nil }
+func (m *memShared) TryIncr(string, int64) (bool, error)                  { return true, nil }
+func (m *memShared) TryIncrBy(string, int64, int64) (bool, error)         { return true, nil }
+func (m *memShared) SAdd(string, ...string) error                         { return nil }
+func (m *memShared) SRem(string, ...string) error                         { return nil }
+func (m *memShared) SMembers(string) ([]string, error)                    { return nil, nil }
+func (m *memShared) Publish(string, []byte) error                         { return nil }
+func (m *memShared) Subscribe(context.Context, string, func([]byte))      {}
+func (m *memShared) HSet(string, string, string) error                    { return nil }
+func (m *memShared) HDel(string, string) error                            { return nil }
+func (m *memShared) HGetAll(string) (map[string]string, error)            { return nil, nil }
+func (m *memShared) HIncrBy(string, string, int64) (int64, error)         { return 0, nil }
+func (m *memShared) Expire(string, time.Duration) (bool, error)           { return true, nil }
 
 // ---------------------------------------------------------------- harness
 

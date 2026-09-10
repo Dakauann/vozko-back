@@ -133,7 +133,16 @@ type RollupJob struct {
 	rollups  ca.RollupRepository
 	state    lastRunStore
 	clock    ca.Clock
+	// roles is the §5 author pass. Optional and attached rather than
+	// constructor-injected, so a deployment without a model runs the rollup
+	// exactly as it did before this existed.
+	roles *RoleInferenceJob
 }
+
+// SetRoleInference attaches the author pass. It runs right after the author
+// projection is rebuilt, which is the only moment the corpus sizes it decides
+// on are known to be current.
+func (j *RollupJob) SetRoleInference(roles *RoleInferenceJob) { j.roles = roles }
 
 // lastRunStore is the two SharedState methods the job needs.
 type lastRunStore interface {
@@ -182,6 +191,11 @@ func (j *RollupJob) Execute(ctx context.Context) error {
 		}
 		if err := j.authors.UpsertMany(ctx, authors); err != nil {
 			return err
+		}
+		// Best effort and capped inside: an account whose author pass fails
+		// still gets its counters, which is the part the dashboard needs.
+		if j.roles != nil {
+			j.roles.RunAccount(ctx, s.Source, s.AccountID)
 		}
 	}
 

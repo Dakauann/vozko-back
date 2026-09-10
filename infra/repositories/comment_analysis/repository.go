@@ -318,6 +318,102 @@ func (r *repository) List(ctx context.Context, in ca.ListInput) (*shared.Paginat
 	return shared.NewPaginatedResult(toDomainSlice(rows), pagination, total), nil
 }
 
+// ListAuthorContainers answers "which posts does this person turn up on" with
+// one GROUP BY over the comments we already store (§2).
+//
+// The count is `COUNT(DISTINCT container_id)` over the same predicate rather
+// than a count of the grouped rows: a grouped query's Count would return the
+// number of comments, and a table paging on posts would then claim a page count
+// it cannot fill.
+//
+// Ordered by the author's most recent activity on each post, with the container
+// id as the tiebreak, so paging cannot repeat or skip a post when someone
+// commented on two of them in the same second.
+func (r *repository) ListAuthorContainers(ctx context.Context, in ca.AuthorContainersInput) (*shared.PaginatedResult[*ca.AuthorContainer], error) {
+	pagination := shared.NormalizePagination(in.Options.Pagination)
+
+	scope := func() *gorm.DB {
+		q := r.db.WithContext(ctx).Model(&schema.CommentAnalysis{}).
+			Where("workspace_id = ? AND deleted_at IS NULL", in.WorkspaceID).
+			Where("author_external_id = ?", in.AuthorExternalID)
+		if in.Source != "" {
+			q = q.Where("source = ?", string(in.Source))
+		}
+		if in.AccountID != "" {
+			q = q.Where("account_id = ?", in.AccountID)
+		}
+		if in.From != nil {
+			q = q.Where("commented_at >= ?", *in.From)
+		}
+		if in.To != nil {
+			q = q.Where("commented_at < ?", *in.To)
+		}
+		return q
+	}
+
+	var total int64
+	if err := scope().Distinct("container_id").Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	type row struct {
+		Source            string
+		AccountID         string
+		ContainerID       string
+		Comments          int
+		StanceSupporter   int
+		StanceNeutral     int
+		StanceCritic      int
+		StanceHostile     int
+		SeverityMax       int
+		SeverityHighCount int
+		FirstCommentedAt  time.Time
+		LastCommentedAt   time.Time
+	}
+	var rows []row
+	err := scope().
+		Select(`MIN(source) AS source, MIN(account_id::text) AS account_id, container_id,
+			COUNT(*) AS comments,
+			COUNT(*) FILTER (WHERE status = 'analyzed' AND stance = 'supporter') AS stance_supporter,
+			COUNT(*) FILTER (WHERE status = 'analyzed' AND stance = 'neutral') AS stance_neutral,
+			COUNT(*) FILTER (WHERE status = 'analyzed' AND stance = 'critic') AS stance_critic,
+			COUNT(*) FILTER (WHERE status = 'analyzed' AND stance = 'hostile') AS stance_hostile,
+			COALESCE(MAX(severity), 0) AS severity_max,
+			COUNT(*) FILTER (WHERE status = 'analyzed' AND severity >= ?) AS severity_high_count,
+			MIN(commented_at) AS first_commented_at, MAX(commented_at) AS last_commented_at`,
+			ca.HighSeverityThreshold).
+		Group("container_id").
+		Order("last_commented_at DESC, container_id ASC").
+		Limit(pagination.PageSize).Offset(pagination.Offset()).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*ca.AuthorContainer, 0, len(rows))
+	for _, x := range rows {
+		c := &ca.AuthorContainer{
+			Source:      ca.Source(x.Source),
+			AccountID:   x.AccountID,
+			ContainerID: x.ContainerID,
+			Comments:    x.Comments,
+			Stances: ca.StanceMix{
+				Supporter: x.StanceSupporter,
+				Neutral:   x.StanceNeutral,
+				Critic:    x.StanceCritic,
+				Hostile:   x.StanceHostile,
+			},
+			SeverityMax:       x.SeverityMax,
+			SeverityHighCount: x.SeverityHighCount,
+			FirstCommentedAt:  x.FirstCommentedAt,
+			LastCommentedAt:   x.LastCommentedAt,
+		}
+		c.Derive()
+		items = append(items, c)
+	}
+	return shared.NewPaginatedResult(items, pagination, total), nil
+}
+
 func direction(d shared.SortDirection) string {
 	if d == shared.SortAsc {
 		return "ASC"
@@ -327,6 +423,11 @@ func direction(d shared.SortDirection) string {
 
 // countersSelect is the §11.1 set as one COUNT(*) FILTER per column, the
 // same technique the conversation analysis GetStats uses.
+//
+// author_external_id is table-qualified because the windowed author ranking
+// joins comment_analysis_authors, which has a column of the same name; every
+// other column here exists only on comment_analyses. Qualifying it is harmless
+// for the callers that do not join.
 const countersSelect = `
 	COUNT(*) AS total,
 	COUNT(*) FILTER (WHERE status = 'analyzed') AS analyzed,
@@ -353,7 +454,7 @@ const countersSelect = `
 	COALESCE(MAX(severity) FILTER (WHERE status = 'analyzed'), 0) AS severity_max,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND severity >= 60) AS severity_high_count,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND requires_action) AS requires_action_count,
-	COUNT(DISTINCT author_external_id) AS distinct_authors`
+	COUNT(DISTINCT comment_analyses.author_external_id) AS distinct_authors`
 
 type CountersRow struct {
 	Total, Analyzed, Pending, InFlight, Failed, Skipped                  int

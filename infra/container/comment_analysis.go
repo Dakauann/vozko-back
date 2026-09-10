@@ -87,6 +87,33 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		ig.ModerateComment.SetCommentAnalysis(bundle.InstagramAdapter)
 	}
 	adapters := map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: bundle.InstagramAdapter}
+
+	// Alerts. The dispatcher composes the two outbound use cases that already
+	// exist; nothing here is a new send path. A workspace with neither channel
+	// configured simply never dispatches, and the rules stay inert.
+	alertRules := ca_repository.NewAlertRuleRepository(c.db)
+	alertDispatcher := commentAlertDispatcher{
+		official: c.useCases.startOfficialConversation,
+		send:     c.services.liveOperatorSend,
+		// So an alert fills the variables the customer's own template declares,
+		// rather than a shape we guessed.
+		templates: c.repositories.whatsappTemplate,
+	}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		alertDispatcher.unofficial = c.unofficialWhatsApp.StartConv
+	}
+	alertEvaluator := cauc.NewAlertEvaluator(cauc.AlertDeps{
+		Rules: alertRules, Repo: repo, Dispatcher: alertDispatcher, Clock: clock,
+		// So an alert can name the account and link the post instead of
+		// printing internal ids at whoever it wakes up.
+		Adapters: adapters,
+		Settings: settings,
+		// The model's reading of what fired. Opt-in per rule, under the same
+		// balance floor and on the same spend page as every other model call.
+		Briefer: cauc.NewAlertBriefer(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Balance: c.services.cachedBalanceChecker,
+		Batches: batches,
+	})
 	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewCommentAnalysisAccountVerifier(ig.Accounts)}
 
 	engine, err := cauc.NewEngine(cauc.EngineDeps{
@@ -101,9 +128,13 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		State:      state,
 		Metrics:    c.services.metrics,
 		Notifier:   notifier,
-		Clock:      clock,
-		Budget:     ca.DefaultBudget(),
-		Debounce:   ca.DefaultDebouncePolicy(),
+		// The live feed (§7). Nil when the socket is not up; the engine then
+		// classifies exactly the same and nothing is broadcast.
+		Broadcaster: c.services.conversationHub,
+		Alerts:      alertEvaluator,
+		Clock:       clock,
+		Budget:      ca.DefaultBudget(),
+		Debounce:    ca.DefaultDebouncePolicy(),
 
 		DashboardURL: dashboardURL,
 	})
@@ -114,6 +145,15 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	bundle.Flush = cauc.NewFlushJob(engine)
 	bundle.Backstop = cauc.NewBackstopJob(engine)
 	bundle.Rollup = cauc.NewRollupJob(repo, settings, authors, rollups, state, clock)
+	// The §5 author pass rides the rollup: it is the one moment the corpus
+	// sizes it decides on are known to be current. Capped inside, billed under
+	// its own kind, and skipped entirely without a model.
+	bundle.Rollup.SetRoleInference(cauc.NewRoleInferenceJob(cauc.RoleInferenceDeps{
+		Authors: authors, Repo: repo, Settings: settings, Adapters: adapters,
+		Inferrer: cauc.NewRoleInferrer(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Batches:  batches, Charger: cauc.NewCharger(c.repositories.balance, pricer, state),
+		Balance: c.services.cachedBalanceChecker, Clock: clock,
+	}))
 	bundle.Purge = cauc.NewPurgeJob(repo, commentAnalysisRetention, clock)
 
 	backfillDeps := cauc.BackfillDeps{
@@ -123,23 +163,50 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	bundle.Backfill = cauc.NewBackfillJob(backfillDeps)
 	estimate, start, get, cancel := cauc.NewBackfillUseCases(backfillDeps)
 	getSettings, updateSettings := cauc.NewSettingsUseCases(settings, verifiers, clock)
+
+	// Replying (§6). The repliers map is empty for a channel that cannot post,
+	// and the use case refuses rather than pretending it sent something. The
+	// drafter is the same ai.Service the classifier already bills against.
+	repliers := map[ca.Source]ca.CommentReplier{}
+	if c.instagram != nil && c.instagram.Enabled && c.instagram.ReplyComment != nil {
+		repliers[ca.SourceInstagram] = instagramCommentReplier{uc: c.instagram.ReplyComment}
+	}
+	suggestReply, postReply := cauc.NewReplyUseCases(cauc.ReplyDeps{
+		Repo: repo, Settings: settings, Adapters: adapters,
+		Drafter:  cauc.NewReplyDrafter(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Repliers: repliers,
+		// Drafting is a model call: same floor, same spend page.
+		Balance: c.services.cachedBalanceChecker,
+		Batches: batches,
+		Clock:   clock,
+	})
 	getContainer, putContainer, delContainer, listAccounts := cauc.NewContainerSettingsUseCases(settings, resolver, verifiers, clock)
 
 	bundle.Handler = commentanalysishttp.NewHandler(commentanalysishttp.Deps{
-		List:      cauc.NewListUseCase(repo),
-		Stats:     cauc.NewStatsUseCase(repo),
-		Trends:    cauc.NewTrendsUseCase(rollups),
-		Authors:   cauc.NewListAuthorsUseCase(authors),
-		Author:    cauc.NewGetAuthorUseCase(authors, repo),
-		Moderate:  cauc.NewSetModerationStateUseCase(authors, clock),
-		GetSet:    getSettings,
-		UpdateSet: updateSettings,
-		Retry:     cauc.NewRetryUseCase(repo, clock),
-		Spend:     cauc.NewSpendUseCase(batches, clock),
-		Estimate:  estimate,
-		Start:     start,
-		Backfill:  get,
-		Cancel:    cancel,
+		List:       cauc.NewListUseCase(repo),
+		Stats:      cauc.NewStatsUseCase(repo),
+		Trends:     cauc.NewTrendsUseCase(rollups),
+		Authors:    cauc.NewListAuthorsUseCase(authors),
+		Author:     cauc.NewGetAuthorUseCase(authors, repo),
+		Containers: cauc.NewListAuthorContainersUseCase(authors, repo),
+		// Forwarding rides the live composer through the late-binding wrapper,
+		// exactly as the scheduled-message dispatcher does: one send
+		// implementation, whichever channel the conversation runs on.
+		Escalate:   cauc.NewEscalateCommentUseCase(repo, adapters, commentEscalationSender{send: c.services.liveOperatorSend}),
+		Recipients: cauc.NewListEscalationRecipientsUseCase(commentEscalationRecipients{inbox: c.services.conversationHistory}),
+		Alerts:     cauc.NewManageAlertRulesUseCase(alertRules, clock),
+		TestAlert:  cauc.NewTestAlertRuleUseCase(alertRules, alertDispatcher, clock),
+		Suggest:    suggestReply,
+		PostReply:  postReply,
+		Moderate:   cauc.NewSetModerationStateUseCase(authors, clock),
+		GetSet:     getSettings,
+		UpdateSet:  updateSettings,
+		Retry:      cauc.NewRetryUseCase(repo, clock),
+		Spend:      cauc.NewSpendUseCase(batches, clock),
+		Estimate:   estimate,
+		Start:      start,
+		Backfill:   get,
+		Cancel:     cancel,
 
 		Accounts:     listAccounts,
 		GetContainer: getContainer,

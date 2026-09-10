@@ -23,6 +23,9 @@ func RegisterProtectedRoutes(
 	}
 	res := workspace_domain.ResourceCommentAnalysis
 	read, update := workspace_domain.ActionRead, workspace_domain.ActionUpdate
+	// Forwarding puts a message on the workspace's own WhatsApp, to a real
+	// person, so it is not the same privilege as configuring or moderating.
+	send := workspace_domain.ActionSend
 
 	r := protected.PathPrefix("/comment-analysis").Subrouter()
 
@@ -30,9 +33,16 @@ func RegisterProtectedRoutes(
 	r.HandleFunc("/stats", ac(res, read, h.Stats)).Methods(http.MethodGet)
 	r.HandleFunc("/trends", ac(res, read, h.Trends)).Methods(http.MethodGet)
 	r.HandleFunc("/spend", ac(res, read, h.Spend)).Methods(http.MethodGet)
+	// The recipient picker is part of forwarding, so it carries forwarding's
+	// permission: someone who may not send has no business enumerating who
+	// the workspace talks to.
+	r.HandleFunc("/escalation-recipients", ac(res, send, h.EscalationRecipients)).Methods(http.MethodGet)
 
 	r.HandleFunc("/authors", ac(res, read, h.ListAuthors)).Methods(http.MethodGet)
 	r.HandleFunc("/authors/{id}", ac(res, read, h.GetAuthor)).Methods(http.MethodGet)
+	// The inverse of the feed's container filter: which posts one person turns
+	// up on. A read of the same rows the feed reads, so the same read action.
+	r.HandleFunc("/authors/{id}/containers", ac(res, read, h.ListAuthorContainers)).Methods(http.MethodGet)
 	r.HandleFunc("/authors/{id}", ac(res, update, h.SetModeration)).Methods(http.MethodPatch)
 
 	r.HandleFunc("/settings", ac(res, read, h.ListAccountSettings)).Methods(http.MethodGet)
@@ -51,4 +61,20 @@ func RegisterProtectedRoutes(
 	r.HandleFunc("/backfill/{id}", ac(res, read, h.GetBackfill)).Methods(http.MethodGet)
 
 	r.HandleFunc("/{id}/retry", ac(res, update, h.Retry)).Methods(http.MethodPost)
+	// Alerts. Behind SEND rather than update, because arming an automated
+	// sender is granting sends: someone who may tune the classifier must not
+	// thereby be able to message a phone number in the workspace's name.
+	//
+	// Registered BEFORE the "/{id}/..." routes below, or "/alerts/options"
+	// would be matched as a comment id.
+	r.HandleFunc("/alerts", ac(res, send, h.ListAlertRules)).Methods(http.MethodGet)
+	r.HandleFunc("/alerts", ac(res, send, h.CreateAlertRule)).Methods(http.MethodPost)
+	r.HandleFunc("/alerts/options", ac(res, send, h.AlertOptions)).Methods(http.MethodGet)
+	r.HandleFunc("/alerts/{id}", ac(res, send, h.UpdateAlertRule)).Methods(http.MethodPut)
+	r.HandleFunc("/alerts/{id}", ac(res, send, h.DeleteAlertRule)).Methods(http.MethodDelete)
+	r.HandleFunc("/alerts/{id}/test", ac(res, send, h.TestAlertRule)).Methods(http.MethodPost)
+
+	r.HandleFunc("/{id}/escalate", ac(res, send, h.Escalate)).Methods(http.MethodPost)
+	r.HandleFunc("/{id}/reply/suggest", ac(res, send, h.SuggestReply)).Methods(http.MethodPost)
+	r.HandleFunc("/{id}/reply", ac(res, send, h.PostReply)).Methods(http.MethodPost)
 }

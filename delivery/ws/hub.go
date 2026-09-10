@@ -3519,13 +3519,18 @@ func (h *ConversationHub) runRedisBroadcastSubscriber() {
 }
 
 type redisWorkspaceBroadcast struct {
-	Type             string `json:"t"`
-	EntryID          string `json:"e,omitempty"`
-	EntryType        string `json:"et,omitempty"`
-	StageWorkspaceID string `json:"u,omitempty"`
-	WorkspaceID      string `json:"w,omitempty"`
-	ExcludeUserID    string `json:"x,omitempty"`
-	ReplicaID        string `json:"r"`
+	Type string `json:"t"`
+	// Payload carries an already-marshalled event for broadcast kinds that are
+	// not entry-shaped. The entry-shaped kinds re-derive their payload on the
+	// receiving replica; a comment-analysis event has nothing to re-derive
+	// from, so it travels whole.
+	Payload          json.RawMessage `json:"p,omitempty"`
+	EntryID          string          `json:"e,omitempty"`
+	EntryType        string          `json:"et,omitempty"`
+	StageWorkspaceID string          `json:"u,omitempty"`
+	WorkspaceID      string          `json:"w,omitempty"`
+	ExcludeUserID    string          `json:"x,omitempty"`
+	ReplicaID        string          `json:"r"`
 }
 
 func (h *ConversationHub) publishWorkspaceBroadcast(bType, entryID, entryType, stageWorkspaceID, workspaceID, excludeUserID string) {
@@ -3566,6 +3571,8 @@ func (h *ConversationHub) runRedisWorkspaceBroadcastSubscriber() {
 			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil)
 		case "entry_removed":
 			h.broadcastEntryRemovedLocal(p.EntryID, p.EntryType, p.WorkspaceID, p.ExcludeUserID)
+		case "comment_analysis_analyzed":
+			h.sendToWorkspaceWithPermission(p.WorkspaceID, "comment_analysis", "read", p.Payload)
 		}
 	})
 }

@@ -18,9 +18,9 @@ import (
 	"vozko/domain/lead_message_window"
 	"vozko/domain/shared"
 	"vozko/domain/unofficial_whatsapp"
-	workspace_domain "vozko/domain/workspace"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	wc_entry "vozko/domain/whatsapp_campaign_entry"
+	workspace_domain "vozko/domain/workspace"
 	"vozko/infra/http/middleware"
 )
 

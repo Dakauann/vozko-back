@@ -175,17 +175,37 @@ type AuthorStats struct {
 	DerivedStance   Stance          `json:"derivedStance"`
 	IsFlagged       bool            `json:"isFlagged"`
 	ModerationState ModerationState `json:"moderationState"`
+	// Role is the §5 inference. Unlike everything above it, this is NOT a pure
+	// function of the counters: it is model output over the person's own words,
+	// so the rollup must preserve it the way it preserves ModerationState
+	// rather than recomputing it.
+	Role AuthorRoleInference `json:"role"`
+
+	// Reputation is the signed ledger (§8): what this person's history adds up
+	// to, unbounded, negative for a hostile one. Distinct from the account's
+	// AcceptanceScore, which is 0..100 — see AuthorReputation for why both.
+	Reputation int `json:"reputation"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Derive computes the standing from the counters.
+//
+// Everything here is a pure function of counts, never a stored opinion: the
+// rollup can be rebuilt from the comments at any time and must land on the same
+// numbers. That is also why Reputation is derived rather than accumulated —
+// an incremented column drifts the moment one rollup is missed.
 func (a *AuthorStats) Derive() {
-	a.DerivedStance = DerivedStance(a.StanceMix())
+	mix := a.StanceMix()
+	a.DerivedStance = DerivedStance(mix)
 	a.IsFlagged = IsFlagged(a.DerivedStance, a.SeverityHighCount)
+	a.Reputation = AuthorReputation(mix, a.SeverityHighCount)
 	if a.ModerationState == "" {
 		a.ModerationState = ModerationNone
 	}
+	// Normalised, never recomputed: Derive owns the counters, not the claim
+	// about who this person is.
+	a.Role.Normalize()
 }
 
 // ---- Filters ----
@@ -271,12 +291,52 @@ type AuthorsInput struct {
 	Stance          Stance
 	ModerationState ModerationState
 	MinComments     int
-	Options         shared.QueryOptions
+
+	// AuthorExternalID resolves one person to their row (§2). By external id
+	// and not by handle: handles are renameable on every channel we mirror, so
+	// a lookup by handle would find a different person after a rename, or
+	// nobody at all.
+	AuthorExternalID string
+
+	// From and To narrow the ranking to a window, by the comment's own
+	// timestamp.
+	//
+	// This changes where the answer COMES FROM, which is why it is worth a
+	// comment. Without a range the ranking reads the author projection, which
+	// holds lifetime counters. With one it cannot: the projection has no time
+	// dimension, so the counters are regrouped from the comments themselves.
+	// The two paths must agree on an all-time window, and an integration test
+	// says so.
+	From *time.Time
+	To   *time.Time
+
+	// Sort is the ranking (§1). The zero value is DefaultAuthorSort, applied by
+	// Normalize, so every caller gets a deterministic order without asking —
+	// an unordered page cannot be paged through without repeating rows.
+	Sort Sort
+
+	Options shared.QueryOptions
+}
+
+// MaxAuthorRankingRange bounds a windowed ranking. The lifetime ranking reads
+// an indexed projection and is cheap at any size; a windowed one regroups the
+// comments, so an unbounded range is a table scan somebody asked for by
+// accident. A year covers every question anyone has actually asked.
+const MaxAuthorRankingRange = 366 * 24 * time.Hour
+
+// HasPeriod reports whether this is a windowed ranking. One end is enough:
+// "desde o dia 1" is a real question and the lifetime table cannot answer it.
+func (in AuthorsInput) HasPeriod() bool {
+	return in.From != nil || in.To != nil
 }
 
 func (in *AuthorsInput) Normalize() {
 	in.WorkspaceID = strings.TrimSpace(in.WorkspaceID)
 	in.AccountID = strings.TrimSpace(in.AccountID)
+	in.AuthorExternalID = strings.TrimSpace(in.AuthorExternalID)
+	if in.Sort.Key == "" {
+		in.Sort = DefaultAuthorSort
+	}
 	in.Options.Pagination = shared.NormalizePagination(in.Options.Pagination)
 }
 
@@ -293,8 +353,19 @@ func (in AuthorsInput) Validate() error {
 	if in.ModerationState != "" && !in.ModerationState.Valid() {
 		return fmt.Errorf("%w: moderation state %q", ErrInvalidFilter, in.ModerationState)
 	}
+	if in.From != nil && in.To != nil {
+		if in.From.After(*in.To) {
+			return fmt.Errorf("%w: date range is inverted", ErrInvalidFilter)
+		}
+		if in.To.Sub(*in.From) > MaxAuthorRankingRange {
+			return fmt.Errorf("%w: date range exceeds %s", ErrInvalidFilter, MaxAuthorRankingRange)
+		}
+	}
 	if in.MinComments < 0 {
 		return fmt.Errorf("%w: min comments cannot be negative", ErrInvalidFilter)
+	}
+	if in.Sort.Key != "" && !in.Sort.Key.Valid() {
+		return fmt.Errorf("%w: sort key %q", ErrInvalidFilter, in.Sort.Key)
 	}
 	return nil
 }
@@ -351,6 +422,10 @@ type Settings struct {
 	Topics   TopicSet `json:"topics"`
 
 	ActionPolicy ActionPolicy `json:"actionPolicy"`
+	// ReplyPolicy is what this account may say back (§6). Off by default, and
+	// per account rather than per workspace: one brand voice may be safe to
+	// automate and the next one next door may not.
+	ReplyPolicy ReplyPolicy `json:"replyPolicy"`
 	// DailyCap is the per-day analysed-comment ceiling for this workspace's
 	// account. 0 means the default; the cap is never unlimited.
 	DailyCap int `json:"dailyCap"`
@@ -383,6 +458,7 @@ func (s *Settings) Normalize() {
 		s.Topics = s.Topics.Normalize()
 	}
 	s.ActionPolicy.Normalize()
+	s.ReplyPolicy.Normalize()
 	if s.DailyCap <= 0 {
 		s.DailyCap = DefaultDailyCap
 	}
