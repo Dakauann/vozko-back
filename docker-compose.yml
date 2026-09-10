@@ -249,6 +249,62 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # whisper.cpp on CPU, for audio transcription.
+  #
+  # The stt-vozko-* services below are the CUDA build and sit behind the "gpu"
+  # profile; this host has no GPU, so they have never started and audio has been
+  # stored without transcription. This service is the CPU equivalent.
+  #
+  # The tuning mirrors docker/ollama/entrypoint.sh, because whisper.cpp and
+  # ollama share llama.cpp's threading model and therefore its traps.
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile.stt.cpu
+    container_name: vozko-whisper
+    ports:
+      # Localhost only. WHISPER_URLS points here and nothing outside the box
+      # has any business reaching a transcription server.
+      - "127.0.0.1:${HOST_STT_PORT:-17071}:8080"
+    volumes:
+      - whisper_models:/models
+      - ./docker/whisper/entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      MODEL_NAME: ${WHISPER_MODEL_FILE:-ggml-small.bin}
+      # Equal to the cpuset width below. whisper.cpp reads the HOST cpu count,
+      # not the cgroup, so leaving this to its default starts 24 threads inside
+      # a 4-core cpuset and spends most of them stalling on each other.
+      THREADS: ${WHISPER_THREADS_CPU:-4}
+      PROCESSORS: 1
+      LANGUAGE: ${WHISPER_LANGUAGE:-pt}
+      PORT: 8080
+    # Four cores of node1, not a range and not the whole node.
+    #
+    # This box is dual-socket: node0 is 0-5,12-17 and node1 is 6-11,18-23.
+    # Ollama owns node0. A cpuset straddling both sockets makes half the threads
+    # read weights across the interconnect, which measured ~10x slower for
+    # ollama than no pinning at all. These four stay inside node1 and leave its
+    # other eight cores for Postgres and the API, which is what actually
+    # matters: Postgres saturating CPU is what took the platform down on
+    # 2026-09-08.
+    cpuset: "${WHISPER_CPUSET:-6-9}"
+    # Deprioritised below ollama (512) and far below the default (1024).
+    #
+    # A cpuset caps which cores it may use, not how hard it competes for them.
+    # Transcription is never more urgent than serving a request, so under
+    # contention the kernel should hand these cores to Postgres and the API
+    # first and let a transcription take longer.
+    cpu_shares: 256
+    mem_limit: 3g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Generous: the first boot downloads the model before the server binds.
+      start_period: 300s
+
   x-stt-common: &stt-common
     profiles: ["gpu"]
     build:
@@ -293,6 +349,8 @@ services:
     container_name: stt-vozko-3
 
 volumes:
+  whisper_models:
+    name: vozko_whisper_models
   rabbitmq_data:
     name: vozko_rabbitmq_data
   prometheus_data:

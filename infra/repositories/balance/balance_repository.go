@@ -467,7 +467,29 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		Net      int64
 	}
 	var rows []row
-	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+	// Hard ceiling, because this query took the platform down on 2026-09-08.
+	//
+	// It is six OR'd EXISTS branches over balance_transactions (3.4M rows, 3GB)
+	// and whatsapp_campaign_entries (3.4M rows, 5.8GB). Alone it plans well and
+	// runs in 2-4s. Concurrently it does not: shared_buffers is 2GB against
+	// ~9GB of table, so copies past the first fall to disk and slow each other
+	// down. Nine of them accumulated, each pinning a core at 100%, load hit
+	// 14, and every request that needed the database queued behind them —
+	// including /auth/login, which stopped answering entirely.
+	//
+	// The server has statement_timeout = 0, so nothing stopped them; the
+	// oldest had been running eleven minutes when it was cancelled by hand.
+	// A report that cannot finish in half a minute is a failed report, and a
+	// failed report is survivable. A query with no ceiling is not.
+	//
+	// LOCAL to this transaction: the pooled connection is handed back with the
+	// server default, so nothing else inherits a timeout it did not ask for.
+	if err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL statement_timeout = '30s'").Error; err != nil {
+			return err
+		}
+		return tx.Raw(sql, args...).Scan(&rows).Error
+	}); err != nil {
 		return nil, err
 	}
 

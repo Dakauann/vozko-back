@@ -44,6 +44,28 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 	tmpMsg := "tmp_att_msg_" + suffix
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
+		// JIT is a straight loss on this query and must be off before it runs.
+		//
+		// The scoped-entries body is a UNION across every channel, so its plan
+		// carries hundreds of expressions and its estimated cost clears
+		// jit_above_cost, jit_inline_above_cost and jit_optimize_above_cost
+		// (100k/500k/500k) — PostgreSQL therefore compiles it with inlining AND
+		// optimisation, the two expensive phases. Measured on the largest
+		// workspace over 90 days: 6.92s total, of which 5.15s was compilation
+		// (inline 0.33s, optimise 2.95s, emit 1.84s). The same query with JIT
+		// off ran in 2.42s.
+		//
+		// Nothing here is CPU-bound expression evaluation, which is the only
+		// shape JIT pays for; the work is index seeks and aggregation over rows
+		// already being fetched. So the compilation can never be recovered, and
+		// it is paid AGAIN on every run because each call inlines its own
+		// literals and cannot reuse a cached plan.
+		//
+		// LOCAL, not SET: the connection returns to the pool with JIT untouched
+		// for everything else.
+		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
+			return err
+		}
 		createSQL := "CREATE TEMP TABLE " + tmp + " ON COMMIT DROP AS " + selectBody
 		if err := tx.Exec(createSQL, args...).Error; err != nil {
 			return err

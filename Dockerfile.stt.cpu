@@ -1,0 +1,56 @@
+# whisper.cpp STT server, CPU only.
+#
+# Dockerfile.stt next to this one is the CUDA build: it requests an nvidia
+# device and lives behind the "gpu" compose profile. This host has no GPU (a
+# dual Xeon E5-2673 v3), which is why that stack has never started here and
+# audio has been arriving without transcription.
+#
+# The model is NOT baked into the image. It is fetched once into a named volume
+# by the entrypoint, so switching models is an env change and a restart rather
+# than a rebuild and a re-download of gigabytes.
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git build-essential cmake ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /whisper && \
+    cd /whisper && \
+    cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=ON \
+      -DBUILD_TESTING=OFF \
+      -DWHISPER_BUILD_EXAMPLES=ON && \
+    cmake --build build --target whisper-server --parallel $(nproc)
+
+FROM debian:bookworm-slim
+
+# ffmpeg is required, not optional: the server is started with --convert, which
+# is what lets it accept the ogg/opus WhatsApp sends instead of only WAV.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Binary and shared objects both land in build/bin. Copying only the binary
+# leaves it unable to start: "libwhisper.so.1: cannot open shared object file".
+COPY --from=builder /whisper/build/bin/whisper-server /usr/local/bin/
+COPY --from=builder /whisper/build/bin/lib*.so* /usr/local/lib/
+RUN ldconfig
+
+# The entrypoint is MOUNTED by compose, not copied: .dockerignore excludes
+# docker/ from the build context, which is why the ollama service mounts its own
+# the same way. It also means the script can be edited without a rebuild.
+ENV MODEL_NAME=ggml-small.bin \
+    MODEL_DIR=/models \
+    THREADS=4 \
+    PROCESSORS=1 \
+    HOST=0.0.0.0 \
+    PORT=8080 \
+    LANGUAGE=pt
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=180s \
+    CMD curl -sf http://localhost:${PORT}/ || exit 1
+
+ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]

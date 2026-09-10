@@ -396,6 +396,40 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	},
 }
 
+// DropRetiredResources removes entries naming a resource this build does not
+// know, and reports which ones it dropped.
+//
+// A saved role keeps whatever it was granted, and a resource can be retired
+// from the code long after roles referencing it were stored. Retiring SIP
+// telephony left 14 roles carrying `sip_trunks`, 7 carrying `usage` and one
+// carrying `affiliate`. The editor loads a role's stored permissions, the
+// operator toggles something unrelated, and the whole set is submitted back —
+// so validation rejected the request with "invalid resource" and the role
+// became permanently uneditable through the UI. The permission the operator
+// actually wanted to change was never the problem.
+//
+// Dropping is not a loosening of the check. An entry naming a resource that no
+// longer exists cannot grant anything: no handler asks for it, so nothing ever
+// consults it. Keeping it is meaningless and rejecting over it is destructive.
+// A resource that IS known but paired with a wrong action still fails, because
+// that names a real thing and getting it wrong is a real mistake.
+func DropRetiredResources(permissions []PermissionEntry) ([]PermissionEntry, []Resource) {
+	kept := make([]PermissionEntry, 0, len(permissions))
+	var dropped []Resource
+	seen := make(map[Resource]bool)
+	for _, p := range permissions {
+		if p.Resource.IsValid() {
+			kept = append(kept, p)
+			continue
+		}
+		if !seen[p.Resource] {
+			seen[p.Resource] = true
+			dropped = append(dropped, p.Resource)
+		}
+	}
+	return kept, dropped
+}
+
 func EnforceDependencies(permissions []PermissionEntry) []PermissionEntry {
 	permSet := make(map[string]bool, len(permissions))
 	for _, p := range permissions {

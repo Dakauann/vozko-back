@@ -2,6 +2,7 @@ package workspace_usecase
 
 import (
 	"github.com/google/uuid"
+	"log"
 
 	"vozko/domain/workspace"
 )
@@ -36,6 +37,15 @@ func (uc *setMemberPermissionsUseCase) Execute(actorID, workspaceID, memberUserI
 
 	if target.Role == workspace.RoleOwner || target.Role == workspace.RoleAdmin {
 		return nil, workspace.ErrCannotChangeOwnerRole
+	}
+
+	// Retired resources are dropped, not rejected: see
+	// workspace.DropRetiredResources. The editor resubmits whatever it loaded,
+	// so a role saved before a feature was removed would otherwise be stuck.
+	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
+		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
+			"set member permissions in workspace "+workspaceID, len(input.Permissions)-len(kept), dropped)
+		input.Permissions = kept
 	}
 
 	for _, pe := range input.Permissions {

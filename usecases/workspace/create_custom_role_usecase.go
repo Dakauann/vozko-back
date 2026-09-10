@@ -1,6 +1,7 @@
 package workspace_usecase
 
 import (
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -31,6 +32,15 @@ func (uc *createCustomRoleUseCase) Execute(actorID, workspaceID, callerRole stri
 		if !actor.Role.CanManageMembers() {
 			return nil, workspace.ErrInsufficientPermissions
 		}
+	}
+
+	// Retired resources are dropped, not rejected: see
+	// workspace.DropRetiredResources. The editor resubmits whatever it loaded,
+	// so a role saved before a feature was removed would otherwise be stuck.
+	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
+		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
+			"create role in workspace "+workspaceID, len(input.Permissions)-len(kept), dropped)
+		input.Permissions = kept
 	}
 
 	for _, pe := range input.Permissions {

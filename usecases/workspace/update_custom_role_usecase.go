@@ -1,6 +1,7 @@
 package workspace_usecase
 
 import (
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -49,6 +50,15 @@ func (uc *updateCustomRoleUseCase) Execute(actorID, workspaceID, callerRole, rol
 
 	permissionsChanged := false
 	if input.Permissions != nil {
+
+		// Retired resources are dropped, not rejected: see
+		// workspace.DropRetiredResources. Rejecting made every role that
+		// referenced a since-removed feature impossible to edit.
+		if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
+			log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
+				"update role "+roleID, len(input.Permissions)-len(kept), dropped)
+			input.Permissions = kept
+		}
 
 		for _, pe := range input.Permissions {
 			if !pe.Resource.IsValid() {

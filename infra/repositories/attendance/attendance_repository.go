@@ -16,6 +16,33 @@ func New(db *gorm.DB) attendance.Repository {
 	return &repository{db: db}
 }
 
+// analytics runs fn with PostgreSQL's JIT disabled.
+//
+// Every query in this file is the same shape: a wide join over assignments and
+// messages, aggregated. Their estimated cost clears jit_above_cost (100k) and,
+// on a long period, jit_inline_above_cost and jit_optimize_above_cost (500k)
+// as well — so the planner compiles them with inlining and optimisation, the
+// two expensive phases, on EVERY call. Each call inlines its own dates and
+// workspace id, so no cached plan can amortise it.
+//
+// That compilation buys nothing here. JIT pays off for CPU-bound expression
+// evaluation over many rows; this work is index seeks and aggregation over rows
+// that have to be fetched either way. Measured over a 90-day window: the
+// attendant-stats query went from 386ms to 216ms, and the overview's scoped
+// entries from 6.92s to 2.42s, purely from turning it off.
+//
+// A transaction only so SET LOCAL has a scope to be local to: it reverts on
+// commit, and the connection goes back to the pool with JIT untouched for
+// everything else.
+func (r *repository) analytics(fn func(tx *gorm.DB) error) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
 // campaignJoinForEntryColumn narrows attendant stats to one container.
 //
 // "Campaign" is the channel's container: a WhatsApp campaign, or the account row
@@ -98,7 +125,9 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 		AssignedCount int64
 	}
 	var memberStats []memberStatsRow
-	if err := r.db.Raw(assignedQuery, assignedArgs...).Scan(&memberStats).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(assignedQuery, assignedArgs...).Scan(&memberStats).Error
+	}); err != nil {
 		return nil, err
 	}
 
@@ -134,7 +163,9 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 		RespondedCount int64
 	}
 	var respondedRows []respondedRow
-	if err := r.db.Raw(respondedQuery, respondedArgs...).Scan(&respondedRows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(respondedQuery, respondedArgs...).Scan(&respondedRows).Error
+	}); err != nil {
 		return nil, err
 	}
 	respondedMap := make(map[string]int64, len(respondedRows))
@@ -183,7 +214,9 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 		AvgResponseSecs *float64
 	}
 	var avgRows []avgRow
-	if err := r.db.Raw(avgQuery, avgArgs...).Scan(&avgRows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(avgQuery, avgArgs...).Scan(&avgRows).Error
+	}); err != nil {
 		return nil, err
 	}
 	avgMap := make(map[string]float64, len(avgRows))
@@ -245,7 +278,9 @@ func (r *repository) GetWindowStats(workspaceID string, filter attendance.StatsF
 	args = append(args, workspaceID)
 
 	var rows []windowRow
-	if err := r.db.Raw(query, args...).Scan(&rows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(query, args...).Scan(&rows).Error
+	}); err != nil {
 		return nil, err
 	}
 
@@ -317,7 +352,9 @@ func (r *repository) GetResponseTimeDistribution(workspaceID string, filter atte
 		ResponseTimeSecs float64
 	}
 	var rows []row
-	if err := r.db.Raw(query, args...).Scan(&rows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(query, args...).Scan(&rows).Error
+	}); err != nil {
 		return nil, err
 	}
 
@@ -381,7 +418,9 @@ func (r *repository) GetFRTStats(workspaceID string, filter attendance.StatsFilt
 		FRTSecs   float64
 	}
 	var rows []row
-	if err := r.db.Raw(query, args...).Scan(&rows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(query, args...).Scan(&rows).Error
+	}); err != nil {
 		return nil, err
 	}
 	st := &attendance.FRTStats{}
@@ -455,7 +494,9 @@ func (r *repository) GetAIAgentStats(workspaceID string, filter attendance.Stats
 		AvgAIMessages float64
 	}
 	var rows []row
-	if err := r.db.Raw(query, args...).Scan(&rows).Error; err != nil {
+	if err := r.analytics(func(tx *gorm.DB) error {
+		return tx.Raw(query, args...).Scan(&rows).Error
+	}); err != nil {
 		return nil, err
 	}
 	out := make([]attendance.AIAgentStats, len(rows))

@@ -1,8 +1,12 @@
 package balance_repository
 
 import (
+	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"vozko/domain/balance"
 	"vozko/domain/cache"
@@ -108,12 +112,65 @@ func (r *CachedBalanceRepository) AggregateDailyCosts(date time.Time) ([]balance
 	return r.inner.AggregateDailyCosts(date)
 }
 
+// chargeFlight collapses concurrent identical charge aggregations into one.
+//
+// The aggregation is seconds of work over two multi-gigabyte tables, and this
+// method had no coalescing at all: every caller ran its own copy. On
+// 2026-09-08 nine of them accumulated, each holding a core at 100%, and the
+// database stopped answering anything else — login included.
+//
+// Identical calls asking the same question at the same moment can only produce
+// the same answer, so the second one waits for the first instead of paying for
+// it again. This is the narrow fix: it does not cache across time (a charge
+// report must stay live), it only stops the same report being computed N times
+// in parallel, which is exactly the shape that piled up.
+var chargeFlight singleflight.Group
+
+func chargeFlightKey(f balance.WhatsAppChargeFilter) string {
+	var b strings.Builder
+	b.WriteString(f.WorkspaceID)
+	b.WriteByte('|')
+	b.WriteString(f.CampaignType)
+	b.WriteByte('|')
+	if f.From != nil {
+		b.WriteString(f.From.UTC().Format(time.RFC3339))
+	}
+	b.WriteByte('|')
+	if f.To != nil {
+		b.WriteString(f.To.UTC().Format(time.RFC3339))
+	}
+	// Sorted, because the same set of departments in a different order is the
+	// same question and must share a flight.
+	depts := append([]string(nil), f.DepartmentIDs...)
+	sort.Strings(depts)
+	for _, d := range depts {
+		b.WriteByte('|')
+		b.WriteString(d)
+	}
+	return b.String()
+}
+
 func (r *CachedBalanceRepository) AggregateWhatsAppTemplateCharges(filter balance.WhatsAppChargeFilter) (*balance.WhatsAppChargeStats, error) {
 	agg, ok := r.inner.(balance.WhatsAppChargeAggregator)
 	if !ok {
 		return &balance.WhatsAppChargeStats{}, nil
 	}
-	return agg.AggregateWhatsAppTemplateCharges(filter)
+
+	v, err, _ := chargeFlight.Do(chargeFlightKey(filter), func() (interface{}, error) {
+		return agg.AggregateWhatsAppTemplateCharges(filter)
+	})
+	if err != nil {
+		return nil, err
+	}
+	stats, _ := v.(*balance.WhatsAppChargeStats)
+	if stats == nil {
+		return &balance.WhatsAppChargeStats{}, nil
+	}
+	// A copy per caller: the value is shared between everyone who joined the
+	// flight, and handing out the same pointer would let one caller's mutation
+	// be seen by the others.
+	out := *stats
+	return &out, nil
 }
 
 var _ balance.WhatsAppChargeAggregator = (*CachedBalanceRepository)(nil)
