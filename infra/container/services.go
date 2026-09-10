@@ -64,6 +64,7 @@ func (c *Container) initServices() {
 	callBillingExchange := "call_events_exchange"
 	recordingExchange := recordings_domain.Exchange
 	scheduledMessageExchange := "scheduled_message_exchange"
+	unofficialWhatsAppSeedExchange := "unofficial_whatsapp_seed_exchange"
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -84,6 +85,8 @@ func (c *Container) initServices() {
 		notificationQueueSub:       queue.NewRabbitMQQueueSub(amqpPool, notifications_exchange),
 		wcQueuePub:                 queue.NewRabbitMQQueuePub(amqpPool, whatsappCampaignExchange),
 		wcQueueSub:                 queue.NewRabbitMQQueueSub(amqpPool, whatsappCampaignExchange),
+		uwSeedQueuePub:             queue.NewRabbitMQQueuePub(amqpPool, unofficialWhatsAppSeedExchange),
+		uwSeedQueueSub:             queue.NewRabbitMQQueueSub(amqpPool, unofficialWhatsAppSeedExchange),
 		metrics:                    prometheusService,
 		cache:                      c.redisProvider.Cache(),
 		rateLimiterFactory:         c.redisProvider.RateLimiterFactory(),

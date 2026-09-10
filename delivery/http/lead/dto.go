@@ -126,6 +126,16 @@ type ImportLeadsRequest struct {
 	// OnExisting is "fill_empty" (default) or "skip". Never an overwrite:
 	// see lead.ExistingPolicy.
 	OnExisting string `json:"onExisting,omitempty" example:"fill_empty"`
+
+	// SeedInbox opens an empty unofficial WhatsApp conversation for every
+	// imported number, so the leads are answerable from the inbox without
+	// anyone having to message first.
+	//
+	// Opt-in, and false by default. It creates a conversation per row on the
+	// workspace's oldest connected number, which is a real change to what the
+	// inbox contains; a list imported only to be exported later should not get
+	// one. Seeding never sends anything.
+	SeedInbox bool `json:"seedInbox,omitempty"`
 }
 
 // ImportLeadRow is one line of the operator's file.
@@ -174,6 +184,20 @@ type ImportLeadsResponse struct {
 	// RejectedTruncated says the list above was cut, so the UI can say "+N"
 	// rather than implying it showed everything.
 	RejectedTruncated int `json:"rejectedTruncated,omitempty"`
+
+	// InboxSeedQueued is how many numbers were handed to the inbox seeding job,
+	// when the request asked for it.
+	//
+	// Queued, not seeded: the work runs in the background, so this is a promise
+	// about what was accepted and not a report of what now exists. The UI has to
+	// word it that way, or an operator refreshes the inbox, sees nothing yet and
+	// reads a lie.
+	InboxSeedQueued int `json:"inboxSeedQueued,omitempty"`
+	// InboxSeedError explains why seeding could not even be queued, when the
+	// leads themselves imported fine. A separate field rather than a failed
+	// response: the import succeeded, and telling the operator otherwise would
+	// have them run it again.
+	InboxSeedError string `json:"inboxSeedError,omitempty"`
 }
 
 // MaxReportedRejections bounds the rejection list in the response.

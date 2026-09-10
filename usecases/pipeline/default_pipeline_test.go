@@ -1,0 +1,282 @@
+package pipeline_usecase
+
+import (
+	"errors"
+	"testing"
+
+	"vozko/domain/pipeline"
+)
+
+// "Exactly one default funnel per workspace and object kind" is the invariant
+// nothing used to hold, and its absence cost five production workspaces their
+// stage filter: every funnel a user marked as default stayed default, the old
+// one was never demoted, and a default funnel cannot be deleted. Workspaces
+// ended up with four undeletable funnels, one of them renamed "NÃO USAR" and
+// still the one the CRM resolved.
+//
+// The tests below pin both halves: promoting demotes, and the last default
+// cannot be cleared.
+
+// defaultRepo records how the invariant was enforced. PromoteDefault is a
+// single repository call on purpose: demote-then-promote as two writes leaves
+// the workspace with zero defaults if the process dies between them.
+type defaultRepo struct {
+	pipeline.Repository
+
+	byID map[string]*pipeline.Pipeline
+
+	created  []*pipeline.Pipeline
+	updated  []*pipeline.Pipeline
+	promoted []promotion
+
+	promoteErr error
+	createErr  error
+}
+
+type promotion struct {
+	workspaceID string
+	objectType  string
+	pipelineID  string
+}
+
+func newDefaultRepo(ps ...*pipeline.Pipeline) *defaultRepo {
+	r := &defaultRepo{byID: map[string]*pipeline.Pipeline{}}
+	for _, p := range ps {
+		r.byID[p.ID] = p
+	}
+	return r
+}
+
+func (r *defaultRepo) GetByID(workspaceID, id string) (*pipeline.Pipeline, error) {
+	p, ok := r.byID[id]
+	if !ok {
+		return nil, pipeline.ErrNotFound
+	}
+	copied := *p
+	return &copied, nil
+}
+
+func (r *defaultRepo) Create(p *pipeline.Pipeline) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	copied := *p
+	r.byID[p.ID] = &copied
+	r.created = append(r.created, &copied)
+	return nil
+}
+
+func (r *defaultRepo) Update(p *pipeline.Pipeline) error {
+	copied := *p
+	r.byID[p.ID] = &copied
+	r.updated = append(r.updated, &copied)
+	return nil
+}
+
+func (r *defaultRepo) PromoteDefault(workspaceID, objectType, pipelineID string) error {
+	if r.promoteErr != nil {
+		return r.promoteErr
+	}
+	r.promoted = append(r.promoted, promotion{workspaceID, objectType, pipelineID})
+	for id, p := range r.byID {
+		if p.WorkspaceID != workspaceID || string(p.ObjectType) != objectType {
+			continue
+		}
+		p.IsDefault = id == pipelineID
+	}
+	return nil
+}
+
+func (r *defaultRepo) ListByWorkspace(workspaceID, objectType string) ([]*pipeline.Pipeline, error) {
+	var out []*pipeline.Pipeline
+	for _, p := range r.byID {
+		if p.WorkspaceID != workspaceID {
+			continue
+		}
+		if objectType != "" && string(p.ObjectType) != objectType {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (r *defaultRepo) defaults(objectType pipeline.ObjectType) []string {
+	var out []string
+	for id, p := range r.byID {
+		if p.IsDefault && p.ObjectType == objectType {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func convPipe(id string, isDefault bool) *pipeline.Pipeline {
+	return &pipeline.Pipeline{
+		ID: id, WorkspaceID: "ws", Name: id,
+		ObjectType: pipeline.ObjectConversation, IsDefault: isDefault,
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// The bug, in one test: marking a second funnel as default must leave exactly
+// one default behind, not two.
+func TestPromotingADefaultDemotesThePreviousOne(t *testing.T) {
+	repo := newDefaultRepo(convPipe("old", true), convPipe("new", false))
+	uc := NewUpdatePipelineUseCase(repo)
+
+	if _, err := uc.Execute("ws", "new", pipeline.UpdatePipelineInput{
+		IsDefault: boolPtr(true),
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	got := repo.defaults(pipeline.ObjectConversation)
+	if len(got) != 1 || got[0] != "new" {
+		t.Fatalf("defaults after promotion = %v, want exactly [new]", got)
+	}
+
+	// Enforced by ONE repository call, not by a read-modify-write per funnel.
+	// Two writes can be interrupted; this one cannot.
+	if len(repo.promoted) != 1 {
+		t.Fatalf("PromoteDefault called %d times, want 1", len(repo.promoted))
+	}
+	if repo.promoted[0].objectType != string(pipeline.ObjectConversation) {
+		t.Errorf("promotion scoped to object type %q", repo.promoted[0].objectType)
+	}
+}
+
+// The demotion is scoped to the object kind. A workspace legitimately has one
+// default conversation funnel AND one default sales funnel; promoting a
+// conversation funnel must not leave the opportunity board with none.
+func TestPromotingDoesNotDemoteTheOtherObjectKind(t *testing.T) {
+	sales := &pipeline.Pipeline{
+		ID: "sales", WorkspaceID: "ws", Name: "Vendas",
+		ObjectType: pipeline.ObjectOpportunity, IsDefault: true,
+	}
+	repo := newDefaultRepo(convPipe("old", true), convPipe("new", false), sales)
+	uc := NewUpdatePipelineUseCase(repo)
+
+	if _, err := uc.Execute("ws", "new", pipeline.UpdatePipelineInput{
+		IsDefault: boolPtr(true),
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if opp := repo.defaults(pipeline.ObjectOpportunity); len(opp) != 1 || opp[0] != "sales" {
+		t.Fatalf("opportunity defaults = %v, want [sales] untouched", opp)
+	}
+}
+
+// Clearing the last default is refused. Leaving a workspace with none is not a
+// neutral state: ensureDefaultConversationPipeline would mint a fresh funnel on
+// the next stage read, which is another undeletable funnel and the start of the
+// same mess.
+func TestClearingTheLastDefaultIsRefused(t *testing.T) {
+	repo := newDefaultRepo(convPipe("only", true), convPipe("other", false))
+	uc := NewUpdatePipelineUseCase(repo)
+
+	_, err := uc.Execute("ws", "only", pipeline.UpdatePipelineInput{
+		IsDefault: boolPtr(false),
+	})
+	if !errors.Is(err, pipeline.ErrDefaultRequired) {
+		t.Fatalf("err = %v, want ErrDefaultRequired", err)
+	}
+	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 {
+		t.Fatalf("defaults = %v, want the default left intact", got)
+	}
+}
+
+// Clearing the flag on a funnel that is NOT the default is a no-op rather than
+// an error: the caller asked for a state that already holds.
+func TestClearingTheFlagOnANonDefaultIsFine(t *testing.T) {
+	repo := newDefaultRepo(convPipe("theDefault", true), convPipe("other", false))
+	uc := NewUpdatePipelineUseCase(repo)
+
+	if _, err := uc.Execute("ws", "other", pipeline.UpdatePipelineInput{
+		IsDefault: boolPtr(false),
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 || got[0] != "theDefault" {
+		t.Fatalf("defaults = %v, want [theDefault]", got)
+	}
+}
+
+// An update that says nothing about the flag must not touch it, or every rename
+// would silently re-promote whatever it was called on.
+func TestRenamingDoesNotTouchTheDefaultFlag(t *testing.T) {
+	repo := newDefaultRepo(convPipe("a", true), convPipe("b", false))
+	uc := NewUpdatePipelineUseCase(repo)
+
+	newName := "renamed"
+	if _, err := uc.Execute("ws", "b", pipeline.UpdatePipelineInput{Name: &newName}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(repo.promoted) != 0 {
+		t.Fatalf("a rename promoted a default: %v", repo.promoted)
+	}
+	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 || got[0] != "a" {
+		t.Fatalf("defaults = %v, want [a]", got)
+	}
+}
+
+// Creating a funnel as default has to demote too. The create path passed the
+// flag straight through, so "create and make it the default" produced the same
+// duplicate-default state the update path did.
+func TestCreatingADefaultDemotesThePreviousOne(t *testing.T) {
+	repo := newDefaultRepo(convPipe("old", true))
+	uc := NewCreatePipelineUseCase(repo)
+
+	created, err := uc.Execute("ws", pipeline.CreatePipelineInput{
+		Name: "novo", ObjectType: string(pipeline.ObjectConversation), IsDefault: true,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if created == nil {
+		t.Fatal("no funnel returned")
+	}
+
+	got := repo.defaults(pipeline.ObjectConversation)
+	if len(got) != 1 || got[0] == "old" {
+		t.Fatalf("defaults after creating a default = %v, want only the new funnel", got)
+	}
+}
+
+// The ordinary creation, which is the overwhelming majority: a funnel that does
+// not ask to be default must not disturb the one that is.
+func TestCreatingANonDefaultLeavesTheDefaultAlone(t *testing.T) {
+	repo := newDefaultRepo(convPipe("old", true))
+	uc := NewCreatePipelineUseCase(repo)
+
+	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
+		Name: "novo", ObjectType: string(pipeline.ObjectConversation),
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(repo.promoted) != 0 {
+		t.Fatalf("a plain creation promoted a default: %v", repo.promoted)
+	}
+	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 || got[0] != "old" {
+		t.Fatalf("defaults = %v, want [old]", got)
+	}
+}
+
+// The very first funnel of a workspace asks to be default and there is nothing
+// to demote. It must still end up default rather than falling through the
+// promotion path unset.
+func TestFirstFunnelBecomesTheDefault(t *testing.T) {
+	repo := newDefaultRepo()
+	uc := NewCreatePipelineUseCase(repo)
+
+	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
+		Name: "primeiro", ObjectType: string(pipeline.ObjectConversation), IsDefault: true,
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 {
+		t.Fatalf("defaults = %v, want exactly one", got)
+	}
+}

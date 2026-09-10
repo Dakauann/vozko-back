@@ -51,6 +51,7 @@ func dataRepairs() []dataRepair {
 		{"cs_rename_dialer_resource_permissions", renameDialerResourcePermissions},
 		{"cs_rename_dialer_presence_source", renameDialerPresenceSource},
 		{"stg_materialize_stage_group_pipelines", materializeStageGroupPipelines},
+		{"pl_demote_duplicate_default_pipelines", demoteDuplicateDefaultPipelines},
 	}
 }
 
@@ -786,6 +787,63 @@ func materializeStageGroupPipelines(tx *gorm.DB) error {
 
 	if created > 0 {
 		log.Printf("[data-repair] stage-group funnels: materialized %d funnel(s) for groups that had none", created)
+	}
+	return nil
+}
+
+// demoteDuplicateDefaultPipelines leaves exactly one default funnel per
+// workspace and object kind.
+//
+// Nothing ever enforced that. UpdatePipelineUseCase set is_default and never
+// cleared it on the incumbent, so "tornar padrão" accumulated defaults, and
+// pipeline.ErrDeleteDefault then made every one of them undeletable. Five
+// production workspaces ended up with two to four default conversation funnels,
+// and because the stage repository resolves the OLDEST default, the CRM showed
+// stages from a funnel nobody used — in one workspace, one the operators had
+// renamed "NÃO USAR". 17% of all staged conversations were unreachable by the
+// inbox stage filter.
+//
+// The survivor is the funnel holding the most staged conversations, ties broken
+// by age then id. That is the funnel the workspace demonstrably works in, and
+// it is stable: the same input always elects the same winner, so re-running
+// this changes nothing.
+//
+// Demoting is not deleting. The other funnels keep their stages and their
+// conversations; they simply become removable, and the inbox filter reaches
+// them either way once it groups by funnel.
+//
+// Runs BEFORE ux_pipelines_default_per_object is created, which is the whole
+// reason it lives here: that index cannot be built while the duplicates exist.
+func demoteDuplicateDefaultPipelines(tx *gorm.DB) error {
+	res := tx.Exec(`
+		WITH scored AS (
+			SELECT p.id, p.workspace_id, p.object_type, p.created_at,
+			       (SELECT COUNT(*)
+			          FROM entry_stages es
+			          JOIN stages s ON s.id = es.stage_id
+			         WHERE s.pipeline_id = p.id
+			           AND es.deleted_at IS NULL) AS staged
+			FROM pipelines p
+			WHERE p.deleted_at IS NULL AND p.is_default = true
+		),
+		ranked AS (
+			SELECT id,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY workspace_id, object_type
+			           ORDER BY staged DESC, created_at ASC, id ASC
+			       ) AS rn
+			FROM scored
+		)
+		UPDATE pipelines
+		   SET is_default = false
+		 WHERE is_default = true
+		   AND id IN (SELECT id FROM ranked WHERE rn > 1)
+	`)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("[data-repair] demoted %d duplicate default funnel(s)", res.RowsAffected)
 	}
 	return nil
 }

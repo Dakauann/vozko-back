@@ -79,6 +79,21 @@ type AssignEntryStageInput struct {
 	EntryID   string `json:"entryId"`
 	EntryType string `json:"entryType"`
 	ActorID   string `json:"-"`
+
+	// AllowCrossPipeline permits landing on a stage of a DIFFERENT funnel.
+	//
+	// Off by default, and that default is the safety rule: a stage list that
+	// showed the wrong funnel used to let one click strand a lead on a board
+	// nobody looks at, which is what ErrStagePipelineMismatch exists to stop.
+	// Moving a conversation between funnels is a legitimate operator action, so
+	// it gets an explicit opt-in rather than a relaxed rule.
+	//
+	// Only the manual endpoint sets it, and only when the client asked for a
+	// funnel change outright. The CRM bulk action and the AI's
+	// manage_entry_stage tool leave it false, so neither can move a conversation
+	// off its funnel — an AI that could would silently reorganize a board no
+	// operator asked it to touch.
+	AllowCrossPipeline bool `json:"-"`
 }
 
 // RemoveEntryStageInput takes an entry off a stage. See AssignEntryStageInput

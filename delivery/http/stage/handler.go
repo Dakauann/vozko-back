@@ -26,6 +26,10 @@ type StageHandler struct {
 	getBatchEntryTagsUC stagedomain.GetBatchEntryStagesUseCase
 	reorderUseCase      stagedomain.ReorderStagesUseCase
 	broadcaster         conversation.EventBroadcaster
+
+	// funnelStages backs the inbox filter, which needs EVERY funnel rather than
+	// the single one listUseCase resolves. Optional: a nil lister answers 501.
+	funnelStages FunnelStagesLister
 }
 
 func NewStageHandler(
@@ -334,6 +338,10 @@ func (h *StageHandler) AssignEntryStage(w http.ResponseWriter, r *http.Request) 
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
 		ActorID:   claims.UserID,
+		// Only this endpoint can carry it, and only when the client asked. The
+		// bulk action and the AI tool build their own input and leave it false,
+		// so neither can move a conversation off its funnel.
+		AllowCrossPipeline: req.MoveToFunnel,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -505,4 +513,55 @@ func (h *StageHandler) handleDomainError(w http.ResponseWriter, err error) {
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
+}
+
+// FunnelStagesLister returns every conversation stage in a workspace, grouped
+// by the funnel it belongs to.
+//
+// A port declared at the edge rather than a domain use case interface, matching
+// how the handler already treats its optional collaborators: seeing the whole
+// workspace's funnels is a read the inbox filter needs and nothing else does.
+type FunnelStagesLister interface {
+	Execute(workspaceID string) ([]stagedomain.FunnelStages, error)
+}
+
+// SetFunnelStagesLister attaches the grouped listing. A handler without one
+// answers 501 rather than pretending the workspace has no funnels, which would
+// render an empty filter and look like a data problem.
+func (h *StageHandler) SetFunnelStagesLister(l FunnelStagesLister) {
+	h.funnelStages = l
+}
+
+// @Summary		Listar etapas agrupadas por funil
+// @Description	Retorna todas as etapas de conversa do workspace, agrupadas pelo funil a que pertencem. Diferente de GET /stages, que resolve um único funil (o da campanha ou o padrão do workspace), este endpoint enxerga todos os funis — é o que o filtro do atendimento usa para oferecer etapas de qualquer funil, e não apenas do funil resolvido.
+// @Tags			Etapas
+// @Produce		json
+// @Success		200	{array}		stage.FunnelStages
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		501	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/stages/by-funnel [get]
+func (h *StageHandler) ListByFunnel(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetClaims(r) == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+	if h.funnelStages == nil {
+		response.WriteError(w, http.StatusNotImplemented, "Grouped stage listing is not available on this deployment", nil)
+		return
+	}
+
+	wsID := middleware.GetWorkspaceID(r)
+	if strings.TrimSpace(wsID) == "" {
+		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+		return
+	}
+
+	groups, err := h.funnelStages.Execute(wsID)
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, groups)
 }

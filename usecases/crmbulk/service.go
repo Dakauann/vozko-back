@@ -169,6 +169,19 @@ type BulkInput struct {
 	// SelectedDepartmentID scopes the expansion exactly as the table's own read
 	// does, so bulk cannot reach a row the operator could not see.
 	SelectedDepartmentID string
+
+	// MoveToFunnel authorises ActionMoveStage to land on a stage of a DIFFERENT
+	// funnel, for every target in the request.
+	//
+	// Off by default, and this is the most consequential place that default
+	// matters: one click here reorganizes every selected conversation onto a
+	// board nobody was looking at, and there is no undo. The UI asks for an
+	// explicit confirmation naming the count before setting it.
+	//
+	// Forwarded to the stage use case unchanged. This service decides nothing
+	// about funnels itself — the rule lives in one place, and a second
+	// implementation here would be a second thing to keep in step.
+	MoveToFunnel bool
 }
 
 // BulkFailure records a single target that could not be updated.
@@ -352,6 +365,10 @@ func (s *Service) applyOne(_ context.Context, in BulkInput, t EntryRef) error {
 			EntryID:   t.EntryID,
 			EntryType: t.EntryType,
 			ActorID:   in.ActorID,
+			// Only ever what the request carried. Without it the stage use case
+			// refuses a cross-funnel landing, which is the behaviour every bulk
+			// move had before and still has unless the operator confirmed one.
+			AllowCrossPipeline: in.MoveToFunnel,
 		})
 		return err
 

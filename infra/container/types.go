@@ -321,18 +321,24 @@ type services struct {
 	notificationQueueSub  messaging.MessageQueueSub
 	wcQueuePub            messaging.MessageQueuePub
 	wcQueueSub            messaging.MessageQueueSub
-	cache                 cache.Cache
-	rateLimiterFactory    cache.RateLimiterFactory
-	clusterRegistry       *cluster.Registry
-	metrics               *prometheus_service.PrometheusService
-	ai                    ai.Service
-	whatsapp              conversation_domain.WhatsAppClient
-	password              auth.PasswordService
-	tokenService          *security.JWTTokenService
-	readMeTokenService    *security.JWTTokenService
-	fileStorage           media.FileStorage
-	ticketFileStorage     ticket.FileStorage
-	asaasService          asaas_service.AsaasServiceUseCases
+	// Inbox seeding gets its own exchange rather than riding the campaign one.
+	// A single lead import can enqueue two hundred batches, and that backlog has
+	// no business sharing a topology with the queue that actually sends
+	// messages to customers.
+	uwSeedQueuePub     messaging.MessageQueuePub
+	uwSeedQueueSub     messaging.MessageQueueSub
+	cache              cache.Cache
+	rateLimiterFactory cache.RateLimiterFactory
+	clusterRegistry    *cluster.Registry
+	metrics            *prometheus_service.PrometheusService
+	ai                 ai.Service
+	whatsapp           conversation_domain.WhatsAppClient
+	password           auth.PasswordService
+	tokenService       *security.JWTTokenService
+	readMeTokenService *security.JWTTokenService
+	fileStorage        media.FileStorage
+	ticketFileStorage  ticket.FileStorage
+	asaasService       asaas_service.AsaasServiceUseCases
 	// paymentGateway is the provider-agnostic port every charging use case depends on.
 	// Which adapter sits behind it is decided once, from cfg.PaymentProvider.
 	paymentGateway payment.Gateway

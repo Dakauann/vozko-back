@@ -213,8 +213,29 @@ func (f *fakeInstanceRepo) FindByProviderInstanceID(context.Context, string, str
 	return nil, uw.ErrInstanceNotFound
 }
 
-func (f *fakeInstanceRepo) ListByWorkspace(context.Context, uw.ListInstancesInput) (*shared.PaginatedResult[*uw.Instance], error) {
-	return nil, nil
+// ListByWorkspace filters by workspace and status, matching the real
+// repository's predicates.
+//
+// Deliberately returns the matches in an UNSTABLE order (map iteration). A
+// caller that needs a particular instance has to order the candidates itself,
+// which is the property TestSeedInboxPicksTheOldestConnectedInstance exists to
+// pin: the real listing is newest-first, so a fake that handed back a
+// convenient order would let "take the first row" pass here and change
+// behaviour in production the day a workspace connects a second number.
+func (f *fakeInstanceRepo) ListByWorkspace(_ context.Context, in uw.ListInstancesInput) (*shared.PaginatedResult[*uw.Instance], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var items []*uw.Instance
+	for _, instance := range f.instances {
+		if in.WorkspaceID != "" && instance.WorkspaceID != in.WorkspaceID {
+			continue
+		}
+		if in.Status != nil && instance.Status != *in.Status {
+			continue
+		}
+		items = append(items, instance)
+	}
+	return shared.NewPaginatedResult(items, in.Options.Pagination, int64(len(items))), nil
 }
 func (f *fakeInstanceRepo) ListByServer(context.Context, string) ([]*uw.Instance, error) {
 	return nil, nil

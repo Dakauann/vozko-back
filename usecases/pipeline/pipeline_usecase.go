@@ -81,6 +81,16 @@ func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.Crea
 		return nil, err
 	}
 
+	// Created as the default: demote whatever held the flag, in the same one
+	// call the update path uses. Passing IsDefault straight through is what let
+	// "create and make it default" leave two defaults behind, and a default
+	// funnel cannot be deleted, so the extra one was permanent.
+	if p.IsDefault {
+		if err := uc.repo.PromoteDefault(workspaceID, string(p.ObjectType), p.ID); err != nil {
+			return nil, err
+		}
+	}
+
 	// Seed only conversation funnels: the opportunity board has its own seeding
 	// path (EnsureDefaultOpportunityPipeline) and a different stage vocabulary.
 	if uc.seeder != nil && p.ObjectType == pipeline.ObjectConversation {
@@ -118,8 +128,21 @@ func (uc *UpdatePipelineUseCase) Execute(workspaceID, id string, input pipeline.
 	if input.Position != nil {
 		existing.Position = *input.Position
 	}
+
+	// The default flag is NOT written through the ordinary Update.
+	//
+	// It used to be, and that is the whole bug: setting it on a second funnel
+	// left the first one set too, so a workspace accumulated defaults, and a
+	// default funnel cannot be deleted. Promotion is a separate, atomic write
+	// that demotes the incumbent; demotion of the last default is refused.
+	promote := false
 	if input.IsDefault != nil {
-		existing.IsDefault = *input.IsDefault
+		switch {
+		case *input.IsDefault && !existing.IsDefault:
+			promote = true
+		case !*input.IsDefault && existing.IsDefault:
+			return nil, pipeline.ErrDefaultRequired
+		}
 	}
 
 	existing.Normalize()
@@ -128,6 +151,11 @@ func (uc *UpdatePipelineUseCase) Execute(workspaceID, id string, input pipeline.
 	}
 	if err := uc.repo.Update(existing); err != nil {
 		return nil, err
+	}
+	if promote {
+		if err := uc.repo.PromoteDefault(workspaceID, string(existing.ObjectType), existing.ID); err != nil {
+			return nil, err
+		}
 	}
 	return uc.repo.GetByID(workspaceID, id)
 }

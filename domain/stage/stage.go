@@ -129,3 +129,21 @@ type StageGroupItem struct {
 	Color        string `json:"color"`
 	Position     int    `json:"position"`
 }
+
+// FunnelStages is one funnel and the columns it holds.
+//
+// A read model for the inbox filter, which offers stages grouped by funnel: the
+// flat list it used to render could only ever come from ONE funnel, so in a
+// workspace with several, filtering by a stage returned nothing because the
+// conversations were staged in a funnel the filter never mentioned.
+//
+// PipelineID is empty on the trailing group that carries stages whose funnel is
+// missing. Those still filter and are still assigned, so they are listed rather
+// than dropped.
+type FunnelStages struct {
+	PipelineID   string   `json:"pipelineId"`
+	PipelineName string   `json:"pipelineName"`
+	IsDefault    bool     `json:"isDefault"`
+	Position     int      `json:"position"`
+	Stages       []*Stage `json:"stages"`
+}

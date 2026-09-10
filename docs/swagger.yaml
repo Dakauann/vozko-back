@@ -2917,6 +2917,12 @@ definitions:
           client sends back verbatim the filter it rendered the table with. Used only
           when targets is empty; the server re-runs it under the caller's own scope
           rather than trusting a client-supplied id list.
+      moveToFunnel:
+        description: |-
+          MoveToFunnel authorises a move_stage onto a stage of a DIFFERENT funnel,
+          for every target in this request. Without it the server refuses one, which
+          is what stops a mis-scoped selection from reorganising a whole board.
+        type: boolean
       targets:
         items:
           $ref: '#/definitions/crmbulk.BulkTargetRequest'
@@ -3826,6 +3832,17 @@ definitions:
         items:
           $ref: '#/definitions/lead.ImportLeadRow'
         type: array
+      seedInbox:
+        description: |-
+          SeedInbox opens an empty unofficial WhatsApp conversation for every
+          imported number, so the leads are answerable from the inbox without
+          anyone having to message first.
+
+          Opt-in, and false by default. It creates a conversation per row on the
+          workspace's oldest connected number, which is a real change to what the
+          inbox contains; a list imported only to be exported later should not get
+          one. Seeding never sends anything.
+        type: boolean
     type: object
   lead.ImportLeadsResponse:
     properties:
@@ -3840,6 +3857,23 @@ definitions:
       duplicate:
         description: 'Duplicate: rows repeating a number that appeared earlier in
           the SAME file.'
+        type: integer
+      inboxSeedError:
+        description: |-
+          InboxSeedError explains why seeding could not even be queued, when the
+          leads themselves imported fine. A separate field rather than a failed
+          response: the import succeeded, and telling the operator otherwise would
+          have them run it again.
+        type: string
+      inboxSeedQueued:
+        description: |-
+          InboxSeedQueued is how many numbers were handed to the inbox seeding job,
+          when the request asked for it.
+
+          Queued, not seeded: the work runs in the background, so this is a promise
+          about what was accepted and not a report of what now exists. The UI has to
+          word it that way, or an operator refreshes the inbox, sees nothing yet and
+          reads a lie.
         type: integer
       invalid:
         description: 'Invalid: rows whose number is not a reachable phone number.'
@@ -4489,6 +4523,16 @@ definitions:
     type: object
   pipeline.CreatePipelineRequest:
     properties:
+      copyStagesFromPipelineId:
+        description: |-
+          CopyStagesFromPipelineID duplicates another funnel's columns. Ignored when
+          Stages is present.
+
+          It was missing from this struct until now, which is why every funnel came
+          out with the product defaults no matter which source the client named: the
+          field decoded into nothing and the use case saw an empty string.
+        example: pipe_a1b2c3
+        type: string
       departmentId:
         example: dep_a1b2c3
         type: string
@@ -4504,6 +4548,13 @@ definitions:
       position:
         example: 0
         type: integer
+      stages:
+        description: |-
+          Stages are the columns the operator drew, in board order. The first is
+          where arriving conversations land.
+        items:
+          $ref: '#/definitions/pipeline.StageSeedRequest'
+        type: array
     type: object
   pipeline.PipelineResponse:
     properties:
@@ -4536,6 +4587,18 @@ definitions:
         example: ws_a1b2c3
         type: string
     type: object
+  pipeline.StageSeedRequest:
+    properties:
+      color:
+        example: '#3B82F6'
+        type: string
+      description:
+        example: Primeiro contato, ainda sem resposta
+        type: string
+      name:
+        example: Triagem
+        type: string
+    type: object
   pipeline.UpdatePipelineRequest:
     properties:
       departmentId:
@@ -4549,6 +4612,23 @@ definitions:
         type: string
       position:
         example: 1
+        type: integer
+    type: object
+  pipeline.Usage:
+    properties:
+      campaigns:
+        description: Campaigns counts WhatsApp campaigns, official and unofficial,
+          routing here.
+        type: integer
+      channels:
+        description: Channels counts connected accounts and numbers routing here.
+        type: integer
+      entries:
+        description: Entries counts conversations currently sitting on this funnel's
+          stages.
+        type: integer
+      opportunities:
+        description: Opportunities counts deals on this funnel (sales funnels only).
         type: integer
     type: object
   queue_event.Stats:
@@ -5044,6 +5124,15 @@ definitions:
       entryType:
         example: whatsapp
         type: string
+      moveToFunnel:
+        description: |-
+          MoveToFunnel authorises landing on a stage of a DIFFERENT funnel.
+
+          Without it a cross-funnel move is refused, which is what stops a stage
+          list showing the wrong funnel from stranding a lead on a board nobody
+          looks at. The UI sets it only after the operator has deliberately picked a
+          target funnel, so an ordinary move between columns keeps the guard.
+        type: boolean
     type: object
   stage.CreateTagRequest:
     properties:
@@ -5085,6 +5174,21 @@ definitions:
         type: string
       workspaceId:
         type: string
+    type: object
+  stage.FunnelStages:
+    properties:
+      isDefault:
+        type: boolean
+      pipelineId:
+        type: string
+      pipelineName:
+        type: string
+      position:
+        type: integer
+      stages:
+        items:
+          $ref: '#/definitions/stage.Stage'
+        type: array
     type: object
   stage.MessageResponse:
     properties:
@@ -12875,6 +12979,37 @@ paths:
       summary: Atualizar um funil
       tags:
       - Funis
+  /pipelines/{id}/usage:
+    get:
+      description: Retorna quantas conversas, campanhas, canais e oportunidades ainda
+        apontam para o funil, para que a exclusão seja confirmada com os números à
+        vista.
+      parameters:
+      - description: Identificador do funil
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pipeline.Usage'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar o que um funil contém
+      tags:
+      - Funis
   /pricing/exchange-rate:
     get:
       description: Retorna a cotação atual do dólar (USD) para o real (BRL) utilizada
@@ -13782,6 +13917,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Atualizar etapa
+      tags:
+      - Etapas
+  /stages/by-funnel:
+    get:
+      description: Retorna todas as etapas de conversa do workspace, agrupadas pelo
+        funil a que pertencem. Diferente de GET /stages, que resolve um único funil
+        (o da campanha ou o padrão do workspace), este endpoint enxerga todos os funis
+        — é o que o filtro do atendimento usa para oferecer etapas de qualquer funil,
+        e não apenas do funil resolvido.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/stage.FunnelStages'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar etapas agrupadas por funil
       tags:
       - Etapas
   /stages/entries:

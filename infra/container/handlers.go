@@ -257,7 +257,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getWCCampaignsSummary,
 		),
 		analysis: analysishttp.NewAnalysisHandler(c.useCases.listAnalysis, c.useCases.getAnalysisStats, c.useCases.getEntryAnalysis),
-		lead: leadhttp.NewLeadHandler(
+		lead: withLeadInboxSeeding(c, leadhttp.NewLeadHandler(
 			c.repositories.lead,
 			c.repositories.wcEntry,
 			c.repositories.conversation,
@@ -265,7 +265,7 @@ func (c *Container) initHandlers() {
 			c.repositories.analysis,
 			c.repositories.businessPhone,
 			c.services.businessPhoneMetaAPI,
-		),
+		)),
 		callRecording: callrecordinghttp.NewCallRecordingHandler(c.useCases.callRecordingQuery),
 		whatsappBusinessPhone: whatsappbusinessphonehttp.NewWhatsAppBusinessPhoneHandler(
 			whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandlerConfig{
@@ -347,7 +347,7 @@ func (c *Container) initHandlers() {
 			log.Default(),
 		),
 		callSessionWS: buildCallSessionWSHandler(c),
-		stage: stagehttp.NewStageHandler(
+		stage: withFunnelStages(c, stagehttp.NewStageHandler(
 			c.useCases.createStage,
 			c.useCases.updateStage,
 			c.useCases.deleteStage,
@@ -359,7 +359,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getBatchEntryStages,
 			c.useCases.reorderStages,
 			c.services.conversationHub,
-		),
+		)),
 		stageGroup: handlers.NewStageGroupHandler(
 			c.useCases.createStageGroup,
 			c.useCases.updateStageGroup,
@@ -840,4 +840,23 @@ func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHan
 		c.cfg.MercadoPagoWebhookSecret,
 		mercadopagohttp.WithSignatureTolerance(c.cfg.MercadoPagoSignatureTolerance),
 	)
+}
+
+// withLeadInboxSeeding attaches the unofficial WhatsApp seeding job to the lead
+// handler, when that channel is switched on.
+//
+// A function rather than an eighth positional argument to NewLeadHandler,
+// because seeding is genuinely optional: a deployment without the channel still
+// imports leads, it just reports nothing seeded. Going through the bundle also
+// keeps the lead handler from reaching into another channel's wiring to find
+// its publisher.
+func withLeadInboxSeeding(c *Container, h *leadhttp.LeadHandler) *leadhttp.LeadHandler {
+	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
+		return h
+	}
+	if c.unofficialWhatsApp.SeedInboxPublisher == nil {
+		return h
+	}
+	h.SetInboxSeeder(c.unofficialWhatsApp.SeedInboxPublisher)
+	return h
 }

@@ -74,6 +74,15 @@ var (
 	// deleted, or organizes a different object kind (moving a conversation onto a
 	// sales stage is not a move, it is corruption).
 	ErrDeleteDestinationInvalid = errors.New("pipeline: destination must be a different funnel of the same kind")
+
+	// ErrDefaultRequired refuses to clear the flag on the last default funnel.
+	//
+	// A workspace with no default is not a neutral state: the stage repository
+	// self-heals by MINTING one on the next stage read, which is another funnel
+	// nobody asked for and, being default, another one that cannot be deleted.
+	// Promoting a different funnel is the way to change the default; there is
+	// deliberately no way to have none.
+	ErrDefaultRequired = errors.New("pipeline: a workspace needs one default funnel; promote another instead")
 )
 
 // Usage is what still points at a funnel, counted per binding.

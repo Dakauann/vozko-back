@@ -9474,6 +9474,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/pipelines/{id}/usage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna quantas conversas, campanhas, canais e oportunidades ainda apontam para o funil, para que a exclusão seja confirmada com os números à vista.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Funis"
+                ],
+                "summary": "Consultar o que um funil contém",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Identificador do funil",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pipeline.Usage"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/pricing/exchange-rate": {
             "get": {
                 "security": [
@@ -10726,6 +10772,52 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/stages/by-funnel": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna todas as etapas de conversa do workspace, agrupadas pelo funil a que pertencem. Diferente de GET /stages, que resolve um único funil (o da campanha ou o padrão do workspace), este endpoint enxerga todos os funis — é o que o filtro do atendimento usa para oferecer etapas de qualquer funil, e não apenas do funil resolvido.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Etapas"
+                ],
+                "summary": "Listar etapas agrupadas por funil",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/stage.FunnelStages"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "501": {
+                        "description": "Not Implemented",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -20349,6 +20441,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "moveToFunnel": {
+                    "description": "MoveToFunnel authorises a move_stage onto a stage of a DIFFERENT funnel,\nfor every target in this request. Without it the server refuses one, which\nis what stops a mis-scoped selection from reorganising a whole board.",
+                    "type": "boolean"
+                },
                 "targets": {
                     "type": "array",
                     "items": {
@@ -21594,6 +21690,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/lead.ImportLeadRow"
                     }
+                },
+                "seedInbox": {
+                    "description": "SeedInbox opens an empty unofficial WhatsApp conversation for every\nimported number, so the leads are answerable from the inbox without\nanyone having to message first.\n\nOpt-in, and false by default. It creates a conversation per row on the\nworkspace's oldest connected number, which is a real change to what the\ninbox contains; a list imported only to be exported later should not get\none. Seeding never sends anything.",
+                    "type": "boolean"
                 }
             }
         },
@@ -21610,6 +21710,14 @@ const docTemplate = `{
                 },
                 "duplicate": {
                     "description": "Duplicate: rows repeating a number that appeared earlier in the SAME file.",
+                    "type": "integer"
+                },
+                "inboxSeedError": {
+                    "description": "InboxSeedError explains why seeding could not even be queued, when the\nleads themselves imported fine. A separate field rather than a failed\nresponse: the import succeeded, and telling the operator otherwise would\nhave them run it again.",
+                    "type": "string"
+                },
+                "inboxSeedQueued": {
+                    "description": "InboxSeedQueued is how many numbers were handed to the inbox seeding job,\nwhen the request asked for it.\n\nQueued, not seeded: the work runs in the background, so this is a promise\nabout what was accepted and not a report of what now exists. The UI has to\nword it that way, or an operator refreshes the inbox, sees nothing yet and\nreads a lie.",
                     "type": "integer"
                 },
                 "invalid": {
@@ -22513,6 +22621,11 @@ const docTemplate = `{
         "pipeline.CreatePipelineRequest": {
             "type": "object",
             "properties": {
+                "copyStagesFromPipelineId": {
+                    "description": "CopyStagesFromPipelineID duplicates another funnel's columns. Ignored when\nStages is present.\n\nIt was missing from this struct until now, which is why every funnel came\nout with the product defaults no matter which source the client named: the\nfield decoded into nothing and the use case saw an empty string.",
+                    "type": "string",
+                    "example": "pipe_a1b2c3"
+                },
                 "departmentId": {
                     "type": "string",
                     "example": "dep_a1b2c3"
@@ -22532,6 +22645,13 @@ const docTemplate = `{
                 "position": {
                     "type": "integer",
                     "example": 0
+                },
+                "stages": {
+                    "description": "Stages are the columns the operator drew, in board order. The first is\nwhere arriving conversations land.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pipeline.StageSeedRequest"
+                    }
                 }
             }
         },
@@ -22578,6 +22698,23 @@ const docTemplate = `{
                 }
             }
         },
+        "pipeline.StageSeedRequest": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string",
+                    "example": "#3B82F6"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Primeiro contato, ainda sem resposta"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Triagem"
+                }
+            }
+        },
         "pipeline.UpdatePipelineRequest": {
             "type": "object",
             "properties": {
@@ -22596,6 +22733,27 @@ const docTemplate = `{
                 "position": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "pipeline.Usage": {
+            "type": "object",
+            "properties": {
+                "campaigns": {
+                    "description": "Campaigns counts WhatsApp campaigns, official and unofficial, routing here.",
+                    "type": "integer"
+                },
+                "channels": {
+                    "description": "Channels counts connected accounts and numbers routing here.",
+                    "type": "integer"
+                },
+                "entries": {
+                    "description": "Entries counts conversations currently sitting on this funnel's stages.",
+                    "type": "integer"
+                },
+                "opportunities": {
+                    "description": "Opportunities counts deals on this funnel (sales funnels only).",
+                    "type": "integer"
                 }
             }
         },
@@ -23302,6 +23460,10 @@ const docTemplate = `{
                 "entryType": {
                     "type": "string",
                     "example": "whatsapp"
+                },
+                "moveToFunnel": {
+                    "description": "MoveToFunnel authorises landing on a stage of a DIFFERENT funnel.\n\nWithout it a cross-funnel move is refused, which is what stops a stage\nlist showing the wrong funnel from stranding a lead on a board nobody\nlooks at. The UI sets it only after the operator has deliberately picked a\ntarget funnel, so an ordinary move between columns keeps the guard.",
+                    "type": "boolean"
                 }
             }
         },
@@ -23359,6 +23521,29 @@ const docTemplate = `{
                 },
                 "workspaceId": {
                     "type": "string"
+                }
+            }
+        },
+        "stage.FunnelStages": {
+            "type": "object",
+            "properties": {
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "pipelineName": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "stages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/stage.Stage"
+                    }
                 }
             }
         },

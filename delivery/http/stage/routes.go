@@ -15,6 +15,9 @@ func RegisterRoutes(
 ) {
 	tg := workspace_domain.ResourceStages
 	protected.HandleFunc("/stages", ac(tg, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
+	// Registered before "/stages/{id}" so the literal path is not swallowed by
+	// the id route, the same ordering /pipelines/{id}/usage relies on.
+	protected.HandleFunc("/stages/by-funnel", ac(tg, workspace_domain.ActionRead, h.ListByFunnel)).Methods(http.MethodGet)
 	protected.HandleFunc("/stages", ac(tg, workspace_domain.ActionCreate, h.Create)).Methods(http.MethodPost)
 
 	protected.HandleFunc("/stages/initial", ac(tg, workspace_domain.ActionUpdate, h.SetInitialStage)).Methods(http.MethodPut)

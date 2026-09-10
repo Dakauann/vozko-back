@@ -61,6 +61,12 @@ type unofficialWhatsAppBundle struct {
 	ReconcileCapacity  *uwuc.ReconcileServerCapacityUseCase
 	ProvisionInstances *uwuc.ProvisionInstanceUseCase
 	PurgeEvents        *uwuc.PurgeProcessedEventsUseCase
+
+	// SeedInboxPublisher is what a lead import calls to open conversations for
+	// the numbers it just imported. Held on the bundle because the lead handler
+	// must not reach into this channel's internals to find it.
+	SeedInboxPublisher *uwuc.SeedInboxPublisher
+	ConsumeSeedInbox   *uwuc.ConsumeSeedInboxUseCase
 }
 
 // initUnofficialWhatsApp builds the channel.
@@ -263,6 +269,27 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 				c.unofficialWhatsAppCampaigns.Campaigns))
 	}
 
+	// Inbox seeding, so a lead import can open an empty conversation per number.
+	//
+	// Wired here rather than beside the campaign consumer because it reuses the
+	// SAME contact, lead and conversation resolution the dispatcher above does:
+	// a second path from a number to a conversation would duplicate every
+	// contact it touched the moment that person replied.
+	bundle.SeedInboxPublisher = uwuc.NewSeedInboxPublisher(c.services.uwSeedQueuePub)
+	bundle.ConsumeSeedInbox = uwuc.NewConsumeSeedInboxUseCase(
+		c.services.uwSeedQueueSub,
+		uwuc.NewSeedInboxUseCase(
+			bundle.Instances,
+			bundle.Contacts,
+			bundle.Conversations,
+			uwrepo.NewLeadLinker(c.repositories.lead),
+			c.repositories.conversation,
+		),
+	)
+	if err := bundle.ConsumeSeedInbox.Start(); err != nil {
+		log.Printf("[unofficial-whatsapp] inbox seed consumer failed to start: %v", err)
+	}
+
 	// Every optional capability, named at boot.
 	//
 	// All of these are guarded with `!= nil` at the call site, so a missing one
@@ -284,6 +311,10 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		// customer.
 		"avatars": c.services.fileStorage != nil && bundle.Assets != nil,
 		"groups":  bundle.Groups != nil && bundle.GroupAPI != nil,
+		// Named because its absence is invisible from the import side: the
+		// import succeeds, reports zero queued, and the operator is left
+		// wondering why their inbox did not fill.
+		"inbox-seeding": c.services.uwSeedQueuePub != nil && c.services.uwSeedQueueSub != nil,
 		// Named because its absence does not degrade — it OPENS. An unwired
 		// entitlement reader means provisioning is not gated at all, and slots on
 		// hosts we pay for get handed out with nothing recording that they were

@@ -179,6 +179,22 @@ func (uc *AssignEntryStageUseCase) checkPipelineCoherence(
 		return nil
 	}
 
+	// A move the caller asked for outright. The rule catches ACCIDENTAL crossings
+	// from a mis-scoped stage list; it was never meant to stop an operator who
+	// deliberately picked another funnel and a stage inside it. Logged either
+	// way, because "which funnel is this lead on" is exactly the question the
+	// timeline gets asked later.
+	if input.AllowCrossPipeline {
+		log.Printf(
+			"[stage-coherence] entry %s (%s) moved across funnels on purpose: stage %q pipeline %s -> stage %q pipeline %s (workspace %s)",
+			input.EntryID, input.EntryType,
+			currentStage.Name, currentStage.PipelineID,
+			target.Name, target.PipelineID,
+			workspaceID,
+		)
+		return nil
+	}
+
 	if enforcePipelineCoherence {
 		return stage.ErrStagePipelineMismatch
 	}

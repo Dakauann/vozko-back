@@ -595,6 +595,21 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON short_links (code)
 				WHERE deleted_at IS NULL`,
 		},
+		// One default funnel per workspace and object kind.
+		//
+		// The application now enforces this in PromoteDefault, but the
+		// application enforced nothing for months and five workspaces ended up
+		// with two to four default funnels each, none of them deletable. This is
+		// the constraint that makes the recurrence impossible rather than
+		// unlikely. It builds only after
+		// pl_demote_duplicate_default_pipelines has run, which is why repairs
+		// come before constraints in RunMigrations.
+		{
+			name: "ux_pipelines_default_per_object",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_pipelines_default_per_object
+				ON pipelines (workspace_id, object_type)
+				WHERE is_default AND deleted_at IS NULL`,
+		},
 		{
 			name: "idx_workspace_subscriptions_current",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_subscriptions_current

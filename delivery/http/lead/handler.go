@@ -17,6 +17,7 @@ import (
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/lead_message_window"
 	"vozko/domain/shared"
+	"vozko/domain/unofficial_whatsapp"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	wc_entry "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/http/middleware"
@@ -30,6 +31,28 @@ type LeadHandler struct {
 	analysisRepo analysis.Repository
 	phoneRepo    businessphone.Repository
 	metaAPI      businessphone.MetaAPIService
+
+	// inboxSeeder queues the unofficial WhatsApp conversations an import can
+	// open for the leads it created. Optional, and nil in a deployment without
+	// that channel: an import must still work when nothing can seed.
+	inboxSeeder InboxSeeder
+}
+
+// InboxSeeder hands an import's numbers to the background job that opens their
+// conversations.
+//
+// Declared here rather than imported so the lead handler does not depend on a
+// channel package. Seeding is the unofficial WhatsApp channel's concern; from
+// the import's side it is one collaborator that accepts numbers and answers how
+// many it took.
+type InboxSeeder interface {
+	Publish(in unofficial_whatsapp.SeedRequest) (int, error)
+}
+
+// SetInboxSeeder attaches the seeding job. A handler without one simply reports
+// nothing seeded.
+func (h *LeadHandler) SetInboxSeeder(seeder InboxSeeder) {
+	h.inboxSeeder = seeder
 }
 
 func NewLeadHandler(
@@ -946,5 +969,46 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Seeding runs AFTER the leads exist and never gates the response.
+	//
+	// The leads are already committed at this point, so a seeding failure is
+	// reported alongside a successful import rather than as a failed one: an
+	// operator told the import failed runs it again, and the second run finds
+	// every number matched and creates nothing, which looks like the CRM lost
+	// their file.
+	if req.SeedInbox {
+		out.InboxSeedQueued, out.InboxSeedError = h.queueInboxSeed(workspaceID, prepared.Inputs)
+	}
+
 	response.WriteSuccess(w, http.StatusOK, out)
+}
+
+// queueInboxSeed hands the imported numbers to the seeding job.
+//
+// Every input goes, matched leads included, not only the newly created ones.
+// A number the workspace already knew is exactly the case where a lead exists
+// on the leads page with no way to reach it from the inbox, and seeding is
+// idempotent: a conversation that already carries messages is left alone.
+func (h *LeadHandler) queueInboxSeed(workspaceID string, inputs []leaddomain.BulkLeadInput) (int, string) {
+	if h.inboxSeeder == nil {
+		return 0, "Inbox seeding is not available on this deployment"
+	}
+
+	targets := make([]unofficial_whatsapp.SeedTarget, 0, len(inputs))
+	for _, input := range inputs {
+		targets = append(targets, unofficial_whatsapp.SeedTarget{
+			Number: input.Number,
+			Name:   input.Name,
+		})
+	}
+
+	queued, err := h.inboxSeeder.Publish(unofficial_whatsapp.SeedRequest{
+		WorkspaceID: workspaceID,
+		Targets:     targets,
+	})
+	if err != nil {
+		log.Printf("[leads] inbox seeding failed to queue for workspace %s: %v", workspaceID, err)
+		return queued, "The leads were imported, but their conversations could not be queued"
+	}
+	return queued, ""
 }
