@@ -222,6 +222,20 @@ type ListInput struct {
 	AccountID   string
 	ContainerID string
 
+	// SubjectKinds narrows to comments, conversations, or both. Empty means
+	// every kind, so this stays an honest general-purpose filter; it is the
+	// DELIVERY layer that pins the comment surface to comments, which keeps
+	// "what this screen shows" a decision of the screen rather than a default
+	// buried in the domain.
+	SubjectKinds []SubjectKind
+
+	// Conversation-only filters. Ignored for comment rows, which carry none of
+	// these labels.
+	Interest      Interest
+	Disposition   Disposition
+	Qualification Qualification
+	NextAction    NextAction
+
 	From *time.Time
 	To   *time.Time
 
@@ -267,6 +281,23 @@ func (in ListInput) Validate() error {
 	}
 	if in.Intent != "" && !in.Intent.Valid() {
 		return fmt.Errorf("%w: intent %q", ErrInvalidFilter, in.Intent)
+	}
+	for _, k := range in.SubjectKinds {
+		if !k.Valid() {
+			return fmt.Errorf("%w: subject kind %q", ErrInvalidFilter, k)
+		}
+	}
+	if in.Interest != "" && !in.Interest.Valid() {
+		return fmt.Errorf("%w: interest %q", ErrInvalidFilter, in.Interest)
+	}
+	if in.Disposition != "" && !in.Disposition.Valid() {
+		return fmt.Errorf("%w: disposition %q", ErrInvalidFilter, in.Disposition)
+	}
+	if in.Qualification != "" && !in.Qualification.Valid() {
+		return fmt.Errorf("%w: qualification %q", ErrInvalidFilter, in.Qualification)
+	}
+	if in.NextAction != "" && !in.NextAction.Valid() {
+		return fmt.Errorf("%w: next action %q", ErrInvalidFilter, in.NextAction)
 	}
 	for _, v := range []*int{in.SeverityMin, in.SeverityMax} {
 		if v != nil && (*v < 0 || *v > 100) {

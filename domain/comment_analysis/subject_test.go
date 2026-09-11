@@ -299,3 +299,40 @@ func TestContainerRefEqualIgnoresTheImplicitKind(t *testing.T) {
 		t.Error("a row's container must equal the literal ref it was built from")
 	}
 }
+
+// The new filters are validated like every other one: a bad value from a query
+// string is refused rather than silently matching nothing.
+func TestListInputValidatesTheConversationFilters(t *testing.T) {
+	base := func() ListInput {
+		return ListInput{WorkspaceID: "ws"}
+	}
+
+	ok := base()
+	ok.SubjectKinds = []SubjectKind{SubjectKindComment, SubjectKindConversation}
+	ok.Interest = InterestInterested
+	ok.Disposition = DispositionSale
+	ok.Qualification = QualificationHotLead
+	ok.NextAction = NextActionEscalate
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid conversation filters rejected: %v", err)
+	}
+
+	// Empty means every kind; it must not be mistaken for a bad value.
+	if err := base().Validate(); err != nil {
+		t.Fatalf("an empty filter set should be valid: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*ListInput){
+		"subject kind":  func(in *ListInput) { in.SubjectKinds = []SubjectKind{"post"} },
+		"interest":      func(in *ListInput) { in.Interest = "maybe" },
+		"disposition":   func(in *ListInput) { in.Disposition = "sold" },
+		"qualification": func(in *ListInput) { in.Qualification = "hot" },
+		"next action":   func(in *ListInput) { in.NextAction = "call" },
+	} {
+		in := base()
+		mutate(&in)
+		if err := in.Validate(); err == nil {
+			t.Errorf("%s: expected rejection", name)
+		}
+	}
+}

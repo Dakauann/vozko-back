@@ -420,3 +420,25 @@ func TestAlertOptionsMirrorsTheDomain(t *testing.T) {
 		t.Fatalf("template params = %d", body.Limits.TemplateParamCount)
 	}
 }
+
+// The comment endpoints must keep showing comments and nothing else.
+//
+// Conversations now live in the same table as comments. Without an explicit
+// kind filter every screen on this surface would quietly start listing
+// conversations among the comments, which is the kind of regression that looks
+// like a data bug rather than a missing WHERE clause.
+func TestListInputPinsTheCommentSurfaceToComments(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/comment-analysis?accountId=acc-1", nil)
+	in := listInput(req)
+
+	if len(in.SubjectKinds) != 1 || in.SubjectKinds[0] != ca.SubjectKindComment {
+		t.Fatalf("subject kinds = %v, want exactly [comment]", in.SubjectKinds)
+	}
+
+	// And a caller cannot widen it from the query string.
+	req = httptest.NewRequest(http.MethodGet, "/comment-analysis?subjectKind=conversation&subjectKinds=conversation", nil)
+	in = listInput(req)
+	if len(in.SubjectKinds) != 1 || in.SubjectKinds[0] != ca.SubjectKindComment {
+		t.Fatalf("a query parameter widened the comment surface: %v", in.SubjectKinds)
+	}
+}

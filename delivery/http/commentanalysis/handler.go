@@ -120,6 +120,13 @@ func listInput(r *http.Request) ca.ListInput {
 			Sorts:      httpx.ParseSort(v, map[string]string{"severity": "severity", "commentedat": "commented_at"}),
 		},
 	}
+	// This endpoint is the COMMENT surface and stays that way. The engine now
+	// holds conversations in the same table, and without this line every
+	// comment screen would silently start listing them. The audience endpoints
+	// ask for the kinds they want; the domain's empty filter means "all kinds"
+	// so that decision lives at the edge rather than in a hidden default.
+	in.SubjectKinds = []ca.SubjectKind{ca.SubjectKindComment}
+
 	for _, s := range strings.Split(v.Get("status"), ",") {
 		if s = strings.TrimSpace(s); s != "" {
 			in.Statuses = append(in.Statuses, ca.Status(s))

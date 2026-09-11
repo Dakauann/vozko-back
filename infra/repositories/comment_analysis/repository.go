@@ -293,6 +293,25 @@ func applyFilters(q *gorm.DB, in ca.ListInput) *gorm.DB {
 	if in.AuthorExternalID != "" {
 		q = q.Where("comment_analyses.author_external_id = ?", in.AuthorExternalID)
 	}
+	if len(in.SubjectKinds) > 0 {
+		kinds := make([]string, len(in.SubjectKinds))
+		for i, k := range in.SubjectKinds {
+			kinds[i] = string(k)
+		}
+		q = q.Where("comment_analyses.subject_kind IN ?", kinds)
+	}
+	if in.Interest != "" {
+		q = q.Where("comment_analyses.interest = ?", string(in.Interest))
+	}
+	if in.Disposition != "" {
+		q = q.Where("comment_analyses.disposition = ?", string(in.Disposition))
+	}
+	if in.Qualification != "" {
+		q = q.Where("comment_analyses.qualification = ?", string(in.Qualification))
+	}
+	if in.NextAction != "" {
+		q = q.Where("comment_analyses.next_action = ?", string(in.NextAction))
+	}
 	return q
 }
 
