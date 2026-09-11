@@ -605,6 +605,9 @@ func (r *router) setupCommentAnalysisRoutes(protected *mux.Router) {
 		return
 	}
 	commentanalysishttp.RegisterProtectedRoutes(protected, r.commentAnalysisHandler, r.ac)
+	// The audience surface reads the same rows through the same use cases, and
+	// differs only in serving every subject kind rather than comments alone.
+	commentanalysishttp.RegisterAudienceRoutes(protected, r.commentAnalysisHandler, r.ac)
 }
 
 // setupInstagramRoutes registers the Instagram channel. A nil handler means the

@@ -442,3 +442,61 @@ func TestListInputPinsTheCommentSurfaceToComments(t *testing.T) {
 		t.Fatalf("a query parameter widened the comment surface: %v", in.SubjectKinds)
 	}
 }
+
+// The audience surface serves every subject kind unless narrowed, which is the
+// whole reason it exists: "what is my audience saying" means comments and
+// conversations, not one of them.
+func TestAudienceInputServesEveryKindByDefault(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/audience?accountId=acc-1", nil)
+	if got := audienceInput(req).SubjectKinds; len(got) != 0 {
+		t.Fatalf("subject kinds = %v, want empty (every kind)", got)
+	}
+}
+
+func TestAudienceInputNarrowsToRequestedKinds(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/audience?subjectKind=conversation", nil)
+	got := audienceInput(req).SubjectKinds
+	if len(got) != 1 || got[0] != ca.SubjectKindConversation {
+		t.Fatalf("subject kinds = %v", got)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/audience?subjectKind=comment,conversation", nil)
+	if got := audienceInput(req).SubjectKinds; len(got) != 2 {
+		t.Fatalf("subject kinds = %v, want both", got)
+	}
+}
+
+// An unknown kind is carried through to Validate rather than dropped, so the
+// caller gets a message instead of a request that silently matched everything.
+func TestAudienceInputKeepsUnknownKindsForValidation(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/audience?subjectKind=post", nil)
+	in := audienceInput(req)
+	in.WorkspaceID = "ws-1"
+	if err := in.Validate(); err == nil {
+		t.Fatal("an unknown subject kind should be refused, not ignored")
+	}
+}
+
+// The conversation filters reach the domain, and a bad one is refused.
+func TestAudienceInputCarriesConversationFilters(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet,
+		"/audience?interest=interested&disposition=sale&qualification=hot_lead&nextAction=escalate", nil)
+	in := audienceInput(req)
+	in.WorkspaceID = "ws-1"
+	if err := in.Validate(); err != nil {
+		t.Fatalf("valid conversation filters rejected: %v", err)
+	}
+	if in.Interest != ca.InterestInterested || in.Disposition != ca.DispositionSale {
+		t.Errorf("filters not carried: %+v", in)
+	}
+	if in.Qualification != ca.QualificationHotLead || in.NextAction != ca.NextActionEscalate {
+		t.Errorf("filters not carried: %+v", in)
+	}
+
+	bad := httptest.NewRequest(http.MethodGet, "/audience?disposition=sold", nil)
+	in = audienceInput(bad)
+	in.WorkspaceID = "ws-1"
+	if err := in.Validate(); err == nil {
+		t.Fatal("an unknown disposition should be refused")
+	}
+}

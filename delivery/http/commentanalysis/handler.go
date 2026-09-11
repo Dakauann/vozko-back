@@ -68,19 +68,19 @@ type Deps struct {
 	Alerts     *cauc.ManageAlertRulesUseCase
 	// Channels reports which alert channels this workspace can actually send
 	// on, so the picker offers what the save will accept.
-	Channels   *cauc.GetAlertChannelsUseCase
-	TestAlert  *cauc.TestAlertRuleUseCase
-	Suggest    ca.SuggestCommentReplyUseCase
-	PostReply  ca.PostCommentReplyUseCase
-	Moderate   ca.SetModerationStateUseCase
-	GetSet     ca.GetSettingsUseCase
-	UpdateSet  ca.UpdateSettingsUseCase
-	Retry      ca.RetryUseCase
-	Spend      ca.SpendUseCase
-	Estimate   ca.EstimateBackfillUseCase
-	Start      ca.StartBackfillUseCase
-	Backfill   ca.GetBackfillUseCase
-	Cancel     ca.CancelBackfillUseCase
+	Channels  *cauc.GetAlertChannelsUseCase
+	TestAlert *cauc.TestAlertRuleUseCase
+	Suggest   ca.SuggestCommentReplyUseCase
+	PostReply ca.PostCommentReplyUseCase
+	Moderate  ca.SetModerationStateUseCase
+	GetSet    ca.GetSettingsUseCase
+	UpdateSet ca.UpdateSettingsUseCase
+	Retry     ca.RetryUseCase
+	Spend     ca.SpendUseCase
+	Estimate  ca.EstimateBackfillUseCase
+	Start     ca.StartBackfillUseCase
+	Backfill  ca.GetBackfillUseCase
+	Cancel    ca.CancelBackfillUseCase
 
 	Accounts     ca.ListAccountSettingsUseCase
 	GetContainer ca.GetContainerSettingsUseCase
@@ -147,7 +147,13 @@ func listInput(r *http.Request) ca.ListInput {
 // @Security	BearerAuth
 // @Router		/comment-analysis [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	result, err := h.list.Execute(r.Context(), listInput(r))
+	h.listFiltered(w, r, listInput(r))
+}
+
+// listFiltered is the one body behind both the comment feed and the audience
+// feed. They differ only in the filter handed to them.
+func (h *Handler) listFiltered(w http.ResponseWriter, r *http.Request, in ca.ListInput) {
+	result, err := h.list.Execute(r.Context(), in)
 	if err != nil {
 		writeDomainError(w, err, "Failed to list analysed comments")
 		return
@@ -168,7 +174,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 // @Security	BearerAuth
 // @Router		/comment-analysis/stats [get]
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.stats.Execute(r.Context(), listInput(r))
+	h.statsFiltered(w, r, listInput(r))
+}
+
+// statsFiltered is the one body behind both stats endpoints, so the numbers
+// above a feed always describe the rows in it.
+func (h *Handler) statsFiltered(w http.ResponseWriter, r *http.Request, in ca.ListInput) {
+	stats, err := h.stats.Execute(r.Context(), in)
 	if err != nil {
 		writeDomainError(w, err, "Failed to compute stats")
 		return

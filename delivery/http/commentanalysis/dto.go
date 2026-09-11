@@ -10,7 +10,11 @@ import (
 // one to one; a field added here is a field added there.
 
 type CommentResponse struct {
-	ID              string  `json:"id"`
+	ID string `json:"id"`
+	// SubjectKind tells a client which half of this shape is populated: a
+	// comment carries stance and severity, a conversation carries disposition
+	// and attendance quality, and neither carries the other.
+	SubjectKind     string  `json:"subjectKind"`
 	Source          string  `json:"source"`
 	AccountID       string  `json:"accountId"`
 	ContainerID     string  `json:"containerId"`
@@ -40,6 +44,16 @@ type CommentResponse struct {
 	Excerpt   string `json:"excerpt"`
 	Truncated bool   `json:"truncated"`
 
+	// Conversation subjects only.
+	Interest          string `json:"interest,omitempty"`
+	ProductInterest   string `json:"productInterest,omitempty"`
+	Disposition       string `json:"disposition,omitempty"`
+	Qualification     string `json:"qualification,omitempty"`
+	NextAction        string `json:"nextAction,omitempty"`
+	Summary           string `json:"summary,omitempty"`
+	AttendanceQuality int    `json:"attendanceQuality,omitempty"`
+	MessageCount      int    `json:"messageCount,omitempty"`
+
 	Model       string     `json:"model,omitempty"`
 	AnalyzedAt  *time.Time `json:"analyzedAt,omitempty"`
 	CommentedAt time.Time  `json:"commentedAt"`
@@ -48,7 +62,8 @@ type CommentResponse struct {
 
 func toCommentResponse(a *comment_analysis.CommentAnalysis) CommentResponse {
 	return CommentResponse{
-		ID: a.ID, Source: string(a.Source), AccountID: a.AccountID, ContainerID: a.ContainerID,
+		ID: a.ID, SubjectKind: string(a.Kind()),
+		Source: string(a.Source), AccountID: a.AccountID, ContainerID: a.ContainerID,
 		SourceCommentID: a.SourceCommentID, ParentCommentID: a.ParentCommentID,
 		AuthorExternalID: a.AuthorExternalID, AuthorHandle: a.AuthorHandle,
 		Status: string(a.Status), Attempts: a.Attempts, FailureReason: a.FailureReason,
@@ -57,6 +72,10 @@ func toCommentResponse(a *comment_analysis.CommentAnalysis) CommentResponse {
 		Toxicity: string(a.Toxicity), PersonalAttack: string(a.PersonalAttack), LegalRisk: string(a.LegalRisk),
 		Severity: a.Severity, RequiresAction: a.RequiresAction,
 		Excerpt: a.Excerpt, Truncated: a.Truncated,
+		Interest: string(a.Interest), ProductInterest: a.ProductInterest,
+		Disposition: string(a.Disposition), Qualification: string(a.Qualification),
+		NextAction: string(a.NextAction), Summary: a.Summary,
+		AttendanceQuality: a.AttendanceQuality, MessageCount: a.MessageCount,
 		Model: a.Model, AnalyzedAt: a.AnalyzedAt, CommentedAt: a.CommentedAt, CreatedAt: a.CreatedAt,
 	}
 }
