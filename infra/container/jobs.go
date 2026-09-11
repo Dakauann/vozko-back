@@ -28,23 +28,51 @@ func (c *Container) initJobRunner() {
 		c.services.conversationHub,
 		c.services.cachedBalanceChecker,
 	)
-	// Register each channel's analysis subject resolver.
+	// The resolvers are registered on BOTH the sweep and the analysis adapter.
 	//
-	// Without one a channel's conversations are never analysed, the silent gap
-	// Instagram carried for months while its EnableAnalysis switch sat in the UI
-	// doing nothing.
+	// They answer the same question ("what is this conversation, and is it
+	// configured to be analysed"), and registering a channel on one but not the
+	// other is exactly the silent gap this whole area already had once: an
+	// EnableAnalysis switch in the UI that nothing behind it ever read.
+	type analysisChannel struct {
+		entry    shared.EntryType
+		resolver conversation_usecase.AnalysisSubjectResolver
+	}
+	channels := []analysisChannel{
+		// WhatsApp is registered like every other channel rather than special-cased
+		// inside the sweep. It has no Enabled flag because it is not an optional
+		// integration: it is the channel this feature was built for.
+		{shared.EntryTypeWhatsApp, conversation_usecase.NewWhatsAppAnalysisResolver(
+			c.repositories.wcEntry, c.repositories.wcCampaign, c.repositories.lead)},
+	}
+	if c.instagram != nil && c.instagram.Enabled {
+		channels = append(channels, analysisChannel{shared.EntryTypeInstagram, instagramAnalysisResolver(c.instagram)})
+	}
+	if c.telegram != nil && c.telegram.Enabled {
+		channels = append(channels, analysisChannel{shared.EntryTypeTelegram, telegramAnalysisResolver(c.telegram)})
+	}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		channels = append(channels, analysisChannel{shared.EntryTypeUnofficialWhatsApp, unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp)})
+	}
+
 	if setter, ok := analysisDebounceJob.(interface {
 		SetAnalysisSubjectResolver(shared.EntryType, conversation_usecase.AnalysisSubjectResolver)
 	}); ok {
-		if c.instagram != nil && c.instagram.Enabled {
-			setter.SetAnalysisSubjectResolver(shared.EntryTypeInstagram, instagramAnalysisResolver(c.instagram))
+		for _, ch := range channels {
+			setter.SetAnalysisSubjectResolver(ch.entry, ch.resolver)
 		}
-		if c.telegram != nil && c.telegram.Enabled {
-			setter.SetAnalysisSubjectResolver(shared.EntryTypeTelegram, telegramAnalysisResolver(c.telegram))
+	}
+
+	// Hand the sweep the analysis engine. Without this, conversations are never
+	// queued and only auto-staging and auto-memory run.
+	if c.commentAnalysis != nil && c.commentAnalysis.ConversationAdapter != nil {
+		for _, ch := range channels {
+			c.commentAnalysis.ConversationAdapter.RegisterResolver(ch.entry, ch.resolver)
 		}
-		if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
-			setter.SetAnalysisSubjectResolver(shared.EntryTypeUnofficialWhatsApp,
-				unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp))
+		if q, ok := analysisDebounceJob.(interface {
+			SetAnalysisQueue(conversation_usecase.ConversationAnalysisEnqueuer)
+		}); ok {
+			q.SetAnalysisQueue(c.commentAnalysis.ConversationAdapter)
 		}
 	}
 

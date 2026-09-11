@@ -152,16 +152,29 @@ func TestListPendingContainersGroupsByContainer(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
-	mock.ExpectQuery(`SELECT source, account_id, container_id, MIN\(workspace_id::text\) AS workspace_id,\s+COUNT\(\*\) AS pending, MIN\(created_at\) AS oldest_at FROM "comment_analyses" WHERE status = \$1 AND deleted_at IS NULL AND created_at < \$2 GROUP BY source, account_id, container_id ORDER BY oldest_at ASC LIMIT \$3`).
+	mock.ExpectQuery(`SELECT subject_kind, source, account_id, container_id, MIN\(workspace_id::text\) AS workspace_id,\s+COUNT\(\*\) AS pending, MIN\(created_at\) AS oldest_at FROM "comment_analyses" WHERE status = \$1 AND deleted_at IS NULL AND created_at < \$2 GROUP BY subject_kind, source, account_id, container_id ORDER BY oldest_at ASC LIMIT \$3`).
 		WithArgs(string(ca.StatusPending), now, 50).
-		WillReturnRows(sqlmock.NewRows([]string{"source", "account_id", "container_id", "workspace_id", "pending", "oldest_at"}).
-			AddRow("instagram", "acc-1", "media-1", "ws-1", 12, now.Add(-time.Hour)))
+		WillReturnRows(sqlmock.NewRows([]string{"subject_kind", "source", "account_id", "container_id", "workspace_id", "pending", "oldest_at"}).
+			AddRow("comment", "instagram", "acc-1", "media-1", "ws-1", 12, now.Add(-time.Hour)).
+			AddRow("conversation", "whatsapp", "acc-1", "camp-1", "ws-1", 3, now.Add(-time.Hour)))
 
 	got, err := NewRepository(db).ListPendingContainers(context.Background(), now, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Ref != ref() || got[0].Pending != 12 || got[0].WorkspaceID != "ws-1" {
-		t.Fatalf("got %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("got %d containers, want 2: %+v", len(got), got)
+	}
+	if !got[0].Ref.Equal(ref()) || got[0].Pending != 12 || got[0].WorkspaceID != "ws-1" {
+		t.Fatalf("comment container: %+v", got[0])
+	}
+	// The kind must survive the round trip through the database, or the backstop
+	// hands a container of conversations to the comment adapter.
+	wantConversation := ca.ContainerRef{
+		Kind: ca.SubjectKindConversation, Source: ca.SourceWhatsApp,
+		AccountID: "acc-1", ContainerID: "camp-1",
+	}
+	if !got[1].Ref.Equal(wantConversation) {
+		t.Fatalf("conversation container: %+v", got[1].Ref)
 	}
 }

@@ -3,7 +3,6 @@ package conversation_usecase
 import (
 	"context"
 	"log"
-	"strings"
 	"time"
 
 	"vozko/domain/ai"
@@ -46,6 +45,25 @@ type analysisDebounceJob struct {
 	// resolver below rather than being registered here, because it is the one
 	// channel whose configuration lives behind a campaign indirection.
 	resolvers map[shared.EntryType]AnalysisSubjectResolver
+	// analysisQueue hands the conversation to the analysis engine instead of
+	// classifying it here. See runAnalysisForEntry.
+	analysisQueue ConversationAnalysisEnqueuer
+}
+
+// ConversationAnalysisEnqueuer queues one conversation for the analysis engine.
+//
+// Narrow on purpose: this job needs to hand a conversation over, nothing more.
+// It does not need to know that the engine batches, budgets, retries or bills.
+type ConversationAnalysisEnqueuer interface {
+	Enqueue(ctx context.Context, entryID string, entryType shared.EntryType) error
+}
+
+// SetAnalysisQueue wires the engine. Without one, conversation analysis simply
+// does not run, and auto-staging and auto-memory are unaffected.
+func (j *analysisDebounceJob) SetAnalysisQueue(q ConversationAnalysisEnqueuer) {
+	if j != nil && q != nil {
+		j.analysisQueue = q
+	}
 }
 
 // SetAnalysisSubjectResolver registers a channel's subject loader.
@@ -144,9 +162,6 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 // WhatsApp is resolved inline because its configuration lives behind a campaign
 // indirection no other channel has; every other channel registers a resolver.
 func (j *analysisDebounceJob) resolveSubject(entryID string, entryType shared.EntryType) (*AnalysisSubject, error) {
-	if entryType == shared.EntryTypeWhatsApp {
-		return j.resolveWhatsAppSubject(entryID)
-	}
 	resolver, ok := j.resolvers[entryType]
 	if !ok || resolver == nil {
 		// No resolver means the channel is switched off in this deployment. Not
@@ -159,13 +174,34 @@ func (j *analysisDebounceJob) resolveSubject(entryID string, entryType shared.En
 	return resolver(context.Background(), entryID)
 }
 
-// resolveWhatsAppSubject walks entry → campaign → workspace.
-func (j *analysisDebounceJob) resolveWhatsAppSubject(entryID string) (*AnalysisSubject, error) {
-	wcEntry, err := j.wcEntryRepo.FindByID(entryID)
+// NewWhatsAppAnalysisResolver walks entry → campaign → workspace.
+//
+// WhatsApp used to be special-cased inside this job rather than registered like
+// every other channel. That was invisible until a SECOND consumer of the
+// resolvers appeared: the analysis engine saw every channel except the one the
+// feature was originally built for. A constructor, registered through the same
+// registry, means there is one way to answer "what is this conversation".
+func NewWhatsAppAnalysisResolver(
+	wcEntryRepo wce.Repository,
+	wcCampaignRepo wc.Repository,
+	leadRepo lead.Repository,
+) AnalysisSubjectResolver {
+	return func(_ context.Context, entryID string) (*AnalysisSubject, error) {
+		return resolveWhatsAppSubject(wcEntryRepo, wcCampaignRepo, leadRepo, entryID)
+	}
+}
+
+func resolveWhatsAppSubject(
+	wcEntryRepo wce.Repository,
+	wcCampaignRepo wc.Repository,
+	leadRepo lead.Repository,
+	entryID string,
+) (*AnalysisSubject, error) {
+	wcEntry, err := wcEntryRepo.FindByID(entryID)
 	if err != nil || wcEntry == nil {
 		return nil, err
 	}
-	wcCampaign, err := j.wcCampaignRepo.FindByID(wcEntry.CampaignID)
+	wcCampaign, err := wcCampaignRepo.FindByID(wcEntry.CampaignID)
 	if err != nil || wcCampaign == nil {
 		return nil, err
 	}
@@ -176,7 +212,7 @@ func (j *analysisDebounceJob) resolveWhatsAppSubject(entryID string) (*AnalysisS
 	// channel whose contacts have no phone.
 	var contactLabel string
 	if wcEntry.LeadID != "" {
-		if leadRecord, err := j.leadRepo.FindByID(wcCampaign.WorkspaceID, wcEntry.LeadID); err == nil && leadRecord != nil {
+		if leadRecord, err := leadRepo.FindByID(wcCampaign.WorkspaceID, wcEntry.LeadID); err == nil && leadRecord != nil {
 			contactLabel = leadRecord.Number
 		}
 	}
@@ -236,25 +272,29 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
-	wantAnalysis := subject.EnableAnalysis
-	if wantAnalysis {
-		allDefs := j.toolRegistry.Definitions()
-		for _, def := range allDefs {
-			if strings.EqualFold(def.Name, tools_usecase.ConversationAnalysisToolName) {
-				aiTools = append(aiTools, def)
-				toolConfigs[tools_usecase.ConversationAnalysisToolName] = map[string]interface{}{
-					"__workspace_id": workspaceID,
-					"entry_id":       entryID,
-					"entry_type":     entryTypeStr,
-					"message_count":  int(totalCount),
-				}
-				break
-			}
+	// Analysis no longer happens in this call.
+	//
+	// It used to ride along as a tool on the same request as auto-staging and
+	// auto-memory: one un-batched, uncapped, un-receipted model call per
+	// conversation, with no retry, whose work was deleted from Redis before it
+	// ran. The conversation is now handed to the analysis engine, which batches
+	// it with its peers, plans it against a token budget, reserves against the
+	// daily cap, writes a spend receipt and retries on failure.
+	//
+	// Best effort here on purpose: analysis is an enrichment, and failing this
+	// sweep over it would also cost the staging and memory passes below, which
+	// have nothing to do with it.
+	if subject.EnableAnalysis && j.analysisQueue != nil {
+		queueCtx, cancelQueue := context.WithTimeout(context.Background(), analysisDebounceTimeout)
+		if err := j.analysisQueue.Enqueue(queueCtx, entryID, entryType); err != nil {
+			log.Printf("[analysis-debounce] queueing %s entry %s for analysis: %v", entryType, entryID, err)
 		}
-		if len(aiTools) == 0 {
-			wantAnalysis = false
-		}
+		cancelQueue()
 	}
+
+	// wantAnalysis stays false: the prompt below is now only ever about staging
+	// or memory, and if neither is enabled no call is made at all.
+	const wantAnalysis = false
 
 	autoTagEnabled := subject.EnableAutoStaging
 	if autoTagEnabled {
@@ -415,14 +455,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	}
 
 	for _, toolCall := range response.ToolCalls {
-		if toolCall.Name == tools_usecase.ConversationAnalysisToolName && toolCall.Result != nil {
-			log.Printf("[analysis-debounce] conversation_analysis result for entry %s: %v", entryID, toolCall.Result.Result)
-			if j.hub != nil && j.analysisRepo != nil {
-				if latest, err := j.analysisRepo.FindLatestByEntry(entryID, entryType); err == nil && latest != nil {
-					j.hub.BroadcastAnalysisUpdate(entryID, entryTypeStr, latest)
-				}
-			}
-		}
 		if toolCall.Name == tools_usecase.ManageEntryStageToolName && toolCall.Result != nil {
 			log.Printf("[analysis-debounce] auto-stage result for entry %s: %v", entryID, toolCall.Result.Result)
 		}

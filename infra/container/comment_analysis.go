@@ -11,6 +11,7 @@ import (
 	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
 	ca_repository "vozko/infra/repositories/comment_analysis"
 	cauc "vozko/usecases/comment_analysis"
+	convuc "vozko/usecases/conversation"
 	iguc "vozko/usecases/instagram"
 )
 
@@ -37,6 +38,11 @@ type commentAnalysisBundle struct {
 	// InstagramAdapter is the channel's side, handed to the webhook use case
 	// as its CommentAnalysisEnqueuer.
 	InstagramAdapter *iguc.CommentAnalysisAdapter
+
+	// ConversationAdapter is the OTHER subject kind: one adapter serving every
+	// channel that holds a transcript. The debounce sweep hands conversations to
+	// it, and the engine reads them back through it at classification time.
+	ConversationAdapter *convuc.AnalysisAdapter
 }
 
 // commentAnalysisRetention is how long analysed rows are kept. The full
@@ -125,18 +131,27 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	})
 	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewCommentAnalysisAccountVerifier(ig.Accounts)}
 
+	// Conversations. One adapter, every channel: the transcript comes from
+	// conversation_messages, which each channel already writes to.
+	bundle.ConversationAdapter = convuc.NewAnalysisAdapter(bundle.Ingestor, c.repositories.conversation)
+	conversationAdapters := map[ca.Source]ca.ConversationAdapter{}
+	for _, e := range shared.ConversationAnalysableEntryTypes() {
+		conversationAdapters[ca.SourceOf(e)] = bundle.ConversationAdapter
+	}
+
 	engine, err := cauc.NewEngine(cauc.EngineDeps{
-		Repo:       repo,
-		Settings:   resolver,
-		Batches:    batches,
-		Adapters:   adapters,
-		Classifier: cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
-		Scheduler:  scheduler,
-		Charger:    cauc.NewCharger(c.repositories.balance, pricer, state),
-		Balance:    c.services.cachedBalanceChecker,
-		State:      state,
-		Metrics:    c.services.metrics,
-		Notifier:   notifier,
+		Repo:          repo,
+		Settings:      resolver,
+		Batches:       batches,
+		Adapters:      adapters,
+		Conversations: conversationAdapters,
+		Classifier:    cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Scheduler:     scheduler,
+		Charger:       cauc.NewCharger(c.repositories.balance, pricer, state),
+		Balance:       c.services.cachedBalanceChecker,
+		State:         state,
+		Metrics:       c.services.metrics,
+		Notifier:      notifier,
 		// The live feed (§7). Nil when the socket is not up; the engine then
 		// classifies exactly the same and nothing is broadcast.
 		Broadcaster: c.services.conversationHub,

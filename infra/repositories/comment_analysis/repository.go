@@ -184,6 +184,7 @@ func (r *repository) ListPendingContainers(ctx context.Context, olderThan time.T
 		limit = 100
 	}
 	type row struct {
+		SubjectKind string
 		Source      string
 		AccountID   string
 		ContainerID string
@@ -193,10 +194,10 @@ func (r *repository) ListPendingContainers(ctx context.Context, olderThan time.T
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).Model(&schema.CommentAnalysis{}).
-		Select(`source, account_id, container_id, MIN(workspace_id::text) AS workspace_id,
+		Select(`subject_kind, source, account_id, container_id, MIN(workspace_id::text) AS workspace_id,
 			COUNT(*) AS pending, MIN(created_at) AS oldest_at`).
 		Where("status = ? AND deleted_at IS NULL AND created_at < ?", string(ca.StatusPending), olderThan).
-		Group("source, account_id, container_id").
+		Group("subject_kind, source, account_id, container_id").
 		Order("oldest_at ASC").
 		Limit(limit).
 		Scan(&rows).Error
@@ -206,7 +207,13 @@ func (r *repository) ListPendingContainers(ctx context.Context, olderThan time.T
 	out := make([]ca.PendingContainer, 0, len(rows))
 	for _, x := range rows {
 		out = append(out, ca.PendingContainer{
-			Ref:         ca.ContainerRef{Source: ca.Source(x.Source), AccountID: x.AccountID, ContainerID: x.ContainerID},
+			// The kind is grouped and carried, not defaulted: without it the
+			// backstop would hand a container of conversations to the comment
+			// adapter and fail every row it found.
+			Ref: ca.ContainerRef{
+				Kind: ca.SubjectKind(x.SubjectKind), Source: ca.Source(x.Source),
+				AccountID: x.AccountID, ContainerID: x.ContainerID,
+			}.Normalized(),
 			WorkspaceID: x.WorkspaceID,
 			Pending:     x.Pending,
 			OldestAt:    x.OldestAt,
