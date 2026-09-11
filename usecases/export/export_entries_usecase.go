@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/export"
 	shared_domain "vozko/domain/shared"
 	"vozko/domain/stage"
@@ -39,8 +39,9 @@ const (
 // each, rather than taking the full repositories: the concrete repositories
 // satisfy them implicitly, so nothing changes at the wiring, and a test does not
 // have to stub forty methods it never calls to exercise a CSV.
+// AnalysisLookup is satisfied by the analysis engine.s conversation reader.
 type AnalysisLookup interface {
-	FindLatestByEntries(entryIDs []string, entryType shared_domain.EntryType) (map[string]*analysis.Analysis, error)
+	LatestByEntries(ctx context.Context, workspaceID string, source ca.Source, entryIDs []string) (map[string]*ca.CommentAnalysis, error)
 }
 
 type StageLookup interface {
@@ -247,7 +248,9 @@ func (uc *exportEntriesUseCase) writeBatch(
 		entryIDs[i] = e.EntryID
 	}
 
-	analysisMap, err := uc.analysisRepo.FindLatestByEntries(entryIDs, shared_domain.EntryType(filter.EntryType))
+	analysisMap, err := uc.analysisRepo.LatestByEntries(
+		context.Background(), filter.Scope.WorkspaceID,
+		ca.SourceOf(shared_domain.EntryType(filter.EntryType)), entryIDs)
 	if err != nil {
 		return fmt.Errorf("load analyses: %w", err)
 	}
@@ -387,7 +390,7 @@ func (s *csvSink) write(row export.ExportRow) error {
 	return nil
 }
 
-func populateAnalysisFields(row *export.ExportRow, a *analysis.Analysis) {
+func populateAnalysisFields(row *export.ExportRow, a *ca.CommentAnalysis) {
 	if a == nil {
 		return
 	}
@@ -399,9 +402,7 @@ func populateAnalysisFields(row *export.ExportRow, a *analysis.Analysis) {
 	aq := a.AttendanceQuality
 	row.AnalysisAttendanceQuality = &aq
 	row.AnalysisSummary = a.Summary
-	if a.ProductInterest != nil {
-		row.AnalysisProductInterest = *a.ProductInterest
-	}
+	row.AnalysisProductInterest = a.ProductInterest
 }
 
 // matchesEntryFilter holds the predicates answerable from the channel row
@@ -424,7 +425,7 @@ func matchesEntryFilter(f export.ExportFilter, e export.ChannelEntry) bool {
 // matchesEnrichedFilter holds the predicates that need data the channel query
 // does not carry. They run on the second walk only, which is why the header can
 // name a column that every surviving row leaves blank.
-func matchesEnrichedFilter(f export.ExportFilter, a *analysis.Analysis, t *stage.EntryStage) bool {
+func matchesEnrichedFilter(f export.ExportFilter, a *ca.CommentAnalysis, t *stage.EntryStage) bool {
 	if f.StageID != "" {
 		if t == nil || t.StageID != f.StageID {
 			return false

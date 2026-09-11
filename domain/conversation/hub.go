@@ -3,7 +3,7 @@ package conversation
 import (
 	"time"
 
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/shared"
 )
 
@@ -56,7 +56,7 @@ type InboxEntry struct {
 	AvailableStages    []InboxEntryStage  `json:"available_stages,omitempty"`
 	MatchedMessages    []MatchedMessage   `json:"matched_messages,omitempty"`
 	TotalMatches       int                `json:"total_matches,omitempty"`
-	LatestAnalysis     *analysis.Analysis `json:"latest_analysis,omitempty"`
+	LatestAnalysis     *ca.CommentAnalysis `json:"latest_analysis,omitempty"`
 	ConversationStatus ConversationStatus `json:"conversation_status,omitempty"`
 	// Close provenance when status is finished (omitted when open / cleared on reopen).
 	CloseSource CloseSource `json:"close_source,omitempty"`
@@ -197,7 +197,7 @@ type LabelProvider interface {
 }
 
 type AnalysisProvider interface {
-	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*analysis.Analysis, error)
+	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*ca.CommentAnalysis, error)
 }
 
 type InitialStageAssigner interface {

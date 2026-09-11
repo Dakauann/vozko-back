@@ -22,7 +22,6 @@ func (c *Container) initJobRunner() {
 		c.repositories.lead,
 		c.services.ai,
 		c.services.toolRegistry,
-		c.repositories.analysis,
 		c.repositories.stage,
 		c.useCases.listLeadMemories,
 		c.services.conversationHub,

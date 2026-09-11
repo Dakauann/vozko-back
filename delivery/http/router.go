@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"time"
 	affiliatehttp "vozko/delivery/http/affiliate"
-	analysishttp "vozko/delivery/http/analysis"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
@@ -110,7 +109,6 @@ type router struct {
 	metricsQueryHandler            *handlers.MetricsQueryHandler
 	businessMetricsHandler         *businessmetricshttp.BusinessMetricsHandler
 	shopHandler                    *handlers.ShopHandler
-	analysisHandler                *analysishttp.AnalysisHandler
 	leadHandler                    *leadhttp.LeadHandler
 	callRecordingHandler           *callrecordinghttp.CallRecordingHandler
 	balanceHandler                 *balancehttp.BalanceHandler
@@ -219,7 +217,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	metricsQueryHandler *handlers.MetricsQueryHandler,
 	businessMetricsHandler *businessmetricshttp.BusinessMetricsHandler,
 	shopHandler *handlers.ShopHandler,
-	analysisHandler *analysishttp.AnalysisHandler,
 	leadHandler *leadhttp.LeadHandler,
 	callRecordingHandler *callrecordinghttp.CallRecordingHandler,
 	balanceHandler *balancehttp.BalanceHandler,
@@ -326,7 +323,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		metricsQueryHandler:            metricsQueryHandler,
 		businessMetricsHandler:         businessMetricsHandler,
 		shopHandler:                    shopHandler,
-		analysisHandler:                analysisHandler,
 		leadHandler:                    leadHandler,
 		callRecordingHandler:           callRecordingHandler,
 		balanceHandler:                 balanceHandler,
@@ -484,8 +480,6 @@ func (r *router) setupRoutes() {
 	r.setupAdminTicketRoutes(adminRoutes)
 	r.setupAdminShippingRoutes(adminRoutes)
 	r.setupAdminBusinessMetricsRoutes(adminRoutes)
-	r.setupAnalysisRoutes(protected)
-	r.setupAdminAnalysisRoutes(adminRoutes)
 	r.setupLeadRoutes(protected)
 	r.setupAdminCallRecordingRoutes(adminRoutes)
 	r.setupAdminUserRoutes(adminRoutes)
@@ -828,14 +822,6 @@ func (r *router) setupAdminShippingRoutes(adminRoutes *mux.Router) {
 
 func (r *router) setupAdminBusinessMetricsRoutes(adminRoutes *mux.Router) {
 	businessmetricshttp.RegisterAdminRoutes(adminRoutes, r.businessMetricsHandler)
-}
-
-func (r *router) setupAnalysisRoutes(protected *mux.Router) {
-	analysishttp.RegisterProtectedRoutes(protected, r.analysisHandler, r.ac)
-}
-
-func (r *router) setupAdminAnalysisRoutes(adminRoutes *mux.Router) {
-	analysishttp.RegisterAdminRoutes(adminRoutes, r.analysisHandler)
 }
 
 func (r *router) setupLeadRoutes(protected *mux.Router) {

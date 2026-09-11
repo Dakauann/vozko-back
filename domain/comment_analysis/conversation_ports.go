@@ -43,3 +43,29 @@ type ConversationAdapter interface {
 	// written relative to "the conversation's objective".
 	ReadContainerContext(ctx context.Context, ref ContainerRef) (ContainerContext, error)
 }
+
+// ---- Reading conversation analyses from outside the engine ----
+
+// ConversationReader is what the rest of the system asks about conversations:
+// the inbox showing a verdict beside a thread, the export writing it into a
+// column, the lead screen listing a campaign's conversations.
+//
+// It is a separate interface from Repository rather than three more methods on
+// it. Repository is the ENGINE's port, implemented by the engine's fakes; these
+// callers need two reads and have no business holding the queue, the claim or
+// the purge.
+//
+// "Latest" is a historical word here. The engine keys a conversation uniquely on
+// (source, subject_kind, subject id), so there is exactly one row per
+// conversation and it is updated in place. The engine this replaces appended a
+// row per pass and left readers to sort by time and hope, which is why the same
+// conversation could show two different verdicts depending on which query ran.
+type ConversationReader interface {
+	// LatestByEntries answers for many conversations at once. Ids with no
+	// analysis are absent rather than present-and-empty, so a caller can tell
+	// "not analysed yet" from "analysed and found nothing".
+	LatestByEntries(ctx context.Context, workspaceID string, source Source, entryIDs []string) (map[string]*CommentAnalysis, error)
+
+	// LatestByEntry answers for one.
+	LatestByEntry(ctx context.Context, workspaceID string, source Source, entryID string) (*CommentAnalysis, error)
+}

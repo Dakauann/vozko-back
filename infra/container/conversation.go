@@ -16,7 +16,7 @@ import (
 	"vozko/infra/conversation/whatsapp/media"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	aa_usecase "vozko/usecases/ai_attendance"
-	analysis_usecase "vozko/usecases/analysis"
+	cauc "vozko/usecases/comment_analysis"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
@@ -106,8 +106,13 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	labelProvider := label_usecase.NewLabelProviderService(c.repositories.label)
 	c.services.conversationHub.SetLabelProvider(labelProvider)
 
-	analysisProvider := analysis_usecase.NewAnalysisProviderService(c.repositories.analysis)
-	c.services.conversationHub.SetAnalysisProvider(analysisProvider)
+	// The inbox reads conversation analyses from the engine. Nil until the
+	// engine is wired, in which case the inbox simply shows no verdicts.
+	var analysisProvider conversation_domain.AnalysisProvider
+	if c.repositories.conversationAnalyses != nil {
+		analysisProvider = cauc.NewConversationAnalysisProvider(c.repositories.conversationAnalyses)
+		c.services.conversationHub.SetAnalysisProvider(analysisProvider)
+	}
 
 	conversationStatusUpdater := conversation_usecase.NewConversationStatusService(
 		c.repositories.wcEntry,
@@ -297,7 +302,6 @@ func (c *Container) initConversationSenders() {
 		c.repositories.wcCampaign,
 		c.services.ai,
 		c.services.toolRegistry,
-		c.repositories.analysis,
 		c.repositories.stage,
 		c.redisProvider.SharedState(),
 	)

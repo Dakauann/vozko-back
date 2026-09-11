@@ -104,7 +104,7 @@ type entryResolver interface {
 // one with an empty container id.
 func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCase {
 	uc := export_usecase.NewExportEntriesUseCase(
-		c.repositories.analysis,
+		c.repositories.conversationAnalyses,
 		c.repositories.stage,
 	)
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 )
 
 // Guards the rubric single-sourcing: both prompts must render the domain quality
@@ -24,13 +24,13 @@ func TestBuildAnalysisPrompt_RubricRenderedNoFormatError(t *testing.T) {
 		}
 
 		// Quality dimensions render (single-sourced).
-		for _, d := range analysis.QualityDimensions() {
+		for _, d := range ca.ConversationQualityDimensions() {
 			if !strings.Contains(prompt, d.Key) {
 				t.Errorf("%s prompt is missing rubric dimension %q", at, d.Key)
 			}
 		}
 		// Classification fields render (single-sourced).
-		for _, f := range analysis.ClassificationFields() {
+		for _, f := range ca.ConversationClassificationFields() {
 			if !strings.Contains(prompt, f.Key) {
 				t.Errorf("%s prompt is missing classification field %q", at, f.Key)
 			}

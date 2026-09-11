@@ -38,7 +38,6 @@ func (c *Container) initRouter() {
 		c.handlers.metricsQuery,
 		c.handlers.businessMetrics,
 		c.handlers.shop,
-		c.handlers.analysis,
 		c.handlers.lead,
 		c.handlers.callRecording,
 		c.handlers.balance,

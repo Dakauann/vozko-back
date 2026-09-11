@@ -8,9 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/export"
-	shared_domain "vozko/domain/shared"
 	"vozko/domain/stage"
 )
 
@@ -44,13 +43,13 @@ func (f *fakeLister) ListForExport(ctx context.Context, scope export.Scope, emit
 }
 
 type fakeAnalysis struct {
-	byEntry map[string]*analysis.Analysis
+	byEntry map[string]*ca.CommentAnalysis
 	batches [][]string
 }
 
-func (f *fakeAnalysis) FindLatestByEntries(entryIDs []string, _ shared_domain.EntryType) (map[string]*analysis.Analysis, error) {
+func (f *fakeAnalysis) LatestByEntries(_ context.Context, _ string, _ ca.Source, entryIDs []string) (map[string]*ca.CommentAnalysis, error) {
 	f.batches = append(f.batches, append([]string(nil), entryIDs...))
-	out := make(map[string]*analysis.Analysis, len(entryIDs))
+	out := make(map[string]*ca.CommentAnalysis, len(entryIDs))
 	for _, id := range entryIDs {
 		if a, ok := f.byEntry[id]; ok {
 			out[id] = a
@@ -75,7 +74,7 @@ func (f *fakeStages) GetBatchEntryStages(entryIDs []string, _, _ string) (map[st
 
 func newUseCase(t *testing.T, lister *fakeLister, opts ...func(*fakeAnalysis, *fakeStages)) (export.ExportEntriesUseCase, *fakeAnalysis) {
 	t.Helper()
-	an := &fakeAnalysis{byEntry: map[string]*analysis.Analysis{}}
+	an := &fakeAnalysis{byEntry: map[string]*ca.CommentAnalysis{}}
 	st := &fakeStages{byEntry: map[string]*stage.EntryStage{}}
 	for _, opt := range opts {
 		opt(an, st)
@@ -362,7 +361,7 @@ func TestStatusIsReCheckedEvenIfAListerIgnoresTheScope(t *testing.T) {
 		{EntryID: "e-1", Number: "5511900000001", Status: "READ"},
 		{EntryID: "e-2", Number: "5511900000002", Status: "FAILED"},
 	}}
-	an := &fakeAnalysis{byEntry: map[string]*analysis.Analysis{}}
+	an := &fakeAnalysis{byEntry: map[string]*ca.CommentAnalysis{}}
 	st := &fakeStages{byEntry: map[string]*stage.EntryStage{}}
 	uc := NewExportEntriesUseCase(an, st)
 	uc.(*exportEntriesUseCase).SetChannelEntryLister(export.EntryTypeWhatsApp, leaky)

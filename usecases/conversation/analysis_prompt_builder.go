@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	"vozko/domain/stage"
@@ -121,7 +121,7 @@ REGRAS DE OURO
 5. Para "hot_lead", procure evidências de avanço, fit e próximo passo, não dependa exclusivamente de pergunta sobre preço.
 
 Transcrição:
-%s`, campaignName, messageCount, agentInstructions, analysis.ClassificationRubricPrompt(), analysis.QualityRubricPrompt(), transcript)
+%s`, campaignName, messageCount, agentInstructions, ca.ConversationRubricPrompt(), ca.ConversationQualityRubricPrompt(), transcript)
 }
 
 func buildCompletedCallPrompt(campaignName, userPhoneNumber, agentInstructions, transcript string) string {
@@ -146,7 +146,7 @@ CRITÉRIOS DE CLASSIFICAÇÃO (use a ferramenta conversation_analysis)
 - summary: Breve resumo profissional do resultado da chamada em PORTUGUÊS, em relação ao objetivo. Se o usuário não falou nada, mencione isso.
 
 Transcrição:
-%s`, campaignName, userPhoneNumber, agentInstructions, analysis.ClassificationRubricPrompt(), analysis.QualityRubricPrompt(), transcript)
+%s`, campaignName, userPhoneNumber, agentInstructions, ca.ConversationRubricPrompt(), ca.ConversationQualityRubricPrompt(), transcript)
 }
 
 // autoMemoryRules mirrors the manage_lead_memory tool's own guidance. Kept in

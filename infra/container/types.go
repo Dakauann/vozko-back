@@ -7,7 +7,6 @@ import (
 
 	deliveryHttp "vozko/delivery/http"
 	affiliatehttp "vozko/delivery/http/affiliate"
-	analysishttp "vozko/delivery/http/analysis"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
@@ -67,7 +66,6 @@ import (
 	"vozko/domain/ai"
 	aa_domain "vozko/domain/ai_attendance"
 	aichat_domain "vozko/domain/aichat"
-	"vozko/domain/analysis"
 	analytics_domain "vozko/domain/analytics"
 	attendance_domain "vozko/domain/attendance"
 	"vozko/domain/auth"
@@ -85,6 +83,7 @@ import (
 	"vozko/domain/cep"
 	"vozko/domain/cluster"
 	coexistence_domain "vozko/domain/coexistence"
+	comment_analysis_domain "vozko/domain/comment_analysis"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
 	ce_domain "vozko/domain/conversation_event"
@@ -207,25 +206,27 @@ type Container struct {
 }
 
 type repositories struct {
-	product          product.ProductRepository
-	property         property.PropertyRepository
-	category         category.Repository
-	agent            agent_domain.Repository
-	lead             lead_domain.Repository
-	conversation     conversation_domain.MessageRepository
-	analysis         analysis.Repository
-	user             user.UserRepository
-	media            media.MediaRepository
-	cart             cart.CartRepository
-	address          address.AddressRepository
-	cep              cep.CEPRepository
-	order            order.OrderRepository
-	payment          payment.PaymentRepository
-	paymentSplit     payment.PaymentSplitRepository
-	ticket           ticket.Repository
-	shippingAccount  shipping.ProviderAccountRepository
-	insurance        insurance.InsuranceRepository
-	whatsappTemplate whatsapp_template.Repository
+	// conversationAnalyses is the engine's read side for conversations: what the
+	// inbox, the export and the lead screen ask about a thread.
+	conversationAnalyses comment_analysis_domain.ConversationReader
+	product              product.ProductRepository
+	property             property.PropertyRepository
+	category             category.Repository
+	agent                agent_domain.Repository
+	lead                 lead_domain.Repository
+	conversation         conversation_domain.MessageRepository
+	user                 user.UserRepository
+	media                media.MediaRepository
+	cart                 cart.CartRepository
+	address              address.AddressRepository
+	cep                  cep.CEPRepository
+	order                order.OrderRepository
+	payment              payment.PaymentRepository
+	paymentSplit         payment.PaymentSplitRepository
+	ticket               ticket.Repository
+	shippingAccount      shipping.ProviderAccountRepository
+	insurance            insurance.InsuranceRepository
+	whatsappTemplate     whatsapp_template.Repository
 	// whatsappTemplateSend is the paid-send attempt ledger: the row that makes
 	// a retried request cost money once.
 	whatsappTemplateSend    whatsapp_template.SendAttemptRepository
@@ -584,10 +585,6 @@ type useCases struct {
 	listMetrics          business_metrics.ListMetricsUseCase
 	getMetricsStats      business_metrics.GetMetricsStatsUseCase
 	getMetricsTimeSeries business_metrics.GetMetricsTimeSeriesUseCase
-
-	listAnalysis     analysis.ListAnalysisUseCase
-	getAnalysisStats analysis.GetAnalysisStatsUseCase
-	getEntryAnalysis analysis.GetEntryAnalysisUseCase
 
 	createShop shop.CreateShopUseCase
 	updateShop shop.UpdateShopUseCase
@@ -985,7 +982,6 @@ type handlers_ struct {
 	whatsappCampaign        *handlers.WhatsAppCampaignHandler
 	whatsappBusinessPhone   *whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandler
 	metaEmbeddedSignup      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler
-	analysis                *analysishttp.AnalysisHandler
 	lead                    *leadhttp.LeadHandler
 	callRecording           *callrecordinghttp.CallRecordingHandler
 	balance                 *balancehttp.BalanceHandler

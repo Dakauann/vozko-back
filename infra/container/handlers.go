@@ -9,7 +9,6 @@ import (
 	"time"
 
 	affiliatehttp "vozko/delivery/http/affiliate"
-	analysishttp "vozko/delivery/http/analysis"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
 	authhttp "vozko/delivery/http/auth"
@@ -256,13 +255,12 @@ func (c *Container) initHandlers() {
 			c.useCases.getAgent,
 			c.useCases.getWCCampaignsSummary,
 		),
-		analysis: analysishttp.NewAnalysisHandler(c.useCases.listAnalysis, c.useCases.getAnalysisStats, c.useCases.getEntryAnalysis),
 		lead: withLeadInboxSeeding(c, leadhttp.NewLeadHandler(
 			c.repositories.lead,
 			c.repositories.wcEntry,
 			c.repositories.conversation,
 			c.repositories.leadMessageWindow,
-			c.repositories.analysis,
+			c.repositories.conversationAnalyses,
 			c.repositories.businessPhone,
 			c.services.businessPhoneMetaAPI,
 		)),

@@ -53,7 +53,6 @@ import (
 	agentloop "vozko/usecases/agentloop"
 	"vozko/usecases/agentturn"
 	aichat_usecase "vozko/usecases/aichat"
-	analysis_usecase "vozko/usecases/analysis"
 	analytics_usecase "vozko/usecases/analytics"
 	attendance_usecase "vozko/usecases/attendance"
 	auth_usecase "vozko/usecases/auth"
@@ -193,13 +192,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		mediaTool,
 		tools_usecase.NewValidateCEPToolUseCase(searchCEPUC),
 		tools_usecase.NewHTTPRequestToolUseCase(),
-		func() tools.Handler {
-			at := tools_usecase.NewConversationAnalysisToolUseCase(c.repositories.analysis, c.repositories.wcEntry)
-			if c.services.crmTelemetryEmitter != nil {
-				at.SetAnalysisTelemetry(c.services.crmTelemetryEmitter)
-			}
-			return at
-		}(),
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, c.services.conversationHub),
@@ -389,9 +381,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	getMetricsStatsUC := business_metrics_usecase.NewGetMetricsStatsUseCase(c.repositories.businessMetrics)
 	getMetricsTimeSeriesUC := business_metrics_usecase.NewGetMetricsTimeSeriesUseCase(c.repositories.businessMetrics)
 
-	listAnalysisUC := analysis_usecase.NewListAnalysisUseCase(c.repositories.analysis)
-	getAnalysisStatsUC := analysis_usecase.NewGetAnalysisStatsUseCase(c.repositories.analysis)
-	getEntryAnalysisUC := analysis_usecase.NewGetEntryAnalysisUseCase(c.repositories.analysis)
 
 	publishEmailUC := notification_usecase.NewPublishEmailUseCase(c.services.notificationsQueuePub)
 	// Request-path senders use a queued EmailService so registration/login/invite
@@ -545,7 +534,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, recordMetricUC, c.services.whisperPool, c.repositories.analysis, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, recordMetricUC, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
@@ -780,9 +769,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getMetricsStats:      getMetricsStatsUC,
 		getMetricsTimeSeries: getMetricsTimeSeriesUC,
 
-		listAnalysis:     listAnalysisUC,
-		getAnalysisStats: getAnalysisStatsUC,
-		getEntryAnalysis: getEntryAnalysisUC,
 
 		createShop: shop_usecase.NewCreateShopUseCase(c.repositories.shop, c.repositories.media),
 		updateShop: shop_usecase.NewUpdateShopUseCase(c.repositories.shop, c.repositories.media),
@@ -866,7 +852,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.repositories.wcCampaign,
 			c.services.ai,
 			c.services.toolRegistry,
-			c.repositories.analysis,
 			c.repositories.stage,
 			c.redisProvider.SharedState(),
 		),

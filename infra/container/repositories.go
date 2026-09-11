@@ -7,7 +7,6 @@ import (
 	ap_repository "vozko/infra/repositories/agent_presence"
 	aa_repository "vozko/infra/repositories/ai_attendance"
 	aichat_repository "vozko/infra/repositories/aichat"
-	analysis_repository "vozko/infra/repositories/analysis"
 	analytics_repository "vozko/infra/repositories/analytics"
 	ah_repository "vozko/infra/repositories/assignment_history"
 	attendance_repository "vozko/infra/repositories/attendance"
@@ -23,6 +22,7 @@ import (
 	cep_repository "vozko/infra/repositories/cep"
 	config_repository "vozko/infra/repositories/config"
 	conversation_repository "vozko/infra/repositories/conversation"
+	ca_repository "vozko/infra/repositories/comment_analysis"
 	ce_repository "vozko/infra/repositories/conversation_event"
 	customer_repository "vozko/infra/repositories/customer"
 	customfield_repository "vozko/infra/repositories/customfield"
@@ -79,7 +79,7 @@ func (c *Container) initRepositories() {
 		agent:                   agent_repository.NewCachedRepository(agent_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		lead:                    lead_repository.NewCachedRepository(c.db, c.redisProvider.SharedState()),
 		conversation:            conversation_repository.NewRepository(c.db),
-		analysis:                analysis_repository.NewRepository(c.db),
+		conversationAnalyses:    ca_repository.NewConversationReader(c.db),
 		user:                    user_repository.NewUserRepository(c.db),
 		media:                   media_repository.NewMediaRepository(c.db),
 		cart:                    cart_repository.NewRepository(c.db, c.services.inventory),

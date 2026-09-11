@@ -16,7 +16,6 @@ import (
 
 	agent "vozko/domain/agent"
 	"vozko/domain/ai"
-	analysisdomain "vozko/domain/analysis"
 	"vozko/domain/balance"
 	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
@@ -64,7 +63,6 @@ type handleWhatsAppMessageUseCase struct {
 	configRepo            config.SystemConfigRepository
 	recordMetric          business_metrics.RecordMetricUseCase
 	whisperPool           *whisper.Pool
-	analysisRepo          analysisdomain.Repository
 	wcCampaignRepo        wc.Repository
 	wcEntryRepo           wce.Repository
 	businessPhoneRepo     businessphone.Repository
@@ -510,7 +508,7 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, recordMetric business_metrics.RecordMetricUseCase, whisperPool *whisper.Pool, analysisRepo analysisdomain.Repository, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, recordMetric business_metrics.RecordMetricUseCase, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
 	return &handleWhatsAppMessageUseCase{
 		aiService:               aiService,
 		leadRepo:                leadRepo,
@@ -522,7 +520,6 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 		configRepo:              configRepo,
 		recordMetric:            recordMetric,
 		whisperPool:             whisperPool,
-		analysisRepo:            analysisRepo,
 		wcCampaignRepo:          wcCampaignRepo,
 		wcEntryRepo:             wcEntryRepo,
 		businessPhoneRepo:       businessPhoneRepo,
@@ -1191,24 +1188,23 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
-	wantAnalysis := campaignAnalysisEnabled
-	if wantAnalysis {
-		allDefs := uc.toolRegistry.Definitions()
-		for _, def := range allDefs {
-			if strings.EqualFold(def.Name, tools_usecase.ConversationAnalysisToolName) {
-				aiTools = append(aiTools, def)
-				toolConfigs[tools_usecase.ConversationAnalysisToolName] = map[string]interface{}{
-					"entry_id":      entryID,
-					"entry_type":    entryType,
-					"message_count": int(totalCount),
-				}
-				break
-			}
-		}
-		if len(aiTools) == 0 {
-			wantAnalysis = false
+	// Analysis leaves this call too.
+	//
+	// This was the most expensive analysis path in the system: an agent
+	// campaign ran one model call per TURN of conversation, each carrying the
+	// analysis tool, with no batching, no daily cap and no spend receipt. The
+	// conversation is now stamped for the debounce sweep, which hands it to the
+	// engine once it has gone quiet, so a conversation is analysed once when it
+	// settles instead of after every message.
+	if campaignAnalysisEnabled && uc.sharedState != nil {
+		value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
+		if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
+			log.Printf("[whatsapp-usecase] stamping %s entry %s for analysis: %v", entryType, entryID, err)
 		}
 	}
+
+	// wantAnalysis stays false: this call is now only ever about staging.
+	const wantAnalysis = false
 
 	if autoTagEnabled {
 		if h, ok := uc.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName); ok {
@@ -1312,14 +1308,6 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	}
 
 	for _, toolCall := range response.ToolCalls {
-		if toolCall.Name == tools_usecase.ConversationAnalysisToolName && toolCall.Result != nil {
-			log.Printf("[whatsapp-usecase] conversation_analysis result: %v", toolCall.Result.Result)
-			if uc.hub != nil && uc.analysisRepo != nil {
-				if latest, err := uc.analysisRepo.FindLatestByEntry(entryID, shared.EntryType(entryType)); err == nil && latest != nil {
-					uc.hub.BroadcastAnalysisUpdate(entryID, entryType, latest)
-				}
-			}
-		}
 		if toolCall.Name == tools_usecase.ManageEntryStageToolName && toolCall.Result != nil {
 			log.Printf("[whatsapp-usecase] auto-stage result: %v", toolCall.Result.Result)
 		}

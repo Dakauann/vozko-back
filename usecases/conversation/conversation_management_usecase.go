@@ -18,7 +18,6 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
-	analysisdomain "vozko/domain/analysis"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
@@ -1810,7 +1809,6 @@ type MessageSenderService struct {
 	wcCampaignRepo wc.Repository
 	aiService      ai.Service
 	toolRegistry   toolsdomain.Service
-	analysisRepo   analysisdomain.Repository
 	stageRepo      stage.Repository
 	sharedState    cache.SharedState
 
@@ -1947,7 +1945,6 @@ func NewMessageSenderService(
 	wcCampaignRepo wc.Repository,
 	aiService ai.Service,
 	toolRegistry toolsdomain.Service,
-	analysisRepo analysisdomain.Repository,
 	stageRepo stage.Repository,
 	sharedState cache.SharedState,
 ) *MessageSenderService {
@@ -1962,7 +1959,6 @@ func NewMessageSenderService(
 		wcCampaignRepo:        wcCampaignRepo,
 		aiService:             aiService,
 		toolRegistry:          toolRegistry,
-		analysisRepo:          analysisRepo,
 		stageRepo:             stageRepo,
 		sharedState:           sharedState,
 	}
@@ -2754,7 +2750,6 @@ type sendConversationMessageUseCase struct {
 	wcCampaignRepo        wc.Repository
 	aiService             ai.Service
 	toolRegistry          toolsdomain.Service
-	analysisRepo          analysisdomain.Repository
 	stageRepo             stage.Repository
 	sharedState           cache.SharedState
 
@@ -2794,7 +2789,6 @@ func NewSendConversationMessageUseCase(
 	wcCampaignRepo wc.Repository,
 	aiService ai.Service,
 	toolRegistry toolsdomain.Service,
-	analysisRepo analysisdomain.Repository,
 	stageRepo stage.Repository,
 	sharedState cache.SharedState,
 ) conversation.SendConversationMessageUseCase {
@@ -2807,7 +2801,6 @@ func NewSendConversationMessageUseCase(
 		wcCampaignRepo:        wcCampaignRepo,
 		aiService:             aiService,
 		toolRegistry:          toolRegistry,
-		analysisRepo:          analysisRepo,
 		stageRepo:             stageRepo,
 		sharedState:           sharedState,
 	}

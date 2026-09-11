@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
-	"vozko/domain/analysis"
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/conversation"
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/lead_message_window"
@@ -29,7 +29,7 @@ type LeadHandler struct {
 	wcEntryRepo  wc_entry.Repository
 	messageRepo  conversation.MessageRepository
 	windowRepo   lead_message_window.Repository
-	analysisRepo analysis.Repository
+	analysisRepo ca.ConversationReader
 	phoneRepo    businessphone.Repository
 	metaAPI      businessphone.MetaAPIService
 
@@ -65,7 +65,7 @@ func NewLeadHandler(
 	wcEntryRepo wc_entry.Repository,
 	messageRepo conversation.MessageRepository,
 	windowRepo lead_message_window.Repository,
-	analysisRepo analysis.Repository,
+	analysisRepo ca.ConversationReader,
 	phoneRepo businessphone.Repository,
 	metaAPI businessphone.MetaAPIService,
 ) *LeadHandler {
@@ -766,18 +766,25 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 
 	entryTypeParam := shared.EntryType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType"))))
 
-	var analyses []*analysis.Analysis
+	analyses := []*ca.CommentAnalysis{}
 
 	if !entryTypeParam.Valid() || entryTypeParam == shared.EntryTypeWhatsApp {
 		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)
 		if err == nil {
+			// One read for the whole campaign rather than one per entry. The
+			// engine keys a conversation uniquely, so there is exactly one
+			// analysis per entry and no sorting by time to pick a winner.
+			entryIDs := make([]string, 0, len(wcEntries))
 			for _, entry := range wcEntries {
 				if entry.CampaignID == campaignID {
-					entryAnalyses, err := h.analysisRepo.ListByEntry(entry.ID, shared.EntryTypeWhatsApp)
-					if err == nil {
-						for i := range entryAnalyses {
-							analyses = append(analyses, &entryAnalyses[i])
-						}
+					entryIDs = append(entryIDs, entry.ID)
+				}
+			}
+			found, err := h.analysisRepo.LatestByEntries(r.Context(), workspaceID, ca.SourceWhatsApp, entryIDs)
+			if err == nil {
+				for _, id := range entryIDs {
+					if a, ok := found[id]; ok && a != nil {
+						analyses = append(analyses, a)
 					}
 				}
 			}

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"vozko/domain/ai"
-	analysisdomain "vozko/domain/analysis"
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
@@ -34,7 +33,6 @@ type analysisDebounceJob struct {
 	leadRepo       lead.Repository
 	aiService      ai.Service
 	toolRegistry   toolsdomain.Service
-	analysisRepo   analysisdomain.Repository
 	stageRepo      stage.Repository
 	// leadMemories renders the lead's current memory block into the memory
 	// pass, so the model updates existing facts instead of re-adding them.
@@ -89,7 +87,6 @@ func NewAnalysisDebounceJob(
 	leadRepo lead.Repository,
 	aiService ai.Service,
 	toolRegistry toolsdomain.Service,
-	analysisRepo analysisdomain.Repository,
 	stageRepo stage.Repository,
 	leadMemories leadmemory.ListUseCase,
 	hub conversation.EventBroadcaster,
@@ -103,7 +100,6 @@ func NewAnalysisDebounceJob(
 		leadRepo:             leadRepo,
 		aiService:            aiService,
 		toolRegistry:         toolRegistry,
-		analysisRepo:         analysisRepo,
 		stageRepo:            stageRepo,
 		leadMemories:         leadMemories,
 		hub:                  hub,

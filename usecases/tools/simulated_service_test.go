@@ -115,7 +115,7 @@ func TestSimulationRunsForRealIsClosedByDefault(t *testing.T) {
 	for _, name := range []string{
 		ManageLeadMemoryToolName, ManageEntryStageToolName, FinishConversationToolName,
 		ScheduleMeetingToolName, RescheduleMeetingToolName, SendEmailToolName,
-		ConversationAnalysisToolName, "generate_payment", "send_whatsapp_media",
+		"generate_payment", "send_whatsapp_media",
 		"remote_x__anything", "tool_the_model_invented", "",
 	} {
 		if SimulationRunsForReal(name, map[string]interface{}{"method": "GET"}) {
