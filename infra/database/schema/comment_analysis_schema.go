@@ -25,9 +25,16 @@ type CommentAnalysis struct {
 	ID          string `gorm:"primaryKey;type:uuid"`
 	WorkspaceID string `gorm:"type:uuid;not null;index:idx_ca_workspace"`
 
-	Source          string  `gorm:"size:32;not null"`
-	AccountID       string  `gorm:"type:uuid;not null;index:idx_ca_account"`
-	ContainerID     string  `gorm:"size:64;not null"`
+	// SubjectKind is 'comment' or 'conversation'. The default matters: every
+	// row written before conversations existed is a comment, and the default
+	// backfills them on migration without a data pass.
+	SubjectKind string `gorm:"size:16;not null;default:'comment'"`
+
+	Source      string `gorm:"size:32;not null"`
+	AccountID   string `gorm:"type:uuid;not null;index:idx_ca_account"`
+	ContainerID string `gorm:"size:64;not null"`
+	// SourceCommentID identifies the subject on its channel: a comment id, or a
+	// conversation's entry id.
 	SourceCommentID string  `gorm:"size:64;not null"`
 	ParentCommentID *string `gorm:"size:64"`
 
@@ -49,6 +56,24 @@ type CommentAnalysis struct {
 	PersonalAttack string `gorm:"size:8"`
 	LegalRisk      string `gorm:"size:8"`
 	Severity       int    `gorm:"not null;default:0"`
+
+	// Conversation labels. Null/zero for every comment row. They are columns
+	// rather than a jsonb blob because the audience view filters, groups and
+	// averages on all of them, and a blob would push that work into the
+	// application.
+	Interest        string `gorm:"size:24"`
+	ProductInterest string `gorm:"size:160"`
+	Disposition     string `gorm:"size:24"`
+	Qualification   string `gorm:"size:16"`
+	NextAction      string `gorm:"size:24"`
+	// Summary is the model's prose and the only unredacted customer content in
+	// this table, which is why it is subject to the same retention as the rest
+	// of the row rather than living somewhere unswept.
+	Summary string `gorm:"type:text"`
+	// AttendanceQuality is 0-100, computed from the ordinal rubric, never
+	// model-set.
+	AttendanceQuality int `gorm:"not null;default:0"`
+	MessageCount      int `gorm:"not null;default:0"`
 
 	RequiresAction bool   `gorm:"not null;default:false"`
 	Excerpt        string `gorm:"size:800"`

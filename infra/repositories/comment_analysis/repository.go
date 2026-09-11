@@ -23,14 +23,18 @@ func NewRepository(db *gorm.DB) ca.Repository {
 	return &repository{db: db}
 }
 
-// Insert is ON CONFLICT DO NOTHING on (source, source_comment_id). That one
-// clause is what makes webhook redelivery free: a comment delivered twice
-// is classified (and billed) once.
+// Insert is ON CONFLICT DO NOTHING on (source, subject_kind,
+// source_comment_id). That one clause is what makes webhook redelivery free: a
+// subject delivered twice is classified (and billed) once.
+//
+// subject_kind is in the key because the id spaces overlap. Instagram carries
+// both comments and conversations, so without it a conversation entry id could
+// collide with a comment id and one of the two would silently never ingest.
 func (r *repository) Insert(ctx context.Context, a *ca.CommentAnalysis) (bool, error) {
 	row := fromDomain(a)
 	res := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "source"}, {Name: "source_comment_id"}},
+			Columns:   []clause.Column{{Name: "source"}, {Name: "subject_kind"}, {Name: "source_comment_id"}},
 			DoNothing: true,
 		}).
 		Create(row)
@@ -61,7 +65,7 @@ func (r *repository) FindByID(ctx context.Context, workspaceID, id string) (*ca.
 func (r *repository) FindBySourceComment(ctx context.Context, source ca.Source, sourceCommentID string) (*ca.CommentAnalysis, error) {
 	var row schema.CommentAnalysis
 	err := r.db.WithContext(ctx).
-		Where("source = ? AND source_comment_id = ?", string(source), sourceCommentID).
+		Where("source = ? AND subject_kind = ? AND source_comment_id = ?", string(source), string(ca.SubjectKindComment), sourceCommentID).
 		First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -78,8 +82,8 @@ func (r *repository) ListPending(ctx context.Context, ref ca.ContainerRef, limit
 	}
 	var rows []schema.CommentAnalysis
 	err := r.db.WithContext(ctx).
-		Where("status = ? AND deleted_at IS NULL AND source = ? AND account_id = ? AND container_id = ?",
-			string(ca.StatusPending), string(ref.Source), ref.AccountID, ref.ContainerID).
+		Where("status = ? AND deleted_at IS NULL AND source = ? AND subject_kind = ? AND account_id = ? AND container_id = ?",
+			string(ca.StatusPending), string(ref.Source), string(ref.Normalized().Kind), ref.AccountID, ref.ContainerID).
 		Order("created_at ASC").
 		Limit(limit).
 		Find(&rows).Error
@@ -675,9 +679,15 @@ func (r *repository) DaysAnalyzedSince(ctx context.Context, since time.Time) ([]
 	return days, nil
 }
 
+// SoftDeleteBySourceComment tombstones a deleted comment. Scoped to the comment
+// kind because that is what addresses a subject this way: the channel's
+// "comment deleted" webhook. A conversation is never removed by id from
+// outside, and leaving the kind out would let a colliding entry id tombstone
+// the wrong row.
 func (r *repository) SoftDeleteBySourceComment(ctx context.Context, source ca.Source, sourceCommentID string, now time.Time) error {
 	return r.db.WithContext(ctx).Model(&schema.CommentAnalysis{}).
-		Where("source = ? AND source_comment_id = ? AND deleted_at IS NULL", string(source), sourceCommentID).
+		Where("source = ? AND subject_kind = ? AND source_comment_id = ? AND deleted_at IS NULL",
+			string(source), string(ca.SubjectKindComment), sourceCommentID).
 		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
 }
 

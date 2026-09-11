@@ -71,7 +71,7 @@ func TestInsertDuplicateIsNotAnError(t *testing.T) {
 
 	// The conflict clause makes the database answer "0 rows" rather than
 	// raising, and the repository must pass that through as (false, nil).
-	mock.ExpectExec(regexp.QuoteMeta(`ON CONFLICT ("source","source_comment_id") DO NOTHING`)).
+	mock.ExpectExec(regexp.QuoteMeta(`ON CONFLICT ("source","subject_kind","source_comment_id") DO NOTHING`)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	a, _ := ca.NewPending(ca.NewInput{

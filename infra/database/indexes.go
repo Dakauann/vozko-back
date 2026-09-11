@@ -891,13 +891,23 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON whatsapp_template_sends (workspace_id, idempotency_key)
 				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
 		},
-		// One analysis per source comment. This is what makes webhook
-		// redelivery free: ingest is INSERT ... ON CONFLICT DO NOTHING against
-		// it, so a comment delivered twice is classified (and billed) once.
+		// One analysis per subject. This is what makes webhook redelivery free:
+		// ingest is INSERT ... ON CONFLICT DO NOTHING against it, so a subject
+		// delivered twice is classified (and billed) once.
+		//
+		// subject_kind is part of the key because the id spaces overlap: on
+		// Instagram the same channel carries both comments and conversations,
+		// and a conversation entry id colliding with a comment id would make
+		// one of them silently un-ingestable. The older two-column index is
+		// dropped first, since a unique index cannot be widened in place.
 		{
-			name: "ux_ca_source_comment",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_source_comment
-				ON comment_analyses (source, source_comment_id)`,
+			name: "ux_ca_subject_drop_legacy",
+			sql:  `DROP INDEX IF EXISTS ux_ca_source_comment`,
+		},
+		{
+			name: "ux_ca_subject",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_subject
+				ON comment_analyses (source, subject_kind, source_comment_id)`,
 		},
 		// One projection row per author per account, the upsert target of the
 		// hourly rebuild.

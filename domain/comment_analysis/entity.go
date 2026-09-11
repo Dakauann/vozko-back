@@ -179,6 +179,13 @@ func (r ContainerRef) Key() string {
 	return string(r.Kind) + ":" + base
 }
 
+// Normalized returns the ref with the implicit comment kind made explicit.
+//
+// Infrastructure needs this: subject_kind is a NOT NULL column, so writing or
+// querying the zero value would look for an empty string where 'comment' is
+// meant, and find nothing.
+func (r ContainerRef) Normalized() ContainerRef { return r.withDefaults() }
+
 // Equal compares two refs by meaning rather than by struct identity.
 //
 // Use it instead of ==. A ref built literally without a Kind means the same
