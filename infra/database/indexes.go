@@ -513,7 +513,7 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				WITH (m = 16, ef_construction = 64)`,
 		},
 
-		// Comment analysis. comment_analyses is a queue as well as a result
+		// Comment analysis. audience_analyses is a queue as well as a result
 		// store, and every queue read is a partial index over the rows in one
 		// status, so a workspace with a million analysed comments still pays
 		// for the handful that are pending.
@@ -522,56 +522,56 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 		{
 			name: "idx_ca_pending",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_pending
-				ON comment_analyses (source, account_id, container_id, created_at)
+				ON audience_analyses (source, account_id, container_id, created_at)
 				WHERE status = 'pending' AND deleted_at IS NULL`,
 		},
 		// The backstop's reset of rows a dead replica left behind.
 		{
 			name: "idx_ca_inflight",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_inflight
-				ON comment_analyses (updated_at)
+				ON audience_analyses (updated_at)
 				WHERE status = 'in_flight'`,
 		},
 		// Live stats and the feed: an account's analysed rows, newest first.
 		{
 			name: "idx_ca_stats",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_stats
-				ON comment_analyses (workspace_id, account_id, analyzed_at DESC)
+				ON audience_analyses (workspace_id, account_id, analyzed_at DESC)
 				WHERE status = 'analyzed' AND deleted_at IS NULL`,
 		},
 		// The flagged-comment slice: only rows at or above the high threshold.
 		{
 			name: "idx_ca_severity",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_severity
-				ON comment_analyses (account_id, severity DESC)
+				ON audience_analyses (account_id, severity DESC)
 				WHERE severity >= 60 AND deleted_at IS NULL`,
 		},
 		// The author projection rebuild and "this author's comments".
 		{
 			name: "idx_ca_author",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_author
-				ON comment_analyses (source, account_id, author_external_id)`,
+				ON audience_analyses (source, account_id, author_external_id)`,
 		},
 		// The WINDOWED author ranking regroups the comments themselves rather
 		// than reading the lifetime projection, so it filters on the account
 		// and the comment's own timestamp before grouping by author. Without
-		// commented_at in the key that filter is a scan of the account's whole
+		// occurred_at in the key that filter is a scan of the account's whole
 		// history to answer "esta semana".
 		{
 			name: "idx_ca_author_period",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_author_period
-				ON comment_analyses (workspace_id, account_id, commented_at DESC, author_external_id)
+				ON audience_analyses (workspace_id, account_id, occurred_at DESC, author_external_id)
 				WHERE deleted_at IS NULL`,
 		},
 		{
 			name: "idx_ca_authors_rank",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_authors_rank
-				ON comment_analysis_authors (source, account_id, is_flagged, high_sev_count DESC, max_severity DESC)`,
+				ON audience_authors (source, account_id, is_flagged, high_sev_count DESC, max_severity DESC)`,
 		},
 		{
 			name: "idx_ca_rollups_series",
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_rollups_series
-				ON comment_analysis_rollups (workspace_id, scope, scope_id, bucket_date)`,
+				ON audience_rollups (workspace_id, scope, scope_id, bucket_date)`,
 		},
 	}
 
@@ -907,14 +907,14 @@ func createSchemaConstraints(tx *gorm.DB) error {
 		{
 			name: "ux_ca_subject",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_subject
-				ON comment_analyses (source, subject_kind, source_comment_id)`,
+				ON audience_analyses (source, subject_kind, subject_id)`,
 		},
 		// One projection row per author per account, the upsert target of the
 		// hourly rebuild.
 		{
 			name: "ux_ca_author",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_author
-				ON comment_analysis_authors (source, account_id, author_external_id)`,
+				ON audience_authors (source, account_id, author_external_id)`,
 		},
 	}
 

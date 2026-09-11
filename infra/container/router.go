@@ -103,7 +103,7 @@ func (c *Container) initRouter() {
 		unofficialWhatsAppWebhookHandler(c),
 		unofficialWhatsAppGroupHandler(c),
 		unofficialWhatsAppCampaignHandler(c),
-		commentAnalysisHandler(c),
+		audienceHandler(c),
 	)
 }
 

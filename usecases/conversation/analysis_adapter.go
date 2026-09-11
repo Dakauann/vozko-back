@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 )
@@ -124,11 +124,11 @@ func (a *AnalysisAdapter) Enqueue(ctx context.Context, entryID string, entryType
 			AccountID:   subject.WorkspaceID,
 			ContainerID: subject.ContainerID,
 		},
-		SourceCommentID:  entryID,
+		SubjectID:  entryID,
 		AuthorExternalID: subject.ContactLabel,
 		AuthorHandle:     subject.ContactLabel,
 		Text:             transcript,
-		CommentedAt:      lastAt,
+		OccurredAt:      lastAt,
 	})
 }
 

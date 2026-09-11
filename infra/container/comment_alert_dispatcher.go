@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	conversation_domain "vozko/domain/conversation"
 	lead_domain "vozko/domain/lead"
 	"vozko/domain/shared"

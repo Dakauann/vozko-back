@@ -2539,7 +2539,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Listar comentários analisados",
                 "responses": {
@@ -2563,7 +2563,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Listar regras de alerta",
                 "responses": {
@@ -2572,7 +2572,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/comment_analysis.AlertRule"
+                                "$ref": "#/definitions/audience.AlertRule"
                             }
                         }
                     }
@@ -2591,14 +2591,14 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Criar uma regra de alerta",
                 "responses": {
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/comment_analysis.AlertRule"
+                            "$ref": "#/definitions/audience.AlertRule"
                         }
                     }
                 }
@@ -2615,14 +2615,14 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Vocabulário de alertas (métricas e canais)",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.AlertVocabularyResponse"
+                            "$ref": "#/definitions/audience.AlertVocabularyResponse"
                         }
                     }
                 }
@@ -2642,7 +2642,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Editar uma regra de alerta",
                 "parameters": [
@@ -2658,7 +2658,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/comment_analysis.AlertRule"
+                            "$ref": "#/definitions/audience.AlertRule"
                         }
                     }
                 }
@@ -2673,7 +2673,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Remover uma regra de alerta",
                 "parameters": [
@@ -2703,7 +2703,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Disparar uma regra de alerta para teste",
                 "parameters": [
@@ -2733,7 +2733,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Autores ranqueados (quem comenta coisas ruins)",
                 "responses": {
@@ -2757,7 +2757,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Um autor e seus comentários",
                 "parameters": [
@@ -2773,7 +2773,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.AuthorDetailResponse"
+                            "$ref": "#/definitions/audience.AuthorDetailResponse"
                         }
                     }
                 }
@@ -2791,7 +2791,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Definir estado de moderação de um autor",
                 "parameters": [
@@ -2807,7 +2807,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                            "$ref": "#/definitions/audience.AuthorResponse"
                         }
                     }
                 }
@@ -2824,7 +2824,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Posts em que um autor comentou",
                 "parameters": [
@@ -2840,7 +2840,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.AuthorContainersResponse"
+                            "$ref": "#/definitions/audience.AuthorContainersResponse"
                         }
                     }
                 }
@@ -2857,7 +2857,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Progresso de um reprocessamento",
                 "parameters": [
@@ -2873,7 +2873,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                            "$ref": "#/definitions/audience.BackfillResponse"
                         }
                     }
                 }
@@ -2890,7 +2890,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Cancelar um reprocessamento",
                 "parameters": [
@@ -2906,7 +2906,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                            "$ref": "#/definitions/audience.BackfillResponse"
                         }
                     }
                 }
@@ -2926,7 +2926,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Iniciar um reprocessamento de comentários antigos",
                 "parameters": [
@@ -2949,7 +2949,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.BackfillResponse"
+                            "$ref": "#/definitions/audience.BackfillResponse"
                         }
                     }
                 }
@@ -2966,7 +2966,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Estimar um reprocessamento de comentários antigos",
                 "parameters": [
@@ -2989,7 +2989,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.BackfillEstimateResponse"
+                            "$ref": "#/definitions/audience.BackfillEstimateResponse"
                         }
                     }
                 }
@@ -3006,7 +3006,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Conversas para as quais um comentário pode ser encaminhado",
                 "parameters": [
@@ -3041,7 +3041,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Contas com análise de comentários configurada no workspace",
                 "responses": {
@@ -3050,7 +3050,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                                "$ref": "#/definitions/audience.SettingsResponse"
                             }
                         }
                     }
@@ -3068,7 +3068,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Configuração da análise de comentários de uma conta",
                 "parameters": [
@@ -3091,7 +3091,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                            "$ref": "#/definitions/audience.SettingsResponse"
                         }
                     }
                 }
@@ -3109,7 +3109,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Atualizar configuração da análise de comentários",
                 "parameters": [
@@ -3132,7 +3132,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                            "$ref": "#/definitions/audience.SettingsResponse"
                         }
                     }
                 }
@@ -3149,7 +3149,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Configuração de análise de uma publicação (override e efetiva)",
                 "parameters": [
@@ -3179,7 +3179,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                            "$ref": "#/definitions/audience.ContainerSettingsResponse"
                         }
                     }
                 }
@@ -3197,7 +3197,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Substituir a configuração de análise de uma publicação",
                 "parameters": [
@@ -3227,7 +3227,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                            "$ref": "#/definitions/audience.ContainerSettingsResponse"
                         }
                     }
                 }
@@ -3242,7 +3242,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Remover a configuração própria de uma publicação (volta a herdar)",
                 "parameters": [
@@ -3272,7 +3272,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.ContainerSettingsResponse"
+                            "$ref": "#/definitions/audience.ContainerSettingsResponse"
                         }
                     }
                 }
@@ -3289,14 +3289,14 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Gasto com análise de comentários no período",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.SpendResponse"
+                            "$ref": "#/definitions/audience.SpendResponse"
                         }
                     }
                 }
@@ -3313,14 +3313,14 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Estatísticas ao vivo da análise de comentários",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.StatsResponse"
+                            "$ref": "#/definitions/audience.StatsResponse"
                         }
                     }
                 }
@@ -3337,7 +3337,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Série diária (rollups) da análise de comentários",
                 "parameters": [
@@ -3362,7 +3362,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/commentanalysis.TrendPointResponse"
+                                "$ref": "#/definitions/audience.TrendPointResponse"
                             }
                         }
                     }
@@ -3383,7 +3383,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Encaminhar um comentário por WhatsApp",
                 "parameters": [
@@ -3399,7 +3399,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.EscalationResponse"
+                            "$ref": "#/definitions/audience.EscalationResponse"
                         }
                     }
                 }
@@ -3419,7 +3419,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Publicar uma resposta ao comentário",
                 "parameters": [
@@ -3435,7 +3435,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/comment_analysis.ReplySuggestion"
+                            "$ref": "#/definitions/audience.ReplySuggestion"
                         }
                     }
                 }
@@ -3452,7 +3452,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Sugerir uma resposta ao comentário com IA",
                 "parameters": [
@@ -3468,7 +3468,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/comment_analysis.ReplySuggestion"
+                            "$ref": "#/definitions/audience.ReplySuggestion"
                         }
                     }
                 }
@@ -3485,7 +3485,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CommentAnalysis"
+                    "Analysis"
                 ],
                 "summary": "Reprocessar um comentário com falha",
                 "parameters": [
@@ -3501,7 +3501,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/commentanalysis.CommentResponse"
+                            "$ref": "#/definitions/audience.CommentResponse"
                         }
                     }
                 }
@@ -19485,7 +19485,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.AlertChannel": {
+        "audience.AlertChannel": {
             "type": "string",
             "enum": [
                 "official",
@@ -19496,7 +19496,7 @@ const docTemplate = `{
                 "AlertChannelUnofficial"
             ]
         },
-        "comment_analysis.AlertMetric": {
+        "audience.AlertMetric": {
             "type": "string",
             "enum": [
                 "comment_severity",
@@ -19513,7 +19513,7 @@ const docTemplate = `{
                 "AlertMetricAcceptanceScore"
             ]
         },
-        "comment_analysis.AlertRule": {
+        "audience.AlertRule": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -19528,7 +19528,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "channel": {
-                    "$ref": "#/definitions/comment_analysis.AlertChannel"
+                    "$ref": "#/definitions/audience.AlertChannel"
                 },
                 "cooldownMinutes": {
                     "type": "integer"
@@ -19567,7 +19567,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "metric": {
-                    "$ref": "#/definitions/comment_analysis.AlertMetric"
+                    "$ref": "#/definitions/audience.AlertMetric"
                 },
                 "name": {
                     "type": "string"
@@ -19576,7 +19576,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "source": {
-                    "$ref": "#/definitions/comment_analysis.Source"
+                    "$ref": "#/definitions/audience.Source"
                 },
                 "templateId": {
                     "type": "string"
@@ -19596,7 +19596,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.AuthorRole": {
+        "audience.AuthorRole": {
             "type": "string",
             "enum": [
                 "unknown",
@@ -19617,7 +19617,7 @@ const docTemplate = `{
                 "RoleActivist"
             ]
         },
-        "comment_analysis.AuthorRoleInference": {
+        "audience.AuthorRoleInference": {
             "type": "object",
             "properties": {
                 "basedOnComments": {
@@ -19637,11 +19637,11 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "$ref": "#/definitions/comment_analysis.AuthorRole"
+                    "$ref": "#/definitions/audience.AuthorRole"
                 }
             }
         },
-        "comment_analysis.BatchTotals": {
+        "audience.BatchTotals": {
             "type": "object",
             "properties": {
                 "batches": {
@@ -19651,7 +19651,7 @@ const docTemplate = `{
                     "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/comment_analysis.BatchTotals"
+                        "$ref": "#/definitions/audience.BatchTotals"
                     }
                 },
                 "completionTokens": {
@@ -19668,7 +19668,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.Counters": {
+        "audience.Counters": {
             "type": "object",
             "properties": {
                 "analyzed": {
@@ -19755,7 +19755,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.ReplyMode": {
+        "audience.ReplyMode": {
             "type": "string",
             "enum": [
                 "off",
@@ -19768,7 +19768,7 @@ const docTemplate = `{
                 "ReplyModeAuto"
             ]
         },
-        "comment_analysis.ReplyPolicy": {
+        "audience.ReplyPolicy": {
             "type": "object",
             "properties": {
                 "maxAutoSeverity": {
@@ -19776,11 +19776,11 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "mode": {
-                    "$ref": "#/definitions/comment_analysis.ReplyMode"
+                    "$ref": "#/definitions/audience.ReplyMode"
                 }
             }
         },
-        "comment_analysis.ReplySuggestion": {
+        "audience.ReplySuggestion": {
             "type": "object",
             "properties": {
                 "auto": {
@@ -19801,7 +19801,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.Source": {
+        "audience.Source": {
             "type": "string",
             "enum": [
                 "instagram"
@@ -19810,7 +19810,7 @@ const docTemplate = `{
                 "SourceInstagram"
             ]
         },
-        "comment_analysis.Topic": {
+        "audience.Topic": {
             "type": "object",
             "properties": {
                 "description": {
@@ -19824,7 +19824,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.TopicCount": {
+        "audience.TopicCount": {
             "type": "object",
             "properties": {
                 "count": {
@@ -19835,7 +19835,7 @@ const docTemplate = `{
                 }
             }
         },
-        "comment_analysis.TopicStat": {
+        "audience.TopicStat": {
             "type": "object",
             "properties": {
                 "count": {
@@ -19882,7 +19882,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AlertChannelStatusResponse": {
+        "audience.AlertChannelStatusResponse": {
             "type": "object",
             "properties": {
                 "available": {
@@ -19898,12 +19898,12 @@ const docTemplate = `{
                 "senders": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/commentanalysis.AlertSenderResponse"
+                        "$ref": "#/definitions/audience.AlertSenderResponse"
                     }
                 }
             }
         },
-        "commentanalysis.AlertLimitsResponse": {
+        "audience.AlertLimitsResponse": {
             "type": "object",
             "properties": {
                 "defaultCooldownMinutes": {
@@ -19936,7 +19936,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AlertMetricOption": {
+        "audience.AlertMetricOption": {
             "type": "object",
             "properties": {
                 "metric": {
@@ -19950,7 +19950,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AlertSenderResponse": {
+        "audience.AlertSenderResponse": {
             "type": "object",
             "properties": {
                 "id": {
@@ -19962,14 +19962,14 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AlertVocabularyResponse": {
+        "audience.AlertVocabularyResponse": {
             "type": "object",
             "properties": {
                 "channelStatus": {
                     "description": "ChannelStatus narrows Channels to what this workspace can actually do.\nEmpty when the deployment has no directory wired, in which case the\nclient falls back to Channels exactly as it did before.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/commentanalysis.AlertChannelStatusResponse"
+                        "$ref": "#/definitions/audience.AlertChannelStatusResponse"
                     }
                 },
                 "channels": {
@@ -19986,17 +19986,17 @@ const docTemplate = `{
                     }
                 },
                 "limits": {
-                    "$ref": "#/definitions/commentanalysis.AlertLimitsResponse"
+                    "$ref": "#/definitions/audience.AlertLimitsResponse"
                 },
                 "metrics": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/commentanalysis.AlertMetricOption"
+                        "$ref": "#/definitions/audience.AlertMetricOption"
                     }
                 }
             }
         },
-        "commentanalysis.AuthorContainerResponse": {
+        "audience.AuthorContainerResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -20011,10 +20011,10 @@ const docTemplate = `{
                 "derivedStance": {
                     "type": "string"
                 },
-                "firstCommentedAt": {
+                "firstOccurredAt": {
                     "type": "string"
                 },
-                "lastCommentedAt": {
+                "lastOccurredAt": {
                     "type": "string"
                 },
                 "reputation": {
@@ -20043,16 +20043,16 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AuthorContainersResponse": {
+        "audience.AuthorContainersResponse": {
             "type": "object",
             "properties": {
                 "author": {
-                    "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                    "$ref": "#/definitions/audience.AuthorResponse"
                 },
                 "containers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/commentanalysis.AuthorContainerResponse"
+                        "$ref": "#/definitions/audience.AuthorContainerResponse"
                     }
                 },
                 "page": {
@@ -20066,16 +20066,16 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AuthorDetailResponse": {
+        "audience.AuthorDetailResponse": {
             "type": "object",
             "properties": {
                 "author": {
-                    "$ref": "#/definitions/commentanalysis.AuthorResponse"
+                    "$ref": "#/definitions/audience.AuthorResponse"
                 },
                 "comments": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/commentanalysis.CommentResponse"
+                        "$ref": "#/definitions/audience.CommentResponse"
                     }
                 },
                 "page": {
@@ -20089,7 +20089,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.AuthorResponse": {
+        "audience.AuthorResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -20102,7 +20102,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "counters": {
-                    "$ref": "#/definitions/comment_analysis.Counters"
+                    "$ref": "#/definitions/audience.Counters"
                 },
                 "derivedStance": {
                     "type": "string"
@@ -20130,7 +20130,7 @@ const docTemplate = `{
                     "description": "Role is the §5 inference, sent WITH its evidence: a client that received\nonly a label would have no way to present it as the inference it is.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/comment_analysis.AuthorRoleInference"
+                            "$ref": "#/definitions/audience.AuthorRoleInference"
                         }
                     ]
                 },
@@ -20143,7 +20143,7 @@ const docTemplate = `{
                 "topTopics": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/comment_analysis.TopicCount"
+                        "$ref": "#/definitions/audience.TopicCount"
                     }
                 },
                 "updatedAt": {
@@ -20151,7 +20151,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.BackfillEstimateResponse": {
+        "audience.BackfillEstimateResponse": {
             "type": "object",
             "properties": {
                 "containers": {
@@ -20165,7 +20165,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.BackfillResponse": {
+        "audience.BackfillResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -20209,7 +20209,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.CommentResponse": {
+        "audience.CommentResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -20298,7 +20298,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.ContainerOverrideResponse": {
+        "audience.ContainerOverrideResponse": {
             "type": "object",
             "properties": {
                 "containerId": {
@@ -20319,7 +20319,7 @@ const docTemplate = `{
                 "topics": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/comment_analysis.Topic"
+                        "$ref": "#/definitions/audience.Topic"
                     }
                 },
                 "updatedAt": {
@@ -20327,18 +20327,18 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.ContainerSettingsResponse": {
+        "audience.ContainerSettingsResponse": {
             "type": "object",
             "properties": {
                 "effective": {
-                    "$ref": "#/definitions/commentanalysis.SettingsResponse"
+                    "$ref": "#/definitions/audience.SettingsResponse"
                 },
                 "override": {
-                    "$ref": "#/definitions/commentanalysis.ContainerOverrideResponse"
+                    "$ref": "#/definitions/audience.ContainerOverrideResponse"
                 }
             }
         },
-        "commentanalysis.EscalationResponse": {
+        "audience.EscalationResponse": {
             "type": "object",
             "properties": {
                 "author": {
@@ -20358,7 +20358,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.SettingsResponse": {
+        "audience.SettingsResponse": {
             "type": "object",
             "properties": {
                 "accountId": {
@@ -20377,7 +20377,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "replyPolicy": {
-                    "$ref": "#/definitions/comment_analysis.ReplyPolicy"
+                    "$ref": "#/definitions/audience.ReplyPolicy"
                 },
                 "severityThreshold": {
                     "type": "integer"
@@ -20388,7 +20388,7 @@ const docTemplate = `{
                 "topics": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/comment_analysis.Topic"
+                        "$ref": "#/definitions/audience.Topic"
                     }
                 },
                 "updatedAt": {
@@ -20399,7 +20399,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.SpendResponse": {
+        "audience.SpendResponse": {
             "type": "object",
             "properties": {
                 "batches": {
@@ -20409,7 +20409,7 @@ const docTemplate = `{
                     "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/comment_analysis.BatchTotals"
+                        "$ref": "#/definitions/audience.BatchTotals"
                     }
                 },
                 "completionTokens": {
@@ -20426,7 +20426,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.StatsResponse": {
+        "audience.StatsResponse": {
             "type": "object",
             "properties": {
                 "acceptanceScore": {
@@ -20514,7 +20514,7 @@ const docTemplate = `{
                 "topics": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/comment_analysis.TopicStat"
+                        "$ref": "#/definitions/audience.TopicStat"
                     }
                 },
                 "total": {
@@ -20522,7 +20522,7 @@ const docTemplate = `{
                 }
             }
         },
-        "commentanalysis.TrendPointResponse": {
+        "audience.TrendPointResponse": {
             "type": "object",
             "properties": {
                 "acceptanceScore": {

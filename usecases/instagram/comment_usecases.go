@@ -183,14 +183,14 @@ type ModerateCommentUseCase struct {
 	accountResolver
 	comments     igdomain.CommentService
 	commentsRepo igdomain.CommentRepository
-	// commentAnalysis tombstones a deleted comment's analysis. Optional.
-	commentAnalysis CommentAnalysisEnqueuer
+	// audience tombstones a deleted comment's analysis. Optional.
+	audience AudienceEnqueuer
 }
 
 // SetCommentAnalysis attaches the comment-analysis engine so a deleted
 // comment leaves the feed and the live stats (its rollups are untouched).
-func (uc *ModerateCommentUseCase) SetCommentAnalysis(e CommentAnalysisEnqueuer) {
-	uc.commentAnalysis = e
+func (uc *ModerateCommentUseCase) SetCommentAnalysis(e AudienceEnqueuer) {
+	uc.audience = e
 }
 
 func NewModerateCommentUseCase(
@@ -260,8 +260,8 @@ func (uc *ModerateCommentUseCase) Delete(ctx context.Context, workspaceID, accou
 			log.Printf("[instagram] delete mirror failed comment=%s: %v", igCommentID, err)
 		}
 	}
-	if uc.commentAnalysis != nil {
-		uc.commentAnalysis.Forget(ctx, igCommentID)
+	if uc.audience != nil {
+		uc.audience.Forget(ctx, igCommentID)
 	}
 	return nil
 }

@@ -256,7 +256,7 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		Workflows:       c.useCases.triggerEvaluator,
 		CommentRules:    bundle.CommentRuleEval,
 		Analysis:        conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
-		CommentAnalysis: commentAnalysisEnqueuer(c),
+		Audience:        audienceEnqueuer(c),
 	})
 
 	bundle.Consume = iguc.NewConsumeWebhookUseCase(

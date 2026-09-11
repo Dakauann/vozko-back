@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 )
 
 // The live comment feed's transport (§7).

@@ -64,14 +64,14 @@ func (c *Container) initJobRunner() {
 
 	// Hand the sweep the analysis engine. Without this, conversations are never
 	// queued and only auto-staging and auto-memory run.
-	if c.commentAnalysis != nil && c.commentAnalysis.ConversationAdapter != nil {
+	if c.audience != nil && c.audience.ConversationAdapter != nil {
 		for _, ch := range channels {
-			c.commentAnalysis.ConversationAdapter.RegisterResolver(ch.entry, ch.resolver)
+			c.audience.ConversationAdapter.RegisterResolver(ch.entry, ch.resolver)
 		}
 		if q, ok := analysisDebounceJob.(interface {
 			SetAnalysisQueue(conversation_usecase.ConversationAnalysisEnqueuer)
 		}); ok {
-			q.SetAnalysisQueue(c.commentAnalysis.ConversationAdapter)
+			q.SetAnalysisQueue(c.audience.ConversationAdapter)
 		}
 	}
 
@@ -117,9 +117,9 @@ func (c *Container) initJobRunner() {
 	if c.instagram != nil && c.instagram.Enabled {
 		c.jobRunner.SetInstagramJobs(c.instagram.RefreshTokens, c.instagram.PurgeEvents)
 	}
-	if c.commentAnalysis != nil && c.commentAnalysis.Enabled {
-		b := c.commentAnalysis
-		c.jobRunner.SetCommentAnalysisJobs(b.Flush, b.Backstop, b.Rollup, b.Purge, b.Backfill)
+	if c.audience != nil && c.audience.Enabled {
+		b := c.audience
+		c.jobRunner.SetAudienceJobs(b.Flush, b.Backstop, b.Rollup, b.Purge, b.Backfill)
 	}
 	if c.telegram != nil && c.telegram.Enabled {
 		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth, c.telegram.PurgeEvents)

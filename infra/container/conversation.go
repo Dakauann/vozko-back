@@ -16,7 +16,7 @@ import (
 	"vozko/infra/conversation/whatsapp/media"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	aa_usecase "vozko/usecases/ai_attendance"
-	cauc "vozko/usecases/comment_analysis"
+	cauc "vozko/usecases/audience"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"

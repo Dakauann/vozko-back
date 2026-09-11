@@ -18,7 +18,7 @@ import (
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	cephttp "vozko/delivery/http/cep"
-	commentanalysishttp "vozko/delivery/http/commentanalysis"
+	audiencehttp "vozko/delivery/http/audience"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
@@ -155,9 +155,9 @@ type router struct {
 	// registrations are guarded.
 	instagramHandler        *instagramhttp.Handler
 	instagramWebhookHandler *instagramhttp.WebhookHandler
-	// commentAnalysisHandler is nil when the feature is not wired; nil means
+	// audienceHandler is nil when the feature is not wired; nil means
 	// no routes, like the channels.
-	commentAnalysisHandler      *commentanalysishttp.Handler
+	audienceHandler      *audiencehttp.Handler
 	telegramHandler             *telegramhttp.Handler
 	telegramWebhookHandler      *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler   *unofficialwahttp.Handler
@@ -282,11 +282,11 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
 	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
 	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler,
-	commentAnalysisHandler *commentanalysishttp.Handler,
+	audienceHandler *audiencehttp.Handler,
 ) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
-		commentAnalysisHandler:         commentAnalysisHandler,
+		audienceHandler:         audienceHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
 		telegramHandler:                telegramHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
@@ -449,7 +449,7 @@ func (r *router) setupRoutes() {
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
 	r.setupInstagramRoutes(protected)
-	r.setupCommentAnalysisRoutes(protected)
+	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
 	r.setupUnofficialWhatsAppRoutes(protected)
 	r.setupWhatsAppOutreachRoutes(protected)
@@ -592,16 +592,13 @@ func (r *router) setupWhatsAppOnboardRoute() {
 	}).Methods(http.MethodGet)
 }
 
-// setupCommentAnalysisRoutes registers the comment-analysis API. A nil
+// setupAudienceRoutes registers the comment-analysis API. A nil
 // handler means the feature is not wired, in which case no routes exist.
-func (r *router) setupCommentAnalysisRoutes(protected *mux.Router) {
-	if r.commentAnalysisHandler == nil {
+func (r *router) setupAudienceRoutes(protected *mux.Router) {
+	if r.audienceHandler == nil {
 		return
 	}
-	commentanalysishttp.RegisterProtectedRoutes(protected, r.commentAnalysisHandler, r.ac)
-	// The audience surface reads the same rows through the same use cases, and
-	// differs only in serving every subject kind rather than comments alone.
-	commentanalysishttp.RegisterAudienceRoutes(protected, r.commentAnalysisHandler, r.ac)
+	audiencehttp.RegisterProtectedRoutes(protected, r.audienceHandler, r.ac)
 }
 
 // setupInstagramRoutes registers the Instagram channel. A nil handler means the

@@ -71,11 +71,11 @@ type CommentRuleEvaluator interface {
 	Execute(ctx context.Context, comment *igdomain.Comment)
 }
 
-// CommentAnalysisEnqueuer hands one mirrored comment to the comment-analysis
+// AudienceEnqueuer hands one mirrored comment to the comment-analysis
 // engine. Narrow port so this package never imports the engine; best effort,
 // because failing an inbound webhook over a queue hiccup would redeliver a
 // comment that was already stored.
-type CommentAnalysisEnqueuer interface {
+type AudienceEnqueuer interface {
 	Enqueue(ctx context.Context, comment *igdomain.Comment)
 	// Forget tombstones the comment's analysis when the mirror is deleted.
 	Forget(ctx context.Context, igCommentID string)
@@ -113,8 +113,8 @@ type HandleWebhookUseCase struct {
 	commentRules CommentRuleEvaluator
 	// analysis schedules deferred AI analysis. Optional.
 	analysis AnalysisScheduler
-	// commentAnalysis enqueues comments for classification. Optional.
-	commentAnalysis CommentAnalysisEnqueuer
+	// audience enqueues comments for classification. Optional.
+	audience AudienceEnqueuer
 }
 
 // HandleWebhookDeps groups the dependencies so the constructor stays readable as
@@ -138,8 +138,8 @@ type HandleWebhookDeps struct {
 	Workflows    WorkflowTrigger
 	CommentRules CommentRuleEvaluator
 	Analysis     AnalysisScheduler
-	// CommentAnalysis enqueues comments for the comment-analysis engine. Optional.
-	CommentAnalysis CommentAnalysisEnqueuer
+	// Audience enqueues comments for the audience analysis engine. Optional.
+	Audience AudienceEnqueuer
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -161,7 +161,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		workflows:       d.Workflows,
 		commentRules:    d.CommentRules,
 		analysis:        d.Analysis,
-		commentAnalysis: d.CommentAnalysis,
+		audience:        d.Audience,
 	}
 }
 
@@ -761,8 +761,8 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 	if uc.commentRules != nil {
 		uc.commentRules.Execute(ctx, record)
 	}
-	if uc.commentAnalysis != nil {
-		uc.commentAnalysis.Enqueue(ctx, record)
+	if uc.audience != nil {
+		uc.audience.Enqueue(ctx, record)
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/lead_message_window"
@@ -766,7 +766,7 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 
 	entryTypeParam := shared.EntryType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType"))))
 
-	analyses := []*ca.CommentAnalysis{}
+	analyses := []*ca.Analysis{}
 
 	if !entryTypeParam.Valid() || entryTypeParam == shared.EntryTypeWhatsApp {
 		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)

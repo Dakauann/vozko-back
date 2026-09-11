@@ -83,7 +83,7 @@ import (
 	"vozko/domain/cep"
 	"vozko/domain/cluster"
 	coexistence_domain "vozko/domain/coexistence"
-	comment_analysis_domain "vozko/domain/comment_analysis"
+	comment_analysis_domain "vozko/domain/audience"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
 	ce_domain "vozko/domain/conversation_event"
@@ -182,9 +182,9 @@ type Container struct {
 	// instagram is the Instagram channel, wired as one self-contained bundle so
 	// it can be disabled without threading nil checks through the god-structs.
 	instagram *instagramBundle
-	// commentAnalysis is the comment-classification engine, wired as one
+	// audience is the comment-classification engine, wired as one
 	// bundle like the channels; nil or disabled means no routes and no jobs.
-	commentAnalysis *commentAnalysisBundle
+	audience *audienceBundle
 	// telegram is the Telegram channel, wired as one self-contained bundle for
 	// the same reason: it can be enabled or skipped without threading a dozen
 	// fields through the god-structs.

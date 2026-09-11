@@ -6,7 +6,7 @@ import (
 
 	businessphone "vozko/domain/whatsapp/business_phone"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 )

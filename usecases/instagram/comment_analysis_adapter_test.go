@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	igdomain "vozko/domain/instagram"
 )
 
@@ -43,12 +43,12 @@ func (f *fakeAnalysisTombstones) SoftDeleteBySourceComment(_ context.Context, _ 
 	return nil
 }
 
-func caAdapterFixture() (*CommentAnalysisAdapter, *captureIngestor, *fakeCommentTexts, *fakeAnalysisTombstones) {
+func caAdapterFixture() (*AudienceAdapter, *captureIngestor, *fakeCommentTexts, *fakeAnalysisTombstones) {
 	ingestor := &captureIngestor{}
 	comments := &fakeCommentTexts{byID: map[string]*igdomain.Comment{}}
 	tomb := &fakeAnalysisTombstones{}
 	media := &fakeMediaRepo{}
-	a := NewCommentAnalysisAdapter(ingestor, comments, media, nil, nil, tomb)
+	a := NewAudienceAdapter(ingestor, comments, media, nil, nil, tomb)
 	return a, ingestor, comments, tomb
 }
 
@@ -65,8 +65,8 @@ func TestAdapter_EnqueueTranslatesTheComment(t *testing.T) {
 	}
 	in := ingestor.in[0]
 	if in.WorkspaceID != "ws-1" || in.Container != (ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "m-1"}) ||
-		in.SourceCommentID != "c-1" || in.ParentCommentID != "c-parent" || in.AuthorExternalID != "igsid-1" ||
-		in.AuthorHandle != "maria" || in.Text != "oi" || !in.CommentedAt.Equal(ts) || !in.IsOurs {
+		in.SubjectID != "c-1" || in.ParentSubjectID != "c-parent" || in.AuthorExternalID != "igsid-1" ||
+		in.AuthorHandle != "maria" || in.Text != "oi" || !in.OccurredAt.Equal(ts) || !in.IsOurs {
 		t.Fatalf("translated = %+v", in)
 	}
 }
@@ -112,7 +112,7 @@ func TestAdapter_ReadContainerContextUsesTheCaption(t *testing.T) {
 		}
 		return &igdomain.Media{IGMediaID: "m-1", Caption: "Asfalto novo", Permalink: "https://ig/p/1"}, nil
 	}}
-	a := NewCommentAnalysisAdapter(ingestor, comments, media, nil, nil, &fakeAnalysisTombstones{})
+	a := NewAudienceAdapter(ingestor, comments, media, nil, nil, &fakeAnalysisTombstones{})
 	c, err := a.ReadContainerContext(context.Background(), ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "m-1"})
 	if err != nil || c.Caption != "Asfalto novo" || c.Permalink != "https://ig/p/1" {
 		t.Fatalf("context = %+v %v", c, err)
@@ -132,7 +132,7 @@ func TestAdapter_ListContainersMapsCounts(t *testing.T) {
 		}
 		return []*igdomain.Media{{WorkspaceID: "ws-1", IGAccountID: acc, IGMediaID: "m-1", CommentsCount: 12}}, nil
 	}}
-	a := NewCommentAnalysisAdapter(&captureIngestor{}, &fakeCommentTexts{}, media, nil, nil, &fakeAnalysisTombstones{})
+	a := NewAudienceAdapter(&captureIngestor{}, &fakeCommentTexts{}, media, nil, nil, &fakeAnalysisTombstones{})
 	page, err := a.ListContainers(context.Background(), "acc-1", 100, 0)
 	if err != nil || len(page) != 1 || page[0].CommentsCount != 12 || page[0].Ref.ContainerID != "m-1" || page[0].WorkspaceID != "ws-1" {
 		t.Fatalf("page = %+v %v", page, err)
@@ -148,7 +148,7 @@ func TestAccountVerifier(t *testing.T) {
 		}
 		return nil, igdomain.ErrAccountNotFound
 	}}
-	v := NewCommentAnalysisAccountVerifier(accounts)
+	v := NewAudienceAccountVerifier(accounts)
 	if ok, err := v.AccountBelongsTo(context.Background(), "ws-1", "acc-1"); err != nil || !ok {
 		t.Fatalf("owner: %v %v", ok, err)
 	}
@@ -174,7 +174,7 @@ func (r *recordingEnqueuer) Forget(context.Context, string) {}
 func TestHandleComment_EnqueuesAfterMirror(t *testing.T) {
 	comments := &fakeCommentRepo{}
 	enq := &recordingEnqueuer{}
-	uc := NewHandleWebhookUseCase(HandleWebhookDeps{Comments: comments, CommentAnalysis: enq})
+	uc := NewHandleWebhookUseCase(HandleWebhookDeps{Comments: comments, Audience: enq})
 	account := &igdomain.Account{ID: "acc-1", WorkspaceID: "ws-1", IGUserID: "ig-me"}
 	ev := &igdomain.Event{
 		Kind: igdomain.EventComment, Timestamp: time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),

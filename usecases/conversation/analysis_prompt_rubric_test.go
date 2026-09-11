@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 )
 
 // Guards the rubric single-sourcing: both prompts must render the domain quality

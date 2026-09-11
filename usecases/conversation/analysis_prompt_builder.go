@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	"vozko/domain/stage"

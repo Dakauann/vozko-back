@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/shared"
 )
 
-// CommentAnalysisAdapter is Instagram's side of the comment-analysis engine:
+// AudienceAdapter is Instagram's side of the comment-analysis engine:
 // the ONE file that knows both this channel's tables and the engine's ports.
 //
-// Inbound, it is the CommentAnalysisEnqueuer the webhook calls. Outbound, it
+// Inbound, it is the AudienceEnqueuer the webhook calls. Outbound, it
 // is the engine's SourceAdapter: it reads comment bodies back from
 // instagram_comments at classification time (the engine never stores them),
 // supplies the post's caption, enumerates posts for a backfill from the
@@ -27,7 +27,7 @@ type analysisTombstoner interface {
 	SoftDeleteBySourceComment(ctx context.Context, source ca.Source, sourceCommentID string, now time.Time) error
 }
 
-type CommentAnalysisAdapter struct {
+type AudienceAdapter struct {
 	ingestor   ca.Ingestor
 	comments   igdomain.CommentRepository
 	media      igdomain.MediaRepository
@@ -37,29 +37,29 @@ type CommentAnalysisAdapter struct {
 	clock      shared.Clock
 }
 
-// NewCommentAnalysisAdapter builds the adapter. accounts and commentSvc are
+// NewAudienceAdapter builds the adapter. accounts and commentSvc are
 // only needed for backfill (they fetch off the Graph edge) and may be nil in
 // a deployment that never backfills.
-func NewCommentAnalysisAdapter(
+func NewAudienceAdapter(
 	ingestor ca.Ingestor,
 	comments igdomain.CommentRepository,
 	media igdomain.MediaRepository,
 	accounts igdomain.AccountRepository,
 	commentSvc igdomain.CommentService,
 	tombstones analysisTombstoner,
-) *CommentAnalysisAdapter {
-	return &CommentAnalysisAdapter{
+) *AudienceAdapter {
+	return &AudienceAdapter{
 		ingestor: ingestor, comments: comments, media: media, accounts: accounts,
 		commentSvc: commentSvc, tombstones: tombstones, clock: shared.SystemClock{},
 	}
 }
 
 var (
-	_ CommentAnalysisEnqueuer = (*CommentAnalysisAdapter)(nil)
-	_ ca.SourceAdapter        = (*CommentAnalysisAdapter)(nil)
+	_ AudienceEnqueuer = (*AudienceAdapter)(nil)
+	_ ca.SourceAdapter        = (*AudienceAdapter)(nil)
 )
 
-// ---- inbound: CommentAnalysisEnqueuer ----
+// ---- inbound: AudienceEnqueuer ----
 
 func toIngestInput(c *igdomain.Comment) (ca.IngestInput, bool) {
 	if c == nil || c.IGCommentID == "" || c.IGMediaID == "" || c.IGAccountID == "" {
@@ -68,22 +68,22 @@ func toIngestInput(c *igdomain.Comment) (ca.IngestInput, bool) {
 	in := ca.IngestInput{
 		WorkspaceID:      c.WorkspaceID,
 		Container:        ca.ContainerRef{Source: ca.SourceInstagram, AccountID: c.IGAccountID, ContainerID: c.IGMediaID},
-		SourceCommentID:  c.IGCommentID,
+		SubjectID:  c.IGCommentID,
 		AuthorExternalID: c.FromIGSID,
 		AuthorHandle:     c.FromUsername,
 		Text:             c.Text,
 		IsOurs:           c.IsOurs,
 	}
 	if c.ParentIGCommentID != nil {
-		in.ParentCommentID = *c.ParentIGCommentID
+		in.ParentSubjectID = *c.ParentIGCommentID
 	}
 	if c.Timestamp != nil {
-		in.CommentedAt = *c.Timestamp
+		in.OccurredAt = *c.Timestamp
 	}
 	return in, true
 }
 
-func (a *CommentAnalysisAdapter) Enqueue(ctx context.Context, c *igdomain.Comment) {
+func (a *AudienceAdapter) Enqueue(ctx context.Context, c *igdomain.Comment) {
 	in, ok := toIngestInput(c)
 	if !ok {
 		return
@@ -94,7 +94,7 @@ func (a *CommentAnalysisAdapter) Enqueue(ctx context.Context, c *igdomain.Commen
 	}
 }
 
-func (a *CommentAnalysisAdapter) Forget(ctx context.Context, igCommentID string) {
+func (a *AudienceAdapter) Forget(ctx context.Context, igCommentID string) {
 	if a.tombstones == nil || strings.TrimSpace(igCommentID) == "" {
 		return
 	}
@@ -105,7 +105,7 @@ func (a *CommentAnalysisAdapter) Forget(ctx context.Context, igCommentID string)
 
 // ---- outbound: ca.SourceAdapter ----
 
-func (a *CommentAnalysisAdapter) ReadTexts(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]string, error) {
+func (a *AudienceAdapter) ReadTexts(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]string, error) {
 	out := make(map[string]string, len(ids))
 	for _, id := range ids {
 		c, err := a.comments.FindByIGCommentID(ctx, ref.AccountID, id)
@@ -120,7 +120,7 @@ func (a *CommentAnalysisAdapter) ReadTexts(ctx context.Context, ref ca.Container
 	return out, nil
 }
 
-func (a *CommentAnalysisAdapter) ReadContainerContext(ctx context.Context, ref ca.ContainerRef) (ca.ContainerContext, error) {
+func (a *AudienceAdapter) ReadContainerContext(ctx context.Context, ref ca.ContainerRef) (ca.ContainerContext, error) {
 	m, err := a.media.FindByIGMediaID(ctx, ref.AccountID, ref.ContainerID)
 	if err != nil {
 		if errors.Is(err, igdomain.ErrMediaNotFound) {
@@ -141,7 +141,7 @@ func (a *CommentAnalysisAdapter) ReadContainerContext(ctx context.Context, ref c
 	return out, nil
 }
 
-func (a *CommentAnalysisAdapter) ListContainers(ctx context.Context, accountID string, limit, offset int) ([]ca.ContainerSummary, error) {
+func (a *AudienceAdapter) ListContainers(ctx context.Context, accountID string, limit, offset int) ([]ca.ContainerSummary, error) {
 	items, err := a.media.ListByAccount(ctx, accountID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -160,7 +160,7 @@ func (a *CommentAnalysisAdapter) ListContainers(ctx context.Context, accountID s
 // FetchCommentsPage pulls one page off the Graph edge for a backfill,
 // mirroring each comment locally on the way (the engine reads bodies back
 // from the mirror) and returning the ingest inputs.
-func (a *CommentAnalysisAdapter) FetchCommentsPage(ctx context.Context, ref ca.ContainerRef, cursor string) ([]ca.IngestInput, string, error) {
+func (a *AudienceAdapter) FetchCommentsPage(ctx context.Context, ref ca.ContainerRef, cursor string) ([]ca.IngestInput, string, error) {
 	if a.accounts == nil || a.commentSvc == nil {
 		return nil, "", errors.New("instagram: backfill is not configured for this deployment")
 	}
@@ -236,17 +236,17 @@ func firstNonEmpty(values ...string) string {
 
 // ---- ownership ----
 
-// commentAnalysisAccountVerifier answers "does this workspace own this
+// audienceAccountVerifier answers "does this workspace own this
 // account" from the account row, for the settings and backfill use cases.
-type commentAnalysisAccountVerifier struct {
+type audienceAccountVerifier struct {
 	accounts igdomain.AccountRepository
 }
 
-func NewCommentAnalysisAccountVerifier(accounts igdomain.AccountRepository) *commentAnalysisAccountVerifier {
-	return &commentAnalysisAccountVerifier{accounts: accounts}
+func NewAudienceAccountVerifier(accounts igdomain.AccountRepository) *audienceAccountVerifier {
+	return &audienceAccountVerifier{accounts: accounts}
 }
 
-func (v *commentAnalysisAccountVerifier) AccountBelongsTo(ctx context.Context, workspaceID, accountID string) (bool, error) {
+func (v *audienceAccountVerifier) AccountBelongsTo(ctx context.Context, workspaceID, accountID string) (bool, error) {
 	account, err := v.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, igdomain.ErrAccountNotFound) {

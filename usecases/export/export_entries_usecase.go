@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/export"
 	shared_domain "vozko/domain/shared"
 	"vozko/domain/stage"
@@ -41,7 +41,7 @@ const (
 // have to stub forty methods it never calls to exercise a CSV.
 // AnalysisLookup is satisfied by the analysis engine.s conversation reader.
 type AnalysisLookup interface {
-	LatestByEntries(ctx context.Context, workspaceID string, source ca.Source, entryIDs []string) (map[string]*ca.CommentAnalysis, error)
+	LatestByEntries(ctx context.Context, workspaceID string, source ca.Source, entryIDs []string) (map[string]*ca.Analysis, error)
 }
 
 type StageLookup interface {
@@ -390,7 +390,7 @@ func (s *csvSink) write(row export.ExportRow) error {
 	return nil
 }
 
-func populateAnalysisFields(row *export.ExportRow, a *ca.CommentAnalysis) {
+func populateAnalysisFields(row *export.ExportRow, a *ca.Analysis) {
 	if a == nil {
 		return
 	}
@@ -425,7 +425,7 @@ func matchesEntryFilter(f export.ExportFilter, e export.ChannelEntry) bool {
 // matchesEnrichedFilter holds the predicates that need data the channel query
 // does not carry. They run on the second walk only, which is why the header can
 // name a column that every surviving row leaves blank.
-func matchesEnrichedFilter(f export.ExportFilter, a *ca.CommentAnalysis, t *stage.EntryStage) bool {
+func matchesEnrichedFilter(f export.ExportFilter, a *ca.Analysis, t *stage.EntryStage) bool {
 	if f.StageID != "" {
 		if t == nil || t.StageID != f.StageID {
 			return false

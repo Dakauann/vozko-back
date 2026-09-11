@@ -31,7 +31,7 @@ func TestPriceCommentAnalysis_MultipliesByComments(t *testing.T) {
 	// An operator priced the seeded row: same key, now with a price.
 	items := append([]PricingItem{}, DefaultPricingCatalog...)
 	for i := range items {
-		if items[i].Service == CommentAnalysisService {
+		if items[i].Service == AudienceService {
 			items[i].CostMicros, items[i].PriceMicros = 100, 500
 		}
 	}
@@ -60,7 +60,7 @@ func TestPriceCommentAnalysis_RepositoryErrorPropagates(t *testing.T) {
 // admin and can switch it on, rather than having to know the key.
 func TestDefaultCatalogCarriesCommentAnalysisAtZero(t *testing.T) {
 	for _, it := range DefaultPricingCatalog {
-		if it.Category == CategoryLLM && it.Service == CommentAnalysisService && it.Metric == CommentAnalysisMetric {
+		if it.Category == CategoryLLM && it.Service == AudienceService && it.Metric == AudienceMetric {
 			if it.PriceMicros != 0 {
 				t.Fatalf("the seeded surcharge must default to 0 (token billing only), got %d", it.PriceMicros)
 			}

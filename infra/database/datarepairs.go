@@ -72,9 +72,9 @@ func repairInstagramSecondTimestamps(tx *gorm.DB) error {
 		return err
 	}
 	if err := tx.Exec(`
-		UPDATE comment_analyses
-		   SET commented_at = created_at
-		 WHERE commented_at < TIMESTAMPTZ '2000-01-01'
+		UPDATE audience_analyses
+		   SET occurred_at = created_at
+		 WHERE occurred_at < TIMESTAMPTZ '2000-01-01'
 		   AND created_at >= TIMESTAMPTZ '2000-01-01'
 		   AND source = 'instagram'
 	`).Error; err != nil {

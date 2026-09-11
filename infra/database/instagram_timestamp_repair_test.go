@@ -12,7 +12,7 @@ func TestRepairInstagramSecondTimestampsRepairsBothProjections(t *testing.T) {
 	defer sqlDB.Close()
 
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE instagram_comments")).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE comment_analyses")).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE audience_analyses")).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := repairInstagramSecondTimestamps(db); err != nil {
 		t.Fatalf("repair failed: %v", err)

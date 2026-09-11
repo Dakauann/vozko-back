@@ -5,7 +5,7 @@ import (
 	"time"
 
 	conversation_domain "vozko/domain/conversation"
-	cauc "vozko/usecases/comment_analysis"
+	cauc "vozko/usecases/audience"
 )
 
 // commentEscalationRecipients adapts the CRM's inbox search onto the narrow

@@ -244,7 +244,7 @@ func (p *pricer) PriceCommentAnalysis(workspaceID string, comments int) (PriceRe
 	if err != nil {
 		return PriceResult{}, err
 	}
-	item := findResolvedItem(resolved, CategoryLLM, CommentAnalysisService, CommentAnalysisMetric)
+	item := findResolvedItem(resolved, CategoryLLM, AudienceService, AudienceMetric)
 	if item == nil || item.PriceMicros <= 0 {
 		return PriceResult{}, nil
 	}

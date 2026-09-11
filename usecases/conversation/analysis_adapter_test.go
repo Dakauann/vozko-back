@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ca "vozko/domain/comment_analysis"
+	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 )
@@ -100,8 +100,8 @@ func TestAdapterEnqueuesAConversation(t *testing.T) {
 	if in.Container.ContainerID != "camp-1" {
 		t.Errorf("container = %q, want the campaign", in.Container.ContainerID)
 	}
-	if in.SourceCommentID != "entry-1" {
-		t.Errorf("subject id = %q, want the entry id", in.SourceCommentID)
+	if in.SubjectID != "entry-1" {
+		t.Errorf("subject id = %q, want the entry id", in.SubjectID)
 	}
 	if in.WorkspaceID != "ws-1" {
 		t.Errorf("workspace = %q", in.WorkspaceID)
@@ -111,8 +111,8 @@ func TestAdapterEnqueuesAConversation(t *testing.T) {
 		t.Errorf("enqueued an invalid container ref: %v", err)
 	}
 	// Bucketed on the last message, not on now.
-	if want := base.Add(3 * time.Minute); !in.CommentedAt.Equal(want) {
-		t.Errorf("commentedAt = %v, want the last message at %v", in.CommentedAt, want)
+	if want := base.Add(3 * time.Minute); !in.OccurredAt.Equal(want) {
+		t.Errorf("commentedAt = %v, want the last message at %v", in.OccurredAt, want)
 	}
 }
 

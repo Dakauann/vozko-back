@@ -21,7 +21,7 @@ type commentAnalysisMetrics struct {
 	capHits      *prometheus.CounterVec
 }
 
-func newCommentAnalysisMetrics(reg prometheus.Registerer) *commentAnalysisMetrics {
+func newAudienceMetrics(reg prometheus.Registerer) *commentAnalysisMetrics {
 	m := &commentAnalysisMetrics{
 		enqueued: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace, Subsystem: "comment_analysis",
@@ -61,60 +61,60 @@ func newCommentAnalysisMetrics(reg prometheus.Registerer) *commentAnalysisMetric
 	return m
 }
 
-var _ metrics.CommentAnalysisMetricsRecorder = (*PrometheusService)(nil)
+var _ metrics.AudienceMetricsRecorder = (*PrometheusService)(nil)
 
 func (p *PrometheusService) IncCommentEnqueued(source string) {
-	if p == nil || p.commentAnalysis == nil {
+	if p == nil || p.audience == nil {
 		return
 	}
-	p.commentAnalysis.enqueued.WithLabelValues(safeLabel(source)).Inc()
+	p.audience.enqueued.WithLabelValues(safeLabel(source)).Inc()
 }
 
 func (p *PrometheusService) IncCommentBatches(model, outcome string) {
-	if p == nil || p.commentAnalysis == nil {
+	if p == nil || p.audience == nil {
 		return
 	}
-	p.commentAnalysis.batches.WithLabelValues(safeLabel(model), safeLabel(outcome)).Inc()
+	p.audience.batches.WithLabelValues(safeLabel(model), safeLabel(outcome)).Inc()
 }
 
 func (p *PrometheusService) AddCommentItems(outcome string, n int) {
-	if p == nil || p.commentAnalysis == nil || n <= 0 {
+	if p == nil || p.audience == nil || n <= 0 {
 		return
 	}
-	p.commentAnalysis.items.WithLabelValues(safeLabel(outcome)).Add(float64(n))
+	p.audience.items.WithLabelValues(safeLabel(outcome)).Add(float64(n))
 }
 
 func (p *PrometheusService) AddCommentTokens(model, kind string, n int) {
-	if p == nil || p.commentAnalysis == nil || n <= 0 {
+	if p == nil || p.audience == nil || n <= 0 {
 		return
 	}
-	p.commentAnalysis.tokens.WithLabelValues(safeLabel(model), safeLabel(kind)).Add(float64(n))
+	p.audience.tokens.WithLabelValues(safeLabel(model), safeLabel(kind)).Add(float64(n))
 }
 
 func (p *PrometheusService) ObserveCommentBatchLatency(elapsed time.Duration) {
-	if p == nil || p.commentAnalysis == nil {
+	if p == nil || p.audience == nil {
 		return
 	}
-	p.commentAnalysis.batchLatency.Observe(elapsed.Seconds())
+	p.audience.batchLatency.Observe(elapsed.Seconds())
 }
 
 func (p *PrometheusService) SetCommentPending(source string, n int) {
-	if p == nil || p.commentAnalysis == nil {
+	if p == nil || p.audience == nil {
 		return
 	}
-	p.commentAnalysis.pending.WithLabelValues(safeLabel(source)).Set(float64(n))
+	p.audience.pending.WithLabelValues(safeLabel(source)).Set(float64(n))
 }
 
 func (p *PrometheusService) AddCommentTruncated(n int) {
-	if p == nil || p.commentAnalysis == nil || n <= 0 {
+	if p == nil || p.audience == nil || n <= 0 {
 		return
 	}
-	p.commentAnalysis.truncated.Add(float64(n))
+	p.audience.truncated.Add(float64(n))
 }
 
 func (p *PrometheusService) IncCommentCapHit(cap string) {
-	if p == nil || p.commentAnalysis == nil {
+	if p == nil || p.audience == nil {
 		return
 	}
-	p.commentAnalysis.capHits.WithLabelValues(safeLabel(cap)).Inc()
+	p.audience.capHits.WithLabelValues(safeLabel(cap)).Inc()
 }

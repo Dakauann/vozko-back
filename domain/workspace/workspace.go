@@ -75,7 +75,7 @@ var (
 	// Comment analysis is its own resource: reading a dashboard that names
 	// people and switching on a billed feature are different privileges from
 	// moderating a post.
-	ResourceCommentAnalysis  = registerResource("comment_analysis")
+	ResourceAudience        = registerResource("audience")
 	ResourceTelegramAccounts = registerResource("telegram_accounts")
 	// The QR-session WhatsApp channel splits into two resources for the same
 	// reason WhatsApp does: connecting a number and blasting it are different
@@ -312,7 +312,7 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram"},
 		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram"},
 	},
-	ResourceCommentAnalysis: {
+	ResourceAudience: {
 		{ActionName: ActionRead, Description: "Visualizar a análise de comentários (audiência, temas, autores)"},
 		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários, moderar autores e iniciar reprocessamentos"},
 		// A SEPARATE privilege from update, and the distinction is the point:
@@ -321,7 +321,7 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		// the conversation send permission rather than inventing a second
 		// answer to "may this user message people".
 		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Requires: []PermissionEntry{
-			{Resource: ResourceCommentAnalysis, Action: ActionRead},
+			{Resource: ResourceAudience, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionSend},
 		}},
 	},

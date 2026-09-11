@@ -22,7 +22,7 @@ import (
 	cep_repository "vozko/infra/repositories/cep"
 	config_repository "vozko/infra/repositories/config"
 	conversation_repository "vozko/infra/repositories/conversation"
-	ca_repository "vozko/infra/repositories/comment_analysis"
+	ca_repository "vozko/infra/repositories/audience"
 	ce_repository "vozko/infra/repositories/conversation_event"
 	customer_repository "vozko/infra/repositories/customer"
 	customfield_repository "vozko/infra/repositories/customfield"

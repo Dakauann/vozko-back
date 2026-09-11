@@ -4,30 +4,30 @@ import (
 	"log"
 	"time"
 
-	commentanalysishttp "vozko/delivery/http/commentanalysis"
-	ca "vozko/domain/comment_analysis"
+	audiencehttp "vozko/delivery/http/audience"
+	ca "vozko/domain/audience"
 	"vozko/domain/notification"
 	"vozko/domain/shared"
 	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
-	ca_repository "vozko/infra/repositories/comment_analysis"
-	cauc "vozko/usecases/comment_analysis"
+	ca_repository "vozko/infra/repositories/audience"
+	cauc "vozko/usecases/audience"
 	convuc "vozko/usecases/conversation"
 	iguc "vozko/usecases/instagram"
 )
 
-// commentAnalysisBundle is the comment-analysis engine wired as one unit, the
+// audienceBundle is the comment-analysis engine wired as one unit, the
 // same self-contained shape as the channel bundles: build it in one place,
 // hand the jobs to the runner and the handler to the router, and keep the
 // rest of the container unaware of its internals.
 //
 // It is channel-neutral. Instagram registers itself as a source below; a
 // second channel would register another adapter and get the whole feature.
-type commentAnalysisBundle struct {
+type audienceBundle struct {
 	Enabled bool
 
 	Engine   *cauc.Engine
 	Ingestor ca.Ingestor
-	Handler  *commentanalysishttp.Handler
+	Handler  *audiencehttp.Handler
 
 	Flush    *cauc.FlushJob
 	Backstop *cauc.BackstopJob
@@ -36,8 +36,8 @@ type commentAnalysisBundle struct {
 	Backfill *cauc.BackfillJob
 
 	// InstagramAdapter is the channel's side, handed to the webhook use case
-	// as its CommentAnalysisEnqueuer.
-	InstagramAdapter *iguc.CommentAnalysisAdapter
+	// as its AudienceEnqueuer.
+	InstagramAdapter *iguc.AudienceAdapter
 
 	// ConversationAdapter is the OTHER subject kind: one adapter serving every
 	// channel that holds a transcript. The debounce sweep hands conversations to
@@ -45,18 +45,18 @@ type commentAnalysisBundle struct {
 	ConversationAdapter *convuc.AnalysisAdapter
 }
 
-// commentAnalysisRetention is how long analysed rows are kept. The full
+// audienceRetention is how long analysed rows are kept. The full
 // comment text is never here, only labels and a 200-rune excerpt, so this is
 // dashboard history rather than a PII window.
-const commentAnalysisRetention = 365 * 24 * time.Hour
+const audienceRetention = 365 * 24 * time.Hour
 
 // initCommentAnalysis builds the engine. It runs inside initUseCases once the
 // AI service, the pricer, the balance checker and the notifier exist, and
 // BEFORE the Instagram runtime half, whose webhook use case takes the
 // enqueuer built here.
 func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, notifier notification.Notifier, dashboardURL string) {
-	bundle := &commentAnalysisBundle{}
-	c.commentAnalysis = bundle
+	bundle := &audienceBundle{}
+	c.audience = bundle
 
 	if c.instagram == nil || !c.instagram.Enabled {
 		// The only source today is Instagram; without it the engine would
@@ -86,7 +86,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	// Instagram's side: the same adapter is the webhook's enqueuer and the
 	// engine's source adapter.
 	ig := c.instagram
-	bundle.InstagramAdapter = iguc.NewCommentAnalysisAdapter(
+	bundle.InstagramAdapter = iguc.NewAudienceAdapter(
 		bundle.Ingestor, ig.Comments, ig.Media, ig.Accounts, ig.CommentSvc, repo,
 	)
 	if ig.ModerateComment != nil {
@@ -129,7 +129,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		Balance: c.services.cachedBalanceChecker,
 		Batches: batches,
 	})
-	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewCommentAnalysisAccountVerifier(ig.Accounts)}
+	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewAudienceAccountVerifier(ig.Accounts)}
 
 	// Conversations. One adapter, every channel: the transcript comes from
 	// conversation_messages, which each channel already writes to.
@@ -178,7 +178,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		Batches:  batches, Charger: cauc.NewCharger(c.repositories.balance, pricer, state),
 		Balance: c.services.cachedBalanceChecker, Clock: clock,
 	}))
-	bundle.Purge = cauc.NewPurgeJob(repo, commentAnalysisRetention, clock)
+	bundle.Purge = cauc.NewPurgeJob(repo, audienceRetention, clock)
 
 	backfillDeps := cauc.BackfillDeps{
 		Backfills: backfills, Settings: settings, Ingestor: bundle.Ingestor,
@@ -206,7 +206,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	})
 	getContainer, putContainer, delContainer, listAccounts := cauc.NewContainerSettingsUseCases(settings, resolver, verifiers, clock)
 
-	bundle.Handler = commentanalysishttp.NewHandler(commentanalysishttp.Deps{
+	bundle.Handler = audiencehttp.NewHandler(audiencehttp.Deps{
 		List:       cauc.NewListUseCase(repo),
 		Stats:      cauc.NewStatsUseCase(repo),
 		Trends:     cauc.NewTrendsUseCase(rollups),
@@ -243,20 +243,20 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	log.Printf("[comment-analysis] engine enabled (sources: instagram; model default %q)", c.cfg.OpenRouterDefaultModel)
 }
 
-// commentAnalysisHandler returns the API handler, or nil when the feature is
+// audienceHandler returns the API handler, or nil when the feature is
 // not wired; the router treats nil as "register no routes".
-func commentAnalysisHandler(c *Container) *commentanalysishttp.Handler {
-	if c.commentAnalysis == nil || !c.commentAnalysis.Enabled {
+func audienceHandler(c *Container) *audiencehttp.Handler {
+	if c.audience == nil || !c.audience.Enabled {
 		return nil
 	}
-	return c.commentAnalysis.Handler
+	return c.audience.Handler
 }
 
-// commentAnalysisEnqueuer returns Instagram's enqueuer, or nil when the
+// audienceEnqueuer returns Instagram's enqueuer, or nil when the
 // feature is not wired; the webhook use case treats nil as "no engine".
-func commentAnalysisEnqueuer(c *Container) iguc.CommentAnalysisEnqueuer {
-	if c.commentAnalysis == nil || !c.commentAnalysis.Enabled || c.commentAnalysis.InstagramAdapter == nil {
+func audienceEnqueuer(c *Container) iguc.AudienceEnqueuer {
+	if c.audience == nil || !c.audience.Enabled || c.audience.InstagramAdapter == nil {
 		return nil
 	}
-	return c.commentAnalysis.InstagramAdapter
+	return c.audience.InstagramAdapter
 }

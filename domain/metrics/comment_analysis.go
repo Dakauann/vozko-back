@@ -25,11 +25,11 @@ const (
 	CommentCapBalance = "balance"
 )
 
-// CommentAnalysisMetricsRecorder is what the comment-analysis engine
+// AudienceMetricsRecorder is what the comment-analysis engine
 // reports. comment_analysis_pending rising monotonically is the alert that
 // matters: it means the flush is not keeping up with ingest, which is the
 // only way the feature fails quietly.
-type CommentAnalysisMetricsRecorder interface {
+type AudienceMetricsRecorder interface {
 	IncCommentEnqueued(source string)
 	IncCommentBatches(model, outcome string)
 	AddCommentItems(outcome string, n int)
