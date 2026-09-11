@@ -372,7 +372,7 @@ func ingestItems(container string, ids ...string) []ca.IngestInput {
 	out := make([]ca.IngestInput, len(ids))
 	for i, id := range ids {
 		out[i] = ca.IngestInput{WorkspaceID: "ws-1",
-			Container:       ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: container},
+			Container: ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: container},
 			SubjectID: id, AuthorExternalID: "u", Text: "t"}
 	}
 	return out

@@ -3571,8 +3571,8 @@ func (h *ConversationHub) runRedisWorkspaceBroadcastSubscriber() {
 			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil)
 		case "entry_removed":
 			h.broadcastEntryRemovedLocal(p.EntryID, p.EntryType, p.WorkspaceID, p.ExcludeUserID)
-		case "comment_analysis_analyzed":
-			h.sendToWorkspaceWithPermission(p.WorkspaceID, "comment_analysis", "read", p.Payload)
+		case "audience_analyzed":
+			h.sendToWorkspaceWithPermission(p.WorkspaceID, "audience", "read", p.Payload)
 		}
 	})
 }

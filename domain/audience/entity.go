@@ -1,4 +1,6 @@
-// Package comment_analysis is the channel-neutral engine that classifies public
+// Package audience is the channel-neutral engine that classifies what an
+// audience says: public comments on posts, and conversations on every channel.
+// It classifies them in bulk, on a token budget. The original scope was public
 // comments on a customer's posts, in bulk, on a token budget.
 //
 // It is pure: no Instagram, no SQL, no HTTP. A comment arrives as a Source
@@ -353,7 +355,7 @@ type Analysis struct {
 	ContainerID string `json:"containerId"`
 	// SubjectID identifies the subject on its channel: the comment id for
 	// a comment, the conversation's entry id for a conversation.
-	SubjectID string  `json:"subjectId"`
+	SubjectID       string  `json:"subjectId"`
 	ParentSubjectID *string `json:"parentCommentId,omitempty"`
 
 	AuthorExternalID string `json:"authorExternalId"`
@@ -413,8 +415,8 @@ type Analysis struct {
 	// is when it reached us. Rollups bucket by the former, so a backfilled
 	// comment lands on its own day.
 	OccurredAt time.Time `json:"occurredAt"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 	// DeletedAt is set when the source comment was deleted (§6.4). The row
 	// leaves the feed and the live stats but stays in historical rollups: the
 	// rollup for last Tuesday must not change because someone deleted a
@@ -436,7 +438,7 @@ func (a *Analysis) SoftDelete(now time.Time) {
 type NewInput struct {
 	WorkspaceID      string
 	Container        ContainerRef
-	SubjectID  string
+	SubjectID        string
 	ParentSubjectID  string
 	AuthorExternalID string
 	AuthorHandle     string
@@ -444,7 +446,7 @@ type NewInput struct {
 	// OccurredAt is the channel's timestamp for the comment; zero falls
 	// back to Now.
 	OccurredAt time.Time
-	Now         time.Time
+	Now        time.Time
 }
 
 // NewPending builds the row ingest inserts. A blank comment is recorded as
@@ -469,13 +471,13 @@ func NewPending(in NewInput) (*Analysis, error) {
 		Source:           in.Container.Source,
 		AccountID:        in.Container.AccountID,
 		ContainerID:      in.Container.ContainerID,
-		SubjectID:  strings.TrimSpace(in.SubjectID),
+		SubjectID:        strings.TrimSpace(in.SubjectID),
 		AuthorExternalID: strings.TrimSpace(in.AuthorExternalID),
 		AuthorHandle:     strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(in.AuthorHandle), "@")),
 		Status:           StatusPending,
 		Excerpt:          excerpt,
 		Truncated:        cut,
-		OccurredAt:      in.OccurredAt,
+		OccurredAt:       in.OccurredAt,
 		CreatedAt:        in.Now,
 		UpdatedAt:        in.Now,
 	}

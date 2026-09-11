@@ -177,7 +177,7 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 		BillingSkippedTotal:   billingSkipped,
 		WSConnections:         wsConnections,
 		RateLimited:           rateLimited,
-		audience:       newAudienceMetrics(reg),
+		audience:              newAudienceMetrics(reg),
 		registry:              registry,
 	}
 }

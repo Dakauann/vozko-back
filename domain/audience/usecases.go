@@ -30,7 +30,7 @@ type ListAuthorsUseCase interface {
 // AuthorDetail is one author plus their comments: the row a flagged-authors
 // table expands into.
 type AuthorDetail struct {
-	Author   *AuthorStats                              `json:"author"`
+	Author   *AuthorStats                       `json:"author"`
 	Comments *shared.PaginatedResult[*Analysis] `json:"comments"`
 }
 

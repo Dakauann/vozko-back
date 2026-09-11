@@ -14,7 +14,7 @@ import (
 
 // The alert rules API.
 //
-// Every route here is behind comment_analysis:send rather than update, and the
+// Every route here is behind audience:send rather than update, and the
 // distinction is the point: configuring an automated sender IS granting sends.
 // Somebody who may tune the classifier must not thereby be able to arm a rule
 // that messages a phone number in the workspace's name.

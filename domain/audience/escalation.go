@@ -40,7 +40,7 @@ type Escalation struct {
 	// Measured is false for a comment that was never classified. It can still
 	// be forwarded (often that is exactly why), but the message must not print
 	// an unmeasured severity as if it were a zero score.
-	Measured    bool
+	Measured   bool
 	OccurredAt time.Time
 
 	Note string
@@ -65,7 +65,7 @@ func NewEscalation(c *Analysis, permalink, note string) Escalation {
 		Stance:           c.Stance,
 		Severity:         c.Severity,
 		Measured:         c.Status == StatusAnalyzed,
-		OccurredAt:      c.OccurredAt,
+		OccurredAt:       c.OccurredAt,
 		Note:             note,
 	}
 }

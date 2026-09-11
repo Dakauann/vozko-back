@@ -58,7 +58,7 @@ func fullyPopulatedAnalysis() *ca.Analysis {
 		Source:           ca.SourceWhatsApp,
 		AccountID:        "33333333-3333-3333-3333-333333333333",
 		ContainerID:      "campaign-1",
-		SubjectID:  "entry-1",
+		SubjectID:        "entry-1",
 		ParentSubjectID:  &parent,
 		AuthorExternalID: "author-1",
 		AuthorHandle:     "fulano",
@@ -91,13 +91,13 @@ func fullyPopulatedAnalysis() *ca.Analysis {
 		Excerpt:        "trecho do assunto",
 		Truncated:      true,
 
-		BatchID:     "44444444-4444-4444-4444-444444444444",
-		Model:       "openai/gpt-4o-mini",
-		AnalyzedAt:  &later,
+		BatchID:    "44444444-4444-4444-4444-444444444444",
+		Model:      "openai/gpt-4o-mini",
+		AnalyzedAt: &later,
 		OccurredAt: now,
-		CreatedAt:   now,
-		UpdatedAt:   later,
-		DeletedAt:   &later,
+		CreatedAt:  now,
+		UpdatedAt:  later,
+		DeletedAt:  &later,
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 // RegisterProtectedRoutes wires the authenticated comment-analysis routes
 // (plan §12). Reads are ActionRead; moderation, configuration, retries and
-// backfills are ActionUpdate on the comment_analysis resource.
+// backfills are ActionUpdate on the audience resource.
 func RegisterProtectedRoutes(
 	protected *mux.Router,
 	h *Handler,

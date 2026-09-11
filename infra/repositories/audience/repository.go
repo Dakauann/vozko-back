@@ -166,7 +166,7 @@ func saveColumns(a *ca.Analysis) map[string]any {
 		"summary":            a.Summary,
 		"attendance_quality": a.AttendanceQuality,
 		"message_count":      a.MessageCount,
-		"occurred_at":       a.OccurredAt,
+		"occurred_at":        a.OccurredAt,
 		"requires_action":    a.RequiresAction,
 		"truncated":          a.Truncated,
 		"batch_id":           batchID,
@@ -409,8 +409,8 @@ func (r *repository) ListAuthorContainers(ctx context.Context, in ca.AuthorConta
 		StanceHostile     int
 		SeverityMax       int
 		SeverityHighCount int
-		FirstOccurredAt  time.Time
-		LastOccurredAt   time.Time
+		FirstOccurredAt   time.Time
+		LastOccurredAt    time.Time
 	}
 	var rows []row
 	err := scope().
@@ -447,8 +447,8 @@ func (r *repository) ListAuthorContainers(ctx context.Context, in ca.AuthorConta
 			},
 			SeverityMax:       x.SeverityMax,
 			SeverityHighCount: x.SeverityHighCount,
-			FirstOccurredAt:  x.FirstOccurredAt,
-			LastOccurredAt:   x.LastOccurredAt,
+			FirstOccurredAt:   x.FirstOccurredAt,
+			LastOccurredAt:    x.LastOccurredAt,
 		}
 		c.Derive()
 		items = append(items, c)

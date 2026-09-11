@@ -35,7 +35,7 @@ const (
 // The optional per-comment surcharge for comment analysis (an LLM-category
 // item so it sits beside the token markup in the pricing admin).
 const (
-	AudienceService = "comment_analysis"
+	AudienceService = "audience"
 	AudienceMetric  = "per_comment"
 )
 

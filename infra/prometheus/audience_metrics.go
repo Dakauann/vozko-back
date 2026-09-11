@@ -24,36 +24,36 @@ type commentAnalysisMetrics struct {
 func newAudienceMetrics(reg prometheus.Registerer) *commentAnalysisMetrics {
 	m := &commentAnalysisMetrics{
 		enqueued: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "enqueued_total", Help: "Comments enqueued for analysis, by source",
 		}, []string{"source"}),
 		batches: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "batches_total", Help: "Model calls, by model and outcome (ok|length|parse_error|provider_error)",
 		}, []string{"model", "outcome"}),
 		items: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "items_total", Help: "Comments by reconciliation outcome (analyzed|missing_ref|invalid_ref|bad_labels|failed|skipped|deferred)",
 		}, []string{"outcome"}),
 		tokens: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "tokens_total", Help: "Tokens consumed, by model and kind (prompt|completion)",
 		}, []string{"model", "kind"}),
 		batchLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "batch_latency_seconds", Help: "Model call latency per batch",
 			Buckets: []float64{0.5, 1, 2, 4, 8, 15, 30, 60},
 		}),
 		pending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "pending", Help: "Comments waiting for analysis, by source. Rising monotonically means the flush is not keeping up",
 		}, []string{"source"}),
 		truncated: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "truncated_total", Help: "Comments cut at MaxCommentRunes before classification",
 		}),
 		capHits: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace, Subsystem: "comment_analysis",
+			Namespace: metricsNamespace, Subsystem: "audience",
 			Name: "cap_hit_total", Help: "Cycles stopped by a cap (cycle|daily|balance)",
 		}, []string{"cap"}),
 	}

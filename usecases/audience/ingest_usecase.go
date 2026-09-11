@@ -62,12 +62,12 @@ func (uc *ingestUseCase) Enqueue(ctx context.Context, in ca.IngestInput) error {
 	row, err := ca.NewPending(ca.NewInput{
 		WorkspaceID:      in.WorkspaceID,
 		Container:        in.Container,
-		SubjectID:  in.SubjectID,
+		SubjectID:        in.SubjectID,
 		ParentSubjectID:  in.ParentSubjectID,
 		AuthorExternalID: in.AuthorExternalID,
 		AuthorHandle:     in.AuthorHandle,
 		Text:             in.Text,
-		OccurredAt:      in.OccurredAt,
+		OccurredAt:       in.OccurredAt,
 		Now:              now,
 	})
 	if err != nil {

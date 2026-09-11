@@ -35,7 +35,7 @@ type AudienceAnalysis struct {
 	ContainerID string `gorm:"size:64;not null"`
 	// SubjectID identifies the subject on its channel: a comment id, or a
 	// conversation's entry id.
-	SubjectID string  `gorm:"size:64;not null"`
+	SubjectID       string  `gorm:"size:64;not null"`
 	ParentSubjectID *string `gorm:"size:64"`
 
 	AuthorExternalID string `gorm:"size:64;not null"`
@@ -85,9 +85,9 @@ type AudienceAnalysis struct {
 
 	// OccurredAt is the channel's timestamp; rollups bucket by it.
 	OccurredAt time.Time  `gorm:"type:timestamptz;not null;index:idx_ca_commented"`
-	CreatedAt   time.Time  `gorm:"autoCreateTime;type:timestamptz"`
-	UpdatedAt   time.Time  `gorm:"autoUpdateTime;type:timestamptz"`
-	DeletedAt   *time.Time `gorm:"type:timestamptz"`
+	CreatedAt  time.Time  `gorm:"autoCreateTime;type:timestamptz"`
+	UpdatedAt  time.Time  `gorm:"autoUpdateTime;type:timestamptz"`
+	DeletedAt  *time.Time `gorm:"type:timestamptz"`
 }
 
 func (AudienceAnalysis) TableName() string { return "audience_analyses" }

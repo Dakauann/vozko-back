@@ -43,11 +43,11 @@ type Pricer interface {
 
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)
 
-	// PriceCommentAnalysis is the optional per-analysed-comment surcharge on
+	// PriceAudience is the optional per-analysed-comment surcharge on
 	// top of token billing. A price of 0 (the seeded default) means "token
 	// billing only" and prices to zero WITHOUT an error: an unconfigured
 	// surcharge is a deliberate state, not a failure.
-	PriceCommentAnalysis(workspaceID string, comments int) (PriceResult, error)
+	PriceAudience(workspaceID string, comments int) (PriceResult, error)
 }
 
 type pricer struct {
@@ -236,7 +236,7 @@ func (p *pricer) PriceWhatsApp(workspaceID string, templateCategory string) (Pri
 	}, nil
 }
 
-func (p *pricer) PriceCommentAnalysis(workspaceID string, comments int) (PriceResult, error) {
+func (p *pricer) PriceAudience(workspaceID string, comments int) (PriceResult, error) {
 	if comments <= 0 {
 		return PriceResult{}, nil
 	}

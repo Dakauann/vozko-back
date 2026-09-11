@@ -173,8 +173,8 @@ func TestApplyConversationLeavesCommentDimensionsUnset(t *testing.T) {
 			AccountID: "acc", ContainerID: "camp",
 		},
 		SubjectID: "entry-1",
-		Text:            "cliente: quero um orçamento",
-		Now:             now,
+		Text:      "cliente: quero um orçamento",
+		Now:       now,
 	})
 	if err != nil {
 		t.Fatalf("NewPending: %v", err)

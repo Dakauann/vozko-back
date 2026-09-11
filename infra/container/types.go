@@ -83,7 +83,7 @@ import (
 	"vozko/domain/cep"
 	"vozko/domain/cluster"
 	coexistence_domain "vozko/domain/coexistence"
-	comment_analysis_domain "vozko/domain/audience"
+	audience_domain "vozko/domain/audience"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
 	ce_domain "vozko/domain/conversation_event"
@@ -208,7 +208,7 @@ type Container struct {
 type repositories struct {
 	// conversationAnalyses is the engine's read side for conversations: what the
 	// inbox, the export and the lead screen ask about a thread.
-	conversationAnalyses comment_analysis_domain.ConversationReader
+	conversationAnalyses audience_domain.ConversationReader
 	product              product.ProductRepository
 	property             property.PropertyRepository
 	category             category.Repository

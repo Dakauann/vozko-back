@@ -49,9 +49,9 @@ type CommentAnalyzed struct {
 	RequiresAction bool `json:"requiresAction"`
 	IsSpam         bool `json:"isSpam"`
 
-	Excerpt     string    `json:"excerpt"`
+	Excerpt    string    `json:"excerpt"`
 	OccurredAt time.Time `json:"occurredAt"`
-	AnalyzedAt  time.Time `json:"analyzedAt"`
+	AnalyzedAt time.Time `json:"analyzedAt"`
 }
 
 // AnalysisBatchAnalyzed is one broadcast: the rows to draw, and how many more
@@ -87,7 +87,7 @@ func NewCommentAnalyzed(a *Analysis) CommentAnalyzed {
 		RequiresAction:   a.RequiresAction,
 		IsSpam:           a.IsSpam,
 		Excerpt:          a.Excerpt,
-		OccurredAt:      a.OccurredAt,
+		OccurredAt:       a.OccurredAt,
 	}
 	if a.AnalyzedAt != nil {
 		e.AnalyzedAt = *a.AnalyzedAt

@@ -482,7 +482,7 @@ func (h *Handler) Escalate(w http.ResponseWriter, r *http.Request) {
 // @Tags		Analysis
 // @Produce	json
 // @Param		query	query	string	false	"Busca por nome ou número"
-// @Success	200	{array}	comment_analysis_usecase.EscalationRecipient
+// @Success	200	{array}	audience_usecase.EscalationRecipient
 // @Security	BearerAuth
 // @Router		/comment-analysis/escalation-recipients [get]
 func (h *Handler) EscalationRecipients(w http.ResponseWriter, r *http.Request) {

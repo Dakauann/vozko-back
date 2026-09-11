@@ -26,12 +26,12 @@ func TestReplyPolicyShipsOff(t *testing.T) {
 
 func analysedComment(intent Intent, severity int) *Analysis {
 	return &Analysis{
-		Status:      StatusAnalyzed,
-		Intent:      intent,
-		Stance:      StanceNeutral,
-		Sentiment:   shared.SentimentNeutral,
-		Severity:    severity,
-		Excerpt:     "onde eu compro?",
+		Status:     StatusAnalyzed,
+		Intent:     intent,
+		Stance:     StanceNeutral,
+		Sentiment:  shared.SentimentNeutral,
+		Severity:   severity,
+		Excerpt:    "onde eu compro?",
 		OccurredAt: time.Now().UTC(),
 	}
 }

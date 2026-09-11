@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"vozko/domain/cache"
 	ca "vozko/domain/audience"
+	"vozko/domain/cache"
 	"vozko/domain/shared"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
@@ -106,7 +106,7 @@ func (uc *backfillUseCases) estimate(ctx context.Context, workspaceID string, so
 		offset += containerPageSize
 	}
 	if uc.Pricer != nil && est.EstimatedComments > 0 {
-		price, err := uc.Pricer.PriceCommentAnalysis(workspaceID, est.EstimatedComments)
+		price, err := uc.Pricer.PriceAudience(workspaceID, est.EstimatedComments)
 		if err == nil {
 			est.EstimatedMicros = price.PriceMicros
 		}

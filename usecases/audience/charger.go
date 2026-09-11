@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	ca "vozko/domain/audience"
 	"vozko/domain/balance"
 	"vozko/domain/cache"
-	ca "vozko/domain/audience"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
@@ -63,7 +63,7 @@ func (c *charger) ChargeBatch(_ context.Context, workspaceID, batchID string, it
 	if c.pricer == nil || c.balances == nil || items <= 0 {
 		return 0, nil
 	}
-	price, err := c.pricer.PriceCommentAnalysis(workspaceID, items)
+	price, err := c.pricer.PriceAudience(workspaceID, items)
 	if err != nil {
 		return 0, fmt.Errorf("comment analysis: pricing surcharge: %w", err)
 	}
@@ -81,7 +81,7 @@ func (c *charger) ChargeBatch(_ context.Context, workspaceID, batchID string, it
 	_, err = c.balances.DebitBalance(balance.DebitBalanceInput{
 		WorkspaceID:  workspaceID,
 		Amount:       price.PriceMicros,
-		ServiceType:  balance.ServiceCommentAnalysis,
+		ServiceType:  balance.ServiceAudience,
 		ReferenceID:  &reference,
 		Description:  fmt.Sprintf("Análise de comentários: %d comentários (lote %s)", items, batchID),
 		CostMicros:   price.CostMicros,

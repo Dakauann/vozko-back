@@ -18,7 +18,7 @@ type CommentResponse struct {
 	Source          string  `json:"source"`
 	AccountID       string  `json:"accountId"`
 	ContainerID     string  `json:"containerId"`
-	SubjectID string  `json:"subjectId"`
+	SubjectID       string  `json:"subjectId"`
 	ParentSubjectID *string `json:"parentCommentId,omitempty"`
 
 	AuthorExternalID string `json:"authorExternalId"`
@@ -54,10 +54,10 @@ type CommentResponse struct {
 	AttendanceQuality int    `json:"attendanceQuality,omitempty"`
 	MessageCount      int    `json:"messageCount,omitempty"`
 
-	Model       string     `json:"model,omitempty"`
-	AnalyzedAt  *time.Time `json:"analyzedAt,omitempty"`
+	Model      string     `json:"model,omitempty"`
+	AnalyzedAt *time.Time `json:"analyzedAt,omitempty"`
 	OccurredAt time.Time  `json:"occurredAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	CreatedAt  time.Time  `json:"createdAt"`
 }
 
 func toCommentResponse(a *audience.Analysis) CommentResponse {
@@ -84,7 +84,7 @@ func toCommentResponse(a *audience.Analysis) CommentResponse {
 type StatsResponse struct {
 	audience.Counters
 	Topics          []audience.TopicStat `json:"topics"`
-	AcceptanceScore int                          `json:"acceptanceScore"`
+	AcceptanceScore int                  `json:"acceptanceScore"`
 }
 
 func toStatsResponse(s *audience.Stats) StatsResponse {
@@ -106,16 +106,16 @@ func toTrendPoint(r *audience.Rollup) TrendPointResponse {
 }
 
 type AuthorResponse struct {
-	ID               string                        `json:"id"`
-	Source           string                        `json:"source"`
-	AccountID        string                        `json:"accountId"`
-	AuthorExternalID string                        `json:"authorExternalId"`
-	AuthorHandle     string                        `json:"authorHandle,omitempty"`
-	FirstSeenAt      time.Time                     `json:"firstSeenAt"`
-	LastSeenAt       time.Time                     `json:"lastSeenAt"`
+	ID               string                `json:"id"`
+	Source           string                `json:"source"`
+	AccountID        string                `json:"accountId"`
+	AuthorExternalID string                `json:"authorExternalId"`
+	AuthorHandle     string                `json:"authorHandle,omitempty"`
+	FirstSeenAt      time.Time             `json:"firstSeenAt"`
+	LastSeenAt       time.Time             `json:"lastSeenAt"`
 	Counters         audience.Counters     `json:"counters"`
 	TopTopics        []audience.TopicCount `json:"topTopics"`
-	DerivedStance    string                        `json:"derivedStance"`
+	DerivedStance    string                `json:"derivedStance"`
 	// Reputation is the signed ledger the ranking sorts on: negative means the
 	// author has cost more than they gave. Sent alongside the raw counters so
 	// the client shows the score without re-deriving (and re-inventing) it.
@@ -123,10 +123,10 @@ type AuthorResponse struct {
 	// Role is the §5 inference, sent WITH its evidence: a client that received
 	// only a label would have no way to present it as the inference it is.
 	Role            audience.AuthorRoleInference `json:"role"`
-	RoleDisplayable bool                                 `json:"roleDisplayable"`
-	IsFlagged       bool                                 `json:"isFlagged"`
-	ModerationState string                               `json:"moderationState"`
-	UpdatedAt       time.Time                            `json:"updatedAt"`
+	RoleDisplayable bool                         `json:"roleDisplayable"`
+	IsFlagged       bool                         `json:"isFlagged"`
+	ModerationState string                       `json:"moderationState"`
+	UpdatedAt       time.Time                    `json:"updatedAt"`
 }
 
 func toAuthorResponse(a *audience.AuthorStats) AuthorResponse {
@@ -189,17 +189,17 @@ func toEscalationResponse(e audience.Escalation) EscalationResponse {
 }
 
 type SettingsResponse struct {
-	Source            string                       `json:"source"`
-	AccountID         string                       `json:"accountId"`
-	Enabled           bool                         `json:"enabled"`
-	Model             string                       `json:"model,omitempty"`
-	Vertical          string                       `json:"vertical"`
+	Source            string               `json:"source"`
+	AccountID         string               `json:"accountId"`
+	Enabled           bool                 `json:"enabled"`
+	Model             string               `json:"model,omitempty"`
+	Vertical          string               `json:"vertical"`
 	Topics            []audience.Topic     `json:"topics"`
-	SeverityThreshold int                          `json:"severityThreshold"`
-	DailyCap          int                          `json:"dailyCap"`
-	Instructions      string                       `json:"instructions,omitempty"`
+	SeverityThreshold int                  `json:"severityThreshold"`
+	DailyCap          int                  `json:"dailyCap"`
+	Instructions      string               `json:"instructions,omitempty"`
 	ReplyPolicy       audience.ReplyPolicy `json:"replyPolicy"`
-	UpdatedAt         time.Time                    `json:"updatedAt"`
+	UpdatedAt         time.Time            `json:"updatedAt"`
 }
 
 func toSettingsResponse(s *audience.Settings) SettingsResponse {
@@ -217,13 +217,13 @@ func toSettingsResponse(s *audience.Settings) SettingsResponse {
 
 // SettingsRequest is a PATCH-shaped update: absent fields are untouched.
 type SettingsRequest struct {
-	Enabled           *bool                         `json:"enabled,omitempty"`
-	Model             *string                       `json:"model,omitempty"`
-	Vertical          *string                       `json:"vertical,omitempty"`
+	Enabled           *bool                 `json:"enabled,omitempty"`
+	Model             *string               `json:"model,omitempty"`
+	Vertical          *string               `json:"vertical,omitempty"`
 	Topics            *[]audience.Topic     `json:"topics,omitempty"`
-	SeverityThreshold *int                          `json:"severityThreshold,omitempty"`
-	DailyCap          *int                          `json:"dailyCap,omitempty"`
-	Instructions      *string                       `json:"instructions,omitempty"`
+	SeverityThreshold *int                  `json:"severityThreshold,omitempty"`
+	DailyCap          *int                  `json:"dailyCap,omitempty"`
+	Instructions      *string               `json:"instructions,omitempty"`
 	ReplyPolicy       *audience.ReplyPolicy `json:"replyPolicy,omitempty"`
 }
 
@@ -271,21 +271,21 @@ func toBackfillResponse(b *audience.Backfill) BackfillResponse {
 // ContainerOverrideRequest is PUT-shaped: it replaces the post's override.
 // A null or absent field means "inherit from the account".
 type ContainerOverrideRequest struct {
-	Enabled           *bool                     `json:"enabled"`
-	Model             *string                   `json:"model"`
+	Enabled           *bool             `json:"enabled"`
+	Model             *string           `json:"model"`
 	Topics            *[]audience.Topic `json:"topics"`
-	SeverityThreshold *int                      `json:"severityThreshold"`
-	Instructions      *string                   `json:"instructions"`
+	SeverityThreshold *int              `json:"severityThreshold"`
+	Instructions      *string           `json:"instructions"`
 }
 
 type ContainerOverrideResponse struct {
-	ContainerID       string                    `json:"containerId"`
-	Enabled           *bool                     `json:"enabled,omitempty"`
-	Model             *string                   `json:"model,omitempty"`
+	ContainerID       string            `json:"containerId"`
+	Enabled           *bool             `json:"enabled,omitempty"`
+	Model             *string           `json:"model,omitempty"`
 	Topics            *[]audience.Topic `json:"topics,omitempty"`
-	SeverityThreshold *int                      `json:"severityThreshold,omitempty"`
-	Instructions      *string                   `json:"instructions,omitempty"`
-	UpdatedAt         time.Time                 `json:"updatedAt"`
+	SeverityThreshold *int              `json:"severityThreshold,omitempty"`
+	Instructions      *string           `json:"instructions,omitempty"`
+	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
 // ContainerSettingsResponse is what the post editor renders: the override as

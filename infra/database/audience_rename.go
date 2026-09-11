@@ -39,7 +39,28 @@ var audienceColumnRenames = []struct{ table, from, to string }{
 	{"audience_analyses", "commented_at", "occurred_at"},
 }
 
+// audienceValueRenames are the places the old name is stored as a VALUE rather
+// than as a table or column: a permission, a billing service, a price list
+// entry and its audit trail.
+//
+// These are the dangerous ones. A missed table rename fails loudly on the next
+// query; a missed value rename fails silently and selectively. An operator
+// keeps their permission row saying comment_analysis and simply stops seeing
+// the feature; a pricing row keeps its old service and the charge quietly
+// stops matching, so the work is done and not billed.
+var audienceValueRenames = []struct{ table, column string }{
+	{"workspace_member_permissions", "resource"},
+	{"balance_transactions", "service_type"},
+	{"pricing_items", "service"},
+	{"pricing_audit_log", "service"},
+}
+
 func renameCommentAnalysisToAudience(tx *gorm.DB) error {
+	for _, v := range audienceValueRenames {
+		if err := renameStoredValue(tx, v.table, v.column); err != nil {
+			return fmt.Errorf("renaming %s.%s values: %w", v.table, v.column, err)
+		}
+	}
 	for _, r := range audienceTableRenames {
 		if err := renameTableIfNeeded(tx, r[0], r[1]); err != nil {
 			return fmt.Errorf("renaming %s to %s: %w", r[0], r[1], err)
@@ -97,4 +118,23 @@ func renameColumnIfNeeded(tx *gorm.DB, table, from, to string) error {
 		return nil
 	}
 	return tx.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", table, from, to)).Error
+}
+
+// renameStoredValue rewrites the literal 'comment_analysis' to 'audience' in
+// one column.
+//
+// Guarded on the table existing, because this runs before AutoMigrate and a
+// fresh database has none of these tables yet. The UPDATE itself is naturally
+// idempotent: after the first pass no row matches.
+func renameStoredValue(tx *gorm.DB, table, column string) error {
+	var exists bool
+	if err := tx.Raw(`SELECT to_regclass(?) IS NOT NULL`, "public."+table).Scan(&exists).Error; err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return tx.Exec(fmt.Sprintf(
+		"UPDATE %s SET %s = 'audience' WHERE %s = 'comment_analysis'", table, column, column,
+	)).Error
 }

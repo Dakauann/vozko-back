@@ -24,20 +24,6 @@ func RunMigrations(db *gorm.DB) error {
 			return err
 		}
 
-		// The comment-analysis engine became the audience engine, and its RBAC
-		// resource was renamed with it. That name is PERSISTED, one row per
-		// member per permission, so without this every operator who had been
-		// granted comment_analysis would have silently lost the feature: not an
-		// error, not a log line, just a screen that stopped being there.
-		//
-		// Runs before AutoMigrate and is idempotent: after the first pass no row
-		// matches and it is a no-op.
-		if err := tx.Exec(
-			`UPDATE workspace_member_permissions SET resource = 'audience' WHERE resource = 'comment_analysis'`,
-		).Error; err != nil {
-			return err
-		}
-
 		// The same rename, in the schema itself.
 		//
 		// This MUST run before AutoMigrate. AutoMigrate creates whatever it does

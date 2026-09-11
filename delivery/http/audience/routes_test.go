@@ -25,7 +25,7 @@ func (r *recordingAC) fn(resource workspace_domain.Resource, action workspace_do
 	}
 }
 
-// Every route carries the comment_analysis resource with the right action:
+// Every route carries the audience resource with the right action:
 // reads are read, anything that changes state or spends money is update.
 func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 	router := mux.NewRouter()
@@ -359,7 +359,7 @@ func TestOutboundRoutesRequireTheSendAction(t *testing.T) {
 			match.Handler.ServeHTTP(httptest.NewRecorder(), req)
 		}()
 		if got := ac.calls[c.method+" "+c.path]; got != "audience:send" {
-			t.Errorf("%s %s: rbac = %q, want comment_analysis:send", c.method, c.path, got)
+			t.Errorf("%s %s: rbac = %q, want audience:send", c.method, c.path, got)
 		}
 	}
 }

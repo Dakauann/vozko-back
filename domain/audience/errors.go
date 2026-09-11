@@ -3,10 +3,10 @@ package audience
 import "errors"
 
 var (
-	ErrNotFound                = errors.New("comment analysis: not found")
-	ErrWorkspaceRequired       = errors.New("comment analysis: workspace id is required")
+	ErrNotFound          = errors.New("comment analysis: not found")
+	ErrWorkspaceRequired = errors.New("comment analysis: workspace id is required")
 	ErrSubjectIDRequired = errors.New("comment analysis: source comment id is required")
-	ErrContainerInvalid        = errors.New("comment analysis: container reference is invalid")
+	ErrContainerInvalid  = errors.New("comment analysis: container reference is invalid")
 
 	// ErrStatusTransition is returned for any illegal move in the status
 	// machine. It is the domain's half of the at-most-once contract: the other

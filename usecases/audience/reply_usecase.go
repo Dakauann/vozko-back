@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"vozko/domain/balance"
 	ca "vozko/domain/audience"
+	"vozko/domain/balance"
 )
 
 // Answering a comment (§6).

@@ -26,7 +26,7 @@ const (
 )
 
 // AudienceMetricsRecorder is what the comment-analysis engine
-// reports. comment_analysis_pending rising monotonically is the alert that
+// reports. audience_pending rising monotonically is the alert that
 // matters: it means the flush is not keeping up with ingest, which is the
 // only way the feature fails quietly.
 type AudienceMetricsRecorder interface {

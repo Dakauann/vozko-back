@@ -18,7 +18,7 @@ import (
 type IngestInput struct {
 	WorkspaceID      string
 	Container        ContainerRef
-	SubjectID  string
+	SubjectID        string
 	ParentSubjectID  string
 	AuthorExternalID string
 	AuthorHandle     string

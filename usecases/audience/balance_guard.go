@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"vozko/domain/balance"
 	ca "vozko/domain/audience"
+	"vozko/domain/balance"
 )
 
 // The balance floor, shared by every path in the engine that spends tokens.

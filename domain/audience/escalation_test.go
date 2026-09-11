@@ -16,7 +16,7 @@ func escalatedComment() *Analysis {
 		Source:           SourceInstagram,
 		AccountID:        "acc-1",
 		ContainerID:      "media-1",
-		SubjectID:  "c-1",
+		SubjectID:        "c-1",
 		AuthorExternalID: "ig-99",
 		AuthorHandle:     "fulano",
 		Status:           StatusAnalyzed,
@@ -24,7 +24,7 @@ func escalatedComment() *Analysis {
 		Sentiment:        shared.SentimentNegative,
 		Severity:         82,
 		Excerpt:          "vocês são todos uns ladrões",
-		OccurredAt:      time.Date(2026, 9, 2, 14, 3, 0, 0, time.UTC),
+		OccurredAt:       time.Date(2026, 9, 2, 14, 3, 0, 0, time.UTC),
 	}
 }
 

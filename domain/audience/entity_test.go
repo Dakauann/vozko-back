@@ -19,7 +19,7 @@ func newInput(text string) NewInput {
 	return NewInput{
 		WorkspaceID:      "ws-1",
 		Container:        ref(),
-		SubjectID:  "c-1",
+		SubjectID:        "c-1",
 		AuthorExternalID: "igsid-1",
 		AuthorHandle:     "maria",
 		Text:             text,
@@ -434,7 +434,7 @@ func TestActionPolicy_Normalize(t *testing.T) {
 	}
 }
 
-func TestCommentAnalysis_Apply(t *testing.T) {
+func TestAnalysis_Apply(t *testing.T) {
 	a, _ := NewPending(newInput("esse prefeito é um ladrão"))
 	if err := a.Claim(now); err != nil {
 		t.Fatal(err)
@@ -471,7 +471,7 @@ func TestCommentAnalysis_Apply(t *testing.T) {
 
 // Apply is only legal from in_flight: a result for a row that was never
 // claimed is a result for a row another replica owns.
-func TestCommentAnalysis_ApplyRequiresInFlight(t *testing.T) {
+func TestAnalysis_ApplyRequiresInFlight(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	err := a.Apply(good(), ActionPolicy{}, Provenance{}, now)
 	if !errors.Is(err, ErrStatusTransition) {
@@ -481,7 +481,7 @@ func TestCommentAnalysis_ApplyRequiresInFlight(t *testing.T) {
 
 // ---- Claim / Release / Fail / Retry ----
 
-func TestCommentAnalysis_ClaimIncrementsAttempts(t *testing.T) {
+func TestAnalysis_ClaimIncrementsAttempts(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	if err := a.Claim(now); err != nil {
 		t.Fatal(err)
@@ -497,7 +497,7 @@ func TestCommentAnalysis_ClaimIncrementsAttempts(t *testing.T) {
 // Release is the reconcile path: a missing ref goes back to pending and is
 // retried, until MaxAttempts turns it into a visible failure: never a
 // silent drop and never an infinite loop.
-func TestCommentAnalysis_ReleaseUntilMaxAttempts(t *testing.T) {
+func TestAnalysis_ReleaseUntilMaxAttempts(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	for i := 1; i < MaxAttempts; i++ {
 		if err := a.Claim(now); err != nil {
@@ -520,7 +520,7 @@ func TestCommentAnalysis_ReleaseUntilMaxAttempts(t *testing.T) {
 	}
 }
 
-func TestCommentAnalysis_Fail(t *testing.T) {
+func TestAnalysis_Fail(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
 	if err := a.Fail("provider refused", now); err != nil {
@@ -533,7 +533,7 @@ func TestCommentAnalysis_Fail(t *testing.T) {
 
 // The retry endpoint resets attempts so the row gets a full set of tries
 // again; the operator asked for it explicitly.
-func TestCommentAnalysis_Retry(t *testing.T) {
+func TestAnalysis_Retry(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
 	_ = a.Fail("boom", now)
@@ -551,7 +551,7 @@ func TestCommentAnalysis_Retry(t *testing.T) {
 // A provider outage is not the comment's fault. Unclaim hands the row back
 // WITHOUT the attempt, so three ticks of outage do not turn every pending
 // comment into a failure.
-func TestCommentAnalysis_UnclaimGivesTheAttemptBack(t *testing.T) {
+func TestAnalysis_UnclaimGivesTheAttemptBack(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
 	a.Unclaim(now)
@@ -567,7 +567,7 @@ func TestCommentAnalysis_UnclaimGivesTheAttemptBack(t *testing.T) {
 
 // A comment whose text is gone by flush time (deleted on the channel after
 // ingest) has nothing to classify. It is skipped, visibly, not failed.
-func TestCommentAnalysis_MarkSkipped(t *testing.T) {
+func TestAnalysis_MarkSkipped(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	if err := a.MarkSkipped(ReasonTextUnavailable, now); err != nil {
 		t.Fatal(err)
@@ -582,7 +582,7 @@ func TestCommentAnalysis_MarkSkipped(t *testing.T) {
 
 // A deleted comment's analysis is tombstoned, not removed: it leaves the feed
 // and the live stats but stays in the rollups that already counted it.
-func TestCommentAnalysis_SoftDelete(t *testing.T) {
+func TestAnalysis_SoftDelete(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	a.SoftDelete(now)
 	if a.DeletedAt == nil || !a.DeletedAt.Equal(now) {
@@ -598,7 +598,7 @@ func TestCommentAnalysis_SoftDelete(t *testing.T) {
 // A crash between claim and apply leaves a row in_flight forever unless the
 // backstop resets it. Attempts were already counted at claim, so a crash loop
 // still terminates.
-func TestCommentAnalysis_ResetStale(t *testing.T) {
+func TestAnalysis_ResetStale(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
 	a.Release(ReasonDispatchInterrupted, now.Add(11*time.Minute))

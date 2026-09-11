@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/brand"
+	ca "vozko/domain/audience"
 	"vozko/domain/balance"
 	"vozko/domain/cache"
-	ca "vozko/domain/audience"
 	"vozko/domain/metrics"
 	"vozko/domain/notification"
 	"vozko/domain/shared"

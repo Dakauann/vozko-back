@@ -16,9 +16,9 @@ func (s stubPricingRepo) ListDefaultPricingItems() ([]PricingItem, error) { retu
 // The per-comment surcharge is OPTIONAL (plan §9.2). A missing or zero
 // item means "token billing only", which is a deliberate state: it must
 // price to zero with no error, unlike a missing telephony rate.
-func TestPriceCommentAnalysis_UnconfiguredIsZeroNotError(t *testing.T) {
+func TestPriceAudience_UnconfiguredIsZeroNotError(t *testing.T) {
 	p := NewPricer(stubPricingRepo{items: DefaultPricingCatalog})
-	got, err := p.PriceCommentAnalysis("ws-1", 20)
+	got, err := p.PriceAudience("ws-1", 20)
 	if err != nil {
 		t.Fatalf("unconfigured surcharge must not be an error: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestPriceCommentAnalysis_UnconfiguredIsZeroNotError(t *testing.T) {
 	}
 }
 
-func TestPriceCommentAnalysis_MultipliesByComments(t *testing.T) {
+func TestPriceAudience_MultipliesByComments(t *testing.T) {
 	// An operator priced the seeded row: same key, now with a price.
 	items := append([]PricingItem{}, DefaultPricingCatalog...)
 	for i := range items {
@@ -36,7 +36,7 @@ func TestPriceCommentAnalysis_MultipliesByComments(t *testing.T) {
 		}
 	}
 	p := NewPricer(stubPricingRepo{items: items})
-	got, err := p.PriceCommentAnalysis("ws-1", 20)
+	got, err := p.PriceAudience("ws-1", 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,14 +44,14 @@ func TestPriceCommentAnalysis_MultipliesByComments(t *testing.T) {
 		t.Fatalf("20 comments at 500 = %+v", got)
 	}
 	// Nothing analysed, nothing charged.
-	if got, _ := p.PriceCommentAnalysis("ws-1", 0); got.PriceMicros != 0 {
+	if got, _ := p.PriceAudience("ws-1", 0); got.PriceMicros != 0 {
 		t.Fatalf("zero comments priced %+v", got)
 	}
 }
 
-func TestPriceCommentAnalysis_RepositoryErrorPropagates(t *testing.T) {
+func TestPriceAudience_RepositoryErrorPropagates(t *testing.T) {
 	p := NewPricer(stubPricingRepo{err: errors.New("db down")})
-	if _, err := p.PriceCommentAnalysis("ws-1", 1); err == nil {
+	if _, err := p.PriceAudience("ws-1", 1); err == nil {
 		t.Fatal("a repository failure must surface, not price to zero")
 	}
 }
@@ -67,5 +67,5 @@ func TestDefaultCatalogCarriesCommentAnalysisAtZero(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("DefaultPricingCatalog is missing the comment_analysis/per_comment item")
+	t.Fatal("DefaultPricingCatalog is missing the audience/per_comment item")
 }

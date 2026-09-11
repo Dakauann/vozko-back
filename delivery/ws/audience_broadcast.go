@@ -25,18 +25,18 @@ func (h *ConversationHub) BroadcastCommentsAnalyzed(event ca.AnalysisBatchAnalyz
 		return
 	}
 	data, err := json.Marshal(&WSOutgoingMessage{
-		Type:    WSEventCommentAnalysisAnalyzed,
+		Type:    WSEventAudienceAnalyzed,
 		Payload: event,
 	})
 	if err != nil {
 		log.Printf("[ConversationHub] comment analysis broadcast: %v", err)
 		return
 	}
-	h.sendToWorkspaceWithPermission(event.WorkspaceID, "comment_analysis", "read", data)
+	h.sendToWorkspaceWithPermission(event.WorkspaceID, "audience", "read", data)
 	// The other replicas hold the rest of this workspace's viewers. The event
 	// travels whole because there is nothing on the far side to rebuild it
 	// from, unlike the entry-shaped broadcasts next door.
-	h.publishWorkspacePayload("comment_analysis_analyzed", event.WorkspaceID, data)
+	h.publishWorkspacePayload("audience_analyzed", event.WorkspaceID, data)
 }
 
 // sendToWorkspaceWithPermission fans one already-marshalled frame out to every
