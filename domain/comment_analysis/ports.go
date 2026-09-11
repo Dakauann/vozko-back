@@ -81,6 +81,10 @@ type ContainerSummary struct {
 // ClassifyRequest is one batch to send.
 type ClassifyRequest struct {
 	WorkspaceID string
+	// SubjectKind decides which taxonomy the model is offered. A container of
+	// conversations must never be sent the comment rubric, and the schema is
+	// built from this rather than inferred from the items.
+	SubjectKind SubjectKind
 	Model       string
 	Topics      TopicSet
 	Context     ContainerContext

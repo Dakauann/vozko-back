@@ -46,16 +46,19 @@ type EngineDeps struct {
 	// Settings resolves the effective settings for a post: the account's with
 	// the post's override on top. The engine never reads the repository
 	// directly, so the fallback rule cannot be re-derived here.
-	Settings   ca.SettingsResolver
-	Batches    ca.BatchRepository
-	Adapters   map[ca.Source]ca.SourceAdapter
-	Classifier ca.Classifier
-	Scheduler  ca.Scheduler
-	Charger    ca.Charger
-	Balance    balance.CachedBalanceChecker
-	State      cache.SharedState
-	Metrics    metrics.CommentAnalysisMetricsRecorder
-	Notifier   notification.Notifier
+	Settings ca.SettingsResolver
+	Batches  ca.BatchRepository
+	Adapters map[ca.Source]ca.SourceAdapter
+	// Conversations is the second registry: the same channel vocabulary, a
+	// narrower port. A channel can appear in one and not the other.
+	Conversations map[ca.Source]ca.ConversationAdapter
+	Classifier    ca.Classifier
+	Scheduler     ca.Scheduler
+	Charger       ca.Charger
+	Balance       balance.CachedBalanceChecker
+	State         cache.SharedState
+	Metrics       metrics.CommentAnalysisMetricsRecorder
+	Notifier      notification.Notifier
 	// Broadcaster feeds the live view (§7). Optional: a deployment without a
 	// socket classifies exactly the same.
 	Broadcaster ca.AnalysisBroadcaster
@@ -94,7 +97,94 @@ func NewEngine(deps EngineDeps) (*Engine, error) {
 	if deps.Adapters == nil {
 		deps.Adapters = map[ca.Source]ca.SourceAdapter{}
 	}
+	if deps.Conversations == nil {
+		deps.Conversations = map[ca.Source]ca.ConversationAdapter{}
+	}
 	return &Engine{EngineDeps: deps, guard: newBalanceGuard(deps.Balance, "comment pass")}, nil
+}
+
+// subjectReader is what ProcessContainer actually needs from a channel: the
+// text of each pending subject, and the context it sits in. Both kinds of
+// subject can answer that, so the hot path below stays ONE path instead of
+// branching on the kind at every step.
+type subjectReader interface {
+	ReadSubjects(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]subjectText, error)
+	ReadContainerContext(ctx context.Context, ref ca.ContainerRef) (ca.ContainerContext, error)
+}
+
+// subjectText is one subject as the engine reads it. A comment brings only its
+// words; a conversation also brings how many messages were read and when the
+// last one arrived. Returning one shape for both is what keeps the loop below
+// free of type assertions on the reader.
+type subjectText struct {
+	Text         string
+	MessageCount int
+	OccurredAt   time.Time
+}
+
+// commentReader adapts the original SourceAdapter, whose texts carry nothing
+// beyond the words.
+type commentReader struct{ adapter ca.SourceAdapter }
+
+func (c commentReader) ReadSubjects(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]subjectText, error) {
+	texts, err := c.adapter.ReadTexts(ctx, ref, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]subjectText, len(texts))
+	for id, t := range texts {
+		out[id] = subjectText{Text: t}
+	}
+	return out, nil
+}
+
+func (c commentReader) ReadContainerContext(ctx context.Context, ref ca.ContainerRef) (ca.ContainerContext, error) {
+	return c.adapter.ReadContainerContext(ctx, ref)
+}
+
+// conversationReader adapts a ConversationAdapter to the same shape.
+type conversationReader struct{ adapter ca.ConversationAdapter }
+
+func (c conversationReader) ReadSubjects(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]subjectText, error) {
+	transcripts, err := c.adapter.ReadTranscripts(ctx, ref, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]subjectText, len(transcripts))
+	for id, t := range transcripts {
+		out[id] = subjectText{Text: t.Text, MessageCount: t.MessageCount, OccurredAt: t.LastMessageAt}
+	}
+	return out, nil
+}
+
+func (c conversationReader) ReadContainerContext(ctx context.Context, ref ca.ContainerRef) (ca.ContainerContext, error) {
+	return c.adapter.ReadContainerContext(ctx, ref)
+}
+
+// readerFor picks the adapter for the container's subject kind. The two
+// registries are separate because they answer to different ports, and a
+// channel may serve one and not the other: Instagram has both, WhatsApp has
+// only conversations.
+func (e *Engine) readerFor(ref ca.ContainerRef) (subjectReader, error) {
+	if ref.Normalized().Kind == ca.SubjectKindConversation {
+		adapter, ok := e.Conversations[ref.Source]
+		if !ok || adapter == nil {
+			return nil, fmt.Errorf("comment analysis: no conversation adapter registered for source %q", ref.Source)
+		}
+		return conversationReader{adapter: adapter}, nil
+	}
+	adapter, ok := e.Adapters[ref.Source]
+	if !ok || adapter == nil {
+		return nil, fmt.Errorf("comment analysis: no adapter registered for source %q", ref.Source)
+	}
+	return commentReader{adapter: adapter}, nil
+}
+
+// RegisterConversationSource wires a channel's conversation reader.
+func (e *Engine) RegisterConversationSource(source ca.Source, adapter ca.ConversationAdapter) {
+	if adapter != nil {
+		e.Conversations[source] = adapter
+	}
 }
 
 // RegisterSource attaches a channel. Without one, that source's comments
@@ -160,9 +250,9 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		workspaceID = settings.WorkspaceID
 	}
 
-	adapter, ok := e.Adapters[ref.Source]
-	if !ok {
-		return res, fmt.Errorf("comment analysis: no adapter registered for source %q", ref.Source)
+	adapter, err := e.readerFor(ref)
+	if err != nil {
+		return res, err
 	}
 
 	rows, err := e.Repo.ListPending(ctx, ref, e.Budget.MaxBatchItems*e.Budget.MaxBatchesPerCycle)
@@ -180,7 +270,7 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		ids[i] = r.ID
 		byID[r.ID] = r
 	}
-	texts, err := adapter.ReadTexts(ctx, ref, sourceIDs(rows))
+	subjects, err := adapter.ReadSubjects(ctx, ref, sourceIDs(rows))
 	if err != nil {
 		return res, err
 	}
@@ -190,14 +280,25 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	var vanished []*ca.CommentAnalysis
 	items := make([]ca.Item, 0, len(rows))
 	for _, r := range rows {
-		text, ok := texts[r.SourceCommentID]
+		subject, ok := subjects[r.SourceCommentID]
 		if !ok {
 			if err := r.MarkSkipped(ca.ReasonTextUnavailable, now); err == nil {
 				vanished = append(vanished, r)
 			}
 			continue
 		}
-		items = append(items, ca.Item{ID: r.ID, Text: text})
+		// Facts the read brought back, recorded before classification so they
+		// survive even a batch that fails: how much of the conversation was
+		// actually read, and when it last moved. The timestamp is what buckets
+		// the row in the daily rollups, so a conversation that started last
+		// week but ended today lands on today.
+		if subject.MessageCount > 0 {
+			r.MessageCount = subject.MessageCount
+		}
+		if !subject.OccurredAt.IsZero() {
+			r.CommentedAt = subject.OccurredAt
+		}
+		items = append(items, ca.Item{ID: r.ID, Text: subject.Text})
 	}
 	if len(vanished) > 0 {
 		if err := e.Repo.SaveMany(ctx, vanished); err != nil {
@@ -217,7 +318,7 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		log.Printf("[comment-analysis] container context for %s unavailable: %v", ref.Key(), err)
 		containerCtx = ca.ContainerContext{}
 	}
-	systemPrompt := BuildSystemPrompt(settings.Topics, containerCtx, settings.Instructions)
+	systemPrompt := BuildSystemPromptFor(ref.Normalized().Kind, settings.Topics, containerCtx, settings.Instructions)
 	budget := e.Budget.WithCycleAllowance(cyc.remaining(workspaceID, e.Budget))
 	plans, remainder := ca.PlanBatches(items, shared.EstimateTokens(systemPrompt), budget)
 	if len(remainder.Unplanned) > 0 {
@@ -330,6 +431,7 @@ func (e *Engine) runPlan(
 	started := time.Now()
 	result, err := e.Classifier.Classify(ctx, ca.ClassifyRequest{
 		WorkspaceID:  workspaceID,
+		SubjectKind:  ref.Normalized().Kind,
 		Model:        settings.Model,
 		Topics:       settings.Topics,
 		Context:      containerCtx,
@@ -445,8 +547,12 @@ func (e *Engine) reconcile(plan ca.BatchPlan, results []ca.BatchResult, settings
 			continue
 		}
 		seen[r.Ref] = true
-		c := r.Classification()
-		if err := c.Validate(settings.Topics); err != nil {
+		// Decoded and validated against the ROW's kind, not the batch's: a batch
+		// is one container and one kind, and reading it per row means a mixed
+		// batch could never silently validate under the wrong taxonomy.
+		kind := row.Kind()
+		c := r.ClassificationFor(kind)
+		if err := c.ValidateFor(kind, settings.Topics); err != nil {
 			row.Release(ca.ReasonInvalidLabels, now)
 			out.released++
 			e.addItems(metrics.CommentItemOutcomeBadLabels, 1)

@@ -63,7 +63,7 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 	out, err := c.ai.Generate(ctx, ai.GenerateInput{
 		WorkspaceID:        req.WorkspaceID,
 		Model:              model,
-		SystemPrompt:       BuildSystemPrompt(req.Topics, req.Context, req.Instructions),
+		SystemPrompt:       BuildSystemPromptFor(req.SubjectKind, req.Topics, req.Context, req.Instructions),
 		Messages:           []ai.Message{{Role: ai.RoleUser, Content: userMessage}},
 		Temperature:        0,
 		MaxTokens:          req.Batch.MaxOutputTokens(),
@@ -72,7 +72,7 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 			Type:                  ai.ResponseFormatJSONSchema,
 			JSONSchemaName:        schemaName,
 			JSONSchemaDescription: "Classificação de um lote de comentários, uma entrada por ref.",
-			JSONSchema:            ca.BatchResponseSchema(req.Topics),
+			JSONSchema:            ca.BatchResponseSchemaFor(req.SubjectKind, req.Topics),
 			JSONSchemaStrict:      true,
 		},
 		Tools: nil,

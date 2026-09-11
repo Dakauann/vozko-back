@@ -203,6 +203,22 @@ type BatchResult struct {
 	Toxicity       string `json:"toxicity"`
 	PersonalAttack string `json:"personal_attack"`
 	LegalRisk      string `json:"legal_risk"`
+
+	// Conversation subjects fill these instead. One decoder for both kinds,
+	// because the response schema already constrains which fields a given call
+	// may return: the model is never offered both taxonomies at once.
+	Interest        string `json:"interest"`
+	ProductInterest string `json:"product_interest"`
+	Disposition     string `json:"disposition"`
+	Qualification   string `json:"qualification"`
+	NextAction      string `json:"next_action"`
+	Summary         string `json:"summary"`
+	// The attendance-quality dimensions, rated ordinally. The 0-100 is computed
+	// from them; the model is never asked for a number.
+	GoalProgress       string `json:"goal_progress"`
+	CustomerEngagement string `json:"customer_engagement"`
+	AgentConduct       string `json:"agent_conduct"`
+	Professionalism    string `json:"professionalism"`
 }
 
 // Classification converts the raw answer to the typed value. Not validated;
