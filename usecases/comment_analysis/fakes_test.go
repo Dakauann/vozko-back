@@ -92,7 +92,7 @@ func (f *fakeRepo) ListPending(_ context.Context, ref ca.ContainerRef, limit int
 	defer f.mu.Unlock()
 	var out []*ca.CommentAnalysis
 	for _, r := range f.rows {
-		if r.Status == ca.StatusPending && r.DeletedAt == nil && r.Container() == ref {
+		if r.Status == ca.StatusPending && r.DeletedAt == nil && r.Container().Equal(ref) {
 			out = append(out, f.clone(r))
 		}
 	}

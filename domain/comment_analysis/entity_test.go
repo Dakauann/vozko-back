@@ -64,8 +64,59 @@ func TestContainerRef_KeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseContainerKey: %v", err)
 	}
+	// Parsing resolves the implicit kind, so the round trip is compared against
+	// the normalised ref. The key format itself is unchanged, which is what the
+	// assertion above pins: the debounce entries already in Redis still parse.
+	if want := r.withDefaults(); back != want {
+		t.Fatalf("round trip = %+v, want %+v", back, want)
+	}
+}
+
+// A conversation container is keyed with its kind in front, so a post id and a
+// campaign id can never land on the same lock.
+func TestContainerRef_ConversationKeyRoundTrip(t *testing.T) {
+	r := ContainerRef{
+		Kind: SubjectKindConversation, Source: SourceWhatsApp,
+		AccountID: "acc-1", ContainerID: "camp-1",
+	}
+	if got := r.Key(); got != "conversation:whatsapp:acc-1:camp-1" {
+		t.Fatalf("Key() = %q", got)
+	}
+	back, err := ParseContainerKey(r.Key())
+	if err != nil {
+		t.Fatalf("ParseContainerKey: %v", err)
+	}
 	if back != r {
 		t.Fatalf("round trip = %+v, want %+v", back, r)
+	}
+
+	// The two kinds on the same ids must not collide.
+	comment := ContainerRef{Kind: SubjectKindComment, Source: SourceWhatsApp, AccountID: "acc-1", ContainerID: "camp-1"}
+	if comment.Key() == r.Key() {
+		t.Error("comment and conversation containers share a key")
+	}
+}
+
+// A kind only parses where that subject exists on that channel: Telegram has no
+// posts, so a Telegram comment key is not a thing however analysable Telegram
+// is as a conversation.
+func TestParseContainerKey_RejectsKindChannelMismatch(t *testing.T) {
+	for _, k := range []string{
+		"telegram:acc:post",              // comment on a channel with no posts
+		"conversation:support:acc:entry", // support is never analysed
+	} {
+		if _, err := ParseContainerKey(k); err == nil {
+			t.Errorf("ParseContainerKey(%q) should fail", k)
+		}
+	}
+	for _, k := range []string{
+		"instagram:acc:post",
+		"conversation:voice:acc:call",
+		"conversation:instagram:acc:camp",
+	} {
+		if _, err := ParseContainerKey(k); err != nil {
+			t.Errorf("ParseContainerKey(%q) should succeed: %v", k, err)
+		}
 	}
 }
 
