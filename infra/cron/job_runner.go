@@ -108,17 +108,17 @@ func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
 	r.addChannelJob("instagram_event_purge", 24*time.Hour, eventPurge)
 }
 
-// SetAudienceJobs registers the comment-analysis engine's jobs
-// (INSTAGRAM_COMMENT_ANALYSIS_PLAN.md §6, §10, §11): the debounce flush
+// SetAudienceJobs registers the audience engine's jobs
+// (AUDIENCE_ANALYSIS_UNIFICATION_PLAN.md): the debounce flush
 // every 30s, the DB-only backstop every 5m, rollups and the author
 // projection hourly, retention daily, and the backfill drainer every minute.
 // nil jobs are skipped, so a deployment can leave the feature unwired.
 func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctxJob) {
-	r.addChannelJob("comment_analysis_flush", 30*time.Second, flush)
-	r.addChannelJob("comment_analysis_backstop", 5*time.Minute, backstop)
-	r.addChannelJob("comment_analysis_rollup", time.Hour, rollup)
-	r.addChannelJob("comment_analysis_purge", 24*time.Hour, purge)
-	r.addChannelJob("comment_analysis_backfill", time.Minute, backfill)
+	r.addChannelJob("audience_flush", 30*time.Second, flush)
+	r.addChannelJob("audience_backstop", 5*time.Minute, backstop)
+	r.addChannelJob("audience_rollup", time.Hour, rollup)
+	r.addChannelJob("audience_purge", 24*time.Hour, purge)
+	r.addChannelJob("audience_backfill", time.Minute, backfill)
 }
 
 // SetTelegramJobs registers the Telegram periodic jobs.
