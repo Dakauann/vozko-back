@@ -29,6 +29,10 @@ type AudienceAnalysis struct {
 	// row written before conversations existed is a comment, and the default
 	// backfills them on migration without a data pass.
 	SubjectKind string `gorm:"size:16;not null;default:'comment'"`
+	Revision    string `gorm:"size:64;not null;default:''"`
+	// Bounded conversation snapshot, purged with its analysis. Never populated
+	// for public comments and never exposed by the list DTO.
+	Transcript string `gorm:"type:text;not null;default:''"`
 
 	Source      string `gorm:"size:32;not null"`
 	AccountID   string `gorm:"type:uuid;not null;index:idx_ca_account"`
@@ -63,9 +67,14 @@ type AudienceAnalysis struct {
 	// application.
 	Interest        string `gorm:"size:24"`
 	ProductInterest string `gorm:"size:160"`
-	Disposition     string `gorm:"size:24"`
-	Qualification   string `gorm:"size:16"`
-	NextAction      string `gorm:"size:24"`
+	// ProductInterestKey is the countable form of ProductInterest: the same
+	// subject written three ways collides here so it can be grouped. Its index
+	// is declared with the other composite ones in database/indexes.go, because
+	// the query it serves is always scoped to a workspace first.
+	ProductInterestKey string `gorm:"size:64;not null;default:''"`
+	Disposition        string `gorm:"size:24"`
+	Qualification      string `gorm:"size:16"`
+	NextAction         string `gorm:"size:24"`
 	// Summary is the model's prose and the only unredacted customer content in
 	// this table, which is why it is subject to the same retention as the rest
 	// of the row rather than living somewhere unswept.

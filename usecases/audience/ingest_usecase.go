@@ -22,7 +22,17 @@ type ingestUseCase struct {
 	scheduler ca.Scheduler
 	metrics   metrics.AudienceMetricsRecorder
 	clock     ca.Clock
+	// Live tells whoever is looking at the conversation that an analysis is on
+	// its way. Optional: without it the queue behaves identically and the state
+	// still shows up on the next read, it simply arrives a tick later.
+	live ca.ConversationAnalysisLive
 }
+
+// SetLive attaches the per-conversation live signal after construction, the way
+// the engine's broadcaster is attached: the socket is built long after the
+// ingest path and must not become a constructor argument every channel has to
+// thread through.
+func (uc *ingestUseCase) SetLive(live ca.ConversationAnalysisLive) { uc.live = live }
 
 // NewIngestUseCase builds the Ingestor a channel registers.
 func NewIngestUseCase(
@@ -74,6 +84,26 @@ func (uc *ingestUseCase) Enqueue(ctx context.Context, in ca.IngestInput) error {
 		return err
 	}
 	row.ID = uuid.NewString()
+	if row.Kind() == ca.SubjectKindConversation {
+		row.Revision = in.Revision
+		row.Transcript = in.Text
+		row.MessageCount = in.MessageCount
+
+		// A conversation is queued every time it goes quiet, so this is the one
+		// path in the engine that can spend money in a loop. The unique index
+		// already refuses an identical transcript; this refuses a snapshot that
+		// is new but not new ENOUGH, and refuses to stack a second snapshot
+		// behind one that has not been classified yet.
+		previous, err := uc.repo.LatestBySubject(ctx, in.WorkspaceID, in.Container.Source, ca.SubjectKindConversation, in.SubjectID)
+		if err != nil {
+			// Fail closed. Queuing anyway on a failed read is exactly the case
+			// the guard exists for, and the next quiet period re-queues.
+			return err
+		}
+		if !row.WorthReanalysing(previous) {
+			return nil
+		}
+	}
 
 	inserted, err := uc.repo.Insert(ctx, row)
 	if err != nil {
@@ -89,6 +119,19 @@ func (uc *ingestUseCase) Enqueue(ctx context.Context, in ca.IngestInput) error {
 	if row.Status != ca.StatusPending {
 		// Skipped at ingest (blank text): recorded, never scheduled.
 		return nil
+	}
+
+	// Say so immediately, on the conversation's own channel.
+	//
+	// The analysis runs minutes later, when the batch does. Without this the
+	// only way to learn that anything is happening is to reload, so a reply
+	// that quietly queued an analysis looks exactly like a reply that did not.
+	if uc.live != nil && row.Kind() == ca.SubjectKindConversation {
+		uc.live.AnalysisStateChanged(ca.ConversationAnalysisState{
+			EntryID:   row.SubjectID,
+			EntryType: string(row.Source),
+			Pending:   true,
+		})
 	}
 
 	// The stamp is best effort by design (plan §2.2): the row is durable, and

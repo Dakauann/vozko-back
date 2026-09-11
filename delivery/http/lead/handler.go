@@ -771,9 +771,13 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 	if !entryTypeParam.Valid() || entryTypeParam == shared.EntryTypeWhatsApp {
 		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)
 		if err == nil {
-			// One read for the whole campaign rather than one per entry. The
-			// engine keys a conversation uniquely, so there is exactly one
-			// analysis per entry and no sorting by time to pick a winner.
+			// One read for the whole campaign rather than one per entry.
+			//
+			// A conversation now has a TIMELINE of analyses, one per revision
+			// of its transcript, so "the analysis" is whichever revision was
+			// most recently classified. The reader picks that one; this page
+			// shows a verdict, not a history, so an analysis still queued must
+			// not blank out the one already on the screen.
 			entryIDs := make([]string, 0, len(wcEntries))
 			for _, entry := range wcEntries {
 				if entry.CampaignID == campaignID {

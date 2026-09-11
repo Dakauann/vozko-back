@@ -71,7 +71,7 @@ func integrationDB(t *testing.T) *gorm.DB {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, stmt := range []string{
-		`CREATE UNIQUE INDEX ux_ca_source_comment ON audience_analyses (source, subject_id)`,
+		`CREATE UNIQUE INDEX ux_ca_revision ON audience_analyses (source, subject_kind, subject_id, revision)`,
 		`CREATE UNIQUE INDEX ux_ca_author ON audience_authors (source, account_id, author_external_id)`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {

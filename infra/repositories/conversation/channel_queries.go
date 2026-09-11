@@ -444,7 +444,8 @@ func (q channelQuery) entryInfoSQL() string {
 		       %s AS campaign_id,
 		       %s AS campaign_name,
 		       %s,
-		       %s AS automation_enabled
+		       %s AS automation_enabled,
+		       %s AS conversation_status
 		FROM (SELECT 1) AS entry_anchor
 		%s
 		LIMIT 1
@@ -455,8 +456,18 @@ func (q channelQuery) entryInfoSQL() string {
 		q.ContainerNameField,
 		q.AutomationFields,
 		q.AutomationColumn,
+		q.statusColumnOrEmpty(),
 		q.entryJoinOn("?::uuid"),
 	)
+}
+
+// statusColumnOrEmpty is the channel's status column, or a literal empty string
+// for a channel that has none, so the projection keeps its shape either way.
+func (q channelQuery) statusColumnOrEmpty() string {
+	if q.StatusColumn == "" {
+		return "''::text"
+	}
+	return q.StatusColumn
 }
 
 // containerCTE renders the container-scoped entry CTE with an assignment clause.

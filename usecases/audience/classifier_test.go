@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"vozko/domain/ai"
 	ca "vozko/domain/audience"
@@ -17,7 +16,7 @@ func samplePlan(n int) ca.BatchPlan {
 	for i := range items {
 		items[i] = ca.Item{ID: "row-" + itoa(i+1), Text: "comentário " + itoa(i+1)}
 	}
-	plans, _ := ca.PlanBatches(items, 100, ca.DefaultBudget())
+	plans, _ := ca.PlanBatches(items, 100, ca.DefaultBudget(), ca.SubjectKindComment)
 	return plans[0]
 }
 
@@ -160,34 +159,6 @@ func TestClassifier_ProviderErrorHasNoResult(t *testing.T) {
 }
 
 // ---- charger ----
-
-func TestCharger_DailyCapIsAtomicPerDay(t *testing.T) {
-	state := newFakeState()
-	c := NewCharger(nil, nil, state)
-	ctx := context.Background()
-	ok, _ := c.ReserveDaily(ctx, "ws-1", 15, 20, now)
-	if !ok {
-		t.Fatal("first reservation under the cap must pass")
-	}
-	ok, _ = c.ReserveDaily(ctx, "ws-1", 10, 20, now)
-	if ok {
-		t.Fatal("a reservation that would cross the cap must be refused")
-	}
-	ok, _ = c.ReserveDaily(ctx, "ws-1", 5, 20, now)
-	if !ok {
-		t.Fatal("what still fits must pass")
-	}
-	// Tomorrow is a fresh cap.
-	ok, _ = c.ReserveDaily(ctx, "ws-1", 20, 20, now.Add(24*time.Hour))
-	if !ok {
-		t.Fatal("the next day starts from zero")
-	}
-	// Another workspace has its own cap.
-	ok, _ = c.ReserveDaily(ctx, "ws-2", 20, 20, now)
-	if !ok {
-		t.Fatal("caps are per workspace")
-	}
-}
 
 func TestCharger_NoPricerMeansNoSurcharge(t *testing.T) {
 	c := NewCharger(nil, nil, newFakeState())

@@ -90,6 +90,7 @@ func newConversationHarness(t *testing.T, budget ca.Budget) *conversationHarness
 		Repo: base.repo, Settings: NewSettingsResolver(base.settings), Batches: base.batches,
 		Conversations: map[ca.Source]ca.ConversationAdapter{ca.SourceWhatsApp: conversations},
 		Classifier:    base.classifier, Scheduler: base.scheduler, Charger: base.charger,
+		Usage:   NewUsageLimiter(base.state),
 		Balance: base.balance, State: base.state, Clock: fixedClock{now}, Budget: budget,
 		Broadcaster: base.broadcaster,
 	})
@@ -296,9 +297,17 @@ func TestEngine_ReleasesPartiallyRatedConversations(t *testing.T) {
 	}
 }
 
-// A conversation that no longer resolves is skipped, exactly as a deleted
-// comment is: not failed, and never sent to the model.
-func TestEngine_SkipsVanishedConversations(t *testing.T) {
+// A conversation that does not resolve is RETRIED before it is given up on,
+// and never fails the batch its peers are in.
+//
+// A deleted comment is genuinely gone, so it is skipped on the spot. A
+// conversation is ours: we queued it from a row in our own database, so a miss
+// is far more likely a database having a bad minute than a vanished subject.
+// Skipping on the first miss is how a transient failure used to stamp
+// text_unavailable on a perfectly good conversation, permanently. The attempt
+// is still counted, so an entry that really is gone gives up rather than
+// sitting pending forever.
+func TestEngine_RetriesUnreadableConversationsBeforeSkipping(t *testing.T) {
 	h := newConversationHarness(t, smallBudget())
 	h.seed(2, 4, now)
 	delete(h.conversations.transcripts, "entry-2")
@@ -308,11 +317,26 @@ func TestEngine_SkipsVanishedConversations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Analyzed != 1 || res.Skipped != 1 {
-		t.Fatalf("analysed=%d skipped=%d, want 1 and 1", res.Analyzed, res.Skipped)
+	if res.Analyzed != 1 || res.Skipped != 0 {
+		t.Fatalf("analysed=%d skipped=%d, want 1 analysed and nothing skipped yet", res.Analyzed, res.Skipped)
 	}
-	if got := h.row(t, "row-2").Status; got != ca.StatusSkipped {
-		t.Errorf("vanished conversation is %q, want skipped", got)
+	if got := h.row(t, "row-2").Status; got != ca.StatusPending {
+		t.Fatalf("unreadable conversation is %q after one miss, want pending for a retry", got)
+	}
+
+	// It stays unreadable: the attempts run out and the row gives up.
+	for i := 0; i < ca.MaxAttempts; i++ {
+		h.pushOK()
+		if _, err := h.engine.ProcessContainer(context.Background(), convRef(), "ws-1", newCycle()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row := h.row(t, "row-2")
+	if row.Status != ca.StatusSkipped {
+		t.Errorf("permanently unreadable conversation is %q, want skipped", row.Status)
+	}
+	if row.FailureReason != ca.ReasonTextUnavailable {
+		t.Errorf("failure reason = %q, want text_unavailable", row.FailureReason)
 	}
 }
 
@@ -353,5 +377,308 @@ func TestEngine_RefusesConversationsWithoutAnAdapter(t *testing.T) {
 
 	if _, err := h.engine.ProcessContainer(context.Background(), convRef(), "ws-1", newCycle()); err == nil {
 		t.Fatal("expected an error when no conversation adapter is registered")
+	}
+}
+
+// A conversation has a TIMELINE of analyses, not one verdict for all time.
+//
+// The queue used to be keyed on the conversation alone, so the first analysis
+// was the only one it could ever have: every later inactivity window hit the
+// conflict clause and was dropped. Keyed on the revision, each snapshot of the
+// transcript becomes its own row, and the two are classified independently.
+//
+// Each row is classified from the transcript frozen when it was queued, which
+// is why the adapter is never asked to re-read: by the time the second window
+// elapses the channel can only render the conversation as it is NOW, and the
+// first analysis would silently be about the wrong text.
+func TestEngine_AnalysesEachRevisionOfAConversation(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	first := now.Add(-3 * time.Hour)
+	second := now.Add(-1 * time.Hour)
+
+	h.seedRevision("row-1", "entry-1", "rev-a", "cliente: quanto custa?", 4, first)
+	h.seedRevision("row-2", "entry-1", "rev-b", "cliente: quanto custa?\natendente: R$ 300\ncliente: fechado", 9, second)
+	h.pushOK()
+
+	res, err := h.engine.ProcessContainer(context.Background(), convRef(), "ws-1", newCycle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Analyzed != 2 {
+		t.Fatalf("analysed = %d, want both revisions of the conversation", res.Analyzed)
+	}
+	if h.conversations.readCalls != 0 {
+		t.Errorf("the channel was re-read %d times for rows that carry their own snapshot", h.conversations.readCalls)
+	}
+
+	early, late := h.row(t, "row-1"), h.row(t, "row-2")
+	if early.Status != ca.StatusAnalyzed || late.Status != ca.StatusAnalyzed {
+		t.Fatalf("statuses = %q and %q, want both analysed", early.Status, late.Status)
+	}
+	if early.MessageCount != 4 || late.MessageCount != 9 {
+		t.Errorf("message counts = %d and %d, want each revision's own 4 and 9", early.MessageCount, late.MessageCount)
+	}
+	// The timestamps are what put the two rows in order on the timeline, and
+	// what bucket them into the right day of the trend.
+	if !early.OccurredAt.Equal(first) || !late.OccurredAt.Equal(second) {
+		t.Errorf("occurredAt = %v and %v, want %v and %v", early.OccurredAt, late.OccurredAt, first, second)
+	}
+
+	sent := map[string]bool{}
+	for _, req := range h.classifier.Calls {
+		for _, it := range req.Batch.Items {
+			sent[it.Text] = true
+		}
+	}
+	if !sent["cliente: quanto custa?"] {
+		t.Error("the earlier revision was not classified from the transcript it was queued with")
+	}
+	if !sent["cliente: quanto custa?\natendente: R$ 300\ncliente: fechado"] {
+		t.Error("the later revision was not classified from the transcript it was queued with")
+	}
+}
+
+// seedRevision queues ONE snapshot of a conversation: the transcript exactly as
+// it read when that inactivity window elapsed, and the revision that identifies
+// it. Two of these on the same entry id are two analyses on one timeline.
+func (h *conversationHarness) seedRevision(rowID, entryID, revision, text string, messages int, lastAt time.Time) {
+	row, _ := ca.NewPending(ca.NewInput{
+		WorkspaceID: "ws-1", Container: convRef(), SubjectID: entryID,
+		AuthorExternalID: "contact-1", Text: text, Now: lastAt,
+	})
+	row.ID = rowID
+	row.Revision, row.Transcript, row.MessageCount = revision, text, messages
+	_, _ = h.repo.Insert(context.Background(), row)
+	_ = h.scheduler.Stamp(context.Background(), convRef(), "ws-1", now.Add(-time.Hour))
+}
+
+// Repeat analysis is the one path in this engine that can spend money in a
+// loop, so the guard on it is pinned here rather than left to the index.
+//
+// A conversation is queued every time it goes quiet. Without a floor, a chat
+// that stops and starts all afternoon buys an analysis per lull, and a burst
+// stacks several snapshots of the same conversation in the queue at once, all
+// but the last of them obsolete before they are even sent.
+func TestIngest_DoesNotPayTwiceForTheSameConversation(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	ingest := NewIngestUseCase(h.repo, NewSettingsResolver(h.settings), h.scheduler, nil, fixedClock{now})
+
+	queue := func(revision string, messages int, at time.Time) {
+		t.Helper()
+		if err := ingest.Enqueue(context.Background(), ca.IngestInput{
+			WorkspaceID: "ws-1", Container: convRef(), SubjectID: "entry-1",
+			AuthorExternalID: "contact-1", Text: "cliente: " + revision,
+			Revision: revision, MessageCount: messages, OccurredAt: at,
+		}); err != nil {
+			t.Fatalf("Enqueue %s: %v", revision, err)
+		}
+	}
+	pending := func() int { return h.repo.countStatus(ca.StatusPending) }
+
+	queue("rev-a", 4, now)
+	if pending() != 1 {
+		t.Fatalf("first snapshot queued %d rows, want 1", pending())
+	}
+
+	// Still waiting to be classified: a newer snapshot of the SAME conversation
+	// must not stack behind it. Paying for both buys one analysis and one that
+	// was obsolete before it was sent.
+	queue("rev-b", 9, now.Add(time.Hour))
+	if pending() != 1 {
+		t.Fatalf("a second snapshot stacked behind an unclassified one: pending = %d", pending())
+	}
+
+	h.pushOK()
+	if _, err := h.engine.ProcessContainer(context.Background(), convRef(), "ws-1", newCycle()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Analysed now, so the conversation may be analysed again — but only once
+	// it has actually moved. One more message is not an exchange.
+	queue("rev-c", 5, now.Add(2*time.Hour))
+	if pending() != 0 {
+		t.Fatalf("a one-message change bought a second analysis: pending = %d", pending())
+	}
+
+	queue("rev-d", 4+ca.MinMessagesBetweenAnalyses, now.Add(3*time.Hour))
+	if pending() != 1 {
+		t.Fatalf("a real exchange did not queue a new analysis: pending = %d", pending())
+	}
+}
+
+// A conversation whose first attempt failed is not held back by the floor: the
+// failure bought nothing, so the next snapshot is still its first analysis.
+func TestIngest_RetriesAConversationWhoseAnalysisFailed(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	ingest := NewIngestUseCase(h.repo, NewSettingsResolver(h.settings), h.scheduler, nil, fixedClock{now})
+
+	first, _ := ca.NewPending(ca.NewInput{
+		WorkspaceID: "ws-1", Container: convRef(), SubjectID: "entry-1",
+		AuthorExternalID: "contact-1", Text: "cliente: oi", Now: now,
+	})
+	first.ID, first.Revision, first.Transcript, first.MessageCount = "row-1", "rev-a", "cliente: oi", 4
+	_ = first.Fail(ca.ReasonProviderError, now)
+	_, _ = h.repo.Insert(context.Background(), first)
+
+	if err := ingest.Enqueue(context.Background(), ca.IngestInput{
+		WorkspaceID: "ws-1", Container: convRef(), SubjectID: "entry-1",
+		AuthorExternalID: "contact-1", Text: "cliente: oi de novo",
+		Revision: "rev-b", MessageCount: 5, OccurredAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if h.repo.countStatus(ca.StatusPending) != 1 {
+		t.Fatal("a conversation whose only analysis failed was never re-queued")
+	}
+}
+
+// recordingLive captures the per-conversation live signal.
+type recordingLive struct {
+	mu     sync.Mutex
+	states []ca.ConversationAnalysisState
+}
+
+func (r *recordingLive) AnalysisStateChanged(state ca.ConversationAnalysisState) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states = append(r.states, state)
+}
+
+// The CRM is told an analysis is coming, and told when it lands.
+//
+// Only the pair is useful. A "queued" with no "finished" leaves a spinner on
+// screen until someone reloads, and a "finished" with no "queued" means the
+// minutes between a conversation going quiet and its batch running look
+// exactly like nothing happening at all.
+func TestEngine_AnnouncesAnalysisQueuedThenFinished(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	live := &recordingLive{}
+	h.engine.Live = live
+
+	ingest := NewIngestUseCase(h.repo, NewSettingsResolver(h.settings), h.scheduler, nil, fixedClock{now})
+	ingest.(interface {
+		SetLive(ca.ConversationAnalysisLive)
+	}).SetLive(live)
+
+	if err := ingest.Enqueue(context.Background(), ca.IngestInput{
+		WorkspaceID: "ws-1", Container: convRef(), SubjectID: "entry-1",
+		AuthorExternalID: "contact-1", Text: "cliente: quanto custa?",
+		Revision: "rev-a", MessageCount: 4, OccurredAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(live.states) != 1 {
+		t.Fatalf("queueing announced %d states, want 1", len(live.states))
+	}
+	queued := live.states[0]
+	if !queued.Pending || queued.EntryID != "entry-1" || queued.EntryType != string(ca.SourceWhatsApp) {
+		t.Fatalf("queued state = %+v", queued)
+	}
+	// Nothing is claimed about the verdict yet, because there is not one.
+	if queued.Analysis != nil {
+		t.Error("a queued conversation announced an analysis that does not exist yet")
+	}
+
+	h.pushOK()
+	if _, err := h.engine.ProcessContainer(context.Background(), convRef(), "ws-1", newCycle()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(live.states) != 2 {
+		t.Fatalf("after classifying, %d states announced, want 2", len(live.states))
+	}
+	done := live.states[1]
+	if done.Pending {
+		t.Error("a finished analysis was still announced as pending")
+	}
+	if done.Analysis == nil || done.Analysis.Status != ca.StatusAnalyzed {
+		t.Fatalf("finished state carried no verdict: %+v", done.Analysis)
+	}
+	// The verdict travels WITH the event, so a listening client needs no
+	// follow-up read to render it.
+	if done.Analysis.Disposition == "" || done.Analysis.AttendanceQuality == 0 {
+		t.Errorf("the announced verdict is missing its labels: %+v", done.Analysis)
+	}
+}
+
+// A conversation the guard refuses to re-analyse must not announce anything:
+// a pending marker that never resolves is worse than no marker, because the
+// only way out of it is a reload that shows the same thing.
+func TestEngine_DoesNotAnnounceAnAnalysisItRefusedToQueue(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	live := &recordingLive{}
+	ingest := NewIngestUseCase(h.repo, NewSettingsResolver(h.settings), h.scheduler, nil, fixedClock{now})
+	ingest.(interface {
+		SetLive(ca.ConversationAnalysisLive)
+	}).SetLive(live)
+
+	queue := func(revision string, messages int, at time.Time) {
+		t.Helper()
+		if err := ingest.Enqueue(context.Background(), ca.IngestInput{
+			WorkspaceID: "ws-1", Container: convRef(), SubjectID: "entry-1",
+			AuthorExternalID: "contact-1", Text: "cliente: " + revision,
+			Revision: revision, MessageCount: messages, OccurredAt: at,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	queue("rev-a", 4, now)
+	// Stacked behind an unclassified snapshot: refused by the billing guard,
+	// so nothing is queued and nothing may be announced.
+	queue("rev-b", 9, now.Add(time.Hour))
+
+	if len(live.states) != 1 {
+		t.Fatalf("announced %d states, want only the one that was actually queued", len(live.states))
+	}
+}
+
+// The startup line has to report what is REGISTERED.
+//
+// It used to be a hardcoded "sources: instagram", printed identically whether
+// every channel was wired or none were. A log that says the same thing in both
+// cases is worse than silence: it reads as a diagnosis, and it sent an
+// afternoon of debugging after conversation channels that were fine.
+func TestEngineReportsWhatIsActuallyRegistered(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+
+	comments, conversations := h.engine.RegisteredSources()
+	// The conversation harness registers WhatsApp conversations and no comment
+	// source, which is exactly the shape the old line could not express.
+	if len(comments) != 0 {
+		t.Errorf("reported comment sources %v, want none registered", comments)
+	}
+	if len(conversations) != 1 || conversations[0] != string(ca.SourceWhatsApp) {
+		t.Errorf("reported conversation sources %v, want [whatsapp]", conversations)
+	}
+
+	// A channel registered afterwards is reported too, so the line cannot go
+	// stale against a registry that is still being filled.
+	h.engine.RegisterSource(ca.SourceInstagram, h.adapter)
+	h.engine.RegisterConversationSource(ca.SourceTelegram, h.conversations)
+
+	comments, conversations = h.engine.RegisteredSources()
+	if len(comments) != 1 || comments[0] != string(ca.SourceInstagram) {
+		t.Errorf("comment sources = %v, want [instagram]", comments)
+	}
+	// Sorted, so two boots of the same deployment print the same line.
+	if len(conversations) != 2 || conversations[0] != string(ca.SourceTelegram) || conversations[1] != string(ca.SourceWhatsApp) {
+		t.Errorf("conversation sources = %v, want [telegram whatsapp] sorted", conversations)
+	}
+}
+
+// A nil adapter in the map is not a registered channel: reporting it would put
+// a channel on the startup line that the engine refuses to process.
+func TestEngineDoesNotReportNilAdapters(t *testing.T) {
+	h := newConversationHarness(t, smallBudget())
+	h.engine.Conversations[ca.SourceInstagram] = nil
+	h.engine.Adapters[ca.SourceTelegram] = nil
+
+	comments, conversations := h.engine.RegisteredSources()
+	for _, s := range append(comments, conversations...) {
+		if s == string(ca.SourceInstagram) || s == string(ca.SourceTelegram) {
+			t.Errorf("reported %q, which has a nil adapter", s)
+		}
 	}
 }

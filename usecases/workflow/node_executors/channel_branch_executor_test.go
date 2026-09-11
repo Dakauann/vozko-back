@@ -207,10 +207,6 @@ func TestChannelBranch_OffersOnlyReachableChannels(t *testing.T) {
 			"%s is not a messaging channel, so a run can never be on it", entryType)
 	}
 
-	assert.False(t, shared.EntryTypeVoice.Valid(),
-		"guards the reasoning above: voice is telephony, not a messaging channel")
-	assert.NotContains(t, workflow.ChannelBranchOrder, shared.EntryTypeVoice,
-		"a voice handle could never match and would be a dead edge on the canvas")
 }
 
 func TestChannelBranch_KnownHandleRejectsNonsense(t *testing.T) {

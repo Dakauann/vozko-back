@@ -111,7 +111,7 @@ func TestBudget_MaxTokensForBatch(t *testing.T) {
 func TestPlanBatches_ClosesOnItemCount(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 7
-	plans, rem := PlanBatches(items(20, "oi"), 100, b)
+	plans, rem := PlanBatches(items(20, "oi"), 100, b, SubjectKindComment)
 	if len(rem.Unplanned) != 0 {
 		t.Fatalf("nothing should be deferred: %+v", rem)
 	}
@@ -137,7 +137,7 @@ func TestPlanBatches_ClosesOnInputTokens(t *testing.T) {
 	// a 150-token ceiling, exactly 5 fit: 100 + 5×10 = 150; a 6th would be 160.
 	b.MaxInputTokens = 150
 	text := strings.Repeat("a", 40)
-	plans, rem := PlanBatches(items(12, text), 100, b)
+	plans, rem := PlanBatches(items(12, text), 100, b, SubjectKindComment)
 	if len(rem.Unplanned) != 0 {
 		t.Fatalf("nothing should be deferred: %+v", rem)
 	}
@@ -163,7 +163,7 @@ func TestPlanBatches_InputBoundIncludesSafetyAndReserve(t *testing.T) {
 	b.MaxInputTokens = 300
 	text := strings.Repeat("a", 40) // 10 tokens
 	// ceil((100 + n×10) × 1.35) + 50 ≤ 300  →  (100 + 10n) × 1.35 ≤ 250 → 10n ≤ 85.2 → n ≤ 8
-	plans, _ := PlanBatches(items(20, text), 100, b)
+	plans, _ := PlanBatches(items(20, text), 100, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 8 {
 		t.Fatalf("first batch has %d items, want 8", n)
 	}
@@ -181,7 +181,7 @@ func TestPlanBatches_ChargesPerItemOverhead(t *testing.T) {
 	b.PerItemInputOverhead = 8
 	b.MaxInputTokens = 100
 	// 100 sys? No: sys 0, each item 1 token + 8 overhead = 9. 11 fit (99).
-	plans, _ := PlanBatches(items(30, "a"), 0, b)
+	plans, _ := PlanBatches(items(30, "a"), 0, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 11 {
 		t.Fatalf("first batch has %d items, want 11", n)
 	}
@@ -193,7 +193,7 @@ func TestPlanBatches_ClosesOnOutputTokens(t *testing.T) {
 	b := loose()
 	b.PerItemOutputTokens = 64
 	b.MaxOutputTokens = 64*6 + 10 // six fit, a seventh does not
-	plans, _ := PlanBatches(items(20, "oi"), 100, b)
+	plans, _ := PlanBatches(items(20, "oi"), 100, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 6 {
 		t.Fatalf("first batch has %d items, want 6", n)
 	}
@@ -211,7 +211,7 @@ func TestPlanBatches_OversizedItemStillYieldsOneItemBatch(t *testing.T) {
 	b := loose()
 	b.MaxInputTokens = 50
 	huge := strings.Repeat("a", 4000) // 1000 tokens
-	plans, rem := PlanBatches([]Item{{ID: "big", Text: huge}, {ID: "small", Text: "oi"}}, 10, b)
+	plans, rem := PlanBatches([]Item{{ID: "big", Text: huge}, {ID: "small", Text: "oi"}}, 10, b, SubjectKindComment)
 	if len(rem.Unplanned) != 0 {
 		t.Fatalf("nothing should be deferred: %+v", rem)
 	}
@@ -224,7 +224,7 @@ func TestPlanBatches_OversizedItemStillYieldsOneItemBatch(t *testing.T) {
 }
 
 func TestPlanBatches_EmptyInput(t *testing.T) {
-	plans, rem := PlanBatches(nil, 100, loose())
+	plans, rem := PlanBatches(nil, 100, loose(), SubjectKindComment)
 	if len(plans) != 0 || len(rem.Unplanned) != 0 || rem.Reason != "" {
 		t.Fatalf("empty input should plan nothing: %+v %+v", plans, rem)
 	}
@@ -238,7 +238,7 @@ func TestPlanBatches_TruncatesAtRuneBoundary(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 10
 	text := strings.Repeat("ção", 10) // 30 runes, 50 bytes
-	plans, _ := PlanBatches(items(1, text), 0, b)
+	plans, _ := PlanBatches(items(1, text), 0, b, SubjectKindComment)
 	it := plans[0].Items[0]
 	if n := len([]rune(it.Text)); n != 10 {
 		t.Fatalf("truncated to %d runes, want 10", n)
@@ -251,7 +251,7 @@ func TestPlanBatches_TruncatesAtRuneBoundary(t *testing.T) {
 	if strings.ContainsRune(it.Text, '�') {
 		t.Fatal("truncation split a character")
 	}
-	short, _ := PlanBatches(items(1, "curto"), 0, b)
+	short, _ := PlanBatches(items(1, "curto"), 0, b, SubjectKindComment)
 	if short[0].Items[0].Truncated {
 		t.Fatal("an untouched comment must not be flagged")
 	}
@@ -263,7 +263,7 @@ func TestPlanBatches_EstimatesTruncatedText(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 40
 	long := strings.Repeat("a", 4000)
-	plans, _ := PlanBatches(items(1, long), 0, b)
+	plans, _ := PlanBatches(items(1, long), 0, b, SubjectKindComment)
 	if got := plans[0].Items[0].Tokens; got != shared.EstimateTokens(strings.Repeat("a", 40)) {
 		t.Fatalf("item tokens = %d, want the truncated estimate", got)
 	}
@@ -277,7 +277,7 @@ func TestPlanBatches_EstimatesTruncatedText(t *testing.T) {
 func TestPlanBatches_RefsAreDenseAndBatchLocal(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 3
-	plans, _ := PlanBatches(items(7, "oi"), 0, b)
+	plans, _ := PlanBatches(items(7, "oi"), 0, b, SubjectKindComment)
 	for pi, p := range plans {
 		for i, it := range p.Items {
 			if it.Ref != i+1 {
@@ -302,7 +302,7 @@ func TestPlanBatches_CycleTokenCeilingDefers(t *testing.T) {
 	// Each 5-item batch: input 0 + 5×1 = 5, output 5×10 = 50 → 55 tokens.
 	// Ceiling 120 → two batches (110); a third (165) would cross.
 	b.MaxTokensPerCycle = 120
-	plans, rem := PlanBatches(items(17, "a"), 0, b)
+	plans, rem := PlanBatches(items(17, "a"), 0, b, SubjectKindComment)
 	if len(plans) != 2 {
 		t.Fatalf("expected 2 batches under the cycle ceiling, got %d", len(plans))
 	}
@@ -324,7 +324,7 @@ func TestPlanBatches_CycleBatchCeilingDefers(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 4
 	b.MaxBatchesPerCycle = 2
-	plans, rem := PlanBatches(items(10, "a"), 0, b)
+	plans, rem := PlanBatches(items(10, "a"), 0, b, SubjectKindComment)
 	if len(plans) != 2 || len(rem.Unplanned) != 2 {
 		t.Fatalf("expected 2 batches and 2 deferred, got %d/%d", len(plans), len(rem.Unplanned))
 	}
@@ -342,7 +342,7 @@ func TestPlanBatches_CycleCeilingChecksWholeBatch(t *testing.T) {
 	// The full batch (55) fits. The 3-item tail (33) would cross at 88, even
 	// though two of its items (22) would squeeze in: it is deferred whole.
 	b.MaxTokensPerCycle = 80
-	plans, rem := PlanBatches(items(8, "a"), 0, b)
+	plans, rem := PlanBatches(items(8, "a"), 0, b, SubjectKindComment)
 	if len(plans) != 1 || len(plans[0].Items) != 5 {
 		t.Fatalf("expected exactly one full batch, got %+v", plans)
 	}
@@ -366,7 +366,7 @@ func TestBudget_WithCycleAllowance(t *testing.T) {
 		t.Fatalf("negative allowance is zero: %d", got)
 	}
 	// Zero allowance plans nothing and defers everything.
-	plans, rem := PlanBatches(items(3, "a"), 0, b.WithCycleAllowance(0))
+	plans, rem := PlanBatches(items(3, "a"), 0, b.WithCycleAllowance(0), SubjectKindComment)
 	if len(plans) != 0 || len(rem.Unplanned) != 3 || rem.Reason != RemainderCycleTokens {
 		t.Fatalf("zero allowance: %+v %+v", plans, rem)
 	}
@@ -376,7 +376,7 @@ func TestBatchPlan_EstimatedTotalTokens(t *testing.T) {
 	b := loose()
 	b.PerItemOutputTokens = 10
 	b.ReserveTokens = 5
-	plans, _ := PlanBatches(items(2, strings.Repeat("a", 40)), 100, b) // 2×10 + 100 = 120 in
+	plans, _ := PlanBatches(items(2, strings.Repeat("a", 40)), 100, b, SubjectKindComment) // 2×10 + 100 = 120 in
 	p := plans[0]
 	if p.EstimatedInputTokens() != 125 { // ×1.0 + reserve 5
 		t.Errorf("input = %d", p.EstimatedInputTokens())
@@ -393,7 +393,7 @@ func TestBatchPlan_EstimatedTotalTokens(t *testing.T) {
 
 func TestBatchPlan_Split(t *testing.T) {
 	b := loose()
-	plans, _ := PlanBatches(items(7, "oi"), 100, b)
+	plans, _ := PlanBatches(items(7, "oi"), 100, b, SubjectKindComment)
 	halves := plans[0].Split()
 	if len(halves) != 2 {
 		t.Fatalf("expected 2 halves, got %d", len(halves))
@@ -418,7 +418,7 @@ func TestBatchPlan_Split(t *testing.T) {
 }
 
 func TestBatchPlan_SplitSingleIsItself(t *testing.T) {
-	plans, _ := PlanBatches(items(1, "oi"), 0, loose())
+	plans, _ := PlanBatches(items(1, "oi"), 0, loose(), SubjectKindComment)
 	halves := plans[0].Split()
 	if len(halves) != 1 || len(halves[0].Items) != 1 {
 		t.Fatalf("a one-item batch cannot be split: %+v", halves)
@@ -426,9 +426,103 @@ func TestBatchPlan_SplitSingleIsItself(t *testing.T) {
 }
 
 func TestBatchPlan_IDs(t *testing.T) {
-	plans, _ := PlanBatches(items(3, "oi"), 0, loose())
+	plans, _ := PlanBatches(items(3, "oi"), 0, loose(), SubjectKindComment)
 	ids := plans[0].IDs()
 	if len(ids) != 3 || ids[0] != "c-1" || ids[2] != "c-3" {
 		t.Fatalf("IDs() = %v", ids)
+	}
+}
+
+// A conversation is not a comment, and the text cap has to know the difference.
+//
+// MaxCommentRunes is 600, which is generous for an Instagram comment and
+// destroys a transcript. Every conversation analysed before this was judged on
+// its first 600 characters: the greetings at the top, with the whole exchange
+// cut away. The model then correctly reported no progress, no engagement and no
+// answer, and the attendance score came out 0 every single time.
+func TestPlanBatchesGivesAConversationATranscriptSizedCap(t *testing.T) {
+	b := loose()
+	b.MaxCommentRunes = 600
+	b.MaxTranscriptRunes = 20_000
+	b.Normalize()
+
+	transcript := strings.Repeat("User: preciso de um orcamento para 200 unidades\n", 60) // ~2800 runes
+	if len([]rune(transcript)) <= b.MaxCommentRunes {
+		t.Fatalf("the fixture must be longer than the comment cap, got %d runes", len([]rune(transcript)))
+	}
+
+	plans, _ := PlanBatches([]Item{{ID: "conv-1", Text: transcript}}, 0, b, SubjectKindConversation)
+	if len(plans) != 1 || len(plans[0].Items) != 1 {
+		t.Fatalf("plans = %+v", plans)
+	}
+	item := plans[0].Items[0]
+	if item.Truncated {
+		t.Error("a transcript inside the transcript cap was marked truncated")
+	}
+	if got := len([]rune(item.Text)); got != len([]rune(transcript)) {
+		t.Errorf("transcript reached the model as %d runes, want all %d", got, len([]rune(transcript)))
+	}
+}
+
+// Comments keep the cap they had. The fix must not quietly let a comment carry
+// twenty thousand runes into a batch of twenty.
+func TestPlanBatchesStillCapsCommentsAtTheCommentLimit(t *testing.T) {
+	b := loose()
+	b.MaxCommentRunes = 600
+	b.MaxTranscriptRunes = 20_000
+	b.Normalize()
+
+	long := strings.Repeat("a", 2_000)
+	plans, _ := PlanBatches([]Item{{ID: "c-1", Text: long}}, 0, b, SubjectKindComment)
+	if len(plans) != 1 || len(plans[0].Items) != 1 {
+		t.Fatalf("plans = %+v", plans)
+	}
+	item := plans[0].Items[0]
+	if !item.Truncated {
+		t.Error("a 2000-rune comment was not marked truncated")
+	}
+	if got := len([]rune(item.Text)); got != 600 {
+		t.Errorf("comment reached the model as %d runes, want 600", got)
+	}
+}
+
+// A transcript longer than even the transcript cap is still cut, and still says
+// so: the flag is what lets a reader tell a thin verdict from a thin
+// conversation.
+func TestPlanBatchesStillTruncatesAnEnormousTranscript(t *testing.T) {
+	b := loose()
+	b.MaxTranscriptRunes = 1_000
+	b.Normalize()
+
+	plans, _ := PlanBatches([]Item{{ID: "conv-1", Text: strings.Repeat("z", 5_000)}}, 0, b, SubjectKindConversation)
+	item := plans[0].Items[0]
+	if !item.Truncated {
+		t.Error("a transcript past the transcript cap was not marked truncated")
+	}
+	if got := len([]rune(item.Text)); got != 1_000 {
+		t.Errorf("transcript cut to %d runes, want 1000", got)
+	}
+}
+
+// The transcript cap and the input ceiling have to be chosen together.
+//
+// A single item that cannot fit in one call is a row that can never be
+// classified: the planner defers it, the next tick defers it again, and it sits
+// pending forever while looking like a queue that is merely slow. Raising
+// MaxTranscriptRunes without checking this is exactly how that happens, so the
+// relationship is pinned here rather than left to arithmetic nobody redoes.
+func TestATranscriptAtTheCapStillFitsInOneCall(t *testing.T) {
+	b := DefaultBudget()
+	b.Normalize()
+
+	worst := []Item{{ID: "conv-1", Text: strings.Repeat("á", b.MaxTranscriptRunes)}}
+	plans, rem := PlanBatches(worst, shared.EstimateTokens(strings.Repeat("x", 4_000)), b, SubjectKindConversation)
+
+	if len(rem.Unplanned) > 0 {
+		t.Fatalf("a transcript at the cap could not be planned: %d unplanned, reason %v",
+			len(rem.Unplanned), rem.Reason)
+	}
+	if len(plans) != 1 || len(plans[0].Items) != 1 {
+		t.Fatalf("plans = %d, want one call carrying the one conversation", len(plans))
 	}
 }

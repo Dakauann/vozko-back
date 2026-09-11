@@ -32,6 +32,13 @@ type Repository interface {
 	FindByID(ctx context.Context, workspaceID, id string) (*Analysis, error)
 	FindBySourceComment(ctx context.Context, source Source, sourceCommentID string) (*Analysis, error)
 
+	// LatestBySubject returns the newest row for one subject WHATEVER its
+	// status, which is the question "how far has this conversation already got
+	// through the queue" asks. ConversationReader answers a different one: it
+	// serves readers who want a verdict, so it never returns unfinished work.
+	// Nil with a nil error when the subject has no row yet.
+	LatestBySubject(ctx context.Context, workspaceID string, source Source, kind SubjectKind, subjectID string) (*Analysis, error)
+
 	// ListPending returns up to limit pending rows of the container, oldest
 	// first, WITHOUT claiming them. The flush job plans batches from this
 	// and claims only what it is about to send, so a row the cycle ceiling
@@ -66,6 +73,9 @@ type Repository interface {
 	// GetStats fills Counters and Topics with COUNT(*) FILTER; the use case
 	// calls Stats.Finalize.
 	GetStats(ctx context.Context, in ListInput) (*Stats, error)
+	// GetTrend groups the same filtered live rows by UTC day. It supports
+	// workspace-wide and mixed channel/type views that have no single rollup.
+	GetTrend(ctx context.Context, in ListInput) ([]*Rollup, error)
 
 	// AggregateAuthors computes the per-author counters for one account
 	// from rows analysed since changedSince. Derivation (stance, flag) is
@@ -133,6 +143,14 @@ type RollupRepository interface {
 	UpsertMany(ctx context.Context, rows []*Rollup) error
 	// ListSeries returns the scope's rows in [From, To], ascending by day.
 	ListSeries(ctx context.Context, in TrendInput) ([]*Rollup, error)
+}
+
+// TrendRepository computes a daily series over the same live filters used by
+// the workspace-wide feed. Daily rollups remain the fast path for one fixed
+// account/container; this path is needed when a view spans channels, accounts,
+// or subject kinds that are not represented by a single rollup key.
+type TrendRepository interface {
+	GetTrend(ctx context.Context, in ListInput) ([]*Rollup, error)
 }
 
 // BatchRepository stores the per-call receipts.

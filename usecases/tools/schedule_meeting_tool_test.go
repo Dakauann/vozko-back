@@ -62,9 +62,6 @@ func TestScheduleMeeting_Definition(t *testing.T) {
 	if !def.IsVisibleIn("messaging") {
 		t.Error("expected visible in messaging")
 	}
-	if !def.IsVisibleIn("voice") {
-		t.Error("expected visible in voice")
-	}
 }
 
 func TestScheduleMeeting_UsesConfiguredDefaults(t *testing.T) {

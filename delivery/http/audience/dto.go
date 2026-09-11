@@ -83,8 +83,12 @@ func toCommentResponse(a *audience.Analysis) CommentResponse {
 // StatsResponse is the live aggregate; Counters flatten into it.
 type StatsResponse struct {
 	audience.Counters
-	Topics          []audience.TopicStat `json:"topics"`
-	AcceptanceScore int                  `json:"acceptanceScore"`
+	Topics []audience.TopicStat `json:"topics"`
+	// Subjects is what the conversations were about, ranked. Always an array,
+	// never null: a client that has to distinguish "no subjects" from "this
+	// field is missing" would branch on it everywhere.
+	Subjects        []audience.SubjectCount `json:"subjects"`
+	AcceptanceScore int                     `json:"acceptanceScore"`
 }
 
 func toStatsResponse(s *audience.Stats) StatsResponse {
@@ -92,7 +96,14 @@ func toStatsResponse(s *audience.Stats) StatsResponse {
 	if topics == nil {
 		topics = []audience.TopicStat{}
 	}
-	return StatsResponse{Counters: s.Counters, Topics: topics, AcceptanceScore: s.AcceptanceScore}
+	subjects := s.Subjects
+	if subjects == nil {
+		subjects = []audience.SubjectCount{}
+	}
+	return StatsResponse{
+		Counters: s.Counters, Topics: topics, Subjects: subjects,
+		AcceptanceScore: s.AcceptanceScore,
+	}
 }
 
 type TrendPointResponse struct {

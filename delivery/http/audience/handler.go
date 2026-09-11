@@ -44,10 +44,14 @@ type Handler struct {
 	updateSet  ca.UpdateSettingsUseCase
 	retry      ca.RetryUseCase
 	spend      ca.SpendUseCase
-	estimate   ca.EstimateBackfillUseCase
-	start      ca.StartBackfillUseCase
-	backfill   ca.GetBackfillUseCase
-	cancel     ca.CancelBackfillUseCase
+	usage      ca.UsageUseCase
+	// workspaceSettings is the workspace's own analysis configuration: the
+	// ceiling the budget above is measured against, and the debounce window.
+	workspaceSettings ca.WorkspaceSettingsUseCase
+	estimate          ca.EstimateBackfillUseCase
+	start             ca.StartBackfillUseCase
+	backfill          ca.GetBackfillUseCase
+	cancel            ca.CancelBackfillUseCase
 
 	accounts     ca.ListAccountSettingsUseCase
 	getContainer ca.GetContainerSettingsUseCase
@@ -77,10 +81,15 @@ type Deps struct {
 	UpdateSet ca.UpdateSettingsUseCase
 	Retry     ca.RetryUseCase
 	Spend     ca.SpendUseCase
-	Estimate  ca.EstimateBackfillUseCase
-	Start     ca.StartBackfillUseCase
-	Backfill  ca.GetBackfillUseCase
-	Cancel    ca.CancelBackfillUseCase
+	// Usage is the rolling analysis budget the dashboard reports against.
+	Usage ca.UsageUseCase
+	// WorkspaceSettings is what that budget is measured against, plus the
+	// debounce window. Written under audience:update.
+	WorkspaceSettings ca.WorkspaceSettingsUseCase
+	Estimate          ca.EstimateBackfillUseCase
+	Start             ca.StartBackfillUseCase
+	Backfill          ca.GetBackfillUseCase
+	Cancel            ca.CancelBackfillUseCase
 
 	Accounts     ca.ListAccountSettingsUseCase
 	GetContainer ca.GetContainerSettingsUseCase
@@ -93,8 +102,9 @@ func NewHandler(d Deps) *Handler {
 		list: d.List, stats: d.Stats, trends: d.Trends, authors: d.Authors, author: d.Author, containers: d.Containers, escalate: d.Escalate, recipients: d.Recipients,
 		alerts: d.Alerts, testAlert: d.TestAlert, channels: d.Channels,
 		suggest: d.Suggest, postReply: d.PostReply, moderate: d.Moderate,
-		getSet: d.GetSet, updateSet: d.UpdateSet, retry: d.Retry, spend: d.Spend,
-		estimate: d.Estimate, start: d.Start, backfill: d.Backfill, cancel: d.Cancel,
+		getSet: d.GetSet, updateSet: d.UpdateSet, retry: d.Retry, spend: d.Spend, usage: d.Usage,
+		workspaceSettings: d.WorkspaceSettings,
+		estimate:          d.Estimate, start: d.Start, backfill: d.Backfill, cancel: d.Cancel,
 		accounts: d.Accounts, getContainer: d.GetContainer, putContainer: d.PutContainer, delContainer: d.DelContainer,
 	}
 }
@@ -135,6 +145,7 @@ func listInput(r *http.Request) ca.ListInput {
 	in.Qualification = ca.Qualification(strings.TrimSpace(v.Get("qualification")))
 	in.NextAction = ca.NextAction(strings.TrimSpace(v.Get("nextAction")))
 	in.SubjectID = strings.TrimSpace(v.Get("subjectId"))
+	in.LatestOnly = v.Get("latestOnly") == "true"
 
 	in.SeverityMin = intParam(v, "severityMin")
 	in.SeverityMax = intParam(v, "severityMax")
@@ -210,12 +221,20 @@ func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
 	if t := timeParam(v, "to"); t != nil {
 		to = *t
 	}
-	rows, err := h.trends.Execute(r.Context(), ca.TrendInput{
-		WorkspaceID: middleware.GetWorkspaceID(r),
-		Scope:       ca.RollupScope(strings.TrimSpace(v.Get("scope"))),
-		ScopeID:     strings.TrimSpace(v.Get("scopeId")),
-		From:        from, To: to,
-	})
+	scope, scopeID := strings.TrimSpace(v.Get("scope")), strings.TrimSpace(v.Get("scopeId"))
+	var rows []*ca.Rollup
+	var err error
+	if scope != "" || scopeID != "" {
+		rows, err = h.trends.Execute(r.Context(), ca.TrendInput{
+			WorkspaceID: middleware.GetWorkspaceID(r),
+			Scope:       ca.RollupScope(scope), ScopeID: scopeID,
+			From: from, To: to,
+		})
+	} else {
+		in := listInput(r)
+		in.From, in.To = &from, &to
+		rows, err = h.trends.ExecuteFiltered(r.Context(), in)
+	}
 	if err != nil {
 		writeDomainError(w, err, "Failed to load trends")
 		return
@@ -843,4 +862,111 @@ func authorSortKeyNames() []string {
 		out = append(out, string(k))
 	}
 	return out
+}
+
+// @Summary		Uso da análise contra o teto do workspace
+// @Description	Quanto o workspace analisou na janela móvel de 24 horas e o teto em vigor. É a resposta a "por que a cobertura está baixa": ao atingir o teto a análise pausa até que as horas mais antigas saiam da janela.
+// @Tags			Analysis
+// @Produce		json
+// @Success		200	{object}	audience.Usage
+// @Security		BearerAuth
+// @Router			/audience/usage [get]
+func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
+	if h.usage == nil {
+		// A deployment without the limiter has no ceiling to report, which is
+		// not an error: the dashboard simply shows no budget panel.
+		response.WriteSuccess(w, http.StatusOK, ca.Usage{})
+		return
+	}
+	usage, err := h.usage.Execute(r.Context(), middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err, "Failed to load usage")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, usage)
+}
+
+// WorkspaceSettingsResponse is what the workspace decides about its own
+// analysis, as STORED.
+//
+// Zero means "never set" for both fields, and the screen needs to tell that
+// apart from a value somebody chose, so the resolved numbers ride alongside
+// rather than replacing them: the operator sees the default as a placeholder
+// and the effective window as a fact.
+type WorkspaceSettingsResponse struct {
+	DailyCap        int `json:"dailyCap"`
+	DebounceMinutes int `json:"debounceMinutes"`
+	// EffectiveDebounceMinutes is what the sweep actually waits, which is the
+	// default when nothing is set.
+	EffectiveDebounceMinutes int `json:"effectiveDebounceMinutes"`
+	MinDebounceMinutes       int `json:"minDebounceMinutes"`
+	MaxDebounceMinutes       int `json:"maxDebounceMinutes"`
+}
+
+func workspaceSettingsResponse(s ca.WorkspaceSettings) WorkspaceSettingsResponse {
+	return WorkspaceSettingsResponse{
+		DailyCap:                 s.DailyCap,
+		DebounceMinutes:          s.DebounceMinutes,
+		EffectiveDebounceMinutes: ca.ClampDebounceMinutes(s.DebounceMinutes),
+		MinDebounceMinutes:       ca.MinDebounceMinutes,
+		MaxDebounceMinutes:       ca.MaxDebounceMinutes,
+	}
+}
+
+// @Summary		Configuração de análise do workspace
+// @Description	Teto de análises e tempo de silêncio antes de analisar uma conversa. Zero significa "não definido", e o valor efetivo vem junto.
+// @Tags			Analysis
+// @Produce		json
+// @Success		200	{object}	WorkspaceSettingsResponse
+// @Security		BearerAuth
+// @Router			/audience/workspace-settings [get]
+func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
+	if h.workspaceSettings == nil {
+		response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(ca.WorkspaceSettings{}))
+		return
+	}
+	settings, err := h.workspaceSettings.Execute(r.Context(), middleware.GetWorkspaceID(r))
+	if err != nil {
+		writeDomainError(w, err, "Failed to load the analysis settings")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings))
+}
+
+// UpdateWorkspaceSettingsRequest is a partial update: an omitted field is left
+// alone, so two controls on one screen never overwrite each other.
+type UpdateWorkspaceSettingsRequest struct {
+	DailyCap        *int `json:"dailyCap,omitempty"`
+	DebounceMinutes *int `json:"debounceMinutes,omitempty"`
+}
+
+// @Summary		Alterar a configuração de análise do workspace
+// @Description	Define o teto de análises na janela móvel de 24 horas e/ou quantos minutos a conversa precisa ficar sem mensagens antes de ser analisada. Vale para o workspace inteiro, em todos os canais.
+// @Tags			Analysis
+// @Accept			json
+// @Produce		json
+// @Param			request	body		UpdateWorkspaceSettingsRequest	true	"Campos a alterar"
+// @Success		200	{object}	WorkspaceSettingsResponse
+// @Failure		400	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/audience/workspace-settings [put]
+func (h *Handler) UpdateWorkspaceSettings(w http.ResponseWriter, r *http.Request) {
+	if h.workspaceSettings == nil {
+		response.WriteError(w, http.StatusNotFound, "Analysis settings are not available", nil)
+		return
+	}
+	var req UpdateWorkspaceSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
+		return
+	}
+	settings, err := h.workspaceSettings.Update(r.Context(), middleware.GetWorkspaceID(r), ca.UpdateWorkspaceSettingsInput{
+		DailyCap:        req.DailyCap,
+		DebounceMinutes: req.DebounceMinutes,
+	})
+	if err != nil {
+		writeDomainError(w, err, "Failed to update the analysis settings")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings))
 }

@@ -1,10 +1,12 @@
 package unofficial_whatsapp_campaign
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	convuc "vozko/usecases/conversation"
 )
 
 func TestAutomationSourceMapsTheOwningCampaign(t *testing.T) {
@@ -17,6 +19,7 @@ func TestAutomationSourceMapsTheOwningCampaign(t *testing.T) {
 	campaigns.put(&uwc.Campaign{
 		ID: "camp-1", AgentID: "agent-1", EnableAgentResponses: true,
 		WorkflowID: "wf-1", EnableWorkflow: true,
+		EnableAnalysis: true, EnableAutoMemory: true, EnableAutoStaging: true,
 	})
 
 	got, ok := NewAutomationSource(entries, campaigns).AutomationForConversation("conv-1")
@@ -31,6 +34,32 @@ func TestAutomationSourceMapsTheOwningCampaign(t *testing.T) {
 	}
 	if got.Automation.WorkflowID != "wf-1" || !got.Automation.EnableWorkflow {
 		t.Fatalf("workflow config not carried across: %+v", got.Automation)
+	}
+	if !got.EnableAnalysis || !got.EnableAutoMemory || !got.EnableAutoStaging {
+		t.Fatal("lost campaign enrichment flags")
+	}
+}
+
+func TestAnalysisResolverUsesCampaignFlagsInsteadOfInstance(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		entries, campaigns := newFakeEntryRepo(), newFakeCampaignRepo()
+		sent := time.Now()
+		entries.put(&uwc.Entry{ID: "e", CampaignID: "camp", ConversationID: "conv", SentAt: &sent})
+		campaigns.put(&uwc.Campaign{ID: "camp", Name: "Campaign", AgentID: "agent", AiModel: "model", EnableAnalysis: enabled, EnableAutoMemory: enabled, EnableAutoStaging: enabled})
+		base := func(context.Context, string) (*convuc.AnalysisSubject, error) {
+			return &convuc.AnalysisSubject{EntryID: "conv", ContainerID: "instance", EnableAnalysis: !enabled, EnableAutoMemory: !enabled, EnableAutoStaging: !enabled}, nil
+		}
+		got, err := NewAutomationSource(entries, campaigns).AnalysisResolver(base)(context.Background(), "conv")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ContainerID != "camp" || got.EnableAnalysis != enabled || got.EnableAutoMemory != enabled || got.EnableAutoStaging != enabled || got.AIModel != "model" || got.AgentID != "agent" {
+			t.Fatalf("wrong effective config: %+v", got)
+		}
+		organic, err := NewAutomationSource(entries, campaigns).AnalysisResolver(base)(context.Background(), "organic")
+		if err != nil || organic.ContainerID != "instance" || organic.EnableAnalysis != !enabled {
+			t.Fatalf("organic config changed: %+v %v", organic, err)
+		}
 	}
 }
 

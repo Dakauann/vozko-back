@@ -59,15 +59,13 @@ const (
 	DispositionFillingInfo Disposition = "filling_info"
 	DispositionCallback    Disposition = "callback"
 	DispositionDeclined    Disposition = "declined"
-	DispositionNoAnswer    Disposition = "no_answer"
-	DispositionVoicemail   Disposition = "voicemail"
 	DispositionPending     Disposition = "pending"
 )
 
 func (d Disposition) Valid() bool {
 	switch d {
 	case DispositionSale, DispositionFillingInfo, DispositionCallback, DispositionDeclined,
-		DispositionNoAnswer, DispositionVoicemail, DispositionPending:
+		DispositionPending:
 		return true
 	}
 	return false
@@ -76,8 +74,7 @@ func (d Disposition) Valid() bool {
 func DispositionValues() []string {
 	return []string{
 		string(DispositionSale), string(DispositionFillingInfo), string(DispositionCallback),
-		string(DispositionDeclined), string(DispositionNoAnswer), string(DispositionVoicemail),
-		string(DispositionPending),
+		string(DispositionDeclined), string(DispositionPending),
 	}
 }
 
@@ -165,8 +162,6 @@ func ConversationClassificationFields() []shared.ClassificationField {
 				{Value: string(DispositionCallback), Description: "cliente solicitou retorno em um momento específico (data/hora mencionada)"},
 				{Value: string(DispositionDeclined), Description: "recusa EXPLÍCITA e definitiva do objetivo"},
 				{Value: string(DispositionPending), Description: "TODOS os demais casos em andamento, fazendo perguntas, negociando, ou apenas aceitou receber mais informações, sem decisão final"},
-				{Value: string(DispositionNoAnswer), Description: "apenas para chamadas de voz: não atendida, ou o usuário não falou nada"},
-				{Value: string(DispositionVoicemail), Description: "apenas para chamadas de voz: caiu na caixa postal"},
 			},
 		},
 		{
@@ -338,9 +333,12 @@ func ConversationBatchResponseSchema() map[string]any {
 			"description": "O número (ref) da conversa, exatamente como recebido.",
 		},
 		FieldProductInterest: map[string]any{
-			"type":        "string",
-			"description": "Produto, serviço ou assunto concreto que o cliente demonstrou interesse. Vazio se nenhum ficou claro.",
-			"maxLength":   MaxProductInterestRunes,
+			"type": "string",
+			"description": fmt.Sprintf(
+				"Produto, serviço ou assunto concreto em que o cliente demonstrou interesse, em no máximo %d palavras. Um rótulo curto, não uma frase, e sempre o mesmo rótulo para o mesmo assunto. Vazio se nenhum ficou claro.",
+				MaxSubjectWords,
+			),
+			"maxLength": MaxProductInterestRunes,
 		},
 		FieldSummary: map[string]any{
 			"type":        "string",
@@ -443,7 +441,12 @@ func ConversationSubjectPrompt() string {
 	b.WriteString("\".\n\n")
 	b.WriteString(ConversationRubricPrompt())
 	b.WriteString("\n")
-	fmt.Fprintf(&b, "%s: produto, serviço ou assunto concreto que o cliente demonstrou interesse, em poucas palavras. Vazio se nenhum ficou claro.\n\n", FieldProductInterest)
+	// Asked for as a LABEL rather than a description, because these are counted
+	// across a workspace: "clareamento dental" repeats and can be ranked, while
+	// "o cliente quer saber sobre clareamento" is unique to one conversation
+	// and would be a bar of one. The cap is re-applied on the way in either
+	// way; this is what makes the model's own answer usable.
+	fmt.Fprintf(&b, "%s: produto, serviço ou assunto concreto em que o cliente demonstrou interesse, em no máximo %d palavras. Um rótulo curto, não uma frase, e sempre o mesmo rótulo para o mesmo assunto. Vazio se nenhum ficou claro.\n\n", FieldProductInterest, MaxSubjectWords)
 	fmt.Fprintf(&b, "%s: 2 a 4 frases sobre o que aconteceu e onde a conversa parou. Descreva o que foi dito; não invente fatos, valores, prazos ou combinados que não aparecem na conversa.\n\n", FieldSummary)
 	fmt.Fprintf(&b, "%s: idioma em BCP-47 (pt, es, en…), melhor esforço.\n\n", FieldLanguage)
 	b.WriteString(ConversationQualityRubricPrompt())

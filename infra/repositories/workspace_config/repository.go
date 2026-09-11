@@ -73,6 +73,12 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 
 		WorkingHours: decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
 
+		// Carried through even though nothing in this package reads them: the
+		// audience use case writes them via Upsert below, and an unmapped column
+		// would be reset to zero by the next workspace-config save.
+		AudienceDailyCap:        row.AudienceDailyCap,
+		AudienceDebounceMinutes: row.AudienceDebounceMinutes,
+
 		UpdatedBy: row.UpdatedBy,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
@@ -97,6 +103,9 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 		RouletteLastSeenWindowHours: wsc.ClampRouletteLastSeenWindowHours(cfg.RouletteLastSeenWindowHours),
 		RouletteRescueEnabled:       cfg.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(cfg.RouletteRescueAfterMinutes),
+
+		AudienceDailyCap:        cfg.AudienceDailyCap,
+		AudienceDebounceMinutes: cfg.AudienceDebounceMinutes,
 
 		UpdatedBy: cfg.UpdatedBy,
 	}

@@ -45,10 +45,28 @@ func (uc *statsUseCase) Execute(ctx context.Context, in ca.ListInput) (*ca.Stats
 	return stats, nil
 }
 
-type trendsUseCase struct{ rollups ca.RollupRepository }
+type trendsUseCase struct {
+	repo    ca.TrendRepository
+	rollups ca.RollupRepository
+}
 
-func NewTrendsUseCase(rollups ca.RollupRepository) ca.TrendsUseCase {
-	return &trendsUseCase{rollups: rollups}
+func NewTrendsUseCase(repo ca.TrendRepository, rollups ca.RollupRepository) ca.TrendsUseCase {
+	return &trendsUseCase{repo: repo, rollups: rollups}
+}
+
+func (uc *trendsUseCase) ExecuteFiltered(ctx context.Context, in ca.ListInput) ([]*ca.Rollup, error) {
+	in.Normalize()
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	rows, err := uc.repo.GetTrend(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []*ca.Rollup{}
+	}
+	return rows, nil
 }
 
 func (uc *trendsUseCase) Execute(ctx context.Context, in ca.TrendInput) ([]*ca.Rollup, error) {

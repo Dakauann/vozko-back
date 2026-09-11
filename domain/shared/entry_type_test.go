@@ -18,7 +18,6 @@ func TestEntryTypeValid(t *testing.T) {
 	}
 
 	invalid := []EntryType{
-		EntryTypeVoice, // viewable, but carries no message pipeline
 		"", "WHATSAPP", "messenger", "whatsapp ", "instagram\n",
 	}
 	for _, e := range invalid {
@@ -32,7 +31,7 @@ func TestEntryTypeValid(t *testing.T) {
 // handlers consult. Instagram's absence from it is what made a received DM
 // impossible to open.
 func TestEntryTypeSupportsConversationView(t *testing.T) {
-	viewable := []EntryType{EntryTypeWhatsApp, EntryTypeVoice, EntryTypeInstagram}
+	viewable := []EntryType{EntryTypeWhatsApp, EntryTypeTelegram, EntryTypeInstagram}
 	for _, e := range viewable {
 		if !e.SupportsConversationView() {
 			t.Errorf("%q should be viewable in the CRM", e)
@@ -66,7 +65,6 @@ func TestConversationViewableEntryTypesIsStableAndComplete(t *testing.T) {
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
-		EntryTypeVoice,
 		EntryTypeWhatsApp,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -99,8 +97,8 @@ func TestFormatEntryTypes(t *testing.T) {
 	}{
 		{"empty", nil, ""},
 		{"one", []EntryType{EntryTypeWhatsApp}, "'whatsapp'"},
-		{"two", []EntryType{EntryTypeVoice, EntryTypeWhatsApp}, "'voice' or 'whatsapp'"},
-		{"three", []EntryType{EntryTypeInstagram, EntryTypeVoice, EntryTypeWhatsApp}, "'instagram', 'voice' or 'whatsapp'"},
+		{"two", []EntryType{EntryTypeTelegram, EntryTypeWhatsApp}, "'telegram' or 'whatsapp'"},
+		{"three", []EntryType{EntryTypeInstagram, EntryTypeTelegram, EntryTypeWhatsApp}, "'instagram', 'telegram' or 'whatsapp'"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,7 +125,7 @@ func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 		t.Error("registering the type should make it viewable")
 	}
 	// The user-facing message picks the new channel up with no other edit.
-	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'unofficial_whatsapp', 'voice' or 'whatsapp'" {
+	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'unofficial_whatsapp' or 'whatsapp'" {
 		t.Errorf("error text did not follow the set: %q", got)
 	}
 	// Viewability must not imply messaging-pipeline membership.
@@ -152,7 +150,7 @@ func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
 	}
 	for _, e := range []EntryType{
 		EntryTypeWhatsApp, EntryTypeTelegram, EntryTypeUnofficialWhatsApp,
-		EntryTypeVoice, EntryTypeSupport,
+		EntryTypeSupport,
 	} {
 		if e.SupportsCommentAnalysis() {
 			t.Errorf("%q has no public comments and must not support comment analysis", e)
@@ -162,7 +160,7 @@ func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
 	// Every channel that holds a transcript can be analysed as a conversation.
 	for _, e := range []EntryType{
 		EntryTypeWhatsApp, EntryTypeInstagram, EntryTypeTelegram,
-		EntryTypeUnofficialWhatsApp, EntryTypeVoice,
+		EntryTypeUnofficialWhatsApp,
 	} {
 		if !e.SupportsConversationAnalysis() {
 			t.Errorf("%q should support conversation analysis", e)
@@ -175,11 +173,11 @@ func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
 	}
 
 	// Voice is the case that proves the sets are independent of Valid().
-	if EntryTypeVoice.Valid() {
-		t.Fatal("precondition: voice is not a messaging entry type")
+	if !EntryTypeSupport.Valid() {
+		t.Fatal("precondition: support is a messaging entry type")
 	}
-	if !EntryTypeVoice.SupportsConversationAnalysis() {
-		t.Error("voice must be analysable as a conversation despite not being a messaging type")
+	if EntryTypeSupport.SupportsConversationAnalysis() {
+		t.Error("support is a messaging type that is deliberately never analysed")
 	}
 }
 
@@ -211,7 +209,6 @@ func TestAnalysableEntryTypeListsMirrorPredicates(t *testing.T) {
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
-		EntryTypeVoice,
 		EntryTypeWhatsApp,
 	}
 	if !reflect.DeepEqual(conversation, want) {

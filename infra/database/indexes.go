@@ -905,9 +905,29 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			sql:  `DROP INDEX IF EXISTS ux_ca_source_comment`,
 		},
 		{
-			name: "ux_ca_subject",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_subject
-				ON audience_analyses (source, subject_kind, subject_id)`,
+			name: "ux_ca_revision",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_revision
+				ON audience_analyses (source, subject_kind, subject_id, revision)`,
+		},
+		{
+			name: "ux_ca_subject_drop_single_revision",
+			sql:  `DROP INDEX IF EXISTS ux_ca_subject`,
+		},
+		{
+			name: "idx_ca_latest_revision",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_latest_revision ON audience_analyses
+				(workspace_id, source, subject_id, occurred_at DESC, created_at DESC, id DESC)
+				WHERE subject_kind = 'conversation' AND deleted_at IS NULL`,
+		},
+		// The "what are people talking about" ranking. Partial on a non-empty
+		// key: most rows in a mixed workspace are comments, which never carry
+		// one, and indexing their empty string would double the index to serve
+		// a value no query groups on.
+		{
+			name: "idx_ca_subject_key",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ca_subject_key ON audience_analyses
+				(workspace_id, product_interest_key, occurred_at)
+				WHERE product_interest_key <> '' AND deleted_at IS NULL`,
 		},
 		// One projection row per author per account, the upsert target of the
 		// hourly rebuild.

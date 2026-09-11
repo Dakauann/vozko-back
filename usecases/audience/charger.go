@@ -3,7 +3,6 @@ package audience_usecase
 import (
 	"context"
 	"fmt"
-	"time"
 
 	ca "vozko/domain/audience"
 	"vozko/domain/balance"
@@ -19,8 +18,6 @@ import (
 
 const (
 	batchReferencePrefix = "cabatch:"
-	dailyCapKeyPrefix    = "comment_analysis:spend:"
-	dailyCapTTL          = 48 * time.Hour
 )
 
 type charger struct {
@@ -33,26 +30,6 @@ type charger struct {
 // be nil in a deployment with no surcharge; the daily cap still applies.
 func NewCharger(balances balance.Repository, pricer workspace_pricing.Pricer, state cache.SharedState) ca.Charger {
 	return &charger{balances: balances, pricer: pricer, state: state}
-}
-
-// ReserveDaily claims items against the workspace's cap for the UTC day.
-// TryIncrBy is atomic, so two replicas cannot both squeeze under the cap.
-func (c *charger) ReserveDaily(_ context.Context, workspaceID string, items, cap int, day time.Time) (bool, error) {
-	if items <= 0 {
-		return true, nil
-	}
-	if cap <= 0 {
-		cap = ca.DefaultDailyCap
-	}
-	key := dailyCapKeyPrefix + workspaceID + ":" + day.UTC().Format("2006-01-02")
-	ok, err := c.state.TryIncrBy(key, int64(items), int64(cap))
-	if err != nil {
-		return false, err
-	}
-	// Best effort: the key names the day, so a missing TTL only leaves a
-	// small key behind, never a wrong count.
-	_, _ = c.state.Expire(key, dailyCapTTL)
-	return ok, nil
 }
 
 // ChargeBatch debits the surcharge once per batch, idempotent on the batch

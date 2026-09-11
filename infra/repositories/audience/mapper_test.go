@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	gormschema "gorm.io/gorm/schema"
+
 	ca "vozko/domain/audience"
 	"vozko/domain/shared"
+	"vozko/infra/database/schema"
 )
 
 // The mapper must carry EVERY field, and this test is structural rather than a
@@ -55,6 +58,8 @@ func fullyPopulatedAnalysis() *ca.Analysis {
 		ID:               "11111111-1111-1111-1111-111111111111",
 		WorkspaceID:      "22222222-2222-2222-2222-222222222222",
 		SubjectKind:      ca.SubjectKindConversation,
+		Revision:         "9f2c1ab3d4e5",
+		Transcript:       "Cliente: ola. Atendente: bom dia",
 		Source:           ca.SourceWhatsApp,
 		AccountID:        "33333333-3333-3333-3333-333333333333",
 		ContainerID:      "campaign-1",
@@ -78,14 +83,15 @@ func fullyPopulatedAnalysis() *ca.Analysis {
 		LegalRisk:      shared.QualityLevelHigh,
 		Severity:       73,
 
-		Interest:          ca.InterestInterested,
-		ProductInterest:   "plano familia",
-		Disposition:       ca.DispositionFillingInfo,
-		Qualification:     ca.QualificationHotLead,
-		NextAction:        ca.NextActionEscalate,
-		Summary:           "Cliente pediu orcamento e enviou documentos.",
-		AttendanceQuality: 88,
-		MessageCount:      17,
+		Interest:           ca.InterestInterested,
+		ProductInterest:    "plano familia",
+		ProductInterestKey: "plano familia",
+		Disposition:        ca.DispositionFillingInfo,
+		Qualification:      ca.QualificationHotLead,
+		NextAction:         ca.NextActionEscalate,
+		Summary:            "Cliente pediu orcamento e enviou documentos.",
+		AttendanceQuality:  88,
+		MessageCount:       17,
 
 		RequiresAction: true,
 		Excerpt:        "trecho do assunto",
@@ -198,6 +204,13 @@ func TestCountersMappingCarriesEveryField(t *testing.T) {
 			v.Field(i).SetInt(int64(i + 1))
 		case reflect.Float64:
 			v.Field(i).SetFloat(float64(i) + 1.5)
+		case reflect.Ptr:
+			// A nil pointer reads as zero, which would leave the assertion
+			// below vacuous for every optional column.
+			v.Field(i).Set(reflect.New(v.Field(i).Type().Elem()))
+			if ts, ok := v.Field(i).Interface().(*time.Time); ok {
+				*ts = time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC)
+			}
 		}
 	}
 
@@ -213,3 +226,46 @@ func TestCountersMappingCarriesEveryField(t *testing.T) {
 		}
 	}
 }
+
+// saveColumns is a hand-written list, which makes it the same silent trap the
+// mapper tests above guard against, one layer lower.
+//
+// Save is what persists a classification after the model answers. A column
+// added to the entity, mapped correctly, and forgotten HERE produces no error
+// at all: the insert writes its zero value and every later Save leaves it
+// there, so the field is simply always empty in production. That is exactly
+// how product_interest_key was nearly shipped dead.
+//
+// Immutable columns are listed by name and excluded. They are written once by
+// the insert and must never be in an update: identity, the subject's own text,
+// and the frozen snapshot a revision is judged on.
+func TestSaveColumnsCoverEveryMutableField(t *testing.T) {
+	immutable := map[string]bool{
+		"id": true, "workspace_id": true, "subject_kind": true, "revision": true,
+		"transcript": true, "source": true, "account_id": true, "container_id": true,
+		"subject_id": true, "parent_subject_id": true, "author_external_id": true,
+		"author_handle": true, "excerpt": true, "created_at": true,
+	}
+
+	written := saveColumns(fullyPopulatedAnalysis())
+	typ := reflect.TypeOf(schema.AudienceAnalysis{})
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		column := naming.ColumnName("", field.Name)
+		if immutable[column] {
+			continue
+		}
+		if _, ok := written[column]; !ok {
+			t.Errorf("saveColumns never writes %s, so it keeps whatever the insert put there forever", column)
+		}
+	}
+}
+
+// naming is GORM's own strategy, not a reimplementation of it. A hand-rolled
+// snake_case would disagree with it on exactly the names that matter here
+// (ID becomes "id", not "i_d"), and a test that guesses the column names
+// wrongly reports failures nobody can act on.
+var naming = gormschema.NamingStrategy{}

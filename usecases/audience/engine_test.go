@@ -259,13 +259,20 @@ func TestEngine_BalanceFloorIsFailClosed(t *testing.T) {
 	}
 }
 
-// Daily cap exhausted: the cycle stops, rows stay pending, the hint stays.
+// Volume budget exhausted: the cycle stops, rows stay pending, the hint stays.
+//
+// The ceiling now comes from the workspace's own setting through the rolling
+// limiter, rather than from a fake that answered yes or no on command, so this
+// exercises the real budget arithmetic on the way past.
 func TestEngine_DailyCapStopsTheCycle(t *testing.T) {
 	b := smallBudget()
 	b.MaxBatchItems = 10
 	h := newHarness(t, b)
 	h.seed(30)
-	h.charger.capLeft = 15 // one batch of 10 fits, the second does not
+	// One batch of 10 fits, the second does not.
+	for _, s := range h.settings.byAccount {
+		s.DailyCap = 15
+	}
 
 	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
 	if err != nil {
@@ -301,7 +308,7 @@ func TestEngine_CycleCeilingDefers(t *testing.T) {
 		items = append(items, ca.Item{ID: "row-" + itoa(i), Text: h.adapter.texts["c-"+itoa(i)]})
 	}
 	sys := BuildSystemPrompt(enabledSettings().Topics, ca.ContainerContext{Caption: h.adapter.caption}, "")
-	plans, _ := ca.PlanBatches(items, shared.EstimateTokens(sys), b)
+	plans, _ := ca.PlanBatches(items, shared.EstimateTokens(sys), b, ca.SubjectKindComment)
 	oneBatch := plans[0].EstimatedTotalTokens()
 	cyc := newCycle()
 	cyc.add("ws-1", b.MaxTokensPerCycle-oneBatch)
@@ -578,5 +585,87 @@ func TestEngine_WithoutABroadcasterStillClassifies(t *testing.T) {
 	}
 	if res.Analyzed != 5 {
 		t.Fatalf("analysed = %d, want 5", res.Analyzed)
+	}
+}
+
+// A provider outage must not cost budget.
+//
+// The claim happens BEFORE the model call, which is the only order that stops
+// two replicas overspending together. The consequence is that a batch the
+// provider drops has already been counted, and under the counter this replaced
+// it stayed counted until midnight: a bad afternoon upstream could exhaust a
+// workspace's whole allowance having classified nothing at all.
+func TestEngine_ProviderFailureReturnsTheBudget(t *testing.T) {
+	b := smallBudget()
+	b.MaxBatchItems = 10
+	h := newHarness(t, b)
+	h.seed(10)
+	for _, s := range h.settings.byAccount {
+		s.DailyCap = 10
+	}
+	h.classifier.push(func(ca.ClassifyRequest) (*ca.ClassifyResult, error) {
+		return nil, errors.New("provider is down")
+	})
+
+	if _, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle()); err == nil {
+		t.Fatal("a provider failure must surface")
+	}
+
+	// The whole allowance is back, so the retry on the next tick is affordable.
+	usage, err := NewUsageLimiter(h.state).Read(context.Background(), "ws-1", 10, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Used != 0 {
+		t.Errorf("budget used = %d after a failure that classified nothing, want 0", usage.Used)
+	}
+
+	// And the retry actually goes through rather than being refused by a
+	// ceiling spent on work nobody received.
+	h.classifier.push(good)
+	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Analyzed != 10 {
+		t.Fatalf("retry analysed %d of 10; the budget was not returned", res.Analyzed)
+	}
+}
+
+// The ceiling an operator sets on the workspace screen has to be the ceiling
+// that actually stops a pass.
+//
+// It used to come from the resolved ACCOUNT settings while the dashboard read
+// the highest account row it could find, so the two could name different
+// numbers, and a workspace with no channel account had no ceiling it could set
+// at all. Both now resolve through ca.ResolveDailyCap over the same store.
+func TestEngine_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
+	b := smallBudget()
+	b.MaxBatchItems = 10
+	h := newHarness(t, b)
+	h.seed(30)
+	// The account would happily allow the whole lot.
+	for _, s := range h.settings.byAccount {
+		s.DailyCap = 20000
+	}
+	// The workspace says otherwise: one batch of 10 fits, the second does not.
+	if err := h.workspaceLimits.Save(context.Background(), "ws-1", ca.WorkspaceSettings{DailyCap: 15}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Analyzed != 10 || !errors.Is(res.Stopped, ca.ErrDailyCapReached) {
+		t.Fatalf("result = %+v, want 10 analysed then stopped by the workspace ceiling", res)
+	}
+	if h.repo.countStatus(ca.StatusPending) != 20 {
+		t.Fatalf("pending = %d, want the other 20 left for the next pass", h.repo.countStatus(ca.StatusPending))
+	}
+	// Nothing is thrown away when the ceiling is reached: the hint survives, so
+	// the backstop picks the rest up rather than the work disappearing.
+	if _, still := h.scheduler.hints[ref().Key()]; !still {
+		t.Fatal("the hint must survive a cap stop")
 	}
 }

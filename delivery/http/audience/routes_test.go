@@ -90,6 +90,45 @@ func (c *captureList) Execute(_ context.Context, in ca.ListInput) (*shared.Pagin
 	return shared.NewPaginatedResult([]*ca.Analysis{}, in.Options.Pagination, 0), nil
 }
 
+type captureTrends struct {
+	filtered ca.ListInput
+	legacy   ca.TrendInput
+}
+
+func (c *captureTrends) Execute(_ context.Context, in ca.TrendInput) ([]*ca.Rollup, error) {
+	c.legacy = in
+	return []*ca.Rollup{}, nil
+}
+
+func (c *captureTrends) ExecuteFiltered(_ context.Context, in ca.ListInput) ([]*ca.Rollup, error) {
+	c.filtered = in
+	return []*ca.Rollup{}, nil
+}
+
+func TestTrendsWithoutRollupScopeUsesAudienceFilters(t *testing.T) {
+	uc := &captureTrends{}
+	h := NewHandler(Deps{Trends: uc})
+	req := httptest.NewRequest(http.MethodGet, "/audience/trends?source=unofficial_whatsapp&subjectKind=conversation&from=2026-09-01&to=2026-09-12", nil)
+	req = withWorkspace(req, "session-ws")
+	rec := httptest.NewRecorder()
+
+	h.Trends(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	in := uc.filtered
+	if in.WorkspaceID != "session-ws" || in.Source != ca.SourceUnofficialWhatsApp || len(in.SubjectKinds) != 1 || in.SubjectKinds[0] != ca.SubjectKindConversation {
+		t.Fatalf("filtered trends input = %+v", in)
+	}
+	if in.From == nil || in.To == nil {
+		t.Fatalf("trend period was not parsed: %+v", in)
+	}
+	if uc.legacy.ScopeID != "" {
+		t.Fatalf("legacy rollup path unexpectedly used: %+v", uc.legacy)
+	}
+}
+
 // The workspace comes from the session, never from the query. A caller who
 // sends ?workspaceId=other still lists their own rows.
 func TestList_WorkspaceCannotBeOverriddenByQuery(t *testing.T) {

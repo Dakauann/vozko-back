@@ -191,6 +191,20 @@ type EntryWithLastMessage struct {
 	// what was stored, so pausing a Telegram or Instagram conversation wrote
 	// correctly and then read back as still running.
 	AutomationEnabled *bool
+	// ConversationStatus is new / ongoing / finished, read from SQL for every
+	// channel for exactly the reason above.
+	//
+	// It used to be looked up only through the WhatsApp entry repository, so on
+	// every other channel the inbox row was built with no status at all and
+	// rendered as "Nova" over a conversation the database had as ongoing. An
+	// operator would reply, the row would rebuild, and the conversation
+	// appeared to move backwards.
+	//
+	// Carried on the row rather than fetched per entry: the status column is
+	// already projected by the channel union that produces these rows, so this
+	// costs nothing, and a per-entry lookup would be one query per row of the
+	// inbox.
+	ConversationStatus string
 }
 
 type MessageRepository interface {

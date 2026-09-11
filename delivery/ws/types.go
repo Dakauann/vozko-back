@@ -334,6 +334,13 @@ type AnalysisUpdatePayload struct {
 	EntryID   string      `json:"entry_id"`
 	EntryType string      `json:"entry_type"`
 	Analysis  interface{} `json:"analysis"`
+	// Pending says a NEW analysis is queued or running for this conversation.
+	//
+	// It travels beside Analysis rather than replacing it, because the two are
+	// independent: a conversation being re-analysed is pending AND still has
+	// last revision's verdict. A frame that carried only one of them would make
+	// the screen blink empty every time someone replied.
+	Pending bool `json:"pending"`
 }
 
 type UnreadCountPayload struct {

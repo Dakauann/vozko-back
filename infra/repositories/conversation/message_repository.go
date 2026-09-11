@@ -618,6 +618,14 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 	} else {
 		aiFields += ", NULL::boolean AS automation_enabled"
 	}
+	// The conversation status rides the same projection, for the same reason:
+	// the inbox row has to carry it on every channel, and asking per entry
+	// would be one query per row.
+	if ch.StatusColumn != "" {
+		aiFields += ", " + ch.StatusColumn + " AS conversation_status"
+	} else {
+		aiFields += ", ''::text AS conversation_status"
+	}
 	entryJoin := ch.entryJoinOn("e.entry_id")
 
 	if useCampaignFilter {
@@ -658,6 +666,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		AgentEnabled    bool      `gorm:"column:agent_responses_enabled"`
 		WorkflowEnabled bool      `gorm:"column:workflow_enabled"`
 		AutomationOn    *bool     `gorm:"column:automation_enabled"`
+		ConvStatus      string    `gorm:"column:conversation_status"`
 	}
 
 	query := fmt.Sprintf(`
@@ -693,6 +702,13 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		SELECT te.entry_id::text, ? AS entry_type, te.lead_id, te.business_phone_id,
 		       te.campaign_id, te.campaign_name,
 		       te.agent_id, te.workflow_id, te.agent_responses_enabled, te.workflow_enabled,
+		       -- Projected by the CTE above for every channel, and dropped here
+		       -- until now: this outer list is explicit, so a column added to
+		       -- the CTE reaches the scan only if it is also named HERE. That is
+		       -- how the inbox ended up rendering "Nova" over conversations the
+		       -- database had as ongoing, and why the automation override read
+		       -- back as enabled whatever an operator had set.
+		       te.automation_enabled, te.conversation_status,
 		       COALESCE(uc.cnt, 0) AS unread_count,
 		       te.last_message_text, te.last_message_type, te.last_message_at,
 		       te.last_message_from, te.has_media, te.media_type
@@ -733,6 +749,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			AgentResponsesEnabled: r.AgentEnabled,
 			WorkflowEnabled:       r.WorkflowEnabled,
 			AutomationEnabled:     r.AutomationOn,
+			ConversationStatus:    r.ConvStatus,
 		})
 	}
 
@@ -1573,7 +1590,8 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		// distinct state from an explicit false, and this query never selected
 		// it at all, so every entry_update broadcast reported automation as
 		// enabled, and pausing a conversation only appeared after a reload.
-		AutomationOn *bool `gorm:"column:automation_enabled"`
+		AutomationOn *bool  `gorm:"column:automation_enabled"`
+		ConvStatus   string `gorm:"column:conversation_status"`
 	}
 	var info entryInfo
 
@@ -1650,6 +1668,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		AgentResponsesEnabled: info.AgentEnabled,
 		WorkflowEnabled:       info.WorkflowEnabled,
 		AutomationEnabled:     info.AutomationOn,
+		ConversationStatus:    info.ConvStatus,
 	}, nil
 }
 

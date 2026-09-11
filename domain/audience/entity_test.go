@@ -111,7 +111,7 @@ func TestParseContainerKey_RejectsKindChannelMismatch(t *testing.T) {
 	}
 	for _, k := range []string{
 		"instagram:acc:post",
-		"conversation:voice:acc:call",
+		"conversation:telegram:acc:chat",
 		"conversation:instagram:acc:camp",
 	} {
 		if _, err := ParseContainerKey(k); err != nil {

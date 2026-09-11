@@ -31,11 +31,12 @@ const MaxLiveEvents = 25
 // draws. It carries the excerpt the engine already stores and no more; the full
 // text still lives in the channel's own table.
 type CommentAnalyzed struct {
-	CommentID   string `json:"commentId"`
-	WorkspaceID string `json:"workspaceId"`
-	Source      Source `json:"source"`
-	AccountID   string `json:"accountId"`
-	ContainerID string `json:"containerId"`
+	CommentID   string      `json:"commentId"`
+	SubjectKind SubjectKind `json:"subjectKind"`
+	WorkspaceID string      `json:"workspaceId"`
+	Source      Source      `json:"source"`
+	AccountID   string      `json:"accountId"`
+	ContainerID string      `json:"containerId"`
 
 	AuthorExternalID string `json:"authorExternalId"`
 	AuthorHandle     string `json:"authorHandle,omitempty"`
@@ -49,9 +50,17 @@ type CommentAnalyzed struct {
 	RequiresAction bool `json:"requiresAction"`
 	IsSpam         bool `json:"isSpam"`
 
-	Excerpt    string    `json:"excerpt"`
-	OccurredAt time.Time `json:"occurredAt"`
-	AnalyzedAt time.Time `json:"analyzedAt"`
+	Excerpt           string        `json:"excerpt"`
+	Interest          Interest      `json:"interest,omitempty"`
+	ProductInterest   string        `json:"productInterest,omitempty"`
+	Disposition       Disposition   `json:"disposition,omitempty"`
+	Qualification     Qualification `json:"qualification,omitempty"`
+	NextAction        NextAction    `json:"nextAction,omitempty"`
+	Summary           string        `json:"summary,omitempty"`
+	AttendanceQuality int           `json:"attendanceQuality,omitempty"`
+	MessageCount      int           `json:"messageCount,omitempty"`
+	OccurredAt        time.Time     `json:"occurredAt"`
+	AnalyzedAt        time.Time     `json:"analyzedAt"`
 }
 
 // AnalysisBatchAnalyzed is one broadcast: the rows to draw, and how many more
@@ -72,22 +81,31 @@ type AnalysisBatchAnalyzed struct {
 // belong in the feed: a pending or failed row has nothing to show.
 func NewCommentAnalyzed(a *Analysis) CommentAnalyzed {
 	e := CommentAnalyzed{
-		CommentID:        a.ID,
-		WorkspaceID:      a.WorkspaceID,
-		Source:           a.Source,
-		AccountID:        a.AccountID,
-		ContainerID:      a.ContainerID,
-		AuthorExternalID: a.AuthorExternalID,
-		AuthorHandle:     a.AuthorHandle,
-		Stance:           a.Stance,
-		Sentiment:        a.Sentiment,
-		Intent:           a.Intent,
-		TopicKey:         a.TopicKey,
-		Severity:         a.Severity,
-		RequiresAction:   a.RequiresAction,
-		IsSpam:           a.IsSpam,
-		Excerpt:          a.Excerpt,
-		OccurredAt:       a.OccurredAt,
+		CommentID:         a.ID,
+		SubjectKind:       a.Kind(),
+		WorkspaceID:       a.WorkspaceID,
+		Source:            a.Source,
+		AccountID:         a.AccountID,
+		ContainerID:       a.ContainerID,
+		AuthorExternalID:  a.AuthorExternalID,
+		AuthorHandle:      a.AuthorHandle,
+		Stance:            a.Stance,
+		Sentiment:         a.Sentiment,
+		Intent:            a.Intent,
+		TopicKey:          a.TopicKey,
+		Severity:          a.Severity,
+		RequiresAction:    a.RequiresAction,
+		IsSpam:            a.IsSpam,
+		Excerpt:           a.Excerpt,
+		Interest:          a.Interest,
+		ProductInterest:   a.ProductInterest,
+		Disposition:       a.Disposition,
+		Qualification:     a.Qualification,
+		NextAction:        a.NextAction,
+		Summary:           a.Summary,
+		AttendanceQuality: a.AttendanceQuality,
+		MessageCount:      a.MessageCount,
+		OccurredAt:        a.OccurredAt,
 	}
 	if a.AnalyzedAt != nil {
 		e.AnalyzedAt = *a.AnalyzedAt

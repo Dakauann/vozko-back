@@ -271,8 +271,17 @@ func TestConversationValueListsMirrorValid(t *testing.T) {
 	if got := len(InterestValues()); got != 3 {
 		t.Errorf("InterestValues has %d entries", got)
 	}
-	if got := len(DispositionValues()); got != 7 {
-		t.Errorf("DispositionValues has %d entries", got)
+	if !reflect.DeepEqual(DispositionValues(), []string{"sale", "filling_info", "callback", "declined", "pending"}) {
+		t.Errorf("DispositionValues = %v", DispositionValues())
+	}
+	// no_answer and voicemail were voice-call outcomes ("apenas para chamadas de
+	// voz" in the rubric) on a product with no voice channel. Offering them gave
+	// the model an escape hatch that produced a meaningless label on a messaging
+	// conversation, which is exactly what it did.
+	for _, gone := range []Disposition{"no_answer", "voicemail"} {
+		if gone.Valid() {
+			t.Errorf("%q is a voice-call outcome and must not be a valid disposition", gone)
+		}
 	}
 	if !reflect.DeepEqual(QualificationValues(), []string{"hot_lead", "warm_lead", "cold_lead"}) {
 		t.Errorf("QualificationValues = %v", QualificationValues())

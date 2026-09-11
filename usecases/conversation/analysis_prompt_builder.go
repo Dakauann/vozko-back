@@ -46,11 +46,10 @@ func BuildAnalysisPrompt(input AnalysisPromptInput) string {
 		if text == "" {
 			continue
 		}
-		role := "Agent"
-		if msg.From != "" && lead.NormalizeNumber(msg.From) == lead.NormalizeNumber(input.UserPhoneNumber) {
-			role = "User"
-		}
-		transcript.WriteString(fmt.Sprintf("%s: %s\n", role, text))
+		// The same attribution the conversation transcript uses. It was spelled
+		// out twice, identically and identically wrong; one of the two copies
+		// being fixed is how the voice path would have kept reading monologues.
+		transcript.WriteString(fmt.Sprintf("%s: %s\n", transcriptRole(msg, input.UserPhoneNumber), text))
 	}
 
 	agentInstructionsSection := ""
@@ -88,11 +87,7 @@ func BuildTranscript(history []*conversation.Message, userPhoneNumber string) st
 		if text == "" {
 			continue
 		}
-		role := "Agent"
-		if msg.From != "" && lead.NormalizeNumber(msg.From) == lead.NormalizeNumber(userPhoneNumber) {
-			role = "User"
-		}
-		transcript.WriteString(fmt.Sprintf("%s: %s\n", role, text))
+		transcript.WriteString(fmt.Sprintf("%s: %s\n", transcriptRole(msg, userPhoneNumber), text))
 	}
 	return transcript.String()
 }
@@ -285,4 +280,56 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 		tagList.String(),
 		input.Transcript,
 	)
+}
+
+// transcriptRole says whose turn a message is, for the transcript the
+// classifier reads.
+//
+// This is the most consequential line in the renderer. Every criterion in the
+// rubric is about the EXCHANGE: whether the agent answered, how they conducted
+// themselves, whether the customer engaged, whether the conversation advanced.
+// Attribute the business's replies to the customer and the model is not reading
+// a slightly worse transcript, it is reading a different conversation: someone
+// talking to nobody.
+//
+// The row states the answer, so it is read rather than guessed:
+//
+//  1. The DIRECTION. Authoritative on every channel, and the only thing that
+//     gets the owner-replies-from-their-own-phone case right, where the sender
+//     is the same number the customer writes from.
+//  2. Failing that, the message TYPE, which names the sender: a user_message is
+//     the customer, an operator or ai_response is us. Rows written before the
+//     direction column carry this.
+//  3. Only then the sender string, kept for rows that have neither.
+//
+// It used to be (3) alone. On unofficial WhatsApp that comparison failed for
+// most outbound messages: a real conversation of 78 inbound and 58 outbound
+// froze as 91 customer lines against 6 agent lines, and the model correctly
+// reported a conversation nobody had answered.
+func transcriptRole(msg *conversation.Message, userPhoneNumber string) string {
+	const (
+		roleAgent = "Agent"
+		roleUser  = "User"
+	)
+
+	if direction := msg.ResolvedDirection(); direction.Valid() {
+		if direction.IsOutbound() {
+			return roleAgent
+		}
+		return roleUser
+	}
+
+	switch {
+	case msg.MessageType.IsInbound():
+		return roleUser
+	case msg.MessageType == conversation.MessageTypeOperator,
+		msg.MessageType == conversation.MessageTypeAIResponse,
+		msg.MessageType == conversation.MessageTypeTemplate:
+		return roleAgent
+	}
+
+	if msg.From != "" && lead.NormalizeNumber(msg.From) == lead.NormalizeNumber(userPhoneNumber) {
+		return roleUser
+	}
+	return roleAgent
 }

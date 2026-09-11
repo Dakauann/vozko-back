@@ -23,6 +23,8 @@ type IngestInput struct {
 	AuthorExternalID string
 	AuthorHandle     string
 	Text             string
+	Revision         string
+	MessageCount     int
 	// OccurredAt is the channel's timestamp; zero means unknown.
 	OccurredAt time.Time
 	// IsOurs marks the account's own comment. Our replies arrive back as
@@ -34,8 +36,59 @@ type IngestInput struct {
 // the channel logs the error and moves on, because failing an inbound
 // webhook over a queue hiccup would redeliver a message that was already
 // stored.
+// BacklogReader is how much of a workspace is queued and not yet classified,
+// pending and in-flight alike.
+//
+// It is the consequence half of the volume budget. A ceiling on its own says
+// nothing about whether it was set too low; what answers that is whether work
+// is stacking up behind it. Deliberately not part of Repository: one use case
+// asks this, and widening the store's contract for it would make every other
+// caller carry a method it has no use for.
+//
+// Pending and in-flight count together. To an operator asking "is my ceiling
+// holding things up", a row that was claimed but not yet answered is still
+// waiting, and splitting the two would only raise the question of which number
+// to believe.
+type BacklogReader interface {
+	CountWaiting(ctx context.Context, workspaceID string) (int, error)
+}
+
 type Ingestor interface {
 	Enqueue(ctx context.Context, in IngestInput) error
+}
+
+// ConversationAnalysisObserver publishes timeline events after persistence.
+type ConversationAnalysisObserver interface {
+	AnalysisCreated(workspaceID, entryID, entryType, analysisID, disposition string, quality int)
+}
+
+// ConversationAnalysisState is what the people looking at ONE conversation are
+// told when its analysis moves: it was queued, or it finished.
+//
+// Pending is its own field rather than an absent Analysis, because the two are
+// independent. A conversation being re-analysed is pending AND still carries
+// the verdict from its previous revision, and a screen that dropped the old one
+// while the new was computed would blink empty every time someone replied.
+type ConversationAnalysisState struct {
+	EntryID   string    `json:"entryId"`
+	EntryType string    `json:"entryType"`
+	Pending   bool      `json:"pending"`
+	Analysis  *Analysis `json:"analysis,omitempty"`
+}
+
+// ConversationAnalysisLive pushes that state to the people watching the
+// conversation.
+//
+// Separate from AnalysisBroadcaster on purpose, and not a second copy of it:
+// they answer to different permissions. The audience feed is workspace-wide and
+// gated on audience:read; this is one conversation's own state, seen by whoever
+// can already open that conversation. Sending it on the audience channel would
+// hide it from the inbox, which is the one screen that needs it.
+//
+// Best effort by contract, like every broadcaster here: it must never return an
+// error and never block, because the row is already stored.
+type ConversationAnalysisLive interface {
+	AnalysisStateChanged(state ConversationAnalysisState)
 }
 
 // ---- Outbound: what the engine asks of a channel ----
@@ -125,11 +178,12 @@ type Scheduler interface {
 
 // Charger is the engine's side of billing (§9). Token billing needs none
 // of this: setting WorkspaceID on the AI call is the whole integration.
-// This covers the optional per-comment surcharge and the daily cap.
+//
+// It covers the optional per-batch surcharge and nothing else. The volume
+// ceiling used to live here too, as a counter keyed on the UTC calendar date;
+// it is now UsageLimiter, which is a different concern with a different
+// lifetime and had no business sharing an interface with money.
 type Charger interface {
-	// ReserveDaily claims items against the workspace's cap for the day and
-	// reports false when the claim would exceed it.
-	ReserveDaily(ctx context.Context, workspaceID string, items, cap int, day time.Time) (bool, error)
 	// ChargeBatch debits the per-batch surcharge, idempotent on batchID.
 	// A configured price of 0 is "token billing only", not an error.
 	ChargeBatch(ctx context.Context, workspaceID, batchID string, items int) (priceMicros int64, err error)

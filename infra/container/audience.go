@@ -2,6 +2,7 @@ package container
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	audiencehttp "vozko/delivery/http/audience"
@@ -10,6 +11,7 @@ import (
 	"vozko/domain/shared"
 	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
 	ca_repository "vozko/infra/repositories/audience"
+	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	cauc "vozko/usecases/audience"
 	convuc "vozko/usecases/conversation"
 	iguc "vozko/usecases/instagram"
@@ -71,17 +73,34 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 
 	repo := ca_repository.NewRepository(c.db)
 	settings := ca_repository.NewSettingsRepository(c.db)
+	// The workspace's own analysis settings, as opposed to each account's. Both
+	// the engine and the dashboard resolve the ceiling through
+	// ca.ResolveDailyCap over this, which is what stops the number a person sets
+	// and the number that stops a pass from drifting apart.
+	workspaceSettings := workspace_config_repository.NewAudienceSettingsStore(c.db)
 	authors := ca_repository.NewAuthorRepository(c.db)
 	rollups := ca_repository.NewRollupRepository(c.db)
 	batches := ca_repository.NewBatchRepository(c.db)
 	backfills := ca_repository.NewBackfillRepository(c.db)
 
 	scheduler := cauc.NewScheduler(state)
+	// One limiter, shared: the engine claims against it and the dashboard reads
+	// it, so the ceiling that stops a pass is the ceiling a person sees.
+	usageLimiter := cauc.NewUsageLimiter(state)
 	// Post override -> account settings -> disabled defaults. The resolver is
 	// the only place that fallback lives; the engine and the ingestor read
 	// effective settings through it and never touch the repository directly.
 	resolver := cauc.NewSettingsResolver(settings)
 	bundle.Ingestor = cauc.NewIngestUseCase(repo, resolver, scheduler, c.services.metrics, clock)
+	// Queuing a conversation is half the signal: the CRM is told an analysis is
+	// coming here, and told it landed from the engine. Wired after construction
+	// because the socket is built later and must not become an argument every
+	// channel threads through.
+	if live, ok := bundle.Ingestor.(interface {
+		SetLive(ca.ConversationAnalysisLive)
+	}); ok && c.services.conversationHub != nil {
+		live.SetLive(c.services.conversationHub)
+	}
 
 	// Instagram's side: the same adapter is the webhook's enqueuer and the
 	// engine's source adapter.
@@ -148,17 +167,26 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		Classifier:    cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
 		Scheduler:     scheduler,
 		Charger:       cauc.NewCharger(c.repositories.balance, pricer, state),
-		Balance:       c.services.cachedBalanceChecker,
-		State:         state,
-		Metrics:       c.services.metrics,
-		Notifier:      notifier,
+		// The rolling volume budget, distinct from the surcharge above.
+		Usage:           usageLimiter,
+		WorkspaceLimits: workspaceSettings,
+		Balance:         c.services.cachedBalanceChecker,
+		State:           state,
+		Metrics:         c.services.metrics,
+		Notifier:        notifier,
 		// The live feed (§7). Nil when the socket is not up; the engine then
 		// classifies exactly the same and nothing is broadcast.
 		Broadcaster: c.services.conversationHub,
-		Alerts:      alertEvaluator,
-		Clock:       clock,
-		Budget:      ca.DefaultBudget(),
-		Debounce:    ca.DefaultDebouncePolicy(),
+		Timeline:    c.services.crmTelemetryEmitter,
+		// The per-conversation signal the CRM listens on. Same hub, different
+		// channel from Broadcaster above: that one is the workspace audience
+		// feed under audience:read, this one is one conversation, seen by
+		// whoever can open it.
+		Live:     c.services.conversationHub,
+		Alerts:   alertEvaluator,
+		Clock:    clock,
+		Budget:   ca.DefaultBudget(),
+		Debounce: ca.DefaultDebouncePolicy(),
 
 		DashboardURL: dashboardURL,
 	})
@@ -209,7 +237,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	bundle.Handler = audiencehttp.NewHandler(audiencehttp.Deps{
 		List:       cauc.NewListUseCase(repo),
 		Stats:      cauc.NewStatsUseCase(repo),
-		Trends:     cauc.NewTrendsUseCase(rollups),
+		Trends:     cauc.NewTrendsUseCase(repo, rollups),
 		Authors:    cauc.NewListAuthorsUseCase(authors),
 		Author:     cauc.NewGetAuthorUseCase(authors, repo),
 		Containers: cauc.NewListAuthorContainersUseCase(authors, repo),
@@ -228,10 +256,17 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		UpdateSet:  updateSettings,
 		Retry:      cauc.NewRetryUseCase(repo, clock),
 		Spend:      cauc.NewSpendUseCase(batches, clock),
-		Estimate:   estimate,
-		Start:      start,
-		Backfill:   get,
-		Cancel:     cancel,
+		// The same limiter the engine claims against, read-only, and the same
+		// ceiling store the engine resolves against. One object each, so the
+		// number the dashboard shows and the ceiling that stops a pass can never
+		// be two different things. The backlog reader is what turns a bare
+		// number into "and this is what it is costing you".
+		Usage:             cauc.NewUsageUseCase(usageLimiter, workspaceSettings, settings, ca_repository.NewBacklogReader(c.db), clock),
+		WorkspaceSettings: cauc.NewWorkspaceSettingsUseCase(workspaceSettings),
+		Estimate:          estimate,
+		Start:             start,
+		Backfill:          get,
+		Cancel:            cancel,
 
 		Accounts:     listAccounts,
 		GetContainer: getContainer,
@@ -240,7 +275,12 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	})
 
 	bundle.Enabled = true
-	log.Printf("[comment-analysis] engine enabled (sources: instagram; model default %q)", c.cfg.OpenRouterDefaultModel)
+	// Report what is actually registered, not a fixed string. The previous line
+	// said "sources: instagram" on every boot whatever was wired, which reads as
+	// a diagnosis and is not one.
+	commentSources, conversationSources := engine.RegisteredSources()
+	log.Printf("[comment-analysis] engine enabled (comments: %s; conversations: %s; model default %q)",
+		sourceList(commentSources), sourceList(conversationSources), c.cfg.OpenRouterDefaultModel)
 }
 
 // audienceHandler returns the API handler, or nil when the feature is
@@ -259,4 +299,16 @@ func audienceEnqueuer(c *Container) iguc.AudienceEnqueuer {
 		return nil
 	}
 	return c.audience.InstagramAdapter
+}
+
+// sourceList renders a registered-source list for the startup line.
+//
+// "none" rather than an empty gap: a channel set that is empty is exactly the
+// misconfiguration this line exists to reveal, and it has to be readable as
+// such at a glance.
+func sourceList(sources []string) string {
+	if len(sources) == 0 {
+		return "none"
+	}
+	return strings.Join(sources, ", ")
 }

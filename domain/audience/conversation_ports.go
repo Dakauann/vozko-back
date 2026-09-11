@@ -55,11 +55,10 @@ type ConversationAdapter interface {
 // callers need two reads and have no business holding the queue, the claim or
 // the purge.
 //
-// "Latest" is a historical word here. The engine keys a conversation uniquely on
-// (source, subject_kind, subject id), so there is exactly one row per
-// conversation and it is updated in place. The engine this replaces appended a
-// row per pass and left readers to sort by time and hope, which is why the same
-// conversation could show two different verdicts depending on which query ran.
+// "Latest" is load-bearing. A conversation has a TIMELINE of analyses, one per
+// revision of its transcript, so these reads answer with the most recent
+// COMPLETED one: a screen here shows a verdict, and a revision still in the
+// queue must never blank out the answer already on it.
 type ConversationReader interface {
 	// LatestByEntries answers for many conversations at once. Ids with no
 	// analysis are absent rather than present-and-empty, so a caller can tell
@@ -68,4 +67,14 @@ type ConversationReader interface {
 
 	// LatestByEntry answers for one.
 	LatestByEntry(ctx context.Context, workspaceID string, source Source, entryID string) (*Analysis, error)
+
+	// PendingByEntries reports which of these conversations have analysis
+	// WAITING: queued or in flight, nothing finished for that revision yet.
+	//
+	// It is a separate read from LatestByEntries because it answers a different
+	// question, and folding them together would mean either showing an
+	// unfinished row as a verdict or losing the last good one while the next is
+	// computed. Ids with nothing pending are absent rather than false, so the
+	// map is the size of the answer and not of the page.
+	PendingByEntries(ctx context.Context, workspaceID string, source Source, entryIDs []string) (map[string]bool, error)
 }

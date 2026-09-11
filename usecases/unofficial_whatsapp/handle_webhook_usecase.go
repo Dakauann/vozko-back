@@ -67,8 +67,11 @@ type CampaignDeliverySink interface {
 
 // CampaignAutomation is the campaign that owns replies on one conversation.
 type CampaignAutomation struct {
-	CampaignID string
-	Automation campaign.Automation
+	CampaignID        string
+	Automation        campaign.Automation
+	EnableAnalysis    bool
+	EnableAutoStaging bool
+	EnableAutoMemory  bool
 }
 
 // CampaignAutomationSource answers "which campaign owns replies here".
@@ -301,7 +304,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 	uc.ensureAssignment(sub.conversation, instance)
 	uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto)
 	uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, auto)
-	uc.scheduleAnalysis(instance, sub.conversation)
+	uc.scheduleAnalysis(instance, sub.conversation, auto)
 	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
 }
@@ -324,6 +327,11 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, instance *uw
 	}
 	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.MessageDirectionOutbound); err != nil {
 		return err
+	}
+	// A message typed on the device also changes the transcript. API echoes
+	// were already scheduled by the sender; history replays remain inert.
+	if ev.Kind == uw.EventOutboundFromDevice && !ev.Backfill && sub.conversation.InScope(instance.HandleGroups) {
+		uc.scheduleAnalysis(instance, sub.conversation, uc.automationFor(sub.conversation.ID))
 	}
 	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
@@ -796,11 +804,11 @@ func (uc *HandleWebhookUseCase) handleMessageUpdate(ctx context.Context, instanc
 	// on failure threw every delivered/read receipt away, which is exactly what
 	// it did until this comment existed. The row update below is keyed by the
 	// provider's message id and never needed the conversation at all.
-	conv, convErr := uc.conversations.FindByChatID(ctx, instance.ID, ev.ChatID)
-
 	entryID := ""
-	if convErr == nil && conv != nil {
-		entryID = conv.ID
+	if strings.TrimSpace(ev.ChatID) != "" {
+		if conv, err := uc.conversations.FindByChatID(ctx, instance.ID, ev.ChatID); err == nil && conv != nil {
+			entryID = conv.ID
+		}
 	}
 
 	uc.advanceDeliveryStatus(ctx, entryID, ev)
@@ -1040,8 +1048,12 @@ func (uc *HandleWebhookUseCase) ensureAssignment(conv *uw.Conversation, instance
 	uc.assignments.EnsureAssignment(conv.ID, string(shared.EntryTypeUnofficialWhatsApp), instance.ID)
 }
 
-func (uc *HandleWebhookUseCase) scheduleAnalysis(instance *uw.Instance, conv *uw.Conversation) {
-	if uc.analysis == nil || (!instance.EnableAnalysis && !instance.EnableAutoStaging && !instance.EnableAutoMemory) {
+func (uc *HandleWebhookUseCase) scheduleAnalysis(instance *uw.Instance, conv *uw.Conversation, auto *CampaignAutomation) {
+	analysis, staging, memory := instance.EnableAnalysis, instance.EnableAutoStaging, instance.EnableAutoMemory
+	if auto != nil {
+		analysis, staging, memory = auto.EnableAnalysis, auto.EnableAutoStaging, auto.EnableAutoMemory
+	}
+	if uc.analysis == nil || (!analysis && !staging && !memory) {
 		return
 	}
 	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeUnofficialWhatsApp)

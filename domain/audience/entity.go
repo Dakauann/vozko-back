@@ -36,6 +36,16 @@ const (
 	// marked failed and shown, never dropped silently and never looped forever.
 	MaxAttempts = 3
 
+	// MinMessagesBetweenAnalyses is how far a conversation must have moved
+	// before it is worth paying to classify it again.
+	//
+	// A conversation is analysed every time it goes quiet, so a chat that
+	// stops and starts all afternoon would otherwise buy an analysis for each
+	// lull. Two messages is one exchange: below that, nothing has been said
+	// that could change the outcome, the qualification or the score, and the
+	// previous analysis still describes the conversation accurately.
+	MinMessagesBetweenAnalyses = 2
+
 	// DefaultActionThreshold is the severity at which a comment needs a human
 	// regardless of intent.
 	DefaultActionThreshold = 60
@@ -50,6 +60,23 @@ const (
 	// purpose: it is a label, not a paragraph, and the legacy engine's
 	// unbounded version is why it could never be counted or grouped.
 	MaxProductInterestRunes = 120
+
+	// MaxTranscriptRunes bounds one rendered conversation transcript.
+	//
+	// It lives here, in the domain, because TWO layers have to agree on it and
+	// they used to be written separately. The channel adapter renders a
+	// transcript up to this length, and the batch planner decides how much of
+	// the text it is handed actually reaches the model. When the planner's
+	// number was smaller, everything between the two was silently cut: the
+	// planner was applying MaxCommentRunes (600) to transcripts, so a whole
+	// conversation was classified on its opening lines and the attendance score
+	// came out zero every time.
+	//
+	// A hundred long messages is still a very large prompt, which is what this
+	// bounds. It does not overflow a call: the planner sizes batches from the
+	// text it is given, so a large transcript makes batches smaller rather than
+	// making calls fail.
+	MaxTranscriptRunes = 24_000
 )
 
 // Machine-generated failure reasons. FailureReason itself is free text so a
@@ -84,7 +111,6 @@ const (
 	SourceWhatsApp           Source = Source(shared.EntryTypeWhatsApp)
 	SourceTelegram           Source = Source(shared.EntryTypeTelegram)
 	SourceUnofficialWhatsApp Source = Source(shared.EntryTypeUnofficialWhatsApp)
-	SourceVoice              Source = Source(shared.EntryTypeVoice)
 )
 
 // EntryType converts to the shared channel vocabulary, for the ports that key
@@ -349,6 +375,10 @@ type Analysis struct {
 	// every row written before conversations existed keeps its meaning without
 	// a backfill.
 	SubjectKind SubjectKind `json:"subjectKind,omitempty"`
+	// Revision identifies an immutable conversation transcript. Comments use
+	// the empty revision and retain their original idempotency contract.
+	Revision   string `json:"revision,omitempty"`
+	Transcript string `json:"-"`
 
 	Source      Source `json:"source"`
 	AccountID   string `json:"accountId"`
@@ -387,11 +417,16 @@ type Analysis struct {
 	// conversation.go. Kept flat rather than behind a pointer struct because
 	// they are filtered and aggregated in SQL, and a nested value would have to
 	// be unpacked in every query.
-	Interest        Interest      `json:"interest,omitempty"`
-	ProductInterest string        `json:"productInterest,omitempty"`
-	Disposition     Disposition   `json:"disposition,omitempty"`
-	Qualification   Qualification `json:"qualification,omitempty"`
-	NextAction      NextAction    `json:"nextAction,omitempty"`
+	Interest Interest `json:"interest,omitempty"`
+	// ProductInterest is what the conversation was about, in the model's own
+	// words, and ProductInterestKey is the same thing canonicalised. The pair
+	// exists because one of them is for reading and the other for counting;
+	// see subject_key.go. Only the key is ever grouped on.
+	ProductInterest    string        `json:"productInterest,omitempty"`
+	ProductInterestKey string        `json:"productInterestKey,omitempty"`
+	Disposition        Disposition   `json:"disposition,omitempty"`
+	Qualification      Qualification `json:"qualification,omitempty"`
+	NextAction         NextAction    `json:"nextAction,omitempty"`
 	// Summary is the model's prose. It is the one free-text field the engine
 	// stores and the only one carrying unredacted customer content, which is
 	// why retention applies to it like everything else here.
@@ -591,6 +626,68 @@ func (a *Analysis) MarkSkipped(reason string, now time.Time) error {
 	return nil
 }
 
+// MissedRead records a read that did not produce the subject's text.
+//
+// A deleted comment is genuinely gone, so the engine skips it outright. A
+// conversation is different: we queued it ourselves from a row that exists in
+// our own database, so a miss is far more likely a transient read failure than
+// a vanished subject. Treating it as terminal is how a database hiccup used to
+// stamp text_unavailable on a perfectly good conversation, permanently.
+//
+// So the row keeps its place in the queue and is read again next tick. The
+// attempt is counted, so an entry that really was deleted gives up after
+// MaxAttempts instead of sitting pending forever. Reports whether the row is
+// now terminal; either way it must be saved.
+func (a *Analysis) MissedRead(reason string, now time.Time) bool {
+	a.Attempts++
+	if a.Attempts >= MaxAttempts {
+		_ = a.MarkSkipped(reason, now)
+		return true
+	}
+	a.FailureReason = reason
+	a.UpdatedAt = now
+	return false
+}
+
+// WorthReanalysing answers, for a conversation about to be queued again,
+// whether the new snapshot earns a model call.
+//
+// Repeat analysis is the point of revisions, and it is also the one place this
+// engine can spend money in a loop, so the rule is stated once, here, and not
+// left implicit in the queue:
+//
+//   - Nothing analysed before: yes, always.
+//   - Something already waiting in the queue for this conversation: no. It
+//     holds a strictly older snapshot of the same conversation, so paying for
+//     both buys one analysis and one obsolete analysis. The next quiet period
+//     re-queues from wherever the conversation has got to by then.
+//   - Fewer than MinMessagesBetweenAnalyses new messages: no. Nothing has been
+//     said that could change the verdict.
+//
+// `previous` is the newest row for this conversation whatever its status, and
+// nil means there is none.
+func (a *Analysis) WorthReanalysing(previous *Analysis) bool {
+	if previous == nil {
+		return true
+	}
+	if previous.Status == StatusPending || previous.Status == StatusInFlight {
+		return false
+	}
+	// A failed or skipped attempt bought nothing, so the next snapshot is the
+	// conversation's first real analysis and is never held back by the floor.
+	if previous.Status != StatusAnalyzed {
+		return true
+	}
+	return a.MessageCount-previous.MessageCount >= MinMessagesBetweenAnalyses
+}
+
+// HasSnapshot reports whether the row carries the transcript frozen when it
+// was queued, which is what every conversation queued since revisions exist
+// is classified from. Without one, the text has to be read again.
+func (a *Analysis) HasSnapshot() bool {
+	return a.Kind() == SubjectKindConversation && a.Revision != "" && a.Transcript != ""
+}
+
 // Fail marks a definitive failure with a reason the UI shows.
 func (a *Analysis) Fail(reason string, now time.Time) error {
 	if err := a.transition(StatusFailed, now); err != nil {
@@ -663,7 +760,17 @@ func (a *Analysis) Apply(c Classification, policy ActionPolicy, prov Provenance,
 func (a *Analysis) applyConversation(c Classification, prov Provenance, now time.Time) {
 	a.Sentiment = c.Sentiment
 	a.Interest = c.Interest
-	a.ProductInterest = c.ProductInterest
+	// The key is DERIVED here, never taken from the model and never set by a
+	// caller, so no path can store a subject the chart cannot count. The two
+	// are written together from one value: a label that canonicalises to
+	// nothing ("n/a", punctuation) is stored as no subject at all, rather than
+	// as a subject named "-" that would outrank every real one.
+	subject := strings.TrimSpace(c.ProductInterest)
+	a.ProductInterestKey = SubjectKey(subject)
+	if a.ProductInterestKey == "" {
+		subject = ""
+	}
+	a.ProductInterest = subject
 	a.Disposition = c.Disposition
 	a.Qualification = c.Qualification
 	a.NextAction = c.NextAction

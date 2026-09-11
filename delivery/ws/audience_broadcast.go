@@ -82,3 +82,39 @@ func (h *ConversationHub) publishWorkspacePayload(bType, workspaceID string, pay
 	}
 	_ = h.sharedState.Publish("hub:workspace_broadcast", data)
 }
+
+// AnalysisStateChanged implements ca.ConversationAnalysisLive.
+//
+// It rides the ENTRY-scoped channel, not the workspace audience one above, and
+// that is the whole point: this says something about one conversation, so it
+// belongs to whoever can already open that conversation. Sending it beside the
+// audience feed would gate it on audience:read and hide it from the inbox,
+// which is the screen that needs it.
+//
+// The hub's own entry fan-out does the access check, so there is no second RBAC
+// implementation here either.
+func (h *ConversationHub) AnalysisStateChanged(state ca.ConversationAnalysisState) {
+	if h == nil || state.EntryID == "" || state.EntryType == "" {
+		return
+	}
+	// Analysis stays nil on a queued frame rather than being an empty object:
+	// a client that overwrote the verdict it already has with a blank one would
+	// lose the previous revision's answer for the minutes until the batch runs.
+	var analysis interface{}
+	if state.Analysis != nil {
+		analysis = state.Analysis
+	}
+	h.broadcast <- &broadcastMessage{
+		entryID:   state.EntryID,
+		entryType: state.EntryType,
+		event: &WSOutgoingMessage{
+			Type: WSEventAnalysisUpdate,
+			Payload: AnalysisUpdatePayload{
+				EntryID:   state.EntryID,
+				EntryType: state.EntryType,
+				Analysis:  analysis,
+				Pending:   state.Pending,
+			},
+		},
+	}
+}

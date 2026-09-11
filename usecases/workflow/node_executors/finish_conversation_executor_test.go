@@ -93,18 +93,6 @@ func TestFinishConversationExecutor_Success(t *testing.T) {
 	require.Equal(t, conversation.CloseReasonWorkflow, st.lastOpts.Reason)
 }
 
-func TestFinishConversationExecutor_VoiceEntry(t *testing.T) {
-	st := &finishStatusMock{}
-	exec := NewFinishConversationExecutor(st)
-	ctx := finishConvCtx("v-9", "voice", nil, finishConvEdges())
-
-	result, err := exec.Execute(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "ok", result.NextNodeID)
-	require.Equal(t, "v-9", st.lastEntryID)
-	require.Equal(t, "voice", st.lastEntryType)
-}
-
 func TestFinishConversationExecutor_MissingEntry(t *testing.T) {
 	st := &finishStatusMock{}
 	exec := NewFinishConversationExecutor(st)

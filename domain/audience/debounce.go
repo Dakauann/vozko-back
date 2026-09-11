@@ -69,6 +69,12 @@ func (h Hint) Stamp(ref ContainerRef, workspaceID string, now time.Time) Hint {
 // timestamps is due: flushing early costs a smaller batch, wedging costs
 // the feature.
 func (h Hint) Due(now time.Time, p DebouncePolicy) bool {
+	// Conversations have already waited for inactivity before being enqueued.
+	// Only comments need a second settling window; conversations can share the
+	// next 30-second batch without paying another two minutes of latency.
+	if h.Ref.Normalized().Kind == SubjectKindConversation {
+		return true
+	}
 	p.Normalize()
 	if h.FirstSeen.IsZero() || h.LastSeen.IsZero() {
 		return true

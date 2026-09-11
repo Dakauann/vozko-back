@@ -30,3 +30,11 @@ func (p *conversationAnalysisProvider) GetBatchLatestAnalysis(entryIDs []string,
 	return p.reader.LatestByEntries(
 		context.Background(), "", ca.SourceOf(shared.EntryType(entryType)), entryIDs)
 }
+
+func (p *conversationAnalysisProvider) GetBatchAnalysisPending(entryIDs []string, entryType string) (map[string]bool, error) {
+	if p == nil || p.reader == nil || len(entryIDs) == 0 {
+		return map[string]bool{}, nil
+	}
+	return p.reader.PendingByEntries(
+		context.Background(), "", ca.SourceOf(shared.EntryType(entryType)), entryIDs)
+}

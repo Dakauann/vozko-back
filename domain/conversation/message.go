@@ -11,7 +11,6 @@ import (
 type MessageChannel string
 
 const (
-	MessageChannelVoice     MessageChannel = "voice"
 	MessageChannelWhatsApp  MessageChannel = "whatsapp"
 	MessageChannelSupport   MessageChannel = "support"
 	MessageChannelInstagram MessageChannel = "instagram"
@@ -26,7 +25,7 @@ const (
 
 func (c MessageChannel) Valid() bool {
 	switch c {
-	case MessageChannelVoice, MessageChannelWhatsApp, MessageChannelSupport,
+	case MessageChannelWhatsApp, MessageChannelSupport,
 		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp:
 		return true
 	}

@@ -865,7 +865,12 @@ func (s *HistoryProviderService) buildInboxEntries(
 		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 
 		var entryVariables []string
-		var convStatus conversation.ConversationStatus
+		// From SQL for every channel, same as the override above and for the
+		// same reason: read only from the WhatsApp entry below, every other
+		// channel's row was built with no status and rendered as "Nova" over a
+		// conversation that was ongoing. The WhatsApp branch overwrites it from
+		// its own entry, which is the authoritative row for that channel.
+		convStatus := conversation.ConversationStatus(e.ConversationStatus)
 		var closeSource conversation.CloseSource
 		var closeReason conversation.CloseReason
 		var closedAt *time.Time
@@ -1187,6 +1192,21 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 			closeReason = conversation.CloseReason(waEntry.CloseReason)
 			closedAt = waEntry.ClosedAt
 		}
+	} else {
+		// EVERY other channel reads the status off the row, which carries it
+		// for all of them.
+		//
+		// It used to be resolved only in the WhatsApp branch above, so an
+		// unofficial WhatsApp, Instagram or Telegram entry was built with no
+		// status and the inbox rendered it as "Nova" over a conversation the
+		// database had as ongoing. An operator would reply and the conversation
+		// appeared to move backwards.
+		//
+		// Close provenance still comes from the WhatsApp entry alone: the other
+		// channels store it, but nothing outside this branch reads it yet, and
+		// inventing a second source for it here would be the same mistake one
+		// field over.
+		convStatus = conversation.ConversationStatus(e.ConversationStatus)
 	}
 
 	entry := &conversation.InboxEntry{
@@ -1225,8 +1245,10 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	// Channels with an adapter own their window rule; getWindowStatus below is
 	// the WhatsApp lead/business-phone rule and reports closed for anything else,
 	// which would lock the composer on an Instagram update.
-	window := s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
-	if s.adapterFor(entryType) != nil {
+	var window conversation.WindowState
+	if e.EntryType == shared.EntryTypeWhatsApp {
+		window = s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
+	} else {
 		window = s.GetWindowStatusForEntry(entryID, entryType)
 	}
 	entry.WindowOpen, entry.WindowExpiresAt = window.Open, window.ExpiresAt
@@ -1314,7 +1336,7 @@ func (s *HistoryProviderService) batchGetWindowStatus(entries []conversation.Ent
 	}
 	byBPhone := make(map[string][]entryRef)
 	for _, e := range entries {
-		if e.LeadID != "" && e.BusinessPhoneID != "" {
+		if e.EntryType == shared.EntryTypeWhatsApp && e.LeadID != "" && e.BusinessPhoneID != "" {
 			byBPhone[e.BusinessPhoneID] = append(byBPhone[e.BusinessPhoneID], entryRef{e.EntryID, e.LeadID})
 		}
 	}
@@ -1931,6 +1953,7 @@ func (s *MessageSenderService) sendViaAdapter(
 		log.Printf("[MessageSender] failed to save %s message: %v", entryType, err)
 		return nil, fmt.Errorf("failed to save message: %w", err)
 	}
+	s.scheduleAnalysis(ctx, entryID, entryType, ec.ContactRef)
 	return message, nil
 }
 

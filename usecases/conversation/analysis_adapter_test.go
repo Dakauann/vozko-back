@@ -255,3 +255,77 @@ func TestReadContainerContextResolvesTheObjective(t *testing.T) {
 // The adapter satisfies the engine's port. Compile-time, because a signature
 // drift here would otherwise only show up at container wiring.
 var _ ca.ConversationAdapter = (*AnalysisAdapter)(nil)
+
+// The revision is what lets a conversation be analysed more than once.
+//
+// It identifies the transcript that was read, not the conversation: queuing
+// the same quiet conversation twice yields the same revision, so the insert is
+// idempotent and a retry cannot pay for the same analysis twice. Once the
+// conversation moves on, the revision changes, and the new snapshot is queued
+// as a SECOND analysis on the same conversation's timeline instead of being
+// discarded as a duplicate, which is what used to happen.
+func TestRevisionIsStableUntilTheConversationMovesOn(t *testing.T) {
+	base := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	history := msgs(4, base)
+	store := &stubMessages{history: history}
+	ing := &recordingIngestor{}
+	a := NewAnalysisAdapter(ing, store)
+	a.RegisterResolver(shared.EntryTypeWhatsApp, func(context.Context, string) (*AnalysisSubject, error) {
+		return enabledSubject(), nil
+	})
+
+	enqueue := func() {
+		t.Helper()
+		if err := a.Enqueue(context.Background(), "entry-1", shared.EntryTypeWhatsApp); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+	}
+	enqueue()
+	enqueue()
+	if len(ing.inputs) != 2 {
+		t.Fatalf("enqueued %d inputs, want 2", len(ing.inputs))
+	}
+	if ing.inputs[0].Revision == "" {
+		t.Fatal("a conversation was queued without a revision, so it can only ever be analysed once")
+	}
+	if ing.inputs[0].Revision != ing.inputs[1].Revision {
+		t.Error("an unchanged conversation produced a new revision, so a retry would buy a second analysis of the same transcript")
+	}
+
+	store.history = msgs(6, base)
+	enqueue()
+	if got := ing.inputs[2].Revision; got == ing.inputs[0].Revision {
+		t.Error("new messages did not change the revision, so the second analysis would be dropped as a duplicate")
+	}
+	if ing.inputs[2].MessageCount != 6 {
+		t.Errorf("message count = %d, want the 6 messages the revision was taken over", ing.inputs[2].MessageCount)
+	}
+	// The queued text IS the snapshot the engine will classify, so it has to
+	// carry the new messages rather than a reference to be re-read later.
+	if !strings.Contains(ing.inputs[2].Text, "mensagem 5") {
+		t.Error("the queued snapshot does not contain the messages that triggered it")
+	}
+}
+
+// The revision covers the frozen business context too. Renaming a campaign or
+// rewriting an agent's instructions changes what the classifier is told, so it
+// is a different analysis rather than a duplicate of the last one.
+func TestRevisionCoversTheFrozenContext(t *testing.T) {
+	a, ing := adapterWith(t, enabledSubject(), msgs(3, time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)))
+	context1 := "Objetivo: agendar avaliacao"
+	a.SubjectContext = func(context.Context, *AnalysisSubject) (string, error) { return context1, nil }
+
+	if err := a.Enqueue(context.Background(), "entry-1", shared.EntryTypeWhatsApp); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	context1 = "Objetivo: vender o plano familia"
+	if err := a.Enqueue(context.Background(), "entry-1", shared.EntryTypeWhatsApp); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if ing.inputs[0].Revision == ing.inputs[1].Revision {
+		t.Error("the campaign's objective changed and the revision did not, so the re-analysis would be dropped")
+	}
+	if !strings.Contains(ing.inputs[1].Text, "vender o plano familia") {
+		t.Error("the context the classifier reads is not frozen into the snapshot")
+	}
+}

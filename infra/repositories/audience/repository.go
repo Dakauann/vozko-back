@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,6 +24,14 @@ func NewRepository(db *gorm.DB) ca.Repository {
 	return &repository{db: db}
 }
 
+// NewBacklogReader exposes the same store under the one-method port the usage
+// use case takes. A separate constructor rather than a wider Repository: only
+// the budget screen asks this question, and every other caller of Repository
+// would otherwise carry a method it has no use for.
+func NewBacklogReader(db *gorm.DB) ca.BacklogReader {
+	return &repository{db: db}
+}
+
 // Insert is ON CONFLICT DO NOTHING on (source, subject_kind,
 // subject_id). That one clause is what makes webhook redelivery free: a
 // subject delivered twice is classified (and billed) once.
@@ -34,7 +43,7 @@ func (r *repository) Insert(ctx context.Context, a *ca.Analysis) (bool, error) {
 	row := fromDomain(a)
 	res := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "source"}, {Name: "subject_kind"}, {Name: "subject_id"}},
+			Columns:   []clause.Column{{Name: "source"}, {Name: "subject_kind"}, {Name: "subject_id"}, {Name: "revision"}},
 			DoNothing: true,
 		}).
 		Create(row)
@@ -70,6 +79,36 @@ func (r *repository) FindBySourceComment(ctx context.Context, source ca.Source, 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ca.ErrNotFound
+		}
+		return nil, err
+	}
+	return toDomain(&row), nil
+}
+
+// LatestBySubject reads the newest row for a subject regardless of status.
+//
+// Ordered the same way every "latest" read in this file is — the last message
+// first, then insertion order, then the id — so a revision queued in the same
+// second as another still has ONE definite newest row rather than whichever
+// the planner happened to return.
+func (r *repository) LatestBySubject(
+	ctx context.Context, workspaceID string, source ca.Source, kind ca.SubjectKind, subjectID string,
+) (*ca.Analysis, error) {
+	var row schema.AudienceAnalysis
+	q := r.db.WithContext(ctx).
+		Where("subject_kind = ? AND subject_id = ? AND deleted_at IS NULL", string(kind), subjectID)
+	if workspaceID != "" {
+		q = q.Where("workspace_id = ?", workspaceID)
+	}
+	if source != "" {
+		q = q.Where("source = ?", string(source))
+	}
+	err := q.Order("occurred_at DESC, created_at DESC, id DESC").First(&row).Error
+	if err != nil {
+		// No row yet is the normal answer the first time a conversation is
+		// queued, so it is not an error the caller has to special-case.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -145,35 +184,36 @@ func saveColumns(a *ca.Analysis) map[string]any {
 		batchID = &id
 	}
 	return map[string]any{
-		"status":             string(a.Status),
-		"attempts":           a.Attempts,
-		"failure_reason":     a.FailureReason,
-		"sentiment":          string(a.Sentiment),
-		"stance":             string(a.Stance),
-		"intent":             string(a.Intent),
-		"topic_key":          a.TopicKey,
-		"is_spam":            a.IsSpam,
-		"language":           a.Language,
-		"toxicity":           string(a.Toxicity),
-		"personal_attack":    string(a.PersonalAttack),
-		"legal_risk":         string(a.LegalRisk),
-		"severity":           a.Severity,
-		"interest":           string(a.Interest),
-		"product_interest":   a.ProductInterest,
-		"disposition":        string(a.Disposition),
-		"qualification":      string(a.Qualification),
-		"next_action":        string(a.NextAction),
-		"summary":            a.Summary,
-		"attendance_quality": a.AttendanceQuality,
-		"message_count":      a.MessageCount,
-		"occurred_at":        a.OccurredAt,
-		"requires_action":    a.RequiresAction,
-		"truncated":          a.Truncated,
-		"batch_id":           batchID,
-		"model":              a.Model,
-		"analyzed_at":        a.AnalyzedAt,
-		"updated_at":         a.UpdatedAt,
-		"deleted_at":         a.DeletedAt,
+		"status":               string(a.Status),
+		"attempts":             a.Attempts,
+		"failure_reason":       a.FailureReason,
+		"sentiment":            string(a.Sentiment),
+		"stance":               string(a.Stance),
+		"intent":               string(a.Intent),
+		"topic_key":            a.TopicKey,
+		"is_spam":              a.IsSpam,
+		"language":             a.Language,
+		"toxicity":             string(a.Toxicity),
+		"personal_attack":      string(a.PersonalAttack),
+		"legal_risk":           string(a.LegalRisk),
+		"severity":             a.Severity,
+		"interest":             string(a.Interest),
+		"product_interest":     a.ProductInterest,
+		"product_interest_key": a.ProductInterestKey,
+		"disposition":          string(a.Disposition),
+		"qualification":        string(a.Qualification),
+		"next_action":          string(a.NextAction),
+		"summary":              a.Summary,
+		"attendance_quality":   a.AttendanceQuality,
+		"message_count":        a.MessageCount,
+		"occurred_at":          a.OccurredAt,
+		"requires_action":      a.RequiresAction,
+		"truncated":            a.Truncated,
+		"batch_id":             batchID,
+		"model":                a.Model,
+		"analyzed_at":          a.AnalyzedAt,
+		"updated_at":           a.UpdatedAt,
+		"deleted_at":           a.DeletedAt,
 	}
 }
 
@@ -259,10 +299,44 @@ func (r *repository) CountPendingBySource(ctx context.Context) (map[ca.Source]in
 	return out, nil
 }
 
+// CountWaiting counts one workspace's unfinished rows.
+//
+// Pending and in-flight together: to an operator asking "is my ceiling holding
+// things up" a row that has been claimed but not answered is still waiting, and
+// splitting them would only invite the question of which number to trust.
+func (r *repository) CountWaiting(ctx context.Context, workspaceID string) (int, error) {
+	if workspaceID == "" {
+		return 0, nil
+	}
+	var n int64
+	err := r.db.WithContext(ctx).Model(&schema.AudienceAnalysis{}).
+		Where("workspace_id = ? AND status IN ? AND deleted_at IS NULL",
+			workspaceID, []string{string(ca.StatusPending), string(ca.StatusInFlight)}).
+		Count(&n).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
+}
+
 // applyFilters is the ONE place ListInput becomes SQL, shared by List and
 // GetStats so the feed and the numbers above it describe the same rows.
 func applyFilters(q *gorm.DB, in ca.ListInput) *gorm.DB {
 	q = q.Where("audience_analyses.workspace_id = ? AND audience_analyses.deleted_at IS NULL", in.WorkspaceID)
+	if in.LatestOnly {
+		predicate := `audience_analyses.subject_kind <> 'conversation' OR NOT EXISTS (
+			SELECT 1 FROM audience_analyses newer
+			WHERE newer.workspace_id = audience_analyses.workspace_id
+			AND newer.source = audience_analyses.source AND newer.subject_kind = 'conversation'
+			AND newer.subject_id = audience_analyses.subject_id AND newer.deleted_at IS NULL
+			AND (newer.occurred_at, newer.created_at, newer.id) >
+			(audience_analyses.occurred_at, audience_analyses.created_at, audience_analyses.id)`
+		if in.To != nil {
+			q = q.Where("("+predicate+" AND newer.occurred_at < ?))", *in.To)
+		} else {
+			q = q.Where("(" + predicate + "))")
+		}
+	}
 	if in.Source != "" {
 		q = q.Where("audience_analyses.source = ?", string(in.Source))
 	}
@@ -343,13 +417,13 @@ func (r *repository) List(ctx context.Context, in ca.ListInput) (*shared.Paginat
 		return nil, err
 	}
 
-	order := "audience_analyses.occurred_at DESC"
+	order := "audience_analyses.occurred_at DESC, audience_analyses.created_at DESC, audience_analyses.id DESC"
 	for _, s := range in.Options.Sorts {
 		switch s.Field {
 		case "severity":
 			order = "audience_analyses.severity " + direction(s.Direction) + ", audience_analyses.occurred_at DESC"
 		case "occurredAt", "occurred_at":
-			order = "audience_analyses.occurred_at " + direction(s.Direction)
+			order = "audience_analyses.occurred_at " + direction(s.Direction) + ", audience_analyses.created_at DESC, audience_analyses.id DESC"
 		}
 	}
 
@@ -499,6 +573,8 @@ const countersSelect = `
 	COUNT(DISTINCT audience_analyses.author_external_id) AS distinct_authors,
 	COUNT(*) FILTER (WHERE subject_kind = 'comment') AS comment_count,
 	COUNT(*) FILTER (WHERE subject_kind = 'conversation') AS conversation_count,
+	COUNT(*) FILTER (WHERE subject_kind = 'conversation' AND status = 'analyzed') AS conversation_analyzed,
+	MAX(analyzed_at) FILTER (WHERE status = 'analyzed') AS last_analyzed_at,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'interested') AS interest_interested,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'not_interested') AS interest_not_interested,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'undecided') AS interest_undecided,
@@ -506,8 +582,6 @@ const countersSelect = `
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'filling_info') AS disposition_filling_info,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'callback') AS disposition_callback,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'declined') AS disposition_declined,
-	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'no_answer') AS disposition_no_answer,
-	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'voicemail') AS disposition_voicemail,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'pending') AS disposition_pending,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND qualification = 'hot_lead') AS qualification_hot_lead,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND qualification = 'warm_lead') AS qualification_warm_lead,
@@ -520,10 +594,12 @@ const countersSelect = `
 	COALESCE(AVG(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_avg,
 	COALESCE(MIN(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_min,
 	COALESCE(MAX(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_max,
-	COALESCE(SUM(message_count) FILTER (WHERE subject_kind = 'conversation'), 0) AS messages_total,
-	COALESCE(AVG(message_count) FILTER (WHERE subject_kind = 'conversation'), 0) AS messages_avg`
+	COALESCE(SUM(message_count) FILTER (WHERE subject_kind = 'conversation' AND status = 'analyzed'), 0) AS messages_total,
+	COALESCE(AVG(message_count) FILTER (WHERE subject_kind = 'conversation' AND status = 'analyzed'), 0) AS messages_avg`
 
 type CountersRow struct {
+	ConversationAnalyzed                                                 int
+	LastAnalyzedAt                                                       *time.Time
 	Total, Analyzed, Pending, InFlight, Failed, Skipped                  int
 	SentimentPositive, SentimentNeutral, SentimentNegative               int
 	StanceSupporter, StanceNeutral, StanceCritic, StanceHostile          int
@@ -535,8 +611,7 @@ type CountersRow struct {
 	CommentCount, ConversationCount                                     int
 	InterestInterested, InterestNotInterested, InterestUndecided        int
 	DispositionSale, DispositionFillingInfo, DispositionCallback        int
-	DispositionDeclined, DispositionNoAnswer, DispositionVoicemail      int
-	DispositionPending                                                  int
+	DispositionDeclined, DispositionPending                             int
 	QualificationHotLead, QualificationWarmLead, QualificationColdLead  int
 	NextActionScheduleCallback, NextActionSendWhatsApp, NextActionClose int
 	NextActionEscalate, NextActionContinue                              int
@@ -547,6 +622,7 @@ type CountersRow struct {
 
 func (c CountersRow) counters() ca.Counters {
 	return ca.Counters{
+		ConversationAnalyzed: c.ConversationAnalyzed, LastAnalyzedAt: c.LastAnalyzedAt,
 		Total: c.Total, Analyzed: c.Analyzed, Pending: c.Pending, InFlight: c.InFlight, Failed: c.Failed, Skipped: c.Skipped,
 		SentimentPositive: c.SentimentPositive, SentimentNeutral: c.SentimentNeutral, SentimentNegative: c.SentimentNegative,
 		StanceSupporter: c.StanceSupporter, StanceNeutral: c.StanceNeutral, StanceCritic: c.StanceCritic, StanceHostile: c.StanceHostile,
@@ -560,7 +636,6 @@ func (c CountersRow) counters() ca.Counters {
 		InterestUndecided: c.InterestUndecided,
 		DispositionSale:   c.DispositionSale, DispositionFillingInfo: c.DispositionFillingInfo,
 		DispositionCallback: c.DispositionCallback, DispositionDeclined: c.DispositionDeclined,
-		DispositionNoAnswer: c.DispositionNoAnswer, DispositionVoicemail: c.DispositionVoicemail,
 		DispositionPending:   c.DispositionPending,
 		QualificationHotLead: c.QualificationHotLead, QualificationWarmLead: c.QualificationWarmLead,
 		QualificationColdLead:      c.QualificationColdLead,
@@ -579,7 +654,7 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 		Select(countersSelect).Scan(&cr).Error; err != nil {
 		return nil, err
 	}
-	stats := &ca.Stats{Counters: cr.counters(), Topics: []ca.TopicStat{}}
+	stats := &ca.Stats{Counters: cr.counters(), Topics: []ca.TopicStat{}, Subjects: []ca.SubjectCount{}}
 
 	type topicRow struct {
 		TopicKey                                                      string
@@ -607,6 +682,38 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 		})
 	}
 
+	// What the conversations were about, ranked.
+	//
+	// Grouped on the canonical key, never on the text: the same subject arrives
+	// written three ways and has to be one bar. The label is a real example of
+	// how it was written, picked with MIN so the answer is stable between two
+	// calls over the same rows rather than whichever spelling the planner
+	// happened to read first.
+	type subjectRow struct {
+		ProductInterestKey string
+		Label              string
+		Count              int
+	}
+	var subjects []subjectRow
+	if err := applyFilters(r.db.WithContext(ctx).Model(&schema.AudienceAnalysis{}), in).
+		Select(`product_interest_key, MIN(product_interest) AS label, COUNT(*) AS count`).
+		Where("audience_analyses.status = ? AND audience_analyses.product_interest_key <> ''", string(ca.StatusAnalyzed)).
+		Group("product_interest_key").
+		Order("count DESC, product_interest_key ASC").
+		Limit(ca.MaxRankedSubjects).
+		Scan(&subjects).Error; err != nil {
+		return nil, err
+	}
+	for _, s := range subjects {
+		label := s.Label
+		if strings.TrimSpace(label) == "" {
+			label = s.ProductInterestKey
+		}
+		stats.Subjects = append(stats.Subjects, ca.SubjectCount{
+			Key: s.ProductInterestKey, Label: label, Count: s.Count,
+		})
+	}
+
 	// Flagged authors come from the projection, scoped the same way.
 	fq := r.db.WithContext(ctx).Model(&schema.AudienceAuthor{}).
 		Where("workspace_id = ? AND is_flagged = true", in.WorkspaceID)
@@ -622,6 +729,38 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 	}
 	stats.FlaggedAuthors = int(flagged)
 	return stats, nil
+}
+
+// GetTrend groups the live analysis rows by UTC day after applying the exact
+// same filters as List and GetStats. It serves workspace-wide and mixed-channel
+// views, where no single account/container rollup can represent the request.
+func (r *repository) GetTrend(ctx context.Context, in ca.ListInput) ([]*ca.Rollup, error) {
+	type row struct {
+		CountersRow
+		BucketDate time.Time
+	}
+	var rows []row
+	const bucket = "date_trunc('day', audience_analyses.occurred_at AT TIME ZONE 'UTC')"
+	err := applyFilters(r.db.WithContext(ctx).Model(&schema.AudienceAnalysis{}), in).
+		Where("audience_analyses.status = ?", string(ca.StatusAnalyzed)).
+		Select(bucket + " AS bucket_date," + countersSelect).
+		Group(bucket).
+		Order("bucket_date ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ca.Rollup, 0, len(rows))
+	for _, x := range rows {
+		item := &ca.Rollup{
+			WorkspaceID: in.WorkspaceID,
+			BucketDate:  ca.BucketDate(x.BucketDate),
+			Counters:    x.CountersRow.counters(),
+		}
+		item.Finalize()
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // AggregateAuthors counts, per author, over the account's rows. The

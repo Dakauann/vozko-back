@@ -2,12 +2,16 @@ package container
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"vozko/domain/shared"
 	cronPackage "vozko/infra/cron"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
+	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	conversation_usecase "vozko/usecases/conversation"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
 )
 
@@ -33,10 +37,6 @@ func (c *Container) initJobRunner() {
 	// configured to be analysed"), and registering a channel on one but not the
 	// other is exactly the silent gap this whole area already had once: an
 	// EnableAnalysis switch in the UI that nothing behind it ever read.
-	type analysisChannel struct {
-		entry    shared.EntryType
-		resolver conversation_usecase.AnalysisSubjectResolver
-	}
 	channels := []analysisChannel{
 		// WhatsApp is registered like every other channel rather than special-cased
 		// inside the sweep. It has no Enabled flag because it is not an optional
@@ -51,29 +51,39 @@ func (c *Container) initJobRunner() {
 		channels = append(channels, analysisChannel{shared.EntryTypeTelegram, telegramAnalysisResolver(c.telegram)})
 	}
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
-		channels = append(channels, analysisChannel{shared.EntryTypeUnofficialWhatsApp, unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp)})
+		resolver := campaignAwareResolver(
+			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
+			c.unofficialWhatsAppCampaigns,
+		)
+		channels = append(channels, analysisChannel{shared.EntryTypeUnofficialWhatsApp, resolver})
 	}
 
-	if setter, ok := analysisDebounceJob.(interface {
-		SetAnalysisSubjectResolver(shared.EntryType, conversation_usecase.AnalysisSubjectResolver)
-	}); ok {
-		for _, ch := range channels {
-			setter.SetAnalysisSubjectResolver(ch.entry, ch.resolver)
-		}
+	sinks := []analysisSubjectSink{}
+	if setter, ok := analysisDebounceJob.(analysisSubjectSink); ok {
+		sinks = append(sinks, setter)
 	}
 
 	// Hand the sweep the analysis engine. Without this, conversations are never
 	// queued and only auto-staging and auto-memory run.
 	if c.audience != nil && c.audience.ConversationAdapter != nil {
-		for _, ch := range channels {
-			c.audience.ConversationAdapter.RegisterResolver(ch.entry, ch.resolver)
-		}
+		c.audience.ConversationAdapter.SubjectContext = c.analysisSubjectContext
+		sinks = append(sinks, adapterSink{c.audience.ConversationAdapter})
 		if q, ok := analysisDebounceJob.(interface {
 			SetAnalysisQueue(conversation_usecase.ConversationAnalysisEnqueuer)
 		}); ok {
 			q.SetAnalysisQueue(c.audience.ConversationAdapter)
 		}
 	}
+	// The per-workspace quiet period. Without it every workspace waits the
+	// product default, which is what this sweep did when the window was a
+	// constant in the binary.
+	if p, ok := analysisDebounceJob.(interface {
+		SetAnalysisDebouncePolicy(conversation_usecase.AnalysisDebouncePolicy)
+	}); ok {
+		p.SetAnalysisDebouncePolicy(workspace_config_repository.NewAudienceSettingsStore(c.db))
+	}
+
+	registerAnalysisChannels(channels, sinks...)
 
 	autoCloseJob := conversation_usecase.NewAutoCloseJob(
 		c.repositories.wcEntry,
@@ -262,4 +272,111 @@ func derefID(id *string) string {
 		return ""
 	}
 	return *id
+}
+
+// agentPromptContextRunes bounds how much of an agent's configured prompt is
+// frozen alongside a transcript. It is reference data for the classifier, not
+// the conversation itself, so an operator with a very long prompt must not be
+// able to push the transcript out of the model's window with it.
+const agentPromptContextRunes = 6000
+
+// analysisSubjectContext describes what a conversation was configured to DO,
+// resolved once when the conversation is queued and frozen with its transcript.
+//
+// Freezing it is the point. Renaming a campaign or rewriting an agent's
+// instructions afterwards must not silently re-score analyses that were made
+// under the old configuration; it produces a new revision, judged on the new
+// terms, alongside the old one.
+//
+// The campaign's name is offered as what it is — a name — because it is the
+// only thing the product actually stores about a campaign's purpose. Presenting
+// it as a stated objective would have the model score conversations against a
+// goal nobody wrote down.
+func (c *Container) analysisSubjectContext(_ context.Context, subject *conversation_usecase.AnalysisSubject) (string, error) {
+	text := fmt.Sprintf(
+		"Campaign/account: %s. A name alone does not establish a conversion objective.",
+		subject.ContainerName,
+	)
+	if subject.AgentID == "" || c.repositories.agent == nil {
+		return text, nil
+	}
+
+	agent, err := c.repositories.agent.FindByID(subject.AgentID)
+	if err != nil {
+		// Retried by the caller rather than queued without its context: an
+		// analysis is scored against this, so classifying without it would
+		// judge the conversation on different terms from its neighbours.
+		return "", err
+	}
+	if agent == nil {
+		return text, nil
+	}
+	prompt := []rune(strings.TrimSpace(agent.MessagingPrompt))
+	if len(prompt) > agentPromptContextRunes {
+		prompt = prompt[:agentPromptContextRunes]
+	}
+	if len(prompt) == 0 {
+		return text, nil
+	}
+	return text + "\nConfigured agent purpose and guidance:\n" + string(prompt), nil
+}
+
+// analysisChannel pairs a channel with the resolver that loads a conversation's
+// analysis subject on it.
+type analysisChannel struct {
+	entry    shared.EntryType
+	resolver conversation_usecase.AnalysisSubjectResolver
+}
+
+// analysisSubjectSink is something that needs the per-channel resolvers.
+//
+// There are two, the inactivity sweep and the analysis adapter, and they must
+// receive the SAME set. A channel wired into one and not the other fails
+// silently in a way no log records: the operator's EnableAnalysis switch is
+// read by half the pipeline, so conversations are either enriched but never
+// classified, or classified with the channel's defaults instead of the
+// campaign's. Naming the shape lets registerAnalysisChannels fan out once, and
+// lets a test hold both sinks and assert they agree.
+type analysisSubjectSink interface {
+	SetAnalysisSubjectResolver(shared.EntryType, conversation_usecase.AnalysisSubjectResolver)
+}
+
+// adapterSink lets the analysis adapter answer to analysisSubjectSink, whose
+// method it spells differently.
+type adapterSink struct {
+	adapter *conversation_usecase.AnalysisAdapter
+}
+
+func (a adapterSink) SetAnalysisSubjectResolver(entry shared.EntryType, resolver conversation_usecase.AnalysisSubjectResolver) {
+	a.adapter.RegisterResolver(entry, resolver)
+}
+
+// registerAnalysisChannels gives every sink every channel.
+func registerAnalysisChannels(channels []analysisChannel, sinks ...analysisSubjectSink) {
+	for _, sink := range sinks {
+		if sink == nil {
+			continue
+		}
+		for _, ch := range channels {
+			sink.SetAnalysisSubjectResolver(ch.entry, ch.resolver)
+		}
+	}
+}
+
+// campaignAwareResolver wraps a channel's resolver so a conversation that
+// belongs to a campaign is configured by that CAMPAIGN rather than by the
+// instance it happens to run on.
+//
+// Without it an operator who switches analysis on for one campaign gets
+// nothing, because the resolver underneath only ever read the instance. The
+// wrapping is skipped when campaigns are not available, which is the same
+// deployment where there are no campaigns to own a conversation.
+func campaignAwareResolver(
+	base conversation_usecase.AnalysisSubjectResolver,
+	campaigns *unofficialWhatsAppCampaignBundle,
+) conversation_usecase.AnalysisSubjectResolver {
+	if campaigns == nil || campaigns.Entries == nil || campaigns.Campaigns == nil {
+		return base
+	}
+	return uwcuc.NewAutomationSource(campaigns.Entries, campaigns.Campaigns).AnalysisResolver(base)
 }

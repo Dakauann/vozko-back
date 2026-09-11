@@ -305,3 +305,20 @@ func writeDepartmentError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
 }
+
+// @Summary		Escopo de departamento do usuário atual
+// @Description	Descreve a própria visibilidade de quem chama: se o workspace usa departamentos, de quantos o usuário participa e se está sem acesso por não estar em nenhum. Não expõe nomes nem dados de outros membros.
+// @Tags			Departamentos
+// @Produce		json
+// @Success		200	{object}	map[string]interface{}
+// @Failure		401	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/departments/scope [get]
+func (h *WorkspaceDepartmentHandler) MyScope(w http.ResponseWriter, r *http.Request) {
+	// The middleware already resolved this for the request; reporting it costs
+	// no query. It was computed on every request and then thrown away, which
+	// is why the screens could never tell "nothing here" apart from "none of
+	// it is yours".
+	response.WriteSuccess(w, http.StatusOK,
+		workspacedepartmentdomain.ScopeFor(middleware.GetDepartmentFilter(r)))
+}

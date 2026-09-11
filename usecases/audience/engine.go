@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,13 +56,29 @@ type EngineDeps struct {
 	Classifier    ca.Classifier
 	Scheduler     ca.Scheduler
 	Charger       ca.Charger
-	Balance       balance.CachedBalanceChecker
-	State         cache.SharedState
-	Metrics       metrics.AudienceMetricsRecorder
-	Notifier      notification.Notifier
+	// Usage is the rolling volume budget. Separate from Charger because it is a
+	// different concern: one is money, the other is how much work a workspace
+	// may do. Optional; nil means no ceiling.
+	Usage ca.UsageLimiter
+	// WorkspaceLimits is where an operator's ceiling is set, which is a
+	// workspace-level decision and not an account-level one. Read through
+	// ca.ResolveDailyCap so the number that stops a pass here is the same one
+	// the dashboard reports; they used to be resolved separately, which is how
+	// a screen ends up naming a limit nobody is enforcing. Optional: without it
+	// the per-account ceiling stands, exactly as before.
+	WorkspaceLimits ca.WorkspaceSettingsStore
+	Balance         balance.CachedBalanceChecker
+	State           cache.SharedState
+	Metrics         metrics.AudienceMetricsRecorder
+	Notifier        notification.Notifier
 	// Broadcaster feeds the live view (§7). Optional: a deployment without a
 	// socket classifies exactly the same.
 	Broadcaster ca.AnalysisBroadcaster
+	Timeline    ca.ConversationAnalysisObserver
+	// Live is the per-conversation signal the CRM listens on. Optional, and
+	// distinct from Broadcaster, which feeds the workspace-wide audience view
+	// under a different permission.
+	Live ca.ConversationAnalysisLive
 	// Alerts fires the configured rules. Optional, and best effort: a rule that
 	// cannot be evaluated must never fail an analysis.
 	Alerts ca.AlertEvaluator
@@ -199,9 +216,16 @@ func (e *Engine) RegisterSource(source ca.Source, adapter ca.SourceAdapter) {
 // budget's per-cycle ceiling.
 type cycle struct {
 	tokens map[string]int
+	// caps memoizes the resolved daily ceiling per workspace.
+	//
+	// A tick can walk many containers of the same workspace, and the ceiling is
+	// one small read that would otherwise repeat for each of them. Holding it
+	// for the tick also means every container in one pass is judged against the
+	// same number, which is what an operator would assume anyway.
+	caps map[string]int
 }
 
-func newCycle() *cycle { return &cycle{tokens: map[string]int{}} }
+func newCycle() *cycle { return &cycle{tokens: map[string]int{}, caps: map[string]int{}} }
 
 func (c *cycle) remaining(workspaceID string, b ca.Budget) int {
 	return b.MaxTokensPerCycle - c.tokens[workspaceID]
@@ -270,18 +294,47 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		ids[i] = r.ID
 		byID[r.ID] = r
 	}
-	subjects, err := adapter.ReadSubjects(ctx, ref, sourceIDs(rows))
-	if err != nil {
-		return res, err
+	// A conversation queued since revisions exist carries its own transcript,
+	// frozen when its inactivity window elapsed. Those rows are classified from
+	// the snapshot, so they need no read at all: the channel cannot be asked to
+	// re-render a conversation that has moved on since, and a read that fails
+	// cannot cost them their analysis.
+	needRead := unsnapshottedIDs(rows)
+	subjects := map[string]subjectText{}
+	if len(needRead) > 0 {
+		subjects, err = adapter.ReadSubjects(ctx, ref, needRead)
+		if err != nil {
+			return res, err
+		}
 	}
 
 	// A comment deleted on the channel between ingest and now has nothing
 	// to classify. Skipped, not failed, and never sent.
-	var vanished []*ca.Analysis
+	var vanished, missed []*ca.Analysis
 	items := make([]ca.Item, 0, len(rows))
 	for _, r := range rows {
-		subject, ok := subjects[r.SubjectID]
+		var subject subjectText
+		ok := r.HasSnapshot()
+		if ok {
+			// Each queued revision is judged on the exact snapshot captured
+			// when its inactivity window elapsed, even though the conversation
+			// has since moved on. Later messages are a later revision.
+			subject = subjectText{Text: r.Transcript, MessageCount: r.MessageCount, OccurredAt: r.OccurredAt}
+		} else {
+			subject, ok = subjects[r.SubjectID]
+		}
 		if !ok {
+			// A conversation we queued ourselves is expected to still exist, so
+			// a miss is read as a failed read and retried. Only a comment, which
+			// really can be deleted on the channel, is skipped on the spot.
+			if r.Kind() == ca.SubjectKindConversation {
+				if r.MissedRead(ca.ReasonTextUnavailable, now) {
+					vanished = append(vanished, r)
+				} else {
+					missed = append(missed, r)
+				}
+				continue
+			}
 			if err := r.MarkSkipped(ca.ReasonTextUnavailable, now); err == nil {
 				vanished = append(vanished, r)
 			}
@@ -307,6 +360,14 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		res.Skipped += len(vanished)
 		e.addItems(metrics.CommentItemOutcomeSkipped, len(vanished))
 	}
+	// Still pending, with one more attempt spent. Saved so the count survives
+	// this process, which is what bounds the retries.
+	if len(missed) > 0 {
+		if err := e.Repo.SaveMany(ctx, missed); err != nil {
+			return res, err
+		}
+		res.Deferred += len(missed)
+	}
 	if len(items) == 0 {
 		_ = e.Scheduler.Clear(ctx, ref)
 		return res, nil
@@ -320,7 +381,7 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	}
 	systemPrompt := BuildSystemPromptFor(ref.Normalized().Kind, settings.Topics, containerCtx, settings.Instructions)
 	budget := e.Budget.WithCycleAllowance(cyc.remaining(workspaceID, e.Budget))
-	plans, remainder := ca.PlanBatches(items, shared.EstimateTokens(systemPrompt), budget)
+	plans, remainder := ca.PlanBatches(items, shared.EstimateTokens(systemPrompt), budget, ref.Normalized().Kind)
 	if len(remainder.Unplanned) > 0 {
 		res.Deferred += len(remainder.Unplanned)
 		e.addItems(metrics.CommentItemOutcomeDeferred, len(remainder.Unplanned))
@@ -330,7 +391,7 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	}
 
 	for _, plan := range plans {
-		if stop := e.guards(ctx, workspaceID, settings, len(plan.Items), now); stop != nil {
+		if stop := e.guards(ctx, workspaceID, e.dailyCap(ctx, workspaceID, settings, cyc), len(plan.Items), now); stop != nil {
 			res.Stopped = stop
 			break
 		}
@@ -365,6 +426,27 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		// last, so a socket having a bad day cannot fail an analysis that was
 		// already paid for.
 		e.broadcastAnalyzed(batchRows)
+		for _, row := range batchRows {
+			if row.Kind() != ca.SubjectKindConversation || row.Status != ca.StatusAnalyzed {
+				continue
+			}
+			if e.Timeline != nil {
+				e.Timeline.AnalysisCreated(row.WorkspaceID, row.SubjectID, string(row.Source), row.ID, string(row.Disposition), row.AttendanceQuality)
+			}
+			// The other half of the pair the ingest path opened: whoever is
+			// looking at this conversation was told an analysis was coming, so
+			// they are told when it lands rather than being left with a
+			// spinner until they reload.
+			if e.Live != nil {
+				verdict := *row
+				e.Live.AnalysisStateChanged(ca.ConversationAnalysisState{
+					EntryID:   row.SubjectID,
+					EntryType: string(row.Source),
+					Pending:   false,
+					Analysis:  &verdict,
+				})
+			}
+		}
 		// Same point, same posture: alerts read facts that are on disk.
 		if e.Alerts != nil {
 			e.Alerts.EvaluateBatch(ctx, ref, workspaceID, batchRows)
@@ -372,6 +454,13 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 		if outcome.providerErr != nil {
 			// The rows were handed back without an attempt; nothing more this
 			// tick. Logged by the caller, retried next tick.
+			//
+			// Their budget goes back with them. The claim is made before the
+			// call, which is what stops two replicas overspending together, so
+			// a provider that drops the batch has already been counted for work
+			// nobody got. Under the counter this replaced, that stayed counted
+			// until midnight.
+			e.releaseUsage(ctx, workspaceID, len(plan.Items)-outcome.analyzed, now)
 			return res, outcome.providerErr
 		}
 	}
@@ -385,26 +474,74 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	return res, nil
 }
 
-// guards is every reason NOT to make the next call (plan §8): balance floor
-// (fail-closed) and the daily cap.
-func (e *Engine) guards(ctx context.Context, workspaceID string, settings *ca.Settings, items int, now time.Time) error {
+// guards is every reason NOT to make the next call (plan §8): the balance
+// floor (fail-closed) and the rolling volume budget.
+func (e *Engine) guards(ctx context.Context, workspaceID string, dailyCap, items int, now time.Time) error {
 	// The floor itself lives in balanceGuard, shared with every other path that
 	// spends tokens; the metric is this caller's own.
 	if err := e.guard.Allow(workspaceID); err != nil {
 		e.capHit(metrics.CommentCapBalance)
 		return err
 	}
-	ok, err := e.Charger.ReserveDaily(ctx, workspaceID, items, settings.DailyCap, now)
+	if e.Usage == nil {
+		return nil
+	}
+	ok, err := e.Usage.Claim(ctx, workspaceID, items, dailyCap, now)
 	if err != nil {
-		log.Printf("[comment-analysis] daily cap check for workspace %s failed, skipping (fail-closed): %v", workspaceID, err)
+		log.Printf("[comment-analysis] usage budget check for workspace %s failed, skipping (fail-closed): %v", workspaceID, err)
 		return ca.ErrDailyCapReached
 	}
 	if !ok {
 		e.capHit(metrics.CommentCapDaily)
-		e.notifyCapReached(workspaceID, settings, now)
+		e.notifyCapReached(workspaceID, dailyCap, now)
 		return ca.ErrDailyCapReached
 	}
 	return nil
+}
+
+// dailyCap is the ceiling in force for this workspace, resolved once per tick.
+//
+// The workspace's own number wins; the account's is what every workspace
+// configured before the workspace-level control existed still runs under. A
+// read failure falls through to the account ceiling rather than to no ceiling:
+// the alternative is that a database hiccup silently removes the spend limit.
+func (e *Engine) dailyCap(ctx context.Context, workspaceID string, settings *ca.Settings, cyc *cycle) int {
+	accountCap := 0
+	if settings != nil {
+		accountCap = settings.DailyCap
+	}
+	if cyc == nil || e.WorkspaceLimits == nil {
+		return ca.ResolveDailyCap(0, accountCap)
+	}
+	if cap, ok := cyc.caps[workspaceID]; ok {
+		return ca.ResolveDailyCap(cap, accountCap)
+	}
+	settingsRow, err := e.WorkspaceLimits.Get(ctx, workspaceID)
+	workspaceCap := settingsRow.DailyCap
+	if err != nil {
+		log.Printf("[comment-analysis] workspace ceiling for %s unavailable, falling back to the account cap: %v", workspaceID, err)
+		workspaceCap = 0
+	}
+	cyc.caps[workspaceID] = workspaceCap
+	return ca.ResolveDailyCap(workspaceCap, accountCap)
+}
+
+// releaseUsage gives budget back for items that were claimed and then never
+// classified.
+//
+// The claim happens before the model call, which is the only order that can
+// stop two replicas overspending together. The consequence is that a batch the
+// provider drops has already been counted, and under the old counter it stayed
+// counted: a bad afternoon upstream could exhaust the budget having produced
+// nothing. Best effort, and never allowed to fail the pass that is already
+// handling an error.
+func (e *Engine) releaseUsage(ctx context.Context, workspaceID string, items int, now time.Time) {
+	if e.Usage == nil || items <= 0 {
+		return
+	}
+	if err := e.Usage.Release(ctx, workspaceID, items, now); err != nil {
+		log.Printf("[comment-analysis] could not release %d unused analyses for workspace %s: %v", items, workspaceID, err)
+	}
 }
 
 type planOutcome struct {
@@ -622,7 +759,7 @@ func (e *Engine) recordBatch(ctx context.Context, b ca.Batch) {
 	}
 }
 
-func (e *Engine) notifyCapReached(workspaceID string, settings *ca.Settings, now time.Time) {
+func (e *Engine) notifyCapReached(workspaceID string, dailyCap int, now time.Time) {
 	if e.Notifier == nil {
 		return
 	}
@@ -632,7 +769,7 @@ func (e *Engine) notifyCapReached(workspaceID string, settings *ca.Settings, now
 		Subject:     "Limite diário de análise de comentários atingido - " + brand.Active().Name,
 		Template:    capNotificationTemplate,
 		Placeholders: map[string]interface{}{
-			"DailyCap":     settings.DailyCap,
+			"DailyCap":     dailyCap,
 			"Date":         day,
 			"DashboardURL": e.DashboardURL,
 		},
@@ -645,10 +782,22 @@ func (e *Engine) notifyCapReached(workspaceID string, settings *ca.Settings, now
 
 // ---- helpers ----
 
-func sourceIDs(rows []*ca.Analysis) []string {
-	out := make([]string, len(rows))
-	for i, r := range rows {
-		out[i] = r.SubjectID
+// unsnapshottedIDs names the subjects whose text still has to be read, once
+// each: a conversation can now have several pending revisions at a time, and
+// asking the channel for the same entry three times would render the same
+// transcript three times.
+func unsnapshottedIDs(rows []*ca.Analysis) []string {
+	out := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		if r.HasSnapshot() {
+			continue
+		}
+		if _, dup := seen[r.SubjectID]; dup {
+			continue
+		}
+		seen[r.SubjectID] = struct{}{}
+		out = append(out, r.SubjectID)
 	}
 	return out
 }
@@ -709,4 +858,35 @@ func (e *Engine) capHit(cap string) {
 	if e.Metrics != nil {
 		e.Metrics.IncCommentCapHit(cap)
 	}
+}
+
+// RegisteredSources names what this engine can actually classify, split by the
+// two subject kinds, sorted so the output is stable between boots.
+//
+// It exists because the startup line that reported this was a hardcoded string
+// reading "sources: instagram" on every boot regardless of what was wired. That
+// is worse than no log at all: it cost an afternoon of suspecting the
+// conversation channels were unregistered when they were fine, and it would
+// have said the same thing on a deployment where they genuinely were not.
+//
+// A channel appears here only if an adapter was actually registered for it, so
+// the line answers the question an operator is really asking when they read it:
+// what will this process classify?
+func (e *Engine) RegisteredSources() (comments, conversations []string) {
+	if e == nil {
+		return nil, nil
+	}
+	for source, adapter := range e.Adapters {
+		if adapter != nil {
+			comments = append(comments, string(source))
+		}
+	}
+	for source, adapter := range e.Conversations {
+		if adapter != nil {
+			conversations = append(conversations, string(source))
+		}
+	}
+	sort.Strings(comments)
+	sort.Strings(conversations)
+	return comments, conversations
 }

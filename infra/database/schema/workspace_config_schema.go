@@ -57,6 +57,23 @@ type WorkspaceConfig struct {
 	// keeps distributing and rescuing around the clock exactly as before.
 	WorkingHours *string `gorm:"type:jsonb"`
 
+	// Audience analysis, decided per WORKSPACE rather than per channel account.
+	//
+	// AudienceDailyCap is the rolling 24h volume ceiling; AudienceDebounceMinutes
+	// is how long a conversation must stay quiet before it is handed to the
+	// engine. Both default to 0, meaning "not set", which resolves to the
+	// per-account ceiling and to audience.DefaultDebounceMinutes respectively, so
+	// these columns appearing changes nothing for an existing row.
+	//
+	// They live here because this is the workspace's configuration row, but they
+	// are NOT reachable from the workspace-config screen's input types: the
+	// audience use case owns them and writes them under audience:update, which is
+	// the permission that governs everything else about analysis. Mapping them in
+	// Get and Upsert below is what keeps the two writers from clobbering each
+	// other, since that update path is read-modify-write.
+	AudienceDailyCap        int `gorm:"not null;default:0"`
+	AudienceDebounceMinutes int `gorm:"not null;default:0"`
+
 	UpdatedBy string    `gorm:"type:uuid"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`

@@ -102,3 +102,26 @@ func TestCommentAnalyzedCarriesOnlyWhatIsStored(t *testing.T) {
 		t.Fatal("an analysed row has an analysed timestamp")
 	}
 }
+
+func TestAnalyzedConversationEventKeepsConversationShape(t *testing.T) {
+	row := analyzedRow("conversation", 0)
+	row.SubjectKind = SubjectKindConversation
+	row.Interest = InterestInterested
+	row.Disposition = DispositionPending
+	row.Qualification = QualificationWarmLead
+	row.NextAction = NextActionContinue
+	row.Summary = "Customer wants to schedule a consultation."
+	row.AttendanceQuality = 73
+	row.MessageCount = 18
+
+	e := NewCommentAnalyzed(row)
+	if e.SubjectKind != SubjectKindConversation || e.Summary != row.Summary {
+		t.Fatalf("conversation identity was lost: %+v", e)
+	}
+	if e.Interest != row.Interest || e.Disposition != row.Disposition || e.Qualification != row.Qualification || e.NextAction != row.NextAction {
+		t.Fatalf("conversation labels were lost: %+v", e)
+	}
+	if e.AttendanceQuality != 73 || e.MessageCount != 18 {
+		t.Fatalf("conversation measurements were lost: %+v", e)
+	}
+}

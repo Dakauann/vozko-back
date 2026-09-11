@@ -21,6 +21,7 @@ type StatsUseCase interface {
 
 type TrendsUseCase interface {
 	Execute(ctx context.Context, in TrendInput) ([]*Rollup, error)
+	ExecuteFiltered(ctx context.Context, in ListInput) ([]*Rollup, error)
 }
 
 type ListAuthorsUseCase interface {
@@ -101,6 +102,42 @@ type UpdateSettingsUseCase interface {
 // RetryUseCase re-queues a failed row (§8: never silently dropped).
 type RetryUseCase interface {
 	Execute(ctx context.Context, workspaceID, id string) (*Analysis, error)
+}
+
+// UsageUseCase reports a workspace's rolling analysis budget: how much has been
+// analysed inside the window, the ceiling it counts against, and how much is
+// queued behind it.
+//
+// The third number is what makes the first two actionable. Reaching the ceiling
+// never throws work away, it postpones it, so what a ceiling set too low costs
+// is delay, and the queue is the only place that delay is visible.
+type UsageUseCase interface {
+	Execute(ctx context.Context, workspaceID string) (Usage, error)
+}
+
+// UpdateWorkspaceSettingsInput is a partial update: a nil field is "leave this
+// alone", which is what lets two controls on one screen write independently
+// without either having to send the other's value back.
+type UpdateWorkspaceSettingsInput struct {
+	DailyCap        *int
+	DebounceMinutes *int
+}
+
+// WorkspaceSettingsUseCase reads and writes what the WORKSPACE decides about
+// its own analysis: the rolling ceiling and the debounce window.
+//
+// One use case over one row rather than one per setting. Both are read-modify-
+// write against a configuration record shared with the rest of the platform, so
+// two independent writers would be two chances to blank each other's field, and
+// that is the bug class this whole area keeps producing.
+//
+// Deliberately NOT the workspace-config use cases, even though the row is the
+// same: those are gated on admin-or-owner, while analysis is gated on
+// audience:update. A setting reachable from both would have two different
+// answers to "who may change this".
+type WorkspaceSettingsUseCase interface {
+	Execute(ctx context.Context, workspaceID string) (WorkspaceSettings, error)
+	Update(ctx context.Context, workspaceID string, in UpdateWorkspaceSettingsInput) (WorkspaceSettings, error)
 }
 
 // SpendUseCase is the §9.4 receipt: what the workspace bought this period.

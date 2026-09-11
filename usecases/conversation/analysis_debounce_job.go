@@ -2,10 +2,12 @@ package conversation_usecase
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
 	"vozko/domain/ai"
+	"vozko/domain/audience"
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
@@ -20,10 +22,18 @@ import (
 	tools_usecase "vozko/usecases/tools"
 )
 
-const (
-	analysisDebounceInactivity = 5 * time.Minute
-	analysisDebounceTimeout    = 30 * time.Second
-)
+const analysisDebounceTimeout = 30 * time.Second
+
+// AnalysisDebouncePolicy reports the workspaces that changed their debounce
+// window from the product default.
+//
+// Only the ones that CHANGED it, which is what keeps this cheap: the map is
+// empty for almost every deployment, and an empty map means the sweep behaves
+// exactly as it did when the window was a constant, with no per-entry work
+// added at all. See windowFor below for what a non-empty one costs.
+type AnalysisDebouncePolicy interface {
+	ConfiguredDebounceWindows(ctx context.Context) (map[string]time.Duration, error)
+}
 
 type analysisDebounceJob struct {
 	sharedState    cache.SharedState
@@ -46,6 +56,10 @@ type analysisDebounceJob struct {
 	// analysisQueue hands the conversation to the analysis engine instead of
 	// classifying it here. See runAnalysisForEntry.
 	analysisQueue ConversationAnalysisEnqueuer
+	// debouncePolicy is the per-workspace quiet period. Optional: without one
+	// every workspace waits the product default, which is what this job did
+	// when the window was a constant.
+	debouncePolicy AnalysisDebouncePolicy
 }
 
 // ConversationAnalysisEnqueuer queues one conversation for the analysis engine.
@@ -53,7 +67,14 @@ type analysisDebounceJob struct {
 // Narrow on purpose: this job needs to hand a conversation over, nothing more.
 // It does not need to know that the engine batches, budgets, retries or bills.
 type ConversationAnalysisEnqueuer interface {
-	Enqueue(ctx context.Context, entryID string, entryType shared.EntryType) error
+	EnqueueSubject(ctx context.Context, subject *AnalysisSubject) error
+}
+
+// SetAnalysisDebouncePolicy wires the per-workspace quiet period. Without one
+// the job waits audience.DefaultDebounceMinutes for everybody, which is the
+// behaviour it had when that number was a constant.
+func (j *analysisDebounceJob) SetAnalysisDebouncePolicy(p AnalysisDebouncePolicy) {
+	j.debouncePolicy = p
 }
 
 // SetAnalysisQueue wires the engine. Without one, conversation analysis simply
@@ -111,6 +132,10 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 	if j.sharedState == nil {
 		return nil
 	}
+	ack, ok := j.sharedState.(cache.HashFieldAcknowledger)
+	if !ok {
+		return fmt.Errorf("analysis debounce store does not support atomic acknowledgement")
+	}
 
 	pending, err := j.sharedState.HGetAll(AnalysisDebounceRedisKey)
 	if err != nil {
@@ -121,16 +146,24 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 	}
 
 	now := time.Now().UTC()
+	windows := j.configuredWindows()
+	shortest := shortestDebounceWindow(windows)
 
 	for entryID, raw := range pending {
 		pendingEntry, ok := decodeAnalysisDebounceValue(raw)
 		if !ok {
 			log.Printf("[analysis-debounce] invalid pending value for entry %s: %q, removing", entryID, raw)
-			_ = j.sharedState.HDel(AnalysisDebounceRedisKey, entryID)
+			_ = ack.HDelIfValue(AnalysisDebounceRedisKey, entryID, raw)
 			continue
 		}
 
-		if now.Sub(pendingEntry.At) < analysisDebounceInactivity {
+		// The cheap gate first: nothing can be due before the shortest window
+		// any workspace has, and no workspace has to be identified to know it.
+		age := now.Sub(pendingEntry.At)
+		if age < shortest {
+			continue
+		}
+		if age < j.windowFor(entryID, pendingEntry.EntryType, windows) {
 			continue
 		}
 
@@ -140,17 +173,79 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 			continue
 		}
 
-		_ = j.sharedState.HDel(AnalysisDebounceRedisKey, entryID)
-
 		log.Printf("[analysis-debounce] processing deferred analysis for entry %s (%s, idle since %s)",
 			entryID, pendingEntry.EntryType, pendingEntry.At.Format(time.RFC3339))
 
 		if err := j.runAnalysisForEntry(entryID, pendingEntry.EntryType); err != nil {
 			log.Printf("[analysis-debounce] failed for entry %s: %v", entryID, err)
+			continue
+		}
+		if err := ack.HDelIfValue(AnalysisDebounceRedisKey, entryID, raw); err != nil {
+			log.Printf("[analysis-debounce] acknowledging entry %s: %v", entryID, err)
 		}
 	}
 
 	return nil
+}
+
+// configuredWindows lists the workspaces that changed their quiet period.
+//
+// Read once per tick, not once per entry. A failure degrades to "nobody changed
+// it", which is the product default for everyone: a sweep that stopped because
+// a settings read failed would silently hold up every analysis in the system.
+func (j *analysisDebounceJob) configuredWindows() map[string]time.Duration {
+	if j.debouncePolicy == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), analysisDebounceTimeout)
+	defer cancel()
+	windows, err := j.debouncePolicy.ConfiguredDebounceWindows(ctx)
+	if err != nil {
+		log.Printf("[analysis-debounce] debounce settings unavailable, using the default for every workspace: %v", err)
+		return nil
+	}
+	return windows
+}
+
+// shortestDebounceWindow is the soonest anything can possibly be due.
+//
+// It is the floor the loop gates on before identifying whose entry it is. With
+// no workspace configured it equals the default, so the gate alone decides every
+// entry and the sweep costs exactly what it always did.
+func shortestDebounceWindow(windows map[string]time.Duration) time.Duration {
+	shortest := audience.DebounceWindow(0)
+	for _, w := range windows {
+		if w > 0 && w < shortest {
+			shortest = w
+		}
+	}
+	return shortest
+}
+
+// windowFor is the quiet period this entry has to clear.
+//
+// The default, unless the entry belongs to a workspace that changed it. Finding
+// out which workspace costs a resolve, so it is skipped entirely when no
+// workspace configured anything, which is the normal case. When one has, the
+// cost is one resolve per entry per tick while that entry sits between the
+// shortest configured window and its own. That is bounded by how many
+// conversations are mid-debounce at once, and it is paid only by deployments
+// that asked for a non-default window.
+func (j *analysisDebounceJob) windowFor(entryID string, entryType shared.EntryType, windows map[string]time.Duration) time.Duration {
+	fallback := audience.DebounceWindow(0)
+	if len(windows) == 0 {
+		return fallback
+	}
+	subject, err := j.resolveSubject(entryID, entryType)
+	if err != nil || subject == nil || subject.WorkspaceID == "" {
+		// Unattributable: the default is the safe answer, since the alternative
+		// is either analysing too early or never analysing at all.
+		return fallback
+	}
+	if w, ok := windows[subject.WorkspaceID]; ok && w > 0 {
+		return w
+	}
+	return fallback
 }
 
 // resolveSubject loads the channel-specific facts for one entry.
@@ -245,6 +340,17 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	if !subject.WantsWork() {
 		return nil
 	}
+	if subject.EnableAnalysis && j.analysisQueue != nil {
+		queueCtx, cancelQueue := context.WithTimeout(context.Background(), analysisDebounceTimeout)
+		queueErr := j.analysisQueue.EnqueueSubject(queueCtx, subject)
+		cancelQueue()
+		if queueErr != nil {
+			return queueErr
+		}
+	}
+	if !subject.EnableAutoStaging && !(subject.EnableAutoMemory && subject.LeadID != "") {
+		return nil
+	}
 
 	history, err := j.messageRepo.ListByEntry(entryID, entryType)
 	if err != nil || len(history) == 0 {
@@ -267,26 +373,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
-
-	// Analysis no longer happens in this call.
-	//
-	// It used to ride along as a tool on the same request as auto-staging and
-	// auto-memory: one un-batched, uncapped, un-receipted model call per
-	// conversation, with no retry, whose work was deleted from Redis before it
-	// ran. The conversation is now handed to the analysis engine, which batches
-	// it with its peers, plans it against a token budget, reserves against the
-	// daily cap, writes a spend receipt and retries on failure.
-	//
-	// Best effort here on purpose: analysis is an enrichment, and failing this
-	// sweep over it would also cost the staging and memory passes below, which
-	// have nothing to do with it.
-	if subject.EnableAnalysis && j.analysisQueue != nil {
-		queueCtx, cancelQueue := context.WithTimeout(context.Background(), analysisDebounceTimeout)
-		if err := j.analysisQueue.Enqueue(queueCtx, entryID, entryType); err != nil {
-			log.Printf("[analysis-debounce] queueing %s entry %s for analysis: %v", entryType, entryID, err)
-		}
-		cancelQueue()
-	}
 
 	// wantAnalysis stays false: the prompt below is now only ever about staging
 	// or memory, and if neither is enabled no call is made at all.

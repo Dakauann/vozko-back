@@ -2471,7 +2471,7 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 
 	// The scopable set, not a hardcoded pair.
 	//
-	// Spelled inline this read `!= "voice" && != "whatsapp"`, which rejected
+	// Spelled inline this read `!= "whatsapp"`, which rejected
 	// Instagram, Telegram and the unofficial WhatsApp channel outright — all
 	// three of which shared.InboxScopableEntryTypes has listed as scopable since
 	// they shipped. The set is the single declaration; restating it here is how
@@ -2501,10 +2501,6 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 	}
 
 	if !conn.IsAdmin {
-		if p.CampaignType == "voice" && !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "campaigns", "read", false) {
-			h.sendError(conn, "forbidden", "You don't have permission to view voice campaigns")
-			return
-		}
 		if p.CampaignType == "whatsapp" && !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "whatsapp_campaigns", "read", false) {
 			h.sendError(conn, "forbidden", "You don't have permission to view WhatsApp campaigns")
 			return

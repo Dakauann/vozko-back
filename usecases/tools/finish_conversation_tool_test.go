@@ -100,18 +100,3 @@ func TestFinishConversationTool_ServiceError(t *testing.T) {
 	require.True(t, out.IsError)
 	require.Equal(t, 1, st.calls)
 }
-
-func TestFinishConversationTool_VoiceEntry(t *testing.T) {
-	st := &finishStatusStub{}
-	ft := NewFinishConversationToolUseCase(st, nil).(*finishConversationTool)
-	out, err := ft.ExecuteWithConfig(context.Background(), map[string]interface{}{
-		"__entry_id":   "v-2",
-		"__entry_type": "voice",
-	}, map[string]interface{}{})
-	require.NoError(t, err)
-	require.False(t, out.IsError)
-	require.Equal(t, "v-2", st.lastEntryID)
-	require.Equal(t, "voice", st.lastEntryType)
-	require.Equal(t, conversation.CloseSourceAI, st.lastOpts.Source)
-	require.Equal(t, conversation.CloseReasonAIResolved, st.lastOpts.Reason)
-}

@@ -141,6 +141,19 @@ type WorkspaceConfig struct {
 	// minutes rather than losing ten of them overnight.
 	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
 
+	// AudienceDailyCap and AudienceDebounceMinutes are the audience engine's
+	// per-workspace settings. Zero means "not set" for both; the audience domain
+	// resolves them (ResolveDailyCap, ClampDebounceMinutes) rather than this one,
+	// which only stores them.
+	//
+	// They are absent from both UpdateWorkspaceConfigInput and
+	// UpdateWorkspaceConfigOwnerInput on purpose. The workspace-config screen is
+	// gated on admin-or-owner while analysis is gated on audience:update, and a
+	// setting reachable from both would have two different answers to "who may
+	// change this".
+	AudienceDailyCap        int `json:"audienceDailyCap"`
+	AudienceDebounceMinutes int `json:"audienceDebounceMinutes"`
+
 	UpdatedBy string    `json:"updatedBy,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

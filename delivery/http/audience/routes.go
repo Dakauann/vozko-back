@@ -33,6 +33,19 @@ func RegisterProtectedRoutes(
 	r.HandleFunc("/stats", ac(res, read, h.Stats)).Methods(http.MethodGet)
 	r.HandleFunc("/trends", ac(res, read, h.Trends)).Methods(http.MethodGet)
 	r.HandleFunc("/spend", ac(res, read, h.Spend)).Methods(http.MethodGet)
+	// How much of the rolling analysis budget the workspace has spent. Read
+	// permission, like every other number on the dashboard it sits beside.
+	r.HandleFunc("/usage", ac(res, read, h.Usage)).Methods(http.MethodGet)
+	// What the workspace decides about its own analysis: the ceiling the budget
+	// above is measured against, and how long a conversation must go quiet
+	// before it is judged. Reading is a dashboard read; changing either is a
+	// workspace-wide act that governs what every channel spends and when every
+	// conversation is analysed, so it carries update.
+	//
+	// Not the workspace-config routes, which hold the same database row: those
+	// are gated on admin-or-owner, and analysis is gated on audience:update.
+	r.HandleFunc("/workspace-settings", ac(res, read, h.WorkspaceSettings)).Methods(http.MethodGet)
+	r.HandleFunc("/workspace-settings", ac(res, update, h.UpdateWorkspaceSettings)).Methods(http.MethodPut)
 	// The recipient picker is part of forwarding, so it carries forwarding's
 	// permission: someone who may not send has no business enumerating who
 	// the workspace talks to.

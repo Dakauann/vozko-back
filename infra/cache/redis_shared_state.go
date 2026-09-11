@@ -180,6 +180,19 @@ func (s *redisSharedState) HDel(key, field string) error {
 	return s.client.HDel(s.ctx, key, field).Err()
 }
 
+var deleteHashFieldIfValue = redis.NewScript(`
+if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
+    return redis.call('HDEL', KEYS[1], ARGV[1])
+end
+return 0
+`)
+
+func (s *redisSharedState) HDelIfValue(key, field, value string) error {
+	return deleteHashFieldIfValue.Run(s.ctx, s.client, []string{key}, field, value).Err()
+}
+
+var _ domainCache.HashFieldAcknowledger = (*redisSharedState)(nil)
+
 func (s *redisSharedState) HGetAll(key string) (map[string]string, error) {
 	result, err := s.client.HGetAll(s.ctx, key).Result()
 	if err != nil {

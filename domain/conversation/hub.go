@@ -14,6 +14,29 @@ const (
 	MaxHistoryPageSize     = 100
 )
 
+// AnalysisPhase says where an upcoming analysis has got to.
+//
+// The two states are not the same thing to a person and must not share a word.
+// A conversation that is still going is WAITING: nothing is being analysed, and
+// nothing will be until it settles, so telling someone it is "analysing" is
+// simply untrue for the minutes that usually follow a reply. A conversation the
+// engine has been handed is genuinely in progress and will answer on its own.
+//
+// Modelled as a phase rather than two booleans because they are mutually
+// exclusive: a conversation cannot be both waiting to be handed over and
+// already handed over.
+type AnalysisPhase string
+
+const (
+	// AnalysisPhaseNone: nothing coming that anyone needs to know about.
+	AnalysisPhaseNone AnalysisPhase = ""
+	// AnalysisPhaseAwaiting: the conversation is still active. It has been
+	// stamped, and the engine takes it once it has been quiet long enough.
+	AnalysisPhaseAwaiting AnalysisPhase = "awaiting"
+	// AnalysisPhaseQueued: handed to the engine, waiting on a batch.
+	AnalysisPhaseQueued AnalysisPhase = "queued"
+)
+
 type InboxEntry struct {
 	EntryID      string `json:"entry_id"`
 	EntryType    string `json:"entry_type"`
@@ -46,17 +69,22 @@ type InboxEntry struct {
 	// WindowClosedReason names WHY sending is blocked, so the composer can say
 	// something true instead of inferring it from the absence of an expiry.
 	// Empty when the window is open. See WindowClosedReason.
-	WindowClosedReason string             `json:"window_closed_reason,omitempty"`
-	BusinessPhoneID    string             `json:"business_phone_id,omitempty"`
-	AssignedUserID     string             `json:"assigned_user_id,omitempty"`
-	AssignedUsername   string             `json:"assigned_username,omitempty"`
-	AutomationEnabled  bool               `json:"automation_enabled"`
-	Stage              *InboxEntryStage   `json:"stage,omitempty"`
-	Labels             []InboxEntryLabel  `json:"labels,omitempty"`
-	AvailableStages    []InboxEntryStage  `json:"available_stages,omitempty"`
-	MatchedMessages    []MatchedMessage   `json:"matched_messages,omitempty"`
-	TotalMatches       int                `json:"total_matches,omitempty"`
-	LatestAnalysis     *ca.Analysis `json:"latest_analysis,omitempty"`
+	WindowClosedReason string            `json:"window_closed_reason,omitempty"`
+	BusinessPhoneID    string            `json:"business_phone_id,omitempty"`
+	AssignedUserID     string            `json:"assigned_user_id,omitempty"`
+	AssignedUsername   string            `json:"assigned_username,omitempty"`
+	AutomationEnabled  bool              `json:"automation_enabled"`
+	Stage              *InboxEntryStage  `json:"stage,omitempty"`
+	Labels             []InboxEntryLabel `json:"labels,omitempty"`
+	AvailableStages    []InboxEntryStage `json:"available_stages,omitempty"`
+	MatchedMessages    []MatchedMessage  `json:"matched_messages,omitempty"`
+	TotalMatches       int               `json:"total_matches,omitempty"`
+	LatestAnalysis     *ca.Analysis      `json:"latest_analysis,omitempty"`
+	// AnalysisPhase says where an upcoming analysis has got to. Independent of
+	// LatestAnalysis, which keeps showing the previous revision's verdict while
+	// the next one is computed, and carried on the entry rather than only on
+	// the socket so a page reload still shows it.
+	AnalysisPhase      AnalysisPhase      `json:"analysis_phase,omitempty"`
 	ConversationStatus ConversationStatus `json:"conversation_status,omitempty"`
 	// Close provenance when status is finished (omitted when open / cleared on reopen).
 	CloseSource CloseSource `json:"close_source,omitempty"`
@@ -198,6 +226,26 @@ type LabelProvider interface {
 
 type AnalysisProvider interface {
 	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*ca.Analysis, error)
+	// GetBatchAnalysisPending reports which of these conversations have an
+	// analysis waiting. One read for the page, beside the one above.
+	GetBatchAnalysisPending(entryIDs []string, entryType string) (map[string]bool, error)
+}
+
+// AnalysisScheduleReader reports which conversations are waiting for their
+// inactivity window to elapse before an analysis is even queued.
+//
+// This is the OTHER half of "an analysis is coming", and the half a
+// conversation spends most of its time in. A reply stamps the conversation and
+// the engine only takes it once it has been quiet for a few minutes, so between
+// those two moments AnalysisProvider has nothing to report and the screen looks
+// exactly like a conversation nobody is going to analyse.
+//
+// Separate from AnalysisProvider because it answers from somewhere else: the
+// debounce stamp is the conversation layer's handoff, not a row in the
+// engine's queue. The inbox is what joins the two into one thing a person
+// reads.
+type AnalysisScheduleReader interface {
+	AwaitingAnalysis(entryIDs []string, entryType string) (map[string]bool, error)
 }
 
 type InitialStageAssigner interface {

@@ -3,6 +3,7 @@ package audience_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +38,9 @@ type fakeRepo struct {
 	// Saved counts SaveMany calls, so a test can assert persistence happened.
 	Saved     int
 	InsertErr error
+	// failCountWaiting makes the backlog read fail, so a test can pin that the
+	// budget still reports its ceiling when the queue cannot be counted.
+	failCountWaiting bool
 
 	AggregateAuthorsFn     func(source ca.Source, accountID string, since time.Time) ([]*ca.AuthorStats, error)
 	AggregateRollupsFn     func(day time.Time) ([]*ca.Rollup, error)
@@ -58,7 +62,7 @@ func (f *fakeRepo) Insert(_ context.Context, a *ca.Analysis) (bool, error) {
 		return false, f.InsertErr
 	}
 	for _, r := range f.rows {
-		if r.Source == a.Source && r.SubjectID == a.SubjectID {
+		if r.Source == a.Source && r.Kind() == a.Kind() && r.SubjectID == a.SubjectID && r.Revision == a.Revision {
 			return false, nil
 		}
 	}
@@ -188,6 +192,39 @@ func (f *fakeRepo) CountPendingBySource(context.Context) (map[ca.Source]int, err
 	return out, nil
 }
 
+// CountWaiting answers ca.BacklogReader from the rows the fake already holds,
+// so a test that queues work sees the backlog without a second source of truth.
+func (f *fakeRepo) CountWaiting(_ context.Context, workspaceID string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failCountWaiting {
+		return 0, errors.New("backlog unavailable")
+	}
+	n := 0
+	for _, r := range f.rows {
+		if r.WorkspaceID != workspaceID {
+			continue
+		}
+		if r.Status == ca.StatusPending || r.Status == ca.StatusInFlight {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// seedWaiting puts n unclassified rows in one workspace's queue.
+func (f *fakeRepo) seedWaiting(workspaceID string, n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("%s-waiting-%d", workspaceID, i)
+		f.rows[id] = &ca.Analysis{
+			ID: id, WorkspaceID: workspaceID, Source: ca.SourceInstagram,
+			Status: ca.StatusPending,
+		}
+	}
+}
+
 // List filters the stored rows on the fields the use cases actually pass. It
 // used to return an empty page unconditionally, which made anything reading a
 // corpus back (the author pass) silently see nothing and pass for the wrong
@@ -245,6 +282,10 @@ func (f *fakeRepo) ListAuthorContainers(_ context.Context, in ca.AuthorContainer
 }
 func (f *fakeRepo) GetStats(context.Context, ca.ListInput) (*ca.Stats, error) {
 	return &ca.Stats{}, nil
+}
+
+func (f *fakeRepo) GetTrend(context.Context, ca.ListInput) ([]*ca.Rollup, error) {
+	return []*ca.Rollup{}, nil
 }
 func (f *fakeRepo) AggregateAuthors(_ context.Context, source ca.Source, accountID string, since time.Time) ([]*ca.AuthorStats, error) {
 	if f.AggregateAuthorsFn != nil {
@@ -502,24 +543,13 @@ func (f *fakeScheduler) Clear(_ context.Context, ref ca.ContainerRef) error {
 // ---- charger ----
 
 type fakeCharger struct {
-	mu       sync.Mutex
-	reserved int
-	capLeft  int // -1 = unlimited
-	charges  []int
-	price    int64
+	mu      sync.Mutex
+	charges []int
+	price   int64
 }
 
-func newFakeCharger() *fakeCharger { return &fakeCharger{capLeft: -1} }
+func newFakeCharger() *fakeCharger { return &fakeCharger{} }
 
-func (f *fakeCharger) ReserveDaily(_ context.Context, _ string, items, _ int, _ time.Time) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.capLeft >= 0 && f.reserved+items > f.capLeft {
-		return false, nil
-	}
-	f.reserved += items
-	return true, nil
-}
 func (f *fakeCharger) ChargeBatch(_ context.Context, _, _ string, items int) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -618,7 +648,21 @@ func (s *fakeState) HGetAll(key string) (map[string]string, error) {
 	}
 	return out, nil
 }
-func (s *fakeState) HIncrBy(string, string, int64) (int64, error) { return 0, nil }
+
+// A real implementation, not a stub returning zero: the rolling usage budget
+// is stored as a hash of hourly buckets, so a no-op here would let every test
+// of it pass against a budget that was never spent.
+func (s *fakeState) HIncrBy(key, field string, n int64) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hash[key] == nil {
+		s.hash[key] = map[string]string{}
+	}
+	current, _ := strconv.ParseInt(s.hash[key][field], 10, 64)
+	current += n
+	s.hash[key][field] = strconv.FormatInt(current, 10)
+	return current, nil
+}
 func (s *fakeState) IncrBy(key string, n int64) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -667,17 +711,18 @@ func (f *fakeAI) GetModelsWithPricing(context.Context) ([]ai.ModelInfo, error) {
 // ---- test harness ----
 
 type harness struct {
-	repo        *fakeRepo
-	settings    *fakeSettings
-	batches     *fakeBatches
-	adapter     *fakeAdapter
-	classifier  *fakeClassifier
-	scheduler   *fakeScheduler
-	charger     *fakeCharger
-	balance     *fakeBalance
-	state       *fakeState
-	broadcaster *fakeBroadcaster
-	engine      *Engine
+	repo            *fakeRepo
+	settings        *fakeSettings
+	workspaceLimits *fakeWorkspaceLimits
+	batches         *fakeBatches
+	adapter         *fakeAdapter
+	classifier      *fakeClassifier
+	scheduler       *fakeScheduler
+	charger         *fakeCharger
+	balance         *fakeBalance
+	state           *fakeState
+	broadcaster     *fakeBroadcaster
+	engine          *Engine
 }
 
 // fakeBroadcaster records what the live feed would have been sent.
@@ -700,22 +745,27 @@ func (f *fakeBroadcaster) all() []ca.AnalysisBatchAnalyzed {
 
 func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 	h := &harness{
-		repo:        newFakeRepo(),
-		settings:    newFakeSettings(enabledSettings()),
-		batches:     &fakeBatches{},
-		adapter:     &fakeAdapter{texts: map[string]string{}, caption: "Asfalto novo na Rua A"},
-		classifier:  &fakeClassifier{},
-		scheduler:   newFakeScheduler(),
-		charger:     newFakeCharger(),
-		balance:     &fakeBalance{micros: 1_000_000},
-		state:       newFakeState(),
-		broadcaster: &fakeBroadcaster{},
+		repo:            newFakeRepo(),
+		settings:        newFakeSettings(enabledSettings()),
+		workspaceLimits: newFakeWorkspaceLimits(),
+		batches:         &fakeBatches{},
+		adapter:         &fakeAdapter{texts: map[string]string{}, caption: "Asfalto novo na Rua A"},
+		classifier:      &fakeClassifier{},
+		scheduler:       newFakeScheduler(),
+		charger:         newFakeCharger(),
+		balance:         &fakeBalance{micros: 1_000_000},
+		state:           newFakeState(),
+		broadcaster:     &fakeBroadcaster{},
 	}
 	engine, err := NewEngine(EngineDeps{
 		Repo: h.repo, Settings: NewSettingsResolver(h.settings), Batches: h.batches,
 		Adapters:   map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: h.adapter},
 		Classifier: h.classifier, Scheduler: h.scheduler, Charger: h.charger,
-		Balance: h.balance, State: h.state, Clock: fixedClock{now}, Budget: budget,
+		// The REAL limiter over the fake state: the budget is the thing under
+		// test in the cap cases, and a fake of it would only prove the fake.
+		Usage:           NewUsageLimiter(h.state),
+		WorkspaceLimits: h.workspaceLimits,
+		Balance:         h.balance, State: h.state, Clock: fixedClock{now}, Budget: budget,
 		Broadcaster: h.broadcaster,
 	})
 	if err != nil {
@@ -779,4 +829,25 @@ func (f *fakeSettings) ListOverrides(_ context.Context, source ca.Source, accoun
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) LatestBySubject(_ context.Context, workspaceID string, source ca.Source, kind ca.SubjectKind, subjectID string) (*ca.Analysis, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var latest *ca.Analysis
+	for _, r := range f.rows {
+		if r.SubjectID != subjectID || r.Kind() != kind {
+			continue
+		}
+		if source != "" && r.Source != source {
+			continue
+		}
+		if workspaceID != "" && r.WorkspaceID != workspaceID {
+			continue
+		}
+		if latest == nil || !r.OccurredAt.Before(latest.OccurredAt) {
+			latest = r
+		}
+	}
+	return latest, nil
 }

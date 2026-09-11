@@ -154,6 +154,16 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		conversationStatusUpdater,
 	)
 	c.services.inboxService = inboxSvc
+	// The debounce stamps the send path writes. Without this the inbox can only
+	// report an analysis once the engine has been handed the conversation,
+	// which is minutes after the reply that scheduled it.
+	if setter, ok := inboxSvc.(interface {
+		SetAnalysisScheduleReader(conversation_domain.AnalysisScheduleReader)
+	}); ok {
+		setter.SetAnalysisScheduleReader(
+			conversation_usecase.NewAnalysisScheduleReader(c.redisProvider.SharedState()),
+		)
+	}
 
 	assignmentRepo := ia_repo.New(c.db)
 	c.services.assignmentService = ia_usecase.NewAssignmentService(assignmentRepo, c.services.conversationHub, workspaceResolver, c.repositories.workspaceConfig)

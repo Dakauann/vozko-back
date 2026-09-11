@@ -29,18 +29,10 @@ const (
 	// provider, stored as a column) so a second provider is another adapter
 	// rather than another entry type and another pass over every set below.
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
-	// EntryTypeVoice is a telephony conversation. It is written to
-	// conversation_messages like any other entry type, but it is not a messaging
-	// channel: it carries no inbound/outbound message pipeline, which is why it
-	// is absent from the messaging set below.
-	EntryTypeVoice EntryType = "voice"
 )
 
 // messagingEntryTypes are the channels the shared messaging pipeline accepts,
 // the ones with inbound webhooks, an outbound send path and a message history.
-//
-// Voice is deliberately excluded: it has no message pipeline, and several call
-// sites rely on Valid() rejecting it.
 var messagingEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
 	EntryTypeSupport:            {},
@@ -53,13 +45,11 @@ var messagingEntryTypes = map[EntryType]struct{}{
 // can open, search and page through.
 //
 // This is a different question from Valid(): support entries are a valid
-// messaging type but are not opened through the CRM conversation view, while
-// voice conversations are viewable despite not being a messaging channel. Adding
+// messaging type but are not opened through the CRM conversation view. Adding
 // a channel (Telegram, say) means adding its constant and listing it here, no
 // delivery-layer or usecase code changes.
 var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeVoice:              {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -68,15 +58,13 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 // crmTaggableEntryTypes are the entry types whose conversations can carry CRM
 // metadata: a kanban stage and labels.
 //
-// A third question again, and it answers differently from both sets above,
-// voice is not a messaging channel yet is staged and labelled like any other
-// conversation, and support is staged despite not being opened through the CRM
-// conversation view. Every channel that reaches the board belongs here: a card
+// A third question again, and it answers differently from both sets above:
+// support is staged despite not being opened through the CRM conversation
+// view. Every channel that reaches the board belongs here: a card
 // that renders but cannot be moved or labelled is worse than no card, so adding
 // a channel to entry_sources.go without listing it here ships exactly that.
 var crmTaggableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeVoice:              {},
 	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
@@ -88,15 +76,11 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 // workflow's finish node.
 //
 // A fourth independent question. It used to be spelled inline as
-// `entryType != "whatsapp" && entryType != "voice"` in three separate places,
+// `entryType != "whatsapp"` in three separate places,
 // which is why Instagram conversations could be transferred and staged but never
-// closed: the guards predate the channel and fail CLOSED, silently. Voice is
-// listed because those guards accepted it and the status service treats it as a
-// no-op; removing it here would be a behaviour change unrelated to adding a
-// channel.
+// closed: the guards predate the channel and fail CLOSED, silently.
 var conversationClosableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeVoice:              {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -146,7 +130,7 @@ func ConversationViewableEntryTypes() []EntryType {
 //
 // It answers the weakest question there is: "is this path variable a real entry
 // type?" That is what the HTTP conversation endpoints actually need, and they
-// spelled it as `!= "voice" && != "whatsapp" && != "support"`, which rejected
+// spelled it as `!= "whatsapp" && != "support"`, which rejected
 // Instagram with a 400 on nine endpoints. entry_type_test.go asserts this stays
 // the union, so a channel added to any set above cannot be missing here.
 var knownEntryTypes = map[EntryType]struct{}{
@@ -154,7 +138,6 @@ var knownEntryTypes = map[EntryType]struct{}{
 	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
-	EntryTypeVoice:              {},
 	EntryTypeUnofficialWhatsApp: {},
 }
 
@@ -174,14 +157,11 @@ func KnownEntryTypes() []EntryType {
 // SearchInboxInput.CampaignType.
 //
 // A fifth independent question, and it answers differently again: support IS a
-// valid inbox scope despite not being opened through the conversation view, and
-// voice IS one despite having no entry_sources branch (the call inbox is
-// scoped separately). Spelled inline it read
-// `!= "voice" && != "whatsapp" && != "support"`, which rejected Instagram with a
-// 400 and would have rejected Telegram the same way.
+// valid inbox scope despite not being opened through the conversation view.
+// Spelled inline it read `!= "whatsapp" && != "support"`, which rejected
+// Instagram with a 400 and would have rejected Telegram the same way.
 var inboxScopableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeVoice:              {},
 	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
@@ -204,8 +184,8 @@ func InboxScopableEntryTypes() []EntryType {
 // to a single container, a WhatsApp campaign, or the account row for channels
 // that have no campaign concept.
 //
-// This is narrower than SupportsInboxScope: voice and support are valid inbox
-// selectors but have no container-scoped query behind them, and asking for one
+// This is narrower than SupportsInboxScope: support is a valid inbox selector
+// but has no container-scoped query behind it, and asking for one
 // would return an empty list rather than the workspace-wide view they show
 // today. infra/repositories/conversation/channel_queries.go is the registry that
 // actually serves these, and entry_type_test.go pins the two in step.
@@ -242,7 +222,7 @@ func ConversationClosableEntryTypes() []EntryType {
 }
 
 // FormatEntryTypes renders entry types for a user-facing message, e.g.
-// "'instagram', 'voice' or 'whatsapp'".
+// "'instagram', 'telegram' or 'whatsapp'".
 func FormatEntryTypes(types []EntryType) string {
 	quoted := make([]string, 0, len(types))
 	for _, t := range types {
@@ -295,13 +275,6 @@ var commentAnalysableEntryTypes = map[EntryType]struct{}{
 // conversationAnalysableEntryTypes are the channels whose conversations carry a
 // transcript worth classifying.
 //
-// Voice is listed and is the reason this cannot be folded into Valid(): it has
-// no inbound/outbound message pipeline, so Valid() rejects it, yet it writes to
-// conversation_messages like everything else and produces the longest
-// transcripts in the system. The legacy engine had a voice prompt and the
-// no_answer/voicemail dispositions but nothing ever enqueued a call, which is
-// the gap this set closes.
-//
 // Support is deliberately absent: those entries are internal tickets, the
 // legacy engine never analysed them, and this port does not change that.
 var conversationAnalysableEntryTypes = map[EntryType]struct{}{
@@ -309,7 +282,6 @@ var conversationAnalysableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
-	EntryTypeVoice:              {},
 }
 
 // SupportsCommentAnalysis reports whether this channel has public comments the

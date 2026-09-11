@@ -71,7 +71,7 @@ func TestInsertDuplicateIsNotAnError(t *testing.T) {
 
 	// The conflict clause makes the database answer "0 rows" rather than
 	// raising, and the repository must pass that through as (false, nil).
-	mock.ExpectExec(regexp.QuoteMeta(`ON CONFLICT ("source","subject_kind","subject_id") DO NOTHING`)).
+	mock.ExpectExec(regexp.QuoteMeta(`ON CONFLICT ("source","subject_kind","subject_id","revision") DO NOTHING`)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	a, _ := ca.NewPending(ca.NewInput{
@@ -130,6 +130,33 @@ func TestClaimByIDsEmptyIsNotAnError(t *testing.T) {
 	// And no ids means no statement at all.
 	if got, err := NewRepository(db).ClaimByIDs(context.Background(), nil, now); err != nil || len(got) != 0 {
 		t.Fatalf("nil ids: %v %v", got, err)
+	}
+}
+
+func TestGetTrendUsesLiveFiltersAndGroupsByUTCDay(t *testing.T) {
+	db, mock, sqlDB := newMockDB(t)
+	defer sqlDB.Close()
+
+	day := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(`SELECT date_trunc\('day'.*FROM "audience_analyses".*subject_kind IN.*GROUP BY date_trunc`).
+		WillReturnRows(sqlmock.NewRows([]string{"bucket_date", "total", "analyzed", "conversation_count", "messages_total"}).
+			AddRow(day, 1, 1, 1, 114))
+
+	rows, err := NewRepository(db).GetTrend(context.Background(), ca.ListInput{
+		WorkspaceID: "ws-1",
+		Source:      ca.SourceUnofficialWhatsApp,
+		SubjectKinds: []ca.SubjectKind{
+			ca.SubjectKindConversation,
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetTrend: %v", err)
+	}
+	if len(rows) != 1 || !rows[0].BucketDate.Equal(day) || rows[0].ConversationCount != 1 || rows[0].MessagesTotal != 114 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

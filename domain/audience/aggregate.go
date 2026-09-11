@@ -58,8 +58,10 @@ type Counters struct {
 	// subject counts say how much of the slice each block describes: without
 	// them a reader cannot tell an all-comment slice from one where every
 	// conversation happened to be unlabelled.
-	CommentCount      int `json:"commentCount"`
-	ConversationCount int `json:"conversationCount"`
+	CommentCount         int        `json:"commentCount"`
+	ConversationCount    int        `json:"conversationCount"`
+	ConversationAnalyzed int        `json:"conversationAnalyzed"`
+	LastAnalyzedAt       *time.Time `json:"lastAnalyzedAt,omitempty"`
 
 	InterestInterested    int `json:"interestInterested"`
 	InterestNotInterested int `json:"interestNotInterested"`
@@ -69,8 +71,6 @@ type Counters struct {
 	DispositionFillingInfo int `json:"dispositionFillingInfo"`
 	DispositionCallback    int `json:"dispositionCallback"`
 	DispositionDeclined    int `json:"dispositionDeclined"`
-	DispositionNoAnswer    int `json:"dispositionNoAnswer"`
-	DispositionVoicemail   int `json:"dispositionVoicemail"`
 	DispositionPending     int `json:"dispositionPending"`
 
 	QualificationHotLead  int `json:"qualificationHotLead"`
@@ -115,8 +115,15 @@ type TopicStat struct {
 // Stats is the live aggregate for a filtered slice.
 type Stats struct {
 	Counters
-	Topics          []TopicStat `json:"topics"`
-	AcceptanceScore int         `json:"acceptanceScore"`
+	Topics []TopicStat `json:"topics"`
+	// Subjects is what the conversations in this slice were ABOUT, ranked.
+	//
+	// It rides on Stats rather than on its own endpoint so the ranking and the
+	// numbers above it are one query's answer over one set of filters. A second
+	// endpoint would be a second chance for the chart and its own header to
+	// disagree.
+	Subjects        []SubjectCount `json:"subjects"`
+	AcceptanceScore int            `json:"acceptanceScore"`
 	// Finalized guards against serving counters whose score was never
 	// derived: a repository fills Counters, the use case calls Finalize.
 	Finalized bool `json:"-"`
@@ -295,6 +302,9 @@ type ListInput struct {
 	// conversation.s entry id. It is what "show me this conversation's analysis"
 	// asks, which used to need its own endpoint.
 	SubjectID string
+	// LatestOnly selects the latest revision as of To before applying labels
+	// and statuses. History readers leave this false.
+	LatestOnly bool
 
 	Options shared.QueryOptions
 }

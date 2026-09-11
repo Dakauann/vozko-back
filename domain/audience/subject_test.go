@@ -9,26 +9,19 @@ import (
 
 // The engine used to accept exactly one channel. It now accepts every channel
 // the shared sets declare analysable, and Valid() must mean THAT rather than
-// "is a messaging channel": the two differ on voice (analysable, not messaging)
-// and on support (messaging, never analysed).
+// "is a messaging channel": the two differ on support (messaging, never
+// analysed) and on voice, which has a conversation history but no resolver and
+// so is analysable by neither measure.
 func TestSourceValidFollowsTheAnalysisSets(t *testing.T) {
-	for _, s := range []Source{SourceInstagram, SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp, SourceVoice} {
+	for _, s := range []Source{SourceInstagram, SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp} {
 		if !s.Valid() {
 			t.Errorf("%q should be an analysable source", s)
 		}
 	}
-	for _, s := range []Source{"support", "", "Instagram", "facebook", "instagram "} {
+	for _, s := range []Source{"support", "voice", "", "Instagram", "facebook", "instagram "} {
 		if s.Valid() {
 			t.Errorf("%q should not be an analysable source", s)
 		}
-	}
-
-	// Voice is the case that proves Valid() is not EntryType.Valid().
-	if SourceVoice.EntryType().Valid() {
-		t.Fatal("precondition: voice is not a messaging entry type")
-	}
-	if !SourceVoice.Valid() {
-		t.Error("voice must be an analysable source")
 	}
 }
 
@@ -45,12 +38,12 @@ func TestSubjectKindSupportedOn(t *testing.T) {
 	if !SubjectKindComment.SupportedOn(SourceInstagram) {
 		t.Error("instagram should carry comments")
 	}
-	for _, s := range []Source{SourceWhatsApp, SourceTelegram, SourceVoice, SourceUnofficialWhatsApp} {
+	for _, s := range []Source{SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp} {
 		if SubjectKindComment.SupportedOn(s) {
 			t.Errorf("%q has no public comments", s)
 		}
 	}
-	for _, s := range []Source{SourceWhatsApp, SourceInstagram, SourceTelegram, SourceUnofficialWhatsApp, SourceVoice} {
+	for _, s := range []Source{SourceWhatsApp, SourceInstagram, SourceTelegram, SourceUnofficialWhatsApp} {
 		if !SubjectKindConversation.SupportedOn(s) {
 			t.Errorf("%q should carry conversations", s)
 		}
@@ -261,7 +254,7 @@ func TestNewPendingRefusesImpossibleSubjects(t *testing.T) {
 	now := time.Now().UTC()
 	for name, ref := range map[string]ContainerRef{
 		"comment on telegram":     {Kind: SubjectKindComment, Source: SourceTelegram, AccountID: "a", ContainerID: "c"},
-		"comment on voice":        {Kind: SubjectKindComment, Source: SourceVoice, AccountID: "a", ContainerID: "c"},
+		"conversation on voice":   {Kind: SubjectKindConversation, Source: "voice", AccountID: "a", ContainerID: "c"},
 		"conversation on support": {Kind: SubjectKindConversation, Source: "support", AccountID: "a", ContainerID: "c"},
 		"unknown channel":         {Kind: SubjectKindConversation, Source: "facebook", AccountID: "a", ContainerID: "c"},
 	} {

@@ -50,6 +50,18 @@ func TestHint_Due_Idle(t *testing.T) {
 	}
 }
 
+func TestConversationHintDoesNotWaitTwice(t *testing.T) {
+	h := hint(0, 0, 1)
+	h.Ref.Kind = SubjectKindConversation
+	if !h.Due(now, policy()) {
+		t.Fatal("an already-idle conversation waited again")
+	}
+	h.Ref.Kind = SubjectKindComment
+	if h.Due(now, policy()) {
+		t.Fatal("comments lost their inactivity window")
+	}
+}
+
 func TestHint_Due_MaxPending(t *testing.T) {
 	// Busy post (last comment seconds ago, first seen a minute ago) but 200
 	// pending: do not sit on a fifth of a batch-hour of work.

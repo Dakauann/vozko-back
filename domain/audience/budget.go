@@ -39,9 +39,25 @@ type Budget struct {
 	// PerItemInputOverhead is what one item's JSON envelope (ref + quoting)
 	// costs on the way in, on top of its text. Default 8.
 	PerItemInputOverhead int
-	// MaxCommentRunes truncates each comment's text before estimation and
+	// MaxCommentRunes truncates each COMMENT's text before estimation and
 	// before the model sees it. Runes, not bytes. Default 600.
 	MaxCommentRunes int
+	// MaxTranscriptRunes is the same bound for a CONVERSATION, and it is a
+	// separate number because the two subjects are nothing alike.
+	//
+	// A comment is a sentence; 600 runes is generous for one. A transcript is a
+	// whole exchange, and 600 runes is its greeting. Sharing the comment cap
+	// meant every conversation was classified on its opening lines with the rest
+	// cut away, so the model reported no progress, no engagement and no answer,
+	// and the attendance score came out zero every time. It was not wrong about
+	// what it was shown.
+	//
+	// Defaults to MaxTranscriptRunes, which is the SAME number the channel
+	// adapter renders up to. They must not diverge: whatever gap exists between
+	// them is text that was rendered, stored and then silently dropped on the
+	// way to the model. Batching already accounts for the real token cost, so a
+	// large transcript makes batches smaller rather than making calls overflow.
+	MaxTranscriptRunes int
 	// ReserveTokens is slack for the schema envelope and closing braces,
 	// charged to both the input estimate and the output cap. Default 512.
 	ReserveTokens int
@@ -65,6 +81,7 @@ func DefaultBudget() Budget {
 		PerItemOutputTokens:  64,
 		PerItemInputOverhead: 8,
 		MaxCommentRunes:      600,
+		MaxTranscriptRunes:   MaxTranscriptRunes,
 		ReserveTokens:        512,
 		SafetyFactor:         1.35,
 		MaxTokensPerCycle:    120_000,
@@ -88,6 +105,7 @@ func (b *Budget) Normalize() {
 	fill(&b.MaxOutputTokens, d.MaxOutputTokens)
 	fill(&b.PerItemOutputTokens, d.PerItemOutputTokens)
 	fill(&b.MaxCommentRunes, d.MaxCommentRunes)
+	fill(&b.MaxTranscriptRunes, d.MaxTranscriptRunes)
 	fill(&b.MaxTokensPerCycle, d.MaxTokensPerCycle)
 	fill(&b.MaxBatchesPerCycle, d.MaxBatchesPerCycle)
 	fill(&b.PerItemInputOverhead, d.PerItemInputOverhead)
@@ -112,6 +130,8 @@ func (b Budget) Validate() error {
 		return fmt.Errorf("%w: PerItemOutputTokens must be positive", ErrBudgetInvalid)
 	case b.PerItemInputOverhead < 0 || b.ReserveTokens < 0:
 		return fmt.Errorf("%w: overhead and reserve cannot be negative", ErrBudgetInvalid)
+	case b.MaxTranscriptRunes <= 0:
+		return fmt.Errorf("%w: MaxTranscriptRunes must be positive", ErrBudgetInvalid)
 	case b.MaxCommentRunes <= 0:
 		return fmt.Errorf("%w: MaxCommentRunes must be positive", ErrBudgetInvalid)
 	case b.SafetyFactor < 1:
@@ -250,6 +270,17 @@ const (
 	RemainderCycleBatches = "cycle_batches"
 )
 
+// TextRunesFor is how much of one subject's text may reach the model.
+//
+// The one place the comment/transcript distinction is decided, so the estimator
+// and the truncation can never disagree about it.
+func (b Budget) TextRunesFor(kind SubjectKind) int {
+	if kind == SubjectKindConversation {
+		return b.MaxTranscriptRunes
+	}
+	return b.MaxCommentRunes
+}
+
 // PlanBatches packs items into batches under every bound in b.
 //
 // A batch closes when the NEXT item would cross any of:
@@ -263,7 +294,7 @@ const (
 // A closed batch is committed only if the cycle can afford it whole:
 // Σ EstimatedTotalTokens ≤ MaxTokensPerCycle and len(plans) < MaxBatchesPerCycle.
 // Otherwise it and everything after it are returned in the Remainder.
-func PlanBatches(items []Item, systemPromptTokens int, b Budget) ([]BatchPlan, Remainder) {
+func PlanBatches(items []Item, systemPromptTokens int, b Budget, kind SubjectKind) ([]BatchPlan, Remainder) {
 	if len(items) == 0 {
 		return nil, Remainder{}
 	}
@@ -289,7 +320,7 @@ func PlanBatches(items []Item, systemPromptTokens int, b Budget) ([]BatchPlan, R
 
 	batchStart := 0
 	for i, raw := range items {
-		text, cut := TruncateRunes(raw.Text, b.MaxCommentRunes)
+		text, cut := TruncateRunes(raw.Text, b.TextRunesFor(kind))
 		tokens := shared.EstimateTokens(text) + b.PerItemInputOverhead
 
 		if len(cur.Items) > 0 && (len(cur.Items) >= b.MaxBatchItems ||
