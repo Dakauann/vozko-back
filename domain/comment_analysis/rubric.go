@@ -34,6 +34,18 @@ const (
 	SeverityKeyToxicity       = "toxicity"
 	SeverityKeyPersonalAttack = "personal_attack"
 	SeverityKeyLegalRisk      = "legal_risk"
+
+	// Conversation-subject keys (see conversation.go for the taxonomy). They
+	// live in this block with the comment keys because it is the one place the
+	// wire format is named: the schema and the decoder both read from here, so
+	// a rename cannot orphan one side. FieldSentiment above is deliberately
+	// shared, it means the same thing for both subjects.
+	FieldInterest        = "interest"
+	FieldProductInterest = "product_interest"
+	FieldDisposition     = "disposition"
+	FieldQualification   = "qualification"
+	FieldNextAction      = "next_action"
+	FieldSummary         = "summary"
 )
 
 // ClassificationFields is the taxonomy the model classifies each comment on.

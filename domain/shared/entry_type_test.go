@@ -135,3 +135,101 @@ func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 		t.Error("viewable must not imply Valid(); the two sets are independent")
 	}
 }
+
+// Analysis is TWO independent questions, not one, and neither is answered by
+// Valid().
+//
+// A comment needs a channel with public posts under an account. A conversation
+// needs a transcript, which every channel writes to conversation_messages,
+// voice included, despite voice carrying no messaging pipeline. Folding the two
+// into one predicate would either offer comment analysis on Telegram, which has
+// no posts, or refuse conversation analysis on voice, which has the richest
+// transcripts in the system.
+func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
+	// Instagram is the only channel with public comments today.
+	if !EntryTypeInstagram.SupportsCommentAnalysis() {
+		t.Error("instagram should support comment analysis")
+	}
+	for _, e := range []EntryType{
+		EntryTypeWhatsApp, EntryTypeTelegram, EntryTypeUnofficialWhatsApp,
+		EntryTypeVoice, EntryTypeSupport,
+	} {
+		if e.SupportsCommentAnalysis() {
+			t.Errorf("%q has no public comments and must not support comment analysis", e)
+		}
+	}
+
+	// Every channel that holds a transcript can be analysed as a conversation.
+	for _, e := range []EntryType{
+		EntryTypeWhatsApp, EntryTypeInstagram, EntryTypeTelegram,
+		EntryTypeUnofficialWhatsApp, EntryTypeVoice,
+	} {
+		if !e.SupportsConversationAnalysis() {
+			t.Errorf("%q should support conversation analysis", e)
+		}
+	}
+	// Support entries are internal tickets; the legacy engine never analysed
+	// them and this port does not start.
+	if EntryTypeSupport.SupportsConversationAnalysis() {
+		t.Error("support should not support conversation analysis")
+	}
+
+	// Voice is the case that proves the sets are independent of Valid().
+	if EntryTypeVoice.Valid() {
+		t.Fatal("precondition: voice is not a messaging entry type")
+	}
+	if !EntryTypeVoice.SupportsConversationAnalysis() {
+		t.Error("voice must be analysable as a conversation despite not being a messaging type")
+	}
+}
+
+// Matching stays exact here too: an entry type read off a queue row or a URL is
+// never normalised, so a near-miss must not open an analysis path.
+func TestAnalysisSetsMatchExactly(t *testing.T) {
+	for _, e := range []EntryType{"Instagram", "INSTAGRAM", " instagram", "instagram ", "", "messenger"} {
+		if e.SupportsCommentAnalysis() || e.SupportsConversationAnalysis() {
+			t.Errorf("%q must not match an analysis set", e)
+		}
+	}
+}
+
+// The exported lists mirror their predicates, so a "must be one of" message
+// cannot name a channel the engine rejects.
+func TestAnalysableEntryTypeListsMirrorPredicates(t *testing.T) {
+	comment := CommentAnalysableEntryTypes()
+	if !reflect.DeepEqual(comment, []EntryType{EntryTypeInstagram}) {
+		t.Errorf("CommentAnalysableEntryTypes() = %v", comment)
+	}
+	for _, e := range comment {
+		if !e.SupportsCommentAnalysis() {
+			t.Errorf("%q listed but not comment-analysable", e)
+		}
+	}
+
+	conversation := ConversationAnalysableEntryTypes()
+	want := []EntryType{
+		EntryTypeInstagram,
+		EntryTypeTelegram,
+		EntryTypeUnofficialWhatsApp,
+		EntryTypeVoice,
+		EntryTypeWhatsApp,
+	}
+	if !reflect.DeepEqual(conversation, want) {
+		t.Errorf("ConversationAnalysableEntryTypes() = %v, want %v (sorted)", conversation, want)
+	}
+	for _, e := range conversation {
+		if !e.SupportsConversationAnalysis() {
+			t.Errorf("%q listed but not conversation-analysable", e)
+		}
+	}
+}
+
+// Every analysable type must be a type the system recognises at all, the same
+// invariant the other sets hold against knownEntryTypes.
+func TestAnalysableEntryTypesAreKnown(t *testing.T) {
+	for _, e := range append(CommentAnalysableEntryTypes(), ConversationAnalysableEntryTypes()...) {
+		if !e.IsKnown() {
+			t.Errorf("%q is analysable but not a known entry type", e)
+		}
+	}
+}

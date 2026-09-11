@@ -119,12 +119,7 @@ func (e EntryType) SupportsCRMTagging() bool {
 // CRMTaggableEntryTypes lists the taggable entry types in a stable order, so
 // validation messages stay in step with the set instead of restating it.
 func CRMTaggableEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(crmTaggableEntryTypes))
-	for t := range crmTaggableEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(crmTaggableEntryTypes)
 }
 
 // SupportsConversationView reports whether a conversation of this type can be
@@ -143,12 +138,7 @@ func (e EntryType) SupportsConversationView() bool {
 // order, so error messages and API docs stay in step with the set above instead
 // of restating it as a literal.
 func ConversationViewableEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(conversationViewableEntryTypes))
-	for t := range conversationViewableEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(conversationViewableEntryTypes)
 }
 
 // knownEntryTypes is every entry type the system recognises at all, the union
@@ -176,12 +166,7 @@ func (e EntryType) IsKnown() bool {
 
 // KnownEntryTypes lists every entry type in a stable order.
 func KnownEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(knownEntryTypes))
-	for t := range knownEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(knownEntryTypes)
 }
 
 // inboxScopableEntryTypes are the entry types the inbox can be narrowed to, the
@@ -212,12 +197,7 @@ func (e EntryType) SupportsInboxScope() bool {
 // InboxScopableEntryTypes lists the scopable entry types in a stable order, so
 // the "must be one of" error stays in step with the set.
 func InboxScopableEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(inboxScopableEntryTypes))
-	for t := range inboxScopableEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(inboxScopableEntryTypes)
 }
 
 // containerScopedInboxEntryTypes are the entry types whose inbox can be narrowed
@@ -245,12 +225,7 @@ func (e EntryType) SupportsContainerScopedInbox() bool {
 
 // ContainerScopedInboxEntryTypes lists them in a stable order.
 func ContainerScopedInboxEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(containerScopedInboxEntryTypes))
-	for t := range containerScopedInboxEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(containerScopedInboxEntryTypes)
 }
 
 // SupportsConversationClosing reports whether a conversation of this type can be
@@ -263,12 +238,7 @@ func (e EntryType) SupportsConversationClosing() bool {
 // ConversationClosableEntryTypes lists the closable entry types in a stable
 // order, so error messages stay in step with the set instead of restating it.
 func ConversationClosableEntryTypes() []EntryType {
-	out := make([]EntryType, 0, len(conversationClosableEntryTypes))
-	for t := range conversationClosableEntryTypes {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return sortedEntryTypes(conversationClosableEntryTypes)
 }
 
 // FormatEntryTypes renders entry types for a user-facing message, e.g.
@@ -306,4 +276,80 @@ func (e EntryType) EventChannel() string {
 		return string(e)
 	}
 	return string(EntryTypeWhatsApp)
+}
+
+// ---- Analysis ----
+//
+// Two more independent questions, and they answer differently from every set
+// above and from each other.
+//
+// commentAnalysableEntryTypes are the channels with PUBLIC POSTS that strangers
+// comment under. That is a property of the channel's product surface, not of
+// its message pipeline: Telegram is a first-class messaging type with no posts
+// to comment on, and adding a channel here without that surface would offer an
+// operator a feature with nothing to analyse.
+var commentAnalysableEntryTypes = map[EntryType]struct{}{
+	EntryTypeInstagram: {},
+}
+
+// conversationAnalysableEntryTypes are the channels whose conversations carry a
+// transcript worth classifying.
+//
+// Voice is listed and is the reason this cannot be folded into Valid(): it has
+// no inbound/outbound message pipeline, so Valid() rejects it, yet it writes to
+// conversation_messages like everything else and produces the longest
+// transcripts in the system. The legacy engine had a voice prompt and the
+// no_answer/voicemail dispositions but nothing ever enqueued a call, which is
+// the gap this set closes.
+//
+// Support is deliberately absent: those entries are internal tickets, the
+// legacy engine never analysed them, and this port does not change that.
+var conversationAnalysableEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp:           {},
+	EntryTypeInstagram:          {},
+	EntryTypeTelegram:           {},
+	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeVoice:              {},
+}
+
+// SupportsCommentAnalysis reports whether this channel has public comments the
+// engine can classify.
+func (e EntryType) SupportsCommentAnalysis() bool {
+	_, ok := commentAnalysableEntryTypes[e]
+	return ok
+}
+
+// SupportsConversationAnalysis reports whether this channel's conversations can
+// be classified.
+func (e EntryType) SupportsConversationAnalysis() bool {
+	_, ok := conversationAnalysableEntryTypes[e]
+	return ok
+}
+
+// SupportsAnalysis reports whether the engine can analyse anything at all on
+// this channel, the union of the two sets above. It is what a settings screen
+// asks before offering the feature for an account.
+func (e EntryType) SupportsAnalysis() bool {
+	return e.SupportsCommentAnalysis() || e.SupportsConversationAnalysis()
+}
+
+// CommentAnalysableEntryTypes lists them in a stable order.
+func CommentAnalysableEntryTypes() []EntryType {
+	return sortedEntryTypes(commentAnalysableEntryTypes)
+}
+
+// ConversationAnalysableEntryTypes lists them in a stable order.
+func ConversationAnalysableEntryTypes() []EntryType {
+	return sortedEntryTypes(conversationAnalysableEntryTypes)
+}
+
+// sortedEntryTypes renders a set as a stable slice. Every exported list above
+// needs exactly this, and each had its own copy of the loop.
+func sortedEntryTypes(set map[EntryType]struct{}) []EntryType {
+	out := make([]EntryType, 0, len(set))
+	for t := range set {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }

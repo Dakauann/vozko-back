@@ -3,90 +3,56 @@ package analysis
 import (
 	"time"
 
+	ca "vozko/domain/comment_analysis"
 	"vozko/domain/shared"
 )
 
-type Interest string
+// TRANSITIONAL SHIM.
+//
+// The conversation taxonomy moved to domain/comment_analysis, which is becoming
+// the single analysis engine for every channel (see
+// AUDIENCE_ANALYSIS_UNIFICATION_PLAN.md). The definitions are NOT duplicated
+// here: these are aliases, so this package's remaining callers keep compiling
+// while they are migrated one at a time. This whole package is deleted once the
+// last one moves.
 
-const (
-	InterestInterested    Interest = "interested"
-	InterestNotInterested Interest = "not_interested"
-	InterestUndecided     Interest = "undecided"
+type (
+	Interest      = ca.Interest
+	Disposition   = ca.Disposition
+	Qualification = ca.Qualification
+	NextAction    = ca.NextAction
+	// Sentiment is shared across channels (domain/shared/sentiment.go); the
+	// alias keeps this package's persisted values unchanged.
+	Sentiment = shared.Sentiment
 )
 
-func (i Interest) Valid() bool {
-	switch i {
-	case InterestInterested, InterestNotInterested, InterestUndecided:
-		return true
-	}
-	return false
-}
-
-type Disposition string
-
 const (
-	DispositionSale        Disposition = "sale"
-	DispositionFillingInfo Disposition = "filling_info"
-	DispositionCallback    Disposition = "callback"
-	DispositionDeclined    Disposition = "declined"
-	DispositionNoAnswer    Disposition = "no_answer"
-	DispositionVoicemail   Disposition = "voicemail"
-	DispositionPending     Disposition = "pending"
-)
+	InterestInterested    = ca.InterestInterested
+	InterestNotInterested = ca.InterestNotInterested
+	InterestUndecided     = ca.InterestUndecided
 
-func (d Disposition) Valid() bool {
-	switch d {
-	case DispositionSale, DispositionFillingInfo, DispositionCallback, DispositionDeclined,
-		DispositionNoAnswer, DispositionVoicemail, DispositionPending:
-		return true
-	}
-	return false
-}
+	DispositionSale        = ca.DispositionSale
+	DispositionFillingInfo = ca.DispositionFillingInfo
+	DispositionCallback    = ca.DispositionCallback
+	DispositionDeclined    = ca.DispositionDeclined
+	DispositionNoAnswer    = ca.DispositionNoAnswer
+	DispositionVoicemail   = ca.DispositionVoicemail
+	DispositionPending     = ca.DispositionPending
 
-// Sentiment is shared across channels (see domain/shared/sentiment.go); the
-// alias keeps this package's callers and its persisted values unchanged.
-type Sentiment = shared.Sentiment
-
-const (
 	SentimentPositive = shared.SentimentPositive
 	SentimentNeutral  = shared.SentimentNeutral
 	SentimentNegative = shared.SentimentNegative
+
+	QualificationHotLead  = ca.QualificationHotLead
+	QualificationWarmLead = ca.QualificationWarmLead
+	QualificationColdLead = ca.QualificationColdLead
+
+	NextActionScheduleCallback = ca.NextActionScheduleCallback
+	NextActionSendWhatsApp     = ca.NextActionSendWhatsApp
+	NextActionClose            = ca.NextActionClose
+	NextActionEscalate         = ca.NextActionEscalate
+	NextActionContinue         = ca.NextActionContinue
 )
-
-type Qualification string
-
-const (
-	QualificationHotLead  Qualification = "hot_lead"
-	QualificationWarmLead Qualification = "warm_lead"
-	QualificationColdLead Qualification = "cold_lead"
-)
-
-func (q Qualification) Valid() bool {
-	switch q {
-	case QualificationHotLead, QualificationWarmLead, QualificationColdLead:
-		return true
-	}
-	return false
-}
-
-type NextAction string
-
-const (
-	NextActionScheduleCallback NextAction = "schedule_callback"
-	NextActionSendWhatsApp     NextAction = "send_whatsapp"
-	NextActionClose            NextAction = "close"
-	NextActionEscalate         NextAction = "escalate"
-	NextActionContinue         NextAction = "continue"
-)
-
-func (n NextAction) Valid() bool {
-	switch n {
-	case NextActionScheduleCallback, NextActionSendWhatsApp,
-		NextActionClose, NextActionEscalate, NextActionContinue:
-		return true
-	}
-	return false
-}
 
 type Analysis struct {
 	ID                string           `json:"id"`
