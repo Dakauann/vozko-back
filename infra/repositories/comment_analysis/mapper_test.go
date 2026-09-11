@@ -158,3 +158,58 @@ func TestToDomainNilIsNil(t *testing.T) {
 		t.Error("toDomain(nil) should be nil")
 	}
 }
+
+// The counters scan row must cover every field of the domain's Counters, and
+// the mapping between them must carry all of them.
+//
+// This is the same class of silent bug the mapper test guards: a counter added
+// to the domain but not to CountersRow, or to CountersRow but not to counters(),
+// reads as a permanent zero. On a dashboard a zero is indistinguishable from
+// "there were none", so nothing ever looks broken.
+func TestCountersRowCoversEveryDomainCounter(t *testing.T) {
+	row := reflect.TypeOf(CountersRow{})
+	inRow := map[string]bool{}
+	for i := 0; i < row.NumField(); i++ {
+		inRow[row.Field(i).Name] = true
+	}
+
+	counters := reflect.TypeOf(ca.Counters{})
+	for i := 0; i < counters.NumField(); i++ {
+		name := counters.Field(i).Name
+		// FlaggedAuthors comes from the author projection, not from this query.
+		if name == "FlaggedAuthors" {
+			continue
+		}
+		if !inRow[name] {
+			t.Errorf("Counters.%s has no column in CountersRow, so it is always zero", name)
+		}
+	}
+}
+
+// Every field CountersRow scans must reach the domain. Filling the row with
+// distinguishable values and asserting none arrives zero catches a field
+// dropped from counters().
+func TestCountersMappingCarriesEveryField(t *testing.T) {
+	var rowValue CountersRow
+	v := reflect.ValueOf(&rowValue).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		switch v.Field(i).Kind() {
+		case reflect.Int:
+			v.Field(i).SetInt(int64(i + 1))
+		case reflect.Float64:
+			v.Field(i).SetFloat(float64(i) + 1.5)
+		}
+	}
+
+	got := reflect.ValueOf(rowValue.counters())
+	typ := got.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		name := typ.Field(i).Name
+		if name == "FlaggedAuthors" {
+			continue
+		}
+		if got.Field(i).IsZero() {
+			t.Errorf("Counters.%s was not carried from CountersRow", name)
+		}
+	}
+}

@@ -145,26 +145,35 @@ func saveColumns(a *ca.CommentAnalysis) map[string]any {
 		batchID = &id
 	}
 	return map[string]any{
-		"status":          string(a.Status),
-		"attempts":        a.Attempts,
-		"failure_reason":  a.FailureReason,
-		"sentiment":       string(a.Sentiment),
-		"stance":          string(a.Stance),
-		"intent":          string(a.Intent),
-		"topic_key":       a.TopicKey,
-		"is_spam":         a.IsSpam,
-		"language":        a.Language,
-		"toxicity":        string(a.Toxicity),
-		"personal_attack": string(a.PersonalAttack),
-		"legal_risk":      string(a.LegalRisk),
-		"severity":        a.Severity,
-		"requires_action": a.RequiresAction,
-		"truncated":       a.Truncated,
-		"batch_id":        batchID,
-		"model":           a.Model,
-		"analyzed_at":     a.AnalyzedAt,
-		"updated_at":      a.UpdatedAt,
-		"deleted_at":      a.DeletedAt,
+		"status":             string(a.Status),
+		"attempts":           a.Attempts,
+		"failure_reason":     a.FailureReason,
+		"sentiment":          string(a.Sentiment),
+		"stance":             string(a.Stance),
+		"intent":             string(a.Intent),
+		"topic_key":          a.TopicKey,
+		"is_spam":            a.IsSpam,
+		"language":           a.Language,
+		"toxicity":           string(a.Toxicity),
+		"personal_attack":    string(a.PersonalAttack),
+		"legal_risk":         string(a.LegalRisk),
+		"severity":           a.Severity,
+		"interest":           string(a.Interest),
+		"product_interest":   a.ProductInterest,
+		"disposition":        string(a.Disposition),
+		"qualification":      string(a.Qualification),
+		"next_action":        string(a.NextAction),
+		"summary":            a.Summary,
+		"attendance_quality": a.AttendanceQuality,
+		"message_count":      a.MessageCount,
+		"commented_at":       a.CommentedAt,
+		"requires_action":    a.RequiresAction,
+		"truncated":          a.Truncated,
+		"batch_id":           batchID,
+		"model":              a.Model,
+		"analyzed_at":        a.AnalyzedAt,
+		"updated_at":         a.UpdatedAt,
+		"deleted_at":         a.DeletedAt,
 	}
 }
 
@@ -477,7 +486,32 @@ const countersSelect = `
 	COALESCE(MAX(severity) FILTER (WHERE status = 'analyzed'), 0) AS severity_max,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND severity >= 60) AS severity_high_count,
 	COUNT(*) FILTER (WHERE status = 'analyzed' AND requires_action) AS requires_action_count,
-	COUNT(DISTINCT comment_analyses.author_external_id) AS distinct_authors`
+	COUNT(DISTINCT comment_analyses.author_external_id) AS distinct_authors,
+	COUNT(*) FILTER (WHERE subject_kind = 'comment') AS comment_count,
+	COUNT(*) FILTER (WHERE subject_kind = 'conversation') AS conversation_count,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'interested') AS interest_interested,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'not_interested') AS interest_not_interested,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND interest = 'undecided') AS interest_undecided,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'sale') AS disposition_sale,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'filling_info') AS disposition_filling_info,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'callback') AS disposition_callback,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'declined') AS disposition_declined,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'no_answer') AS disposition_no_answer,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'voicemail') AS disposition_voicemail,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND disposition = 'pending') AS disposition_pending,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND qualification = 'hot_lead') AS qualification_hot_lead,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND qualification = 'warm_lead') AS qualification_warm_lead,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND qualification = 'cold_lead') AS qualification_cold_lead,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND next_action = 'schedule_callback') AS next_action_schedule_callback,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND next_action = 'send_whatsapp') AS next_action_send_whatsapp,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND next_action = 'close') AS next_action_close,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND next_action = 'escalate') AS next_action_escalate,
+	COUNT(*) FILTER (WHERE status = 'analyzed' AND next_action = 'continue') AS next_action_continue,
+	COALESCE(AVG(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_avg,
+	COALESCE(MIN(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_min,
+	COALESCE(MAX(attendance_quality) FILTER (WHERE status = 'analyzed' AND subject_kind = 'conversation'), 0) AS attendance_quality_max,
+	COALESCE(SUM(message_count) FILTER (WHERE subject_kind = 'conversation'), 0) AS messages_total,
+	COALESCE(AVG(message_count) FILTER (WHERE subject_kind = 'conversation'), 0) AS messages_avg`
 
 type CountersRow struct {
 	Total, Analyzed, Pending, InFlight, Failed, Skipped                  int
@@ -487,6 +521,18 @@ type CountersRow struct {
 	IntentSpam, IntentSalesLead, IntentOther, SpamCount                  int
 	SeverityAvg                                                          float64
 	SeverityMax, SeverityHighCount, RequiresActionCount, DistinctAuthors int
+
+	CommentCount, ConversationCount                                     int
+	InterestInterested, InterestNotInterested, InterestUndecided        int
+	DispositionSale, DispositionFillingInfo, DispositionCallback        int
+	DispositionDeclined, DispositionNoAnswer, DispositionVoicemail      int
+	DispositionPending                                                  int
+	QualificationHotLead, QualificationWarmLead, QualificationColdLead  int
+	NextActionScheduleCallback, NextActionSendWhatsApp, NextActionClose int
+	NextActionEscalate, NextActionContinue                              int
+	AttendanceQualityAvg                                                float64
+	AttendanceQualityMin, AttendanceQualityMax, MessagesTotal           int
+	MessagesAvg                                                         float64
 }
 
 func (c CountersRow) counters() ca.Counters {
@@ -498,6 +544,22 @@ func (c CountersRow) counters() ca.Counters {
 		IntentSupportRequest: c.IntentSupportRequest, IntentSpam: c.IntentSpam, IntentSalesLead: c.IntentSalesLead, IntentOther: c.IntentOther,
 		SpamCount: c.SpamCount, SeverityAvg: c.SeverityAvg, SeverityMax: c.SeverityMax, SeverityHighCount: c.SeverityHighCount,
 		RequiresActionCount: c.RequiresActionCount, DistinctAuthors: c.DistinctAuthors,
+
+		CommentCount: c.CommentCount, ConversationCount: c.ConversationCount,
+		InterestInterested: c.InterestInterested, InterestNotInterested: c.InterestNotInterested,
+		InterestUndecided: c.InterestUndecided,
+		DispositionSale:   c.DispositionSale, DispositionFillingInfo: c.DispositionFillingInfo,
+		DispositionCallback: c.DispositionCallback, DispositionDeclined: c.DispositionDeclined,
+		DispositionNoAnswer: c.DispositionNoAnswer, DispositionVoicemail: c.DispositionVoicemail,
+		DispositionPending:   c.DispositionPending,
+		QualificationHotLead: c.QualificationHotLead, QualificationWarmLead: c.QualificationWarmLead,
+		QualificationColdLead:      c.QualificationColdLead,
+		NextActionScheduleCallback: c.NextActionScheduleCallback, NextActionSendWhatsApp: c.NextActionSendWhatsApp,
+		NextActionClose: c.NextActionClose, NextActionEscalate: c.NextActionEscalate,
+		NextActionContinue:   c.NextActionContinue,
+		AttendanceQualityAvg: c.AttendanceQualityAvg, AttendanceQualityMin: c.AttendanceQualityMin,
+		AttendanceQualityMax: c.AttendanceQualityMax,
+		MessagesTotal:        c.MessagesTotal, MessagesAvg: c.MessagesAvg,
 	}
 }
 

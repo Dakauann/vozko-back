@@ -49,6 +49,49 @@ type Counters struct {
 
 	DistinctAuthors int `json:"distinctAuthors"`
 	FlaggedAuthors  int `json:"flaggedAuthors"`
+
+	// ---- Conversation subjects ----
+	//
+	// Everything the legacy conversation-analysis stats block reported, in the
+	// same aggregate as the comment counters rather than a second endpoint with
+	// its own shape. A filtered slice can now contain both kinds, so the two
+	// subject counts say how much of the slice each block describes: without
+	// them a reader cannot tell an all-comment slice from one where every
+	// conversation happened to be unlabelled.
+	CommentCount      int `json:"commentCount"`
+	ConversationCount int `json:"conversationCount"`
+
+	InterestInterested    int `json:"interestInterested"`
+	InterestNotInterested int `json:"interestNotInterested"`
+	InterestUndecided     int `json:"interestUndecided"`
+
+	DispositionSale        int `json:"dispositionSale"`
+	DispositionFillingInfo int `json:"dispositionFillingInfo"`
+	DispositionCallback    int `json:"dispositionCallback"`
+	DispositionDeclined    int `json:"dispositionDeclined"`
+	DispositionNoAnswer    int `json:"dispositionNoAnswer"`
+	DispositionVoicemail   int `json:"dispositionVoicemail"`
+	DispositionPending     int `json:"dispositionPending"`
+
+	QualificationHotLead  int `json:"qualificationHotLead"`
+	QualificationWarmLead int `json:"qualificationWarmLead"`
+	QualificationColdLead int `json:"qualificationColdLead"`
+
+	NextActionScheduleCallback int `json:"nextActionScheduleCallback"`
+	NextActionSendWhatsApp     int `json:"nextActionSendWhatsApp"`
+	NextActionClose            int `json:"nextActionClose"`
+	NextActionEscalate         int `json:"nextActionEscalate"`
+	NextActionContinue         int `json:"nextActionContinue"`
+
+	// AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
+	// carry no such score, and including their zeros would drag the average of
+	// a mixed slice toward nothing.
+	AttendanceQualityAvg float64 `json:"attendanceQualityAvg"`
+	AttendanceQualityMin int     `json:"attendanceQualityMin"`
+	AttendanceQualityMax int     `json:"attendanceQualityMax"`
+
+	MessagesTotal int     `json:"messagesTotal"`
+	MessagesAvg   float64 `json:"messagesAvg"`
 }
 
 func (c Counters) StanceMix() StanceMix {
