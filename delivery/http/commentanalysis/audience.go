@@ -36,6 +36,7 @@ func audienceInput(r *http.Request) ca.ListInput {
 	in.Disposition = ca.Disposition(strings.TrimSpace(v.Get("disposition")))
 	in.Qualification = ca.Qualification(strings.TrimSpace(v.Get("qualification")))
 	in.NextAction = ca.NextAction(strings.TrimSpace(v.Get("nextAction")))
+	in.SubjectID = strings.TrimSpace(v.Get("subjectId"))
 	return in
 }
 

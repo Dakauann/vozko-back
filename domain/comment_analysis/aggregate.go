@@ -291,6 +291,10 @@ type ListInput struct {
 	SeverityMax      *int
 	RequiresAction   *bool
 	AuthorExternalID string
+	// SubjectID narrows to one subject by its channel id: a comment id, or a
+	// conversation.s entry id. It is what "show me this conversation's analysis"
+	// asks, which used to need its own endpoint.
+	SubjectID string
 
 	Options shared.QueryOptions
 }
@@ -300,6 +304,7 @@ func (in *ListInput) Normalize() {
 	in.AccountID = strings.TrimSpace(in.AccountID)
 	in.ContainerID = strings.TrimSpace(in.ContainerID)
 	in.AuthorExternalID = strings.TrimSpace(in.AuthorExternalID)
+	in.SubjectID = strings.TrimSpace(in.SubjectID)
 	in.TopicKey = NormalizeTopicKey(in.TopicKey)
 	in.Options.Pagination = shared.NormalizePagination(in.Options.Pagination)
 }

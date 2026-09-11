@@ -309,6 +309,9 @@ func applyFilters(q *gorm.DB, in ca.ListInput) *gorm.DB {
 	if in.AuthorExternalID != "" {
 		q = q.Where("comment_analyses.author_external_id = ?", in.AuthorExternalID)
 	}
+	if in.SubjectID != "" {
+		q = q.Where("comment_analyses.source_comment_id = ?", in.SubjectID)
+	}
 	if len(in.SubjectKinds) > 0 {
 		kinds := make([]string, len(in.SubjectKinds))
 		for i, k := range in.SubjectKinds {
