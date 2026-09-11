@@ -202,3 +202,50 @@ func TestContainerSettings_GetPutDelete(t *testing.T) {
 		t.Fatal("another workspace must see no accounts")
 	}
 }
+
+// An unconfigured CONVERSATION container is enabled; an unconfigured COMMENT
+// container is not.
+//
+// This is the difference between the two subjects' switches. A comment account
+// is configured in the audience settings, and nothing may run before an
+// operator does that. A conversation's switch lives on its channel and was
+// already enforced at ingest, so requiring a second audience_settings row meant
+// every conversation was enqueued and then skipped as analysis_disabled: the
+// channel's own toggle appeared to do nothing, with no error anywhere.
+func TestResolverDefaultsConversationsEnabledAndCommentsDisabled(t *testing.T) {
+	resolver := NewSettingsResolver(newFakeSettings())
+
+	conversation := ca.ContainerRef{
+		Kind: ca.SubjectKindConversation, Source: ca.SourceWhatsApp,
+		AccountID: "ws-1", ContainerID: "camp-1",
+	}
+	got, err := resolver.Resolve(context.Background(), conversation)
+	if err != nil {
+		t.Fatalf("resolving an unconfigured conversation container: %v", err)
+	}
+	if !got.Enabled {
+		t.Error("an unconfigured conversation container must be enabled: its switch is the channel's")
+	}
+
+	comment := ca.ContainerRef{
+		Kind: ca.SubjectKindComment, Source: ca.SourceInstagram,
+		AccountID: "acc-1", ContainerID: "media-1",
+	}
+	got, err = resolver.Resolve(context.Background(), comment)
+	if err != nil {
+		t.Fatalf("resolving an unconfigured comment container: %v", err)
+	}
+	if got.Enabled {
+		t.Error("an unconfigured comment container must stay disabled until configured")
+	}
+
+	// The kindless ref reads as a comment, so it keeps the safe default too.
+	implicit := ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "media-1"}
+	got, err = resolver.Resolve(context.Background(), implicit)
+	if err != nil {
+		t.Fatalf("resolving a kindless ref: %v", err)
+	}
+	if got.Enabled {
+		t.Error("a kindless ref is a comment and must stay disabled")
+	}
+}

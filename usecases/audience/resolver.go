@@ -32,9 +32,24 @@ func (r *settingsResolver) Resolve(ctx context.Context, ref ca.ContainerRef) (*c
 		if !errors.Is(err, ca.ErrNotFound) {
 			return nil, err
 		}
-		// Never configured: the disabled defaults. A post override cannot
-		// exist without an account row that owns it, so nothing to layer.
+		// Never configured. What that MEANS depends on the subject, and
+		// getting it wrong is silent in both directions.
+		//
+		// For a COMMENT, this row is the switch: an operator configures an
+		// account's topic set, threshold and cap, and nothing runs until they
+		// do. Defaulting to off is the whole safety model, and a post override
+		// cannot exist without an account row that owns it, so nothing to
+		// layer either.
+		//
+		// For a CONVERSATION there is no such row and never will be: the
+		// operator's decision lives on the CHANNEL (a WhatsApp campaign's
+		// EnableAnalysis, an instance's, an account's), and the ingest path
+		// already refused to enqueue anything that switch had turned off.
+		// Demanding a second row here meant every conversation was enqueued and
+		// then immediately skipped as analysis_disabled, so the channel toggle
+		// appeared to do nothing at all.
 		def := ca.NewSettings("", ref.Source, ref.AccountID, ca.VerticalServices)
+		def.Enabled = ref.Normalized().Kind == ca.SubjectKindConversation
 		return &def, nil
 	}
 	override, err := r.settings.FindOverride(ctx, ref)
