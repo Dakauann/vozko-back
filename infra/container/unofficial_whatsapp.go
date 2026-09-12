@@ -95,18 +95,25 @@ func (c *Container) initUnofficialWhatsApp() {
 	bundle.Messaging = provider
 	bundle.GroupAPI = provider
 	bundle.Assets = provider
-	// Built once and held, so the alert dispatcher can open a conversation
-	// through the SAME use case the handler exposes.
-	bundle.StartConv = uwuc.NewStartConversationUseCase(
-		bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
-		bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead))
-
 	bundle.Servers = uwrepo.NewServerRepository(c.db)
 	bundle.Instances = uwrepo.NewInstanceRepository(c.db)
 	bundle.Contacts = uwrepo.NewContactRepository(c.db)
 	bundle.Conversations = uwrepo.NewConversationRepository(c.db)
 	bundle.Groups = uwrepo.NewGroupRepository(c.db)
 	bundle.ProcessedEvts = uwrepo.NewProcessedEventRepository(c.db)
+
+	// Built once and held, so the alert dispatcher can open a conversation
+	// through the SAME use case the handler exposes.
+	//
+	// AFTER the repositories above, and that order is the whole point: this was
+	// constructed from bundle.Instances and its neighbours while they were still
+	// nil, so the use case captured four nil interfaces and every send through it
+	// panicked on the first repository call. Nothing reported it, because the
+	// only caller is an alert, and an alert that panics looks like an alert that
+	// was never configured.
+	bundle.StartConv = uwuc.NewStartConversationUseCase(
+		bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
+		bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead))
 
 	// The number allowance: a per-workspace grant a platform administrator sets,
 	// plus whatever addons the workspace bought.

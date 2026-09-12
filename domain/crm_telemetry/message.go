@@ -5,6 +5,8 @@ package crm_telemetry
 import "time"
 
 const (
+	Exchange = "crm_telemetry_exchange"
+
 	Topic = "crm_telemetry"
 	// MaxDeliveryAttempts before dead-letter drop (Nack without requeue).
 	MaxDeliveryAttempts = 5

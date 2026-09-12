@@ -68,6 +68,7 @@ import (
 	aichat_domain "vozko/domain/aichat"
 	analytics_domain "vozko/domain/analytics"
 	attendance_domain "vozko/domain/attendance"
+	audience_domain "vozko/domain/audience"
 	"vozko/domain/auth"
 	balance_domain "vozko/domain/balance"
 	billing_domain "vozko/domain/billing"
@@ -83,7 +84,6 @@ import (
 	"vozko/domain/cep"
 	"vozko/domain/cluster"
 	coexistence_domain "vozko/domain/coexistence"
-	audience_domain "vozko/domain/audience"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
 	ce_domain "vozko/domain/conversation_event"
@@ -309,13 +309,18 @@ type repositories struct {
 }
 
 type services struct {
-	amqpPool              *queue.ConnectionPool
-	workflowWakePub       messaging.MessageQueuePub
-	workflowWakeSub       messaging.MessageQueueSub
-	metricsQueuePub       messaging.MessageQueuePub
-	metricsQueueSub       messaging.MessageQueueSub
-	crmTelemetryPub       messaging.MessageQueuePub
-	crmTelemetrySub       messaging.MessageQueueSub
+	amqpPool        *queue.ConnectionPool
+	workflowWakePub messaging.MessageQueuePub
+	workflowWakeSub messaging.MessageQueueSub
+	metricsQueuePub messaging.MessageQueuePub
+	metricsQueueSub messaging.MessageQueueSub
+	crmTelemetryPub messaging.MessageQueuePub
+	crmTelemetrySub messaging.MessageQueueSub
+	// The alert send path. Claiming a rule stays on the analysis walk; the
+	// briefing and the outbound message leave through here, because that walk is
+	// sequential across every workspace.
+	audienceAlertPub      messaging.MessageQueuePub
+	audienceAlertSub      messaging.MessageQueueSub
 	crmTelemetryPublisher crm_telemetry.Publisher
 	crmTelemetryEmitter   *crm_telemetry_usecase.Emitter
 	notificationsQueuePub messaging.MessageQueuePub

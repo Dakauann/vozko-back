@@ -1,7 +1,11 @@
 package scheduled_message
 
-// TopicFire carries a due scheduled message to whichever replica picks it up.
-const TopicFire = "scheduled_message.fire"
+const (
+	Exchange = "scheduled_message_exchange"
+
+	// TopicFire carries a due scheduled message to whichever replica picks it up.
+	TopicFire = "scheduled_message.fire"
+)
 
 // FireMessage is the queue payload.
 //

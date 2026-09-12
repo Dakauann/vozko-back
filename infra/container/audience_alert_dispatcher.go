@@ -45,6 +45,10 @@ type commentAlertDispatcher struct {
 	// is rejected by the provider for every template shaped differently, and a
 	// rejection is an alert that never arrived.
 	templates template_domain.Repository
+	// senders answers "which number can this workspace send from", for the rule
+	// that did not name one. Optional: without it an unnamed instance is an
+	// error the operator can read rather than a nil id sent to the database.
+	senders ca.AlertSenderDirectory
 }
 
 func (d commentAlertDispatcher) Dispatch(ctx context.Context, in ca.AlertDelivery) error {
@@ -105,9 +109,18 @@ func (d commentAlertDispatcher) dispatchUnofficial(ctx context.Context, in ca.Al
 	if d.unofficial == nil {
 		return errors.New("comment alerts: the unofficial WhatsApp channel is not configured")
 	}
+	// "Empty means whichever one this workspace has, resolved at send time" is
+	// what the rule's InstanceID documents, and nothing was resolving it: the
+	// empty string went straight to the repository, which refused it as an
+	// invalid uuid. A rule saved without picking a number is the common case,
+	// because most workspaces have exactly one.
+	instanceID, err := d.resolveInstance(ctx, in)
+	if err != nil {
+		return err
+	}
 	started, err := d.unofficial.Execute(ctx, uwuc.StartConversationInput{
 		WorkspaceID: in.WorkspaceID,
-		InstanceID:  in.InstanceID,
+		InstanceID:  instanceID,
 		PhoneNumber: recipient,
 	})
 	if err != nil {
@@ -115,6 +128,33 @@ func (d commentAlertDispatcher) dispatchUnofficial(ctx context.Context, in ca.Al
 	}
 	// The conversation id IS the inbox entry id for this channel.
 	return d.sendIntoEntry(ctx, in, started.ConversationID, string(shared.EntryTypeUnofficialWhatsApp))
+}
+
+// resolveInstance is the number an unofficial alert leaves from.
+//
+// The rule's own choice wins. Without one, the workspace's single connected
+// number is used, because that is unambiguous and is what an operator who never
+// saw the picker meant. More than one is NOT guessed: picking for them would
+// send from a number their customers do not recognise, and the error says so.
+func (d commentAlertDispatcher) resolveInstance(ctx context.Context, in ca.AlertDelivery) (string, error) {
+	if id := strings.TrimSpace(in.InstanceID); id != "" {
+		return id, nil
+	}
+	if d.senders == nil {
+		return "", errors.New("comment alerts: this rule does not say which number to send from")
+	}
+	list, err := d.senders.ChannelStatus(ctx, in.WorkspaceID)
+	if err != nil {
+		return "", err
+	}
+	status, _ := ca.ChannelStatusFor(list, ca.AlertChannelUnofficial)
+	switch len(status.Senders) {
+	case 0:
+		return "", errors.New("comment alerts: this workspace has no connected number to send from")
+	case 1:
+		return status.Senders[0].ID, nil
+	}
+	return "", errors.New("comment alerts: this workspace has more than one connected number, so the rule has to name the one it sends from")
 }
 
 func (d commentAlertDispatcher) sendIntoEntry(ctx context.Context, in ca.AlertDelivery, entryID, entryType string) error {

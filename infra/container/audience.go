@@ -41,6 +41,10 @@ type audienceBundle struct {
 	// as its AudienceEnqueuer.
 	InstagramAdapter *iguc.AudienceAdapter
 
+	// AlertConsumer sends the alerts the evaluator claimed. Held on the bundle
+	// so the runtime pass can subscribe it, the same way every other consumer
+	// in this container is started.
+	AlertConsumer *cauc.AlertConsumer
 	// ConversationAdapter is the OTHER subject kind: one adapter serving every
 	// channel that holds a transcript. The debounce sweep hands conversations to
 	// it, and the engine reads them back through it at classification time.
@@ -117,36 +121,59 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	// exist; nothing here is a new send path. A workspace with neither channel
 	// configured simply never dispatches, and the rules stay inert.
 	alertRules := ca_repository.NewAlertRuleRepository(c.db)
+
+	// What the workspace can actually SEND on, asked of the workspace instead
+	// of assumed from a constant. The picker, the save and the dispatcher all
+	// read this, so they cannot disagree about whether a channel works.
+	senderDirectory := commentAlertSenderDirectory{phones: c.useCases.listBusinessPhones}
+	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
+		senderDirectory.unofficialEnabled = true
+		senderDirectory.instances = c.unofficialWhatsApp.Instances
+	}
+
 	alertDispatcher := commentAlertDispatcher{
 		official: c.useCases.startOfficialConversation,
 		send:     c.services.liveOperatorSend,
 		// So an alert fills the variables the customer's own template declares,
 		// rather than a shape we guessed.
 		templates: c.repositories.whatsappTemplate,
+		// And so a rule that never named a number can still send, from the one
+		// the workspace has. Built BEFORE the dispatcher for that reason.
+		senders: senderDirectory,
 	}
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		alertDispatcher.unofficial = c.unofficialWhatsApp.StartConv
 	}
+	// Sending is one function with two callers: the queue consumer is the
+	// normal path, and the evaluator calls it directly when it cannot publish,
+	// so a broker that is down makes alerts slow rather than silent.
+	//
+	// The briefing lives here rather than on the analysis walk because it is a
+	// model call, and it keeps the balance floor and the spend page it always
+	// answered to.
+	bundle.AlertConsumer = cauc.NewAlertConsumer(cauc.AlertConsumerDeps{
+		Subscriber: c.services.audienceAlertSub,
+		Dispatcher: alertDispatcher,
+		Rules:      alertRules,
+		Briefer:    cauc.NewAlertBriefer(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Settings:   settings,
+		Balance:    c.services.cachedBalanceChecker,
+		Batches:    batches,
+		Clock:      clock,
+	})
 
-	// What the workspace can actually SEND on, asked of the workspace instead
-	// of assumed from a constant. The picker and the save both read this, so
-	// they cannot disagree about whether a channel works.
-	senderDirectory := commentAlertSenderDirectory{phones: c.useCases.listBusinessPhones}
-	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
-		senderDirectory.unofficialEnabled = true
-		senderDirectory.instances = c.unofficialWhatsApp.Instances
-	}
 	alertEvaluator := cauc.NewAlertEvaluator(cauc.AlertDeps{
-		Rules: alertRules, Repo: repo, Dispatcher: alertDispatcher, Clock: clock,
+		Rules: alertRules, Repo: repo, Clock: clock,
 		// So an alert can name the account and link the post instead of
 		// printing internal ids at whoever it wakes up.
 		Adapters: adapters,
-		Settings: settings,
-		// The model's reading of what fired. Opt-in per rule, under the same
-		// balance floor and on the same spend page as every other model call.
-		Briefer: cauc.NewAlertBriefer(c.services.ai, c.cfg.OpenRouterDefaultModel),
-		Balance: c.services.cachedBalanceChecker,
-		Batches: batches,
+		// Claim here, send there.
+		Publisher: c.services.audienceAlertPub,
+		Sender:    bundle.AlertConsumer,
+		// The per-subject dedupe rides the same shared state the engine locks
+		// containers on, so one bad conversation cannot spend a rule's whole
+		// daily allowance while the next one goes unreported.
+		State: state,
 	})
 	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewAudienceAccountVerifier(ig.Accounts)}
 

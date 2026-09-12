@@ -83,7 +83,11 @@ const (
 	CampaignActionStop  = campaign.ActionStop
 )
 
-const WhatsAppCampaignDispatchTopic = "whatsapp_campaign_dispatch"
+const (
+	Exchange = "whatsapp_campaign_exchange"
+
+	WhatsAppCampaignDispatchTopic = "whatsapp_campaign_dispatch"
+)
 
 // QueueNamespace keys this channel's queue topic and coordination keys.
 //

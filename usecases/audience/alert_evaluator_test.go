@@ -120,6 +120,10 @@ func severityRule() *ca.AlertRule {
 func analysedAt(id string, severity int, at time.Time) *ca.Analysis {
 	return &ca.Analysis{
 		ID: id, WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: ref().AccountID,
+		// The kind is load-bearing now: a rule selects only rows of the subject
+		// its metric reads, so an unset kind matches nothing. Production rows
+		// always carry it, since it is part of the row's unique key.
+		SubjectKind: ca.SubjectKindComment,
 		ContainerID: ref().ContainerID, SubjectID: id,
 		AuthorExternalID: "ig-9", AuthorHandle: "fulano",
 		Status: ca.StatusAnalyzed, Stance: ca.StanceHostile, Severity: severity,
@@ -127,9 +131,15 @@ func analysedAt(id string, severity int, at time.Time) *ca.Analysis {
 	}
 }
 
+// The evaluator claims and hands off; the consumer sends. Wiring the consumer
+// as the inline Sender is the no-broker path, which is what these cases
+// exercise: the same assertions, one indirection later.
 func newAlertEvaluator(rules *fakeAlertRules, dispatcher *fakeDispatcher, repo ca.Repository) ca.AlertEvaluator {
 	return NewAlertEvaluator(AlertDeps{
-		Rules: rules, Repo: repo, Dispatcher: dispatcher, Clock: fixedClock{now},
+		Rules: rules, Repo: repo, Clock: fixedClock{now},
+		Sender: NewAlertConsumer(AlertConsumerDeps{
+			Dispatcher: dispatcher, Rules: rules, Clock: fixedClock{now},
+		}),
 	})
 }
 

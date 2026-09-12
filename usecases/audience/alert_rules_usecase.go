@@ -103,6 +103,7 @@ func (uc *ManageAlertRulesUseCase) Update(ctx context.Context, workspaceID, id s
 	next.Metric = patch.Metric
 	next.Threshold = patch.Threshold
 	next.WindowMinutes = patch.WindowMinutes
+	next.MinMessages = patch.MinMessages
 	next.Channel = patch.Channel
 	next.Recipient = patch.Recipient
 	next.BusinessPhoneID = patch.BusinessPhoneID
@@ -181,7 +182,7 @@ func (uc *TestAlertRuleUseCase) Execute(ctx context.Context, workspaceID, id, ac
 		TemplateParams:  alert.TemplateParams(),
 		Facts:           alert.Facts(),
 		InstanceID:      rule.InstanceID,
-		Text:            testPrefix + alert.Message(),
+		Text:            testPrefix + alert.Message() + testFooter(*rule),
 		// Its own key, so a test and a real firing at the same instant are two
 		// different sends rather than one swallowing the other.
 		IdempotencyKey: "test-" + alert.IdempotencyKey(),
@@ -192,6 +193,25 @@ func (uc *TestAlertRuleUseCase) Execute(ctx context.Context, workspaceID, id, ac
 // testPrefix marks the message so the recipient is not misled into acting on an
 // incident that is not happening.
 const testPrefix = "[TESTE] "
+
+// testFooter says what a test is NOT.
+//
+// The number in a test message is the rule's own threshold, not a measurement,
+// so the line above it reads exactly like a real verdict about a real
+// conversation. The first operator to receive one asked why the AI reading was
+// missing, which is the same confusion from the other end: a test has no
+// conversation behind it, so there is no excerpt to quote, nowhere to link, and
+// nothing for the model to read.
+//
+// Saying so costs one line and stops somebody concluding the feature is broken,
+// or worse, acting on an incident that is not happening.
+func testFooter(rule ca.AlertRule) string {
+	footer := "\n\nEste é um teste: o número acima é o limite configurado, não uma medição, e não há conversa por trás dele."
+	if rule.Brief {
+		footer += " A leitura da IA só é gerada em um disparo real."
+	}
+	return footer
+}
 
 func (uc *TestAlertRuleUseCase) now() time.Time {
 	if uc.clock != nil {

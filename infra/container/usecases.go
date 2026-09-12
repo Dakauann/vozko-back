@@ -381,7 +381,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	getMetricsStatsUC := business_metrics_usecase.NewGetMetricsStatsUseCase(c.repositories.businessMetrics)
 	getMetricsTimeSeriesUC := business_metrics_usecase.NewGetMetricsTimeSeriesUseCase(c.repositories.businessMetrics)
 
-
 	publishEmailUC := notification_usecase.NewPublishEmailUseCase(c.services.notificationsQueuePub)
 	// Request-path senders use a queued EmailService so registration/login/invite
 	// never block on the provider; the consumer keeps the real provider-backed one.
@@ -768,7 +767,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listMetrics:          listMetricsUC,
 		getMetricsStats:      getMetricsStatsUC,
 		getMetricsTimeSeries: getMetricsTimeSeriesUC,
-
 
 		createShop: shop_usecase.NewCreateShopUseCase(c.repositories.shop, c.repositories.media),
 		updateShop: shop_usecase.NewUpdateShopUseCase(c.repositories.shop, c.repositories.media),
@@ -1436,6 +1434,15 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	if c.useCases.consumeCRMTelemetry != nil {
 		if err := c.useCases.consumeCRMTelemetry.Start(); err != nil {
 			log.Printf("Failed to start CRM telemetry consumer: %v", err)
+		}
+	}
+
+	// Alerts. Not fatal: the evaluator falls back to sending inline when it
+	// cannot hand off, so a broker that is down makes alerts slow rather than
+	// silent, and the platform still boots.
+	if c.audience != nil && c.audience.AlertConsumer != nil {
+		if err := c.audience.AlertConsumer.Start(); err != nil {
+			log.Printf("[comment-analysis] alert consumer failed to start, alerts will send inline: %v", err)
 		}
 	}
 

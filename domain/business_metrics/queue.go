@@ -1,6 +1,8 @@
 package business_metrics
 
 const (
+	Exchange = "business_metrics_exchange"
+
 	BusinessMetricsTopic = "business_metrics"
 )
 

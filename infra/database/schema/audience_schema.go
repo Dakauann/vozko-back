@@ -314,6 +314,9 @@ type AudienceAlertRule struct {
 	Metric        string `gorm:"size:32;not null"`
 	Threshold     int    `gorm:"not null;default:0"`
 	WindowMinutes int    `gorm:"not null;default:0"`
+	// MinMessages is the conversation-length floor. Zero is "no floor", which
+	// is every rule written before this column existed.
+	MinMessages int `gorm:"not null;default:0"`
 
 	Channel         string  `gorm:"size:16;not null"`
 	Recipient       string  `gorm:"size:32;not null"`

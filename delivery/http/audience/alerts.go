@@ -32,6 +32,7 @@ type AlertRuleRequest struct {
 	Metric        string `json:"metric"`
 	Threshold     int    `json:"threshold"`
 	WindowMinutes int    `json:"windowMinutes,omitempty"`
+	MinMessages   int    `json:"minMessages,omitempty"`
 
 	Channel         string `json:"channel"`
 	Recipient       string `json:"recipient"`
@@ -53,6 +54,7 @@ func (r AlertRuleRequest) toDomain() ca.AlertRule {
 		Metric:          ca.AlertMetric(strings.TrimSpace(r.Metric)),
 		Threshold:       r.Threshold,
 		WindowMinutes:   r.WindowMinutes,
+		MinMessages:     r.MinMessages,
 		Channel:         ca.AlertChannel(strings.TrimSpace(r.Channel)),
 		Recipient:       r.Recipient,
 		BusinessPhoneID: r.BusinessPhoneID,
@@ -171,9 +173,11 @@ func (h *Handler) AlertOptions(w http.ResponseWriter, r *http.Request) {
 	metrics := make([]AlertMetricOption, 0, len(ca.AllAlertMetrics()))
 	for _, m := range ca.AllAlertMetrics() {
 		metrics = append(metrics, AlertMetricOption{
-			Metric:   string(m),
-			Windowed: m.IsWindowed(),
-			Below:    m.TriggersWhenBelow(),
+			Metric:              string(m),
+			Windowed:            m.IsWindowed(),
+			Below:               m.TriggersWhenBelow(),
+			SubjectKind:         string(m.SubjectKind()),
+			SupportsMinMessages: !m.IsWindowed() && m.SubjectKind() == ca.SubjectKindConversation,
 		})
 	}
 	// Channels is the product's VOCABULARY, unchanged: what an alert can be
@@ -216,6 +220,7 @@ func (h *Handler) AlertOptions(w http.ResponseWriter, r *http.Request) {
 			MinWindowMinutes:       ca.MinAlertWindowMinutes,
 			DefaultWindowMinutes:   ca.DefaultAlertWindowMinutes,
 			MaxWindowMinutes:       ca.MaxAlertWindowMinutes,
+			MaxMinMessages:         ca.MaxAlertMinMessages,
 			TemplateParamCount:     ca.AlertTemplateParamCount,
 		},
 	})
@@ -228,6 +233,13 @@ type AlertMetricOption struct {
 	Metric   string `json:"metric"`
 	Windowed bool   `json:"windowed"`
 	Below    bool   `json:"triggersWhenBelow"`
+	// SubjectKind is what the metric reads, "comment" or "conversation". The
+	// picker filters on it so a rule cannot be armed against a subject its
+	// channel never produces, which saves cleanly and then never fires.
+	SubjectKind string `json:"subjectKind"`
+	// SupportsMinMessages says whether a conversation-length floor applies.
+	// Only a per-conversation metric has one row to measure.
+	SupportsMinMessages bool `json:"supportsMinMessages"`
 }
 
 type AlertLimitsResponse struct {
@@ -239,6 +251,7 @@ type AlertLimitsResponse struct {
 	MinWindowMinutes       int `json:"minWindowMinutes"`
 	DefaultWindowMinutes   int `json:"defaultWindowMinutes"`
 	MaxWindowMinutes       int `json:"maxWindowMinutes"`
+	MaxMinMessages         int `json:"maxMinMessages"`
 	// TemplateParamCount is how many facts an alert can supply. NOT a
 	// requirement on the template: one that declares fewer gets the first few,
 	// one that declares more has the rest padded, and one with no variables is

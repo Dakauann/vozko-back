@@ -1,6 +1,8 @@
 package notification
 
 const (
+	Exchange = "notifications_exchange"
+
 	EmailNotificationTopic = "notification_emails"
 )
 

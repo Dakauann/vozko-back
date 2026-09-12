@@ -46,22 +46,65 @@ const (
 	// AlertMetricAcceptanceScore watches the 0-100 score, and is the one metric
 	// that alarms on the way DOWN.
 	AlertMetricAcceptanceScore AlertMetric = "acceptance_score"
+
+	// The conversation half. Same machinery, a different subject: these read an
+	// analysed CONVERSATION rather than a comment, which is what let a workspace
+	// that runs no Instagram account finally watch something.
+
+	// AlertMetricAttendanceQuality watches ONE conversation's attendance score
+	// as it is classified, and alarms on the way DOWN. "Avise quando um
+	// atendimento cair abaixo de 70."
+	AlertMetricAttendanceQuality AlertMetric = "attendance_quality"
+	// AlertMetricEscalationCount counts, over a window, the conversations the
+	// model says need a person. One is a bad conversation; five in an hour is a
+	// queue nobody is working.
+	AlertMetricEscalationCount AlertMetric = "escalation_count"
 )
 
 func AllAlertMetrics() []AlertMetric {
-	return []AlertMetric{
-		AlertMetricCommentSeverity,
-		AlertMetricHighSeverityCount,
-		AlertMetricHostileCount,
-		AlertMetricCommentVolume,
-		AlertMetricAcceptanceScore,
+	return append(AlertMetricsFor(SubjectKindComment), AlertMetricsFor(SubjectKindConversation)...)
+}
+
+// AlertMetricsFor is the vocabulary offered for one subject.
+//
+// The picker reads this and so does Validate, which is what stops a comment
+// metric being armed on a channel that has no comments: such a rule saves,
+// shows "Regra ativa", and then never fires, because the evaluator has nothing
+// to measure it against. Two lists rather than one flag so a new metric has to
+// declare which subject it reads before it can be reached at all.
+func AlertMetricsFor(kind SubjectKind) []AlertMetric {
+	switch kind {
+	case SubjectKindComment:
+		return []AlertMetric{
+			AlertMetricCommentSeverity,
+			AlertMetricHighSeverityCount,
+			AlertMetricHostileCount,
+			AlertMetricCommentVolume,
+			AlertMetricAcceptanceScore,
+		}
+	case SubjectKindConversation:
+		return []AlertMetric{
+			AlertMetricAttendanceQuality,
+			AlertMetricEscalationCount,
+		}
 	}
+	return nil
+}
+
+// SubjectKind is what this metric reads.
+func (m AlertMetric) SubjectKind() SubjectKind {
+	switch m {
+	case AlertMetricAttendanceQuality, AlertMetricEscalationCount:
+		return SubjectKindConversation
+	}
+	return SubjectKindComment
 }
 
 func (m AlertMetric) Valid() bool {
 	switch m {
 	case AlertMetricCommentSeverity, AlertMetricHighSeverityCount,
-		AlertMetricHostileCount, AlertMetricCommentVolume, AlertMetricAcceptanceScore:
+		AlertMetricHostileCount, AlertMetricCommentVolume, AlertMetricAcceptanceScore,
+		AlertMetricAttendanceQuality, AlertMetricEscalationCount:
 		return true
 	}
 	return false
@@ -70,10 +113,18 @@ func (m AlertMetric) Valid() bool {
 // IsWindowed says whether the metric is counted over a span. A per-comment
 // metric is checked against the comment that just arrived; a windowed one needs
 // a query over the period.
-func (m AlertMetric) IsWindowed() bool { return m != AlertMetricCommentSeverity }
+func (m AlertMetric) IsWindowed() bool {
+	switch m {
+	case AlertMetricCommentSeverity, AlertMetricAttendanceQuality:
+		return false
+	}
+	return true
+}
 
 // TriggersWhenBelow is the metric's own direction.
-func (m AlertMetric) TriggersWhenBelow() bool { return m == AlertMetricAcceptanceScore }
+func (m AlertMetric) TriggersWhenBelow() bool {
+	return m == AlertMetricAcceptanceScore || m == AlertMetricAttendanceQuality
+}
 
 // AlertChannel is how the message leaves.
 type AlertChannel string
@@ -112,6 +163,22 @@ const (
 	// message and into a template parameter.
 	MaxAlertNameRunes = 60
 
+	// AlertSubjectSuppression is how long one rule stays quiet about the SAME
+	// subject after alerting on it.
+	//
+	// The cooldown and the daily cap bound how often a RULE speaks; this bounds
+	// how often it speaks about one thing. Conversations are re-analysed as they
+	// grow, so without it a single bad conversation would spend the rule's whole
+	// daily allowance and the second conversation to go wrong that day would be
+	// dropped in silence. A day, matching the cap's own framing: you hear about
+	// a given conversation at most once a day.
+	AlertSubjectSuppression = 24 * time.Hour
+
+	// MaxAlertMinMessages bounds the conversation-length floor. Past this the
+	// rule is not selective, it is off, and an operator who typed an extra zero
+	// would never find out.
+	MaxAlertMinMessages = 500
+
 	// minRecipientDigits is a sanity floor, not a phone validator. The channels
 	// own the real rules; this only refuses something nobody could have meant.
 	minRecipientDigits = 8
@@ -149,6 +216,16 @@ type AlertRule struct {
 	// WindowMinutes is the span a windowed metric is counted over. Ignored for
 	// a per-comment metric.
 	WindowMinutes int `json:"windowMinutes"`
+	// MinMessages is how long a conversation must be before it is worth
+	// judging. Zero means no floor, which is what every rule written before
+	// this existed has.
+	//
+	// A two-message conversation scores badly because it barely happened, not
+	// because it was handled badly, so without a floor the first alert an
+	// operator ever receives is about a customer who said "oi" and left. Only
+	// meaningful for a per-conversation metric; Validate refuses it elsewhere
+	// rather than storing a setting that does nothing.
+	MinMessages int `json:"minMessages"`
 
 	Channel   AlertChannel `json:"channel"`
 	Recipient string       `json:"recipient"`
@@ -262,6 +339,19 @@ func (r AlertRule) Validate() error {
 	if !r.Metric.Valid() {
 		return fmt.Errorf("%w: metric %q", ErrInvalidFilter, r.Metric)
 	}
+	// The metric and the channel have to be talking about the same thing. A
+	// comment metric on WhatsApp saves happily and then never fires, because
+	// the channel produces no comments for it to read.
+	if r.Source != "" && !r.Metric.SubjectKind().SupportedOn(r.Source) {
+		return fmt.Errorf("%w: %s has no %s to watch on %s",
+			ErrInvalidFilter, r.Metric, r.Metric.SubjectKind(), r.Source)
+	}
+	if r.MinMessages != 0 && r.Metric.IsWindowed() {
+		return fmt.Errorf("%w: a minimum message count only applies to a rule that watches one conversation", ErrInvalidFilter)
+	}
+	if r.MinMessages < 0 || r.MinMessages > MaxAlertMinMessages {
+		return fmt.Errorf("%w: the minimum message count must be between 0 and %d", ErrInvalidFilter, MaxAlertMinMessages)
+	}
 	if !r.Channel.Valid() {
 		return fmt.Errorf("%w: channel %q", ErrInvalidFilter, r.Channel)
 	}
@@ -293,7 +383,7 @@ func (r AlertRule) validateThreshold() error {
 		if r.Threshold < 1 || r.Threshold > 100 {
 			return fmt.Errorf("%w: severity must be between 1 and 100", ErrInvalidFilter)
 		}
-	case AlertMetricAcceptanceScore:
+	case AlertMetricAcceptanceScore, AlertMetricAttendanceQuality:
 		if r.Threshold < 0 || r.Threshold > 100 {
 			return fmt.Errorf("%w: the score must be between 0 and 100", ErrInvalidFilter)
 		}
@@ -303,6 +393,22 @@ func (r AlertRule) validateThreshold() error {
 		}
 	}
 	return nil
+}
+
+// Accepts reports whether this row is one the rule is willing to judge.
+//
+// Separate from Crossed and ShouldFire because it asks a different question:
+// those decide whether the MEASUREMENT warrants an alert, this decides whether
+// the subject is substantial enough for the measurement to mean anything. A
+// windowed rule has no single row and accepts everything.
+func (r AlertRule) Accepts(row *Analysis) bool {
+	if r.MinMessages <= 0 || r.Metric.IsWindowed() {
+		return true
+	}
+	if row == nil {
+		return false
+	}
+	return row.MessageCount >= r.MinMessages
 }
 
 // Window is the span a windowed metric counts over.
@@ -467,6 +573,10 @@ func (a Alert) measurement() string {
 		return fmt.Sprintf("%d comentários em %s", a.Observation.Value, a.windowLabel())
 	case AlertMetricAcceptanceScore:
 		return fmt.Sprintf("aceitação caiu para %d em %s", a.Observation.Value, a.windowLabel())
+	case AlertMetricAttendanceQuality:
+		return fmt.Sprintf("atendimento avaliado em %d", a.Observation.Value)
+	case AlertMetricEscalationCount:
+		return fmt.Sprintf("%d conversas aguardando uma pessoa em %s", a.Observation.Value, a.windowLabel())
 	}
 	return fmt.Sprintf("%d", a.Observation.Value)
 }
@@ -527,7 +637,14 @@ func (a Alert) CommentLink() string {
 // model's reading of it.
 func (a Alert) Message() string {
 	var b strings.Builder
-	b.WriteString("Alerta de comentários\n\n")
+	// The subject's own word. This said "comentários" for every alert, which on
+	// a conversation rule is the first line the recipient reads and the first
+	// thing about it that is wrong.
+	if a.Observation.Metric.SubjectKind() == SubjectKindConversation {
+		b.WriteString("Alerta de conversas\n\n")
+	} else {
+		b.WriteString("Alerta de comentários\n\n")
+	}
 	b.WriteString(a.Headline())
 
 	// Each of these is omitted rather than printed empty or printed as an

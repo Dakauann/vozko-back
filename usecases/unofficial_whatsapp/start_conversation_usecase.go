@@ -54,6 +54,27 @@ func NewStartConversationUseCase(
 	messaging uw.MessagingAPI,
 	leads LeadLinker,
 ) *StartConversationUseCase {
+	// Refused at construction, not at first send.
+	//
+	// The composition root once built this from bundle fields it had not
+	// assigned yet, so the use case captured nil repositories and every send
+	// through it panicked on the first call. That surfaced as an HTTP panic in
+	// an alert test months later, because the only caller is an alert and one
+	// that panics is indistinguishable from one nobody configured. A wiring
+	// mistake belongs at boot, where it is one line in the log and impossible
+	// to deploy past.
+	switch {
+	case instances == nil:
+		panic("unofficial whatsapp: start conversation needs an instance repository")
+	case servers == nil:
+		panic("unofficial whatsapp: start conversation needs a server repository")
+	case contacts == nil:
+		panic("unofficial whatsapp: start conversation needs a contact repository")
+	case conversations == nil:
+		panic("unofficial whatsapp: start conversation needs a conversation repository")
+	case messaging == nil:
+		panic("unofficial whatsapp: start conversation needs a messaging API")
+	}
 	return &StartConversationUseCase{
 		instances:     instances,
 		servers:       servers,

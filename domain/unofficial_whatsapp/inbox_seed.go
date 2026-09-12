@@ -21,8 +21,15 @@ import (
 // consumer to discover the same thing.
 var ErrSeedNoTargets = errors.New("unofficial whatsapp: seed request has no usable targets")
 
-// SeedTopic is the queue topic one batch of seeding travels on.
-const SeedTopic = "unofficial_whatsapp_inbox_seed"
+const (
+	// SeedExchange is seeding's OWN exchange, not the campaign one. A single
+	// lead import can enqueue two hundred batches, and that backlog has no
+	// business sharing a topology with the queue that sends to customers.
+	SeedExchange = "unofficial_whatsapp_seed_exchange"
+
+	// SeedTopic is the queue topic one batch of seeding travels on.
+	SeedTopic = "unofficial_whatsapp_inbox_seed"
+)
 
 // SeedBatchSize is how many numbers ride in one queue message.
 //

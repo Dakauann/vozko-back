@@ -2,11 +2,13 @@ package audience_usecase
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
 	ca "vozko/domain/audience"
-	"vozko/domain/balance"
+	"vozko/domain/cache"
+	"vozko/domain/messaging"
 	"vozko/domain/shared"
 )
 
@@ -39,36 +41,37 @@ const AlertFreshness = 24 * time.Hour
 // are simply not evaluated, which is how a deployment without a channel or
 // without the table behaves.
 type AlertDeps struct {
-	Rules      ca.AlertRuleRepository
-	Repo       ca.Repository
-	Dispatcher ca.AlertDispatcher
+	Rules ca.AlertRuleRepository
+	Repo  ca.Repository
 	// Adapters resolve the post's public link and the account's handle. Without
 	// them the alert still fires, it just cannot say where: the engine knows an
 	// account by a workspace UUID and a post by a numeric id, and neither means
 	// anything to the person being woken up.
 	Adapters map[ca.Source]ca.SourceAdapter
-	// Briefer writes the model's reading of what happened. Optional, opt-in per
-	// rule, and skipped silently on any error.
-	Briefer  ca.AlertBriefer
-	Settings ca.SettingsRepository
-	// Balance and Batches put the briefing under the same floor and on the same
-	// spend page as every other model call in the engine.
-	Balance balance.CachedBalanceChecker
-	Batches ca.BatchRepository
-	Clock   ca.Clock
+	// Publisher hands a claimed alert to the sender. The briefing and the
+	// outbound send are the two slow things an alert does, and this walk is
+	// sequential across every workspace, so neither belongs on it.
+	//
+	// Optional. Without one, or when publishing fails, Sender is called inline:
+	// a broker that is down makes alerts slow, never silent.
+	Publisher messaging.MessageQueuePub
+	Sender    AlertSender
+	// State dedupes alerts per SUBJECT. Optional: without it a rule still
+	// respects its cooldown and daily cap, it just cannot tell two bad
+	// conversations from the same bad conversation twice.
+	State cache.SharedState
+	Clock ca.Clock
 }
 
-type alertEvaluator struct {
-	AlertDeps
-	guard balanceGuard
-}
+type alertEvaluator struct{ AlertDeps }
 
-func NewAlertEvaluator(d AlertDeps) ca.AlertEvaluator {
-	return &alertEvaluator{AlertDeps: d, guard: newBalanceGuard(d.Balance, "alert briefing")}
-}
+func NewAlertEvaluator(d AlertDeps) ca.AlertEvaluator { return &alertEvaluator{AlertDeps: d} }
 
 func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef, workspaceID string, rows []*ca.Analysis) {
-	if e.Rules == nil || e.Dispatcher == nil || len(rows) == 0 {
+	// Nowhere to hand an alert off to is the same as having no alerts: a
+	// deployment with neither a queue nor a sender evaluates nothing rather
+	// than claiming rules whose firings could never leave.
+	if e.Rules == nil || (e.Publisher == nil && e.Sender == nil) || len(rows) == 0 {
 		return
 	}
 	rules, err := e.Rules.ListArmed(ctx, ref.Source, ref.AccountID)
@@ -81,18 +84,39 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 	}
 
 	now := e.now()
-	worst := worstFreshComment(rows, now)
 	// Windowed values are fetched lazily and shared: several rules commonly
 	// watch the same span.
 	windows := map[int]*ca.Stats{}
 	var placeOnce *alertPlace
 
+	// One selection per subject kind, reused across every rule that watches it:
+	// a batch is one kind, so in practice this resolves once.
+	subjects := map[ca.SubjectKind]*ca.Analysis{}
+
 	for _, rule := range rules {
 		if rule == nil || rule.WorkspaceID != workspaceID {
 			continue
 		}
+		kind := rule.Metric.SubjectKind()
+		worst, resolved := subjects[kind]
+		if !resolved {
+			worst = worstFresh(kind, rows, now)
+			subjects[kind] = worst
+		}
+		// Is this subject worth judging at all? Asked before measuring, so a
+		// conversation too short to mean anything costs nothing to reject.
+		if !rule.Accepts(worst) {
+			continue
+		}
 		value, observed := e.measure(ctx, rule, ref, worst, windows)
 		if !observed || !rule.ShouldFire(value, now) {
+			continue
+		}
+		// One subject must not consume the rule's whole daily cap. Without
+		// this, a single conversation re-analysed every few minutes would send
+		// every alert the rule is allowed to send that day, and the second
+		// conversation to go wrong would be silently dropped.
+		if !e.claimSubject(rule, worst) {
 			continue
 		}
 		// Resolved lazily and once: a tick where nothing fires must not cost a
@@ -104,9 +128,6 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 			AccountName: place.AccountName,
 			Permalink:   place.Permalink,
 			Comment:     commentFor(rule, worst),
-		}
-		if rule.Brief {
-			observation.Briefing = e.brief(ctx, rule, observation, place.Caption)
 		}
 		e.fire(ctx, rule, observation, now)
 	}
@@ -140,49 +161,6 @@ func (e *alertEvaluator) place(ctx context.Context, ref ca.ContainerRef, cache *
 	return resolved
 }
 
-// brief asks the model to read the alert. Never fatal: an alert without advice
-// still tells somebody something is wrong, and one that did not arrive tells
-// them nothing.
-func (e *alertEvaluator) brief(ctx context.Context, rule *ca.AlertRule, obs ca.AlertObservation, caption string) ca.AlertBriefing {
-	if e.Briefer == nil {
-		return ca.AlertBriefing{}
-	}
-	// The alert itself is free and always goes out; only the briefing is a
-	// model call, so only the briefing answers to the balance floor.
-	if err := e.guard.Allow(rule.WorkspaceID); err != nil {
-		return ca.AlertBriefing{}
-	}
-	req := ca.AlertBriefRequest{
-		WorkspaceID: rule.WorkspaceID,
-		Caption:     caption,
-		RuleName:    rule.Name,
-		Measurement: ca.NewAlert(*rule, obs, e.now()).Headline(),
-	}
-	if c := obs.Comment; c != nil {
-		req.Comment, req.Stance, req.Severity = c.Excerpt, c.Stance, c.Severity
-	}
-	if e.Settings != nil {
-		if s, err := e.Settings.Find(ctx, rule.Source, rule.AccountID); err == nil && s != nil {
-			req.Model, req.Instructions = s.Model, s.Instructions
-		}
-	}
-
-	briefing, err := e.Briefer.Brief(ctx, req)
-	if err != nil || briefing == nil {
-		if err != nil {
-			log.Printf("[comment-analysis] alerts: briefing %s: %v", rule.ID, err)
-		}
-		return ca.AlertBriefing{}
-	}
-	recordAICall(ctx, e.Batches, e.Clock, aiCall{
-		WorkspaceID: rule.WorkspaceID, Source: rule.Source, AccountID: rule.AccountID,
-		Kind: ca.BatchKindAlertBrief, Model: briefing.Model,
-		PromptTokens: briefing.PromptTokens, CompletionTokens: briefing.CompletionTokens,
-	})
-	briefing.Normalize()
-	return *briefing
-}
-
 // measure returns the value a rule is watching, and whether it could be read at
 // all. A windowed query that fails is "not observed" rather than zero, because
 // zero is a real value that would fire an acceptance-score rule.
@@ -197,7 +175,12 @@ func (e *alertEvaluator) measure(
 		if worst == nil {
 			return 0, false
 		}
-		return worst.Severity, true
+		switch rule.Metric {
+		case ca.AlertMetricAttendanceQuality:
+			return worst.AttendanceQuality, true
+		default:
+			return worst.Severity, true
+		}
 	}
 
 	stats, ok := windows[rule.WindowMinutes]
@@ -229,6 +212,8 @@ func (e *alertEvaluator) measure(
 			return 0, false
 		}
 		return stats.AcceptanceScore, true
+	case ca.AlertMetricEscalationCount:
+		return stats.NextActionEscalate, true
 	}
 	return 0, false
 }
@@ -265,49 +250,89 @@ func (e *alertEvaluator) fire(ctx context.Context, rule *ca.AlertRule, observati
 		return
 	}
 
+	// The claim already happened, so this firing is owned: queueing it cannot
+	// produce a second message, and the send is free to take as long as the
+	// provider takes.
+	//
+	// The claim is also deliberately never released on failure. Releasing it
+	// would retry on the next batch, which during an incident is seconds away,
+	// and a channel that is down would then be hammered. The cooldown is the
+	// retry interval, and the reason is stored where the operator looks.
 	alert := ca.NewAlert(*rule, observation, now)
-	if err := e.Dispatcher.Dispatch(ctx, ca.AlertDelivery{
-		WorkspaceID:     rule.WorkspaceID,
-		Channel:         rule.Channel,
-		Recipient:       rule.Recipient,
-		BusinessPhoneID: rule.BusinessPhoneID,
-		TemplateID:      rule.TemplateID,
-		TemplateParams:  alert.TemplateParams(),
-		Facts:           alert.Facts(),
-		InstanceID:      rule.InstanceID,
-		Text:            alert.Message(),
-		IdempotencyKey:  alert.IdempotencyKey(),
-		ActorUserID:     rule.CreatedByUserID,
-	}); err != nil {
-		// The claim is deliberately NOT released. Releasing it would retry on
-		// the next batch, which during an incident is seconds away, and a
-		// channel that is down would then be hammered. The cooldown is the
-		// retry interval, and the reason is stored so the operator can see it.
-		log.Printf("[comment-analysis] alerts: dispatching %s: %v", rule.ID, err)
-		if err := e.Rules.RecordFailure(ctx, rule.WorkspaceID, rule.ID, err.Error(), now); err != nil {
-			log.Printf("[comment-analysis] alerts: recording failure for %s: %v", rule.ID, err)
-		}
+	if e.handOff(alert) {
+		return
 	}
+	if e.Sender == nil {
+		log.Printf("[comment-analysis] alerts: no sender for %s, alert dropped", rule.ID)
+		return
+	}
+	_ = e.Sender.Send(ctx, alert)
 }
 
-// worstFreshComment is the most severe RECENT comment of the batch. Recency is
-// the backfill guard; severity is because a per-comment rule that fired on an
-// arbitrary member of the batch would report a milder comment than the one that
-// crossed the threshold.
-func worstFreshComment(rows []*ca.Analysis, now time.Time) *ca.Analysis {
+// handOff queues the alert, reporting whether it got there. A broker that
+// refuses is not a reason to lose an alert, so the caller sends it inline
+// instead: slower, and the behaviour this had before the queue existed.
+func (e *alertEvaluator) handOff(alert ca.Alert) bool {
+	if e.Publisher == nil {
+		return false
+	}
+	body, err := json.Marshal(alert)
+	if err != nil {
+		log.Printf("[comment-analysis] alerts: encoding %s: %v", alert.Rule.ID, err)
+		return false
+	}
+	if err := e.Publisher.Publish(ca.TopicAlertSend, body); err != nil {
+		log.Printf("[comment-analysis] alerts: queueing %s, sending inline instead: %v", alert.Rule.ID, err)
+		return false
+	}
+	return true
+}
+
+// worstFresh is the RECENT row of the batch that a per-subject rule should be
+// judged on. Recency is the backfill guard; "worst" is because a rule that
+// fired on an arbitrary member of the batch would report a milder subject than
+// the one that actually crossed the threshold.
+//
+// What "worst" means is the subject's own question: the most severe comment,
+// the least well handled conversation.
+func worstFresh(kind ca.SubjectKind, rows []*ca.Analysis, now time.Time) *ca.Analysis {
 	var worst *ca.Analysis
 	for _, row := range rows {
-		if row == nil || row.Status != ca.StatusAnalyzed {
+		if row == nil || row.Status != ca.StatusAnalyzed || row.SubjectKind != kind {
 			continue
 		}
 		if now.Sub(row.OccurredAt) > AlertFreshness {
 			continue
 		}
-		if worst == nil || row.Severity > worst.Severity {
+		if worst == nil || worseFor(kind, row, worst) {
 			worst = row
 		}
 	}
 	return worst
+}
+
+func worseFor(kind ca.SubjectKind, candidate, incumbent *ca.Analysis) bool {
+	if kind == ca.SubjectKindConversation {
+		return candidate.AttendanceQuality < incumbent.AttendanceQuality
+	}
+	return candidate.Severity > incumbent.Severity
+}
+
+// claimSubject is the per-subject dedupe: one alert per rule per subject per
+// AlertSubjectSuppression, on top of the rule's own cooldown and daily cap.
+//
+// Best effort. A store that is down must not silence alerts, so a failure reads
+// as "not seen before" and the rule's cooldown and cap remain the backstop.
+func (e *alertEvaluator) claimSubject(rule *ca.AlertRule, worst *ca.Analysis) bool {
+	if e.State == nil || rule.Metric.IsWindowed() || worst == nil || worst.ID == "" {
+		return true
+	}
+	first, err := e.State.SetNX("alert:subject:"+rule.ID+":"+worst.ID, "1", ca.AlertSubjectSuppression)
+	if err != nil {
+		log.Printf("[comment-analysis] alerts: subject dedupe unavailable for %s: %v", rule.ID, err)
+		return true
+	}
+	return first
 }
 
 // commentFor attaches the comment only to a per-comment alert. A windowed alert

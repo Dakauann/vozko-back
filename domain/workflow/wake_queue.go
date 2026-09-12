@@ -1,6 +1,10 @@
 package workflow
 
-const TopicRunWake = "workflow.run.wake"
+const (
+	Exchange = "workflow_wake_exchange"
+
+	TopicRunWake = "workflow.run.wake"
+)
 
 type RunWakeMessage struct {
 	RunID  string `json:"run_id"`

@@ -5,11 +5,21 @@ import (
 	"net/http"
 	"time"
 
+	audience_domain "vozko/domain/audience"
+	business_metrics_domain "vozko/domain/business_metrics"
+	billing_domain "vozko/domain/calls/billing"
 	recordings_domain "vozko/domain/calls/recordings"
+	crm_telemetry_domain "vozko/domain/crm_telemetry"
+	notification_domain "vozko/domain/notification"
 	rag_domain "vozko/domain/rag"
+	scheduled_message_domain "vozko/domain/scheduled_message"
 	pricing_service "vozko/domain/services/pricing"
 	"vozko/domain/shipping"
 	shortlink_domain "vozko/domain/shortlink"
+	unofficial_whatsapp_domain "vozko/domain/unofficial_whatsapp"
+	webhook_domain "vozko/domain/webhook"
+	whatsapp_campaign_domain "vozko/domain/whatsapp_campaign"
+	workflow_domain "vozko/domain/workflow"
 	rag_infra "vozko/infra/ai/rag"
 	callsession_infra "vozko/infra/callsession"
 	whatsapp_client "vozko/infra/conversation/whatsapp"
@@ -53,18 +63,22 @@ func (c *Container) initServices() {
 
 	shippingGateways := make(map[shipping.Provider]shipping.ProviderGateway)
 
-	workflowWakeExchange := "workflow_wake_exchange"
-	businessMetricsExchange := "business_metrics_exchange"
-	crmTelemetryExchange := "crm_telemetry_exchange"
-	notifications_exchange := "notifications_exchange"
-	whatsappCampaignExchange := "whatsapp_campaign_exchange"
+	workflowWakeExchange := workflow_domain.Exchange
+	businessMetricsExchange := business_metrics_domain.Exchange
+	crmTelemetryExchange := crm_telemetry_domain.Exchange
+	notifications_exchange := notification_domain.Exchange
+	whatsappCampaignExchange := whatsapp_campaign_domain.Exchange
 	ragDocProcessingExchange := rag_domain.DocumentProcessingExchange
-	webhookExchange := "webhook_events_exchange"
+	webhookExchange := webhook_domain.Exchange
 	shortlinkClickExchange := shortlink_domain.ClickExchange
-	callBillingExchange := "call_events_exchange"
+	callBillingExchange := billing_domain.Exchange
 	recordingExchange := recordings_domain.Exchange
-	scheduledMessageExchange := "scheduled_message_exchange"
-	unofficialWhatsAppSeedExchange := "unofficial_whatsapp_seed_exchange"
+	scheduledMessageExchange := scheduled_message_domain.Exchange
+	unofficialWhatsAppSeedExchange := unofficial_whatsapp_domain.SeedExchange
+	// Its own exchange, for the same reason inbox seeding gets one: an alert
+	// send is a customer-facing message and has no business queuing behind
+	// analysis telemetry.
+	audienceAlertExchange := audience_domain.AlertExchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -79,6 +93,8 @@ func (c *Container) initServices() {
 		workflowWakeSub:            queue.NewRabbitMQQueueSub(amqpPool, workflowWakeExchange),
 		metricsQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, businessMetricsExchange),
 		metricsQueueSub:            queue.NewRabbitMQQueueSub(amqpPool, businessMetricsExchange),
+		audienceAlertPub:           queue.NewRabbitMQQueuePub(amqpPool, audienceAlertExchange),
+		audienceAlertSub:           queue.NewRabbitMQQueueSub(amqpPool, audienceAlertExchange),
 		crmTelemetryPub:            crmTelPub,
 		crmTelemetrySub:            crmTelSub,
 		notificationsQueuePub:      queue.NewRabbitMQQueuePub(amqpPool, notifications_exchange),
