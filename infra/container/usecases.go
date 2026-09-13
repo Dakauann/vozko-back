@@ -1437,15 +1437,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// Alerts. Not fatal: the evaluator falls back to sending inline when it
-	// cannot hand off, so a broker that is down makes alerts slow rather than
-	// silent, and the platform still boots.
-	if c.audience != nil && c.audience.AlertConsumer != nil {
-		if err := c.audience.AlertConsumer.Start(); err != nil {
-			log.Printf("[comment-analysis] alert consumer failed to start, alerts will send inline: %v", err)
-		}
-	}
-
 	if err := c.useCases.consumeMetric.Start(); err != nil {
 		log.Fatal("Failed to start business metrics consumer:", err)
 	}

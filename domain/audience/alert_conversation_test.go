@@ -174,3 +174,75 @@ func TestAlertMessageNamesTheSubjectItIsAbout(t *testing.T) {
 		t.Errorf("a comment alert opened with %q", strings.SplitN(got, "\n", 2)[0])
 	}
 }
+
+// "none" has to mean something the model can check, or it becomes the answer to
+// everything.
+//
+// Every conversation analysed before this scored EXACTLY 0, which the weights
+// only allow when all four dimensions come back "none". The rubric offered
+// "none" as the floor of each scale and never said what it meant, so on a thin
+// conversation the model marked all four absent, including an agent that had
+// replied clearly throughout. A score of zero for every poor conversation
+// cannot tell a badly handled one from an empty one.
+func TestQualityRubricSaysWhenNoneIsTheWrongAnswer(t *testing.T) {
+	prompt := ConversationQualityRubricPrompt()
+
+	for _, must := range []string{
+		// "none" is a judgement about the dimension, not about the conversation's length.
+		"observada",
+		// The two the model was getting wrong outright.
+		"professionalism",
+		"agent_conduct",
+	} {
+		if !strings.Contains(prompt, must) {
+			t.Errorf("the calibration guidance never mentions %q", must)
+		}
+	}
+
+	// And no telephony left in a rubric for a product with no voice channel.
+	for _, gone := range []string{"ligação", "transferida", "chamada"} {
+		if strings.Contains(prompt, gone) {
+			t.Errorf("the conversation rubric still carries voice-call guidance: %q", gone)
+		}
+	}
+}
+
+// One rule, every conversation channel.
+//
+// A rule is keyed on (source, account), so watching four channels meant four
+// rules, each with its own cooldown and its own daily cap. One incident across
+// two channels then sent two messages, and raising a threshold meant editing
+// four rules and missing one. An empty source is the wildcard: it watches every
+// channel whose conversations this workspace analyses.
+func TestAlertRuleCanWatchEveryConversationChannel(t *testing.T) {
+	wildcard := AlertRule{
+		WorkspaceID: "ws-1", AccountID: "ws-1", Name: "Atendimento fraco",
+		Metric: AlertMetricAttendanceQuality, Threshold: 70,
+		Channel: AlertChannelUnofficial, Recipient: "+5511999999999",
+	}
+	wildcard.Normalize()
+	if err := wildcard.Validate(); err != nil {
+		t.Fatalf("a rule watching every channel was refused: %v", err)
+	}
+	if !wildcard.WatchesEveryChannel() {
+		t.Error("an empty source is not reported as the wildcard")
+	}
+
+	scoped := wildcard
+	scoped.Source = SourceUnofficialWhatsApp
+	if scoped.WatchesEveryChannel() {
+		t.Error("a rule naming a channel was reported as the wildcard")
+	}
+
+	// A source-less COMMENT rule stays legal, because the product has always
+	// accepted one and it is harmless: comments exist only on Instagram, so it
+	// matches Instagram batches and nothing else. What keeps a comment rule off
+	// a conversation batch is the subject-kind filter, not this field.
+	comment := wildcard
+	comment.Metric = AlertMetricCommentSeverity
+	comment.Threshold = 80
+	comment.Normalize()
+	if err := comment.Validate(); err != nil {
+		t.Errorf("a source-less comment rule was refused: %v", err)
+	}
+}

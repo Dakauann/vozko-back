@@ -161,6 +161,19 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		Batches:    batches,
 		Clock:      clock,
 	})
+	// Started HERE, beside the thing it consumes, and not in the boot sequence
+	// that starts every other consumer. That sequence runs before this bundle
+	// exists, so its nil check passed quietly and the subscriber never ran. The
+	// queue is declared by whoever subscribes, so nothing was ever bound to the
+	// alert exchange, and a direct exchange discards what it cannot route while
+	// the broker CONFIRMS the publish. Rules recorded firings, the operator saw
+	// "sent", and no message ever left the process.
+	//
+	// Not fatal: the evaluator sends inline when it cannot hand off, so a broker
+	// having a bad day makes alerts slow rather than silent.
+	if err := bundle.AlertConsumer.Start(); err != nil {
+		log.Printf("[comment-analysis] alert consumer failed to start, alerts will send inline: %v", err)
+	}
 
 	alertEvaluator := cauc.NewAlertEvaluator(cauc.AlertDeps{
 		Rules: alertRules, Repo: repo, Clock: clock,

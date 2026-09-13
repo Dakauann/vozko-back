@@ -115,8 +115,16 @@ func (r *alertRuleRepository) ListByAccount(ctx context.Context, workspaceID str
 // with no rules costs an index probe rather than a scan.
 func (r *alertRuleRepository) ListArmed(ctx context.Context, source ca.Source, accountID string) ([]*ca.AlertRule, error) {
 	var rows []schema.AudienceAlertRule
+	// The channel's own rules, plus the ones that watch every channel. A rule
+	// with no source is the wildcard: watching four channels used to mean four
+	// rules, each with its own cooldown and daily cap, so one incident spanning
+	// two of them sent two messages.
+	//
+	// Still one index probe: idx_ca_alert_armed leads on source, and an IN of
+	// two values is two probes rather than a scan.
 	err := r.db.WithContext(ctx).
-		Where("source = ? AND account_id = ? AND enabled = true", string(source), accountID).
+		Where("source IN ? AND account_id = ? AND enabled = true",
+			[]string{string(source), ""}, accountID).
 		Find(&rows).Error
 	if err != nil {
 		return nil, err

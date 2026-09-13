@@ -395,6 +395,16 @@ func (r AlertRule) validateThreshold() error {
 	return nil
 }
 
+// WatchesEveryChannel reports whether this rule is the wildcard: no source, so
+// every channel whose conversations the workspace analyses.
+//
+// A rule is keyed on (source, account), so watching four channels used to mean
+// four rules, each with its own cooldown and its own daily cap. One incident
+// spanning two channels then sent two messages, and raising a threshold meant
+// editing four rules and missing one. The wildcard is one rule, one cooldown,
+// one cap, which is what an operator means by "tell me when attendance drops".
+func (r AlertRule) WatchesEveryChannel() bool { return strings.TrimSpace(string(r.Source)) == "" }
+
 // Accepts reports whether this row is one the rule is willing to judge.
 //
 // Separate from Crossed and ShouldFire because it asks a different question:

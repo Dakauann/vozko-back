@@ -306,13 +306,24 @@ func (a ConversationQuality) Score() int {
 func ConversationQualityRubricPrompt() string {
 	var b strings.Builder
 	b.WriteString("QUALIDADE DO ATENDIMENTO, avalie cada dimensão abaixo com um nível ordinal. A nota final de 0 a 100 é CALCULADA AUTOMATICAMENTE a partir desses níveis e dos pesos, NÃO informe um número diretamente.\n\n")
-	b.WriteString("Níveis: \"none\" (ausente) · \"low\" (fraco) · \"medium\" (razoável) · \"high\" (forte/excelente)\n\n")
+	b.WriteString("Níveis: \"none\" (a dimensão foi observada e está genuinamente ausente) · \"low\" (fraco) · \"medium\" (razoável) · \"high\" (forte/excelente)\n\n")
 	b.WriteString(shared.RenderQualityDimensions(ConversationQualityDimensions()))
 	b.WriteString("\nDiretrizes de calibração:\n")
 	b.WriteString("- A avaliação é do ATENDENTE, não do cliente: um cliente difícil bem conduzido pode ter agent_conduct \"high\".\n")
 	b.WriteString("- Conversa curta e monossilábica, sem perguntas do cliente → customer_engagement e goal_progress no máximo \"low\".\n")
 	b.WriteString("- Atendente que não faz perguntas estratégicas ou responde de forma genérica (copy-paste) → agent_conduct no máximo \"low\".\n")
-	b.WriteString("- Se a ligação caiu/foi transferida por motivo técnico (não por recusa do cliente), avalie apenas o trecho ocorrido, sem penalizar o atendente por isso.\n")
+	// What "none" means, said out loud.
+	//
+	// Every conversation analysed before these four lines scored EXACTLY 0, and
+	// the weights only allow that when all four dimensions come back "none". The
+	// scale offered "none" as its floor and never said what it asserted, so on a
+	// thin conversation the model marked everything absent, including an agent
+	// that had replied clearly throughout. Zero for every poor conversation
+	// cannot tell a badly handled one from one that never happened.
+	b.WriteString("- \"none\" é uma AFIRMAÇÃO sobre a dimensão, não sobre o tamanho da conversa: use apenas quando a dimensão foi observada e está ausente. Conversa curta, sem objetivo declarado ou sem desfecho NÃO é motivo para \"none\".\n")
+	b.WriteString("- Se o atendente respondeu ao longo da conversa, agent_conduct é no mínimo \"low\"; \"none\" só quando ele não respondeu.\n")
+	b.WriteString("- Se as mensagens do atendente são compreensíveis e com tom adequado, professionalism é no mínimo \"low\"; \"none\" só diante de erro grave de comunicação, grosseria ou mensagem ininteligível.\n")
+	b.WriteString("- As quatro dimensões \"none\" ao mesmo tempo dão nota 0, que descreve um atendimento que não aconteceu. Um atendimento ruim que aconteceu não é 0.\n")
 	return b.String()
 }
 

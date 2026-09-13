@@ -38,7 +38,11 @@ type RabbitMQQueuePub struct {
 	channel *amqp.Channel
 	release func()
 
+	// declaredTopics is the DELAY topology already declared on this channel;
+	// boundTopics is the plain topic queue and its binding. Two caches because
+	// the two are declared by different paths and either can be needed alone.
 	declaredTopics map[string]struct{}
+	boundTopics    map[string]struct{}
 }
 
 func NewRabbitMQQueuePub(
@@ -48,6 +52,7 @@ func NewRabbitMQQueuePub(
 		pool:           pool,
 		exchange:       exchange,
 		declaredTopics: make(map[string]struct{}),
+		boundTopics:    make(map[string]struct{}),
 	}
 }
 
@@ -102,8 +107,14 @@ func (q *RabbitMQQueuePub) invalidateChannelLocked() {
 		q.release = nil
 	}
 
+	// Both caches describe topology on the channel being dropped. A reconnection
+	// may reach a broker that has never seen these queues, so keeping either
+	// across an invalidation is how a publisher silently stops declaring.
 	if len(q.declaredTopics) > 0 {
 		q.declaredTopics = make(map[string]struct{})
+	}
+	if len(q.boundTopics) > 0 {
+		q.boundTopics = make(map[string]struct{})
 	}
 }
 
@@ -153,18 +164,13 @@ func (q *RabbitMQQueuePub) ensureDelayTopologyLocked(topic string) error {
 		}
 	}
 
+	// The real queue and its binding, shared with the plain publish path.
+	if err := q.ensureRoutableLocked(topic); err != nil {
+		return err
+	}
 	channel, err := q.ensureChannelLocked()
 	if err != nil {
 		return err
-	}
-
-	if _, err := channel.QueueDeclare(topic, true, false, false, false, nil); err != nil {
-		q.invalidateChannelLocked()
-		return fmt.Errorf("failed to declare queue %s: %w", topic, err)
-	}
-	if err := channel.QueueBind(topic, topic, q.exchange, false, nil); err != nil {
-		q.invalidateChannelLocked()
-		return fmt.Errorf("failed to bind queue %s: %w", topic, err)
 	}
 
 	delayTopic := topic + messaging.DelayQueueSuffix
@@ -234,9 +240,52 @@ func declareDelayQueue(ch *amqp.Channel, reconnect func() (*amqp.Channel, error)
 	return fresh, nil
 }
 
+// ensureRoutableLocked declares the topic's queue and binds it to the exchange.
+//
+// Without it a publish can succeed into nothing. The exchange is direct, so a
+// message whose routing key matches no binding is DISCARDED, and publisher
+// confirms ack it while it is discarded: a confirm answers "the exchange took
+// it", never "a queue holds it". A publisher that ran before its consumer
+// subscribed, or whose consumer failed to start at all, was therefore told
+// every message was delivered while every one of them was dropped, with no
+// error anywhere to say so.
+//
+// Declaring here is what makes "published" mean "durably queued": the messages
+// wait in the queue and are delivered whenever a consumer does appear. It is
+// the same declaration the subscriber makes, so the two agree and redeclaring
+// is idempotent, and the topic is remembered so this costs one round trip per
+// topic per channel rather than one per message.
+func (q *RabbitMQQueuePub) ensureRoutableLocked(topic string) error {
+	if q.boundTopics == nil {
+		q.boundTopics = make(map[string]struct{})
+	}
+	if _, ok := q.boundTopics[topic]; ok {
+		return nil
+	}
+
+	channel, err := q.ensureChannelLocked()
+	if err != nil {
+		return err
+	}
+	if _, err := channel.QueueDeclare(topic, true, false, false, false, nil); err != nil {
+		q.invalidateChannelLocked()
+		return fmt.Errorf("failed to declare queue %s: %w", topic, err)
+	}
+	if err := channel.QueueBind(topic, topic, q.exchange, false, nil); err != nil {
+		q.invalidateChannelLocked()
+		return fmt.Errorf("failed to bind queue %s: %w", topic, err)
+	}
+
+	q.boundTopics[topic] = struct{}{}
+	return nil
+}
+
 func (q *RabbitMQQueuePub) Publish(topic string, message []byte) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if err := q.ensureRoutableLocked(topic); err != nil {
+		return err
+	}
 	return q.publishLocked(topic, amqp.Publishing{
 		ContentType:  "application/json",
 		Body:         message,

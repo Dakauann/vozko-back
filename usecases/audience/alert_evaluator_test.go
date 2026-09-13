@@ -52,13 +52,17 @@ func (f *fakeAlertRules) FindByID(_ context.Context, ws, id string) (*ca.AlertRu
 func (f *fakeAlertRules) ListByAccount(context.Context, string, ca.Source, string) ([]*ca.AlertRule, error) {
 	return f.rules, nil
 }
-func (f *fakeAlertRules) ListArmed(context.Context, ca.Source, string) ([]*ca.AlertRule, error) {
+
+// Mirrors the repository's query, source filter included: this channel's rules
+// plus the ones that watch every channel. It used to return everything, which
+// made a rule appear to fire on channels it does not name.
+func (f *fakeAlertRules) ListArmed(_ context.Context, source ca.Source, _ string) ([]*ca.AlertRule, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
 	out := make([]*ca.AlertRule, 0, len(f.rules))
 	for _, r := range f.rules {
-		if r.Enabled {
+		if r.Enabled && (r.Source == source || r.WatchesEveryChannel()) {
 			out = append(out, r)
 		}
 	}

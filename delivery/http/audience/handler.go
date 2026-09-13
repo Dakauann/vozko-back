@@ -896,21 +896,42 @@ func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 type WorkspaceSettingsResponse struct {
 	DailyCap        int `json:"dailyCap"`
 	DebounceMinutes int `json:"debounceMinutes"`
-	// EffectiveDebounceMinutes is what the sweep actually waits, which is the
-	// default when nothing is set.
+	// The values actually IN FORCE, which is what a screen shows in the box.
+	//
+	// Both are resolved HERE rather than by the client: the ceiling falls back
+	// through the workspace, then the channel accounts, then the product
+	// default, and a browser reproducing that chain would be a second copy of
+	// ResolveDailyCap free to disagree with the engine's.
+	EffectiveDailyCap        int `json:"effectiveDailyCap"`
 	EffectiveDebounceMinutes int `json:"effectiveDebounceMinutes"`
 	MinDebounceMinutes       int `json:"minDebounceMinutes"`
 	MaxDebounceMinutes       int `json:"maxDebounceMinutes"`
 }
 
-func workspaceSettingsResponse(s ca.WorkspaceSettings) WorkspaceSettingsResponse {
+func workspaceSettingsResponse(s ca.WorkspaceSettings, effectiveDailyCap int) WorkspaceSettingsResponse {
 	return WorkspaceSettingsResponse{
 		DailyCap:                 s.DailyCap,
 		DebounceMinutes:          s.DebounceMinutes,
+		EffectiveDailyCap:        effectiveDailyCap,
 		EffectiveDebounceMinutes: ca.ClampDebounceMinutes(s.DebounceMinutes),
 		MinDebounceMinutes:       ca.MinDebounceMinutes,
 		MaxDebounceMinutes:       ca.MaxDebounceMinutes,
 	}
+}
+
+// effectiveDailyCap is the ceiling the engine would enforce right now.
+//
+// Read back through the usage use case, which is the one place that resolves it,
+// so this endpoint and the meter beside it cannot name different numbers.
+func (h *Handler) effectiveDailyCap(r *http.Request) int {
+	if h.usage == nil {
+		return 0
+	}
+	usage, err := h.usage.Execute(r.Context(), middleware.GetWorkspaceID(r))
+	if err != nil {
+		return 0
+	}
+	return usage.Limit
 }
 
 // @Summary		Configuração de análise do workspace
@@ -922,7 +943,7 @@ func workspaceSettingsResponse(s ca.WorkspaceSettings) WorkspaceSettingsResponse
 // @Router			/audience/workspace-settings [get]
 func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 	if h.workspaceSettings == nil {
-		response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(ca.WorkspaceSettings{}))
+		response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(ca.WorkspaceSettings{}, 0))
 		return
 	}
 	settings, err := h.workspaceSettings.Execute(r.Context(), middleware.GetWorkspaceID(r))
@@ -930,7 +951,7 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err, "Failed to load the analysis settings")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings))
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, h.effectiveDailyCap(r)))
 }
 
 // UpdateWorkspaceSettingsRequest is a partial update: an omitted field is left
@@ -968,5 +989,5 @@ func (h *Handler) UpdateWorkspaceSettings(w http.ResponseWriter, r *http.Request
 		writeDomainError(w, err, "Failed to update the analysis settings")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings))
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, h.effectiveDailyCap(r)))
 }

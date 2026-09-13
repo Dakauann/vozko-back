@@ -152,3 +152,92 @@ func TestAlertTestMessageSaysWhatItIsNot(t *testing.T) {
 		t.Error("a rule WITH a briefing did not explain why the AI reading is absent")
 	}
 }
+
+// A wildcard rule fires on whatever channel the conversation arrived on.
+//
+// The alternative was a rule per channel, each with its own cooldown and daily
+// cap, so one incident spanning two channels sent two messages and raising a
+// threshold meant editing four rules and missing one.
+func TestAlertWildcardRuleWatchesEveryChannel(t *testing.T) {
+	rule := qualityRule(0)
+	rule.Source = "" // every conversation channel
+	rule.Normalize()
+	if err := rule.Validate(); err != nil {
+		t.Fatalf("the wildcard rule is invalid: %v", err)
+	}
+
+	rules := &fakeAlertRules{rules: []*ca.AlertRule{rule}}
+	dispatcher := &fakeDispatcher{}
+	uc := conversationEvaluator(rules, dispatcher, newFakeState())
+
+	// Telegram, which this rule never names.
+	telegram := ca.ContainerRef{
+		Kind: ca.SubjectKindConversation, Source: ca.SourceTelegram,
+		AccountID: "ws-1", ContainerID: "acc-1",
+	}
+	row := conversationAt("conv-tg", 41, 30, now)
+	row.Source = ca.SourceTelegram
+
+	uc.EvaluateBatch(context.Background(), telegram, "ws-1", []*ca.Analysis{row})
+
+	if len(dispatcher.all()) != 1 {
+		t.Fatalf("a wildcard rule sent %d alerts on Telegram, want 1", len(dispatcher.all()))
+	}
+}
+
+// "All channels" and "this channel" side by side, which is the shape an
+// operator actually ends up with: one broad rule plus a tighter one on the
+// channel they care most about.
+func TestAlertWildcardAndScopedRulesCoexist(t *testing.T) {
+	all := qualityRule(0)
+	all.ID, all.Source, all.Name = "rule-all", "", "Qualquer canal"
+	all.Normalize()
+
+	onlyUnofficial := qualityRule(0)
+	onlyUnofficial.ID, onlyUnofficial.Source, onlyUnofficial.Name = "rule-uw", ca.SourceUnofficialWhatsApp, "Só não oficial"
+	onlyUnofficial.Normalize()
+
+	for _, r := range []*ca.AlertRule{all, onlyUnofficial} {
+		if err := r.Validate(); err != nil {
+			t.Fatalf("%s is invalid: %v", r.Name, err)
+		}
+	}
+
+	t.Run("both fire on the channel the scoped rule names", func(t *testing.T) {
+		rules := &fakeAlertRules{rules: []*ca.AlertRule{all, onlyUnofficial}, claimLimit: 0}
+		d := &fakeDispatcher{}
+		uc := conversationEvaluator(rules, d, newFakeState())
+
+		uc.EvaluateBatch(context.Background(), conversationRef(), "ws-1",
+			[]*ca.Analysis{conversationAt("conv-bad", 41, 30, now)})
+
+		if len(d.all()) != 2 {
+			t.Fatalf("sent %d alerts on unofficial whatsapp, want both rules to fire", len(d.all()))
+		}
+	})
+
+	t.Run("only the wildcard fires on a channel it does not name", func(t *testing.T) {
+		all.LastFiredAt, all.FiredToday = nil, 0
+		onlyUnofficial.LastFiredAt, onlyUnofficial.FiredToday = nil, 0
+		rules := &fakeAlertRules{rules: []*ca.AlertRule{all, onlyUnofficial}}
+		d := &fakeDispatcher{}
+		uc := conversationEvaluator(rules, d, newFakeState())
+
+		telegram := ca.ContainerRef{
+			Kind: ca.SubjectKindConversation, Source: ca.SourceTelegram,
+			AccountID: "ws-1", ContainerID: "acc-1",
+		}
+		row := conversationAt("conv-tg", 41, 30, now)
+		row.Source = ca.SourceTelegram
+
+		uc.EvaluateBatch(context.Background(), telegram, "ws-1", []*ca.Analysis{row})
+
+		sent := d.all()
+		if len(sent) != 1 {
+			t.Fatalf("sent %d alerts on telegram, want only the wildcard", len(sent))
+		}
+		if !contains(sent[0].Text, "Qualquer canal") {
+			t.Errorf("the channel-specific rule fired on a channel it does not watch: %q", sent[0].Text)
+		}
+	})
+}
