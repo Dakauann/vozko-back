@@ -55,46 +55,7 @@ func (uc *replicateTemplateUseCase) Execute(input template.ReplicateTemplateInpu
 		return nil, err
 	}
 
-	apiComponents := make([]conversation.TemplateComponent, 0, len(source.Components))
-	for _, c := range source.Components {
-		comp := conversation.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
-		}
-
-		for _, b := range c.Buttons {
-			comp.Buttons = append(comp.Buttons, conversation.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-			})
-		}
-
-		if c.Example != nil {
-			comp.Example = &conversation.TemplateExample{
-				HeaderText:   c.Example.HeaderText,
-				HeaderHandle: c.Example.HeaderHandle,
-				BodyText:     c.Example.BodyText,
-			}
-
-			for _, np := range c.Example.BodyTextNamed {
-				comp.Example.BodyTextNamed = append(comp.Example.BodyTextNamed, conversation.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-			for _, np := range c.Example.HeaderTextNamed {
-				comp.Example.HeaderTextNamed = append(comp.Example.HeaderTextNamed, conversation.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-		apiComponents = append(apiComponents, comp)
-	}
+	apiComponents := template.ToClientComponents(source.Components)
 
 	paramFormat := string(source.ParameterFormat)
 	if paramFormat == "" {

@@ -49,9 +49,15 @@ func (f *sendMockClientFactory) WABAIdForPhone(string) (string, error) {
 type sendMockTemplateRepo struct {
 	tmpl    *template.Template
 	findErr error
+	// created is what Create persisted, so a test can assert the template that
+	// was stored rather than only the one that was sent to the provider.
+	created *template.Template
 }
 
-func (r *sendMockTemplateRepo) Create(*template.Template) error             { return nil }
+func (r *sendMockTemplateRepo) Create(t *template.Template) error {
+	r.created = t
+	return nil
+}
 func (r *sendMockTemplateRepo) Update(string, *template.Template) error     { return nil }
 func (r *sendMockTemplateRepo) Delete(string) error                         { return nil }
 func (r *sendMockTemplateRepo) FindByID(string) (*template.Template, error) { return nil, nil }

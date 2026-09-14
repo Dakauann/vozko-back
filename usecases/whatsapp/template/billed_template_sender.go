@@ -150,6 +150,18 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, fmt.Errorf("%w: %s", template.ErrTemplateNotSendable, msg)
 	}
 
+	// The payload is assembled HERE, before the debit, for exactly the reason
+	// above: it is the last thing that can refuse the send, and an authentication
+	// template sent without its one-time code is refused. Assembling it after the
+	// charge would turn a caller's missing parameter into a debit and a refund.
+	//
+	// The attempt id is not minted yet, so biz_opaque_callback_data is stamped on
+	// at the send below. Everything else about the payload is decided now.
+	sendInput, err := buildTemplateSendInput(tmpl, in, "")
+	if err != nil {
+		return nil, err
+	}
+
 	category, err := tmpl.BillingCategory()
 	if err != nil {
 		return nil, fmt.Errorf("template metadata unavailable for billing: %w", err)
@@ -278,7 +290,7 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, err
 	}
 
-	sendInput := buildTemplateSendInput(tmpl, in, attempt.ID)
+	sendInput.BizOpaqueCallbackData = attempt.ID
 	out, sendErr := client.SendTemplateMessage(ctx, sendInput)
 	outcome := template.ClassifySendOutcome(out, sendErr)
 
@@ -425,31 +437,19 @@ func replayOf(attempt *template.SendAttempt, tmpl *template.Template) *template.
 	}
 }
 
-// buildTemplateSendInput is the single place template metadata becomes a
-// provider payload, so the named/positional decision and the media-header
-// decision are made once for every caller.
-func buildTemplateSendInput(tmpl *template.Template, in template.BilledSendInput, attemptID string) conversation.SendTemplateMessageInput {
-	bodyParamNames, _ := tmpl.GetBodyAndHeaderParameterNames()
-
-	out := conversation.SendTemplateMessageInput{
-		To:                     in.ToNumber,
-		TemplateName:           tmpl.Name,
-		Language:               tmpl.Language,
-		Parameters:             in.BodyParams,
-		ParameterNames:         bodyParamNames,
-		IsNamedParameterFormat: tmpl.IsNamedParameterFormat(),
-		HeaderTextParams:       in.HeaderParams,
-		// The attempt id rides to Meta and comes back on every delivery-status
-		// webhook, which is how a status event finds the charge that paid for it
-		// even when we never learned the message id.
+// buildTemplateSendInput defers to the domain, which is where the assembly now
+// lives so that all four send paths share it. See template.BuildSendInput.
+//
+// The attempt id rides to Meta as biz_opaque_callback_data and comes back on
+// every delivery-status webhook, which is how a status event finds the charge
+// that paid for it even when we never learned the message id.
+func buildTemplateSendInput(tmpl *template.Template, in template.BilledSendInput, attemptID string) (conversation.SendTemplateMessageInput, error) {
+	return tmpl.BuildSendInput(template.SendInputParams{
+		To:                    in.ToNumber,
+		BodyParams:            in.BodyParams,
+		HeaderParams:          in.HeaderParams,
 		BizOpaqueCallbackData: attemptID,
-	}
-
-	if tmpl.HasMediaHeader() {
-		out.HeaderType = strings.ToLower(tmpl.GetHeaderFormat())
-		out.HeaderMediaID = tmpl.GetHeaderMediaID()
-	}
-	return out
+	})
 }
 
 // metaErrorFrom prefers the provider's own error over our transport error: "this

@@ -60,6 +60,10 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 			Type:   strings.ToUpper(c.Type),
 			Format: c.Format,
 			Text:   c.Text,
+			// Authentication only: Meta writes the security and expiry lines
+			// itself from these two.
+			AddSecurityRecommendation: c.AddSecurityRecommendation,
+			CodeExpirationMinutes:     c.CodeExpirationMinutes,
 		}
 
 		for _, b := range c.Buttons {
@@ -69,6 +73,7 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 				URL:         b.URL,
 				PhoneNumber: b.PhoneNumber,
 				Example:     b.Example,
+				OTPType:     b.OTPType,
 			})
 		}
 
@@ -100,6 +105,14 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		return nil, err
 	}
 
+	// The rules that need the category, which ValidateComponents does not take.
+	// Both directions matter: a code button on a marketing template would be
+	// priced as marketing and rejected by Meta, and an authentication template
+	// with no code button has nothing for the recipient to do with the code.
+	if err := template.ValidateAuthenticationTemplate(input.Category, domainComponents); err != nil {
+		return nil, err
+	}
+
 	hasMediaHeader := false
 	for _, c := range domainComponents {
 		format := strings.ToUpper(c.Format)
@@ -123,47 +136,7 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		language = "pt_BR"
 	}
 
-	apiComponents := make([]conversation.TemplateComponent, 0, len(domainComponents))
-	for _, c := range domainComponents {
-		comp := conversation.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
-		}
-
-		for _, b := range c.Buttons {
-			comp.Buttons = append(comp.Buttons, conversation.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-			})
-		}
-
-		if c.Example != nil {
-			comp.Example = &conversation.TemplateExample{
-				HeaderText:   c.Example.HeaderText,
-				HeaderHandle: c.Example.HeaderHandle,
-				BodyText:     c.Example.BodyText,
-			}
-
-			for _, np := range c.Example.BodyTextNamed {
-				comp.Example.BodyTextNamed = append(comp.Example.BodyTextNamed, conversation.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-
-			for _, np := range c.Example.HeaderTextNamed {
-				comp.Example.HeaderTextNamed = append(comp.Example.HeaderTextNamed, conversation.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-		apiComponents = append(apiComponents, comp)
-	}
+	apiComponents := template.ToClientComponents(domainComponents)
 
 	if err := uc.processHeaderMediaURLs(client, apiComponents); err != nil {
 		return nil, err
@@ -176,11 +149,22 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 	// components here instead of trusting the (historically empty) client value.
 	effectiveFormat := (&template.Template{Components: domainComponents}).GetEffectiveParameterFormat()
 
+	// parameter_format describes how the BUSINESS wrote its placeholders, and an
+	// authentication template has none to describe: Meta writes that body itself
+	// and substitutes the one code. Meta's authentication documentation never
+	// mentions the field, and this package already carries a scar from sending a
+	// provider a field it did not expect (see the 360dialog note above). Omitted
+	// rather than sent as a meaningless "POSITIONAL".
+	metaParameterFormat := effectiveFormat.ToMetaAPIFormat()
+	if input.Category == template.TemplateCategoryAuthentication {
+		metaParameterFormat = ""
+	}
+
 	apiOutput, err := client.CreateTemplate(context.Background(), conversation.CreateTemplateInput{
 		Name:            strings.ToLower(name),
 		Language:        language,
 		Category:        string(input.Category),
-		ParameterFormat: effectiveFormat.ToMetaAPIFormat(),
+		ParameterFormat: metaParameterFormat,
 		Components:      apiComponents,
 	})
 	if err != nil {

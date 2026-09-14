@@ -266,7 +266,7 @@ func (h *WhatsAppTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		BusinessPhoneID: businessPhoneID,
 	})
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to sync templates: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -289,7 +289,7 @@ func (h *WhatsAppTemplateHandler) SyncOne(w http.ResponseWriter, r *http.Request
 		TemplateID: templateID,
 	})
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to sync template: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -326,7 +326,7 @@ func (h *WhatsAppTemplateHandler) UpdateHeaderMediaURL(w http.ResponseWriter, r 
 			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to update header media URL: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -355,47 +355,7 @@ func (h *WhatsAppTemplateHandler) Create(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	components := make([]whatsapptemplatedomain.TemplateComponent, 0, len(req.Components))
-	for _, c := range req.Components {
-		comp := whatsapptemplatedomain.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
-		}
-
-		for _, b := range c.Buttons {
-			comp.Buttons = append(comp.Buttons, whatsapptemplatedomain.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-			})
-		}
-
-		if c.Example != nil {
-			comp.Example = &whatsapptemplatedomain.TemplateExample{
-				HeaderText:   c.Example.HeaderText,
-				HeaderHandle: c.Example.HeaderHandle,
-				BodyText:     c.Example.BodyText,
-			}
-
-			for _, np := range c.Example.BodyTextNamed {
-				comp.Example.BodyTextNamed = append(comp.Example.BodyTextNamed, whatsapptemplatedomain.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-
-			for _, np := range c.Example.HeaderTextNamed {
-				comp.Example.HeaderTextNamed = append(comp.Example.HeaderTextNamed, whatsapptemplatedomain.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-		components = append(components, comp)
-	}
+	components := toDomainComponents(req.Components)
 
 	input := whatsapptemplatedomain.CreateTemplateInput{
 		BusinessPhoneID: req.BusinessPhoneID,
@@ -461,76 +421,6 @@ func writeTemplateError(w http.ResponseWriter, err error) {
 
 	response.WriteErrorWithCode(w, http.StatusInternalServerError,
 		whatsapptemplatedomain.CodeUnknown, err.Error(), nil)
-}
-
-func isTemplateValidationError(err error) bool {
-	validationErrors := []error{
-		whatsapptemplatedomain.ErrTemplateNameRequired,
-		whatsapptemplatedomain.ErrTemplateNameInvalidChars,
-		whatsapptemplatedomain.ErrTemplateNameMustStartLetter,
-		whatsapptemplatedomain.ErrTemplateNameTooLong,
-		whatsapptemplatedomain.ErrHeaderTextTooLong,
-		whatsapptemplatedomain.ErrHeaderTextTooManyVariables,
-		whatsapptemplatedomain.ErrHeaderFormatRequired,
-		whatsapptemplatedomain.ErrHeaderMediaNeedsHandle,
-		whatsapptemplatedomain.ErrBodyTextTooLong,
-		whatsapptemplatedomain.ErrBodyVariableAtStart,
-		whatsapptemplatedomain.ErrBodyVariableAtEnd,
-		whatsapptemplatedomain.ErrBodyConsecutiveVariables,
-		whatsapptemplatedomain.ErrBodyNeedsExample,
-		whatsapptemplatedomain.ErrFooterTextTooLong,
-		whatsapptemplatedomain.ErrFooterHasVariables,
-		whatsapptemplatedomain.ErrTooManyButtons,
-		whatsapptemplatedomain.ErrButtonTextTooLong,
-		whatsapptemplatedomain.ErrButtonTextRequired,
-		whatsapptemplatedomain.ErrButtonURLRequired,
-		whatsapptemplatedomain.ErrButtonPhoneRequired,
-		whatsapptemplatedomain.ErrButtonsNotGrouped,
-		whatsapptemplatedomain.ErrURLButtonVariableNotEnd,
-		whatsapptemplatedomain.ErrURLButtonTooManyVars,
-		whatsapptemplatedomain.ErrCopyCodeNeedsExample,
-		whatsapptemplatedomain.ErrInvalidComponentType,
-		whatsapptemplatedomain.ErrInvalidHeaderFormat,
-		whatsapptemplatedomain.ErrInvalidButtonType,
-		whatsapptemplatedomain.ErrInvalidCategory,
-		whatsapptemplatedomain.ErrCallPermissionWithButtons,
-		whatsapptemplatedomain.ErrMultipleCallPermissionRequests,
-		whatsapptemplatedomain.ErrMixedParameterStyles,
-	}
-
-	for _, validationErr := range validationErrors {
-		if errors.Is(err, validationErr) {
-			return true
-		}
-	}
-
-	errMsg := err.Error()
-	validationPatterns := []string{
-		"template must have a BODY",
-		"requires example",
-		"header text with variables",
-		"URL button with variable",
-	}
-	for _, pattern := range validationPatterns {
-		if contains(errMsg, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *WhatsAppTemplateHandler) Replicate(w http.ResponseWriter, r *http.Request) {
@@ -667,43 +557,7 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 		return
 	}
 
-	components := make([]whatsapptemplatedomain.TemplateComponent, 0, len(req.Components))
-	for _, c := range req.Components {
-		comp := whatsapptemplatedomain.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
-		}
-		for _, b := range c.Buttons {
-			comp.Buttons = append(comp.Buttons, whatsapptemplatedomain.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-			})
-		}
-		if c.Example != nil {
-			comp.Example = &whatsapptemplatedomain.TemplateExample{
-				HeaderText:   c.Example.HeaderText,
-				HeaderHandle: c.Example.HeaderHandle,
-				BodyText:     c.Example.BodyText,
-			}
-			for _, np := range c.Example.BodyTextNamed {
-				comp.Example.BodyTextNamed = append(comp.Example.BodyTextNamed, whatsapptemplatedomain.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-			for _, np := range c.Example.HeaderTextNamed {
-				comp.Example.HeaderTextNamed = append(comp.Example.HeaderTextNamed, whatsapptemplatedomain.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-		components = append(components, comp)
-	}
+	components := toDomainComponents(req.Components)
 
 	input := whatsapptemplatedomain.CreateTemplateInput{
 		BusinessPhoneID: req.BusinessPhoneID,
@@ -717,11 +571,19 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 
 	result, err := h.createUseCase.Execute(input)
 	if err != nil {
-		if isTemplateValidationError(err) {
-			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to create template: "+err.Error(), nil)
+		// The SAME classifier the admin route uses.
+		//
+		// This route had its own, older handling: a hand-listed set of
+		// sentinels for 400 and everything else as a 500 whose message was
+		// "Failed to create template: " plus whatever Go string arrived. For a
+		// Meta rejection that meant the operator saw
+		// "http=400 code=100 subcode=2388024 ... Invalid parameter" while Meta
+		// had actually sent "Já existe conteúdo em Portuguese (BR) para esse
+		// modelo" — the sentence that says what to do.
+		//
+		// This is the route the product calls; the admin one is barely used.
+		// So the good errors existed and nobody could see them.
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -777,7 +639,7 @@ func (h *WhatsAppTemplateHandler) DeleteForWorkspace(w http.ResponseWriter, r *h
 			response.WriteError(w, http.StatusNotFound, "Template not found", nil)
 			return
 		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to delete template: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -821,7 +683,7 @@ func (h *WhatsAppTemplateHandler) SyncForWorkspace(w http.ResponseWriter, r *htt
 		BusinessPhoneID: businessPhoneID,
 	})
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to sync templates: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -867,7 +729,7 @@ func (h *WhatsAppTemplateHandler) SyncOneForWorkspace(w http.ResponseWriter, r *
 		TemplateID: templateID,
 	})
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to sync template: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 
@@ -929,7 +791,7 @@ func (h *WhatsAppTemplateHandler) UpdateHeaderMediaForWorkspace(w http.ResponseW
 			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to update header media URL: "+err.Error(), nil)
+		writeTemplateError(w, err)
 		return
 	}
 

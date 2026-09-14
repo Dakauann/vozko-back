@@ -103,43 +103,9 @@ func (uc *syncTemplatesUseCase) Execute(input template.SyncTemplatesInput) ([]*t
 	return synced, nil
 }
 
+// convertComponents defers to the domain, which owns the field-for-field
+// mapping in both directions so a new component field cannot reach one
+// direction and silently default in the other.
 func convertComponents(apiComponents []conversation.TemplateComponent) []template.TemplateComponent {
-	components := make([]template.TemplateComponent, 0, len(apiComponents))
-	for _, c := range apiComponents {
-		comp := template.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
-		}
-		for _, b := range c.Buttons {
-			comp.Buttons = append(comp.Buttons, template.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-			})
-		}
-		if c.Example != nil {
-			comp.Example = &template.TemplateExample{
-				HeaderText:   c.Example.HeaderText,
-				HeaderHandle: c.Example.HeaderHandle,
-				BodyText:     c.Example.BodyText,
-			}
-			for _, np := range c.Example.BodyTextNamed {
-				comp.Example.BodyTextNamed = append(comp.Example.BodyTextNamed, template.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-			for _, np := range c.Example.HeaderTextNamed {
-				comp.Example.HeaderTextNamed = append(comp.Example.HeaderTextNamed, template.NamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-		components = append(components, comp)
-	}
-	return components
+	return template.FromClientComponents(apiComponents)
 }

@@ -501,57 +501,41 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		language = "pt_BR"
 	}
 
-	apiInput := conversation.SendTemplateMessageInput{
-		To:           target.leadNumber,
-		TemplateName: tmpl.Name,
-		Language:     language,
-	}
-
 	bodyParamNames, headerParamNames := tmpl.GetBodyAndHeaderParameterNames()
-	isNamed := tmpl.IsNamedParameterFormat()
-	apiInput.IsNamedParameterFormat = isNamed
-	apiInput.ParameterNames = bodyParamNames
 
-	if isNamed {
-
-		params := make([]string, len(bodyParamNames))
-		for i, name := range bodyParamNames {
-			val := paramValues[name]
-			val = workflow.Interpolate(val, state, nil)
-			params[i] = val
-		}
-		apiInput.Parameters = params
-	} else {
-
-		params := make([]string, len(bodyParamNames))
-		for i, name := range bodyParamNames {
-			val := paramValues[name]
-			val = workflow.Interpolate(val, state, nil)
-			params[i] = val
-		}
-		apiInput.Parameters = params
+	// The two branches this replaced were identical: named and positional both
+	// resolved the value by parameter name and interpolated it. The distinction
+	// lives in BuildSendInput, which sets the format flag from the template.
+	params := make([]string, len(bodyParamNames))
+	for i, name := range bodyParamNames {
+		params[i] = workflow.Interpolate(paramValues[name], state, nil)
 	}
 
+	var headerParams []string
 	if len(headerParamNames) > 0 {
-		headerParams := make([]string, len(headerParamNames))
+		headerParams = make([]string, len(headerParamNames))
 		for i, name := range headerParamNames {
-			val := paramValues["header_"+name]
-			val = workflow.Interpolate(val, state, nil)
-			headerParams[i] = val
+			headerParams[i] = workflow.Interpolate(paramValues["header_"+name], state, nil)
 		}
-		apiInput.HeaderTextParams = headerParams
 	}
 
-	if tmpl.HasMediaHeader() {
-		headerMediaID := tmpl.GetHeaderMediaID()
-		if headerMediaID != "" {
-			apiInput.HeaderType = strings.ToLower(tmpl.GetHeaderFormat())
-			apiInput.HeaderMediaID = headerMediaID
-		}
+	apiInput, err := tmpl.BuildSendInput(template_domain.SendInputParams{
+		To:           target.leadNumber,
+		BodyParams:   params,
+		HeaderParams: headerParams,
+	})
+	if err != nil {
+		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: %w", err)
+	}
+	// Language defaulting stays here: the node may run against a template row
+	// stored without one, and BuildSendInput copies what the template has.
+	if strings.TrimSpace(apiInput.Language) == "" {
+		apiInput.Language = language
 	}
 
 	log.Printf("[workflow][whatsapp_sender] sending template %s (lang=%s, named=%v, bodyParams=%d, headerParams=%d) to %s",
-		tmpl.Name, language, isNamed, len(apiInput.Parameters), len(apiInput.HeaderTextParams), target.leadNumber)
+		tmpl.Name, apiInput.Language, apiInput.IsNamedParameterFormat,
+		len(apiInput.Parameters), len(apiInput.HeaderTextParams), target.leadNumber)
 
 	templateCategory, err := tmpl.BillingCategory()
 	if err != nil {

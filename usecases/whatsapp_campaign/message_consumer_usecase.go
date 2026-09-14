@@ -439,24 +439,26 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 		fmt.Printf("whatsapp campaign consumer: normalized phone %s -> %s\n", phoneNumber, normalizedPhone)
 	}
 
-	paramNames := tmpl.GetParameterNames()
-	isNamedFormat := tmpl.IsNamedParameterFormat()
-	fmt.Printf("whatsapp campaign consumer: template '%s' isNamedFormat=%v, paramNames=%v\n", tmpl.Name, isNamedFormat, paramNames)
+	fmt.Printf("whatsapp campaign consumer: template '%s' isNamedFormat=%v, paramNames=%v\n",
+		tmpl.Name, tmpl.IsNamedParameterFormat(), tmpl.GetParameterNames())
 
-	sendInput := conversation.SendTemplateMessageInput{
-		To:                     normalizedPhone,
-		TemplateName:           tmpl.Name,
-		Language:               tmpl.Language,
-		Parameters:             variables,
-		ParameterNames:         paramNames,
-		IsNamedParameterFormat: isNamedFormat,
+	// One assembly for every send path, in the domain. It is what puts the
+	// one-time code on an authentication template's button, which this consumer
+	// has no reason to know about: the code arrives as the entry's first
+	// variable, like any other.
+	sendInput, err := tmpl.BuildSendInput(template.SendInputParams{
+		To:         normalizedPhone,
+		BodyParams: variables,
+	})
+	if err != nil {
+		fmt.Printf("whatsapp campaign consumer: cannot build the send for %s: %v\n", phoneNumber, err)
+		c.updateEntryStatusWithError(entryID, wce.SendStatusFailed, "",
+			internalWhatsAppCampaignErrMissingEntryVariables, err.Error())
+		return sendResultConfigError
 	}
-
-	if tmpl.HasMediaHeader() {
-		headerMediaID := tmpl.GetHeaderMediaID()
-		sendInput.HeaderType = strings.ToLower(tmpl.GetHeaderFormat())
-		sendInput.HeaderMediaID = headerMediaID
-		fmt.Printf("whatsapp campaign consumer: using stored header media ID: %s (type: %s)\n", headerMediaID, sendInput.HeaderType)
+	if sendInput.HeaderMediaID != "" {
+		fmt.Printf("whatsapp campaign consumer: using stored header media ID: %s (type: %s)\n",
+			sendInput.HeaderMediaID, sendInput.HeaderType)
 	}
 
 	result, err := whatsappClient.SendTemplateMessage(ctx, sendInput)

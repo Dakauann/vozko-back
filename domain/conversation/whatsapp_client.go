@@ -498,11 +498,49 @@ type SendTemplateMessageInput struct {
 	HeaderFilename         string
 	HeaderTextParams       []string
 	FromPhoneNumberID      string
+	// Buttons parameterizes the template's button components.
+	//
+	// Separate from Parameters because Meta addresses a button by its own index
+	// inside the BUTTONS component rather than by position in the body, and
+	// because a button parameter is not always a text one. Empty for the
+	// overwhelming majority of templates, whose buttons carry no variables.
+	Buttons []TemplateButtonParam
 	// BizOpaqueCallbackData is echoed back by Meta on every delivery-status
 	// webhook for this message. Carrying our own send-attempt id through it is
 	// what lets a status event be matched to the charge that paid for it, even
 	// when we never learned the provider message id.
 	BizOpaqueCallbackData string
+}
+
+// Button sub-types, as Meta names them on a template send.
+//
+// These are NOT the button types a template is created with. A template
+// declares an OTP button; the send addresses it as "url". The two vocabularies
+// genuinely differ, and collapsing them is how the code ends up on a button
+// Meta cannot find.
+const (
+	// TemplateButtonSubTypeURL addresses an authentication OTP button, whatever
+	// its otp_type: copy-code, one-tap and zero-tap all take this sub-type.
+	TemplateButtonSubTypeURL = "url"
+	// TemplateButtonSubTypeCopyCode addresses a coupon COPY_CODE button in a
+	// marketing or utility template, which takes a coupon_code parameter rather
+	// than a text one.
+	TemplateButtonSubTypeCopyCode = "copy_code"
+)
+
+// TemplateButtonParam is one parameterized button on a template send.
+type TemplateButtonParam struct {
+	// SubType is one of the TemplateButtonSubType constants above.
+	SubType string
+	// Index is the button's position inside the template's BUTTONS component,
+	// zero based.
+	Index int
+	// Text is the value for a text parameter: the one-time code on an
+	// authentication button.
+	Text string
+	// CouponCode is the value for a coupon COPY_CODE button, which Meta reads
+	// from a "coupon_code" parameter instead of a "text" one.
+	CouponCode string
 }
 
 func (in SendTemplateMessageInput) Validate() error {
@@ -531,6 +569,13 @@ type TemplateComponent struct {
 	Text    string
 	Buttons []TemplateButton
 	Example *TemplateExample
+	// AddSecurityRecommendation asks Meta to append its own "do not share this
+	// code" line to an authentication template's BODY. Meta owns that text, so
+	// this is a flag rather than a string.
+	AddSecurityRecommendation *bool
+	// CodeExpirationMinutes renders Meta's own "expires in N minutes" line in an
+	// authentication template's FOOTER. Nil means no expiry line.
+	CodeExpirationMinutes *int
 }
 
 type TemplateButton struct {
@@ -539,6 +584,9 @@ type TemplateButton struct {
 	URL         string `json:"url,omitempty"`
 	PhoneNumber string `json:"phone_number,omitempty"`
 	Example     string `json:"example,omitempty"`
+	// OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button, which is
+	// how an authentication template declares its code button.
+	OTPType string `json:"otp_type,omitempty"`
 }
 
 type TemplateExample struct {

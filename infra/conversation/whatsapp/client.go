@@ -1409,6 +1409,22 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 		})
 	}
 
+	// Button components come last, after body, which is the order Meta's own
+	// examples use. Each one is its own component: Meta keys them by index, not
+	// by position in this list, so several buttons never collapse into one.
+	for _, btn := range input.Buttons {
+		param := templateParameter{Type: "text", Text: btn.Text}
+		if btn.SubType == conversation.TemplateButtonSubTypeCopyCode {
+			param = templateParameter{Type: "coupon_code", CouponCode: btn.CouponCode}
+		}
+		components = append(components, templateComponentPayload{
+			Type:       "button",
+			SubType:    btn.SubType,
+			Index:      strconv.Itoa(btn.Index),
+			Parameters: []templateParameter{param},
+		})
+	}
+
 	if len(components) > 0 {
 		payload.Template.Components = components
 	}
@@ -1783,6 +1799,12 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 		apiComp := createTemplateComponent{
 			Type: compType,
 			Text: comp.Text,
+			// Authentication templates carry no copy of their own: Meta renders
+			// the security line and the expiry line itself, per language, from
+			// these two. Both are pointers so an unset field is omitted rather
+			// than sent as false/0, which Meta reads as an instruction.
+			AddSecurityRecommendation: comp.AddSecurityRecommendation,
+			CodeExpirationMinutes:     comp.CodeExpirationMinutes,
 		}
 
 		if compType == "HEADER" && comp.Format != "" {
@@ -1798,6 +1820,7 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 					Text:        btn.Text,
 					URL:         btn.URL,
 					PhoneNumber: btn.PhoneNumber,
+					OTPType:     strings.ToUpper(strings.TrimSpace(btn.OTPType)),
 				}
 
 				if btn.Example != "" {
@@ -2277,9 +2300,11 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 	components := make([]conversation.TemplateComponent, len(t.Components))
 	for i, c := range t.Components {
 		components[i] = conversation.TemplateComponent{
-			Type:   c.Type,
-			Format: c.Format,
-			Text:   c.Text,
+			Type:                      c.Type,
+			Format:                    c.Format,
+			Text:                      c.Text,
+			AddSecurityRecommendation: c.AddSecurityRecommendation,
+			CodeExpirationMinutes:     c.CodeExpirationMinutes,
 		}
 
 		for _, b := range c.Buttons {
@@ -2288,6 +2313,10 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 				Text:        b.Text,
 				URL:         b.URL,
 				PhoneNumber: b.PhoneNumber,
+				// Without this the button reads back as a bare "OTP" with no
+				// kind, and the next send cannot tell a code button from
+				// anything else in the BUTTONS component.
+				OTPType: b.OTPType,
 			})
 		}
 
@@ -2350,7 +2379,16 @@ type templateLanguage struct {
 }
 
 type templateComponentPayload struct {
-	Type       string              `json:"type"`
+	Type string `json:"type"`
+	// SubType and Index apply only to a "button" component. Meta addresses a
+	// button by its position inside the template's BUTTONS component, and the
+	// sub-type says what kind of parameter it takes.
+	//
+	// Index is a string because that is the form Meta's own authentication
+	// examples use. Graph coerces a number just as happily; matching the
+	// documented shape is the cheaper of the two guesses.
+	SubType    string              `json:"sub_type,omitempty"`
+	Index      string              `json:"index,omitempty"`
 	Parameters []templateParameter `json:"parameters,omitempty"`
 }
 
@@ -2361,6 +2399,10 @@ type templateParameter struct {
 	Image         *templateMediaParam    `json:"image,omitempty"`
 	Video         *templateMediaParam    `json:"video,omitempty"`
 	Document      *templateDocumentParam `json:"document,omitempty"`
+	// CouponCode carries a marketing template's copy-code button value. An
+	// authentication OTP button uses Text instead: same button to a reader,
+	// different parameter on the wire.
+	CouponCode string `json:"coupon_code,omitempty"`
 }
 
 type templateMediaParam struct {
@@ -2406,11 +2448,13 @@ type templateResponse struct {
 }
 
 type templateComponentResponse struct {
-	Type    string                   `json:"type"`
-	Format  string                   `json:"format,omitempty"`
-	Text    string                   `json:"text,omitempty"`
-	Buttons []templateButtonResponse `json:"buttons,omitempty"`
-	Example *templateExampleResponse `json:"example,omitempty"`
+	Type                      string                   `json:"type"`
+	Format                    string                   `json:"format,omitempty"`
+	Text                      string                   `json:"text,omitempty"`
+	Buttons                   []templateButtonResponse `json:"buttons,omitempty"`
+	Example                   *templateExampleResponse `json:"example,omitempty"`
+	AddSecurityRecommendation *bool                    `json:"add_security_recommendation,omitempty"`
+	CodeExpirationMinutes     *int                     `json:"code_expiration_minutes,omitempty"`
 }
 
 type templateButtonResponse struct {
@@ -2419,6 +2463,7 @@ type templateButtonResponse struct {
 	URL         string   `json:"url,omitempty"`
 	PhoneNumber string   `json:"phone_number,omitempty"`
 	Example     []string `json:"example,omitempty"`
+	OTPType     string   `json:"otp_type,omitempty"`
 }
 
 type templateExampleResponse struct {
@@ -2448,6 +2493,11 @@ type createTemplateComponent struct {
 	Format  string                 `json:"format,omitempty"`
 	Buttons []createTemplateButton `json:"buttons,omitempty"`
 	Example *createTemplateExample `json:"example,omitempty"`
+	// Authentication only. Pointers so an unset field is omitted: Meta reads a
+	// present `false` as "no security line", which is a different instruction
+	// from "this is not an authentication template".
+	AddSecurityRecommendation *bool `json:"add_security_recommendation,omitempty"`
+	CodeExpirationMinutes     *int  `json:"code_expiration_minutes,omitempty"`
 }
 
 type createTemplateButton struct {
@@ -2456,6 +2506,9 @@ type createTemplateButton struct {
 	URL         string   `json:"url,omitempty"`
 	PhoneNumber string   `json:"phone_number,omitempty"`
 	Example     []string `json:"example,omitempty"`
+	// OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button, which is
+	// how an authentication template declares its code button.
+	OTPType string `json:"otp_type,omitempty"`
 }
 
 type createTemplateExample struct {

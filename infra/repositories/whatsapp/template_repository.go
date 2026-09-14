@@ -315,10 +315,12 @@ func mapComponentsToSchema(components []template.TemplateComponent) schema.Whats
 	result := make(schema.WhatsAppTemplateComponents, len(components))
 	for i, c := range components {
 		result[i] = schema.WhatsAppTemplateComponent{
-			Type:       c.Type,
-			Format:     c.Format,
-			Text:       c.Text,
-			Parameters: c.Parameters,
+			Type:                      c.Type,
+			Format:                    c.Format,
+			Text:                      c.Text,
+			Parameters:                c.Parameters,
+			AddSecurityRecommendation: c.AddSecurityRecommendation,
+			CodeExpirationMinutes:     c.CodeExpirationMinutes,
 		}
 		for _, b := range c.Buttons {
 			result[i].Buttons = append(result[i].Buttons, schema.WhatsAppTemplateButton{
@@ -327,6 +329,7 @@ func mapComponentsToSchema(components []template.TemplateComponent) schema.Whats
 				URL:         b.URL,
 				PhoneNumber: b.PhoneNumber,
 				Example:     b.Example,
+				OTPType:     b.OTPType,
 			})
 		}
 		if c.Example != nil {
@@ -356,10 +359,12 @@ func mapToDomain(record *schema.WhatsAppTemplate) *template.Template {
 	components := make([]template.TemplateComponent, len(record.Components))
 	for i, c := range record.Components {
 		components[i] = template.TemplateComponent{
-			Type:       c.Type,
-			Format:     c.Format,
-			Text:       c.Text,
-			Parameters: c.Parameters,
+			Type:                      c.Type,
+			Format:                    c.Format,
+			Text:                      c.Text,
+			Parameters:                c.Parameters,
+			AddSecurityRecommendation: c.AddSecurityRecommendation,
+			CodeExpirationMinutes:     c.CodeExpirationMinutes,
 		}
 		for _, b := range c.Buttons {
 			components[i].Buttons = append(components[i].Buttons, template.TemplateButton{
@@ -368,6 +373,7 @@ func mapToDomain(record *schema.WhatsAppTemplate) *template.Template {
 				URL:         b.URL,
 				PhoneNumber: b.PhoneNumber,
 				Example:     b.Example,
+				OTPType:     b.OTPType,
 			})
 		}
 		if c.Example != nil {

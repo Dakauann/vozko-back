@@ -70,6 +70,25 @@ const (
 	CodeInvalidButtonType    = "template_invalid_button_type"
 	CodeInvalidCategory      = "template_invalid_category"
 
+	// AUTHENTICATION templates. Their own group because the failures are about
+	// a category rather than a component: an operator meets these while building
+	// a one-time code template and nowhere else.
+	CodeOTPTypeRequired                 = "template_otp_type_required"
+	CodeInvalidOTPType                  = "template_invalid_otp_type"
+	CodeMultipleOTPButtons              = "template_multiple_otp_buttons"
+	CodeOTPTypeUnsupported              = "template_otp_type_unsupported"
+	CodeOTPButtonNotAuthentication      = "template_otp_button_not_authentication"
+	CodeAuthenticationNeedsOTPButton    = "template_authentication_needs_otp_button"
+	CodeCodeExpirationOutOfRange        = "template_code_expiration_out_of_range"
+	CodeAuthenticationNoHeader          = "template_authentication_no_header"
+	CodeAuthenticationBodyNotEditable   = "template_authentication_body_not_editable"
+	CodeAuthenticationFooterNotEditable = "template_authentication_footer_not_editable"
+	CodeAuthenticationCodeTooLong       = "template_authentication_code_too_long"
+	// CodeAuthenticationCodeRequired is a SEND failure, not a create one: the
+	// template is fine and the call left the code out. It is here beside its
+	// siblings because an operator reads it as one of the authentication rules.
+	CodeAuthenticationCodeRequired = "template_authentication_code_required"
+
 	// The SEND path. Same contract, different failures: these reach the UI from
 	// the send button rather than the create form, and were equally unlocalised.
 	CodeSendWorkspaceRequired    = "template_send_workspace_required"
@@ -130,6 +149,19 @@ var errorCodes = map[error]string{
 	ErrURLButtonVariableNotEnd: CodeURLButtonVariableNotEnd,
 	ErrURLButtonTooManyVars:    CodeURLButtonTooManyVars,
 	ErrCopyCodeNeedsExample:    CodeCopyCodeNeedsExample,
+
+	ErrOTPTypeRequired:                 CodeOTPTypeRequired,
+	ErrInvalidOTPType:                  CodeInvalidOTPType,
+	ErrMultipleOTPButtons:              CodeMultipleOTPButtons,
+	ErrOTPTypeUnsupported:              CodeOTPTypeUnsupported,
+	ErrOTPButtonNotAuthentication:      CodeOTPButtonNotAuthentication,
+	ErrAuthenticationNeedsOTPButton:    CodeAuthenticationNeedsOTPButton,
+	ErrCodeExpirationOutOfRange:        CodeCodeExpirationOutOfRange,
+	ErrAuthenticationNoHeader:          CodeAuthenticationNoHeader,
+	ErrAuthenticationBodyNotEditable:   CodeAuthenticationBodyNotEditable,
+	ErrAuthenticationFooterNotEditable: CodeAuthenticationFooterNotEditable,
+	ErrAuthenticationCodeTooLong:       CodeAuthenticationCodeTooLong,
+	ErrAuthenticationCodeRequired:      CodeAuthenticationCodeRequired,
 
 	ErrCallPermissionWithButtons:      CodeCallPermissionWithButtons,
 	ErrMultipleCallPermissionRequests: CodeMultipleCallPermissionRequests,

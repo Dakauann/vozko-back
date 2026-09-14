@@ -141,6 +141,13 @@ var codedSentinelNames = map[string]bool{
 	"ErrSendInProgress": true, "ErrTemplatePhoneMismatch": true,
 	"ErrPricingUnavailable": true, "ErrTemplateNotSendable": true,
 	"ErrBillingNotConfigured": true, "ErrSendAttemptConflict": true,
+	"ErrOTPTypeRequired": true, "ErrInvalidOTPType": true,
+	"ErrMultipleOTPButtons": true, "ErrOTPButtonNotAuthentication": true,
+	"ErrOTPTypeUnsupported":           true,
+	"ErrAuthenticationNeedsOTPButton": true, "ErrCodeExpirationOutOfRange": true,
+	"ErrAuthenticationCodeRequired": true,
+	"ErrAuthenticationNoHeader":     true, "ErrAuthenticationBodyNotEditable": true,
+	"ErrAuthenticationFooterNotEditable": true, "ErrAuthenticationCodeTooLong": true,
 }
 
 // The name table above must not drift from the real map either.

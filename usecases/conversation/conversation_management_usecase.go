@@ -3170,24 +3170,20 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		return "", fmt.Errorf("error creating WhatsApp client: %w", err)
 	}
 
-	sendInput := conversation.SendTemplateMessageInput{
-		To:           phoneNumber,
-		TemplateName: tmpl.Name,
-		Language:     tmpl.Language,
-		Parameters:   parameters,
-	}
-
-	if tmpl.ParameterFormat == "named" {
-		sendInput.IsNamedParameterFormat = true
-		sendInput.ParameterNames = tmpl.GetParameterNames()
-	}
-
-	if tmpl.HeaderMediaURL != nil && *tmpl.HeaderMediaURL != "" {
-		headerType := tmpl.GetHeaderFormat()
-		if headerType != "" {
-			sendInput.HeaderType = strings.ToLower(headerType)
-			sendInput.HeaderMediaURL = *tmpl.HeaderMediaURL
-		}
+	// One assembly for every send path, in the domain. Two things change for
+	// this caller: a media header now attaches by media id when one exists,
+	// which is what every other path already did and what Meta expects, falling
+	// back to the URL as before; and an authentication template gets its
+	// one-time code mirrored onto the copy button.
+	//
+	// Built before the balance is consumed below, so a send that cannot be
+	// assembled is refused rather than charged and refunded.
+	sendInput, err := tmpl.BuildSendInput(whatsappTemplate.SendInputParams{
+		To:         phoneNumber,
+		BodyParams: parameters,
+	})
+	if err != nil {
+		return "", fmt.Errorf("error building template send: %w", err)
 	}
 
 	templateCategory, err := tmpl.BillingCategory()
