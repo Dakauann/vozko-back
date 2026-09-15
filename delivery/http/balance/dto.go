@@ -33,13 +33,13 @@ type balanceResponse struct {
 	UpdatedAt   string `json:"updatedAt"`
 }
 
-type fullBalanceSummaryResponse struct {
+type FullBalanceSummaryResponse struct {
 	Balance           balanceResponse `json:"balance"`
 	TotalMoneyCredits int64           `json:"totalMoneyCredits"`
 	TotalMoneyDebits  int64           `json:"totalMoneyDebits"`
 }
 
-type transactionResponse struct {
+type TransactionResponse struct {
 	ID            string  `json:"id"`
 	BalanceID     string  `json:"balanceId"`
 	WorkspaceID   string  `json:"workspaceId"`
@@ -65,16 +65,16 @@ func mapBalanceToResponse(b *balancedomain.Balance) balanceResponse {
 	}
 }
 
-func mapFullBalanceSummaryToResponse(s *balancedomain.FullBalanceSummary) fullBalanceSummaryResponse {
-	return fullBalanceSummaryResponse{
+func mapFullBalanceSummaryToResponse(s *balancedomain.FullBalanceSummary) FullBalanceSummaryResponse {
+	return FullBalanceSummaryResponse{
 		Balance:           mapBalanceToResponse(s.Balance),
 		TotalMoneyCredits: s.TotalMoneyCredits,
 		TotalMoneyDebits:  s.TotalMoneyDebits,
 	}
 }
 
-func mapTransactionToResponse(t *balancedomain.Transaction) transactionResponse {
-	return transactionResponse{
+func mapTransactionToResponse(t *balancedomain.Transaction) TransactionResponse {
+	return TransactionResponse{
 		ID:            t.ID,
 		BalanceID:     t.BalanceID,
 		WorkspaceID:   t.WorkspaceID,

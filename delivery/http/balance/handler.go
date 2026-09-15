@@ -112,7 +112,7 @@ func (h *BalanceHandler) GetByWorkspaceID(w http.ResponseWriter, r *http.Request
 // @Description	Retorna o saldo atual do workspace do usuário autenticado, com o total de créditos e débitos acumulados.
 // @Tags			Saldo
 // @Produce		json
-// @Success		200	{object}	balance.FullBalanceSummary
+// @Success		200	{object}	balance.FullBalanceSummaryResponse
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -370,12 +370,12 @@ func (h *BalanceHandler) ListTransactions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	items := make([]transactionResponse, len(result.Items))
+	items := make([]TransactionResponse, len(result.Items))
 	for i, t := range result.Items {
 		items[i] = mapTransactionToResponse(t)
 	}
 
-	response.WriteSuccess(w, http.StatusOK, shared.PaginatedResult[transactionResponse]{
+	response.WriteSuccess(w, http.StatusOK, shared.PaginatedResult[TransactionResponse]{
 		Items:      items,
 		Page:       result.Page,
 		PageSize:   result.PageSize,
@@ -395,7 +395,7 @@ func (h *BalanceHandler) ListTransactions(w http.ResponseWriter, r *http.Request
 // @Param			resourceType	query	string	false	"Filtrar por tipo de recurso ('money')"
 // @Param			startDate		query	string	false	"Data inicial (RFC3339)"
 // @Param			endDate			query	string	false	"Data final (RFC3339)"
-// @Success		200	{array}		balance.Transaction
+// @Success		200	{array}		balance.TransactionResponse
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -465,12 +465,12 @@ func (h *BalanceHandler) ListMyTransactions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	items := make([]transactionResponse, len(result.Items))
+	items := make([]TransactionResponse, len(result.Items))
 	for i, t := range result.Items {
 		items[i] = mapTransactionToResponse(t)
 	}
 
-	response.WriteSuccess(w, http.StatusOK, shared.PaginatedResult[transactionResponse]{
+	response.WriteSuccess(w, http.StatusOK, shared.PaginatedResult[TransactionResponse]{
 		Items:      items,
 		Page:       result.Page,
 		PageSize:   result.PageSize,
