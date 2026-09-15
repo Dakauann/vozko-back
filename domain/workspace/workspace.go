@@ -53,7 +53,10 @@ var (
 	ResourceConversations     = registerResource("conversations")
 	ResourceMedia             = registerResource("media")
 	ResourceLeads             = registerResource("leads")
-	ResourceAnalysis          = registerResource("analysis")
+	// "analysis" is deliberately absent. It gated the legacy conversation
+	// analysis; that capability now lives behind ResourceAudience, and
+	// foldAnalysisPermissionIntoAudience moves the stored grants across so no
+	// member loses the feature.
 	ResourceCallRecordings    = registerResource("call_recordings")
 	ResourceMembers           = registerResource("members")
 	ResourceAssignments       = registerResource("assignments")
@@ -255,9 +258,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionBlock, Description: "Bloquear um lead"},
 		{ActionName: ActionUpdate, Description: "Editar dados de leads"},
 		{ActionName: ActionDelete, Description: "Excluir leads"},
-	},
-	ResourceAnalysis: {
-		{ActionName: ActionRead, Description: "Visualizar relatórios e análises de desempenho"},
 	},
 	ResourceCallRecordings: {
 		{ActionName: ActionRead, Description: "Ouvir e baixar gravações de chamadas"},

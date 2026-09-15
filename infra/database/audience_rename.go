@@ -61,6 +61,9 @@ func renameCommentAnalysisToAudience(tx *gorm.DB) error {
 			return fmt.Errorf("renaming %s.%s values: %w", v.table, v.column, err)
 		}
 	}
+	if err := foldAnalysisPermissionIntoAudience(tx); err != nil {
+		return fmt.Errorf("folding the analysis permission into audience: %w", err)
+	}
 	for _, r := range audienceTableRenames {
 		if err := renameTableIfNeeded(tx, r[0], r[1]); err != nil {
 			return fmt.Errorf("renaming %s to %s: %w", r[0], r[1], err)
@@ -137,4 +140,44 @@ func renameStoredValue(tx *gorm.DB, table, column string) error {
 	return tx.Exec(fmt.Sprintf(
 		"UPDATE %s SET %s = 'audience' WHERE %s = 'comment_analysis'", table, column, column,
 	)).Error
+}
+
+// foldAnalysisPermissionIntoAudience moves grants of the retired "analysis"
+// resource onto "audience".
+//
+// "analysis" gated the legacy conversation-analysis routes. Those routes are
+// gone and the capability they guarded now lives behind "audience", so a member
+// holding only the old grant would keep a row that authorises nothing and would
+// lose the conversation analysis in the CRM.
+//
+// Written as insert-the-missing then delete-the-old rather than a plain UPDATE,
+// because a member may already hold BOTH, and (member_id, resource, action) is
+// unique: an UPDATE would collide and abort the whole migration transaction.
+// Idempotent, and a no-op once no "analysis" row remains.
+func foldAnalysisPermissionIntoAudience(tx *gorm.DB) error {
+	var exists bool
+	if err := tx.Raw(
+		`SELECT to_regclass(?) IS NOT NULL`, "public.workspace_member_permissions",
+	).Scan(&exists).Error; err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+
+	if err := tx.Exec(`
+		INSERT INTO workspace_member_permissions (id, member_id, resource, action, created_at)
+		SELECT gen_random_uuid(), p.member_id, 'audience', p.action, NOW()
+		  FROM workspace_member_permissions p
+		 WHERE p.resource = 'analysis'
+		   AND NOT EXISTS (
+		       SELECT 1 FROM workspace_member_permissions q
+		        WHERE q.member_id = p.member_id
+		          AND q.resource  = 'audience'
+		          AND q.action    = p.action
+		   )`).Error; err != nil {
+		return err
+	}
+
+	return tx.Exec(`DELETE FROM workspace_member_permissions WHERE resource = 'analysis'`).Error
 }
