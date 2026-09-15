@@ -50,6 +50,25 @@ var audienceColumnRenames = []struct{ table, from, to string }{
 // keeps their permission row saying comment_analysis and simply stops seeing
 // the feature; a pricing row keeps its old service and the charge quietly
 // stops matching, so the work is done and not billed.
+// The two statements behind the permission fold, named so a test can assert
+// what they do and do not contain.
+const (
+	analysisGrantSelectSQL = `
+		SELECT p.member_id, p.action
+		  FROM workspace_member_permissions p
+		 WHERE p.resource = 'analysis'
+		   AND NOT EXISTS (
+		       SELECT 1 FROM workspace_member_permissions q
+		        WHERE q.member_id = p.member_id
+		          AND q.resource  = 'audience'
+		          AND q.action    = p.action
+		   )`
+
+	analysisGrantInsertSQL = `
+		INSERT INTO workspace_member_permissions (id, member_id, resource, action, created_at)
+		VALUES (?, ?, 'audience', ?, ?)`
+)
+
 var audienceValueRenames = []struct{ table, column string }{
 	{"workspace_member_permissions", "resource"},
 	{"balance_transactions", "service_type"},
@@ -209,25 +228,14 @@ func foldAnalysisPermissionIntoAudience(tx *gorm.DB) error {
 		Action   string
 	}
 	var missing []grant
-	if err := tx.Raw(`
-		SELECT p.member_id, p.action
-		  FROM workspace_member_permissions p
-		 WHERE p.resource = 'analysis'
-		   AND NOT EXISTS (
-		       SELECT 1 FROM workspace_member_permissions q
-		        WHERE q.member_id = p.member_id
-		          AND q.resource  = 'audience'
-		          AND q.action    = p.action
-		   )`).Scan(&missing).Error; err != nil {
+	if err := tx.Raw(analysisGrantSelectSQL).Scan(&missing).Error; err != nil {
 		return err
 	}
 
 	now := time.Now().UTC()
 	for _, g := range missing {
 		if err := tx.Exec(
-			`INSERT INTO workspace_member_permissions (id, member_id, resource, action, created_at)
-			 VALUES (?, ?, 'audience', ?, ?)`,
-			uuid.New().String(), g.MemberID, g.Action, now,
+			analysisGrantInsertSQL, uuid.New().String(), g.MemberID, g.Action, now,
 		).Error; err != nil {
 			return err
 		}
