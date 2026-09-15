@@ -2,7 +2,9 @@ package database
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -56,13 +58,34 @@ var audienceValueRenames = []struct{ table, column string }{
 }
 
 func renameCommentAnalysisToAudience(tx *gorm.DB) error {
+	// The permission fold is its own legacy (the retired "analysis" resource)
+	// and is cheap: workspace_member_permissions is small and the predicate is
+	// selective. It stays outside the sentinel below.
+	if err := foldAnalysisPermissionIntoAudience(tx); err != nil {
+		return fmt.Errorf("folding the analysis permission into audience: %w", err)
+	}
+
+	// Everything after this point is ONE one-time migration, and the old
+	// table's presence is the sentinel for whether it has run.
+	//
+	// The guard is not tidiness, it is cost. These UPDATEs are idempotent but
+	// not free: service_type is not a leading index column on
+	// balance_transactions, which in production is 3.7 million rows with zero
+	// matches, so an unguarded rewrite scans the whole table on EVERY boot to
+	// find nothing. The whole body runs inside one transaction, so it either
+	// completed or it did not, and the sentinel cannot disagree with the rest.
+	pending, err := tableExists(tx, "comment_analyses")
+	if err != nil {
+		return err
+	}
+	if !pending {
+		return nil
+	}
+
 	for _, v := range audienceValueRenames {
 		if err := renameStoredValue(tx, v.table, v.column); err != nil {
 			return fmt.Errorf("renaming %s.%s values: %w", v.table, v.column, err)
 		}
-	}
-	if err := foldAnalysisPermissionIntoAudience(tx); err != nil {
-		return fmt.Errorf("folding the analysis permission into audience: %w", err)
 	}
 	for _, r := range audienceTableRenames {
 		if err := renameTableIfNeeded(tx, r[0], r[1]); err != nil {
@@ -76,6 +99,15 @@ func renameCommentAnalysisToAudience(tx *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+// tableExists reports whether a table is present in the public schema.
+func tableExists(tx *gorm.DB, table string) (bool, error) {
+	var exists bool
+	if err := tx.Raw(`SELECT to_regclass(?) IS NOT NULL`, "public."+table).Scan(&exists).Error; err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // renameTableIfNeeded renames only when the old table exists and the new one
@@ -130,8 +162,8 @@ func renameColumnIfNeeded(tx *gorm.DB, table, from, to string) error {
 // fresh database has none of these tables yet. The UPDATE itself is naturally
 // idempotent: after the first pass no row matches.
 func renameStoredValue(tx *gorm.DB, table, column string) error {
-	var exists bool
-	if err := tx.Raw(`SELECT to_regclass(?) IS NOT NULL`, "public."+table).Scan(&exists).Error; err != nil {
+	exists, err := tableExists(tx, table)
+	if err != nil {
 		return err
 	}
 	if !exists {
@@ -154,6 +186,13 @@ func renameStoredValue(tx *gorm.DB, table, column string) error {
 // because a member may already hold BOTH, and (member_id, resource, action) is
 // unique: an UPDATE would collide and abort the whole migration transaction.
 // Idempotent, and a no-op once no "analysis" row remains.
+//
+// Ids are generated in Go rather than by gen_random_uuid(), for the reason
+// materializeStageGroupPipelines gives in datarepairs.go: that function needs
+// PG13+ or pgcrypto, this codebase creates neither, and every other id here is
+// made in Go. This migration runs inside the boot transaction and the caller
+// log.Fatals on error, so an assumption like that does not degrade a feature,
+// it stops the process from starting.
 func foldAnalysisPermissionIntoAudience(tx *gorm.DB) error {
 	var exists bool
 	if err := tx.Raw(
@@ -165,9 +204,13 @@ func foldAnalysisPermissionIntoAudience(tx *gorm.DB) error {
 		return nil
 	}
 
-	if err := tx.Exec(`
-		INSERT INTO workspace_member_permissions (id, member_id, resource, action, created_at)
-		SELECT gen_random_uuid(), p.member_id, 'audience', p.action, NOW()
+	type grant struct {
+		MemberID string
+		Action   string
+	}
+	var missing []grant
+	if err := tx.Raw(`
+		SELECT p.member_id, p.action
 		  FROM workspace_member_permissions p
 		 WHERE p.resource = 'analysis'
 		   AND NOT EXISTS (
@@ -175,8 +218,19 @@ func foldAnalysisPermissionIntoAudience(tx *gorm.DB) error {
 		        WHERE q.member_id = p.member_id
 		          AND q.resource  = 'audience'
 		          AND q.action    = p.action
-		   )`).Error; err != nil {
+		   )`).Scan(&missing).Error; err != nil {
 		return err
+	}
+
+	now := time.Now().UTC()
+	for _, g := range missing {
+		if err := tx.Exec(
+			`INSERT INTO workspace_member_permissions (id, member_id, resource, action, created_at)
+			 VALUES (?, ?, 'audience', ?, ?)`,
+			uuid.New().String(), g.MemberID, g.Action, now,
+		).Error; err != nil {
+			return err
+		}
 	}
 
 	return tx.Exec(`DELETE FROM workspace_member_permissions WHERE resource = 'analysis'`).Error
