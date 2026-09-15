@@ -320,7 +320,6 @@ func batchFromDomain(b *ca.Batch) *schema.AudienceBatch {
 		ItemCount:        b.ItemCount,
 		PromptTokens:     b.PromptTokens,
 		CompletionTokens: b.CompletionTokens,
-		PriceMicros:      b.PriceMicros,
 		Outcome:          string(b.Outcome),
 		RequestID:        b.RequestID,
 		CreatedAt:        b.CreatedAt,

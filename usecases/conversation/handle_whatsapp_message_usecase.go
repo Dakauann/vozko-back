@@ -328,8 +328,6 @@ func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) b
 		estimatedOutputTokens int64 = 1000
 
 		safetyMultiplier int64 = 2
-
-		minBalanceFloor int64 = 10_000
 	)
 
 	if uc.cachedBalanceChecker == nil {
@@ -346,8 +344,8 @@ func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) b
 		return false
 	}
 
-	if bal < minBalanceFloor {
-		log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI response", workspaceID, bal, minBalanceFloor)
+	if bal < balance.MinAIFloorMicros {
+		log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI response", workspaceID, bal, balance.MinAIFloorMicros)
 		return false
 	}
 

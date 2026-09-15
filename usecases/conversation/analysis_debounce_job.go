@@ -504,15 +504,17 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		aiModel = subject.AIModel
 	}
 
-	const minBalanceFloor int64 = 10_000
+	// The product-wide AI floor, fail-closed: a balance we cannot read counts
+	// as too low. The number comes from the domain so every path that spends on
+	// a model agrees on one floor.
 	if j.cachedBalanceChecker != nil {
 		bal, err := j.cachedBalanceChecker.GetBalance(workspaceID)
 		if err != nil {
 			log.Printf("[analysis-debounce] balance check error for workspace %s: %v, skipping analysis (fail-closed)", workspaceID, err)
 			return nil
 		}
-		if bal < minBalanceFloor {
-			log.Printf("[analysis-debounce] workspace %s balance (%d micros) below minimum floor (%d micros), skipping analysis", workspaceID, bal, minBalanceFloor)
+		if bal < balance.MinAIFloorMicros {
+			log.Printf("[analysis-debounce] workspace %s balance (%d micros) below minimum floor (%d micros), skipping analysis", workspaceID, bal, balance.MinAIFloorMicros)
 			return nil
 		}
 	}

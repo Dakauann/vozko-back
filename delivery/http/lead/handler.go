@@ -18,6 +18,7 @@ import (
 	"vozko/domain/lead_message_window"
 	"vozko/domain/shared"
 	"vozko/domain/unofficial_whatsapp"
+	"vozko/domain/user"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	wc_entry "vozko/domain/whatsapp_campaign_entry"
 	workspace_domain "vozko/domain/workspace"
@@ -51,7 +52,7 @@ type LeadHandler struct {
 // the import's side it is one collaborator that accepts numbers and answers how
 // many it took.
 type InboxSeeder interface {
-	Publish(in unofficial_whatsapp.SeedRequest) (int, error)
+	Publish(in unofficial_whatsapp.SeedRequest) (unofficial_whatsapp.SeedQueued, error)
 }
 
 // SetInboxSeeder attaches the seeding job. A handler without one simply reports
@@ -879,7 +880,7 @@ func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Importar leads
-// @Description	Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como "matched" e nunca sobrescritos.
+// @Description	Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como "matched" e nunca sobrescritos. Opcionalmente abre uma conversa no atendimento para cada número (seedInbox).
 // @Tags			Leads
 // @Accept			json
 // @Produce		json
@@ -925,6 +926,27 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		response.WriteError(w, http.StatusBadRequest, "Invalid onExisting policy", map[string]string{
 			"onExisting": string(leaddomain.PolicyFillEmpty) + " | " + string(leaddomain.PolicySkip),
+		})
+		return
+	}
+
+	// Scripting refused BEFORE anything is written, unlike the privilege check
+	// further down. These two are shape errors: asking for example threads in
+	// conversations the import will not open is a request that cannot be
+	// honoured under any reading, and a malformed script is a typo the caller
+	// can still fix. Both are cheap to detect and better refused than committed.
+	script := req.SeedConversations.toDomain()
+	if script != nil && !req.SeedInbox {
+		response.WriteError(w, http.StatusBadRequest,
+			"Seeding conversations requires opening them", map[string]string{
+				"seedInbox": "must be true when seedConversations is set",
+			})
+		return
+	}
+	script.Normalize()
+	if err := script.Validate(); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid conversation seed script", map[string]string{
+			"seedConversations": err.Error(),
 		})
 		return
 	}
@@ -1002,7 +1024,28 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		if claims == nil || !h.maySeedInbox(claims.UserID, workspaceID, claims.Role) {
 			out.InboxSeedError = "You don't have permission to start conversations on the unofficial WhatsApp channel"
 		} else {
-			out.InboxSeedQueued, out.InboxSeedError = h.queueInboxSeed(workspaceID, prepared.Inputs)
+			// Scripting is a PLATFORM privilege on top of the channel one, and
+			// a different question: the channel permission asks who may open
+			// cold conversations, this asks who may spend the workspace's
+			// balance writing into them. A workspace owner passes the first and
+			// not the second.
+			//
+			// Reported rather than refused, for the same reason the permission
+			// failure above is: the leads are already committed, and telling
+			// the operator the import failed sends them back to run it again.
+			// A 403 up front was considered and rejected — the two checkboxes
+			// sit next to each other, and behaving differently for each would
+			// be harder to explain than either behaviour alone.
+			if script != nil && claims.Role != string(user.RoleAdmin) {
+				out.ScriptedSeedError = "Only a platform administrator can seed example conversations"
+				script = nil
+			}
+			queued, err := h.queueInboxSeed(workspaceID, prepared.Inputs, script)
+			out.InboxSeedQueued = queued.Targets
+			out.ScriptedSeedQueued = queued.Scripted
+			if err != "" {
+				out.InboxSeedError = err
+			}
 		}
 	}
 
@@ -1015,9 +1058,13 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 // A number the workspace already knew is exactly the case where a lead exists
 // on the leads page with no way to reach it from the inbox, and seeding is
 // idempotent: a conversation that already carries messages is left alone.
-func (h *LeadHandler) queueInboxSeed(workspaceID string, inputs []leaddomain.BulkLeadInput) (int, string) {
+func (h *LeadHandler) queueInboxSeed(
+	workspaceID string,
+	inputs []leaddomain.BulkLeadInput,
+	script *unofficial_whatsapp.SeedScript,
+) (unofficial_whatsapp.SeedQueued, string) {
 	if h.inboxSeeder == nil {
-		return 0, "Inbox seeding is not available on this deployment"
+		return unofficial_whatsapp.SeedQueued{}, "Inbox seeding is not available on this deployment"
 	}
 
 	targets := make([]unofficial_whatsapp.SeedTarget, 0, len(inputs))
@@ -1031,6 +1078,7 @@ func (h *LeadHandler) queueInboxSeed(workspaceID string, inputs []leaddomain.Bul
 	queued, err := h.inboxSeeder.Publish(unofficial_whatsapp.SeedRequest{
 		WorkspaceID: workspaceID,
 		Targets:     targets,
+		Script:      script,
 	})
 	if err != nil {
 		log.Printf("[leads] inbox seeding failed to queue for workspace %s: %v", workspaceID, err)

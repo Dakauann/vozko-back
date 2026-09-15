@@ -177,144 +177,6 @@ definitions:
       user_id:
         type: string
     type: object
-  analysis.Analysis:
-    properties:
-      attendanceQuality:
-        type: integer
-      createdAt:
-        type: string
-      disposition:
-        $ref: '#/definitions/analysis.Disposition'
-      entryId:
-        type: string
-      entryType:
-        $ref: '#/definitions/shared.EntryType'
-      id:
-        type: string
-      interest:
-        $ref: '#/definitions/analysis.Interest'
-      messageCount:
-        type: integer
-      nextAction:
-        $ref: '#/definitions/analysis.NextAction'
-      productInterest:
-        type: string
-      qualification:
-        $ref: '#/definitions/analysis.Qualification'
-      sentiment:
-        $ref: '#/definitions/analysis.Sentiment'
-      summary:
-        type: string
-    type: object
-  analysis.AnalysisStats:
-    properties:
-      avgAttendanceQuality:
-        type: number
-      avgMessagesPerAnalysis:
-        type: number
-      dispositionCallback:
-        type: integer
-      dispositionDeclined:
-        type: integer
-      dispositionFillingInfo:
-        type: integer
-      dispositionNoAnswer:
-        type: integer
-      dispositionPending:
-        type: integer
-      dispositionSale:
-        type: integer
-      dispositionVoicemail:
-        type: integer
-      interestInterested:
-        type: integer
-      interestNotInterested:
-        type: integer
-      interestUndecided:
-        type: integer
-      maxAttendanceQuality:
-        type: integer
-      minAttendanceQuality:
-        type: integer
-      qualificationColdLead:
-        type: integer
-      qualificationHotLead:
-        type: integer
-      qualificationWarmLead:
-        type: integer
-      sentimentNegative:
-        type: integer
-      sentimentNeutral:
-        type: integer
-      sentimentPositive:
-        type: integer
-      totalAnalyses:
-        type: integer
-      totalMessages:
-        type: integer
-    type: object
-  analysis.Disposition:
-    enum:
-    - sale
-    - filling_info
-    - callback
-    - declined
-    - no_answer
-    - voicemail
-    - pending
-    type: string
-    x-enum-varnames:
-    - DispositionSale
-    - DispositionFillingInfo
-    - DispositionCallback
-    - DispositionDeclined
-    - DispositionNoAnswer
-    - DispositionVoicemail
-    - DispositionPending
-  analysis.Interest:
-    enum:
-    - interested
-    - not_interested
-    - undecided
-    type: string
-    x-enum-varnames:
-    - InterestInterested
-    - InterestNotInterested
-    - InterestUndecided
-  analysis.NextAction:
-    enum:
-    - schedule_callback
-    - send_whatsapp
-    - close
-    - escalate
-    - continue
-    type: string
-    x-enum-varnames:
-    - NextActionScheduleCallback
-    - NextActionSendWhatsApp
-    - NextActionClose
-    - NextActionEscalate
-    - NextActionContinue
-  analysis.Qualification:
-    enum:
-    - hot_lead
-    - warm_lead
-    - cold_lead
-    type: string
-    x-enum-varnames:
-    - QualificationHotLead
-    - QualificationWarmLead
-    - QualificationColdLead
-  analysis.Sentiment:
-    enum:
-    - positive
-    - neutral
-    - negative
-    type: string
-    x-enum-varnames:
-    - SentimentPositive
-    - SentimentNeutral
-    - SentimentNegative
   attendance.AIAgentStats:
     properties:
       abandoned:
@@ -987,6 +849,1367 @@ definitions:
       total_open:
         type: integer
     type: object
+  audience.AlertChannel:
+    enum:
+    - official
+    - unofficial
+    type: string
+    x-enum-varnames:
+    - AlertChannelOfficial
+    - AlertChannelUnofficial
+  audience.AlertChannelStatusResponse:
+    properties:
+      available:
+        type: boolean
+      channel:
+        type: string
+      reason:
+        description: |-
+          Reason is a stable key the client translates: "no_sender",
+          "not_enabled". A greyed control with no explanation sends people to
+          support instead of to the connect screen.
+        type: string
+      senders:
+        items:
+          $ref: '#/definitions/audience.AlertSenderResponse'
+        type: array
+    type: object
+  audience.AlertLimitsResponse:
+    properties:
+      defaultCooldownMinutes:
+        type: integer
+      defaultPerDay:
+        type: integer
+      defaultWindowMinutes:
+        type: integer
+      maxCooldownMinutes:
+        type: integer
+      maxMinMessages:
+        type: integer
+      maxPerDay:
+        type: integer
+      maxWindowMinutes:
+        type: integer
+      minCooldownMinutes:
+        type: integer
+      minWindowMinutes:
+        type: integer
+      templateParamCount:
+        description: |-
+          TemplateParamCount is how many facts an alert can supply. NOT a
+          requirement on the template: one that declares fewer gets the first few,
+          one that declares more has the rest padded, and one with no variables is
+          perfectly fine.
+        type: integer
+    type: object
+  audience.AlertMetric:
+    enum:
+    - comment_severity
+    - high_severity_count
+    - hostile_count
+    - comment_volume
+    - acceptance_score
+    - attendance_quality
+    - escalation_count
+    type: string
+    x-enum-varnames:
+    - AlertMetricCommentSeverity
+    - AlertMetricHighSeverityCount
+    - AlertMetricHostileCount
+    - AlertMetricCommentVolume
+    - AlertMetricAcceptanceScore
+    - AlertMetricAttendanceQuality
+    - AlertMetricEscalationCount
+  audience.AlertMetricOption:
+    properties:
+      metric:
+        type: string
+      subjectKind:
+        description: |-
+          SubjectKind is what the metric reads, "comment" or "conversation". The
+          picker filters on it so a rule cannot be armed against a subject its
+          channel never produces, which saves cleanly and then never fires.
+        type: string
+      supportsMinMessages:
+        description: |-
+          SupportsMinMessages says whether a conversation-length floor applies.
+          Only a per-conversation metric has one row to measure.
+        type: boolean
+      triggersWhenBelow:
+        type: boolean
+      windowed:
+        type: boolean
+    type: object
+  audience.AlertRule:
+    properties:
+      accountId:
+        type: string
+      brief:
+        description: |-
+          Brief asks the model to add its reading of what happened and how to
+          respond. Off by default: it is one AI call per firing, bounded by the
+          cooldown and the daily cap but still billed.
+        type: boolean
+      businessPhoneId:
+        description: |-
+          BusinessPhoneID and TemplateID are required for the official channel:
+          which number it leaves from and which approved template it sends.
+        type: string
+      channel:
+        $ref: '#/definitions/audience.AlertChannel'
+      cooldownMinutes:
+        type: integer
+      createdAt:
+        type: string
+      createdByUserId:
+        description: |-
+          CreatedByUserID is who configured the rule, and therefore who its
+          messages are attributed to. An automated paid send with no author is a
+          support ticket nobody can answer, so the person who armed the alert owns
+          what it says.
+        type: string
+      enabled:
+        type: boolean
+      firedDay:
+        type: string
+      firedToday:
+        type: integer
+      id:
+        type: string
+      instanceId:
+        description: |-
+          InstanceID names the connected number for the unofficial channel. Empty
+          means "whichever one this workspace has", resolved at send time.
+        type: string
+      lastError:
+        type: string
+      lastFiredAt:
+        description: |-
+          The firing history, kept on the rule rather than in a second table: it is
+          what the cooldown and the cap are checked against, and it is also the
+          answer to "por que não disparou".
+        type: string
+      maxPerDay:
+        type: integer
+      metric:
+        $ref: '#/definitions/audience.AlertMetric'
+      minMessages:
+        description: |-
+          MinMessages is how long a conversation must be before it is worth
+          judging. Zero means no floor, which is what every rule written before
+          this existed has.
+
+          A two-message conversation scores badly because it barely happened, not
+          because it was handled badly, so without a floor the first alert an
+          operator ever receives is about a customer who said "oi" and left. Only
+          meaningful for a per-conversation metric; Validate refuses it elsewhere
+          rather than storing a setting that does nothing.
+        type: integer
+      name:
+        type: string
+      recipient:
+        type: string
+      source:
+        type: string
+      templateId:
+        type: string
+      threshold:
+        type: integer
+      updatedAt:
+        type: string
+      windowMinutes:
+        description: |-
+          WindowMinutes is the span a windowed metric is counted over. Ignored for
+          a per-comment metric.
+        type: integer
+      workspaceId:
+        type: string
+    type: object
+  audience.AlertSenderResponse:
+    properties:
+      id:
+        type: string
+      label:
+        description: Label is what the operator recognises, never an internal id.
+        type: string
+    type: object
+  audience.AlertVocabularyResponse:
+    properties:
+      channelStatus:
+        description: |-
+          ChannelStatus narrows Channels to what this workspace can actually do.
+          Empty when the deployment has no directory wired, in which case the
+          client falls back to Channels exactly as it did before.
+        items:
+          $ref: '#/definitions/audience.AlertChannelStatusResponse'
+        type: array
+      channels:
+        items:
+          type: string
+        type: array
+      facts:
+        description: |-
+          Facts is what an alert can put into a template's variables, in the order
+          a POSITIONAL template is filled. Sent so the settings screen can tell an
+          operator what their template will actually receive, and so a NAMED
+          template can be written with variables we recognise.
+        items:
+          type: string
+        type: array
+      limits:
+        $ref: '#/definitions/audience.AlertLimitsResponse'
+      metrics:
+        items:
+          $ref: '#/definitions/audience.AlertMetricOption'
+        type: array
+    type: object
+  audience.Analysis:
+    properties:
+      accountId:
+        type: string
+      analyzedAt:
+        type: string
+      attempts:
+        type: integer
+      attendanceQuality:
+        description: |-
+          AttendanceQuality is 0-100, COMPUTED from the conversation quality
+          rubric's ordinal levels. Never model-set, exactly as Severity is not.
+        type: integer
+      authorExternalId:
+        type: string
+      authorHandle:
+        type: string
+      batchId:
+        type: string
+      containerId:
+        type: string
+      createdAt:
+        type: string
+      deletedAt:
+        description: |-
+          DeletedAt is set when the source comment was deleted (§6.4). The row
+          leaves the feed and the live stats but stays in historical rollups: the
+          rollup for last Tuesday must not change because someone deleted a
+          comment today.
+        type: string
+      disposition:
+        $ref: '#/definitions/audience.Disposition'
+      excerpt:
+        type: string
+      failureReason:
+        type: string
+      id:
+        type: string
+      intent:
+        $ref: '#/definitions/audience.Intent'
+      interest:
+        allOf:
+        - $ref: '#/definitions/audience.Interest'
+        description: |-
+          ---- Conversation labels ----
+
+          Set only when SubjectKind is conversation, and zero for every comment
+          row. They are the taxonomy the legacy conversation engine owned; see
+          conversation.go. Kept flat rather than behind a pointer struct because
+          they are filtered and aggregated in SQL, and a nested value would have to
+          be unpacked in every query.
+      isSpam:
+        type: boolean
+      language:
+        type: string
+      legalRisk:
+        $ref: '#/definitions/shared.QualityLevel'
+      messageCount:
+        type: integer
+      model:
+        type: string
+      nextAction:
+        $ref: '#/definitions/audience.NextAction'
+      occurredAt:
+        description: |-
+          OccurredAt is when the comment was POSTED on the channel; CreatedAt
+          is when it reached us. Rollups bucket by the former, so a backfilled
+          comment lands on its own day.
+        type: string
+      parentCommentId:
+        type: string
+      personalAttack:
+        $ref: '#/definitions/shared.QualityLevel'
+      productInterest:
+        description: |-
+          ProductInterest is what the conversation was about, in the model's own
+          words, and ProductInterestKey is the same thing canonicalised. The pair
+          exists because one of them is for reading and the other for counting;
+          see subject_key.go. Only the key is ever grouped on.
+        type: string
+      productInterestKey:
+        type: string
+      qualification:
+        $ref: '#/definitions/audience.Qualification'
+      requiresAction:
+        description: RequiresAction is DERIVED from severity and intent; see ActionPolicy.
+        type: boolean
+      revision:
+        description: |-
+          Revision identifies an immutable conversation transcript. Comments use
+          the empty revision and retain their original idempotency contract.
+        type: string
+      sentiment:
+        allOf:
+        - $ref: '#/definitions/shared.Sentiment'
+        description: Model output, all constrained by the rubric.
+      severity:
+        description: Severity is 0-100, COMPUTED. Never model-set.
+        type: integer
+      source:
+        type: string
+      stance:
+        $ref: '#/definitions/audience.Stance'
+      status:
+        $ref: '#/definitions/audience.Status'
+      subjectId:
+        description: |-
+          SubjectID identifies the subject on its channel: the comment id for
+          a comment, the conversation's entry id for a conversation.
+        type: string
+      subjectKind:
+        allOf:
+        - $ref: '#/definitions/audience.SubjectKind'
+        description: |-
+          SubjectKind says what this row is about. Empty reads as a comment, so
+          every row written before conversations existed keeps its meaning without
+          a backfill.
+      summary:
+        description: |-
+          Summary is the model's prose. It is the one free-text field the engine
+          stores and the only one carrying unredacted customer content, which is
+          why retention applies to it like everything else here.
+        type: string
+      topicKey:
+        type: string
+      toxicity:
+        allOf:
+        - $ref: '#/definitions/shared.QualityLevel'
+        description: 'Severity dimensions: rated ordinally by the model, scored here.'
+      truncated:
+        description: |-
+          Truncated records that the text was cut before it reached the model or
+          the excerpt, so a classification of a partial comment is never silent.
+        type: boolean
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  audience.AuthorContainerResponse:
+    properties:
+      accountId:
+        type: string
+      comments:
+        type: integer
+      containerId:
+        type: string
+      derivedStance:
+        type: string
+      firstOccurredAt:
+        type: string
+      lastOccurredAt:
+        type: string
+      reputation:
+        type: integer
+      severityHighCount:
+        type: integer
+      severityMax:
+        type: integer
+      source:
+        type: string
+      stanceCritic:
+        type: integer
+      stanceHostile:
+        type: integer
+      stanceNeutral:
+        type: integer
+      stanceSupporter:
+        type: integer
+    type: object
+  audience.AuthorContainersResponse:
+    properties:
+      author:
+        $ref: '#/definitions/audience.AuthorResponse'
+      containers:
+        items:
+          $ref: '#/definitions/audience.AuthorContainerResponse'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  audience.AuthorDetailResponse:
+    properties:
+      author:
+        $ref: '#/definitions/audience.AuthorResponse'
+      comments:
+        items:
+          $ref: '#/definitions/audience.CommentResponse'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  audience.AuthorResponse:
+    properties:
+      accountId:
+        type: string
+      authorExternalId:
+        type: string
+      authorHandle:
+        type: string
+      counters:
+        $ref: '#/definitions/audience.Counters'
+      derivedStance:
+        type: string
+      firstSeenAt:
+        type: string
+      id:
+        type: string
+      isFlagged:
+        type: boolean
+      lastSeenAt:
+        type: string
+      moderationState:
+        type: string
+      reputation:
+        description: |-
+          Reputation is the signed ledger the ranking sorts on: negative means the
+          author has cost more than they gave. Sent alongside the raw counters so
+          the client shows the score without re-deriving (and re-inventing) it.
+        type: integer
+      role:
+        allOf:
+        - $ref: '#/definitions/audience.AuthorRoleInference'
+        description: |-
+          Role is the §5 inference, sent WITH its evidence: a client that received
+          only a label would have no way to present it as the inference it is.
+      roleDisplayable:
+        type: boolean
+      source:
+        type: string
+      topTopics:
+        items:
+          $ref: '#/definitions/audience.TopicCount'
+        type: array
+      updatedAt:
+        type: string
+    type: object
+  audience.AuthorRole:
+    enum:
+    - unknown
+    - politician
+    - journalist
+    - public_servant
+    - business_owner
+    - professional
+    - activist
+    type: string
+    x-enum-varnames:
+    - RoleUnknown
+    - RolePolitician
+    - RoleJournalist
+    - RolePublicServant
+    - RoleBusinessOwner
+    - RoleProfessional
+    - RoleActivist
+  audience.AuthorRoleInference:
+    properties:
+      basedOnComments:
+        description: |-
+          BasedOnComments is the corpus size the inference read. Shown to the
+          customer, because "politician, from 3 comments" and "politician, from 90"
+          are different claims and the UI must not present them as one.
+        type: integer
+      confidence:
+        allOf:
+        - $ref: '#/definitions/shared.QualityLevel'
+        description: |-
+          Confidence is the model's own, on the shared ordinal rubric. Ordinal
+          rather than a percentage for the reason the rubric header gives: a model
+          asked for 0-100 returns a number nobody can defend.
+      rationale:
+        description: |-
+          Rationale is one short sentence in the model's words, so an operator can
+          see WHY and disagree. Never used for anything but display.
+        type: string
+      role:
+        $ref: '#/definitions/audience.AuthorRole'
+    type: object
+  audience.BackfillEstimateResponse:
+    properties:
+      containers:
+        type: integer
+      estimatedComments:
+        type: integer
+    type: object
+  audience.BackfillResponse:
+    properties:
+      accountId:
+        type: string
+      containerId:
+        type: string
+      createdAt:
+        type: string
+      enqueued:
+        type: integer
+      error:
+        type: string
+      estimatedComments:
+        type: integer
+      fetched:
+        type: integer
+      finishedAt:
+        type: string
+      id:
+        type: string
+      progress:
+        type: number
+      source:
+        type: string
+      status:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  audience.BatchTotals:
+    properties:
+      batches:
+        type: integer
+      byKind:
+        additionalProperties:
+          $ref: '#/definitions/audience.BatchTotals'
+        description: |-
+          ByKind splits the same period by pass, so the dashboard can show what
+          the author inference cost separately from the comment classification.
+          Always present for every kind, zeroed when a pass did not run.
+        type: object
+      completionTokens:
+        type: integer
+      items:
+        type: integer
+      promptTokens:
+        type: integer
+    type: object
+  audience.CommentResponse:
+    properties:
+      accountId:
+        type: string
+      analyzedAt:
+        type: string
+      attempts:
+        type: integer
+      attendanceQuality:
+        type: integer
+      authorExternalId:
+        type: string
+      authorHandle:
+        type: string
+      containerId:
+        type: string
+      createdAt:
+        type: string
+      disposition:
+        type: string
+      excerpt:
+        type: string
+      failureReason:
+        type: string
+      id:
+        type: string
+      intent:
+        type: string
+      interest:
+        description: Conversation subjects only.
+        type: string
+      isSpam:
+        type: boolean
+      language:
+        type: string
+      legalRisk:
+        type: string
+      messageCount:
+        type: integer
+      model:
+        type: string
+      nextAction:
+        type: string
+      occurredAt:
+        type: string
+      parentCommentId:
+        type: string
+      personalAttack:
+        type: string
+      productInterest:
+        type: string
+      qualification:
+        type: string
+      requiresAction:
+        type: boolean
+      sentiment:
+        type: string
+      severity:
+        type: integer
+      source:
+        type: string
+      stance:
+        type: string
+      status:
+        type: string
+      subjectId:
+        type: string
+      subjectKind:
+        description: |-
+          SubjectKind tells a client which half of this shape is populated: a
+          comment carries stance and severity, a conversation carries disposition
+          and attendance quality, and neither carries the other.
+        type: string
+      summary:
+        type: string
+      topicKey:
+        type: string
+      toxicity:
+        type: string
+      truncated:
+        type: boolean
+    type: object
+  audience.ContainerOverrideResponse:
+    properties:
+      containerId:
+        type: string
+      enabled:
+        type: boolean
+      instructions:
+        type: string
+      model:
+        type: string
+      severityThreshold:
+        type: integer
+      topics:
+        items:
+          $ref: '#/definitions/audience.Topic'
+        type: array
+      updatedAt:
+        type: string
+    type: object
+  audience.ContainerSettingsResponse:
+    properties:
+      effective:
+        $ref: '#/definitions/audience.SettingsResponse'
+      override:
+        $ref: '#/definitions/audience.ContainerOverrideResponse'
+    type: object
+  audience.Counters:
+    properties:
+      analyzed:
+        type: integer
+      attendanceQualityAvg:
+        description: |-
+          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
+          carry no such score, and including their zeros would drag the average of
+          a mixed slice toward nothing.
+        type: number
+      attendanceQualityMax:
+        type: integer
+      attendanceQualityMin:
+        type: integer
+      commentCount:
+        description: |-
+          ---- Conversation subjects ----
+
+          Everything the legacy conversation-analysis stats block reported, in the
+          same aggregate as the comment counters rather than a second endpoint with
+          its own shape. A filtered slice can now contain both kinds, so the two
+          subject counts say how much of the slice each block describes: without
+          them a reader cannot tell an all-comment slice from one where every
+          conversation happened to be unlabelled.
+        type: integer
+      conversationAnalyzed:
+        type: integer
+      conversationCount:
+        type: integer
+      dispositionCallback:
+        type: integer
+      dispositionDeclined:
+        type: integer
+      dispositionFillingInfo:
+        type: integer
+      dispositionPending:
+        type: integer
+      dispositionSale:
+        type: integer
+      distinctAuthors:
+        type: integer
+      failed:
+        type: integer
+      flaggedAuthors:
+        type: integer
+      inFlight:
+        type: integer
+      intentComplaint:
+        type: integer
+      intentOther:
+        type: integer
+      intentPraise:
+        type: integer
+      intentQuestion:
+        type: integer
+      intentSalesLead:
+        type: integer
+      intentSpam:
+        type: integer
+      intentSupportRequest:
+        type: integer
+      interestInterested:
+        type: integer
+      interestNotInterested:
+        type: integer
+      interestUndecided:
+        type: integer
+      lastAnalyzedAt:
+        type: string
+      messagesAvg:
+        type: number
+      messagesTotal:
+        type: integer
+      nextActionClose:
+        type: integer
+      nextActionContinue:
+        type: integer
+      nextActionEscalate:
+        type: integer
+      nextActionScheduleCallback:
+        type: integer
+      nextActionSendWhatsApp:
+        type: integer
+      pending:
+        type: integer
+      qualificationColdLead:
+        type: integer
+      qualificationHotLead:
+        type: integer
+      qualificationWarmLead:
+        type: integer
+      requiresActionCount:
+        type: integer
+      sentimentNegative:
+        type: integer
+      sentimentNeutral:
+        type: integer
+      sentimentPositive:
+        type: integer
+      severityAvg:
+        type: number
+      severityHighCount:
+        description: ≥ HighSeverityThreshold
+        type: integer
+      severityMax:
+        type: integer
+      skipped:
+        type: integer
+      spamCount:
+        type: integer
+      stanceCritic:
+        type: integer
+      stanceHostile:
+        type: integer
+      stanceNeutral:
+        type: integer
+      stanceSupporter:
+        type: integer
+      total:
+        type: integer
+    type: object
+  audience.Disposition:
+    enum:
+    - sale
+    - filling_info
+    - callback
+    - declined
+    - pending
+    type: string
+    x-enum-varnames:
+    - DispositionSale
+    - DispositionFillingInfo
+    - DispositionCallback
+    - DispositionDeclined
+    - DispositionPending
+  audience.EscalationResponse:
+    properties:
+      author:
+        type: string
+      commentId:
+        type: string
+      sentAt:
+        type: string
+      text:
+        type: string
+      where:
+        type: string
+    type: object
+  audience.Intent:
+    enum:
+    - praise
+    - question
+    - complaint
+    - support_request
+    - spam
+    - sales_lead
+    - other
+    type: string
+    x-enum-varnames:
+    - IntentPraise
+    - IntentQuestion
+    - IntentComplaint
+    - IntentSupportRequest
+    - IntentSpam
+    - IntentSalesLead
+    - IntentOther
+  audience.Interest:
+    enum:
+    - interested
+    - not_interested
+    - undecided
+    type: string
+    x-enum-varnames:
+    - InterestInterested
+    - InterestNotInterested
+    - InterestUndecided
+  audience.NextAction:
+    enum:
+    - schedule_callback
+    - send_whatsapp
+    - close
+    - escalate
+    - continue
+    type: string
+    x-enum-varnames:
+    - NextActionScheduleCallback
+    - NextActionSendWhatsApp
+    - NextActionClose
+    - NextActionEscalate
+    - NextActionContinue
+  audience.Qualification:
+    enum:
+    - hot_lead
+    - warm_lead
+    - cold_lead
+    type: string
+    x-enum-varnames:
+    - QualificationHotLead
+    - QualificationWarmLead
+    - QualificationColdLead
+  audience.ReplyMode:
+    enum:
+    - "off"
+    - suggest
+    - auto
+    type: string
+    x-enum-varnames:
+    - ReplyModeOff
+    - ReplyModeSuggest
+    - ReplyModeAuto
+  audience.ReplyPolicy:
+    properties:
+      maxAutoSeverity:
+        description: |-
+          MaxAutoSeverity is the ceiling for automatic replies. Above it a human
+          answers, whatever the intent says.
+        type: integer
+      mode:
+        $ref: '#/definitions/audience.ReplyMode'
+    type: object
+  audience.ReplySuggestion:
+    properties:
+      auto:
+        description: |-
+          Auto marks a draft the pipeline produced and posted without a human, so
+          the feed can say which replies nobody read first.
+        type: boolean
+      commentId:
+        type: string
+      draftedAt:
+        type: string
+      model:
+        type: string
+      text:
+        type: string
+    type: object
+  audience.SettingsResponse:
+    properties:
+      accountId:
+        type: string
+      dailyCap:
+        type: integer
+      enabled:
+        type: boolean
+      instructions:
+        type: string
+      model:
+        type: string
+      replyPolicy:
+        $ref: '#/definitions/audience.ReplyPolicy'
+      severityThreshold:
+        type: integer
+      source:
+        type: string
+      topics:
+        items:
+          $ref: '#/definitions/audience.Topic'
+        type: array
+      updatedAt:
+        type: string
+      vertical:
+        type: string
+    type: object
+  audience.SpendResponse:
+    properties:
+      batches:
+        type: integer
+      byKind:
+        additionalProperties:
+          $ref: '#/definitions/audience.BatchTotals'
+        description: |-
+          ByKind splits the same period by pass, so the dashboard can show what
+          the author inference cost separately from the comment classification.
+          Always present for every kind, zeroed when a pass did not run.
+        type: object
+      completionTokens:
+        type: integer
+      items:
+        type: integer
+      promptTokens:
+        type: integer
+    type: object
+  audience.Stance:
+    enum:
+    - supporter
+    - neutral
+    - critic
+    - hostile
+    type: string
+    x-enum-varnames:
+    - StanceSupporter
+    - StanceNeutral
+    - StanceCritic
+    - StanceHostile
+  audience.StatsResponse:
+    properties:
+      acceptanceScore:
+        type: integer
+      analyzed:
+        type: integer
+      attendanceQualityAvg:
+        description: |-
+          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
+          carry no such score, and including their zeros would drag the average of
+          a mixed slice toward nothing.
+        type: number
+      attendanceQualityMax:
+        type: integer
+      attendanceQualityMin:
+        type: integer
+      commentCount:
+        description: |-
+          ---- Conversation subjects ----
+
+          Everything the legacy conversation-analysis stats block reported, in the
+          same aggregate as the comment counters rather than a second endpoint with
+          its own shape. A filtered slice can now contain both kinds, so the two
+          subject counts say how much of the slice each block describes: without
+          them a reader cannot tell an all-comment slice from one where every
+          conversation happened to be unlabelled.
+        type: integer
+      conversationAnalyzed:
+        type: integer
+      conversationCount:
+        type: integer
+      dispositionCallback:
+        type: integer
+      dispositionDeclined:
+        type: integer
+      dispositionFillingInfo:
+        type: integer
+      dispositionPending:
+        type: integer
+      dispositionSale:
+        type: integer
+      distinctAuthors:
+        type: integer
+      failed:
+        type: integer
+      flaggedAuthors:
+        type: integer
+      inFlight:
+        type: integer
+      intentComplaint:
+        type: integer
+      intentOther:
+        type: integer
+      intentPraise:
+        type: integer
+      intentQuestion:
+        type: integer
+      intentSalesLead:
+        type: integer
+      intentSpam:
+        type: integer
+      intentSupportRequest:
+        type: integer
+      interestInterested:
+        type: integer
+      interestNotInterested:
+        type: integer
+      interestUndecided:
+        type: integer
+      lastAnalyzedAt:
+        type: string
+      messagesAvg:
+        type: number
+      messagesTotal:
+        type: integer
+      nextActionClose:
+        type: integer
+      nextActionContinue:
+        type: integer
+      nextActionEscalate:
+        type: integer
+      nextActionScheduleCallback:
+        type: integer
+      nextActionSendWhatsApp:
+        type: integer
+      pending:
+        type: integer
+      qualificationColdLead:
+        type: integer
+      qualificationHotLead:
+        type: integer
+      qualificationWarmLead:
+        type: integer
+      requiresActionCount:
+        type: integer
+      sentimentNegative:
+        type: integer
+      sentimentNeutral:
+        type: integer
+      sentimentPositive:
+        type: integer
+      severityAvg:
+        type: number
+      severityHighCount:
+        description: ≥ HighSeverityThreshold
+        type: integer
+      severityMax:
+        type: integer
+      skipped:
+        type: integer
+      spamCount:
+        type: integer
+      stanceCritic:
+        type: integer
+      stanceHostile:
+        type: integer
+      stanceNeutral:
+        type: integer
+      stanceSupporter:
+        type: integer
+      subjects:
+        description: |-
+          Subjects is what the conversations were about, ranked. Always an array,
+          never null: a client that has to distinguish "no subjects" from "this
+          field is missing" would branch on it everywhere.
+        items:
+          $ref: '#/definitions/audience.SubjectCount'
+        type: array
+      topics:
+        items:
+          $ref: '#/definitions/audience.TopicStat'
+        type: array
+      total:
+        type: integer
+    type: object
+  audience.Status:
+    enum:
+    - pending
+    - in_flight
+    - analyzed
+    - failed
+    - skipped
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusInFlight
+    - StatusAnalyzed
+    - StatusFailed
+    - StatusSkipped
+  audience.SubjectCount:
+    properties:
+      count:
+        type: integer
+      key:
+        description: |-
+          Key is what the rows were grouped on. It is the identity, so a chart
+          keys its marks on this and not on the label.
+        type: string
+      label:
+        description: |-
+          Label is a real example of how the subject was written, so the chart
+          shows "Plano Família" rather than the stripped "plano familia".
+        type: string
+    type: object
+  audience.SubjectKind:
+    enum:
+    - comment
+    - conversation
+    type: string
+    x-enum-varnames:
+    - SubjectKindComment
+    - SubjectKindConversation
+  audience.Topic:
+    properties:
+      description:
+        type: string
+      key:
+        type: string
+      label:
+        type: string
+    type: object
+  audience.TopicCount:
+    properties:
+      count:
+        type: integer
+      topicKey:
+        type: string
+    type: object
+  audience.TopicStat:
+    properties:
+      count:
+        type: integer
+      sentimentNegative:
+        type: integer
+      sentimentNeutral:
+        type: integer
+      sentimentPositive:
+        type: integer
+      severityAvg:
+        type: number
+      topicKey:
+        type: string
+    type: object
+  audience.TrendPointResponse:
+    properties:
+      acceptanceScore:
+        type: integer
+      analyzed:
+        type: integer
+      attendanceQualityAvg:
+        description: |-
+          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
+          carry no such score, and including their zeros would drag the average of
+          a mixed slice toward nothing.
+        type: number
+      attendanceQualityMax:
+        type: integer
+      attendanceQualityMin:
+        type: integer
+      bucketDate:
+        description: YYYY-MM-DD, UTC
+        type: string
+      commentCount:
+        description: |-
+          ---- Conversation subjects ----
+
+          Everything the legacy conversation-analysis stats block reported, in the
+          same aggregate as the comment counters rather than a second endpoint with
+          its own shape. A filtered slice can now contain both kinds, so the two
+          subject counts say how much of the slice each block describes: without
+          them a reader cannot tell an all-comment slice from one where every
+          conversation happened to be unlabelled.
+        type: integer
+      conversationAnalyzed:
+        type: integer
+      conversationCount:
+        type: integer
+      dispositionCallback:
+        type: integer
+      dispositionDeclined:
+        type: integer
+      dispositionFillingInfo:
+        type: integer
+      dispositionPending:
+        type: integer
+      dispositionSale:
+        type: integer
+      distinctAuthors:
+        type: integer
+      failed:
+        type: integer
+      flaggedAuthors:
+        type: integer
+      inFlight:
+        type: integer
+      intentComplaint:
+        type: integer
+      intentOther:
+        type: integer
+      intentPraise:
+        type: integer
+      intentQuestion:
+        type: integer
+      intentSalesLead:
+        type: integer
+      intentSpam:
+        type: integer
+      intentSupportRequest:
+        type: integer
+      interestInterested:
+        type: integer
+      interestNotInterested:
+        type: integer
+      interestUndecided:
+        type: integer
+      lastAnalyzedAt:
+        type: string
+      messagesAvg:
+        type: number
+      messagesTotal:
+        type: integer
+      nextActionClose:
+        type: integer
+      nextActionContinue:
+        type: integer
+      nextActionEscalate:
+        type: integer
+      nextActionScheduleCallback:
+        type: integer
+      nextActionSendWhatsApp:
+        type: integer
+      pending:
+        type: integer
+      qualificationColdLead:
+        type: integer
+      qualificationHotLead:
+        type: integer
+      qualificationWarmLead:
+        type: integer
+      requiresActionCount:
+        type: integer
+      sentimentNegative:
+        type: integer
+      sentimentNeutral:
+        type: integer
+      sentimentPositive:
+        type: integer
+      severityAvg:
+        type: number
+      severityHighCount:
+        description: ≥ HighSeverityThreshold
+        type: integer
+      severityMax:
+        type: integer
+      skipped:
+        type: integer
+      spamCount:
+        type: integer
+      stanceCritic:
+        type: integer
+      stanceHostile:
+        type: integer
+      stanceNeutral:
+        type: integer
+      stanceSupporter:
+        type: integer
+      total:
+        type: integer
+    type: object
+  audience.UpdateWorkspaceSettingsRequest:
+    properties:
+      dailyCap:
+        type: integer
+      debounceMinutes:
+        type: integer
+    type: object
+  audience.Usage:
+    properties:
+      limit:
+        description: |-
+          Limit is the ceiling in force. Zero means unlimited, which is what a
+          workspace with no configured cap and no default would get.
+        type: integer
+      oldestAt:
+        description: |-
+          OldestAt is when the earliest still-counted analysis was claimed, so a
+          screen can say when room next frees up rather than naming a reset that
+          no longer exists. Zero when nothing is counted.
+        type: string
+      used:
+        description: Used is how many analyses were claimed inside the window.
+        type: integer
+      waiting:
+        description: |-
+          Waiting is how much is queued and not yet classified.
+
+          Without it the budget reads as a number with no consequence, and an
+          operator who sets the ceiling too low sees only that the dashboard has
+          stopped moving. Work is never thrown away when the budget runs out: the
+          rows stay pending and the next pass picks them up. What a low ceiling
+          actually costs is delay, so the delay is what gets shown.
+        type: integer
+    type: object
+  audience.WorkspaceSettingsResponse:
+    properties:
+      dailyCap:
+        type: integer
+      debounceMinutes:
+        type: integer
+      effectiveDailyCap:
+        description: |-
+          The values actually IN FORCE, which is what a screen shows in the box.
+
+          Both are resolved HERE rather than by the client: the ceiling falls back
+          through the workspace, then the channel accounts, then the product
+          default, and a browser reproducing that chain would be a second copy of
+          ResolveDailyCap free to disagree with the engine's.
+        type: integer
+      effectiveDebounceMinutes:
+        type: integer
+      maxDebounceMinutes:
+        type: integer
+      minDebounceMinutes:
+        type: integer
+    type: object
+  audience_usecase.EscalationRecipient:
+    properties:
+      entryId:
+        type: string
+      entryType:
+        type: string
+      lastMessageAt:
+        type: string
+      name:
+        type: string
+      number:
+        type: string
+      windowOpen:
+        description: |-
+          WindowOpen says whether a free-form message can reach them right now.
+          Shown rather than enforced: the channels differ, and the send path is
+          the authority on its own rules.
+        type: boolean
+    type: object
   auth.AuthTokenResponse:
     properties:
       accessToken:
@@ -1166,7 +2389,43 @@ definitions:
     required:
     - token
     type: object
-  balance.Balance:
+  balance.FullBalanceSummaryResponse:
+    properties:
+      balance:
+        $ref: '#/definitions/balance.balanceResponse'
+      totalMoneyCredits:
+        type: integer
+      totalMoneyDebits:
+        type: integer
+    type: object
+  balance.TransactionResponse:
+    properties:
+      amount:
+        type: integer
+      balanceAfter:
+        type: integer
+      balanceBefore:
+        type: integer
+      balanceId:
+        type: string
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      referenceId:
+        type: string
+      resourceType:
+        type: string
+      serviceType:
+        type: string
+      type:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  balance.balanceResponse:
     properties:
       amount:
         type: integer
@@ -1181,86 +2440,6 @@ definitions:
       workspaceId:
         type: string
     type: object
-  balance.FullBalanceSummary:
-    properties:
-      balance:
-        $ref: '#/definitions/balance.Balance'
-      totalMoneyCredits:
-        type: integer
-      totalMoneyDebits:
-        type: integer
-    type: object
-  balance.ResourceType:
-    enum:
-    - money
-    type: string
-    x-enum-varnames:
-    - ResourceTypeMoney
-  balance.ServiceType:
-    enum:
-    - voice_campaign
-    - voice_call
-    - whatsapp_campaign
-    - whatsapp_conversation
-    - ai
-    - manual_adjustment
-    - top_up
-    - addon
-    - comment_analysis
-    type: string
-    x-enum-varnames:
-    - ServiceVoiceCampaign
-    - ServiceVoiceCall
-    - ServiceWhatsAppCampaign
-    - ServiceWhatsAppConversation
-    - ServiceAI
-    - ServiceManualAdjustment
-    - ServiceTopUp
-    - ServiceAddon
-    - ServiceCommentAnalysis
-  balance.Transaction:
-    properties:
-      amount:
-        type: integer
-      balanceAfter:
-        type: integer
-      balanceBefore:
-        type: integer
-      balanceId:
-        type: string
-      costMicros:
-        type: integer
-      createdAt:
-        type: string
-      description:
-        type: string
-      exchangeRateMicros:
-        type: integer
-      id:
-        type: string
-      isRefund:
-        type: boolean
-      profitMicros:
-        type: integer
-      referenceId:
-        type: string
-      resourceType:
-        $ref: '#/definitions/balance.ResourceType'
-      serviceType:
-        $ref: '#/definitions/balance.ServiceType'
-      type:
-        $ref: '#/definitions/balance.TransactionType'
-      workspaceId:
-        type: string
-    type: object
-  balance.TransactionType:
-    enum:
-    - credit
-    - debit
-    type: string
-    x-enum-varnames:
-    - TransactionTypeCredit
-    - TransactionTypeDebit
   buildersession.BuilderMessageResponse:
     properties:
       at:
@@ -1945,820 +3124,6 @@ definitions:
         example: SP
         type: string
     type: object
-  comment_analysis.AlertChannel:
-    enum:
-    - official
-    - unofficial
-    type: string
-    x-enum-varnames:
-    - AlertChannelOfficial
-    - AlertChannelUnofficial
-  comment_analysis.AlertMetric:
-    enum:
-    - comment_severity
-    - high_severity_count
-    - hostile_count
-    - comment_volume
-    - acceptance_score
-    type: string
-    x-enum-varnames:
-    - AlertMetricCommentSeverity
-    - AlertMetricHighSeverityCount
-    - AlertMetricHostileCount
-    - AlertMetricCommentVolume
-    - AlertMetricAcceptanceScore
-  comment_analysis.AlertRule:
-    properties:
-      accountId:
-        type: string
-      brief:
-        description: |-
-          Brief asks the model to add its reading of what happened and how to
-          respond. Off by default: it is one AI call per firing, bounded by the
-          cooldown and the daily cap but still billed.
-        type: boolean
-      businessPhoneId:
-        description: |-
-          BusinessPhoneID and TemplateID are required for the official channel:
-          which number it leaves from and which approved template it sends.
-        type: string
-      channel:
-        $ref: '#/definitions/comment_analysis.AlertChannel'
-      cooldownMinutes:
-        type: integer
-      createdAt:
-        type: string
-      createdByUserId:
-        description: |-
-          CreatedByUserID is who configured the rule, and therefore who its
-          messages are attributed to. An automated paid send with no author is a
-          support ticket nobody can answer, so the person who armed the alert owns
-          what it says.
-        type: string
-      enabled:
-        type: boolean
-      firedDay:
-        type: string
-      firedToday:
-        type: integer
-      id:
-        type: string
-      instanceId:
-        description: |-
-          InstanceID names the connected number for the unofficial channel. Empty
-          means "whichever one this workspace has", resolved at send time.
-        type: string
-      lastError:
-        type: string
-      lastFiredAt:
-        description: |-
-          The firing history, kept on the rule rather than in a second table: it is
-          what the cooldown and the cap are checked against, and it is also the
-          answer to "por que não disparou".
-        type: string
-      maxPerDay:
-        type: integer
-      metric:
-        $ref: '#/definitions/comment_analysis.AlertMetric'
-      name:
-        type: string
-      recipient:
-        type: string
-      source:
-        $ref: '#/definitions/comment_analysis.Source'
-      templateId:
-        type: string
-      threshold:
-        type: integer
-      updatedAt:
-        type: string
-      windowMinutes:
-        description: |-
-          WindowMinutes is the span a windowed metric is counted over. Ignored for
-          a per-comment metric.
-        type: integer
-      workspaceId:
-        type: string
-    type: object
-  comment_analysis.AuthorRole:
-    enum:
-    - unknown
-    - politician
-    - journalist
-    - public_servant
-    - business_owner
-    - professional
-    - activist
-    type: string
-    x-enum-varnames:
-    - RoleUnknown
-    - RolePolitician
-    - RoleJournalist
-    - RolePublicServant
-    - RoleBusinessOwner
-    - RoleProfessional
-    - RoleActivist
-  comment_analysis.AuthorRoleInference:
-    properties:
-      basedOnComments:
-        description: |-
-          BasedOnComments is the corpus size the inference read. Shown to the
-          customer, because "politician, from 3 comments" and "politician, from 90"
-          are different claims and the UI must not present them as one.
-        type: integer
-      confidence:
-        allOf:
-        - $ref: '#/definitions/shared.QualityLevel'
-        description: |-
-          Confidence is the model's own, on the shared ordinal rubric. Ordinal
-          rather than a percentage for the reason the rubric header gives: a model
-          asked for 0-100 returns a number nobody can defend.
-      rationale:
-        description: |-
-          Rationale is one short sentence in the model's words, so an operator can
-          see WHY and disagree. Never used for anything but display.
-        type: string
-      role:
-        $ref: '#/definitions/comment_analysis.AuthorRole'
-    type: object
-  comment_analysis.BatchTotals:
-    properties:
-      batches:
-        type: integer
-      byKind:
-        additionalProperties:
-          $ref: '#/definitions/comment_analysis.BatchTotals'
-        description: |-
-          ByKind splits the same period by pass, so the dashboard can show what
-          the author inference cost separately from the comment classification.
-          Always present for every kind, zeroed when a pass did not run.
-        type: object
-      completionTokens:
-        type: integer
-      items:
-        type: integer
-      priceMicros:
-        type: integer
-      promptTokens:
-        type: integer
-    type: object
-  comment_analysis.Counters:
-    properties:
-      analyzed:
-        type: integer
-      distinctAuthors:
-        type: integer
-      failed:
-        type: integer
-      flaggedAuthors:
-        type: integer
-      inFlight:
-        type: integer
-      intentComplaint:
-        type: integer
-      intentOther:
-        type: integer
-      intentPraise:
-        type: integer
-      intentQuestion:
-        type: integer
-      intentSalesLead:
-        type: integer
-      intentSpam:
-        type: integer
-      intentSupportRequest:
-        type: integer
-      pending:
-        type: integer
-      requiresActionCount:
-        type: integer
-      sentimentNegative:
-        type: integer
-      sentimentNeutral:
-        type: integer
-      sentimentPositive:
-        type: integer
-      severityAvg:
-        type: number
-      severityHighCount:
-        description: ≥ HighSeverityThreshold
-        type: integer
-      severityMax:
-        type: integer
-      skipped:
-        type: integer
-      spamCount:
-        type: integer
-      stanceCritic:
-        type: integer
-      stanceHostile:
-        type: integer
-      stanceNeutral:
-        type: integer
-      stanceSupporter:
-        type: integer
-      total:
-        type: integer
-    type: object
-  comment_analysis.ReplyMode:
-    enum:
-    - "off"
-    - suggest
-    - auto
-    type: string
-    x-enum-varnames:
-    - ReplyModeOff
-    - ReplyModeSuggest
-    - ReplyModeAuto
-  comment_analysis.ReplyPolicy:
-    properties:
-      maxAutoSeverity:
-        description: |-
-          MaxAutoSeverity is the ceiling for automatic replies. Above it a human
-          answers, whatever the intent says.
-        type: integer
-      mode:
-        $ref: '#/definitions/comment_analysis.ReplyMode'
-    type: object
-  comment_analysis.ReplySuggestion:
-    properties:
-      auto:
-        description: |-
-          Auto marks a draft the pipeline produced and posted without a human, so
-          the feed can say which replies nobody read first.
-        type: boolean
-      commentId:
-        type: string
-      draftedAt:
-        type: string
-      model:
-        type: string
-      text:
-        type: string
-    type: object
-  comment_analysis.Source:
-    enum:
-    - instagram
-    type: string
-    x-enum-varnames:
-    - SourceInstagram
-  comment_analysis.Topic:
-    properties:
-      description:
-        type: string
-      key:
-        type: string
-      label:
-        type: string
-    type: object
-  comment_analysis.TopicCount:
-    properties:
-      count:
-        type: integer
-      topicKey:
-        type: string
-    type: object
-  comment_analysis.TopicStat:
-    properties:
-      count:
-        type: integer
-      sentimentNegative:
-        type: integer
-      sentimentNeutral:
-        type: integer
-      sentimentPositive:
-        type: integer
-      severityAvg:
-        type: number
-      topicKey:
-        type: string
-    type: object
-  comment_analysis_usecase.EscalationRecipient:
-    properties:
-      entryId:
-        type: string
-      entryType:
-        type: string
-      lastMessageAt:
-        type: string
-      name:
-        type: string
-      number:
-        type: string
-      windowOpen:
-        description: |-
-          WindowOpen says whether a free-form message can reach them right now.
-          Shown rather than enforced: the channels differ, and the send path is
-          the authority on its own rules.
-        type: boolean
-    type: object
-  commentanalysis.AlertChannelStatusResponse:
-    properties:
-      available:
-        type: boolean
-      channel:
-        type: string
-      reason:
-        description: |-
-          Reason is a stable key the client translates: "no_sender",
-          "not_enabled". A greyed control with no explanation sends people to
-          support instead of to the connect screen.
-        type: string
-      senders:
-        items:
-          $ref: '#/definitions/commentanalysis.AlertSenderResponse'
-        type: array
-    type: object
-  commentanalysis.AlertLimitsResponse:
-    properties:
-      defaultCooldownMinutes:
-        type: integer
-      defaultPerDay:
-        type: integer
-      defaultWindowMinutes:
-        type: integer
-      maxCooldownMinutes:
-        type: integer
-      maxPerDay:
-        type: integer
-      maxWindowMinutes:
-        type: integer
-      minCooldownMinutes:
-        type: integer
-      minWindowMinutes:
-        type: integer
-      templateParamCount:
-        description: |-
-          TemplateParamCount is how many facts an alert can supply. NOT a
-          requirement on the template: one that declares fewer gets the first few,
-          one that declares more has the rest padded, and one with no variables is
-          perfectly fine.
-        type: integer
-    type: object
-  commentanalysis.AlertMetricOption:
-    properties:
-      metric:
-        type: string
-      triggersWhenBelow:
-        type: boolean
-      windowed:
-        type: boolean
-    type: object
-  commentanalysis.AlertSenderResponse:
-    properties:
-      id:
-        type: string
-      label:
-        description: Label is what the operator recognises, never an internal id.
-        type: string
-    type: object
-  commentanalysis.AlertVocabularyResponse:
-    properties:
-      channelStatus:
-        description: |-
-          ChannelStatus narrows Channels to what this workspace can actually do.
-          Empty when the deployment has no directory wired, in which case the
-          client falls back to Channels exactly as it did before.
-        items:
-          $ref: '#/definitions/commentanalysis.AlertChannelStatusResponse'
-        type: array
-      channels:
-        items:
-          type: string
-        type: array
-      facts:
-        description: |-
-          Facts is what an alert can put into a template's variables, in the order
-          a POSITIONAL template is filled. Sent so the settings screen can tell an
-          operator what their template will actually receive, and so a NAMED
-          template can be written with variables we recognise.
-        items:
-          type: string
-        type: array
-      limits:
-        $ref: '#/definitions/commentanalysis.AlertLimitsResponse'
-      metrics:
-        items:
-          $ref: '#/definitions/commentanalysis.AlertMetricOption'
-        type: array
-    type: object
-  commentanalysis.AuthorContainerResponse:
-    properties:
-      accountId:
-        type: string
-      comments:
-        type: integer
-      containerId:
-        type: string
-      derivedStance:
-        type: string
-      firstCommentedAt:
-        type: string
-      lastCommentedAt:
-        type: string
-      reputation:
-        type: integer
-      severityHighCount:
-        type: integer
-      severityMax:
-        type: integer
-      source:
-        type: string
-      stanceCritic:
-        type: integer
-      stanceHostile:
-        type: integer
-      stanceNeutral:
-        type: integer
-      stanceSupporter:
-        type: integer
-    type: object
-  commentanalysis.AuthorContainersResponse:
-    properties:
-      author:
-        $ref: '#/definitions/commentanalysis.AuthorResponse'
-      containers:
-        items:
-          $ref: '#/definitions/commentanalysis.AuthorContainerResponse'
-        type: array
-      page:
-        type: integer
-      pageSize:
-        type: integer
-      total:
-        type: integer
-    type: object
-  commentanalysis.AuthorDetailResponse:
-    properties:
-      author:
-        $ref: '#/definitions/commentanalysis.AuthorResponse'
-      comments:
-        items:
-          $ref: '#/definitions/commentanalysis.CommentResponse'
-        type: array
-      page:
-        type: integer
-      pageSize:
-        type: integer
-      total:
-        type: integer
-    type: object
-  commentanalysis.AuthorResponse:
-    properties:
-      accountId:
-        type: string
-      authorExternalId:
-        type: string
-      authorHandle:
-        type: string
-      counters:
-        $ref: '#/definitions/comment_analysis.Counters'
-      derivedStance:
-        type: string
-      firstSeenAt:
-        type: string
-      id:
-        type: string
-      isFlagged:
-        type: boolean
-      lastSeenAt:
-        type: string
-      moderationState:
-        type: string
-      reputation:
-        description: |-
-          Reputation is the signed ledger the ranking sorts on: negative means the
-          author has cost more than they gave. Sent alongside the raw counters so
-          the client shows the score without re-deriving (and re-inventing) it.
-        type: integer
-      role:
-        allOf:
-        - $ref: '#/definitions/comment_analysis.AuthorRoleInference'
-        description: |-
-          Role is the §5 inference, sent WITH its evidence: a client that received
-          only a label would have no way to present it as the inference it is.
-      roleDisplayable:
-        type: boolean
-      source:
-        type: string
-      topTopics:
-        items:
-          $ref: '#/definitions/comment_analysis.TopicCount'
-        type: array
-      updatedAt:
-        type: string
-    type: object
-  commentanalysis.BackfillEstimateResponse:
-    properties:
-      containers:
-        type: integer
-      estimatedComments:
-        type: integer
-      estimatedMicros:
-        type: integer
-    type: object
-  commentanalysis.BackfillResponse:
-    properties:
-      accountId:
-        type: string
-      containerId:
-        type: string
-      createdAt:
-        type: string
-      enqueued:
-        type: integer
-      error:
-        type: string
-      estimatedComments:
-        type: integer
-      fetched:
-        type: integer
-      finishedAt:
-        type: string
-      id:
-        type: string
-      progress:
-        type: number
-      source:
-        type: string
-      status:
-        type: string
-      updatedAt:
-        type: string
-    type: object
-  commentanalysis.CommentResponse:
-    properties:
-      accountId:
-        type: string
-      analyzedAt:
-        type: string
-      attempts:
-        type: integer
-      authorExternalId:
-        type: string
-      authorHandle:
-        type: string
-      commentedAt:
-        type: string
-      containerId:
-        type: string
-      createdAt:
-        type: string
-      excerpt:
-        type: string
-      failureReason:
-        type: string
-      id:
-        type: string
-      intent:
-        type: string
-      isSpam:
-        type: boolean
-      language:
-        type: string
-      legalRisk:
-        type: string
-      model:
-        type: string
-      parentCommentId:
-        type: string
-      personalAttack:
-        type: string
-      requiresAction:
-        type: boolean
-      sentiment:
-        type: string
-      severity:
-        type: integer
-      source:
-        type: string
-      sourceCommentId:
-        type: string
-      stance:
-        type: string
-      status:
-        type: string
-      topicKey:
-        type: string
-      toxicity:
-        type: string
-      truncated:
-        type: boolean
-    type: object
-  commentanalysis.ContainerOverrideResponse:
-    properties:
-      containerId:
-        type: string
-      enabled:
-        type: boolean
-      instructions:
-        type: string
-      model:
-        type: string
-      severityThreshold:
-        type: integer
-      topics:
-        items:
-          $ref: '#/definitions/comment_analysis.Topic'
-        type: array
-      updatedAt:
-        type: string
-    type: object
-  commentanalysis.ContainerSettingsResponse:
-    properties:
-      effective:
-        $ref: '#/definitions/commentanalysis.SettingsResponse'
-      override:
-        $ref: '#/definitions/commentanalysis.ContainerOverrideResponse'
-    type: object
-  commentanalysis.EscalationResponse:
-    properties:
-      author:
-        type: string
-      commentId:
-        type: string
-      sentAt:
-        type: string
-      text:
-        type: string
-      where:
-        type: string
-    type: object
-  commentanalysis.SettingsResponse:
-    properties:
-      accountId:
-        type: string
-      dailyCap:
-        type: integer
-      enabled:
-        type: boolean
-      instructions:
-        type: string
-      model:
-        type: string
-      replyPolicy:
-        $ref: '#/definitions/comment_analysis.ReplyPolicy'
-      severityThreshold:
-        type: integer
-      source:
-        type: string
-      topics:
-        items:
-          $ref: '#/definitions/comment_analysis.Topic'
-        type: array
-      updatedAt:
-        type: string
-      vertical:
-        type: string
-    type: object
-  commentanalysis.SpendResponse:
-    properties:
-      batches:
-        type: integer
-      byKind:
-        additionalProperties:
-          $ref: '#/definitions/comment_analysis.BatchTotals'
-        description: |-
-          ByKind splits the same period by pass, so the dashboard can show what
-          the author inference cost separately from the comment classification.
-          Always present for every kind, zeroed when a pass did not run.
-        type: object
-      completionTokens:
-        type: integer
-      items:
-        type: integer
-      priceMicros:
-        type: integer
-      promptTokens:
-        type: integer
-    type: object
-  commentanalysis.StatsResponse:
-    properties:
-      acceptanceScore:
-        type: integer
-      analyzed:
-        type: integer
-      distinctAuthors:
-        type: integer
-      failed:
-        type: integer
-      flaggedAuthors:
-        type: integer
-      inFlight:
-        type: integer
-      intentComplaint:
-        type: integer
-      intentOther:
-        type: integer
-      intentPraise:
-        type: integer
-      intentQuestion:
-        type: integer
-      intentSalesLead:
-        type: integer
-      intentSpam:
-        type: integer
-      intentSupportRequest:
-        type: integer
-      pending:
-        type: integer
-      requiresActionCount:
-        type: integer
-      sentimentNegative:
-        type: integer
-      sentimentNeutral:
-        type: integer
-      sentimentPositive:
-        type: integer
-      severityAvg:
-        type: number
-      severityHighCount:
-        description: ≥ HighSeverityThreshold
-        type: integer
-      severityMax:
-        type: integer
-      skipped:
-        type: integer
-      spamCount:
-        type: integer
-      stanceCritic:
-        type: integer
-      stanceHostile:
-        type: integer
-      stanceNeutral:
-        type: integer
-      stanceSupporter:
-        type: integer
-      topics:
-        items:
-          $ref: '#/definitions/comment_analysis.TopicStat'
-        type: array
-      total:
-        type: integer
-    type: object
-  commentanalysis.TrendPointResponse:
-    properties:
-      acceptanceScore:
-        type: integer
-      analyzed:
-        type: integer
-      bucketDate:
-        description: YYYY-MM-DD, UTC
-        type: string
-      distinctAuthors:
-        type: integer
-      failed:
-        type: integer
-      flaggedAuthors:
-        type: integer
-      inFlight:
-        type: integer
-      intentComplaint:
-        type: integer
-      intentOther:
-        type: integer
-      intentPraise:
-        type: integer
-      intentQuestion:
-        type: integer
-      intentSalesLead:
-        type: integer
-      intentSpam:
-        type: integer
-      intentSupportRequest:
-        type: integer
-      pending:
-        type: integer
-      requiresActionCount:
-        type: integer
-      sentimentNegative:
-        type: integer
-      sentimentNeutral:
-        type: integer
-      sentimentPositive:
-        type: integer
-      severityAvg:
-        type: number
-      severityHighCount:
-        description: ≥ HighSeverityThreshold
-        type: integer
-      severityMax:
-        type: integer
-      skipped:
-        type: integer
-      spamCount:
-        type: integer
-      stanceCritic:
-        type: integer
-      stanceHostile:
-        type: integer
-      stanceNeutral:
-        type: integer
-      stanceSupporter:
-        type: integer
-      total:
-        type: integer
-    type: object
   conversation.AIHandler:
     properties:
       agent_active:
@@ -2785,6 +3150,16 @@ definitions:
       workflow_run_id:
         type: string
     type: object
+  conversation.AnalysisPhase:
+    enum:
+    - ""
+    - awaiting
+    - queued
+    type: string
+    x-enum-varnames:
+    - AnalysisPhaseNone
+    - AnalysisPhaseAwaiting
+    - AnalysisPhaseQueued
   conversation.CallPermissionRequestBody:
     properties:
       body_text:
@@ -2894,6 +3269,22 @@ definitions:
         type: string
       campaignName:
         type: string
+      conversationStatus:
+        description: |-
+          ConversationStatus is new / ongoing / finished, read from SQL for every
+          channel for exactly the reason above.
+
+          It used to be looked up only through the WhatsApp entry repository, so on
+          every other channel the inbox row was built with no status at all and
+          rendered as "Nova" over a conversation the database had as ongoing. An
+          operator would reply, the row would rebuild, and the conversation
+          appeared to move backwards.
+
+          Carried on the row rather than fetched per entry: the status column is
+          already projected by the channel union that produces these rows, so this
+          costs nothing, and a per-entry lookup would be one query per row of the
+          inbox.
+        type: string
       entryID:
         type: string
       entryType:
@@ -2939,6 +3330,14 @@ definitions:
           AIHandler names the AI attending the conversation (direct agent or workflow) and
           the live workflow-run state. Nil when no AI is configured on the campaign. The
           per-conversation on/off state remains AutomationEnabled above.
+      analysis_phase:
+        allOf:
+        - $ref: '#/definitions/conversation.AnalysisPhase'
+        description: |-
+          AnalysisPhase says where an upcoming analysis has got to. Independent of
+          LatestAnalysis, which keeps showing the previous revision's verdict while
+          the next one is computed, and carried on the entry rather than only on
+          the socket so a page reload still shows it.
       assigned_user_id:
         type: string
       assigned_username:
@@ -3002,7 +3401,7 @@ definitions:
       last_message_type:
         type: string
       latest_analysis:
-        $ref: '#/definitions/analysis.Analysis'
+        $ref: '#/definitions/audience.Analysis'
       lead_id:
         type: string
       lead_metadata:
@@ -3110,7 +3509,6 @@ definitions:
     - MediaTypeSticker
   conversation.MessageChannel:
     enum:
-    - voice
     - whatsapp
     - support
     - instagram
@@ -3118,7 +3516,6 @@ definitions:
     - unofficial_whatsapp
     type: string
     x-enum-varnames:
-    - MessageChannelVoice
     - MessageChannelWhatsApp
     - MessageChannelSupport
     - MessageChannelInstagram
@@ -5453,7 +5850,6 @@ definitions:
     - instagram
     - telegram
     - unofficial_whatsapp
-    - voice
     type: string
     x-enum-varnames:
     - EntryTypeWhatsApp
@@ -5461,7 +5857,6 @@ definitions:
     - EntryTypeInstagram
     - EntryTypeTelegram
     - EntryTypeUnofficialWhatsApp
-    - EntryTypeVoice
   shared.QualityLevel:
     enum:
     - none
@@ -5474,6 +5869,16 @@ definitions:
     - QualityLevelLow
     - QualityLevelMedium
     - QualityLevelHigh
+  shared.Sentiment:
+    enum:
+    - positive
+    - neutral
+    - negative
+    type: string
+    x-enum-varnames:
+    - SentimentPositive
+    - SentimentNeutral
+    - SentimentNegative
   shortlink.analyticsResponse:
     properties:
       byBrowser:
@@ -6000,6 +6405,11 @@ definitions:
     properties:
       example:
         type: string
+      otpType:
+        description: |-
+          OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button. See
+          authentication.go for why it is a field of its own rather than a Type.
+        type: string
       phoneNumber:
         type: string
       text:
@@ -6021,10 +6431,20 @@ definitions:
     - TemplateCategoryAuthentication
   template.TemplateComponent:
     properties:
+      addSecurityRecommendation:
+        description: |-
+          AddSecurityRecommendation and CodeExpirationMinutes are how an
+          authentication template's BODY and FOOTER are written: Meta owns the copy
+          and renders it per language, so the business sets a flag and a number
+          instead of text. Pointers because "not set" and "set to false/zero" are
+          different instructions to Meta. Nil on every other category.
+        type: boolean
       buttons:
         items:
           $ref: '#/definitions/template.TemplateButton'
         type: array
+      codeExpirationMinutes:
+        type: integer
       example:
         $ref: '#/definitions/template.TemplateExample'
       format:
@@ -6483,6 +6903,12 @@ definitions:
       example:
         example: https://exemplo.com.br/promo
         type: string
+      otp_type:
+        description: |-
+          OTPType is required when Type is OTP: COPY_CODE, ONE_TAP or ZERO_TAP.
+          COPY_CODE is the one that needs no app-side integration.
+        example: COPY_CODE
+        type: string
       phone_number:
         example: "5511987654321"
         type: string
@@ -6498,10 +6924,22 @@ definitions:
     type: object
   whatsapptemplate.TemplateComponentRequest:
     properties:
+      add_security_recommendation:
+        description: |-
+          AddSecurityRecommendation (on BODY) and CodeExpirationMinutes (on FOOTER)
+          are how an AUTHENTICATION template is written: Meta owns the wording and
+          renders both lines per language, so the client sends a flag and a number
+          instead of text. Pointers because omitting them and sending false/0 mean
+          different things to Meta.
+        example: true
+        type: boolean
       buttons:
         items:
           $ref: '#/definitions/whatsapptemplate.TemplateButtonRequest'
         type: array
+      code_expiration_minutes:
+        example: 10
+        type: integer
       example:
         $ref: '#/definitions/whatsapptemplate.TemplateExampleRequest'
       format:
@@ -7521,176 +7959,6 @@ paths:
       summary: Simular uma conversa com o agente
       tags:
       - Agentes
-  /analysis:
-    get:
-      description: Retorna as análises de conversas e chamadas do workspace do usuário.
-        Aceita filtros por campanha, lead, tipo de entrada, interesse, disposição,
-        sentimento, qualificação, próxima ação e faixas de qualidade de atendimento
-        e de número de mensagens, além de paginação e ordenação.
-      parameters:
-      - description: ID da campanha de voz
-        in: query
-        name: campaignId
-        type: string
-      - description: ID da campanha de WhatsApp
-        in: query
-        name: whatsappCampaignId
-        type: string
-      - description: ID do lead
-        in: query
-        name: leadId
-        type: string
-      - description: Tipo de entrada ('voice' ou 'whatsapp')
-        in: query
-        name: entryType
-        type: string
-      - description: Filtro por interesse
-        in: query
-        name: interest
-        type: string
-      - description: Filtro por disposição
-        in: query
-        name: disposition
-        type: string
-      - description: Filtro por sentimento
-        in: query
-        name: sentiment
-        type: string
-      - description: Filtro por qualificação
-        in: query
-        name: qualification
-        type: string
-      - description: Filtro por próxima ação
-        in: query
-        name: nextAction
-        type: string
-      - description: Qualidade mínima de atendimento
-        in: query
-        name: attendanceQualityMin
-        type: integer
-      - description: Qualidade máxima de atendimento
-        in: query
-        name: attendanceQualityMax
-        type: integer
-      - description: Número mínimo de mensagens
-        in: query
-        name: messageCountMin
-        type: integer
-      - description: Número máximo de mensagens
-        in: query
-        name: messageCountMax
-        type: integer
-      - description: Número da página
-        in: query
-        name: page
-        type: integer
-      - description: Tamanho da página
-        in: query
-        name: pageSize
-        type: integer
-      - description: 'Ordenação (ex.: createdAt:desc)'
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/analysis.Analysis'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar análises
-      tags:
-      - Análises
-  /analysis/entry/{entryId}:
-    get:
-      description: Retorna a análise mais recente de uma conversa ou chamada específica,
-        identificada pelo ID da entrada e pelo tipo ('voice' ou 'whatsapp').
-      parameters:
-      - description: ID da entrada
-        in: path
-        name: entryId
-        required: true
-        type: string
-      - description: Tipo da entrada ('voice' ou 'whatsapp')
-        in: query
-        name: entryType
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/analysis.Analysis'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter análise de uma entrada
-      tags:
-      - Análises
-  /analysis/stats:
-    get:
-      description: Retorna estatísticas agregadas das análises do workspace do usuário,
-        como médias de qualidade de atendimento e contagens por interesse, disposição,
-        sentimento e qualificação, aplicando os mesmos filtros da listagem.
-      parameters:
-      - description: ID da campanha de voz
-        in: query
-        name: campaignId
-        type: string
-      - description: ID da campanha de WhatsApp
-        in: query
-        name: whatsappCampaignId
-        type: string
-      - description: ID do lead
-        in: query
-        name: leadId
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/analysis.AnalysisStats'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Estatísticas de análises
-      tags:
-      - Análises
   /attendance/ai-stats:
     get:
       description: Retorna as métricas de atendimento dos agentes de IA do workspace
@@ -8030,6 +8298,68 @@ paths:
       summary: Estatísticas de janelas de atendimento
       tags:
       - Atendimento
+  /audience/usage:
+    get:
+      description: 'Quanto o workspace analisou na janela móvel de 24 horas e o teto
+        em vigor. É a resposta a "por que a cobertura está baixa": ao atingir o teto
+        a análise pausa até que as horas mais antigas saiam da janela.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/audience.Usage'
+      security:
+      - BearerAuth: []
+      summary: Uso da análise contra o teto do workspace
+      tags:
+      - Analysis
+  /audience/workspace-settings:
+    get:
+      description: Teto de análises e tempo de silêncio antes de analisar uma conversa.
+        Zero significa "não definido", e o valor efetivo vem junto.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/audience.WorkspaceSettingsResponse'
+      security:
+      - BearerAuth: []
+      summary: Configuração de análise do workspace
+      tags:
+      - Analysis
+    put:
+      consumes:
+      - application/json
+      description: Define o teto de análises na janela móvel de 24 horas e/ou quantos
+        minutos a conversa precisa ficar sem mensagens antes de ser analisada. Vale
+        para o workspace inteiro, em todos os canais.
+      parameters:
+      - description: Campos a alterar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/audience.UpdateWorkspaceSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/audience.WorkspaceSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Alterar a configuração de análise do workspace
+      tags:
+      - Analysis
   /auth/change-password:
     post:
       consumes:
@@ -8955,7 +9285,7 @@ paths:
       - BearerAuth: []
       summary: Listar comentários analisados
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/{id}/escalate:
     post:
       consumes:
@@ -8972,12 +9302,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.EscalationResponse'
+            $ref: '#/definitions/audience.EscalationResponse'
       security:
       - BearerAuth: []
       summary: Encaminhar um comentário por WhatsApp
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/{id}/reply:
     post:
       consumes:
@@ -8994,12 +9324,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/comment_analysis.ReplySuggestion'
+            $ref: '#/definitions/audience.ReplySuggestion'
       security:
       - BearerAuth: []
       summary: Publicar uma resposta ao comentário
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/{id}/reply/suggest:
     post:
       parameters:
@@ -9014,12 +9344,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/comment_analysis.ReplySuggestion'
+            $ref: '#/definitions/audience.ReplySuggestion'
       security:
       - BearerAuth: []
       summary: Sugerir uma resposta ao comentário com IA
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/{id}/retry:
     post:
       parameters:
@@ -9034,12 +9364,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.CommentResponse'
+            $ref: '#/definitions/audience.CommentResponse'
       security:
       - BearerAuth: []
       summary: Reprocessar um comentário com falha
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/alerts:
     get:
       produces:
@@ -9049,13 +9379,13 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/comment_analysis.AlertRule'
+              $ref: '#/definitions/audience.AlertRule'
             type: array
       security:
       - BearerAuth: []
       summary: Listar regras de alerta
       tags:
-      - CommentAnalysis
+      - Analysis
     post:
       consumes:
       - application/json
@@ -9065,12 +9395,12 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/comment_analysis.AlertRule'
+            $ref: '#/definitions/audience.AlertRule'
       security:
       - BearerAuth: []
       summary: Criar uma regra de alerta
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/alerts/{id}:
     delete:
       parameters:
@@ -9088,7 +9418,7 @@ paths:
       - BearerAuth: []
       summary: Remover uma regra de alerta
       tags:
-      - CommentAnalysis
+      - Analysis
     put:
       consumes:
       - application/json
@@ -9104,12 +9434,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/comment_analysis.AlertRule'
+            $ref: '#/definitions/audience.AlertRule'
       security:
       - BearerAuth: []
       summary: Editar uma regra de alerta
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/alerts/{id}/test:
     post:
       parameters:
@@ -9127,7 +9457,7 @@ paths:
       - BearerAuth: []
       summary: Disparar uma regra de alerta para teste
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/alerts/options:
     get:
       produces:
@@ -9136,12 +9466,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.AlertVocabularyResponse'
+            $ref: '#/definitions/audience.AlertVocabularyResponse'
       security:
       - BearerAuth: []
       summary: Vocabulário de alertas (métricas e canais)
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/authors:
     get:
       produces:
@@ -9155,7 +9485,7 @@ paths:
       - BearerAuth: []
       summary: Autores ranqueados (quem comenta coisas ruins)
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/authors/{id}:
     get:
       parameters:
@@ -9170,12 +9500,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.AuthorDetailResponse'
+            $ref: '#/definitions/audience.AuthorDetailResponse'
       security:
       - BearerAuth: []
       summary: Um autor e seus comentários
       tags:
-      - CommentAnalysis
+      - Analysis
     patch:
       consumes:
       - application/json
@@ -9191,12 +9521,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.AuthorResponse'
+            $ref: '#/definitions/audience.AuthorResponse'
       security:
       - BearerAuth: []
       summary: Definir estado de moderação de um autor
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/authors/{id}/containers:
     get:
       parameters:
@@ -9211,12 +9541,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.AuthorContainersResponse'
+            $ref: '#/definitions/audience.AuthorContainersResponse'
       security:
       - BearerAuth: []
       summary: Posts em que um autor comentou
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/backfill/{id}:
     get:
       parameters:
@@ -9231,12 +9561,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.BackfillResponse'
+            $ref: '#/definitions/audience.BackfillResponse'
       security:
       - BearerAuth: []
       summary: Progresso de um reprocessamento
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/backfill/{id}/cancel:
     post:
       parameters:
@@ -9251,12 +9581,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.BackfillResponse'
+            $ref: '#/definitions/audience.BackfillResponse'
       security:
       - BearerAuth: []
       summary: Cancelar um reprocessamento
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/backfill/{source}/{accountId}:
     post:
       consumes:
@@ -9278,12 +9608,12 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/commentanalysis.BackfillResponse'
+            $ref: '#/definitions/audience.BackfillResponse'
       security:
       - BearerAuth: []
       summary: Iniciar um reprocessamento de comentários antigos
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/backfill/{source}/{accountId}/estimate:
     get:
       parameters:
@@ -9303,12 +9633,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.BackfillEstimateResponse'
+            $ref: '#/definitions/audience.BackfillEstimateResponse'
       security:
       - BearerAuth: []
       summary: Estimar um reprocessamento de comentários antigos
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/escalation-recipients:
     get:
       parameters:
@@ -9323,13 +9653,13 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/comment_analysis_usecase.EscalationRecipient'
+              $ref: '#/definitions/audience_usecase.EscalationRecipient'
             type: array
       security:
       - BearerAuth: []
       summary: Conversas para as quais um comentário pode ser encaminhado
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/settings:
     get:
       produces:
@@ -9339,13 +9669,13 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/commentanalysis.SettingsResponse'
+              $ref: '#/definitions/audience.SettingsResponse'
             type: array
       security:
       - BearerAuth: []
       summary: Contas com análise de comentários configurada no workspace
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/settings/{source}/{accountId}:
     get:
       parameters:
@@ -9365,12 +9695,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.SettingsResponse'
+            $ref: '#/definitions/audience.SettingsResponse'
       security:
       - BearerAuth: []
       summary: Configuração da análise de comentários de uma conta
       tags:
-      - CommentAnalysis
+      - Analysis
     patch:
       consumes:
       - application/json
@@ -9391,12 +9721,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.SettingsResponse'
+            $ref: '#/definitions/audience.SettingsResponse'
       security:
       - BearerAuth: []
       summary: Atualizar configuração da análise de comentários
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/settings/{source}/{accountId}/containers/{containerId}:
     delete:
       parameters:
@@ -9421,12 +9751,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.ContainerSettingsResponse'
+            $ref: '#/definitions/audience.ContainerSettingsResponse'
       security:
       - BearerAuth: []
       summary: Remover a configuração própria de uma publicação (volta a herdar)
       tags:
-      - CommentAnalysis
+      - Analysis
     get:
       parameters:
       - description: Canal (instagram)
@@ -9450,12 +9780,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.ContainerSettingsResponse'
+            $ref: '#/definitions/audience.ContainerSettingsResponse'
       security:
       - BearerAuth: []
       summary: Configuração de análise de uma publicação (override e efetiva)
       tags:
-      - CommentAnalysis
+      - Analysis
     put:
       consumes:
       - application/json
@@ -9481,12 +9811,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.ContainerSettingsResponse'
+            $ref: '#/definitions/audience.ContainerSettingsResponse'
       security:
       - BearerAuth: []
       summary: Substituir a configuração de análise de uma publicação
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/spend:
     get:
       produces:
@@ -9495,12 +9825,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.SpendResponse'
+            $ref: '#/definitions/audience.SpendResponse'
       security:
       - BearerAuth: []
       summary: Gasto com análise de comentários no período
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/stats:
     get:
       produces:
@@ -9509,12 +9839,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/commentanalysis.StatsResponse'
+            $ref: '#/definitions/audience.StatsResponse'
       security:
       - BearerAuth: []
       summary: Estatísticas ao vivo da análise de comentários
       tags:
-      - CommentAnalysis
+      - Analysis
   /comment-analysis/trends:
     get:
       parameters:
@@ -9535,13 +9865,13 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/commentanalysis.TrendPointResponse'
+              $ref: '#/definitions/audience.TrendPointResponse'
             type: array
       security:
       - BearerAuth: []
       summary: Série diária (rollups) da análise de comentários
       tags:
-      - CommentAnalysis
+      - Analysis
   /conversations/{entryType}/{entryId}/automation:
     patch:
       consumes:
@@ -10758,6 +11088,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Remover um membro do departamento
+      tags:
+      - Departamentos
+  /departments/scope:
+    get:
+      description: 'Descreve a própria visibilidade de quem chama: se o workspace
+        usa departamentos, de quantos o usuário participa e se está sem acesso por
+        não estar em nenhum. Não expõe nomes nem dados de outros membros.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Escopo de departamento do usuário atual
       tags:
       - Departamentos
   /entries/{entryId}/conversation:
@@ -12461,7 +12813,8 @@ paths:
         pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados
         para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas
         são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace
-        são contabilizados como "matched" e nunca sobrescritos.
+        são contabilizados como "matched" e nunca sobrescritos. Opcionalmente abre
+        uma conversa no atendimento para cada número (seedInbox).
       parameters:
       - description: Linhas do arquivo
         in: body
@@ -15234,7 +15587,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/balance.FullBalanceSummary'
+            $ref: '#/definitions/balance.FullBalanceSummaryResponse'
         "401":
           description: Unauthorized
           schema:
@@ -15311,7 +15664,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/balance.Transaction'
+              $ref: '#/definitions/balance.TransactionResponse'
             type: array
         "401":
           description: Unauthorized

@@ -65,8 +65,8 @@ func TestSeedInboxPublisherSplitsAcrossBatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-	if queued != len(all) {
-		t.Fatalf("queued = %d, want %d", queued, len(all))
+	if queued.Targets != len(all) {
+		t.Fatalf("queued = %d, want %d", queued.Targets, len(all))
 	}
 	if len(pub.published) != 2 {
 		t.Fatalf("messages published = %d, want 2", len(pub.published))
@@ -103,8 +103,8 @@ func TestSeedInboxPublisherAcceptsARequestThatNormalizesToNothing(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-	if queued != 0 {
-		t.Fatalf("queued = %d, want 0", queued)
+	if queued.Targets != 0 {
+		t.Fatalf("queued = %d, want 0", queued.Targets)
 	}
 	if len(pub.published) != 0 {
 		t.Fatalf("published %d messages for nothing", len(pub.published))
@@ -122,8 +122,8 @@ func TestSeedInboxPublisherReportsWhatItManagedToQueue(t *testing.T) {
 	if err == nil {
 		t.Fatal("Publish should surface the broker failure")
 	}
-	if queued != uw.SeedBatchSize {
-		t.Fatalf("queued = %d, want %d (the batch that got through)", queued, uw.SeedBatchSize)
+	if queued.Targets != uw.SeedBatchSize {
+		t.Fatalf("queued = %d, want %d (the batch that got through)", queued.Targets, uw.SeedBatchSize)
 	}
 }
 
@@ -134,8 +134,8 @@ func TestSeedInboxPublisherWithoutAQueueIsANoOp(t *testing.T) {
 		WorkspaceID: "ws-1",
 		Targets:     []uw.SeedTarget{{Number: "5511999999999"}},
 	})
-	if err != nil || queued != 0 {
-		t.Fatalf("Publish = (%d, %v), want (0, nil)", queued, err)
+	if err != nil || queued.Targets != 0 {
+		t.Fatalf("Publish = (%+v, %v), want (0, nil)", queued, err)
 	}
 }
 
@@ -212,5 +212,137 @@ func TestConsumeSeedInboxDropsAnUnreadablePayload(t *testing.T) {
 
 	if !ack.nacked || ack.requeued {
 		t.Fatalf("a malformed payload should be dropped: %+v", ack)
+	}
+}
+
+// ---- scripted batches ----
+
+// The publisher reports two numbers because the import response has to say two
+// things: how many conversations will open, and how many of those will carry a
+// written thread. One number cannot say "all 500 conversations were queued, and
+// 200 of them will have a script".
+func TestSeedInboxPublisherReportsTheScriptedCountSeparately(t *testing.T) {
+	pub := &fakeQueuePub{}
+	all := targets(uw.MaxScriptedTargets + 60)
+
+	queued, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
+		WorkspaceID: "ws-1",
+		Targets:     all,
+		Script:      &uw.SeedScript{Bodies: []string{"Oi {{1}}"}, MaxMessages: 4},
+	})
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if queued.Targets != len(all) {
+		t.Errorf("queued targets = %d, want %d; nothing is dropped", queued.Targets, len(all))
+	}
+	// The cap, reported as the truth rather than as the ask.
+	if queued.Scripted != uw.MaxScriptedTargets {
+		t.Errorf("queued scripted = %d, want the %d cap", queued.Scripted, uw.MaxScriptedTargets)
+	}
+
+	scriptedTargets, plainTargets := 0, 0
+	for _, m := range pub.published {
+		var batch uw.SeedRequest
+		if err := json.Unmarshal(m.payload, &batch); err != nil {
+			t.Fatalf("payload does not round-trip: %v", err)
+		}
+		if batch.Script != nil {
+			scriptedTargets += len(batch.Targets)
+		} else {
+			plainTargets += len(batch.Targets)
+		}
+	}
+	if scriptedTargets != uw.MaxScriptedTargets {
+		t.Errorf("published %d scripted targets, want %d", scriptedTargets, uw.MaxScriptedTargets)
+	}
+	if plainTargets != len(all)-uw.MaxScriptedTargets {
+		t.Errorf("published %d plain targets, want %d", plainTargets, len(all)-uw.MaxScriptedTargets)
+	}
+}
+
+// A publish that asked for no script reports zero, never nothing.
+func TestSeedInboxPublisherReportsZeroScriptedWithoutAScript(t *testing.T) {
+	pub := &fakeQueuePub{}
+	queued, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
+		WorkspaceID: "ws-1",
+		Targets:     targets(10),
+	})
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if queued.Targets != 10 || queued.Scripted != 0 {
+		t.Fatalf("queued = %+v, want 10 targets and 0 scripted", queued)
+	}
+}
+
+// A malformed script is refused before anything is queued. The handler catches
+// it first; this is the second line, for a caller that did not go through it.
+func TestSeedInboxPublisherRefusesAMalformedScript(t *testing.T) {
+	pub := &fakeQueuePub{}
+	_, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
+		WorkspaceID: "ws-1",
+		Targets:     targets(10),
+		Script:      &uw.SeedScript{Bodies: []string{"Oi {{1}}", "Oi {{2}}"}, MaxMessages: 4},
+	})
+	if !errors.Is(err, uw.ErrScriptVariantMismatch) {
+		t.Fatalf("Publish err = %v, want ErrScriptVariantMismatch", err)
+	}
+	if len(pub.published) != 0 {
+		t.Fatalf("published %d messages for a malformed script", len(pub.published))
+	}
+}
+
+// The consumer's context is what stands between a hung provider and a queue
+// consumer that never drains again. It is applied only for a scripted batch:
+// a plain batch is database work, and bounding that would only introduce a way
+// for a slow import to fail.
+func TestConsumeSeedInboxBoundsAScriptedBatch(t *testing.T) {
+	writer := newFakePlaceholderWriter()
+	scripter := &fakeScripter{}
+	uc, _ := newScriptedSeedUseCase(t, writer, scripter, &fakeBalance{micros: 5_000_000})
+	consumer := NewConsumeSeedInboxUseCase(fakeQueueSub{}, uc)
+
+	payload, _ := json.Marshal(uw.SeedRequest{
+		WorkspaceID: "ws-1",
+		Targets:     []uw.SeedTarget{{Number: "5511999999999", Name: "Marina"}},
+		Script:      &uw.SeedScript{Bodies: []string{"Oi {{1}}"}, MaxMessages: 4},
+	})
+	ack := &fakeAck{}
+	consumer.handle(payload, ack)
+
+	if !ack.acked {
+		t.Fatalf("a scripted batch was not acked: %+v", ack)
+	}
+	if len(writer.writes()) != 4 {
+		t.Fatalf("wrote %d messages, want the 4-message thread", len(writer.writes()))
+	}
+}
+
+// The script has to survive the queue, or a scripted batch arrives as a plain
+// one and the operator's money buys nothing.
+func TestSeedRequestScriptRoundTripsThroughJSON(t *testing.T) {
+	original := uw.SeedRequest{
+		WorkspaceID: "ws-1",
+		Targets:     []uw.SeedTarget{{Number: "5511999999999", Name: "Marina"}},
+		Script: &uw.SeedScript{
+			Bodies:      []string{"Oi {{1}}", "Ola {{1}}"},
+			MaxMessages: 6,
+			Context:     "curso tecnico",
+		},
+	}
+	payload, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back uw.SeedRequest
+	if err := json.Unmarshal(payload, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Script == nil {
+		t.Fatal("the script did not survive the queue")
+	}
+	if len(back.Script.Bodies) != 2 || back.Script.MaxMessages != 6 || back.Script.Context != "curso tecnico" {
+		t.Fatalf("script came back as %+v", back.Script)
 	}
 }

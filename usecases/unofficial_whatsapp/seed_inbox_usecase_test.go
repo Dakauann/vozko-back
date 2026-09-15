@@ -24,6 +24,9 @@ type fakePlaceholderWriter struct {
 	countErr  map[string]error
 	created   []*conversation.Message
 	createErr error
+	// failOnText makes one specific message fail to write, so a partially
+	// written thread is testable.
+	failOnText string
 }
 
 func newFakePlaceholderWriter() *fakePlaceholderWriter {
@@ -44,6 +47,9 @@ func (f *fakePlaceholderWriter) Create(message *conversation.Message) error {
 	defer f.mu.Unlock()
 	if f.createErr != nil {
 		return f.createErr
+	}
+	if f.failOnText != "" && message.Text == f.failOnText {
+		return errors.New("write refused")
 	}
 	f.created = append(f.created, message)
 	f.counts[message.EntryID]++
@@ -95,7 +101,10 @@ func newSeedUseCase(
 	instanceRepo := newFakeInstanceRepo(instances...)
 	contacts := newFakeContactRepo()
 	conversations := newFakeConversationRepo()
-	uc := NewSeedInboxUseCase(instanceRepo, contacts, conversations, newFakeLeadLinker(), writer)
+	// Nil scripter and nil balance checker: this file covers the behaviour a
+	// deployment without an AI service gets, which must be exactly what seeding
+	// did before scripting existed.
+	uc := NewSeedInboxUseCase(instanceRepo, contacts, conversations, newFakeLeadLinker(), writer, nil, nil)
 	return uc, contacts, conversations
 }
 

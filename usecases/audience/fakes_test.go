@@ -540,22 +540,6 @@ func (f *fakeScheduler) Clear(_ context.Context, ref ca.ContainerRef) error {
 	return nil
 }
 
-// ---- charger ----
-
-type fakeCharger struct {
-	mu      sync.Mutex
-	charges []int
-	price   int64
-}
-
-func newFakeCharger() *fakeCharger { return &fakeCharger{} }
-
-func (f *fakeCharger) ChargeBatch(_ context.Context, _, _ string, items int) (int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.charges = append(f.charges, items)
-	return f.price * int64(items), nil
-}
 
 // ---- balance ----
 
@@ -718,7 +702,6 @@ type harness struct {
 	adapter         *fakeAdapter
 	classifier      *fakeClassifier
 	scheduler       *fakeScheduler
-	charger         *fakeCharger
 	balance         *fakeBalance
 	state           *fakeState
 	broadcaster     *fakeBroadcaster
@@ -752,7 +735,6 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 		adapter:         &fakeAdapter{texts: map[string]string{}, caption: "Asfalto novo na Rua A"},
 		classifier:      &fakeClassifier{},
 		scheduler:       newFakeScheduler(),
-		charger:         newFakeCharger(),
 		balance:         &fakeBalance{micros: 1_000_000},
 		state:           newFakeState(),
 		broadcaster:     &fakeBroadcaster{},
@@ -760,7 +742,7 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 	engine, err := NewEngine(EngineDeps{
 		Repo: h.repo, Settings: NewSettingsResolver(h.settings), Batches: h.batches,
 		Adapters:   map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: h.adapter},
-		Classifier: h.classifier, Scheduler: h.scheduler, Charger: h.charger,
+		Classifier: h.classifier, Scheduler: h.scheduler,
 		// The REAL limiter over the fake state: the budget is the thing under
 		// test in the cap cases, and a fake of it would only prove the fake.
 		Usage:           NewUsageLimiter(h.state),

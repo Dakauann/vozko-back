@@ -330,14 +330,12 @@ func (r *batchRepository) Totals(ctx context.Context, workspaceID string, from, 
 		Items            int
 		PromptTokens     int
 		CompletionTokens int
-		PriceMicros      int64
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).Model(&schema.AudienceBatch{}).
 		Select(`kind, COUNT(*) AS batches, COALESCE(SUM(item_count), 0) AS items,
 			COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
-			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
-			COALESCE(SUM(price_micros), 0) AS price_micros`).
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens`).
 		Where("workspace_id = ? AND created_at >= ? AND created_at < ?", workspaceID, from, to).
 		Group("kind").
 		Scan(&rows).Error
@@ -350,13 +348,11 @@ func (r *batchRepository) Totals(ctx context.Context, workspaceID string, from, 
 		part := ca.BatchTotals{
 			Batches: x.Batches, Items: x.Items,
 			PromptTokens: x.PromptTokens, CompletionTokens: x.CompletionTokens,
-			PriceMicros: x.PriceMicros,
 		}
 		t.Batches += part.Batches
 		t.Items += part.Items
 		t.PromptTokens += part.PromptTokens
 		t.CompletionTokens += part.CompletionTokens
-		t.PriceMicros += part.PriceMicros
 		t.ByKind[ca.NormalizeBatchKind(ca.BatchKind(x.Kind))] = part
 	}
 	return &t, nil

@@ -158,12 +158,3 @@ func TestClassifier_ProviderErrorHasNoResult(t *testing.T) {
 	}
 }
 
-// ---- charger ----
-
-func TestCharger_NoPricerMeansNoSurcharge(t *testing.T) {
-	c := NewCharger(nil, nil, newFakeState())
-	price, err := c.ChargeBatch(context.Background(), "ws-1", "b-1", 20)
-	if err != nil || price != 0 {
-		t.Fatalf("price=%d err=%v", price, err)
-	}
-}

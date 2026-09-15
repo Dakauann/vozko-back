@@ -534,15 +534,12 @@ func Excerpt(text string) (string, bool) {
 }
 
 // TruncateRunes cuts s to at most max runes, never splitting a character.
+//
+// A one-line delegation: the behaviour is shared.TruncateRunes, and this name
+// stays because a dozen call sites and their tests spell it this way. Keeping
+// the implementation here as well would be the second copy of it.
 func TruncateRunes(s string, max int) (string, bool) {
-	if max <= 0 {
-		return "", s != ""
-	}
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s, false
-	}
-	return string(runes[:max]), true
+	return shared.TruncateRunes(s, max)
 }
 
 // Container returns the ref this row belongs to.

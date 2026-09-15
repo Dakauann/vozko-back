@@ -3,6 +3,7 @@ package lead
 import (
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/shared"
+	"vozko/domain/unofficial_whatsapp"
 )
 
 type BlockLeadRequest struct {
@@ -136,6 +137,54 @@ type ImportLeadsRequest struct {
 	// inbox contains; a list imported only to be exported later should not get
 	// one. Seeding never sends anything.
 	SeedInbox bool `json:"seedInbox,omitempty"`
+
+	// SeedConversations writes an example thread into each seeded conversation
+	// instead of leaving it blank, using AI and the WORKSPACE's own balance.
+	//
+	// Nil is off. System administrator only, and only alongside SeedInbox: the
+	// two are separate questions (who may spend on this, and who may open cold
+	// conversations at all) and the server refuses the combination rather than
+	// inferring one from the other.
+	//
+	// swaggerignore because /swagger is served unauthenticated, to anyone, in
+	// production. The handler already refuses this field to non-administrators,
+	// so publishing it is not a privilege hole; it is an advertisement that the
+	// capability exists and spends the workspace's balance, to an audience that
+	// can never use it.
+	SeedConversations *SeedConversationsSpec `json:"seedConversations,omitempty" swaggerignore:"true"`
+}
+
+// SeedConversationsSpec is the script an administrator wrote for this import.
+//
+// Carried in the request rather than stored: the act is per import and the
+// checkbox is in the import dialog. A saved, reusable template would be a
+// table, a CRUD surface and a migration for something nobody asked to reuse.
+type SeedConversationsSpec struct {
+	// Bodies is the first message, in variants. One is chosen per contact,
+	// deterministically from their number, so two hundred seeded conversations
+	// do not read as one conversation copied two hundred times.
+	Bodies []string `json:"bodies"`
+	// MaxMessages is the whole thread's length, counting the first message.
+	MaxMessages int `json:"maxMessages" example:"4"`
+	// Context is optional free text about what the business sells, so the
+	// model has more than a one-line opener to reason from.
+	Context string `json:"context,omitempty"`
+}
+
+// toDomain converts the wire shape into the domain's script.
+//
+// A conversion rather than an alias, the same way every other type in this
+// package owns its own wire shape: the API decides what it promises, and the
+// domain stays free to change its vocabulary.
+func (s *SeedConversationsSpec) toDomain() *unofficial_whatsapp.SeedScript {
+	if s == nil {
+		return nil
+	}
+	return &unofficial_whatsapp.SeedScript{
+		Bodies:      s.Bodies,
+		MaxMessages: s.MaxMessages,
+		Context:     s.Context,
+	}
 }
 
 // ImportLeadRow is one line of the operator's file.
@@ -198,6 +247,27 @@ type ImportLeadsResponse struct {
 	// response: the import succeeded, and telling the operator otherwise would
 	// have them run it again.
 	InboxSeedError string `json:"inboxSeedError,omitempty"`
+
+	// ScriptedSeedQueued is how many of those conversations will carry a
+	// written example thread.
+	//
+	// Separate from InboxSeedQueued, and always smaller or equal, because only
+	// the first MaxScriptedTargets of an import cost anything. One number could
+	// not say "the conversations were queued, and two hundred of them will have
+	// a script".
+	//
+	// swaggerignore for the same reason as the request field: it only ever
+	// answers a request a non-administrator cannot make.
+	ScriptedSeedQueued int `json:"scriptedSeedQueued,omitempty" swaggerignore:"true"`
+	// ScriptedSeedError explains why the conversations will open blank when the
+	// import asked for scripted ones.
+	//
+	// Separate from InboxSeedError for the case that motivates the whole pair:
+	// the conversations WERE queued and none of them will have a script,
+	// because the caller is not a system administrator.
+	//
+	// swaggerignore: see above.
+	ScriptedSeedError string `json:"scriptedSeedError,omitempty" swaggerignore:"true"`
 }
 
 // MaxReportedRejections bounds the rejection list in the response.

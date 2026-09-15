@@ -377,260 +377,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/analysis": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna as análises de conversas e chamadas do workspace do usuário. Aceita filtros por campanha, lead, tipo de entrada, interesse, disposição, sentimento, qualificação, próxima ação e faixas de qualidade de atendimento e de número de mensagens, além de paginação e ordenação.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Análises"
-                ],
-                "summary": "Listar análises",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID da campanha de voz",
-                        "name": "campaignId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "ID da campanha de WhatsApp",
-                        "name": "whatsappCampaignId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "ID do lead",
-                        "name": "leadId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Tipo de entrada ('voice' ou 'whatsapp')",
-                        "name": "entryType",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtro por interesse",
-                        "name": "interest",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtro por disposição",
-                        "name": "disposition",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtro por sentimento",
-                        "name": "sentiment",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtro por qualificação",
-                        "name": "qualification",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtro por próxima ação",
-                        "name": "nextAction",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Qualidade mínima de atendimento",
-                        "name": "attendanceQualityMin",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Qualidade máxima de atendimento",
-                        "name": "attendanceQualityMax",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Número mínimo de mensagens",
-                        "name": "messageCountMin",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Número máximo de mensagens",
-                        "name": "messageCountMax",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Número da página",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Tamanho da página",
-                        "name": "pageSize",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Ordenação (ex.: createdAt:desc)",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/analysis.Analysis"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/analysis/entry/{entryId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna a análise mais recente de uma conversa ou chamada específica, identificada pelo ID da entrada e pelo tipo ('voice' ou 'whatsapp').",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Análises"
-                ],
-                "summary": "Obter análise de uma entrada",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID da entrada",
-                        "name": "entryId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Tipo da entrada ('voice' ou 'whatsapp')",
-                        "name": "entryType",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/analysis.Analysis"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/analysis/stats": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna estatísticas agregadas das análises do workspace do usuário, como médias de qualidade de atendimento e contagens por interesse, disposição, sentimento e qualificação, aplicando os mesmos filtros da listagem.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Análises"
-                ],
-                "summary": "Estatísticas de análises",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID da campanha de voz",
-                        "name": "campaignId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "ID da campanha de WhatsApp",
-                        "name": "whatsappCampaignId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "ID do lead",
-                        "name": "leadId",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/analysis.AnalysisStats"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/attendance/ai-stats": {
             "get": {
                 "security": [
@@ -1137,6 +883,99 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/audience/usage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Quanto o workspace analisou na janela móvel de 24 horas e o teto em vigor. É a resposta a \"por que a cobertura está baixa\": ao atingir o teto a análise pausa até que as horas mais antigas saiam da janela.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Analysis"
+                ],
+                "summary": "Uso da análise contra o teto do workspace",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/audience.Usage"
+                        }
+                    }
+                }
+            }
+        },
+        "/audience/workspace-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Teto de análises e tempo de silêncio antes de analisar uma conversa. Zero significa \"não definido\", e o valor efetivo vem junto.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Analysis"
+                ],
+                "summary": "Configuração de análise do workspace",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/audience.WorkspaceSettingsResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Define o teto de análises na janela móvel de 24 horas e/ou quantos minutos a conversa precisa ficar sem mensagens antes de ser analisada. Vale para o workspace inteiro, em todos os canais.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Analysis"
+                ],
+                "summary": "Alterar a configuração de análise do workspace",
+                "parameters": [
+                    {
+                        "description": "Campos a alterar",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/audience.UpdateWorkspaceSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/audience.WorkspaceSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -3023,7 +2862,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/comment_analysis_usecase.EscalationRecipient"
+                                "$ref": "#/definitions/audience_usecase.EscalationRecipient"
                             }
                         }
                     }
@@ -5015,6 +4854,38 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/departments/scope": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Descreve a própria visibilidade de quem chama: se o workspace usa departamentos, de quantos o usuário participa e se está sem acesso por não estar em nenhum. Não expõe nomes nem dados de outros membros.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Departamentos"
+                ],
+                "summary": "Escopo de departamento do usuário atual",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -7388,7 +7259,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como \"matched\" e nunca sobrescritos.",
+                "description": "Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como \"matched\" e nunca sobrescritos. Opcionalmente abre uma conversa no atendimento para cada número (seedInbox).",
                 "consumes": [
                     "application/json"
                 ],
@@ -12159,7 +12030,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/balance.FullBalanceSummary"
+                            "$ref": "#/definitions/balance.FullBalanceSummaryResponse"
                         }
                     },
                     "401": {
@@ -12276,7 +12147,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/balance.Transaction"
+                                "$ref": "#/definitions/balance.TransactionResponse"
                             }
                         }
                     },
@@ -17037,198 +16908,6 @@ const docTemplate = `{
                 }
             }
         },
-        "analysis.Analysis": {
-            "type": "object",
-            "properties": {
-                "attendanceQuality": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "disposition": {
-                    "$ref": "#/definitions/analysis.Disposition"
-                },
-                "entryId": {
-                    "type": "string"
-                },
-                "entryType": {
-                    "$ref": "#/definitions/shared.EntryType"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "interest": {
-                    "$ref": "#/definitions/analysis.Interest"
-                },
-                "messageCount": {
-                    "type": "integer"
-                },
-                "nextAction": {
-                    "$ref": "#/definitions/analysis.NextAction"
-                },
-                "productInterest": {
-                    "type": "string"
-                },
-                "qualification": {
-                    "$ref": "#/definitions/analysis.Qualification"
-                },
-                "sentiment": {
-                    "$ref": "#/definitions/analysis.Sentiment"
-                },
-                "summary": {
-                    "type": "string"
-                }
-            }
-        },
-        "analysis.AnalysisStats": {
-            "type": "object",
-            "properties": {
-                "avgAttendanceQuality": {
-                    "type": "number"
-                },
-                "avgMessagesPerAnalysis": {
-                    "type": "number"
-                },
-                "dispositionCallback": {
-                    "type": "integer"
-                },
-                "dispositionDeclined": {
-                    "type": "integer"
-                },
-                "dispositionFillingInfo": {
-                    "type": "integer"
-                },
-                "dispositionNoAnswer": {
-                    "type": "integer"
-                },
-                "dispositionPending": {
-                    "type": "integer"
-                },
-                "dispositionSale": {
-                    "type": "integer"
-                },
-                "dispositionVoicemail": {
-                    "type": "integer"
-                },
-                "interestInterested": {
-                    "type": "integer"
-                },
-                "interestNotInterested": {
-                    "type": "integer"
-                },
-                "interestUndecided": {
-                    "type": "integer"
-                },
-                "maxAttendanceQuality": {
-                    "type": "integer"
-                },
-                "minAttendanceQuality": {
-                    "type": "integer"
-                },
-                "qualificationColdLead": {
-                    "type": "integer"
-                },
-                "qualificationHotLead": {
-                    "type": "integer"
-                },
-                "qualificationWarmLead": {
-                    "type": "integer"
-                },
-                "sentimentNegative": {
-                    "type": "integer"
-                },
-                "sentimentNeutral": {
-                    "type": "integer"
-                },
-                "sentimentPositive": {
-                    "type": "integer"
-                },
-                "totalAnalyses": {
-                    "type": "integer"
-                },
-                "totalMessages": {
-                    "type": "integer"
-                }
-            }
-        },
-        "analysis.Disposition": {
-            "type": "string",
-            "enum": [
-                "sale",
-                "filling_info",
-                "callback",
-                "declined",
-                "no_answer",
-                "voicemail",
-                "pending"
-            ],
-            "x-enum-varnames": [
-                "DispositionSale",
-                "DispositionFillingInfo",
-                "DispositionCallback",
-                "DispositionDeclined",
-                "DispositionNoAnswer",
-                "DispositionVoicemail",
-                "DispositionPending"
-            ]
-        },
-        "analysis.Interest": {
-            "type": "string",
-            "enum": [
-                "interested",
-                "not_interested",
-                "undecided"
-            ],
-            "x-enum-varnames": [
-                "InterestInterested",
-                "InterestNotInterested",
-                "InterestUndecided"
-            ]
-        },
-        "analysis.NextAction": {
-            "type": "string",
-            "enum": [
-                "schedule_callback",
-                "send_whatsapp",
-                "close",
-                "escalate",
-                "continue"
-            ],
-            "x-enum-varnames": [
-                "NextActionScheduleCallback",
-                "NextActionSendWhatsApp",
-                "NextActionClose",
-                "NextActionEscalate",
-                "NextActionContinue"
-            ]
-        },
-        "analysis.Qualification": {
-            "type": "string",
-            "enum": [
-                "hot_lead",
-                "warm_lead",
-                "cold_lead"
-            ],
-            "x-enum-varnames": [
-                "QualificationHotLead",
-                "QualificationWarmLead",
-                "QualificationColdLead"
-            ]
-        },
-        "analysis.Sentiment": {
-            "type": "string",
-            "enum": [
-                "positive",
-                "neutral",
-                "negative"
-            ],
-            "x-enum-varnames": [
-                "SentimentPositive",
-                "SentimentNeutral",
-                "SentimentNegative"
-            ]
-        },
         "attendance.AIAgentStats": {
             "type": "object",
             "properties": {
@@ -18156,6 +17835,1765 @@ const docTemplate = `{
                 }
             }
         },
+        "audience.AlertChannel": {
+            "type": "string",
+            "enum": [
+                "official",
+                "unofficial"
+            ],
+            "x-enum-varnames": [
+                "AlertChannelOfficial",
+                "AlertChannelUnofficial"
+            ]
+        },
+        "audience.AlertChannelStatusResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "channel": {
+                    "type": "string"
+                },
+                "reason": {
+                    "description": "Reason is a stable key the client translates: \"no_sender\",\n\"not_enabled\". A greyed control with no explanation sends people to\nsupport instead of to the connect screen.",
+                    "type": "string"
+                },
+                "senders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.AlertSenderResponse"
+                    }
+                }
+            }
+        },
+        "audience.AlertLimitsResponse": {
+            "type": "object",
+            "properties": {
+                "defaultCooldownMinutes": {
+                    "type": "integer"
+                },
+                "defaultPerDay": {
+                    "type": "integer"
+                },
+                "defaultWindowMinutes": {
+                    "type": "integer"
+                },
+                "maxCooldownMinutes": {
+                    "type": "integer"
+                },
+                "maxMinMessages": {
+                    "type": "integer"
+                },
+                "maxPerDay": {
+                    "type": "integer"
+                },
+                "maxWindowMinutes": {
+                    "type": "integer"
+                },
+                "minCooldownMinutes": {
+                    "type": "integer"
+                },
+                "minWindowMinutes": {
+                    "type": "integer"
+                },
+                "templateParamCount": {
+                    "description": "TemplateParamCount is how many facts an alert can supply. NOT a\nrequirement on the template: one that declares fewer gets the first few,\none that declares more has the rest padded, and one with no variables is\nperfectly fine.",
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.AlertMetric": {
+            "type": "string",
+            "enum": [
+                "comment_severity",
+                "high_severity_count",
+                "hostile_count",
+                "comment_volume",
+                "acceptance_score",
+                "attendance_quality",
+                "escalation_count"
+            ],
+            "x-enum-varnames": [
+                "AlertMetricCommentSeverity",
+                "AlertMetricHighSeverityCount",
+                "AlertMetricHostileCount",
+                "AlertMetricCommentVolume",
+                "AlertMetricAcceptanceScore",
+                "AlertMetricAttendanceQuality",
+                "AlertMetricEscalationCount"
+            ]
+        },
+        "audience.AlertMetricOption": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string"
+                },
+                "subjectKind": {
+                    "description": "SubjectKind is what the metric reads, \"comment\" or \"conversation\". The\npicker filters on it so a rule cannot be armed against a subject its\nchannel never produces, which saves cleanly and then never fires.",
+                    "type": "string"
+                },
+                "supportsMinMessages": {
+                    "description": "SupportsMinMessages says whether a conversation-length floor applies.\nOnly a per-conversation metric has one row to measure.",
+                    "type": "boolean"
+                },
+                "triggersWhenBelow": {
+                    "type": "boolean"
+                },
+                "windowed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "audience.AlertRule": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "brief": {
+                    "description": "Brief asks the model to add its reading of what happened and how to\nrespond. Off by default: it is one AI call per firing, bounded by the\ncooldown and the daily cap but still billed.",
+                    "type": "boolean"
+                },
+                "businessPhoneId": {
+                    "description": "BusinessPhoneID and TemplateID are required for the official channel:\nwhich number it leaves from and which approved template it sends.",
+                    "type": "string"
+                },
+                "channel": {
+                    "$ref": "#/definitions/audience.AlertChannel"
+                },
+                "cooldownMinutes": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdByUserId": {
+                    "description": "CreatedByUserID is who configured the rule, and therefore who its\nmessages are attributed to. An automated paid send with no author is a\nsupport ticket nobody can answer, so the person who armed the alert owns\nwhat it says.",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "firedDay": {
+                    "type": "string"
+                },
+                "firedToday": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "description": "InstanceID names the connected number for the unofficial channel. Empty\nmeans \"whichever one this workspace has\", resolved at send time.",
+                    "type": "string"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastFiredAt": {
+                    "description": "The firing history, kept on the rule rather than in a second table: it is\nwhat the cooldown and the cap are checked against, and it is also the\nanswer to \"por que não disparou\".",
+                    "type": "string"
+                },
+                "maxPerDay": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "$ref": "#/definitions/audience.AlertMetric"
+                },
+                "minMessages": {
+                    "description": "MinMessages is how long a conversation must be before it is worth\njudging. Zero means no floor, which is what every rule written before\nthis existed has.\n\nA two-message conversation scores badly because it barely happened, not\nbecause it was handled badly, so without a floor the first alert an\noperator ever receives is about a customer who said \"oi\" and left. Only\nmeaningful for a per-conversation metric; Validate refuses it elsewhere\nrather than storing a setting that does nothing.",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "recipient": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "windowMinutes": {
+                    "description": "WindowMinutes is the span a windowed metric is counted over. Ignored for\na per-comment metric.",
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.AlertSenderResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Label is what the operator recognises, never an internal id.",
+                    "type": "string"
+                }
+            }
+        },
+        "audience.AlertVocabularyResponse": {
+            "type": "object",
+            "properties": {
+                "channelStatus": {
+                    "description": "ChannelStatus narrows Channels to what this workspace can actually do.\nEmpty when the deployment has no directory wired, in which case the\nclient falls back to Channels exactly as it did before.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.AlertChannelStatusResponse"
+                    }
+                },
+                "channels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "facts": {
+                    "description": "Facts is what an alert can put into a template's variables, in the order\na POSITIONAL template is filled. Sent so the settings screen can tell an\noperator what their template will actually receive, and so a NAMED\ntemplate can be written with variables we recognise.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "limits": {
+                    "$ref": "#/definitions/audience.AlertLimitsResponse"
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.AlertMetricOption"
+                    }
+                }
+            }
+        },
+        "audience.Analysis": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "analyzedAt": {
+                    "type": "string"
+                },
+                "attempts": {
+                    "type": "integer"
+                },
+                "attendanceQuality": {
+                    "description": "AttendanceQuality is 0-100, COMPUTED from the conversation quality\nrubric's ordinal levels. Never model-set, exactly as Severity is not.",
+                    "type": "integer"
+                },
+                "authorExternalId": {
+                    "type": "string"
+                },
+                "authorHandle": {
+                    "type": "string"
+                },
+                "batchId": {
+                    "type": "string"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "description": "DeletedAt is set when the source comment was deleted (§6.4). The row\nleaves the feed and the live stats but stays in historical rollups: the\nrollup for last Tuesday must not change because someone deleted a\ncomment today.",
+                    "type": "string"
+                },
+                "disposition": {
+                    "$ref": "#/definitions/audience.Disposition"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "failureReason": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "intent": {
+                    "$ref": "#/definitions/audience.Intent"
+                },
+                "interest": {
+                    "description": "---- Conversation labels ----\n\nSet only when SubjectKind is conversation, and zero for every comment\nrow. They are the taxonomy the legacy conversation engine owned; see\nconversation.go. Kept flat rather than behind a pointer struct because\nthey are filtered and aggregated in SQL, and a nested value would have to\nbe unpacked in every query.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/audience.Interest"
+                        }
+                    ]
+                },
+                "isSpam": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "legalRisk": {
+                    "$ref": "#/definitions/shared.QualityLevel"
+                },
+                "messageCount": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "nextAction": {
+                    "$ref": "#/definitions/audience.NextAction"
+                },
+                "occurredAt": {
+                    "description": "OccurredAt is when the comment was POSTED on the channel; CreatedAt\nis when it reached us. Rollups bucket by the former, so a backfilled\ncomment lands on its own day.",
+                    "type": "string"
+                },
+                "parentCommentId": {
+                    "type": "string"
+                },
+                "personalAttack": {
+                    "$ref": "#/definitions/shared.QualityLevel"
+                },
+                "productInterest": {
+                    "description": "ProductInterest is what the conversation was about, in the model's own\nwords, and ProductInterestKey is the same thing canonicalised. The pair\nexists because one of them is for reading and the other for counting;\nsee subject_key.go. Only the key is ever grouped on.",
+                    "type": "string"
+                },
+                "productInterestKey": {
+                    "type": "string"
+                },
+                "qualification": {
+                    "$ref": "#/definitions/audience.Qualification"
+                },
+                "requiresAction": {
+                    "description": "RequiresAction is DERIVED from severity and intent; see ActionPolicy.",
+                    "type": "boolean"
+                },
+                "revision": {
+                    "description": "Revision identifies an immutable conversation transcript. Comments use\nthe empty revision and retain their original idempotency contract.",
+                    "type": "string"
+                },
+                "sentiment": {
+                    "description": "Model output, all constrained by the rubric.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/shared.Sentiment"
+                        }
+                    ]
+                },
+                "severity": {
+                    "description": "Severity is 0-100, COMPUTED. Never model-set.",
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "stance": {
+                    "$ref": "#/definitions/audience.Stance"
+                },
+                "status": {
+                    "$ref": "#/definitions/audience.Status"
+                },
+                "subjectId": {
+                    "description": "SubjectID identifies the subject on its channel: the comment id for\na comment, the conversation's entry id for a conversation.",
+                    "type": "string"
+                },
+                "subjectKind": {
+                    "description": "SubjectKind says what this row is about. Empty reads as a comment, so\nevery row written before conversations existed keeps its meaning without\na backfill.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/audience.SubjectKind"
+                        }
+                    ]
+                },
+                "summary": {
+                    "description": "Summary is the model's prose. It is the one free-text field the engine\nstores and the only one carrying unredacted customer content, which is\nwhy retention applies to it like everything else here.",
+                    "type": "string"
+                },
+                "topicKey": {
+                    "type": "string"
+                },
+                "toxicity": {
+                    "description": "Severity dimensions: rated ordinally by the model, scored here.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/shared.QualityLevel"
+                        }
+                    ]
+                },
+                "truncated": {
+                    "description": "Truncated records that the text was cut before it reached the model or\nthe excerpt, so a classification of a partial comment is never silent.",
+                    "type": "boolean"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.AuthorContainerResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "comments": {
+                    "type": "integer"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "derivedStance": {
+                    "type": "string"
+                },
+                "firstOccurredAt": {
+                    "type": "string"
+                },
+                "lastOccurredAt": {
+                    "type": "string"
+                },
+                "reputation": {
+                    "type": "integer"
+                },
+                "severityHighCount": {
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.AuthorContainersResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/audience.AuthorResponse"
+                },
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.AuthorContainerResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.AuthorDetailResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/audience.AuthorResponse"
+                },
+                "comments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.CommentResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.AuthorResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "authorExternalId": {
+                    "type": "string"
+                },
+                "authorHandle": {
+                    "type": "string"
+                },
+                "counters": {
+                    "$ref": "#/definitions/audience.Counters"
+                },
+                "derivedStance": {
+                    "type": "string"
+                },
+                "firstSeenAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isFlagged": {
+                    "type": "boolean"
+                },
+                "lastSeenAt": {
+                    "type": "string"
+                },
+                "moderationState": {
+                    "type": "string"
+                },
+                "reputation": {
+                    "description": "Reputation is the signed ledger the ranking sorts on: negative means the\nauthor has cost more than they gave. Sent alongside the raw counters so\nthe client shows the score without re-deriving (and re-inventing) it.",
+                    "type": "integer"
+                },
+                "role": {
+                    "description": "Role is the §5 inference, sent WITH its evidence: a client that received\nonly a label would have no way to present it as the inference it is.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/audience.AuthorRoleInference"
+                        }
+                    ]
+                },
+                "roleDisplayable": {
+                    "type": "boolean"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "topTopics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.TopicCount"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.AuthorRole": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "politician",
+                "journalist",
+                "public_servant",
+                "business_owner",
+                "professional",
+                "activist"
+            ],
+            "x-enum-varnames": [
+                "RoleUnknown",
+                "RolePolitician",
+                "RoleJournalist",
+                "RolePublicServant",
+                "RoleBusinessOwner",
+                "RoleProfessional",
+                "RoleActivist"
+            ]
+        },
+        "audience.AuthorRoleInference": {
+            "type": "object",
+            "properties": {
+                "basedOnComments": {
+                    "description": "BasedOnComments is the corpus size the inference read. Shown to the\ncustomer, because \"politician, from 3 comments\" and \"politician, from 90\"\nare different claims and the UI must not present them as one.",
+                    "type": "integer"
+                },
+                "confidence": {
+                    "description": "Confidence is the model's own, on the shared ordinal rubric. Ordinal\nrather than a percentage for the reason the rubric header gives: a model\nasked for 0-100 returns a number nobody can defend.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/shared.QualityLevel"
+                        }
+                    ]
+                },
+                "rationale": {
+                    "description": "Rationale is one short sentence in the model's words, so an operator can\nsee WHY and disagree. Never used for anything but display.",
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/audience.AuthorRole"
+                }
+            }
+        },
+        "audience.BackfillEstimateResponse": {
+            "type": "object",
+            "properties": {
+                "containers": {
+                    "type": "integer"
+                },
+                "estimatedComments": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.BackfillResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "enqueued": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "estimatedComments": {
+                    "type": "integer"
+                },
+                "fetched": {
+                    "type": "integer"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.BatchTotals": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "integer"
+                },
+                "byKind": {
+                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/audience.BatchTotals"
+                    }
+                },
+                "completionTokens": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "integer"
+                },
+                "promptTokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.CommentResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "analyzedAt": {
+                    "type": "string"
+                },
+                "attempts": {
+                    "type": "integer"
+                },
+                "attendanceQuality": {
+                    "type": "integer"
+                },
+                "authorExternalId": {
+                    "type": "string"
+                },
+                "authorHandle": {
+                    "type": "string"
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "disposition": {
+                    "type": "string"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "failureReason": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "intent": {
+                    "type": "string"
+                },
+                "interest": {
+                    "description": "Conversation subjects only.",
+                    "type": "string"
+                },
+                "isSpam": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "legalRisk": {
+                    "type": "string"
+                },
+                "messageCount": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "nextAction": {
+                    "type": "string"
+                },
+                "occurredAt": {
+                    "type": "string"
+                },
+                "parentCommentId": {
+                    "type": "string"
+                },
+                "personalAttack": {
+                    "type": "string"
+                },
+                "productInterest": {
+                    "type": "string"
+                },
+                "qualification": {
+                    "type": "string"
+                },
+                "requiresAction": {
+                    "type": "boolean"
+                },
+                "sentiment": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "stance": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subjectId": {
+                    "type": "string"
+                },
+                "subjectKind": {
+                    "description": "SubjectKind tells a client which half of this shape is populated: a\ncomment carries stance and severity, a conversation carries disposition\nand attendance quality, and neither carries the other.",
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "topicKey": {
+                    "type": "string"
+                },
+                "toxicity": {
+                    "type": "string"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "audience.ContainerOverrideResponse": {
+            "type": "object",
+            "properties": {
+                "containerId": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "severityThreshold": {
+                    "type": "integer"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.Topic"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.ContainerSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/audience.SettingsResponse"
+                },
+                "override": {
+                    "$ref": "#/definitions/audience.ContainerOverrideResponse"
+                }
+            }
+        },
+        "audience.Counters": {
+            "type": "object",
+            "properties": {
+                "analyzed": {
+                    "type": "integer"
+                },
+                "attendanceQualityAvg": {
+                    "description": "AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments\ncarry no such score, and including their zeros would drag the average of\na mixed slice toward nothing.",
+                    "type": "number"
+                },
+                "attendanceQualityMax": {
+                    "type": "integer"
+                },
+                "attendanceQualityMin": {
+                    "type": "integer"
+                },
+                "commentCount": {
+                    "description": "---- Conversation subjects ----\n\nEverything the legacy conversation-analysis stats block reported, in the\nsame aggregate as the comment counters rather than a second endpoint with\nits own shape. A filtered slice can now contain both kinds, so the two\nsubject counts say how much of the slice each block describes: without\nthem a reader cannot tell an all-comment slice from one where every\nconversation happened to be unlabelled.",
+                    "type": "integer"
+                },
+                "conversationAnalyzed": {
+                    "type": "integer"
+                },
+                "conversationCount": {
+                    "type": "integer"
+                },
+                "dispositionCallback": {
+                    "type": "integer"
+                },
+                "dispositionDeclined": {
+                    "type": "integer"
+                },
+                "dispositionFillingInfo": {
+                    "type": "integer"
+                },
+                "dispositionPending": {
+                    "type": "integer"
+                },
+                "dispositionSale": {
+                    "type": "integer"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "interestInterested": {
+                    "type": "integer"
+                },
+                "interestNotInterested": {
+                    "type": "integer"
+                },
+                "interestUndecided": {
+                    "type": "integer"
+                },
+                "lastAnalyzedAt": {
+                    "type": "string"
+                },
+                "messagesAvg": {
+                    "type": "number"
+                },
+                "messagesTotal": {
+                    "type": "integer"
+                },
+                "nextActionClose": {
+                    "type": "integer"
+                },
+                "nextActionContinue": {
+                    "type": "integer"
+                },
+                "nextActionEscalate": {
+                    "type": "integer"
+                },
+                "nextActionScheduleCallback": {
+                    "type": "integer"
+                },
+                "nextActionSendWhatsApp": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "qualificationColdLead": {
+                    "type": "integer"
+                },
+                "qualificationHotLead": {
+                    "type": "integer"
+                },
+                "qualificationWarmLead": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.Disposition": {
+            "type": "string",
+            "enum": [
+                "sale",
+                "filling_info",
+                "callback",
+                "declined",
+                "pending"
+            ],
+            "x-enum-varnames": [
+                "DispositionSale",
+                "DispositionFillingInfo",
+                "DispositionCallback",
+                "DispositionDeclined",
+                "DispositionPending"
+            ]
+        },
+        "audience.EscalationResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "commentId": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.Intent": {
+            "type": "string",
+            "enum": [
+                "praise",
+                "question",
+                "complaint",
+                "support_request",
+                "spam",
+                "sales_lead",
+                "other"
+            ],
+            "x-enum-varnames": [
+                "IntentPraise",
+                "IntentQuestion",
+                "IntentComplaint",
+                "IntentSupportRequest",
+                "IntentSpam",
+                "IntentSalesLead",
+                "IntentOther"
+            ]
+        },
+        "audience.Interest": {
+            "type": "string",
+            "enum": [
+                "interested",
+                "not_interested",
+                "undecided"
+            ],
+            "x-enum-varnames": [
+                "InterestInterested",
+                "InterestNotInterested",
+                "InterestUndecided"
+            ]
+        },
+        "audience.NextAction": {
+            "type": "string",
+            "enum": [
+                "schedule_callback",
+                "send_whatsapp",
+                "close",
+                "escalate",
+                "continue"
+            ],
+            "x-enum-varnames": [
+                "NextActionScheduleCallback",
+                "NextActionSendWhatsApp",
+                "NextActionClose",
+                "NextActionEscalate",
+                "NextActionContinue"
+            ]
+        },
+        "audience.Qualification": {
+            "type": "string",
+            "enum": [
+                "hot_lead",
+                "warm_lead",
+                "cold_lead"
+            ],
+            "x-enum-varnames": [
+                "QualificationHotLead",
+                "QualificationWarmLead",
+                "QualificationColdLead"
+            ]
+        },
+        "audience.ReplyMode": {
+            "type": "string",
+            "enum": [
+                "off",
+                "suggest",
+                "auto"
+            ],
+            "x-enum-varnames": [
+                "ReplyModeOff",
+                "ReplyModeSuggest",
+                "ReplyModeAuto"
+            ]
+        },
+        "audience.ReplyPolicy": {
+            "type": "object",
+            "properties": {
+                "maxAutoSeverity": {
+                    "description": "MaxAutoSeverity is the ceiling for automatic replies. Above it a human\nanswers, whatever the intent says.",
+                    "type": "integer"
+                },
+                "mode": {
+                    "$ref": "#/definitions/audience.ReplyMode"
+                }
+            }
+        },
+        "audience.ReplySuggestion": {
+            "type": "object",
+            "properties": {
+                "auto": {
+                    "description": "Auto marks a draft the pipeline produced and posted without a human, so\nthe feed can say which replies nobody read first.",
+                    "type": "boolean"
+                },
+                "commentId": {
+                    "type": "string"
+                },
+                "draftedAt": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.SettingsResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "dailyCap": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "replyPolicy": {
+                    "$ref": "#/definitions/audience.ReplyPolicy"
+                },
+                "severityThreshold": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.Topic"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "vertical": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.SpendResponse": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "integer"
+                },
+                "byKind": {
+                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/audience.BatchTotals"
+                    }
+                },
+                "completionTokens": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "integer"
+                },
+                "promptTokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.Stance": {
+            "type": "string",
+            "enum": [
+                "supporter",
+                "neutral",
+                "critic",
+                "hostile"
+            ],
+            "x-enum-varnames": [
+                "StanceSupporter",
+                "StanceNeutral",
+                "StanceCritic",
+                "StanceHostile"
+            ]
+        },
+        "audience.StatsResponse": {
+            "type": "object",
+            "properties": {
+                "acceptanceScore": {
+                    "type": "integer"
+                },
+                "analyzed": {
+                    "type": "integer"
+                },
+                "attendanceQualityAvg": {
+                    "description": "AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments\ncarry no such score, and including their zeros would drag the average of\na mixed slice toward nothing.",
+                    "type": "number"
+                },
+                "attendanceQualityMax": {
+                    "type": "integer"
+                },
+                "attendanceQualityMin": {
+                    "type": "integer"
+                },
+                "commentCount": {
+                    "description": "---- Conversation subjects ----\n\nEverything the legacy conversation-analysis stats block reported, in the\nsame aggregate as the comment counters rather than a second endpoint with\nits own shape. A filtered slice can now contain both kinds, so the two\nsubject counts say how much of the slice each block describes: without\nthem a reader cannot tell an all-comment slice from one where every\nconversation happened to be unlabelled.",
+                    "type": "integer"
+                },
+                "conversationAnalyzed": {
+                    "type": "integer"
+                },
+                "conversationCount": {
+                    "type": "integer"
+                },
+                "dispositionCallback": {
+                    "type": "integer"
+                },
+                "dispositionDeclined": {
+                    "type": "integer"
+                },
+                "dispositionFillingInfo": {
+                    "type": "integer"
+                },
+                "dispositionPending": {
+                    "type": "integer"
+                },
+                "dispositionSale": {
+                    "type": "integer"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "interestInterested": {
+                    "type": "integer"
+                },
+                "interestNotInterested": {
+                    "type": "integer"
+                },
+                "interestUndecided": {
+                    "type": "integer"
+                },
+                "lastAnalyzedAt": {
+                    "type": "string"
+                },
+                "messagesAvg": {
+                    "type": "number"
+                },
+                "messagesTotal": {
+                    "type": "integer"
+                },
+                "nextActionClose": {
+                    "type": "integer"
+                },
+                "nextActionContinue": {
+                    "type": "integer"
+                },
+                "nextActionEscalate": {
+                    "type": "integer"
+                },
+                "nextActionScheduleCallback": {
+                    "type": "integer"
+                },
+                "nextActionSendWhatsApp": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "qualificationColdLead": {
+                    "type": "integer"
+                },
+                "qualificationHotLead": {
+                    "type": "integer"
+                },
+                "qualificationWarmLead": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "subjects": {
+                    "description": "Subjects is what the conversations were about, ranked. Always an array,\nnever null: a client that has to distinguish \"no subjects\" from \"this\nfield is missing\" would branch on it everywhere.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.SubjectCount"
+                    }
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audience.TopicStat"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.Status": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "in_flight",
+                "analyzed",
+                "failed",
+                "skipped"
+            ],
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusInFlight",
+                "StatusAnalyzed",
+                "StatusFailed",
+                "StatusSkipped"
+            ]
+        },
+        "audience.SubjectCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "key": {
+                    "description": "Key is what the rows were grouped on. It is the identity, so a chart\nkeys its marks on this and not on the label.",
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Label is a real example of how the subject was written, so the chart\nshows \"Plano Família\" rather than the stripped \"plano familia\".",
+                    "type": "string"
+                }
+            }
+        },
+        "audience.SubjectKind": {
+            "type": "string",
+            "enum": [
+                "comment",
+                "conversation"
+            ],
+            "x-enum-varnames": [
+                "SubjectKindComment",
+                "SubjectKindConversation"
+            ]
+        },
+        "audience.Topic": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.TopicCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "topicKey": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.TopicStat": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "topicKey": {
+                    "type": "string"
+                }
+            }
+        },
+        "audience.TrendPointResponse": {
+            "type": "object",
+            "properties": {
+                "acceptanceScore": {
+                    "type": "integer"
+                },
+                "analyzed": {
+                    "type": "integer"
+                },
+                "attendanceQualityAvg": {
+                    "description": "AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments\ncarry no such score, and including their zeros would drag the average of\na mixed slice toward nothing.",
+                    "type": "number"
+                },
+                "attendanceQualityMax": {
+                    "type": "integer"
+                },
+                "attendanceQualityMin": {
+                    "type": "integer"
+                },
+                "bucketDate": {
+                    "description": "YYYY-MM-DD, UTC",
+                    "type": "string"
+                },
+                "commentCount": {
+                    "description": "---- Conversation subjects ----\n\nEverything the legacy conversation-analysis stats block reported, in the\nsame aggregate as the comment counters rather than a second endpoint with\nits own shape. A filtered slice can now contain both kinds, so the two\nsubject counts say how much of the slice each block describes: without\nthem a reader cannot tell an all-comment slice from one where every\nconversation happened to be unlabelled.",
+                    "type": "integer"
+                },
+                "conversationAnalyzed": {
+                    "type": "integer"
+                },
+                "conversationCount": {
+                    "type": "integer"
+                },
+                "dispositionCallback": {
+                    "type": "integer"
+                },
+                "dispositionDeclined": {
+                    "type": "integer"
+                },
+                "dispositionFillingInfo": {
+                    "type": "integer"
+                },
+                "dispositionPending": {
+                    "type": "integer"
+                },
+                "dispositionSale": {
+                    "type": "integer"
+                },
+                "distinctAuthors": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "flaggedAuthors": {
+                    "type": "integer"
+                },
+                "inFlight": {
+                    "type": "integer"
+                },
+                "intentComplaint": {
+                    "type": "integer"
+                },
+                "intentOther": {
+                    "type": "integer"
+                },
+                "intentPraise": {
+                    "type": "integer"
+                },
+                "intentQuestion": {
+                    "type": "integer"
+                },
+                "intentSalesLead": {
+                    "type": "integer"
+                },
+                "intentSpam": {
+                    "type": "integer"
+                },
+                "intentSupportRequest": {
+                    "type": "integer"
+                },
+                "interestInterested": {
+                    "type": "integer"
+                },
+                "interestNotInterested": {
+                    "type": "integer"
+                },
+                "interestUndecided": {
+                    "type": "integer"
+                },
+                "lastAnalyzedAt": {
+                    "type": "string"
+                },
+                "messagesAvg": {
+                    "type": "number"
+                },
+                "messagesTotal": {
+                    "type": "integer"
+                },
+                "nextActionClose": {
+                    "type": "integer"
+                },
+                "nextActionContinue": {
+                    "type": "integer"
+                },
+                "nextActionEscalate": {
+                    "type": "integer"
+                },
+                "nextActionScheduleCallback": {
+                    "type": "integer"
+                },
+                "nextActionSendWhatsApp": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "qualificationColdLead": {
+                    "type": "integer"
+                },
+                "qualificationHotLead": {
+                    "type": "integer"
+                },
+                "qualificationWarmLead": {
+                    "type": "integer"
+                },
+                "requiresActionCount": {
+                    "type": "integer"
+                },
+                "sentimentNegative": {
+                    "type": "integer"
+                },
+                "sentimentNeutral": {
+                    "type": "integer"
+                },
+                "sentimentPositive": {
+                    "type": "integer"
+                },
+                "severityAvg": {
+                    "type": "number"
+                },
+                "severityHighCount": {
+                    "description": "≥ HighSeverityThreshold",
+                    "type": "integer"
+                },
+                "severityMax": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "spamCount": {
+                    "type": "integer"
+                },
+                "stanceCritic": {
+                    "type": "integer"
+                },
+                "stanceHostile": {
+                    "type": "integer"
+                },
+                "stanceNeutral": {
+                    "type": "integer"
+                },
+                "stanceSupporter": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.UpdateWorkspaceSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "dailyCap": {
+                    "type": "integer"
+                },
+                "debounceMinutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.Usage": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "description": "Limit is the ceiling in force. Zero means unlimited, which is what a\nworkspace with no configured cap and no default would get.",
+                    "type": "integer"
+                },
+                "oldestAt": {
+                    "description": "OldestAt is when the earliest still-counted analysis was claimed, so a\nscreen can say when room next frees up rather than naming a reset that\nno longer exists. Zero when nothing is counted.",
+                    "type": "string"
+                },
+                "used": {
+                    "description": "Used is how many analyses were claimed inside the window.",
+                    "type": "integer"
+                },
+                "waiting": {
+                    "description": "Waiting is how much is queued and not yet classified.\n\nWithout it the budget reads as a number with no consequence, and an\noperator who sets the ceiling too low sees only that the dashboard has\nstopped moving. Work is never thrown away when the budget runs out: the\nrows stay pending and the next pass picks them up. What a low ceiling\nactually costs is delay, so the delay is what gets shown.",
+                    "type": "integer"
+                }
+            }
+        },
+        "audience.WorkspaceSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "dailyCap": {
+                    "type": "integer"
+                },
+                "debounceMinutes": {
+                    "type": "integer"
+                },
+                "effectiveDailyCap": {
+                    "description": "The values actually IN FORCE, which is what a screen shows in the box.\n\nBoth are resolved HERE rather than by the client: the ceiling falls back\nthrough the workspace, then the channel accounts, then the product\ndefault, and a browser reproducing that chain would be a second copy of\nResolveDailyCap free to disagree with the engine's.",
+                    "type": "integer"
+                },
+                "effectiveDebounceMinutes": {
+                    "type": "integer"
+                },
+                "maxDebounceMinutes": {
+                    "type": "integer"
+                },
+                "minDebounceMinutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "audience_usecase.EscalationRecipient": {
+            "type": "object",
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "lastMessageAt": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "string"
+                },
+                "windowOpen": {
+                    "description": "WindowOpen says whether a free-form message can reach them right now.\nShown rather than enforced: the channels differ, and the send path is\nthe authority on its own rules.",
+                    "type": "boolean"
+                }
+            }
+        },
         "auth.AuthTokenResponse": {
             "type": "object",
             "properties": {
@@ -18408,7 +19846,62 @@ const docTemplate = `{
                 }
             }
         },
-        "balance.Balance": {
+        "balance.FullBalanceSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "$ref": "#/definitions/balance.balanceResponse"
+                },
+                "totalMoneyCredits": {
+                    "type": "integer"
+                },
+                "totalMoneyDebits": {
+                    "type": "integer"
+                }
+            }
+        },
+        "balance.TransactionResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "balanceAfter": {
+                    "type": "integer"
+                },
+                "balanceBefore": {
+                    "type": "integer"
+                },
+                "balanceId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "referenceId": {
+                    "type": "string"
+                },
+                "resourceType": {
+                    "type": "string"
+                },
+                "serviceType": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "balance.balanceResponse": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -18430,118 +19923,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "balance.FullBalanceSummary": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "$ref": "#/definitions/balance.Balance"
-                },
-                "totalMoneyCredits": {
-                    "type": "integer"
-                },
-                "totalMoneyDebits": {
-                    "type": "integer"
-                }
-            }
-        },
-        "balance.ResourceType": {
-            "type": "string",
-            "enum": [
-                "money"
-            ],
-            "x-enum-varnames": [
-                "ResourceTypeMoney"
-            ]
-        },
-        "balance.ServiceType": {
-            "type": "string",
-            "enum": [
-                "voice_campaign",
-                "voice_call",
-                "whatsapp_campaign",
-                "whatsapp_conversation",
-                "ai",
-                "manual_adjustment",
-                "top_up",
-                "addon",
-                "comment_analysis"
-            ],
-            "x-enum-varnames": [
-                "ServiceVoiceCampaign",
-                "ServiceVoiceCall",
-                "ServiceWhatsAppCampaign",
-                "ServiceWhatsAppConversation",
-                "ServiceAI",
-                "ServiceManualAdjustment",
-                "ServiceTopUp",
-                "ServiceAddon",
-                "ServiceCommentAnalysis"
-            ]
-        },
-        "balance.Transaction": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "balanceAfter": {
-                    "type": "integer"
-                },
-                "balanceBefore": {
-                    "type": "integer"
-                },
-                "balanceId": {
-                    "type": "string"
-                },
-                "costMicros": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "exchangeRateMicros": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "isRefund": {
-                    "type": "boolean"
-                },
-                "profitMicros": {
-                    "type": "integer"
-                },
-                "referenceId": {
-                    "type": "string"
-                },
-                "resourceType": {
-                    "$ref": "#/definitions/balance.ResourceType"
-                },
-                "serviceType": {
-                    "$ref": "#/definitions/balance.ServiceType"
-                },
-                "type": {
-                    "$ref": "#/definitions/balance.TransactionType"
-                },
-                "workspaceId": {
-                    "type": "string"
-                }
-            }
-        },
-        "balance.TransactionType": {
-            "type": "string",
-            "enum": [
-                "credit",
-                "debit"
-            ],
-            "x-enum-varnames": [
-                "TransactionTypeCredit",
-                "TransactionTypeDebit"
-            ]
         },
         "buildersession.BuilderMessageResponse": {
             "type": "object",
@@ -19485,1137 +20866,6 @@ const docTemplate = `{
                 }
             }
         },
-        "audience.AlertChannel": {
-            "type": "string",
-            "enum": [
-                "official",
-                "unofficial"
-            ],
-            "x-enum-varnames": [
-                "AlertChannelOfficial",
-                "AlertChannelUnofficial"
-            ]
-        },
-        "audience.AlertMetric": {
-            "type": "string",
-            "enum": [
-                "comment_severity",
-                "high_severity_count",
-                "hostile_count",
-                "comment_volume",
-                "acceptance_score"
-            ],
-            "x-enum-varnames": [
-                "AlertMetricCommentSeverity",
-                "AlertMetricHighSeverityCount",
-                "AlertMetricHostileCount",
-                "AlertMetricCommentVolume",
-                "AlertMetricAcceptanceScore"
-            ]
-        },
-        "audience.AlertRule": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "brief": {
-                    "description": "Brief asks the model to add its reading of what happened and how to\nrespond. Off by default: it is one AI call per firing, bounded by the\ncooldown and the daily cap but still billed.",
-                    "type": "boolean"
-                },
-                "businessPhoneId": {
-                    "description": "BusinessPhoneID and TemplateID are required for the official channel:\nwhich number it leaves from and which approved template it sends.",
-                    "type": "string"
-                },
-                "channel": {
-                    "$ref": "#/definitions/audience.AlertChannel"
-                },
-                "cooldownMinutes": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdByUserId": {
-                    "description": "CreatedByUserID is who configured the rule, and therefore who its\nmessages are attributed to. An automated paid send with no author is a\nsupport ticket nobody can answer, so the person who armed the alert owns\nwhat it says.",
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "firedDay": {
-                    "type": "string"
-                },
-                "firedToday": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "instanceId": {
-                    "description": "InstanceID names the connected number for the unofficial channel. Empty\nmeans \"whichever one this workspace has\", resolved at send time.",
-                    "type": "string"
-                },
-                "lastError": {
-                    "type": "string"
-                },
-                "lastFiredAt": {
-                    "description": "The firing history, kept on the rule rather than in a second table: it is\nwhat the cooldown and the cap are checked against, and it is also the\nanswer to \"por que não disparou\".",
-                    "type": "string"
-                },
-                "maxPerDay": {
-                    "type": "integer"
-                },
-                "metric": {
-                    "$ref": "#/definitions/audience.AlertMetric"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "recipient": {
-                    "type": "string"
-                },
-                "source": {
-                    "$ref": "#/definitions/audience.Source"
-                },
-                "templateId": {
-                    "type": "string"
-                },
-                "threshold": {
-                    "type": "integer"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "windowMinutes": {
-                    "description": "WindowMinutes is the span a windowed metric is counted over. Ignored for\na per-comment metric.",
-                    "type": "integer"
-                },
-                "workspaceId": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.AuthorRole": {
-            "type": "string",
-            "enum": [
-                "unknown",
-                "politician",
-                "journalist",
-                "public_servant",
-                "business_owner",
-                "professional",
-                "activist"
-            ],
-            "x-enum-varnames": [
-                "RoleUnknown",
-                "RolePolitician",
-                "RoleJournalist",
-                "RolePublicServant",
-                "RoleBusinessOwner",
-                "RoleProfessional",
-                "RoleActivist"
-            ]
-        },
-        "audience.AuthorRoleInference": {
-            "type": "object",
-            "properties": {
-                "basedOnComments": {
-                    "description": "BasedOnComments is the corpus size the inference read. Shown to the\ncustomer, because \"politician, from 3 comments\" and \"politician, from 90\"\nare different claims and the UI must not present them as one.",
-                    "type": "integer"
-                },
-                "confidence": {
-                    "description": "Confidence is the model's own, on the shared ordinal rubric. Ordinal\nrather than a percentage for the reason the rubric header gives: a model\nasked for 0-100 returns a number nobody can defend.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/shared.QualityLevel"
-                        }
-                    ]
-                },
-                "rationale": {
-                    "description": "Rationale is one short sentence in the model's words, so an operator can\nsee WHY and disagree. Never used for anything but display.",
-                    "type": "string"
-                },
-                "role": {
-                    "$ref": "#/definitions/audience.AuthorRole"
-                }
-            }
-        },
-        "audience.BatchTotals": {
-            "type": "object",
-            "properties": {
-                "batches": {
-                    "type": "integer"
-                },
-                "byKind": {
-                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/audience.BatchTotals"
-                    }
-                },
-                "completionTokens": {
-                    "type": "integer"
-                },
-                "items": {
-                    "type": "integer"
-                },
-                "priceMicros": {
-                    "type": "integer"
-                },
-                "promptTokens": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.Counters": {
-            "type": "object",
-            "properties": {
-                "analyzed": {
-                    "type": "integer"
-                },
-                "distinctAuthors": {
-                    "type": "integer"
-                },
-                "failed": {
-                    "type": "integer"
-                },
-                "flaggedAuthors": {
-                    "type": "integer"
-                },
-                "inFlight": {
-                    "type": "integer"
-                },
-                "intentComplaint": {
-                    "type": "integer"
-                },
-                "intentOther": {
-                    "type": "integer"
-                },
-                "intentPraise": {
-                    "type": "integer"
-                },
-                "intentQuestion": {
-                    "type": "integer"
-                },
-                "intentSalesLead": {
-                    "type": "integer"
-                },
-                "intentSpam": {
-                    "type": "integer"
-                },
-                "intentSupportRequest": {
-                    "type": "integer"
-                },
-                "pending": {
-                    "type": "integer"
-                },
-                "requiresActionCount": {
-                    "type": "integer"
-                },
-                "sentimentNegative": {
-                    "type": "integer"
-                },
-                "sentimentNeutral": {
-                    "type": "integer"
-                },
-                "sentimentPositive": {
-                    "type": "integer"
-                },
-                "severityAvg": {
-                    "type": "number"
-                },
-                "severityHighCount": {
-                    "description": "≥ HighSeverityThreshold",
-                    "type": "integer"
-                },
-                "severityMax": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                },
-                "spamCount": {
-                    "type": "integer"
-                },
-                "stanceCritic": {
-                    "type": "integer"
-                },
-                "stanceHostile": {
-                    "type": "integer"
-                },
-                "stanceNeutral": {
-                    "type": "integer"
-                },
-                "stanceSupporter": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.ReplyMode": {
-            "type": "string",
-            "enum": [
-                "off",
-                "suggest",
-                "auto"
-            ],
-            "x-enum-varnames": [
-                "ReplyModeOff",
-                "ReplyModeSuggest",
-                "ReplyModeAuto"
-            ]
-        },
-        "audience.ReplyPolicy": {
-            "type": "object",
-            "properties": {
-                "maxAutoSeverity": {
-                    "description": "MaxAutoSeverity is the ceiling for automatic replies. Above it a human\nanswers, whatever the intent says.",
-                    "type": "integer"
-                },
-                "mode": {
-                    "$ref": "#/definitions/audience.ReplyMode"
-                }
-            }
-        },
-        "audience.ReplySuggestion": {
-            "type": "object",
-            "properties": {
-                "auto": {
-                    "description": "Auto marks a draft the pipeline produced and posted without a human, so\nthe feed can say which replies nobody read first.",
-                    "type": "boolean"
-                },
-                "commentId": {
-                    "type": "string"
-                },
-                "draftedAt": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "text": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.Source": {
-            "type": "string",
-            "enum": [
-                "instagram"
-            ],
-            "x-enum-varnames": [
-                "SourceInstagram"
-            ]
-        },
-        "audience.Topic": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "label": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.TopicCount": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "topicKey": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.TopicStat": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "sentimentNegative": {
-                    "type": "integer"
-                },
-                "sentimentNeutral": {
-                    "type": "integer"
-                },
-                "sentimentPositive": {
-                    "type": "integer"
-                },
-                "severityAvg": {
-                    "type": "number"
-                },
-                "topicKey": {
-                    "type": "string"
-                }
-            }
-        },
-        "comment_analysis_usecase.EscalationRecipient": {
-            "type": "object",
-            "properties": {
-                "entryId": {
-                    "type": "string"
-                },
-                "entryType": {
-                    "type": "string"
-                },
-                "lastMessageAt": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "number": {
-                    "type": "string"
-                },
-                "windowOpen": {
-                    "description": "WindowOpen says whether a free-form message can reach them right now.\nShown rather than enforced: the channels differ, and the send path is\nthe authority on its own rules.",
-                    "type": "boolean"
-                }
-            }
-        },
-        "audience.AlertChannelStatusResponse": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "boolean"
-                },
-                "channel": {
-                    "type": "string"
-                },
-                "reason": {
-                    "description": "Reason is a stable key the client translates: \"no_sender\",\n\"not_enabled\". A greyed control with no explanation sends people to\nsupport instead of to the connect screen.",
-                    "type": "string"
-                },
-                "senders": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.AlertSenderResponse"
-                    }
-                }
-            }
-        },
-        "audience.AlertLimitsResponse": {
-            "type": "object",
-            "properties": {
-                "defaultCooldownMinutes": {
-                    "type": "integer"
-                },
-                "defaultPerDay": {
-                    "type": "integer"
-                },
-                "defaultWindowMinutes": {
-                    "type": "integer"
-                },
-                "maxCooldownMinutes": {
-                    "type": "integer"
-                },
-                "maxPerDay": {
-                    "type": "integer"
-                },
-                "maxWindowMinutes": {
-                    "type": "integer"
-                },
-                "minCooldownMinutes": {
-                    "type": "integer"
-                },
-                "minWindowMinutes": {
-                    "type": "integer"
-                },
-                "templateParamCount": {
-                    "description": "TemplateParamCount is how many facts an alert can supply. NOT a\nrequirement on the template: one that declares fewer gets the first few,\none that declares more has the rest padded, and one with no variables is\nperfectly fine.",
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.AlertMetricOption": {
-            "type": "object",
-            "properties": {
-                "metric": {
-                    "type": "string"
-                },
-                "triggersWhenBelow": {
-                    "type": "boolean"
-                },
-                "windowed": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "audience.AlertSenderResponse": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "label": {
-                    "description": "Label is what the operator recognises, never an internal id.",
-                    "type": "string"
-                }
-            }
-        },
-        "audience.AlertVocabularyResponse": {
-            "type": "object",
-            "properties": {
-                "channelStatus": {
-                    "description": "ChannelStatus narrows Channels to what this workspace can actually do.\nEmpty when the deployment has no directory wired, in which case the\nclient falls back to Channels exactly as it did before.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.AlertChannelStatusResponse"
-                    }
-                },
-                "channels": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "facts": {
-                    "description": "Facts is what an alert can put into a template's variables, in the order\na POSITIONAL template is filled. Sent so the settings screen can tell an\noperator what their template will actually receive, and so a NAMED\ntemplate can be written with variables we recognise.",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "limits": {
-                    "$ref": "#/definitions/audience.AlertLimitsResponse"
-                },
-                "metrics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.AlertMetricOption"
-                    }
-                }
-            }
-        },
-        "audience.AuthorContainerResponse": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "comments": {
-                    "type": "integer"
-                },
-                "containerId": {
-                    "type": "string"
-                },
-                "derivedStance": {
-                    "type": "string"
-                },
-                "firstOccurredAt": {
-                    "type": "string"
-                },
-                "lastOccurredAt": {
-                    "type": "string"
-                },
-                "reputation": {
-                    "type": "integer"
-                },
-                "severityHighCount": {
-                    "type": "integer"
-                },
-                "severityMax": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "stanceCritic": {
-                    "type": "integer"
-                },
-                "stanceHostile": {
-                    "type": "integer"
-                },
-                "stanceNeutral": {
-                    "type": "integer"
-                },
-                "stanceSupporter": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.AuthorContainersResponse": {
-            "type": "object",
-            "properties": {
-                "author": {
-                    "$ref": "#/definitions/audience.AuthorResponse"
-                },
-                "containers": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.AuthorContainerResponse"
-                    }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.AuthorDetailResponse": {
-            "type": "object",
-            "properties": {
-                "author": {
-                    "$ref": "#/definitions/audience.AuthorResponse"
-                },
-                "comments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.CommentResponse"
-                    }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.AuthorResponse": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "authorExternalId": {
-                    "type": "string"
-                },
-                "authorHandle": {
-                    "type": "string"
-                },
-                "counters": {
-                    "$ref": "#/definitions/audience.Counters"
-                },
-                "derivedStance": {
-                    "type": "string"
-                },
-                "firstSeenAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "isFlagged": {
-                    "type": "boolean"
-                },
-                "lastSeenAt": {
-                    "type": "string"
-                },
-                "moderationState": {
-                    "type": "string"
-                },
-                "reputation": {
-                    "description": "Reputation is the signed ledger the ranking sorts on: negative means the\nauthor has cost more than they gave. Sent alongside the raw counters so\nthe client shows the score without re-deriving (and re-inventing) it.",
-                    "type": "integer"
-                },
-                "role": {
-                    "description": "Role is the §5 inference, sent WITH its evidence: a client that received\nonly a label would have no way to present it as the inference it is.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/audience.AuthorRoleInference"
-                        }
-                    ]
-                },
-                "roleDisplayable": {
-                    "type": "boolean"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "topTopics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.TopicCount"
-                    }
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.BackfillEstimateResponse": {
-            "type": "object",
-            "properties": {
-                "containers": {
-                    "type": "integer"
-                },
-                "estimatedComments": {
-                    "type": "integer"
-                },
-                "estimatedMicros": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.BackfillResponse": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "containerId": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "enqueued": {
-                    "type": "integer"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "estimatedComments": {
-                    "type": "integer"
-                },
-                "fetched": {
-                    "type": "integer"
-                },
-                "finishedAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "progress": {
-                    "type": "number"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.CommentResponse": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "analyzedAt": {
-                    "type": "string"
-                },
-                "attempts": {
-                    "type": "integer"
-                },
-                "authorExternalId": {
-                    "type": "string"
-                },
-                "authorHandle": {
-                    "type": "string"
-                },
-                "commentedAt": {
-                    "type": "string"
-                },
-                "containerId": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "excerpt": {
-                    "type": "string"
-                },
-                "failureReason": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "intent": {
-                    "type": "string"
-                },
-                "isSpam": {
-                    "type": "boolean"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "legalRisk": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "parentCommentId": {
-                    "type": "string"
-                },
-                "personalAttack": {
-                    "type": "string"
-                },
-                "requiresAction": {
-                    "type": "boolean"
-                },
-                "sentiment": {
-                    "type": "string"
-                },
-                "severity": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "sourceCommentId": {
-                    "type": "string"
-                },
-                "stance": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "topicKey": {
-                    "type": "string"
-                },
-                "toxicity": {
-                    "type": "string"
-                },
-                "truncated": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "audience.ContainerOverrideResponse": {
-            "type": "object",
-            "properties": {
-                "containerId": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "instructions": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "severityThreshold": {
-                    "type": "integer"
-                },
-                "topics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.Topic"
-                    }
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.ContainerSettingsResponse": {
-            "type": "object",
-            "properties": {
-                "effective": {
-                    "$ref": "#/definitions/audience.SettingsResponse"
-                },
-                "override": {
-                    "$ref": "#/definitions/audience.ContainerOverrideResponse"
-                }
-            }
-        },
-        "audience.EscalationResponse": {
-            "type": "object",
-            "properties": {
-                "author": {
-                    "type": "string"
-                },
-                "commentId": {
-                    "type": "string"
-                },
-                "sentAt": {
-                    "type": "string"
-                },
-                "text": {
-                    "type": "string"
-                },
-                "where": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.SettingsResponse": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "dailyCap": {
-                    "type": "integer"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "instructions": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "replyPolicy": {
-                    "$ref": "#/definitions/audience.ReplyPolicy"
-                },
-                "severityThreshold": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "topics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.Topic"
-                    }
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "vertical": {
-                    "type": "string"
-                }
-            }
-        },
-        "audience.SpendResponse": {
-            "type": "object",
-            "properties": {
-                "batches": {
-                    "type": "integer"
-                },
-                "byKind": {
-                    "description": "ByKind splits the same period by pass, so the dashboard can show what\nthe author inference cost separately from the comment classification.\nAlways present for every kind, zeroed when a pass did not run.",
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/audience.BatchTotals"
-                    }
-                },
-                "completionTokens": {
-                    "type": "integer"
-                },
-                "items": {
-                    "type": "integer"
-                },
-                "priceMicros": {
-                    "type": "integer"
-                },
-                "promptTokens": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.StatsResponse": {
-            "type": "object",
-            "properties": {
-                "acceptanceScore": {
-                    "type": "integer"
-                },
-                "analyzed": {
-                    "type": "integer"
-                },
-                "distinctAuthors": {
-                    "type": "integer"
-                },
-                "failed": {
-                    "type": "integer"
-                },
-                "flaggedAuthors": {
-                    "type": "integer"
-                },
-                "inFlight": {
-                    "type": "integer"
-                },
-                "intentComplaint": {
-                    "type": "integer"
-                },
-                "intentOther": {
-                    "type": "integer"
-                },
-                "intentPraise": {
-                    "type": "integer"
-                },
-                "intentQuestion": {
-                    "type": "integer"
-                },
-                "intentSalesLead": {
-                    "type": "integer"
-                },
-                "intentSpam": {
-                    "type": "integer"
-                },
-                "intentSupportRequest": {
-                    "type": "integer"
-                },
-                "pending": {
-                    "type": "integer"
-                },
-                "requiresActionCount": {
-                    "type": "integer"
-                },
-                "sentimentNegative": {
-                    "type": "integer"
-                },
-                "sentimentNeutral": {
-                    "type": "integer"
-                },
-                "sentimentPositive": {
-                    "type": "integer"
-                },
-                "severityAvg": {
-                    "type": "number"
-                },
-                "severityHighCount": {
-                    "description": "≥ HighSeverityThreshold",
-                    "type": "integer"
-                },
-                "severityMax": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                },
-                "spamCount": {
-                    "type": "integer"
-                },
-                "stanceCritic": {
-                    "type": "integer"
-                },
-                "stanceHostile": {
-                    "type": "integer"
-                },
-                "stanceNeutral": {
-                    "type": "integer"
-                },
-                "stanceSupporter": {
-                    "type": "integer"
-                },
-                "topics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/audience.TopicStat"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "audience.TrendPointResponse": {
-            "type": "object",
-            "properties": {
-                "acceptanceScore": {
-                    "type": "integer"
-                },
-                "analyzed": {
-                    "type": "integer"
-                },
-                "bucketDate": {
-                    "description": "YYYY-MM-DD, UTC",
-                    "type": "string"
-                },
-                "distinctAuthors": {
-                    "type": "integer"
-                },
-                "failed": {
-                    "type": "integer"
-                },
-                "flaggedAuthors": {
-                    "type": "integer"
-                },
-                "inFlight": {
-                    "type": "integer"
-                },
-                "intentComplaint": {
-                    "type": "integer"
-                },
-                "intentOther": {
-                    "type": "integer"
-                },
-                "intentPraise": {
-                    "type": "integer"
-                },
-                "intentQuestion": {
-                    "type": "integer"
-                },
-                "intentSalesLead": {
-                    "type": "integer"
-                },
-                "intentSpam": {
-                    "type": "integer"
-                },
-                "intentSupportRequest": {
-                    "type": "integer"
-                },
-                "pending": {
-                    "type": "integer"
-                },
-                "requiresActionCount": {
-                    "type": "integer"
-                },
-                "sentimentNegative": {
-                    "type": "integer"
-                },
-                "sentimentNeutral": {
-                    "type": "integer"
-                },
-                "sentimentPositive": {
-                    "type": "integer"
-                },
-                "severityAvg": {
-                    "type": "number"
-                },
-                "severityHighCount": {
-                    "description": "≥ HighSeverityThreshold",
-                    "type": "integer"
-                },
-                "severityMax": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                },
-                "spamCount": {
-                    "type": "integer"
-                },
-                "stanceCritic": {
-                    "type": "integer"
-                },
-                "stanceHostile": {
-                    "type": "integer"
-                },
-                "stanceNeutral": {
-                    "type": "integer"
-                },
-                "stanceSupporter": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
         "conversation.AIHandler": {
             "type": "object",
             "properties": {
@@ -20654,6 +20904,19 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "conversation.AnalysisPhase": {
+            "type": "string",
+            "enum": [
+                "",
+                "awaiting",
+                "queued"
+            ],
+            "x-enum-varnames": [
+                "AnalysisPhaseNone",
+                "AnalysisPhaseAwaiting",
+                "AnalysisPhaseQueued"
+            ]
         },
         "conversation.CallPermissionRequestBody": {
             "type": "object",
@@ -20787,6 +21050,10 @@ const docTemplate = `{
                 "campaignName": {
                     "type": "string"
                 },
+                "conversationStatus": {
+                    "description": "ConversationStatus is new / ongoing / finished, read from SQL for every\nchannel for exactly the reason above.\n\nIt used to be looked up only through the WhatsApp entry repository, so on\nevery other channel the inbox row was built with no status at all and\nrendered as \"Nova\" over a conversation the database had as ongoing. An\noperator would reply, the row would rebuild, and the conversation\nappeared to move backwards.\n\nCarried on the row rather than fetched per entry: the status column is\nalready projected by the channel union that produces these rows, so this\ncosts nothing, and a per-entry lookup would be one query per row of the\ninbox.",
+                    "type": "string"
+                },
                 "entryID": {
                     "type": "string"
                 },
@@ -20849,6 +21116,14 @@ const docTemplate = `{
                     "allOf": [
                         {
                             "$ref": "#/definitions/conversation.AIHandler"
+                        }
+                    ]
+                },
+                "analysis_phase": {
+                    "description": "AnalysisPhase says where an upcoming analysis has got to. Independent of\nLatestAnalysis, which keeps showing the previous revision's verdict while\nthe next one is computed, and carried on the entry rather than only on\nthe socket so a page reload still shows it.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/conversation.AnalysisPhase"
                         }
                     ]
                 },
@@ -20934,7 +21209,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "latest_analysis": {
-                    "$ref": "#/definitions/analysis.Analysis"
+                    "$ref": "#/definitions/audience.Analysis"
                 },
                 "lead_id": {
                     "type": "string"
@@ -21089,7 +21364,6 @@ const docTemplate = `{
         "conversation.MessageChannel": {
             "type": "string",
             "enum": [
-                "voice",
                 "whatsapp",
                 "support",
                 "instagram",
@@ -21097,7 +21371,6 @@ const docTemplate = `{
                 "unofficial_whatsapp"
             ],
             "x-enum-varnames": [
-                "MessageChannelVoice",
                 "MessageChannelWhatsApp",
                 "MessageChannelSupport",
                 "MessageChannelInstagram",
@@ -24250,16 +24523,14 @@ const docTemplate = `{
                 "support",
                 "instagram",
                 "telegram",
-                "unofficial_whatsapp",
-                "voice"
+                "unofficial_whatsapp"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
                 "EntryTypeSupport",
                 "EntryTypeInstagram",
                 "EntryTypeTelegram",
-                "EntryTypeUnofficialWhatsApp",
-                "EntryTypeVoice"
+                "EntryTypeUnofficialWhatsApp"
             ]
         },
         "shared.QualityLevel": {
@@ -24275,6 +24546,19 @@ const docTemplate = `{
                 "QualityLevelLow",
                 "QualityLevelMedium",
                 "QualityLevelHigh"
+            ]
+        },
+        "shared.Sentiment": {
+            "type": "string",
+            "enum": [
+                "positive",
+                "neutral",
+                "negative"
+            ],
+            "x-enum-varnames": [
+                "SentimentPositive",
+                "SentimentNeutral",
+                "SentimentNegative"
             ]
         },
         "shortlink.analyticsResponse": {
@@ -25045,6 +25329,10 @@ const docTemplate = `{
                 "example": {
                     "type": "string"
                 },
+                "otpType": {
+                    "description": "OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button. See\nauthentication.go for why it is a field of its own rather than a Type.",
+                    "type": "string"
+                },
                 "phoneNumber": {
                     "type": "string"
                 },
@@ -25075,11 +25363,18 @@ const docTemplate = `{
         "template.TemplateComponent": {
             "type": "object",
             "properties": {
+                "addSecurityRecommendation": {
+                    "description": "AddSecurityRecommendation and CodeExpirationMinutes are how an\nauthentication template's BODY and FOOTER are written: Meta owns the copy\nand renders it per language, so the business sets a flag and a number\ninstead of text. Pointers because \"not set\" and \"set to false/zero\" are\ndifferent instructions to Meta. Nil on every other category.",
+                    "type": "boolean"
+                },
                 "buttons": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/template.TemplateButton"
                     }
+                },
+                "codeExpirationMinutes": {
+                    "type": "integer"
                 },
                 "example": {
                     "$ref": "#/definitions/template.TemplateExample"
@@ -25717,6 +26012,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "https://exemplo.com.br/promo"
                 },
+                "otp_type": {
+                    "description": "OTPType is required when Type is OTP: COPY_CODE, ONE_TAP or ZERO_TAP.\nCOPY_CODE is the one that needs no app-side integration.",
+                    "type": "string",
+                    "example": "COPY_CODE"
+                },
                 "phone_number": {
                     "type": "string",
                     "example": "5511987654321"
@@ -25738,11 +26038,20 @@ const docTemplate = `{
         "whatsapptemplate.TemplateComponentRequest": {
             "type": "object",
             "properties": {
+                "add_security_recommendation": {
+                    "description": "AddSecurityRecommendation (on BODY) and CodeExpirationMinutes (on FOOTER)\nare how an AUTHENTICATION template is written: Meta owns the wording and\nrenders both lines per language, so the client sends a flag and a number\ninstead of text. Pointers because omitting them and sending false/0 mean\ndifferent things to Meta.",
+                    "type": "boolean",
+                    "example": true
+                },
                 "buttons": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/whatsapptemplate.TemplateButtonRequest"
                     }
+                },
+                "code_expiration_minutes": {
+                    "type": "integer",
+                    "example": 10
                 },
                 "example": {
                     "$ref": "#/definitions/whatsapptemplate.TemplateExampleRequest"

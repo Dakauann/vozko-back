@@ -117,9 +117,6 @@ func (s *stubPricer) PriceTelephonyChannel(ws string, dur float64, _ string) (wo
 func (s *stubPricer) PriceWhatsApp(string, string) (workspace_pricing.PriceResult, error) {
 	return workspace_pricing.PriceResult{}, nil
 }
-func (s *stubPricer) PriceAudience(string, int) (workspace_pricing.PriceResult, error) {
-	return workspace_pricing.PriceResult{}, nil
-}
 func TestCallAdmissionCoordinatorAcquireSuccess(t *testing.T) {
 	checker := &stubCachedBalanceChecker{balance: 100_000}
 	inflight := &stubInflightReserver{reserveOK: true}

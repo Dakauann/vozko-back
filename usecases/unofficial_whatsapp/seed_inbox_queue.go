@@ -6,10 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"vozko/domain/messaging"
 	uw "vozko/domain/unofficial_whatsapp"
 )
+
+// scriptedBatchTimeout bounds one SCRIPTED batch end to end.
+//
+// A batch carries ScriptedSeedBatchSize targets and calls the model once per
+// ScriptSubjectsPerCall of them, each bounded at scriptCallTimeout. This is
+// comfortably above that worst case and comfortably inside the broker's own
+// consumer timeout, so a provider that hangs costs one batch rather than a
+// consumer that never drains again.
+//
+// A PLAIN batch gets no bound. It is database work, and putting a deadline on
+// it would only invent a way for a slow import to fail.
+const scriptedBatchTimeout = 10 * time.Minute
 
 // Seeding runs off the queue rather than inside the import request, because an
 // import accepts a hundred thousand rows and each one is a contact lookup, a
@@ -34,20 +47,23 @@ func NewSeedInboxPublisher(pub messaging.MessageQueuePub) *SeedInboxPublisher {
 // for. A request that normalises down to nothing returns 0 with no error: every
 // row it dropped was already reported by the import's own rejection list, so
 // failing here would report the same bad rows twice under a different name.
-func (p *SeedInboxPublisher) Publish(in uw.SeedRequest) (int, error) {
+func (p *SeedInboxPublisher) Publish(in uw.SeedRequest) (uw.SeedQueued, error) {
+	var queued uw.SeedQueued
 	if p == nil || p.pub == nil {
-		return 0, nil
+		return queued, nil
 	}
 
 	in.Normalize()
 	if err := in.Validate(); err != nil {
 		if errors.Is(err, uw.ErrSeedNoTargets) {
-			return 0, nil
+			return queued, nil
 		}
-		return 0, err
+		// A malformed script IS an error here, unlike unaddressable rows: the
+		// rows were already reported to the operator by the import's own
+		// rejection list, and a broken script was not reported by anything.
+		return queued, err
 	}
 
-	queued := 0
 	for _, batch := range in.Split() {
 		payload, err := json.Marshal(batch)
 		if err != nil {
@@ -59,7 +75,10 @@ func (p *SeedInboxPublisher) Publish(in uw.SeedRequest) (int, error) {
 			// about to appear in the operator's inbox.
 			return queued, err
 		}
-		queued += len(batch.Targets)
+		queued.Targets += len(batch.Targets)
+		if batch.Script != nil {
+			queued.Scripted += len(batch.Targets)
+		}
 	}
 	return queued, nil
 }
@@ -105,7 +124,16 @@ func (c *ConsumeSeedInboxUseCase) handle(payload []byte, ack messaging.MessageAc
 		return
 	}
 
-	out, err := c.seed.Execute(context.Background(), req)
+	// The bound exists only for a batch that will call a provider. See
+	// scriptedBatchTimeout.
+	ctx := context.Background()
+	if req.Script != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, scriptedBatchTimeout)
+		defer cancel()
+	}
+
+	out, err := c.seed.Execute(ctx, req)
 	if err != nil {
 		// Redelivery cannot fix a workspace with no connected number, an empty
 		// batch or a missing workspace id, so those are dropped rather than
@@ -127,7 +155,8 @@ func (c *ConsumeSeedInboxUseCase) handle(payload []byte, ack messaging.MessageAc
 	// Requeueing on a partial failure would re-seed everything that succeeded.
 	// That is safe (seedOne skips a conversation that already has a placeholder)
 	// but pointless, and the failures are logged per target where they happened.
-	log.Printf("[unofficial-whatsapp] inbox seed batch for workspace %s: %d seeded, %d already active, %d failed",
-		req.WorkspaceID, out.Seeded, out.AlreadyActive, out.Failed)
+	log.Printf("[unofficial-whatsapp] inbox seed batch for workspace %s: %d seeded, %d already active, %d failed, %d scripted, %d script failed, %d skipped for having no name",
+		req.WorkspaceID, out.Seeded, out.AlreadyActive, out.Failed,
+		out.Scripted, out.ScriptFailed, out.ScriptSkippedNoName)
 	_ = ack.Ack()
 }

@@ -20,10 +20,9 @@ package unofficial_whatsapp_campaign
 import (
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
+	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
@@ -101,12 +100,10 @@ func (k MessageKind) MediaKind() uw.MediaKind {
 // most of what their customers receive.
 const MaxBodyVariants = 10
 
-// placeholder matches OUR positional variable syntax, {{1}}, {{2}}, ...
-//
-// Positional rather than named, matching the official campaign's template
-// contract exactly, so the CSV importer, the variables columns and the
-// operator's mental model transfer between the two transports unchanged.
-var placeholder = regexp.MustCompile(`\{\{(\d+)\}\}`)
+// The positional variable syntax, {{1}} {{2}}, and everything that reads or
+// renders it, lives in domain/shared. Not for tidiness: this package imports
+// domain/unofficial_whatsapp, so that package cannot import this one, and inbox
+// seeding needs the same rules. Lifting beat copying.
 
 // MessageSpec is the campaign's payload — this channel's replacement for a
 // template.
@@ -147,13 +144,7 @@ func (m *MessageSpec) Normalize() {
 	m.Footer = strings.TrimSpace(m.Footer)
 	m.Button = strings.TrimSpace(m.Button)
 
-	cleaned := make([]string, 0, len(m.Bodies))
-	for _, b := range m.Bodies {
-		if strings.TrimSpace(b) != "" {
-			cleaned = append(cleaned, strings.TrimSpace(b))
-		}
-	}
-	m.Bodies = cleaned
+	m.Bodies = shared.NonEmptyTrimmed(m.Bodies)
 
 	if m.Kind == KindMenu && m.Style == "" {
 		// Buttons is the safer default: WhatsApp renders a list as a menu the
@@ -169,26 +160,7 @@ func (m *MessageSpec) Normalize() {
 // collects one set of columns for the whole campaign: a recipient needs enough
 // variables for whichever variant they happen to be assigned.
 func (m MessageSpec) ParameterCount() int {
-	highest := 0
-	for _, body := range m.Bodies {
-		for _, match := range placeholder.FindAllStringSubmatch(body, -1) {
-			if n, err := strconv.Atoi(match[1]); err == nil && n > highest {
-				highest = n
-			}
-		}
-	}
-	return highest
-}
-
-// parameterSet is the exact set of placeholders one body uses.
-func parameterSet(body string) map[int]struct{} {
-	out := map[int]struct{}{}
-	for _, match := range placeholder.FindAllStringSubmatch(body, -1) {
-		if n, err := strconv.Atoi(match[1]); err == nil {
-			out[n] = struct{}{}
-		}
-	}
-	return out
+	return shared.HighestPositionalParameter(m.Bodies)
 }
 
 func (m MessageSpec) Validate() error {
@@ -220,19 +192,8 @@ func (m MessageSpec) Validate() error {
 	// Not merely the same count: a campaign whose first variant reads {{1}} and
 	// whose second reads {{2}} would send a raw "{{2}}" to everyone assigned the
 	// second, because the importer only collected one column.
-	if len(m.Bodies) > 1 {
-		first := parameterSet(m.Bodies[0])
-		for _, body := range m.Bodies[1:] {
-			other := parameterSet(body)
-			if len(other) != len(first) {
-				return ErrMessageVariantMismatch
-			}
-			for n := range first {
-				if _, ok := other[n]; !ok {
-					return ErrMessageVariantMismatch
-				}
-			}
-		}
+	if !shared.PositionalParametersAgree(m.Bodies) {
+		return ErrMessageVariantMismatch
 	}
 
 	if m.Kind.NeedsMedia() && m.MediaID == "" {
@@ -268,18 +229,7 @@ func (m MessageSpec) Validate() error {
 // resumed or partially-retried campaign never sends one person two different
 // messages, and "which text did this customer get" is answerable from the row.
 func (m MessageSpec) VariantFor(entryID string) int {
-	if len(m.Bodies) <= 1 {
-		return 0
-	}
-	// FNV-1a, inline: the distribution only has to be even across a handful of
-	// buckets, and importing hash/fnv for four lines would be heavier than the
-	// arithmetic it replaces.
-	var h uint32 = 2166136261
-	for i := 0; i < len(entryID); i++ {
-		h ^= uint32(entryID[i])
-		h *= 16777619
-	}
-	return int(h % uint32(len(m.Bodies)))
+	return shared.VariantIndexFor(entryID, len(m.Bodies))
 }
 
 // Render substitutes positional variables into the chosen body.
@@ -300,17 +250,5 @@ func (m MessageSpec) Render(variant int, vars []string) string {
 	if variant < 0 || variant >= len(m.Bodies) {
 		variant = 0
 	}
-	body := m.Bodies[variant]
-	if len(vars) == 0 {
-		return body
-	}
-
-	return placeholder.ReplaceAllStringFunc(body, func(token string) string {
-		match := placeholder.FindStringSubmatch(token)
-		n, err := strconv.Atoi(match[1])
-		if err != nil || n < 1 || n > len(vars) {
-			return token
-		}
-		return vars[n-1]
-	})
+	return shared.RenderPositional(m.Bodies[variant], vars)
 }

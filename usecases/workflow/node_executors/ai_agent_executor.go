@@ -493,15 +493,17 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	const minBalanceFloor int64 = 10_000
+	// The product-wide AI floor, fail-closed. The number comes from the domain;
+	// the error-edge routing below is this executor's own and has no other
+	// caller, which is why the check is inline rather than delegated.
 	if e.cachedBalanceChecker != nil {
 		bal, err := e.cachedBalanceChecker.GetBalance(ctx.Workflow.WorkspaceID)
 		if err != nil {
 			log.Printf("%s balance check error for workspace %s: %v, blocking AI call (fail-closed)", logPrefix, ctx.Workflow.WorkspaceID, err)
 			return nil, fmt.Errorf("balance check failed: %w", err)
 		}
-		if bal < minBalanceFloor {
-			log.Printf("%s workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI call", logPrefix, ctx.Workflow.WorkspaceID, bal, minBalanceFloor)
+		if bal < balance.MinAIFloorMicros {
+			log.Printf("%s workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI call", logPrefix, ctx.Workflow.WorkspaceID, bal, balance.MinAIFloorMicros)
 
 			edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 			errorNodeID := resolveEdgeByLabelStrict(edges, "erro")

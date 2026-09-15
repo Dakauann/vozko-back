@@ -100,18 +100,15 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 	return res, nil
 }
 
-// parseBatchResponse decodes the model's JSON, tolerating the markdown
-// fence some providers still wrap strict-schema output in.
+// parseBatchResponse decodes the model's JSON.
+//
+// The markdown fence some providers still wrap strict-schema output in is
+// handled by ai.UnfenceJSON, shared with every other strict-schema caller: it
+// is the port's behaviour, not this pass's.
 func parseBatchResponse(content string) ([]ca.BatchResult, error) {
-	body := strings.TrimSpace(content)
+	body := ai.UnfenceJSON(content)
 	if body == "" {
 		return nil, errEmptyResponse
-	}
-	if strings.HasPrefix(body, "```") {
-		body = strings.TrimPrefix(body, "```json")
-		body = strings.TrimPrefix(body, "```")
-		body = strings.TrimSuffix(strings.TrimSpace(body), "```")
-		body = strings.TrimSpace(body)
 	}
 	var out ca.BatchResponse
 	if err := json.Unmarshal([]byte(body), &out); err != nil {

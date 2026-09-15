@@ -174,21 +174,6 @@ type Scheduler interface {
 	Clear(ctx context.Context, ref ContainerRef) error
 }
 
-// ---- Billing ----
-
-// Charger is the engine's side of billing (§9). Token billing needs none
-// of this: setting WorkspaceID on the AI call is the whole integration.
-//
-// It covers the optional per-batch surcharge and nothing else. The volume
-// ceiling used to live here too, as a counter keyed on the UTC calendar date;
-// it is now UsageLimiter, which is a different concern with a different
-// lifetime and had no business sharing an interface with money.
-type Charger interface {
-	// ChargeBatch debits the per-batch surcharge, idempotent on batchID.
-	// A configured price of 0 is "token billing only", not an error.
-	ChargeBatch(ctx context.Context, workspaceID, batchID string, items int) (priceMicros int64, err error)
-}
-
 // Clock is the source of "now" (domain/shared/clock.go), injected so the
 // debounce and lease arithmetic is testable without sleeping.
 type Clock = shared.Clock
