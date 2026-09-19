@@ -77,20 +77,20 @@ type Batch struct {
 	ItemCount        int          `json:"itemCount"`
 	PromptTokens     int          `json:"promptTokens"`
 	CompletionTokens int          `json:"completionTokens"`
-	PriceMicros      int64        `json:"priceMicros"`
 	Outcome          BatchOutcome `json:"outcome"`
 	RequestID        string       `json:"requestId,omitempty"`
 
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// BatchTotals is a period's spend.
+// BatchTotals is a period's token usage. There is no money column: comment
+// analysis is billed purely as token usage by the AI adapter, on the workspace
+// ledger, and nothing here duplicates that.
 type BatchTotals struct {
-	Batches          int   `json:"batches"`
-	Items            int   `json:"items"`
-	PromptTokens     int   `json:"promptTokens"`
-	CompletionTokens int   `json:"completionTokens"`
-	PriceMicros      int64 `json:"priceMicros"`
+	Batches          int `json:"batches"`
+	Items            int `json:"items"`
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
 	// ByKind splits the same period by pass, so the dashboard can show what
 	// the author inference cost separately from the comment classification.
 	// Always present for every kind, zeroed when a pass did not run.
@@ -102,7 +102,6 @@ func (t *BatchTotals) Add(b Batch) {
 	t.Items += b.ItemCount
 	t.PromptTokens += b.PromptTokens
 	t.CompletionTokens += b.CompletionTokens
-	t.PriceMicros += b.PriceMicros
 
 	kind := NormalizeBatchKind(b.Kind)
 	if t.ByKind == nil {
@@ -113,7 +112,6 @@ func (t *BatchTotals) Add(b Batch) {
 	part.Items += b.ItemCount
 	part.PromptTokens += b.PromptTokens
 	part.CompletionTokens += b.CompletionTokens
-	part.PriceMicros += b.PriceMicros
 	t.ByKind[kind] = part
 }
 

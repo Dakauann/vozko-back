@@ -155,9 +155,8 @@ type SpendInput struct {
 // ---- Backfill (§10) ----
 
 type BackfillEstimate struct {
-	Containers        int   `json:"containers"`
-	EstimatedComments int   `json:"estimatedComments"`
-	EstimatedMicros   int64 `json:"estimatedMicros"`
+	Containers        int `json:"containers"`
+	EstimatedComments int `json:"estimatedComments"`
 }
 
 type StartBackfillInput struct {

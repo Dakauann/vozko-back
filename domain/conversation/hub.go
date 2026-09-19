@@ -3,7 +3,11 @@ package conversation
 import (
 	"time"
 
-	ca "vozko/domain/audience"
+	// Imported under its own name rather than aliased: swag resolves a type by
+	// the identifier written in the file, so an alias here makes ca.Analysis
+	// unresolvable and fails `swag init` for the WHOLE project, not just this
+	// endpoint. Two references are not worth a broken docs build.
+	"vozko/domain/audience"
 	"vozko/domain/shared"
 )
 
@@ -79,7 +83,7 @@ type InboxEntry struct {
 	AvailableStages    []InboxEntryStage `json:"available_stages,omitempty"`
 	MatchedMessages    []MatchedMessage  `json:"matched_messages,omitempty"`
 	TotalMatches       int               `json:"total_matches,omitempty"`
-	LatestAnalysis     *ca.Analysis      `json:"latest_analysis,omitempty"`
+	LatestAnalysis     *audience.Analysis      `json:"latest_analysis,omitempty"`
 	// AnalysisPhase says where an upcoming analysis has got to. Independent of
 	// LatestAnalysis, which keeps showing the previous revision's verdict while
 	// the next one is computed, and carried on the entry rather than only on
@@ -225,7 +229,7 @@ type LabelProvider interface {
 }
 
 type AnalysisProvider interface {
-	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*ca.Analysis, error)
+	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*audience.Analysis, error)
 	// GetBatchAnalysisPending reports which of these conversations have an
 	// analysis waiting. One read for the page, beside the one above.
 	GetBatchAnalysisPending(entryIDs []string, entryType string) (map[string]bool, error)

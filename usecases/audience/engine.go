@@ -28,9 +28,10 @@ const (
 	containerLockPrefix = "lock:comment_analysis:"
 	containerLockTTL    = 5 * time.Minute
 
-	// minBalanceFloor is the same floor the conversation analysis job uses,
-	// fail-closed: below it no call is made.
-	minBalanceFloor int64 = 10_000
+	// minBalanceFloor is the product-wide AI floor, fail-closed: below it no
+	// call is made. Read from the domain rather than written out again, so
+	// every path that spends on a model agrees on one number.
+	minBalanceFloor int64 = balance.MinAIFloorMicros
 
 	// maxSplitDepth: two halvings, then singles (plan §7.2).
 	maxSplitDepth = 2
@@ -55,10 +56,8 @@ type EngineDeps struct {
 	Conversations map[ca.Source]ca.ConversationAdapter
 	Classifier    ca.Classifier
 	Scheduler     ca.Scheduler
-	Charger       ca.Charger
-	// Usage is the rolling volume budget. Separate from Charger because it is a
-	// different concern: one is money, the other is how much work a workspace
-	// may do. Optional; nil means no ceiling.
+	// Usage is the rolling volume budget: not money, but how much work a
+	// workspace may do. Optional; nil means no ceiling.
 	Usage ca.UsageLimiter
 	// WorkspaceLimits is where an operator's ceiling is set, which is a
 	// workspace-level decision and not an account-level one. Read through
@@ -100,7 +99,7 @@ type Engine struct {
 func NewEngine(deps EngineDeps) (*Engine, error) {
 	switch {
 	case deps.Repo == nil, deps.Settings == nil, deps.Batches == nil, deps.Classifier == nil,
-		deps.Scheduler == nil, deps.Charger == nil, deps.State == nil:
+		deps.Scheduler == nil, deps.State == nil:
 		return nil, errors.New("comment analysis engine: missing required dependency")
 	}
 	if deps.Clock == nil {
@@ -652,15 +651,6 @@ func (e *Engine) runPlan(
 	out.analyzed = analyzed.analyzed
 	out.released = analyzed.released
 
-	if analyzed.analyzed > 0 {
-		price, err := e.Charger.ChargeBatch(ctx, workspaceID, batchID, analyzed.analyzed)
-		if err != nil {
-			// Loud: the classification happened and was token-billed; a
-			// missing surcharge is revenue, not correctness.
-			log.Printf("[comment-analysis] CRITICAL: surcharge for batch %s (workspace %s, %d comments) failed: %v", batchID, workspaceID, analyzed.analyzed, err)
-		}
-		receipt.PriceMicros = price
-	}
 	e.recordBatch(ctx, receipt)
 	return out
 }

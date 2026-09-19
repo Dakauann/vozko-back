@@ -13,7 +13,6 @@ import (
 	ca "vozko/domain/audience"
 	"vozko/domain/cache"
 	"vozko/domain/shared"
-	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
 // Backfill (plan §10): operator-initiated, estimated and confirmed first,
@@ -46,7 +45,6 @@ type BackfillDeps struct {
 	Ingestor  ca.Ingestor
 	Adapters  map[ca.Source]ca.SourceAdapter
 	Verifiers map[ca.Source]AccountVerifier
-	Pricer    workspace_pricing.Pricer
 	State     cache.SharedState
 	Clock     ca.Clock
 }
@@ -104,12 +102,6 @@ func (uc *backfillUseCases) estimate(ctx context.Context, workspaceID string, so
 			break
 		}
 		offset += containerPageSize
-	}
-	if uc.Pricer != nil && est.EstimatedComments > 0 {
-		price, err := uc.Pricer.PriceAudience(workspaceID, est.EstimatedComments)
-		if err == nil {
-			est.EstimatedMicros = price.PriceMicros
-		}
 	}
 	return est, nil
 }

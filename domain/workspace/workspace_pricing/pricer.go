@@ -42,12 +42,6 @@ type Pricer interface {
 	PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error)
 
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)
-
-	// PriceAudience is the optional per-analysed-comment surcharge on
-	// top of token billing. A price of 0 (the seeded default) means "token
-	// billing only" and prices to zero WITHOUT an error: an unconfigured
-	// surcharge is a deliberate state, not a failure.
-	PriceAudience(workspaceID string, comments int) (PriceResult, error)
 }
 
 type pricer struct {
@@ -254,26 +248,6 @@ func (p *pricer) PriceWhatsApp(workspaceID string, templateCategory string) (Pri
 		CostMicros:   item.CostMicros,
 		PriceMicros:  item.PriceMicros,
 		ProfitMicros: item.PriceMicros - item.CostMicros,
-	}, nil
-}
-
-func (p *pricer) PriceAudience(workspaceID string, comments int) (PriceResult, error) {
-	if comments <= 0 {
-		return PriceResult{}, nil
-	}
-	resolved, err := p.ResolveForWorkspace(workspaceID)
-	if err != nil {
-		return PriceResult{}, err
-	}
-	item := findResolvedItem(resolved, CategoryLLM, AudienceService, AudienceMetric)
-	if item == nil || item.PriceMicros <= 0 {
-		return PriceResult{}, nil
-	}
-	n := int64(comments)
-	return PriceResult{
-		CostMicros:   item.CostMicros * n,
-		PriceMicros:  item.PriceMicros * n,
-		ProfitMicros: (item.PriceMicros - item.CostMicros) * n,
 	}, nil
 }
 

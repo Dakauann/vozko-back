@@ -76,7 +76,6 @@ func newConversationHarness(t *testing.T, budget ca.Budget) *conversationHarness
 		adapter:     &fakeAdapter{texts: map[string]string{}},
 		classifier:  &fakeClassifier{},
 		scheduler:   newFakeScheduler(),
-		charger:     newFakeCharger(),
 		balance:     &fakeBalance{micros: 1_000_000},
 		state:       newFakeState(),
 		broadcaster: &fakeBroadcaster{},
@@ -89,7 +88,7 @@ func newConversationHarness(t *testing.T, budget ca.Budget) *conversationHarness
 	engine, err := NewEngine(EngineDeps{
 		Repo: base.repo, Settings: NewSettingsResolver(base.settings), Batches: base.batches,
 		Conversations: map[ca.Source]ca.ConversationAdapter{ca.SourceWhatsApp: conversations},
-		Classifier:    base.classifier, Scheduler: base.scheduler, Charger: base.charger,
+		Classifier:    base.classifier, Scheduler: base.scheduler,
 		Usage:   NewUsageLimiter(base.state),
 		Balance: base.balance, State: base.state, Clock: fixedClock{now}, Budget: budget,
 		Broadcaster: base.broadcaster,
@@ -340,10 +339,11 @@ func TestEngine_RetriesUnreadableConversationsBeforeSkipping(t *testing.T) {
 	}
 }
 
-// The shared machinery is genuinely shared: a conversation batch books a spend
-// receipt and charges, the same as a comment batch. If conversations had been
-// given their own path, this is what would have been quietly lost, which is
-// exactly what happened in the engine this replaces.
+// The shared machinery is genuinely shared: a conversation batch books a usage
+// receipt and carries the workspace on the classify call, the same as a comment
+// batch. That workspace id is the whole of token billing, so if conversations
+// had been given their own path this is the revenue that would have been
+// quietly lost, which is exactly what happened in the engine this replaces.
 func TestEngine_BooksSpendForConversations(t *testing.T) {
 	h := newConversationHarness(t, smallBudget())
 	h.seed(2, 6, now)
@@ -363,8 +363,8 @@ func TestEngine_BooksSpendForConversations(t *testing.T) {
 	if receipt.WorkspaceID != "ws-1" || receipt.Source != ca.SourceWhatsApp {
 		t.Errorf("receipt misattributed: %+v", receipt)
 	}
-	if len(h.charger.charges) == 0 {
-		t.Error("a conversation batch charged nothing")
+	if len(h.classifier.Calls) == 0 || h.classifier.Calls[0].WorkspaceID != "ws-1" {
+		t.Error("WorkspaceID must be on the conversation request too (token billing)")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	ca "vozko/domain/audience"
 	"vozko/domain/balance"
+	balance_usecase "vozko/usecases/balance"
 )
 
 // The balance floor, shared by every path in the engine that spends tokens.
@@ -26,15 +27,18 @@ import (
 // cannot prove the customer has.
 
 // AlertFreshness aside, this is the one number the whole engine agrees on.
+//
+// A thin wrapper over balance_usecase.AIFloorGuard rather than a second
+// implementation of it: the decision (is this workspace above the floor, and is
+// an unreadable balance a refusal) is product-wide, while the ca.ErrBalanceBelowFloor
+// return is this engine's own vocabulary. The wrapper is the translation, and
+// nothing else.
 type balanceGuard struct {
-	balance balance.CachedBalanceChecker
-	// label names the caller in the log line, so an operator reading "skipped,
-	// balance below floor" knows which feature went quiet.
-	label string
+	inner balance_usecase.AIFloorGuard
 }
 
 func newBalanceGuard(checker balance.CachedBalanceChecker, label string) balanceGuard {
-	return balanceGuard{balance: checker, label: label}
+	return balanceGuard{inner: balance_usecase.NewAIFloorGuard(checker, label)}
 }
 
 // Allow reports whether this workspace may spend on a model call right now.
@@ -42,19 +46,10 @@ func newBalanceGuard(checker balance.CachedBalanceChecker, label string) balance
 // A nil checker allows: a deployment without balance tracking is not a
 // deployment where every AI feature should be dead.
 func (g balanceGuard) Allow(workspaceID string) error {
-	if g.balance == nil {
+	if g.inner.Allow(workspaceID) {
 		return nil
 	}
-	bal, err := g.balance.GetBalance(workspaceID)
-	if err != nil {
-		log.Printf("[comment-analysis] %s: balance check for workspace %s failed, refusing (fail-closed): %v",
-			g.label, workspaceID, err)
-		return ca.ErrBalanceBelowFloor
-	}
-	if bal < minBalanceFloor {
-		return ca.ErrBalanceBelowFloor
-	}
-	return nil
+	return ca.ErrBalanceBelowFloor
 }
 
 // aiCall is one model call to book, for the paths that are not the batched
@@ -116,10 +111,9 @@ func writeBatch(ctx context.Context, batches ca.BatchRepository, batch *ca.Batch
 
 // recordAICall is the common case: build it and write it.
 //
-// PriceMicros is left at zero here: the per-batch surcharge belongs to the
-// comment pass, charged per analysed comment. These calls are billed by TOKENS,
-// and the token counts are what the receipt carries. The role pass charges as
-// well, so it builds and writes in two steps instead of using this.
+// Every pass is billed the same way, by TOKENS, on the workspace ledger the
+// moment the AI adapter sees the workspace id. The receipt carries the token
+// counts and nothing else: there is no money on it to reconcile.
 func recordAICall(ctx context.Context, batches ca.BatchRepository, clock ca.Clock, call aiCall) {
 	writeBatch(ctx, batches, newAIBatch(clock, call))
 }

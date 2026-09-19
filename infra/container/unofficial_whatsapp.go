@@ -300,6 +300,13 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 			bundle.Conversations,
 			uwrepo.NewLeadLinker(c.repositories.lead),
 			c.repositories.conversation,
+			// Scripting, and the balance it spends. Both optional and both
+			// nil-safe: without an AI service the scripter is nil and seeding
+			// writes the blank placeholders it always did, and without a
+			// balance checker the floor allows rather than blocking every AI
+			// feature on a deployment that does not track balances.
+			uwuc.NewConversationScripter(c.services.ai, c.cfg.OpenRouterDefaultModel),
+			c.services.cachedBalanceChecker,
 		),
 	)
 	if err := bundle.ConsumeSeedInbox.Start(); err != nil {
@@ -331,6 +338,12 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		// import succeeds, reports zero queued, and the operator is left
 		// wondering why their inbox did not fill.
 		"inbox-seeding": c.services.uwSeedQueuePub != nil && c.services.uwSeedQueueSub != nil,
+		// Named for the same reason as inbox-seeding, one step further in:
+		// without an AI service the checkbox still exists, the import still
+		// succeeds and every conversation still opens, blank. A system admin
+		// who ticked "semear conversas de exemplo" and got two hundred empty
+		// chats has no way to tell that from a model that refused.
+		"inbox-seed-scripting": c.services.ai != nil,
 		// Named because its absence does not degrade — it OPENS. An unwired
 		// entitlement reader means provisioning is not gated at all, and slots on
 		// hosts we pay for get handed out with nothing recording that they were

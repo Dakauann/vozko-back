@@ -46,7 +46,6 @@ type RoleInferenceDeps struct {
 	Adapters map[ca.Source]ca.SourceAdapter
 	Inferrer ca.RoleInferrer
 	Batches  ca.BatchRepository
-	Charger  ca.Charger
 	Balance  balance.CachedBalanceChecker
 	Clock    ca.Clock
 }
@@ -223,12 +222,6 @@ func (j *RoleInferenceJob) record(ctx context.Context, author *ca.AuthorStats, r
 		PromptTokens:     result.PromptTokens,
 		CompletionTokens: result.CompletionTokens,
 	})
-	if j.Charger != nil {
-		// Idempotent on the batch id, exactly as the comment pass charges.
-		if micros, err := j.Charger.ChargeBatch(ctx, batch.WorkspaceID, batch.ID, items); err == nil {
-			batch.PriceMicros = micros
-		}
-	}
 	writeBatch(ctx, j.Batches, batch)
 }
 

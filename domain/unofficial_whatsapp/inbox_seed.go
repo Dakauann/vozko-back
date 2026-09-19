@@ -62,6 +62,16 @@ type SeedTarget struct {
 type SeedRequest struct {
 	WorkspaceID string       `json:"workspaceId"`
 	Targets     []SeedTarget `json:"targets"`
+
+	// Script, when set, makes these conversations open with the operator's
+	// message and the short exchange that followed it instead of a blank
+	// placeholder. Nil is the ordinary empty-chat seeding this feature started
+	// as, and every path below stays exactly as it was when it is nil.
+	//
+	// It rides IN the payload rather than on a second topic: the work is the
+	// same work on the same targets, and a separate exchange would mean two
+	// consumers racing to resolve the same numbers.
+	Script *SeedScript `json:"script,omitempty"`
 }
 
 // Normalize reduces every number to digits and drops what cannot be addressed.
@@ -72,6 +82,14 @@ type SeedRequest struct {
 // import's own rejection list, so nothing disappears silently.
 func (r *SeedRequest) Normalize() {
 	r.WorkspaceID = strings.TrimSpace(r.WorkspaceID)
+
+	r.Script.Normalize()
+	// A script that normalises down to nothing is DROPPED rather than left to
+	// fail validation. The operator ticked a box and typed only whitespace;
+	// their leads still import and their conversations still open, plain.
+	if r.Script != nil && len(r.Script.Bodies) == 0 {
+		r.Script = nil
+	}
 
 	out := make([]SeedTarget, 0, len(r.Targets))
 	seen := make(map[string]struct{}, len(r.Targets))
@@ -109,24 +127,108 @@ func (r *SeedRequest) Validate() error {
 	if len(r.Targets) == 0 {
 		return ErrSeedNoTargets
 	}
-	return nil
+	// The script's error is the request's error rather than a field quietly
+	// ignored: a caller that sent variants using different variables has a bug,
+	// and seeding plain instead would hide it until an operator found a raw
+	// "{{2}}" in a customer conversation.
+	return r.Script.Validate()
+}
+
+// ScriptedCount is how many of these targets will actually get a written
+// thread.
+//
+// The truth, never the ask. It is what the import response tells the operator,
+// and "500 conversas de exemplo" over a 500-row import would be a lie by three
+// hundred: only the first MaxScriptedTargets cost anything.
+func (r SeedRequest) ScriptedCount() int {
+	if r.Script == nil {
+		return 0
+	}
+	if len(r.Targets) < MaxScriptedTargets {
+		return len(r.Targets)
+	}
+	return MaxScriptedTargets
+}
+
+// SeedQueued is what one publish accepted.
+//
+// Two numbers, because the import response has to say two things and one
+// number cannot say both: every imported conversation is queued, and only the
+// first MaxScriptedTargets of them will carry a written thread. "500 na fila"
+// on its own leaves the operator expecting five hundred example conversations.
+//
+// It lives beside SeedRequest rather than with the publisher so the HTTP layer
+// can name it without importing a channel use case.
+type SeedQueued struct {
+	// Targets is how many numbers reached the queue, scripted or not.
+	Targets int
+	// Scripted is how many of those will have a thread written for them.
+	Scripted int
 }
 
 // Split cuts the request into publishable batches, covering every target
 // exactly once.
+//
+// With a script, the split carries the whole money story:
+//
+//   - The FIRST MaxScriptedTargets targets are cut into ScriptedSeedBatchSize
+//     batches that carry the script. Small, because each one costs model
+//     latency on top of the database work and a batch is the unit of retry.
+//   - Every target after that is cut into ordinary SeedBatchSize batches that
+//     do NOT. Nothing is dropped: row 201 still lands in the inbox, as today's
+//     plain empty chat.
+//   - Scripted batches are published FIRST, so the visible part of the import
+//     happens first.
+//
+// The cap is applied HERE, in the domain, so it cannot be bypassed by a caller
+// that builds its own batches and publishes them itself.
 func (r *SeedRequest) Split() []SeedRequest {
 	if len(r.Targets) == 0 {
 		return nil
 	}
-	batches := make([]SeedRequest, 0, (len(r.Targets)+SeedBatchSize-1)/SeedBatchSize)
-	for start := 0; start < len(r.Targets); start += SeedBatchSize {
-		end := start + SeedBatchSize
-		if end > len(r.Targets) {
-			end = len(r.Targets)
+	if r.Script == nil {
+		return r.splitPlain(r.Targets)
+	}
+
+	cut := len(r.Targets)
+	if cut > MaxScriptedTargets {
+		cut = MaxScriptedTargets
+	}
+
+	batches := make([]SeedRequest, 0,
+		(cut+ScriptedSeedBatchSize-1)/ScriptedSeedBatchSize+
+			(len(r.Targets)-cut+SeedBatchSize-1)/SeedBatchSize)
+
+	for start := 0; start < cut; start += ScriptedSeedBatchSize {
+		end := start + ScriptedSeedBatchSize
+		if end > cut {
+			end = cut
 		}
 		batches = append(batches, SeedRequest{
 			WorkspaceID: r.WorkspaceID,
 			Targets:     r.Targets[start:end],
+			Script:      r.Script,
+		})
+	}
+	return append(batches, r.splitPlain(r.Targets[cut:])...)
+}
+
+// splitPlain is the original, unscripted split: whole batches of SeedBatchSize
+// carrying no script. It is the whole of Split when nothing was scripted, and
+// the tail of it when something was.
+func (r *SeedRequest) splitPlain(targets []SeedTarget) []SeedRequest {
+	if len(targets) == 0 {
+		return nil
+	}
+	batches := make([]SeedRequest, 0, (len(targets)+SeedBatchSize-1)/SeedBatchSize)
+	for start := 0; start < len(targets); start += SeedBatchSize {
+		end := start + SeedBatchSize
+		if end > len(targets) {
+			end = len(targets)
+		}
+		batches = append(batches, SeedRequest{
+			WorkspaceID: r.WorkspaceID,
+			Targets:     targets[start:end],
 		})
 	}
 	return batches

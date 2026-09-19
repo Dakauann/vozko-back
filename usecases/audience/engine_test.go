@@ -57,9 +57,6 @@ func TestEngine_ClassifiesABatch(t *testing.T) {
 	if len(h.batches.rows) != 1 || h.batches.rows[0].ItemCount != 20 || h.batches.rows[0].PromptTokens != 900 {
 		t.Fatalf("receipt = %+v", h.batches.rows)
 	}
-	if len(h.charger.charges) != 1 || h.charger.charges[0] != 20 {
-		t.Fatalf("surcharge charged for %v, want [20]", h.charger.charges)
-	}
 	if _, still := h.scheduler.hints[ref().Key()]; still {
 		t.Fatal("a fully flushed container must drop its hint")
 	}

@@ -35,14 +35,11 @@ const (
 	ServiceManualAdjustment     ServiceType = "manual_adjustment"
 	ServiceTopUp                ServiceType = "top_up"
 	ServiceAddon                ServiceType = "addon"
-	// ServiceAudience is the optional per-batch surcharge for comment
-	// analysis (plan §9.2). Token usage itself is billed as ServiceAI.
-	ServiceAudience ServiceType = "audience"
 )
 
 func (s ServiceType) IsValid() bool {
 	switch s {
-	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon, ServiceAudience:
+	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon:
 		return true
 	default:
 		return false
@@ -59,7 +56,6 @@ func AllServiceTypes() []ServiceType {
 		ServiceManualAdjustment,
 		ServiceTopUp,
 		ServiceAddon,
-		ServiceAudience,
 	}
 }
 

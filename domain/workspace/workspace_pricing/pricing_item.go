@@ -32,13 +32,6 @@ const (
 	TelephonyServiceWhatsAppCalls = "whatsapp_calls"
 )
 
-// The optional per-comment surcharge for comment analysis (an LLM-category
-// item so it sits beside the token markup in the pricing admin).
-const (
-	AudienceService = "audience"
-	AudienceMetric  = "per_comment"
-)
-
 const TelephonyChannelWhatsApp = "whatsapp"
 
 // TelephonyServiceForChannel maps a call's channel onto its pricing service.
@@ -105,11 +98,6 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryTelephony, Service: TelephonyServiceWhatsAppCalls, Metric: "per_minute", CostMicros: 10_800, PriceMicros: 13_333, Currency: "USD"},
 
 	{Category: CategoryLLM, Service: "default_markup", Metric: "percentage", MarkupPct: 0.20, Currency: "USD"},
-
-	// Comment analysis surcharge, per analysed comment, on top of token
-	// billing. Seeded at ZERO: token billing only until an operator prices
-	// it. Zero is a deliberate state here, not a missing rate.
-	{Category: CategoryLLM, Service: AudienceService, Metric: AudienceMetric, CostMicros: 0, PriceMicros: 0, Currency: "USD"},
 
 	{Category: CategoryExchangeRate, Service: "usd_to_brl", Metric: "per_unit", PriceMicros: 6_000_000, Currency: "BRL"},
 }

@@ -1497,7 +1497,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// which only exists once the useCases struct literal above has been assigned.
 	// The comment-analysis engine is built first: the Instagram webhook use
 	// case built inside initInstagramRuntime takes its enqueuer.
-	c.initCommentAnalysis(pricer, notifierUC, dashboardURL)
+	c.initCommentAnalysis(notifierUC, dashboardURL)
 	c.initInstagramRuntime(messageHistoryManager)
 
 	// Instagram subscribes three topics (messages, comments, account events).

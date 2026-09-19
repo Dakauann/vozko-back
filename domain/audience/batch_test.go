@@ -16,15 +16,15 @@ func TestBatchOutcome_Valid(t *testing.T) {
 	}
 }
 
-// The receipt is what the customer sees on the bill: "12.480 comentários
-// analisados · R$ 37,44 este mês". Charging for something invisible is how
-// disputes start (§9.4).
+// The receipt is what the customer sees for the period: "12.480 comentários
+// analisados este mês". Billing the tokens is the AI adapter's job; these
+// totals only have to account for the work honestly (§9.4).
 func TestBatchTotals_Add(t *testing.T) {
 	var tot BatchTotals
-	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400, PriceMicros: 100})
-	tot.Add(Batch{ItemCount: 5, PromptTokens: 300, CompletionTokens: 90, PriceMicros: 25})
+	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400})
+	tot.Add(Batch{ItemCount: 5, PromptTokens: 300, CompletionTokens: 90})
 	if tot.Batches != 2 || tot.Items != 25 || tot.PromptTokens != 1300 ||
-		tot.CompletionTokens != 490 || tot.PriceMicros != 125 {
+		tot.CompletionTokens != 490 {
 		t.Fatalf("totals = %+v", tot)
 	}
 }
@@ -36,21 +36,21 @@ func TestBatchTotals_SplitsByKind(t *testing.T) {
 	var tot BatchTotals
 	// An untagged row is the comment pass: that is what every row written
 	// before the author pass existed is.
-	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400, PriceMicros: 100})
-	tot.Add(Batch{Kind: BatchKindComment, ItemCount: 5, PromptTokens: 300, CompletionTokens: 90, PriceMicros: 25})
-	tot.Add(Batch{Kind: BatchKindAuthorRole, ItemCount: 40, PromptTokens: 2000, CompletionTokens: 60, PriceMicros: 200})
+	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400})
+	tot.Add(Batch{Kind: BatchKindComment, ItemCount: 5, PromptTokens: 300, CompletionTokens: 90})
+	tot.Add(Batch{Kind: BatchKindAuthorRole, ItemCount: 40, PromptTokens: 2000, CompletionTokens: 60})
 
 	comments := tot.ByKind[BatchKindComment]
-	if comments.Batches != 2 || comments.Items != 25 || comments.PriceMicros != 125 {
+	if comments.Batches != 2 || comments.Items != 25 || comments.PromptTokens != 1300 {
 		t.Fatalf("comment pass = %+v", comments)
 	}
 	roles := tot.ByKind[BatchKindAuthorRole]
-	if roles.Batches != 1 || roles.Items != 40 || roles.PriceMicros != 200 {
+	if roles.Batches != 1 || roles.Items != 40 || roles.PromptTokens != 2000 {
 		t.Fatalf("author pass = %+v", roles)
 	}
-	if comments.PriceMicros+roles.PriceMicros != tot.PriceMicros {
+	if comments.PromptTokens+roles.PromptTokens != tot.PromptTokens {
 		t.Fatalf("the parts (%d + %d) must add up to the whole (%d)",
-			comments.PriceMicros, roles.PriceMicros, tot.PriceMicros)
+			comments.PromptTokens, roles.PromptTokens, tot.PromptTokens)
 	}
 	if comments.Batches+roles.Batches != tot.Batches {
 		t.Fatal("batch counts must add up too")

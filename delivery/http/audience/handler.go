@@ -618,7 +618,7 @@ func (h *Handler) EstimateBackfill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, BackfillEstimateResponse{
-		Containers: est.Containers, EstimatedComments: est.EstimatedComments, EstimatedMicros: est.EstimatedMicros,
+		Containers: est.Containers, EstimatedComments: est.EstimatedComments,
 	})
 }
 

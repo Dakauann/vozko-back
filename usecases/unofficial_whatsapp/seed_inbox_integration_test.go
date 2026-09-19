@@ -2,6 +2,7 @@ package unofficial_whatsapp_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -123,13 +124,54 @@ func visibleInInbox(t *testing.T, tx *gorm.DB, workspaceID, conversationID strin
 }
 
 func newIntegrationSeeder(tx *gorm.DB) *uwuc.SeedInboxUseCase {
+	return newIntegrationSeederWith(tx, nil)
+}
+
+// newIntegrationSeederWith is the same seeder with a scripter attached.
+//
+// The scripter is a FAKE even here, and deliberately: this test is about what
+// Postgres and the production inbox queries do with a written thread, not about
+// what a model writes. Calling a real provider would make it slow, non
+// deterministic and billable, and would be a test of OpenRouter rather than of
+// us.
+func newIntegrationSeederWith(tx *gorm.DB, scripter uw.ConversationScripter) *uwuc.SeedInboxUseCase {
 	return uwuc.NewSeedInboxUseCase(
 		uwrepo.NewInstanceRepository(tx),
 		uwrepo.NewContactRepository(tx),
 		uwrepo.NewConversationRepository(tx),
 		uwrepo.NewLeadLinker(lead_repository.NewRepository(tx)),
 		conversation_repository.NewRepository(tx),
+		scripter,
+		// No balance checker: a nil one allows, and the floor has its own unit
+		// test. Wiring a real one here would make this skip on any database
+		// whose workspaces happen to sit at zero.
+		nil,
 	)
+}
+
+// scriptedFake answers every subject with the same four-message shape the
+// dialog's default asks for, ending on the lead's turn.
+type scriptedFake struct{}
+
+func (scriptedFake) Script(_ context.Context, req uw.ScriptRequest) (*uw.ScriptResult, error) {
+	threads := make([]uw.ScriptedThread, 0, len(req.Subjects))
+	for _, subject := range req.Subjects {
+		threads = append(threads, uw.ScriptedThread{
+			Ref: subject.Ref,
+			Turns: []uw.ScriptTurn{
+				{FromLead: true, Text: "oi! vi sim, queria saber sobre o valor"},
+				{FromLead: false, Text: "Claro. Posso te passar as condicoes por aqui mesmo?"},
+				{FromLead: true, Text: "pode sim, to olhando agora"},
+			},
+		})
+	}
+	return &uw.ScriptResult{Threads: threads, Model: "fake", FinishReason: "stop"}, nil
+}
+
+type failingScripter struct{}
+
+func (failingScripter) Script(context.Context, uw.ScriptRequest) (*uw.ScriptResult, error) {
+	return nil, errors.New("upstream refused")
 }
 
 func TestSeedInboxMakesTheConversationVisibleInTheInbox(t *testing.T) {
@@ -303,4 +345,298 @@ func entryState(t *testing.T, tx *gorm.DB, conversationID string) entrySnapshot 
 		t.Fatalf("snapshot last_message_at: %v", err)
 	}
 	return snap
+}
+
+
+// ---- scripted seeding ----
+
+// inboxPreview reproduces the hydration LATERAL the inbox list uses to pick the
+// message shown under each row, and the unread predicate beside it.
+//
+// Both live in infra, in SQL, and no in-memory double models either. A scripted
+// thread that wrote four rows but renders the operator's own opening as the
+// preview would look, in the product, like a conversation nobody answered.
+func inboxPreview(t *testing.T, tx *gorm.DB, conversationID string) (string, int64) {
+	t.Helper()
+	var text string
+	if err := tx.Raw(`
+		SELECT cm.text
+		FROM conversation_messages cm
+		WHERE cm.entry_id = ? AND cm.entry_type = 'unofficial_whatsapp'
+		  AND cm.deleted_at IS NULL
+		ORDER BY cm.created_at DESC, cm.id DESC LIMIT 1`, conversationID).
+		Scan(&text).Error; err != nil {
+		t.Fatalf("inbox preview: %v", err)
+	}
+	var unread int64
+	if err := tx.Raw(`
+		SELECT COUNT(*) FROM conversation_messages cm
+		WHERE cm.entry_id = ? AND cm.entry_type = 'unofficial_whatsapp'
+		  AND cm.read = false AND cm.deleted_at IS NULL
+		  AND cm.message_type IN ('user_message','audio','media','story_reply','story_mention','post_share')`,
+		conversationID).Scan(&unread).Error; err != nil {
+		t.Fatalf("unread count: %v", err)
+	}
+	return text, unread
+}
+
+// locateSeededConversation finds the conversation a number was seeded into.
+func locateSeededConversation(t *testing.T, tx *gorm.DB, workspaceID, number string) string {
+	t.Helper()
+	var conversationID string
+	if err := tx.Raw(`
+		SELECT uwc.id::text
+		FROM unofficial_whatsapp_conversations uwc
+		JOIN unofficial_whatsapp_contacts uwct ON uwct.id = uwc.contact_id
+		WHERE uwct.phone_number = ? AND uwc.workspace_id = ?
+		ORDER BY uwc.created_at DESC LIMIT 1`, number, workspaceID).
+		Scan(&conversationID).Error; err != nil {
+		t.Fatalf("locate seeded conversation: %v", err)
+	}
+	if conversationID == "" {
+		t.Fatal("no conversation was created for the seeded number")
+	}
+	return conversationID
+}
+
+func countSeededMessages(t *testing.T, tx *gorm.DB, conversationID string) int64 {
+	t.Helper()
+	var messages int64
+	if err := tx.Raw(`
+		SELECT COUNT(*) FROM conversation_messages
+		WHERE entry_id = ? AND entry_type = 'unofficial_whatsapp' AND deleted_at IS NULL`,
+		conversationID).Scan(&messages).Error; err != nil {
+		t.Fatalf("message count: %v", err)
+	}
+	return messages
+}
+
+// The claim the whole feature rests on, checked against the real queries: a
+// scripted conversation is visible, reads as a conversation, and carries
+// exactly one unread message because it ends on the lead's turn.
+func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
+	tx := integrationTx(t)
+	workspaceID, _ := anyConnectedInstance(t, tx)
+
+	const number = "5511900000003"
+	seeder := newIntegrationSeederWith(tx, scriptedFake{})
+
+	out, err := seeder.Execute(context.Background(), uw.SeedRequest{
+		WorkspaceID: workspaceID,
+		Targets:     []uw.SeedTarget{{Number: number, Name: "Integracao Vozko"}},
+		Script: &uw.SeedScript{
+			Bodies:      []string{"Oi {{1}}, tudo bem? Vi que voce se interessou no curso."},
+			MaxMessages: 4,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if out.Seeded != 1 || out.Scripted != 1 {
+		t.Fatalf("outcome = %+v, want 1 seeded and 1 scripted", out)
+	}
+
+	conversationID := locateSeededConversation(t, tx, workspaceID, number)
+
+	// Gate one and gate two, the same pair the blank placeholder has to pass.
+	if !visibleInInbox(t, tx, workspaceID, conversationID) {
+		t.Fatal("the scripted conversation does not pass the production inbox gates")
+	}
+	if got := countSeededMessages(t, tx, conversationID); got != 4 {
+		t.Fatalf("wrote %d messages, want the 4-message thread", got)
+	}
+
+	// The preview is the LEAD's last line, not ours. This is what an operator
+	// actually sees in the list, and getting it wrong makes a seeded inbox look
+	// like a list of messages nobody replied to.
+	preview, unread := inboxPreview(t, tx, conversationID)
+	if preview != "pode sim, to olhando agora" {
+		t.Errorf("inbox preview = %q, want the lead's last line", preview)
+	}
+	// Exactly one: the trailing inbound message. The three before it are read.
+	if unread != 1 {
+		t.Errorf("unread_count = %d, want 1", unread)
+	}
+
+	// last_message_at has to land on the newest turn, or the conversation sinks
+	// in a list sorted by it. touchEntryMessageClocks is monotonic and the
+	// thread is written in order, which is what makes backdating safe.
+	var lastMessageAt, newestMessage string
+	if err := tx.Raw(`SELECT COALESCE(last_message_at::text, '')
+	                  FROM unofficial_whatsapp_conversations WHERE id = ?`,
+		conversationID).Scan(&lastMessageAt).Error; err != nil {
+		t.Fatalf("last_message_at: %v", err)
+	}
+	if err := tx.Raw(`SELECT COALESCE(MAX(created_at)::text, '')
+	                  FROM conversation_messages
+	                  WHERE entry_id = ? AND entry_type = 'unofficial_whatsapp' AND deleted_at IS NULL`,
+		conversationID).Scan(&newestMessage).Error; err != nil {
+		t.Fatalf("newest message: %v", err)
+	}
+	if lastMessageAt != newestMessage {
+		t.Errorf("last_message_at = %q, want the newest message at %q", lastMessageAt, newestMessage)
+	}
+
+	// Ending on the lead's turn sets last_customer_message_at, which puts the
+	// thread into the ordinary idle auto-close window. Correct, and worth
+	// pinning before someone reports seeded conversations "closing themselves".
+	var customerClock string
+	if err := tx.Raw(`SELECT COALESCE(last_customer_message_at::text, '')
+	                  FROM unofficial_whatsapp_conversations WHERE id = ?`,
+		conversationID).Scan(&customerClock).Error; err != nil {
+		t.Fatalf("last_customer_message_at: %v", err)
+	}
+	if customerClock == "" {
+		t.Error("a thread ending on the lead's turn did not set last_customer_message_at")
+	}
+
+	// Every row is marked, so these are findable and deletable later without
+	// guessing from the text.
+	var marked int64
+	if err := tx.Raw(`
+		SELECT COUNT(*) FROM conversation_messages
+		WHERE entry_id = ? AND entry_type = 'unofficial_whatsapp' AND deleted_at IS NULL
+		  AND metadata->>'seed' = 'lead_import'`, conversationID).Scan(&marked).Error; err != nil {
+		t.Fatalf("metadata count: %v", err)
+	}
+	if marked != 4 {
+		t.Errorf("%d of 4 messages carry the seed marker", marked)
+	}
+}
+
+// Re-running a scripted import must not write a second thread, and must not
+// call the model again.
+func TestSeedInboxScriptedSeedingIsIdempotentAgainstPostgres(t *testing.T) {
+	tx := integrationTx(t)
+	workspaceID, _ := anyConnectedInstance(t, tx)
+
+	const number = "5511900000004"
+	seeder := newIntegrationSeederWith(tx, scriptedFake{})
+	req := uw.SeedRequest{
+		WorkspaceID: workspaceID,
+		Targets:     []uw.SeedTarget{{Number: number, Name: "Integracao Vozko"}},
+		Script: &uw.SeedScript{
+			Bodies:      []string{"Oi {{1}}, tudo bem?"},
+			MaxMessages: 4,
+		},
+	}
+
+	if _, err := seeder.Execute(context.Background(), req); err != nil {
+		t.Fatalf("first Execute: %v", err)
+	}
+	out, err := seeder.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second Execute: %v", err)
+	}
+	if out.AlreadyActive != 1 || out.Scripted != 0 {
+		t.Fatalf("second run outcome = %+v, want 1 already active and nothing scripted", out)
+	}
+
+	conversationID := locateSeededConversation(t, tx, workspaceID, number)
+	if got := countSeededMessages(t, tx, conversationID); got != 4 {
+		t.Fatalf("two runs left %d messages, want 4", got)
+	}
+}
+
+// A scripter that fails must leave a conversation that still renders, with
+// today's placeholder in it. The degradation the whole feature promises,
+// checked against the gates rather than against a fake.
+func TestSeedInboxFallsBackToAVisiblePlaceholderAgainstPostgres(t *testing.T) {
+	tx := integrationTx(t)
+	workspaceID, _ := anyConnectedInstance(t, tx)
+
+	const number = "5511900000005"
+	seeder := newIntegrationSeederWith(tx, failingScripter{})
+
+	out, err := seeder.Execute(context.Background(), uw.SeedRequest{
+		WorkspaceID: workspaceID,
+		Targets:     []uw.SeedTarget{{Number: number, Name: "Integracao Vozko"}},
+		Script:      &uw.SeedScript{Bodies: []string{"Oi {{1}}"}, MaxMessages: 4},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if out.Seeded != 1 || out.Scripted != 0 || out.ScriptFailed != 1 {
+		t.Fatalf("outcome = %+v, want 1 seeded plain and 1 script failed", out)
+	}
+
+	conversationID := locateSeededConversation(t, tx, workspaceID, number)
+	if !visibleInInbox(t, tx, workspaceID, conversationID) {
+		t.Fatal("the fallback conversation does not pass the production inbox gates")
+	}
+	if got := countSeededMessages(t, tx, conversationID); got != 1 {
+		t.Fatalf("the fallback wrote %d messages, want the 1 placeholder", got)
+	}
+	if _, unread := inboxPreview(t, tx, conversationID); unread != 0 {
+		t.Errorf("the placeholder fallback has %d unread messages, want 0", unread)
+	}
+}
+
+// The whole suite runs inside a transaction that is always rolled back, so the
+// development database is untouched. This is the test that says so: it counts
+// the rows a scripted seed would add, in a nested transaction it aborts itself,
+// and asserts the counts come back to where they started.
+func TestSeedInboxScriptedSeedingLeavesNoRowsBehind(t *testing.T) {
+	tx := integrationTx(t)
+	workspaceID, _ := anyConnectedInstance(t, tx)
+
+	before := seededRowCounts(t, tx, workspaceID)
+
+	inner := tx.Begin()
+	if inner.Error != nil {
+		t.Fatalf("savepoint: %v", inner.Error)
+	}
+	const number = "5511900000006"
+	if _, err := newIntegrationSeederWith(inner, scriptedFake{}).
+		Execute(context.Background(), uw.SeedRequest{
+			WorkspaceID: workspaceID,
+			Targets:     []uw.SeedTarget{{Number: number, Name: "Integracao Vozko"}},
+			Script:      &uw.SeedScript{Bodies: []string{"Oi {{1}}"}, MaxMessages: 4},
+		}); err != nil {
+		inner.Rollback()
+		t.Fatalf("Execute: %v", err)
+	}
+	during := seededRowCounts(t, inner, workspaceID)
+	if during.messages <= before.messages || during.conversations <= before.conversations {
+		inner.Rollback()
+		t.Fatalf("seeding wrote nothing: before %+v, during %+v", before, during)
+	}
+	if err := inner.Rollback().Error; err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+
+	after := seededRowCounts(t, tx, workspaceID)
+	if after != before {
+		t.Fatalf("rows survived the rollback: before %+v, after %+v", before, after)
+	}
+}
+
+type seededCounts struct {
+	conversations int64
+	contacts      int64
+	messages      int64
+}
+
+func seededRowCounts(t *testing.T, tx *gorm.DB, workspaceID string) seededCounts {
+	t.Helper()
+	var counts seededCounts
+	if err := tx.Raw(`SELECT COUNT(*) FROM unofficial_whatsapp_conversations
+	                  WHERE workspace_id = ? AND deleted_at IS NULL`, workspaceID).
+		Scan(&counts.conversations).Error; err != nil {
+		t.Fatalf("conversation count: %v", err)
+	}
+	if err := tx.Raw(`SELECT COUNT(*) FROM unofficial_whatsapp_contacts
+	                  WHERE workspace_id = ? AND deleted_at IS NULL`, workspaceID).
+		Scan(&counts.contacts).Error; err != nil {
+		t.Fatalf("contact count: %v", err)
+	}
+	if err := tx.Raw(`
+		SELECT COUNT(*) FROM conversation_messages cm
+		JOIN unofficial_whatsapp_conversations uwc ON uwc.id = cm.entry_id
+		WHERE uwc.workspace_id = ? AND cm.entry_type = 'unofficial_whatsapp'
+		  AND cm.deleted_at IS NULL`, workspaceID).
+		Scan(&counts.messages).Error; err != nil {
+		t.Fatalf("message count: %v", err)
+	}
+	return counts
 }

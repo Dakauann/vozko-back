@@ -576,7 +576,7 @@ func TestIntegration_SettingsAuthorsRollupsRoundTrip(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		if err := batches.Create(ctx, &ca.Batch{ID: uuid.New().String(), WorkspaceID: ws, Source: ca.SourceInstagram,
 			AccountID: integrationRef().AccountID, ContainerID: "media-1", Model: "m", ItemCount: 20, PromptTokens: 1000,
-			CompletionTokens: 300, PriceMicros: 50, Outcome: ca.OutcomeOK, CreatedAt: now}); err != nil {
+			CompletionTokens: 300, Outcome: ca.OutcomeOK, CreatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -584,7 +584,7 @@ func TestIntegration_SettingsAuthorsRollupsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if totals.Batches != 2 || totals.Items != 40 || totals.PriceMicros != 100 {
+	if totals.Batches != 2 || totals.Items != 40 || totals.PromptTokens != 2000 {
 		t.Fatalf("totals = %+v", totals)
 	}
 

@@ -9,7 +9,6 @@ import (
 	ca "vozko/domain/audience"
 	"vozko/domain/notification"
 	"vozko/domain/shared"
-	workspace_pricing_domain "vozko/domain/workspace/workspace_pricing"
 	ca_repository "vozko/infra/repositories/audience"
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	cauc "vozko/usecases/audience"
@@ -57,10 +56,9 @@ type audienceBundle struct {
 const audienceRetention = 365 * 24 * time.Hour
 
 // initCommentAnalysis builds the engine. It runs inside initUseCases once the
-// AI service, the pricer, the balance checker and the notifier exist, and
-// BEFORE the Instagram runtime half, whose webhook use case takes the
-// enqueuer built here.
-func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, notifier notification.Notifier, dashboardURL string) {
+// AI service, the balance checker and the notifier exist, and BEFORE the
+// Instagram runtime half, whose webhook use case takes the enqueuer built here.
+func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboardURL string) {
 	bundle := &audienceBundle{}
 	c.audience = bundle
 
@@ -206,8 +204,7 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 		Conversations: conversationAdapters,
 		Classifier:    cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
 		Scheduler:     scheduler,
-		Charger:       cauc.NewCharger(c.repositories.balance, pricer, state),
-		// The rolling volume budget, distinct from the surcharge above.
+		// The rolling volume budget: how much work a workspace may do.
 		Usage:           usageLimiter,
 		WorkspaceLimits: workspaceSettings,
 		Balance:         c.services.cachedBalanceChecker,
@@ -243,14 +240,14 @@ func (c *Container) initCommentAnalysis(pricer workspace_pricing_domain.Pricer, 
 	bundle.Rollup.SetRoleInference(cauc.NewRoleInferenceJob(cauc.RoleInferenceDeps{
 		Authors: authors, Repo: repo, Settings: settings, Adapters: adapters,
 		Inferrer: cauc.NewRoleInferrer(c.services.ai, c.cfg.OpenRouterDefaultModel),
-		Batches:  batches, Charger: cauc.NewCharger(c.repositories.balance, pricer, state),
+		Batches: batches,
 		Balance: c.services.cachedBalanceChecker, Clock: clock,
 	}))
 	bundle.Purge = cauc.NewPurgeJob(repo, audienceRetention, clock)
 
 	backfillDeps := cauc.BackfillDeps{
 		Backfills: backfills, Settings: settings, Ingestor: bundle.Ingestor,
-		Adapters: adapters, Verifiers: verifiers, Pricer: pricer, State: state, Clock: clock,
+		Adapters: adapters, Verifiers: verifiers, State: state, Clock: clock,
 	}
 	bundle.Backfill = cauc.NewBackfillJob(backfillDeps)
 	estimate, start, get, cancel := cauc.NewBackfillUseCases(backfillDeps)
