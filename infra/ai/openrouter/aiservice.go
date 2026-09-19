@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -329,7 +330,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			if input.WorkspaceID == "" {
 				log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", req.Model)
 			} else {
-				s.publishBillingEvent(input.WorkspaceID, req.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
+				s.publishBillingEvent(input.WorkspaceID, req.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens, costToMicros(resp.Usage.Cost))
 			}
 		}
 
@@ -559,6 +560,13 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 			}
 		}
 	}
+	// Ask for the accounting, on every request, streamed or not.
+	//
+	// StreamOptions.IncludeUsage asks for the token COUNTS in the final chunk;
+	// this asks for usage.cost — the figure OpenRouter actually debits. Without
+	// it the field is simply absent from the response and there is nothing to
+	// bill from but an estimate.
+	req.Usage = &openrouter.IncludeUsage{Include: true}
 	return req
 }
 
@@ -779,16 +787,26 @@ func parseFloat64(s string) float64 {
 	return v
 }
 
-func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, completionTokens int) {
+// costToMicros converts the provider's reported USD cost into micros, rounding
+// UP so a sub-micro call is never recorded as free.
+func costToMicros(cost float64) int64 {
+	if cost <= 0 {
+		return 0
+	}
+	return int64(math.Ceil(cost * 1_000_000))
+}
+
+func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64) {
 	if s.billingPub == nil {
 		return
 	}
 	event := ai.AICompletedEvent{
-		RequestID:        uuid.New().String(),
-		WorkspaceID:      workspaceID,
-		Model:            model,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
+		RequestID:          uuid.New().String(),
+		WorkspaceID:        workspaceID,
+		Model:              model,
+		PromptTokens:       promptTokens,
+		CompletionTokens:   completionTokens,
+		ProviderCostMicros: providerCostMicros,
 	}
 	data, err := json.Marshal(event)
 	if err != nil {

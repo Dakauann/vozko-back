@@ -60,7 +60,8 @@ func (c *ConsumeAIBillingUseCase) handle(message []byte, ack messaging.MessageAc
 		return
 	}
 
-	if event.WorkspaceID == "" || event.RequestID == "" || (event.PromptTokens == 0 && event.CompletionTokens == 0) {
+	if event.WorkspaceID == "" || event.RequestID == "" ||
+		(event.PromptTokens == 0 && event.CompletionTokens == 0 && event.ProviderCostMicros == 0) {
 		_ = ack.Ack()
 		return
 	}
@@ -104,12 +105,10 @@ func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error 
 		return nil
 	}
 
-	result, err := c.pricer.PriceLLM(event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens)
+	result, err := c.pricer.PriceLLM(event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.ProviderCostMicros)
 	if err != nil {
 		return fmt.Errorf("LLM pricing failed for model %s: %w", event.Model, err)
 	}
-
-	fmt.Println("[ai-billing] result:", result)
 
 	if result.PriceMicros <= 0 {
 		// Usage existed (zero-token events are dropped earlier) but priced at $0,

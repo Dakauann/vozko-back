@@ -24,7 +24,7 @@ const (
 // the Service: when nil, recovery is disabled and a cut stream simply isn't
 // billed (the legacy behaviour, a revenue leak).
 type generationUsageFetcher interface {
-	FetchUsage(ctx context.Context, generationID string) (promptTokens, completionTokens int, ok bool)
+	FetchUsage(ctx context.Context, generationID string) (promptTokens, completionTokens int, costMicros int64, ok bool)
 }
 
 type httpGenerationFetcher struct {
@@ -49,39 +49,44 @@ func newHTTPGenerationFetcher(apiKey, baseURL string) *httpGenerationFetcher {
 // normalized prompt/completion token counts (the same basis as the inline stream
 // usage and the per-token pricing). ok is false on any error or non-200 so the
 // caller can fall back to the leak log rather than billing a wrong amount.
-func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID string) (int, int, bool) {
+func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID string) (int, int, int64, bool) {
 	if f == nil || f.apiKey == "" || strings.TrimSpace(generationID) == "" {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	endpoint := f.baseURL + "/generation?id=" + url.QueryEscape(generationID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	req.Header.Set("Authorization", "Bearer "+f.apiKey)
 
 	resp, err := f.client.Do(req)
 	if err != nil {
 		log.Printf("[ai-billing] generation usage fetch failed id=%s: %v", generationID, err)
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[ai-billing] generation usage fetch id=%s status=%d", generationID, resp.StatusCode)
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 
 	var payload struct {
 		Data struct {
-			TokensPrompt     int `json:"tokens_prompt"`
-			TokensCompletion int `json:"tokens_completion"`
+			TokensPrompt     int     `json:"tokens_prompt"`
+			TokensCompletion int     `json:"tokens_completion"`
+			TotalCost        float64 `json:"total_cost"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		log.Printf("[ai-billing] generation usage decode failed id=%s: %v", generationID, err)
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	return payload.Data.TokensPrompt, payload.Data.TokensCompletion, true
+	// total_cost is what the generation was billed. The token counts come back
+	// too and are still carried, but they are OpenRouter's NORMALIZED counts,
+	// not the native ones the price is computed on — so they only ever
+	// approximate. The cost does not.
+	return payload.Data.TokensPrompt, payload.Data.TokensCompletion, costToMicros(payload.Data.TotalCost), true
 }
 
 // billStreamUsage bills a single streamed turn. With an inline usage chunk it
@@ -96,17 +101,21 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 		return
 	}
 	if usage != nil {
-		s.publishBillingEvent(workspaceID, model, usage.PromptTokens, usage.CompletionTokens)
+		s.publishBillingEvent(workspaceID, model, usage.PromptTokens, usage.CompletionTokens, costToMicros(usage.Cost))
 		return
 	}
 	if s.usageFetcher != nil && strings.TrimSpace(generationID) != "" {
 		fctx, cancel := context.WithTimeout(context.Background(), generationFetchTimeout)
-		pt, ct, ok := s.usageFetcher.FetchUsage(fctx, generationID)
+		pt, ct, costMicros, ok := s.usageFetcher.FetchUsage(fctx, generationID)
 		cancel()
-		if ok && (pt > 0 || ct > 0) {
-			log.Printf("[ai-billing] recovered usage for cut stream via /generation id=%s model=%s ws=%s prompt=%d completion=%d",
-				generationID, model, workspaceID, pt, ct)
-			s.publishBillingEvent(workspaceID, model, pt, ct)
+		// A recovered generation can be worth billing on its cost alone: a cut
+		// stream that reported no tokens still cost money, and refusing to bill
+		// it because the token counts came back zero is the leak this recovery
+		// exists to close.
+		if ok && (pt > 0 || ct > 0 || costMicros > 0) {
+			log.Printf("[ai-billing] recovered usage for cut stream via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
+				generationID, model, workspaceID, pt, ct, costMicros)
+			s.publishBillingEvent(workspaceID, model, pt, ct, costMicros)
 			return
 		}
 	}

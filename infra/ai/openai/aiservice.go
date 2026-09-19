@@ -569,6 +569,8 @@ func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, c
 		Model:            model,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
+		// This provider does not return a per-call cost, so the token estimate
+		// stays. Leaving it zero is what selects that path.
 	}
 	data, err := json.Marshal(event)
 	if err != nil {

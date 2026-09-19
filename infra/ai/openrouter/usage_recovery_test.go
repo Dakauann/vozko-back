@@ -14,16 +14,17 @@ import (
 // stubFetcher is an in-memory generationUsageFetcher so the recovery path can be
 // driven without a real HTTP endpoint.
 type stubFetcher struct {
-	pt, ct int
-	ok     bool
-	calls  int
-	gotID  string
+	pt, ct     int
+	costMicros int64
+	ok         bool
+	calls      int
+	gotID      string
 }
 
-func (f *stubFetcher) FetchUsage(_ context.Context, id string) (int, int, bool) {
+func (f *stubFetcher) FetchUsage(_ context.Context, id string) (int, int, int64, bool) {
 	f.calls++
 	f.gotID = id
-	return f.pt, f.ct, f.ok
+	return f.pt, f.ct, f.costMicros, f.ok
 }
 
 // hangingSSEServer flushes the given chunks then holds the connection open until
@@ -260,9 +261,14 @@ func TestHTTPGenerationFetcher_Success(t *testing.T) {
 	defer srv.Close()
 
 	f := newHTTPGenerationFetcher("test-key", srv.URL)
-	pt, ct, ok := f.FetchUsage(context.Background(), "gen-x")
+	pt, ct, costMicros, ok := f.FetchUsage(context.Background(), "gen-x")
 	if !ok || pt != 1200 || ct != 1000 {
 		t.Fatalf("FetchUsage = %d/%d ok=%v, want 1200/1000 true", pt, ct, ok)
+	}
+	// total_cost absent from this payload: the caller must fall back to the
+	// token estimate, not bill zero.
+	if costMicros != 0 {
+		t.Fatalf("costMicros = %d, want 0 when the payload carries no total_cost", costMicros)
 	}
 	if gotPath != "/generation" || gotID != "gen-x" || gotAuth != "Bearer test-key" {
 		t.Fatalf("unexpected request: path=%q id=%q auth=%q", gotPath, gotID, gotAuth)
@@ -275,7 +281,7 @@ func TestHTTPGenerationFetcher_Non200(t *testing.T) {
 	}))
 	defer srv.Close()
 	f := newHTTPGenerationFetcher("test-key", srv.URL)
-	if _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
+	if _, _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
 		t.Fatal("non-200 must yield ok=false")
 	}
 }
@@ -286,18 +292,18 @@ func TestHTTPGenerationFetcher_BadJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 	f := newHTTPGenerationFetcher("test-key", srv.URL)
-	if _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
+	if _, _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
 		t.Fatal("bad json must yield ok=false")
 	}
 }
 
 func TestHTTPGenerationFetcher_GuardsEmptyInputs(t *testing.T) {
 	f := newHTTPGenerationFetcher("", openRouterDefaultBaseURL)
-	if _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
+	if _, _, _, ok := f.FetchUsage(context.Background(), "gen-x"); ok {
 		t.Fatal("empty api key must yield ok=false")
 	}
 	f2 := newHTTPGenerationFetcher("k", openRouterDefaultBaseURL)
-	if _, _, ok := f2.FetchUsage(context.Background(), "  "); ok {
+	if _, _, _, ok := f2.FetchUsage(context.Background(), "  "); ok {
 		t.Fatal("empty generation id must yield ok=false")
 	}
 }
