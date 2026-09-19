@@ -10,6 +10,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/conversation"
+	"vozko/domain/media"
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	balance_usecase "vozko/usecases/balance"
@@ -41,6 +42,30 @@ type InboxPlaceholderWriter interface {
 	// CountByEntry is the guard, not a statistic. See resolveEmptyConversation.
 	CountByEntry(entryID string, entryType shared.EntryType) (int64, error)
 	Create(message *conversation.Message) error
+}
+
+// SeedAssetReader is the one lookup seeding needs against the WORKSPACE's own
+// media library: turning the id an administrator picked in the import dialog
+// into the stored object behind it.
+//
+// Narrow, like InboxPlaceholderWriter above, and satisfied by the existing
+// media repository — a view of a port rather than a second one.
+type SeedAssetReader interface {
+	GetMediaByID(mediaID string) (*media.Media, error)
+}
+
+// SeedAttachmentWriter mints the per-conversation media row a seeded
+// attachment is rendered from.
+//
+// ONE ROW PER CONVERSATION, not one row shared by all of them, and that is not
+// bookkeeping. The endpoint the chat fetches an attachment through refuses a
+// media row whose EntryID is not the conversation asking for it
+// [delivery/http/conversation/handler.go, GetMedia], so a single shared row
+// would render in exactly one seeded chat and 403 in the other hundred and
+// ninety-nine. The rows are cheap: the bytes are already in storage and every
+// row points at the same object.
+type SeedAttachmentWriter interface {
+	Create(media *conversation.ConversationMedia) error
 }
 
 // SeedOutcome is what one batch did, in the terms an operator would use.
@@ -101,6 +126,23 @@ type SeedInboxUseCase struct {
 	scripter uw.ConversationScripter
 	balance  balance.CachedBalanceChecker
 	clock    shared.Clock
+
+	// The attachment pair, set together by WithAttachments or not at all. A
+	// deployment without them seeds the text openings it always did.
+	assets      SeedAssetReader
+	attachments SeedAttachmentWriter
+}
+
+// WithAttachments lets a seeded opening carry a file.
+//
+// A setter rather than two more constructor arguments: the constructor already
+// takes seven, and this is one optional capability whose two halves are
+// useless apart — an asset nothing can attach, or an attachment writer with
+// nothing to attach.
+func (uc *SeedInboxUseCase) WithAttachments(assets SeedAssetReader, attachments SeedAttachmentWriter) *SeedInboxUseCase {
+	uc.assets = assets
+	uc.attachments = attachments
+	return uc
 }
 
 func NewSeedInboxUseCase(
@@ -190,7 +232,10 @@ func (uc *SeedInboxUseCase) Execute(ctx context.Context, in uw.SeedRequest) (*Se
 	uc.scriptPending(ctx, in, pending, out)
 
 	// 4. Write: the thread where there is one, the placeholder everywhere else.
-	uc.writePending(pending, in.Script, out)
+	//    The attachment is resolved ONCE for the batch — every conversation in
+	//    it carries the same file, and a lookup per target is the same answer
+	//    fetched twenty-five times.
+	uc.writePending(pending, in.Script, uc.resolveAsset(in), out)
 
 	return out, nil
 }
@@ -417,13 +462,14 @@ func (uc *SeedInboxUseCase) scriptChunk(
 func (uc *SeedInboxUseCase) writePending(
 	pending []*seedCandidate,
 	script *uw.SeedScript,
+	asset *seedAsset,
 	out *SeedOutcome,
 ) {
 	now := uc.now()
 	for _, candidate := range pending {
 		var err error
 		if len(candidate.turns) > 0 && script != nil {
-			err = uc.writeThread(candidate, now)
+			err = uc.writeThread(candidate, asset, now)
 		} else {
 			err = uc.messages.Create(newInboxPlaceholder(candidate.conversationID, now))
 		}
@@ -446,13 +492,13 @@ func (uc *SeedInboxUseCase) writePending(
 // A partial failure is a failure: a half-written thread is worse than an empty
 // chat, so the caller counts the target as failed and the rows that did land
 // still make the conversation visible.
-func (uc *SeedInboxUseCase) writeThread(candidate *seedCandidate, now time.Time) error {
+func (uc *SeedInboxUseCase) writeThread(candidate *seedCandidate, asset *seedAsset, now time.Time) error {
 	total := len(candidate.turns) + 1
 	at := threadTimestamps(candidate.target.Number, total, now)
 	metadata := seedMetadata(now)
 
 	messages := make([]*conversation.Message, 0, total)
-	messages = append(messages, &conversation.Message{
+	opening := &conversation.Message{
 		EntryID:   candidate.conversationID,
 		EntryType: shared.EntryTypeUnofficialWhatsApp,
 		Channel:   conversation.MessageChannelUnofficialWhatsApp,
@@ -468,7 +514,9 @@ func (uc *SeedInboxUseCase) writeThread(candidate *seedCandidate, now time.Time)
 		Text:      candidate.opening,
 		Metadata:  metadata,
 		CreatedAt: at[0],
-	})
+	}
+	uc.attach(opening, asset, now)
+	messages = append(messages, opening)
 
 	for i, turn := range candidate.turns {
 		msg := &conversation.Message{

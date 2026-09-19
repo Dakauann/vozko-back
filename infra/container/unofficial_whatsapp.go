@@ -307,7 +307,12 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 			// feature on a deployment that does not track balances.
 			uwuc.NewConversationScripter(c.services.ai, c.cfg.OpenRouterDefaultModel),
 			c.services.cachedBalanceChecker,
-		),
+			// Attachments on the opening message. The workspace media library
+			// holds the file an administrator picked in the import dialog; the
+			// conversation media repository is where each seeded chat gets its
+			// own row pointing at it, which is what the chat serves the file
+			// through.
+		).WithAttachments(c.repositories.media, c.repositories.conversationMedia),
 	)
 	if err := bundle.ConsumeSeedInbox.Start(); err != nil {
 		log.Printf("[unofficial-whatsapp] inbox seed consumer failed to start: %v", err)

@@ -97,7 +97,58 @@ var (
 	ErrScriptVariantMismatch        = errors.New("unofficial whatsapp: every seed script variant must use the same variables")
 	ErrScriptTooManyVariants        = errors.New("unofficial whatsapp: too many seed script variants")
 	ErrScriptMessageCountOutOfRange = errors.New("unofficial whatsapp: the seeded thread length is out of range")
+	ErrScriptMediaIDRequired        = errors.New("unofficial whatsapp: the seed script attachment needs a media id")
+	ErrScriptMediaKindInvalid       = errors.New("unofficial whatsapp: the seed script attachment is not a kind this channel can carry")
 )
+
+// SeedAttachment is the file the opening message carries.
+//
+// It names a media id from the WORKSPACE's own library and never a URL. That is
+// the same rule the campaign's MessageSpec carries and for the same reason: an
+// arbitrary caller-supplied URL would make seeding a server-side request forger
+// pointed at whatever the caller likes. Which workspace the id belongs to is
+// checked where the asset is resolved, because a queue message is not a request
+// and carries no session to check it against.
+//
+// It ADDS to the opening rather than replacing it. Bodies stays required and
+// becomes the caption, so the variants, the {{1}} rendering and the
+// deterministic pick all keep working unchanged — and the model still has a
+// line of text to reason from when it writes the reply, which a bare picture
+// would not give it.
+type SeedAttachment struct {
+	MediaID string    `json:"mediaId"`
+	Kind    MediaKind `json:"kind"`
+}
+
+// Normalize trims the id and folds the kind's case. Nil-safe: no attachment is
+// the ordinary script.
+func (a *SeedAttachment) Normalize() {
+	if a == nil {
+		return
+	}
+	a.MediaID = strings.TrimSpace(a.MediaID)
+	a.Kind = MediaKind(strings.ToLower(strings.TrimSpace(string(a.Kind))))
+}
+
+// Validate refuses an attachment that names no file or a kind this channel
+// cannot carry.
+//
+// Refused rather than dropped, unlike an attachment with no id at all: a kind
+// the channel does not know is a caller bug with no obvious nearest value, and
+// seeding two hundred conversations without the file the administrator chose is
+// a worse answer than telling them.
+func (a *SeedAttachment) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.MediaID == "" {
+		return ErrScriptMediaIDRequired
+	}
+	if !a.Kind.CanAttach() {
+		return ErrScriptMediaKindInvalid
+	}
+	return nil
+}
 
 // SeedScript is what a system administrator wrote: the opening message, its
 // variants, and how far the thread may run.
@@ -118,6 +169,10 @@ type SeedScript struct {
 	// opening. Clamped into [ScriptMinMessages, ScriptMaxMessages].
 	MaxMessages int `json:"maxMessages"`
 
+	// Attachment, when set, makes the opening a file with Bodies as its
+	// caption instead of a plain text message.
+	Attachment *SeedAttachment `json:"attachment,omitempty"`
+
 	// Context is optional free text about what the business sells.
 	//
 	// Without it the model has only a one-line opener to reason from, which is
@@ -137,6 +192,15 @@ func (s *SeedScript) Normalize() {
 	}
 	s.Bodies = shared.NonEmptyTrimmed(s.Bodies)
 	s.Context, _ = shared.TruncateRunes(strings.TrimSpace(s.Context), MaxScriptContextRunes)
+
+	// An attachment naming no file is DROPPED rather than left to fail
+	// validation: the administrator opened the picker and chose nothing, and
+	// their conversations should still open with the text they wrote. A named
+	// file of an unknown kind is a different case and Validate refuses it.
+	s.Attachment.Normalize()
+	if s.Attachment != nil && s.Attachment.MediaID == "" {
+		s.Attachment = nil
+	}
 
 	// Clamped rather than rejected. An out-of-range cap is a caller bug and the
 	// nearest legal value is obvious, so it should not cost the operator their
@@ -185,7 +249,7 @@ func (s *SeedScript) Validate() error {
 	if s.MaxMessages < ScriptMinMessages || s.MaxMessages > ScriptMaxMessages {
 		return fmt.Errorf("%w: %d to %d", ErrScriptMessageCountOutOfRange, ScriptMinMessages, ScriptMaxMessages)
 	}
-	return nil
+	return s.Attachment.Validate()
 }
 
 // OpeningFor is the first message this target receives, rendered.

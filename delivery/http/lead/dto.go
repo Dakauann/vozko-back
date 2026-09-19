@@ -169,6 +169,34 @@ type SeedConversationsSpec struct {
 	// Context is optional free text about what the business sells, so the
 	// model has more than a one-line opener to reason from.
 	Context string `json:"context,omitempty"`
+	// Attachment makes the first message carry a file, with Bodies as its
+	// caption. Optional; omitted is the plain text opening.
+	Attachment *SeedAttachmentSpec `json:"attachment,omitempty"`
+}
+
+// SeedAttachmentSpec is the file the opening message carries.
+//
+// A media id from the workspace own library, never a URL: an arbitrary
+// caller-supplied link would make seeding a server-side request forger pointed
+// at whatever the caller likes. Which workspace the id belongs to is checked
+// where the asset is resolved, because the seeding batch travels on a queue and
+// a queue message carries no session.
+type SeedAttachmentSpec struct {
+	// MediaID is an id from POST /medias.
+	MediaID string `json:"mediaId"`
+	// Kind is what the contact sees: image, video, audio, voice, document or
+	// sticker.
+	Kind string `json:"kind" example:"image"`
+}
+
+func (a *SeedAttachmentSpec) toDomain() *unofficial_whatsapp.SeedAttachment {
+	if a == nil {
+		return nil
+	}
+	return &unofficial_whatsapp.SeedAttachment{
+		MediaID: a.MediaID,
+		Kind:    unofficial_whatsapp.MediaKind(a.Kind),
+	}
 }
 
 // toDomain converts the wire shape into the domain's script.
@@ -184,6 +212,7 @@ func (s *SeedConversationsSpec) toDomain() *unofficial_whatsapp.SeedScript {
 		Bodies:      s.Bodies,
 		MaxMessages: s.MaxMessages,
 		Context:     s.Context,
+		Attachment:  s.Attachment.toDomain(),
 	}
 }
 
