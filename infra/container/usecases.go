@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	workflow_infra "vozko/infra/workflow"
 
 	"github.com/google/uuid"
 
@@ -1181,6 +1182,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
+	// Re-check automation when a PARKED run resumes, not only when one starts.
+	// Without this a workflow slept through the operator switching automation
+	// off and still messaged the contact hours later.
+	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(c.repositories.wcEntry))
 	c.useCases.aichat = aichat_usecase.NewService(
 		c.repositories.aichatThread,
 		c.repositories.aichatMessage,

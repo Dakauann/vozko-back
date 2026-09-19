@@ -68,6 +68,9 @@ type RunEngine struct {
 	registry      *NodeExecutorRegistry
 	wakeScheduler workflow.WakeScheduler
 	runLocker     workflow.RunLocker
+	// automationGate is consulted when a PARKED run resumes. Optional: nil
+	// keeps the pre-existing behaviour, which is to resume unconditionally.
+	automationGate workflow.AutomationGate
 }
 
 const runLockTTL = 5 * time.Minute
@@ -90,6 +93,22 @@ func (e *RunEngine) SetWakeScheduler(scheduler workflow.WakeScheduler) {
 
 func (e *RunEngine) SetRunLocker(locker workflow.RunLocker) {
 	e.runLocker = locker
+}
+
+func (e *RunEngine) SetAutomationGate(gate workflow.AutomationGate) {
+	e.automationGate = gate
+}
+
+// automationOff reports that a parked run must not continue.
+//
+// Nil gate or an affirmative answer both mean "carry on": the guard exists to
+// stop a run the operator has silenced, never to stop one because the check
+// itself was unavailable.
+func (e *RunEngine) automationOff(entryID, entryType string) bool {
+	if e == nil || e.automationGate == nil || entryID == "" {
+		return false
+	}
+	return !e.automationGate.AutomationEnabled(entryID, entryType)
 }
 
 func (e *RunEngine) TryLockRun(runID string) bool {
