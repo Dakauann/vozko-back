@@ -23,6 +23,7 @@ import (
 	"vozko/domain/conversation"
 	"vozko/domain/media"
 	"vozko/domain/tools"
+	media_infra "vozko/infra/media"
 )
 
 type SendWhatsappMediaTool struct {
@@ -394,10 +395,48 @@ func (uc *SendWhatsappMediaTool) sendVideoByLink(ctx context.Context, c conversa
 	return tools.ExecutionResult{Result: fmt.Sprintf("Video sent successfully to %s (via link)", to)}, nil
 }
 
+// convertAudioToOGGOpusFn indirects the transcode so a test can drive both the
+// happy path and the fallback on a machine with no ffmpeg.
+var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
+
+// sendAudio delivers audio the way the Cloud API actually accepts it.
+//
+// Handing Meta a link let it fetch the file and decide, and for audio it accepts
+// exactly one OGG: the OPUS one. A library file that is OGG/Vorbis — what most
+// converters and DAWs export by default — has the right container, the right
+// extension and the right Content-Type, and is still refused with 131053
+// ("uploaded with mimetype as audio/ogg; codecs=opus, however on processing it
+// is of type application/octet-stream"). The whole campaign fails, one
+// undelivered message at a time, and the file looks perfectly fine.
+//
+// So transcode first and upload the bytes, which is what the operator send and
+// the workflow send node already do. The link stays as the fallback: it is what
+// this did before, so a download or ffmpeg failure is no worse than today.
 func (uc *SendWhatsappMediaTool) sendAudio(ctx context.Context, c conversation.WhatsAppClient, to string, m *media.Media) (tools.ExecutionResult, error) {
+	data, _, _, err := fetchMedia(m.URL, maxAudioBytes)
+	if err != nil {
+		log.Printf("[%s][audio] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
+		return uc.sendAudioByLink(ctx, c, to, m.URL)
+	}
+
+	ogg, err := convertAudioToOGGOpusFn(data)
+	if err != nil {
+		log.Printf("[%s][audio] transcode failed, falling back to link: %v", ToolNameSendMedia, err)
+		return uc.sendAudioByLink(ctx, c, to, m.URL)
+	}
+	log.Printf("[%s][audio] transcoded for voice note: %d bytes -> %d bytes", ToolNameSendMedia, len(data), len(ogg))
+
+	if _, err := c.SendAudioBytes(ctx, to, ogg, "voice.ogg", ""); err != nil {
+		log.Printf("[%s][audio] send of transcoded bytes failed, falling back to link: %v", ToolNameSendMedia, err)
+		return uc.sendAudioByLink(ctx, c, to, m.URL)
+	}
+	return tools.ExecutionResult{Result: fmt.Sprintf("Audio sent successfully to %s", to)}, nil
+}
+
+func (uc *SendWhatsappMediaTool) sendAudioByLink(ctx context.Context, c conversation.WhatsAppClient, to, link string) (tools.ExecutionResult, error) {
 	if _, err := c.SendAudioMessage(ctx, conversation.SendAudioMessageInput{
 		To:       to,
-		AudioURL: m.URL,
+		AudioURL: link,
 	}); err != nil {
 		return tools.ExecutionResult{}, err
 	}

@@ -450,7 +450,11 @@ func TestSendWhatsappMediaTool_Execute_VslVideo_TreatedAsVideo(t *testing.T) {
 	}
 }
 
-func TestSendWhatsappMediaTool_Execute_Audio_SendsViaLink(t *testing.T) {
+// The link is now the FALLBACK, not the primary path: WhatsApp accepts only
+// OGG/Opus for audio, so the bytes are transcoded and uploaded first. This URL
+// does not resolve, which is exactly what drives the fallback — and pins that an
+// unreachable CDN still delivers the message the way it always did.
+func TestSendWhatsappMediaTool_Execute_Audio_FallsBackToLink(t *testing.T) {
 	client := &recordingWhatsAppClient{}
 	tool := newMediaToolWith(t, client,
 		media.Media{ID: "a1", URL: "https://cdn.example.com/welcome.mp3", Type: media.MediaTypeAudio})
@@ -465,7 +469,7 @@ func TestSendWhatsappMediaTool_Execute_Audio_SendsViaLink(t *testing.T) {
 		t.Errorf("unexpected result %q", res.Result)
 	}
 	if client.uploadAudioCalls != 0 || client.uploadMediaCalls != 0 {
-		t.Errorf("audio path must not upload (uses CDN link); got uploadAudio=%d uploadMedia=%d",
+		t.Errorf("the fallback must not upload; got uploadAudio=%d uploadMedia=%d",
 			client.uploadAudioCalls, client.uploadMediaCalls)
 	}
 	if client.sendAudioInput == nil {

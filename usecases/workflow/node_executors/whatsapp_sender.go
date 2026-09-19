@@ -365,7 +365,22 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 	mediaType := detectMediaType(mediaURL)
 	var output *conversation.SendTextMessageOutput
 
-	waMediaID, uploadErr := s.downloadAndUpload(ctx, client, mediaURL, mediaType)
+	waMediaID, sniffedType, uploadErr := s.downloadAndUpload(ctx, client, mediaURL, mediaType)
+	if uploadErr != nil {
+		// The extension lied, and the link fallback cannot save it.
+		//
+		// detectMediaType reads the URL, so an MP3 a user named ".mpeg" routes
+		// as a document. Meta then refuses the upload ("Received file of type
+		// 'video/mpeg'") and refuses the link for the same reason — the contact
+		// gets an undelivered bubble and the file looks fine everywhere else.
+		// The bytes say audio, and for audio the answer is a transcode, which is
+		// the one path that produces something Meta accepts.
+		if mediaType != "audio" && strings.HasPrefix(sniffedType, "audio/") {
+			log.Printf("[workflow][whatsapp_sender] %s is named %q but its bytes are %s, re-routing as audio",
+				mediaURL, path.Ext(mediaURL), sniffedType)
+			mediaType = "audio"
+		}
+	}
 	if uploadErr != nil {
 		// A missing object is reported, not worked around. The link fallback
 		// exists for media WhatsApp can fetch when we cannot; it cannot conjure
@@ -733,15 +748,24 @@ func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]
 	return data, resp.Header.Get("Content-Type"), nil
 }
 
-func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversation.WhatsAppClient, mediaURL, mediaType string) (string, error) {
+// downloadAndUpload also reports what the BYTES actually are, which is the only
+// honest answer when the name and the stored Content-Type disagree with the
+// file. It is returned even on failure, because that is precisely when the
+// caller needs it to re-route.
+func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversation.WhatsAppClient, mediaURL, mediaType string) (string, string, error) {
 	if mediaType == "audio" {
-		return "", fmt.Errorf("audio upload-first not supported")
+		return "", "", fmt.Errorf("audio upload-first not supported")
 	}
 
 	data, mimeType, err := s.downloadMedia(ctx, mediaURL)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+
+	// Sniffed from the content, never from the header or the extension: an
+	// operator's MP3 saved as ".mpeg" is served by our own CDN as video/mpeg,
+	// and both of those are wrong about the same file.
+	sniffed := http.DetectContentType(data)
 
 	if mimeType == "" || mimeType == "application/octet-stream" {
 		switch mediaType {
@@ -756,11 +780,11 @@ func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversat
 
 	waMediaID, err := client.UploadMedia(ctx, data, mediaFilename(mediaURL), mimeType)
 	if err != nil {
-		return "", fmt.Errorf("whatsapp upload failed: %w", err)
+		return "", sniffed, fmt.Errorf("whatsapp upload failed: %w", err)
 	}
 
 	log.Printf("[workflow][whatsapp_sender] uploaded media to WhatsApp: waMediaID=%s type=%s size=%d", waMediaID, mediaType, len(data))
-	return waMediaID, nil
+	return waMediaID, sniffed, nil
 }
 
 func detectMediaType(mediaURL string) string {
