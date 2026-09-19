@@ -214,23 +214,23 @@ func TestCreateSeedsOutcomesWhenAsked(t *testing.T) {
 			Number: "55849999900" + itoa(10+i),
 		})
 	}
-	in.SeedOutcome = &campaign.SeededOutcome{RespondedPercent: 50, FailedPercent: 20}
+	in.SeedOutcome = &campaign.SeededOutcome{SentPercent: 50, FailedPercent: 20}
 
 	created, err := uc.Execute(context.Background(), in, uw.Unrestricted())
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 
-	read, _ := entries.ListByStatus(created.ID, campaign.SendStatusRead, 100)
+	sent, _ := entries.ListByStatus(created.ID, campaign.SendStatusSent, 100)
 	failed, _ := entries.ListByStatus(created.ID, campaign.SendStatusFailed, 100)
 	pending, _ := entries.ListByStatus(created.ID, campaign.SendStatusPending, 100)
-	if len(read) != 5 || len(failed) != 2 || len(pending) != 3 {
-		t.Fatalf("seeded split = %d read / %d failed / %d pending, want 5 / 2 / 3",
-			len(read), len(failed), len(pending))
+	if len(sent) != 5 || len(failed) != 2 || len(pending) != 3 {
+		t.Fatalf("seeded split = %d sent / %d failed / %d pending, want 5 / 2 / 3",
+			len(sent), len(failed), len(pending))
 	}
 	// The entries table and the export both read sentAt to answer "when", so a
 	// settled row without one renders as a blank column.
-	for _, e := range append(read, failed...) {
+	for _, e := range append(sent, failed...) {
 		if e.SentAt == nil {
 			t.Fatalf("settled entry %s has no sentAt", e.ID)
 		}
@@ -261,7 +261,7 @@ func TestCreateRefusesAnOversubscribedSeedOutcome(t *testing.T) {
 	uc, _, _, _, _ := newCreateHarness(t)
 
 	in := draft()
-	in.SeedOutcome = &campaign.SeededOutcome{RespondedPercent: 80, FailedPercent: 40}
+	in.SeedOutcome = &campaign.SeededOutcome{SentPercent: 80, FailedPercent: 40}
 
 	if _, err := uc.Execute(context.Background(), in, uw.Unrestricted()); !errors.Is(err, campaign.ErrSeededOutcomeOverflow) {
 		t.Fatalf("create = %v, want ErrSeededOutcomeOverflow", err)

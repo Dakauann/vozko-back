@@ -46,7 +46,7 @@ func postCampaign(t *testing.T, role, body string) *uwc.Campaign {
 const seededBody = `{"name":"demo","instanceId":"inst-1",
 	"message":{"kind":"text","bodies":["oi"]},
 	"targets":[{"number":"5584999990001"}],
-	"seedOutcome":{"respondedPercent":40,"failedPercent":10}}`
+	"seedOutcome":{"sentPercent":40,"failedPercent":10}}`
 
 // A platform administrator may create a campaign that already carries results.
 func TestCreateCarriesSeedOutcomeForAnAdmin(t *testing.T) {
@@ -55,7 +55,7 @@ func TestCreateCarriesSeedOutcomeForAnAdmin(t *testing.T) {
 	if got.SeedOutcome == nil {
 		t.Fatal("seed outcome was dropped for an admin")
 	}
-	want := campaign.SeededOutcome{RespondedPercent: 40, FailedPercent: 10}
+	want := campaign.SeededOutcome{SentPercent: 40, FailedPercent: 10}
 	if *got.SeedOutcome != want {
 		t.Fatalf("seed outcome = %+v, want %+v", *got.SeedOutcome, want)
 	}

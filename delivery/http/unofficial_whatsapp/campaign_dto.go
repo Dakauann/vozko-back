@@ -110,8 +110,8 @@ type campaignPayload struct {
 }
 
 type seedOutcomeDTO struct {
-	RespondedPercent int `json:"respondedPercent"`
-	FailedPercent    int `json:"failedPercent"`
+	SentPercent   int `json:"sentPercent"`
+	FailedPercent int `json:"failedPercent"`
 }
 
 func (d *seedOutcomeDTO) toDomain() *campaign.SeededOutcome {
@@ -119,8 +119,8 @@ func (d *seedOutcomeDTO) toDomain() *campaign.SeededOutcome {
 		return nil
 	}
 	return &campaign.SeededOutcome{
-		RespondedPercent: d.RespondedPercent,
-		FailedPercent:    d.FailedPercent,
+		SentPercent:   d.SentPercent,
+		FailedPercent: d.FailedPercent,
 	}
 }
 

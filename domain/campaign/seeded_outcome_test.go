@@ -14,7 +14,7 @@ func tally(statuses []SendStatus) map[SendStatus]int {
 }
 
 func TestSeededOutcomeStatusesSplitsTheList(t *testing.T) {
-	mix := &SeededOutcome{RespondedPercent: 30, FailedPercent: 10}
+	mix := &SeededOutcome{SentPercent: 30, FailedPercent: 10}
 
 	got := mix.Statuses(100)
 	if len(got) != 100 {
@@ -22,8 +22,8 @@ func TestSeededOutcomeStatusesSplitsTheList(t *testing.T) {
 	}
 
 	counts := tally(got)
-	if counts[SendStatusRead] != 30 {
-		t.Fatalf("responded = %d, want 30", counts[SendStatusRead])
+	if counts[SendStatusSent] != 30 {
+		t.Fatalf("sent = %d, want 30", counts[SendStatusSent])
 	}
 	if counts[SendStatusFailed] != 10 {
 		t.Fatalf("failed = %d, want 10", counts[SendStatusFailed])
@@ -39,10 +39,10 @@ func TestSeededOutcomeStatusesSplitsTheList(t *testing.T) {
 // a real blast's would, or the feature shows a campaign nobody could have run.
 func TestSeededOutcomeFeedsMetrics(t *testing.T) {
 	counts := &Counts{Total: 100}
-	for _, status := range (&SeededOutcome{RespondedPercent: 30, FailedPercent: 10}).Statuses(100) {
+	for _, status := range (&SeededOutcome{SentPercent: 30, FailedPercent: 10}).Statuses(100) {
 		switch status {
-		case SendStatusRead:
-			counts.Read++
+		case SendStatusSent:
+			counts.Sent++
 		case SendStatusFailed:
 			counts.Failed++
 		default:
@@ -67,7 +67,7 @@ func TestSeededOutcomeFeedsMetrics(t *testing.T) {
 // Bunching the settled buckets at the head of the list would make the entries
 // table, which reads in creation order, look like a failed import.
 func TestSeededOutcomeSpreadsRatherThanBunches(t *testing.T) {
-	got := (&SeededOutcome{RespondedPercent: 50}).Statuses(100)
+	got := (&SeededOutcome{SentPercent: 50}).Statuses(100)
 	if got[0] == got[1] && got[1] == got[2] && got[2] == got[3] &&
 		got[4] == got[0] && got[5] == got[0] {
 		t.Fatalf("first six entries are all %q: the mix is bunched, not spread", got[0])
@@ -75,7 +75,7 @@ func TestSeededOutcomeSpreadsRatherThanBunches(t *testing.T) {
 
 	// Same request, same list: a test that pins counts must not be flaky, and an
 	// operator re-creating a campaign should get the campaign they saw.
-	again := (&SeededOutcome{RespondedPercent: 50}).Statuses(100)
+	again := (&SeededOutcome{SentPercent: 50}).Statuses(100)
 	for i := range got {
 		if got[i] != again[i] {
 			t.Fatalf("entry %d differs between runs: %q then %q", i, got[i], again[i])
@@ -97,16 +97,16 @@ func TestSeededOutcomeSettlesNothingByDefault(t *testing.T) {
 }
 
 func TestSeededOutcomeRefusesMoreThanTheWholeList(t *testing.T) {
-	mix := &SeededOutcome{RespondedPercent: 70, FailedPercent: 40}
+	mix := &SeededOutcome{SentPercent: 70, FailedPercent: 40}
 	if err := mix.Validate(); !errors.Is(err, ErrSeededOutcomeOverflow) {
 		t.Fatalf("Validate = %v, want ErrSeededOutcomeOverflow", err)
 	}
 
 	// Out of range on its own is clamped, not refused: the nearest legal value
 	// is obvious, and it should not cost the operator their campaign.
-	clamped := &SeededOutcome{RespondedPercent: 140, FailedPercent: -5}
+	clamped := &SeededOutcome{SentPercent: 140, FailedPercent: -5}
 	clamped.Normalize()
-	if clamped.RespondedPercent != 100 || clamped.FailedPercent != 0 {
+	if clamped.SentPercent != 100 || clamped.FailedPercent != 0 {
 		t.Fatalf("Normalize = %+v, want {100 0}", clamped)
 	}
 }
@@ -118,17 +118,17 @@ func TestSeededOutcomeRefusesMoreThanTheWholeList(t *testing.T) {
 func TestSeededOutcomeLeavesNothingPendingWhenSharesFillTheList(t *testing.T) {
 	for total := 1; total <= 200; total++ {
 		for _, split := range [][2]int{{40, 60}, {50, 50}, {1, 99}, {100, 0}, {0, 100}, {33, 67}} {
-			mix := &SeededOutcome{RespondedPercent: split[0], FailedPercent: split[1]}
+			mix := &SeededOutcome{SentPercent: split[0], FailedPercent: split[1]}
 			counts := tally(mix.Statuses(total))
 
 			if counts[SendStatusPending] != 0 {
 				t.Fatalf("%d targets at %d/%d left %d pending",
 					total, split[0], split[1], counts[SendStatusPending])
 			}
-			if counts[SendStatusRead]+counts[SendStatusFailed] != total {
+			if counts[SendStatusSent]+counts[SendStatusFailed] != total {
 				t.Fatalf("%d targets at %d/%d settled %d",
 					total, split[0], split[1],
-					counts[SendStatusRead]+counts[SendStatusFailed])
+					counts[SendStatusSent]+counts[SendStatusFailed])
 			}
 		}
 	}
@@ -136,13 +136,13 @@ func TestSeededOutcomeLeavesNothingPendingWhenSharesFillTheList(t *testing.T) {
 
 // The exact campaign that surfaced it.
 func TestSeededOutcomeSplitsThreeTargetsFortySixty(t *testing.T) {
-	counts := tally((&SeededOutcome{RespondedPercent: 40, FailedPercent: 60}).Statuses(3))
+	counts := tally((&SeededOutcome{SentPercent: 40, FailedPercent: 60}).Statuses(3))
 
 	// 1.2 and 1.8 in exact terms, so the extra entry belongs to the larger
 	// share rather than to neither.
-	if counts[SendStatusRead] != 1 || counts[SendStatusFailed] != 2 {
-		t.Fatalf("split = %d read / %d failed, want 1 / 2",
-			counts[SendStatusRead], counts[SendStatusFailed])
+	if counts[SendStatusSent] != 1 || counts[SendStatusFailed] != 2 {
+		t.Fatalf("split = %d sent / %d failed, want 1 / 2",
+			counts[SendStatusSent], counts[SendStatusFailed])
 	}
 }
 
@@ -150,9 +150,9 @@ func TestSeededOutcomeSplitsThreeTargetsFortySixty(t *testing.T) {
 // and a partial mix still leaves the rest PENDING.
 func TestSeededOutcomeNeverOverfillsTheList(t *testing.T) {
 	for total := 1; total <= 60; total++ {
-		for responded := 0; responded <= 100; responded += 7 {
+		for sent := 0; sent <= 100; sent += 7 {
 			for failed := 0; failed <= 100; failed += 11 {
-				mix := &SeededOutcome{RespondedPercent: responded, FailedPercent: failed}
+				mix := &SeededOutcome{SentPercent: sent, FailedPercent: failed}
 				statuses := mix.Statuses(total)
 				if statuses == nil {
 					continue
@@ -161,12 +161,12 @@ func TestSeededOutcomeNeverOverfillsTheList(t *testing.T) {
 					t.Fatalf("%d targets produced %d statuses", total, len(statuses))
 				}
 				counts := tally(statuses)
-				if counts[SendStatusRead]+counts[SendStatusFailed]+counts[SendStatusPending] != total {
+				if counts[SendStatusSent]+counts[SendStatusFailed]+counts[SendStatusPending] != total {
 					t.Fatalf("%d targets at %d/%d do not add up: %+v",
-						total, responded, failed, counts)
+						total, sent, failed, counts)
 				}
 				if counts[SendStatusFailed] < 0 {
-					t.Fatalf("%d targets at %d/%d produced a negative bucket", total, responded, failed)
+					t.Fatalf("%d targets at %d/%d produced a negative bucket", total, sent, failed)
 				}
 			}
 		}

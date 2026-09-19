@@ -15,14 +15,16 @@ import (
 // status each entry is born in, which is why it lives in the shared kernel
 // beside the status vocabulary it hands out rather than in a channel package.
 //
-// "Responded" lands on READ because READ is the furthest state this vocabulary
-// has: somebody who answered necessarily opened the message, and inventing an
-// eighth status to say so would put a bucket in every export, filter and tile
-// that no real send could ever produce.
+// The settled share lands on SENT, which is what "this one went out" means in
+// this vocabulary and the state a real campaign entry reaches the instant the
+// provider accepts it. DELIVERED and READ are facts the CONTACT's phone
+// reports afterwards; claiming them would assert that a person opened a message
+// nobody sent. SENT is also what makes the tiles add up — it counts as a
+// dispatch, so "Disparos" carries the whole settled share.
 
 // ErrSeededOutcomeOverflow means the two shares together claim more entries
 // than the campaign has.
-var ErrSeededOutcomeOverflow = errors.New("seeded campaign outcome: responded and failed percentages cannot exceed 100 together")
+var ErrSeededOutcomeOverflow = errors.New("seeded campaign outcome: sent and failed percentages cannot exceed 100 together")
 
 // SeededOutcome is the share of a campaign's entries to pre-settle at creation.
 //
@@ -30,8 +32,8 @@ var ErrSeededOutcomeOverflow = errors.New("seeded campaign outcome: responded an
 // nobody has sent to looks like anyway — so a mix of 30/10 reads as a campaign
 // that is 40% of the way through, not as one that lost 60% of its list.
 type SeededOutcome struct {
-	RespondedPercent int `json:"respondedPercent"`
-	FailedPercent    int `json:"failedPercent"`
+	SentPercent   int `json:"sentPercent"`
+	FailedPercent int `json:"failedPercent"`
 }
 
 // Normalize clamps both shares into range.
@@ -44,7 +46,7 @@ func (o *SeededOutcome) Normalize() {
 	if o == nil {
 		return
 	}
-	o.RespondedPercent = clampPercent(o.RespondedPercent)
+	o.SentPercent = clampPercent(o.SentPercent)
 	o.FailedPercent = clampPercent(o.FailedPercent)
 }
 
@@ -54,9 +56,9 @@ func (o *SeededOutcome) Validate() error {
 	if o == nil {
 		return nil
 	}
-	if o.RespondedPercent+o.FailedPercent > 100 {
+	if o.SentPercent+o.FailedPercent > 100 {
 		return fmt.Errorf("%w: %d + %d", ErrSeededOutcomeOverflow,
-			o.RespondedPercent, o.FailedPercent)
+			o.SentPercent, o.FailedPercent)
 	}
 	return nil
 }
@@ -64,7 +66,7 @@ func (o *SeededOutcome) Validate() error {
 // Empty reports whether this mix would settle nothing, so a caller can treat a
 // zeroed struct exactly as it treats a nil one.
 func (o *SeededOutcome) Empty() bool {
-	return o == nil || (o.RespondedPercent <= 0 && o.FailedPercent <= 0)
+	return o == nil || (o.SentPercent <= 0 && o.FailedPercent <= 0)
 }
 
 // Statuses hands out one status per entry, in entry order.
@@ -91,28 +93,28 @@ func (o *SeededOutcome) Statuses(total int) []SendStatus {
 	// Taking each bucket as the difference between cumulative floors puts the
 	// rounding in ONE place. Shares that add up to 100 then settle the list
 	// exactly, and every bucket stays within one entry of its true share.
-	respondedShare := clampPercent(o.RespondedPercent)
+	sentShare := clampPercent(o.SentPercent)
 	failedShare := clampPercent(o.FailedPercent)
 
-	responded := total * respondedShare / 100
+	sent := total * sentShare / 100
 	// The cumulative share is clamped too, so a caller that skipped Validate and
 	// asked for more than the whole list gets the whole list, never more.
-	settled := total * clampPercent(respondedShare+failedShare) / 100
-	failed := settled - responded
+	settled := total * clampPercent(sentShare+failedShare) / 100
+	failed := settled - sent
 
 	out := make([]SendStatus, total)
 	for i := range out {
 		switch {
-		case i < responded:
-			out[i] = SendStatusRead
-		case i < responded+failed:
+		case i < sent:
+			out[i] = SendStatusSent
+		case i < sent+failed:
 			out[i] = SendStatusFailed
 		default:
 			out[i] = SendStatusPending
 		}
 	}
 
-	seed := int64(total)*10_000 + int64(o.RespondedPercent)*100 + int64(o.FailedPercent)
+	seed := int64(total)*10_000 + int64(o.SentPercent)*100 + int64(o.FailedPercent)
 	shuffle := rand.New(rand.NewSource(seed))
 	shuffle.Shuffle(total, func(i, j int) { out[i], out[j] = out[j], out[i] })
 	return out
