@@ -131,6 +131,13 @@ type Campaign struct {
 	RecentEntries []Entry           `json:"recentEntries,omitempty"`
 	Metrics       *campaign.Metrics `json:"metrics,omitempty"`
 
+	// SeedOutcome pre-settles a share of the entries at creation, so a campaign
+	// can be DEMONSTRATED carrying results instead of being blasted to produce
+	// them. It is a creation-time instruction and not campaign state, exactly
+	// like Targets: nothing stores it, and it is dropped for anyone who is not a
+	// platform administrator before it ever reaches this layer.
+	SeedOutcome *campaign.SeededOutcome `json:"seedOutcome,omitempty"`
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -147,6 +154,7 @@ func (c *Campaign) Normalize() {
 	c.Status = campaign.NormalizeStatus(c.Status)
 	c.ScheduledStart = c.ScheduledStart.UTC()
 	c.Message.Normalize()
+	c.SeedOutcome.Normalize()
 
 	// Each bound falls back independently, for the reason the instance entity
 	// spells out: defaulting only the minimum and clamping would collapse an
@@ -243,6 +251,9 @@ func (c *Campaign) Validate() error {
 		return err
 	}
 	if err := c.validateSchedule(); err != nil {
+		return err
+	}
+	if err := c.SeedOutcome.Validate(); err != nil {
 		return err
 	}
 

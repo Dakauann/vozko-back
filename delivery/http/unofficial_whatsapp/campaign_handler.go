@@ -14,6 +14,7 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/domain/user"
 	"vozko/infra/http/middleware"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
@@ -257,7 +258,20 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.create.Execute(r.Context(), payload.toDomain(workspaceID), scope)
+	draft := payload.toDomain(workspaceID)
+	// Pre-settled results are a PLATFORM privilege, and a different question
+	// from the one the route already answered: that gate asks who may launch a
+	// campaign, this asks who may create one that claims to have already run.
+	// A workspace owner passes the first and not the second.
+	//
+	// Dropped rather than refused, the same bargain the lead import makes with
+	// its scripted seeding: a caller who cannot use the control has simply asked
+	// for an ordinary campaign, and they get one.
+	if claims := middleware.GetClaims(r); claims == nil || claims.Role != string(user.RoleAdmin) {
+		draft.SeedOutcome = nil
+	}
+
+	created, err := h.create.Execute(r.Context(), draft, scope)
 	if err != nil {
 		writeCampaignError(w, err)
 		return
@@ -603,7 +617,8 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrMenuOptionsRequired),
 		errors.Is(err, uwc.ErrMenuOptionsTooMany),
 		errors.Is(err, uwc.ErrMenuOptionLabelTooLong),
-		errors.Is(err, uwc.ErrMenuOptionIDRequired):
+		errors.Is(err, uwc.ErrMenuOptionIDRequired),
+		errors.Is(err, campaign.ErrSeededOutcomeOverflow):
 		response.WriteError(w, http.StatusUnprocessableEntity, err.Error(), nil)
 
 	default:

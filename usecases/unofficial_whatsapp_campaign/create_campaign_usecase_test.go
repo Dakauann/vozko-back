@@ -201,3 +201,69 @@ func TestCreateHonoursDepartmentScope(t *testing.T) {
 		t.Fatal("a campaign was created from another department's number")
 	}
 }
+
+// A demonstration campaign is born carrying results, so an administrator can
+// show the product without blasting a real list to produce numbers.
+func TestCreateSeedsOutcomesWhenAsked(t *testing.T) {
+	uc, _, entries, _, _ := newCreateHarness(t)
+
+	in := draft()
+	in.Targets = nil
+	for i := 0; i < 10; i++ {
+		in.Targets = append(in.Targets, uwc.TargetInput{
+			Number: "55849999900" + itoa(10+i),
+		})
+	}
+	in.SeedOutcome = &campaign.SeededOutcome{RespondedPercent: 50, FailedPercent: 20}
+
+	created, err := uc.Execute(context.Background(), in, uw.Unrestricted())
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	read, _ := entries.ListByStatus(created.ID, campaign.SendStatusRead, 100)
+	failed, _ := entries.ListByStatus(created.ID, campaign.SendStatusFailed, 100)
+	pending, _ := entries.ListByStatus(created.ID, campaign.SendStatusPending, 100)
+	if len(read) != 5 || len(failed) != 2 || len(pending) != 3 {
+		t.Fatalf("seeded split = %d read / %d failed / %d pending, want 5 / 2 / 3",
+			len(read), len(failed), len(pending))
+	}
+	// The entries table and the export both read sentAt to answer "when", so a
+	// settled row without one renders as a blank column.
+	for _, e := range append(read, failed...) {
+		if e.SentAt == nil {
+			t.Fatalf("settled entry %s has no sentAt", e.ID)
+		}
+	}
+	for _, e := range pending {
+		if e.SentAt != nil {
+			t.Fatalf("pending entry %s was stamped as sent", e.ID)
+		}
+	}
+}
+
+// The ordinary campaign is untouched: every entry starts PENDING, as it did
+// before this control existed.
+func TestCreateWithoutSeedOutcomeStaysPending(t *testing.T) {
+	uc, _, entries, _, _ := newCreateHarness(t)
+
+	created, err := uc.Execute(context.Background(), draft(), uw.Unrestricted())
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	pending, _ := entries.ListByStatus(created.ID, campaign.SendStatusPending, 100)
+	if len(pending) != 2 {
+		t.Fatalf("pending = %d, want 2", len(pending))
+	}
+}
+
+func TestCreateRefusesAnOversubscribedSeedOutcome(t *testing.T) {
+	uc, _, _, _, _ := newCreateHarness(t)
+
+	in := draft()
+	in.SeedOutcome = &campaign.SeededOutcome{RespondedPercent: 80, FailedPercent: 40}
+
+	if _, err := uc.Execute(context.Background(), in, uw.Unrestricted()); !errors.Is(err, campaign.ErrSeededOutcomeOverflow) {
+		t.Fatalf("create = %v, want ErrSeededOutcomeOverflow", err)
+	}
+}

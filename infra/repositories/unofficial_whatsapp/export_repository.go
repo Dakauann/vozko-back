@@ -32,25 +32,132 @@ func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 // ListForExport lists one container's conversations, or the whole workspace
 // when none is named.
 //
-// The container is normally a NUMBER. When Scope.ContainerType is "campaign" it
-// is a campaign instead, reached through its entry rows — which is the shape of
-// this channel: a campaign entry points at a conversation rather than being one.
-// ContainerType exists on Scope precisely so a channel can have more than one
-// kind of container, and this is the channel that does.
-//
-// Scope.Statuses is applied only in the campaign case: a conversation carries a
-// conversation status, while a campaign target carries a SEND status, and only
-// the latter is what "leads enviados" means.
+// The container is normally a NUMBER, and then a row is a conversation. When
+// Scope.ContainerType is "campaign" it is a campaign instead, and then a row is
+// a campaign ENTRY - see listCampaignEntries for why the two cannot be the same
+// query. ContainerType exists on Scope precisely so a channel can have more
+// than one kind of container, and this is the channel that does.
 func (r *exportRepository) ListForExport(
 	ctx context.Context,
 	scope export.Scope,
 	emit func(export.ChannelEntry) error,
 ) error {
-	workspaceID := strings.TrimSpace(scope.WorkspaceID)
-	if workspaceID == "" {
+	if strings.TrimSpace(scope.WorkspaceID) == "" {
 		return nil
 	}
 
+	containerID := strings.TrimSpace(scope.ContainerID)
+	if containerID != "" && strings.EqualFold(strings.TrimSpace(scope.ContainerType), containerTypeCampaign) {
+		return r.listCampaignEntries(ctx, scope, containerID, emit)
+	}
+	return r.listConversations(ctx, scope, containerID, emit)
+}
+
+// listCampaignEntries walks a campaign's TARGETS, not the chats it produced.
+//
+// It used to walk conversations reached through the entries, and that made the
+// export unable to answer the two questions an operator opens it for. A target
+// only gets a conversation_id once its send SUCCEEDS, so every failure, every
+// number not on WhatsApp and everything still pending was missing from the file
+// entirely - and the status column carried the CONVERSATION status ("new",
+// "open") while the status filter was matching SEND statuses, so asking for the
+// failed ones returned nothing at all.
+//
+// EntryID stays the conversation id because that is what this channel keys its
+// analyses and stages on. A target that never reached a chat has none, and its
+// analysis columns are simply blank, which is the truth about it.
+func (r *exportRepository) listCampaignEntries(
+	ctx context.Context,
+	scope export.Scope,
+	campaignID string,
+	emit func(export.ChannelEntry) error,
+) error {
+	type row struct {
+		ConversationID string    `gorm:"column:conversation_id"`
+		Status         string    `gorm:"column:status"`
+		ErrorCode      int       `gorm:"column:error_code"`
+		ErrorMessage   string    `gorm:"column:error_message"`
+		CreatedAt      time.Time `gorm:"column:created_at"`
+		UpdatedAt      time.Time `gorm:"column:updated_at"`
+		Number         string    `gorm:"column:number"`
+		EntryName      string    `gorm:"column:entry_name"`
+		ContactName    string    `gorm:"column:contact_name"`
+		VerifiedName   string    `gorm:"column:verified_name"`
+		ProfileName    string    `gorm:"column:profile_name"`
+	}
+
+	query := r.db.WithContext(ctx).
+		Table("unofficial_whatsapp_campaign_entries uwce").
+		Select(`COALESCE(uwce.conversation_id::text, '') AS conversation_id,
+			uwce.status,
+			uwce.error_code,
+			COALESCE(uwce.error_message, '') AS error_message,
+			uwce.created_at, uwce.updated_at,
+			COALESCE(uwce.number, '') AS number,
+			COALESCE(uwce.name, '') AS entry_name,
+			COALESCE(uwct.contact_name, '') AS contact_name,
+			COALESCE(uwct.verified_name, '') AS verified_name,
+			COALESCE(uwct.name, '') AS profile_name`).
+		Joins("JOIN unofficial_whatsapp_campaigns uwcp ON uwcp.id = uwce.campaign_id AND uwcp.deleted_at IS NULL").
+		// The contact is only known once a send resolved one, so this join must
+		// not drop the rows that failed before it.
+		Joins("LEFT JOIN unofficial_whatsapp_contacts uwct ON uwct.id = uwce.contact_id AND uwct.deleted_at IS NULL").
+		// Tenancy is enforced here, not by the caller: an operator must not be
+		// able to export another workspace's campaign by guessing its id.
+		Where("uwce.workspace_id = ?", scope.WorkspaceID).
+		Where("uwce.campaign_id = ?", campaignID).
+		Where("uwce.deleted_at IS NULL")
+
+	if len(scope.Statuses) > 0 {
+		query = query.Where("uwce.status IN ?", scope.Statuses)
+	}
+	if len(scope.DepartmentIDs) > 0 {
+		// On the CAMPAIGN's department, the same column the campaign list
+		// scopes by. An export must not reach what the list hides.
+		query = query.Where("uwcp.department_id IN ?", scope.DepartmentIDs)
+	}
+
+	var rows []row
+	if err := query.Order("uwce.created_at DESC").Scan(&rows).Error; err != nil {
+		return err
+	}
+
+	for _, rw := range rows {
+		number := rw.Number
+		if number != "" {
+			number = "+" + number
+		}
+
+		if err := emit(export.ChannelEntry{
+			EntryID: rw.ConversationID,
+			Number:  number,
+			// The contact's own names first, the imported one last: a target
+			// that never reached WhatsApp only ever has the imported name.
+			Name:          firstNonEmpty(rw.ContactName, rw.VerifiedName, rw.ProfileName, rw.EntryName),
+			Status:        rw.Status,
+			FailureCode:   rw.ErrorCode,
+			FailureReason: rw.ErrorMessage,
+			CreatedAt:     rw.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:     rw.UpdatedAt.Format(time.RFC3339),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// listConversations walks the chats on one number, or on every number in the
+// workspace.
+//
+// Scope.Statuses is deliberately NOT applied here: a conversation carries a
+// conversation status, while the filter that reaches this port speaks send
+// statuses, and matching one against the other would silently empty the file.
+func (r *exportRepository) listConversations(
+	ctx context.Context,
+	scope export.Scope,
+	instanceID string,
+	emit func(export.ChannelEntry) error,
+) error {
 	type row struct {
 		EntryID      string    `gorm:"column:entry_id"`
 		Status       string    `gorm:"column:status"`
@@ -76,32 +183,12 @@ func (r *exportRepository) ListForExport(
 		Joins("JOIN unofficial_whatsapp_contacts uwct ON uwct.id = uwc.contact_id AND uwct.deleted_at IS NULL").
 		// Tenancy is enforced here, not by the caller: an operator must not be
 		// able to export another workspace's number by guessing its id.
-		Where("uwc.workspace_id = ?", workspaceID).
+		Where("uwc.workspace_id = ?", scope.WorkspaceID).
 		Where("uwc.deleted_at IS NULL")
 
-	containerID := strings.TrimSpace(scope.ContainerID)
-	byCampaign := strings.EqualFold(strings.TrimSpace(scope.ContainerType), containerTypeCampaign)
-
-	switch {
-	case byCampaign && containerID != "":
-		// Through the campaign's targets. DISTINCT because two campaigns can
-		// legitimately have reached the same chat, and a duplicated row in an
-		// exported spreadsheet reads as a duplicated customer.
-		sub := r.db.WithContext(ctx).
-			Table("unofficial_whatsapp_campaign_entries uwce").
-			Select("DISTINCT uwce.conversation_id").
-			Where("uwce.campaign_id = ?", containerID).
-			Where("uwce.conversation_id IS NOT NULL").
-			Where("uwce.deleted_at IS NULL")
-		if len(scope.Statuses) > 0 {
-			sub = sub.Where("uwce.status IN ?", scope.Statuses)
-		}
-		query = query.Where("uwc.id IN (?)", sub)
-
-	case containerID != "":
-		query = query.Where("uwc.instance_id = ?", containerID)
+	if instanceID != "" {
+		query = query.Where("uwc.instance_id = ?", instanceID)
 	}
-
 	if len(scope.DepartmentIDs) > 0 {
 		// A department scope can never WIDEN what the caller may see, so it is
 		// applied on the instance regardless of which container was asked for.

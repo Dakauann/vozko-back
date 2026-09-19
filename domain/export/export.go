@@ -21,6 +21,16 @@ const (
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
 )
 
+// HasSendStatus reports whether this channel's export rows carry a SEND status
+// rather than a conversation status.
+//
+// Only a send can fail, so this is also the question "can a row of this channel
+// explain why it never arrived": a conversation export has no failure to
+// describe, and giving it a failure column would be an always-empty promise.
+func (t EntryType) HasSendStatus() bool {
+	return t == EntryTypeWhatsApp || t == EntryTypeUnofficialWhatsApp
+}
+
 // ErrTooManyRows is returned when a scope selects more rows than an export is
 // allowed to produce. It is a refusal, not a truncation: a silently cut file
 // looks complete and gets acted on as if it were.
@@ -96,6 +106,13 @@ type ChannelEntry struct {
 	CreatedAt string
 	UpdatedAt string
 
+	// FailureCode and FailureReason are why this row never reached its
+	// recipient, as the provider explained it. Both are empty on anything that
+	// did not fail, and on every channel whose Status is a conversation status.
+	// See EntryType.HasSendStatus.
+	FailureCode   int
+	FailureReason string
+
 	// Variables and Metadata are optional; only WhatsApp campaigns carry them.
 	Variables []string
 	Metadata  map[string]interface{}
@@ -150,6 +167,9 @@ type ExportRow struct {
 	Status    string
 	CreatedAt string
 	UpdatedAt string
+
+	FailureCode   int
+	FailureReason string
 
 	StageName string
 

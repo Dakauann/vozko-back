@@ -41,6 +41,8 @@ type exportRow struct {
 	CampaignID   string              `gorm:"column:campaign_id"`
 	CampaignName string              `gorm:"column:campaign_name"`
 	Status       string              `gorm:"column:status"`
+	ErrorCode    int                 `gorm:"column:error_code"`
+	ErrorMessage string              `gorm:"column:error_message"`
 	CreatedAt    time.Time           `gorm:"column:created_at"`
 	UpdatedAt    time.Time           `gorm:"column:updated_at"`
 	Variables    pq.StringArray      `gorm:"column:variables;type:text[]"`
@@ -126,6 +128,8 @@ func (r *exportRepository) baseQuery(ctx context.Context, scope export.Scope) *g
 			e.campaign_id,
 			c.name AS campaign_name,
 			e.status,
+			e.error_code,
+			COALESCE(e.error_message, '') AS error_message,
 			e.created_at,
 			e.updated_at,
 			e.variables,
@@ -178,6 +182,8 @@ func toChannelEntry(row *exportRow) export.ChannelEntry {
 		Age:           row.LeadAge,
 		ContainerName: row.CampaignName,
 		Status:        row.Status,
+		FailureCode:   row.ErrorCode,
+		FailureReason: row.ErrorMessage,
 		CreatedAt:     row.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:     row.UpdatedAt.Format(time.RFC3339),
 		Variables:     []string(row.Variables),

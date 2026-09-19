@@ -2,6 +2,7 @@ package unofficial_whatsapp_campaign
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -125,6 +126,12 @@ func (uc *createCampaignUseCase) materializeTargets(
 		return err
 	}
 
+	// A seeded demonstration campaign is born carrying its results. The mix is
+	// asked for one status per entry rather than consulted per row, so the
+	// shares it promises are exact over the list it is actually given.
+	seeded := in.SeedOutcome.Statuses(len(in.Targets))
+	now := time.Now().UTC()
+
 	entries := make([]uwc.Entry, 0, len(in.Targets))
 	seen := make(map[string]struct{}, len(in.Targets))
 	for _, t := range in.Targets {
@@ -150,6 +157,17 @@ func (uc *createCampaignUseCase) materializeTargets(
 			Status:      campaign.SendStatusPending,
 			Variables:   t.Variables,
 			Metadata:    t.Metadata,
+		}
+		// Indexed by the ROW WE KEPT, not by the target we read: duplicates are
+		// skipped above, and indexing by the loop would leave the tail of a list
+		// with duplicates in it unsettled.
+		if seeded != nil {
+			entry.Status = seeded[len(entries)]
+			// A settled entry that left the building is stamped, because the
+			// entries table and the export both read sentAt to answer "when".
+			if entry.Status != campaign.SendStatusPending {
+				entry.SentAt = &now
+			}
 		}
 		entry.Normalize()
 		entries = append(entries, entry)

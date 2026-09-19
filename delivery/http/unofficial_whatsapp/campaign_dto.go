@@ -100,6 +100,28 @@ type campaignPayload struct {
 	ScheduledStart *time.Time          `json:"scheduledStart,omitempty"`
 	Archived       bool                `json:"archived"`
 	Targets        []campaignTargetDTO `json:"targets,omitempty"`
+
+	// SeedOutcome is the administrator-only demonstration control: create this
+	// campaign already carrying results. It is accepted on the way IN and never
+	// returned, because it is an instruction rather than a property of the
+	// campaign — what became of it is readable from the metrics, like any other
+	// campaign's.
+	SeedOutcome *seedOutcomeDTO `json:"seedOutcome,omitempty"`
+}
+
+type seedOutcomeDTO struct {
+	RespondedPercent int `json:"respondedPercent"`
+	FailedPercent    int `json:"failedPercent"`
+}
+
+func (d *seedOutcomeDTO) toDomain() *campaign.SeededOutcome {
+	if d == nil {
+		return nil
+	}
+	return &campaign.SeededOutcome{
+		RespondedPercent: d.RespondedPercent,
+		FailedPercent:    d.FailedPercent,
+	}
 }
 
 func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
@@ -130,6 +152,7 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 		DailyCap:             p.DailyCap,
 		Archived:             p.Archived,
 		Targets:              targets,
+		SeedOutcome:          p.SeedOutcome.toDomain(),
 	}
 	if p.ScheduledStart != nil {
 		c.ScheduledStart = *p.ScheduledStart

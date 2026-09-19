@@ -85,6 +85,22 @@ const (
 	MediaSticker  MediaKind = "sticker"
 )
 
+// CanAttach reports whether this kind names a real attachment.
+//
+// MediaNone is deliberately excluded rather than defaulted: it means "no
+// attachment", so a caller that sends it has asked for a file and named none,
+// and treating that as a document would put an empty bubble in a customer's
+// chat. Every other kind the channel knows is attachable, so a kind added to
+// the vocabulary above joins this set with the switch, not separately.
+func (k MediaKind) CanAttach() bool {
+	switch k {
+	case MediaImage, MediaVideo, MediaAudio, MediaVoice, MediaDocument, MediaSticker:
+		return true
+	default:
+		return false
+	}
+}
+
 // Provider event names, as they arrive in the envelope.
 const (
 	providerEventMessages       = "messages"

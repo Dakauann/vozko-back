@@ -126,6 +126,7 @@ type csvShape struct {
 
 	includeVariables bool
 	includeCampaign  bool
+	includeFailure   bool
 }
 
 func (uc *exportEntriesUseCase) measure(
@@ -140,6 +141,11 @@ func (uc *exportEntriesUseCase) measure(
 		// only WhatsApp has them at all.
 		includeVariables: filter.EntryType == export.EntryTypeWhatsApp,
 		includeCampaign:  filter.Scope.SpansContainers(),
+		// Only a channel whose rows carry a send status has a failure to
+		// explain. On the others the pair of columns would be two empty cells
+		// on every line, which reads as "nothing went wrong" rather than as
+		// "this file cannot answer that".
+		includeFailure: filter.EntryType.HasSendStatus(),
 	}
 
 	metaKeys := make(map[string]struct{})
@@ -243,20 +249,33 @@ func (uc *exportEntriesUseCase) writeBatch(
 	batch []export.ChannelEntry,
 	sink *csvSink,
 ) error {
-	entryIDs := make([]string, len(batch))
-	for i, e := range batch {
-		entryIDs[i] = e.EntryID
+	entryIDs := make([]string, 0, len(batch))
+	for _, e := range batch {
+		// A row can have nothing to analyse: a campaign send that failed before
+		// a conversation existed has no id at all. Both lookups key on a uuid
+		// column, so an empty id is not merely a miss: it is a query that
+		// errors and takes the whole export with it.
+		if e.EntryID != "" {
+			entryIDs = append(entryIDs, e.EntryID)
+		}
 	}
 
-	analysisMap, err := uc.analysisRepo.LatestByEntries(
-		context.Background(), filter.Scope.WorkspaceID,
-		ca.SourceOf(shared_domain.EntryType(filter.EntryType)), entryIDs)
-	if err != nil {
-		return fmt.Errorf("load analyses: %w", err)
-	}
-	stageMap, err := uc.stageRepo.GetBatchEntryStages(entryIDs, string(filter.EntryType), filter.Scope.WorkspaceID)
-	if err != nil {
-		return fmt.Errorf("load tags: %w", err)
+	var (
+		analysisMap map[string]*ca.Analysis
+		stageMap    map[string]*stage.EntryStage
+	)
+	if len(entryIDs) > 0 {
+		var err error
+		analysisMap, err = uc.analysisRepo.LatestByEntries(
+			context.Background(), filter.Scope.WorkspaceID,
+			ca.SourceOf(shared_domain.EntryType(filter.EntryType)), entryIDs)
+		if err != nil {
+			return fmt.Errorf("load analyses: %w", err)
+		}
+		stageMap, err = uc.stageRepo.GetBatchEntryStages(entryIDs, string(filter.EntryType), filter.Scope.WorkspaceID)
+		if err != nil {
+			return fmt.Errorf("load tags: %w", err)
+		}
 	}
 
 	for _, e := range batch {
@@ -264,15 +283,17 @@ func (uc *exportEntriesUseCase) writeBatch(
 		entryStage := stageMap[e.EntryID]
 
 		row := export.ExportRow{
-			Number:       e.Number,
-			Name:         e.Name,
-			Age:          e.Age,
-			CampaignName: e.ContainerName,
-			Status:       e.Status,
-			CreatedAt:    e.CreatedAt,
-			UpdatedAt:    e.UpdatedAt,
-			Variables:    e.Variables,
-			Metadata:     e.Metadata,
+			Number:        e.Number,
+			Name:          e.Name,
+			Age:           e.Age,
+			CampaignName:  e.ContainerName,
+			Status:        e.Status,
+			CreatedAt:     e.CreatedAt,
+			UpdatedAt:     e.UpdatedAt,
+			FailureCode:   e.FailureCode,
+			FailureReason: e.FailureReason,
+			Variables:     e.Variables,
+			Metadata:      e.Metadata,
 		}
 		if entryStage != nil {
 			row.StageName = entryStage.StageName
@@ -307,7 +328,11 @@ func (s *csvSink) header() []string {
 	if s.shape.includeCampaign {
 		header = append(header, "campaign")
 	}
-	header = append(header, "number", "name", "age", "status", "tag", "created_at", "updated_at")
+	header = append(header, "number", "name", "age", "status")
+	if s.shape.includeFailure {
+		header = append(header, "failure_code", "failure_reason")
+	}
+	header = append(header, "tag", "created_at", "updated_at")
 
 	if s.shape.includeVariables {
 		for i := 1; i <= s.shape.maxVars; i++ {
@@ -347,6 +372,11 @@ func (s *csvSink) write(row export.ExportRow) error {
 		safeCSVText(row.Name),
 		formatOptionalInt(row.Age),
 		row.Status,
+	)
+	if s.shape.includeFailure {
+		record = append(record, formatErrorCode(row.FailureCode), safeCSVText(row.FailureReason))
+	}
+	record = append(record,
 		safeCSVText(row.StageName),
 		row.CreatedAt,
 		row.UpdatedAt,
@@ -484,6 +514,17 @@ func formatNumber(number string) string {
 		return -1
 	}, number)
 	return cleaned
+}
+
+// formatErrorCode leaves the cell blank when there is no code.
+//
+// Zero is the column's "no error" default, and writing it would put a 0 beside
+// every delivered row, a value an operator has to learn to read as "none".
+func formatErrorCode(code int) string {
+	if code == 0 {
+		return ""
+	}
+	return strconv.Itoa(code)
 }
 
 func formatOptionalInt(v *int) string {
