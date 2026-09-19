@@ -10,6 +10,13 @@ import "testing"
 // figure wins, and — the part that must never break — that its absence changes
 // nothing about the old behaviour.
 
+// stubPricingRepo is a Repository with nothing configured, so the LLM path
+// falls through to the fetcher and the markup to its default. It lived in
+// audience_pricing_test.go until the audience surcharge was retired.
+type stubPricingRepo struct{ Repository }
+
+func (stubPricingRepo) ListDefaultPricingItems() ([]PricingItem, error) { return nil, nil }
+
 type stubLLMFetcher struct{ in, out int64 }
 
 func (s stubLLMFetcher) FetchLLMPriceMicros(string) (int64, int64, error) {
