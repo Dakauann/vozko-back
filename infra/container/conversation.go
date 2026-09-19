@@ -316,6 +316,7 @@ func (c *Container) initConversationSenders() {
 		c.redisProvider.SharedState(),
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
+	messageSender.SetMediaLibrary(c.repositories.media)
 	c.services.messageSender = messageSender
 
 	// Close the send ring: the hub was constructed with the live wrapper, and

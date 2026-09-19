@@ -1820,11 +1820,16 @@ func (s *MessageMarkerService) resolveBusinessPhoneID(entryID, entryType string)
 }
 
 type MessageSenderService struct {
-	messageRepo           conversation.MessageRepository
-	leadRepo              lead.Repository
-	whatsappRepo          wce.Repository
-	messageWindowRepo     lmw.Repository
-	mediaRepo             conversation.ConversationMediaRepository
+	messageRepo       conversation.MessageRepository
+	leadRepo          lead.Repository
+	whatsappRepo      wce.Repository
+	messageWindowRepo lmw.Repository
+	mediaRepo         conversation.ConversationMediaRepository
+	// mediaLibrary is the WORKSPACE library (`medias`), a different store from
+	// mediaRepo above. Only the campaign path reads it: a campaign attaches one
+	// curated file to thousands of conversations, so its id cannot come from a
+	// per-conversation store.
+	mediaLibrary          media.MediaRepository
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	hub                   conversation.EventBroadcaster
 
@@ -1849,6 +1854,15 @@ type MessageSenderService struct {
 
 func (s *MessageSenderService) SetCallPermissionRepo(repo callpermission.Repository) {
 	s.callPermissionRepo = repo
+}
+
+// SetMediaLibrary wires the workspace media library the campaign send resolves
+// attachments from. A setter rather than a constructor argument for the same
+// reason SetCallPermissionRepo is one: every existing caller keeps working, and
+// a deployment that never wires it fails the media campaign loudly instead of
+// sending the wrong file.
+func (s *MessageSenderService) SetMediaLibrary(repo media.MediaRepository) {
+	s.mediaLibrary = repo
 }
 
 // SetChannelAdapters registers the channel-agnostic send adapters.

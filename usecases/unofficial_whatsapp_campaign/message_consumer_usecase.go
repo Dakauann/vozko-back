@@ -294,9 +294,13 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		Text:      body,
 		MediaID:   camp.Message.MediaID,
 		MediaType: string(camp.Message.Kind.MediaKind()),
-		Options:   interactiveOptions(camp.Message),
-		Style:     camp.Message.Style,
-		Footer:    camp.Message.Footer,
+		// The media id names a row in the campaign's own workspace library, and
+		// the send authorises it against this.
+		WorkspaceID: camp.WorkspaceID,
+		FileName:    camp.Message.FileName,
+		Options:     interactiveOptions(camp.Message),
+		Style:       camp.Message.Style,
+		Footer:      camp.Message.Footer,
 	})
 	if err != nil {
 		return c.handleSendFailure(ctx, instance, camp, entry, err)

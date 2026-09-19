@@ -3,8 +3,14 @@ package conversation_usecase
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
+
+	"github.com/google/uuid"
 
 	"vozko/domain/conversation"
+	"vozko/domain/media"
+	"vozko/domain/shared"
 )
 
 // The campaign send path.
@@ -32,10 +38,20 @@ type SendCampaignMessageInput struct {
 	// it is the prompt.
 	Text string
 
-	// MediaID references our media store. The adapter resolves it to the URL the
-	// provider fetches.
+	// MediaID names a row in the workspace MEDIA LIBRARY (`medias`), not in
+	// conversation media. A campaign attaches one curated file to thousands of
+	// conversations, so the library is the only store the id can come from —
+	// which is also why it needs WorkspaceID to be checked against.
 	MediaID   string
 	MediaType string
+	// FileName is what a document renders as on the contact's device. The
+	// library row does not carry the operator's original filename; the campaign
+	// spec does.
+	FileName string
+
+	// WorkspaceID owns the campaign, and is what a library media id is
+	// authorised against.
+	WorkspaceID string
 
 	// Options make this an interactive prompt.
 	Options []conversation.InteractiveOption
@@ -76,10 +92,31 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 			conversation.MessageTypeOperator, in.Text, "", "")
 
 	case in.MediaID != "":
-		mediaRecord, err := s.mediaRepo.GetByID(in.MediaID)
-		if err != nil || mediaRecord == nil {
-			return nil, fmt.Errorf("campaign send: media not found: %w", err)
+		// The LIBRARY, not conversation media.
+		//
+		// This used to read s.mediaRepo, which is the conversation media store:
+		// rows scoped to one entry, written when an operator uploads into a
+		// chat or when an inbound attachment arrives. A campaign's id never
+		// exists there, so every media campaign failed on its first recipient
+		// with "campaign send: media not found: conversation: media not found"
+		// and no attachment was ever delivered on this channel.
+		libraryMedia, err := s.lookupCampaignMedia(in.WorkspaceID, in.MediaID)
+		if err != nil {
+			return nil, err
 		}
+
+		// The transcript resolves conversation_messages.media_id against
+		// conversation media, so the library id may not be written onto the
+		// message: it would point the CRM at a row that does not exist and the
+		// contact would receive a file the operator cannot see. Registering the
+		// delivered file per conversation is what the workflow send does too
+		// (bridgeConversationMedia).
+		//
+		// Registered BEFORE the send because sendViaAdapter takes the id it
+		// records up front. A row whose send then fails is inert: no message
+		// references it, and nothing lists conversation media on its own.
+		transcriptMediaID := s.registerCampaignMediaInConversation(in, libraryMedia.URL)
+
 		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, "", "",
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
@@ -88,13 +125,15 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 					// campaign is precisely the traffic the pacing exists for.
 					HumanInitiated: false,
 					Kind:           mediaKindForChannel(in.MediaType),
-					URL:            mediaRecord.URL,
-					MIMEType:       mediaRecord.MimeType,
-					FileName:       mediaRecord.OriginalFilename,
-					Caption:        in.Text,
+					URL:            libraryMedia.URL,
+					// No MIMEType: a library row does not store one, and the
+					// adapters treat an empty type as "unknown, do not refuse"
+					// rather than guessing one that could be wrong.
+					FileName: in.FileName,
+					Caption:  in.Text,
 				})
 			},
-			conversation.MessageTypeMedia, in.Text, in.MediaID, in.MediaType)
+			conversation.MessageTypeMedia, in.Text, transcriptMediaID, in.MediaType)
 
 	default:
 		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, "", "",
@@ -106,4 +145,63 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 			},
 			conversation.MessageTypeOperator, in.Text, "", "")
 	}
+}
+
+// lookupCampaignMedia resolves the campaign's attachment from the workspace
+// media library.
+//
+// Scoped to the campaign's own workspace: the create endpoint takes a media id
+// from the client and never validates it, so without this check a campaign
+// could name another workspace's file and blast it to its own contacts. A
+// mismatch answers exactly like a missing row, so the lookup cannot be used to
+// probe for ids across workspaces — the same rule domain/media states.
+func (s *MessageSenderService) lookupCampaignMedia(workspaceID, mediaID string) (*media.Media, error) {
+	if s.mediaLibrary == nil {
+		return nil, fmt.Errorf("campaign send: media library is not configured")
+	}
+	record, err := s.mediaLibrary.GetMediaByID(mediaID)
+	if err != nil {
+		return nil, fmt.Errorf("campaign send: media not found: %w", err)
+	}
+	if record == nil || record.URL == "" {
+		return nil, fmt.Errorf("campaign send: %w", media.ErrMediaNotFound)
+	}
+	if workspaceID != "" && record.WorkspaceID != workspaceID {
+		return nil, fmt.Errorf("campaign send: %w", media.ErrMediaNotFound)
+	}
+	return record, nil
+}
+
+// registerCampaignMediaInConversation gives the transcript a row to render the
+// delivered attachment from, and answers "" when it cannot.
+//
+// Best effort on purpose: an empty id costs the transcript its thumbnail, while
+// returning an error here would fail a recipient the campaign could otherwise
+// reach — and on a blast that turns one bookkeeping fault into thousands of
+// undelivered messages.
+func (s *MessageSenderService) registerCampaignMediaInConversation(in SendCampaignMessageInput, url string) string {
+	kind := conversation.MediaType(in.MediaType)
+	if s.mediaRepo == nil || url == "" || !kind.Valid() {
+		return ""
+	}
+
+	record := &conversation.ConversationMedia{
+		ID:               uuid.NewString(),
+		EntryID:          in.EntryID,
+		EntryType:        shared.EntryType(in.EntryType),
+		Type:             kind,
+		URL:              url,
+		OriginalFilename: in.FileName,
+		CreatedAt:        time.Now().UTC(),
+	}
+	record.Normalize()
+	if err := record.Validate(); err != nil {
+		log.Printf("[campaign-send] invalid conversation media for entry %s: %v", in.EntryID, err)
+		return ""
+	}
+	if err := s.mediaRepo.Create(record); err != nil {
+		log.Printf("[campaign-send] could not register media for entry %s: %v", in.EntryID, err)
+		return ""
+	}
+	return record.ID
 }
