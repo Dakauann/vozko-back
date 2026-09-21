@@ -12,7 +12,6 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/billing"
-	"vozko/domain/business_metrics"
 	"vozko/domain/conversation"
 	"vozko/domain/whatsapp/template"
 )
@@ -48,7 +47,6 @@ type BilledTemplateSenderDeps struct {
 	Ledger         balance.Repository
 	Inflight       balance.InflightReserver
 	BalanceChecker balance.CachedBalanceChecker
-	RecordMetric   business_metrics.RecordMetricUseCase
 	Alerter        billing.OpsAlerter
 	Now            func() time.Time
 }
@@ -320,7 +318,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 			uc.alert(ctx, "WhatsApp template accepted without a message id",
 				fmt.Sprintf("attempt=%s workspace=%s template=%s", attempt.ID, in.WorkspaceID, tmpl.Name))
 		}
-		uc.recordSentMetric(tmpl, in, result.MessageID)
 
 	case template.OutcomeRejected:
 		code, message := metaErrorFrom(out, sendErr)
@@ -390,30 +387,6 @@ func (uc *billedTemplateSendUseCase) alert(ctx context.Context, subject, detail 
 	}
 	if err := uc.deps.Alerter.Alert(ctx, subject, detail); err != nil {
 		log.Printf("[billed-template-send] failed to raise alert %q: %v", subject, err)
-	}
-}
-
-func (uc *billedTemplateSendUseCase) recordSentMetric(tmpl *template.Template, in template.BilledSendInput, messageID string) {
-	if uc.deps.RecordMetric == nil {
-		return
-	}
-	entityID := strings.TrimSpace(messageID)
-	if entityID == "" {
-		entityID = uuid.NewString()
-	}
-	if err := uc.deps.RecordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventWhatsAppTemplateMessageSent,
-		EntityID:   entityID,
-		EntityType: business_metrics.EntityTypeMessage,
-		Metadata: map[string]string{
-			"to":            strings.TrimSpace(in.ToNumber),
-			"template_name": strings.TrimSpace(tmpl.Name),
-			"template_id":   strings.TrimSpace(tmpl.ID),
-			"language":      strings.TrimSpace(tmpl.Language),
-			"source":        "whatsapp_outreach",
-		},
-	}); err != nil {
-		log.Printf("[billed-template-send] failed to record sent metric: %v", err)
 	}
 }
 

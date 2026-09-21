@@ -36,7 +36,6 @@ func (c *Container) initRouter() {
 		c.handlers.whatsappCampaign,
 		c.handlers.metrics,
 		c.handlers.metricsQuery,
-		c.handlers.businessMetrics,
 		c.handlers.shop,
 		c.handlers.lead,
 		c.handlers.callRecording,

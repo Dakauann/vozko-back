@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"vozko/domain/auth"
-	"vozko/domain/business_metrics"
 	"vozko/domain/customer"
 	"vozko/domain/shared"
 	"vozko/domain/user"
@@ -131,8 +130,6 @@ func (r *mockCustomerRepo) ListCustomersByUser(string) ([]customer.Customer, err
 	return nil, nil
 }
 
-type mockRecordMetric struct{}
-
 type mockSessionRepo struct{}
 
 func (r *mockSessionRepo) Create(*auth.Session) error                           { return nil }
@@ -151,8 +148,6 @@ func (r *mockSessionRepo) Revoke(string) error                            { retu
 func (r *mockSessionRepo) RevokeAllByUserID(string) error                 { return nil }
 func (r *mockSessionRepo) DeleteExpired() error                           { return nil }
 
-func (m *mockRecordMetric) Execute(business_metrics.RecordMetricInput) error { return nil }
-
 func newTestRegisterUseCase(userRepo *mockUserRepo) auth.RegisterUseCase {
 	return NewRegisterUseCase(
 		userRepo,
@@ -164,7 +159,6 @@ func newTestRegisterUseCase(userRepo *mockUserRepo) auth.RegisterUseCase {
 		&mockVerifyToken{},
 		&mockTokenRepo{},
 		&mockCustomerRepo{},
-		&mockRecordMetric{},
 		nil,
 	)
 }
@@ -338,7 +332,6 @@ func newRegisterUCWithEnsure(ensure workspace.EnsureDefaultWorkspaceUseCase) aut
 		&mockVerifyToken{},
 		&mockTokenRepo{},
 		&mockCustomerRepo{},
-		&mockRecordMetric{},
 		ensure,
 	)
 }

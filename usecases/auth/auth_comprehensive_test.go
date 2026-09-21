@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"vozko/domain/auth"
-	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
 	"vozko/domain/customer"
 	"vozko/domain/shared"
@@ -308,15 +307,6 @@ func (r *testCustomerRepo) ListCustomersByUser(string) ([]customer.Customer, err
 	return nil, nil
 }
 
-type testRecordMetric struct {
-	recorded []business_metrics.RecordMetricInput
-}
-
-func (m *testRecordMetric) Execute(input business_metrics.RecordMetricInput) error {
-	m.recorded = append(m.recorded, input)
-	return nil
-}
-
 type testSharedState struct{ data map[string]string }
 
 func newTestSharedState() *testSharedState { return &testSharedState{data: make(map[string]string)} }
@@ -493,7 +483,6 @@ func TestCredentialsLogin_Success(t *testing.T) {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	)
 
 	pair, err := uc.Execute(auth.CredentialsInput{
@@ -519,7 +508,6 @@ func TestCredentialsLogin_UserNotFound(t *testing.T) {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	)
 
 	_, err := uc.Execute(auth.CredentialsInput{
@@ -546,7 +534,6 @@ func TestCredentialsLogin_WrongPassword(t *testing.T) {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	)
 
 	_, err := uc.Execute(auth.CredentialsInput{
@@ -569,7 +556,6 @@ func TestCredentialsLogin_UserRepoError(t *testing.T) {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	)
 
 	_, err := uc.Execute(auth.CredentialsInput{
@@ -596,7 +582,6 @@ func TestCredentialsLogin_TokenIssueError(t *testing.T) {
 		&testTokenIssuer{issueErr: errors.New("token issue failed")},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	)
 
 	_, err := uc.Execute(auth.CredentialsInput{
@@ -623,7 +608,6 @@ func TestCredentialsLogin_NilMetricRecorder(t *testing.T) {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		nil,
 	)
 
 	pair, err := uc.Execute(auth.CredentialsInput{
@@ -1388,7 +1372,6 @@ func TestAdminRegister_IndividualSuccess(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1419,7 +1402,6 @@ func TestAdminRegister_CompanySuccess(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1448,7 +1430,6 @@ func TestAdminRegister_DuplicateEmail(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1471,7 +1452,6 @@ func TestAdminRegister_InvalidCustomerType(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1493,7 +1473,6 @@ func TestAdminRegister_EmptyCustomerType(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1514,7 +1493,6 @@ func TestAdminRegister_MissingCPF(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1537,7 +1515,6 @@ func TestAdminRegister_InvalidCPF(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1560,7 +1537,6 @@ func TestAdminRegister_MissingCNPJ(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1583,7 +1559,6 @@ func TestAdminRegister_InvalidCNPJ(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1606,7 +1581,6 @@ func TestAdminRegister_HashError(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1632,7 +1606,6 @@ func TestAdminRegister_CreateError(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1657,7 +1630,6 @@ func TestAdminRegister_NilMetricRecorder(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		nil,
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1685,7 +1657,6 @@ func TestAdminRegister_EmailNormalization(t *testing.T) {
 		&testEmailService{},
 		&testDocValidator{},
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		&stubEnsureDefaultWs{},
 	)
 
@@ -1717,7 +1688,6 @@ func TestRegister_VerificationTokenInvalid(t *testing.T) {
 		&testVerifyEmailToken{err: auth.ErrInvalidVerificationToken},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1746,7 +1716,6 @@ func TestRegister_IndividualWithValidCPF(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1789,7 +1758,6 @@ func TestRegister_CompanyWithValidCNPJ(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1820,7 +1788,6 @@ func TestRegister_EmptyCustomerType(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1846,7 +1813,6 @@ func TestRegister_MissingCPF(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1873,7 +1839,6 @@ func TestRegister_HashError(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1904,7 +1869,6 @@ func TestRegister_CreateError(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 
@@ -1932,7 +1896,6 @@ func TestRegister_TokenIssueError(t *testing.T) {
 		&testVerifyEmailToken{},
 		newTestEmailVerifRepo(),
 		&testCustomerRepo{},
-		&testRecordMetric{},
 		nil,
 	)
 

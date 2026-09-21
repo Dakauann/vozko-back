@@ -17,7 +17,6 @@ import (
 	agent "vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/balance"
-	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
 	"vozko/domain/config"
 	"vozko/domain/conversation"
@@ -61,7 +60,6 @@ type handleWhatsAppMessageUseCase struct {
 	historyManager        conversation.MessageHistoryManager
 	messageRepo           conversation.MessageRepository
 	configRepo            config.SystemConfigRepository
-	recordMetric          business_metrics.RecordMetricUseCase
 	whisperPool           *whisper.Pool
 	wcCampaignRepo        wc.Repository
 	wcEntryRepo           wce.Repository
@@ -506,7 +504,7 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, recordMetric business_metrics.RecordMetricUseCase, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
 	return &handleWhatsAppMessageUseCase{
 		aiService:               aiService,
 		leadRepo:                leadRepo,
@@ -516,7 +514,6 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 		historyManager:          historyManager,
 		messageRepo:             messageRepo,
 		configRepo:              configRepo,
-		recordMetric:            recordMetric,
 		whisperPool:             whisperPool,
 		wcCampaignRepo:          wcCampaignRepo,
 		wcEntryRepo:             wcEntryRepo,
@@ -966,31 +963,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 					return err
 				}
 				uc.recordAIAttendance(agentCtx, entryID, entryType, record.MessageID)
-			}
-
-			if uc.recordMetric != nil {
-				entityID := ""
-				if sendOutput != nil {
-					entityID = strings.TrimSpace(sendOutput.MessageID)
-				}
-				if entityID == "" {
-					entityID = uuid.NewString()
-				}
-
-				metadata := map[string]string{
-					"to":                  strings.TrimSpace(sendInput.To),
-					"conversation_id":     conversationID,
-					"incoming_message_id": incomingMessageID,
-				}
-
-				if err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-					EventType:  business_metrics.EventWhatsAppMessageSent,
-					EntityID:   entityID,
-					EntityType: business_metrics.EntityTypeMessage,
-					Metadata:   metadata,
-				}); err != nil {
-					log.Printf("[whatsapp-usecase] failed to record whatsapp_message_sent metric: %v", err)
-				}
 			}
 
 			log.Printf("[whatsapp-usecase] ai response:\n%s", msgText)

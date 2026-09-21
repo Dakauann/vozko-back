@@ -5,7 +5,6 @@ import (
 
 	balance_domain "vozko/domain/balance"
 	billing_domain "vozko/domain/billing"
-	business_metrics_domain "vozko/domain/business_metrics"
 	conversation_domain "vozko/domain/conversation"
 	whatsapp_template "vozko/domain/whatsapp/template"
 	wc_domain "vozko/domain/whatsapp_campaign"
@@ -35,7 +34,6 @@ type whatsAppOutreachDeps struct {
 	consume       balance_domain.ConsumeWhatsappTemplateUseCase
 	inflight      balance_domain.InflightReserver
 	history       conversation_domain.MessageHistoryManager
-	recordMetric  business_metrics_domain.RecordMetricUseCase
 	alerter       billing_domain.OpsAlerter
 	ensureOrganic wc_domain.EnsureOrganicCoexistenceCampaignUseCase
 	templateGrant workspace_template_access_domain.CheckAccessUseCase
@@ -59,7 +57,6 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		Ledger:         c.repositories.balance,
 		Inflight:       d.inflight,
 		BalanceChecker: c.services.cachedBalanceChecker,
-		RecordMetric:   d.recordMetric,
 		Alerter:        d.alerter,
 	})
 	if err != nil {

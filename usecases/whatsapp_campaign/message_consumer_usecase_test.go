@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"vozko/domain/balance"
-	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/lead_campaign_send"
@@ -869,10 +868,6 @@ func (r *mockInflightReserver) GetInflight(workspaceID string) (int64, error) {
 	return strconv.ParseInt(val, 10, 64)
 }
 
-type mockRecordMetric struct{}
-
-func (m *mockRecordMetric) Execute(_ business_metrics.RecordMetricInput) error { return nil }
-
 type mockMessageHistoryManager struct{}
 
 func (m *mockMessageHistoryManager) Record(_ context.Context, _ conversation.MessageHistoryDirection, _ conversation.MessageHistoryRecord) error {
@@ -949,7 +944,6 @@ func newTestHarness() *testHarness {
 		TemplateRepo:            templateRepo,
 		BusinessPhoneRepo:       &mockBusinessPhoneRepo{},
 		WhatsAppClientFactory:   &mockWhatsAppClientFactory{client: waClient},
-		RecordMetric:            &mockRecordMetric{},
 		ConsumeWhatsappTemplate: consumeTempl,
 		CheckBalance:            checkBal,
 		MessageHistoryManager:   &mockMessageHistoryManager{},

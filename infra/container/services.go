@@ -6,7 +6,6 @@ import (
 	"time"
 
 	audience_domain "vozko/domain/audience"
-	business_metrics_domain "vozko/domain/business_metrics"
 	billing_domain "vozko/domain/calls/billing"
 	recordings_domain "vozko/domain/calls/recordings"
 	crm_telemetry_domain "vozko/domain/crm_telemetry"
@@ -64,7 +63,6 @@ func (c *Container) initServices() {
 	shippingGateways := make(map[shipping.Provider]shipping.ProviderGateway)
 
 	workflowWakeExchange := workflow_domain.Exchange
-	businessMetricsExchange := business_metrics_domain.Exchange
 	crmTelemetryExchange := crm_telemetry_domain.Exchange
 	notifications_exchange := notification_domain.Exchange
 	whatsappCampaignExchange := whatsapp_campaign_domain.Exchange
@@ -91,8 +89,6 @@ func (c *Container) initServices() {
 		amqpPool:                   amqpPool,
 		workflowWakePub:            queue.NewRabbitMQQueuePub(amqpPool, workflowWakeExchange),
 		workflowWakeSub:            queue.NewRabbitMQQueueSub(amqpPool, workflowWakeExchange),
-		metricsQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, businessMetricsExchange),
-		metricsQueueSub:            queue.NewRabbitMQQueueSub(amqpPool, businessMetricsExchange),
 		audienceAlertPub:           queue.NewRabbitMQQueuePub(amqpPool, audienceAlertExchange),
 		audienceAlertSub:           queue.NewRabbitMQQueueSub(amqpPool, audienceAlertExchange),
 		crmTelemetryPub:            crmTelPub,

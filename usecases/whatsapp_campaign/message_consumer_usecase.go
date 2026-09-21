@@ -6,11 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"vozko/domain/balance"
-	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
@@ -27,7 +25,6 @@ import (
 	wsc "vozko/domain/workspace_config"
 	"vozko/usecases/campaignqueue"
 
-	"github.com/google/uuid"
 )
 
 const messageSendDelay = 15 * time.Millisecond
@@ -54,7 +51,6 @@ type messageConsumerUseCase struct {
 	TemplateRepo            template.Repository
 	BusinessPhoneRepo       businessphone.Repository
 	WhatsAppClientFactory   conversation.WhatsAppClientFactory
-	RecordMetric            business_metrics.RecordMetricUseCase
 	ConsumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
 	CheckBalance            balance.CheckBalanceUseCase
 	MessageHistoryManager   conversation.MessageHistoryManager
@@ -78,7 +74,6 @@ func NewMessageConsumerUseCase(
 	templateRepo template.Repository,
 	businessPhoneRepo businessphone.Repository,
 	whatsAppClientFactory conversation.WhatsAppClientFactory,
-	recordMetric business_metrics.RecordMetricUseCase,
 	consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase,
 	checkBalance balance.CheckBalanceUseCase,
 	messageHistoryManager conversation.MessageHistoryManager,
@@ -97,7 +92,6 @@ func NewMessageConsumerUseCase(
 		TemplateRepo:            templateRepo,
 		BusinessPhoneRepo:       businessPhoneRepo,
 		WhatsAppClientFactory:   whatsAppClientFactory,
-		RecordMetric:            recordMetric,
 		ConsumeWhatsappTemplate: consumeWhatsappTemplate,
 		CheckBalance:            checkBalance,
 		MessageHistoryManager:   messageHistoryManager,
@@ -491,32 +485,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	}
 
 	c.storeTemplateInfoOnEntry(entry, tmpl, variables)
-
-	if c.RecordMetric != nil {
-		entityID := strings.TrimSpace(messageID)
-		if entityID == "" {
-			entityID = uuid.NewString()
-		}
-
-		metadata := map[string]string{
-			"to":            phoneNumber,
-			"template_name": tmpl.Name,
-			"template_id":   campaign.TemplateID,
-			"language":      tmpl.Language,
-			"campaign_id":   campaignID,
-			"entry_id":      entryID,
-			"source":        "whatsapp_campaign",
-		}
-
-		if err := c.RecordMetric.Execute(business_metrics.RecordMetricInput{
-			EventType:  business_metrics.EventWhatsAppTemplateMessageSent,
-			EntityID:   entityID,
-			EntityType: business_metrics.EntityTypeMessage,
-			Metadata:   metadata,
-		}); err != nil {
-			fmt.Printf("whatsapp campaign consumer: failed to record metric: %v\n", err)
-		}
-	}
 
 	c.updateEntryStatus(entryID, wce.SendStatusSent, messageID)
 	c.recordCampaignSend(entry, campaign.BusinessPhoneID, campaignID)

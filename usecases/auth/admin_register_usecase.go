@@ -6,7 +6,6 @@ import (
 
 	"vozko/brand"
 	"vozko/domain/auth"
-	"vozko/domain/business_metrics"
 	"vozko/domain/customer"
 	"vozko/domain/notification"
 	"vozko/domain/user"
@@ -19,7 +18,6 @@ type adminRegisterUseCase struct {
 	emailService    notification.EmailService
 	docValidator    customer.DocumentValidator
 	customerRepo    customer.CustomerRepository
-	recordMetric    business_metrics.RecordMetricUseCase
 	ensureDefaultWs workspace.EnsureDefaultWorkspaceUseCase
 }
 
@@ -29,7 +27,6 @@ func NewAdminRegisterUseCase(
 	emailService notification.EmailService,
 	docValidator customer.DocumentValidator,
 	customerRepo customer.CustomerRepository,
-	recordMetric business_metrics.RecordMetricUseCase,
 	ensureDefaultWs workspace.EnsureDefaultWorkspaceUseCase,
 ) auth.AdminRegisterUseCase {
 	return &adminRegisterUseCase{
@@ -38,7 +35,6 @@ func NewAdminRegisterUseCase(
 		emailService:    emailService,
 		docValidator:    docValidator,
 		customerRepo:    customerRepo,
-		recordMetric:    recordMetric,
 		ensureDefaultWs: ensureDefaultWs,
 	}
 }
@@ -102,8 +98,6 @@ func (uc *adminRegisterUseCase) Execute(input auth.CredentialsInput) (*auth.Toke
 		return nil, err
 	}
 
-	uc.recordUserCreation(u.ID, u.Email, string(custType))
-
 	// Provision the user's default workspace, same as the self-service register
 	// flow. Without this, admin-created accounts have no workspace at all, which
 	// leaves them unable to load the app or see/accept pending invites.
@@ -147,25 +141,4 @@ func (uc *adminRegisterUseCase) sendWelcomeEmail(email string) {
 	_ = uc.emailService.SendTemplate(email, subject, "welcome_email.html", map[string]interface{}{
 		"Email": email,
 	})
-}
-
-func (uc *adminRegisterUseCase) recordUserCreation(userID, email, customerType string) {
-	if uc.recordMetric == nil {
-		return
-	}
-
-	err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventUserAccountCreated,
-		EntityID:   userID,
-		EntityType: business_metrics.EntityTypeUser,
-		UserID:     &userID,
-		Metadata: map[string]string{
-			"email":         email,
-			"customer_type": customerType,
-		},
-	})
-
-	if err != nil {
-		log.Printf("failed to record user account created metric: %v", err)
-	}
 }

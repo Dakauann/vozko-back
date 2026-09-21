@@ -8,7 +8,6 @@ import (
 
 	"vozko/brand"
 	"vozko/domain/auth"
-	"vozko/domain/business_metrics"
 	"vozko/domain/cache"
 	"vozko/domain/notification"
 	"vozko/domain/user"
@@ -21,7 +20,6 @@ type credentialsLoginUseCase struct {
 	tokenIssuer     auth.TokenIssuer
 	sessionRepo     auth.SessionRepository
 	emailPublisher  notification.PublishEmailUseCase
-	recordMetric    business_metrics.RecordMetricUseCase
 	throttle        cache.FailureThrottle
 	notifier        notification.Notifier
 	dashboardURL    string
@@ -35,7 +33,6 @@ func NewCredentialsLoginUseCase(
 	tokenIssuer auth.TokenIssuer,
 	sessionRepo auth.SessionRepository,
 	emailPublisher notification.PublishEmailUseCase,
-	recordMetric business_metrics.RecordMetricUseCase,
 ) *credentialsLoginUseCase {
 	return &credentialsLoginUseCase{
 		userRepo:        userRepo,
@@ -43,7 +40,6 @@ func NewCredentialsLoginUseCase(
 		tokenIssuer:     tokenIssuer,
 		sessionRepo:     sessionRepo,
 		emailPublisher:  emailPublisher,
-		recordMetric:    recordMetric,
 	}
 }
 
@@ -143,8 +139,6 @@ func (uc *credentialsLoginUseCase) Execute(input auth.CredentialsInput) (*auth.T
 
 	tokens.RefreshToken = rawRefresh
 
-	uc.recordLogin(u.ID, u.Email)
-
 	go uc.sendLoginEmail(u.Email, time.Now().Format("2006-01-02 15:04:05"))
 
 	return tokens, nil
@@ -175,25 +169,5 @@ func (uc *credentialsLoginUseCase) sendLoginEmail(email, loginTime string) {
 		log.Printf("LOGIN EMAIL FAILED: %v", err)
 	} else {
 		log.Printf("LOGIN EMAIL SENT SUCCESSFULLY to %s", email)
-	}
-}
-
-func (uc *credentialsLoginUseCase) recordLogin(userID, email string) {
-	if uc.recordMetric == nil {
-		return
-	}
-
-	err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventUserLogin,
-		EntityID:   userID,
-		EntityType: business_metrics.EntityTypeUser,
-		UserID:     &userID,
-		Metadata: map[string]string{
-			"email": email,
-		},
-	})
-
-	if err != nil {
-		log.Printf("failed to record user login metric: %v", err)
 	}
 }

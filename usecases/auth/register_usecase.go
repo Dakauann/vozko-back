@@ -7,7 +7,6 @@ import (
 
 	"vozko/brand"
 	"vozko/domain/auth"
-	"vozko/domain/business_metrics"
 	"vozko/domain/customer"
 	"vozko/domain/notification"
 	"vozko/domain/user"
@@ -25,7 +24,6 @@ type registerUseCase struct {
 	verifyToken     auth.VerifyEmailTokenUseCase
 	tokenRepo       auth.EmailVerificationRepository
 	customerRepo    customer.CustomerRepository
-	recordMetric    business_metrics.RecordMetricUseCase
 	ensureDefaultWs workspace.EnsureDefaultWorkspaceUseCase
 }
 
@@ -39,7 +37,6 @@ func NewRegisterUseCase(
 	verifyToken auth.VerifyEmailTokenUseCase,
 	tokenRepo auth.EmailVerificationRepository,
 	customerRepo customer.CustomerRepository,
-	recordMetric business_metrics.RecordMetricUseCase,
 	ensureDefaultWs workspace.EnsureDefaultWorkspaceUseCase,
 ) auth.RegisterUseCase {
 	return &registerUseCase{
@@ -52,13 +49,11 @@ func NewRegisterUseCase(
 		verifyToken:     verifyToken,
 		tokenRepo:       tokenRepo,
 		customerRepo:    customerRepo,
-		recordMetric:    recordMetric,
 		ensureDefaultWs: ensureDefaultWs,
 	}
 }
 
 func (uc *registerUseCase) Execute(input auth.CredentialsInput) (*auth.TokenPair, error) {
-
 	if err := uc.verifyToken.Execute(input.VerificationToken); err != nil {
 		return nil, err
 	}
@@ -131,8 +126,6 @@ func (uc *registerUseCase) Execute(input auth.CredentialsInput) (*auth.TokenPair
 		return nil, err
 	}
 
-	uc.recordUserCreation(u.ID, u.Email, string(custType))
-
 	if uc.ensureDefaultWs != nil {
 		if _, wsErr := uc.ensureDefaultWs.Execute(u.ID, u.Email, strings.TrimSpace(input.ReferralCode)); wsErr != nil {
 			log.Printf("[register] failed to ensure default workspace for user %s: %v", u.ID, wsErr)
@@ -199,25 +192,4 @@ func (uc *registerUseCase) sendWelcomeEmail(email string) {
 	_ = uc.emailService.SendTemplate(email, subject, "welcome_email.html", map[string]interface{}{
 		"Email": email,
 	})
-}
-
-func (uc *registerUseCase) recordUserCreation(userID, email, customerType string) {
-	if uc.recordMetric == nil {
-		return
-	}
-
-	err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventUserAccountCreated,
-		EntityID:   userID,
-		EntityType: business_metrics.EntityTypeUser,
-		UserID:     &userID,
-		Metadata: map[string]string{
-			"email":         email,
-			"customer_type": customerType,
-		},
-	})
-
-	if err != nil {
-		log.Printf("failed to record user account created metric: %v", err)
-	}
 }

@@ -39,7 +39,6 @@ func realThrottle(state *countingSharedState) auth.CredentialsLoginUseCase {
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	).WithFailureThrottle(thr)
 }
 
@@ -99,7 +98,7 @@ func TestLoginThrottle_DoesNotLockOtherAccounts(t *testing.T) {
 	thr := realcache.NewFailureThrottle(state, "loginfail", 10, 15*time.Minute)
 	uc := NewCredentialsLoginUseCase(
 		repo, &testPasswordService{}, &testTokenIssuer{}, newTestSessionRepo(),
-		&testEmailPublisher{}, &testRecordMetric{},
+		&testEmailPublisher{},
 	).WithFailureThrottle(thr)
 
 	for i := 0; i < 12; i++ {

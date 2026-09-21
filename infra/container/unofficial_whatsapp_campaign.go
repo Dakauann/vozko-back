@@ -2,12 +2,10 @@ package container
 
 import (
 	"context"
-	"log"
 	"time"
 
 	uwhttp "vozko/delivery/http/unofficial_whatsapp"
 	wsdelivery "vozko/delivery/ws"
-	"vozko/domain/business_metrics"
 	lcs "vozko/domain/lead_campaign_send"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
@@ -50,7 +48,6 @@ type unofficialWhatsAppCampaignBundle struct {
 func (c *Container) initUnofficialWhatsAppCampaigns(
 	sender *conversation_usecase.MessageSenderService,
 	departments workspace_department.CreationDepartmentResolver,
-	recordMetric business_metrics.RecordMetricUseCase,
 ) {
 	bundle := &unofficialWhatsAppCampaignBundle{}
 	c.unofficialWhatsAppCampaigns = bundle
@@ -100,7 +97,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Budget:      budget,
 		Spam:        spam,
 		Assignments: c.services.assignmentService,
-		Metrics:     &campaignMetricRecorder{record: recordMetric},
 		Broadcaster: &campaignEntryBroadcaster{hub: c.services.conversationHub},
 	})
 	bundle.Consumer = consumer
@@ -123,7 +119,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	logChannelCapabilities("unofficial-whatsapp-campaigns", map[string]bool{
 		"sender":         sender != nil,
 		"assignment":     c.services.assignmentService != nil,
-		"metrics":        recordMetric != nil,
 		"broadcaster":    c.services.conversationHub != nil,
 		"departments":    departments != nil,
 		"spam-cooldown":  c.repositories.leadCampaignSend != nil,
@@ -261,35 +256,6 @@ func (g *workspaceSpamGuard) Record(leadID, senderID, campaignID string) error {
 		return nil
 	}
 	return g.sends.Record(leadID, senderID, campaignID)
-}
-
-// campaignMetricRecorder meters send VOLUME. No money is computed anywhere in
-// this channel; this is what makes pricing addable later without a data gap.
-type campaignMetricRecorder struct {
-	record business_metrics.RecordMetricUseCase
-}
-
-func (r *campaignMetricRecorder) RecordCampaignSend(in uwcuc.RecordSendMetric) {
-	if r.record == nil {
-		return
-	}
-	entityID := in.ProviderMessageID
-	if entityID == "" {
-		entityID = in.EntryID
-	}
-	if err := r.record.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventUnofficialWhatsAppMessageSent,
-		EntityID:   entityID,
-		EntityType: business_metrics.EntityTypeMessage,
-		Metadata: map[string]string{
-			"campaign_id": in.CampaignID,
-			"entry_id":    in.EntryID,
-			"instance_id": in.InstanceID,
-			"source":      "unofficial_whatsapp_campaign",
-		},
-	}); err != nil {
-		log.Printf("[unofficial-whatsapp-campaign] could not record the send metric: %v", err)
-	}
 }
 
 // campaignWorkflowTrigger fires the campaign-sent trigger.

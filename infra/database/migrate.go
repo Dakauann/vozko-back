@@ -70,7 +70,6 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.PasswordResetToken{},
 			&schema.SystemConfig{},
 			&schema.Customer{},
-			&schema.BusinessMetric{},
 			&schema.Property{},
 			&schema.Shop{},
 			&schema.WhatsAppCampaign{},

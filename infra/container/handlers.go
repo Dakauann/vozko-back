@@ -14,7 +14,6 @@ import (
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
 	buildersessionhttp "vozko/delivery/http/buildersession"
-	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
@@ -221,11 +220,6 @@ func (c *Container) initHandlers() {
 		),
 		metrics:      metricsHandler,
 		metricsQuery: metricsQueryHandler,
-		businessMetrics: businessmetricshttp.NewBusinessMetricsHandler(
-			c.useCases.listMetrics,
-			c.useCases.getMetricsStats,
-			c.useCases.getMetricsTimeSeries,
-		),
 		shop: handlers.NewShopHandler(
 			c.useCases.createShop,
 			c.useCases.updateShop,

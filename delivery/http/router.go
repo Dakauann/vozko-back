@@ -13,7 +13,6 @@ import (
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
 	buildersessionhttp "vozko/delivery/http/buildersession"
-	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
@@ -107,7 +106,6 @@ type router struct {
 	authMiddleware                 *middleware.AuthMiddleware
 	metricsHandler                 *handlers.MetricsHandler
 	metricsQueryHandler            *handlers.MetricsQueryHandler
-	businessMetricsHandler         *businessmetricshttp.BusinessMetricsHandler
 	shopHandler                    *handlers.ShopHandler
 	leadHandler                    *leadhttp.LeadHandler
 	callRecordingHandler           *callrecordinghttp.CallRecordingHandler
@@ -215,7 +213,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	whatsappCampaignHandler *handlers.WhatsAppCampaignHandler,
 	metricsHandler *handlers.MetricsHandler,
 	metricsQueryHandler *handlers.MetricsQueryHandler,
-	businessMetricsHandler *businessmetricshttp.BusinessMetricsHandler,
 	shopHandler *handlers.ShopHandler,
 	leadHandler *leadhttp.LeadHandler,
 	callRecordingHandler *callrecordinghttp.CallRecordingHandler,
@@ -321,7 +318,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		whatsappCampaignHandler:        whatsappCampaignHandler,
 		metricsHandler:                 metricsHandler,
 		metricsQueryHandler:            metricsQueryHandler,
-		businessMetricsHandler:         businessMetricsHandler,
 		shopHandler:                    shopHandler,
 		leadHandler:                    leadHandler,
 		callRecordingHandler:           callRecordingHandler,
@@ -479,7 +475,6 @@ func (r *router) setupRoutes() {
 	r.setupAdminPaymentSplitRoutes(adminRoutes)
 	r.setupAdminTicketRoutes(adminRoutes)
 	r.setupAdminShippingRoutes(adminRoutes)
-	r.setupAdminBusinessMetricsRoutes(adminRoutes)
 	r.setupLeadRoutes(protected)
 	r.setupAdminCallRecordingRoutes(adminRoutes)
 	r.setupAdminUserRoutes(adminRoutes)
@@ -815,10 +810,6 @@ func (r *router) setupAdminShippingRoutes(adminRoutes *mux.Router) {
 	adminRoutes.HandleFunc("/shipping/providers/{provider}/authorization-url", r.shippingHandler.GetAuthorizationURL).Methods(http.MethodPost)
 	adminRoutes.HandleFunc("/shipping/providers/{provider}/connect", r.shippingHandler.ConnectProviderAccount).Methods(http.MethodPost)
 	adminRoutes.HandleFunc("/shipping/providers/{provider}/{accountId}/reconnect", r.shippingHandler.ReconnectProviderAccount).Methods(http.MethodPost)
-}
-
-func (r *router) setupAdminBusinessMetricsRoutes(adminRoutes *mux.Router) {
-	businessmetricshttp.RegisterAdminRoutes(adminRoutes, r.businessMetricsHandler)
 }
 
 func (r *router) setupLeadRoutes(protected *mux.Router) {

@@ -12,7 +12,6 @@ import (
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
 	buildersessionhttp "vozko/delivery/http/buildersession"
-	businessmetricshttp "vozko/delivery/http/businessmetrics"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
@@ -72,7 +71,6 @@ import (
 	"vozko/domain/auth"
 	balance_domain "vozko/domain/balance"
 	billing_domain "vozko/domain/billing"
-	"vozko/domain/business_metrics"
 	cache "vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
 	call_billing_domain "vozko/domain/calls/billing"
@@ -234,7 +232,6 @@ type repositories struct {
 	emailVerification       auth.EmailVerificationRepository
 	systemConfig            config_domain.SystemConfigRepository
 	customer                customer.CustomerRepository
-	businessMetrics         business_metrics.Repository
 	shop                    shop.Repository
 	wcCampaign              wc_domain.Repository
 	wcEntry                 wc_entry_domain.Repository
@@ -312,8 +309,6 @@ type services struct {
 	amqpPool        *queue.ConnectionPool
 	workflowWakePub messaging.MessageQueuePub
 	workflowWakeSub messaging.MessageQueueSub
-	metricsQueuePub messaging.MessageQueuePub
-	metricsQueueSub messaging.MessageQueueSub
 	crmTelemetryPub messaging.MessageQueuePub
 	crmTelemetrySub messaging.MessageQueueSub
 	// The alert send path. Claiming a rule stays on the analysis walk; the
@@ -585,11 +580,6 @@ type useCases struct {
 	updateWorkspaceConfig      workspace_config_domain.UpdateWorkspaceConfigUseCase
 	updateWorkspaceConfigOwner workspace_config_domain.UpdateWorkspaceConfigOwnerUseCase
 
-	recordMetric         business_metrics.RecordMetricUseCase
-	consumeMetric        business_metrics.ConsumeMetricUseCase
-	listMetrics          business_metrics.ListMetricsUseCase
-	getMetricsStats      business_metrics.GetMetricsStatsUseCase
-	getMetricsTimeSeries business_metrics.GetMetricsTimeSeriesUseCase
 
 	createShop shop.CreateShopUseCase
 	updateShop shop.UpdateShopUseCase
@@ -982,7 +972,6 @@ type handlers_ struct {
 	systemConfig            *systemconfighttp.SystemConfigHandler
 	metrics                 *handlers.MetricsHandler
 	metricsQuery            *handlers.MetricsQueryHandler
-	businessMetrics         *businessmetricshttp.BusinessMetricsHandler
 	shop                    *handlers.ShopHandler
 	whatsappCampaign        *handlers.WhatsAppCampaignHandler
 	whatsappBusinessPhone   *whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandler

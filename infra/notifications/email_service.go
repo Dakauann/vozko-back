@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
-	"vozko/domain/business_metrics"
 	"vozko/domain/notification"
 
-	"github.com/google/uuid"
 	"github.com/resend/resend-go/v3"
 	"golang.org/x/time/rate"
 )
@@ -47,7 +44,6 @@ type EmailService struct {
 	fromEmail       string
 	fromName        string
 	templatesLoader notification.TemplateLoader
-	recordMetric    business_metrics.RecordMetricUseCase
 	limiter         *rate.Limiter
 	maxAttempts     int
 }
@@ -76,10 +72,6 @@ func NewEmailService(templatesLoader notification.TemplateLoader, apiKey, fromEm
 		limiter:         rate.NewLimiter(rate.Limit(maxRPS), maxRPS),
 		maxAttempts:     emailSendMaxAttempts,
 	}
-}
-
-func (e *EmailService) SetRecordMetric(recordMetric business_metrics.RecordMetricUseCase) {
-	e.recordMetric = recordMetric
 }
 
 func (e *EmailService) SendEmail(to, subject, body string) error {
@@ -117,7 +109,6 @@ func (e *EmailService) SendEmail(to, subject, body string) error {
 		_, err := e.client.Emails.SendWithContext(attemptCtx, req)
 		attemptCancel()
 		if err == nil {
-			e.recordEmailSent(to, subject)
 			return nil
 		}
 		lastErr = err
@@ -214,24 +205,4 @@ func parseRecipients(raw string) []string {
 		}
 	}
 	return out
-}
-
-func (e *EmailService) recordEmailSent(to, subject string) {
-	if e.recordMetric == nil {
-		return
-	}
-
-	err := e.recordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventEmailSent,
-		EntityID:   uuid.New().String(),
-		EntityType: business_metrics.EntityTypeEmail,
-		Metadata: map[string]string{
-			"to":      to,
-			"subject": subject,
-		},
-	})
-
-	if err != nil {
-		log.Printf("failed to record email sent metric: %v", err)
-	}
 }

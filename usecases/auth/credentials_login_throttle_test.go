@@ -29,7 +29,6 @@ func newThrottledLoginUC(repo *testUserRepo, thr *fakeThrottle) auth.Credentials
 		&testTokenIssuer{},
 		newTestSessionRepo(),
 		&testEmailPublisher{},
-		&testRecordMetric{},
 	).WithFailureThrottle(thr)
 }
 

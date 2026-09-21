@@ -10,7 +10,6 @@ import (
 	"context"
 
 	"vozko/domain/balance"
-	"vozko/domain/business_metrics"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/whatsapp/template"
@@ -118,18 +117,6 @@ func (m *sendMockBillingUC) Refund(wsID, refID, cat string) error {
 	return m.refundErr
 }
 func (m *sendMockBillingUC) GetTemplateCostMicros(string, string) (int64, error) { return 0, nil }
-
-type sendMockMetricUC struct {
-	called bool
-	input  *business_metrics.RecordMetricInput
-	err    error
-}
-
-func (m *sendMockMetricUC) Execute(input business_metrics.RecordMetricInput) error {
-	m.called = true
-	m.input = &input
-	return m.err
-}
 
 func utilityTemplate() *template.Template {
 	return &template.Template{

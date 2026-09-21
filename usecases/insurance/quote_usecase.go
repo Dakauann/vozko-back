@@ -3,36 +3,31 @@ package insurance_usecase
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"vozko/domain/business_metrics"
 	"vozko/domain/insurance"
 )
 
 type quoteUseCase struct {
-	repo         insurance.InsuranceRepository
-	providers    []insurance.QuoteProvider
-	now          func() time.Time
-	newID        func() string
-	recordMetric business_metrics.RecordMetricUseCase
+	repo      insurance.InsuranceRepository
+	providers []insurance.QuoteProvider
+	now       func() time.Time
+	newID     func() string
 }
 
 func NewQuoteUseCase(
 	repo insurance.InsuranceRepository,
 	providers []insurance.QuoteProvider,
-	recordMetric business_metrics.RecordMetricUseCase,
 ) insurance.QuoteInsuranceUseCase {
 	return &quoteUseCase{
-		repo:         repo,
-		providers:    cloneProviders(providers),
-		now:          time.Now,
-		newID:        func() string { return uuid.NewString() },
-		recordMetric: recordMetric,
+		repo:      repo,
+		providers: cloneProviders(providers),
+		now:       time.Now,
+		newID:     func() string { return uuid.NewString() },
 	}
 }
 
@@ -43,8 +38,6 @@ func (uc *quoteUseCase) Execute(ctx context.Context, req insurance.InsuranceQuot
 	if req.PolicyType == "" {
 		return insurance.InsuranceQuoteResponse{}, insurance.ErrInvalidQuoteRequest
 	}
-
-	uc.recordQuoteRequest(req.UserID, string(req.PolicyType))
 
 	details := req.Details
 	if details == nil {
@@ -131,7 +124,6 @@ func (uc *quoteUseCase) Execute(ctx context.Context, req insurance.InsuranceQuot
 			return insurance.InsuranceQuoteResponse{}, fmt.Errorf("save quotation: %w", err)
 		}
 
-		uc.recordQuoteCreated(quotation)
 	}
 
 	return insurance.InsuranceQuoteResponse{Quotation: quotation}, nil
@@ -189,49 +181,4 @@ func filterProvidersByPolicy(providers []insurance.QuoteProvider, policy insuran
 	}
 
 	return filtered
-}
-
-func (uc *quoteUseCase) recordQuoteRequest(userID, policyType string) {
-	if uc.recordMetric == nil {
-		return
-	}
-
-	err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-		EventType:  business_metrics.EventInsuranceQuoteRequested,
-		EntityID:   userID,
-		EntityType: business_metrics.EntityTypeUser,
-		UserID:     &userID,
-		Metadata: map[string]string{
-			"policy_type": policyType,
-		},
-	})
-
-	if err != nil {
-		log.Printf("failed to record insurance quote requested metric: %v", err)
-	}
-}
-
-func (uc *quoteUseCase) recordQuoteCreated(quotation *insurance.Quotation) {
-	if uc.recordMetric == nil {
-		return
-	}
-
-	for _, quote := range quotation.Quotes {
-		err := uc.recordMetric.Execute(business_metrics.RecordMetricInput{
-			EventType:  business_metrics.EventInsuranceQuoteCreated,
-			EntityID:   quote.ID,
-			EntityType: business_metrics.EntityTypeInsuranceQuote,
-			UserID:     &quotation.UserID,
-			Metadata: map[string]string{
-				"quotation_id": quotation.ID,
-				"policy_type":  string(quotation.PolicyType),
-				"provider":     string(quote.Provider),
-				"premium":      fmt.Sprintf("%.2f", quote.Premium),
-			},
-		})
-
-		if err != nil {
-			log.Printf("failed to record insurance quote created metric for quote %s: %v", quote.ID, err)
-		}
-	}
 }

@@ -12,7 +12,6 @@ import (
 	attendance_repository "vozko/infra/repositories/attendance"
 	auth_repository "vozko/infra/repositories/auth"
 	balance_repository "vozko/infra/repositories/balance"
-	business_metrics_repository "vozko/infra/repositories/business_metrics"
 	calendar_repository "vozko/infra/repositories/calendar"
 	call_billing_repository "vozko/infra/repositories/call_billing"
 	call_cdr_repository "vozko/infra/repositories/call_cdr"
@@ -97,7 +96,6 @@ func (c *Container) initRepositories() {
 		emailVerification:       auth_repository.NewEmailVerificationRedisRepository(c.redisProvider.SharedState()),
 		systemConfig:            config_repository.NewSystemConfigRepository(c.db),
 		customer:                customer_repository.NewCustomerRepository(c.db),
-		businessMetrics:         business_metrics_repository.NewBusinessMetricsRepository(c.db),
 		shop:                    shop_repository.NewRepository(c.db),
 		wcCampaign:              wc_repository.NewCachedRepository(wc_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		wcEntry:                 wc_entry_repository.NewRepository(c.db),
