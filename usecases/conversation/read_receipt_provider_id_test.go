@@ -7,18 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The receipt an operator sends by opening a conversation is resolved from ONE
-// message id — the newest inbound one. Two things made that resolution return
-// nothing, or the wrong thing, on every channel except official WhatsApp:
-//
-//   - only whatsapp_message_id was read, and no adapter-backed channel fills it
-//     (they use external_message_id), so the lookup returned "" and the receipt
-//     was silently skipped: the operator read the chat, the contact's ticks
-//     stayed grey;
-//   - the INBOUND test used the message TYPE, but on unofficial WhatsApp a
-//     message we sent is user_message too, so our own outbound id could be
-//     handed to the provider to mark as read.
-
 type stubMessageReader struct {
 	conversation.MessageRepository
 	byID map[string]*conversation.Message
@@ -52,9 +40,7 @@ func TestReadReceiptResolvesAdapterChannelProviderID(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
 			ID: "m1", EntryType: shared.EntryTypeUnofficialWhatsApp,
-			Direction: conversation.MessageDirectionInbound,
-			// The type a contact's text carries on this channel — and the type
-			// OUR text carries too, which is why direction has to decide.
+			Direction:         conversation.MessageDirectionInbound,
 			MessageType:       conversation.MessageTypeUserMessage,
 			ExternalMessageID: strPtr("3EB027B8F1853217E3B8BB"),
 		},
@@ -65,8 +51,6 @@ func TestReadReceiptResolvesAdapterChannelProviderID(t *testing.T) {
 	}
 }
 
-// Direction is the honest signal; the type is not. Offering an outbound id here
-// asks the provider to mark OUR OWN message as read.
 func TestReadReceiptIgnoresOurOwnOutboundMessages(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -78,18 +62,16 @@ func TestReadReceiptIgnoresOurOwnOutboundMessages(t *testing.T) {
 		&conversation.Message{
 			ID: "m2", EntryType: shared.EntryTypeUnofficialWhatsApp,
 			Direction:         conversation.MessageDirectionOutbound,
-			MessageType:       conversation.MessageTypeUserMessage, // same type, ours
+			MessageType:       conversation.MessageTypeUserMessage,
 			ExternalMessageID: strPtr("OUTBOUND-1"),
 		},
 	)
 
-	// Newest-first: m2 is newest but ours, so the newest INBOUND must win.
 	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "INBOUND-1" {
 		t.Errorf("provider id = %q, want INBOUND-1", got)
 	}
 }
 
-// Official WhatsApp is the path that already worked and must keep working.
 func TestReadReceiptStillResolvesOfficialWhatsAppWamid(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -105,18 +87,16 @@ func TestReadReceiptStillResolvesOfficialWhatsAppWamid(t *testing.T) {
 	}
 }
 
-// Rows written before direction was persisted carry only a type, so the type
-// still has to work as a fallback rather than being ignored outright.
 func TestReadReceiptFallsBackToMessageTypeWhenDirectionIsUnset(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
 			ID: "m1", EntryType: shared.EntryTypeWhatsApp,
-			MessageType:       conversation.MessageTypeUserMessage, // inbound by type
+			MessageType:       conversation.MessageTypeUserMessage,
 			WhatsAppMessageID: strPtr("legacy-inbound"),
 		},
 		&conversation.Message{
 			ID: "m2", EntryType: shared.EntryTypeWhatsApp,
-			MessageType:       conversation.MessageTypeAIResponse, // outbound by type
+			MessageType:       conversation.MessageTypeAIResponse,
 			WhatsAppMessageID: strPtr("legacy-outbound"),
 		},
 	)
@@ -126,8 +106,6 @@ func TestReadReceiptFallsBackToMessageTypeWhenDirectionIsUnset(t *testing.T) {
 	}
 }
 
-// Nothing inbound to acknowledge is a normal state, not a receipt for whatever
-// id happens to be lying around.
 func TestReadReceiptReturnsNothingWhenNoInboundIDExists(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -143,9 +121,6 @@ func TestReadReceiptReturnsNothingWhenNoInboundIDExists(t *testing.T) {
 	}
 }
 
-// The message ids arrive from the client. The database write is already scoped
-// to the entry, but this receipt LEAVES the platform: a foreign id must not be
-// handed to the provider on this conversation's channel.
 func TestReadReceiptIgnoresMessagesFromAnotherEntry(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -162,14 +137,11 @@ func TestReadReceiptIgnoresMessagesFromAnotherEntry(t *testing.T) {
 		},
 	)
 
-	// The foreign one is newest, so without the check it would win.
 	if got := marker.latestInboundProviderID(testEntryID, shared.EntryTypeUnofficialWhatsApp, ids); got != "MINE-1" {
 		t.Errorf("provider id = %q, want MINE-1 — a foreign id must never reach the provider", got)
 	}
 }
 
-// Same id, different channel: the entry type is part of a message's identity,
-// so a Telegram row must not answer a receipt going out on WhatsApp.
 func TestReadReceiptIgnoresAnotherChannelsMessage(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -185,10 +157,6 @@ func TestReadReceiptIgnoresAnotherChannelsMessage(t *testing.T) {
 	}
 }
 
-// Official WhatsApp had its own copy of this resolution, testing the message
-// TYPE. Media we SENT carries message_type "media", which IsInbound() calls
-// inbound, so the receipt named our own message and Meta refused it:
-// "(#100) ... is outgoing. Please use an incoming message ID."
 func TestReadReceiptRejectsOutboundMediaOnOfficialWhatsApp(t *testing.T) {
 	marker, ids := markerWith(
 		&conversation.Message{
@@ -199,8 +167,7 @@ func TestReadReceiptRejectsOutboundMediaOnOfficialWhatsApp(t *testing.T) {
 		},
 		&conversation.Message{
 			ID: "m2", EntryID: testEntryID, EntryType: shared.EntryTypeWhatsApp,
-			Direction: conversation.MessageDirectionOutbound,
-			// The type that fooled the old check: ours, but "inbound" by type.
+			Direction:         conversation.MessageDirectionOutbound,
 			MessageType:       conversation.MessageTypeMedia,
 			WhatsAppMessageID: strPtr("wamid.OUR-MEDIA"),
 		},

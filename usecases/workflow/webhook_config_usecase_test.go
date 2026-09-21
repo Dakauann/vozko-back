@@ -235,8 +235,6 @@ func TestWebhookConfig_TokenGenErrors(t *testing.T) {
 		t.Fatal("rotate token must surface generation error")
 	}
 
-	// Token succeeds but the secret fails: exercises the secret-generation branch
-	// of Create/Rotate specifically.
 	randomToken = func(n int) (string, error) {
 		if n == webhookSecretBytes {
 			return "", errors.New("no entropy")
@@ -255,7 +253,6 @@ func TestWebhookConfig_TokenGenErrors(t *testing.T) {
 }
 
 func TestWebhookConfig_UpdateAndRotateBranches(t *testing.T) {
-	// Update: cross-workspace ownership rejection.
 	uc, webhooks, _ := newConfigUC()
 	webhooks.put(&workflow.WorkflowWebhook{ID: "x", WorkflowID: "wf1", WorkspaceID: "ws1", Token: "t", AuthMode: workflow.WebhookAuthNone})
 	if _, err := uc.Update(WebhookConfigInput{WorkspaceID: "other", WorkflowID: "wf1"}); !errors.Is(err, workflow.ErrWorkflowNotFound) {
@@ -265,7 +262,6 @@ func TestWebhookConfig_UpdateAndRotateBranches(t *testing.T) {
 		t.Fatalf("rotate cross-workspace: got %v", err)
 	}
 
-	// Update / Rotate: webhook lookup error.
 	uc2, webhooks2, _ := newConfigUC()
 	webhooks2.findErr = errors.New("lookup failed")
 	if _, err := uc2.Update(WebhookConfigInput{WorkspaceID: "ws1", WorkflowID: "wf1"}); err == nil {
@@ -275,7 +271,6 @@ func TestWebhookConfig_UpdateAndRotateBranches(t *testing.T) {
 		t.Fatal("rotate must surface webhook lookup error")
 	}
 
-	// Update: custom method branch.
 	uc3, webhooks3, _ := newConfigUC()
 	webhooks3.put(&workflow.WorkflowWebhook{ID: "x", WorkflowID: "wf1", WorkspaceID: "ws1", Token: "t", AuthMode: workflow.WebhookAuthNone, Method: "POST"})
 	wh, err := uc3.Update(WebhookConfigInput{WorkspaceID: "ws1", WorkflowID: "wf1", Method: "PUT"})
@@ -283,7 +278,6 @@ func TestWebhookConfig_UpdateAndRotateBranches(t *testing.T) {
 		t.Fatalf("expected method updated to PUT, got %s err=%v", wh.Method, err)
 	}
 
-	// Update: a stored webhook made invalid (empty token) fails Validate.
 	uc4, webhooks4, _ := newConfigUC()
 	webhooks4.put(&workflow.WorkflowWebhook{ID: "x", WorkflowID: "wf1", WorkspaceID: "ws1", Token: "", AuthMode: workflow.WebhookAuthNone})
 	if _, err := uc4.Update(WebhookConfigInput{WorkspaceID: "ws1", WorkflowID: "wf1"}); !errors.Is(err, workflow.ErrWebhookTokenRequired) {
@@ -294,7 +288,7 @@ func TestWebhookConfig_UpdateAndRotateBranches(t *testing.T) {
 func TestWebhookConfig_CreateValidateFailure(t *testing.T) {
 	orig := randomToken
 	defer func() { randomToken = orig }()
-	randomToken = func(int) (string, error) { return "", nil } // empty token, no error
+	randomToken = func(int) (string, error) { return "", nil }
 
 	uc, _, _ := newConfigUC()
 	if _, err := uc.Create(WebhookConfigInput{WorkspaceID: "ws1", WorkflowID: "wf1"}); !errors.Is(err, workflow.ErrWebhookTokenRequired) {

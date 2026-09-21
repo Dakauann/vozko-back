@@ -15,18 +15,10 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// LeadRefResolver translates the id the conversation UI addresses memories
-// with into the CRM lead id they key on. For Instagram, Telegram and
-// unofficial WhatsApp the inbox projects the channel CONTACT id into the lead
-// slot, so that is what arrives in the URL; the contact row carries the
-// bridged CRM lead. Returns "" when the ref resolves to no lead.
 type LeadRefResolver interface {
 	ResolveLeadRef(workspaceID, ref string) string
 }
 
-// LeadMemoryHandler is the operator surface over the same use cases the AI
-// tool calls. Anything enforced here and not in the use case would be a rule
-// the agent could bypass, so this layer only translates HTTP.
 type LeadMemoryHandler struct {
 	createUC leadmemory.CreateUseCase
 	updateUC leadmemory.UpdateUseCase
@@ -51,18 +43,6 @@ func NewLeadMemoryHandler(
 	}
 }
 
-// resolveLeadID maps the path ref onto the CRM lead, and reports whether a
-// lead was actually found.
-//
-// The second return exists because "no lead behind this ref" is a real state,
-// not an error: Instagram and Telegram contacts are never bridged to a lead,
-// so the panel addresses memories by a contact id that keys nothing. Passing
-// that id through as if it were a lead is what turned an answerable question
-// into a foreign-key failure at write time, after the operator had already
-// typed the memory.
-//
-// A nil resolver means "not configured", not "not linked": the ref passes
-// through as linked, preserving the plain-lead-id behaviour.
 func (h *LeadMemoryHandler) resolveLeadID(workspaceID, ref string) (string, bool) {
 	if h.leadRefs == nil {
 		return ref, true
@@ -111,10 +91,6 @@ func (h *LeadMemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	leadID, linked := h.resolveLeadID(workspaceID, mux.Vars(r)["id"])
 	if !linked {
-		// Answered, not failed: this conversation has no lead, so it has no
-		// memories and cannot gain any. Saying so lets the panel show that
-		// state instead of an empty list that invites a write which cannot
-		// land.
 		response.WriteSuccess(w, http.StatusOK, LeadMemoryListResponse{
 			Memories:   []LeadMemoryResponse{},
 			Total:      0,
@@ -169,9 +145,6 @@ func (h *LeadMemoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	leadID, linked := h.resolveLeadID(workspaceID, mux.Vars(r)["id"])
 	if !linked {
-		// Refused up front and in the operator's language. The alternative is
-		// the storage layer rejecting a lead id that never existed, which
-		// reaches the UI as a generic 500 and loses what was typed.
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "lead_not_linked",
 			"Esta conversa ainda não está vinculada a um lead; não é possível salvar memórias.", nil)
 		return
@@ -189,8 +162,6 @@ func (h *LeadMemoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mirrors the idempotent-create contract of scheduled messages: an
-	// equivalent memory already existing answers 200 with that row.
 	status := http.StatusCreated
 	if result.Deduplicated {
 		status = http.StatusOK

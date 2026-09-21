@@ -6,13 +6,12 @@ import (
 )
 
 func TestCheckPortLayout(t *testing.T) {
-	// Linux ephemeral floor for these cases.
 	const eLo, eHi = 32768, 60999
 
 	cases := []struct {
 		name string
 		in   portLayoutInputs
-		want string // substring the first violation must contain; "" = must be safe
+		want string
 	}{
 		{
 			name: "safe layout (fixed default mux)",
@@ -70,14 +69,14 @@ func TestParseEphemeralRange(t *testing.T) {
 		wantHi int
 		wantOK bool
 	}{
-		{"32768\t60999\n", 32768, 60999, true}, // real Linux /proc content
+		{"32768\t60999\n", 32768, 60999, true},
 		{"  10000 20000  ", 10000, 20000, true},
 		{"49152 65535", 49152, 65535, true},
-		{"32768", 0, 0, false},       // one field
-		{"", 0, 0, false},            // empty
-		{"abc def", 0, 0, false},     // non-numeric
-		{"60999 32768", 0, 0, false}, // hi < lo
-		{"0 1000", 0, 0, false},      // lo <= 0
+		{"32768", 0, 0, false},
+		{"", 0, 0, false},
+		{"abc def", 0, 0, false},
+		{"60999 32768", 0, 0, false},
+		{"0 1000", 0, 0, false},
 	}
 	for _, c := range cases {
 		lo, hi, ok := parseEphemeralRange(c.in)

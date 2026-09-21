@@ -25,8 +25,6 @@ func (r *recordingAC) fn(resource workspace_domain.Resource, action workspace_do
 	}
 }
 
-// Every route carries the audience resource with the right action:
-// reads are read, anything that changes state or spends money is update.
 func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}
@@ -60,8 +58,6 @@ func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 			t.Errorf("%s %s: no route", c.method, c.path)
 			continue
 		}
-		// Invoke through the recorded AC; the zero handler may panic on a nil
-		// use case, which is fine here: registration is what is asserted.
 		func() {
 			defer func() { _ = recover() }()
 			match.Handler.ServeHTTP(httptest.NewRecorder(), req)
@@ -80,8 +76,6 @@ func TestRegisterProtectedRoutes_NilHandlerRegistersNothing(t *testing.T) {
 		t.Fatal("an unwired feature must expose no routes")
 	}
 }
-
-// ---- scoping ----
 
 type captureList struct{ in ca.ListInput }
 
@@ -129,8 +123,6 @@ func TestTrendsWithoutRollupScopeUsesAudienceFilters(t *testing.T) {
 	}
 }
 
-// The workspace comes from the session, never from the query. A caller who
-// sends ?workspaceId=other still lists their own rows.
 func TestList_WorkspaceCannotBeOverriddenByQuery(t *testing.T) {
 	uc := &captureList{}
 	h := NewHandler(Deps{List: uc})
@@ -232,14 +224,9 @@ func TestErrorMapping(t *testing.T) {
 	}
 }
 
-// withWorkspace stamps the session workspace the way the workspace
-// middleware does, so GetWorkspaceID reads it from the context (which takes
-// precedence over anything in the query).
 func withWorkspace(r *http.Request, workspaceID string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), middleware.WorkspaceIDContextKey, workspaceID))
 }
-
-// ---- per-post settings ----
 
 type capturePutContainer struct{ in ca.ContainerOverride }
 
@@ -249,9 +236,6 @@ func (c *capturePutContainer) Execute(_ context.Context, in ca.ContainerOverride
 	return &ca.ContainerSettings{Override: &in, Effective: eff.WithOverride(&in)}, nil
 }
 
-// The path names the post, the session names the workspace, and the body
-// only carries the override fields; the JSON `null` for a field means
-// "inherit" and must arrive as a nil pointer, not a zero value.
 func TestPutContainerSettings_BuildsOverrideFromPathSessionAndBody(t *testing.T) {
 	uc := &capturePutContainer{}
 	h := NewHandler(Deps{PutContainer: uc})
@@ -285,10 +269,6 @@ func (c *captureAuthors) Execute(_ context.Context, in ca.AuthorsInput) (*shared
 	return shared.NewPaginatedResult([]*ca.AuthorStats{}, in.Options.Pagination, 0), nil
 }
 
-// The ranking is a query parameter, not a second endpoint. An absent ?sort=
-// leaves the domain's own default in place; a known key is passed through with
-// its direction; an unknown one is refused rather than quietly defaulted, so a
-// client never reads a page ordered by something it did not ask for.
 func TestListAuthors_SortParsing(t *testing.T) {
 	t.Run("absent sort leaves the domain default", func(t *testing.T) {
 		uc := &captureAuthors{}
@@ -337,8 +317,6 @@ func TestListAuthors_SortParsing(t *testing.T) {
 		if uc.in.WorkspaceID != "" {
 			t.Fatal("a refused sort must not reach the use case")
 		}
-		// The 400 lists what IS accepted, straight from the domain, so the
-		// message cannot drift from the parser.
 		for _, k := range ca.AllAuthorSortKeys() {
 			if !strings.Contains(rec.Body.String(), string(k)) {
 				t.Fatalf("body %s omits accepted key %q", rec.Body.String(), k)
@@ -347,8 +325,6 @@ func TestListAuthors_SortParsing(t *testing.T) {
 	})
 }
 
-// Resolving an @ to its author row is the navigation §2 hangs off: the feed
-// knows a handle and an external id, the author endpoints take an author id.
 func TestListAuthors_FiltersByExternalID(t *testing.T) {
 	uc := &captureAuthors{}
 	h := NewHandler(Deps{Authors: uc})
@@ -362,24 +338,16 @@ func TestListAuthors_FiltersByExternalID(t *testing.T) {
 	}
 }
 
-// Forwarding a comment puts a message on the workspace's own WhatsApp, so it
-// carries its own action rather than reusing the one that configures the
-// engine: an operator who may moderate must not thereby be able to message
-// people in the workspace's name.
 func TestOutboundRoutesRequireTheSendAction(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}
 	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
 
-	// Publishing a reply and forwarding a comment both speak in the
-	// workspace's name, and the recipient picker enumerates who it talks to.
 	for _, c := range []struct{ method, path string }{
 		{http.MethodPost, "/audience/row-1/escalate"},
 		{http.MethodPost, "/audience/row-1/reply"},
 		{http.MethodPost, "/audience/row-1/reply/suggest"},
 		{http.MethodGet, "/audience/escalation-recipients"},
-		// Arming an automated sender is granting sends, so the alert routes
-		// carry the same action rather than the configuration one.
 		{http.MethodGet, "/audience/alerts"},
 		{http.MethodPost, "/audience/alerts"},
 		{http.MethodGet, "/audience/alerts/options"},
@@ -403,10 +371,6 @@ func TestOutboundRoutesRequireTheSendAction(t *testing.T) {
 	}
 }
 
-// Route ordering: "/alerts/options" must reach the options handler, not be
-// swallowed by the "/{id}" comment routes registered below it. Gorilla matches
-// in registration order, so this is a real ordering dependency and not a
-// theoretical one.
 func TestAlertOptionsRouteIsNotSwallowedByCommentIDRoutes(t *testing.T) {
 	router := mux.NewRouter()
 	RegisterProtectedRoutes(router, &Handler{}, (&recordingAC{calls: map[string]string{}}).fn)
@@ -421,8 +385,6 @@ func TestAlertOptionsRouteIsNotSwallowedByCommentIDRoutes(t *testing.T) {
 	}
 }
 
-// The vocabulary is served from the domain, so a picker cannot offer a metric
-// the evaluator does not implement, or miss one it does.
 func TestAlertOptionsMirrorsTheDomain(t *testing.T) {
 	h := NewHandler(Deps{})
 	rec := httptest.NewRecorder()
@@ -447,8 +409,6 @@ func TestAlertOptionsMirrorsTheDomain(t *testing.T) {
 			t.Fatalf("%q described as windowed=%v below=%v", m.Metric, m.Windowed, m.Below)
 		}
 	}
-	// The floors have to reach the client, or a form will offer a one-minute
-	// cooldown that the server silently clamps.
 	if body.Limits.MinCooldownMinutes != ca.MinAlertCooldownMinutes {
 		t.Fatalf("min cooldown = %d", body.Limits.MinCooldownMinutes)
 	}
@@ -460,11 +420,6 @@ func TestAlertOptionsMirrorsTheDomain(t *testing.T) {
 	}
 }
 
-// The comment endpoints must keep showing comments and nothing else.
-
-// The audience surface serves every subject kind unless narrowed, which is the
-// whole reason it exists: "what is my audience saying" means comments and
-// conversations, not one of them.
 func TestAudienceInputServesEveryKindByDefault(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/audience?accountId=acc-1", nil)
 	if got := listInput(req).SubjectKinds; len(got) != 0 {
@@ -485,8 +440,6 @@ func TestAudienceInputNarrowsToRequestedKinds(t *testing.T) {
 	}
 }
 
-// An unknown kind is carried through to Validate rather than dropped, so the
-// caller gets a message instead of a request that silently matched everything.
 func TestAudienceInputKeepsUnknownKindsForValidation(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/audience?subjectKind=post", nil)
 	in := listInput(req)
@@ -496,7 +449,6 @@ func TestAudienceInputKeepsUnknownKindsForValidation(t *testing.T) {
 	}
 }
 
-// The conversation filters reach the domain, and a bad one is refused.
 func TestAudienceInputCarriesConversationFilters(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/audience?interest=interested&disposition=sale&qualification=hot_lead&nextAction=escalate", nil)

@@ -18,7 +18,6 @@ func TestMapStatus(t *testing.T) {
 		{StatusRejected, payment.StatusCancelled},
 		{StatusPending, payment.StatusPending},
 		{StatusAuthorized, payment.StatusPending},
-		// Money under review or in dispute is not ours: it must not read as received.
 		{StatusInProcess, payment.StatusPending},
 		{StatusInMediation, payment.StatusPending},
 		{"", payment.StatusPending},
@@ -49,8 +48,6 @@ func TestMapEvent(t *testing.T) {
 			want: payment.EventPaymentPartiallyRefunded,
 		},
 		{
-			// The detail is not always set; the refunded amount alone must be enough,
-			// or a partially refunded charge would keep re-crediting on every retry.
 			name: "approved with partial refund amount but no detail",
 			p:    &Payment{Status: StatusApproved, TransactionAmount: 100, TransactionAmountRefunded: 30},
 			want: payment.EventPaymentPartiallyRefunded,
@@ -76,8 +73,6 @@ func TestMapEvent(t *testing.T) {
 			want: payment.EventPaymentAuthorized,
 		},
 		{
-			// An unpaid PIX that ran out its clock is "not paid in time", not "voided",
-			// so the invoice stays recoverable rather than being cancelled.
 			name: "cancelled because expired maps to overdue",
 			p:    &Payment{Status: StatusCancelled, StatusDetail: DetailExpired},
 			want: payment.EventPaymentOverdue,
@@ -138,8 +133,6 @@ func TestMapEvent(t *testing.T) {
 	}
 }
 
-// TestMapEvent_RefundedAmountWithoutTotal guards a division-free edge: a payment whose
-// transaction_amount is zero must not be read as "fully refunded" and re-debited.
 func TestMapEvent_RefundedAmountWithoutTotal(t *testing.T) {
 	got := MapEvent(&Payment{Status: StatusApproved, TransactionAmount: 0, TransactionAmountRefunded: 0})
 	if got != payment.EventPaymentReceived {
@@ -179,8 +172,6 @@ func TestPaymentMethodIDFor(t *testing.T) {
 	if got, err := PaymentMethodIDFor(payment.MethodBoleto); err != nil || got != PaymentMethodBoleto {
 		t.Fatalf("boleto: got (%q,%v)", got, err)
 	}
-	// A card charge needs a client-side token this server never holds; silently
-	// downgrading the customer to PIX would be worse than failing.
 	if _, err := PaymentMethodIDFor(payment.MethodCreditCard); err == nil {
 		t.Fatal("expected credit card to be rejected")
 	}

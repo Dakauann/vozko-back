@@ -8,8 +8,6 @@ import (
 	"vozko/domain/metrics"
 )
 
-// Comment-analysis counters (plan §14). Registered on the shared service so
-// they carry the same replica_id as everything else.
 type commentAnalysisMetrics struct {
 	enqueued     *prometheus.CounterVec
 	batches      *prometheus.CounterVec

@@ -17,9 +17,6 @@ type Shop struct {
 	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 	IsOfficial    bool           `gorm:"default:false"`
-	// The former brand-named official-store flag was removed from code;
-	// its DB column (never written by any code path) is left orphaned on
-	// purpose so no data is dropped.
 }
 
 func (Shop) TableName() string {

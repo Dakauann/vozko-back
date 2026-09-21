@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/cache"
 	"vozko/domain/lead"
+	"vozko/domain/messaging"
 	"vozko/domain/shared"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
@@ -514,7 +516,7 @@ func newHarness(t *testing.T, status wc.Status, campaignID string) *qsHarness {
 		shared:   newQSShared(),
 	}
 	h.camp.put(&wc.Campaign{ID: campaignID, WorkspaceID: "ws-1", Status: status})
-	h.uc = NewQuickSendUseCase(h.camp, h.entry, h.leadRepo, h.pub, h.cons, h.shared)
+	h.uc = mustQuickSend(t, h.camp, h.entry, h.leadRepo, h.pub, h.cons, h.shared)
 	return h
 }
 
@@ -868,7 +870,7 @@ func TestQuickSend_RaceLostCAS_FallsThroughToRunningPath(t *testing.T) {
 func TestQuickSend_NilSharedState_StillWorks_NoLockNoCounter(t *testing.T) {
 	h := newHarness(t, wc.CampaignStatusStopped, "c-1")
 
-	uc := NewQuickSendUseCase(h.camp, h.entry, h.leadRepo, h.pub, h.cons, nil)
+	uc := mustQuickSend(t, h.camp, h.entry, h.leadRepo, h.pub, h.cons, nil)
 
 	out, err := uc.Execute(wc.QuickSendInput{
 		CampaignID:   "c-1",
@@ -935,5 +937,29 @@ func TestQuickSend_CounterTTLIsRefreshedOnRunningPath(t *testing.T) {
 		PhoneNumbers: validPhones(1),
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func mustQuickSend(
+	t *testing.T,
+	campaignRepo wc.Repository,
+	entryRepo wce.Repository,
+	leadRepo lead.Repository,
+	pub messaging.MessageQueuePub,
+	consumer wc.MessageConsumerUseCase,
+	shared cache.SharedState,
+) wc.QuickSendUseCase {
+	t.Helper()
+	uc, err := NewQuickSendUseCase(campaignRepo, entryRepo, leadRepo, pub, consumer, shared)
+	if err != nil {
+		t.Fatalf("NewQuickSendUseCase() = %v", err)
+	}
+	return uc
+}
+
+func TestNewQuickSendUseCaseRequiresAConsumer(t *testing.T) {
+	h := newHarness(t, wc.CampaignStatusStopped, "c-1")
+	if _, err := NewQuickSendUseCase(h.camp, h.entry, h.leadRepo, h.pub, nil, h.shared); err == nil {
+		t.Fatal("NewQuickSendUseCase() = nil error with no consumer, want a refusal")
 	}
 }

@@ -6,16 +6,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// The inbox stage filter used to offer ONE funnel's stages: whatever
-// ListByCampaign resolved, which is the campaign's funnel or the workspace
-// default. In a workspace with several funnels that means an agent filters by a
-// stage no conversation in front of them carries, and gets nothing. UniFecaf hit
-// exactly that, filtering by a stage of a funnel they had renamed "NÃO USAR".
-//
-// This read exists so the filter can offer EVERY funnel, grouped, and so the
-// grouping comes from one query rather than the client joining two lists it
-// fetched separately and might have fetched at different moments.
-
 type fakeFunnelLister struct {
 	funnels []Funnel
 	err     error
@@ -62,9 +52,6 @@ func TestListFunnelStagesGroupsStagesUnderTheirFunnel(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("funnels = %d, want 2", len(got))
 	}
-	// Funnel order follows the funnel list, which is already ordered by
-	// position: the filter renders these as groups and the order must match
-	// what the funnels page shows.
 	if got[0].PipelineID != "p1" || got[1].PipelineID != "p2" {
 		t.Fatalf("funnel order = %s, %s", got[0].PipelineID, got[1].PipelineID)
 	}
@@ -72,8 +59,6 @@ func TestListFunnelStagesGroupsStagesUnderTheirFunnel(t *testing.T) {
 		t.Errorf("first funnel = %+v", got[0])
 	}
 
-	// Stages inside a funnel keep their own position order, so the filter reads
-	// like the funnel does on the board rather than in insertion order.
 	if len(got[0].Stages) != 2 ||
 		got[0].Stages[0].ID != "s2" || got[0].Stages[1].ID != "s1" {
 		t.Errorf("stage order inside p1 = %+v", got[0].Stages)
@@ -83,9 +68,6 @@ func TestListFunnelStagesGroupsStagesUnderTheirFunnel(t *testing.T) {
 	}
 }
 
-// A funnel with no columns yet is still listed. Dropping it would make the
-// funnel invisible in the filter and leave an operator wondering where it went,
-// which is worse than an empty group.
 func TestListFunnelStagesKeepsAFunnelWithNoStages(t *testing.T) {
 	funnels := &fakeFunnelLister{funnels: []Funnel{
 		{ID: "p1", Name: "cheio"},
@@ -105,30 +87,11 @@ func TestListFunnelStagesKeepsAFunnelWithNoStages(t *testing.T) {
 	}
 }
 
-// A stage that belongs to no CONVERSATION funnel is left out entirely.
-//
-// These used to ride a trailing "Sem funil" group, on the reasoning that such a
-// stage "still filters and is still assigned". Production refutes that, and the
-// numbers are not close: 24.158 of 27.845 live stages carry no pipeline_id,
-// they are per-campaign clones the pipeline migration left behind, and the
-// number of conversations sitting on ANY of them is ZERO — against 316.518 on
-// real funnel stages.
-//
-// Keeping them put 728 entries in Anhanguera's stage filter and 2.120 in CDT
-// IMPERATRIZ's, mostly the same handful of names repeated, which is exactly the
-// unusable dropdown this whole feature exists to fix. A guess about what might
-// be filterable lost to a measurement of what is.
-//
-// The same rule drops a stage on an OPPORTUNITY funnel, which is correct for a
-// different reason: a deal stage can never hold a conversation.
 func TestListFunnelStagesLeavesOutStagesWithNoConversationFunnel(t *testing.T) {
 	funnels := &fakeFunnelLister{funnels: []Funnel{{ID: "p1", Name: "Atendimento"}}}
 	stages := &fakeStageRepo{stages: []*stage.Stage{
 		st("s1", "p1", "novo lead", 1),
-		// No funnel at all: the legacy per-campaign clone shape.
 		st("orphan", "", "em atendimento", 1),
-		// A funnel this workspace's conversation funnels do not include, which
-		// is what a sales funnel's stage looks like from here.
 		st("deal", "sales-funnel", "ganho", 2),
 	}}
 
@@ -147,10 +110,6 @@ func TestListFunnelStagesLeavesOutStagesWithNoConversationFunnel(t *testing.T) {
 	}
 }
 
-// A workspace whose stages ALL lack a funnel yields no groups at all, rather
-// than one enormous unusable one. The client falls back to its flat list, which
-// is a worse filter than the grouped one and a far better one than 2.000 rows
-// of the same four names.
 func TestListFunnelStagesReturnsNothingWhenNoStageHasAFunnel(t *testing.T) {
 	funnels := &fakeFunnelLister{}
 	stages := &fakeStageRepo{stages: []*stage.Stage{
@@ -168,8 +127,6 @@ func TestListFunnelStagesReturnsNothingWhenNoStageHasAFunnel(t *testing.T) {
 	}
 }
 
-// A funnel with no columns is still listed, so an operator who just created one
-// can see it. Unchanged.
 func TestListFunnelStagesKeepsAnEmptyFunnelListed(t *testing.T) {
 	funnels := &fakeFunnelLister{funnels: []Funnel{{ID: "p1", Name: "Atendimento"}}}
 	stages := &fakeStageRepo{stages: []*stage.Stage{st("s1", "p1", "novo lead", 1)}}

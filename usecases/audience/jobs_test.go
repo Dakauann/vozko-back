@@ -11,8 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// ---- rollup ----
-
 type fakeAuthors struct {
 	mu    sync.Mutex
 	rows  []*ca.AuthorStats
@@ -93,11 +91,9 @@ func (f *fakeRollups) ListSeries(context.Context, ca.TrendInput) ([]*ca.Rollup, 
 	return f.rows, nil
 }
 
-// The rollup job rebuilds exactly the days that changed, finalises the
-// score on each row, derives every author, and advances its marker.
 func TestRollupJob_RebuildsTouchedDaysAndAuthors(t *testing.T) {
 	repo := newFakeRepo()
-	day := ca.BucketDate(now.Add(-40 * 24 * time.Hour)) // a backfilled day, far back
+	day := ca.BucketDate(now.Add(-40 * 24 * time.Hour))
 	repo.DaysAnalyzedSinceFn = func(since time.Time) ([]time.Time, error) {
 		if since.After(now.Add(-rollupLookback)) || since.Before(now.Add(-rollupLookback-time.Minute)) {
 			t.Errorf("first run must rebuild from the lookback window, got since=%v", since)
@@ -132,7 +128,6 @@ func TestRollupJob_RebuildsTouchedDaysAndAuthors(t *testing.T) {
 		t.Fatalf("marker = %q", marker)
 	}
 
-	// Second run: the window starts one minute before the marker.
 	repo.DaysAnalyzedSinceFn = func(since time.Time) ([]time.Time, error) {
 		if !since.Equal(now.Add(-time.Minute)) {
 			t.Errorf("second run since = %v, want marker minus a minute", since)
@@ -143,8 +138,6 @@ func TestRollupJob_RebuildsTouchedDaysAndAuthors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// ---- purge ----
 
 func TestPurgeJob_DeletesInSlicesAndSparesInFlight(t *testing.T) {
 	repo := newFakeRepo()
@@ -165,21 +158,18 @@ func TestPurgeJob_DeletesInSlicesAndSparesInFlight(t *testing.T) {
 	if err := NewPurgeJob(repo, 180*24*time.Hour, fixedClock{now}).Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.rows) != 2 { // the in-flight old one and the fresh one
+	if len(repo.rows) != 2 {
 		t.Fatalf("rows left = %d, want 2", len(repo.rows))
 	}
 	if _, ok := repo.rows["old-0"]; !ok {
 		t.Fatal("an in-flight row must never be purged from under a batch")
 	}
-	// Retention 0 is "keep forever".
 	if err := NewPurgeJob(repo, 0, fixedClock{now}).Execute(context.Background()); err != nil || len(repo.rows) != 2 {
 		t.Fatalf("retention 0: err=%v rows=%d", err, len(repo.rows))
 	}
 }
 
-// ---- settings ----
-
-type fakeVerifier struct{ owned map[string]string } // accountID -> workspaceID
+type fakeVerifier struct{ owned map[string]string }
 
 func (f fakeVerifier) AccountBelongsTo(_ context.Context, ws, account string) (bool, error) {
 	return f.owned[account] == ws, nil
@@ -201,7 +191,6 @@ func TestSettings_DefaultsAreDisabledAndScoped(t *testing.T) {
 	if s.Enabled || !s.Topics.Has(ca.TopicKeyOther) || s.DailyCap != ca.DefaultDailyCap {
 		t.Fatalf("defaults = %+v", s)
 	}
-	// Another workspace cannot read this account's settings.
 	if _, err := get.Execute(context.Background(), "ws-2", ca.SourceInstagram, "acc-1"); !errors.Is(err, ca.ErrNotFound) {
 		t.Fatalf("cross-workspace read: %v", err)
 	}
@@ -226,7 +215,6 @@ func TestSettings_UpdateMergesAndReseedsTopics(t *testing.T) {
 		t.Fatal("settings not persisted")
 	}
 
-	// A custom topic set is normalised and kept; other stays.
 	topics := ca.TopicSet{{Key: "", Label: "Saúde Pública"}, {Label: "Entrega"}}
 	s, err = update.Execute(context.Background(), ca.UpdateSettingsInput{
 		WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: "acc-1", Topics: &topics,
@@ -237,7 +225,6 @@ func TestSettings_UpdateMergesAndReseedsTopics(t *testing.T) {
 	if !s.Topics.Has("saude-publica") || !s.Topics.Has(ca.TopicKeyOther) || len(s.Topics) != 3 {
 		t.Fatalf("topics = %+v", s.Topics)
 	}
-	// Threshold is clamped by the domain, not trusted from the wire.
 	policy := ca.ActionPolicy{SeverityThreshold: 900}
 	s, err = update.Execute(context.Background(), ca.UpdateSettingsInput{
 		WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: "acc-1", ActionPolicy: &policy,
@@ -248,15 +235,12 @@ func TestSettings_UpdateMergesAndReseedsTopics(t *testing.T) {
 	if got, _ := get.Execute(context.Background(), "ws-1", ca.SourceInstagram, "acc-1"); got.Vertical != ca.VerticalRetail {
 		t.Fatal("get must return the stored settings")
 	}
-	// Another workspace cannot write them.
 	if _, err := update.Execute(context.Background(), ca.UpdateSettingsInput{
 		WorkspaceID: "ws-2", Source: ca.SourceInstagram, AccountID: "acc-1", Enabled: &enabled,
 	}); !errors.Is(err, ca.ErrNotFound) {
 		t.Fatalf("cross-workspace write: %v", err)
 	}
 }
-
-// ---- moderation ----
 
 func TestSetModerationState(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1"}}}
@@ -272,8 +256,6 @@ func TestSetModerationState(t *testing.T) {
 		t.Fatalf("cross-workspace: %v", err)
 	}
 }
-
-// ---- backfill ----
 
 type fakeBackfills struct {
 	mu   sync.Mutex
@@ -378,7 +360,6 @@ func ingestItems(container string, ids ...string) []ca.IngestInput {
 	return out
 }
 
-// Estimate → confirm → run to completion, every page through the ingestor.
 func TestBackfill_EstimateStartAndDrain(t *testing.T) {
 	deps, adapter, backfills, ingestor, _ := backfillHarness()
 	estimate, start, get, _ := NewBackfillUseCases(deps)
@@ -388,7 +369,6 @@ func TestBackfill_EstimateStartAndDrain(t *testing.T) {
 	if err != nil || est.Containers != 2 || est.EstimatedComments != 5 {
 		t.Fatalf("estimate: %+v %v", est, err)
 	}
-	// A stale confirmation is refused: the operator must see the real number.
 	if _, err := start.Execute(ctx, ca.StartBackfillInput{WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: "acc-1", ConfirmedEstimate: 4}); !errors.Is(err, ErrBackfillEstimateStale) {
 		t.Fatalf("stale estimate: %v", err)
 	}
@@ -410,14 +390,11 @@ func TestBackfill_EstimateStartAndDrain(t *testing.T) {
 	if len(ingestor.seen) != 5 {
 		t.Fatalf("enqueued %v", ingestor.seen)
 	}
-	// The backfill never classified anything itself.
 	if _, err := backfills.FindActive(ctx, ca.SourceInstagram, "acc-1", ""); !errors.Is(err, ca.ErrNotFound) {
 		t.Fatal("a finished backfill must not read as active")
 	}
 }
 
-// The hourly call budget parks the run with its cursor; the next hour
-// resumes from the same page rather than starting over.
 func TestBackfill_RateBudgetPausesAndResumes(t *testing.T) {
 	deps, adapter, backfills, ingestor, state := backfillHarness()
 	_, start, get, _ := NewBackfillUseCases(deps)
@@ -426,7 +403,6 @@ func TestBackfill_RateBudgetPausesAndResumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Spend all but one call of this hour's budget.
 	key := backfillCallKey + "acc-1:" + now.UTC().Format("2006-01-02-15")
 	_, _ = state.IncrBy(key, hourlyCallBudget-1)
 
@@ -441,7 +417,6 @@ func TestBackfill_RateBudgetPausesAndResumes(t *testing.T) {
 		t.Fatalf("fetches = %d, want 1", adapter.Fetches)
 	}
 
-	// Next hour.
 	deps.Clock = fixedClock{now.Add(time.Hour)}
 	if err := NewBackfillJob(deps).Execute(ctx); err != nil {
 		t.Fatal(err)
@@ -473,7 +448,6 @@ func TestBackfill_ProviderFailureIsRecordedAndCancelWorks(t *testing.T) {
 		t.Fatalf("cancelling a failed run: %v", err)
 	}
 
-	// A fresh pending run can be cancelled before it starts.
 	adapter.fetchErr = nil
 	b2, err := start.Execute(ctx, ca.StartBackfillInput{WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: "acc-1", ConfirmedEstimate: 5})
 	if err != nil {
@@ -498,8 +472,6 @@ func TestBackfill_RefusesDisabledAccount(t *testing.T) {
 		t.Fatal("backfilling a disabled account must be refused")
 	}
 }
-
-// ---- spend / trends / list wiring ----
 
 func TestSpendUseCase_DefaultsToCalendarMonth(t *testing.T) {
 	batches := &fakeBatches{}

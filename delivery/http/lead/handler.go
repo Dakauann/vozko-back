@@ -34,29 +34,15 @@ type LeadHandler struct {
 	phoneRepo    businessphone.Repository
 	metaAPI      businessphone.MetaAPIService
 
-	// inboxSeeder queues the unofficial WhatsApp conversations an import can
-	// open for the leads it created. Optional, and nil in a deployment without
-	// that channel: an import must still work when nothing can seed.
 	inboxSeeder InboxSeeder
 
-	// authorizer gates seeding, which is a CHANNEL privilege rather than a lead
-	// one. Nil refuses to seed, never allows it.
 	authorizer conversation.ConversationAuthorizer
 }
 
-// InboxSeeder hands an import's numbers to the background job that opens their
-// conversations.
-//
-// Declared here rather than imported so the lead handler does not depend on a
-// channel package. Seeding is the unofficial WhatsApp channel's concern; from
-// the import's side it is one collaborator that accepts numbers and answers how
-// many it took.
 type InboxSeeder interface {
 	Publish(in unofficial_whatsapp.SeedRequest) (unofficial_whatsapp.SeedQueued, error)
 }
 
-// SetInboxSeeder attaches the seeding job. A handler without one simply reports
-// nothing seeded.
 func (h *LeadHandler) SetInboxSeeder(seeder InboxSeeder) {
 	h.inboxSeeder = seeder
 }
@@ -282,11 +268,6 @@ func (h *LeadHandler) Facets(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, facets)
 }
 
-// listInput parses the shared read query for the list and its facet counts.
-//
-// Both endpoints must read the same query string the same way — a facet badge
-// counted over a different set than the rows below it is worse than no badge —
-// so there is one parser and both call it.
 func (h *LeadHandler) listInput(w http.ResponseWriter, r *http.Request) (leaddomain.ListLeadsInput, bool) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
@@ -302,9 +283,6 @@ func (h *LeadHandler) listInput(w http.ResponseWriter, r *http.Request) (leaddom
 	return input, true
 }
 
-// writeListError separates "your query was wrong" from "we failed". A filter
-// naming a field the lead object cannot answer is a 400 the client can fix and
-// a message they can act on; anything else is ours.
 func (h *LeadHandler) writeListError(w http.ResponseWriter, err error) {
 	if errors.Is(err, leaddomain.ErrLeadFilterInvalid) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
@@ -772,13 +750,6 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 	if !entryTypeParam.Valid() || entryTypeParam == shared.EntryTypeWhatsApp {
 		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)
 		if err == nil {
-			// One read for the whole campaign rather than one per entry.
-			//
-			// A conversation now has a TIMELINE of analyses, one per revision
-			// of its transcript, so "the analysis" is whichever revision was
-			// most recently classified. The reader picks that one; this page
-			// shows a verdict, not a history, so an analysis still queued must
-			// not blank out the one already on the screen.
 			entryIDs := make([]string, 0, len(wcEntries))
 			for _, entry := range wcEntries {
 				if entry.CampaignID == campaignID {
@@ -838,9 +809,6 @@ func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	// A missing field is a malformed request. Treating it as an empty string
-	// would turn a client bug into a silent data loss: PATCH {} would erase the
-	// name of every lead it touched.
 	if req.Name == nil {
 		response.WriteInvalidBodyError(w, map[string]string{
 			"name": "string (required; send \"\" to clear the name)",
@@ -853,8 +821,6 @@ func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Rename is workspace-scoped in the query itself, so a guessed id from
-	// another workspace affects nothing and reports not-found.
 	if err := h.leadRepo.Rename(workspaceID, leadID, *req.Name); err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -873,9 +839,6 @@ func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
 		return
 	}
-	// The stored value is echoed back, not the submitted one: the name was
-	// normalised on the way in, and the UI should show what it will see on the
-	// next load rather than what was typed.
 	response.WriteSuccess(w, http.StatusOK, updated)
 }
 
@@ -911,9 +874,6 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Refused, not truncated. Importing the first 20.000 of 50.000 rows and
-	// reporting success is how a campaign goes out to two-fifths of a list
-	// while everyone believes it reached all of it.
 	if len(req.Rows) > leaddomain.MaxImportRows {
 		response.WriteError(w, http.StatusRequestEntityTooLarge, "Too many rows for a single import", map[string]string{
 			"maxRows": strconv.Itoa(leaddomain.MaxImportRows),
@@ -930,11 +890,6 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scripting refused BEFORE anything is written, unlike the privilege check
-	// further down. These two are shape errors: asking for example threads in
-	// conversations the import will not open is a request that cannot be
-	// honoured under any reading, and a malformed script is a typo the caller
-	// can still fix. Both are cheap to detect and better refused than committed.
 	script := req.SeedConversations.toDomain()
 	if script != nil && !req.SeedInbox {
 		response.WriteError(w, http.StatusBadRequest,
@@ -955,8 +910,6 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 	for i, row := range req.Rows {
 		line := row.Line
 		if line <= 0 {
-			// A client that did not send line numbers still gets usable
-			// rejections, counted from the order it sent.
 			line = i + 1
 		}
 		rows = append(rows, leaddomain.ImportRow{
@@ -967,10 +920,6 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// The browser vetted these already so the operator could see the outcome
-	// before committing. Vetting them again is not redundancy: this endpoint is
-	// reachable without that UI, and the rules that decide what a lead IS
-	// belong to the domain, not to a form.
 	prepared := leaddomain.PrepareImport(rows)
 
 	outcome, err := h.leadRepo.ImportMany(workspaceID, prepared.Inputs, policy)
@@ -1007,35 +956,11 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Seeding runs AFTER the leads exist and never gates the response.
-	//
-	// The leads are already committed at this point, so a seeding failure is
-	// reported alongside a successful import rather than as a failed one: an
-	// operator told the import failed runs it again, and the second run finds
-	// every number matched and creates nothing, which looks like the CRM lost
-	// their file.
 	if req.SeedInbox {
-		// A channel privilege, not a lead one. The route proved leads:create;
-		// opening conversations with numbers that never wrote in is
-		// unofficial_whatsapp_instances:send. Reported beside a successful
-		// import rather than failing it: the leads are already committed, and
-		// telling the operator the import failed would have them run it again.
 		claims := middleware.GetClaims(r)
 		if claims == nil || !h.maySeedInbox(claims.UserID, workspaceID, claims.Role) {
 			out.InboxSeedError = "You don't have permission to start conversations on the unofficial WhatsApp channel"
 		} else {
-			// Scripting is a PLATFORM privilege on top of the channel one, and
-			// a different question: the channel permission asks who may open
-			// cold conversations, this asks who may spend the workspace's
-			// balance writing into them. A workspace owner passes the first and
-			// not the second.
-			//
-			// Reported rather than refused, for the same reason the permission
-			// failure above is: the leads are already committed, and telling
-			// the operator the import failed sends them back to run it again.
-			// A 403 up front was considered and rejected — the two checkboxes
-			// sit next to each other, and behaving differently for each would
-			// be harder to explain than either behaviour alone.
 			if script != nil && claims.Role != string(user.RoleAdmin) {
 				out.ScriptedSeedError = "Only a platform administrator can seed example conversations"
 				script = nil
@@ -1052,12 +977,6 @@ func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
-// queueInboxSeed hands the imported numbers to the seeding job.
-//
-// Every input goes, matched leads included, not only the newly created ones.
-// A number the workspace already knew is exactly the case where a lead exists
-// on the leads page with no way to reach it from the inbox, and seeding is
-// idempotent: a conversation that already carries messages is left alone.
 func (h *LeadHandler) queueInboxSeed(
 	workspaceID string,
 	inputs []leaddomain.BulkLeadInput,
@@ -1087,26 +1006,10 @@ func (h *LeadHandler) queueInboxSeed(
 	return queued, ""
 }
 
-// SetAuthorizer attaches the gate seeding needs.
-//
-// The import route proves leads:create. Seeding is a different act on a
-// different resource: it OPENS conversations with numbers that never contacted
-// us, on a connected unofficial WhatsApp number, in bulk. That is precisely
-// what unofficial_whatsapp_instances:send exists to withhold — the catalogue
-// calls it out as separate from update so an attendant who may answer cannot
-// start conversations with arbitrary numbers.
-//
-// It reuses conversation.ConversationAuthorizer rather than declaring another
-// one-method port: the interface already exists in the domain, this package
-// already imports it, and a second declaration would be the same contract
-// written twice.
 func (h *LeadHandler) SetAuthorizer(a conversation.ConversationAuthorizer) {
 	h.authorizer = a
 }
 
-// maySeedInbox reports whether this caller may open conversations on the
-// unofficial WhatsApp channel. A nil authorizer refuses: an unwired gate must
-// fail closed, or a wiring mistake silently hands out the privilege.
 func (h *LeadHandler) maySeedInbox(userID, workspaceID, role string) bool {
 	if h.authorizer == nil {
 		return false

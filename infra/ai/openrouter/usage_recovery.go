@@ -17,12 +17,6 @@ const (
 	generationFetchTimeout   = 10 * time.Second
 )
 
-// generationUsageFetcher recovers token usage for a generation whose inline
-// stream usage chunk never arrived, i.e. the stream was cancelled, timed out, or
-// aborted before OpenRouter sent the final usage chunk (which carries the token
-// counts). It queries OpenRouter's GET /generation endpoint by id. Optional on
-// the Service: when nil, recovery is disabled and a cut stream simply isn't
-// billed (the legacy behaviour, a revenue leak).
 type generationUsageFetcher interface {
 	FetchUsage(ctx context.Context, generationID string) (promptTokens, completionTokens int, costMicros int64, ok bool)
 }
@@ -45,10 +39,6 @@ func newHTTPGenerationFetcher(apiKey, baseURL string) *httpGenerationFetcher {
 	}
 }
 
-// FetchUsage calls GET {baseURL}/generation?id=<id> and returns the OpenRouter
-// normalized prompt/completion token counts (the same basis as the inline stream
-// usage and the per-token pricing). ok is false on any error or non-200 so the
-// caller can fall back to the leak log rather than billing a wrong amount.
 func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID string) (int, int, int64, bool) {
 	if f == nil || f.apiKey == "" || strings.TrimSpace(generationID) == "" {
 		return 0, 0, 0, false
@@ -82,19 +72,9 @@ func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID str
 		log.Printf("[ai-billing] generation usage decode failed id=%s: %v", generationID, err)
 		return 0, 0, 0, false
 	}
-	// total_cost is what the generation was billed. The token counts come back
-	// too and are still carried, but they are OpenRouter's NORMALIZED counts,
-	// not the native ones the price is computed on — so they only ever
-	// approximate. The cost does not.
 	return payload.Data.TokensPrompt, payload.Data.TokensCompletion, costToMicros(payload.Data.TotalCost), true
 }
 
-// billStreamUsage bills a single streamed turn. With an inline usage chunk it
-// bills directly. When that chunk never arrived (the stream was cancelled, timed
-// out, or aborted), it recovers the real usage from OpenRouter's /generation
-// endpoint by the generation id captured from the stream, so the turn is still
-// charged. Only when recovery is unavailable or returns nothing does it fall back
-// to logging the (now-rare) revenue leak.
 func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage *openrouter.Usage) {
 	if workspaceID == "" {
 		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", model)
@@ -108,10 +88,6 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 		fctx, cancel := context.WithTimeout(context.Background(), generationFetchTimeout)
 		pt, ct, costMicros, ok := s.usageFetcher.FetchUsage(fctx, generationID)
 		cancel()
-		// A recovered generation can be worth billing on its cost alone: a cut
-		// stream that reported no tokens still cost money, and refusing to bill
-		// it because the token counts came back zero is the leak this recovery
-		// exists to close.
 		if ok && (pt > 0 || ct > 0 || costMicros > 0) {
 			log.Printf("[ai-billing] recovered usage for cut stream via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
 				generationID, model, workspaceID, pt, ct, costMicros)

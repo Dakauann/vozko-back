@@ -9,13 +9,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The audience engine's two settings share a row with the roulette policy, the
-// auto-close windows and the working hours, and two different domains write
-// that row. These cases pin the two properties that keeps safe.
-
-// One: a targeted write. Anything but these two columns must be left alone, or
-// setting an analysis budget would quietly reset how conversations are
-// distributed.
 func TestAudienceSettingsSaveTouchesOnlyItsOwnColumns(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -35,10 +28,6 @@ func TestAudienceSettingsSaveTouchesOnlyItsOwnColumns(t *testing.T) {
 	}
 }
 
-// Two: the OTHER domain's read-modify-write has to carry these columns through.
-// GetByWorkspaceID feeds Upsert on every workspace-config change, so a field
-// missing from either mapping is a field that gets zeroed the next time an
-// admin touches the roulette.
 func TestWorkspaceConfigRoundTripsTheAudienceColumns(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -60,7 +49,6 @@ func TestWorkspaceConfigRoundTripsTheAudienceColumns(t *testing.T) {
 		t.Errorf("AudienceDebounceMinutes = %d, want 30 read back", cfg.AudienceDebounceMinutes)
 	}
 
-	// And back out again, unchanged, the way an unrelated config update would.
 	mock.ExpectExec(`(UPDATE|INSERT INTO) "workspace_configs"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	if err := repo.Upsert(context.Background(), cfg); err != nil {
@@ -71,8 +59,6 @@ func TestWorkspaceConfigRoundTripsTheAudienceColumns(t *testing.T) {
 	}
 }
 
-// A workspace that never configured anything reads as zeroes, which each caller
-// resolves against its own default. Not an error: it is most workspaces.
 func TestAudienceSettingsGetTreatsAMissingRowAsUnset(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -92,8 +78,6 @@ func TestAudienceSettingsGetTreatsAMissingRowAsUnset(t *testing.T) {
 	}
 }
 
-// Only the workspaces that CHANGED the window, so a deployment where nobody did
-// gets an empty map and the sweep never has to attribute an entry at all.
 func TestConfiguredDebounceWindowsSkipsUnsetWorkspaces(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -101,8 +85,6 @@ func TestConfiguredDebounceWindowsSkipsUnsetWorkspaces(t *testing.T) {
 	mock.ExpectQuery(`SELECT .* FROM "workspace_configs" WHERE audience_debounce_minutes > 0`).
 		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "audience_debounce_minutes"}).
 			AddRow("ws-slow", 30).
-			// Out of range in the database is clamped on the way out, never
-			// allowed to stall the sweep.
 			AddRow("ws-corrupt", ca.MaxDebounceMinutes+999))
 
 	got, err := NewAudienceSettingsStore(db).ConfiguredDebounceWindows(context.Background())

@@ -7,28 +7,7 @@ import (
 	"testing"
 )
 
-// Timeline events belong to the use-case layer, never to delivery.
-//
-// They used to be written by the stage and label HTTP handlers, and only by
-// them. The CRM's bulk action, the AI's manage_entry_stage tool and the HTTP
-// send-template endpoint all reach the same use cases directly, so a bulk move
-// changed the board and left every affected conversation's history blank — the
-// change was real, the record of it did not exist.
-//
-// A handler is one caller of a use case. Anything the handler does after the
-// mutation, that mutation's OTHER callers do not do. That is the whole bug, and
-// it is invisible in review: the handler reads correctly, and the missing write
-// is somewhere else entirely.
-//
-// Broadcasting is deliberately exempt: telling connected clients is the
-// transport's job, which is why the operator-send port documents it as NOT one
-// of the finalizer's side effects.
 func TestTimelineEventsAreNotWrittenFromTheDeliveryLayer(t *testing.T) {
-	// The WebSocket hub keeps two assignment writes for the degraded path taken
-	// when no assignment service is wired (unreachable in production; the
-	// container always wires one). They are grandfathered rather than silently
-	// allowed: the file is listed, so a NEW delivery-layer event write anywhere
-	// else still fails this test.
 	grandfathered := map[string]bool{
 		filepath.Join("delivery", "ws", "hub.go"): true,
 	}

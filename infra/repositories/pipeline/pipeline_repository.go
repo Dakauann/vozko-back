@@ -14,7 +14,6 @@ type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository returns the domain pipeline.Repository backed by GORM.
 func NewRepository(db *gorm.DB) pipeline.Repository {
 	return &repository{db: db}
 }
@@ -97,14 +96,6 @@ func (r *repository) ListByWorkspace(workspaceID, objectType string) ([]*pipelin
 	return out, nil
 }
 
-// PromoteDefault makes one funnel the workspace default for its object kind and
-// demotes every other, in a single transaction.
-//
-// Demote-then-promote in that order, and both inside one transaction, because
-// the partial unique index on (workspace_id, object_type) WHERE is_default
-// would reject the promotion while the incumbent still holds the flag. The
-// transaction is also what keeps a crash from leaving the workspace with zero
-// defaults, which the stage repository "repairs" by minting another funnel.
 func (r *repository) PromoteDefault(workspaceID, objectType, pipelineID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	objectType = strings.TrimSpace(objectType)
@@ -128,10 +119,6 @@ func (r *repository) PromoteDefault(workspaceID, objectType, pipelineID string) 
 		if res.Error != nil {
 			return res.Error
 		}
-		// Nothing matched: the funnel is gone, belongs to another tenant, or
-		// organizes a different object kind. Rolling back matters here — the
-		// demotion above has already run, and committing it would leave the
-		// workspace with no default at all.
 		if res.RowsAffected == 0 {
 			return pipeline.ErrNotFound
 		}
@@ -139,8 +126,6 @@ func (r *repository) PromoteDefault(workspaceID, objectType, pipelineID string) 
 	})
 }
 
-// nullableUUID returns nil for an empty id so an Update writes SQL NULL instead
-// of an empty string into a nullable uuid column (which Postgres would reject).
 func nullableUUID(s string) interface{} {
 	if strings.TrimSpace(s) == "" {
 		return nil

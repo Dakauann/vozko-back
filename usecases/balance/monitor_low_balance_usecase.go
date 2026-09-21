@@ -16,13 +16,6 @@ const (
 	lowBalanceAlertedSetKey          string = "low_balance:alerted"
 )
 
-// MonitorLowBalanceUseCase warns the owners of funded wallets running low so a
-// paying customer tops up before AI replies and outbound messages are paused.
-// It is driven by a daily cron and is EDGE-TRIGGERED: a persisted set of the
-// workspaces currently in the low state ensures each wallet is warned exactly once
-// per low episode. While a wallet stays low it is not warned again; once it
-// recovers (a top-up lifts it back above the threshold) it is dropped from the set
-// so a later dip warns once more.
 type MonitorLowBalanceUseCase struct {
 	lister          balance.LowBalanceLister
 	notifier        notification.Notifier
@@ -44,8 +37,6 @@ func NewMonitorLowBalanceUseCase(lister balance.LowBalanceLister, notifier notif
 	}
 }
 
-// Run warns each wallet that has just crossed below the threshold and re-arms the
-// ones that recovered. Returns the number of low wallets found.
 func (uc *MonitorLowBalanceUseCase) Run() (int, error) {
 	if uc.lister == nil || uc.notifier == nil {
 		return 0, nil
@@ -63,14 +54,12 @@ func (uc *MonitorLowBalanceUseCase) Run() (int, error) {
 
 	for _, r := range rows {
 		if alerted[r.WorkspaceID] {
-			continue // already warned on this low episode; stay silent
+			continue
 		}
 		uc.notify(r)
 		uc.markAlerted(r.WorkspaceID)
 	}
 
-	// Re-arm: a previously-alerted wallet that is no longer below the threshold
-	// recovered (a top-up), so drop it; a later dip warns once more.
 	for ws := range alerted {
 		if !belowSet[ws] {
 			uc.clearAlerted(ws)
@@ -81,9 +70,6 @@ func (uc *MonitorLowBalanceUseCase) Run() (int, error) {
 }
 
 func (uc *MonitorLowBalanceUseCase) notify(row balance.LowBalanceRow) {
-	// DedupKey is intentionally empty: the alerted set is the single source of
-	// edge-trigger truth, so the notifier must not also dedup (which would, with a
-	// TTL, suppress a legitimate re-fire after recovery and a later dip).
 	_ = uc.notifier.Notify(notification.Notification{
 		WorkspaceID: row.WorkspaceID,
 		Subject:     "Saldo baixo - " + brand.Active().Name,

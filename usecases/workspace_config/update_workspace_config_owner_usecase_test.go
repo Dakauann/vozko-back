@@ -83,9 +83,6 @@ func (m *memWscRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy
 	return nil, nil
 }
 
-// E4/E5: an out-of-range value is normalized, not rejected, and the response
-// echoes what was stored — so the UI shows the value that will actually be
-// used rather than the one that was typed.
 func TestUpdateOwner_RouletteClampsAndNormalizes(t *testing.T) {
 	repo := &memWscRepo{}
 	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
@@ -121,8 +118,6 @@ func TestUpdateOwner_RouletteClampsAndNormalizes(t *testing.T) {
 	require.True(t, cfg.RouletteRescueActive())
 }
 
-// E6: an absent field means "leave it alone". Posting a whole form must never
-// reset a policy nobody touched.
 func TestUpdateOwner_RoulettePartialUpdateLeavesTheRestAlone(t *testing.T) {
 	repo := &memWscRepo{}
 	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})
@@ -139,7 +134,6 @@ func TestUpdateOwner_RoulettePartialUpdateLeavesTheRestAlone(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// An unrelated edit must not disturb any of it.
 	skip := true
 	cfg, err := uc.Execute(context.Background(), "ws-1", "owner-1", "employee", wsc.UpdateWorkspaceConfigOwnerInput{
 		SkipAdminAssignment: &skip,
@@ -152,8 +146,6 @@ func TestUpdateOwner_RoulettePartialUpdateLeavesTheRestAlone(t *testing.T) {
 	require.True(t, cfg.SkipAdminAssignment)
 }
 
-// E7: only the workspace owner (or a platform admin) may change how work is
-// distributed.
 func TestUpdateOwner_RouletteForbiddenForNonOwner(t *testing.T) {
 	repo := &memWscRepo{}
 	uc := NewUpdateWorkspaceConfigOwnerUseCase(repo, &memWsOwner{ownerID: "owner-1"})

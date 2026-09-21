@@ -65,12 +65,8 @@ type PlanDefinition struct {
 	BasePriceBRLCents              int64  `json:"basePriceBRLCents"`
 	MaxCallChannels                int    `json:"maxCallChannels"`
 	IncludedWhatsAppBusinessPhones int    `json:"includedWhatsAppBusinessPhones"`
-	// MaxBranches is how many member SIP extensions (branches) this plan grants.
-	// 0 means none included (the create gate fails closed until it is set, or an
-	// addon tops it up). Resolved via EntitlementBranches, exactly like
-	// MaxCallChannels via EntitlementCallChannels.
-	MaxBranches       int  `json:"maxBranches"`
-	IsGloballyVisible bool `json:"isGloballyVisible"`
+	MaxBranches                    int    `json:"maxBranches"`
+	IsGloballyVisible              bool   `json:"isGloballyVisible"`
 
 	ExclusiveAffiliateID *string            `json:"exclusiveAffiliateId,omitempty"`
 	PricingItems         []PlanPricingItem  `json:"pricingItems,omitempty"`
@@ -282,10 +278,6 @@ func (s *WorkspaceSubscription) ExpireIfNeeded(at time.Time) bool {
 	return false
 }
 
-// Extend advances the plan subscription to its next billing period when a monthly charge is
-// confirmed. Monthly subscriptions roll to the next global anchor (dueDay) computed in the billing
-// timezone, so the plan stays co-termed to one unified date; annual subscriptions roll 12 months.
-// Continuity is preserved from the prior period end, and a lapsed subscription advances from `from`.
 func (s *WorkspaceSubscription) Extend(from time.Time, dueDay int) {
 	if s == nil {
 		return
@@ -350,19 +342,9 @@ type SubscriptionRepository interface {
 	GetLatestByWorkspaceID(workspaceID string) (*WorkspaceSubscription, error)
 	GetCurrentByWorkspaceIDs(workspaceIDs []string, at time.Time) (map[string]*WorkspaceSubscription, error)
 
-	// ListUpcomingExpirations returns active or cancelled subscriptions whose period
-	// ends in the (from, to] window, for the "plan expires soon" reminder.
 	ListUpcomingExpirations(from, to time.Time, batchSize int) ([]*WorkspaceSubscription, error)
 
-	// ListActiveBillingDue returns active subscriptions whose current period ends at or
-	// before throughPeriodEnd, ordered by id and starting strictly after afterID (empty
-	// for the first page), up to limit rows. Keyset pagination lets the monthly emitter
-	// stream through every due workspace without an arbitrary per-run cap.
 	ListActiveBillingDue(throughPeriodEnd time.Time, afterID string, limit int) ([]*WorkspaceSubscription, error)
 
-	// ExpireOverdue marks overdue subscriptions expired and returns the workspace
-	// id of each expired row (one entry per row, so len is the count). Callers use
-	// the ids to reconcile dependent entitlements (e.g. suspend plan-included
-	// WhatsApp numbers once the plan that funded them lapses).
 	ExpireOverdue(at time.Time, batchSize int) ([]string, error)
 }

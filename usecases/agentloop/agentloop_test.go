@@ -13,23 +13,20 @@ import (
 	"vozko/domain/tools"
 )
 
-// ---- fakes ---------------------------------------------------------------
-
-// aiTurn scripts one model turn for the fake provider.
 type aiTurn struct {
-	reasoning []string // StreamEventReasoning tokens
-	tokens    []string // StreamEventToken tokens
+	reasoning []string
+	tokens    []string
 	tcs       []ai.ToolCall
 	fullText  string
 	finish    string
 	usage     *ai.Usage
-	noUsage   bool  // omit Usage on the done event
-	errEvent  error // emit a StreamEventError instead of done
+	noUsage   bool
+	errEvent  error
 }
 
 type fakeAI struct {
 	turns    []aiTurn
-	errAt    int // 1-based turn index where GenerateStream returns an error (0 = never)
+	errAt    int
 	blockCtx bool
 	delay    time.Duration
 	mu       sync.Mutex
@@ -168,7 +165,6 @@ func (c *capture) has(t string) bool { return c.count(t) > 0 }
 
 func tcall(name string) ai.ToolCall { return ai.ToolCall{Name: name} }
 
-// run is the standard harness for a single prompt.
 func run(t *testing.T, prov *fakeAI, drv *fakeDriver, cfg Config) (Outcome, *capture, *Session) {
 	t.Helper()
 	e := Engine{AI: prov}
@@ -177,8 +173,6 @@ func run(t *testing.T, prov *fakeAI, drv *fakeDriver, cfg Config) (Outcome, *cap
 	out := e.Run(context.Background(), cp.emit, drv, cfg, sess, "faça X")
 	return out, cp, sess
 }
-
-// ---- Run: terminal outcomes ----------------------------------------------
 
 func TestRun_FinishHonored(t *testing.T) {
 	prov := &fakeAI{turns: []aiTurn{{tcs: []ai.ToolCall{tcall("finish")}}}}
@@ -200,8 +194,8 @@ func TestRun_FinishHonored(t *testing.T) {
 
 func TestRun_FinishMixedWithMutationIgnoredThenHonored(t *testing.T) {
 	prov := &fakeAI{turns: []aiTurn{
-		{tcs: []ai.ToolCall{tcall("mut"), tcall("finish")}}, // finish ignored (a mutation happened)
-		{tcs: []ai.ToolCall{tcall("finish")}},               // honored
+		{tcs: []ai.ToolCall{tcall("mut"), tcall("finish")}},
+		{tcs: []ai.ToolCall{tcall("finish")}},
 	}}
 	calls := 0
 	drv := &fakeDriver{
@@ -244,7 +238,7 @@ func TestRun_NoProgressStallA(t *testing.T) {
 	}
 	prov := &fakeAI{turns: turns}
 	drv := &fakeDriver{
-		dispatchFn: func(ai.ToolCall) StepResult { return StepResult{Result: "ok"} }, // never mutates
+		dispatchFn: func(ai.ToolCall) StepResult { return StepResult{Result: "ok"} },
 		progressFn: func() Progress { return Progress{StateHash: "H", Valid: false} },
 	}
 	out, _, _ := run(t, prov, drv, Config{FinishToolName: "finish", NoProgressStop: 3, MaxIterations: 20})
@@ -282,7 +276,7 @@ func TestRun_MaxIterations(t *testing.T) {
 	n := 0
 	drv := &fakeDriver{
 		dispatchFn: func(ai.ToolCall) StepResult { return StepResult{Result: "did", Mutated: true} },
-		progressFn: func() Progress { n++; return Progress{StateHash: fmt.Sprintf("h%d", n)} }, // changing hash, empty sig
+		progressFn: func() Progress { n++; return Progress{StateHash: fmt.Sprintf("h%d", n)} },
 	}
 	out, _, _ := run(t, prov, drv, Config{FinishToolName: "finish", MaxIterations: 2, NoProgressStop: 20})
 	if out.Kind != OutcomeDone || out.Summary != reasonMaxIterations {
@@ -311,7 +305,6 @@ func TestRun_ProviderError(t *testing.T) {
 }
 
 func TestRun_StreamErrorEvent(t *testing.T) {
-	// A mid-stream error event (not ctx-related) surfaces as a provider error.
 	prov := &fakeAI{turns: []aiTurn{{reasoning: []string{"pensando."}, errEvent: errors.New("kaboom")}}}
 	out, _, _ := run(t, prov, &fakeDriver{}, Config{FinishToolName: "finish"})
 	if out.Kind != OutcomeDone || !strings.Contains(out.Summary, "provedor") {
@@ -340,8 +333,6 @@ func TestRun_ContextTimeoutDuringStream(t *testing.T) {
 }
 
 func TestRun_CtxExpiresBetweenIterations(t *testing.T) {
-	// The first turn sleeps past the deadline without checking ctx, so the SECOND
-	// iteration's top-of-loop ctx check fires.
 	prov := &fakeAI{turns: []aiTurn{{tcs: []ai.ToolCall{tcall("mut")}}}, delay: 40 * time.Millisecond}
 	e := Engine{AI: prov}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
@@ -354,7 +345,7 @@ func TestRun_CtxExpiresBetweenIterations(t *testing.T) {
 }
 
 func TestRun_EmptyTurnTruncationGivesUp(t *testing.T) {
-	turns := make([]aiTurn, 5) // all empty (no content, no tools)
+	turns := make([]aiTurn, 5)
 	prov := &fakeAI{turns: turns}
 	out, _, _ := run(t, prov, &fakeDriver{}, Config{FinishToolName: "finish", EmptyTurnRetries: 2, MaxIterations: 20})
 	if out.Kind != OutcomeDone || out.Summary != reasonEmptyTurn {
@@ -364,8 +355,8 @@ func TestRun_EmptyTurnTruncationGivesUp(t *testing.T) {
 
 func TestRun_TruncatedByLengthThenRecovers(t *testing.T) {
 	prov := &fakeAI{turns: []aiTurn{
-		{finish: "length"},                    // truncated → retry
-		{tcs: []ai.ToolCall{tcall("finish")}}, // then finishes
+		{finish: "length"},
+		{tcs: []ai.ToolCall{tcall("finish")}},
 	}}
 	out, _, _ := run(t, prov, &fakeDriver{}, Config{FinishToolName: "finish", EmptyTurnRetries: 2})
 	if out.Kind != OutcomeDone || !out.Valid {
@@ -460,12 +451,10 @@ func TestRun_LogPrefixCorrelation(t *testing.T) {
 	}
 }
 
-// ---- streamGenerate ------------------------------------------------------
-
 func TestStreamGenerate_TokensReasoningUsage(t *testing.T) {
 	e := Engine{AI: &fakeAI{turns: []aiTurn{{
-		reasoning: []string{"curto", "agora com ponto."}, // first buffered, second flushed
-		tokens:    []string{"abc", "def.", "gh"},         // batched + punctuation flush
+		reasoning: []string{"curto", "agora com ponto."},
+		tokens:    []string{"abc", "def.", "gh"},
 		tcs:       []ai.ToolCall{tcall("t")},
 		finish:    "tool_calls",
 		usage:     &ai.Usage{TotalTokens: 9},
@@ -507,8 +496,6 @@ func TestStreamGenerate_ErrorEventAfterReasoning(t *testing.T) {
 		t.Fatal("expected stream error")
 	}
 }
-
-// ---- pure helpers --------------------------------------------------------
 
 func TestWithDefaults(t *testing.T) {
 	d := Config{}.withDefaults()
@@ -563,7 +550,7 @@ func TestTrimHistory(t *testing.T) {
 func TestRecordTurn(t *testing.T) {
 	sess := &Session{}
 	calls := []ai.ToolCall{{ID: "c1", Name: "a"}, {ID: "c2", Name: "b"}}
-	recordTurn(sess, 80, "said", calls, []string{""}) // fewer results than calls + empty result
+	recordTurn(sess, 80, "said", calls, []string{""})
 	if len(sess.History) != 3 {
 		t.Fatalf("expected assistant + 2 tool results, got %d", len(sess.History))
 	}

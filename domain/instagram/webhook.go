@@ -11,28 +11,11 @@ import (
 
 var ErrInvalidWebhookPayload = errors.New("instagram: invalid webhook payload")
 
-// ---------------------------------------------------------------- raw payload
-
-// Envelope is the top level of an Instagram webhook POST.
-//
-// Meta ships this as a bare object on some doc pages and as a single-element
-// ARRAY on others, so DecodeEnvelope sniffs and accepts both.
 type Envelope struct {
 	Object string   `json:"object"`
 	Entry  []*Entry `json:"entry"`
 }
 
-// Entry carries FOUR mutually-exclusive shapes on the same endpoint:
-//
-//  1. Messaging, DM events
-//  2. Standby  , messages on the standby channel (we don't own thread control)
-//  3. Changes  , Facebook-Login style change events, wrapped in an array
-//  4. Field/Value directly on the entry, Instagram-Login style change events,
-//     with NO changes array. Missing this shape is the single most common
-//     Instagram integration bug.
-//
-// A single POST may hold up to 1000 entries and may span multiple Instagram
-// accounts, so callers must iterate and route each entry by ID.
 type Entry struct {
 	ID   string `json:"id"`
 	Time int64  `json:"time"`
@@ -41,7 +24,6 @@ type Entry struct {
 	Standby   []*MessagingEvent `json:"standby,omitempty"`
 	Changes   []*Change         `json:"changes,omitempty"`
 
-	// Shape 4: field/value hoisted onto the entry itself.
 	Field string          `json:"field,omitempty"`
 	Value json.RawMessage `json:"value,omitempty"`
 }
@@ -51,9 +33,6 @@ type Change struct {
 	Value json.RawMessage `json:"value"`
 }
 
-// MessagingEvent is one DM-family event. Exactly one of the payload fields is
-// set; note that Reaction, Read, Postback, Referral and MessageEdit are SIBLINGS
-// of Message, not nested inside it.
 type MessagingEvent struct {
 	Sender    Participant `json:"sender"`
 	Recipient Participant `json:"recipient"`
@@ -71,11 +50,6 @@ type Participant struct {
 	ID string `json:"id"`
 }
 
-// Message is a DM.
-//
-// IsEcho / IsDeleted / IsSelf / IsUnsupported are PRESENCE-ONLY: Meta includes
-// them solely when true, so they must be pointers. A plain bool with omitempty
-// would silently lose the distinction between absent and false.
 type Message struct {
 	MID           string        `json:"mid"`
 	Text          string        `json:"text,omitempty"`
@@ -89,8 +63,6 @@ type Message struct {
 	ReplyTo       *ReplyTo      `json:"reply_to,omitempty"`
 }
 
-// ReplyTo is a UNION: MID for an inline reply to a message, Story for a reply
-// to one of our stories. Branch on which is present.
 type ReplyTo struct {
 	MID         string `json:"mid,omitempty"`
 	IsSelfReply *bool  `json:"is_self_reply,omitempty"`
@@ -103,9 +75,6 @@ type Story struct {
 	LinkStickerURL string `json:"link_sticker_url,omitempty"`
 }
 
-// Attachment payload types: audio, file, image, share, story_mention, video,
-// ig_reel, reel, ephemeral. Note that `ephemeral` carries NO payload at all, so
-// Payload must be nil-checked before every dereference.
 type Attachment struct {
 	Type    string             `json:"type"`
 	Payload *AttachmentPayload `json:"payload,omitempty"`
@@ -122,10 +91,6 @@ type QuickReply struct {
 	Payload string `json:"payload"`
 }
 
-// Reaction arrives as a sibling of Message. Action is react|unreact; on unreact
-// both Reaction and Emoji may be absent. Reaction is NOT a closed enum, the
-// docs list different sets and explicitly allow "other", so the raw string is
-// preserved rather than mapped.
 type Reaction struct {
 	MID      string `json:"mid"`
 	Action   string `json:"action"`
@@ -133,8 +98,6 @@ type Reaction struct {
 	Emoji    string `json:"emoji,omitempty"`
 }
 
-// Read is Instagram's read receipt. It carries a specific message id, there is
-// NO watermark, so we cannot infer "everything before T is read".
 type Read struct {
 	MID string `json:"mid"`
 }
@@ -152,19 +115,12 @@ type Referral struct {
 	AdID   string `json:"ad_id,omitempty"`
 }
 
-// MessageEdit carries an edited DM. NumEdit is documented with a STRING
-// placeholder, so it is decoded permissively.
 type MessageEdit struct {
 	MID     string      `json:"mid"`
 	Text    string      `json:"text"`
 	NumEdit json.Number `json:"num_edit,omitempty"`
 }
 
-// CommentValue is a comments/live_comments change value.
-//
-// The comment id key DIFFERS by login type: `id` under Instagram Login, and
-// `comment_id` under Facebook Login. Both are accepted and resolved by
-// CommentID().
 type CommentValue struct {
 	ID        string        `json:"id,omitempty"`
 	CommentID string        `json:"comment_id,omitempty"`
@@ -191,10 +147,6 @@ type CommentMedia struct {
 	MediaProductType string `json:"media_product_type,omitempty"`
 }
 
-// ---------------------------------------------------------------- decoding
-
-// DecodeEnvelope parses a webhook body, tolerating both the bare-object and
-// array-wrapped top-level forms.
 func DecodeEnvelope(body []byte) ([]*Envelope, error) {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
@@ -219,12 +171,6 @@ func DecodeEnvelope(body []byte) ([]*Envelope, error) {
 	}
 }
 
-// SplitEntries flattens every envelope into individual entries paired with the
-// account they belong to.
-//
-// Splitting at ingest gives per-account failure isolation: one tenant's poison
-// event cannot block another's, and a 1000-entry batch spanning many accounts
-// becomes many independently retryable queue messages.
 func SplitEntries(envelopes []*Envelope) []*EntryEnvelope {
 	out := make([]*EntryEnvelope, 0, len(envelopes))
 	for _, env := range envelopes {
@@ -241,17 +187,11 @@ func SplitEntries(envelopes []*Envelope) []*EntryEnvelope {
 	return out
 }
 
-// EntryEnvelope is one entry addressed to one Instagram account, the unit we
-// publish to the queue.
 type EntryEnvelope struct {
 	Object string `json:"object"`
 	Entry  *Entry `json:"entry"`
 }
 
-// ---------------------------------------------------------------- normalized
-
-// EventKind classifies a webhook event after normalization, so consumers switch
-// on an explicit kind instead of re-sniffing raw JSON.
 type EventKind string
 
 const (
@@ -269,19 +209,12 @@ const (
 	EventUnknown        EventKind = "unknown"
 )
 
-// Event is a normalized webhook event. One raw entry can yield several.
 type Event struct {
-	Kind EventKind
-	// IGAccountExternalID is the business account this event belongs to.
+	Kind                EventKind
 	IGAccountExternalID string
-	// ContactIGSID is the other party. For change events it is the commenter.
-	ContactIGSID string
-	// Timestamp is derived from the event, not from arrival.
-	Timestamp time.Time
+	ContactIGSID        string
+	Timestamp           time.Time
 
-	// IdempotencyKey uniquely identifies this event. One `mid` legitimately
-	// recurs across kinds (original, tombstone, edit, read, reaction), so the
-	// key is composite.
 	IdempotencyKey string
 
 	Message  *Message
@@ -292,22 +225,12 @@ type Event struct {
 	Edit     *MessageEdit
 	Comment  *CommentValue
 
-	// RawField / RawValue carry unrecognised change events so they can be
-	// logged verbatim rather than dropped. Three documented fields have no
-	// published payload shape, so guessing would be wrong.
 	RawField string
 	RawValue json.RawMessage
 }
 
-// IsOutbound reports whether this event describes a message we sent.
 func (e *Event) IsOutbound() bool { return e.Kind == EventEchoMessage }
 
-// NormalizeEntry converts one raw entry into normalized events, ordered by
-// event timestamp.
-//
-// Meta gives no ordering guarantee and explicitly directs implementers to order
-// by the webhook timestamp field, so we sort here rather than trusting arrival
-// order.
 func NormalizeEntry(env *EntryEnvelope) []*Event {
 	if env == nil || env.Entry == nil {
 		return nil
@@ -333,7 +256,6 @@ func NormalizeEntry(env *EntryEnvelope) []*Event {
 			events = append(events, ev)
 		}
 	}
-	// Shape 4, field/value directly on the entry (Instagram Login).
 	if e.Field != "" {
 		if ev := normalizeChange(e, e.Field, e.Value); ev != nil {
 			events = append(events, ev)
@@ -355,9 +277,6 @@ func normalizeMessaging(entry *Entry, m *MessagingEvent, standby bool) []*Event 
 		ts = unixTimestampToTime(entry.Time)
 	}
 
-	// The business is identified by recipient.id for inbound traffic. Meta's own
-	// examples set entry[].id to the SENDER's scoped id for postback and
-	// referral events, so entry[].id is not a reliable account discriminator.
 	account := entry.ID
 	contact := m.Sender.ID
 
@@ -387,7 +306,6 @@ func normalizeMessaging(entry *Entry, m *MessagingEvent, standby bool) []*Event 
 			return []*Event{ev}
 
 		case boolVal(msg.IsEcho):
-			// On an echo the roles are reversed: sender is the business.
 			ev := base(EventEchoMessage, idemKey(account, "messages", msg.MID))
 			ev.ContactIGSID = m.Recipient.ID
 			ev.Message = msg
@@ -395,8 +313,6 @@ func normalizeMessaging(entry *Entry, m *MessagingEvent, standby bool) []*Event 
 
 		default:
 			ev := base(EventInboundMessage, idemKey(account, "messages", msg.MID))
-			// Prefer recipient.id as the business identifier where it disagrees
-			// with entry.id.
 			if m.Recipient.ID != "" {
 				ev.IGAccountExternalID = m.Recipient.ID
 			}
@@ -448,7 +364,6 @@ func normalizeChange(entry *Entry, field string, value json.RawMessage) *Event {
 		var cv CommentValue
 		if len(value) > 0 {
 			if err := json.Unmarshal(value, &cv); err != nil {
-				// Malformed value: keep it as unknown so it is logged, not lost.
 				return &Event{
 					Kind:                EventUnknown,
 					IGAccountExternalID: entry.ID,
@@ -476,8 +391,6 @@ func normalizeChange(entry *Entry, field string, value json.RawMessage) *Event {
 		return ev
 
 	default:
-		// Unknown or undocumented field. Never drop it silently: three
-		// subscribable fields have no published payload shape.
 		return &Event{
 			Kind:                EventUnknown,
 			IGAccountExternalID: entry.ID,
@@ -489,9 +402,6 @@ func normalizeChange(entry *Entry, field string, value json.RawMessage) *Event {
 	}
 }
 
-// MediaKindForAttachment maps an Instagram attachment type onto our media
-// vocabulary. Unknown types return "" so callers can record them as unsupported
-// rather than guessing.
 func MediaKindForAttachment(t string) string {
 	switch t {
 	case "image":
@@ -519,9 +429,6 @@ func midOf(m *MessagingEvent) string {
 
 func boolVal(b *bool) bool { return b != nil && *b }
 
-// unixTimestampToTime accepts both timestamp units used by Meta. Older
-// examples and some integrations send milliseconds, while current Instagram
-// webhook examples send Unix seconds for entry.time.
 func unixTimestampToTime(value int64) time.Time {
 	if value <= 0 {
 		return time.Time{}

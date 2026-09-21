@@ -11,23 +11,15 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// DefaultAutoCloseBatch is the max entries closed per channel per policy per tick.
-// Keeps each cron run short and index-friendly (ORDER BY + LIMIT).
 const DefaultAutoCloseBatch = 200
 
 type autoCloseJob struct {
 	whatsapp wce.Repository
 	status   conversation.ConversationStatusUpdater
 	batch    int
-	// disabled when env CONVERSATION_AUTO_CLOSE_DISABLED is truthy.
 	disabled bool
 }
 
-// NewAutoCloseJob wires idle + max-age closers. status must be the shared service.
-//
-// Policy A (customer_idle): agent/AI last, customer quiet, default on (24h).
-// Policy C (max_age): last_message_at absolute inactivity, default on (7d).
-// Industry: Intercom waiting-on-customer + LivePerson long inactivity hygiene.
 func NewAutoCloseJob(whatsapp wce.Repository, status conversation.ConversationStatusUpdater) conversation.AutoCloseJob {
 	batch := DefaultAutoCloseBatch
 	if v := strings.TrimSpace(os.Getenv("CONVERSATION_AUTO_CLOSE_BATCH")); v != "" {

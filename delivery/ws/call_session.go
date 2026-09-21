@@ -56,10 +56,6 @@ func (lc *liveCall) startUplinkPump(logger *log.Logger) {
 					logger.Printf("[CallSessionWS] SendAudio failed for call %s: %v", lc.call.ID(), err)
 				}
 			}
-			// Periodic uplink heartbeat: channel-level drops (producer outpacing
-			// the real-time send) + current queue depth. A climbing drop count or a
-			// persistently full queue means browser audio is arriving faster than it
-			// can be sent, the buffer-bloat signature behind growing uplink delay.
 			processed++
 			if processed%500 == 0 && logger != nil {
 				logger.Printf("[CallSessionWS] uplink pump call=%s processed=%d channel_drops=%d queue=%d/%d",
@@ -189,26 +185,16 @@ type callSession struct {
 	mu      sync.Mutex
 	current *liveCall
 
-	// res is the busy-while-ringing reservation, shared with every other
-	// CallSession implementation via the domain ReservationState primitive so
-	// the compare-and-set + TTL logic is not duplicated per session type. It is
-	// guarded by mu together with current, so accept transitions reserved->active
-	// with no observable free gap; current is passed in as the "already active"
-	// predicate to keep Reserve atomic under this single lock.
 	res callsession_domain.ReservationState
 	now func() time.Time
 
 	onPresenceChange func()
 
-	// presenceTelemetry records durable on_call/online intervals (queue only, optional).
 	presenceTelemetry func(workspaceID, userID, state, source string)
 }
 
 var errCallSessionBusy = errors.New("call session already has an attached call")
 
-// callSessionReservationTTL is the shared reservation backstop, single-sourced in the
-// domain so every CallSession implementation uses the same window. See
-// callsession_domain.CallSessionReservationTTL for the rationale.
 const callSessionReservationTTL = callsession_domain.CallSessionReservationTTL
 
 func newCallSession(
@@ -246,9 +232,6 @@ func (s *callSession) Attach(lc *liveCall) error {
 		return errCallSessionBusy
 	}
 	s.current = lc
-	// Accept consumes any outstanding ring reservation atomically: reserved->active
-	// happens in the same critical section that sets current, so no concurrent
-	// selector ever observes the accepting agent as momentarily free.
 	s.res.Clear()
 	s.mu.Unlock()
 	lc.forwarder.Store(s)
@@ -274,7 +257,6 @@ func (s *callSession) Detach() (*liveCall, bool) {
 	if cb := s.onPresenceChange; cb != nil {
 		cb()
 	}
-	// Back to available (WS still connected) for occupancy accounting.
 	if tel := s.presenceTelemetry; tel != nil {
 		tel(s.workspaceID, s.userID, "online", "call_session")
 	}
@@ -287,8 +269,6 @@ func (s *callSession) Current() *liveCall {
 	return s.current
 }
 
-// Done exposes the lifecycle-terminated signal: it closes when the far side hung
-// up or the call was torn down.
 func (lc *liveCall) Done() <-chan struct{} { return lc.lifecycleDone }
 
 func (s *callSession) HasActiveCall() bool {
@@ -297,48 +277,28 @@ func (s *callSession) HasActiveCall() bool {
 	return s.isOccupiedLocked()
 }
 
-// Reserve marks this session as occupied for an outstanding ring identified by
-// token. It is a compare-and-set: it fails (returns false) if the session
-// already has an attached call or a live reservation for a different token, so
-// two concurrent offers can never both claim the same idle agent. Reserving with
-// the same token again is idempotent and returns true.
 func (s *callSession) Reserve(token string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// current is the "already active" predicate, so the compare-and-set stays
-	// atomic with attach under this single lock. Empty-token and TTL handling live
-	// in the shared ReservationState.
 	return s.res.Reserve(token, s.current != nil, s.now(), callSessionReservationTTL)
 }
 
-// Release clears a reservation taken with the same token. It is token-scoped and
-// idempotent: releasing a stale or foreign token, after Attach already consumed
-// the reservation (reserved == ""), or after the agent reconnected and a newer
-// offer re-reserved the session, is a no-op, so duplicate/liberal releases from
-// every resolution site are safe. Release never touches an attached call.
 func (s *callSession) Release(token string) {
 	s.mu.Lock()
 	s.res.Release(token)
 	s.mu.Unlock()
 }
 
-// clearReservation unconditionally drops any outstanding reservation. Used on
-// session shutdown so an agent that disconnects while a ring is outstanding frees
-// its slot immediately instead of waiting out the TTL backstop.
 func (s *callSession) clearReservation() {
 	s.mu.Lock()
 	s.res.Clear()
 	s.mu.Unlock()
 }
 
-// reservedLiveLocked reports whether a non-expired reservation is held, lazily
-// clearing one that has outlived the TTL backstop. Caller must hold s.mu.
 func (s *callSession) reservedLiveLocked() bool {
 	return s.res.ReservedLive(s.now(), callSessionReservationTTL)
 }
 
-// isOccupiedLocked reports whether the session is unavailable for a new call,
-// either it has an attached call or a live ring reservation. Caller holds s.mu.
 func (s *callSession) isOccupiedLocked() bool {
 	return s.current != nil || s.reservedLiveLocked()
 }
@@ -363,7 +323,6 @@ func (s *callSession) SetPresenceCallback(cb func()) {
 	s.onPresenceChange = cb
 }
 
-// SetPresenceTelemetry records durable on_call/online via queue-backed adapter.
 func (s *callSession) SetPresenceTelemetry(fn func(workspaceID, userID, state, source string)) {
 	if s == nil {
 		return
@@ -381,11 +340,6 @@ func (s *callSession) Notify(msg callsession_domain.CallSessionControlMessage) e
 
 func (s *callSession) Shutdown(ctx context.Context) {
 
-	// Release any outstanding ring reservation first: an agent that disconnects
-	// while an offer is still ringing (before Attach) leaves current == nil, so
-	// the call teardown below early-returns, without this the reservation would
-	// linger until the TTL backstop. clearReservation is unconditional and safe
-	// when no reservation is held.
 	s.clearReservation()
 
 	lc, ok := s.Detach()
@@ -461,10 +415,6 @@ func (s *callSession) dispatchEnded(lc *liveCall, reason string, duration time.D
 	s.mu.Unlock()
 	lc.forwarder.CompareAndSwap(s, nil)
 
-	// A natural call end frees this agent, so broadcast the presence change exactly
-	// like Detach does. Without this, OTHER members' presence panels (and the
-	// transfer picker) keep showing this agent as busy until some unrelated presence
-	// event fires: "I ended my call but everyone still sees me busy".
 	if cleared {
 		if cb := s.onPresenceChange; cb != nil {
 			cb()

@@ -29,7 +29,10 @@ type Service struct {
 	billingPub        messaging.MessageQueuePub
 }
 
-func NewService(client Client, defaultModel string, toolSvc tools.Service, billingPub messaging.MessageQueuePub) *Service {
+func NewService(client Client, defaultModel string, toolSvc tools.Service, billingPub messaging.MessageQueuePub) (*Service, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: openai ai service", ai.ErrBillingNotConfigured)
+	}
 	return &Service{
 		client:            client,
 		defaultModel:      strings.TrimSpace(defaultModel),
@@ -37,7 +40,7 @@ func NewService(client Client, defaultModel string, toolSvc tools.Service, billi
 		defaultTemp:       0.2,
 		maxToolIterations: ai.DefaultMaxToolIterations,
 		billingPub:        billingPub,
-	}
+	}, nil
 }
 
 func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<-chan ai.StreamEvent, error) {
@@ -174,12 +177,6 @@ func (s *Service) buildRequest(input ai.GenerateInput) openai.ChatCompletionRequ
 	}
 
 	defs := input.Tools
-	// Only fall back to the full default tool registry when the caller actually
-	// allows tool execution. Callers that disable execution (ToolExecutionModeNone,
-	// e.g. workflow AI-agent nodes in prompt mode with no custom tools) and pass no
-	// tools want *none*. Injecting the default set here let the model emit tool
-	// calls it could never run, which suppressed its text reply (the node would
-	// finish with response=0 chars and deliver nothing).
 	if defs == nil && s.toolService != nil && input.ToolExecutionMode != ai.ToolExecutionModeNone {
 		defs = s.toolService.Definitions()
 	}
@@ -191,7 +188,6 @@ func (s *Service) buildRequest(input ai.GenerateInput) openai.ChatCompletionRequ
 		MaxTokens:   input.MaxTokens,
 		Tools:       convertTools(defs),
 	}
-	// go-openai v1.21 supports json_object / text; json_schema is OpenRouter-only here.
 	if rf := input.ResponseFormat; rf != nil {
 		switch rf.Type {
 		case ai.ResponseFormatJSONObject:
@@ -311,17 +307,13 @@ func convertInputMessages(system string, messages []ai.Message) []openai.ChatCom
 			Role:       role,
 			Content:    msg.Content,
 			ToolCallID: msg.ToolCallID,
-			// Replay any tool calls the assistant made so a caller-supplied agentic
-			// history round-trips (the matching RoleTool results must follow).
-			ToolCalls: toOpenAIToolCalls(msg.ToolCalls),
+			ToolCalls:  toOpenAIToolCalls(msg.ToolCalls),
 		})
 	}
 
 	return converted
 }
 
-// toOpenAIToolCalls converts domain tool calls into the SDK wire format so a
-// caller-supplied assistant turn can replay its tool calls.
 func toOpenAIToolCalls(calls []ai.ToolCall) []openai.ToolCall {
 	if len(calls) == 0 {
 		return nil
@@ -489,8 +481,6 @@ func buildToolSchema(def tools.Definition) map[string]interface{} {
 	return schema
 }
 
-// resolveParamType delegates to the shared tools.ResolveParamType so the LLM
-// tool-schema mapping and the workflow builder validation stay on one list.
 func resolveParamType(raw string) (schemaType, formatHint string) {
 	return tools.ResolveParamType(raw)
 }
@@ -569,8 +559,6 @@ func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, c
 		Model:            model,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
-		// This provider does not return a per-call cost, so the token estimate
-		// stays. Leaving it zero is what selects that path.
 	}
 	data, err := json.Marshal(event)
 	if err != nil {

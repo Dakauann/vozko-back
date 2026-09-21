@@ -9,19 +9,11 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// The provider pushes a `connection` event on every session-state change, so
-// polling for session state is a BACKSTOP, not the primary signal. These tests
-// pin that division of labour: the cheap sweep must not duplicate the webhook,
-// and the expensive one must cover exactly what no event can report.
-
-// The backstop asks the repository for instances that have gone quiet, and the
-// staleness window is what keeps it from re-polling everything every run.
 func TestSessionBackstopOnlyProbesStaleInstances(t *testing.T) {
 	instances := newFakeInstanceRepo()
 	var askedFor time.Time
 	instances.ListForHealthCheckFn = func(before time.Time) ([]*uw.Instance, error) {
 		askedFor = before
-		// Nothing is stale: the webhook has spoken for every instance.
 		return nil, nil
 	}
 	provider := &fakeProvider{
@@ -39,15 +31,11 @@ func TestSessionBackstopOnlyProbesStaleInstances(t *testing.T) {
 	if askedFor.IsZero() {
 		t.Fatal("the backstop must bound its work by staleness")
 	}
-	// A window in the seconds would defeat the point: the webhook needs room to
-	// report first, or the backstop is just a second, slower copy of it.
 	if window := time.Since(askedFor); window < time.Minute {
 		t.Errorf("staleness window is %v; too tight to let the connection webhook report first", window)
 	}
 }
 
-// The cheap sweep must stay cheap: one call per stale instance, and none of the
-// three integrity probes, which are an order of magnitude more traffic.
 func TestSessionBackstopDoesNotRunTheIntegrityProbes(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -75,9 +63,6 @@ func TestSessionBackstopDoesNotRunTheIntegrityProbes(t *testing.T) {
 	}
 }
 
-// A webhook silently removed from the host console cannot announce itself: the
-// announcement would have to travel through the thing that was removed. This is
-// the failure the integrity sweep exists for, and it must self-heal.
 func TestIntegritySweepReRegistersAMissingWebhook(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -86,7 +71,6 @@ func TestIntegritySweepReRegistersAMissingWebhook(t *testing.T) {
 	instances := newFakeInstanceRepo(instance)
 	provider := &fakeProvider{
 		GetWebhooksFn: func(context.Context, uw.InstanceRef) ([]uw.WebhookSubscription, error) {
-			// The host has no webhook at all: someone unhooked us.
 			return nil, nil
 		},
 	}
@@ -108,8 +92,6 @@ func TestIntegritySweepReRegistersAMissingWebhook(t *testing.T) {
 	}
 }
 
-// A webhook that is present and enabled must be left alone: rewriting it on
-// every hourly pass would be pointless traffic against every host.
 func TestIntegritySweepLeavesAHealthyWebhookAlone(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -120,9 +102,6 @@ func TestIntegritySweepLeavesAHealthyWebhookAlone(t *testing.T) {
 		GetWebhooksFn: func(context.Context, uw.InstanceRef) ([]uw.WebhookSubscription, error) {
 			return []uw.WebhookSubscription{{
 				URL: uw.WebhookURLFor(testWebhookBase, "dtok"), Enabled: true,
-				// The full event set: a "correctly registered" webhook is one
-				// pointed at us AND subscribed to everything we consume, and the
-				// fixture has to say both or it is not describing a healthy one.
 				Events: uw.SubscribedEvents(),
 			}}, nil
 		},
@@ -138,15 +117,6 @@ func TestIntegritySweepLeavesAHealthyWebhookAlone(t *testing.T) {
 	}
 }
 
-// A webhook pointed at us but subscribed to FEWER events than we consume must be
-// re-registered.
-//
-// The URL match alone used to satisfy this check, and it cost a real bug: an
-// instance connected before an event was added to the subscription never
-// received that event. The host was pointed at us, the probe was happy, and the
-// new event type stayed unsubscribed forever — which is how `groups` failed to
-// arrive on already-connected numbers, leaving a renamed or re-pictured group
-// showing its old identity until somebody pressed refresh by hand.
 func TestIntegritySweepResubscribesWhenEventsAreMissing(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -157,7 +127,6 @@ func TestIntegritySweepResubscribesWhenEventsAreMissing(t *testing.T) {
 		GetWebhooksFn: func(context.Context, uw.InstanceRef) ([]uw.WebhookSubscription, error) {
 			return []uw.WebhookSubscription{{
 				URL: uw.WebhookURLFor(testWebhookBase, "dtok"), Enabled: true,
-				// What an instance provisioned before `groups` existed looks like.
 				Events: []string{"messages", "messages_update", "connection"},
 			}}, nil
 		},
@@ -176,9 +145,6 @@ func TestIntegritySweepResubscribesWhenEventsAreMissing(t *testing.T) {
 	}
 }
 
-// Casing must not cause a needless rewrite: the provider is inconsistent about
-// the case of its own event names, and a false "missing" would re-register on
-// every hourly pass, hiding a real one in the noise.
 func TestWebhookEventComparisonIgnoresCasing(t *testing.T) {
 	upper := make([]string, 0, len(uw.SubscribedEvents()))
 	for _, e := range uw.SubscribedEvents() {
@@ -189,9 +155,6 @@ func TestWebhookEventComparisonIgnoresCasing(t *testing.T) {
 	}
 }
 
-// A webhook registered but DISABLED delivers nothing while looking configured.
-// It has to be treated as missing, or the inbox stays quiet with a healthy-
-// looking config behind it.
 func TestIntegritySweepTreatsADisabledWebhookAsMissing(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -216,9 +179,6 @@ func TestIntegritySweepTreatsADisabledWebhookAsMissing(t *testing.T) {
 	}
 }
 
-// A transient host failure is not evidence about the session. Marking it
-// disconnected would close every composer on the channel each time the host had
-// a bad minute.
 func TestBackstopDoesNotDisconnectOnATransientFailure(t *testing.T) {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-a",
@@ -248,8 +208,6 @@ func TestBackstopDoesNotDisconnectOnATransientFailure(t *testing.T) {
 	}
 }
 
-// One tenant's broken instance must not blind us to every other: this job is
-// the backstop, and aborting the loop would take the backstop away.
 func TestSweepsIsolatePerInstanceFailures(t *testing.T) {
 	broken := &uw.Instance{ID: "broken", WorkspaceID: "ws-1", ServerID: "srv-missing",
 		Status: uw.StatusConnected, InstanceToken: "tok", DeliveryToken: "d1"}
@@ -267,7 +225,6 @@ func TestSweepsIsolatePerInstanceFailures(t *testing.T) {
 	if err := uc.VerifyIntegrity(context.Background()); err != nil {
 		t.Fatalf("an unresolvable host must not abort the sweep: %v", err)
 	}
-	// The healthy instance was still probed despite the broken one coming first.
 	if len(provider.webhookSets) != 1 {
 		t.Errorf("the healthy instance was not reached: %d registrations", len(provider.webhookSets))
 	}

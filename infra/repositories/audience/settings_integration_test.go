@@ -9,15 +9,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// A column added to the settings table but forgotten in the upsert's DoUpdates
-// list saves on a NEW row and silently does nothing on an existing one. The API
-// returns what you sent, the next read returns the old value, and the operator
-// concludes the toggle is broken.
-//
-// It has happened twice: once on the author projection's reputation column, and
-// once on reply_mode, which is what made "Resposta aos comentários" impossible
-// to switch on. These tests make the third time a test failure.
-
 func TestIntegration_SettingsUpdateSurvivesAnExistingRow(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewSettingsRepository(db)
@@ -32,7 +23,6 @@ func TestIntegration_SettingsUpdateSurvivesAnExistingRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Now change EVERY operator-settable field on the existing row.
 	next, err := repo.Find(ctx, ca.SourceInstagram, account)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +61,6 @@ func TestIntegration_SettingsUpdateSurvivesAnExistingRow(t *testing.T) {
 	if stored.Instructions != "somos uma loja" {
 		t.Errorf("instructions = %q", stored.Instructions)
 	}
-	// THE one that was broken: switching replying on read back as off.
 	if stored.ReplyPolicy.Mode != ca.ReplyModeSuggest {
 		t.Errorf("reply mode = %q, want suggest: the setting cannot be switched on", stored.ReplyPolicy.Mode)
 	}
@@ -80,9 +69,6 @@ func TestIntegration_SettingsUpdateSurvivesAnExistingRow(t *testing.T) {
 	}
 }
 
-// The alert rules table has the same trap, and its Update writes an explicit
-// column map. A field added to the rule but forgotten there is a setting the
-// operator can choose once and never change.
 func TestIntegration_AlertRuleUpdateWritesEveryEditableField(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -139,14 +125,9 @@ func TestIntegration_AlertRuleUpdateWritesEveryEditableField(t *testing.T) {
 	}
 }
 
-// The structural version of the same check: every column the settings table
-// has, apart from the key and the bookkeeping, must appear in the upsert's
-// update list. This fails the moment a column is added without one.
 func TestIntegration_SettingsUpsertUpdatesEveryColumn(t *testing.T) {
 	db := integrationDB(t)
 
-	// The primary key identifies the row and must not be reassigned;
-	// created_at belongs to the first write.
 	skip := map[string]bool{"source": true, "account_id": true, "created_at": true}
 
 	stmt := db.Model(&schema.AudienceSettings{}).Statement
@@ -179,8 +160,6 @@ func TestIntegration_SettingsUpsertUpdatesEveryColumn(t *testing.T) {
 		t.Fatalf("columns absent from the settings upsert, so they save on a new row and are ignored on an existing one: %v", missing)
 	}
 
-	// And nothing in the list that is not a real column, which would make the
-	// write fail outright.
 	known := make(map[string]bool, len(columns))
 	for _, c := range columns {
 		known[c] = true
@@ -191,7 +170,6 @@ func TestIntegration_SettingsUpsertUpdatesEveryColumn(t *testing.T) {
 		}
 	}
 	if reflect.DeepEqual(columns, updated) {
-		// Order does not matter; this is only here so the slices are used.
 		_ = columns
 	}
 }

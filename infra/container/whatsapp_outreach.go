@@ -14,12 +14,6 @@ import (
 	whatsapp_outreach_usecase "vozko/usecases/whatsapp_outreach"
 )
 
-// whatsAppOutreachUseCases is cold outbound's whole use-case surface.
-//
-// Returned as a value and spread into the container's useCases literal rather
-// than assigned onto it field by field: initUseCases builds that struct in ONE
-// literal near the end, so a helper writing `c.useCases.x = …` earlier would
-// dereference a nil pointer.
 type whatsAppOutreachUseCases struct {
 	billedTemplateSend        whatsapp_template.BilledTemplateSendUseCase
 	reconcileTemplateSends    whatsapp_template.ReconcileSendAttemptsUseCase
@@ -27,9 +21,6 @@ type whatsAppOutreachUseCases struct {
 	quoteTemplateSend         whatsapp_outreach_domain.QuoteTemplateSendUseCase
 }
 
-// whatsAppOutreachDeps are the pieces built as LOCALS inside initUseCases —
-// the reserver, the history manager, the metric publisher — which therefore
-// cannot be reached through c.services and have to be handed over.
 type whatsAppOutreachDeps struct {
 	consume       balance_domain.ConsumeWhatsappTemplateUseCase
 	inflight      balance_domain.InflightReserver
@@ -39,13 +30,6 @@ type whatsAppOutreachDeps struct {
 	templateGrant workspace_template_access_domain.CheckAccessUseCase
 }
 
-// buildWhatsAppOutreach wires the one paid template sender and the dialog above it.
-//
-// Every constructor validates its own billing dependencies and returns an error,
-// and every error here is FATAL. That is the point of the feature: the failure
-// this design exists to prevent is a mis-wired container sending paid templates
-// for free, and the only way to guarantee that never happens is for the process
-// to refuse to start.
 func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutreachUseCases {
 	var built whatsAppOutreachUseCases
 

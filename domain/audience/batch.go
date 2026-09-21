@@ -5,10 +5,6 @@ import (
 	"time"
 )
 
-// ---- Batch: the receipt for one model call (§9.4) ----
-
-// BatchOutcome is what happened to a call. Mirrors the
-// audience_batches_total{outcome} metric.
 type BatchOutcome string
 
 const (
@@ -26,20 +22,12 @@ func (o BatchOutcome) Valid() bool {
 	return false
 }
 
-// Batch is one model call as billed: what was sent, what came back, what it
-// cost. It is what lets the dashboard say "12.480 comentários analisados ·
-// R$ 37,44 este mês"; charging for something invisible is how disputes start.
-// BatchKind says which pass bought these tokens. The comment pass and the
-// author pass (§5) are separate consumers of the same budget, and a customer
-// asking "what am I paying for" is owed the split rather than one number.
 type BatchKind string
 
 const (
 	BatchKindComment    BatchKind = "comment"
 	BatchKindAuthorRole BatchKind = "author_role"
-	// BatchKindReply is a drafted public answer (§6).
-	BatchKindReply BatchKind = "reply"
-	// BatchKindAlertBrief is the model's reading attached to an alert.
+	BatchKindReply      BatchKind = "reply"
 	BatchKindAlertBrief BatchKind = "alert_brief"
 )
 
@@ -55,8 +43,6 @@ func (k BatchKind) Valid() bool {
 	return false
 }
 
-// NormalizeBatchKind defaults to the comment pass, which is what every row
-// written before the author pass existed is.
 func NormalizeBatchKind(k BatchKind) BatchKind {
 	if !k.Valid() {
 		return BatchKindComment
@@ -65,13 +51,12 @@ func NormalizeBatchKind(k BatchKind) BatchKind {
 }
 
 type Batch struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspaceId"`
-	Source      Source `json:"source"`
-	AccountID   string `json:"accountId"`
-	ContainerID string `json:"containerId"`
-	// Kind is the pass. Empty reads as the comment pass.
-	Kind BatchKind `json:"kind"`
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspaceId"`
+	Source      Source    `json:"source"`
+	AccountID   string    `json:"accountId"`
+	ContainerID string    `json:"containerId"`
+	Kind        BatchKind `json:"kind"`
 
 	Model            string       `json:"model"`
 	ItemCount        int          `json:"itemCount"`
@@ -83,18 +68,12 @@ type Batch struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// BatchTotals is a period's token usage. There is no money column: comment
-// analysis is billed purely as token usage by the AI adapter, on the workspace
-// ledger, and nothing here duplicates that.
 type BatchTotals struct {
-	Batches          int `json:"batches"`
-	Items            int `json:"items"`
-	PromptTokens     int `json:"promptTokens"`
-	CompletionTokens int `json:"completionTokens"`
-	// ByKind splits the same period by pass, so the dashboard can show what
-	// the author inference cost separately from the comment classification.
-	// Always present for every kind, zeroed when a pass did not run.
-	ByKind map[BatchKind]BatchTotals `json:"byKind,omitempty"`
+	Batches          int                       `json:"batches"`
+	Items            int                       `json:"items"`
+	PromptTokens     int                       `json:"promptTokens"`
+	CompletionTokens int                       `json:"completionTokens"`
+	ByKind           map[BatchKind]BatchTotals `json:"byKind,omitempty"`
 }
 
 func (t *BatchTotals) Add(b Batch) {
@@ -115,14 +94,6 @@ func (t *BatchTotals) Add(b Batch) {
 	t.ByKind[kind] = part
 }
 
-// ---- Backfill (§10) ----
-
-// BackfillStatus is where a backfill is.
-//
-//	pending ──▶ running ──▶ done
-//	   │           ├──────▶ failed ──▶ pending   (operator retry)
-//	   │           ├──────▶ pending             (rate-limit pause, resumed next tick)
-//	   └───────────┴──────▶ canceled
 type BackfillStatus string
 
 const (
@@ -158,23 +129,16 @@ func (s BackfillStatus) CanTransitionTo(next BackfillStatus) bool {
 	}
 }
 
-// Backfill is one operator-initiated pass over a container's (or an
-// account's) historical comments. It ENQUEUES; it never classifies, so there
-// is one classifier, one budgeter and one billing path.
 type Backfill struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
 	Source      Source `json:"source"`
 	AccountID   string `json:"accountId"`
-	// ContainerID empty means the whole account.
 	ContainerID string `json:"containerId,omitempty"`
 
 	Status BackfillStatus `json:"status"`
-	// Cursor is the channel's pagination token. A restart continues from it.
-	Cursor string `json:"cursor,omitempty"`
+	Cursor string         `json:"cursor,omitempty"`
 
-	// EstimatedComments is what the operator confirmed: the sum of the local
-	// projection's comment counts, shown with a price before anything runs.
 	EstimatedComments int `json:"estimatedComments"`
 	Fetched           int `json:"fetched"`
 	Enqueued          int `json:"enqueued"`
@@ -187,8 +151,6 @@ type Backfill struct {
 	FinishedAt        *time.Time `json:"finishedAt,omitempty"`
 }
 
-// Progress is fetched over estimated, in [0,1]; 0 when the estimate is
-// unknown.
 func (b Backfill) Progress() float64 {
 	if b.EstimatedComments <= 0 {
 		return 0
@@ -200,7 +162,6 @@ func (b Backfill) Progress() float64 {
 	return p
 }
 
-// Advance records one fetched page.
 func (b *Backfill) Advance(cursor string, fetched, enqueued int, now time.Time) {
 	b.Cursor = cursor
 	b.Fetched += fetched
@@ -217,14 +178,10 @@ func (b *Backfill) transition(next BackfillStatus, now time.Time) error {
 	return nil
 }
 
-// Start claims the backfill for a run.
 func (b *Backfill) Start(now time.Time) error { return b.transition(BackfillRunning, now) }
 
-// Pause hands the backfill back to pending (rate-limit budget exhausted for
-// this hour); the cursor is kept.
 func (b *Backfill) Pause(now time.Time) error { return b.transition(BackfillPending, now) }
 
-// Finish ends the run in a terminal-or-failed state.
 func (b *Backfill) Finish(status BackfillStatus, errMsg string, now time.Time) error {
 	if status != BackfillDone && status != BackfillFailed && status != BackfillCanceled {
 		return fmt.Errorf("%w: %q is not a finishing status", ErrStatusTransition, status)

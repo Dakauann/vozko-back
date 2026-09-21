@@ -203,13 +203,11 @@ func (uc *consumeCoexistenceWebhookUseCase) persistHistoryMessage(
 	deliveryStatus := mapHistoryStatus(histMsg.Status)
 
 	msg := &conversation.Message{
-		ID:          uuid.New().String(),
-		EntryID:     entryID,
-		EntryType:   shared.EntryTypeWhatsApp,
-		Channel:     conversation.MessageChannelWhatsApp,
-		MessageType: msgType,
-		// Chat history synced from the WhatsApp Business app at onboarding. None
-		// of it went out through our API, so none of it is ours to pay for.
+		ID:                uuid.New().String(),
+		EntryID:           entryID,
+		EntryType:         shared.EntryTypeWhatsApp,
+		Channel:           conversation.MessageChannelWhatsApp,
+		MessageType:       msgType,
 		SentVia:           conversation.MessageTransportBusinessApp,
 		From:              from,
 		To:                to,
@@ -347,14 +345,11 @@ func (uc *consumeCoexistenceWebhookUseCase) persistSMBEcho(
 	}
 
 	msg := &conversation.Message{
-		ID:          uuid.New().String(),
-		EntryID:     entryID,
-		EntryType:   shared.EntryTypeWhatsApp,
-		Channel:     conversation.MessageChannelWhatsApp,
-		MessageType: msgType,
-		// The owner replied from the WhatsApp Business app on their own phone.
-		// Meta does not bill that, only what goes out through the API, so the
-		// transport has to be recorded or the cost report counts it as ours.
+		ID:                uuid.New().String(),
+		EntryID:           entryID,
+		EntryType:         shared.EntryTypeWhatsApp,
+		Channel:           conversation.MessageChannelWhatsApp,
+		MessageType:       msgType,
 		SentVia:           conversation.MessageTransportBusinessApp,
 		From:              echo.From,
 		To:                echo.To,

@@ -12,17 +12,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// AudienceAdapter is Instagram's side of the comment-analysis engine:
-// the ONE file that knows both this channel's tables and the engine's ports.
-//
-// Inbound, it is the AudienceEnqueuer the webhook calls. Outbound, it
-// is the engine's SourceAdapter: it reads comment bodies back from
-// instagram_comments at classification time (the engine never stores them),
-// supplies the post's caption, enumerates posts for a backfill from the
-// local projection, and pages the Graph comments edge when a backfill runs.
-
-// analysisTombstoner is the one engine repository method the delete path
-// needs; narrowed so the adapter does not hold the whole repository.
 type analysisTombstoner interface {
 	SoftDeleteBySourceComment(ctx context.Context, source ca.Source, sourceCommentID string, now time.Time) error
 }
@@ -37,9 +26,6 @@ type AudienceAdapter struct {
 	clock      shared.Clock
 }
 
-// NewAudienceAdapter builds the adapter. accounts and commentSvc are
-// only needed for backfill (they fetch off the Graph edge) and may be nil in
-// a deployment that never backfills.
 func NewAudienceAdapter(
 	ingestor ca.Ingestor,
 	comments igdomain.CommentRepository,
@@ -56,10 +42,8 @@ func NewAudienceAdapter(
 
 var (
 	_ AudienceEnqueuer = (*AudienceAdapter)(nil)
-	_ ca.SourceAdapter        = (*AudienceAdapter)(nil)
+	_ ca.SourceAdapter = (*AudienceAdapter)(nil)
 )
-
-// ---- inbound: AudienceEnqueuer ----
 
 func toIngestInput(c *igdomain.Comment) (ca.IngestInput, bool) {
 	if c == nil || c.IGCommentID == "" || c.IGMediaID == "" || c.IGAccountID == "" {
@@ -68,7 +52,7 @@ func toIngestInput(c *igdomain.Comment) (ca.IngestInput, bool) {
 	in := ca.IngestInput{
 		WorkspaceID:      c.WorkspaceID,
 		Container:        ca.ContainerRef{Source: ca.SourceInstagram, AccountID: c.IGAccountID, ContainerID: c.IGMediaID},
-		SubjectID:  c.IGCommentID,
+		SubjectID:        c.IGCommentID,
 		AuthorExternalID: c.FromIGSID,
 		AuthorHandle:     c.FromUsername,
 		Text:             c.Text,
@@ -89,7 +73,6 @@ func (a *AudienceAdapter) Enqueue(ctx context.Context, c *igdomain.Comment) {
 		return
 	}
 	if err := a.ingestor.Enqueue(ctx, in); err != nil {
-		// Best effort by contract: the webhook already stored the comment.
 		log.Printf("[instagram] comment analysis enqueue failed comment=%s: %v", c.IGCommentID, err)
 	}
 }
@@ -103,15 +86,13 @@ func (a *AudienceAdapter) Forget(ctx context.Context, igCommentID string) {
 	}
 }
 
-// ---- outbound: ca.SourceAdapter ----
-
 func (a *AudienceAdapter) ReadTexts(ctx context.Context, ref ca.ContainerRef, ids []string) (map[string]string, error) {
 	out := make(map[string]string, len(ids))
 	for _, id := range ids {
 		c, err := a.comments.FindByIGCommentID(ctx, ref.AccountID, id)
 		if err != nil {
 			if errors.Is(err, igdomain.ErrCommentNotFound) {
-				continue // deleted since ingest: absent, the engine skips it
+				continue
 			}
 			return nil, err
 		}
@@ -129,10 +110,6 @@ func (a *AudienceAdapter) ReadContainerContext(ctx context.Context, ref ca.Conta
 		return ca.ContainerContext{}, err
 	}
 	out := ca.ContainerContext{Caption: m.Caption, Permalink: m.Permalink, PublishedAt: m.Timestamp}
-	// The handle is best effort: it is only needed so an ALERT can name the
-	// account to a human, and the classifier does not care. accounts is nil in
-	// a deployment that never backfills, and a missing handle costs a line in
-	// a message rather than an analysis.
 	if a.accounts != nil {
 		if account, err := a.accounts.FindByID(ctx, ref.AccountID); err == nil && account != nil {
 			out.AccountName = account.Username
@@ -157,9 +134,6 @@ func (a *AudienceAdapter) ListContainers(ctx context.Context, accountID string, 
 	return out, nil
 }
 
-// FetchCommentsPage pulls one page off the Graph edge for a backfill,
-// mirroring each comment locally on the way (the engine reads bodies back
-// from the mirror) and returning the ingest inputs.
 func (a *AudienceAdapter) FetchCommentsPage(ctx context.Context, ref ca.ContainerRef, cursor string) ([]ca.IngestInput, string, error) {
 	if a.accounts == nil || a.commentSvc == nil {
 		return nil, "", errors.New("instagram: backfill is not configured for this deployment")
@@ -189,9 +163,6 @@ func (a *AudienceAdapter) FetchCommentsPage(ctx context.Context, ref ca.Containe
 	return inputs, next, nil
 }
 
-// flattenRemote mirrors a comment and its replies, the same shape the
-// webhook produces, so a backfilled comment is indistinguishable from a
-// live one downstream.
 func flattenRemote(account *igdomain.Account, igMediaID string, rc *igdomain.RemoteComment, records *[]*igdomain.Comment, inputs *[]ca.IngestInput) {
 	if rc == nil || rc.IGCommentID == "" {
 		return
@@ -234,10 +205,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// ---- ownership ----
-
-// audienceAccountVerifier answers "does this workspace own this
-// account" from the account row, for the settings and backfill use cases.
 type audienceAccountVerifier struct {
 	accounts igdomain.AccountRepository
 }

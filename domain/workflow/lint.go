@@ -6,30 +6,6 @@ import (
 	"strings"
 )
 
-// LintGraph is the source-of-truth accumulating validator for the AI Workflow
-// Builder. It is pure and deterministic, safe to call on every loop iteration.
-//
-// Design contract (the termination guarantee):
-//
-//   - The BLOCKING tier is composed ENTIRELY of calls to the same pure functions
-//     the production save/activate path uses (ValidateGraph, ValidateNodeScopes,
-//     ValidateRequiredOutputEdges, ValidateNodeConfigs[required-only],
-//     ValidateSegmentedSendConflict). Therefore
-//     LintReport.IsGreen() is true iff the graph passes every PURE production
-//     rule, never stricter, never more lenient. The builder can only finish on a
-//     green report, so "the builder said valid" == "production accepts it".
-//
-//   - The ADVISORY tier (data-flow refs, dynamic-handle labels, functional
-//     resource references) is surfaced to the model as fix hints but NEVER gates
-//     finish. This keeps the green gate a subset/equal of production's gate, so a
-//     production-valid graph is never "unfinishable", while still nudging the
-//     model toward fully-wired, runtime-correct graphs.
-//
-// Repo-backed resource existence (template/agent/etc. must exist in the
-// workspace) is NOT checked here, that requires IO and runs at activation. The
-// AI builder resolves resource ids against live workspace data up front, so
-// referenced ids are real.
-
 type LintSeverity string
 
 const (
@@ -40,7 +16,6 @@ const (
 type LintIssueCode string
 
 const (
-	// --- BLOCKING: a green report requires zero of these. ---
 	LintGraphEmpty               LintIssueCode = "GRAPH_EMPTY"
 	LintGraphTooManyNodes        LintIssueCode = "GRAPH_TOO_MANY_NODES"
 	LintGraphTooManyEdges        LintIssueCode = "GRAPH_TOO_MANY_EDGES"
@@ -57,7 +32,7 @@ const (
 	LintNodeNoOutgoing           LintIssueCode = "NODE_NO_OUTGOING"
 	LintOrphanNode               LintIssueCode = "GRAPH_ORPHAN_NODE"
 	LintCycleDetected            LintIssueCode = "GRAPH_CYCLE_DETECTED"
-	LintGraphStructure           LintIssueCode = "GRAPH_STRUCTURE" // structural failure not mapped above
+	LintGraphStructure           LintIssueCode = "GRAPH_STRUCTURE"
 	LintNodeIncompatibleScope    LintIssueCode = "NODE_INCOMPATIBLE_SCOPE"
 	LintMissingRequiredOutput    LintIssueCode = "NODE_MISSING_REQUIRED_OUTPUT"
 	LintMissingRequiredField     LintIssueCode = "NODE_MISSING_REQUIRED_FIELD"
@@ -66,7 +41,6 @@ const (
 	LintInvalidToolParamType     LintIssueCode = "NODE_INVALID_TOOL_PARAM_TYPE"
 	LintInvalidInteractiveConfig LintIssueCode = "NODE_INVALID_INTERACTIVE_CONFIG"
 
-	// --- ADVISORY: never gate finish; fix hints only. ---
 	LintBadHandleLabel      LintIssueCode = "EDGE_BAD_HANDLE_LABEL"
 	LintDanglingDataRef     LintIssueCode = "DATA_REF_DANGLING"
 	LintUnknownOutputKey    LintIssueCode = "DATA_REF_UNKNOWN_KEY"
@@ -75,9 +49,6 @@ const (
 	LintConfigShapeMismatch LintIssueCode = "NODE_CONFIG_SHAPE_MISMATCH"
 )
 
-// LintIssue is a single accumulated problem. Message is human-readable
-// (Brazilian Portuguese, matching the rest of the workflow domain); Hint is a
-// concrete fix instruction aimed at the LLM.
 type LintIssue struct {
 	Code     LintIssueCode `json:"code"`
 	Severity LintSeverity  `json:"severity"`
@@ -92,7 +63,6 @@ type LintReport struct {
 	Issues []LintIssue `json:"issues"`
 }
 
-// Blocking returns only the issues that gate finish.
 func (r LintReport) Blocking() []LintIssue {
 	out := make([]LintIssue, 0, len(r.Issues))
 	for _, i := range r.Issues {
@@ -103,7 +73,6 @@ func (r LintReport) Blocking() []LintIssue {
 	return out
 }
 
-// Advisory returns only the non-gating hint issues.
 func (r LintReport) Advisory() []LintIssue {
 	out := make([]LintIssue, 0, len(r.Issues))
 	for _, i := range r.Issues {
@@ -114,8 +83,6 @@ func (r LintReport) Advisory() []LintIssue {
 	return out
 }
 
-// IsGreen reports whether the graph passes every blocking rule. THIS is the
-// termination gate for the AI builder.
 func (r LintReport) IsGreen() bool {
 	for _, i := range r.Issues {
 		if i.Severity == SeverityBlocking {
@@ -125,31 +92,14 @@ func (r LintReport) IsGreen() bool {
 	return true
 }
 
-// DynamicHandleResolver returns the valid output handle ids for a node whose
-// handles depend on its config (text_match cases, ai_agent custom tools). ok is
-// false for node types without dynamic handles. It is injected by the usecase
-// layer so this domain package stays free of executor dependencies.
 type DynamicHandleResolver func(n Node) (handles []HandleDefinition, ok bool)
 
-// LintGraph runs the full blocking + advisory rule set, accumulating issues.
-// exempt is the outgoing-edge exemption set (execute-mode AI-agent leaves),
-// computed identically to the activation path. resolveHandles may be nil.
-// GraphRule is a PURE, graph-only blocking rule (no DB, no catalog, no wfType).
-// Every such rule lives in ONE registry, PureGraphRules, so the builder lint
-// and activation enforce EXACTLY the same set. Add a rule here once and BOTH
-// paths pick it up; neither can drift (the gap that let a model-less prompt
-// agent pass the lint while failing activation/runtime).
 type GraphRule struct {
 	Code     LintIssueCode
 	Hint     string
 	Validate func(*Graph) error
 }
 
-// PureGraphRules is the single source of truth for graph-only blocking rules.
-// Structural / scope / required-output / required-field rules need extra inputs
-// (catalog, wfType, the dynamic-handle resolver) so they stay parametrised in
-// LintGraph; everything that is a plain func(*Graph) error belongs HERE, and is
-// run by LintGraph (builder) and RunPureGraphRules (activation) alike.
 var PureGraphRules = []GraphRule{
 	{
 		Code:     LintSegmentedSendConflict,
@@ -173,10 +123,6 @@ var PureGraphRules = []GraphRule{
 	},
 }
 
-// RunPureGraphRules runs every rule in PureGraphRules in order and returns the
-// first failure (the rule's own typed error, preserved for callers that map it).
-// Activation calls this to enforce the same pure blocking rules as the lint
-// without re-listing them, one registry, two consumers.
 func RunPureGraphRules(g *Graph) error {
 	for _, r := range PureGraphRules {
 		if err := r.Validate(g); err != nil {
@@ -190,19 +136,11 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 	report := LintReport{}
 	add := func(i LintIssue) { report.Issues = append(report.Issues, i) }
 
-	// ---------- BLOCKING TIER (== pure production rules) ----------
-
-	// 1. Structural, delegate to the production validator for exact parity.
 	if err := ValidateGraph(g, wfType, exempt); err != nil {
 		code, hint := structuralIssueInfo(err)
-		// Node-scoped structural errors (missing incoming/outgoing edge, orphan)
-		// quote the offending id, so lift it into NodeID, that is what lets the
-		// editor anchor the alert to a node and offer "Ver no fluxo". Whole-graph
-		// errors (empty, no trigger, cycle) leave it blank, which is correct.
 		add(LintIssue{Code: code, Severity: SeverityBlocking, NodeID: nodeIDFromErr(err), Message: err.Error(), Hint: hint})
 	}
 
-	// 2. Scope.
 	if err := ValidateNodeScopes(g, wfType, catalog); err != nil {
 		add(LintIssue{
 			Code: LintNodeIncompatibleScope, Severity: SeverityBlocking,
@@ -212,7 +150,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 		})
 	}
 
-	// 3. Required STATIC output edges.
 	if err := ValidateRequiredOutputEdges(g, catalog); err != nil {
 		add(LintIssue{
 			Code: LintMissingRequiredOutput, Severity: SeverityBlocking,
@@ -222,9 +159,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 		})
 	}
 
-	// 3b. Required DYNAMIC output edges (e.g. an AI-agent's response/"default"
-	// path). Same rule the activation gate runs, the backend, not the frontend,
-	// decides what must be connected.
 	if err := ValidateRequiredDynamicOutputs(g, resolveHandles); err != nil {
 		add(LintIssue{
 			Code: LintMissingRequiredOutput, Severity: SeverityBlocking,
@@ -234,7 +168,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 		})
 	}
 
-	// 4. Required config fields (pure required-only; no repo validators).
 	if err := ValidateNodeConfigs(g, catalog); err != nil {
 		code := LintMissingRequiredField
 		hint := "Preencha o campo de configuração obrigatório (use get_node_spec para ver o schema do nó)."
@@ -251,10 +184,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 		})
 	}
 
-	// 5. Pure graph-only blocking rules, the SINGLE registry shared with
-	// activation (segmented-send conflict, VoIP stream pairing, AI-agent
-	// prompt-mode model/instructions, …). Add new such rules to PureGraphRules
-	// and BOTH the builder lint and activation enforce them automatically.
 	for _, rule := range PureGraphRules {
 		if err := rule.Validate(g); err != nil {
 			add(LintIssue{
@@ -267,7 +196,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 		}
 	}
 
-	// ---------- ADVISORY TIER (never gates finish) ----------
 	defs := NodeCatalogMap(catalog)
 	lintDynamicHandles(g, resolveHandles, add)
 	lintDataFlow(g, defs, add)
@@ -277,7 +205,6 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 	return report
 }
 
-// structuralIssueInfo maps a ValidateGraph error to a precise code + LLM hint.
 func structuralIssueInfo(err error) (LintIssueCode, string) {
 	switch {
 	case errors.Is(err, ErrGraphEmpty):
@@ -373,9 +300,6 @@ func lintDataFlow(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssue
 			if dep.Key == "" {
 				continue
 			}
-			// Only enumerable producers (those that declare OutputKeys) can have
-			// their key existence checked; http/code/set_variable/ai-tool-args
-			// produce dynamic keys and are intentionally not key-checked.
 			pdef, hasDef := defs[producer.Type]
 			if !hasDef || len(pdef.OutputKeys) == 0 {
 				continue
@@ -399,45 +323,14 @@ func lintDataFlow(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssue
 	}
 }
 
-// lintNodeShape is the FIRST, advisory-only pass of a node-config "shape
-// contract" check: it flags (a) config keys a node's type doesn't declare and
-// (b) structured fields whose stored value has the wrong shape, the prime case
-// being an ai_agent custom_tools parameter list arriving as a JSON-Schema object
-// ({type,properties,required}) instead of the array [{name,type,...}] the
-// executor and UI read. That object shape is otherwise SILENTLY dropped (the type
-// assertion in parseCustomToolsConfig fails), so the tool runs with no parameters
-// and the AI calls it with empty arguments. ADVISORY by design so it runs on
-// every existing workflow without gating finish, letting us MEASURE what fires
-// while the AI still sees it in the builder.
-//
-// TODO(next step): turn this into an ENFORCED shape contract. In order:
-//  1. Complete each node's contract first, or strict checks will false-positive:
-//     declare every key the executor actually reads (e.g. ai_agent "tool_mode",
-//     a hidden field the dynamic-handle resolver reads but which is absent from
-//     both ConfigSchema and DefaultConfig), and give nested field types
-//     (tools/cases/buttons) a structured sub-schema so their shape is checkable
-//     precisely rather than by the conservative ad-hoc checks below.
-//  2. Add a boundary normalizer (on save / update_node) that coerces known,
-//     losslessly-convertible aliases, custom_tools parameters JSON-Schema object
-//     -> array, so the AI's industry-standard shape is ACCEPTED, not dropped.
-//  3. Once this lint is quiet on legitimate configs, promote the high-confidence
-//     checks (unknown key, tools-shape) to SeverityBlocking and move them into
-//     PureGraphRules so activation enforces them too (see RunPureGraphRules).
-//
-// Until all three land: advisory only, the AI sees it, nothing breaks.
 func lintNodeShape(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssue)) {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		def, ok := defs[n.Type]
 		if !ok || len(def.ConfigSchema) == 0 || len(n.Config) == 0 {
-			continue // no declared contract to check against
+			continue
 		}
 
-		// declared = the node's contract: ConfigSchema fields. known = declared
-		// PLUS DefaultConfig keys, a key the node sets by default is legitimate
-		// even if it isn't an editable field. Keeping `known` tight is what keeps
-		// this advisory trustworthy (a noisy advisory is one the AI learns to
-		// ignore, the exact trap behind the tool-arg bug).
 		declared := make(map[string]ConfigField, len(def.ConfigSchema))
 		for _, f := range def.ConfigSchema {
 			declared[f.Key] = f
@@ -466,10 +359,6 @@ func lintNodeShape(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssu
 	}
 }
 
-// lintFieldShape advises when a declared field's stored value has the wrong
-// container shape. Deliberately conservative, only the structured types whose
-// shape is unambiguous (tools, multi-select), so the advisory stays low-noise.
-// Extend as nested sub-schemas land (see lintNodeShape TODO step 1).
 func lintFieldShape(n *Node, f ConfigField, val interface{}, add func(LintIssue)) {
 	if val == nil {
 		return
@@ -517,11 +406,6 @@ func lintFieldShape(n *Node, f ConfigField, val interface{}, add func(LintIssue)
 	}
 }
 
-// functionalResourceRef describes a config field that is functionally required
-// (the node is a runtime no-op without it) for a given node type/mode, even
-// though production activation skips it when empty. Surfaced as advisory so the
-// builder nudges toward fully-functional graphs without ever being stricter than
-// production in a way that could block finish.
 func lintFunctionalResourceRefs(g *Graph, add func(LintIssue)) {
 	emit := func(nodeID, field, what string) {
 		add(LintIssue{
@@ -568,16 +452,11 @@ func lintFunctionalResourceRefs(g *Graph, add func(LintIssue)) {
 	}
 }
 
-// nodeIDFromErr/fieldFromErr extract the quoted node id / field from the
-// formatted production error messages (best-effort, for UI scoping only).
 func nodeIDFromErr(err error) string {
 	return firstQuoted(err.Error())
 }
 
 func fieldFromErr(err error) string {
-	// The required-field error has the shape: ... node "<id>" (<type>) field "<key>",
-	// only the id and the field are quoted, so the field is the last quoted part
-	// when there are at least two.
 	parts := quotedParts(err.Error())
 	if len(parts) >= 2 {
 		return parts[len(parts)-1]

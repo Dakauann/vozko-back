@@ -21,8 +21,6 @@ func (t *createAgentTool) Meta() copilot.Meta {
 
 func (t *createAgentTool) Definition() tools.Definition {
 	params, required := scalarParams()
-	// Plain lists here, unlike update's add/remove: a new agent has nothing to
-	// preserve, so there is no way for a full list to destroy anything.
 	params["internalTools"] = toolListParam(agentFieldDescriptions["internalTools"])
 	params["knowledgeBaseIds"] = stringListParam(agentFieldDescriptions["knowledgeBaseIds"])
 	params["mcpCollectionIds"] = stringListParam(agentFieldDescriptions["mcpCollectionIds"])
@@ -41,12 +39,8 @@ func (t *createAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	bindArgs(args, &fields)
 
 	in := fields.toCreateInput()
-	// From the authenticated context, never from the model's arguments.
 	in.WorkspaceID = cc.WorkspaceID
 
-	// Non-nil even when empty: resolveInternalToolSelection rejects a nil
-	// selection on create (ErrAgentInternalToolsRequired), and an agent with no
-	// tools is a legitimate thing to create.
 	in.InternalTools = []agent.ToolBinding{}
 	for _, a := range argToolBindings(args, "internalTools") {
 		in.InternalTools = append(in.InternalTools, a.toBinding())

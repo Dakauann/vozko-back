@@ -1,8 +1,3 @@
-// Package customfield defines typed, workspace-defined custom fields attached to
-// CRM objects (opportunities, and later leads/conversations). A Definition is
-// the schema; values live as typed JSON on the object. Custom fields are what
-// let every business track the attribute the generic model does not, and they
-// are filterable (crmfilter.FieldCustom) and groupable (savedview.GroupByCustom).
 package customfield
 
 import (
@@ -14,7 +9,6 @@ import (
 	"time"
 )
 
-// FieldType is the value type of a custom field.
 type FieldType string
 
 const (
@@ -38,12 +32,11 @@ func (t FieldType) hasOptions() bool {
 	return t == TypeSelect || t == TypeMultiSelect
 }
 
-// Definition is the schema of one custom field.
 type Definition struct {
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspaceId"`
-	ObjectType  string    `json:"objectType"` // "opportunity" | "conversation" | "lead"
-	Key         string    `json:"key"`        // stable machine key, unique per (workspace, object)
+	ObjectType  string    `json:"objectType"`
+	Key         string    `json:"key"`
 	Label       string    `json:"label"`
 	Type        FieldType `json:"type"`
 	Options     []string  `json:"options,omitempty"`
@@ -64,14 +57,12 @@ var (
 	ErrValueRequired     = errors.New("customfield: value is required")
 )
 
-// Normalize lowercases and trims the machine key and trims the label.
 func (d *Definition) Normalize() {
 	d.Key = strings.TrimSpace(strings.ToLower(d.Key))
 	d.Label = strings.TrimSpace(d.Label)
 	d.ObjectType = strings.TrimSpace(strings.ToLower(d.ObjectType))
 }
 
-// Validate checks the definition is coherent.
 func (d *Definition) Validate() error {
 	if strings.TrimSpace(d.WorkspaceID) == "" {
 		return ErrWorkspaceRequired
@@ -91,9 +82,6 @@ func (d *Definition) Validate() error {
 	return nil
 }
 
-// ValidateValue checks a raw JSON-decoded value conforms to this field's type.
-// A nil value means "unset": it passes unless the field is Required. Numbers may
-// arrive as float64 (JSON) or string; dates as ISO strings.
 func (d *Definition) ValidateValue(v any) error {
 	if v == nil {
 		if d.Required {

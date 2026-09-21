@@ -282,9 +282,6 @@ func TestPurchaseAddon_DebitsWalletAndActivates(t *testing.T) {
 	if sub.Status != workspace_plan.SubscriptionStatusActive || sub.Quantity != 1 {
 		t.Fatalf("unexpected sub: %+v", sub)
 	}
-	// fixedNow is June 28 (after the 18th emit day), so the channel's first invoice is the NEXT anchor,
-	// July 23. It prorates [Jun 28, Jul 23] = 25 days over the 30-day Jun23->Jul23 cycle: $5 * 25/30 =
-	// $4.166667. 10M - 4_166_667 = 5_833_333. Never more than a month, and it co-terms to the 23rd.
 	if bal.amount != 5_833_333 {
 		t.Fatalf("expected prorated debit leaving 5_833_333, got %d", bal.amount)
 	}
@@ -319,9 +316,6 @@ func TestPurchaseAddon_ProratesBeforeAnchorWithinSameMonth(t *testing.T) {
 	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	subs := newFakeSubRepo()
 	bal := newFakeBalanceRepo(10_000_000)
-	// June 10 is before the 18th emit day, so the channel is on THIS month's invoice (June 23). It
-	// prorates [Jun 10, Jun 23] = 13 days over the 31-day May23->Jun23 cycle: $5 * 13/31 = $2.096774.
-	// 10M - 2_096_774 = 7_903_226, and it co-terms to the June 23 anchor.
 	uc := &purchaseAddonUseCase{defs: defs, subs: subs, balanceRepo: bal, now: func() time.Time {
 		return time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	}}
@@ -339,9 +333,6 @@ func TestPurchaseAddon_ProratesBeforeAnchorWithinSameMonth(t *testing.T) {
 	}
 }
 
-// TestPurchaseAddon_RefundsOnPersistFailure is the money-critical rollback: if the wallet is debited
-// but the subscription cannot be saved, the debit must be refunded so the customer is never charged for
-// a channel they did not get.
 func TestPurchaseAddon_RefundsOnPersistFailure(t *testing.T) {
 	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	subs := newFakeSubRepo()
@@ -364,8 +355,6 @@ func TestPurchaseAddon_RefundsOnPersistFailure(t *testing.T) {
 	}
 }
 
-// TestPurchaseAddon_TopUpExistingAddonChargesFullPeriod covers the isNew=false path: adding quantity to
-// an existing active addon increments its quantity and charges the full period (no activation stub).
 func TestPurchaseAddon_TopUpExistingAddonChargesFullPeriod(t *testing.T) {
 	existing := &workspace_addon.AddonSubscription{
 		ID: "existing-1", WorkspaceID: "ws", AddonDefinitionID: "d1", AddonKey: "d1",
@@ -386,16 +375,13 @@ func TestPurchaseAddon_TopUpExistingAddonChargesFullPeriod(t *testing.T) {
 	if sub.ID != "existing-1" || sub.Quantity != 2 {
 		t.Fatalf("expected the existing addon quantity bumped to 2, got id=%s qty=%d", sub.ID, sub.Quantity)
 	}
-	// A top-up charges the full unit price (no activation proration), so 10M - 5M = 5M.
 	if bal.amount != 5_000_000 {
 		t.Fatalf("expected a full-period debit leaving 5_000_000, got %d", bal.amount)
 	}
 }
 
-// TestPurchaseAddon_AnnualUsesAnnualPriceAndYearPeriod covers the annual branch (annual price, +12
-// months, no activation stub).
 func TestPurchaseAddon_AnnualUsesAnnualPriceAndYearPeriod(t *testing.T) {
-	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000)) // annual = 50M
+	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	subs := newFakeSubRepo()
 	bal := newFakeBalanceRepo(100_000_000)
 	uc := &purchaseAddonUseCase{defs: defs, subs: subs, balanceRepo: bal, now: testClock}
@@ -433,8 +419,6 @@ func TestPurchaseAddon_RejectsInvalidInput(t *testing.T) {
 	}
 }
 
-// TestPurchaseAddon_FreeAddonActivatesWithoutDebit covers the amount<=0 path: a zero-priced addon
-// activates without touching the wallet.
 func TestPurchaseAddon_FreeAddonActivatesWithoutDebit(t *testing.T) {
 	defs := newFakeDefRepo(activeDef("free", workspace_addon.EntitlementCallChannels, 0))
 	subs := newFakeSubRepo()
@@ -453,10 +437,6 @@ func TestPurchaseAddon_FreeAddonActivatesWithoutDebit(t *testing.T) {
 	}
 }
 
-// TestPreviewAddonPurchase_MatchesCharge: the preview must quote exactly what the purchase charges (both
-// go through billing.ActivationPeriod). fixedNow is June 28 (after the emit day), so the first invoice is
-// July 23: prorate [Jun 28, Jul 23] = 25 days over 30 = $4.166667 = the same debit as
-// TestPurchaseAddon_DebitsWalletAndActivates.
 func TestPreviewAddonPurchase_MatchesCharge(t *testing.T) {
 	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	uc := &previewAddonPurchaseUseCase{defs: defs, subs: newFakeSubRepo(), now: testClock}
@@ -482,21 +462,20 @@ func TestPreviewAddonPurchase_MatchesCharge(t *testing.T) {
 func TestPreviewAddonPurchase_BeforeEmitDayBillsThisMonthAnchor(t *testing.T) {
 	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	uc := &previewAddonPurchaseUseCase{defs: defs, subs: newFakeSubRepo(), now: func() time.Time {
-		return time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC) // before the 18th emit day
+		return time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	}}
 
 	preview, err := uc.Execute("ws", workspace_addon.PurchaseAddonInput{AddonDefinitionID: "d1", Quantity: 1, BillingCycle: workspace_plan.BillingCycleMonthly})
 	if err != nil {
 		t.Fatalf("preview: %v", err)
 	}
-	// First invoice is THIS month's June 23: prorate [Jun 10, Jun 23] = 13 days over 31 = $2.096774.
 	if preview.ChargeNowMicros != 2_096_774 || preview.ProratedDays != 13 {
 		t.Fatalf("before-emit-day preview wrong: %+v (want 2_096_774, 13 days)", preview)
 	}
 }
 
 func TestPreviewAddonPurchase_AnnualNotProrated(t *testing.T) {
-	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000)) // annual = 50M
+	defs := newFakeDefRepo(activeDef("d1", workspace_addon.EntitlementCallChannels, 5_000_000))
 	uc := &previewAddonPurchaseUseCase{defs: defs, subs: newFakeSubRepo(), now: testClock}
 
 	preview, err := uc.Execute("ws", workspace_addon.PurchaseAddonInput{AddonDefinitionID: "d1", Quantity: 1, BillingCycle: workspace_plan.BillingCycleAnnual})

@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-// fakeShared is an in-memory cache.SharedState.
-//
-// Only the operations this package uses are real; the rest satisfy the
-// interface. TTLs are stored but not expired — every test that cares about
-// expiry drives the clock explicitly instead.
 type fakeShared struct {
 	mu       sync.Mutex
 	values   map[string]string

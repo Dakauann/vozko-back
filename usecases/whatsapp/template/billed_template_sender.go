@@ -16,14 +16,6 @@ import (
 	"vozko/domain/whatsapp/template"
 )
 
-// inFlightGrace is how long a `pending` row is assumed to belong to a caller
-// that is still running.
-//
-// It separates two situations that look identical in the database. A second
-// request arriving while the first is mid-flight must be refused, or both charge.
-// A second request arriving after the first process DIED must be allowed to
-// finish the job, or the customer's money stays held forever. The only thing
-// telling them apart is how long the row has sat still.
 const inFlightGrace = 2 * time.Minute
 
 var (
@@ -31,19 +23,12 @@ var (
 	ErrTemplateNameRequired = errors.New("template name is required")
 )
 
-// BilledTemplateSenderDeps is everything a paid send needs.
-//
-// It is a struct rather than a long parameter list because the constructor
-// validates it: a missing billing dependency must be a boot failure, and a
-// positional constructor makes "which one was nil" a guessing game.
 type BilledTemplateSenderDeps struct {
 	Templates     template.Repository
 	Attempts      template.SendAttemptRepository
 	ClientFactory template.WhatsAppClientFactory
 
-	Consume balance.ConsumeWhatsappTemplateUseCase
-	// Ledger answers "was this reference already charged", the belt that makes a
-	// resumed attempt safe.
+	Consume        balance.ConsumeWhatsappTemplateUseCase
 	Ledger         balance.Repository
 	Inflight       balance.InflightReserver
 	BalanceChecker balance.CachedBalanceChecker
@@ -55,13 +40,6 @@ type billedTemplateSendUseCase struct {
 	deps BilledTemplateSenderDeps
 }
 
-// NewBilledTemplateSendUseCase refuses to build a sender that could send for
-// free.
-//
-// Returning an error rather than a value is the entire point. The previous
-// generation of this code guarded billing with `if dep != nil`, which turned a
-// wiring mistake into unbilled sends that nobody notices until the invoice
-// arrives. Here the same mistake stops the process at boot.
 func NewBilledTemplateSendUseCase(deps BilledTemplateSenderDeps) (template.BilledTemplateSendUseCase, error) {
 	var missing []string
 	if deps.Templates == nil {
@@ -94,14 +72,6 @@ func NewBilledTemplateSendUseCase(deps BilledTemplateSenderDeps) (template.Bille
 	return &billedTemplateSendUseCase{deps: deps}, nil
 }
 
-// Execute charges once and sends once.
-//
-// The order of the steps below is the design. Everything that can refuse the
-// send is asked BEFORE the money moves, because a refusal after the debit is a
-// charge-then-refund cycle: two ledger rows, a confused operator, and a customer
-// balance that dips for reasons they cannot see. Everything that can only be
-// learned from the provider happens after, and is classified rather than
-// assumed.
 func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.BilledSendInput) (*template.BilledSendResult, error) {
 	if strings.TrimSpace(in.WorkspaceID) == "" {
 		return nil, template.ErrWorkspaceRequired
@@ -119,16 +89,11 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, ErrRecipientRequired
 	}
 
-	// ---- 1. everything that can refuse, before the row exists ---------------
-
 	tmpl, err := uc.deps.Templates.FindByID(in.TemplateID)
 	if err != nil || tmpl == nil {
 		return nil, template.ErrTemplateNotFound
 	}
 
-	// Tenancy: the template and the number must belong to the same WhatsApp
-	// Business Account. Enforced HERE rather than in the caller so every caller
-	// inherits it — a rule that lives in one handler protects one handler.
 	wabaID, wabaErr := uc.deps.ClientFactory.WABAIdForPhone(in.BusinessPhoneID)
 	if wabaErr != nil || strings.TrimSpace(wabaID) == "" {
 		return nil, fmt.Errorf("resolve WABA for template billing: %w", template.ErrTemplateCategoryUnavailable)
@@ -137,9 +102,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, template.ErrTemplatePhoneMismatch
 	}
 
-	// An unusable template is refused before the debit. The campaign consumer
-	// learned this the expensive way: without it, every unapproved template and
-	// every missing header image became a charge followed by a refund.
 	if !tmpl.IsReadyToSend() {
 		msg := tmpl.GetUsabilityMessage()
 		if msg == "" {
@@ -148,13 +110,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, fmt.Errorf("%w: %s", template.ErrTemplateNotSendable, msg)
 	}
 
-	// The payload is assembled HERE, before the debit, for exactly the reason
-	// above: it is the last thing that can refuse the send, and an authentication
-	// template sent without its one-time code is refused. Assembling it after the
-	// charge would turn a caller's missing parameter into a debit and a refund.
-	//
-	// The attempt id is not minted yet, so biz_opaque_callback_data is stamped on
-	// at the send below. Everything else about the payload is decided now.
 	sendInput, err := buildTemplateSendInput(tmpl, in, "")
 	if err != nil {
 		return nil, err
@@ -165,9 +120,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, fmt.Errorf("template metadata unavailable for billing: %w", err)
 	}
 
-	// Price first, because a workspace with no price must STOP rather than send.
-	// The consume use case answers a zero price with (nil, nil) — success-shaped
-	// — so a caller that only checked the error would send for free.
 	costMicros, err := uc.deps.Consume.GetTemplateCostMicros(in.WorkspaceID, category)
 	if err != nil {
 		return nil, err
@@ -177,8 +129,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 			fmt.Sprintf("workspace=%s category=%s template=%s", in.WorkspaceID, category, tmpl.Name))
 		return nil, template.ErrPricingUnavailable
 	}
-
-	// ---- 2. the row, and who is allowed to spend ---------------------------
 
 	attempt := &template.SendAttempt{
 		ID:              uuid.New().String(),
@@ -212,30 +162,19 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	attempt = stored
 
 	if !created {
-		// This request has been seen before. What to do depends on how far the
-		// first one got, and guessing in either direction costs money.
 		switch {
 		case attempt.Status.IsTerminal() || attempt.Status == template.SendAttemptRejected || attempt.Status == template.SendAttemptUnknown:
 			return replayOf(attempt, tmpl), nil
 		case attempt.Status == template.SendAttemptCharged:
-			// Money left and we do not know whether a message did. Resending could
-			// deliver twice; refunding could credit a delivered message. Neither is
-			// ours to decide here — reconciliation settles it.
 			return nil, template.ErrSendInProgress
 		case attempt.Status == template.SendAttemptPending && uc.deps.Now().Sub(attempt.UpdatedAt) < inFlightGrace:
-			// Somebody is mid-flight right now.
 			return nil, template.ErrSendInProgress
 		}
-		// A stale pending row: the process that created it died before charging.
-		// Resuming is safe because the debit is idempotent by reference below.
 		log.Printf("[billed-template-send] resuming stale attempt %s (workspace %s)", attempt.ID, attempt.WorkspaceID)
 	}
 
-	// ---- 3. reserve, charge, and only then send ----------------------------
-
 	budget, err := uc.deps.BalanceChecker.GetBalance(in.WorkspaceID)
 	if err != nil {
-		// Fail closed. A balance we cannot read is not a balance we may spend.
 		return nil, fmt.Errorf("could not read balance: %w", err)
 	}
 	reserved, err := uc.deps.Inflight.Reserve(in.WorkspaceID, costMicros, budget)
@@ -253,9 +192,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 
 	chargeRef := template.ChargeReferenceID(attempt.ID)
 
-	// The belt. Not the primary guard — that is the unique index above — but it
-	// is what makes resuming a stale attempt safe: if the dead process managed to
-	// debit before dying, we must not debit again.
 	alreadyCharged, existsErr := uc.deps.Ledger.ExistsTransactionByReferenceID(chargeRef)
 	if existsErr != nil {
 		return nil, fmt.Errorf("could not verify existing charge: %w", existsErr)
@@ -266,9 +202,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		}
 	}
 
-	// MarkCharged is the money gate, and it is a compare-and-set. Losing it means
-	// another replica charged and is already sending; stopping here is what keeps
-	// "one debit" and "one send" the same number.
 	if err := uc.deps.Attempts.MarkCharged(ctx, attempt.ID, costMicros, uc.deps.Now()); err != nil {
 		if errors.Is(err, template.ErrSendAttemptConflict) {
 			return nil, template.ErrSendInProgress
@@ -278,12 +211,8 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	attempt.Status = template.SendAttemptCharged
 	attempt.ChargedMicros = costMicros
 
-	// ---- 4. send, and classify what came back ------------------------------
-
 	client, err := uc.deps.ClientFactory.ClientForPhone(in.BusinessPhoneID)
 	if err != nil {
-		// Charged but unable to send at all: refund immediately, this one is
-		// unambiguous.
 		uc.refund(ctx, attempt, category)
 		return nil, err
 	}
@@ -313,8 +242,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		}
 		result.Status = template.SendAttemptSent
 		if outcome == template.OutcomeAcceptedNoID {
-			// Worth a human's attention: we are keeping money for a send we cannot
-			// prove, which is correct but should be rare.
 			uc.alert(ctx, "WhatsApp template accepted without a message id",
 				fmt.Sprintf("attempt=%s workspace=%s template=%s", attempt.ID, in.WorkspaceID, tmpl.Name))
 		}
@@ -333,10 +260,7 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		result.ChargedMicros = 0
 		return result, sendErr
 
-	default: // OutcomeUnknown
-		// Deliberately no refund. We cannot tell a request that never arrived from
-		// one that arrived and was delivered, and crediting the second case costs
-		// real money. The reconcile sweep settles it once the answer is knowable.
+	default:
 		_, message := metaErrorFrom(out, sendErr)
 		responseStatus := 0
 		if out != nil {
@@ -354,11 +278,6 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	return result, nil
 }
 
-// refund credits the charge back exactly once.
-//
-// Guarded by the ledger rather than by the caller being careful: the refund path
-// is reachable from here, from the delivery-status webhook and from the
-// reconcile sweep, and any two of them firing for one attempt would credit twice.
 func (uc *billedTemplateSendUseCase) refund(ctx context.Context, attempt *template.SendAttempt, category string) {
 	refundRef := template.RefundReferenceID(attempt.ID)
 	already, err := uc.deps.Ledger.ExistsTransactionByReferenceID(refundRef)
@@ -370,7 +289,6 @@ func (uc *billedTemplateSendUseCase) refund(ctx context.Context, attempt *templa
 		return
 	}
 	if err := uc.deps.Consume.Refund(attempt.WorkspaceID, template.ChargeReferenceID(attempt.ID), category); err != nil {
-		// A failed refund is money we owe and did not return. It must reach a human.
 		uc.alert(ctx, "WhatsApp template refund failed",
 			fmt.Sprintf("attempt=%s workspace=%s category=%s err=%v", attempt.ID, attempt.WorkspaceID, category, err))
 		return
@@ -390,7 +308,6 @@ func (uc *billedTemplateSendUseCase) alert(ctx context.Context, subject, detail 
 	}
 }
 
-// replayOf answers a repeated request from what the first one already did.
 func replayOf(attempt *template.SendAttempt, tmpl *template.Template) *template.BilledSendResult {
 	outcome := template.OutcomeAccepted
 	switch attempt.Status {
@@ -410,12 +327,6 @@ func replayOf(attempt *template.SendAttempt, tmpl *template.Template) *template.
 	}
 }
 
-// buildTemplateSendInput defers to the domain, which is where the assembly now
-// lives so that all four send paths share it. See template.BuildSendInput.
-//
-// The attempt id rides to Meta as biz_opaque_callback_data and comes back on
-// every delivery-status webhook, which is how a status event finds the charge
-// that paid for it even when we never learned the message id.
 func buildTemplateSendInput(tmpl *template.Template, in template.BilledSendInput, attemptID string) (conversation.SendTemplateMessageInput, error) {
 	return tmpl.BuildSendInput(template.SendInputParams{
 		To:                    in.ToNumber,
@@ -425,8 +336,6 @@ func buildTemplateSendInput(tmpl *template.Template, in template.BilledSendInput
 	})
 }
 
-// metaErrorFrom prefers the provider's own error over our transport error: "this
-// template is paused" is actionable, "unexpected status 400" is not.
 func metaErrorFrom(out *conversation.SendTextMessageOutput, err error) (int, string) {
 	code, message := template.ParseProviderError(out)
 	if message == "" && err != nil {

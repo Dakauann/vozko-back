@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// Standard Multi-Partner-Solution flow (WHATSAPP_ES_FEATURE_TYPE empty): the popup
-// carries solutionID in setup + version v4, and NO featureType. This is the tested,
-// production onboarding config.
 func TestEmbeddedSignupExtras_StandardFlow(t *testing.T) {
 	h := NewMetaEmbeddedSignupHandler(MetaEmbeddedSignupConfig{
 		AppID: "APPID", ConfigID: "CFG", SolutionID: "SOL123", ESFeatureType: "", ESVersion: "",
@@ -23,8 +20,6 @@ func TestEmbeddedSignupExtras_StandardFlow(t *testing.T) {
 	}
 }
 
-// Coexistence opt-in (WHATSAPP_ES_FEATURE_TYPE set): featureType is present and the
-// popup solutionID is dropped (the solution attach is server-side via account_sharing).
 func TestEmbeddedSignupExtras_CoexistenceOptIn(t *testing.T) {
 	h := NewMetaEmbeddedSignupHandler(MetaEmbeddedSignupConfig{
 		AppID: "APPID", ConfigID: "CFG", SolutionID: "SOL123",
@@ -42,7 +37,6 @@ func TestEmbeddedSignupExtras_CoexistenceOptIn(t *testing.T) {
 	}
 }
 
-// esVersion defaults to v4 when unset.
 func TestEmbeddedSignupExtras_VersionDefaultsV4(t *testing.T) {
 	h := NewMetaEmbeddedSignupHandler(MetaEmbeddedSignupConfig{SolutionID: "S", ESVersion: ""})
 	if got := h.embeddedSignupExtras(); !strings.Contains(got, "version: 'v4'") {
@@ -50,10 +44,6 @@ func TestEmbeddedSignupExtras_VersionDefaultsV4(t *testing.T) {
 	}
 }
 
-// TestParseDialog360LiveChannels_RealPayload is the regression test for the stuck-PENDING
-// bug: 360dialog's real partner webhook nests the channel id at data.id (confirmed
-// against their docs), not a top-level channel_id. The parser must extract it, or a
-// live number never finalizes.
 func TestParseDialog360LiveChannels_RealPayload(t *testing.T) {
 	cases := []struct {
 		name string

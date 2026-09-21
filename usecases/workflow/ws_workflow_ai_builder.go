@@ -21,22 +21,6 @@ import (
 	"vozko/usecases/workflow/node_executors"
 )
 
-// AIBuilderUseCase is the real-time AI Workflow Builder copilot. From
-// natural-language prompts it CREATES workflows from scratch and EDITS existing
-// ones across all registered node types, running a bounded agentic loop that can
-// only finish when the domain validator (LintReport.IsGreen) passes.
-//
-// It is BUILD-ONLY: it mutates an in-memory graph and streams snapshots, but
-// never persists. The frontend saves the streamed graph through the existing
-// create/update workflow HTTP path (which keeps permission + workspace gating).
-//
-// Layer note: this usecase calls the pure domain LintGraph and the node_executors
-// dynamic-handle helpers (downward deps only). It mirrors the discipline of the
-// workflow-simulation vertical (HandleSession shape, writeJSON mutex+deadline,
-// reader goroutine + cancellation), without reusing its private members.
-
-// ---- tool names ----------------------------------------------------------
-
 const (
 	toolGetNodeSpec  = "get_node_spec"
 	toolFindResource = "find_resource"
@@ -49,32 +33,17 @@ const (
 	toolFinish       = "finish"
 )
 
-// ---- loop bounds ---------------------------------------------------------
-
 const (
-	builderMaxIterations  = 30
-	builderNoProgressStop = 5
-	builderRepairBudget   = 3
-	// builderMaxTokensPerGen is the per-turn output budget. It must be generous:
-	// reasoning models (Gemini 3, etc.) count thinking tokens against this budget,
-	// so a small cap (the old 4096) let thinking consume everything and the model
-	// emitted no tool call, a silent "empty turn". Paired with a reasoning cap
-	// below so output always has room.
-	builderMaxTokensPerGen = 24000
-	// builderReasoningMaxTokens caps chain-of-thought per turn so it can't eat the
-	// whole output budget (OpenRouter `reasoning.max_tokens`).
+	builderMaxIterations      = 30
+	builderNoProgressStop     = 5
+	builderRepairBudget       = 3
+	builderMaxTokensPerGen    = 24000
 	builderReasoningMaxTokens = 10000
-	// builderEmptyTurnRetries is how many consecutive empty/truncated turns (no
-	// tool call AND no usable text) we retry before giving up with a clear error,
-	// instead of mistaking a truncated turn for a finished conversation.
-	builderEmptyTurnRetries = 2
-	// builderMaxHistoryMsgs bounds the persistent agentic message history so a long
-	// session can't grow the context without limit (assistant↔tool linkage preserved).
-	builderMaxHistoryMsgs = 80
-	builderLogTail        = 24 // keep the most recent N action-log lines (internal audit)
+	builderEmptyTurnRetries   = 2
+	builderMaxHistoryMsgs     = 80
+	builderLogTail            = 24
 )
 
-// builderSessionSeq gives each builder session a monotonic id for log correlation.
 var builderSessionSeq int64
 
 var resourceKinds = []string{
@@ -82,28 +51,19 @@ var resourceKinds = []string{
 	"labels", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
 }
 
-// ---- collaborators -------------------------------------------------------
-
-// ResourceMatch is one workspace-scoped resource the AI can reference by id.
 type ResourceMatch struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-// ResourceResolver resolves a human resource name → workspace-scoped ids. It MUST
-// be workspace-scoped per kind: a query in workspace A must never return a
-// workspace-B resource.
 type ResourceResolver interface {
 	Search(ctx context.Context, workspaceID, kind, query string, limit int) ([]ResourceMatch, error)
 }
 
-// BuilderAuditRecord is a minimal compliance record of one build session, the
-// builder produces savable/activatable automations (WhatsApp/SMS/email,
-// department transfers), so this is a requirement, not optional.
 type BuilderAuditRecord struct {
 	WorkspaceID    string
 	WorkflowID     string
-	Mode           string // "create" | "edit"
+	Mode           string
 	Prompts        []string
 	Model          string
 	FinalGraphHash string
@@ -112,14 +72,10 @@ type BuilderAuditRecord struct {
 	At             time.Time
 }
 
-// BuilderAuditSink persists builder-session audit records.
 type BuilderAuditSink interface {
 	Record(ctx context.Context, rec BuilderAuditRecord) error
 }
 
-// BalanceGate reports whether a workspace can afford to keep spending. The builder
-// uses it to refuse a build turn before any model call when the balance is
-// exhausted, post-hoc metering can't prevent unmetered spend on its own.
 type BalanceGate interface {
 	HasSufficientBalance(workspaceID string, amountMicros int64) (bool, error)
 }
@@ -128,22 +84,17 @@ type AIBuilderUseCaseDeps struct {
 	WorkflowRepo              workflow.WorkflowRepository
 	AIService                 ai.Service
 	NodeCatalogFn             func() []workflow.NodeDefinition
-	ResourceResolver          ResourceResolver // optional
-	ModelLookup               ModelLookup      // optional; cached model-id validity check
-	AuditSink                 BuilderAuditSink // optional
+	ResourceResolver          ResourceResolver
+	ModelLookup               ModelLookup
+	AuditSink                 BuilderAuditSink
 	Model                     string
-	MaxTokens                 int           // per-session token budget (0 = unlimited)
-	SessionTimeout            time.Duration // wall-clock per build loop (0 = no deadline)
-	MaxConcurrentPerWorkspace int           // 0 = unlimited
+	MaxTokens                 int
+	SessionTimeout            time.Duration
+	MaxConcurrentPerWorkspace int
 
-	// Balance gating (optional). When BalanceGate is set, each build turn is
-	// refused up-front unless the workspace holds at least MinBalanceMicros
-	// (a strictly positive balance by default). Post-hoc metering alone cannot
-	// stop a zero/negative-balance workspace from accruing AI cost, this can.
 	BalanceGate      BalanceGate
 	MinBalanceMicros int64
 
-	// Loop bounds (0 => sensible defaults). Exposed for testing and tuning.
 	MaxIterations  int
 	NoProgressStop int
 	RepairBudget   int
@@ -187,8 +138,6 @@ type aiBuilderUC struct {
 	repairCap  int
 }
 
-// ---- WS protocol ---------------------------------------------------------
-
 type aiBuilderServerMsg struct {
 	Type    string      `json:"type"`
 	Payload interface{} `json:"payload,omitempty"`
@@ -206,8 +155,6 @@ type builderReadyPayload struct {
 	Model        string `json:"model"`
 }
 
-// toolEventPayload narrates one tool call the agent made (with its result or
-// rejection) so the UI can show exactly what the agent is doing.
 type toolEventPayload struct {
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
@@ -218,8 +165,6 @@ type setModelData struct {
 	Model string `json:"model"`
 }
 
-// metaPayload propagates workflow-level metadata (name/description/type) the AI
-// sets via set_meta, so the editor's form fields stay in sync.
 type metaPayload struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
@@ -245,52 +190,41 @@ type resourceResolvedPayload struct {
 }
 
 type promptData struct {
-	Text string `json:"text"`
-	// Graph is the client's live canvas at the instant the prompt was sent. When
-	// present the server adopts it before running the turn, so the agent always
-	// sees the user's manual edits since connect (moves/config/added/removed
-	// nodes), never a stale server-side snapshot. Optional (nil => keep current).
+	Text  string          `json:"text"`
 	Graph *workflow.Graph `json:"graph,omitempty"`
 }
 type setTypeData struct {
 	Type string `json:"type"`
 }
 
-// hydrateData carries the client's current canvas graph so a reconnected session
-// adopts what the user is actually looking at, instead of its empty (create) or
-// last-saved (edit) state. Sent by the client on (re)connect; see applyHydrate.
 type hydrateData struct {
 	Graph *workflow.Graph `json:"graph"`
 }
 
-// ---- builder state -------------------------------------------------------
-
 type builderState struct {
 	workspaceID string
-	workflowID  string // "" => create-from-scratch
-	mode        string // "create" | "edit"
+	workflowID  string
+	mode        string
 	wfType      workflow.WorkflowType
 	name        string
 	description string
 
-	model       string // per-session LLM model (overridable via set_model)
+	model       string
 	graph       *workflow.Graph
-	fullCatalog []workflow.NodeDefinition // unfiltered registry catalog
+	fullCatalog []workflow.NodeDefinition
 
 	exempt     map[string]bool
 	lastReport workflow.LintReport
 
-	actionLog []string // "what I did" (bounded tail), internal audit, not sent to the model
-	prompts   []string // all user prompts this session (for audit)
+	actionLog []string
+	prompts   []string
 
 	nextID         int
-	clientIDs      map[string]string // add_node client_id -> server id (idempotency)
-	sessionID      int64             // for log correlation
-	inspectedSpecs map[string]bool   // get_node_spec calls already served (anti-dither)
-	searchCache    map[string]string // find_resource (kind:query) -> result (anti-dither)
+	clientIDs      map[string]string
+	sessionID      int64
+	inspectedSpecs map[string]bool
+	searchCache    map[string]string
 }
-
-// ---- session lifecycle ---------------------------------------------------
 
 func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, workflowID, workspaceID string) error {
 	var writeMu sync.Mutex
@@ -334,8 +268,6 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 	}
 
 	go func() {
-		// On disconnect, cancel any in-flight build loop so the agent stops
-		// working (and stops spending) the moment the client goes away.
 		defer func() {
 			cancelInFlight()
 			close(closeCh)
@@ -401,28 +333,14 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 		case m := <-modelCh:
 			st.model = m
 		case g := <-hydrateCh:
-			// The client re-sends its canvas on (re)connect. Adopt it as the working
-			// graph so a session that lost its in-memory state doesn't rebuild from
-			// scratch (which would clobber the canvas on the next edit). Only handled
-			// while idle here, a running build blocks this loop, so there is never a
-			// concurrent writer of st.graph.
 			uc.applyHydrate(st, g)
 			uc.relint(st)
 			uc.snapshot(emit, st)
 		case turn := <-promptCh:
-			// Adopt the canvas the user is looking at RIGHT NOW before building, so
-			// the agent works from their manual edits since connect (moves/config/
-			// added/removed nodes) instead of the last server-side snapshot. Done
-			// here in the main loop, never concurrently with a build, so st.graph
-			// keeps a single writer. Carried on the prompt (not a separate message)
-			// so it can't be reordered after the build starts.
 			if turn.Graph != nil {
 				uc.applyHydrate(st, turn.Graph)
 				uc.relint(st)
 			}
-			// Gate BEFORE any model call: a workspace with no balance must not be
-			// able to start a build turn (and accrue cost). Stays connected so the
-			// user can top up and send again.
 			if !uc.guardBalance(ctx, emit, st) {
 				continue
 			}
@@ -485,7 +403,6 @@ func (uc *aiBuilderUC) initState(workflowID, workspaceID string) (*builderState,
 	if wf == nil {
 		return nil, fmt.Errorf("workflow não encontrado")
 	}
-	// Defense-in-depth: re-assert workspace ownership (the CRUD path lacks a filter).
 	if wf.WorkspaceID != workspaceID {
 		return nil, fmt.Errorf("workflow pertence a outro workspace")
 	}
@@ -504,11 +421,6 @@ func (uc *aiBuilderUC) applyWorkflowType(st *builderState, t string) {
 	}
 }
 
-// applyHydrate replaces the in-memory graph with the client's current canvas
-// (re-sent on reconnect). The freshly opened session would otherwise start from
-// an empty (create) or last-saved (edit) graph, so the next edit would build on
-// stale state and wipe the canvas. Node ids from the canvas are preserved;
-// per-session idempotency bookkeeping is reset so it never maps stale client ids.
 func (uc *aiBuilderUC) applyHydrate(st *builderState, g *workflow.Graph) {
 	if g == nil {
 		return
@@ -516,8 +428,6 @@ func (uc *aiBuilderUC) applyHydrate(st *builderState, g *workflow.Graph) {
 	st.graph = g
 	st.clientIDs = make(map[string]string)
 }
-
-// ---- concurrency cap -----------------------------------------------------
 
 func (uc *aiBuilderUC) acquire(workspaceID string) bool {
 	if uc.deps.MaxConcurrentPerWorkspace <= 0 {
@@ -543,16 +453,13 @@ func (uc *aiBuilderUC) release(workspaceID string) {
 	}
 }
 
-// guardBalance refuses a build turn when the workspace can't cover it. Fail-closed:
-// a balance-lookup error blocks the turn rather than letting unmetered AI spend
-// through. No gate is applied when BalanceGate is unset. Returns true to proceed.
 func (uc *aiBuilderUC) guardBalance(ctx context.Context, emit agentloop.Emit, st *builderState) bool {
 	if uc.deps.BalanceGate == nil {
 		return true
 	}
 	minMicros := uc.deps.MinBalanceMicros
 	if minMicros < 1 {
-		minMicros = 1 // default: require a strictly positive balance
+		minMicros = 1
 	}
 	ok, err := uc.deps.BalanceGate.HasSufficientBalance(st.workspaceID, minMicros)
 	if err != nil {
@@ -585,11 +492,6 @@ func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) 
 	return nil, false
 }
 
-// ResolveNodeHandles is the single backend authority for a node's output handles
-// and their optional flags: config-dependent (dynamic) handles when applicable,
-// ai_agent tool routes + response, text_match cases, otherwise the node type's
-// static catalog handles. The builder lint, activation, and the resolve-handles
-// API all go through this, so every surface (including the frontend) agrees.
 func ResolveNodeHandles(catalog []workflow.NodeDefinition, n workflow.Node) []workflow.HandleDefinition {
 	if h, ok := builderHandleResolver(n); ok {
 		return h
@@ -600,10 +502,6 @@ func ResolveNodeHandles(catalog []workflow.NodeDefinition, n workflow.Node) []wo
 	return nil
 }
 
-// LintWorkflowGraph runs the full builder/activation lint over a graph and returns
-// the structured issues, the SAME rules the activation gate enforces, via the
-// SAME dynamic-handle resolver, so the frontend can surface and highlight
-// problems (per node/handle) before activating, without re-deriving any rule.
 func LintWorkflowGraph(catalog []workflow.NodeDefinition, w *workflow.Workflow) workflow.LintReport {
 	w.Normalize()
 	exempt := collectExecuteModeLeafNodes(&w.Graph)
@@ -621,10 +519,7 @@ func (uc *aiBuilderUC) snapshot(emit agentloop.Emit, st *builderState) {
 func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *builderState, valid bool, summary string, tokensUsed int) {
 	log.Printf("[wf-ai-builder] s%d DONE valid=%v blocking=%d tokens=%d reason=%q",
 		st.sessionID, valid, len(st.lastReport.Blocking()), tokensUsed, summary)
-	// Persist the audit trail BEFORE notifying the client it's done, the record
-	// is the compliance source of truth for what the builder produced.
 	if uc.deps.AuditSink != nil {
-		// Use a detached context so a cancelled/timed-out build still records.
 		_ = uc.deps.AuditSink.Record(context.WithoutCancel(ctx), BuilderAuditRecord{
 			WorkspaceID:    st.workspaceID,
 			WorkflowID:     st.workflowID,
@@ -640,9 +535,6 @@ func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *bu
 	emit("done", donePayload{Valid: valid, Summary: summary, ResidualIssues: st.lastReport.Blocking()})
 }
 
-// ---- agentloop driver ----------------------------------------------------
-
-// builderConfig returns the agentloop tuning for one Workflow-Builder session.
 func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
 	return agentloop.Config{
 		WorkspaceID:        st.workspaceID,
@@ -660,10 +552,6 @@ func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
 	}
 }
 
-// builderDriver adapts one builder session's state to the generic agentloop.Driver
-// seam: it offers the workflow tools, dispatches each tool call onto the in-memory
-// graph (emitting tool/snapshot/meta/resource events), and only green-lights
-// finish when the domain validator passes.
 type builderDriver struct {
 	uc *aiBuilderUC
 	st *builderState
@@ -742,14 +630,6 @@ func (d *builderDriver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
 	}
 }
 
-// ---- mutation guard ------------------------------------------------------
-
-// validateConfigResourceIDs rejects config values that reference a resource by id
-// but don't match a real one. It is schema-driven, it walks the node's
-// ConfigSchema and checks every field whose OptionsSource names a resource kind,
-// so new resource-backed fields are covered automatically. Only kinds the builder
-// can actually verify are checked (see resourceIDValid); the rest are skipped so
-// we never raise a false rejection.
 func (uc *aiBuilderUC) validateConfigResourceIDs(st *builderState, nt workflow.NodeType, cfg map[string]interface{}) error {
 	if len(cfg) == 0 {
 		return nil
@@ -768,7 +648,7 @@ func (uc *aiBuilderUC) validateConfigResourceIDs(st *builderState, nt workflow.N
 		}
 		val, _ := raw.(string)
 		val = strings.TrimSpace(val)
-		if val == "" || strings.Contains(val, "{{") { // unset or templated → nothing to check
+		if val == "" || strings.Contains(val, "{{") {
 			continue
 		}
 		valid, checkable := uc.resourceIDValid(f.OptionsSource, val)
@@ -780,12 +660,6 @@ func (uc *aiBuilderUC) validateConfigResourceIDs(st *builderState, nt workflow.N
 	return nil
 }
 
-// resourceIDValid reports whether id is a real id for kind via a targeted, cached
-// membership check (it validates only the id in question, it never loads the
-// whole catalog into the builder). checkable=false means the builder cannot
-// verify this kind here (workspace-scoped opaque ids the model already resolved
-// via find_resource, or a lookup that's temporarily unavailable) and the caller
-// must not reject. Extend the switch to make more kinds verifiable.
 func (uc *aiBuilderUC) resourceIDValid(kind, id string) (valid, checkable bool) {
 	switch kind {
 	case "ai_models":
@@ -794,7 +668,7 @@ func (uc *aiBuilderUC) resourceIDValid(kind, id string) (valid, checkable bool) 
 		}
 		ok, err := uc.deps.ModelLookup.IsValidModel(context.Background(), id)
 		if err != nil {
-			return false, false // catalog unavailable → don't block
+			return false, false
 		}
 		return ok, true
 	default:
@@ -851,7 +725,6 @@ func (uc *aiBuilderUC) applyAddNode(st *builderState, tc ai.ToolCall) (string, e
 		return "", err
 	}
 
-	// Idempotency on client_id.
 	if cid, ok := tc.Arguments["client_id"].(string); ok && cid != "" {
 		if existing, seen := st.clientIDs[cid]; seen {
 			return fmt.Sprintf("add_node ignorado (client_id %q já criou o nó %q)", cid, existing), nil
@@ -1005,8 +878,6 @@ func (uc *aiBuilderUC) freshNodeID(st *builderState) string {
 	}
 }
 
-// ---- informational tools -------------------------------------------------
-
 func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) string {
 	typeStr, _ := tc.Arguments["node_type"].(string)
 	nt := workflow.NodeType(strings.TrimSpace(typeStr))
@@ -1014,8 +885,6 @@ func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) strin
 	if !ok {
 		return fmt.Sprintf("get_node_spec(%s): tipo desconhecido", typeStr)
 	}
-	// Anti-dither: if the spec was already served this session, don't resend it,
-	// push the model to act instead of re-inspecting (the classic ReAct loop).
 	if st.inspectedSpecs[string(nt)] {
 		return fmt.Sprintf("get_node_spec(%s): VOCÊ JÁ CONSULTOU ISTO. Pare de inspecionar e EXECUTE agora: use add_node/update_node para criar/configurar o nó e connect para ligá-lo. Não chame get_node_spec(%s) de novo.", nt, nt)
 	}
@@ -1039,9 +908,6 @@ func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) strin
 			} else if f.OptionsSource != "" {
 				opts = " (use find_resource " + f.OptionsSource + ")"
 			}
-			// Numeric range bounds, the AI MUST see Min/Max or it guesses (a "speed
-			// no máximo" request becomes 2.0 when the real max is 1.2, the range
-			// validator rejects it, and the agent dithers in a fix-up loop).
 			rng := ""
 			if f.Min != nil || f.Max != nil {
 				lo, hi := "?", "?"
@@ -1099,7 +965,6 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 	if uc.deps.ResourceResolver == nil {
 		return fmt.Sprintf("find_resource(%s, %q): resolução de recursos indisponível nesta sessão", kind, query)
 	}
-	// Anti-dither: serve the same query from cache + tell the model to act.
 	cacheKey := kind + ":" + strings.ToLower(strings.TrimSpace(query))
 	if cached, ok := st.searchCache[cacheKey]; ok {
 		return cached + ", VOCÊ JÁ BUSCOU ISTO. Use um dos ids acima AGORA (add_node/update_node); não repita find_resource para a mesma busca."
@@ -1122,8 +987,6 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 	st.searchCache[cacheKey] = result
 	return result
 }
-
-// ---- prompts -------------------------------------------------------------
 
 func (uc *aiBuilderUC) systemPrompt(st *builderState) string {
 	var b strings.Builder
@@ -1167,16 +1030,12 @@ func (uc *aiBuilderUC) catalogLines(st *builderState) []string {
 			reqStr = " | obrigatórios: " + strings.Join(req, ",")
 		}
 		line := fmt.Sprintf("• %s | %s | %s | %s%s", d.Type, d.Label, truncate(d.Description, 90), d.Category, reqStr)
-		// Surface each node's own guidance in the always-visible catalog so the
-		// agent understands how every node works/behaves without an extra lookup.
 		if g := d.Guidance; g.When != "" {
 			line += "\n    quando: " + g.When
 		}
 		if b := d.Guidance.Behavior; b != "" {
 			line += "\n    comportamento: " + b
 		}
-		// Surface the node's outputs DYNAMICALLY (the source of truth) so the AI
-		// always knows the exits + the keys it can reference via {{node.<id>.<key>}}.
 		if outs := staticHandleIDs(d.Outputs); outs != "" {
 			line += "\n    saídas: " + outs
 		}
@@ -1189,20 +1048,10 @@ func (uc *aiBuilderUC) catalogLines(st *builderState) []string {
 	return lines
 }
 
-// regroundMessage is the per-turn OBSERVATION of the graph.
-//
-// It must never restate the user's request. The request is anchored once at the
-// head of the conversation; repeating it as the newest message every turn made
-// the model read it as a question just asked, so it re-answered the same
-// question on every iteration ("sim, o nó n5 continua sendo X") while the loop
-// ground on. The same reasoning already applies to tool results, which are not
-// re-stuffed here either.
 func (uc *aiBuilderUC) regroundMessage(st *builderState, iter, maxIter, noMutationStreak int) string {
 	var b strings.Builder
 	b.WriteString("OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta do usuário, não repita a resposta anterior):\n")
 	fmt.Fprintf(&b, "ITERAÇÃO %d de %d (orçamento limitado).\n", iter, maxIter)
-	// Escalating "act now" nudge, breaks the over-planning / repeated-lookup loop
-	// that otherwise burns tokens without changing the graph.
 	if noMutationStreak == 1 {
 		b.WriteString("ATENÇÃO: você NÃO alterou o grafo no último turno. PARE de só consultar, execute AGORA uma mutação concreta (add_node/connect/update_node/remove_*) para resolver os problemas bloqueantes, ou chame finish se já estiver válido. Não repita get_node_spec/find_resource para algo que já consultou.\n")
 	} else if noMutationStreak >= 2 {
@@ -1226,15 +1075,9 @@ func (uc *aiBuilderUC) regroundMessage(st *builderState, iter, maxIter, noMutati
 			fmt.Fprintf(&b, "  - [%s] %s%s\n", i.Code, i.Message, hintSuffix(i))
 		}
 	}
-	// Tool results and the model's own prior actions are NOT re-stuffed here, they
-	// live in the agentic message history (assistant tool calls + their RoleTool
-	// results), which the model already sees. Duplicating them as prose wastes
-	// tokens and is a documented cause of degraded tool-calling.
 	b.WriteString("\nPRÓXIMO PASSO: faça as próximas mutações para resolver o pedido e zerar os problemas bloqueantes. Quando não houver bloqueantes e o pedido estiver atendido, chame finish (sozinho, sem outras ferramentas).")
 	return b.String()
 }
-
-// ---- builder tools -------------------------------------------------------
 
 func (uc *aiBuilderUC) builderTools(st *builderState) []tools.Definition {
 	typeEnum := uc.typeEnum(st)
@@ -1333,8 +1176,6 @@ func (uc *aiBuilderUC) typeEnum(st *builderState) []string {
 			out = append(out, s)
 		}
 	}
-	// All valid triggers for this workflow type (triggers are pass-through, may not
-	// be executor-backed in the catalog).
 	for _, tt := range allTriggerTypes() {
 		if tt.WorkflowType() == st.wfType {
 			add(string(tt))
@@ -1365,8 +1206,6 @@ func (uc *aiBuilderUC) allowedDefs(st *builderState) []workflow.NodeDefinition {
 	}
 	return out
 }
-
-// ---- small helpers -------------------------------------------------------
 
 func (st *builderState) pushLog(s string) {
 	st.actionLog = append(st.actionLog, s)
@@ -1449,9 +1288,6 @@ func hintSuffix(i workflow.LintIssue) string {
 	return " (" + strings.Join(parts, "; ") + ")"
 }
 
-// staticHandleIDs renders a node's static output handles (id + optional flag)
-// for the catalog. Dynamic-handle nodes (ai_agent route / text_match) have none
-// here, their guidance explains the dynamic handles.
 func staticHandleIDs(outs []workflow.HandleDefinition) string {
 	if len(outs) == 0 {
 		return ""
@@ -1502,14 +1338,6 @@ func allTriggerTypes() []workflow.TriggerType {
 	}
 }
 
-// mutationSignature names WHAT a mutation acted on, for the engine's
-// repeated-turn stall guard.
-//
-// Deliberately the tool name plus the target id, NOT the arguments: the failure
-// this catches is a model re-editing one node over and over with slightly
-// different config, chasing an advisory hint it cannot satisfy. Hashing the
-// arguments would make each attempt look distinct and the guard would never
-// fire, which is exactly what happened before it existed.
 func mutationSignature(tc ai.ToolCall) string {
 	for _, key := range []string{"node_id", "id", "edge_id", "from", "source"} {
 		if v, ok := tc.Arguments[key].(string); ok && strings.TrimSpace(v) != "" {

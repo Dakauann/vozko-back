@@ -22,10 +22,6 @@ func getSupportedAgentProviders() []agentProviderOption {
 	}
 }
 
-// Model validation is intentionally permissive: the messaging model catalog is
-// loaded DYNAMICALLY (aiService.GetModelsWithPricing in ListOptions), so we
-// accept any non-empty model id here instead of gating on a hardcoded list. The
-// provider is kept in the signature for call-site symmetry / future use.
 func isSupportedMessagingModel(_ agent.AgentProvider, model string) bool {
 	return strings.TrimSpace(model) != ""
 }

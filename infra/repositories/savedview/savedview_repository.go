@@ -16,7 +16,6 @@ type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository returns the domain savedview.Repository backed by GORM.
 func NewRepository(db *gorm.DB) savedview.Repository {
 	return &repository{db: db}
 }
@@ -92,8 +91,6 @@ func (r *repository) GetByID(workspaceID, id string) (*savedview.SavedView, erro
 	return mapToDomain(&row)
 }
 
-// ListForUser returns the user's private views plus every shared view in the
-// workspace for the given object type, ordered by Position.
 func (r *repository) ListForUser(workspaceID, userID string, objectType savedview.ObjectType) ([]*savedview.SavedView, error) {
 	var rows []schema.SavedView
 	if err := r.db.
@@ -114,8 +111,6 @@ func (r *repository) ListForUser(workspaceID, userID string, objectType savedvie
 	return out, nil
 }
 
-// ClearDefault unsets IsDefault on the user's views for an object type so a
-// newly-set default stays exclusive.
 func (r *repository) ClearDefault(workspaceID, userID string, objectType savedview.ObjectType) error {
 	return r.db.Model(&schema.SavedView{}).
 		Where("workspace_id = ? AND owner_id = ? AND object_type = ? AND is_default = ?",
@@ -181,8 +176,6 @@ func mapToDomain(row *schema.SavedView) (*savedview.SavedView, error) {
 	}, nil
 }
 
-// nullableUUID returns nil for an empty id so an Update writes SQL NULL instead
-// of an empty string into a nullable uuid column (which Postgres would reject).
 func nullableUUID(s string) interface{} {
 	if s == "" {
 		return nil

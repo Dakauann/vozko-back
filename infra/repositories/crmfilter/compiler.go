@@ -10,24 +10,8 @@ import (
 	"github.com/lib/pq"
 )
 
-// Compile turns a validated domain Filter into a parameterized Postgres WHERE
-// fragment for the given object.
-//
-//   - Groups combine with AND; predicates within a group combine per
-//     group.Conj() (default OR).
-//   - Each predicate fragment is parenthesised; when there is more than one
-//     group each group is parenthesised too, so an OR group never leaks across
-//     an AND boundary.
-//   - An empty filter compiles to an empty clause with no error and no args.
-//   - Placeholders are GORM positional "?" (see package doc). argStart is
-//     accepted for signature/forward compatibility but does not affect "?"
-//     output; append the returned args positionally after any base args.
-//
-// The returned whereSQL is a boolean expression WITHOUT a leading "WHERE"; the
-// caller AND-joins it into its own WHERE (or wraps it) exactly like the
-// existing repositories join their []condition slices.
 func Compile(filter crmfilter.Filter, desc ObjectDescriptor, argStart int) (whereSQL string, args []interface{}, err error) {
-	_ = argStart // not used by the "?" dialect; retained per the requested signature
+	_ = argStart
 
 	if err := filter.Validate(); err != nil {
 		return "", nil, err
@@ -38,7 +22,7 @@ func Compile(filter crmfilter.Filter, desc ObjectDescriptor, argStart int) (wher
 
 	type groupClause struct {
 		sql   string
-		multi bool // more than one predicate -> needs wrapping under the top-level AND
+		multi bool
 	}
 	var groups []groupClause
 	for gi := range filter.Groups {
@@ -69,7 +53,6 @@ func Compile(filter crmfilter.Filter, desc ObjectDescriptor, argStart int) (wher
 	case 0:
 		return "", nil, nil
 	case 1:
-		// A single group is the whole WHERE; its inner joins already bind.
 		return groups[0].sql, args, nil
 	default:
 		parts := make([]string, len(groups))
@@ -113,8 +96,6 @@ func compileColumn(m FieldMapping, p crmfilter.Predicate) (string, []interface{}
 		a, err := scalarArg(m.Kind, vals[0])
 		return e + " = ?", []interface{}{a}, err
 	case crmfilter.OpNotEquals:
-		// IS DISTINCT FROM keeps NULL rows visible, matching the existing
-		// conversation_status default (IS DISTINCT FROM 'finished').
 		a, err := scalarArg(m.Kind, vals[0])
 		return e + " IS DISTINCT FROM ?", []interface{}{a}, err
 	case crmfilter.OpIn:
@@ -184,8 +165,6 @@ func compileMembership(m FieldMapping, p crmfilter.Predicate) (string, []interfa
 		return m.Subject + op + sub + ")"
 	}
 	vals := trimmedValues(p.Values)
-	// Extra (e.g. "workspace_id = ?") binds after the "= ANY(?)" id set, in the
-	// left-to-right order the placeholders appear in the emitted subquery.
 	switch p.Operator {
 	case crmfilter.OpEquals, crmfilter.OpIn:
 		return match(false), append([]interface{}{pq.Array(vals)}, m.ExtraArgs...), nil
@@ -266,8 +245,6 @@ func compileText(m FieldMapping, p crmfilter.Predicate) (string, []interface{}, 
 	return m.Template, args, nil
 }
 
-// scalarArg parses one predicate value into a typed argument per the field kind.
-// The filter has already been validated, so parse errors here are defensive.
 func scalarArg(kind crmfilter.Kind, v string) (interface{}, error) {
 	s := strings.TrimSpace(v)
 	switch kind {
@@ -288,8 +265,6 @@ func scalarArg(kind crmfilter.Kind, v string) (interface{}, error) {
 	}
 }
 
-// trimmedValues drops blank/whitespace-only values, matching the domain
-// validator's nonEmpty semantics.
 func trimmedValues(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, v := range values {

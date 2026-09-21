@@ -15,8 +15,6 @@ import (
 	"vozko/domain/ai"
 )
 
-// capturingPub records every billing event the adapter publishes, so a test can
-// assert exactly what (and how much) we charge for.
 type capturingPub struct {
 	mu     sync.Mutex
 	topics []string
@@ -47,8 +45,6 @@ func (p *capturingPub) events() []ai.AICompletedEvent {
 	return out
 }
 
-// sseServer emits an OpenRouter-style SSE chat stream from the given raw chunks
-// (each becomes a `data: <chunk>` event), terminated by `data: [DONE]`.
 func sseServer(chunks []string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -84,11 +80,6 @@ func drain(t *testing.T, ch <-chan ai.StreamEvent) (reasoning, content string) {
 	return reasoning, content
 }
 
-// A reasoning model spends most of its turn THINKING: here 700 of the 1000
-// completion tokens are reasoning. OpenRouter reports reasoning inside
-// completion_tokens (completion_token_details.reasoning_tokens is a breakdown of
-// it), and we bill on completion_tokens, so the thinking is paid for. This drives
-// the real adapter end-to-end (stream parse → usage → billing publish).
 func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 	srv := sseServer([]string{
 		`{"choices":[{"index":0,"delta":{"reasoning":"vou pensar bastante sobre o melhor fluxo a montar"}}]}`,
@@ -132,16 +123,11 @@ func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 	if e.PromptTokens != 1200 {
 		t.Errorf("billed prompt_tokens = %d, want 1200", e.PromptTokens)
 	}
-	// The crux: completion_tokens billed is the FULL 1000, which contains the 700
-	// reasoning tokens. If reasoning were dropped we'd see ~300 here.
 	if e.CompletionTokens != 1000 {
 		t.Errorf("billed completion_tokens = %d, want 1000 (incl. 700 reasoning), thinking must be charged", e.CompletionTokens)
 	}
 }
 
-// When the provider returns NO usage object, we must NOT fabricate a charge, and
-// (P2) the skip is logged loudly. This proves the "no usage → no bill" leak path
-// is real and bounded (nothing is billed rather than something wrong).
 func TestGenerateStream_NoUsage_PublishesNothing(t *testing.T) {
 	srv := sseServer([]string{
 		`{"choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -169,7 +155,6 @@ func TestGenerateStream_NoUsage_PublishesNothing(t *testing.T) {
 	}
 }
 
-// A turn with an empty workspace id must not bill (defense-in-depth at the adapter).
 func TestGenerateStream_NoWorkspace_PublishesNothing(t *testing.T) {
 	srv := sseServer([]string{
 		`{"choices":[{"index":0,"delta":{"content":"oi"}}]}`,

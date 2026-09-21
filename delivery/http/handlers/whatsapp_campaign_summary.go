@@ -11,9 +11,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// Summary returns the workspace-level "disparos" rollup for WhatsApp campaigns,
-// filtered by campaign creation date (from/to), type and department. With no
-// date params it returns the all-time totals.
 func (h *WhatsAppCampaignHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	if middleware.GetClaims(r) == nil {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)

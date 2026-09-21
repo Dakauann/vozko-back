@@ -15,8 +15,6 @@ func TestSandboxPayerEmail_HonouredOnlyInDevelopment(t *testing.T) {
 		t.Fatalf("development must honour the override, got %q", got)
 	}
 
-	// Anything that is not development must ignore it, so a stray line in a production
-	// environment file cannot redirect who a real charge is addressed to.
 	for _, env := range []string{"production", "staging", "homolog", "", "Development"} {
 		t.Setenv("APP_ENV", env)
 		if got := sandboxPayerEmail(); got != "" {
@@ -38,8 +36,6 @@ func TestSandboxPayerEmail_EmptyWhenUnset(t *testing.T) {
 }
 
 func TestParseProviderIsWiredIntoConfig(t *testing.T) {
-	// Guards the switch itself: an unrecognized provider must not silently fall back to
-	// Asaas and bill through the wrong gateway.
 	for _, raw := range []string{"", "asaas", "ASAAS", " Asaas "} {
 		if p, err := parseProviderForTest(raw); err != nil || string(p) != "asaas" {
 			t.Fatalf("%q should resolve to asaas, got (%v,%v)", raw, p, err)
@@ -57,7 +53,6 @@ func TestParseProviderIsWiredIntoConfig(t *testing.T) {
 	}
 }
 
-// parseProviderForTest keeps the domain import out of the test's assertions above.
 func parseProviderForTest(raw string) (payment.Provider, error) { return payment.ParseProvider(raw) }
 
 func TestSandboxPayerStatus_HonouredOnlyInDevelopment(t *testing.T) {

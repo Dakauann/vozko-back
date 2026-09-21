@@ -36,7 +36,6 @@ func (r *receiptMessages) UpdateDeliveryStatus(string, conversation.DeliveryStat
 
 func TestReceiptWithoutChatDoesNotQueryConversations(t *testing.T) {
 	messages := &receiptMessages{}
-	// A nil conversation repository would panic if an empty-chat lookup ran.
 	uc := &HandleWebhookUseCase{messages: messages}
 	err := uc.handleMessageUpdate(context.Background(), &uw.Instance{ID: "inst"}, &uw.Event{ProviderMessageID: "message", DeliveryStatus: uw.DeliveryRead})
 	if err != nil || !messages.updated {

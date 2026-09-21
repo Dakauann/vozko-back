@@ -16,7 +16,6 @@ type subscriptionService struct {
 	client *meta.Client
 }
 
-// NewSubscriptionService builds the per-account webhook subscription client.
 func NewSubscriptionService(cfg GraphConfig) (igdomain.SubscriptionService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
@@ -31,24 +30,15 @@ func NewSubscriptionService(cfg GraphConfig) (igdomain.SubscriptionService, erro
 }
 
 type subscribeResponse struct {
-	Success bool `json:"success"`
-	// MessagingSuccess appears on the DELETE response alongside Success, so a
-	// partial result is possible and both must be checked.
+	Success          bool  `json:"success"`
 	MessagingSuccess *bool `json:"messaging_success"`
 }
 
-// Subscribe enables webhook fields for one account.
-//
-// On the Instagram Login path this is graph.instagram.com with the account's
-// Instagram User token, not graph.facebook.com with a Page token.
 func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token string, fields []string) error {
 	if len(fields) == 0 {
 		fields = igdomain.SubscribedFields()
 	}
 
-	// Upstream validation is ATOMIC: one unrecognised field rejects the whole call
-	// with code 100 and subscribes nothing, so no webhook ever arrives and the only
-	// symptom is silence. Catching it here names the offending field instead.
 	if bad := igdomain.InvalidSubscribedFields(fields); len(bad) > 0 {
 		return fmt.Errorf("instagram: refusing to subscribe, invalid webhook field(s) %v "+
 			"(a single bad entry voids the entire subscription)", bad)
@@ -70,9 +60,6 @@ func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token str
 		return fmt.Errorf("instagram: webhook subscription was not acknowledged for account %s", igUserID)
 	}
 
-	// Read back what actually took. Meta can accept the call while registering a
-	// subset, and the delta between requested and active is the difference between
-	// "comments work" and "comments silently never arrive".
 	if active, err := s.activeFields(ctx, igUserID, token); err != nil {
 		log.Printf("[instagram] subscribed account=%s but could not verify fields: %v", igUserID, err)
 	} else {
@@ -87,7 +74,6 @@ func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token str
 	return nil
 }
 
-// activeFields reads the fields currently registered for this app on the account.
 func (s *subscriptionService) activeFields(ctx context.Context, igUserID, token string) ([]string, error) {
 	var out struct {
 		Data []struct {
@@ -109,7 +95,6 @@ func (s *subscriptionService) activeFields(ctx context.Context, igUserID, token 
 	return active, nil
 }
 
-// difference returns entries of want that are absent from got.
 func difference(want, got []string) []string {
 	have := make(map[string]struct{}, len(got))
 	for _, g := range got {
@@ -133,7 +118,6 @@ func (s *subscriptionService) Unsubscribe(ctx context.Context, igUserID, token s
 	}, &out); err != nil {
 		return err
 	}
-	// Both keys must be clear before we report a clean unsubscribe.
 	if !out.Success || (out.MessagingSuccess != nil && !*out.MessagingSuccess) {
 		return fmt.Errorf("instagram: webhook unsubscribe was only partially applied for account %s", igUserID)
 	}

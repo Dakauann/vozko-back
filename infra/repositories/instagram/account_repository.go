@@ -18,7 +18,6 @@ type accountRepository struct {
 	db *gorm.DB
 }
 
-// NewAccountRepository builds the Instagram account repository.
 func NewAccountRepository(db *gorm.DB) igdomain.AccountRepository {
 	return &accountRepository{db: db}
 }
@@ -58,8 +57,6 @@ func (r *accountRepository) Update(ctx context.Context, a *igdomain.Account) err
 		"status":                 string(a.Status),
 		"status_reason":          a.StatusReason,
 	}
-	// Only rotate the credential when one was supplied, so a config-only update
-	// cannot blank a working token.
 	if a.AccessToken != "" {
 		update["access_token"] = piigorm.NewEncrypted(a.AccessToken)
 	}
@@ -153,9 +150,6 @@ func (r *accountRepository) FindByIGUserID(ctx context.Context, igUserID string)
 	return toAccountDomain(&record), nil
 }
 
-// FindByIGUserIDUnscoped includes soft-deleted rows so re-onboarding a
-// previously disconnected account restores it rather than colliding with the
-// global unique index on ig_user_id.
 func (r *accountRepository) FindByIGUserIDUnscoped(ctx context.Context, igUserID string) (*igdomain.Account, error) {
 	var record schema.InstagramAccount
 	if err := r.db.WithContext(ctx).Unscoped().First(&record, "ig_user_id = ?", igUserID).Error; err != nil {
@@ -214,10 +208,6 @@ func (r *accountRepository) ListByWorkspace(ctx context.Context, input igdomain.
 	return shared.NewPaginatedResult(items, pagination, total), nil
 }
 
-// ListDueForTokenRefresh returns connected accounts whose token expires before
-// the cutoff and which are old enough to refresh. Instagram rejects a refresh on
-// a token younger than 24 hours, so that floor is part of the query rather than
-// a caller-side filter.
 func (r *accountRepository) ListDueForTokenRefresh(ctx context.Context, before time.Time, limit int) ([]*igdomain.Account, error) {
 	if limit <= 0 {
 		limit = 50
@@ -252,8 +242,6 @@ func (r *accountRepository) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------- mapping
 
 func toAccountSchema(a *igdomain.Account) *schema.InstagramAccount {
 	record := &schema.InstagramAccount{
@@ -333,8 +321,6 @@ func toAccountDomain(record *schema.InstagramAccount) *igdomain.Account {
 	return a
 }
 
-// isUniqueViolation detects a Postgres unique-constraint error without importing
-// a driver-specific package, matching how the rest of the repositories sniff it.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false

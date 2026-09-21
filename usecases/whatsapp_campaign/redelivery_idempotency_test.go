@@ -10,9 +10,6 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// idempotentConsumeTemplate models the FIXED debit dependency: a charge is keyed
-// on the reference it is given and applied at most once per reference. It records
-// every reference so tests can assert the consumer keys debits per recipient.
 type idempotentConsumeTemplate struct {
 	cost    int64
 	mu      sync.Mutex
@@ -55,11 +52,6 @@ func (m *idempotentConsumeTemplate) distinctRefs() []string {
 	return out
 }
 
-// CORRECT BEHAVIOR (red until the fix): two recipients of a campaign, each
-// redelivered once, must be charged exactly once each. Today every recipient is
-// debited under one shared CampaignID reference, so the idempotent dependency
-// collapses them to a single charge, this fails until debits are keyed per
-// recipient.
 func TestWhatsAppRedelivery_ChargesEachRecipientExactlyOnce(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}
@@ -81,16 +73,14 @@ func TestWhatsAppRedelivery_ChargesEachRecipientExactlyOnce(t *testing.T) {
 	p2 := makePayload(campID, "entry-2", "5584999990002")
 	h.queueSub.deliver(topic, p1)
 	h.queueSub.deliver(topic, p2)
-	h.queueSub.deliver(topic, p1) // redelivery of entry-1
-	h.queueSub.deliver(topic, p2) // redelivery of entry-2
+	h.queueSub.deliver(topic, p1)
+	h.queueSub.deliver(topic, p2)
 
 	if got := mock.chargeCount(); got != 2 {
 		t.Fatalf("entry-1 and entry-2 must each be charged exactly once across redeliveries; got %d distinct charges (references=%v)", got, mock.distinctRefs())
 	}
 }
 
-// CORRECT BEHAVIOR (red until the fix): each recipient must be debited under its
-// own EntryID. Today every recipient is debited under the CampaignID.
 func TestWhatsAppDebit_UsesPerEntryReference(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}

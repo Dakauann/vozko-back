@@ -1,4 +1,3 @@
-// Package ai_attendance models AI agents as first-class attendants for CRM metrics.
 package ai_attendance
 
 import (
@@ -33,7 +32,6 @@ var (
 	ErrAgentRequired     = errors.New("ai attendance: agent required")
 )
 
-// Session is one AI-attendance span on a conversation (chat or voice).
 type Session struct {
 	ID                  string     `json:"id"`
 	WorkspaceID         string     `json:"workspaceId"`
@@ -82,14 +80,10 @@ type Repository interface {
 	Create(s *Session) error
 	Update(s *Session) error
 	FindOpenByEntry(workspaceID, entryID, entryType string) (*Session, error)
-	// FindOpenByCallID finds an open voice session by SIP/CDR call id (handoff paths
-	// often only know call_id, while open was keyed by campaign entry id).
 	FindOpenByCallID(workspaceID, callID string) (*Session, error)
-	// ExistsByCallID reports whether any session already tracks this call (backfill guard).
 	ExistsByCallID(workspaceID, callID string) (bool, error)
 	FindByID(id string) (*Session, error)
 	ListByEntry(workspaceID, entryID, entryType string, limit, offset int) ([]*Session, int64, error)
-	// Stats aggregates outcomes for a workspace in an optional time window.
 	Stats(workspaceID string, from, to *time.Time) (*Stats, error)
 }
 

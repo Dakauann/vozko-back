@@ -69,9 +69,6 @@ func kbRepo() fakeKBRepo {
 	}}
 }
 
-// An id carries no proof of ownership, so attaching another workspace's
-// knowledge base must be refused rather than silently grounding this agent in
-// someone else's documents.
 func TestKnowledgeBaseOwnership(t *testing.T) {
 	ctx := context.Background()
 	for name, tc := range map[string]struct {
@@ -94,8 +91,6 @@ func TestKnowledgeBaseOwnership(t *testing.T) {
 		})
 	}
 
-	// A nil repo skips the check, matching validateBusinessPhoneOwnership, so
-	// a partially wired container still starts.
 	if err := validateKnowledgeBaseOwnership(ctx, nil, "ws-1", []string{"kb-foreign"}); err != nil {
 		t.Fatalf("nil repo = %v", err)
 	}

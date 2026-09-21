@@ -23,16 +23,10 @@ type repository struct {
 	agg *aggregateCache
 }
 
-// NewRepository builds a repository with no aggregate cache. Every count and
-// facet pass goes to the database, which is the correct behaviour for tests and
-// for any deployment without shared state.
 func NewRepository(db *gorm.DB) lead.Repository {
 	return &repository{db: db, agg: newAggregateCache(nil)}
 }
 
-// NewCachedRepository adds the aggregate cache. Separate constructor rather
-// than a nullable parameter on the old one so no existing call site changes
-// meaning, and so "no cache" stays the default a reader assumes.
 func NewCachedRepository(db *gorm.DB, state cache.SharedState) lead.Repository {
 	return &repository{db: db, agg: newAggregateCache(state)}
 }
@@ -137,8 +131,6 @@ func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUp
 		return nil, false, lead.ErrLeadWorkspaceRequired
 	}
 
-	// Merging provider data onto an existing lead moves the named/unnamed
-	// facet, so this bumps whether or not a row was created.
 	defer func() {
 		if err == nil {
 			r.agg.bump(workspaceID)
@@ -312,31 +304,12 @@ func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLead
 	return result, nil
 }
 
-// ImportMany creates the leads a file brought in and reports what happened.
-//
-// Three differences from FindOrCreateMany, all of them about an operator
-// watching a progress dialog rather than a campaign resolving lead ids:
-//
-//  1. It counts created vs matched, which is the whole point (see the interface).
-//  2. The insert is ON CONFLICT DO NOTHING on (workspace_id, number). The
-//     read-then-create shape is a race against ux_leads_workspace_number, and an
-//     import is the operation most likely to be running twice at once: the same
-//     file double-clicked, or two operators sent the same list. Losing the whole
-//     batch to a unique violation on one number is not an acceptable answer to
-//     that.
-//  3. It honours ExistingPolicy, so "skip" can leave known leads entirely alone.
-//
-// Numbers arriving here are already normalized and deduplicated by
-// PrepareImport; this re-normalizes anyway, because a repository that trusts its
-// caller to have done so is one refactor away from writing unnormalized rows.
 func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput, policy lead.ExistingPolicy) (outcome *lead.ImportOutcome, err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
 
-	// The one write an operator watches finish. A stale total here would read
-	// as the import having done nothing.
 	defer func() {
 		if err == nil {
 			r.agg.bump(workspaceID)
@@ -366,8 +339,6 @@ func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput,
 		return out, nil
 	}
 
-	// Both spellings of every mobile, so the 12- and 13-digit forms of one
-	// person match the row already stored under the other one.
 	searchNumbers := make([]string, 0, len(normalizedNumbers)*2)
 	for _, number := range normalizedNumbers {
 		searchNumbers = append(searchNumbers, number)
@@ -424,8 +395,6 @@ func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput,
 			continue
 		}
 
-		// Fill-empty only. A name an operator typed after actually speaking to
-		// the person outranks whatever the spreadsheet carries.
 		input := inputByNumber[number]
 		updates := map[string]interface{}{}
 		if found.Name == "" && input.Name != "" {
@@ -444,26 +413,12 @@ func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput,
 	}
 
 	if len(toCreate) > 0 {
-		// DoNothing rather than an upsert: a row that appeared between the read
-		// above and this insert was created by someone else with the same
-		// intent, and overwriting it would undo their write.
-		//
-		// No conflict TARGET, deliberately. ux_leads_workspace_number is a
-		// PARTIAL index (WHERE deleted_at IS NULL), and Postgres will only infer
-		// a partial index when the predicate is repeated in the ON CONFLICT
-		// clause. Naming the columns alone is rejected outright with 42P10,
-		// which would fail every import rather than a racing row. A bare
-		// ON CONFLICT DO NOTHING matches any constraint, which is exactly the
-		// intent: whatever we collided with, the row is already there.
 		tx := r.db.Clauses(clause.OnConflict{DoNothing: true}).
 			CreateInBatches(&toCreate, batchSize)
 		if tx.Error != nil {
 			return nil, tx.Error
 		}
 
-		// RowsAffected, not len(toCreate): the difference is exactly the rows a
-		// concurrent import won, and counting those as created here would report
-		// more new leads than the workspace gained.
 		out.Created = tx.RowsAffected
 		if raced := int64(len(toCreate)) - tx.RowsAffected; raced > 0 {
 			out.Matched += raced
@@ -480,7 +435,6 @@ func (r *repository) Update(workspaceID, id string, update lead.LeadUpdate) (err
 		return lead.ErrLeadWorkspaceRequired
 	}
 
-	// Blocking a lead moves the blocked/active facet.
 	defer func() {
 		if err == nil {
 			r.agg.bump(workspaceID)
@@ -532,13 +486,6 @@ func (r *repository) Delete(workspaceID, id string) (err error) {
 	return r.scope(workspaceID).Where("id = ?", id).Delete(&schema.Lead{}).Error
 }
 
-// listQuery is the compiled read query: the WHERE fragment every lead read
-// path shares, plus its positional args.
-//
-// One builder, four consumers (page, count, facet aggregate, facet
-// breakdowns). The version this replaced hand-wrote the same six predicates in
-// two functions, and only one of them had ever learned about created/age
-// ranges — the plain List() silently ignored them.
 type listQuery struct {
 	desc  infracrmfilter.LeadDescriptor
 	where string
@@ -557,8 +504,6 @@ func (r *repository) compile(input lead.ListLeadsInput) (*listQuery, error) {
 		return nil, fmt.Errorf("%w: %v", lead.ErrLeadFilterInvalid, err)
 	}
 
-	// Raw SQL bypasses GORM's soft-delete scope, so the tenant boundary and the
-	// deleted_at guard are stated explicitly here rather than inherited.
 	where := "leads.workspace_id = ? AND leads.deleted_at IS NULL"
 	all := []interface{}{workspaceID}
 	if frag != "" {
@@ -569,20 +514,14 @@ func (r *repository) compile(input lead.ListLeadsInput) (*listQuery, error) {
 	return &listQuery{desc: desc, where: where, args: all}, nil
 }
 
-// filteredIDs is the lead-id subquery the grouped facet counts join against.
 func (q *listQuery) filteredIDs() string {
 	return "SELECT leads.id FROM leads WHERE " + q.where
 }
 
-// sortExpressions maps a client sort key onto the SQL it orders by. Computed
-// keys resolve to the SELECT alias rather than repeating the expression, so
-// Postgres evaluates each subquery once per row instead of twice.
 func sortExpressions() map[lead.SortKey]string {
 	return map[lead.SortKey]string{
-		lead.SortCreatedAt: "leads.created_at",
-		lead.SortUpdatedAt: "leads.updated_at",
-		// NULLIF so unnamed leads sort as missing (and land last) instead of
-		// clustering at the top of an A→Z list under the empty string.
+		lead.SortCreatedAt:      "leads.created_at",
+		lead.SortUpdatedAt:      "leads.updated_at",
 		lead.SortName:           "NULLIF(leads.name, '')",
 		lead.SortNumber:         "leads.number",
 		lead.SortAge:            "leads.age",
@@ -593,17 +532,6 @@ func sortExpressions() map[lead.SortKey]string {
 	}
 }
 
-// orderBy renders the ORDER BY clause.
-//
-// Two non-obvious rules, both about pagination being trustworthy:
-//
-//   - NULLS LAST on every key. Postgres puts NULLs FIRST on DESC, so "most
-//     recent activity first" would otherwise open on the leads that have never
-//     done anything.
-//   - leads.id as the final tiebreaker, always. Without it, rows tied on the
-//     sort key (every lead imported in the same second, every lead with zero
-//     campaigns) come back in an undefined order, and the same lead can appear
-//     on page 2 and page 3 while another appears on neither.
 func orderBy(sorts []shared.Sort) string {
 	exprs := sortExpressions()
 	parts := make([]string, 0, len(sorts)+1)
@@ -632,9 +560,6 @@ func orderBy(sorts []shared.Sort) string {
 	return strings.Join(parts, ", ") + ", leads.id DESC"
 }
 
-// leadListRow is one row of the page query: the lead columns plus the derived
-// summary, resolved in the same pass so a page of 100 leads costs one query
-// instead of one plus three batched follow-ups.
 type leadListRow struct {
 	ID                string
 	WorkspaceID       string
@@ -684,15 +609,12 @@ func (row *leadListRow) toSummary() *lead.LeadSummary {
 		Memories:           row.MemoryCount,
 		LastMemoryAt:       row.LastMemoryAt,
 	}
-	// The expiry is only meaningful while the window is open; reporting a past
-	// one would render as an expired countdown next to a "closed" badge.
 	if row.WindowOpen {
 		summary.WindowExpiresAt = row.WindowExpiresAt
 	}
 	return summary
 }
 
-// selectList is the projection shared by every page read.
 func (q *listQuery) selectList() string {
 	d := q.desc
 	return "leads.id, leads.workspace_id, leads.number, leads.name, leads.profile_picture_url, " +
@@ -705,11 +627,6 @@ func (q *listQuery) selectList() string {
 		d.WindowExpiresAtExpr() + " AS window_expires_at"
 }
 
-// countLeads counts the filtered set, through the aggregate cache.
-//
-// The same number is asked for twice on every page load: once as the list's
-// pagination meta, once as the facet strip's total. They are counted over an
-// identical set, so the second one is a cache hit rather than a second scan.
 func (r *repository) countLeads(workspaceID string, q *listQuery) (int64, error) {
 	if cached, ok := r.agg.getCount(workspaceID, q); ok {
 		return cached, nil
@@ -792,14 +709,11 @@ func (r *repository) ListWithSummary(input lead.ListLeadsInput) (*shared.Paginat
 	return shared.NewPaginatedResult(items, input.Options.Pagination, total), nil
 }
 
-// facetRow is one (bucket, count) pair of a grouped breakdown.
 type facetRow struct {
 	Key   string
 	Count int64
 }
 
-// groupedFacet counts DISTINCT leads per bucket over the filtered set. source
-// is a FROM fragment exposing lead_id and the bucket column.
 func (r *repository) groupedFacet(q *listQuery, source, leadIDCol, bucketCol, extra string) map[string]int64 {
 	conditions := leadIDCol + " IN (" + q.filteredIDs() + ")"
 	if extra != "" {
@@ -810,9 +724,6 @@ func (r *repository) groupedFacet(q *listQuery, source, leadIDCol, bucketCol, ex
 
 	var rows []facetRow
 	if err := r.db.Raw(sql, q.args...).Scan(&rows).Error; err != nil {
-		// A breakdown that cannot be counted is reported as absent, not as a
-		// failed list: the rows are already correct, and an empty bucket map
-		// renders the filter without counts rather than an error page.
 		log.Printf("[lead-facets] grouped facet on %s failed: %v", source, err)
 		return map[string]int64{}
 	}
@@ -834,18 +745,12 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 		return nil, err
 	}
 
-	// Four queries, none of them bounded by the page size: one aggregate over
-	// every matching lead plus three grouped semi-joins. The answer depends on
-	// the filter alone, so paging or re-sorting re-asks a question already
-	// answered.
 	if cached, ok := r.agg.getFacets(input.WorkspaceID, q); ok {
 		return cached, nil
 	}
 
 	d := q.desc
 
-	// One pass for the boolean buckets: FILTER re-uses the single scan the
-	// total already pays for, so seven counters cost what one does.
 	var agg struct {
 		Total        int64
 		Blocked      int64
@@ -865,8 +770,6 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 		return nil, err
 	}
 
-	// Complements are derived, never counted twice: two COUNT(*) FILTERs that
-	// are supposed to add up to the total is a pair that can disagree.
 	facets := &lead.LeadFacets{
 		Total:           agg.Total,
 		Blocked:         agg.Blocked,
@@ -886,8 +789,6 @@ func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error)
 	facets.Channels = r.groupedFacet(q, infracrmfilter.LeadChannelsSource(), "lead_id", "channel", "")
 
 	r.agg.setFacets(input.WorkspaceID, q, facets)
-	// The list asks for this same total as its pagination meta. Seeding it here
-	// means the pair costs one scan between them rather than two.
 	r.agg.setCount(input.WorkspaceID, q, facets.Total)
 
 	return facets, nil
@@ -949,12 +850,6 @@ func toDomain(l *schema.Lead) *lead.Lead {
 	return d
 }
 
-// Rename writes the name column directly.
-//
-// It does NOT go through Merge, which is the whole point: Merge reads an empty
-// name as "no new value, keep the old one" so a webhook carrying a partial
-// profile cannot wipe a name we already have. An operator clearing the field is
-// saying the opposite, and the only way to express that is to write the column.
 func (r *repository) Rename(workspaceID, id, name string) (err error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	id = strings.TrimSpace(id)
@@ -962,7 +857,6 @@ func (r *repository) Rename(workspaceID, id, name string) (err error) {
 		return lead.ErrLeadWorkspaceRequired
 	}
 
-	// Naming a lead moves the named/unnamed facet.
 	defer func() {
 		if err == nil {
 			r.agg.bump(workspaceID)
@@ -975,8 +869,6 @@ func (r *repository) Rename(workspaceID, id, name string) (err error) {
 		return err
 	}
 
-	// Scoped by workspace as well as id: an id alone would let a caller that
-	// guessed one rename a lead in someone else's workspace.
 	res := r.db.Model(&schema.Lead{}).
 		Where("id = ? AND workspace_id = ?", id, workspaceID).
 		Updates(map[string]interface{}{

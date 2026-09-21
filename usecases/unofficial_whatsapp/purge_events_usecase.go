@@ -8,11 +8,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// PurgeProcessedEventsUseCase trims the durable webhook dedup store.
-//
-// Retention has to outlast any redelivery the provider could still attempt,
-// which is why it is measured in weeks rather than hours: a key deleted too
-// early turns a late retry into a duplicated message in a customer's transcript.
 type PurgeProcessedEventsUseCase struct {
 	events    uw.ProcessedEventRepository
 	retention time.Duration

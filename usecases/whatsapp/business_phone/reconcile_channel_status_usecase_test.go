@@ -9,7 +9,7 @@ import (
 type fakeChannelPartner struct {
 	businessphone.Dialog360PartnerService
 	channels []businessphone.Dialog360Channel
-	fresh    map[string]businessphone.Dialog360Channel // single-channel reads (GetChannel)
+	fresh    map[string]businessphone.Dialog360Channel
 	getCalls int
 }
 
@@ -34,9 +34,6 @@ func (f *fakeRefsReader) ListDialog360ChannelRefs() ([]businessphone.Dialog360Ch
 	return f.refs, nil
 }
 
-// TestReconcileChannelStatus_BackfillsAndSuspends is the core proof: a live channel's
-// lagged metadata (number/name/quality/tier) gets backfilled, the WABA name is filled,
-// and a channel deactivated at 360dialog flips the local row to SUSPENDED.
 func TestReconcileChannelStatus_BackfillsAndSuspends(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -50,7 +47,7 @@ func TestReconcileChannelStatus_BackfillsAndSuspends(t *testing.T) {
 		Status: businessphone.StatusConnected, WABAId: "wabaDead", Dialog360ChannelID: "chDead",
 	}
 	w := seedWABA(wabaRepo, "waba-internal", "wabaLive")
-	w.Name = "" // ensure blank so the name backfill applies
+	w.Name = ""
 
 	partner := &fakeChannelPartner{channels: []businessphone.Dialog360Channel{
 		{
@@ -101,18 +98,11 @@ func TestReconcileChannelStatus_BackfillsAndSuspends(t *testing.T) {
 	if report.Updated < 1 || report.Suspended != 1 || report.WABAsNamed != 1 {
 		t.Fatalf("unexpected report: %+v", report)
 	}
-	// The bulk list already carried the number and WABA name, so no wasted
-	// single-channel reads should have fired.
 	if partner.getCalls != 0 {
 		t.Fatalf("expected no fresh GetChannel when the bulk list is complete, got %d", partner.getCalls)
 	}
 }
 
-// TestReconcileChannelStatus_FillsNumberFromFreshReadWhenBulkListLags is the regression
-// test for the ground-truth bug seen in production: 360dialog's BULK channel listing
-// exposes phone_name before phone_number, so a reconcile pass backfilled the name/tier
-// but left the display number blank, needing another full tick. The reconcile must
-// close that gap in one pass by re-reading the single lagging channel (which is fresh).
 func TestReconcileChannelStatus_FillsNumberFromFreshReadWhenBulkListLags(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -122,11 +112,9 @@ func TestReconcileChannelStatus_FillsNumberFromFreshReadWhenBulkListLags(t *test
 	}
 
 	partner := &fakeChannelPartner{
-		// Bulk list: name + tier present, but phone_number still blank (the real lag).
 		channels: []businessphone.Dialog360Channel{
 			{ID: "chLive", WABAExternalID: "wabaLive", PhoneName: "Vozko Relacionamentos", MessagingTier: "TIER_0.25K", HubStatus: "live"},
 		},
-		// Fresh single-channel read has the number.
 		fresh: map[string]businessphone.Dialog360Channel{
 			"chLive": {ID: "chLive", WABAExternalID: "wabaLive", PhoneNumber: "15553395514", PhoneName: "Vozko Relacionamentos", MessagingTier: "TIER_0.25K", HubStatus: "live"},
 		},
@@ -150,14 +138,13 @@ func TestReconcileChannelStatus_FillsNumberFromFreshReadWhenBulkListLags(t *test
 	}
 }
 
-// A channel that is entirely gone from the partner listing must also SUSPEND the row.
 func TestReconcileChannelStatus_SuspendsWhenChannelGone(t *testing.T) {
 	repo := newMockRepo()
 	repo.phoneNumbers["p1"] = &businessphone.WhatsAppBusinessPhoneNumber{
 		ID: "p1", Provider: businessphone.ProviderDialog360,
 		Status: businessphone.StatusConnected, Dialog360ChannelID: "chGone",
 	}
-	partner := &fakeChannelPartner{channels: nil} // channel not present at the vendor
+	partner := &fakeChannelPartner{channels: nil}
 	reader := &fakeRefsReader{refs: []businessphone.Dialog360ChannelRef{
 		{PhoneID: "p1", Dialog360ChannelID: "chGone", Active: true},
 	}}
@@ -169,7 +156,6 @@ func TestReconcileChannelStatus_SuspendsWhenChannelGone(t *testing.T) {
 	}
 }
 
-// Idempotency: a second pass over an already-correct fleet changes nothing.
 func TestReconcileChannelStatus_Idempotent(t *testing.T) {
 	repo := newMockRepo()
 	repo.phoneNumbers["p1"] = &businessphone.WhatsAppBusinessPhoneNumber{

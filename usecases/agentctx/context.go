@@ -1,5 +1,3 @@
-// Package agentctx carries the per-request agent context (the resolved agent and
-// the tool execution tracker) through the tool-execution call chain.
 package agentctx
 
 import (
@@ -13,8 +11,6 @@ import (
 type agentContextKey struct{}
 type toolExecutionTrackerContextKey struct{}
 
-// ToolExecutionTracker debounces repeated tool invocations within a cooldown so a
-// looping model cannot fire the same side effect twice in quick succession.
 type ToolExecutionTracker struct {
 	mu         sync.RWMutex
 	executions map[string]time.Time

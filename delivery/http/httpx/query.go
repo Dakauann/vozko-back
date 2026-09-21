@@ -11,18 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// ParseSort reads the repeated/comma-separated `sort` query parameter into
-// domain sorts.
-//
-// Accepted shapes, all equivalent: `?sort=name:asc&sort=createdAt:desc`,
-// `?sort=name:asc,createdAt:desc`. Keys are matched case-insensitively against
-// `allowed`, which maps the client-facing key onto whatever the domain calls
-// the field; an unknown key is dropped rather than rejected, so a stale
-// bookmark degrades to the default order instead of a 400.
-//
-// This lives in httpx because six handler packages had each grown their own
-// byte-identical copy. Callers pass their own `allowed` map, which is the only
-// part that was ever really per-endpoint.
 func ParseSort(values url.Values, allowed map[string]string) []shared.Sort {
 	rawSorts := values["sort"]
 	if len(rawSorts) == 0 {
@@ -56,9 +44,6 @@ func ParseSort(values url.Values, allowed map[string]string) []shared.Sort {
 	return sorts
 }
 
-// ParseBoolQuery reads a tri-state boolean: nil when the parameter is absent or
-// unparseable ("no opinion"), otherwise the value. The nil case matters — for a
-// filter, "absent" and "false" are different questions.
 func ParseBoolQuery(raw string) *bool {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "true", "1", "yes", "on":
@@ -71,8 +56,6 @@ func ParseBoolQuery(raw string) *bool {
 	return nil
 }
 
-// ParseIntQuery reads an optional integer, returning nil when absent or
-// unparseable.
 func ParseIntQuery(raw string) *int {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -85,8 +68,6 @@ func ParseIntQuery(raw string) *int {
 	return &v
 }
 
-// ParseCSVQuery splits a repeated/comma-separated parameter into its non-blank
-// values, e.g. `?category=deal,objection&category=event`.
 func ParseCSVQuery(values []string) []string {
 	out := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
@@ -106,11 +87,6 @@ func ParseCSVQuery(values []string) []string {
 	return out
 }
 
-// DecodeFilterParam decodes a crmfilter expression carried in a query string.
-//
-// The value is JSON, optionally base64-encoded (standard or URL alphabet) so
-// its braces and quotes never need escaping. A blank value is the empty filter,
-// not an error: "no filter" is a legitimate request.
 func DecodeFilterParam(raw string) (crmfilter.Filter, error) {
 	var f crmfilter.Filter
 	data := DecodeMaybeBase64(raw)
@@ -123,9 +99,6 @@ func DecodeFilterParam(raw string) (crmfilter.Filter, error) {
 	return f, nil
 }
 
-// DecodeMaybeBase64 returns the raw bytes of a parameter that may or may not be
-// base64-encoded, trying both alphabets before falling back to the literal
-// text.
 func DecodeMaybeBase64(raw string) []byte {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

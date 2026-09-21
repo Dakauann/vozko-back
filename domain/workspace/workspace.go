@@ -42,52 +42,38 @@ func registerResource(res string) Resource {
 }
 
 var (
-	ResourceAgents            = registerResource("agents")
-	ResourceWhatsAppCampaigns = registerResource("whatsapp_campaigns")
-	ResourceWhatsAppTemplates = registerResource("whatsapp_templates")
-	ResourceBusinessPhones    = registerResource("business_phones")
-	ResourceStages            = registerResource("stages")
-	ResourceStageGroups       = registerResource("stage_groups")
-	ResourceLabels            = registerResource("labels")
-	ResourceBalance           = registerResource("balance")
-	ResourceConversations     = registerResource("conversations")
-	ResourceMedia             = registerResource("media")
-	ResourceLeads             = registerResource("leads")
-	// "analysis" is deliberately absent. It gated the legacy conversation
-	// analysis; that capability now lives behind ResourceAudience, and
-	// foldAnalysisPermissionIntoAudience moves the stored grants across so no
-	// member loses the feature.
-	ResourceCallRecordings    = registerResource("call_recordings")
-	ResourceMembers           = registerResource("members")
-	ResourceAssignments       = registerResource("assignments")
-	ResourceAttendance        = registerResource("attendance")
-	ResourceKnowledgeBases    = registerResource("knowledge_bases")
-	ResourceRoles             = registerResource("roles")
-	ResourceSupportInboxes    = registerResource("support_inboxes")
-	ResourceIssues            = registerResource("issues")
-	ResourceWorkflows         = registerResource("workflows")
-	ResourceCalendar          = registerResource("calendar")
-	ResourceDepartments       = registerResource("departments")
-	ResourceMessageShortcuts  = registerResource("message_shortcuts")
-	ResourceCallSession       = registerResource("call_session")
-	ResourceMCP               = registerResource("mcp")
-	ResourcePlans             = registerResource("plans")
-	ResourceAIChat            = registerResource("ai_chat")
-	ResourceShortLinks        = registerResource("short_links")
-	ResourceInstagramAccounts = registerResource("instagram_accounts")
-	// Comment analysis is its own resource: reading a dashboard that names
-	// people and switching on a billed feature are different privileges from
-	// moderating a post.
-	ResourceAudience         = registerResource("audience")
-	ResourceTelegramAccounts = registerResource("telegram_accounts")
-	// The QR-session WhatsApp channel splits into two resources for the same
-	// reason WhatsApp does: connecting a number and blasting it are different
-	// privileges, and an attendant who may reply must not thereby be able to
-	// start a 40.000-number broadcast.
+	ResourceAgents                      = registerResource("agents")
+	ResourceWhatsAppCampaigns           = registerResource("whatsapp_campaigns")
+	ResourceWhatsAppTemplates           = registerResource("whatsapp_templates")
+	ResourceBusinessPhones              = registerResource("business_phones")
+	ResourceStages                      = registerResource("stages")
+	ResourceStageGroups                 = registerResource("stage_groups")
+	ResourceLabels                      = registerResource("labels")
+	ResourceBalance                     = registerResource("balance")
+	ResourceConversations               = registerResource("conversations")
+	ResourceMedia                       = registerResource("media")
+	ResourceLeads                       = registerResource("leads")
+	ResourceCallRecordings              = registerResource("call_recordings")
+	ResourceMembers                     = registerResource("members")
+	ResourceAssignments                 = registerResource("assignments")
+	ResourceAttendance                  = registerResource("attendance")
+	ResourceKnowledgeBases              = registerResource("knowledge_bases")
+	ResourceRoles                       = registerResource("roles")
+	ResourceSupportInboxes              = registerResource("support_inboxes")
+	ResourceIssues                      = registerResource("issues")
+	ResourceWorkflows                   = registerResource("workflows")
+	ResourceCalendar                    = registerResource("calendar")
+	ResourceDepartments                 = registerResource("departments")
+	ResourceMessageShortcuts            = registerResource("message_shortcuts")
+	ResourceCallSession                 = registerResource("call_session")
+	ResourceMCP                         = registerResource("mcp")
+	ResourcePlans                       = registerResource("plans")
+	ResourceAIChat                      = registerResource("ai_chat")
+	ResourceShortLinks                  = registerResource("short_links")
+	ResourceInstagramAccounts           = registerResource("instagram_accounts")
+	ResourceAudience                    = registerResource("audience")
+	ResourceTelegramAccounts            = registerResource("telegram_accounts")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
-	// Campaigns are a SEPARATE resource from instances, for exactly the reason
-	// the comment above gives: connecting a number and blasting from it are
-	// different privileges. This is where that sentence becomes enforceable.
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 )
 
@@ -167,16 +153,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar modelos de mensagem"},
 		{ActionName: ActionUpdate, Description: "Editar modelos de mensagem"},
 		{ActionName: ActionDelete, Description: "Excluir modelos de mensagem"},
-		// A SEPARATE privilege, for the same reason the unofficial channel has one:
-		// answering someone who wrote to us is ordinary attendance, while messaging
-		// a number that never contacted us is cold outbound. Here it is sharper
-		// still, because on the official channel that first message is a template
-		// and every template SPENDS THE WORKSPACE'S BALANCE. An attendant trusted to
-		// reply must not thereby be able to spend money.
-		//
-		// A new action on an existing resource, deliberately: owners and admins
-		// short-circuit the check so nothing regresses on deploy, whereas a new
-		// resource would strip every existing role.
 		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo enviando um modelo pelo WhatsApp oficial (consome saldo)", Requires: []PermissionEntry{
 			{Resource: ResourceWhatsAppTemplates, Action: ActionRead},
 			{Resource: ResourceBusinessPhones, Action: ActionRead},
@@ -192,16 +168,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Editar etapas"},
 		{ActionName: ActionDelete, Description: "Excluir etapas"},
 		{ActionName: ActionAssign, Description: "Atribuir etapas a contatos e conversas"},
-		// A SEPARATE privilege from assign, for the same reason send is separate
-		// from update on an unofficial number: moving a card between the columns
-		// of the funnel you work in is ordinary attendance, while moving a
-		// conversation to ANOTHER funnel takes it off your team's board and puts
-		// it on someone else's. In bulk, one click does it to every conversation
-		// a filter matches.
-		//
-		// A new action on an existing resource, deliberately: owners and admins
-		// short-circuit the check so nothing regresses on deploy, whereas a new
-		// resource would strip every existing role.
 		{ActionName: ActionTransfer, Description: "Mover conversas para outro funil", Requires: []PermissionEntry{
 			{Resource: ResourceStages, Action: ActionAssign},
 		}},
@@ -277,9 +243,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Remover atribuições de recursos"},
 	},
 	ResourceAttendance: {
-		// "IA" is scoped to MESSAGING here on purpose. Listing it in one breath
-		// with telephony read as "AI handles calls", which the product does not
-		// do and no surface may imply.
 		{ActionName: ActionRead, Description: "Visualizar métricas de atendimento: conversas, tempos, filas, ocupação, canais, equipe e atendimentos por IA nos canais de mensagens, além do volume de telefonia"},
 	},
 	ResourceKnowledgeBases: {
@@ -315,11 +278,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceAudience: {
 		{ActionName: ActionRead, Description: "Visualizar a análise de comentários e conversas (audiência, temas, assuntos, autores)"},
 		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários e conversas (teto de análises, tempo de silêncio, temas), moderar autores e iniciar reprocessamentos"},
-		// A SEPARATE privilege from update, and the distinction is the point:
-		// reading and moderating stay inside the dashboard, while this one puts
-		// a message on the workspace's own WhatsApp, to a real person. It rides
-		// the conversation send permission rather than inventing a second
-		// answer to "may this user message people".
 		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Requires: []PermissionEntry{
 			{Resource: ResourceAudience, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionSend},
@@ -336,12 +294,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar números de WhatsApp conectados por QR Code"},
 		{ActionName: ActionUpdate, Description: "Editar configurações e reconectar números de WhatsApp por QR Code"},
 		{ActionName: ActionDelete, Description: "Desconectar números de WhatsApp por QR Code"},
-		// A SEPARATE privilege from update, and the distinction is the point:
-		// replying to someone who wrote to us is ordinary attendance, while
-		// messaging a number that never contacted us is cold outbound — the
-		// action most likely to get an unofficial number banned. An attendant
-		// who may answer must not thereby be able to start conversations with
-		// arbitrary numbers.
 		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo pelo WhatsApp não oficial"},
 	},
 	ResourceUnofficialWhatsAppCampaigns: {
@@ -379,10 +331,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Excluir departamentos"},
 	},
 	ResourceCallSession: {
-		// No longer requires reading SIP trunks: trunk MANAGEMENT was removed
-		// (no API, no UI), so the dependency named a permission that can no
-		// longer be granted — which would have made the call session resource ungrantable too.
-		// The trunk runtime itself is untouched and still carries every call.
 		{ActionName: ActionUse, Description: "Realizar e atender chamadas de WhatsApp nas conversas. Não inclui métricas, use a permissão de atendimento para dashboards."},
 		{ActionName: ActionListMembers, Description: "Visualizar membros conectados às chamadas em tempo real", Requires: []PermissionEntry{
 			{Resource: ResourceCallSession, Action: ActionUse},
@@ -405,23 +353,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	},
 }
 
-// DropRetiredResources removes entries naming a resource this build does not
-// know, and reports which ones it dropped.
-//
-// A saved role keeps whatever it was granted, and a resource can be retired
-// from the code long after roles referencing it were stored. Retiring SIP
-// telephony left 14 roles carrying `sip_trunks`, 7 carrying `usage` and one
-// carrying `affiliate`. The editor loads a role's stored permissions, the
-// operator toggles something unrelated, and the whole set is submitted back —
-// so validation rejected the request with "invalid resource" and the role
-// became permanently uneditable through the UI. The permission the operator
-// actually wanted to change was never the problem.
-//
-// Dropping is not a loosening of the check. An entry naming a resource that no
-// longer exists cannot grant anything: no handler asks for it, so nothing ever
-// consults it. Keeping it is meaningless and rejecting over it is destructive.
-// A resource that IS known but paired with a wrong action still fails, because
-// that names a real thing and getting it wrong is a real mistake.
 func DropRetiredResources(permissions []PermissionEntry) ([]PermissionEntry, []Resource) {
 	kept := make([]PermissionEntry, 0, len(permissions))
 	var dropped []Resource

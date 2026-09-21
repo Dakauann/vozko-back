@@ -7,9 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AIAttendanceSession tracks AI attendant spans for CRM metrics.
-// EntryID and AgentID are text (not uuid): voice sessions often key entry by SIP
-// Call-ID, and workflow actors may use workflow UUIDs or synthetic ids.
 type AIAttendanceSession struct {
 	ID                  string     `gorm:"primaryKey;type:uuid"`
 	WorkspaceID         string     `gorm:"type:uuid;not null;index:idx_ai_sess_ws_time,priority:1;index:idx_ai_sess_entry,priority:1"`

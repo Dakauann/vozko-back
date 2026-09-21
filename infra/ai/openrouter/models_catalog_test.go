@@ -57,12 +57,10 @@ func TestModelCatalogFetcher_SortAndParse(t *testing.T) {
 		t.Fatalf("len(models) = %d, want 2", len(models))
 	}
 
-	// Order preserved (server returns most-popular order).
 	if models[0].ID != "anthropic/claude-sonnet-4.5" {
 		t.Errorf("models[0].ID = %q, want anthropic/claude-sonnet-4.5", models[0].ID)
 	}
 
-	// Prices scaled to per-million tokens.
 	if got := models[0].PromptPrice; got != 3.0 {
 		t.Errorf("models[0].PromptPrice = %v, want 3", got)
 	}
@@ -70,7 +68,6 @@ func TestModelCatalogFetcher_SortAndParse(t *testing.T) {
 		t.Errorf("models[0].CompletionPrice = %v, want 15", got)
 	}
 
-	// Top-level context_length.
 	if got := models[0].ContextLength; got != 200000 {
 		t.Errorf("models[0].ContextLength = %d, want 200000", got)
 	}
@@ -78,7 +75,6 @@ func TestModelCatalogFetcher_SortAndParse(t *testing.T) {
 		t.Errorf("models[0].Created = %d, want 1750000000", models[0].Created)
 	}
 
-	// Falls back to top_provider.context_length when top-level is absent.
 	if got := models[1].ContextLength; got != 1000000 {
 		t.Errorf("models[1].ContextLength = %d, want 1000000 (top_provider fallback)", got)
 	}
@@ -100,7 +96,6 @@ func TestModelCatalogFetcher_CachesWithinTTL(t *testing.T) {
 	if _, ok := f.FetchModelsWithPricing(context.Background()); !ok {
 		t.Fatal("first fetch ok = false")
 	}
-	// Within TTL: served from cache, no extra HTTP call.
 	f.now = func() time.Time { return base.Add(modelCatalogTTL - time.Minute) }
 	if _, ok := f.FetchModelsWithPricing(context.Background()); !ok {
 		t.Fatal("cached fetch ok = false")
@@ -109,7 +104,6 @@ func TestModelCatalogFetcher_CachesWithinTTL(t *testing.T) {
 		t.Fatalf("HTTP calls = %d within TTL, want 1", got)
 	}
 
-	// Past TTL: refetches.
 	f.now = func() time.Time { return base.Add(modelCatalogTTL + time.Minute) }
 	if _, ok := f.FetchModelsWithPricing(context.Background()); !ok {
 		t.Fatal("refetch ok = false")
@@ -120,13 +114,11 @@ func TestModelCatalogFetcher_CachesWithinTTL(t *testing.T) {
 }
 
 func TestModelCatalogFetcher_NoKeyOrError(t *testing.T) {
-	// No API key → ok=false so the caller falls back to the library path.
 	f := newModelCatalogFetcher("", openRouterDefaultBaseURL)
 	if _, ok := f.FetchModelsWithPricing(context.Background()); ok {
 		t.Error("ok = true with empty api key, want false")
 	}
 
-	// Non-200 → ok=false.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))

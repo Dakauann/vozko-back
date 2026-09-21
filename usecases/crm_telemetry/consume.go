@@ -34,7 +34,6 @@ type consumer struct {
 	semaphore chan struct{}
 }
 
-// ConsumerDeps wires DB writers for telemetry.
 type ConsumerDeps struct {
 	QueueSub  messaging.MessageQueueSub
 	Events    ce.Repository
@@ -46,7 +45,6 @@ type ConsumerDeps struct {
 	Drops     crm_telemetry.DropRecorder
 }
 
-// NewConsumer wires DB writers for telemetry. SessionService runs only on the consumer.
 func NewConsumer(
 	queueSub messaging.MessageQueueSub,
 	events ce.Repository,
@@ -81,7 +79,6 @@ func NewConsumerWithDeps(d ConsumerDeps) crm_telemetry.Consumer {
 	}
 }
 
-// directEventLogger writes conversation_events on the consumer path only.
 type directEventLogger struct {
 	repo ce.Repository
 }
@@ -122,7 +119,6 @@ func (c *consumer) handle(payload []byte, ack messaging.MessageAck) {
 	go func(e crm_telemetry.Envelope, a messaging.MessageAck) {
 		defer func() { <-c.semaphore }()
 
-		// Idempotency: claim envelope id before work; release on failure so requeue can retry.
 		if c.dedupe != nil && e.ID != "" {
 			claimed, err := c.dedupe.Claim(e.ID, string(e.Kind))
 			if err != nil {
@@ -138,14 +134,9 @@ func (c *consumer) handle(payload []byte, ack messaging.MessageAck) {
 
 		if err := c.dispatch(e); err != nil {
 			permanent := isPermanentError(err)
-			// Release the idempotency claim only for TRANSIENT failures so a requeue
-			// can retry. A permanent (bad-data) failure keeps the claim, so even a
-			// duplicate delivery is dropped rather than reprocessed.
 			if c.dedupe != nil && e.ID != "" && !permanent {
 				_ = c.dedupe.Release(e.ID)
 			}
-			// mayRequeue=false for permanent errors -> Nack(false) drops the message
-			// instead of looping it forever against a constraint it can never satisfy.
 			c.fail(e, a, "dispatch", err, !permanent)
 			return
 		}
@@ -177,14 +168,6 @@ func (c *consumer) fail(e crm_telemetry.Envelope, a messaging.MessageAck, reason
 	_ = a.Nack(requeue)
 }
 
-// isPermanentError reports whether err can never succeed on retry, so the message
-// must be dropped rather than requeued. Two sources:
-//   - ErrInvalidEvent: the app rejected the payload before the DB.
-//   - Postgres data/integrity errors: SQLSTATE class 22 (data exception, e.g.
-//     22P02 "invalid input syntax for type uuid") and class 23 (integrity
-//     constraint, e.g. 23502 NOT NULL). Retrying these poisons the queue.
-//
-// Everything else (connection loss, deadlock, timeout) is transient and requeues.
 func isPermanentError(err error) bool {
 	if err == nil {
 		return false
@@ -196,7 +179,6 @@ func isPermanentError(err error) bool {
 }
 
 func hasPermanentSQLState(msg string) bool {
-	// Driver-agnostic: both lib/pq and pgx render the code as "SQLSTATE XXXXX".
 	i := strings.Index(msg, "SQLSTATE ")
 	if i < 0 {
 		return false
@@ -206,7 +188,7 @@ func hasPermanentSQLState(msg string) bool {
 		return false
 	}
 	switch code[:2] {
-	case "22", "23": // data exception, integrity constraint violation
+	case "22", "23":
 		return true
 	}
 	return false
@@ -223,10 +205,6 @@ func (c *consumer) dispatch(env crm_telemetry.Envelope) error {
 			ev.ID = env.ID
 		}
 		ev.Normalize()
-		// Drop malformed events (empty/non-uuid workspace_id or entry_id) BEFORE the
-		// DB. They map to uuid NOT NULL columns, so the insert can never succeed;
-		// returning the permanent ErrInvalidEvent makes handle() drop it instead of
-		// requeuing forever (the poison loop that flooded the logs/DB).
 		if err := ev.Validate(); err != nil {
 			return err
 		}
@@ -299,10 +277,6 @@ func (c *consumer) applyAssignmentHistory(p crm_telemetry.AssignmentHistoryPaylo
 	if err := c.history.CloseOpen(p.WorkspaceID, p.EntryID, p.EntryType, at); err != nil {
 		return err
 	}
-	// An empty assigned actor means the entry was UNASSIGNED, not handed to
-	// nobody-in-particular: close the open interval and stop. Appending here
-	// would leave an owner-less interval open forever, which every ownership
-	// report would then read as "still assigned".
 	if p.AssignedActorID == "" {
 		return nil
 	}

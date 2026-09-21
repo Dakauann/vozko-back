@@ -67,9 +67,6 @@ func (e *transferDepartmentExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
-	// Defense-in-depth: in contexts that don't wire department infrastructure
-	// (e.g. the workflow simulator), the repos are nil. Fail gracefully via the
-	// "erro" handle instead of dereferencing a nil interface (which would panic).
 	if e.deptRepo == nil || e.assignmentRepo == nil {
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),

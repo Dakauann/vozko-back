@@ -16,19 +16,10 @@ type privateReplyRepository struct {
 	db *gorm.DB
 }
 
-// NewPrivateReplyRepository builds the private-reply allowance guard.
 func NewPrivateReplyRepository(db *gorm.DB) igdomain.PrivateReplyRepository {
 	return &privateReplyRepository{db: db}
 }
 
-// Claim atomically reserves the single private reply permitted for a comment.
-//
-// Instagram allows exactly ONE private reply per comment, ever. A retry after an
-// ambiguous failure (timeout, 5xx) would burn that allowance with no way to
-// recover it, so the claim is an INSERT ... ON CONFLICT DO NOTHING against a
-// primary key of the comment id and is written BEFORE the HTTP call. A zero
-// RowsAffected means someone already holds the allowance and the caller must not
-// issue the request.
 func (r *privateReplyRepository) Claim(ctx context.Context, igCommentID, igAccountID string) (bool, error) {
 	record := &schema.InstagramPrivateReply{
 		IGCommentID: igCommentID,
@@ -61,11 +52,6 @@ func (r *privateReplyRepository) MarkSent(ctx context.Context, igCommentID, reci
 	return r.update(ctx, igCommentID, updates)
 }
 
-// MarkFailed records a definitive failure.
-//
-// The row deliberately stays present: we cannot know whether Meta processed the
-// send before failing to answer, so the allowance remains consumed rather than
-// being handed back for a retry that could double-send.
 func (r *privateReplyRepository) MarkFailed(ctx context.Context, igCommentID string, code int, message string) error {
 	if len(message) > 500 {
 		message = message[:500]

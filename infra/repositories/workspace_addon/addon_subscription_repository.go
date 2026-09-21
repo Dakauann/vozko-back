@@ -90,10 +90,6 @@ func (r *addonSubscriptionRepository) ListActiveByWorkspaceAndKind(workspaceID s
 	return subscriptionsFromSchema(rows), nil
 }
 
-// SumActiveGrantedUnitsByWorkspaceIDs returns, per workspace, the total granted
-// units (Σ quantity * units_per_quantity) from active addon subscriptions of the
-// given kind. One grouped query for the whole batch, so the reconcile job resolves
-// entitlements for many workspaces without a per-workspace round trip.
 func (r *addonSubscriptionRepository) SumActiveGrantedUnitsByWorkspaceIDs(workspaceIDs []string, kind workspace_addon.EntitlementKind) (map[string]int, error) {
 	out := make(map[string]int, len(workspaceIDs))
 	if len(workspaceIDs) == 0 {
@@ -142,10 +138,6 @@ func (r *addonSubscriptionRepository) ListActiveByWorkspace(workspaceID string) 
 	return subscriptionsFromSchema(rows), nil
 }
 
-// ListReactivatableByWorkspace returns active addons plus the ones the cancel sweep expired this cycle.
-// A sweep-expired addon is status expired, never customer-cancelled (cancelled_at IS NULL), and its
-// period ended on or after expiredSince (the prior anchor) so a long-lapsed addon from an earlier cycle,
-// which is not on this invoice, is not revived. The Extend the caller applies flips it back to active.
 func (r *addonSubscriptionRepository) ListReactivatableByWorkspace(workspaceID string, expiredSince time.Time) ([]*workspace_addon.AddonSubscription, error) {
 	var rows []schema.WorkspaceAddonSubscription
 	err := r.db.Where(

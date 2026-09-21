@@ -16,8 +16,6 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// Claim returns true if this id was newly claimed (first process).
-// Returns false if already processed (idempotent skip).
 func (r *Repository) Claim(id, kind string) (bool, error) {
 	if r == nil || r.db == nil || id == "" {
 		return true, nil
@@ -32,7 +30,6 @@ func (r *Repository) Claim(id, kind string) (bool, error) {
 	return res.RowsAffected > 0, nil
 }
 
-// Release removes a claim so a failed handler can requeue safely.
 func (r *Repository) Release(id string) error {
 	if r == nil || r.db == nil || id == "" {
 		return nil

@@ -1,13 +1,5 @@
 package workflow
 
-// Per-node guidance now lives ON each node's Definition() (the NodeGuidance field
-// on NodeDefinition), authored by the executor that owns the node, so it travels
-// with the catalog the AI Workflow Builder always sees. This file keeps only the
-// GLOBAL, cross-node variable-system guide.
-
-// VariableSystemGuide explains the runtime variable/expression system to the AI
-// so it references upstream data correctly instead of guessing. Surfaced in the
-// builder system prompt. Mirrors the n8n-style dot-notation expression standard.
 func VariableSystemGuide() string {
 	return `SISTEMA DE VARIÁVEIS ({{ ... }}), como referenciar dados em tempo de execução:
 

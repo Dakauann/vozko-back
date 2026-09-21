@@ -2,9 +2,6 @@ package balance
 
 import "testing"
 
-// Every valid service type is enumerated by AllServiceTypes, and vice versa:
-// the balance UI and the export iterate that list, so a type that is valid
-// but not listed is money that never shows on a statement.
 func TestServiceTypes_ValidAndEnumeratedAgree(t *testing.T) {
 	for _, s := range AllServiceTypes() {
 		if !s.IsValid() {

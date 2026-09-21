@@ -8,18 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// This file is the SINGLE SOURCE OF TRUTH for the comment rubric, built on
-// the machinery in domain/shared/rubric.go. The JSON response schema, the
-// prompt fragment and the persisted enums all render from the tables here,
-// so they cannot diverge. That is the guarantee the conversation rubric
-// already makes, kept for the second rubric by construction rather than by
-// care.
-//
-// Criteria are pt-BR, matching the existing rubric: it is the model's working
-// language here. Stored values are English slugs; the UI translates them.
-
-// JSON keys the model writes. Shared between the schema (BatchResponseSchema)
-// and the decoder (BatchResult) so a rename cannot orphan one side.
 const (
 	SchemaKeyResults = "results"
 
@@ -35,11 +23,6 @@ const (
 	SeverityKeyPersonalAttack = "personal_attack"
 	SeverityKeyLegalRisk      = "legal_risk"
 
-	// Conversation-subject keys (see conversation.go for the taxonomy). They
-	// live in this block with the comment keys because it is the one place the
-	// wire format is named: the schema and the decoder both read from here, so
-	// a rename cannot orphan one side. FieldSentiment above is deliberately
-	// shared, it means the same thing for both subjects.
 	FieldInterest        = "interest"
 	FieldProductInterest = "product_interest"
 	FieldDisposition     = "disposition"
@@ -48,9 +31,6 @@ const (
 	FieldSummary         = "summary"
 )
 
-// ClassificationFields is the taxonomy the model classifies each comment on.
-// The topic field is not here: its enum is the container's TopicSet and is
-// rendered per request (see BatchResponseSchema / RubricPrompt).
 func ClassificationFields() []shared.ClassificationField {
 	return []shared.ClassificationField{
 		{
@@ -91,8 +71,6 @@ func ClassificationFields() []shared.ClassificationField {
 	}
 }
 
-// SeverityDimensions are the ordinal axes severity is composed from. The
-// weights are the ONLY definition of the 0-100 severity.
 func SeverityDimensions() []shared.QualityDimension {
 	return []shared.QualityDimension{
 		{
@@ -113,15 +91,6 @@ func SeverityDimensions() []shared.QualityDimension {
 	}
 }
 
-// ---- Response schema ----
-
-// BatchResponseSchema is the JSON Schema for one batch call, rendered from
-// the rubric and the container's topic set. It is strict-mode shaped: every
-// property required, nothing extra allowed, so an out-of-set label is
-// refused by the provider before it reaches Validate.
-//
-// The model returns a batch-local ref per item, never the text (§2.3): the
-// use case reconciles refs against what it sent.
 func BatchResponseSchema(topics TopicSet) map[string]any {
 	props := map[string]any{
 		FieldRef: map[string]any{
@@ -156,8 +125,6 @@ func BatchResponseSchema(topics TopicSet) map[string]any {
 			"enum":        shared.QualityLevelValues(),
 		}
 	}
-	// Sorted so the schema (and with it the provider's prompt-cache key) is
-	// deterministic across calls.
 	required := make([]string, 0, len(props))
 	for key := range props {
 		required = append(required, key)
@@ -183,15 +150,10 @@ func BatchResponseSchema(topics TopicSet) map[string]any {
 	}
 }
 
-// BatchResponse is the decoded shape of a batch call, mirroring
-// BatchResponseSchema.
 type BatchResponse struct {
 	Results []BatchResult `json:"results"`
 }
 
-// BatchResult is one item's raw answer. Strings, not the typed enums, so a
-// bad label decodes and is rejected by Validate with a reason rather than
-// failing the whole batch at unmarshal.
 type BatchResult struct {
 	Ref            int    `json:"ref"`
 	Sentiment      string `json:"sentiment"`
@@ -204,25 +166,18 @@ type BatchResult struct {
 	PersonalAttack string `json:"personal_attack"`
 	LegalRisk      string `json:"legal_risk"`
 
-	// Conversation subjects fill these instead. One decoder for both kinds,
-	// because the response schema already constrains which fields a given call
-	// may return: the model is never offered both taxonomies at once.
-	Interest        string `json:"interest"`
-	ProductInterest string `json:"product_interest"`
-	Disposition     string `json:"disposition"`
-	Qualification   string `json:"qualification"`
-	NextAction      string `json:"next_action"`
-	Summary         string `json:"summary"`
-	// The attendance-quality dimensions, rated ordinally. The 0-100 is computed
-	// from them; the model is never asked for a number.
+	Interest           string `json:"interest"`
+	ProductInterest    string `json:"product_interest"`
+	Disposition        string `json:"disposition"`
+	Qualification      string `json:"qualification"`
+	NextAction         string `json:"next_action"`
+	Summary            string `json:"summary"`
 	GoalProgress       string `json:"goal_progress"`
 	CustomerEngagement string `json:"customer_engagement"`
 	AgentConduct       string `json:"agent_conduct"`
 	Professionalism    string `json:"professionalism"`
 }
 
-// Classification converts the raw answer to the typed value. Not validated;
-// call Validate with the container's topic set.
 func (r BatchResult) Classification() Classification {
 	return Classification{
 		Sentiment:      shared.Sentiment(strings.TrimSpace(r.Sentiment)),
@@ -237,12 +192,6 @@ func (r BatchResult) Classification() Classification {
 	}
 }
 
-// ---- Prompt ----
-
-// RubricPrompt renders the classification criteria, the severity dimensions
-// and the container's topics for the system prompt. The use case wraps it
-// with the task framing and the post's caption; the rubric itself lives
-// here so there is exactly one place a criterion is worded.
 func RubricPrompt(topics TopicSet) string {
 	var b strings.Builder
 	b.WriteString("CLASSIFICAÇÃO, para cada comentário informe:\n\n")

@@ -16,12 +16,7 @@ import (
 	tguc "vozko/usecases/telegram"
 )
 
-// telegramBundle groups everything the Telegram channel needs, so the channel can
-// be wired (or skipped) as one unit instead of threading a dozen fields through
-// the container's god-structs. Same self-contained shape as instagramBundle.
 type telegramBundle struct {
-	// Enabled is false when the channel is switched off or misconfigured. Every
-	// consumer checks it before using the bundle.
 	Enabled bool
 
 	Accounts      tgdomain.AccountRepository
@@ -41,16 +36,6 @@ type telegramBundle struct {
 	PurgeEvents *tguc.PurgeProcessedEventsUseCase
 }
 
-// initTelegram builds the Telegram channel.
-//
-// The configuration is required (LoadConfig fails fast without it), so a
-// misconfigured webhook base URL is a genuine boot failure rather than a reason
-// to silently serve 404s on every Telegram route, the same rule Instagram
-// follows.
-//
-// Validating the URL here matters more than usual: Telegram's constraints on it
-// fail SILENTLY. A wrong scheme or an unsupported port produces no error at
-// registration time, only messages that never arrive.
 func (c *Container) initTelegram() {
 	bundle := &telegramBundle{}
 	c.telegram = bundle
@@ -59,9 +44,6 @@ func (c *Container) initTelegram() {
 		log.Fatalf("[telegram] %v", err)
 	}
 
-	// The client is decorated with Telegram's two published send budgets, one
-	// message per second per chat, ~30 per second per bot, through the shared
-	// Redis limiter, so they hold across replicas rather than per process.
 	api := tginfra.NewThrottled(
 		tginfra.NewClient(tginfra.Config{BaseURL: c.cfg.TelegramBotAPIBaseURL}),
 		c.redisProvider.RateLimiterFactory(),
@@ -93,16 +75,10 @@ func (c *Container) initTelegram() {
 
 	bundle.Enabled = true
 	log.Printf("[telegram] channel enabled (webhook base=%s)", c.cfg.TelegramWebhookBaseURL)
-	// Printed because a mismatch between this and what Telegram was told is the
-	// failure mode that produces silence rather than an error.
 	log.Printf("[telegram] webhook URL pattern: %s%s/{accountId}",
 		c.cfg.TelegramWebhookBaseURL, tgdomain.WebhookPathPrefix)
 }
 
-// initTelegramRuntime wires the parts that depend on the conversation stack.
-//
-// The history manager is a local inside initUseCases rather than a container
-// field, so it is passed in instead of reached for.
 func (c *Container) initTelegramRuntime(history conversation_domain.MessageHistoryManager) {
 	bundle := c.telegram
 	if bundle == nil || !bundle.Enabled {
@@ -112,13 +88,8 @@ func (c *Container) initTelegramRuntime(history conversation_domain.MessageHisto
 		log.Fatalf("[telegram] runtime wiring ran before useCases were built")
 	}
 
-	// The webhook handler needs the publisher, which only exists once the
-	// usecases are built, so it is rebuilt here with both halves.
 	bundle.WebhookHandler = telegramhttp.NewWebhookHandler(bundle.Accounts, c.useCases.publishWebhook)
 
-	// The dispatcher reuses the SHARED history manager, so Telegram gets the same
-	// persistence, dedup and websocket fan-out as every other channel rather than
-	// a parallel implementation.
 	handler := tguc.NewHandleWebhookUseCase(tguc.HandleWebhookDeps{
 		Accounts:      bundle.Accounts,
 		Contacts:      bundle.Contacts,
@@ -146,15 +117,6 @@ func (c *Container) initTelegramRuntime(history conversation_domain.MessageHisto
 	)
 }
 
-// wireTelegramConversationStack registers the Telegram channel with the shared
-// conversation services.
-//
-// Each of these is a per-channel lookup the conversation stack keys on
-// (entry_id, entry_type) and therefore cannot resolve generically: the send
-// adapter, the WS authorizer's ownership check, the workspace/department
-// resolver, the conversation-status writer and the sender-identity lookup.
-// Registering them here, rather than adding another `case "telegram"` inside
-// each of those files, is what keeps the channel additive.
 func (c *Container) wireTelegramConversationStack() {
 	bundle := c.telegram
 	if bundle == nil || !bundle.Enabled {
@@ -169,16 +131,8 @@ func (c *Container) wireTelegramConversationStack() {
 		bundle.API,
 	)
 
-	// Use registerChannelAdapter, never SetChannelAdapters: adapters accumulate,
-	// and replacing the registry would silently disable Instagram's send path.
 	c.registerChannelAdapter(adapter)
 
-	// The per-conversation automation override. Without this the toggle has no
-	// setter for Telegram and the service refuses it by name rather than
-	// silently doing nothing.
-	// The matching READER. GetEntryInfo returned a hard true for every
-	// adapter-backed channel, so the header reported automation as running even
-	// after it had been paused.
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetAutomationReader(shared.EntryType, func(context.Context, string) (*bool, error))
 	}); ok {
@@ -191,8 +145,6 @@ func (c *Container) wireTelegramConversationStack() {
 			return conv.AutomationEnabled, nil
 		})
 	} else {
-		// Never silently. A missing reader is indistinguishable from "automation
-		// is on" at the UI, which is the exact bug this registration fixes.
 		log.Printf("[telegram] history provider exposes no SetAutomationReader; the toggle will read as always-on")
 	}
 
@@ -232,18 +184,12 @@ func (c *Container) wireTelegramConversationStack() {
 	}
 }
 
-// telegramContactIdentity adapts the Telegram repositories onto the conversation
-// usecase's sender-identity port, so the CRM can label a Telegram DM without the
-// conversation package importing the Telegram domain.
 func telegramContactIdentity(bundle *telegramBundle) conversation_usecase.ContactIdentityLookup {
 	contacts, conversations := bundle.Contacts, bundle.Conversations
 
 	display := func(c *tgdomain.Contact) conversation_usecase.ContactDisplay {
 		return conversation_usecase.ContactDisplay{
-			ContactID: c.ID,
-			// The message rows carry the numeric user id as the sender, so that is
-			// what the hydration compares against when deciding whether a label is
-			// a raw provider id leaking into the UI.
+			ContactID:  c.ID,
 			Ref:        strconv.FormatInt(c.TGUserID, 10),
 			Handle:     c.Handle(),
 			Name:       c.DisplayName(),
@@ -280,8 +226,6 @@ func telegramContactIdentity(bundle *telegramBundle) conversation_usecase.Contac
 	}
 }
 
-// telegramHandler returns the channel's HTTP handler, or nil when the channel is
-// disabled, the router treats nil as "register no routes".
 func telegramHandler(c *Container) *telegramhttp.Handler {
 	if c.telegram == nil || !c.telegram.Enabled {
 		return nil
@@ -289,7 +233,6 @@ func telegramHandler(c *Container) *telegramhttp.Handler {
 	return c.telegram.Handler
 }
 
-// telegramWebhookHandler returns the webhook handler, or nil when disabled.
 func telegramWebhookHandler(c *Container) *telegramhttp.WebhookHandler {
 	if c.telegram == nil || !c.telegram.Enabled {
 		return nil

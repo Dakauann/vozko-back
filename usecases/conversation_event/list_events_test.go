@@ -98,8 +98,6 @@ func newUC(events []*ce.ConversationEvent) (ce.ListEventsUseCase, *stubUserRepo,
 	return NewListEventsUseCase(&stubEventRepo{events: events}, users, agents, nil, nil), users, agents
 }
 
-// A human reply used to render as "Human reply · Human". The sender's id was on
-// the event the whole time.
 func TestExecuteNamesTheSenderOfAHumanReply(t *testing.T) {
 	uc, _, _ := newUC([]*ce.ConversationEvent{
 		ce.New("ws", "entry", "whatsapp", ce.EventReplied).
@@ -117,7 +115,6 @@ func TestExecuteNamesTheSenderOfAHumanReply(t *testing.T) {
 	}
 }
 
-// The two sides of a handoff live in details, not on the event.
 func TestExecuteNamesBothSidesOfAHandoff(t *testing.T) {
 	uc, _, _ := newUC([]*ce.ConversationEvent{
 		ce.New("ws", "entry", "whatsapp", ce.EventAssigned).
@@ -151,7 +148,6 @@ func TestExecuteNamesTheAIAgent(t *testing.T) {
 	}
 }
 
-// One batch query per kind for the whole page, never one per row.
 func TestExecuteBatchesLookupsAcrossThePage(t *testing.T) {
 	events := []*ce.ConversationEvent{}
 	for i := 0; i < 10; i++ {
@@ -170,7 +166,6 @@ func TestExecuteBatchesLookupsAcrossThePage(t *testing.T) {
 	}
 }
 
-// A system actor has no name to show, and a failed lookup must not fail the read.
 func TestExecuteDegradesWithoutNames(t *testing.T) {
 	sys := ce.New("ws", "entry", "whatsapp", ce.EventFinished).WithActorSystem().Build()
 	if sys.ActorID != actor.SystemID {
@@ -192,7 +187,6 @@ func TestExecuteDegradesWithoutNames(t *testing.T) {
 	}
 }
 
-// An unknown id resolves to nothing rather than leaking the uuid into the UI.
 func TestExecuteLeavesUnknownIDsUnnamed(t *testing.T) {
 	uc, _, _ := newUC([]*ce.ConversationEvent{
 		ce.New("ws", "entry", "whatsapp", ce.EventAssigned).
@@ -207,9 +201,6 @@ func TestExecuteLeavesUnknownIDsUnnamed(t *testing.T) {
 	}
 }
 
-// A voice transfer's target can be an extension or a queue name. users.id is a
-// uuid column, so passing one into the batch would fail it with 22P02 and cost
-// the whole page its names.
 func TestExecuteSkipsNonUUIDTransferTargets(t *testing.T) {
 	uc, users, _ := newUC([]*ce.ConversationEvent{
 		ce.New("ws", "entry", "voice", ce.EventTransferCompleted).
@@ -234,8 +225,6 @@ func TestExecuteSkipsNonUUIDTransferTargets(t *testing.T) {
 		}
 	}
 }
-
-// --- subject-name backfill ---------------------------------------------------
 
 type stubStageRepo struct {
 	stagedomain.Repository
@@ -274,8 +263,6 @@ func newSubjectUC(events []*ce.ConversationEvent) (ce.ListEventsUseCase, *stubSt
 	return uc, stages, labels
 }
 
-// Events stored before the use case wrote names carry only uuids, and rendered
-// as a bare "Stage changed" with nothing saying which stage.
 func TestExecuteBackfillsStageAndLabelNames(t *testing.T) {
 	uc, _, _ := newSubjectUC([]*ce.ConversationEvent{
 		ce.New("ws", "e1", "whatsapp", ce.EventStageChanged).
@@ -299,8 +286,6 @@ func TestExecuteBackfillsStageAndLabelNames(t *testing.T) {
 	}
 }
 
-// A name the event already carries is authoritative — it is what the stage was
-// called when the move happened.
 func TestExecuteKeepsNamesTheEventAlreadyCarries(t *testing.T) {
 	uc, _, _ := newSubjectUC([]*ce.ConversationEvent{
 		ce.New("ws", "e1", "whatsapp", ce.EventStageChanged).
@@ -314,7 +299,6 @@ func TestExecuteKeepsNamesTheEventAlreadyCarries(t *testing.T) {
 	}
 }
 
-// One workspace read per page, and none at all when the page has no such event.
 func TestExecuteReadsStagesAndLabelsAtMostOncePerPage(t *testing.T) {
 	events := []*ce.ConversationEvent{}
 	for i := 0; i < 10; i++ {

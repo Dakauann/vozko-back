@@ -46,9 +46,6 @@ func BuildAnalysisPrompt(input AnalysisPromptInput) string {
 		if text == "" {
 			continue
 		}
-		// The same attribution the conversation transcript uses. It was spelled
-		// out twice, identically and identically wrong; one of the two copies
-		// being fixed is how the voice path would have kept reading monologues.
 		transcript.WriteString(fmt.Sprintf("%s: %s\n", transcriptRole(msg, input.UserPhoneNumber), text))
 	}
 
@@ -144,18 +141,12 @@ Transcrição:
 %s`, campaignName, userPhoneNumber, agentInstructions, ca.ConversationRubricPrompt(), ca.ConversationQualityRubricPrompt(), transcript)
 }
 
-// autoMemoryRules mirrors the manage_lead_memory tool's own guidance. Kept in
-// one place so the ride-along section and the memory-only prompt cannot drift
-// from each other or from what the tool promises the model.
 const autoMemoryRules = `- Salve apenas FATOS duráveis e declarativos sobre o lead (preferências, orçamento, datas importantes, combinados, objeções, contexto pessoal relevante).
 - NÃO salve trivialidades, dados já visíveis (nome, telefone), instruções, nem trechos da conversa.
 - Antes de salvar, confira o bloco "Memórias sobre este lead": se o fato já existe, use action='update' com o memory_id em vez de criar outro.
 - Se um fato salvo deixou de valer ou o lead pediu para esquecer, use action='forget' com o memory_id.
 - Se a conversa não trouxe nenhum fato durável novo ou alterado, NÃO chame a ferramenta manage_lead_memory.`
 
-// BuildAutoMemorySection is appended to the analysis or auto-tag prompt when
-// memorization rides along in the same LLM call. currentMemories is the block
-// rendered by the lead-memory usecase, or "" when the lead has none yet.
 func BuildAutoMemorySection(currentMemories string) string {
 	memories := currentMemories
 	if strings.TrimSpace(memories) == "" {
@@ -171,13 +162,10 @@ Além da tarefa acima, mantenha a memória de longo prazo deste lead usando a fe
 %s`, autoMemoryRules, memories)
 }
 
-// AutoMemoryPromptInput feeds the memory-only pass: a container with
-// auto-memorization enabled but analysis and auto-staging switched off.
 type AutoMemoryPromptInput struct {
-	ContainerName string
-	ContactLabel  string
-	MessageCount  int
-	// CurrentMemories is the rendered memory block, "" when the lead has none.
+	ContainerName   string
+	ContactLabel    string
+	MessageCount    int
 	CurrentMemories string
 	Transcript      string
 }
@@ -282,30 +270,6 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 	)
 }
 
-// transcriptRole says whose turn a message is, for the transcript the
-// classifier reads.
-//
-// This is the most consequential line in the renderer. Every criterion in the
-// rubric is about the EXCHANGE: whether the agent answered, how they conducted
-// themselves, whether the customer engaged, whether the conversation advanced.
-// Attribute the business's replies to the customer and the model is not reading
-// a slightly worse transcript, it is reading a different conversation: someone
-// talking to nobody.
-//
-// The row states the answer, so it is read rather than guessed:
-//
-//  1. The DIRECTION. Authoritative on every channel, and the only thing that
-//     gets the owner-replies-from-their-own-phone case right, where the sender
-//     is the same number the customer writes from.
-//  2. Failing that, the message TYPE, which names the sender: a user_message is
-//     the customer, an operator or ai_response is us. Rows written before the
-//     direction column carry this.
-//  3. Only then the sender string, kept for rows that have neither.
-//
-// It used to be (3) alone. On unofficial WhatsApp that comparison failed for
-// most outbound messages: a real conversation of 78 inbound and 58 outbound
-// froze as 91 customer lines against 6 agent lines, and the model correctly
-// reported a conversation nobody had answered.
 func transcriptRole(msg *conversation.Message, userPhoneNumber string) string {
 	const (
 		roleAgent = "Agent"

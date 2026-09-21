@@ -23,7 +23,6 @@ func parse(t *testing.T, raw string) leaddomain.ListLeadsInput {
 	return input
 }
 
-// find returns the single predicate on a field, or fails.
 func find(t *testing.T, input leaddomain.ListLeadsInput, field crmfilter.Field) crmfilter.Predicate {
 	t.Helper()
 	var found []crmfilter.Predicate
@@ -40,10 +39,6 @@ func find(t *testing.T, input leaddomain.ListLeadsInput, field crmfilter.Field) 
 	return found[0]
 }
 
-// Everything the query string can say must survive as a predicate, because the
-// repository no longer has a second scalar path to fall back on: a parameter
-// that does not become a predicate here becomes a filter that silently does
-// nothing.
 func TestFlatParamsBecomePredicates(t *testing.T) {
 	input := parse(t, "q=boleto&number=5511&name=ana&ageFrom=25&ageTo=40"+
 		"&blocked=false&windowOpen=true&channel=telegram,instagram"+
@@ -85,15 +80,11 @@ func TestFlatParamsBecomePredicates(t *testing.T) {
 		}
 	}
 
-	// The whole expression must validate: the repository compiles it verbatim,
-	// and an invalid predicate there is a 400 for a query the UI can build.
 	if err := input.Filter.Validate(); err != nil {
 		t.Fatalf("assembled filter does not validate: %v", err)
 	}
 }
 
-// An absent boolean is "no opinion", not false. Defaulting it would make the
-// unfiltered list silently hide every blocked lead.
 func TestAbsentBooleansAddNoPredicate(t *testing.T) {
 	input := parse(t, "page=1")
 	if !input.Filter.IsEmpty() {
@@ -107,7 +98,6 @@ func TestAbsentBooleansAddNoPredicate(t *testing.T) {
 	}
 }
 
-// hasX=true|false is a presence question on a membership field, not equality.
 func TestPresenceParamsMapToSetEmptiness(t *testing.T) {
 	if p := find(t, parse(t, "hasWhatsAppCampaign=true"), crmfilter.FieldCampaign); p.Operator != crmfilter.OpIsSet {
 		t.Errorf("hasWhatsAppCampaign=true operator = %q, want is_set", p.Operator)
@@ -123,8 +113,6 @@ func TestPresenceParamsMapToSetEmptiness(t *testing.T) {
 	}
 }
 
-// A date-only upper bound has to cover the whole day, or "até 31/07" drops
-// everything that happened on the 31st.
 func TestDateOnlyUpperBoundCoversTheWholeDay(t *testing.T) {
 	from := find(t, parse(t, "createdFrom=2026-07-01"), crmfilter.FieldCreatedAt)
 	if want := "2026-07-01T00:00:00Z"; from.Values[0] != want {
@@ -141,8 +129,6 @@ func TestDateOnlyUpperBoundCoversTheWholeDay(t *testing.T) {
 	}
 }
 
-// Both filter shapes must survive together: a structured expression from the
-// new UI plus whatever flat parameters the URL still carries.
 func TestStructuredFilterMergesWithFlatParams(t *testing.T) {
 	structured := `{"groups":[{"conjunction":"or","predicates":[` +
 		`{"field":"memory_category","operator":"in","values":["deal"]},` +
@@ -169,8 +155,6 @@ func TestStructuredFilterMergesWithFlatParams(t *testing.T) {
 	}
 }
 
-// Plain JSON must work too: base64 is a convenience for URL-safety, not a
-// contract a hand-written request has to satisfy.
 func TestStructuredFilterAcceptsPlainJSON(t *testing.T) {
 	raw := `{"groups":[{"predicates":[{"field":"blocked","operator":"is_true"}]}]}`
 	input := parse(t, "filter="+url.QueryEscape(raw))
@@ -186,9 +170,6 @@ func TestMalformedFilterIsRejected(t *testing.T) {
 	}
 }
 
-// The sort vocabulary is derived from the domain, so every declared key is
-// reachable over HTTP. The old hand-written map is why lastActivity was
-// offered by the UI and ignored by the server.
 func TestEverySortKeyIsAcceptedOverHTTP(t *testing.T) {
 	for _, key := range leaddomain.AllSortKeys() {
 		input := parse(t, "sort="+string(key)+":desc")
@@ -213,13 +194,11 @@ func TestSortSupportsMultipleKeysAndLegacyOrderParam(t *testing.T) {
 		t.Errorf("second key defaulted to %q, want asc", input.Options.Sorts[1].Direction)
 	}
 
-	// Legacy shape: direction in its own parameter.
 	legacy := parse(t, "sort=name&order=desc")
 	if len(legacy.Options.Sorts) != 1 || legacy.Options.Sorts[0].Direction != shared.SortDesc {
 		t.Errorf("legacy order param ignored: %+v", legacy.Options.Sorts)
 	}
 
-	// An explicit ":dir" wins over the blanket order param.
 	mixed := parse(t, "sort=name:asc&order=desc")
 	if mixed.Options.Sorts[0].Direction != shared.SortAsc {
 		t.Errorf("explicit direction was overridden by order=desc")
@@ -233,8 +212,6 @@ func TestUnknownSortKeyIsDroppedNotRejected(t *testing.T) {
 	}
 }
 
-// The page carries five correlated subqueries per row; an uncapped pageSize is
-// a way to ask one request to do unbounded work.
 func TestPageSizeIsCapped(t *testing.T) {
 	input := parse(t, "pageSize=100000")
 	if input.Options.Pagination.PageSize != leadListMaxPageSize {

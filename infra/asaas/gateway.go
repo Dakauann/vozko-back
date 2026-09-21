@@ -10,14 +10,10 @@ import (
 	"vozko/domain/payment"
 )
 
-// gatewayAdapter adapts the Asaas HTTP service to the provider-agnostic
-// payment.Gateway port. It owns every Asaas-shaped concern (billing type spelling,
-// the separate PIX QR-code call, wallet-id splits) so use cases never see them.
 type gatewayAdapter struct {
 	svc AsaasServiceUseCases
 }
 
-// NewGateway wraps an Asaas service as a payment.Gateway.
 func NewGateway(svc AsaasServiceUseCases) payment.Gateway {
 	return &gatewayAdapter{svc: svc}
 }
@@ -26,15 +22,13 @@ func (g *gatewayAdapter) Provider() payment.Provider { return payment.ProviderAs
 
 func (g *gatewayAdapter) Capabilities() payment.GatewayCapabilities {
 	return payment.GatewayCapabilities{
-		Split:            true,
-		WalletValidation: true,
-		PartialRefund:    true,
-		// Asaas derives the boleto address from the customer record it already holds.
+		Split:                 true,
+		WalletValidation:      true,
+		PartialRefund:         true,
 		BoletoRequiresAddress: false,
 	}
 }
 
-// asaasBillingType spells a canonical method the way the Asaas API expects it.
 func asaasBillingType(m payment.Method) string {
 	switch m {
 	case payment.MethodBoleto:
@@ -98,9 +92,6 @@ func (g *gatewayAdapter) CreateCharge(ctx context.Context, req payment.ChargeReq
 
 	out := g.toCharge(created, method)
 
-	// Asaas returns the PIX payload only from a second endpoint. A failure here is
-	// deliberately non-fatal: the charge exists and is payable through the invoice
-	// URL, and the caller decides whether a missing QR code is fatal for its flow.
 	if method == payment.MethodPix && created.ID != "" {
 		qr, copyPaste, qrErr := g.svc.GetPaymentQrCode(created.ID)
 		if qrErr != nil {
@@ -138,8 +129,6 @@ func (g *gatewayAdapter) RefundCharge(ctx context.Context, chargeID string, amou
 	if amount < 0 {
 		amount = 0
 	}
-	// The Asaas service takes the refund value as an integer; a zero value is how it
-	// asks for a full refund.
 	return g.svc.RefundPayment(chargeID, int64(amount), description)
 }
 

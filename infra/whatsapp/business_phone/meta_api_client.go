@@ -674,14 +674,10 @@ func (c *MetaAPIClient) GetCallingStatus(phoneNumberID string, accessToken strin
 	return strings.EqualFold(settings.Calling.Status, "ENABLED"), nil
 }
 
-// BlockUser adds a contact number to the phone's blocklist so Meta stops
-// delivering that user's inbound messages to the webhook. Note Meta only allows
-// blocking a user that messaged the business within the last 24h.
 func (c *MetaAPIClient) BlockUser(phoneNumberID string, userNumber string, accessToken string) error {
 	return c.mutateBlockUsers(http.MethodPost, phoneNumberID, userNumber, accessToken)
 }
 
-// UnblockUser removes a contact number from the phone's blocklist.
 func (c *MetaAPIClient) UnblockUser(phoneNumberID string, userNumber string, accessToken string) error {
 	return c.mutateBlockUsers(http.MethodDelete, phoneNumberID, userNumber, accessToken)
 }

@@ -15,12 +15,6 @@ import (
 	tgdomain "vozko/domain/telegram"
 )
 
-// channelAdapter is the Telegram implementation of conversation.ChannelAdapter.
-//
-// It is what makes a reply leave from the SAME bot the message arrived on:
-// ResolveEntry walks entry → conversation → account, and every send uses that
-// account's own token. With several bots connected to one workspace, nothing
-// else keeps them apart.
 type channelAdapter struct {
 	accounts      tgdomain.AccountRepository
 	contacts      tgdomain.ContactRepository
@@ -31,7 +25,6 @@ type channelAdapter struct {
 	caps channel.Capabilities
 }
 
-// NewChannelAdapter builds the Telegram send adapter.
 func NewChannelAdapter(
 	accounts tgdomain.AccountRepository,
 	contacts tgdomain.ContactRepository,
@@ -51,7 +44,6 @@ func NewChannelAdapter(
 
 func (a *channelAdapter) EntryType() shared.EntryType { return shared.EntryTypeTelegram }
 
-// ResolveEntry loads the account and contact behind an entry id.
 func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*conversation.EntryContext, error) {
 	conv, err := a.conversations.FindByID(ctx, entryID)
 	if err != nil {
@@ -67,34 +59,17 @@ func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 	}
 
 	return &conversation.EntryContext{
-		EntryID:     conv.ID,
-		EntryType:   shared.EntryTypeTelegram,
-		WorkspaceID: conv.WorkspaceID,
-		AccountID:   account.ID,
-		ContactID:   contact.ID,
-		// The chat id, not the user id: they are equal in a private chat but
-		// diverge for groups, and a group whose id migrated would otherwise be
-		// unreachable.
+		EntryID:       conv.ID,
+		EntryType:     shared.EntryTypeTelegram,
+		WorkspaceID:   conv.WorkspaceID,
+		AccountID:     account.ID,
+		ContactID:     contact.ID,
 		ContactRef:    strconv.FormatInt(conv.TGChatID, 10),
 		ContactHandle: contact.Handle(),
 		LastInboundAt: conv.LastCustomerMessageAt,
 	}, nil
 }
 
-// WindowState reports whether an outbound message is allowed right now.
-//
-// This is the one place the two connection modes genuinely differ, and it is why
-// Telegram needs no second entry type:
-//
-//   - BOT mode has no messaging window at all. A bot cannot OPEN a conversation,
-//     but every conversation we hold was opened by the customer, so the only
-//     thing that can close the composer is the customer blocking the bot.
-//   - BUSINESS mode reintroduces Instagram's exact 24h rule, because can_reply
-//     is defined as "the bot can send and edit messages in the private chats
-//     that had incoming messages in the last 24 hours".
-//
-// Both the send path and the composer's UI state consult this, so there is
-// exactly one definition of "can I reply right now".
 func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
@@ -106,8 +81,6 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 
 	if account.Mode == tgdomain.ModeBusiness {
 		if !account.BusinessEnabled || !account.Rights().CanReply {
-			// The owner disconnected the bot or revoked the reply right. No
-			// clock is involved, and no amount of waiting fixes it.
 			return conversation.ClosedWindow(conversation.WindowReasonReplyRevoked), nil
 		}
 		if ec.LastInboundAt == nil {
@@ -120,7 +93,6 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 		return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 	}
 
-	// Bot mode: the gate is reachability, not time. There is no clock at all.
 	contact, err := a.contacts.FindByID(ctx, ec.ContactID)
 	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
@@ -136,17 +108,12 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 	if err != nil {
 		return nil, err
 	}
-	// Telegram counts CHARACTERS, unlike Instagram's byte limit. Capabilities
-	// applies whichever the channel declares, so no caller has to remember which.
 	if a.caps.TextTooLong(req.Body) {
 		return nil, tgdomain.ErrTextTooLong
 	}
 
 	in := tgdomain.SendTextInput{
-		ChatID: conv.TGChatID,
-		// HTML rather than MarkdownV2: MarkdownV2 requires escaping a long list
-		// of characters, and a single stray underscore in a customer's name fails
-		// the whole send.
+		ChatID:               conv.TGChatID,
 		Text:                 html.EscapeString(req.Body),
 		ParseMode:            "HTML",
 		BusinessConnectionID: businessConnectionOf(account, conv),
@@ -166,9 +133,6 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 		account.BotUsername, result.ChatID, result.MessageID)
 	a.recordOutbound(ctx, ec)
 
-	// The provider id is known synchronously, Telegram answers a send with the
-	// full Message, so there is no echo webhook to reconcile against, unlike
-	// every Meta channel.
 	return &conversation.SendOutcome{
 		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
 	}, nil
@@ -202,9 +166,6 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 		}
 	}
 
-	// A previously uploaded asset is re-sent by file_id, which has NO size limit
-	// and costs no upload at all. This is what makes a repeated boleto image or
-	// logo free, and it sidesteps the URL-send size caps entirely.
 	cacheKey := req.URL
 	if cacheKey != "" && a.files != nil {
 		if fileID, err := a.files.Get(ctx, account.ID, cacheKey); err == nil && fileID != "" {
@@ -233,12 +194,6 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 	}, nil
 }
 
-// SendReaction implements conversation.ReactingAdapter.
-//
-// Bots may set at most one reaction per message. Note this is outbound only:
-// receiving a customer's reaction requires the bot to be "an administrator in
-// the chat", which does not exist in a private chat, so nothing is promised on
-// the inbound side.
 func (a *channelAdapter) SendReaction(ctx context.Context, ec *conversation.EntryContext, targetProviderMessageID, reaction string) error {
 	account, conv, err := a.sendable(ctx, ec)
 	if err != nil {
@@ -255,18 +210,11 @@ func (a *channelAdapter) SendReaction(ctx context.Context, ec *conversation.Entr
 }
 
 func (a *channelAdapter) RemoveReaction(ctx context.Context, ec *conversation.EntryContext, targetProviderMessageID string) error {
-	// An empty emoji clears the reaction, the same call, no separate method.
 	return a.SendReaction(ctx, ec, targetProviderMessageID, "")
 }
 
-// SendTyping implements conversation.PresenceAdapter.
-//
-// The indicator expires in five seconds or less, so a caller showing it across a
-// slow AI turn must re-issue it rather than set it once.
 func (a *channelAdapter) SendTyping(ctx context.Context, ec *conversation.EntryContext, on bool) error {
 	if !on {
-		// There is no "stop typing" call: the status clears itself, and clears
-		// immediately when a message arrives from the bot.
 		return nil
 	}
 	account, conv, err := a.sendable(ctx, ec)
@@ -280,11 +228,6 @@ func (a *channelAdapter) SendTyping(ctx context.Context, ec *conversation.EntryC
 	return nil
 }
 
-// MarkSeen marks the customer's message read on the account owner's behalf.
-//
-// Business mode only, and only with the can_read_messages right, a bot has no
-// read receipts of its own. Bot mode reports the capability as unsupported
-// rather than silently doing nothing, so a caller cannot believe it worked.
 func (a *channelAdapter) MarkSeen(ctx context.Context, ec *conversation.EntryContext, upToProviderMessageID string) error {
 	account, conv, err := a.sendable(ctx, ec)
 	if err != nil {
@@ -309,12 +252,6 @@ func (a *channelAdapter) MarkSeen(ctx context.Context, ec *conversation.EntryCon
 	return nil
 }
 
-// EditText implements conversation.EditingAdapter.
-//
-// Telegram is the only channel we carry where an operator can fix a message
-// already sent. Neither WhatsApp nor Instagram permits it, which is why this is
-// an OPTIONAL capability discovered by type assertion rather than a method on
-// every adapter.
 func (a *channelAdapter) EditText(ctx context.Context, ec *conversation.EntryContext, providerMessageID, body string) error {
 	account, conv, err := a.sendable(ctx, ec)
 	if err != nil {
@@ -334,11 +271,6 @@ func (a *channelAdapter) EditText(ctx context.Context, ec *conversation.EntryCon
 	return nil
 }
 
-// Retract implements conversation.RetractingAdapter, a real unsend.
-//
-// Bounded by Telegram's rule: "A message can only be deleted if it was sent less
-// than 48 hours ago." The bound is enforced here as well as upstream so the
-// error names the reason instead of surfacing an opaque Bad Request.
 func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryContext, providerMessageID string, sentAt time.Time) error {
 	account, conv, err := a.sendable(ctx, ec)
 	if err != nil {
@@ -362,8 +294,6 @@ func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryCont
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------- internals
 
 func (a *channelAdapter) sendable(ctx context.Context, ec *conversation.EntryContext) (*tgdomain.Account, *tgdomain.Conversation, error) {
 	if ec == nil || ec.AccountID == "" || ec.EntryID == "" {
@@ -395,10 +325,6 @@ func (a *channelAdapter) sendable(ctx context.Context, ec *conversation.EntryCon
 	return account, conv, nil
 }
 
-// businessConnectionOf returns the connection to send on behalf of, or "" in bot
-// mode. The conversation's own connection wins: an account may have been
-// reconnected, and a conversation must keep answering on the connection it
-// arrived through.
 func businessConnectionOf(account *tgdomain.Account, conv *tgdomain.Conversation) string {
 	if account.Mode != tgdomain.ModeBusiness {
 		return ""
@@ -412,8 +338,6 @@ func businessConnectionOf(account *tgdomain.Account, conv *tgdomain.Conversation
 	return ""
 }
 
-// validateMedia checks kind, MIME type and size against the descriptor before
-// spending an API call.
 func (a *channelAdapter) validateMedia(req conversation.SendMediaRequest) error {
 	kind := channel.MediaKind(req.Kind)
 	limit, ok := a.caps.MediaLimits[kind]
@@ -436,11 +360,6 @@ func (a *channelAdapter) validateMedia(req conversation.SendMediaRequest) error 
 	return nil
 }
 
-// mediaKindFor picks the send method.
-//
-// A voice note is not just "audio": sendVoice renders an in-chat waveform, and
-// Telegram requires audio/ogg for it, anything else "will be sent as files". So
-// the ogg check decides the method rather than the caller.
 func mediaKindFor(kind, mimeType string) tgdomain.MediaKind {
 	switch kind {
 	case "image":
@@ -457,23 +376,10 @@ func mediaKindFor(kind, mimeType string) tgdomain.MediaKind {
 	}
 }
 
-// recordOutbound advances the agent clock. Best effort: the message is already
-// delivered, so a bookkeeping failure must not surface as a send failure.
 func (a *channelAdapter) recordOutbound(ctx context.Context, ec *conversation.EntryContext) {
 	_ = a.conversations.RecordOutbound(ctx, ec.EntryID, time.Now().UTC())
 }
 
-// classify maps a Bot API failure onto a domain error and reacts to it.
-//
-// Telegram gives more usable failure information than Meta does, and all three
-// cases below are actionable rather than merely loggable:
-//
-//   - 401 means the token was revoked in BotFather; the account is marked so the
-//     UI shows Reconnect instead of failing silently forever.
-//   - 403 means the customer blocked the bot; the contact is flagged so the
-//     composer explains itself.
-//   - migrate_to_chat_id means the group became a supergroup and has a NEW id;
-//     rewriting it is the only thing that keeps the conversation alive.
 func (a *channelAdapter) classify(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -502,8 +408,6 @@ func (a *channelAdapter) classify(
 			fmt.Errorf("%w: %s", tgdomain.ErrContactBlocked, apiErr.Description))
 
 	case apiErr.Migrated():
-		// Rewriting both rows is what makes the NEXT send work. Not doing it
-		// leaves the conversation permanently unreachable with no visible cause.
 		log.Printf("[telegram] chat %d migrated to %d; rewriting conversation %s",
 			conv.TGChatID, apiErr.MigrateToChatID, conv.ID)
 		_ = a.conversations.UpdateChatID(ctx, conv.ID, apiErr.MigrateToChatID)

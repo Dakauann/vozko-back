@@ -74,10 +74,10 @@ func TestReconcile_SuspendsOnlyOverCapWorkspaces(t *testing.T) {
 
 func TestReconcile_ReactivatesUnderServedWorkspaceWithSuspended(t *testing.T) {
 	reader := &fakeOwnerReader{
-		connectedCnt: map[string]int{}, // wsUnder has 0 connected
+		connectedCnt: map[string]int{},
 		suspendedWS:  []string{"wsUnder"},
 	}
-	resolver := &fakeBatchResolver{limits: map[string]int{"wsUnder": 1}} // room: 1 > 0
+	resolver := &fakeBatchResolver{limits: map[string]int{"wsUnder": 1}}
 	handler := &recordingHandler{}
 	uc := NewReconcileWhatsAppEntitlementsUseCase(reader, resolver, handler)
 
@@ -117,7 +117,6 @@ func TestReconcile_ResolveErrorSkipsChunkFailSafe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a resolve failure must be a per-chunk skip, not a hard error: %v", err)
 	}
-	// Never suspend on uncertain data.
 	if n != 0 || len(handler.reduced) != 0 {
 		t.Fatalf("must not act when entitlement could not be resolved, n=%d reduced=%v", n, handler.reduced)
 	}

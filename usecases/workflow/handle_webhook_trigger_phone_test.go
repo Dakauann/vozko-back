@@ -11,9 +11,6 @@ func phoneReq(body string) WebhookRequest {
 	return WebhookRequest{Token: "tok", Method: "POST", RawBody: []byte(body), Header: headerFunc(nil)}
 }
 
-// A payload with no entry_id but a phone resolves the entry via the resolver and
-// starts the run against the resolved entry, without touching the ownership
-// check (resolution is already workspace-scoped).
 func TestWebhookTrigger_ResolvesByPhone(t *testing.T) {
 	h := newWebhookHarness()
 	h.resolver.entryID = "e-ph"
@@ -41,9 +38,8 @@ func TestWebhookTrigger_ResolvesByPhone(t *testing.T) {
 	}
 }
 
-// A phone that matches no entry is a 404-class outcome, and no run is started.
 func TestWebhookTrigger_PhoneNotFound(t *testing.T) {
-	h := newWebhookHarness() // resolver returns "" by default
+	h := newWebhookHarness()
 
 	_, err := h.uc.Execute(phoneReq(`{"phone":"+5511999999999"}`))
 	if !errors.Is(err, workflow.ErrWebhookEntryNotFound) {
@@ -54,7 +50,6 @@ func TestWebhookTrigger_PhoneNotFound(t *testing.T) {
 	}
 }
 
-// Neither entry_id nor phone is a bad request.
 func TestWebhookTrigger_NoEntryNoPhone(t *testing.T) {
 	h := newWebhookHarness()
 
@@ -64,8 +59,6 @@ func TestWebhookTrigger_NoEntryNoPhone(t *testing.T) {
 	}
 }
 
-// The pre-existing entry_id contract is untouched: when entry_id is present the
-// resolver is never consulted.
 func TestWebhookTrigger_EntryIDSkipsResolver(t *testing.T) {
 	h := newWebhookHarness()
 

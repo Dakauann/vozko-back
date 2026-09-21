@@ -46,33 +46,18 @@ var (
 	ErrURLButtonTooManyVars    = errors.New("URL button can have at most 1 variable")
 	ErrCopyCodeNeedsExample    = errors.New("COPY_CODE button requires an example")
 
-	ErrOTPTypeRequired    = errors.New("an OTP button needs an otp_type - COPY_CODE, ONE_TAP or ZERO_TAP")
-	ErrInvalidOTPType     = errors.New("invalid otp_type - must be COPY_CODE, ONE_TAP or ZERO_TAP")
-	ErrMultipleOTPButtons = errors.New("a template can carry at most one OTP button")
-	// ErrOTPTypeUnsupported is a real otp_type this product cannot BUILD. One-tap
-	// and zero-tap need the recipient app's package name and signature hash, which
-	// nothing here collects, so Meta would reject the template.
-	ErrOTPTypeUnsupported = errors.New("only COPY_CODE one-time password buttons can be created here - ONE_TAP and ZERO_TAP need an Android app registered with Meta")
-	// ErrOTPButtonNotAuthentication is a code button on a template Meta would
-	// price as marketing. Refused rather than sent: the coupon COPY_CODE button
-	// is the thing that belongs there, and it is a different button with a
-	// different parameter.
-	ErrOTPButtonNotAuthentication   = errors.New("only an AUTHENTICATION template can carry an OTP button")
-	ErrAuthenticationNeedsOTPButton = errors.New("an AUTHENTICATION template needs an OTP button")
-	ErrCodeExpirationOutOfRange     = errors.New("code_expiration_minutes must be between 1 and 90")
-	// The three below are Meta's shape rules for the category. An authentication
-	// template is not a template the business writes: WhatsApp writes the body and
-	// the footer, translates both, and allows no header at all.
+	ErrOTPTypeRequired                 = errors.New("an OTP button needs an otp_type - COPY_CODE, ONE_TAP or ZERO_TAP")
+	ErrInvalidOTPType                  = errors.New("invalid otp_type - must be COPY_CODE, ONE_TAP or ZERO_TAP")
+	ErrMultipleOTPButtons              = errors.New("a template can carry at most one OTP button")
+	ErrOTPTypeUnsupported              = errors.New("only COPY_CODE one-time password buttons can be created here - ONE_TAP and ZERO_TAP need an Android app registered with Meta")
+	ErrOTPButtonNotAuthentication      = errors.New("only an AUTHENTICATION template can carry an OTP button")
+	ErrAuthenticationNeedsOTPButton    = errors.New("an AUTHENTICATION template needs an OTP button")
+	ErrCodeExpirationOutOfRange        = errors.New("code_expiration_minutes must be between 1 and 90")
 	ErrAuthenticationNoHeader          = errors.New("an AUTHENTICATION template cannot have a HEADER component - WhatsApp does not render one")
 	ErrAuthenticationBodyNotEditable   = errors.New("an AUTHENTICATION template body is written by WhatsApp and cannot carry your own text")
 	ErrAuthenticationFooterNotEditable = errors.New("an AUTHENTICATION template footer is WhatsApp's expiry line and cannot carry your own text")
-	// ErrAuthenticationCodeTooLong is a send Meta refuses: the one-time code is
-	// capped at 15 characters.
-	ErrAuthenticationCodeTooLong = errors.New("the one-time code cannot exceed 15 characters")
-	// ErrAuthenticationCodeRequired is a SEND with no code in it. Meta answers
-	// that with error 132000, a parameter count mismatch, which names neither
-	// the template nor the missing code.
-	ErrAuthenticationCodeRequired = errors.New("an authentication template send needs the one-time code as its first parameter")
+	ErrAuthenticationCodeTooLong       = errors.New("the one-time code cannot exceed 15 characters")
+	ErrAuthenticationCodeRequired      = errors.New("an authentication template send needs the one-time code as its first parameter")
 
 	ErrCallPermissionWithButtons      = errors.New("a CALL_PERMISSION_REQUEST template cannot also include a BUTTONS component - WhatsApp renders the permission buttons automatically")
 	ErrMultipleCallPermissionRequests = errors.New("template can have at most one CALL_PERMISSION_REQUEST component")
@@ -121,30 +106,14 @@ func (c TemplateCategory) IsValid() bool {
 	}
 }
 
-// OTPType is what an authentication template's code button does when the
-// recipient taps it.
-//
-// Authentication is the one category Meta writes the copy for: the business
-// supplies no body text at all, only a flag for the security line, a number of
-// minutes for the expiry line, and one of these buttons. That inversion is why
-// the category has rules of its own further down this file.
 type OTPType string
 
 const (
-	// OTPTypeCopyCode copies the code to the clipboard. The only kind that needs
-	// no app-side integration, so it is the one a CRM can offer to anybody.
 	OTPTypeCopyCode OTPType = "COPY_CODE"
-	// OTPTypeOneTap autofills the code into a registered Android app.
-	OTPTypeOneTap OTPType = "ONE_TAP"
-	// OTPTypeZeroTap delivers the code to a registered app with no tap at all.
-	OTPTypeZeroTap OTPType = "ZERO_TAP"
+	OTPTypeOneTap   OTPType = "ONE_TAP"
+	OTPTypeZeroTap  OTPType = "ZERO_TAP"
 )
 
-// IsValid reports whether this is one of Meta's otp_type values at all.
-//
-// Deliberately broader than Supported: a template created in Business Manager
-// with a one-tap button syncs into this product and must stay readable and
-// sendable. Only BUILDING one here is refused.
 func (o OTPType) IsValid() bool {
 	switch o {
 	case OTPTypeCopyCode, OTPTypeOneTap, OTPTypeZeroTap:
@@ -154,13 +123,6 @@ func (o OTPType) IsValid() bool {
 	}
 }
 
-// Supported reports whether this product can CREATE a button of this kind.
-//
-// Only copy-code. One-tap and zero-tap autofill the code into an Android app,
-// and Meta only wires that up when the template carries that app's package name
-// and signature hash — neither of which anything here collects, so a template
-// created with them is one Meta rejects. Refusing with a sentence that explains
-// the missing piece beats forwarding a provider error nobody can act on.
 func (o OTPType) Supported() bool {
 	return o == OTPTypeCopyCode
 }
@@ -214,11 +176,6 @@ type TemplateComponent struct {
 	Parameters []string         `json:"parameters,omitempty"`
 	Example    *TemplateExample `json:"example,omitempty"`
 
-	// AddSecurityRecommendation and CodeExpirationMinutes are how an
-	// authentication template's BODY and FOOTER are written: Meta owns the copy
-	// and renders it per language, so the business sets a flag and a number
-	// instead of text. Pointers because "not set" and "set to false/zero" are
-	// different instructions to Meta. Nil on every other category.
 	AddSecurityRecommendation *bool `json:"addSecurityRecommendation,omitempty"`
 	CodeExpirationMinutes     *int  `json:"codeExpirationMinutes,omitempty"`
 }
@@ -242,9 +199,7 @@ type TemplateButton struct {
 	URL         string `json:"url,omitempty"`
 	PhoneNumber string `json:"phoneNumber,omitempty"`
 	Example     string `json:"example,omitempty"`
-	// OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button. See
-	// authentication.go for why it is a field of its own rather than a Type.
-	OTPType string `json:"otpType,omitempty"`
+	OTPType     string `json:"otpType,omitempty"`
 }
 
 func NewTemplate(name, externalID, language string, category TemplateCategory, status TemplateStatus) (*Template, error) {
@@ -385,20 +340,12 @@ func (t *Template) ParameterCount() int {
 		}
 	}
 
-	// An authentication template takes the code and nothing else, whatever its
-	// stored body text parses to. Meta owns that text: it is created empty (the
-	// business sends a flag, not a sentence) and read back rendered, so counting
-	// placeholders answers 0 for a template that needs exactly 1 — and a caller
-	// that trusts 0, like the campaign consumer slicing entry variables, sends
-	// no code at all.
 	if t.IsAuthentication() && count < authenticationBodyParamCount {
 		return authenticationBodyParamCount
 	}
 	return count
 }
 
-// IsAuthentication reports whether Meta prices and renders this as an
-// authentication template.
 func (t *Template) IsAuthentication() bool {
 	if t == nil {
 		return false
@@ -406,12 +353,6 @@ func (t *Template) IsAuthentication() bool {
 	return TemplateCategory(strings.ToUpper(strings.TrimSpace(string(t.Category)))) == TemplateCategoryAuthentication
 }
 
-// OTPButton returns the code button and its index WITHIN the BUTTONS component.
-//
-// The index is the part worth being careful about: it is what the send payload
-// keys the parameter on, and it counts buttons, not components. A template with
-// a quick reply ahead of its code button puts the code at index 1, and sending
-// it at index 0 addresses the quick reply instead.
 func (t *Template) OTPButton() (TemplateButton, int, bool) {
 	if t == nil {
 		return TemplateButton{}, 0, false
@@ -429,14 +370,6 @@ func (t *Template) OTPButton() (TemplateButton, int, bool) {
 	return TemplateButton{}, 0, false
 }
 
-// AuthenticationCode pulls the one-time code out of the body parameters.
-//
-// The code is an ordinary first body parameter, which is the whole point: every
-// existing send path already collects body parameters (a campaign from its
-// entry variables, a workflow from its node config, quick-send from the
-// request), so none of them needs a new field to send an authentication
-// template. The duplication Meta requires — the same code in the body and on
-// the button — happens in BuildSendInput, once.
 func (t *Template) AuthenticationCode(bodyParams []string) (string, error) {
 	if len(bodyParams) < authenticationBodyParamCount {
 		return "", ErrAuthenticationCodeRequired
@@ -445,9 +378,6 @@ func (t *Template) AuthenticationCode(bodyParams []string) (string, error) {
 	if code == "" {
 		return "", ErrAuthenticationCodeRequired
 	}
-	// Meta caps the code at 15 characters. Counted in runes rather than bytes:
-	// the cap is about what fits the button, and a byte count would refuse a
-	// shorter code that happens to carry an accent.
 	if len([]rune(code)) > MaxAuthenticationCodeLength {
 		return "", ErrAuthenticationCodeTooLong
 	}
@@ -482,11 +412,6 @@ func (t *Template) GetBodyAndHeaderParameterNames() (bodyParams []string, header
 		}
 	}
 
-	// Same rule as ParameterCount, and for the same reason: Meta owns an
-	// authentication template's body, so there may be no placeholder to take a
-	// name from even though the template takes exactly one parameter. Naming it
-	// "1" here is what lets a workflow node, whose config is keyed by parameter
-	// name, collect the code at all.
 	if t.IsAuthentication() && len(bodyParams) == 0 {
 		bodyParams = []string{"1"}
 	}
@@ -541,9 +466,6 @@ func countTemplateParameters(text string) int {
 	return len(params)
 }
 
-// hasMixedParameterStyles reports whether the body/header text mixes numbered
-// ({{1}}) and named ({{order}}) placeholders. Meta requires a single
-// parameter_format per template, so a mix is rejected with INVALID_FORMAT.
 func hasMixedParameterStyles(components []TemplateComponent) bool {
 	hasPositional, hasNamed := false, false
 	for _, c := range components {
@@ -577,13 +499,6 @@ func (t *Template) HasOnlyPositionalParameters() bool {
 }
 
 func (t *Template) IsNamedParameterFormat() bool {
-	// The body is the source of truth. A template whose placeholders are named
-	// ({{nome}}) is NAMED regardless of a stale or incorrect stored ParameterFormat:
-	// synced/duplicate rows sometimes carry a wrong "positional" value even though
-	// the approved template uses named variables, and sending those positionally
-	// makes Meta reject the whole send with (#100) "Parameter name is missing or
-	// empty". Only when the placeholders are purely positional ({{1}}) or absent do
-	// we fall back to the stored format.
 	if !t.HasOnlyPositionalParameters() {
 		return true
 	}
@@ -600,11 +515,6 @@ func (t *Template) GetEffectiveParameterFormat() ParameterFormat {
 	return ParameterFormatNamed
 }
 
-// ToMetaAPIFormat maps the domain parameter format to the value Meta's Cloud
-// API expects in the top-level "parameter_format" field ("NAMED"/"POSITIONAL").
-// Meta requires this to be present and to match the placeholder style used in
-// the body: named placeholders ({{order}}) sent without parameter_format=NAMED
-// are rejected with rejected_reason=INVALID_FORMAT.
 func (p ParameterFormat) ToMetaAPIFormat() string {
 	switch p {
 	case ParameterFormatNamed:
@@ -625,34 +535,16 @@ const (
 	MaxButtonURLLength    = 2000
 	MaxButtons            = 10
 
-	// MinCodeExpirationMinutes and MaxCodeExpirationMinutes bound an
-	// authentication template's expiry line. Meta's own limits, enforced here so
-	// a rejected template is a validation error the operator can read rather
-	// than a 400 they cannot.
 	MinCodeExpirationMinutes = 1
 	MaxCodeExpirationMinutes = 90
 
-	// MaxAuthenticationCodeLength is Meta's cap on the one-time code itself,
-	// which is also the cap on the copy-code button example string.
 	MaxAuthenticationCodeLength = 15
 )
 
-// ButtonTypeOTP is how an authentication template declares its code button.
-// Meta decides the label and the behaviour from the button's OTPType.
-//
-// Distinct from COPY_CODE, which is the coupon button on a marketing template:
-// the two look alike to a reader and take different parameters on send.
 const ButtonTypeOTP = "OTP"
 
-// authenticationBodyParamCount is how many parameters an authentication
-// template takes: the code, once. Meta's format is fixed, so this is a constant
-// rather than something parsed out of the body.
 const authenticationBodyParamCount = 1
 
-// ComponentTypeCallPermissionRequest is a parameter-less component that asks the
-// user for permission to receive a WhatsApp Business call. Meta renders the
-// accept/decline (and temporary/permanent) buttons automatically; the template
-// only carries this marker plus the required BODY (and optional HEADER/FOOTER).
 const ComponentTypeCallPermissionRequest = "CALL_PERMISSION_REQUEST"
 
 var validComponentTypes = map[string]bool{
@@ -677,10 +569,7 @@ var validButtonTypes = map[string]bool{
 	"URL":          true,
 	"PHONE_NUMBER": true,
 	"COPY_CODE":    true,
-	// OTP is the authentication code button. Distinct from COPY_CODE, which is
-	// the coupon button on a marketing template: they look alike to a reader and
-	// take different parameters on send. See authentication.go.
-	ButtonTypeOTP: true,
+	ButtonTypeOTP:  true,
 }
 
 var mediaHeaderFormats = map[string]bool{
@@ -835,9 +724,6 @@ func validateButtons(buttons []TemplateButton) error {
 			return ErrInvalidButtonType
 		}
 
-		// Meta writes the label for both of these, localized per language, so a
-		// missing text is the normal case rather than a mistake. A label the
-		// business did supply is still held to the length limit below.
 		labelOptional := btnType == "COPY_CODE" || btnType == ButtonTypeOTP
 		if !labelOptional {
 			if strings.TrimSpace(btn.Text) == "" {
@@ -851,8 +737,6 @@ func validateButtons(buttons []TemplateButton) error {
 		if btnType == ButtonTypeOTP {
 			otpCount++
 			if otpCount > 1 {
-				// A second code button has no index Meta would send a second
-				// code to, so it is a template that can never be sent.
 				return ErrMultipleOTPButtons
 			}
 			otpType := OTPType(strings.ToUpper(strings.TrimSpace(btn.OTPType)))
@@ -862,9 +746,6 @@ func validateButtons(buttons []TemplateButton) error {
 			if !otpType.IsValid() {
 				return ErrInvalidOTPType
 			}
-			// A real otp_type this product cannot build is a different failure
-			// from a word that is not an otp_type, and the operator needs the
-			// difference: one is a typo, the other needs an Android app.
 			if !otpType.Supported() {
 				return ErrOTPTypeUnsupported
 			}
@@ -963,8 +844,6 @@ func ValidateComponents(components []TemplateComponent) error {
 		return ErrMultipleCallPermissionRequests
 	}
 
-	// A call-permission template's accept/decline buttons are rendered by
-	// WhatsApp, so it must not carry its own BUTTONS component.
 	if callPermissionCount > 0 && hasButtons {
 		return ErrCallPermissionWithButtons
 	}
@@ -972,13 +851,6 @@ func ValidateComponents(components []TemplateComponent) error {
 	return nil
 }
 
-// ValidateAuthenticationTemplate holds the rules that need the CATEGORY, which
-// ValidateComponents does not take.
-//
-// Separate from ValidateComponents rather than folded into it because the
-// category is a fact about the template and the components are a fact about its
-// layout, and ValidateComponents is called from places that have only the
-// second. Both run on create.
 func ValidateAuthenticationTemplate(category TemplateCategory, components []TemplateComponent) error {
 	normalized := TemplateCategory(strings.ToUpper(strings.TrimSpace(string(category))))
 	isAuth := normalized == TemplateCategoryAuthentication
@@ -987,16 +859,10 @@ func ValidateAuthenticationTemplate(category TemplateCategory, components []Temp
 	for _, comp := range components {
 		switch strings.ToUpper(comp.Type) {
 		case "HEADER":
-			// Meta: "Authentication templates don't use a HEADER component."
-			// Text or media, it does not matter; there is no header slot to
-			// render one into.
 			if isAuth {
 				return ErrAuthenticationNoHeader
 			}
 		case "BODY":
-			// The body is Meta's preset, translated per language. Business text
-			// here is text Meta refuses, so it is refused where the message can
-			// explain that rather than coming back as a rejected_reason.
 			if isAuth && strings.TrimSpace(comp.Text) != "" {
 				return ErrAuthenticationBodyNotEditable
 			}

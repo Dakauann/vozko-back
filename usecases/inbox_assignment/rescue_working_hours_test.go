@@ -14,9 +14,6 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// The tests below run in São Paulo time, because that is where the deadline is
-// felt: the sweep's own clock is UTC, and a schedule that only works when the
-// two agree would pass here and fail in production.
 var saoPaulo = mustLoadSaoPaulo()
 
 func mustLoadSaoPaulo() *time.Location {
@@ -38,13 +35,10 @@ func officeSpec() *wh.Spec {
 	}
 }
 
-// local builds an instant in São Paulo and hands back its UTC form, which is
-// what the sweep actually works in.
 func local(y int, m time.Month, d, h, min int) time.Time {
 	return time.Date(y, m, d, h, min, 0, 0, saoPaulo).UTC()
 }
 
-// stubDepartmentSchedules is the one-query-per-tick department override reader.
 type stubDepartmentSchedules struct {
 	rows  []wd.DepartmentSchedule
 	err   error
@@ -56,8 +50,6 @@ func (s *stubDepartmentSchedules) ListWorkingHours([]string) ([]wd.DepartmentSch
 	return s.rows, s.err
 }
 
-// hoursFixture drives real sweeps against the interval store, with a workspace
-// schedule and a controllable clock.
 type hoursFixture struct {
 	t     *testing.T
 	base  *rescueFixture
@@ -111,10 +103,6 @@ func (f *hoursFixture) sweepAt(at time.Time) {
 
 func (f *hoursFixture) owner() string { return f.base.ownerOf("entry-1") }
 
-// ── the scenario the feature exists for ─────────────────────────────────────
-
-// Handed out at 17:55 on Monday with a fifteen-minute deadline. Five minutes
-// are spent before the office closes; the rest must not run overnight.
 func TestWorkingHours_DeadlineDoesNotRunOvernight(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), nil)
 	f.handOutAt(local(2026, 9, 7, 17, 55), "ana", "")
@@ -132,7 +120,6 @@ func TestWorkingHours_DeadlineDoesNotRunOvernight(t *testing.T) {
 	assert.Equal(t, "bob", f.owner(), "the deadline lands at 09:10, not at 18:10 the night before")
 }
 
-// A Friday evening hand-out waits out the whole weekend.
 func TestWorkingHours_DeadlineSkipsTheWeekend(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), nil)
 	f.handOutAt(local(2026, 9, 11, 17, 55), "ana", "")
@@ -146,7 +133,6 @@ func TestWorkingHours_DeadlineSkipsTheWeekend(t *testing.T) {
 	assert.Equal(t, "bob", f.owner(), "monday morning")
 }
 
-// Inside working hours the behaviour is exactly what it was before the feature.
 func TestWorkingHours_InsideHoursBehavesAsBefore(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), nil)
 	f.handOutAt(local(2026, 9, 7, 10, 0), "ana", "")
@@ -155,17 +141,13 @@ func TestWorkingHours_InsideHoursBehavesAsBefore(t *testing.T) {
 	assert.Equal(t, "bob", f.owner())
 }
 
-// A workspace with no schedule keeps running around the clock, with no
-// migration and no flag to set.
 func TestWorkingHours_UnconfiguredWorkspaceIsAlwaysOpen(t *testing.T) {
 	f := newHoursFixture(t, nil, nil)
-	f.handOutAt(local(2026, 9, 13, 2, 0), "ana", "") // sunday, 2am
+	f.handOutAt(local(2026, 9, 13, 2, 0), "ana", "")
 
 	f.sweepAt(local(2026, 9, 13, 2, 20))
 	assert.Equal(t, "bob", f.owner())
 }
-
-// ── department overrides ────────────────────────────────────────────────────
 
 func saturdayDeskSpec() *wh.Spec {
 	return &wh.Spec{
@@ -174,32 +156,26 @@ func saturdayDeskSpec() *wh.Spec {
 	}
 }
 
-// The case override-not-intersection exists for: a desk that works Saturdays
-// inside a Mon-Fri company. An intersection would leave it permanently closed.
 func TestWorkingHours_DepartmentOverridesAClosedWorkspace(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), []wd.DepartmentSchedule{
 		{DepartmentID: "dept-support", WorkspaceID: "ws-1", WorkingHours: saturdayDeskSpec()},
 	})
-	f.handOutAt(local(2026, 9, 12, 10, 0), "ana", "dept-support") // saturday
+	f.handOutAt(local(2026, 9, 12, 10, 0), "ana", "dept-support")
 
 	f.sweepAt(local(2026, 9, 12, 10, 20))
 	assert.Equal(t, "bob", f.owner(), "the workspace is shut but this desk is not")
 }
 
-// The mirror image: a department whose own hours are closed is left alone even
-// though its workspace is open, so the pre-filter keeping the workspace does
-// not leak into rescuing conversations nobody is there to take.
 func TestWorkingHours_DepartmentClosedInsideAnOpenWorkspace(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), []wd.DepartmentSchedule{
 		{DepartmentID: "dept-night", WorkspaceID: "ws-1", WorkingHours: saturdayDeskSpec()},
 	})
-	f.handOutAt(local(2026, 9, 7, 10, 0), "ana", "dept-night") // monday, desk is saturday-only
+	f.handOutAt(local(2026, 9, 7, 10, 0), "ana", "dept-night")
 
 	f.sweepAt(local(2026, 9, 7, 10, 30))
 	assert.Equal(t, "ana", f.owner(), "workspace open, this department is not")
 }
 
-// A department without its own hours follows the workspace.
 func TestWorkingHours_DepartmentWithoutOverrideInherits(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), []wd.DepartmentSchedule{
 		{DepartmentID: "dept-other", WorkspaceID: "ws-1", WorkingHours: saturdayDeskSpec()},
@@ -212,9 +188,6 @@ func TestWorkingHours_DepartmentWithoutOverrideInherits(t *testing.T) {
 	assert.Equal(t, "bob", f.owner(), "and its reopening")
 }
 
-// ── cost and failure posture ────────────────────────────────────────────────
-
-// Department overrides are read once per tick, never per conversation.
 func TestWorkingHours_DepartmentSchedulesAreReadOncePerTick(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), []wd.DepartmentSchedule{
 		{DepartmentID: "dept-support", WorkspaceID: "ws-1", WorkingHours: saturdayDeskSpec()},
@@ -225,8 +198,6 @@ func TestWorkingHours_DepartmentSchedulesAreReadOncePerTick(t *testing.T) {
 	assert.Equal(t, 1, f.depts.calls, "one read for the whole sweep")
 }
 
-// A closed workspace is dropped BEFORE the candidate query, which is what stops
-// one shut office from filling the batch and starving open ones.
 func TestWorkingHours_ClosedWorkspaceSkipsTheCandidateQuery(t *testing.T) {
 	base := newRescueFixture(t,
 		[]string{"ana", "bob"},
@@ -237,30 +208,25 @@ func TestWorkingHours_ClosedWorkspaceSkipsTheCandidateQuery(t *testing.T) {
 		WorkingHours: officeSpec(),
 	}}
 	job := NewRescueJob(base.cfg, base.history, base.att, base.status, base.svc)
-	job.SetClock(func() time.Time { return local(2026, 9, 13, 3, 0) }) // sunday, 3am
+	job.SetClock(func() time.Time { return local(2026, 9, 13, 3, 0) })
 
 	require.NoError(t, job.Execute(context.Background()))
 	assert.Nil(t, base.history.listArgs.workspaceIDs,
 		"nothing can be due in a closed workspace, so nothing is queried for it")
 }
 
-// An unreadable schedule must not freeze the sweep: always open is the
-// behaviour that predates working hours, so a bad policy costs a workspace its
-// schedule rather than its inbox.
 func TestWorkingHours_InvalidPolicyDegradesToAlwaysOpen(t *testing.T) {
 	broken := &wh.Spec{
 		Timezone: "Mars/Olympus_Mons",
 		Days:     map[string][]wh.Window{"mon": {{Start: "09:00", End: "18:00"}}},
 	}
 	f := newHoursFixture(t, broken, nil)
-	f.handOutAt(local(2026, 9, 13, 2, 0), "ana", "") // sunday, 2am
+	f.handOutAt(local(2026, 9, 13, 2, 0), "ana", "")
 
 	f.sweepAt(local(2026, 9, 13, 2, 20))
 	assert.Equal(t, "bob", f.owner(), "a broken schedule must not stop the rescue")
 }
 
-// The same posture for a failed department read: departments inherit for this
-// tick instead of the sweep giving up.
 func TestWorkingHours_DepartmentReadFailureFallsBackToInheriting(t *testing.T) {
 	f := newHoursFixture(t, nil, nil)
 	f.depts.err = assert.AnError
@@ -270,10 +236,6 @@ func TestWorkingHours_DepartmentReadFailureFallsBackToInheriting(t *testing.T) {
 	assert.Equal(t, "bob", f.owner(), "inherits the workspace, which has no hours, so it is open")
 }
 
-// ── the chain keeps working under a schedule ────────────────────────────────
-
-// Each hop restarts the deadline, and the restarted deadline is also counted in
-// open time. Three hops over three days, then the release.
 func TestWorkingHours_ChainAdvancesOneHopPerWorkingDeadline(t *testing.T) {
 	f := newHoursFixture(t, officeSpec(), nil)
 	f.handOutAt(local(2026, 9, 7, 17, 55), "ana", "")

@@ -12,15 +12,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// The avatar is the thing that was missing, and the call budget is the thing
-// that keeps it affordable.
-//
-// picture_url existed as a column, was projected by the inbox query, was copied
-// onto the DTO and was read by the frontend — and nothing ever wrote it, so
-// every conversation on this channel rendered initials. What follows pins both
-// halves: that it now gets written, and that writing it does not turn every
-// inbound message into a call to WhatsApp.
-
 func privateMessage(id, text string) map[string]any {
 	return map[string]any{
 		"messageid":        id,
@@ -49,13 +40,6 @@ func (h *groupHarness) deliverPrivate(t *testing.T, msg map[string]any) {
 	}
 }
 
-// Each harness gets its OWN gate.
-//
-// The production gate is process-wide on purpose — it is a ceiling on one
-// number, and every usecase that enriches must share it. In tests that would
-// make the suite order-dependent: whichever test ran first would spend the
-// budget and the rest would silently skip enrichment and fail for the wrong
-// reason.
 func (h *groupHarness) withFreshGate() *groupHarness {
 	gate := newProfileGate()
 	h.uc.profiles.gate = gate
@@ -63,11 +47,6 @@ func (h *groupHarness) withFreshGate() *groupHarness {
 	return h
 }
 
-// The picture is fetched once, re-hosted on OUR storage, and stored as our URL.
-//
-// Re-hosting rather than linking is the point: WhatsApp's avatar URLs are
-// short-lived and unauthenticated, so a stored link rots within hours and, while
-// it works, hands the customer's photo to anyone holding it.
 func TestAvatarIsFetchedOnceAndRehosted(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -100,21 +79,12 @@ func TestAvatarIsFetchedOnceAndRehosted(t *testing.T) {
 	}
 }
 
-// A second message from the same person costs NOTHING.
-//
-// This is the whole budget argument: steady-state traffic makes zero profile
-// calls, because the answer is a stored column. An inbox that resolved identity
-// on read would turn one page into fifty calls on the number the send path is
-// using, and a number that looks like it is hammering the API is a number that
-// gets banned.
 func TestKnownSubjectCostsNoProviderCall(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
 	h.deliverPrivate(t, privateMessage("m1", "oi"))
 	first := len(h.messaging.chatDetailCalls())
 
-	// The fake repository stores what UpdateProfile wrote, so the second
-	// delivery sees a subject whose clock has just been stamped.
 	h.deliverPrivate(t, privateMessage("m2", "ainda aí?"))
 	h.deliverPrivate(t, privateMessage("m3", "obrigada"))
 
@@ -124,12 +94,6 @@ func TestKnownSubjectCostsNoProviderCall(t *testing.T) {
 	}
 }
 
-// A backfill NEVER enriches.
-//
-// Connecting an instance replays up to seven days of history in one burst. A
-// profile read per replayed message would be hundreds of calls in a few seconds
-// on a number that has just come online — the most automated-looking thing this
-// channel could do.
 func TestBackfillNeverCallsTheProvider(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
@@ -151,18 +115,11 @@ func TestBackfillNeverCallsTheProvider(t *testing.T) {
 	if got := h.assets.fetched(); len(got) != 0 {
 		t.Errorf("a history replay downloaded %d avatars, want 0", len(got))
 	}
-	// The transcript is still complete: the messages are what matter, the
-	// pictures are cosmetic and arrive with the first live message.
 	if got := len(h.history.all()); got != 3 {
 		t.Errorf("persisted %d backfilled messages, want 3", got)
 	}
 }
 
-// A failed read still burns the clock.
-//
-// Without this a subject whose picture 404s is retried on the next inbound
-// message, and the one after that, forever — turning a missing avatar into a
-// permanent per-message call to WhatsApp.
 func TestFailedProfileReadStillStampsTheClock(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -182,12 +139,6 @@ func TestFailedProfileReadStillStampsTheClock(t *testing.T) {
 	}
 }
 
-// The free name refresh must not consume the profile budget.
-//
-// These were one function, and its first guard — "the event carried no new
-// name" — returned before the staleness clock was ever consulted. That is why
-// the provider read never happened and picture_url was empty for every contact
-// this channel ever created. They are two decisions and they are now two calls.
 func TestEventNameRefreshDoesNotStampTheProfileClock(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -205,10 +156,6 @@ func TestEventNameRefreshDoesNotStampTheProfileClock(t *testing.T) {
 	}
 }
 
-// A group's subject is never renamed after whoever spoke last.
-//
-// The push name on a group message belongs to the PARTICIPANT. Writing it onto
-// the subject would rename "Time Comercial" to "Ana" the moment Ana wrote.
 func TestGroupSubjectIsNotRenamedByParticipants(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -228,8 +175,6 @@ func TestGroupSubjectIsNotRenamedByParticipants(t *testing.T) {
 	}
 }
 
-// capturingContacts records profile writes and applies them, so a second
-// delivery sees the state the first one persisted.
 type capturingContacts struct {
 	*fakeContactRepo
 	writes []uw.ContactProfile
@@ -262,19 +207,11 @@ func (c *capturingContacts) last() uw.ContactProfile {
 	if len(c.writes) == 0 {
 		return uw.ContactProfile{}
 	}
-	// The profile read is the last write: applyEventName runs first and is
-	// free, refresh runs second and is the one that carries the picture.
 	return c.writes[len(c.writes)-1]
 }
 
 func (c *capturingContacts) calls() int { return len(c.writes) }
 
-// A picture whose source url has not changed is never re-downloaded.
-//
-// WhatsApp's avatar urls carry a content id, so an unchanged url is an unchanged
-// photo. Without this comparison the weekly refresh re-downloads and re-uploads
-// every contact's picture forever; with it, a refresh that finds nothing new
-// costs the read and nothing else.
 func TestUnchangedPictureIsNotRedownloaded(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -285,8 +222,6 @@ func TestUnchangedPictureIsNotRedownloaded(t *testing.T) {
 		t.Fatalf("first message downloaded %d avatars, want 1", got)
 	}
 
-	// The subject is now stale again, so the profile IS re-read — but the
-	// provider hands back the same url.
 	subject := h.contacts.contacts["contact-5511999999999@s.whatsapp.net"]
 	subject.ProfileFetchedAt = nil
 	h.deliverPrivate(t, privateMessage("m2", "de novo"))
@@ -299,7 +234,6 @@ func TestUnchangedPictureIsNotRedownloaded(t *testing.T) {
 	}
 }
 
-// A CHANGED picture is picked up on the next read.
 func TestChangedPictureIsRehosted(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -322,11 +256,6 @@ func TestChangedPictureIsRehosted(t *testing.T) {
 	}
 }
 
-// A `contacts`/`chats` event carries the vendor's whole Chat object, picture
-// included, so a profile-photo change arrives as a PUSH.
-//
-// This is the cheapest path in the channel: zero provider calls, one CDN GET,
-// and only when the picture actually changed.
 func TestPushedProfilePictureCostsNoProviderCall(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -361,7 +290,6 @@ func TestPushedProfilePictureCostsNoProviderCall(t *testing.T) {
 	}
 }
 
-// The same pushed picture arriving twice costs one string comparison.
 func TestRepeatedPushedPictureIsIgnored(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	h.uc.profiles.contacts = &capturingContacts{fakeContactRepo: h.contacts}
@@ -386,22 +314,11 @@ func TestRepeatedPushedPictureIsIgnored(t *testing.T) {
 	}
 }
 
-// An event that names neither a chat nor a sender must not be filed.
-//
-// Regression test for a live symptom. Contact identity is uniquely
-// (instance, jid), so an event with no identity resolved to a contact with an
-// EMPTY jid — and because that row is unique, every later unattributable event
-// resolved to the SAME one. The result was one catch-all conversation per
-// connected number, sitting in the inbox titled "unofficial_whatsapp" (the
-// last-resort label for a contact with no name and no handle) and filling with
-// "[mensagem sem conteúdo]".
 func TestEventWithNoIdentityCreatesNothing(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
 	body, _ := json.Marshal(map[string]any{
 		"event": "messages", "instance": "prov-1",
-		// The shape a decoder gap produces: a readable envelope wrapping a
-		// message whose fields we do not recognise.
 		"data": map[string]any{"remoteJid": "5511999999999@s.whatsapp.net", "body": "oi"},
 	})
 	if err := h.uc.Execute(context.Background(), &QueuedEvent{InstanceID: "inst-1", Body: body}); err != nil {
@@ -419,13 +336,6 @@ func TestEventWithNoIdentityCreatesNothing(t *testing.T) {
 	}
 }
 
-// A profile is read by NUMBER, not by JID.
-//
-// The provider's chat-details endpoint documents its argument as "a phone number
-// or a group id". A subject first seen under a LID has a JID of the form
-// "…@lid", which identifies nobody outside WhatsApp's privacy layer — asking
-// with it returns nothing, which is indistinguishable from "this person has no
-// picture". A group is still addressed by its JID, because that IS its id.
 func TestProfileIsReadByNumberNotJID(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	h.uc.profiles.contacts = &capturingContacts{fakeContactRepo: h.contacts}
@@ -453,22 +363,10 @@ func TestGroupProfileIsReadByJID(t *testing.T) {
 	}
 }
 
-// A BURST of new contacts must not become a burst of provider calls.
-//
-// The staleness clock bounds how often ONE subject is read and says nothing
-// about how many are read at once — and the webhook consumer runs twenty message
-// workers. Twenty parallel identity lookups against a single WhatsApp account is
-// what a scraper looks like, on a channel where looking automated costs the
-// customer their number.
-//
-// The excess is SKIPPED, not queued: the clock is only stamped when a read
-// actually happened, so a deferred subject stays stale and the next message
-// retries it. The backlog drains itself with no queue to build or lose.
 func TestProfileBurstIsBounded(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	h.uc.profiles.contacts = &capturingContacts{fakeContactRepo: h.contacts}
 
-	// Twenty different people, all unknown, all arriving at once.
 	const arrivals = 20
 	for i := 0; i < arrivals; i++ {
 		number := fmt.Sprintf("55119000000%02d", i)
@@ -487,8 +385,6 @@ func TestProfileBurstIsBounded(t *testing.T) {
 		}
 	}
 
-	// Every message still landed. That is the non-negotiable half: enrichment is
-	// cosmetic and must never cost a customer's message.
 	if got := len(h.history.all()); got != arrivals {
 		t.Fatalf("persisted %d messages, want %d — enrichment must never drop one", got, arrivals)
 	}
@@ -503,16 +399,11 @@ func TestProfileBurstIsBounded(t *testing.T) {
 	}
 }
 
-// A skipped subject stays STALE, so the next message retries it.
-//
-// If the gate stamped the clock it would silence that subject for a whole TTL
-// and the deferral would become a permanent loss.
 func TestGatedSubjectIsRetriedLater(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
 	h.uc.profiles.contacts = stored
 
-	// Spend the whole budget on other people.
 	for i := 0; i < profileReadBurst; i++ {
 		number := fmt.Sprintf("55119100000%02d", i)
 		body, _ := json.Marshal(map[string]any{
@@ -537,10 +428,6 @@ func TestGatedSubjectIsRetriedLater(t *testing.T) {
 	}
 }
 
-// A FORCED read is exempt.
-//
-// It comes from an operator's click or from an invalidation the provider itself
-// sent — rare, someone is waiting on it, and neither is a burst.
 func TestForcedRefreshIgnoresTheGate(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	stored := &capturingContacts{fakeContactRepo: h.contacts}
@@ -550,7 +437,6 @@ func TestForcedRefreshIgnoresTheGate(t *testing.T) {
 		PhoneNumber: "5511999999999"}
 	h.contacts.contacts["c1"] = subject
 
-	// Drain the budget entirely.
 	for i := 0; i < profileReadBurst+5; i++ {
 		h.uc.profiles.gate.allow("inst-1")
 	}

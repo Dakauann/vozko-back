@@ -41,7 +41,7 @@ func TestBuildContext_AgentRAGWinsOverExplicitKBs(t *testing.T) {
 
 	out := BuildContext(context.Background(), f, ContextInput{
 		Agent:            ag,
-		KnowledgeBaseIDs: []string{"kbX"}, // ignored: agent RAG takes precedence
+		KnowledgeBaseIDs: []string{"kbX"},
 		Query:            "preço de administração?",
 	})
 
@@ -58,7 +58,7 @@ func TestBuildContext_AgentRAGWinsOverExplicitKBs(t *testing.T) {
 
 func TestBuildContext_ExplicitKBFallback(t *testing.T) {
 	f := &fakeRAG{kbResults: []rag.QueryResult{chunk("precos.csv", "Contábeis: R$ 400", 0.8)}}
-	ag := &agent.Agent{ID: "a1"} // RAG not enabled
+	ag := &agent.Agent{ID: "a1"}
 
 	out := BuildContext(context.Background(), f, ContextInput{
 		Agent:            ag,

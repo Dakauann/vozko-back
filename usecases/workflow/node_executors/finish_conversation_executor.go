@@ -9,9 +9,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// finishConversationExecutor marks the CRM conversation finished via the
-// shared ConversationStatusService (close_source=system, reason=workflow).
-// It does not end the workflow run, connect "sucesso" to an end node if needed.
 type finishConversationExecutor struct {
 	status conversation.ConversationStatusUpdater
 }
@@ -45,8 +42,6 @@ func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 		OutputKeys: []workflow.OutputKeyDefinition{
 			{Key: "success", Description: "true quando a conversa foi finalizada (ou já estava)"},
 			{Key: "entry_id", Description: "ID da entrada finalizada"},
-			// Never voice: a run's EntryType can only be one of the five channels
-			// in the engine's ownership map (domain/workflow/channel_var.go).
 			{Key: "entry_type", Description: "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram, telegram ou support)"},
 			{Key: "close_source", Description: "Proveniência do encerramento (system)"},
 			{Key: "close_reason", Description: "Motivo (workflow)"},
@@ -91,8 +86,6 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 			},
 		}, nil
 	}
-	// Same predicate the AI finish tool uses: a workflow that can transfer and
-	// assign a conversation must also be able to close it, on every channel.
 	if !shared.EntryType(entryType).SupportsConversationClosing() {
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),

@@ -51,14 +51,6 @@ func NewS3Service() *S3Service {
 	}
 }
 
-// resolveContentType picks the Content-Type the CDN will serve.
-//
-// Order matters: what the caller declared beats the key's extension, which
-// beats sniffing, because only the caller knows the difference between an
-// audio/ogg voice note and an application/ogg container with the same bytes.
-//
-// It never returns "", because an object stored without a type is served as
-// application/octet-stream, and both Telegram and Meta refuse to fetch that.
 func resolveContentType(key string, data []byte, declared string) string {
 	if ct := strings.TrimSpace(declared); ct != "" {
 		return ct
@@ -69,7 +61,6 @@ func resolveContentType(key string, data []byte, declared string) string {
 		}
 	}
 	if len(data) > 0 {
-		// Reads at most the first 512 bytes, per net/http.
 		return http.DetectContentType(data)
 	}
 	return "application/octet-stream"

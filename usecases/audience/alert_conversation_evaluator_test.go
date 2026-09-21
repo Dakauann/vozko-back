@@ -8,9 +8,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The evaluator judging CONVERSATIONS. Same machinery as comments, a different
-// subject, and three ways that could go wrong once money is involved.
-
 func conversationRef() ca.ContainerRef {
 	return ca.ContainerRef{
 		Kind: ca.SubjectKindConversation, Source: ca.SourceUnofficialWhatsApp,
@@ -60,14 +57,11 @@ func TestAlertFiresOnAPoorlyHandledConversation(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("sent %d alerts, want 1", len(sent))
 	}
-	// The WORST conversation of the batch, which for this subject means the
-	// least well handled one, not the most severe.
 	if !contains(sent[0].Text, "41") {
 		t.Errorf("the alert reported something other than the worst conversation: %q", sent[0].Text)
 	}
 }
 
-// The floor from the requirement: "uma conversa com pelo menos X mensagens".
 func TestAlertSkipsAConversationTooShortToJudge(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{qualityRule(10)}}
 	dispatcher := &fakeDispatcher{}
@@ -82,9 +76,6 @@ func TestAlertSkipsAConversationTooShortToJudge(t *testing.T) {
 	}
 }
 
-// A comment rule must not fire on a conversation batch, and the reverse. The
-// two vocabularies share one evaluator, and crossing them produces an alert
-// measuring a field the subject does not have.
 func TestAlertRulesDoNotCrossSubjects(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}
 	dispatcher := &fakeDispatcher{}
@@ -99,10 +90,6 @@ func TestAlertRulesDoNotCrossSubjects(t *testing.T) {
 	}
 }
 
-// The money guard. A conversation is re-analysed as it grows, so the same bad
-// conversation reaches the evaluator again and again. Without a per-subject
-// claim it would spend the rule's whole daily allowance on one customer and the
-// next conversation to go wrong would be dropped in silence.
 func TestAlertTellsYouAboutOneConversationOnce(t *testing.T) {
 	state := newFakeState()
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{qualityRule(0)}}
@@ -111,8 +98,6 @@ func TestAlertTellsYouAboutOneConversationOnce(t *testing.T) {
 
 	batch := []*ca.Analysis{conversationAt("conv-bad", 41, 30, now)}
 	for i := 0; i < 3; i++ {
-		// Cleared between passes so the RULE's own cooldown is not what is
-		// under test here; the per-subject claim is.
 		rules.rules[0].LastFiredAt = nil
 		rules.rules[0].FiredToday = 0
 		uc.EvaluateBatch(context.Background(), conversationRef(), "ws-1", batch)
@@ -121,8 +106,6 @@ func TestAlertTellsYouAboutOneConversationOnce(t *testing.T) {
 		t.Fatalf("the same conversation raised %d alerts, want 1", len(sent))
 	}
 
-	// A DIFFERENT conversation still gets through: the dedupe is per subject,
-	// not a second cooldown.
 	rules.rules[0].LastFiredAt = nil
 	rules.rules[0].FiredToday = 0
 	uc.EvaluateBatch(context.Background(), conversationRef(), "ws-1",
@@ -132,12 +115,6 @@ func TestAlertTellsYouAboutOneConversationOnce(t *testing.T) {
 	}
 }
 
-// A test message has to say it is a test, in more than the prefix.
-//
-// Its number is the rule's own threshold rather than a measurement, so without
-// saying so it reads as a real verdict about a real conversation, and the
-// missing AI reading reads as a broken feature rather than as "there is nothing
-// here to read".
 func TestAlertTestMessageSaysWhatItIsNot(t *testing.T) {
 	plain := testFooter(ca.AlertRule{Metric: ca.AlertMetricAttendanceQuality})
 	if !contains(plain, "não uma medição") {
@@ -153,14 +130,9 @@ func TestAlertTestMessageSaysWhatItIsNot(t *testing.T) {
 	}
 }
 
-// A wildcard rule fires on whatever channel the conversation arrived on.
-//
-// The alternative was a rule per channel, each with its own cooldown and daily
-// cap, so one incident spanning two channels sent two messages and raising a
-// threshold meant editing four rules and missing one.
 func TestAlertWildcardRuleWatchesEveryChannel(t *testing.T) {
 	rule := qualityRule(0)
-	rule.Source = "" // every conversation channel
+	rule.Source = ""
 	rule.Normalize()
 	if err := rule.Validate(); err != nil {
 		t.Fatalf("the wildcard rule is invalid: %v", err)
@@ -170,7 +142,6 @@ func TestAlertWildcardRuleWatchesEveryChannel(t *testing.T) {
 	dispatcher := &fakeDispatcher{}
 	uc := conversationEvaluator(rules, dispatcher, newFakeState())
 
-	// Telegram, which this rule never names.
 	telegram := ca.ContainerRef{
 		Kind: ca.SubjectKindConversation, Source: ca.SourceTelegram,
 		AccountID: "ws-1", ContainerID: "acc-1",
@@ -185,9 +156,6 @@ func TestAlertWildcardRuleWatchesEveryChannel(t *testing.T) {
 	}
 }
 
-// "All channels" and "this channel" side by side, which is the shape an
-// operator actually ends up with: one broad rule plus a tighter one on the
-// channel they care most about.
 func TestAlertWildcardAndScopedRulesCoexist(t *testing.T) {
 	all := qualityRule(0)
 	all.ID, all.Source, all.Name = "rule-all", "", "Qualquer canal"

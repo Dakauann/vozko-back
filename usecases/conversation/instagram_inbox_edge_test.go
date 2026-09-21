@@ -11,15 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// These tests exist to protect the WhatsApp-only tenant. The Instagram channel
-// was added by widening shared code paths, the inbox list, the conversation-open
-// gate, the window check and the sender hydration, so every one of them is
-// exercised here with WhatsApp data to prove the widening changed nothing for it.
-
-// ---------------------------------------------------------------- isolation
-
-// A workspace that has never connected Instagram must behave exactly as before:
-// the hydration pass is a no-op and cannot mutate, reorder or drop rows.
 func TestHydrateInstagramSenders_WhatsAppOnlyWorkspaceUntouched(t *testing.T) {
 	fake := igContactsFixture()
 	svc := &HistoryProviderService{}
@@ -42,7 +33,6 @@ func TestHydrateInstagramSenders_WhatsAppOnlyWorkspaceUntouched(t *testing.T) {
 		t.Fatalf("entry count changed: %d -> %d", len(before), len(entries))
 	}
 	for i := range before {
-		// InboxEntry holds maps, so compare the fields hydration could touch.
 		if entries[i].LeadName != before[i].LeadName ||
 			entries[i].LeadNumber != before[i].LeadNumber ||
 			entries[i].LeadPicture != before[i].LeadPicture ||
@@ -55,8 +45,6 @@ func TestHydrateInstagramSenders_WhatsAppOnlyWorkspaceUntouched(t *testing.T) {
 	}
 }
 
-// A LeadID that collides with an Instagram contact id must NOT be hydrated when
-// the row is a WhatsApp row: the entry type is the discriminator, not the id.
 func TestHydrateInstagramSenders_EntryTypeIsTheDiscriminator(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
@@ -71,7 +59,6 @@ func TestHydrateInstagramSenders_EntryTypeIsTheDiscriminator(t *testing.T) {
 	}
 }
 
-// Mixed pages are the real production shape once a tenant connects Instagram.
 func TestHydrateInstagramSenders_MixedChannelPage(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
@@ -92,16 +79,12 @@ func TestHydrateInstagramSenders_MixedChannelPage(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- edge data
-
 func TestHydrateInstagramSenders_EdgeCaseInputs(t *testing.T) {
-	// Empty and nil pages must be safe.
 	(&HistoryProviderService{}).hydrateContactSenders(nil)
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
 	svc.hydrateContactSenders([]conversation.InboxEntry{})
 
-	// A row with no contact id cannot be resolved and must be skipped, not queried.
 	fake := igContactsFixture()
 	svc2 := &HistoryProviderService{}
 	svc2.SetInstagramContacts(fake)
@@ -111,8 +94,6 @@ func TestHydrateInstagramSenders_EdgeCaseInputs(t *testing.T) {
 		t.Errorf("lookup ran for a row with no contact id (%d calls)", fake.calls)
 	}
 
-	// A contact id the repository does not know about leaves the row as-is
-	// rather than blanking or panicking.
 	entries = []conversation.InboxEntry{{EntryID: "ig-1", EntryType: "instagram", LeadID: "ghost", LeadName: "prior"}}
 	svc2.hydrateContactSenders(entries)
 	if entries[0].LeadName != "prior" {
@@ -120,8 +101,6 @@ func TestHydrateInstagramSenders_EdgeCaseInputs(t *testing.T) {
 	}
 }
 
-// An operator's own message must keep the operator as the sender label: only an
-// unresolved label falls back to the contact.
 func TestHydrateInstagramSenders_PreservesExistingSenderLabel(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
@@ -141,7 +120,6 @@ func TestHydrateInstagramSenders_PreservesExistingSenderLabel(t *testing.T) {
 	if entries[0].LastMessageSenderAvatar != "https://cdn/jose.jpg" {
 		t.Errorf("operator avatar overwritten: %q", entries[0].LastMessageSenderAvatar)
 	}
-	// The contact identity still lands on the row itself.
 	if entries[0].LeadName != "Maria Silva" {
 		t.Errorf("contact identity missing: %q", entries[0].LeadName)
 	}
@@ -175,8 +153,6 @@ func TestInstagramDisplayNames(t *testing.T) {
 	}
 }
 
-// A long handle must not be truncated or corrupted on its way to the UI; the UI
-// owns presentation.
 func TestInstagramDisplayNames_LongValuesPassThrough(t *testing.T) {
 	long := strings.Repeat("a", 300)
 	name, handle := contactDisplayNames(shared.EntryTypeInstagram, InstagramContactDisplay{Handle: long})
@@ -185,12 +161,6 @@ func TestInstagramDisplayNames_LongValuesPassThrough(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- window state
-
-// Registering an Instagram adapter must not make it reachable for WhatsApp:
-// WhatsApp keeps its own lead/business-phone window rule. Asserted through the
-// resolver rather than the full call, because the WhatsApp branch legitimately
-// requires its repository (always wired in production).
 func TestAdapterFor_InstagramAdapterNeverServesOtherChannels(t *testing.T) {
 	expires := time.Now().Add(6 * time.Hour)
 	svc := &HistoryProviderService{}
@@ -212,14 +182,11 @@ func TestAdapterFor_InstagramAdapterNeverServesOtherChannels(t *testing.T) {
 		t.Error("instagram must resolve to its adapter")
 	}
 
-	// With no registry at all, a WhatsApp-only deployment, nothing resolves and
-	// nothing panics.
 	if a := (&HistoryProviderService{}).adapterFor("instagram"); a != nil {
 		t.Error("no adapter should resolve without a registry")
 	}
 }
 
-// An unknown channel with no adapter fails closed rather than defaulting open.
 func TestGetWindowStatusForEntry_UnknownChannelFailsClosed(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetChannelAdapters(conversation.NewAdapterRegistry(&fakeWindowAdapter{
@@ -233,8 +200,6 @@ func TestGetWindowStatusForEntry_UnknownChannelFailsClosed(t *testing.T) {
 	}
 }
 
-// A closed Instagram window (24h elapsed) must be reported closed so the
-// composer can explain why a reply is blocked.
 func TestGetWindowStatusForEntry_InstagramClosedWindow(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetChannelAdapters(conversation.NewAdapterRegistry(&fakeWindowAdapter{
@@ -251,24 +216,16 @@ func TestGetWindowStatusForEntry_InstagramClosedWindow(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- entry info
-
-// GetEntryInfo is what fills the conversation header. WhatsApp must keep its own
-// path, and an unsupported type must still be rejected.
 func TestGetEntryInfo_ChannelRouting(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
 
-	// Unsupported channels are still rejected, adding Instagram did not open the
-	// switch to everything.
 	for _, entryType := range []string{"support", "email", "", "Instagram"} {
 		if _, _, _, _, _, _, err := svc.GetEntryInfo("x", entryType); err == nil {
 			t.Errorf("entry type %q should be rejected", entryType)
 		}
 	}
 
-	// An Instagram conversation the repository cannot resolve surfaces the error
-	// rather than a blank header.
 	if _, _, _, _, _, _, err := svc.GetEntryInfo("unknown-conv", "instagram"); err == nil {
 		t.Error("an unresolvable conversation should return an error")
 	}
@@ -282,10 +239,6 @@ func TestGetEntryInfo_InstagramLookupFailurePropagates(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- concurrency
-
-// The inbox list is served concurrently per connected operator; hydration must
-// be safe under -race with a shared service instance.
 func TestHydrateInstagramSenders_ConcurrentPages(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(&concurrentSafeContacts{inner: igContactsFixture()})
@@ -309,7 +262,6 @@ func TestHydrateInstagramSenders_ConcurrentPages(t *testing.T) {
 	}
 }
 
-// concurrentSafeContacts avoids the call counter's data race in the shared fake.
 type concurrentSafeContacts struct{ inner *fakeInstagramContacts }
 
 func (c *concurrentSafeContacts) ContactsByIDs(ctx context.Context, ids []string) (map[string]InstagramContactDisplay, error) {
@@ -330,13 +282,6 @@ func (c *concurrentSafeContacts) ContactForConversation(ctx context.Context, id 
 	return c.inner.ContactForConversation(ctx, id)
 }
 
-// --- entry_update regression (reported in production) ---
-//
-// An entry_update broadcast rebuilds a single row through GetInboxEntry, a path
-// separate from the two list paths. It resolved the name through the lead
-// repository, which cannot resolve an Instagram contact, so the conversation's
-// name blanked every time a new message arrived.
-
 func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
 	const igsid = "17841458366137975"
 	svc := &HistoryProviderService{}
@@ -347,12 +292,8 @@ func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
 	})
 
 	entries := []conversation.InboxEntry{
-		// Story replies/mentions fall through the sender resolver's default
-		// branch, which returns the raw ref: it must not reach the UI as a name.
 		{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: igsid},
-		// A blank label is filled too.
 		{EntryID: "ig-2", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: ""},
-		// An operator's name is authoritative and must survive.
 		{EntryID: "ig-3", EntryType: "instagram", LeadID: "contact-1", LastMessageSender: "jose", LastMessageSenderAvatar: "jose.jpg"},
 	}
 	svc.hydrateContactSenders(entries)
@@ -366,7 +307,6 @@ func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
 	if entries[2].LastMessageSender != "jose" || entries[2].LastMessageSenderAvatar != "jose.jpg" {
 		t.Errorf("operator sender overwritten: %+v", entries[2])
 	}
-	// The row identity is hydrated in every case.
 	for i := range entries {
 		if entries[i].LeadName != "Maria Silva" {
 			t.Errorf("entry %d name = %q", i, entries[i].LeadName)
@@ -374,8 +314,6 @@ func TestHydrateInstagramSenders_ReplacesRawProviderIDSender(t *testing.T) {
 	}
 }
 
-// Hydration must be idempotent: entry_update fires repeatedly for an active
-// conversation, and each rebuild must produce the same row.
 func TestHydrateInstagramSenders_Idempotent(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
@@ -391,7 +329,6 @@ func TestHydrateInstagramSenders_Idempotent(t *testing.T) {
 		entries[0].LastMessageSender != first.LastMessageSender {
 		t.Errorf("hydration is not idempotent:\n first %+v\n later %+v", first, entries[0])
 	}
-	// The handle must not accumulate '@' prefixes across rebuilds.
 	if strings.HasPrefix(entries[0].LeadNumber, "@@") {
 		t.Errorf("handle prefix accumulated: %q", entries[0].LeadNumber)
 	}

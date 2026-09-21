@@ -5,16 +5,8 @@ import (
 	"time"
 )
 
-// subjectNow is this file's fixed clock: the rows here are about labels, not
-// about time, so one instant serves every transition.
 func subjectNow() time.Time { return time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC) }
 
-// The whole point of a subject key is that repeats COLLIDE.
-//
-// A free-text label the model writes differently each time can be displayed
-// but never counted: "Plano Família", "plano familia" and " PLANO  FAMÍLIA "
-// are one subject to a reader and three bars on a chart. The key is what the
-// chart groups on; the original text is what it shows.
 func TestSubjectKeyCollapsesTheSameSubject(t *testing.T) {
 	same := []string{
 		"Plano Família",
@@ -34,8 +26,6 @@ func TestSubjectKeyCollapsesTheSameSubject(t *testing.T) {
 	}
 }
 
-// Distinct subjects must stay distinct: a key that collapses too hard would
-// merge unrelated things into one enormous bar.
 func TestSubjectKeyKeepsDifferentSubjectsApart(t *testing.T) {
 	pairs := [][2]string{
 		{"plano familia", "plano empresarial"},
@@ -49,9 +39,6 @@ func TestSubjectKeyKeepsDifferentSubjectsApart(t *testing.T) {
 	}
 }
 
-// Three words is the cap, and it is enforced HERE rather than trusted from the
-// model. A schema description is a request; a model that answers with a
-// sentence would otherwise put a sentence on the chart's axis.
 func TestSubjectKeyKeepsAtMostThreeWords(t *testing.T) {
 	long := "clareamento dental a laser com desconto para dois"
 	got := SubjectKey(long)
@@ -69,8 +56,6 @@ func TestSubjectKeyKeepsAtMostThreeWords(t *testing.T) {
 	}
 }
 
-// Nothing said, nothing counted. An empty or punctuation-only label must not
-// become a bar named "-" that outranks every real subject.
 func TestSubjectKeyRefusesAnEmptySubject(t *testing.T) {
 	for _, blank := range []string{"", "   ", "-", "...", "n/a", "N/A", "nenhum", "none"} {
 		if got := SubjectKey(blank); got != "" {
@@ -79,8 +64,6 @@ func TestSubjectKeyRefusesAnEmptySubject(t *testing.T) {
 	}
 }
 
-// Applying a classification fills the key from the text, so no caller can
-// store one without the other and silently drop a subject off the chart.
 func TestApplyDerivesTheSubjectKey(t *testing.T) {
 	row := conversationRowForSubjectTest(t)
 	if err := row.Apply(Classification{
@@ -103,8 +86,6 @@ func TestApplyDerivesTheSubjectKey(t *testing.T) {
 	}
 }
 
-// A conversation with no clear subject stores neither, so the chart's
-// denominator is conversations that HAD a subject.
 func TestApplyLeavesAnAbsentSubjectEmpty(t *testing.T) {
 	row := conversationRowForSubjectTest(t)
 	if err := row.Apply(Classification{

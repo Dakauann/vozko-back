@@ -52,9 +52,6 @@ func boletoInput() invoice.CreateInvoiceInput {
 	}
 }
 
-// TestCreateInvoice_BoletoAttachesDefaultAddress: Mercado Pago rejects a boleto without
-// a full payer address, and BOLETO is an accepted billing type on the public API. The
-// default address is preferred over whichever happens to be first.
 func TestCreateInvoice_BoletoAttachesDefaultAddress(t *testing.T) {
 	gw := newStubGateway()
 	addrRepo := &stubAddressRepo{addresses: []*address.Address{
@@ -93,8 +90,6 @@ func TestCreateInvoice_BoletoFallsBackToFirstAddress(t *testing.T) {
 	}
 }
 
-// TestCreateInvoice_PixNeverLooksUpAnAddress: PIX needs no address on any provider, so
-// the lookup must not happen at all.
 func TestCreateInvoice_PixNeverLooksUpAnAddress(t *testing.T) {
 	gw := newStubGateway()
 	addrRepo := &stubAddressRepo{}
@@ -115,9 +110,6 @@ func TestCreateInvoice_PixNeverLooksUpAnAddress(t *testing.T) {
 	}
 }
 
-// TestCreateInvoice_BoletoWithoutAddressStillReachesTheGateway: whether a missing
-// address is fatal is the provider's call, not this use case's. Asaas issues the boleto
-// anyway; Mercado Pago rejects it with a message naming exactly what is missing.
 func TestCreateInvoice_BoletoWithoutAddressStillReachesTheGateway(t *testing.T) {
 	gw := newStubGateway()
 
@@ -141,9 +133,6 @@ type errStubAddressType struct{}
 
 func (errStubAddressType) Error() string { return "address lookup failed" }
 
-// TestCreateInvoice_BoletoWithoutAddressOnStrictProvider is the production regression:
-// a user with no address requested a boleto and got an opaque 500. It must now be a
-// typed domain error the API can turn into an actionable 422.
 func TestCreateInvoice_BoletoWithoutAddressOnStrictProvider(t *testing.T) {
 	gw := newStubGateway()
 	gw.boletoNeedsAddress = true
@@ -153,7 +142,7 @@ func TestCreateInvoice_BoletoWithoutAddressOnStrictProvider(t *testing.T) {
 		"no addresses":   &stubAddressRepo{},
 		"lookup failure": &stubAddressRepo{err: errStubAddress},
 		"incomplete address": &stubAddressRepo{addresses: []*address.Address{
-			{ID: "a1", Street: "Rua Sem Numero", ZipCode: "01310100"}, // no number/district/city/state
+			{ID: "a1", Street: "Rua Sem Numero", ZipCode: "01310100"},
 		}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -168,9 +157,6 @@ func TestCreateInvoice_BoletoWithoutAddressOnStrictProvider(t *testing.T) {
 	}
 }
 
-// TestCreateInvoice_BoletoWithoutAddressOnLenientProvider: Asaas derives the address
-// from its own customer record, so the same request must still succeed there. The
-// pre-check is driven by the capability, not hardcoded.
 func TestCreateInvoice_BoletoWithoutAddressOnLenientProvider(t *testing.T) {
 	gw := newStubGateway()
 	gw.boletoNeedsAddress = false

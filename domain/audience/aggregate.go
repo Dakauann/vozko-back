@@ -8,12 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Aggregates (§11). Live stats, rollups and author projections all carry the
-// SAME Counters and derive their score with the SAME function, so a trend
-// line, the number above it and an author's row cannot disagree.
-
-// Counters is the §11.1 set: one COUNT(*) FILTER per field, exactly like the
-// conversation AnalysisStats.
 type Counters struct {
 	Total    int `json:"total"`
 	Analyzed int `json:"analyzed"`
@@ -43,21 +37,13 @@ type Counters struct {
 
 	SeverityAvg       float64 `json:"severityAvg"`
 	SeverityMax       int     `json:"severityMax"`
-	SeverityHighCount int     `json:"severityHighCount"` // ≥ HighSeverityThreshold
+	SeverityHighCount int     `json:"severityHighCount"`
 
 	RequiresActionCount int `json:"requiresActionCount"`
 
 	DistinctAuthors int `json:"distinctAuthors"`
 	FlaggedAuthors  int `json:"flaggedAuthors"`
 
-	// ---- Conversation subjects ----
-	//
-	// Everything the legacy conversation-analysis stats block reported, in the
-	// same aggregate as the comment counters rather than a second endpoint with
-	// its own shape. A filtered slice can now contain both kinds, so the two
-	// subject counts say how much of the slice each block describes: without
-	// them a reader cannot tell an all-comment slice from one where every
-	// conversation happened to be unlabelled.
 	CommentCount         int        `json:"commentCount"`
 	ConversationCount    int        `json:"conversationCount"`
 	ConversationAnalyzed int        `json:"conversationAnalyzed"`
@@ -83,9 +69,6 @@ type Counters struct {
 	NextActionEscalate         int `json:"nextActionEscalate"`
 	NextActionContinue         int `json:"nextActionContinue"`
 
-	// AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
-	// carry no such score, and including their zeros would drag the average of
-	// a mixed slice toward nothing.
 	AttendanceQualityAvg float64 `json:"attendanceQualityAvg"`
 	AttendanceQualityMin int     `json:"attendanceQualityMin"`
 	AttendanceQualityMax int     `json:"attendanceQualityMax"`
@@ -102,7 +85,6 @@ func (c Counters) score() int {
 	return AcceptanceScore(c.StanceMix(), c.SeverityHighCount)
 }
 
-// TopicStat is one row of the topic breakdown.
 type TopicStat struct {
 	TopicKey          string  `json:"topicKey"`
 	Count             int     `json:"count"`
@@ -112,21 +94,12 @@ type TopicStat struct {
 	SeverityAvg       float64 `json:"severityAvg"`
 }
 
-// Stats is the live aggregate for a filtered slice.
 type Stats struct {
 	Counters
-	Topics []TopicStat `json:"topics"`
-	// Subjects is what the conversations in this slice were ABOUT, ranked.
-	//
-	// It rides on Stats rather than on its own endpoint so the ranking and the
-	// numbers above it are one query's answer over one set of filters. A second
-	// endpoint would be a second chance for the chart and its own header to
-	// disagree.
+	Topics          []TopicStat    `json:"topics"`
 	Subjects        []SubjectCount `json:"subjects"`
 	AcceptanceScore int            `json:"acceptanceScore"`
-	// Finalized guards against serving counters whose score was never
-	// derived: a repository fills Counters, the use case calls Finalize.
-	Finalized bool `json:"-"`
+	Finalized       bool           `json:"-"`
 }
 
 func (s *Stats) Finalize() {
@@ -134,9 +107,6 @@ func (s *Stats) Finalize() {
 	s.Finalized = true
 }
 
-// ---- Rollups ----
-
-// RollupScope is what a rollup row summarises.
 type RollupScope string
 
 const (
@@ -153,9 +123,6 @@ func (s RollupScope) Valid() bool {
 	return false
 }
 
-// Rollup is one (scope, scopeID, day) snapshot: the row a 90-day trend
-// reads instead of COUNT(*) FILTER over millions. Historical rollups never
-// change when a comment is deleted today (§6.4).
 type Rollup struct {
 	WorkspaceID string      `json:"workspaceId"`
 	Source      Source      `json:"source"`
@@ -172,15 +139,11 @@ func (r *Rollup) Finalize() {
 	r.AcceptanceScore = r.Counters.score()
 }
 
-// BucketDate truncates an instant to its UTC calendar day.
 func BucketDate(t time.Time) time.Time {
 	u := t.UTC()
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// ---- Authors ----
-
-// ModerationState is operator-set standing for an author.
 type ModerationState string
 
 const (
@@ -198,15 +161,11 @@ func (m ModerationState) Valid() bool {
 	return false
 }
 
-// TopicCount is one entry of an author's top topics.
 type TopicCount struct {
 	TopicKey string `json:"topicKey"`
 	Count    int    `json:"count"`
 }
 
-// AuthorStats is the projection behind "who commented bad things": one row
-// per (source, account, author), rebuilt from their comments by the rollup
-// job. The standing is derived from the HISTORY (§11.3).
 type AuthorStats struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
@@ -222,29 +181,16 @@ type AuthorStats struct {
 	Counters
 	TopTopics []TopicCount `json:"topTopics"`
 
-	DerivedStance   Stance          `json:"derivedStance"`
-	IsFlagged       bool            `json:"isFlagged"`
-	ModerationState ModerationState `json:"moderationState"`
-	// Role is the §5 inference. Unlike everything above it, this is NOT a pure
-	// function of the counters: it is model output over the person's own words,
-	// so the rollup must preserve it the way it preserves ModerationState
-	// rather than recomputing it.
-	Role AuthorRoleInference `json:"role"`
+	DerivedStance   Stance              `json:"derivedStance"`
+	IsFlagged       bool                `json:"isFlagged"`
+	ModerationState ModerationState     `json:"moderationState"`
+	Role            AuthorRoleInference `json:"role"`
 
-	// Reputation is the signed ledger (§8): what this person's history adds up
-	// to, unbounded, negative for a hostile one. Distinct from the account's
-	// AcceptanceScore, which is 0..100 — see AuthorReputation for why both.
 	Reputation int `json:"reputation"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Derive computes the standing from the counters.
-//
-// Everything here is a pure function of counts, never a stored opinion: the
-// rollup can be rebuilt from the comments at any time and must land on the same
-// numbers. That is also why Reputation is derived rather than accumulated —
-// an incremented column drifts the moment one rollup is missed.
 func (a *AuthorStats) Derive() {
 	mix := a.StanceMix()
 	a.DerivedStance = DerivedStance(mix)
@@ -253,34 +199,19 @@ func (a *AuthorStats) Derive() {
 	if a.ModerationState == "" {
 		a.ModerationState = ModerationNone
 	}
-	// Normalised, never recomputed: Derive owns the counters, not the claim
-	// about who this person is.
 	a.Role.Normalize()
 }
 
-// ---- Filters ----
-
-// MaxTrendRange bounds a trend query; rollups are daily, so this is ~366
-// rows per scope.
 const MaxTrendRange = 366 * 24 * time.Hour
 
-// ListInput filters the comment feed and the live stats. WorkspaceID is set
-// by the use case from the caller's session, never from a query parameter.
 type ListInput struct {
 	WorkspaceID string
 	Source      Source
 	AccountID   string
 	ContainerID string
 
-	// SubjectKinds narrows to comments, conversations, or both. Empty means
-	// every kind, so this stays an honest general-purpose filter; it is the
-	// DELIVERY layer that pins the comment surface to comments, which keeps
-	// "what this screen shows" a decision of the screen rather than a default
-	// buried in the domain.
 	SubjectKinds []SubjectKind
 
-	// Conversation-only filters. Ignored for comment rows, which carry none of
-	// these labels.
 	Interest      Interest
 	Disposition   Disposition
 	Qualification Qualification
@@ -298,13 +229,8 @@ type ListInput struct {
 	SeverityMax      *int
 	RequiresAction   *bool
 	AuthorExternalID string
-	// SubjectID narrows to one subject by its channel id: a comment id, or a
-	// conversation.s entry id. It is what "show me this conversation's analysis"
-	// asks, which used to need its own endpoint.
-	SubjectID string
-	// LatestOnly selects the latest revision as of To before applying labels
-	// and statuses. History readers leave this false.
-	LatestOnly bool
+	SubjectID        string
+	LatestOnly       bool
 
 	Options shared.QueryOptions
 }
@@ -371,7 +297,6 @@ func (in ListInput) Validate() error {
 	return nil
 }
 
-// AuthorsInput filters the ranked-authors table.
 type AuthorsInput struct {
 	WorkspaceID     string
 	Source          Source
@@ -381,40 +306,18 @@ type AuthorsInput struct {
 	ModerationState ModerationState
 	MinComments     int
 
-	// AuthorExternalID resolves one person to their row (§2). By external id
-	// and not by handle: handles are renameable on every channel we mirror, so
-	// a lookup by handle would find a different person after a rename, or
-	// nobody at all.
 	AuthorExternalID string
 
-	// From and To narrow the ranking to a window, by the comment's own
-	// timestamp.
-	//
-	// This changes where the answer COMES FROM, which is why it is worth a
-	// comment. Without a range the ranking reads the author projection, which
-	// holds lifetime counters. With one it cannot: the projection has no time
-	// dimension, so the counters are regrouped from the comments themselves.
-	// The two paths must agree on an all-time window, and an integration test
-	// says so.
 	From *time.Time
 	To   *time.Time
 
-	// Sort is the ranking (§1). The zero value is DefaultAuthorSort, applied by
-	// Normalize, so every caller gets a deterministic order without asking —
-	// an unordered page cannot be paged through without repeating rows.
 	Sort Sort
 
 	Options shared.QueryOptions
 }
 
-// MaxAuthorRankingRange bounds a windowed ranking. The lifetime ranking reads
-// an indexed projection and is cheap at any size; a windowed one regroups the
-// comments, so an unbounded range is a table scan somebody asked for by
-// accident. A year covers every question anyone has actually asked.
 const MaxAuthorRankingRange = 366 * 24 * time.Hour
 
-// HasPeriod reports whether this is a windowed ranking. One end is enough:
-// "desde o dia 1" is a real question and the lifetime table cannot answer it.
 func (in AuthorsInput) HasPeriod() bool {
 	return in.From != nil || in.To != nil
 }
@@ -459,7 +362,6 @@ func (in AuthorsInput) Validate() error {
 	return nil
 }
 
-// TrendInput selects a rollup series.
 type TrendInput struct {
 	WorkspaceID string
 	Scope       RollupScope
@@ -487,46 +389,26 @@ func (in TrendInput) Validate() error {
 	return nil
 }
 
-// ---- Settings ----
-
-// DefaultDailyCap is the per-workspace ceiling on analysed comments per day
-// (§9.3). A post that goes viral overnight must not produce a bill nobody
-// authorised.
 const DefaultDailyCap = 20_000
 
-// Settings is the per-account configuration of the engine. Channel-neutral
-// and keyed by (source, account) so a second channel needs no new column on
-// its own account entity.
 type Settings struct {
 	WorkspaceID string `json:"workspaceId"`
 	Source      Source `json:"source"`
 	AccountID   string `json:"accountId"`
 
-	// Enabled is off by default: nothing runs, nothing is billed (§16).
-	Enabled bool `json:"enabled"`
-	// Model overrides the provider default; empty means the default.
-	Model string `json:"model,omitempty"`
-	// Vertical seeded the topics and is kept so "reset to defaults" works.
+	Enabled  bool     `json:"enabled"`
+	Model    string   `json:"model,omitempty"`
 	Vertical Vertical `json:"vertical"`
 	Topics   TopicSet `json:"topics"`
 
 	ActionPolicy ActionPolicy `json:"actionPolicy"`
-	// ReplyPolicy is what this account may say back (§6). Off by default, and
-	// per account rather than per workspace: one brand voice may be safe to
-	// automate and the next one next door may not.
-	ReplyPolicy ReplyPolicy `json:"replyPolicy"`
-	// DailyCap is the per-day analysed-comment ceiling for this workspace's
-	// account. 0 means the default; the cap is never unlimited.
-	DailyCap int `json:"dailyCap"`
-	// Instructions is free text the operator writes about the account ("what
-	// this account is about, what to watch for") that reaches the model as
-	// context beside the post's caption. Optional.
-	Instructions string `json:"instructions,omitempty"`
+	ReplyPolicy  ReplyPolicy  `json:"replyPolicy"`
+	DailyCap     int          `json:"dailyCap"`
+	Instructions string       `json:"instructions,omitempty"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// NewSettings is what an account gets before an operator touches anything.
 func NewSettings(workspaceID string, source Source, accountID string, vertical Vertical) Settings {
 	s := Settings{WorkspaceID: workspaceID, Source: source, AccountID: accountID, Vertical: vertical}
 	s.Normalize()
@@ -569,16 +451,8 @@ func (s Settings) Validate() error {
 	return nil
 }
 
-// ---- Container overrides ----
-
-// MaxInstructionsRunes bounds the free-text context so it cannot crowd the
-// comments out of the input budget.
 const MaxInstructionsRunes = 2000
 
-// ContainerOverride is a post's own analysis settings, layered over the
-// account's the way a post-scoped comment rule pre-empts an account default.
-// Every field is optional: nil means "inherit". An override with no fields
-// is legal and changes nothing.
 type ContainerOverride struct {
 	WorkspaceID string `json:"workspaceId"`
 	Source      Source `json:"source"`
@@ -589,9 +463,7 @@ type ContainerOverride struct {
 	Model             *string   `json:"model,omitempty"`
 	Topics            *TopicSet `json:"topics,omitempty"`
 	SeverityThreshold *int      `json:"severityThreshold,omitempty"`
-	// Instructions are ADDED to the account's, not swapped for them: the
-	// account says what it is, the post says what this one is about.
-	Instructions *string `json:"instructions,omitempty"`
+	Instructions      *string   `json:"instructions,omitempty"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -634,20 +506,15 @@ func (o ContainerOverride) Validate() error {
 	return nil
 }
 
-// IsEmpty reports whether the override changes nothing; the API deletes such
-// a row rather than storing an inheritance of everything.
 func (o ContainerOverride) IsEmpty() bool {
 	return o.Enabled == nil && o.Model == nil && o.Topics == nil && o.SeverityThreshold == nil &&
 		(o.Instructions == nil || *o.Instructions == "")
 }
 
-// Ref is the container the override belongs to.
 func (o ContainerOverride) Ref() ContainerRef {
 	return ContainerRef{Source: o.Source, AccountID: o.AccountID, ContainerID: o.ContainerID}
 }
 
-// WithOverride returns the effective settings for a post: the receiver with
-// the override's non-nil fields applied. The receiver is not mutated.
 func (s Settings) WithOverride(o *ContainerOverride) Settings {
 	if o == nil {
 		return s

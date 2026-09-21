@@ -8,8 +8,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// allowLoopback temporarily disables the SSRF guard so tests can point the
-// executor at an httptest server on 127.0.0.1 (otherwise isPrivateURL blocks it).
 func allowLoopback(t *testing.T) {
 	t.Helper()
 	saved := privateIPNets
@@ -28,10 +26,6 @@ func httpNodeCtx(id string, config map[string]interface{}, state *workflow.RunSt
 	}
 }
 
-// Reproduces node s2_1: the token endpoint returns a JSON ARRAY. After capture,
-// the token MUST be reachable via {{var[0].token}}, before the fix it was stored
-// as a raw string and the reference resolved to the literal, producing an empty
-// auth header on the next node.
 func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
 	allowLoopback(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,8 +52,6 @@ func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
 	}
 }
 
-// End-to-end s2_1 -> s2_2: capture an array token, then use it as a Bearer on the
-// next node. The protected server asserts it receives EXACTLY one "Bearer <tok>".
 func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 	allowLoopback(t)
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +82,6 @@ func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 		t.Fatalf("s2_1: %v", err)
 	}
 
-	// Exactly the operator's corrected config: [0].token path, no manual "Bearer".
 	ctx2 := httpNodeCtx("s2_2", map[string]interface{}{
 		"url":              apiSrv.URL,
 		"method":           "GET",
@@ -111,8 +102,6 @@ func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 	}
 }
 
-// The exact original footgun: operator pastes "Bearer {{...}}" AND auth_type=bearer,
-// which used to send "Bearer Bearer <tok>" -> 401. The executor must emit one prefix.
 func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 	allowLoopback(t)
 	var gotAuth string
@@ -141,9 +130,6 @@ func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 	}
 }
 
-// The status code must be reachable from the captured variable itself
-// ({{captureVar.status_code}}) for a retry/branch condition, for BOTH an object
-// body and an array body, while the body's own fields remain directly navigable.
 func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 	allowLoopback(t)
 
@@ -168,7 +154,6 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		if got := workflow.Interpolate("{{dados_beneficiario.success}}", &state, nil); got != "false" {
 			t.Fatalf("{{dados_beneficiario.success}} = %q, want false", got)
 		}
-		// Body field still resolves directly (and wins over the envelope).
 		if got := workflow.Interpolate("{{dados_beneficiario.error}}", &state, nil); got != "Authorization failed" {
 			t.Fatalf("{{dados_beneficiario.error}} = %q, want Authorization failed", got)
 		}
@@ -191,7 +176,6 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		if got := workflow.Interpolate("{{token_consulta_cadastro.status_code}}", &state, nil); got != "200" {
 			t.Fatalf("array capture status_code = %q, want 200", got)
 		}
-		// Direct array access still works alongside the envelope fallback.
 		if got := workflow.Interpolate("{{token_consulta_cadastro[0].token}}", &state, nil); got != "A" {
 			t.Fatalf("array index broke: %q", got)
 		}

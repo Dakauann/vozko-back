@@ -12,21 +12,12 @@ import (
 	"vozko/usecases/agentloop"
 )
 
-// AccessChecker is the RBAC gate. workspace.CheckAccessUseCase satisfies it; the
-// copilot depends on this narrow interface (downward dep on workspace types only)
-// so it is trivially testable.
 type AccessChecker interface {
 	Execute(userID, workspaceID string, resource workspace.Resource, action workspace.Action) error
 }
 
-// IDGenerator mints pending-action ids. Injected so tests stay deterministic.
 type IDGenerator func() string
 
-// Driver adapts one copilot session to the generic agentloop.Driver seam. Reads
-// execute immediately (after an RBAC check); mutations are RBAC-checked and then
-// PAUSED for explicit user approval, the engine yields, and ExecuteApproved runs
-// the real usecase once the user confirms. Scope is taken from the session
-// Context, never from model arguments.
 type Driver struct {
 	cc       copilot.Context
 	model    string
@@ -35,7 +26,6 @@ type Driver struct {
 	newID    IDGenerator
 }
 
-// NewDriver builds a copilot driver for one authenticated session.
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, newID IDGenerator) *Driver {
 	return &Driver{cc: cc, model: model, registry: reg, access: access, newID: newID}
 }
@@ -45,16 +35,10 @@ func (d *Driver) Tools() []tools.Definition { return d.registry.Definitions() }
 
 func (d *Driver) SystemPrompt() string { return systemPrompt() }
 
-// Reground carries no restatement of the request: it is already the first
-// message of the conversation, and repeating it as the newest message makes the
-// model answer it again every turn.
 func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
 	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário."
 }
 
-// Reads and mutations carry no server-side mutable state, so the stall guards are
-// inert (empty hash/signature) and finish is always allowed, the copilot ends a
-// turn by replying conversationally (the engine's idle path) or pausing.
 func (d *Driver) Refresh()                   {}
 func (d *Driver) AfterTurn(_ agentloop.Emit) {}
 func (d *Driver) Progress() agentloop.Progress {
@@ -68,8 +52,6 @@ func (d *Driver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
 	return agentloop.FinishResult{Honored: true, Summary: summary, Result: "ok"}
 }
 
-// Dispatch routes one tool call: unknown → error; RBAC-denied → denied (fed back,
-// no execution); mutating → propose + pause; read → execute now.
 func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.Emit) agentloop.StepResult {
 	tool, ok := d.registry.Get(call.Name)
 	if !ok {
@@ -100,9 +82,6 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	return agentloop.StepResult{Result: renderResult(res)}
 }
 
-// ExecuteApproved runs a previously-proposed mutation after the user approves it.
-// It re-checks RBAC (permissions may have changed since the proposal) and then
-// calls the real usecase via the tool, so domain validation still applies.
 func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction) copilot.Result {
 	tool, ok := d.registry.Get(pa.ToolName)
 	if !ok {
@@ -122,9 +101,6 @@ func (d *Driver) mintID() string {
 	return "act"
 }
 
-// DefaultConfig returns the agentloop tuning for a copilot session. The stall
-// guards are inert (the copilot has no validator); termination is the model's
-// conversational reply (idle) or the iteration/token bounds.
 func DefaultConfig(cc copilot.Context, tokenBudget int) agentloop.Config {
 	return agentloop.Config{
 		WorkspaceID:        cc.WorkspaceID,
@@ -136,8 +112,6 @@ func DefaultConfig(cc copilot.Context, tokenBudget int) agentloop.Config {
 		LogPrefix:          "[copilot] ws=" + cc.WorkspaceID,
 	}
 }
-
-// ---- helpers -------------------------------------------------------------
 
 func toolEvent(name, summary string, ok bool) map[string]interface{} {
 	return map[string]interface{}{"name": name, "summary": summary, "ok": ok}

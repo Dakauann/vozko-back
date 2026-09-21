@@ -8,24 +8,12 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// Forwarding a comment to a human on WhatsApp (§3).
-//
-// Everything this composes already exists: the comment is in the engine's own
-// store, the post's public link comes from the channel adapter that already
-// answers ReadContainerContext for the classifier prompt, and the delivery is
-// somebody else's port. The use case owns exactly one decision the layers below
-// it cannot make: that the comment being forwarded belongs to the caller's
-// workspace.
-
 type escalateCommentUseCase struct {
 	repo     ca.Repository
 	adapters map[ca.Source]ca.SourceAdapter
 	sender   ca.EscalationSender
 }
 
-// NewEscalateCommentUseCase builds the escalation path. `adapters` may be nil
-// or missing the comment's source: a permalink is a nicety, and losing it must
-// not lose the escalation.
 func NewEscalateCommentUseCase(repo ca.Repository, adapters map[ca.Source]ca.SourceAdapter, sender ca.EscalationSender) ca.EscalateCommentUseCase {
 	return &escalateCommentUseCase{repo: repo, adapters: adapters, sender: sender}
 }
@@ -39,8 +27,6 @@ func (uc *escalateCommentUseCase) Execute(ctx context.Context, in ca.EscalateCom
 		return nil, fmt.Errorf("%w: a recipient is required", ca.ErrInvalidFilter)
 	}
 
-	// Scoped read: an id from another workspace is ErrNotFound, so a caller
-	// cannot forward a comment they were never allowed to see.
 	comment, err := uc.repo.FindByID(ctx, strings.TrimSpace(in.WorkspaceID), strings.TrimSpace(in.CommentID))
 	if err != nil {
 		return nil, err
@@ -63,8 +49,6 @@ func (uc *escalateCommentUseCase) Execute(ctx context.Context, in ca.EscalateCom
 	return &escalation, nil
 }
 
-// permalink is best effort. The link makes the message better; a channel that
-// cannot answer right now must not stop a customer forwarding something urgent.
 func (uc *escalateCommentUseCase) permalink(ctx context.Context, c *ca.Analysis) string {
 	adapter, ok := uc.adapters[c.Source]
 	if !ok || adapter == nil {

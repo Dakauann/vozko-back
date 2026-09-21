@@ -90,8 +90,6 @@ func TestStartSubscribesAndRuns(t *testing.T) {
 	}
 }
 
-// Asking WhatsApp itself, not our cache, is what stops a 40.000-number blast
-// starting into a live restriction.
 func TestStartRefusesWhenWhatsAppSaysNo(t *testing.T) {
 	uc, campaigns, entries, gateway, _ := newDispatchHarness(t)
 	seedStopped(campaigns, entries)
@@ -105,15 +103,12 @@ func TestStartRefusesWhenWhatsAppSaysNo(t *testing.T) {
 	if !errors.Is(err, uw.ErrRestrictedByWA) {
 		t.Fatalf("err = %v, want ErrRestrictedByWA", err)
 	}
-	// The refusal must leave no trace: a campaign that could not start is still
-	// stopped, not half-started.
 	c, _ := campaigns.FindByID("camp-1")
 	if c.Status != campaign.StatusStopped {
 		t.Fatalf("status = %q after a refused start, want STOPPED", c.Status)
 	}
 }
 
-// An unreadable answer is NOT permission. Fail closed.
 func TestStartFailsClosedWhenLimitsCannotBeRead(t *testing.T) {
 	uc, campaigns, entries, gateway, _ := newDispatchHarness(t)
 	seedStopped(campaigns, entries)
@@ -176,8 +171,6 @@ func TestPauseAndStop(t *testing.T) {
 	}
 }
 
-// A campaign with nothing pending is finished, not perpetually running: nothing
-// would ever close it, because completion is counted per queued message.
 func TestStartingAnEmptyCampaignCompletesIt(t *testing.T) {
 	uc, campaigns, entries, _, _ := newDispatchHarness(t)
 	campaigns.put(&uwc.Campaign{
@@ -198,8 +191,6 @@ func TestStartingAnEmptyCampaignCompletesIt(t *testing.T) {
 	}
 }
 
-// A failed subscribe must put the status back, or the campaign is stuck RUNNING
-// with nothing queued and can neither complete nor restart.
 func TestFailedSubscribeRevertsTheStatus(t *testing.T) {
 	uc, campaigns, entries, _, consumer := newDispatchHarness(t)
 	seedStopped(campaigns, entries)
@@ -216,17 +207,12 @@ func TestFailedSubscribeRevertsTheStatus(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- breaker
-
-// The restriction belongs to the NUMBER, so every campaign on it stops — not
-// only the one that noticed.
 func TestBreakerPausesEveryCampaignOnTheNumber(t *testing.T) {
 	campaigns := newFakeCampaignRepo()
 	consumer := newStubConsumer()
 	for _, id := range []string{"a", "b"} {
 		campaigns.put(&uwc.Campaign{ID: id, InstanceID: "inst-1", Status: campaign.StatusRunning})
 	}
-	// A campaign on a different number must be untouched.
 	campaigns.put(&uwc.Campaign{ID: "other", InstanceID: "inst-2", Status: campaign.StatusRunning})
 
 	uc := NewPauseCampaignsForInstanceUseCase(campaigns, consumer)
@@ -242,8 +228,6 @@ func TestBreakerPausesEveryCampaignOnTheNumber(t *testing.T) {
 		if c.Status != campaign.StatusPaused {
 			t.Errorf("campaign %s = %q, want PAUSED", id, c.Status)
 		}
-		// The reason is what makes an automatic pause legible; without it an
-		// operator restarts straight back into the restriction.
 		if campaigns.reason(id) == "" {
 			t.Errorf("campaign %s paused with no recorded reason", id)
 		}

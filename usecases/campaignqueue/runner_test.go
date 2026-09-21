@@ -13,8 +13,6 @@ import (
 	"vozko/domain/messaging"
 )
 
-// ---------------------------------------------------------------- doubles
-
 type fakeSub struct {
 	mu       sync.Mutex
 	handlers map[string]func([]byte, messaging.MessageAck)
@@ -193,8 +191,6 @@ func (m *memShared) HGetAll(string) (map[string]string, error)            { retu
 func (m *memShared) HIncrBy(string, string, int64) (int64, error)         { return 0, nil }
 func (m *memShared) Expire(string, time.Duration) (bool, error)           { return true, nil }
 
-// ---------------------------------------------------------------- harness
-
 var testNS = campaign.Namespace{Topic: "test_dispatch", Key: "campaign:test"}
 
 type rig struct {
@@ -226,11 +222,6 @@ func newRig(t *testing.T) *rig {
 
 func (r *rig) topic(id string) string { return testNS.DispatchTopic(id) }
 
-// ---------------------------------------------------------------- outcomes
-
-// The distinction that matters most: a Drop resolves an entry and COUNTS it, a
-// RetryLater leaves it pending and must NOT — or the campaign completes while
-// work is still queued.
 func TestOutcomeCounting(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -276,7 +267,6 @@ func TestOutcomeCounting(t *testing.T) {
 	}
 }
 
-// Reaching zero completes the campaign exactly once and tears the queue down.
 func TestCampaignCompletesAtZero(t *testing.T) {
 	r := newRig(t)
 	_ = r.runner.SubscribeToCampaign("camp")
@@ -295,8 +285,6 @@ func TestCampaignCompletesAtZero(t *testing.T) {
 	}
 }
 
-// Two replicas finishing the last entry at once must not both declare
-// completion. The compare-and-swap is what decides.
 func TestOnlyTheWinningSwapCompletes(t *testing.T) {
 	r := newRig(t)
 	r.status.swapOK = false
@@ -310,10 +298,6 @@ func TestOnlyTheWinningSwapCompletes(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- holds
-
-// A paused campaign requeues rather than sends, and does NOT consume the
-// handler: the pause has to hold even on a replica the operator never touched.
 func TestPausedCampaignRequeuesWithoutHandling(t *testing.T) {
 	r := newRig(t)
 	_ = r.runner.SubscribeToCampaign("camp")
@@ -335,8 +319,6 @@ func TestPausedCampaignRequeuesWithoutHandling(t *testing.T) {
 	}
 }
 
-// A stopped campaign discards work already read off the queue. The queue is
-// deleted on stop, but a message in flight is no longer in it.
 func TestStoppedCampaignDiscardsInFlightWork(t *testing.T) {
 	r := newRig(t)
 	_ = r.runner.SubscribeToCampaign("camp")
@@ -355,7 +337,6 @@ func TestStoppedCampaignDiscardsInFlightWork(t *testing.T) {
 	}
 }
 
-// Stopping clears the counter, so restarting cannot inherit a stale one.
 func TestStopClearsCoordinationState(t *testing.T) {
 	r := newRig(t)
 	_ = r.runner.SubscribeToCampaign("camp")
@@ -374,8 +355,6 @@ func TestStopClearsCoordinationState(t *testing.T) {
 	}
 }
 
-// Starting a campaign that was previously stopped must clear the stop flag, or
-// every message it takes is silently discarded.
 func TestSubscribeClearsHeldFlags(t *testing.T) {
 	r := newRig(t)
 	_ = r.shared.SetString(testNS.StoppedKey("camp"), "1", 0)
@@ -391,8 +370,6 @@ func TestSubscribeClearsHeldFlags(t *testing.T) {
 	}
 }
 
-// The flags clear even when the channel then refuses the campaign, so a
-// rejected one does not carry a stop flag into its next successful start.
 func TestFlagsClearEvenWhenPrecheckRefuses(t *testing.T) {
 	r := newRig(t)
 	refused := errors.New("template not approved")
@@ -410,10 +387,6 @@ func TestFlagsClearEvenWhenPrecheckRefuses(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- boot
-
-// A campaign whose queue drained during a restart is COMPLETED, not
-// resubscribed: completion is counted per message, and there are no more.
 func TestStartCompletesCampaignsWithAnEmptyQueue(t *testing.T) {
 	r := newRig(t)
 	r.status.running = []string{"drained"}
@@ -429,9 +402,6 @@ func TestStartCompletesCampaignsWithAnEmptyQueue(t *testing.T) {
 	}
 }
 
-// A campaign with work is resubscribed and its counter rebuilt from the
-// database, because the counter has a TTL and lives in a cache that can be
-// flushed.
 func TestStartResubscribesAndSeedsTheCounter(t *testing.T) {
 	r := newRig(t)
 	r.status.running = []string{"live"}
@@ -449,8 +419,6 @@ func TestStartResubscribesAndSeedsTheCounter(t *testing.T) {
 	}
 }
 
-// Work waiting on a retry lives in the DELAY queue. A campaign whose main queue
-// is empty but whose delay queue is not is very much unfinished.
 func TestStartTreatsTheDelayQueueAsWork(t *testing.T) {
 	r := newRig(t)
 	r.status.running = []string{"waiting"}
@@ -473,9 +441,6 @@ func TestStartRequiresASubscriber(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- messages
-
-// A message that cannot decode will never decode. Requeuing spins forever.
 func TestUndecodableMessageIsDroppedWithoutRequeue(t *testing.T) {
 	r := newRig(t)
 	_ = r.runner.SubscribeToCampaign("camp")
@@ -502,10 +467,6 @@ func TestSubscribingTwiceIsANoOp(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- dispatcher
-
-// The counter is armed AFTER publishing: setting it first and then failing to
-// publish leaves a campaign that can never reach zero.
 func TestDispatcherArmsTheCounterOnlyAfterPublishing(t *testing.T) {
 	pub := &fakePub{err: errors.New("broker down")}
 	sharedState := newMemShared()
@@ -552,7 +513,6 @@ func TestDispatcherIgnoresAnEmptyBatch(t *testing.T) {
 	}
 }
 
-// Two channels' campaigns must never share a key, whatever their ids.
 func TestNamespacesDoNotCollide(t *testing.T) {
 	a := campaign.Namespace{Topic: "wa", Key: "campaign:whatsapp"}
 	b := campaign.Namespace{Topic: "uw", Key: "campaign:unofficial_whatsapp"}

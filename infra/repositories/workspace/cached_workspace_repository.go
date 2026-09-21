@@ -55,11 +55,6 @@ func (r *CachedWorkspaceRepository) invalidatePermissions(memberID string) {
 	_ = r.shared.Del(permCacheKey(mID))
 }
 
-// permSet serves a member's full grant set cache-aside. HasPermission and
-// GetPermissions both answer from it, so a single key per member is the unit
-// of caching and invalidation. Grants are role-independent (role is a separate
-// bypass in the access use cases), so only the three permission mutators below
-// invalidate this key; a short TTL bounds staleness as a safety net.
 func (r *CachedWorkspaceRepository) permSet(memberID string) ([]*workspace.Permission, error) {
 	mID := strings.TrimSpace(memberID)
 	if mID == "" || r.shared == nil {

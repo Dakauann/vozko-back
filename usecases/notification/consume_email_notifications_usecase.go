@@ -39,8 +39,6 @@ func extractErrorType(err error) string {
 	return "server_error"
 }
 
-// emailRetryBackoff is the delay before redelivering a failed email, growing
-// with the attempt count: 30s, 60s, 120s, ... capped at 5 minutes.
 func emailRetryBackoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
@@ -87,7 +85,6 @@ func (c *ConsumeEmailUseCase) Start() error {
 func (ceus *ConsumeEmailUseCase) HandleEmailPublication(message []byte, ack messaging.MessageAck) {
 	var notifMessage notification.NotificationQueueMessage
 	if err := json.Unmarshal(message, &notifMessage); err != nil {
-		// A malformed payload will never succeed; drop it instead of requeuing.
 		log.Printf("Failed to unmarshal email notification message, dropping: %v", err)
 		_ = ack.Nack(false)
 		return
@@ -122,9 +119,6 @@ func (ceus *ConsumeEmailUseCase) HandleEmailPublication(message []byte, ack mess
 	}()
 }
 
-// retryOrDrop schedules a delayed redelivery for a failed email until
-// MaxRetries is reached, then drops it. This guarantees no transient failure
-// silently loses an email, while bounding poison messages.
 func (ceus *ConsumeEmailUseCase) retryOrDrop(message []byte, ack messaging.MessageAck, recipient string, sendErr error) {
 	attempt := ack.DeliveryCount()
 
@@ -133,11 +127,9 @@ func (ceus *ConsumeEmailUseCase) retryOrDrop(message []byte, ack messaging.Messa
 		if perr := ceus.publisher.PublishWithDelay(notification.EmailNotificationTopic, message, delay); perr == nil {
 			log.Printf("[email] send to %s failed (attempt %d/%d), retrying in %v: %v",
 				recipient, attempt, messaging.MaxRetries, delay, sendErr)
-			_ = ack.Ack() // remove the original; the delayed copy redelivers later
+			_ = ack.Ack()
 			return
 		} else {
-			// Could not offload to the delay queue (broker issue). Requeue in
-			// place as a last resort so the message is not lost.
 			log.Printf("[email] failed to schedule delayed retry for %s (attempt %d/%d): publishErr=%v sendErr=%v",
 				recipient, attempt, messaging.MaxRetries, perr, sendErr)
 			_ = ack.Nack(true)

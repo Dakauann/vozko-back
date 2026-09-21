@@ -89,8 +89,6 @@ type PreCallBalanceChecker interface {
 	CanAffordAI(workspaceID string) (bool, error)
 }
 
-// TODO: Implement ConsumeVoipMinuteUseCase using pricing-based balance debit
-
 type GetFullBalanceSummaryUseCase interface {
 	Execute(workspaceID string) (*FullBalanceSummary, error)
 }

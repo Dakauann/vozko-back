@@ -7,22 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The inbox row must carry the conversation's status on EVERY channel, and this
-// is a test about a regression that reached production.
-//
-// The status was resolved only from the official WhatsApp entry repository, so
-// on unofficial WhatsApp, Instagram and Telegram the row was built with the
-// zero value. The inbox renders that as "Nova". The database said ongoing.
-//
-// What an operator saw: they replied, the entry rebuilt, and the conversation
-// moved BACKWARDS to Nova. It reads as the status transition being broken, when
-// what is broken is the read — the transition had written ongoing correctly
-// months earlier.
-//
-// This is the same shape as the AutomationEnabled bug one field over, whose
-// comment in domain/conversation/repository.go already records it: a fact the
-// channel union projects for every channel, consumed for only one of them.
-
 type stubEntryLastMessage struct {
 	conversation.MessageRepository
 	entry conversation.EntryWithLastMessage
@@ -33,8 +17,6 @@ func (m stubEntryLastMessage) GetEntryLastMessage(string, shared.EntryType) (*co
 }
 
 func TestInboxEntryCarriesConversationStatusOnEveryChannel(t *testing.T) {
-	// Every channel that is NOT official WhatsApp, which is the one the old
-	// branch happened to cover.
 	for _, entryType := range []shared.EntryType{
 		shared.EntryTypeUnofficialWhatsApp,
 		shared.EntryTypeInstagram,
@@ -64,8 +46,6 @@ func TestInboxEntryCarriesConversationStatusOnEveryChannel(t *testing.T) {
 	}
 }
 
-// A finished conversation must survive the rebuild too, or the row reopens
-// itself on screen every time a message lands.
 func TestInboxEntryKeepsAFinishedStatusOnEveryChannel(t *testing.T) {
 	svc := &HistoryProviderService{
 		messageRepo: stubEntryLastMessage{entry: conversation.EntryWithLastMessage{
@@ -83,8 +63,6 @@ func TestInboxEntryKeepsAFinishedStatusOnEveryChannel(t *testing.T) {
 	}
 }
 
-// A channel that stores no status is not a bug, and must not be reported as a
-// status of "". The row simply carries nothing and the UI falls back as before.
 func TestInboxEntryToleratesAChannelWithoutStatus(t *testing.T) {
 	svc := &HistoryProviderService{
 		messageRepo: stubEntryLastMessage{entry: conversation.EntryWithLastMessage{

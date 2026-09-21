@@ -12,15 +12,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// The mapper must carry EVERY field, and this test is structural rather than a
-// list of assertions on purpose.
-//
-// A field added to the entity and forgotten in fromDomain/toDomain is the
-// quietest bug in this layer: nothing fails, the column simply stays at its
-// zero value and the label the customer paid a model to produce is dropped on
-// the way to the database. Listing the fields by hand here would have the same
-// flaw, since the list would need the same edit. Walking the struct by
-// reflection means a new field fails this test until it is mapped.
 func TestMapperCarriesEveryField(t *testing.T) {
 	original := fullyPopulatedAnalysis()
 
@@ -45,10 +36,6 @@ func TestMapperCarriesEveryField(t *testing.T) {
 	}
 }
 
-// Every field is set to something distinguishable from the zero value, so a
-// field the mapper drops shows up as a difference rather than matching by
-// accident. Reflection checks that this fixture itself stays complete: a new
-// field left at its zero value here would make the test above vacuous for it.
 func fullyPopulatedAnalysis() *ca.Analysis {
 	now := time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC)
 	later := now.Add(time.Hour)
@@ -107,8 +94,6 @@ func fullyPopulatedAnalysis() *ca.Analysis {
 	}
 }
 
-// Guards the fixture above: every exported field must be non-zero, otherwise
-// the round-trip test silently stops covering it.
 func TestMapperFixtureLeavesNoFieldZero(t *testing.T) {
 	v := reflect.ValueOf(*fullyPopulatedAnalysis())
 	typ := v.Type()
@@ -123,9 +108,6 @@ func TestMapperFixtureLeavesNoFieldZero(t *testing.T) {
 	}
 }
 
-// A row stored before conversations existed has no subject kind. It must read
-// back as a comment rather than as an unknown kind, and it must WRITE as
-// 'comment' rather than as an empty string into a NOT NULL column.
 func TestMapperDefaultsTheSubjectKind(t *testing.T) {
 	a := fullyPopulatedAnalysis()
 	a.SubjectKind = ""
@@ -165,13 +147,6 @@ func TestToDomainNilIsNil(t *testing.T) {
 	}
 }
 
-// The counters scan row must cover every field of the domain's Counters, and
-// the mapping between them must carry all of them.
-//
-// This is the same class of silent bug the mapper test guards: a counter added
-// to the domain but not to CountersRow, or to CountersRow but not to counters(),
-// reads as a permanent zero. On a dashboard a zero is indistinguishable from
-// "there were none", so nothing ever looks broken.
 func TestCountersRowCoversEveryDomainCounter(t *testing.T) {
 	row := reflect.TypeOf(CountersRow{})
 	inRow := map[string]bool{}
@@ -182,7 +157,6 @@ func TestCountersRowCoversEveryDomainCounter(t *testing.T) {
 	counters := reflect.TypeOf(ca.Counters{})
 	for i := 0; i < counters.NumField(); i++ {
 		name := counters.Field(i).Name
-		// FlaggedAuthors comes from the author projection, not from this query.
 		if name == "FlaggedAuthors" {
 			continue
 		}
@@ -192,9 +166,6 @@ func TestCountersRowCoversEveryDomainCounter(t *testing.T) {
 	}
 }
 
-// Every field CountersRow scans must reach the domain. Filling the row with
-// distinguishable values and asserting none arrives zero catches a field
-// dropped from counters().
 func TestCountersMappingCarriesEveryField(t *testing.T) {
 	var rowValue CountersRow
 	v := reflect.ValueOf(&rowValue).Elem()
@@ -205,8 +176,6 @@ func TestCountersMappingCarriesEveryField(t *testing.T) {
 		case reflect.Float64:
 			v.Field(i).SetFloat(float64(i) + 1.5)
 		case reflect.Ptr:
-			// A nil pointer reads as zero, which would leave the assertion
-			// below vacuous for every optional column.
 			v.Field(i).Set(reflect.New(v.Field(i).Type().Elem()))
 			if ts, ok := v.Field(i).Interface().(*time.Time); ok {
 				*ts = time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC)
@@ -227,18 +196,6 @@ func TestCountersMappingCarriesEveryField(t *testing.T) {
 	}
 }
 
-// saveColumns is a hand-written list, which makes it the same silent trap the
-// mapper tests above guard against, one layer lower.
-//
-// Save is what persists a classification after the model answers. A column
-// added to the entity, mapped correctly, and forgotten HERE produces no error
-// at all: the insert writes its zero value and every later Save leaves it
-// there, so the field is simply always empty in production. That is exactly
-// how product_interest_key was nearly shipped dead.
-//
-// Immutable columns are listed by name and excluded. They are written once by
-// the insert and must never be in an update: identity, the subject's own text,
-// and the frozen snapshot a revision is judged on.
 func TestSaveColumnsCoverEveryMutableField(t *testing.T) {
 	immutable := map[string]bool{
 		"id": true, "workspace_id": true, "subject_kind": true, "revision": true,
@@ -264,8 +221,4 @@ func TestSaveColumnsCoverEveryMutableField(t *testing.T) {
 	}
 }
 
-// naming is GORM's own strategy, not a reimplementation of it. A hand-rolled
-// snake_case would disagree with it on exactly the names that matter here
-// (ID becomes "id", not "i_d"), and a test that guesses the column names
-// wrongly reports failures nobody can act on.
 var naming = gormschema.NamingStrategy{}

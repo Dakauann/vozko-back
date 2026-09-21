@@ -37,11 +37,6 @@ type TemplateComponentRequest struct {
 	Buttons []TemplateButtonRequest `json:"buttons"`
 	Example *TemplateExampleRequest `json:"example"`
 
-	// AddSecurityRecommendation (on BODY) and CodeExpirationMinutes (on FOOTER)
-	// are how an AUTHENTICATION template is written: Meta owns the wording and
-	// renders both lines per language, so the client sends a flag and a number
-	// instead of text. Pointers because omitting them and sending false/0 mean
-	// different things to Meta.
 	AddSecurityRecommendation *bool `json:"add_security_recommendation,omitempty" example:"true"`
 	CodeExpirationMinutes     *int  `json:"code_expiration_minutes,omitempty" example:"10"`
 }
@@ -52,9 +47,7 @@ type TemplateButtonRequest struct {
 	URL         string `json:"url" example:"https://exemplo.com.br"`
 	PhoneNumber string `json:"phone_number" example:"5511987654321"`
 	Example     string `json:"example" example:"https://exemplo.com.br/promo"`
-	// OTPType is required when Type is OTP: COPY_CODE, ONE_TAP or ZERO_TAP.
-	// COPY_CODE is the one that needs no app-side integration.
-	OTPType string `json:"otp_type,omitempty" example:"COPY_CODE"`
+	OTPType     string `json:"otp_type,omitempty" example:"COPY_CODE"`
 }
 
 type TemplateExampleRequest struct {
@@ -126,11 +119,6 @@ func toTemplateResponses(templates []*whatsapptemplatedomain.Template) []templat
 	return responses
 }
 
-// toDomainComponents converts the request shape into the domain's.
-//
-// One function, called by both create and update, because it was written out
-// twice: a field added to the request reached whichever handler the author was
-// editing, and a template edited through the other one silently lost it.
 func toDomainComponents(requested []TemplateComponentRequest) []whatsapptemplatedomain.TemplateComponent {
 	components := make([]whatsapptemplatedomain.TemplateComponent, 0, len(requested))
 	for _, c := range requested {

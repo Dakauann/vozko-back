@@ -2,7 +2,6 @@ package metrics
 
 import "time"
 
-// Comment-analysis label values (plan §14).
 const (
 	CommentBatchOutcomeOK            = "ok"
 	CommentBatchOutcomeLength        = "length"
@@ -25,10 +24,6 @@ const (
 	CommentCapBalance = "balance"
 )
 
-// AudienceMetricsRecorder is what the comment-analysis engine
-// reports. audience_pending rising monotonically is the alert that
-// matters: it means the flush is not keeping up with ingest, which is the
-// only way the feature fails quietly.
 type AudienceMetricsRecorder interface {
 	IncCommentEnqueued(source string)
 	IncCommentBatches(model, outcome string)

@@ -34,19 +34,6 @@ type RecordingUploadJob struct {
 	Meta     recordings.RecordingUploadEvent
 }
 
-// RecordingUploadPool is a durable, bounded uploader.
-//
-// A finished WAV is first persisted to an on-disk staging directory (with a
-// JSON sidecar carrying its upload metadata), THEN handed to a fixed set of
-// worker goroutines that read it back from disk, upload it to object storage,
-// publish a lightweight event for DB persistence, and finally delete the
-// staged files. A recovery loop re-enqueues any staged recording left behind
-// by a crash (or dropped because the in-memory queue was full), so a recording
-// is only ever lost if the staging disk itself is lost.
-//
-// This fixes the two unsafe properties of the previous implementation: the full
-// WAV is no longer held in memory across the (slow) network upload, and an
-// unbounded goroutine is no longer spawned per call.
 type RecordingUploadPool struct {
 	pub         messaging.MessageQueuePub
 	fileStorage media.FileStorage
@@ -101,8 +88,6 @@ func NewRecordingUploadPool(
 	return p
 }
 
-// Submit durably stages the recording, then queues it for upload. It returns
-// after the WAV is safely on disk; the heavy upload happens on a worker.
 func (p *RecordingUploadPool) Submit(job RecordingUploadJob) bool {
 	if len(job.WAVData) == 0 {
 		return false
@@ -113,19 +98,14 @@ func (p *RecordingUploadPool) Submit(job RecordingUploadJob) bool {
 
 	path, err := p.stage(job)
 	if err != nil {
-		// Staging to disk failed (disk full / perms). Last resort: upload from
-		// memory so we don't silently drop the recording.
 		p.logger.Printf("recording-pool: staging failed for call %s: %v, uploading inline as a fallback", job.CallID, err)
 		p.uploadAndPublish(job.CallID, job.WAVData, job.Meta)
 		return false
 	}
-	// The durable copy is on disk now; the in-memory WAV can be reclaimed.
 	p.tryEnqueue(path)
 	return true
 }
 
-// stage writes the sidecar then the WAV (via a temp file + atomic rename) so a
-// recovered ".wav" is always backed by a complete, readable sidecar.
 func (p *RecordingUploadPool) stage(job RecordingUploadJob) (string, error) {
 	base := fmt.Sprintf("%s_%d", sanitizeRecordingID(job.CallID), time.Now().UnixNano())
 	wavPath := filepath.Join(p.stagingDir, base+recordingStageExt)
@@ -153,9 +133,6 @@ func (p *RecordingUploadPool) stage(job RecordingUploadJob) (string, error) {
 	return wavPath, nil
 }
 
-// tryEnqueue hands a staged path to a worker. It dedupes against in-flight work
-// (so the recovery loop and Submit can't process the same file twice) and, when
-// the queue is full, leaves the file on disk for the recovery loop to pick up.
 func (p *RecordingUploadPool) tryEnqueue(path string) {
 	if _, loaded := p.inflight.LoadOrStore(path, struct{}{}); loaded {
 		return
@@ -182,8 +159,6 @@ func (p *RecordingUploadPool) worker() {
 	}
 }
 
-// process uploads a staged recording and, only on success, removes it. On any
-// retryable failure the staged files are left in place for the recovery loop.
 func (p *RecordingUploadPool) process(wavPath string) {
 	metaPath := wavPath + recordingMetaExt
 
@@ -255,8 +230,6 @@ func (p *RecordingUploadPool) uploadAndPublish(callID string, wavData []byte, me
 	return true
 }
 
-// recoveryLoop re-processes staged recordings that no worker is handling: those
-// left by a crash on the previous run, or dropped because the queue was full.
 func (p *RecordingUploadPool) recoveryLoop() {
 	p.recoverStaged()
 
@@ -284,7 +257,6 @@ func (p *RecordingUploadPool) recoverStaged() {
 		name := e.Name()
 		path := filepath.Join(p.stagingDir, name)
 
-		// Clean up debris from a crash mid-write.
 		if strings.HasSuffix(name, recordingTmpSuffix) {
 			_ = os.Remove(path)
 			continue
@@ -292,7 +264,6 @@ func (p *RecordingUploadPool) recoverStaged() {
 		if !strings.HasSuffix(name, recordingStageExt) {
 			continue
 		}
-		// Only recover a WAV that has a complete sidecar.
 		if _, err := os.Stat(path + recordingMetaExt); err != nil {
 			continue
 		}

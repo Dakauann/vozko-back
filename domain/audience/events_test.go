@@ -15,8 +15,6 @@ func analyzedRow(id string, severity int) *Analysis {
 	}
 }
 
-// Only analysed rows reach the feed: a pending or failed row has nothing to
-// draw, and a feed showing them would show blanks.
 func TestBatchAnalyzedSkipsUnanalysedRows(t *testing.T) {
 	pending := analyzedRow("p", 0)
 	pending.Status = StatusPending
@@ -35,8 +33,6 @@ func TestBatchAnalyzedSkipsUnanalysedRows(t *testing.T) {
 	}
 }
 
-// A batch with nothing to show produces nothing to send, so a caller can just
-// check for nil rather than for an empty slice it must not broadcast.
 func TestBatchAnalyzedIsNilWhenThereIsNothingToShow(t *testing.T) {
 	pending := analyzedRow("p", 0)
 	pending.Status = StatusPending
@@ -48,14 +44,9 @@ func TestBatchAnalyzedIsNilWhenThereIsNothingToShow(t *testing.T) {
 	}
 }
 
-// THE backpressure test. A backfill batch must not turn into an unbounded
-// message, and what survives the cap must be the worst rows, not the first
-// ones: truncating by arrival order would reliably drop the row that mattered.
 func TestBatchAnalyzedCapsAndKeepsTheWorst(t *testing.T) {
 	rows := make([]*Analysis, 0, 200)
 	for i := 0; i < 200; i++ {
-		// Ascending severity, so arrival order is the WORST possible order to
-		// truncate by.
 		rows = append(rows, analyzedRow(string(rune('a'+i%26))+string(rune('0'+i/26)), i))
 	}
 
@@ -79,7 +70,6 @@ func TestBatchAnalyzedCapsAndKeepsTheWorst(t *testing.T) {
 	}
 }
 
-// Under the cap nothing is claimed to be omitted.
 func TestBatchAnalyzedReportsNoOverflowWhenItFits(t *testing.T) {
 	out := NewAnalysisBatchAnalyzed([]*Analysis{analyzedRow("a", 5), analyzedRow("b", 90)})
 	if out.More != 0 {
@@ -90,8 +80,6 @@ func TestBatchAnalyzedReportsNoOverflowWhenItFits(t *testing.T) {
 	}
 }
 
-// The event carries the excerpt and never a full comment body: the engine does
-// not store one, and the feed must not imply it does.
 func TestCommentAnalyzedCarriesOnlyWhatIsStored(t *testing.T) {
 	row := analyzedRow("a", 42)
 	e := NewCommentAnalyzed(row)

@@ -6,24 +6,19 @@ func TestResolveParamType(t *testing.T) {
 	cases := []struct {
 		raw        string
 		wantSchema string
-		wantFormat bool // whether a non-empty format hint is expected
+		wantFormat bool
 	}{
-		// Semantic aliases collapse to a JSON-Schema primitive + format hint.
 		{"date", "string", true},
 		{"time", "string", true},
 		{"datetime", "string", true},
 		{"email", "string", true},
 		{"phone", "string", true},
-		{"enum", "string", false}, // enum maps to string but carries no format hint
-		// Case-insensitive: a stored "Email" must resolve like "email" so it can't
-		// leak through to the LLM as an invalid type.
+		{"enum", "string", false},
 		{"Email", "string", true},
 		{"  DATE ", "string", true},
-		// Base JSON-Schema primitives pass through unchanged.
 		{"string", "string", false},
 		{"integer", "integer", false},
 		{"object", "object", false},
-		// Unknown types pass through (the builder validation is what rejects them).
 		{"text", "text", false},
 	}
 	for _, c := range cases {
@@ -41,7 +36,7 @@ func TestIsValidParamType(t *testing.T) {
 	valid := []string{
 		"string", "number", "integer", "boolean", "array", "object",
 		"date", "time", "datetime", "email", "phone", "enum",
-		"INTEGER", "Email", "  date  ", "", // case/space-insensitive; empty defaults to string
+		"INTEGER", "Email", "  date  ", "",
 	}
 	for _, v := range valid {
 		if !IsValidParamType(v) {
@@ -56,9 +51,6 @@ func TestIsValidParamType(t *testing.T) {
 	}
 }
 
-// TestParamTypeListsAgree guards the single source: every alias and base type must
-// pass IsValidParamType and appear in AllowedParamTypes, so the human-facing list,
-// the validation, and the runtime mapping can't silently diverge.
 func TestParamTypeListsAgree(t *testing.T) {
 	listed := make(map[string]bool)
 	for _, t := range AllowedParamTypes() {

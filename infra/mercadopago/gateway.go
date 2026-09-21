@@ -11,10 +11,6 @@ import (
 	"vozko/domain/payment"
 )
 
-// gatewayAdapter adapts the Mercado Pago client to the provider-agnostic
-// payment.Gateway port. Every Mercado-Pago-shaped concern lives here: the payer
-// identification model, the inline PIX payload, the ISO-8601 expiration layout, and
-// the fact that splits are not expressible.
 type gatewayAdapter struct {
 	client             Client
 	now                func() time.Time
@@ -22,10 +18,8 @@ type gatewayAdapter struct {
 	sandboxPayerStatus string
 }
 
-// GatewayOption configures the adapter.
 type GatewayOption func(*gatewayAdapter)
 
-// WithClock overrides the clock used for expiration clamping. Intended for tests.
 func WithClock(now func() time.Time) GatewayOption {
 	return func(g *gatewayAdapter) {
 		if now != nil {
@@ -34,43 +28,20 @@ func WithClock(now func() time.Time) GatewayOption {
 	}
 }
 
-// WithSandboxPayerEmail addresses every charge to a fixed payer instead of the real
-// customer.
-//
-// Mercado Pago's sandbox rejects a charge whose payer is not one of its own test users,
-// so without this there is no way to drive the real billing flow end to end against
-// sandbox credentials. The caller is responsible for only supplying it outside
-// production — config.LoadConfig forces it empty unless APP_ENV=development — and every
-// substitution is logged, because a charge addressed to someone other than the customer
-// must never be invisible.
 func WithSandboxPayerEmail(email string) GatewayOption {
 	return func(g *gatewayAdapter) { g.sandboxPayerEmail = strings.TrimSpace(email) }
 }
 
-// Sandbox status keywords. Mercado Pago reads them from payer.first_name and forces the
-// resulting payment into that state, which is the only way to exercise a PIX payment in
-// sandbox: test QR codes are not payable by real bank apps.
-//
-// Reference: https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/pix
 const (
 	SandboxStatusApproved = "APRO"
 	SandboxStatusPending  = "CONT"
 	SandboxStatusRejected = "OTHE"
 )
 
-// WithSandboxPayerStatus forces every sandbox charge into a chosen final state by
-// sending a Mercado Pago test keyword as payer.first_name.
-//
-// This is what makes the webhook path testable: without it a sandbox PIX charge sits in
-// "pending" forever, no notification is ever emitted, and the credit-balance flow can
-// only be exercised by hand. As with the payer override it is development-only and
-// additionally refused for non-TEST tokens at wiring time, because in production it
-// would replace a real customer's name on a real charge.
 func WithSandboxPayerStatus(status string) GatewayOption {
 	return func(g *gatewayAdapter) { g.sandboxPayerStatus = strings.ToUpper(strings.TrimSpace(status)) }
 }
 
-// NewGateway wraps a Mercado Pago client as a payment.Gateway.
 func NewGateway(c Client, opts ...GatewayOption) payment.Gateway {
 	g := &gatewayAdapter{client: c, now: time.Now}
 	for _, opt := range opts {
@@ -81,18 +52,6 @@ func NewGateway(c Client, opts ...GatewayOption) payment.Gateway {
 
 func (g *gatewayAdapter) Provider() payment.Provider { return payment.ProviderMercadoPago }
 
-// Capabilities reports no split support, and that is a real product limitation rather
-// than an unfinished implementation.
-//
-// Asaas divides a single charge across walletIds supplied per request. Mercado Pago has
-// no equivalent: its marketplace split requires every receiver to complete an OAuth
-// authorization, after which the charge is created with THAT SELLER's access token and
-// the platform's cut is taken as application_fee. That is a different onboarding model
-// and a different money flow, not a different field name, and it cannot be synthesized
-// from a walletId this system already stores.
-//
-// CreateCharge therefore rejects a split request outright instead of quietly issuing an
-// unsplit charge, which would route someone else's commission into the platform account.
 func (g *gatewayAdapter) Capabilities() payment.GatewayCapabilities {
 	return payment.GatewayCapabilities{
 		Split:                 false,
@@ -121,9 +80,6 @@ func (g *gatewayAdapter) CreateCharge(ctx context.Context, req payment.ChargeReq
 	if email == "" {
 		return nil, payment.ErrCustomerEmailRequired
 	}
-	// The override is applied after the emptiness check on purpose: a missing customer
-	// email is a real data problem that must still surface in development, rather than
-	// being papered over by the sandbox payer.
 	if g.sandboxPayerEmail != "" && !strings.EqualFold(email, g.sandboxPayerEmail) {
 		log.Printf("[mercadopago-gateway] SANDBOX: charge %q addressed to test payer %s instead of %s",
 			req.ExternalReference, g.sandboxPayerEmail, email)
@@ -161,8 +117,6 @@ func (g *gatewayAdapter) CreateCharge(ctx context.Context, req payment.ChargeReq
 		},
 	}
 
-	// Boleto is rejected without a full payer address, so refuse before spending a
-	// round trip and tell the caller exactly what is missing.
 	if method == payment.MethodBoleto {
 		addr := req.Customer.Address
 		if !addr.Complete() {
@@ -212,9 +166,6 @@ func (g *gatewayAdapter) RefundCharge(ctx context.Context, chargeID string, amou
 	if g == nil || g.client == nil {
 		return errors.New("mercadopago gateway: client not configured")
 	}
-	// Mercado Pago's refund endpoint takes no description; the reason is set by the
-	// platform. The argument is accepted to keep the port uniform and is logged by
-	// callers rather than dropped silently here.
 	if _, err := g.client.RefundPayment(ctx, chargeID, amount, ""); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return payment.ErrChargeNotFound
@@ -255,8 +206,6 @@ func (g *gatewayAdapter) toCharge(p *Payment) *payment.Charge {
 		ProviderStatusDetail: p.StatusDetail,
 	}
 
-	// The customer-facing link differs by method: PIX gets the hosted QR page, boleto
-	// gets the printable slip.
 	if url := strings.TrimSpace(p.TransactionDetails.ExternalResourceURL); url != "" {
 		out.BoletoURL = url
 		out.InvoiceURL = url
@@ -271,9 +220,6 @@ func (g *gatewayAdapter) toCharge(p *Payment) *payment.Charge {
 	return out
 }
 
-// ToWebhookEvent converts a fetched payment into the canonical webhook event the
-// shared handler consumes. It returns false when the payment's state should move
-// nothing locally, so the caller acknowledges the notification and stops.
 func ToWebhookEvent(notificationID string, p *Payment) (*payment.WebhookEvent, bool) {
 	if p == nil {
 		return nil, false

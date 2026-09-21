@@ -9,18 +9,6 @@ import (
 	"vozko/domain/whatsapp/waba"
 )
 
-// reconcileChannelStatusUseCase keeps the local dialog360 fleet in sync with the
-// partner's actual channel state. It exists because two facts about 360dialog:
-//
-//  1. Some channel metadata, notably the display phone number and the account name,
-//     is NOT available at channel_live; it appears a short while later. Finalize can
-//     only write what exists then, so the number/name stay blank without a follow-up.
-//  2. A channel can be deactivated at 360dialog/Meta (cancelled, bsp_removed) without
-//     us receiving (or having routed) a webhook, leaving a number CONNECTED locally
-//     with a now-invalid API key.
-//
-// This is deliberately a LOW-FREQUENCY pass (a single ListChannels per run) so it is
-// never a rate-limit risk, unlike reconciling on every webhook. It is idempotent.
 type reconcileChannelStatusUseCase struct {
 	partner  businessphone.Dialog360PartnerService
 	refs     businessphone.OwnerPhoneReader
@@ -60,8 +48,6 @@ func (uc *reconcileChannelStatusUseCase) Execute() (businessphone.ChannelStatusR
 		}
 		ch, ok := byID[ref.Dialog360ChannelID]
 
-		// Deactivated or gone at the vendor → SUSPEND locally so the now-invalid key
-		// is never used again. Only touch rows the platform still thinks are active.
 		if !ok || ch.IsDeactivated() {
 			if !ref.Active {
 				continue
@@ -89,20 +75,12 @@ func (uc *reconcileChannelStatusUseCase) Execute() (businessphone.ChannelStatusR
 			continue
 		}
 
-		// Live channel → backfill any metadata that lagged at finalize time.
 		phone, err := uc.repo.FindByID(ref.PhoneID)
 		if err != nil {
 			log.Printf("[channel-reconcile] find phone %s: %v", ref.PhoneID, err)
 			continue
 		}
 
-		// The bulk listing lags field-by-field: it exposes phone_name before
-		// phone_number, and the WABA (on_behalf_of) name later still. When this live
-		// channel is still missing the number or WABA name that the phone also lacks,
-		// re-read just this channel via the single-channel endpoint, which is current
-		// (not the cached bulk snapshot), so the gap closes in THIS pass instead of
-		// waiting for the bulk list to catch up on a later tick. Bounded: only fires
-		// for channels still missing metadata, and the partner client is throttled.
 		if (phone.DisplayPhoneNumber == "" && ch.PhoneNumber == "") ||
 			(ch.WABAName == "" && uc.wabaUnnamed(phone.WABAId)) {
 			if fresh, ferr := uc.partner.GetChannel(ref.Dialog360ChannelID); ferr == nil && fresh != nil {
@@ -124,8 +102,6 @@ func (uc *reconcileChannelStatusUseCase) Execute() (businessphone.ChannelStatusR
 	return report, nil
 }
 
-// applyChannelMetadata copies channel metadata onto the phone when it ADDS
-// information, returning whether anything changed. It never blanks an existing value.
 func applyChannelMetadata(phone *businessphone.WhatsAppBusinessPhoneNumber, ch businessphone.Dialog360Channel) bool {
 	changed := false
 	if phone.DisplayPhoneNumber == "" && ch.PhoneNumber != "" {
@@ -151,8 +127,6 @@ func applyChannelMetadata(phone *businessphone.WhatsAppBusinessPhoneNumber, ch b
 	return changed
 }
 
-// mergeChannel fills empty fields of base from the fresher single-channel read,
-// never blanking a value base already carries.
 func mergeChannel(base, fresh businessphone.Dialog360Channel) businessphone.Dialog360Channel {
 	if base.PhoneNumber == "" {
 		base.PhoneNumber = fresh.PhoneNumber
@@ -175,8 +149,6 @@ func mergeChannel(base, fresh businessphone.Dialog360Channel) businessphone.Dial
 	return base
 }
 
-// wabaUnnamed reports whether the local WABA record still has no name, so the reconcile
-// only pays for a fresh single-channel read when that read could actually fill it.
 func (uc *reconcileChannelStatusUseCase) wabaUnnamed(wabaExternalID string) bool {
 	if strings.TrimSpace(wabaExternalID) == "" {
 		return false
@@ -185,8 +157,6 @@ func (uc *reconcileChannelStatusUseCase) wabaUnnamed(wabaExternalID string) bool
 	return err == nil && rec != nil && strings.TrimSpace(rec.Name) == ""
 }
 
-// backfillWABAName sets the local WABA account name once 360dialog provides it, so a
-// number stops rendering as "Conta não identificada". Only fills a blank name.
 func (uc *reconcileChannelStatusUseCase) backfillWABAName(wabaExternalID, name string) bool {
 	if strings.TrimSpace(wabaExternalID) == "" || strings.TrimSpace(name) == "" {
 		return false

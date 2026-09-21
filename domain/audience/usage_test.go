@@ -5,14 +5,7 @@ import (
 	"time"
 )
 
-// The window has to MOVE, which is the whole reason it replaced a calendar day.
-//
-// The old counter was keyed on the UTC date, so a workspace at UTC-3 got its
-// entire allowance back at 21:00 local and a burst at 20:00 could spend the day
-// twice. These cases pin the two properties that fixes: the window is measured
-// from now, and it ages out in steps rather than all at once.
 func TestUsageWindowIsMeasuredFromNowNotFromMidnight(t *testing.T) {
-	// Deliberately just before UTC midnight, the instant the old counter reset.
 	now := time.Date(2026, 9, 11, 23, 30, 0, 0, time.UTC)
 	buckets := UsageBucketsInWindow(now)
 
@@ -22,15 +15,11 @@ func TestUsageWindowIsMeasuredFromNowNotFromMidnight(t *testing.T) {
 	if buckets[0] != UsageBucketKey(now) {
 		t.Errorf("newest bucket = %q, want the current hour %q", buckets[0], UsageBucketKey(now))
 	}
-	// The oldest bucket is 23 hours back, so the window reaches into the
-	// PREVIOUS calendar day. Under the old scheme that hour was unreachable.
 	oldest := UsageBucketKey(now.Add(-23 * time.Hour))
 	if buckets[len(buckets)-1] != oldest {
 		t.Errorf("oldest bucket = %q, want %q from the previous day", buckets[len(buckets)-1], oldest)
 	}
 
-	// One hour later the window has moved by exactly one bucket: the newest is
-	// new and the oldest is gone. That step is what removes the cliff.
 	next := UsageBucketsInWindow(now.Add(time.Hour))
 	if next[0] == buckets[0] {
 		t.Error("the window did not advance after an hour")
@@ -52,8 +41,6 @@ func hasBucket(all []string, want string) bool {
 	return false
 }
 
-// A bucket key round-trips, so the store can sum a window it read back without
-// a second, separately-spelled format.
 func TestUsageBucketKeyRoundTrips(t *testing.T) {
 	at := time.Date(2026, 9, 11, 20, 47, 13, 0, time.UTC)
 
@@ -69,7 +56,6 @@ func TestUsageBucketKeyRoundTrips(t *testing.T) {
 	}
 }
 
-// What a dashboard reads off the budget.
 func TestUsageReportsRemainingAndExhaustion(t *testing.T) {
 	oldest := time.Date(2026, 9, 11, 8, 0, 0, 0, time.UTC)
 
@@ -82,9 +68,6 @@ func TestUsageReportsRemainingAndExhaustion(t *testing.T) {
 		{"room left", Usage{Used: 300, Limit: 20_000}, 19_700, false},
 		{"exactly spent", Usage{Used: 20_000, Limit: 20_000}, 0, true},
 		{
-			// Overshoot is possible: claims are recorded per bucket, so two
-			// replicas classifying at once can cross the line together. The
-			// report must not go negative over it.
 			"overshot", Usage{Used: 20_040, Limit: 20_000}, 0, true,
 		},
 		{"no limit configured", Usage{Used: 5_000, Limit: 0}, 0, false},
@@ -100,9 +83,6 @@ func TestUsageReportsRemainingAndExhaustion(t *testing.T) {
 		})
 	}
 
-	// A screen says when room frees up, which under a rolling window is when
-	// the oldest counted analysis leaves it, not a midnight that no longer
-	// means anything.
 	u := Usage{Used: 20_000, Limit: 20_000, OldestAt: oldest}
 	if want := oldest.Add(UsageWindow); !u.FreesAt().Equal(want) {
 		t.Errorf("FreesAt() = %v, want %v", u.FreesAt(), want)
@@ -112,8 +92,6 @@ func TestUsageReportsRemainingAndExhaustion(t *testing.T) {
 	}
 }
 
-// A ceiling set too low does not throw work away, it postpones it, and the
-// operator has to be able to see that. These cases pin what the dashboard says.
 func TestUsageBacklogTellsTheOperatorTheCeilingIsTheConstraint(t *testing.T) {
 	t.Run("a backlog inside what is left is not the ceiling's doing", func(t *testing.T) {
 		u := Usage{Used: 100, Limit: 1000, Waiting: 40}
@@ -137,9 +115,6 @@ func TestUsageBacklogTellsTheOperatorTheCeilingIsTheConstraint(t *testing.T) {
 	})
 
 	t.Run("an exhausted budget with nothing waiting is not", func(t *testing.T) {
-		// Everything that wanted analysing got it. The budget being spent is
-		// then a fact, not a problem, and saying otherwise trains the operator
-		// to ignore the warning.
 		u := Usage{Used: 1000, Limit: 1000}
 		if u.Constrained() {
 			t.Error("an idle exhausted budget was reported as constrained")
@@ -163,8 +138,6 @@ func TestUsageClearsInEstimatesTheWait(t *testing.T) {
 	})
 
 	t.Run("the overflow waits for the window to free that much room", func(t *testing.T) {
-		// 100 left, 1300 waiting: 1200 have to wait for room. At 1000 per
-		// window that is 1.2 windows, so a bit under 29 hours.
 		u := Usage{Used: 900, Limit: 1000, Waiting: 1300}
 		got := u.ClearsIn()
 		if want := time.Duration(1.2 * float64(UsageWindow)); got != want {
@@ -180,11 +153,6 @@ func TestUsageClearsInEstimatesTheWait(t *testing.T) {
 	})
 }
 
-// The ceiling is a WORKSPACE number that used to be stored per (source,
-// account), which left it with no single answer and no place a workspace
-// running only conversations could set it. ResolveDailyCap is the one rule both
-// the engine and the dashboard read it through, so the number an operator sets
-// and the number that stops a pass can never drift apart.
 func TestResolveDailyCap(t *testing.T) {
 	t.Run("the workspace ceiling wins when one is set", func(t *testing.T) {
 		if got := ResolveDailyCap(250, 20000); got != 250 {
@@ -193,8 +161,6 @@ func TestResolveDailyCap(t *testing.T) {
 	})
 
 	t.Run("an unset workspace ceiling falls back to the account's", func(t *testing.T) {
-		// Every workspace that predates the workspace-level control is in this
-		// state, and must keep the ceiling it has been running under.
 		if got := ResolveDailyCap(0, 500); got != 500 {
 			t.Errorf("ResolveDailyCap(0, 500) = %d, want the account cap 500", got)
 		}
@@ -207,8 +173,6 @@ func TestResolveDailyCap(t *testing.T) {
 	})
 
 	t.Run("a negative stored value is treated as unset", func(t *testing.T) {
-		// Not clamped to zero: zero means unlimited to the limiter, so reading a
-		// corrupt row as "unlimited" would remove the ceiling entirely.
 		if got := ResolveDailyCap(-5, 300); got != 300 {
 			t.Errorf("ResolveDailyCap(-5, 300) = %d, want 300", got)
 		}

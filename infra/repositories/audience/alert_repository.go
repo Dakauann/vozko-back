@@ -12,13 +12,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// The alert rule store.
-//
-// One method here carries the weight: ClaimFire. Everything else is ordinary
-// CRUD, and the correctness argument for the whole feature is that a firing is
-// decided by a single conditional UPDATE, the way ClaimForDispatch decides a
-// scheduled message and ClaimByIDs decides a comment batch.
-
 type alertRuleRepository struct{ db *gorm.DB }
 
 func NewAlertRuleRepository(db *gorm.DB) ca.AlertRuleRepository {
@@ -35,11 +28,6 @@ func (r *alertRuleRepository) Create(ctx context.Context, rule *ca.AlertRule) er
 	return nil
 }
 
-// Update writes the CONFIGURATION only.
-//
-// The firing history is deliberately absent from the column list: it is owned
-// by ClaimFire, and an operator saving a rule at the wrong moment must not
-// reset a cooldown or a daily tally and let the alert fire again immediately.
 func (r *alertRuleRepository) Update(ctx context.Context, rule *ca.AlertRule) error {
 	res := r.db.WithContext(ctx).Model(&schema.AudienceAlertRule{}).
 		Where("workspace_id = ? AND id = ?", rule.WorkspaceID, rule.ID).
@@ -110,18 +98,8 @@ func (r *alertRuleRepository) ListByAccount(ctx context.Context, workspaceID str
 	return alertRulesToDomain(rows), nil
 }
 
-// ListArmed is on the hot path: the engine calls it after every batch. It is
-// served by idx_ca_alert_armed on (source, account_id, enabled), so an account
-// with no rules costs an index probe rather than a scan.
 func (r *alertRuleRepository) ListArmed(ctx context.Context, source ca.Source, accountID string) ([]*ca.AlertRule, error) {
 	var rows []schema.AudienceAlertRule
-	// The channel's own rules, plus the ones that watch every channel. A rule
-	// with no source is the wildcard: watching four channels used to mean four
-	// rules, each with its own cooldown and daily cap, so one incident spanning
-	// two of them sent two messages.
-	//
-	// Still one index probe: idx_ca_alert_armed leads on source, and an IN of
-	// two values is two probes rather than a scan.
 	err := r.db.WithContext(ctx).
 		Where("source IN ? AND account_id = ? AND enabled = true",
 			[]string{string(source), ""}, accountID).
@@ -132,24 +110,6 @@ func (r *alertRuleRepository) ListArmed(ctx context.Context, source ca.Source, a
 	return alertRulesToDomain(rows), nil
 }
 
-// ClaimFire decides, atomically, whether THIS caller sends.
-//
-// One statement, guarded on everything that could forbid the firing, so two
-// replicas evaluating the same batch cannot both send. A read-then-write would
-// not do: both would observe a quiet rule and both would proceed, which is a
-// duplicate WhatsApp message to a real person.
-//
-// The guards, all re-checked here rather than trusted from the domain:
-//
-//   - enabled, because the rule may have been switched off since it was listed.
-//   - the cooldown, computed against the row's OWN cooldown_minutes so a rule
-//     edited between listing and claiming is judged by its current setting.
-//   - the daily cap, against today's tally, with the day rolled over in the
-//     same expression that increments it.
-//
-// The cooldown is expressed as `cooldown_minutes * INTERVAL '1 minute'` rather
-// than make_interval: GORM maps a Go int to bigint, and make_interval's named
-// arguments are declared int, so the obvious spelling does not resolve.
 func (r *alertRuleRepository) ClaimFire(ctx context.Context, workspaceID, id string, now time.Time) (bool, error) {
 	day := now.UTC().Format("2006-01-02")
 	res := r.db.WithContext(ctx).Exec(`
@@ -172,8 +132,6 @@ func (r *alertRuleRepository) ClaimFire(ctx context.Context, workspaceID, id str
 	return res.RowsAffected == 1, nil
 }
 
-// RecordFailure stores why a send failed, without touching the claim. The
-// cooldown that the claim just started IS the retry interval.
 func (r *alertRuleRepository) RecordFailure(ctx context.Context, workspaceID, id, message string, now time.Time) error {
 	trimmed, _ := ca.TruncateRunes(message, 300)
 	return r.db.WithContext(ctx).Model(&schema.AudienceAlertRule{}).
@@ -181,10 +139,6 @@ func (r *alertRuleRepository) RecordFailure(ctx context.Context, workspaceID, id
 		Updates(map[string]any{"last_error": trimmed, "updated_at": now}).Error
 }
 
-// ---- mapping ----
-
-// nullableUUID keeps an empty optional id out of a uuid column, which would
-// otherwise reject "" outright.
 func nullableUUID(value string) *string {
 	if strings.TrimSpace(value) == "" {
 		return nil
@@ -236,8 +190,6 @@ func alertRuleToDomain(row *schema.AudienceAlertRule) *ca.AlertRule {
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}
-	// Normalized on the way out, so a row written by an older build reads back
-	// under this build's floors rather than under the ones it was saved with.
 	rule.Normalize()
 	return rule
 }

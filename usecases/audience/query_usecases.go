@@ -11,11 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Read-side and settings use cases. Every one scopes to the caller's
-// workspace inside the use case; the handler only passes it through.
-
-// ---- list / stats / trends ----
-
 type listUseCase struct{ repo ca.Repository }
 
 func NewListUseCase(repo ca.Repository) ca.ListUseCase { return &listUseCase{repo: repo} }
@@ -85,8 +80,6 @@ func (uc *trendsUseCase) Execute(ctx context.Context, in ca.TrendInput) ([]*ca.R
 	return rows, nil
 }
 
-// ---- authors ----
-
 type listAuthorsUseCase struct{ authors ca.AuthorRepository }
 
 func NewListAuthorsUseCase(authors ca.AuthorRepository) ca.ListAuthorsUseCase {
@@ -128,13 +121,6 @@ func (uc *getAuthorUseCase) Execute(ctx context.Context, workspaceID, authorID s
 	return &ca.AuthorDetail{Author: author, Comments: comments}, nil
 }
 
-// listAuthorContainersUseCase answers "which posts has this person commented
-// on" (§2).
-//
-// It resolves the author FIRST and then queries with that row's own
-// (workspace, source, account, external id). The caller supplies an author id
-// and never a scope, so a caller cannot read one workspace's author and then
-// ask for another workspace's posts.
 type listAuthorContainersUseCase struct {
 	authors ca.AuthorRepository
 	repo    ca.Repository
@@ -192,10 +178,6 @@ func (uc *setModerationStateUseCase) Execute(ctx context.Context, in ca.SetModer
 	return uc.authors.FindByID(ctx, ws, id)
 }
 
-// ---- settings ----
-
-// AccountVerifier confirms an account belongs to the workspace before its
-// settings are read or written. Registered per source by the channel.
 type AccountVerifier interface {
 	AccountBelongsTo(ctx context.Context, workspaceID, accountID string) (bool, error)
 }
@@ -206,8 +188,6 @@ type settingsUseCases struct {
 	clock     ca.Clock
 }
 
-// NewSettingsUseCases builds both the getter and the updater over one set of
-// dependencies; they share the ownership check.
 func NewSettingsUseCases(settings ca.SettingsRepository, verifiers map[ca.Source]AccountVerifier, clock ca.Clock) (ca.GetSettingsUseCase, ca.UpdateSettingsUseCase) {
 	if clock == nil {
 		clock = shared.SystemClock{}
@@ -253,7 +233,6 @@ func (uc *settingsUseCases) Execute(ctx context.Context, workspaceID string, sou
 	return s, nil
 }
 
-// updateSettingsUseCase is the same struct under the updater's interface.
 func (uc *settingsUseCases) update(ctx context.Context, in ca.UpdateSettingsInput) (*ca.Settings, error) {
 	current, err := uc.Execute(ctx, in.WorkspaceID, in.Source, in.AccountID)
 	if err != nil {
@@ -267,8 +246,6 @@ func (uc *settingsUseCases) update(ctx context.Context, in ca.UpdateSettingsInpu
 		next.Model = strings.TrimSpace(*in.Model)
 	}
 	if in.Vertical != nil && in.Vertical.Valid() && *in.Vertical != next.Vertical {
-		// Changing the vertical reseeds the topics unless the caller sent
-		// their own in the same request.
 		next.Vertical = *in.Vertical
 		if in.Topics == nil {
 			next.Topics = ca.DefaultTopicsFor(next.Vertical)
@@ -281,11 +258,6 @@ func (uc *settingsUseCases) update(ctx context.Context, in ca.UpdateSettingsInpu
 		next.ActionPolicy = *in.ActionPolicy
 	}
 	if in.ReplyPolicy != nil {
-		// The domain can express `auto` and its gate is tested, but no step
-		// posts on that policy yet: this cut ships suggest-only, per the plan.
-		// Accepting the value here would leave an operator with a switch that
-		// silently does nothing. Delete this refusal when the pipeline's
-		// auto-reply step lands, not before.
 		if in.ReplyPolicy.Mode == ca.ReplyModeAuto {
 			return nil, fmt.Errorf("%w: automatic replies are not available yet", ca.ErrInvalidFilter)
 		}
@@ -308,15 +280,11 @@ func (uc *settingsUseCases) update(ctx context.Context, in ca.UpdateSettingsInpu
 	return &next, nil
 }
 
-// The updater interface has the same method name with a different
-// signature, so it is exposed through a thin adapter type.
 type updateSettingsAdapter struct{ *settingsUseCases }
 
 func (a updateSettingsAdapter) Execute(ctx context.Context, in ca.UpdateSettingsInput) (*ca.Settings, error) {
 	return a.settingsUseCases.update(ctx, in)
 }
-
-// ---- retry ----
 
 type retryUseCase struct {
 	repo  ca.Repository
@@ -343,8 +311,6 @@ func (uc *retryUseCase) Execute(ctx context.Context, workspaceID, id string) (*c
 	}
 	return row, nil
 }
-
-// ---- spend ----
 
 type spendUseCase struct {
 	batches ca.BatchRepository

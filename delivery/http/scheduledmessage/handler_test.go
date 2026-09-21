@@ -19,11 +19,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// The delivery layer's job is translation: a frame in, a status and a code out.
-// These pin the two things a client cannot recover from if we get them wrong —
-// which status each refusal carries, and whether the refusal names the boundary
-// the operator has to correct against.
-
 var reqNow = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 type stubSchedule struct {
@@ -108,8 +103,6 @@ func (f *handlerFixture) do(method, path, body string, headers map[string]string
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	// GetWorkspaceID falls back to this header, so no workspace middleware is
-	// needed to exercise the handler.
 	req.Header.Set("X-Workspace-ID", "ws-1")
 	req = req.WithContext(context.WithValue(req.Context(),
 		middleware.ClaimsContextKey, &auth.Claims{UserID: "user-1", Role: "member"}))
@@ -148,8 +141,6 @@ func TestCreateReturns201(t *testing.T) {
 	}
 }
 
-// A replayed idempotency key created nothing. Answering 201 would tell a
-// retrying client it had just made a second message.
 func TestCreateReturns200ForAReplayedKey(t *testing.T) {
 	f := newHandlerFixture(true)
 	f.schedule.result = &sm.ScheduleResult{Message: message(), Window: openWindow(), AlreadyExisted: true}
@@ -185,8 +176,6 @@ func TestCreateForwardsTheWholeComposedMessage(t *testing.T) {
 	}
 }
 
-// Every refusal that is ABOUT the window carries the window, because a refusal
-// that does not name the boundary makes the next attempt a guess.
 func TestErrorMapping(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -234,9 +223,6 @@ func TestErrorMapping(t *testing.T) {
 	}
 }
 
-// The route's permission gate answers "may this ROLE schedule"; this answers
-// "may this USER see this conversation". Department scoping makes them
-// different questions.
 func TestEntryRoutesRefuseAConversationTheUserCannotSee(t *testing.T) {
 	f := newHandlerFixture(false)
 
@@ -262,8 +248,6 @@ func TestCreateRejectsAnUnknownEntryType(t *testing.T) {
 	}
 }
 
-// The composer needs the window with the list, so it never has to make two
-// requests that can disagree.
 func TestListCarriesTheWindow(t *testing.T) {
 	f := newHandlerFixture(true)
 	f.list.entryResult = &sm.ListForEntryResult{
@@ -300,8 +284,6 @@ func TestCancelReturns204(t *testing.T) {
 	}
 }
 
-// Cancelling something already sent is a conflict, not a success: the customer
-// has it.
 func TestCancelReturns409ForATerminalMessage(t *testing.T) {
 	f := newHandlerFixture(true)
 	f.cancel.err = sm.ErrNotPending

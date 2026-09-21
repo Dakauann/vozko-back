@@ -17,15 +17,10 @@ type inboxService struct {
 	authorizer           conversation.ConversationAuthorizer
 	templateSender       conversation.TemplateSender
 	analysisProvider     conversation.AnalysisProvider
-	// analysisSchedule is the OTHER half of "an analysis is coming": the
-	// conversations still waiting for their inactivity window, which the engine
-	// has not been handed yet. Optional, and attached after construction
-	// because the shared state it reads is wired later than this service.
-	analysisSchedule conversation.AnalysisScheduleReader
-	statusProvider   conversation.ConversationStatusUpdater
+	analysisSchedule     conversation.AnalysisScheduleReader
+	statusProvider       conversation.ConversationStatusUpdater
 }
 
-// SetAnalysisScheduleReader wires the debounce-stamp lookup.
 func (s *inboxService) SetAnalysisScheduleReader(r conversation.AnalysisScheduleReader) {
 	if s != nil {
 		s.analysisSchedule = r
@@ -255,16 +250,6 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 					}
 				}
 			}
-			// "An analysis is coming" is ONE thing to a reader and two states
-			// underneath: queued in the engine, or still waiting for the
-			// conversation to go quiet. Joined here, in the assembler, because
-			// neither source knows about the other and the distinction is of no
-			// use to the person looking at the row.
-			//
-			// Both are one read for the whole page, and both matter on a
-			// reload: the queue read is what survives a restart, the schedule
-			// read is what makes the chip appear seconds after a reply instead
-			// of five minutes later.
 			pending, err := s.analysisProvider.GetBatchAnalysisPending(entryIDs, entryType)
 			if err == nil {
 				for _, idx := range indices {
@@ -277,8 +262,6 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 				awaiting, err := s.analysisSchedule.AwaitingAnalysis(entryIDs, entryType)
 				if err == nil {
 					for _, idx := range indices {
-						// Queued wins: once the engine has it, "waiting for the
-						// conversation to settle" is no longer what is happening.
 						if awaiting[entries[idx].EntryID] && entries[idx].AnalysisPhase == conversation.AnalysisPhaseNone {
 							entries[idx].AnalysisPhase = conversation.AnalysisPhaseAwaiting
 						}
@@ -291,10 +274,6 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 	return entries, totalItems, nil
 }
 
-// BuildInboxEntry builds a single fully-enriched inbox entry (same shape the
-// list produces) by composing the base entry from the history provider with the
-// shared enrichEntries pass. Used for entry_update broadcasts so the delivery
-// layer never re-implements enrichment.
 func (s *inboxService) BuildInboxEntry(entryID, entryType string) (*conversation.InboxEntry, error) {
 	if s.historyProvider == nil {
 		return nil, fmt.Errorf("history provider not configured")
@@ -415,16 +394,6 @@ func (s *inboxService) enrichEntries(entries []conversation.InboxEntry, campaign
 					}
 				}
 			}
-			// "An analysis is coming" is ONE thing to a reader and two states
-			// underneath: queued in the engine, or still waiting for the
-			// conversation to go quiet. Joined here, in the assembler, because
-			// neither source knows about the other and the distinction is of no
-			// use to the person looking at the row.
-			//
-			// Both are one read for the whole page, and both matter on a
-			// reload: the queue read is what survives a restart, the schedule
-			// read is what makes the chip appear seconds after a reply instead
-			// of five minutes later.
 			pending, err := s.analysisProvider.GetBatchAnalysisPending(entryIDs, entryType)
 			if err == nil {
 				for _, idx := range indices {
@@ -437,8 +406,6 @@ func (s *inboxService) enrichEntries(entries []conversation.InboxEntry, campaign
 				awaiting, err := s.analysisSchedule.AwaitingAnalysis(entryIDs, entryType)
 				if err == nil {
 					for _, idx := range indices {
-						// Queued wins: once the engine has it, "waiting for the
-						// conversation to settle" is no longer what is happening.
 						if awaiting[entries[idx].EntryID] && entries[idx].AnalysisPhase == conversation.AnalysisPhaseNone {
 							entries[idx].AnalysisPhase = conversation.AnalysisPhaseAwaiting
 						}

@@ -6,13 +6,8 @@ import (
 )
 
 var (
-	ErrBalanceNotFound     = errors.New("balance not found")
-	ErrInsufficientBalance = errors.New("insufficient balance")
-	// ErrPriceUnavailable is a chargeable action with no configured price.
-	//
-	// It exists because the alternative was returning (nil, nil) — success with
-	// no charge — which every caller read as "billed" and none read as "this went
-	// out for free". An unpriced workspace must STOP, not send.
+	ErrBalanceNotFound            = errors.New("balance not found")
+	ErrInsufficientBalance        = errors.New("insufficient balance")
 	ErrPriceUnavailable           = errors.New("no price configured for this service")
 	ErrInvalidAmount              = errors.New("amount must be positive")
 	ErrTransactionNotFound        = errors.New("transaction not found")
@@ -23,22 +18,9 @@ var (
 type ServiceType string
 
 const (
-	ServiceVoiceCampaign    ServiceType = "voice_campaign"
-	ServiceVoiceCall        ServiceType = "voice_call"
-	ServiceWhatsAppCampaign ServiceType = "whatsapp_campaign"
-	// ServiceWhatsAppConversation is RESERVED and has no producer. Nothing in the
-	// tree writes a transaction with it, so the ledger cannot answer any question
-	// about session message volume. Anyone reporting on service messages has to
-	// count conversation_messages instead; see
-	// domain/analytics/service_message_exposure.go and the rule in
-	// conversation.MessageType.IsMetaServiceBillable.
-	//
-	// It was named for outbound session messages on 360dialog numbers, funded by
-	// the platform through the partner credit line. The clause that used to sit
-	// here claiming Meta charges the customer directly on Meta-direct numbers was
-	// wrong and is deliberately removed: we fund those too, which is what makes
-	// Meta's 1 October 2026 service message charge our cost and not the
-	// customer's. Inbound is never billed by anyone.
+	ServiceVoiceCampaign        ServiceType = "voice_campaign"
+	ServiceVoiceCall            ServiceType = "voice_call"
+	ServiceWhatsAppCampaign     ServiceType = "whatsapp_campaign"
 	ServiceWhatsAppConversation ServiceType = "whatsapp_conversation"
 	ServiceAI                   ServiceType = "ai"
 	ServiceManualAdjustment     ServiceType = "manual_adjustment"

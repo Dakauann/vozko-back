@@ -4,15 +4,6 @@ import (
 	"testing"
 )
 
-// A campaign is linked to ONE funnel. Two request fields could name it —
-// pipelineId, and the legacy stageGroupId — and the two used to be applied one
-// after the other: the campaign was created carrying pipelineId, then the stage
-// group's clone ran and called SetCampaignPipeline, overwriting it. Sending both
-// therefore did something the request never asked for, silently.
-//
-// campaignFunnelSource states the rule so it can be asserted without standing up
-// the whole handler: pipelineId wins, and the group is consulted only in its
-// absence.
 type campaignFunnelChoice int
 
 const (
@@ -22,7 +13,6 @@ const (
 )
 
 func campaignFunnelSource(pipelineID, stageGroupID string) campaignFunnelChoice {
-	// Mirrors the guard in WhatsAppCampaignHandler.Create.
 	if pipelineID != "" {
 		return funnelFromPipeline
 	}
@@ -42,7 +32,6 @@ func TestCampaignFunnelSource(t *testing.T) {
 		{"explicit funnel", "pipe-1", "", funnelFromPipeline},
 		{"legacy stage group", "", "grp-1", funnelFromStageGroup},
 		{
-			// The regression: both present used to apply BOTH, group last.
 			"both present, the funnel wins",
 			"pipe-1", "grp-1", funnelFromPipeline,
 		},
@@ -59,14 +48,8 @@ func TestCampaignFunnelSource(t *testing.T) {
 	}
 }
 
-// TestCampaignCreateGuardMatchesTheRule is the tie between the rule above and the
-// handler. If the guard in Create is ever loosened back to "if StageGroupID != ”"
-// alone, this is the test that should be read next to it — the condition below is
-// a literal copy, so a change there without a change here is a change that lost
-// its reason.
 func TestCampaignCreateGuardMatchesTheRule(t *testing.T) {
 	guard := func(pipelineID, stageGroupID string) bool {
-		// Copied from WhatsAppCampaignHandler.Create.
 		return pipelineID == "" && stageGroupID != ""
 	}
 

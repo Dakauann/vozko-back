@@ -21,57 +21,30 @@ import (
 	"vozko/domain/workflow"
 )
 
-// profileTTL is how long a cached contact profile is considered fresh.
-//
-// Telegram puts first_name/username/language_code straight in every update, so
-// the only thing enrichment adds is the avatar, which makes a long TTL correct
-// rather than merely cheap.
 const profileTTL = 7 * 24 * time.Hour
 
-// ErrUnknownAccount means the update addresses a bot we do not serve. The
-// consumer treats it as terminal: retrying can never make the account appear.
 var ErrUnknownAccount = errors.New("telegram: webhook for an unknown account")
 
-// AssignmentService is the round-robin port. Narrow by design so this package
-// does not depend on the whole conversation usecase package.
-//
-// The third argument is the channel account id, which is what keeps each bot's
-// round-robin pool separate.
 type AssignmentService interface {
 	EnsureAssignment(entryID, entryType, accountID string) string
 }
 
-// AIReplier lets an AI agent attend this channel. A nil message with a nil error
-// means "deliberately not answered", automation off, loop suspected, empty
-// body, which is a normal outcome, not a failure.
 type AIReplier interface {
 	Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error)
 }
 
-// WorkflowTrigger fires workflow triggers. The event is channel-neutral, so
-// every node that keys on (entry_id, entry_type) works here unchanged.
 type WorkflowTrigger interface {
 	Evaluate(event workflow.TriggerEvent)
 }
 
-// AnalysisScheduler stamps a conversation for deferred AI analysis.
-//
-// The analysis job debounces on inactivity, so this only records that the
-// conversation moved; it does not run anything inline.
 type AnalysisScheduler interface {
 	ScheduleAnalysis(entryID string, entryType shared.EntryType)
 }
 
-// LeadLinker resolves a shared phone number to a CRM lead.
-//
-// Telegram never volunteers a phone number; it arrives only when the customer
-// taps a request_contact button. That consent is the one moment a Telegram
-// contact can be bridged to the rest of the CRM, so it is worth acting on.
 type LeadLinker interface {
 	FindLeadIDByPhone(ctx context.Context, workspaceID, phone string) (string, error)
 }
 
-// HandleWebhookUseCase turns one normalized Telegram update into CRM state.
 type HandleWebhookUseCase struct {
 	accounts      tgdomain.AccountRepository
 	contacts      tgdomain.ContactRepository
@@ -91,7 +64,6 @@ type HandleWebhookUseCase struct {
 	analysis    AnalysisScheduler
 }
 
-// HandleWebhookDeps groups the dependencies so the constructor stays readable.
 type HandleWebhookDeps struct {
 	Accounts      tgdomain.AccountRepository
 	Contacts      tgdomain.ContactRepository
@@ -131,18 +103,11 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 	}
 }
 
-// QueuedUpdate is the unit published to the queue: one raw update plus the
-// tenant the ingest handler resolved it to.
-//
-// The account id travels alongside the payload because the update itself carries
-// no bot identity, it is resolved from the URL at ingest and must not be
-// re-derived later.
 type QueuedUpdate struct {
 	AccountID string          `json:"account_id"`
 	Update    json.RawMessage `json:"update"`
 }
 
-// Execute processes one queued update.
 func (uc *HandleWebhookUseCase) Execute(ctx context.Context, q *QueuedUpdate) error {
 	if q == nil || len(q.Update) == 0 {
 		return nil
@@ -169,11 +134,6 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, q *QueuedUpdate) er
 	return uc.handleEvent(ctx, account, ev)
 }
 
-// resolveAccount finds the tenant for an update.
-//
-// Bot mode resolves from the account id the ingest handler read out of the URL.
-// Business mode overrides it with the connection id, because the platform bot's
-// single endpoint serves every tenant and the URL says nothing about which.
 func (uc *HandleWebhookUseCase) resolveAccount(ctx context.Context, accountID string, u *tgdomain.Update) (*tgdomain.Account, error) {
 	if connectionID := businessConnectionIDOf(u); connectionID != "" {
 		account, err := uc.accounts.FindByBusinessConnectionID(ctx, connectionID)
@@ -183,9 +143,6 @@ func (uc *HandleWebhookUseCase) resolveAccount(ctx context.Context, accountID st
 		if !errors.Is(err, tgdomain.ErrAccountNotFound) {
 			return nil, err
 		}
-		// A business_connection update for a connection we have never seen is the
-		// pairing handshake: the account row is found by the URL instead, and the
-		// handler binds the connection to it.
 		if u.BusinessConnection == nil {
 			return nil, ErrUnknownAccount
 		}
@@ -237,9 +194,6 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, account *tgdoma
 	case tgdomain.EventBusinessConnection:
 		return uc.handleBusinessConnection(ctx, account, ev)
 	case tgdomain.EventUnknown:
-		// The Bot API adds update kinds several times a year. Logging the raw
-		// payload means a new one is visible the day it starts arriving, rather
-		// than being silently discarded.
 		log.Printf("[telegram] unhandled update kind account=@%s raw=%s",
 			account.BotUsername, truncateRaw(ev.Raw, 512))
 		return nil
@@ -247,30 +201,20 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, account *tgdoma
 	return nil
 }
 
-// ---------------------------------------------------------------- messages
-
 func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	contact, conv, err := uc.resolveConversation(ctx, account, ev)
 	if err != nil {
 		return err
 	}
 
-	// A group chat is stored so the transcript exists, but never automated: with
-	// privacy mode on a bot sees only commands and replies there, so an agent
-	// answering from it would be answering half a conversation.
 	private := conv.IsPrivate()
 
 	if contact.Blocked {
-		// An inbound message proves the contact can reach us again. Telegram also
-		// sends my_chat_member on unblock, but relying on that alone leaves the
-		// composer disabled if that update was ever missed.
 		if err := uc.contacts.SetBlocked(ctx, contact.ID, false, ev.Timestamp); err == nil {
 			contact.Blocked = false
 		}
 	}
 
-	// The customer clock moves before anything that can fail: it anchors the
-	// business-mode window and orders the inbox.
 	if err := uc.conversations.RecordInbound(ctx, conv.ID, ev.Timestamp); err != nil {
 		return err
 	}
@@ -278,9 +222,6 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 		uc.ensureAssignment(conv, account)
 	}
 
-	// A /start payload is the channel's only attribution mechanism, so it is
-	// bound before the message is recorded, a workflow triggered by this very
-	// message can then already see it.
 	uc.bindDeepLink(ctx, account, conv, ev)
 
 	if err := uc.recordInboundMessage(ctx, account, contact, conv, ev); err != nil {
@@ -297,10 +238,6 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 	return nil
 }
 
-// scheduleAnalysis stamps the conversation for deferred AI analysis.
-//
-// Gated on the account's own switch, exactly as the agent and workflows are, so
-// one toggle in the UI means one behaviour.
 func (uc *HandleWebhookUseCase) scheduleAnalysis(account *tgdomain.Account, conv *tgdomain.Conversation) {
 	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging || account.EnableAutoMemory) {
 		return
@@ -311,7 +248,6 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(account *tgdomain.Account, conv
 	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeTelegram)
 }
 
-// recordInboundMessage persists the text and each attachment.
 func (uc *HandleWebhookUseCase) recordInboundMessage(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -323,17 +259,10 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	to := strconv.FormatInt(account.BotUserID, 10)
 	metadata := inboundMetadata(ev)
 
-	// `from` is a bare numeric Telegram user id, which the CRM renders verbatim
-	// when nothing better is supplied. The contact is already in hand here, so
-	// naming the sender costs nothing; leaving these empty is still correct, it
-	// just makes the hub pay for a lookup.
 	senderName, senderAvatar := contact.DisplayName(), contact.PhotoURL
 
 	stored := uc.storeAttachments(ctx, account, conv, ev)
 
-	// A message with neither text nor storable media still gets a row: the
-	// operator must see that something arrived, especially when the reason
-	// nothing was stored is that the file was too large to fetch.
 	if ev.Text == "" && len(stored) == 0 {
 		return uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 			MessageType:       conversation.MessageTypeUnsupported,
@@ -365,8 +294,6 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	}
 
 	for i, item := range stored {
-		// Each attachment needs a distinct provider id or the partial unique
-		// index on (entry_type, external_message_id) rejects the second one.
 		providerID := tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID)
 		if len(stored) > 1 || ev.Text != "" {
 			providerID = fmt.Sprintf("%s:att%d", providerID, i)
@@ -390,12 +317,6 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	return nil
 }
 
-// handleOutbound records a message the business account sent.
-//
-// Business mode only, and it covers BOTH our own sends through the bot and the
-// owner replying from their own phone. Recording the latter is what keeps the
-// CRM transcript honest when a human bypasses it. The history manager dedups on
-// the provider id, so our own send being echoed here inserts nothing.
 func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	_, conv, err := uc.resolveConversation(ctx, account, ev)
 	if err != nil {
@@ -407,9 +328,6 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, account *tgd
 
 	messageType := conversation.MessageTypeOperator
 	if ev.IsAutomatic {
-		// An away or greeting message is Telegram's own automation, not an
-		// operator's reply; labelling it as one would corrupt response-time
-		// metrics.
 		messageType = conversation.MessageTypeSystem
 	}
 
@@ -424,7 +342,6 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, account *tgd
 	})
 }
 
-// handleEdited replaces the stored text for an edited message.
 func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	if uc.messages == nil {
 		return nil
@@ -450,7 +367,6 @@ func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *tgdom
 	return nil
 }
 
-// handleDeleted tombstones messages the business account removed.
 func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	if uc.messages == nil || len(ev.DeletedMessageIDs) == 0 {
 		return nil
@@ -472,11 +388,6 @@ func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *tgdo
 	return nil
 }
 
-// handleCallbackQuery records an inline-keyboard tap.
-//
-// Answering is not optional: an unanswered callback leaves the customer's button
-// spinning until it times out, so the acknowledgement is sent even if the
-// bookkeeping below fails.
 func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	if ev.CallbackQueryID != "" && uc.api != nil {
 		if err := uc.api.AnswerCallbackQuery(ctx, account.BotToken, ev.CallbackQueryID, ""); err != nil {
@@ -496,14 +407,6 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	metadata, _ := json.Marshal(map[string]any{
 		"telegram_callback_data": ev.CallbackData,
 	})
-	// The stored text is the button's LABEL, and the payload lives in metadata.
-	//
-	// Both are needed and they are not interchangeable. Routing keys on the
-	// payload, because a label is a display string an author may reword at any
-	// time. But the text is what an operator reads in the transcript and what an
-	// AI agent is handed as the customer's words, and there a raw id like
-	// "support" is at best unreadable and at worst actively misleading: an agent
-	// whose tool description mentions "Suporte" will match it and act on it.
 	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
 		ProviderMessageID: "cb:" + ev.CallbackQueryID,
@@ -519,9 +422,6 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	}
 
 	if conv.IsPrivate() {
-		// The message text is the label (what the contact chose, as they saw it);
-		// the selection id is the payload (what the branch is labelled with). The
-		// keyboard was built with that payload, so it round-trips byte-for-byte.
 		uc.fireWorkflowTriggers(ctx, account, conv, ev.Text, &workflow.OptionSelection{
 			ID:    ev.CallbackData,
 			Title: ev.Text,
@@ -532,7 +432,6 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	return nil
 }
 
-// handleContactShared records a consented phone share and links the CRM lead.
 func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	contact, conv, err := uc.resolveConversation(ctx, account, ev)
 	if err != nil {
@@ -544,9 +443,6 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 	uc.ensureAssignment(conv, account)
 
 	shared_ := ev.SharedContact
-	// Only a self-share links an identity. A customer can forward anyone's
-	// contact card, and treating a third party's number as the sender's would
-	// merge two unrelated people in the CRM.
 	if shared_ != nil && ev.From != nil && shared_.UserID == ev.From.ID && shared_.PhoneNumber != "" {
 		leadID := uc.resolveLead(ctx, account.WorkspaceID, shared_.PhoneNumber)
 		if err := uc.contacts.SetPhone(ctx, contact.ID, shared_.PhoneNumber, leadID, ev.Timestamp); err != nil {
@@ -595,18 +491,12 @@ func (uc *HandleWebhookUseCase) resolveLead(ctx context.Context, workspaceID, ph
 	return &leadID
 }
 
-// handleBlockToggle records that the customer blocked or unblocked the bot.
-//
-// In bot mode this is the entire outbound gate: there is no messaging window,
-// only whether we can still reach them.
 func (uc *HandleWebhookUseCase) handleBlockToggle(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	if ev.From == nil {
 		return nil
 	}
 	contact, err := uc.contacts.FindByTGUserID(ctx, account.ID, ev.From.ID)
 	if err != nil {
-		// No contact means they blocked us before ever writing; there is nothing
-		// to record.
 		if errors.Is(err, tgdomain.ErrContactNotFound) {
 			return nil
 		}
@@ -620,20 +510,12 @@ func (uc *HandleWebhookUseCase) handleBlockToggle(ctx context.Context, account *
 	log.Printf("[telegram] contact %s %s the bot @%s",
 		contact.ID, map[bool]string{true: "blocked", false: "unblocked"}[blocked], account.BotUsername)
 
-	// The composer's enabled state is derived from this flag, so the open
-	// conversation has to be told.
 	if conv, err := uc.conversations.FindByContact(ctx, account.ID, contact.ID); err == nil {
 		uc.broadcastEntryUpdate(conv.ID)
 	}
 	return nil
 }
 
-// handleBusinessConnection records or updates a Telegram Business connection.
-//
-// The rights are stored verbatim and re-read on every such update, because the
-// account owner can change or revoke them at any moment and we learn only from
-// this event. Assuming the rights granted at onboarding would mean sending on
-// behalf of an account that has since said no.
 func (uc *HandleWebhookUseCase) handleBusinessConnection(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
 	conn := ev.Connection
 	if conn == nil {
@@ -659,18 +541,6 @@ func (uc *HandleWebhookUseCase) handleBusinessConnection(ctx context.Context, ac
 	return nil
 }
 
-// ---------------------------------------------------------------- automation
-
-// fireWorkflowTriggers starts or advances workflows for this conversation.
-//
-// Gating matches the AI agent exactly, the account's workflow switch, overridden
-// per conversation by the automation toggle, so pausing automation silences
-// BOTH, and an operator who took over is not interrupted by a workflow step.
-// fireWorkflowTriggers evaluates workflow triggers for one inbound event.
-//
-// sel is non-nil only when the contact TAPPED an inline button rather than
-// typing. Without it a press cannot reach the option's own branch, because
-// AdvanceOnReply routes on the option id and falls back to no_match.
 func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -694,8 +564,6 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		data["account_workflow_id"] = *account.WorkflowID
 	}
 	workflow.ApplySelection(data, sel)
-	// The chat id, not the user id: it is what the adapter's ContactRef holds,
-	// so {{contact_number}} names the same address a send node would reply to.
 	workflow.ApplyContactNumber(data, strconv.FormatInt(conv.TGChatID, 10))
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
@@ -717,33 +585,18 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	}
 }
 
-// isFirstInboundMessage reports whether the message just recorded is the first
-// one this contact has sent.
-//
-// It counts ALL of the contact's messages, not a page of recent history. A
-// windowed count is wrong in a way that only shows up deep in a conversation:
-// once the bot has answered with several segments, the most recent rows are
-// mostly outbound, exactly one of them is inbound, and the check reports a
-// "first message" on the forty-fifth, starting a whole second workflow run.
 func (uc *HandleWebhookUseCase) isFirstInboundMessage(conv *tgdomain.Conversation) bool {
 	if uc.messages == nil {
 		return false
 	}
-	// The message is already persisted, so exactly one means this is it.
 	count, err := uc.messages.CountInboundByEntry(conv.ID, shared.EntryTypeTelegram)
 	if err != nil {
-		// Fail closed: a spurious first-message trigger starts a duplicate run
-		// and sends the contact a second greeting.
 		log.Printf("[telegram] could not count inbound messages for %s: %v", conv.ID, err)
 		return false
 	}
 	return count == 1
 }
 
-// maybeReplyWithAgent hands the message to the channel-agnostic AI service,
-// which owns every decision, automation gating, loop protection, the window,
-// so this stays a hand-off rather than a second place where "should the bot
-// answer?" is implemented.
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -754,8 +607,6 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	if uc.aiReply == nil || account.AgentID == nil {
 		return
 	}
-	// The contact's CRM bridge, when a shared phone has established one. Nil
-	// keeps lead-scoped features (memory) inert for this conversation.
 	var leadID *string
 	if contact != nil {
 		leadID = contact.LeadID
@@ -770,13 +621,9 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		Text:                  text,
 		LeadID:                leadID,
 	}); err != nil {
-		// An AI failure must never fail the webhook: that would redeliver a
-		// message we already stored.
 		log.Printf("[telegram] agent reply failed conversation=%s: %v", conv.ID, err)
 	}
 }
-
-// ---------------------------------------------------------------- helpers
 
 func (uc *HandleWebhookUseCase) resolveConversation(
 	ctx context.Context,
@@ -832,7 +679,6 @@ func (uc *HandleWebhookUseCase) resolveConversation(
 	return contact, conv, nil
 }
 
-// bindDeepLink resolves a /start payload and stamps the attribution.
 func (uc *HandleWebhookUseCase) bindDeepLink(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -844,8 +690,6 @@ func (uc *HandleWebhookUseCase) bindDeepLink(
 	}
 	link, err := uc.deepLinks.FindByToken(ctx, ev.StartPayload)
 	if err != nil {
-		// An unknown or stale token is not an error: links are shared publicly and
-		// can outlive their campaign. The conversation still opens.
 		log.Printf("[telegram] unknown start payload %q for @%s", ev.StartPayload, account.BotUsername)
 		return
 	}
@@ -866,12 +710,9 @@ func (uc *HandleWebhookUseCase) ensureAssignment(conv *tgdomain.Conversation, ac
 	if uc.assignments == nil {
 		return
 	}
-	// The account id takes the business-phone slot so each connected bot keeps
-	// its own round-robin pool.
 	uc.assignments.EnsureAssignment(conv.ID, string(shared.EntryTypeTelegram), account.ID)
 }
 
-// historyInput is the per-message payload for the shared history manager.
 type historyInput struct {
 	MessageType       conversation.MessageType
 	ProviderMessageID string
@@ -884,16 +725,10 @@ type historyInput struct {
 	MediaURL          string
 	Metadata          json.RawMessage
 
-	// SenderName/SenderAvatar label the live broadcast. They are filled from the
-	// contact the inbound path has already loaded, so the websocket event is
-	// correct without the hub re-reading the contact from the database.
 	SenderName   string
 	SenderAvatar string
 }
 
-// record persists and broadcasts through the SHARED history manager, so Telegram
-// reuses the same dedup, persistence and websocket fan-out as every other
-// channel instead of reimplementing them.
 func (uc *HandleWebhookUseCase) record(
 	ctx context.Context,
 	conv *tgdomain.Conversation,
@@ -929,19 +764,12 @@ func (uc *HandleWebhookUseCase) broadcastEntryUpdate(entryID string) {
 	uc.broadcaster.BroadcastEntryUpdate(entryID, string(shared.EntryTypeTelegram), nil)
 }
 
-// storedAttachment is a downloaded attachment persisted to object storage.
 type storedAttachment struct {
 	mediaID   string
 	mediaType conversation.MediaType
 	url       string
 }
 
-// storeAttachments downloads each attachment and persists it.
-//
-// The >20MB case is the channel's hardest product limit: bots simply cannot
-// download such a file, so the attempt is skipped entirely rather than made and
-// failed. The message still gets a row (see recordInboundMessage), which is what
-// turns an invisible gap in the transcript into a visible placeholder.
 func (uc *HandleWebhookUseCase) storeAttachments(
 	ctx context.Context,
 	account *tgdomain.Account,
@@ -979,8 +807,6 @@ func (uc *HandleWebhookUseCase) storeAttachments(
 			log.Printf("[telegram] download failed kind=%s: %v", att.Kind, err)
 			continue
 		}
-		// getFile "may not preserve the original file name and MIME type", so the
-		// type captured from the webhook wins over whatever the download reported.
 		if att.MIMEType != "" {
 			contentType = att.MIMEType
 		}
@@ -1019,10 +845,6 @@ func (uc *HandleWebhookUseCase) storeAttachments(
 	return out
 }
 
-// enrichContact refreshes a stale profile.
-//
-// Only the avatar actually needs fetching, Telegram already put the name,
-// username and locale in the update, so this is deliberately rare.
 func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, account *tgdomain.Account, contact *tgdomain.Contact) {
 	if uc.api == nil || !contact.ProfileIsStale(time.Now().UTC(), profileTTL) {
 		return
@@ -1039,15 +861,12 @@ func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, account *tgdo
 
 	if fileID, err := uc.api.GetUserProfilePhotoFileID(ctx, account.BotToken, contact.TGUserID); err == nil && fileID != "" {
 		profile.PhotoFileID = fileID
-		// The avatar is re-hosted rather than linked: Telegram's download URL is
-		// guaranteed valid only "for at least 1 hour", so a stored link would rot.
 		if url := uc.storeAvatar(ctx, account, contact, fileID); url != "" {
 			profile.PhotoURL = url
 		}
 	}
 
 	if err := uc.contacts.UpdateProfile(ctx, contact.ID, profile); err != nil {
-		// Enrichment is cosmetic; a failure must never drop a message.
 		log.Printf("[telegram] profile update failed contact=%s: %v", contact.ID, err)
 	}
 }
@@ -1072,8 +891,6 @@ func (uc *HandleWebhookUseCase) storeAvatar(ctx context.Context, account *tgdoma
 	return uc.fileStorage.GetFileURL(key)
 }
 
-// ---------------------------------------------------------------- mapping
-
 func inboundMetadata(ev *tgdomain.Event) json.RawMessage {
 	meta := map[string]any{
 		"telegram_message_id": ev.MessageID,
@@ -1083,7 +900,6 @@ func inboundMetadata(ev *tgdomain.Event) json.RawMessage {
 		meta["telegram_reply_to_message_id"] = ev.ReplyToMessageID
 	}
 	if ev.MediaGroupID != "" {
-		// Albums arrive as separate updates sharing this id; the UI groups them.
 		meta["telegram_media_group_id"] = ev.MediaGroupID
 	}
 	if ev.StartPayload != "" {
@@ -1113,10 +929,6 @@ func inboundMetadata(ev *tgdomain.Event) json.RawMessage {
 	return raw
 }
 
-// placeholderFor is what the operator sees for a message we could not render.
-//
-// The too-large case is stated plainly rather than hidden: it is a real platform
-// limit, and an operator who knows a file exists can open Telegram to see it.
 func placeholderFor(ev *tgdomain.Event) string {
 	for _, att := range ev.Attachments {
 		if att.TooLarge {
@@ -1158,8 +970,6 @@ func conversationMediaType(kind tgdomain.MediaKind) conversation.MediaType {
 	}
 }
 
-// messageTypeForMedia keeps audio distinguishable, because the speech-to-text
-// pipeline keys on it.
 func messageTypeForMedia(mediaType conversation.MediaType) conversation.MessageType {
 	if mediaType == conversation.MediaTypeAudio {
 		return conversation.MessageTypeAudio

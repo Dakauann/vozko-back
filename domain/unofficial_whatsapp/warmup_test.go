@@ -8,8 +8,6 @@ import (
 func TestEffectiveDailyCapWithoutWarmup(t *testing.T) {
 	now := time.Now().UTC()
 
-	// A zero cap means UNKNOWN, not unlimited. Guessing unlimited means blasting
-	// a number nobody has configured a limit for.
 	if got := (&Instance{}).EffectiveDailyCap(now); got != DefaultDailySendCap {
 		t.Fatalf("unset cap = %d, want the default %d", got, DefaultDailySendCap)
 	}
@@ -27,8 +25,6 @@ func TestWarmupRamps(t *testing.T) {
 
 	inst := &Instance{DailySendCap: 2100}
 
-	// Day 1 is the day warmup started, so a number that just started gets 1/21
-	// rather than nothing.
 	inst.WarmupStartedAt = at(0)
 	if got := inst.EffectiveDailyCap(now); got != 100 {
 		t.Errorf("day 1 = %d, want 100", got)
@@ -39,14 +35,12 @@ func TestWarmupRamps(t *testing.T) {
 		t.Errorf("day 11 = %d, want %d", got, want)
 	}
 
-	// Past the ramp, the full cap.
 	inst.WarmupStartedAt = at(WarmupDays + 5)
 	if got := inst.EffectiveDailyCap(now); got != 2100 {
 		t.Errorf("post-warmup = %d, want the full 2100", got)
 	}
 }
 
-// A brand-new number must still be able to do useful work on day one.
 func TestWarmupHasAFloor(t *testing.T) {
 	now := time.Now().UTC()
 	start := now
@@ -56,9 +50,6 @@ func TestWarmupHasAFloor(t *testing.T) {
 	}
 }
 
-// A cap deliberately set BELOW the warmup floor is a restriction and must win:
-// the floor exists to help a new number, not to override an operator who asked
-// for less.
 func TestAConfiguredCapBelowTheFloorWins(t *testing.T) {
 	now := time.Now().UTC()
 	start := now
@@ -68,8 +59,6 @@ func TestAConfiguredCapBelowTheFloorWins(t *testing.T) {
 	}
 }
 
-// A warmup start stamped in the future is a misconfiguration, not permission to
-// send at full rate.
 func TestFutureWarmupStartDoesNotUnlockFullRate(t *testing.T) {
 	now := time.Now().UTC()
 	future := now.Add(48 * time.Hour)

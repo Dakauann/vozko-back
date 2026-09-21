@@ -11,6 +11,7 @@ var (
 	ErrMessageParticipantRequired = errors.New("conversation: at least one participant is required")
 	ErrWhatsAppWebhookSkipped     = errors.New("conversation: whatsapp webhook skipped")
 	ErrWhatsAppWebhookRetryable   = errors.New("conversation: whatsapp webhook retryable failure")
+	ErrRefundNotConfigured        = errors.New("conversation: whatsapp refund dependencies are required")
 	ErrMediaRequired              = errors.New("conversation: media is required")
 	ErrMediaTypeInvalid           = errors.New("conversation: media type is invalid")
 	ErrMediaURLRequired           = errors.New("conversation: media url is required")
@@ -21,9 +22,7 @@ var (
 
 	ErrWhatsAppCallNoPermission  = errors.New("conversation: whatsapp call permission not granted by user (138006)")
 	ErrWhatsAppCallNotConfigured = errors.New("conversation: whatsapp calling not configured")
-	// ErrNoCallSource: the dial reached the dispatcher with no channel call
-	// source wired at all, so there is nothing to place the call on.
-	ErrNoCallSource = errors.New("conversation: no call source configured")
+	ErrNoCallSource              = errors.New("conversation: no call source configured")
 
 	ErrConversationIDRequired = ErrEntryIDRequired
 )

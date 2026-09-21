@@ -11,17 +11,10 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-// ErrQuickSendBusy means another quick send is already in flight.
 var ErrQuickSendBusy = errors.New("unofficial whatsapp campaign quick send: busy, please retry")
 
 const quickSendLockTTL = 30 * time.Second
 
-// quickSendUseCase adds numbers to a live campaign and dispatches just those.
-//
-// The one path that is allowed to enqueue work onto a RUNNING campaign, which is
-// why it holds a lock: two concurrent quick sends would each fan out and each
-// overwrite the completion counter, leaving a campaign that finishes early and
-// abandons whatever the loser queued.
 type quickSendUseCase struct {
 	repos    campaignRepos
 	leads    LeadResolver
@@ -68,8 +61,6 @@ func (uc *quickSendUseCase) Execute(ctx context.Context, in uwc.QuickSendInput) 
 
 	out := &uwc.QuickSendOutput{CampaignID: in.CampaignID}
 
-	// New numbers are added first, while the campaign may still be stopped, so
-	// the add path's own running-campaign guard does not refuse them.
 	var added []uwc.EntryOutput
 	if len(in.Numbers) > 0 {
 		result, err := uc.addNumbers(ctx, camp, in.Numbers)
@@ -82,9 +73,6 @@ func (uc *quickSendUseCase) Execute(ctx context.Context, in uwc.QuickSendInput) 
 		out.Entries = added
 	}
 
-	// Dispatch only what this call is responsible for. Handing an empty entry
-	// list to Dispatch would fan out every pending row in the campaign, turning
-	// "send to these three" into "send to all forty thousand".
 	entries := make([]uwc.DispatchEntry, 0, len(added))
 	for _, e := range added {
 		entries = append(entries, uwc.DispatchEntry{EntryID: e.EntryID, PhoneNumber: e.Number})
@@ -115,8 +103,6 @@ func (uc *quickSendUseCase) Execute(ctx context.Context, in uwc.QuickSendInput) 
 	return out, nil
 }
 
-// addNumbers reuses the add-entries path rather than repeating its validation,
-// lead bridging and duplicate accounting.
 func (uc *quickSendUseCase) addNumbers(
 	ctx context.Context,
 	camp *uwc.Campaign,

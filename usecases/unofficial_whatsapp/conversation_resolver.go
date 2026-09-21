@@ -7,18 +7,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// ConversationResolver turns a phone number into the contact and conversation
-// the CRM already knows.
-//
-// Extracted from StartConversationUseCase rather than reimplemented for
-// campaigns, and that is the most load-bearing reuse in the whole feature. A
-// campaign that created contacts its own way would produce a DUPLICATE of every
-// person it reached the moment they replied: the inbound webhook resolves people
-// by JID, would find nothing matching what the campaign wrote, and would open a
-// second contact and a second conversation for the same human.
-//
-// So there is exactly one path from "a number" to "a conversation", and cold
-// outbound, campaigns and inbound messages all take it.
 type ConversationResolver struct {
 	contacts      uw.ContactRepository
 	conversations uw.ConversationRepository
@@ -33,33 +21,19 @@ func NewConversationResolver(
 	return &ConversationResolver{contacts: contacts, conversations: conversations, leads: leads}
 }
 
-// ResolveInput is one subject to resolve.
 type ResolveInput struct {
-	// JID is WhatsApp's authoritative identifier, from a registration check.
-	//
-	// Required. Constructing "<phone>@s.whatsapp.net" by hand addresses the
-	// wrong identity whenever an account has been migrated, so callers verify
-	// the number first and pass what WhatsApp answered.
-	JID string
-	LID string
-	// PhoneNumber in normalized digits.
+	JID         string
+	LID         string
 	PhoneNumber string
-	// Name is used only when the contact is new; a number already known keeps
-	// the name WhatsApp gave it.
-	Name string
+	Name        string
 }
 
-// Resolved is the pair every caller needs.
 type Resolved struct {
-	Conversation *uw.Conversation
-	Contact      *uw.Contact
-	// AlreadyExisted reports whether the conversation was already in the inbox,
-	// so a caller can say "opened" rather than implying it made a duplicate.
+	Conversation   *uw.Conversation
+	Contact        *uw.Contact
 	AlreadyExisted bool
 }
 
-// Resolve finds or creates the contact, bridges its CRM lead, and finds or
-// creates the conversation.
 func (r *ConversationResolver) Resolve(
 	ctx context.Context,
 	instance *uw.Instance,
@@ -96,11 +70,6 @@ func (r *ConversationResolver) Resolve(
 	return &Resolved{Conversation: conv, Contact: contact, AlreadyExisted: alreadyExisted}, nil
 }
 
-// bridgeContactLead attaches the CRM lead, exactly as the inbound path does.
-//
-// Best-effort for the same reason it is there: a lead that could not be created
-// must not stop an operator from reaching someone, and the next inbound message
-// retries the bridge.
 func (r *ConversationResolver) bridgeContactLead(
 	ctx context.Context,
 	instance *uw.Instance,

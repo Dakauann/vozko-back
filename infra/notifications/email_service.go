@@ -16,29 +16,15 @@ import (
 )
 
 const (
-	// Per-attempt and overall bounds on a single SendEmail call. The overall
-	// budget is kept modest on purpose: the notification queue uses prefetch=1,
-	// so a long in-call retry would stall the whole queue. Transient failures
-	// that outlive this budget are handed back to the consumer, which schedules
-	// a delayed redelivery instead of blocking.
 	emailSendPerAttemptTimeout = 12 * time.Second
 	emailSendOverallTimeout    = 30 * time.Second
 	emailSendMaxAttempts       = 4
 	emailSendBaseBackoff       = 500 * time.Millisecond
 	emailSendMaxBackoff        = 8 * time.Second
 
-	// defaultResendMaxRPS stays under Resend's documented 5 req/s per-team limit.
 	defaultResendMaxRPS = 4
 )
 
-// EmailService is the system transactional email sender, backed by Resend.
-// It powers auth verification, password resets, order/ticket/workspace/payment
-// notifications and the async email-notification consumer. The workflow
-// "Send Email" node uses a separate per-call SMTP sender and is unaffected.
-//
-// Sends are rate limited client-side (token bucket) to avoid Resend 429s, and
-// each send retries transient failures (rate limit, request timeout, network
-// errors) with backoff that honours the API's Retry-After hint.
 type EmailService struct {
 	client          *resend.Client
 	fromEmail       string
@@ -48,10 +34,6 @@ type EmailService struct {
 	maxAttempts     int
 }
 
-// NewEmailService builds the Resend-backed email service. apiKey is the
-// RESEND_API_KEY; fromEmail/fromName form the From header (the domain must be
-// verified in Resend for production sends). maxRPS caps client-side send rate;
-// pass <= 0 for the safe default.
 func NewEmailService(templatesLoader notification.TemplateLoader, apiKey, fromEmail, fromName string, maxRPS int) notification.EmailService {
 	apiKey = strings.TrimSpace(apiKey)
 
@@ -96,8 +78,6 @@ func (e *EmailService) SendEmail(to, subject, body string) error {
 
 	var lastErr error
 	for attempt := 1; attempt <= e.maxAttempts; attempt++ {
-		// Stay under Resend's per-team rate limit; blocks until a token frees
-		// up or the overall budget expires.
 		if err := e.limiter.Wait(ctx); err != nil {
 			if lastErr != nil {
 				return fmt.Errorf("failed to send email via Resend after %d attempts: %w", attempt-1, lastErr)
@@ -145,11 +125,6 @@ func (e *EmailService) SendTemplate(to, subject, templateName string, data map[s
 	return e.SendEmail(to, subject, body)
 }
 
-// isRetryableSendError reports whether a failed Resend send is worth retrying.
-// A 429 is surfaced by the SDK as a typed *resend.RateLimitError (matching
-// resend.ErrRateLimit); request timeouts and transport errors are transient.
-// Other API errors (4xx validation, unknown) are treated as permanent here;
-// sustained 5xx outages are caught instead by the consumer's delayed requeue.
 func isRetryableSendError(err error) bool {
 	if err == nil {
 		return false
@@ -164,8 +139,6 @@ func isRetryableSendError(err error) bool {
 	return errors.As(err, &netErr)
 }
 
-// sendBackoff returns how long to wait before the next attempt. On a rate limit
-// it honours the API's Retry-After (capped); otherwise exponential backoff.
 func sendBackoff(attempt int, err error) time.Duration {
 	var rle *resend.RateLimitError
 	if errors.As(err, &rle) {
@@ -186,7 +159,6 @@ func sendBackoff(attempt int, err error) time.Duration {
 	return backoff
 }
 
-// from renders the From header, e.g. "Brand <no-reply@example.com>".
 func (e *EmailService) from() string {
 	if e.fromName != "" {
 		return fmt.Sprintf("%s <%s>", e.fromName, e.fromEmail)
@@ -194,8 +166,6 @@ func (e *EmailService) from() string {
 	return e.fromEmail
 }
 
-// parseRecipients accepts a single address or a comma-separated list, mirroring
-// the previous SMTP "To" header behaviour, and returns a clean slice.
 func parseRecipients(raw string) []string {
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))

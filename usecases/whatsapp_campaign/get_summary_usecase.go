@@ -10,14 +10,9 @@ import (
 
 type getSummaryUseCase struct {
 	aggregator wce.SummaryAggregator
-	// chargeAgg is optional. When set, Envios + by-category volume come from the
-	// balance ledger (true charged sends) instead of current entry status, so a
-	// campaign reset cannot erase billed reality.
-	chargeAgg balance.WhatsAppChargeAggregator
+	chargeAgg  balance.WhatsAppChargeAggregator
 }
 
-// NewGetSummaryUseCase builds the workspace-level "disparos" summary usecase.
-// chargeAgg may be nil (falls back to entry-status counts for Envios).
 func NewGetSummaryUseCase(
 	aggregator wce.SummaryAggregator,
 	chargeAgg balance.WhatsAppChargeAggregator,
@@ -32,8 +27,6 @@ func (uc *getSummaryUseCase) Execute(filter wce.WorkspaceSummaryFilter) (*wc.Cam
 	}
 	metrics := wc.NewCampaignMetrics(counts)
 
-	// Prefer ledger for billed volume (Envios + type split). Delivery funnel
-	// (entregues/lidas/falhas) stays entry-based: that is operational state.
 	if uc.chargeAgg != nil && strings.TrimSpace(filter.WorkspaceID) != "" {
 		stats, chargeErr := uc.chargeAgg.AggregateWhatsAppTemplateCharges(balance.WhatsAppChargeFilter{
 			WorkspaceID:   filter.WorkspaceID,
@@ -53,7 +46,6 @@ func (uc *getSummaryUseCase) Execute(filter wce.WorkspaceSummaryFilter) (*wc.Cam
 			}
 			return metrics, nil
 		}
-		// Fall through to entry-status category if ledger unavailable.
 	}
 
 	byCat, err := uc.aggregator.CountDispatchesByCategoryForWorkspace(filter)

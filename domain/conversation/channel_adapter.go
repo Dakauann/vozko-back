@@ -12,72 +12,37 @@ import (
 )
 
 var (
-	// ErrNoAdapterForEntryType means no channel adapter is registered for the
-	// entry type. Callers should treat it as a configuration error, not a
-	// transient failure.
 	ErrNoAdapterForEntryType = errors.New("conversation: no channel adapter registered for entry type")
-	// ErrOutboundWindowClosed means the provider will not accept a message
-	// right now. On Instagram this is normal: the 24h window closes and only a
-	// new inbound message reopens it.
-	ErrOutboundWindowClosed = errors.New("conversation: outbound messaging window is closed")
-	// ErrCapabilityUnsupported means the channel cannot do what was asked.
+	ErrOutboundWindowClosed  = errors.New("conversation: outbound messaging window is closed")
 	ErrCapabilityUnsupported = errors.New("conversation: channel does not support this operation")
 )
 
-// EntryContext is everything needed to send on any channel, resolved from an
-// entry id. It replaces the per-channel tuple that
-// MessageSenderService.getEntryInfo returns today via a `switch entryType`.
 type EntryContext struct {
 	EntryID     string
 	EntryType   shared.EntryType
 	WorkspaceID string
 
-	// AccountID is the channel account that owns the conversation: a WhatsApp
-	// business phone id, or an Instagram account id. It is what guarantees a
-	// reply leaves from the same account the message arrived on.
 	AccountID string
 
-	// ContactID is our internal contact primary key.
-	ContactID string
-	// ContactRef is the provider-facing address: an E.164 number on WhatsApp,
-	// an IGSID on Instagram.
-	ContactRef string
-	// ContactHandle is the human-readable handle (@username) when the channel
-	// has one.
+	ContactID     string
+	ContactRef    string
 	ContactHandle string
 
-	// LastInboundAt anchors the outbound window.
 	LastInboundAt *time.Time
 }
 
-// SendOutcome is the provider's acknowledgement of a send.
 type SendOutcome struct {
-	// ProviderMessageID is the id the provider assigned. Store it so the later
-	// echo/status webhook can be reconciled against the row we just wrote.
 	ProviderMessageID string
 }
 
-// SendTextRequest is a channel-agnostic text send.
 type SendTextRequest struct {
-	Body string
-	// ReplyToProviderMessageID quotes an earlier message when the channel
-	// supports it.
+	Body                     string
 	ReplyToProviderMessageID string
-	// HumanInitiated marks a send an OPERATOR made by hand, as opposed to an AI
-	// reply or any other automated dispatch.
-	//
-	// Deliberately phrased so the zero value means "automated": a channel that
-	// paces its sends to avoid a ban must treat an unmarked caller as a bot. A
-	// new automated path that forgets this field is merely slow; an operator
-	// path that forgets it would send unpaced and risk the number.
-	HumanInitiated bool
+	HumanInitiated           bool
 }
 
-// SendMediaRequest is a channel-agnostic media send. Exactly one of URL or
-// Bytes is expected; adapters that need a publicly fetchable URL will reject
-// Bytes with ErrCapabilityUnsupported.
 type SendMediaRequest struct {
-	Kind     string // image | video | audio | document
+	Kind     string
 	URL      string
 	Bytes    []byte
 	MIMEType string
@@ -85,217 +50,100 @@ type SendMediaRequest struct {
 	Caption  string
 
 	ReplyToProviderMessageID string
-	// HumanInitiated marks a send an OPERATOR made by hand, as opposed to an AI
-	// reply or any other automated dispatch.
-	//
-	// Deliberately phrased so the zero value means "automated": a channel that
-	// paces its sends to avoid a ban must treat an unmarked caller as a bot. A
-	// new automated path that forgets this field is merely slow; an operator
-	// path that forgets it would send unpaced and risk the number.
-	HumanInitiated bool
+	HumanInitiated           bool
 }
 
-// WindowClosedReason names WHY a conversation cannot be replied to.
-//
-// It exists because "closed" alone is not actionable. Every consumer needs a
-// different sentence and a different remedy: reconnect the number, wait for the
-// clock, wait for the customer to write, or nothing-you-can-do. Before this,
-// callers inferred the reason from whether an expiry accompanied the false —
-// and that inference shipped a bug where every clockless channel reported "the
-// 24-hour window is closed" on a channel that has no 24-hour window.
-//
-// The reason travels with the state so the composer, the send error and the
-// scheduler all say the same true thing without any of them guessing.
 type WindowClosedReason string
 
 const (
-	// WindowReasonNone accompanies an open window.
-	WindowReasonNone WindowClosedReason = ""
-	// WindowReasonExpired: a clock ran out. This is the only reason that
-	// reopens on its own, when the customer writes again.
-	WindowReasonExpired WindowClosedReason = "expired"
-	// WindowReasonNoInbound: the customer has never written, and this channel
-	// forbids initiating.
-	WindowReasonNoInbound WindowClosedReason = "no_inbound"
-	// WindowReasonContactBlocked: the contact blocked us.
-	WindowReasonContactBlocked WindowClosedReason = "contact_blocked"
-	// WindowReasonSessionDown: the linked device is offline. Reconnect it.
-	WindowReasonSessionDown WindowClosedReason = "session_down"
-	// WindowReasonAccountRestricted: the provider restricted the account. This
-	// is the one closed state that carries an expiry — a countdown to when the
-	// restriction lifts, NOT a deadline to schedule against.
-	WindowReasonAccountRestricted WindowClosedReason = "account_restricted"
-	// WindowReasonReplyRevoked: the connection lost its right to reply.
-	WindowReasonReplyRevoked WindowClosedReason = "reply_revoked"
-	// WindowReasonChannelUnavailable: the account, instance or conversation
-	// could not be resolved — most often a number that was removed.
+	WindowReasonNone               WindowClosedReason = ""
+	WindowReasonExpired            WindowClosedReason = "expired"
+	WindowReasonNoInbound          WindowClosedReason = "no_inbound"
+	WindowReasonContactBlocked     WindowClosedReason = "contact_blocked"
+	WindowReasonSessionDown        WindowClosedReason = "session_down"
+	WindowReasonAccountRestricted  WindowClosedReason = "account_restricted"
+	WindowReasonReplyRevoked       WindowClosedReason = "reply_revoked"
 	WindowReasonChannelUnavailable WindowClosedReason = "channel_unavailable"
 )
 
-// WindowState is the single answer to "may we send right now, and if not, why".
-//
-// ExpiresAt means two different things depending on Open, which is why the two
-// fields must travel together and never be read apart:
-//   - Open  + ExpiresAt: a deadline. Sending is allowed until then.
-//   - Closed + ExpiresAt: a countdown. Sending is forbidden UNTIL then.
-//
-// Reading a closed window's expiry as a deadline inverts it exactly.
 type WindowState struct {
 	Open      bool
 	ExpiresAt *time.Time
 	Reason    WindowClosedReason
 }
 
-// OpenWindow reports a window that permits sending until expiresAt (nil = no
-// clock on this channel).
 func OpenWindow(expiresAt *time.Time) WindowState {
 	return WindowState{Open: true, ExpiresAt: expiresAt, Reason: WindowReasonNone}
 }
 
-// ClosedWindow reports a window that forbids sending, with the reason.
 func ClosedWindow(reason WindowClosedReason) WindowState {
 	return WindowState{Reason: reason}
 }
 
-// ClosedWindowUntil reports a closed window that lifts at a known time.
 func ClosedWindowUntil(reason WindowClosedReason, until *time.Time) WindowState {
 	return WindowState{ExpiresAt: until, Reason: reason}
 }
 
-// ChannelAdapter is the send-side port for one channel.
-//
-// Instagram is the first implementation. WhatsApp keeps its current code path
-// until its adapter is added, at which point MessageSenderService loses its
-// entry-type switch entirely.
 type ChannelAdapter interface {
 	EntryType() shared.EntryType
 
-	// ResolveEntry loads everything needed to send to this entry.
 	ResolveEntry(ctx context.Context, entryID string) (*EntryContext, error)
 
-	// WindowState reports whether an outbound message is currently allowed,
-	// when the state changes, and why it is closed. A channel with no window
-	// returns OpenWindow(nil).
 	WindowState(ctx context.Context, ec *EntryContext) (WindowState, error)
 
 	SendText(ctx context.Context, ec *EntryContext, req SendTextRequest) (*SendOutcome, error)
 	SendMedia(ctx context.Context, ec *EntryContext, req SendMediaRequest) (*SendOutcome, error)
 }
 
-// ReactingAdapter is implemented by channels that support message reactions.
-// Discovered by type assertion, matching the codebase's existing pattern for
-// optional provider capabilities, so message-only fakes need not implement it.
 type ReactingAdapter interface {
 	SendReaction(ctx context.Context, ec *EntryContext, targetProviderMessageID, reaction string) error
 	RemoveReaction(ctx context.Context, ec *EntryContext, targetProviderMessageID string) error
 }
 
-// PresenceAdapter is implemented by channels with typing indicators and read
-// receipts.
 type PresenceAdapter interface {
 	SendTyping(ctx context.Context, ec *EntryContext, on bool) error
 	MarkSeen(ctx context.Context, ec *EntryContext, upToProviderMessageID string) error
 }
 
-// EditingAdapter is implemented by channels where an already-sent message can be
-// corrected.
-//
-// Only Telegram can do this today. It is an optional capability rather than a
-// method on every adapter precisely so the UI can hide the action for channels
-// that cannot honour it: offering "edit" on WhatsApp and then failing is worse
-// than not offering it.
 type EditingAdapter interface {
 	EditText(ctx context.Context, ec *EntryContext, providerMessageID, body string) error
 }
 
-// RetractingAdapter is implemented by channels where a sent message can be
-// unsent.
-//
-// sentAt lets the adapter enforce the provider's own time bound (Telegram: 48
-// hours) and explain the refusal, instead of surfacing an opaque provider error
-// to an operator who is trying to undo a mistake.
 type RetractingAdapter interface {
 	Retract(ctx context.Context, ec *EntryContext, providerMessageID string, sentAt time.Time) error
 }
 
-// InteractiveOption is one choice offered to the contact.
-//
-// ID is the contract and Title is the display string. Everything downstream,
-// the workflow node's branching, the stored message text, keys off ID, because
-// a title is a label an author edits freely and a payload is an identifier a
-// running conversation depends on.
 type InteractiveOption struct {
 	ID    string
 	Title string
 }
 
-// SendInteractiveRequest is a channel-agnostic "pick one" prompt.
-//
-// Header and Footer are best-effort: WhatsApp renders both, Instagram and
-// Telegram have no such slots and fold them into the body rather than dropping
-// the author's words.
 type SendInteractiveRequest struct {
 	Body    string
 	Header  string
 	Footer  string
 	Options []InteractiveOption
 
-	// Style is buttons | list. Channels with one native mechanism ignore it;
-	// it exists because WhatsApp picks a different message type from it.
 	Style string
 }
 
-// TypingAdapter is implemented by channels that can show the contact that
-// someone is composing a reply.
-//
-// Optional for the same reason as the others. Declaring it is what lets the
-// marker service find it: the unofficial WhatsApp adapter has had a working
-// SendTyping that nothing could reach, because the hub refused every entry type
-// but the official WhatsApp one before it ever got that far.
 type TypingAdapter interface {
 	SendTyping(ctx context.Context, ec *EntryContext, on bool) error
 }
 
-// SeenAdapter is implemented by channels that can report the OPERATOR's read
-// back to the contact — the blue ticks on the customer's phone.
-//
-// Optional, like the other capability interfaces: a channel without read
-// receipts simply is not asserted to this type, and the local read state still
-// works. Declaring it is what lets the marker service find it; before this
-// existed the unofficial WhatsApp adapter already had a working MarkSeen that
-// nothing could ever call.
 type SeenAdapter interface {
-	// MarkSeen marks the contact's messages read up to and including the given
-	// provider message id.
 	MarkSeen(ctx context.Context, ec *EntryContext, upToProviderMessageID string) error
 }
 
-// InteractiveAdapter is implemented by channels that can ask the contact to
-// pick one option and report which was picked.
-//
-// Optional, like ReactingAdapter and EditingAdapter, and for the same reason:
-// the workflow editor and the CRM must be able to ask "can this channel do it?"
-// before offering the affordance. A channel that cannot present choices must
-// not silently send a wall of text listing them.
 type InteractiveAdapter interface {
-	// SendInteractive delivers the prompt. The adapter is responsible for
-	// applying its own channel's limits, the caller passes the author's full
-	// option list and the adapter renders what it can.
 	SendInteractive(ctx context.Context, ec *EntryContext, req SendInteractiveRequest) (*SendOutcome, error)
 
-	// InteractiveLimits reports what this channel will actually render, so a
-	// caller can warn before sending rather than explain afterwards.
 	InteractiveLimits() channel.InteractiveLimits
 }
 
-// AdapterRegistry resolves adapters by entry type.
 type AdapterRegistry interface {
 	For(t shared.EntryType) (ChannelAdapter, error)
 	Has(t shared.EntryType) bool
-	// EntryTypes lists every registered channel, sorted, so callers that must
-	// describe ALL channels, the workflow editor asking which ones render an
-	// interactive prompt, can enumerate instead of hardcoding a list that goes
-	// stale the next time a channel is added.
 	EntryTypes() []shared.EntryType
 }
 
@@ -303,7 +151,6 @@ type adapterRegistry struct {
 	adapters map[shared.EntryType]ChannelAdapter
 }
 
-// NewAdapterRegistry builds an immutable registry from the given adapters.
 func NewAdapterRegistry(adapters ...ChannelAdapter) AdapterRegistry {
 	m := make(map[shared.EntryType]ChannelAdapter, len(adapters))
 	for _, a := range adapters {
@@ -332,22 +179,10 @@ func (r *adapterRegistry) EntryTypes() []shared.EntryType {
 	for t := range r.adapters {
 		out = append(out, t)
 	}
-	// Sorted so the editor's channel list has a stable order between requests
-	// rather than Go's randomized map iteration.
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 
-// LiveAdapterRegistry is an AdapterRegistry whose contents can be replaced after
-// it has been handed out.
-//
-// Channels register their adapters one at a time as the container initializes,
-// so anything wired before the last channel would otherwise hold a snapshot
-// missing it. That failure is silent and badly misleading: a missing adapter
-// reads downstream as "this channel cannot send", so a workflow simply skips
-// every send node on that channel and reports the run as completed.
-//
-// Handing consumers this instead means registration order stops mattering.
 type LiveAdapterRegistry struct {
 	mu    sync.RWMutex
 	inner AdapterRegistry
@@ -357,7 +192,6 @@ func NewLiveAdapterRegistry() *LiveAdapterRegistry {
 	return &LiveAdapterRegistry{inner: NewAdapterRegistry()}
 }
 
-// Replace swaps in a registry built from the adapters known so far.
 func (r *LiveAdapterRegistry) Replace(adapters ...ChannelAdapter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -17,10 +17,6 @@ type entryManagementUseCase struct {
 	leads LeadResolver
 }
 
-// The three entry use cases share one implementation and differ only in which
-// Execute the port asks for. Thin adapters rather than three near-identical
-// structs: the campaign lookup, the running-campaign guard and the lead bridge
-// are the same code in all three, and three copies of them would drift.
 type addEntriesAdapter struct{ *entryManagementUseCase }
 type updateEntryAdapter struct{ *entryManagementUseCase }
 type deleteEntryAdapter struct{ *entryManagementUseCase }
@@ -53,19 +49,6 @@ func NewDeleteEntryUseCase(campaigns uwc.Repository, entries uwc.EntryRepository
 	return deleteEntryAdapter{newEntryManagement(campaigns, entries, nil)}
 }
 
-// add appends numbers to an existing campaign.
-//
-// Invalid and duplicate rows are REPORTED rather than silently dropped: an
-// operator pasting 500 numbers and being told "added 500" when 80 were malformed
-// has no way to find the 80.
-// allowRunning is false for the plain "add numbers" endpoint and true for quick
-// send.
-//
-// The distinction is real rather than a bypass: adding to a running campaign
-// without dispatching leaves rows PENDING forever, because the fan-out already
-// happened and completion is counted per queued message. Quick send is the one
-// caller that adds AND enqueues in the same breath, so it is the one caller for
-// which adding to a live campaign is coherent.
 func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInput, allowRunning bool) (*uwc.AddEntriesOutput, error) {
 	camp, err := uc.repos.campaigns.FindByID(in.CampaignID)
 	if err != nil {
@@ -93,7 +76,6 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 			continue
 		}
 		if len(item.Variables) < required {
-			// A row without enough values would send a raw {{2}} to a customer.
 			out.InvalidSkipped++
 			continue
 		}
@@ -139,9 +121,6 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 		return nil, err
 	}
 
-	// CreateMany skips rows the (campaign, lead) index already holds, so the
-	// difference between what we offered and what came back IS the duplicate
-	// count — reported rather than inferred.
 	out.AddedCount = len(created)
 	out.DuplicatesSkipped += len(entries) - len(created)
 	for _, e := range created {
@@ -155,8 +134,6 @@ func (uc *entryManagementUseCase) deleteEntry(in uwc.DeleteEntryInput) error {
 	if err != nil {
 		return err
 	}
-	// The campaign id in the path has to match the entry's, or a caller could
-	// delete another campaign's row by guessing an id.
 	if entry.CampaignID != in.CampaignID {
 		return uwc.ErrEntryNotFound
 	}
@@ -185,8 +162,6 @@ func (uc *entryManagementUseCase) updateEntry(ctx context.Context, in uwc.Update
 		if !uwc.ValidTargetNumber(number) {
 			return nil, uwc.ErrCampaignTargetInvalid
 		}
-		// A changed number is a different person, so the lead has to move with
-		// it — otherwise the entry would point at the previous lead's history.
 		leads, err := uc.leads.FindOrCreateMany(camp.WorkspaceID, []lead.BulkLeadInput{{Number: number}})
 		if err != nil {
 			return nil, err

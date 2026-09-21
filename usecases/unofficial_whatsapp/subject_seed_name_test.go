@@ -6,20 +6,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// Whose name is on an outbound message.
-//
-// The provider fills `senderName` with the AUTHOR of the message, and on a
-// message the operator sent that author is the connected account, not the
-// person being written to. Seeding a brand-new contact from it named the
-// customer after the business — and because bridgeLead copies the contact's
-// DisplayName() into the CRM lead once and never revisits it, the wrong name
-// outlived the contact row that was repaired seconds later by the chats sync.
-//
-// Live traffic: a workspace reconnected its number, the sync replayed a chat
-// whose last message the operator had sent, and the customer "Dakauann" was
-// filed as "Lucas - Suporte PAJ" — the operator's own WhatsApp name. 256
-// contacts across 15 instances carried their own account owner's name.
-
 func TestSubjectSeedNameIgnoresOutboundSenderName(t *testing.T) {
 	const ownerName = "Lucas - Suporte PAJ"
 
@@ -42,8 +28,6 @@ func TestSubjectSeedNameIgnoresOutboundSenderName(t *testing.T) {
 	}
 }
 
-// The inbound case is the whole point of the field and must keep working: a
-// first message from an unknown number is often the only name we ever get.
 func TestSubjectSeedNameKeepsInboundSenderName(t *testing.T) {
 	ev := &uw.Event{Kind: uw.EventInboundMessage, SenderName: "Dakauann"}
 
@@ -55,9 +39,6 @@ func TestSubjectSeedNameKeepsInboundSenderName(t *testing.T) {
 	}
 }
 
-// A group's subject is the group, so the participant who spoke never names it —
-// pinned here because the outbound guard sits next to this one and a rewrite
-// that drops it would rename groups after their most recent talker.
 func TestSubjectSeedNameNeverNamesAGroup(t *testing.T) {
 	ev := &uw.Event{Kind: uw.EventInboundMessage, SenderName: "Dakauann", IsGroup: true}
 

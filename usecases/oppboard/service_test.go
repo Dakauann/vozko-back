@@ -10,9 +10,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// fakeSearcher records every input it is called with and returns canned totals
-// keyed by the appended column predicate, so a test can assert both the column
-// values and the per-axis predicate composition.
 type fakeSearcher struct {
 	searchInputs []opportunity.SearchByFilterInput
 	sumInputs    []opportunity.SearchByFilterInput
@@ -21,8 +18,6 @@ type fakeSearcher struct {
 	sumByCol   map[string]int64
 }
 
-// colKey derives a stable key from the appended (last-group) predicate so the
-// fake can return a per-column total. It mirrors withPredicate's placement.
 func colKey(f crmfilter.Filter) string {
 	if len(f.Groups) == 0 {
 		return "__all__"
@@ -63,7 +58,6 @@ func (f *fakeStages) EnsureDefaultOpportunityPipeline(string) (string, error) {
 	return "default-opp-pipeline", nil
 }
 func (f *fakeStages) ListByPipeline(_, pipelineID string) ([]*stage.Stage, error) {
-	// Mirror the real repo: scope to the requested pipeline's stages.
 	var out []*stage.Stage
 	for _, s := range f.stages {
 		if s.PipelineID == pipelineID {
@@ -88,7 +82,6 @@ func (a scopingAuth) GetDepartmentScope(string, string, bool) (conversation.Depa
 	return a.scope, a.allowed
 }
 
-// lastPredicate returns the appended per-column predicate for assertions.
 func lastPredicate(t *testing.T, f crmfilter.Filter) crmfilter.Predicate {
 	t.Helper()
 	if len(f.Groups) == 0 || len(f.Groups[len(f.Groups)-1].Predicates) == 0 {
@@ -97,9 +90,6 @@ func lastPredicate(t *testing.T, f crmfilter.Filter) crmfilter.Predicate {
 	return f.Groups[len(f.Groups)-1].Predicates[0]
 }
 
-// TestGetBoard_StageAxis proves the stage axis builds one column per pipeline
-// stage with a FieldStage OpIn predicate, and that Total/ValueTotal come from the
-// searcher's count and value sum respectively.
 func TestGetBoard_StageAxis(t *testing.T) {
 	searcher := &fakeSearcher{
 		countByCol: map[string]int64{"s1": 3, "s2": 1},
@@ -123,7 +113,6 @@ func TestGetBoard_StageAxis(t *testing.T) {
 	if board.GroupBy != "stage" {
 		t.Fatalf("groupBy = %q, want stage", board.GroupBy)
 	}
-	// pipe1 has exactly two stages; the pipeX stage must be excluded.
 	if len(board.Columns) != 2 {
 		t.Fatalf("columns = %d, want 2", len(board.Columns))
 	}
@@ -144,20 +133,15 @@ func TestGetBoard_StageAxis(t *testing.T) {
 		t.Fatalf("column1 totals: Total=%d ValueTotal=%d, want 1 / 120000", c1.Total, c1.ValueTotal)
 	}
 
-	// Per-axis predicate: each column appends FieldStage OpIn [stageID].
 	p := lastPredicate(t, searcher.searchInputs[0].Filter)
 	if p.Field != crmfilter.FieldStage || p.Operator != crmfilter.OpIn || len(p.Values) != 1 || p.Values[0] != "s1" {
 		t.Fatalf("stage column predicate mismatch: %#v", p)
 	}
-	// The value sum is computed for the SAME per-column filter as the search.
 	if colKey(searcher.sumInputs[0].Filter) != "s1" {
 		t.Fatalf("sum input filter not aligned to column s1: %#v", searcher.sumInputs[0].Filter)
 	}
 }
 
-// TestGetBoard_OwnerAxis proves the owner axis emits one column per provided
-// owner plus a trailing "unassigned" (OpIsEmpty) swimlane, and that the base
-// filter predicates are preserved under the appended column predicate.
 func TestGetBoard_OwnerAxis(t *testing.T) {
 	searcher := &fakeSearcher{
 		countByCol: map[string]int64{"u1": 2, "__empty__": 5},
@@ -189,7 +173,6 @@ func TestGetBoard_OwnerAxis(t *testing.T) {
 		t.Fatalf("unassigned column mismatch: %#v", last)
 	}
 
-	// Owner column: base group preserved (AND) + appended FieldOwner OpIn.
 	f := searcher.searchInputs[0].Filter
 	if len(f.Groups) != 2 {
 		t.Fatalf("owner column filter should be base+1 groups, got %d", len(f.Groups))
@@ -201,15 +184,12 @@ func TestGetBoard_OwnerAxis(t *testing.T) {
 	if p.Field != crmfilter.FieldOwner || p.Operator != crmfilter.OpIn || p.Values[0] != "u1" {
 		t.Fatalf("owner predicate mismatch: %#v", p)
 	}
-	// Unassigned column uses OpIsEmpty.
 	pe := lastPredicate(t, searcher.searchInputs[1].Filter)
 	if pe.Field != crmfilter.FieldOwner || pe.Operator != crmfilter.OpIsEmpty {
 		t.Fatalf("unassigned predicate mismatch: %#v", pe)
 	}
 }
 
-// TestGetBoard_CustomAxis proves the custom axis needs a key and emits a
-// FieldCustom OpEquals predicate carrying that key per option value.
 func TestGetBoard_CustomAxis(t *testing.T) {
 	searcher := &fakeSearcher{
 		countByCol: map[string]int64{"enterprise": 4},
@@ -217,7 +197,6 @@ func TestGetBoard_CustomAxis(t *testing.T) {
 	}
 	svc := NewService(searcher, &fakeStages{}, nil)
 
-	// Missing key -> error.
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByCustom}); err != ErrGroupByKeyMissing {
 		t.Fatalf("expected ErrGroupByKeyMissing, got %v", err)
 	}
@@ -244,8 +223,6 @@ func TestGetBoard_CustomAxis(t *testing.T) {
 	}
 }
 
-// TestGetBoard_UnsupportedGroupBy rejects axes the opportunity board does not
-// model (e.g. label / carteira).
 func TestGetBoard_UnsupportedGroupBy(t *testing.T) {
 	svc := NewService(&fakeSearcher{}, &fakeStages{}, nil)
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByLabel}); err != ErrUnsupportedGroupBy {
@@ -253,7 +230,6 @@ func TestGetBoard_UnsupportedGroupBy(t *testing.T) {
 	}
 }
 
-// TestGetBoard_AuthorizerDenies proves the access gate is enforced.
 func TestGetBoard_AuthorizerDenies(t *testing.T) {
 	svc := NewService(&fakeSearcher{}, &fakeStages{}, denyingAuth{allowed: false})
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByStage}); err != ErrUnauthorized {
@@ -261,10 +237,6 @@ func TestGetBoard_AuthorizerDenies(t *testing.T) {
 	}
 }
 
-// TestGetBoard_ThreadsDepartmentScope proves a restricted user's department scope is
-// threaded into EVERY column search AND value-sum (not merely used as an access gate),
-// closing the cross-department leak. A restricted non-admin also gets the owner-self
-// override so they keep seeing their own deals.
 func TestGetBoard_ThreadsDepartmentScope(t *testing.T) {
 	searcher := &fakeSearcher{countByCol: map[string]int64{"s1": 1}, sumByCol: map[string]int64{"s1": 100}}
 	stages := &fakeStages{stages: []*stage.Stage{{ID: "s1", Name: "New", PipelineID: "p1"}}}
@@ -298,7 +270,6 @@ func TestGetBoard_ThreadsDepartmentScope(t *testing.T) {
 	}
 }
 
-// TestGetBoard_AdminNotRestricted proves an admin (Restrict=false) stays workspace-wide.
 func TestGetBoard_AdminNotRestricted(t *testing.T) {
 	searcher := &fakeSearcher{countByCol: map[string]int64{"s1": 1}}
 	stages := &fakeStages{stages: []*stage.Stage{{ID: "s1", PipelineID: "p1"}}}
@@ -318,8 +289,6 @@ func TestGetBoard_AdminNotRestricted(t *testing.T) {
 	}
 }
 
-// TestGetList_PassesFilterThrough proves the flat list delegates to the searcher
-// with the caller's filter unchanged (no per-column predicate appended).
 func TestGetList_PassesFilterThrough(t *testing.T) {
 	searcher := &fakeSearcher{countByCol: map[string]int64{"__all__": 7}}
 	svc := NewService(searcher, &fakeStages{}, nil)

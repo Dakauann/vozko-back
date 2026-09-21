@@ -11,14 +11,7 @@ type Repository interface {
 	CountMembersByWorkspaceIDs(workspaceIDs []string) (map[string]int, error)
 	ListMembersPaginated(workspaceID string, page, pageSize int) ([]*Member, int64, error)
 	UpdateWorkspace(ws *Workspace) error
-	// TransferOwnership reassigns workspaces.owner_id to newOwnerID. It demotes the
-	// workspace to non-default when the new owner already has a default workspace,
-	// to avoid colliding on the (owner_id, is_default) unique index.
 	TransferOwnership(workspaceID, newOwnerID string) error
-	// DetachUserAuthoredRefs clears the FK references that point at a user via
-	// "authored by" columns (workspace_invites.inviter_id and the *_access
-	// granted_by columns) so the user row can be hard-deleted. Used by account
-	// deletion; usually a no-op for ordinary users.
 	DetachUserAuthoredRefs(userID string) error
 
 	AddMember(member *Member) error
@@ -26,10 +19,6 @@ type Repository interface {
 	GetMemberByID(memberID string) (*Member, error)
 	ListMembers(workspaceID string) ([]*Member, error)
 	ListAssignableMembers(workspaceID, search string, restrict bool, departmentIDs []string, includeAdmins bool, selfUserID string, page, pageSize int) ([]*Member, int64, error)
-	// ListMemberDepartments returns, for each given member id, the departments it
-	// belongs to. When restrictToDeptIDs is non-empty the result is limited to
-	// those departments (so a scoped caller never sees department names outside
-	// their access); nil/empty means no restriction.
 	ListMemberDepartments(workspaceID string, memberIDs []string, restrictToDeptIDs []string) (map[string][]DepartmentRef, error)
 	UpdateMemberRole(memberID string, role Role) error
 	UpdateMemberRoleID(memberID string, roleID string) error

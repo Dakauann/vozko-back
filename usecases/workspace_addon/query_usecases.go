@@ -39,11 +39,6 @@ type getWorkspaceEntitlementsUseCase struct {
 	now           clockFn
 }
 
-// NewGetWorkspaceEntitlementsUseCase builds the entitlements read.
-//
-// This is what the provisioning gates consult, so `configs` being absent means
-// the unofficial-WhatsApp entitlement reports zero and nobody can connect a
-// number. Required for that reason.
 func NewGetWorkspaceEntitlementsUseCase(
 	subscriptions workspace_plan.CurrentSubscriptionReader,
 	plans workspace_plan.PlanReader,
@@ -77,8 +72,6 @@ func (uc *getWorkspaceEntitlementsUseCase) Execute(workspaceID string) ([]worksp
 	for _, kind := range kinds {
 		base := 0
 		if kind == workspace_addon.EntitlementUnofficialWhatsAppInstances {
-			// Per-workspace configuration, not the plan, and readable without an
-			// active subscription. See the entitlement kind's own comment.
 			b, berr := readIncludedInstances(uc.configs, workspaceID)
 			if berr != nil {
 				return nil, berr

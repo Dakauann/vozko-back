@@ -33,21 +33,6 @@ func NewTriggerEvaluator(
 func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	log.Printf("[workflow] trigger: evaluating event type=%s workspace=%s entry=%s", event.TriggerType, event.WorkspaceID, event.EntryID)
 
-	// An incoming message must resume ANY run parked at wait_for_reply for this
-	// entry, regardless of which trigger started that workflow. Resuming only via
-	// trigger-matched workflows (the loop below) silently fails for workflows
-	// started by trigger_first_message, leaving them stuck until their timeout.
-	// This is the same resume the simulator does; here we route the real message.
-	//
-	// The workflow id is remembered alongside the run id, and it is the workflow
-	// that the loop below keys on. The resume runs the engine SYNCHRONOUSLY, so a
-	// reply that carries its run to an end node leaves that run completed before
-	// the loop looks for it: FindActiveByEntryAndTrigger finds nothing, the
-	// "already resumed" guard keyed on the run id never fires, and the very same
-	// message starts a fresh run from the entry node. On a menu flow that reads as
-	// the bot re-sending the menu the instant an option is tapped, as if the
-	// contact had typed again after clicking. Keyed by workflow, the message stays
-	// consumed whether or not the run it woke survived it.
 	handledReplyRun := ""
 	handledReplyWorkflow := ""
 	if event.TriggerType == workflow.TriggerMessageReceived && event.EntryID != "" {
@@ -72,14 +57,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 
 	for _, w := range workflows {
 
-		// Scoped to the ONE workflow whose parked run took this message. Every
-		// other workflow in the list is evaluated exactly as before, so a second
-		// workflow on the same entry is not suppressed by another's resume. The
-		// empty check matters because no waiting run leaves this blank.
 		if handledReplyWorkflow != "" && w.ID == handledReplyWorkflow {
-			// This message was already delivered to this workflow's parked run.
-			// Starting a second run from it would replay the flow from its entry
-			// node against a message the conversation has already answered.
 			log.Printf("[workflow] trigger: workflow=%s already consumed this message via run=%s, not starting another", w.ID, handledReplyRun)
 			continue
 		}
@@ -101,7 +79,6 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 		if existing != nil {
 
 			if existing.ID == handledReplyRun {
-				// Already resumed above by the entry-based reply path.
 				continue
 			}
 			if existing.Status == workflow.RunStatusWaiting && existing.WaitReason == workflow.WaitReasonReply {
@@ -143,12 +120,8 @@ func (te *triggerEvaluator) wakeRunForReply(run *workflow.WorkflowRun, w *workfl
 
 	log.Printf("[workflow] trigger: waking run=%s for reply (entry=%s)", run.ID, event.EntryID)
 
-	// Shared reply-resume logic (same code path the simulator uses).
 	if err := AdvanceOnReply(run, w, event.Data); err != nil {
 		if errors.Is(err, ErrInteractiveReplyUnhandled) {
-			// Stray reply to an interactive prompt (not one of its options and no
-			// no_match/default branch). Leave the run parked so a later valid
-			// selection or the timeout can resume it; do not error or advance.
 			log.Printf("[workflow] trigger: run=%s ignored unhandled interactive reply (entry=%s), left parked", run.ID, event.EntryID)
 			return
 		}
@@ -219,13 +192,6 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 		}
 	}
 
-	// The channel account's own workflow link, set by Instagram and Telegram.
-	//
-	// Without this the link is decorative: every active workflow in the
-	// workspace whose trigger matches runs on every conversation, so connecting
-	// a second bot, or simply having a second workflow, makes both fire on the
-	// same contact and the customer receives two greetings. Selecting a workflow
-	// on the account has to mean only that workflow attends it.
 	if accountWfID, ok := event.Data["account_workflow_id"].(string); ok && accountWfID != "" {
 		if w.ID != accountWfID {
 			log.Printf("[workflow] trigger: skipping workflow=%s (channel account linked to workflow=%s)", w.ID, accountWfID)

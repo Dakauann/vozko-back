@@ -9,19 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Who wrote each message in a group thread.
-//
-// A message row stores no sender NAME on purpose — a frozen name goes stale the
-// moment someone renames themselves — so on a live push the name rides along and
-// on a reload the reader has to resolve it again. It used to resolve it from the
-// conversation's subject, and in a group the subject is the GROUP: every bubble
-// in the thread was labelled with the group's own name and its own picture, as
-// if the group had been talking to itself.
-//
-// These pin the resolution and, just as importantly, pin that it stays free for
-// the ordinary one-to-one conversation, which is almost all of them.
-
-// authorLookup is a ContactIdentityLookup that records what was asked of it.
 type authorLookup struct {
 	byHandle map[string]ContactDisplay
 	err      error
@@ -62,8 +49,6 @@ func inbound(from string) *conversation.Message {
 	return &conversation.Message{From: from, MessageType: conversation.MessageTypeUserMessage}
 }
 
-// The bug, stated as a test: three people talking in a group are three names,
-// not three copies of the group's.
 func TestGroupMessagesAreAttributedToTheirAuthors(t *testing.T) {
 	lookup := &authorLookup{byHandle: map[string]ContactDisplay{
 		"+5511900000001": {Name: "Ana", PictureURL: "https://cdn.test/ana.jpg"},
@@ -76,11 +61,9 @@ func TestGroupMessagesAreAttributedToTheirAuthors(t *testing.T) {
 		inbound("+5511900000002"),
 		inbound("+5511900000001"),
 	}
-	// A group's handle is empty: the "number" slot does not exist for one.
 	authors := svc.authorsFor(groupEntryType, "conv-1", "", messages)
 
 	for _, msg := range messages {
-		// What the subject-derived pass would have left behind.
 		msg.SenderName, msg.SenderAvatar = "Equipe Vozko", "https://cdn.test/group.jpg"
 		applyAuthor(msg, authors)
 	}
@@ -100,8 +83,6 @@ func TestGroupMessagesAreAttributedToTheirAuthors(t *testing.T) {
 	}
 }
 
-// One query for the page, not one per bubble. A busy group is the only place
-// this runs, so an N+1 here would be an N+1 exactly where the pages are longest.
 func TestAuthorLookupIsBatchedAndDeduplicated(t *testing.T) {
 	lookup := &authorLookup{byHandle: map[string]ContactDisplay{}}
 	svc := serviceWith(lookup)
@@ -119,11 +100,6 @@ func TestAuthorLookupIsBatchedAndDeduplicated(t *testing.T) {
 	}
 }
 
-// The ordinary one-to-one conversation costs nothing.
-//
-// There the author IS the subject, whom getSenderInfo already named, so there is
-// no query to issue. This is the case that decides whether the fix is free for
-// the overwhelming majority of conversations.
 func TestOneToOneConversationIssuesNoLookup(t *testing.T) {
 	lookup := &authorLookup{}
 	svc := serviceWith(lookup)
@@ -141,9 +117,6 @@ func TestOneToOneConversationIssuesNoLookup(t *testing.T) {
 	}
 }
 
-// Outbound messages are left alone. An operator's reply is attributed from the
-// user record, and `From` there is the instance's own label — resolving it as a
-// participant would relabel every reply with the number that sent it.
 func TestOutboundMessagesAreNotLookedUp(t *testing.T) {
 	lookup := &authorLookup{}
 	svc := serviceWith(lookup)
@@ -158,11 +131,6 @@ func TestOutboundMessagesAreNotLookedUp(t *testing.T) {
 	}
 }
 
-// A participant with no photo shows NO photo — never the group's.
-//
-// The empty picture has to overwrite, not fall through. Falling through is the
-// version of this bug that survives a half-fix: the name becomes right and the
-// face stays the group's.
 func TestAuthorWithoutPictureDoesNotInheritTheGroups(t *testing.T) {
 	lookup := &authorLookup{byHandle: map[string]ContactDisplay{
 		"+5511900000001": {Name: "Ana"},
@@ -181,8 +149,6 @@ func TestAuthorWithoutPictureDoesNotInheritTheGroups(t *testing.T) {
 	}
 }
 
-// An author who resolves to no contact keeps whatever the subject pass gave
-// them. Naming them "" would be worse than naming them imprecisely.
 func TestUnresolvedAuthorKeepsTheFallbackName(t *testing.T) {
 	svc := serviceWith(&authorLookup{byHandle: map[string]ContactDisplay{}})
 
@@ -195,8 +161,6 @@ func TestUnresolvedAuthorKeepsTheFallbackName(t *testing.T) {
 	}
 }
 
-// A failed lookup degrades to the old behaviour rather than failing the read.
-// This is a label on a bubble; it is never a reason to refuse a conversation.
 func TestLookupFailureDoesNotBreakTheRead(t *testing.T) {
 	svc := serviceWith(&authorLookup{err: errors.New("db down")})
 
@@ -208,8 +172,6 @@ func TestLookupFailureDoesNotBreakTheRead(t *testing.T) {
 	}
 }
 
-// A channel with no identity lookup registered — the official WhatsApp entry,
-// whose senders are leads — must not reach any of this.
 func TestChannelWithoutAnIdentityLookupIsUntouched(t *testing.T) {
 	svc := &HistoryProviderService{}
 
@@ -220,8 +182,6 @@ func TestChannelWithoutAnIdentityLookupIsUntouched(t *testing.T) {
 	}
 }
 
-// applyAuthor must tolerate the shapes the callers actually hand it: a nil
-// message from a sparse page, and the nil map every non-group read produces.
 func TestApplyAuthorTolerance(t *testing.T) {
 	applyAuthor(nil, map[string]ContactDisplay{"+55": {Name: "Ana"}})
 

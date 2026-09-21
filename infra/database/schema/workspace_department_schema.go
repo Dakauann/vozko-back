@@ -8,16 +8,10 @@ import (
 )
 
 type WorkspaceDepartment struct {
-	ID          string `gorm:"primaryKey;type:uuid"`
-	WorkspaceID string `gorm:"type:uuid;not null;index:idx_dept_workspace"`
-	Name        string `gorm:"not null;size:255"`
-	Description string `gorm:"size:500"`
-	// WorkingHours overrides the workspace schedule for this department, stored
-	// as the working_hours.Spec document. NULL means the department inherits.
-	//
-	// Override rather than intersection: a support desk that works Saturdays
-	// inside a Mon-Fri company is the case this exists for, and an intersection
-	// could not express it.
+	ID           string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID  string         `gorm:"type:uuid;not null;index:idx_dept_workspace"`
+	Name         string         `gorm:"not null;size:255"`
+	Description  string         `gorm:"size:500"`
 	WorkingHours *string        `gorm:"type:jsonb"`
 	CreatedAt    time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time      `gorm:"autoUpdateTime"`

@@ -57,7 +57,6 @@ func notificationBody(dataID string) string {
 	return fmt.Sprintf(`{"id":112233,"live_mode":true,"type":"payment","action":"payment.updated","data":{"id":%q}}`, dataID)
 }
 
-// signedRequest builds an authentic notification the way Mercado Pago would.
 func signedRequest(t *testing.T, dataID string) *http.Request {
 	t.Helper()
 	ts := time.Now().UnixMilli()
@@ -98,8 +97,6 @@ func TestHandleWebhook_AcceptsAndEnqueuesValidNotification(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_NormalizesLegacyIPN: the legacy form carries the id only in the
-// query string, which does not survive the queue, so it must be folded into the body.
 func TestHandleWebhook_NormalizesLegacyIPN(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
@@ -158,8 +155,6 @@ func TestHandleWebhook_RejectsWrongSecret(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_RejectsSwappedDataID is the forgery case that matters: sign for a
-// payment you control, then point the request at someone else's.
 func TestHandleWebhook_RejectsSwappedDataID(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
@@ -169,7 +164,6 @@ func TestHandleWebhook_RejectsSwappedDataID(t *testing.T) {
 		"/webhooks/mercadopago?data.id=9999999999&type=payment",
 		strings.NewReader(notificationBody("9999999999")))
 	req.Header.Set("x-request-id", "req-abc")
-	// Signature computed for a DIFFERENT payment id.
 	req.Header.Set("x-signature", signHeader(t, "1111111111", "req-abc", ts))
 
 	rec := httptest.NewRecorder()
@@ -183,15 +177,11 @@ func TestHandleWebhook_RejectsSwappedDataID(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_SignsOverQueryNotBody: the body id is attacker-controlled and
-// unsigned, so a request whose signature covers only the query must still be judged on
-// the query value.
 func TestHandleWebhook_SignsOverQueryNotBody(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
 
 	ts := time.Now().UnixMilli()
-	// Authentic signature for query id 111; body claims 999.
 	req := httptest.NewRequest(http.MethodPost,
 		"/webhooks/mercadopago?data.id=111&type=payment",
 		strings.NewReader(notificationBody("999")))
@@ -201,9 +191,6 @@ func TestHandleWebhook_SignsOverQueryNotBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.HandleWebhook(rec, req)
 
-	// The signature is valid for the query id, so the request is authentic and
-	// accepted. The body id is what gets queued, which is safe because the resolver
-	// fetches that payment from Mercado Pago and acts only on what the API returns.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -256,14 +243,11 @@ func TestHandleWebhook_AnswersDashboardProbe(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_AuthenticButUnusableIsAcknowledged: retrying a permanently broken
-// notification would make Mercado Pago resend it for hours.
 func TestHandleWebhook_AuthenticButUnusableIsAcknowledged(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
 
 	ts := time.Now().UnixMilli()
-	// Signed with no data.id and carrying a body with no id either.
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/mercadopago", strings.NewReader(`{"type":"payment"}`))
 	req.Header.Set("x-request-id", "req-abc")
 	req.Header.Set("x-signature", signHeader(t, "", "req-abc", ts))
@@ -279,8 +263,6 @@ func TestHandleWebhook_AuthenticButUnusableIsAcknowledged(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_QueueFailureIsRetryable: a 5xx makes Mercado Pago retry, which is
-// exactly right when the queue is the broken part.
 func TestHandleWebhook_QueueFailureIsRetryable(t *testing.T) {
 	pub := &stubPublisher{err: errors.New("rabbit down")}
 	h := NewWebhookHandler(pub, secret)
@@ -315,8 +297,6 @@ func TestHandleWebhook_ToleranceRejectsStaleWhenEnabled(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_ToleranceOffAcceptsOldRetry: the default must accept Mercado Pago's
-// hours-later retries, which reuse the original signature.
 func TestHandleWebhook_ToleranceOffAcceptsOldRetry(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
@@ -343,8 +323,6 @@ func TestHandleWebhook_AcceptsIDQueryParamFallback(t *testing.T) {
 	h := NewWebhookHandler(pub, secret)
 
 	ts := time.Now().UnixMilli()
-	// Some configurations send "id" rather than "data.id"; the signature covers
-	// whichever one arrives.
 	req := httptest.NewRequest(http.MethodPost,
 		"/webhooks/mercadopago?id=42&type=payment", strings.NewReader(notificationBody("42")))
 	req.Header.Set("x-request-id", "req-abc")
@@ -368,7 +346,6 @@ func TestRegisterPublicRoutes(t *testing.T) {
 		t.Fatalf("route not mounted, got %d", rec.Code)
 	}
 
-	// Methods other than GET/POST are not accepted.
 	rec2 := httptest.NewRecorder()
 	r.ServeHTTP(rec2, httptest.NewRequest(http.MethodDelete, "/webhooks/mercadopago", nil))
 	if rec2.Code != http.StatusMethodNotAllowed {
@@ -376,8 +353,6 @@ func TestRegisterPublicRoutes(t *testing.T) {
 	}
 }
 
-// TestRegisterPublicRoutes_NilHandlerMountsNothing: when Asaas is the active provider
-// the route should not exist at all, rather than 401 on every call.
 func TestRegisterPublicRoutes_NilHandlerMountsNothing(t *testing.T) {
 	r := mux.NewRouter()
 	RegisterPublicRoutes(r, nil)
@@ -403,8 +378,6 @@ func TestHandleWebhook_OversizedBodyIsTruncatedNotHung(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.HandleWebhook(rec, req)
 
-	// The body is unparseable once truncated, but the request was authentic, so it is
-	// acknowledged rather than retried forever.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -413,9 +386,6 @@ func TestHandleWebhook_OversizedBodyIsTruncatedNotHung(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_AcceptsBodySignedNotification is the production regression: Mercado
-// Pago sent no data.id query parameter and signed over the body id instead. Rejecting
-// it lost a paid invoice.
 func TestHandleWebhook_AcceptsBodySignedNotification(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
@@ -437,15 +407,11 @@ func TestHandleWebhook_AcceptsBodySignedNotification(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_QueuesTheSignedIDNotTheBodyID closes the verify-one/act-on-another
-// gap: when the signature covers one payment and the body names a different one, the
-// consumer must be handed the id that was actually signed.
 func TestHandleWebhook_QueuesTheSignedIDNotTheBodyID(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
 
 	ts := time.Now().UnixMilli()
-	// Authentic signature over query id 111; body claims 999.
 	req := httptest.NewRequest(http.MethodPost,
 		"/webhooks/mercadopago?data.id=111&type=payment",
 		strings.NewReader(notificationBody("999")))
@@ -467,8 +433,6 @@ func TestHandleWebhook_QueuesTheSignedIDNotTheBodyID(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_ForgedSignatureStillRejectedWithBothSources: accepting more id
-// sources must not let an unsigned notification through.
 func TestHandleWebhook_ForgedSignatureStillRejectedWithBothSources(t *testing.T) {
 	pub := &stubPublisher{}
 	h := NewWebhookHandler(pub, secret)
@@ -478,7 +442,6 @@ func TestHandleWebhook_ForgedSignatureStillRejectedWithBothSources(t *testing.T)
 		"/webhooks/mercadopago?data.id=555&type=payment",
 		strings.NewReader(notificationBody("555")))
 	req.Header.Set("x-request-id", "req-abc")
-	// Signed with a secret the attacker chose.
 	mac := hmac.New(sha256.New, []byte("attacker-secret"))
 	mac.Write([]byte("id:555;request-id:req-abc;ts:" + strconv.FormatInt(ts, 10) + ";"))
 	req.Header.Set("x-signature", fmt.Sprintf("ts=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))

@@ -12,9 +12,6 @@ import (
 	"vozko/domain/webhook"
 )
 
-// stubResolver stands in for the Mercado Pago resolver. The consumer must not know
-// that resolving involves an API call, only that it can succeed, be terminally
-// rejected, or fail transiently.
 type stubResolver struct {
 	mu      sync.Mutex
 	calls   int
@@ -71,8 +68,6 @@ func receivedEvent(chargeID string) *payment.WebhookEvent {
 	}
 }
 
-// waitFor polls until cond holds or the deadline passes. The consumer dispatches to a
-// goroutine, so assertions cannot read state synchronously.
 func waitFor(t *testing.T, cond func() bool) bool {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -165,8 +160,6 @@ func TestConsumeMercadoPago_MalformedEnvelopeIsDroppedNotRequeued(t *testing.T) 
 	}
 }
 
-// TestConsumeMercadoPago_DedupesByResourceAndAction: Mercado Pago assigns a new
-// notification id per delivery attempt, so deduping on that id would dedupe nothing.
 func TestConsumeMercadoPago_DedupesByResourceAndAction(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{event: receivedEvent("1234567890")}
@@ -180,7 +173,6 @@ func TestConsumeMercadoPago_DedupesByResourceAndAction(t *testing.T) {
 		t.Fatal("first delivery should reach the handler")
 	}
 
-	// Same resource + action, different notification id: must be suppressed.
 	second := &mockAsaasAck{}
 	sub.handler([]byte(`{"id":999999,"type":"payment","action":"payment.updated","data":{"id":"1234567890"}}`), second)
 
@@ -228,8 +220,6 @@ func TestConsumeMercadoPago_DifferentPaymentIsNotADuplicate(t *testing.T) {
 	}
 }
 
-// TestConsumeMercadoPago_IgnoredIsAckedNotRetried: a non-payment topic or a payment in
-// a state we do not act on is terminal; retrying would loop forever.
 func TestConsumeMercadoPago_IgnoredIsAckedNotRetried(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{err: fmt.Errorf("%w: type \"plan\"", payment.ErrWebhookIgnored)}
@@ -269,8 +259,6 @@ func TestConsumeMercadoPago_MalformedResolveIsAckedNotRetried(t *testing.T) {
 	}
 }
 
-// TestConsumeMercadoPago_TransientResolveFailureIsRequeued: losing this message means
-// losing a payment, so it must survive until the provider or network recovers.
 func TestConsumeMercadoPago_TransientResolveFailureIsRequeued(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{err: errors.New("mercadopago: 503 service unavailable")}
@@ -335,8 +323,6 @@ type panickingHandler struct{}
 
 func (panickingHandler) Execute(*payment.WebhookEvent) error { panic("boom") }
 
-// TestConsumeMercadoPago_ResolveIsBounded: without a deadline, one hung API call would
-// hold a concurrency slot forever and eventually stall the whole consumer.
 func TestConsumeMercadoPago_ResolveIsBounded(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{event: receivedEvent("1")}
@@ -377,8 +363,6 @@ func TestConsumeMercadoPago_ProcessesConcurrentDeliveries(t *testing.T) {
 }
 
 func TestConsumeMercadoPago_EmptyResourceIDSkipsDedupButStillRuns(t *testing.T) {
-	// An envelope with neither id nor action produces the degenerate ":" dedup key,
-	// which is deliberately not deduped; the resolver then rejects it as malformed.
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{err: fmt.Errorf("%w: no id", payment.ErrWebhookMalformed)}
 	handler := &mockAsaasHandler{}

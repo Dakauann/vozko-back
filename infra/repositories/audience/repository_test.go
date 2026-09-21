@@ -14,11 +14,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// These pin the SQL, because the SQL is the guarantee. The two statements
-// below are the whole concurrency story of the engine: an insert that
-// tolerates redelivery and a claim that two ticks cannot both win. The
-// end-to-end behaviour against a real database is in integration_test.go.
-
 func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
@@ -39,9 +34,6 @@ func ref() ca.ContainerRef {
 	return ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "media-1"}
 }
 
-// Insert must carry ON CONFLICT DO NOTHING on the (source, subject_id)
-// pair. Without it a redelivered webhook is a second row, a second
-// classification and a second charge.
 func TestInsertIsOnConflictDoNothing(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -69,8 +61,6 @@ func TestInsertDuplicateIsNotAnError(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
-	// The conflict clause makes the database answer "0 rows" rather than
-	// raising, and the repository must pass that through as (false, nil).
 	mock.ExpectExec(regexp.QuoteMeta(`ON CONFLICT ("source","subject_kind","subject_id","revision") DO NOTHING`)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -87,9 +77,6 @@ func TestInsertDuplicateIsNotAnError(t *testing.T) {
 	}
 }
 
-// One statement, guarded on status, counting the attempt in the same
-// write. If this ever becomes a SELECT followed by an UPDATE the
-// expectation below goes unmet, which is the point.
 func TestClaimByIDsIsOneGuardedUpdate(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -102,7 +89,6 @@ func TestClaimByIDsIsOneGuardedUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimByIDs: %v", err)
 	}
-	// row-2 was taken by someone else: absent, not an error.
 	if len(got) != 2 || got[0] != "row-1" || got[1] != "row-3" {
 		t.Fatalf("claimed = %v", got)
 	}
@@ -111,8 +97,6 @@ func TestClaimByIDsIsOneGuardedUpdate(t *testing.T) {
 	}
 }
 
-// Losing the claim is the normal outcome for every replica but one; it must
-// read as "nothing for me", never as an error.
 func TestClaimByIDsEmptyIsNotAnError(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -127,7 +111,6 @@ func TestClaimByIDsEmptyIsNotAnError(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("expected nothing, got %v", got)
 	}
-	// And no ids means no statement at all.
 	if got, err := NewRepository(db).ClaimByIDs(context.Background(), nil, now); err != nil || len(got) != 0 {
 		t.Fatalf("nil ids: %v %v", got, err)
 	}
@@ -160,8 +143,6 @@ func TestGetTrendUsesLiveFiltersAndGroupsByUTCDay(t *testing.T) {
 	}
 }
 
-// Save writes zero values. GORM's struct-based Updates skips them, which
-// would leave a retried row carrying its old failure reason and severity.
 func TestSaveWritesZeroValues(t *testing.T) {
 	cols := saveColumns(&ca.Analysis{ID: "row-1", Status: ca.StatusPending})
 	for _, key := range []string{"severity", "requires_action", "failure_reason", "attempts", "batch_id", "analyzed_at"} {
@@ -174,7 +155,6 @@ func TestSaveWritesZeroValues(t *testing.T) {
 	}
 }
 
-// The backstop asks the database, not Redis, what is waiting.
 func TestListPendingContainersGroupsByContainer(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -195,8 +175,6 @@ func TestListPendingContainersGroupsByContainer(t *testing.T) {
 	if !got[0].Ref.Equal(ref()) || got[0].Pending != 12 || got[0].WorkspaceID != "ws-1" {
 		t.Fatalf("comment container: %+v", got[0])
 	}
-	// The kind must survive the round trip through the database, or the backstop
-	// hands a container of conversations to the comment adapter.
 	wantConversation := ca.ContainerRef{
 		Kind: ca.SubjectKindConversation, Source: ca.SourceWhatsApp,
 		AccountID: "acc-1", ContainerID: "camp-1",

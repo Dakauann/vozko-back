@@ -191,7 +191,6 @@ func TestConsumer_ConversationEvent_Idempotent(t *testing.T) {
 
 	ack1 := &fakeAck{count: 1}
 	c.handle(raw, ack1)
-	// allow goroutine
 	time.Sleep(50 * time.Millisecond)
 	if !ack1.acked || len(evRepo.all) != 1 {
 		t.Fatalf("first: acked=%v n=%d", ack1.acked, len(evRepo.all))
@@ -217,7 +216,6 @@ func TestConsumer_PresenceAndAssignment(t *testing.T) {
 		Dedupe:    &memDedupe{},
 	}).(*consumer)
 
-	// presence
 	pbody, _ := json.Marshal(crm_telemetry.PresencePayload{
 		WorkspaceID: "ws", UserID: "u1", State: "online", Source: "ws_hub", At: time.Now().UTC(),
 	})
@@ -229,7 +227,6 @@ func TestConsumer_PresenceAndAssignment(t *testing.T) {
 		t.Fatalf("presence=%v", pres.transitions)
 	}
 
-	// assignment
 	abody, _ := json.Marshal(crm_telemetry.AssignmentHistoryPayload{
 		ID: "ah1", WorkspaceID: "ws", EntryID: "e1", EntryType: "whatsapp",
 		ActorKind: "human", AssignedActorID: "u1", Trigger: "manual", StartedAt: time.Now().UTC(),
@@ -243,7 +240,6 @@ func TestConsumer_PresenceAndAssignment(t *testing.T) {
 	}
 }
 
-// silence unused messaging import if only MessageAck used via fake
 var _ messaging.MessageAck = (*fakeAck)(nil)
 
 func (m *memHistory) ListOpenOlderThan([]string, []string, time.Time, int) ([]*ia.AssignmentHistory, error) {

@@ -46,12 +46,6 @@ func shouldReconcilePhone(phone *businessphone.WhatsAppBusinessPhoneNumber) bool
 	if strings.TrimSpace(phone.ID) == "" || strings.TrimSpace(phone.WABAId) == "" {
 		return false
 	}
-	// A phone is reconcilable only if it carries a usable template credential.
-	// Meta-hosted phones authenticate with an access token; 360dialog channels
-	// authenticate with the channel D360-API-KEY and never have an access token.
-	// Requiring an access token here silently excluded every 360dialog number from
-	// template sync, so their templates stayed at whatever status create stored
-	// (e.g. "pending") forever and never transitioned to approved.
 	hasMetaToken := strings.TrimSpace(phone.AccessToken) != ""
 	hasDialog360Key := phone.Provider.IsDialog360() && strings.TrimSpace(phone.Dialog360APIKey) != ""
 	if !hasMetaToken && !hasDialog360Key {

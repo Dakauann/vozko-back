@@ -12,10 +12,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// These pin the two wire shapes Meta documents for authentication templates.
-// They are the whole reason the feature failed before: the code went out in the
-// body with nothing on the button, and Meta answered 132000.
-
 func captureRequest(t *testing.T, response string) (conversation.WhatsAppClient, *[]byte) {
 	t.Helper()
 	captured := new([]byte)
@@ -29,9 +25,6 @@ func captureRequest(t *testing.T, response string) (conversation.WhatsAppClient,
 	return NewClient(Config{BaseURL: srv.URL, AccessToken: "tok", WABAId: "waba1", PhoneNumberID: "phone1"}), captured
 }
 
-// The one-time code appears twice: once as the body variable and once as the
-// button parameter. Meta requires both; sending only the body is a parameter
-// count mismatch.
 func TestSendTemplateMessage_AuthenticationCarriesTheButtonParameter(t *testing.T) {
 	client, body := captureRequest(t, `{"messages":[{"id":"wamid.1"}]}`)
 
@@ -79,8 +72,6 @@ func TestSendTemplateMessage_AuthenticationCarriesTheButtonParameter(t *testing.
 	if btn.SubType != "url" {
 		t.Errorf("sub_type = %q, want url", btn.SubType)
 	}
-	// Meta's own authentication examples send the index as a string. Graph
-	// coerces either way, so this is about matching the documented form.
 	if btn.Index != "0" {
 		t.Errorf("index = %q, want \"0\"", btn.Index)
 	}
@@ -92,9 +83,6 @@ func TestSendTemplateMessage_AuthenticationCarriesTheButtonParameter(t *testing.
 	}
 }
 
-// A coupon copy-code button in a marketing template is a different shape: a
-// copy_code sub-type carrying a coupon_code parameter. Pinned beside the OTP
-// case so the two cannot be quietly merged.
 func TestSendTemplateMessage_CouponCopyCodeUsesCouponParameter(t *testing.T) {
 	client, body := captureRequest(t, `{"messages":[{"id":"wamid.1"}]}`)
 
@@ -145,8 +133,6 @@ func TestSendTemplateMessage_CouponCopyCodeUsesCouponParameter(t *testing.T) {
 	}
 }
 
-// The overwhelming majority of templates have no parameterized button. They
-// must keep sending exactly what they sent before.
 func TestSendTemplateMessage_NoButtonsMeansNoButtonComponent(t *testing.T) {
 	client, body := captureRequest(t, `{"messages":[{"id":"wamid.1"}]}`)
 
@@ -177,8 +163,6 @@ func TestSendTemplateMessage_NoButtonsMeansNoButtonComponent(t *testing.T) {
 	}
 }
 
-// Create: Meta takes the OTP button as type OTP with an otp_type, the security
-// line as a flag on BODY and the expiry as a number on FOOTER.
 func TestCreateTemplate_AuthenticationShape(t *testing.T) {
 	client, body := captureRequest(t, `{"id":"t1","status":"PENDING","category":"AUTHENTICATION"}`)
 
@@ -233,8 +217,6 @@ func TestCreateTemplate_AuthenticationShape(t *testing.T) {
 	}
 }
 
-// A non-authentication template must not gain either field, or Meta rejects the
-// whole create.
 func TestCreateTemplate_OrdinaryTemplateOmitsAuthenticationFields(t *testing.T) {
 	client, body := captureRequest(t, `{"id":"t1","status":"PENDING","category":"UTILITY"}`)
 
@@ -258,8 +240,6 @@ func TestCreateTemplate_OrdinaryTemplateOmitsAuthenticationFields(t *testing.T) 
 	}
 }
 
-// Reading a template back must preserve the otp_type, or the next send cannot
-// tell a code button from a quick reply.
 func TestListTemplates_PreservesOTPType(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

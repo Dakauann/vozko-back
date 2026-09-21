@@ -7,10 +7,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// A round trip must lose nothing. This is the guard the three hand-written
-// copies of this mapping did not have: a field added to the component type and
-// not to the conversion fails here rather than in production, where it would
-// show up as a template that creates fine and reads back missing a button.
 func TestClientComponents_RoundTripsEveryField(t *testing.T) {
 	recommend := true
 	expiry := 10
@@ -54,9 +50,6 @@ func TestClientComponents_RoundTripsEveryField(t *testing.T) {
 	}
 }
 
-// The pointer fields must survive as pointers: a nil is "not an authentication
-// template" and a pointer to false is "no security line", and Meta reads those
-// as different instructions.
 func TestClientComponents_PointerFieldsKeepTheirAbsence(t *testing.T) {
 	off := false
 	components := []TemplateComponent{

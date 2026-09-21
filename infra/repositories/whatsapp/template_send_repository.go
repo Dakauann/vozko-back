@@ -13,11 +13,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// templateSendRepository stores paid-send attempts.
-//
-// Every write here is a conditional write. That is not defensive style: the
-// callers are several replicas racing on one row, and a read-then-write between
-// them is a duplicate charge. Postgres arbitrates; this file never does.
 type templateSendRepository struct {
 	db *gorm.DB
 }
@@ -28,18 +23,6 @@ func NewTemplateSendRepository(db *gorm.DB) template.SendAttemptRepository {
 
 var _ template.SendAttemptRepository = (*templateSendRepository)(nil)
 
-// sendAttemptConflictClause is the insert's collision rule, and it is a matched
-// pair with ux_wa_tpl_send_idem in infra/database/indexes.go.
-//
-// TargetWhere repeats that index's predicate, which is NOT decoration. The index
-// is PARTIAL, and Postgres only infers a partial index for ON CONFLICT when the
-// statement carries a predicate implying the index's own. Without it the server
-// finds no unique constraint covering (workspace_id, idempotency_key) and
-// rejects the insert with 42P10 — so the FIRST send fails outright, and the
-// idempotency this table exists to provide never engages, because no row is ever
-// written for the winners and losers to arbitrate on.
-//
-// Change the index predicate and you must change this with it.
 func sendAttemptConflictClause() clause.OnConflict {
 	return clause.OnConflict{
 		Columns: []clause.Column{{Name: "workspace_id"}, {Name: "idempotency_key"}},
@@ -48,18 +31,10 @@ func sendAttemptConflictClause() clause.OnConflict {
 				clause.Expr{SQL: "idempotency_key IS NOT NULL AND deleted_at IS NULL"},
 			},
 		},
-		// DoNothing, never DoUpdates: the loser of the race must not overwrite the
-		// winner's row, which may already be charged.
 		DoNothing: true,
 	}
 }
 
-// CreateIfAbsent is the gate the whole exactly-once argument stands on.
-//
-// ON CONFLICT DO NOTHING plus RowsAffected is what distinguishes the one caller
-// that may spend money from every other caller of the same request. Doing this
-// as SELECT-then-INSERT would reintroduce exactly the race the unique index
-// exists to close.
 func (r *templateSendRepository) CreateIfAbsent(ctx context.Context, attempt *template.SendAttempt) (*template.SendAttempt, bool, error) {
 	if attempt == nil {
 		return nil, false, errors.New("whatsapp template send: attempt is required")
@@ -82,8 +57,6 @@ func (r *templateSendRepository) CreateIfAbsent(ctx context.Context, attempt *te
 		return toSendDomain(&row), true, nil
 	}
 
-	// Somebody else won. Their row is the answer to this request — returning a
-	// fresh one would let the loser act as though it had created something.
 	stored, err := r.FindByIdempotencyKey(ctx, attempt.WorkspaceID, attempt.IdempotencyKey)
 	if err != nil {
 		return nil, false, err
@@ -116,9 +89,6 @@ func (r *templateSendRepository) FindByIdempotencyKey(ctx context.Context, works
 	return toSendDomain(&row), nil
 }
 
-// FindByProviderMessageID is scoped to the workspace even though a wamid is
-// globally unique: an unscoped lookup would let one tenant's webhook resolve
-// another tenant's attempt if a message id were ever replayed at us.
 func (r *templateSendRepository) FindByProviderMessageID(ctx context.Context, workspaceID, providerMessageID string) (*template.SendAttempt, error) {
 	providerMessageID = strings.TrimSpace(providerMessageID)
 	if providerMessageID == "" {
@@ -138,9 +108,6 @@ func (r *templateSendRepository) FindByProviderMessageID(ctx context.Context, wo
 	return toSendDomain(&row), nil
 }
 
-// transitionTo is the shared conditional write. Legal predecessors come from the
-// domain's state machine rather than being restated here, so the database and
-// the entity cannot drift into disagreeing about what is allowed.
 func (r *templateSendRepository) transitionTo(ctx context.Context, id string, next template.SendAttemptStatus, updates map[string]interface{}) error {
 	from := template.PredecessorsOf(next)
 	if len(from) == 0 {
@@ -207,8 +174,6 @@ func (r *templateSendRepository) MarkRefunded(ctx context.Context, id string, at
 	})
 }
 
-// ListNeedingReconciliation returns attempts that took money and never settled.
-// Oldest first: the longest-held money is refunded first.
 func (r *templateSendRepository) ListNeedingReconciliation(ctx context.Context, olderThan time.Time, limit int) ([]*template.SendAttempt, error) {
 	if limit <= 0 {
 		limit = 100

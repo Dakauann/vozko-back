@@ -5,14 +5,10 @@ import (
 	"time"
 )
 
-// ut builds a UTC date at midnight. Production passes America/Sao_Paulo, but the pure date math
-// is location-agnostic for these functions and Brazil no longer observes DST, so UTC keeps the
-// tests deterministic and free of any tzdata dependency on the build host.
 func ut(year int, month time.Month, day int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-// utt builds a UTC instant at a specific hour:minute.
 func utt(year int, month time.Month, day, hour, min int) time.Time {
 	return time.Date(year, month, day, hour, min, 0, 0, time.UTC)
 }
@@ -26,49 +22,42 @@ func TestPlanFirstAnchor(t *testing.T) {
 		want      time.Time
 	}{
 		{
-			// Plan section 10.9: purchase day 2, the 23rd is 21 days away, above the floor.
 			name:     "early purchase, same month anchor",
 			purchase: ut(2026, time.January, 2),
 			dueDay:   23, floorDays: 10,
 			want: ut(2026, time.January, 23),
 		},
 		{
-			// Day 20 to the 23rd is only 3 days, below the floor, so roll to next month.
 			name:     "late purchase rolls past the floor",
 			purchase: ut(2026, time.January, 20),
 			dueDay:   23, floorDays: 10,
 			want: ut(2026, time.February, 23),
 		},
 		{
-			// Exactly floorDays away (10 days) must qualify (boundary is inclusive).
 			name:     "exactly on the floor qualifies",
 			purchase: ut(2026, time.January, 13),
 			dueDay:   23, floorDays: 10,
 			want: ut(2026, time.January, 23),
 		},
 		{
-			// One day short of the floor rolls forward.
 			name:     "one day short of floor rolls",
 			purchase: ut(2026, time.January, 14),
 			dueDay:   23, floorDays: 10,
 			want: ut(2026, time.February, 23),
 		},
 		{
-			// Purchase exactly on the anchor day: not strictly after, so roll to next month.
 			name:     "purchase on the anchor day rolls",
 			purchase: ut(2026, time.January, 23),
 			dueDay:   23, floorDays: 10,
 			want: ut(2026, time.February, 23),
 		},
 		{
-			// dueDay 31 in a 30-day month clamps to the last day.
 			name:     "dueDay clamps in a short month",
 			purchase: ut(2026, time.April, 1),
 			dueDay:   31, floorDays: 10,
 			want: ut(2026, time.April, 30),
 		},
 		{
-			// Year boundary: December purchase rolls into next January.
 			name:     "rolls across the year boundary",
 			purchase: ut(2026, time.December, 20),
 			dueDay:   23, floorDays: 10,

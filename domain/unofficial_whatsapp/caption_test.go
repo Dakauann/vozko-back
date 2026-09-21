@@ -5,15 +5,6 @@ import (
 	"testing"
 )
 
-// A photo with something written under it.
-//
-// The words live in `content.caption`, never in `text` — contentField has always
-// decoded them, but the only fallback that read it was the interactive-reply
-// one, gated on an option id a captioned photo does not have. So the caption was
-// parsed, held in memory, and dropped: the operator saw the image and nothing
-// the customer had written about it.
-
-// normalizeOne is the whole decode path for a single provider message.
 func normalizeOne(t *testing.T, msg map[string]any) *Event {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
@@ -40,8 +31,7 @@ func imageWithCaption(caption string) map[string]any {
 		"sender":      "5511999999999@s.whatsapp.net",
 		"messageType": "image",
 		"mimetype":    "image/jpeg",
-		// Empty, which is exactly what the provider sends for a captioned image.
-		"text": "",
+		"text":        "",
 		"content": map[string]any{
 			"caption": caption,
 		},
@@ -49,7 +39,6 @@ func imageWithCaption(caption string) map[string]any {
 	}
 }
 
-// The bug.
 func TestImageCaptionIsRead(t *testing.T) {
 	const caption = "Plataforma de liderança já está atualizada com os disparos ✅✅"
 
@@ -63,8 +52,6 @@ func TestImageCaptionIsRead(t *testing.T) {
 	}
 }
 
-// Every media kind that can carry one. A video and a document take captions too,
-// and a fix that only covered photos would leave the same hole one type over.
 func TestCaptionIsReadForEveryMediaKind(t *testing.T) {
 	kinds := map[string]MediaKind{
 		"image":    MediaImage,
@@ -87,9 +74,6 @@ func TestCaptionIsReadForEveryMediaKind(t *testing.T) {
 	}
 }
 
-// `text` still wins when the provider populates it. The caption is a FALLBACK:
-// preferring content over text would change what a plain message records, and
-// this channel has no replay endpoint to fix that with.
 func TestExplicitTextOutranksTheContentField(t *testing.T) {
 	msg := imageWithCaption("a legenda")
 	msg["text"] = "o texto"
@@ -99,8 +83,6 @@ func TestExplicitTextOutranksTheContentField(t *testing.T) {
 	}
 }
 
-// content as a bare STRING is the plain-text shape, and it must still resolve —
-// contentField accepts both and this is the half that is not an object.
 func TestStringContentIsRead(t *testing.T) {
 	msg := imageWithCaption("")
 	msg["content"] = "bom dia"
@@ -110,9 +92,6 @@ func TestStringContentIsRead(t *testing.T) {
 	}
 }
 
-// A photo sent with NO caption stays empty here rather than inventing words.
-// The usecase layer supplies a placeholder naming what arrived; a normalizer
-// that guessed would make that impossible to distinguish from a real message.
 func TestUncaptionedMediaStaysEmpty(t *testing.T) {
 	msg := imageWithCaption("")
 	delete(msg, "content")
@@ -122,10 +101,6 @@ func TestUncaptionedMediaStaysEmpty(t *testing.T) {
 	}
 }
 
-// The interactive path keeps its own precedence: a tapped button's VISIBLE label
-// outranks the raw content, because "Sim, quero agendar" is what the customer
-// chose and the content field may hold the machine id. Pinned because the
-// caption fallback runs after it and must not reorder it.
 func TestButtonLabelStillOutranksContent(t *testing.T) {
 	ev := normalizeOne(t, map[string]any{
 		"messageid":        "msg-2",

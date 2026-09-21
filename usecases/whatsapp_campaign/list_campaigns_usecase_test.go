@@ -9,8 +9,6 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// listWAEntryStub embeds the repository interface so unused methods are inert;
-// only the two methods the list usecase actually calls are overridden.
 type listWAEntryStub struct {
 	wce.Repository
 	counts          map[string]*wce.StatusCounts
@@ -59,7 +57,6 @@ func TestListCampaignsBatchesMetricsInOneCall(t *testing.T) {
 	}
 	entryRepo := &listWAEntryStub{
 		counts: map[string]*wce.StatusCounts{
-			// c1 has real activity; c2 is deliberately absent (no entries).
 			"c1": {Total: 10, Sent: 4, Delivered: 3, Read: 1, Failed: 1, NotEligiblePossibleSpam: 1},
 		},
 	}
@@ -70,7 +67,6 @@ func TestListCampaignsBatchesMetricsInOneCall(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	// The whole point of the change: a single aggregation call, not one per campaign.
 	if entryRepo.countCalls != 1 {
 		t.Errorf("CountByStatusForCampaigns called %d times, want exactly 1", entryRepo.countCalls)
 	}
@@ -82,15 +78,13 @@ func TestListCampaignsBatchesMetricsInOneCall(t *testing.T) {
 	if c1.Metrics == nil {
 		t.Fatal("c1 metrics is nil")
 	}
-	if got, want := c1.Metrics.Dispatches, int64(8); got != want { // 4 + 3 + 1
+	if got, want := c1.Metrics.Dispatches, int64(8); got != want {
 		t.Errorf("c1 Dispatches = %d, want %d", got, want)
 	}
 	if got, want := c1.Metrics.TotalNumbers, int64(10); got != want {
 		t.Errorf("c1 TotalNumbers = %d, want %d", got, want)
 	}
 
-	// A campaign absent from the aggregation map must still get a zeroed metrics
-	// object rather than nil.
 	c2 := result.Items[1]
 	if c2.Metrics == nil {
 		t.Fatal("c2 metrics is nil; expected zeroed metrics")

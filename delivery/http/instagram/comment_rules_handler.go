@@ -10,7 +10,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// CommentRuleRequest is the create/update payload for a comment automation.
 type CommentRuleRequest struct {
 	Name             string   `json:"name"`
 	Enabled          bool     `json:"enabled"`
@@ -44,11 +43,6 @@ func (r CommentRuleRequest) toDomain(workspaceID, accountID, id string) *igdomai
 	}
 }
 
-// rulesReady guards every comment-rule endpoint.
-//
-// A nil usecase means the channel was wired without rule support. Reporting it
-// as unavailable keeps a configuration mistake to one failing endpoint instead
-// of a nil dereference that panics the request goroutine.
 func (h *Handler) rulesReady(w http.ResponseWriter) bool {
 	if h == nil || h.manageRules == nil {
 		response.WriteError(w, http.StatusServiceUnavailable, "Comment rules are not available", nil)

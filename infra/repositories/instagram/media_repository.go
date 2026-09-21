@@ -15,14 +15,10 @@ type mediaRepository struct {
 	db *gorm.DB
 }
 
-// NewMediaRepository builds the Instagram media (posts) repository.
 func NewMediaRepository(db *gorm.DB) igdomain.MediaRepository {
 	return &mediaRepository{db: db}
 }
 
-// Upsert stores the durable projection of a post. Note that media_url and
-// thumbnail_url are absent by design: they are short-lived signed CDN links, so
-// they are fetched on demand and served through the proxy.
 func (r *mediaRepository) Upsert(ctx context.Context, m *igdomain.Media) error {
 	record := toMediaSchema(m)
 	return r.db.WithContext(ctx).

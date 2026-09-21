@@ -42,8 +42,6 @@ func (uc *onboardEmbeddedSignupUseCase) Execute(input businessphone.OnboardEmbed
 		return nil, businessphone.ErrOwnerAssignedByRequired
 	}
 	if input.Provider.Normalized() == businessphone.ProviderDialog360 {
-		// 360dialog channels authenticate with the per channel D360-API-KEY, not a
-		// Graph access token. Require the key at the connected (finalize) stage.
 		if input.Dialog360APIKey == "" {
 			return nil, businessphone.ErrInvalidAccessToken
 		}
@@ -57,9 +55,6 @@ func (uc *onboardEmbeddedSignupUseCase) Execute(input businessphone.OnboardEmbed
 		log.Printf("[onboard-embedded-signup] Failed to upsert WABA %s: %v (continuing with phone onboarding)", input.WABAId, err)
 	}
 
-	// Meta enrichment is skipped for 360dialog channels: the credential is a
-	// D360-API-KEY, not a Graph token, and 360dialog owns the phone record. The
-	// 360dialog onboarding path supplies display details directly.
 	var metaPhone *businessphone.MetaPhoneNumberInfo
 	if input.Provider.Normalized() != businessphone.ProviderDialog360 {
 		var err error

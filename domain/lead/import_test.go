@@ -11,8 +11,6 @@ func rowsOf(numbers ...string) []ImportRow {
 }
 
 func TestPrepareImportNormalizesLocalNumbers(t *testing.T) {
-	// The most ordinary Brazilian file there is: numbers without the country
-	// code, with the punctuation a spreadsheet leaves in.
 	prepared := PrepareImport(rowsOf("11987654321", "(11) 98765-4322", "+55 11 98765-4323"))
 
 	if len(prepared.Rejected) != 0 {
@@ -48,8 +46,6 @@ func TestPrepareImportRejectsUnreachableNumbers(t *testing.T) {
 			t.Errorf("line %d reason = %q, want invalid", rejection.Line, rejection.Reason)
 		}
 	}
-	// The line numbers are the operator's, so a rejection points at a row they
-	// can open in the spreadsheet.
 	if prepared.Rejected[0].Line != 2 {
 		t.Errorf("first rejection line = %d, want 2", prepared.Rejected[0].Line)
 	}
@@ -73,8 +69,6 @@ func TestPrepareImportDedupesWithinFile(t *testing.T) {
 }
 
 func TestPrepareImportCollapsesNinthDigitVariants(t *testing.T) {
-	// 12- and 13-digit spellings of one mobile are one person. A file carrying
-	// both must not import that contact twice. Nothing downstream would undo it.
 	prepared := PrepareImport(rowsOf("551187654321", "5511987654321"))
 
 	if len(prepared.Inputs) != 1 {

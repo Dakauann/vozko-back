@@ -11,24 +11,11 @@ import (
 )
 
 const (
-	// MaxRosterSize bounds how many members one roulette pool may hold.
-	//
-	// CanReceiveRoulette is a per-user permission question, and while the
-	// workspace repository caches members and permission sets, a cold cache on
-	// a 2000-member tenant would put 2000 round-trips on an inbound-message
-	// path — a webhook that takes four seconds is a channel outage. Truncation
-	// is logged, so it is visible; a slow webhook is not.
 	MaxRosterSize = 500
 
-	// rosterCacheTTL is short on purpose: membership, department and permission
-	// changes must reach distribution quickly, and the workspace repository
-	// already caches the expensive parts underneath.
 	rosterCacheTTL = 60 * time.Second
 )
 
-// workspaceMemberLister is the slice of the workspace repository the roster
-// needs. Narrow, so the roster does not import the 40-method interface for two
-// calls.
 type workspaceMemberLister interface {
 	ListMembers(workspaceID string) ([]*workspace.Member, error)
 }
@@ -37,22 +24,11 @@ type departmentMemberLister interface {
 	ListMembers(departmentID string) ([]workspace_department.DepartmentMember, error)
 }
 
-// rosterCache is the two-method slice of shared state the roster needs.
-// Declared here rather than taking cache.SharedState so the roster depends on
-// what it uses, and so a test fake is two methods instead of twenty-five.
-// Satisfied by the Redis shared state.
 type rosterCache interface {
 	GetString(key string) (string, error)
 	SetString(key, value string, ttl time.Duration) error
 }
 
-// RosterService answers "who may receive a conversation right now, whether or
-// not they are connected".
-//
-// It is the last_seen mode's pool source, and the deliberate counterpart to the
-// WS hub: same permission predicate (ia.CanReceiveRoulette), same department
-// narrowing (the department's member list), different population — workspace
-// membership instead of open sockets.
 type RosterService struct {
 	members     workspaceMemberLister
 	departments departmentMemberLister
@@ -141,8 +117,6 @@ func (s *RosterService) cacheKey(workspaceID, departmentID string, skipAdmins bo
 	return "roulette:roster:" + workspaceID + ":" + departmentID + ":" + skip
 }
 
-// fromCache never reports an error: a cache that cannot be read is a cache
-// miss, not a distribution failure.
 func (s *RosterService) fromCache(workspaceID, departmentID string, skipAdmins bool) ([]string, bool) {
 	if s.shared == nil {
 		return nil, false
@@ -151,9 +125,6 @@ func (s *RosterService) fromCache(workspaceID, departmentID string, skipAdmins b
 	if err != nil || raw == "" {
 		return nil, false
 	}
-	// An empty roster is cached as the sentinel below rather than as "" so it
-	// stays distinguishable from a miss — otherwise a workspace with nobody
-	// eligible re-runs the full scan on every inbound message.
 	if raw == emptyRosterSentinel {
 		return []string{}, true
 	}

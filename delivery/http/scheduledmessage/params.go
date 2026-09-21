@@ -13,11 +13,6 @@ const (
 	maxPageSize     = 200
 )
 
-// parseStatuses reads the comma-separated status filter.
-//
-// Unknown values are dropped rather than rejected: a client sending a status
-// this build does not know should get the statuses it asked for that do exist,
-// not a 400 for the whole request.
 func parseStatuses(raw string) []sm.Status {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

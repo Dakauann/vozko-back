@@ -156,9 +156,6 @@ func (s *scheduleMeetingExecutor) Execute(ctx *workflow.NodeContext) (*workflow.
 	} else {
 		durationMinutes := scheduleMeetingDuration(ctx)
 		if durationMinutes <= 0 {
-			// Neither an explicit end nor a positive duration was provided (e.g.
-			// the AI scheduled with only start_time + title). Fall back to the
-			// node's DefaultConfig 30-minute duration instead of failing the run.
 			durationMinutes = 30
 		}
 		endTime = startTime.Add(time.Duration(durationMinutes) * time.Minute)
@@ -258,9 +255,6 @@ func scheduleMeetingFailure(ctx *workflow.NodeContext, message string) *workflow
 	log.Printf("[workflow][schedule_meeting][node:%s][run:%s] FAILED: %s",
 		scheduleMeetingNodeID(ctx), scheduleMeetingRunID(ctx), message)
 	return &workflow.NodeResult{
-		// STRICT: route to "erro" only if that edge is actually wired. Never fall
-		// back to the first edge, a failed schedule must not flow down the
-		// success path. With no "erro" edge wired the run ends here.
 		NextNodeID: scheduleMeetingResolveEdgeStrict(ctx, "erro"),
 		Output: map[string]interface{}{
 			"success": false,
@@ -283,9 +277,6 @@ func scheduleMeetingResolveEdge(ctx *workflow.NodeContext, label string) string 
 	return resolveEdgeByLabel(ctx.Graph.OutgoingEdges(ctx.Node.ID), label)
 }
 
-// scheduleMeetingResolveEdgeStrict resolves an edge by label WITHOUT the
-// fall-back-to-first-edge behaviour, so the error path can never be mistaken for
-// the success path when no "erro" edge is wired.
 func scheduleMeetingResolveEdgeStrict(ctx *workflow.NodeContext, label string) string {
 	if ctx == nil || ctx.Graph == nil || ctx.Node == nil {
 		return ""

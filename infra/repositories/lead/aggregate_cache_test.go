@@ -9,9 +9,6 @@ import (
 	"time"
 )
 
-// fakeState is the smallest SharedState that can answer the questions the
-// aggregate cache asks. Only the four methods the cache uses are real; the rest
-// exist to satisfy the interface and must never be called.
 type fakeState struct {
 	mu     sync.Mutex
 	values map[string]string
@@ -74,9 +71,6 @@ func itoa(n int64) string {
 	return string(digits)
 }
 
-// Expire is exercised by bump: the generation key has to outlive the values it
-// invalidates, or an expired generation would resurrect entries written before
-// the last write.
 func (f *fakeState) Expire(key string, _ time.Duration) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -93,7 +87,6 @@ func (f *fakeState) Del(keys ...string) error {
 	return nil
 }
 
-// Unused by the aggregate cache.
 func (f *fakeState) SetNX(string, string, time.Duration) (bool, error) { panic("unused") }
 func (f *fakeState) Exists(string) (bool, error)                       { panic("unused") }
 func (f *fakeState) Decr(string) (int64, error)                        { panic("unused") }
@@ -116,9 +109,6 @@ func testQuery(where string, args ...interface{}) *listQuery {
 	return &listQuery{where: where, args: args}
 }
 
-// Two different filters must never share a cached answer. This is the one bug
-// class a count cache can have that a user would see as the product lying:
-// "3 leads" over a list showing 900.
 func TestAggregateKeyVariesWithTheFilter(t *testing.T) {
 	c := newAggregateCache(newFakeState())
 
@@ -134,7 +124,6 @@ func TestAggregateKeyVariesWithTheFilter(t *testing.T) {
 	}
 }
 
-// The same question asked twice must hit, or the cache is decoration.
 func TestAggregateKeyIsStable(t *testing.T) {
 	c := newAggregateCache(newFakeState())
 	q := testQuery("leads.blocked = ?", true)
@@ -144,7 +133,6 @@ func TestAggregateKeyIsStable(t *testing.T) {
 	}
 }
 
-// One tenant's counts must never be served to another, whatever the filter.
 func TestAggregateKeyIsScopedPerWorkspaceAndKind(t *testing.T) {
 	c := newAggregateCache(newFakeState())
 	q := testQuery("TRUE")
@@ -157,9 +145,6 @@ func TestAggregateKeyIsScopedPerWorkspaceAndKind(t *testing.T) {
 	}
 }
 
-// A write must make every cached answer for that workspace unreachable at once.
-// Deleting keys one by one is impossible here (the filter space is unbounded),
-// so invalidation moves a generation counter that every key is built from.
 func TestBumpInvalidatesEveryKeyForTheWorkspace(t *testing.T) {
 	state := newFakeState()
 	c := newAggregateCache(state)
@@ -194,10 +179,6 @@ func TestCountRoundTrips(t *testing.T) {
 	}
 }
 
-// A count of zero is a real answer, not a miss. Treating it as one would make
-// an empty filtered list re-run the count on every single request, which is the
-// case least able to afford it (an operator typing a search that matches
-// nothing yet).
 func TestZeroCountIsAHit(t *testing.T) {
 	c := newAggregateCache(newFakeState())
 	q := testQuery("TRUE")
@@ -210,8 +191,6 @@ func TestZeroCountIsAHit(t *testing.T) {
 	}
 }
 
-// The cache is an optimization and never a dependency: with no backend wired,
-// every read misses and every write is a no-op, and nothing panics.
 func TestDisabledCacheAlwaysMisses(t *testing.T) {
 	c := newAggregateCache(nil)
 	q := testQuery("TRUE")
@@ -220,11 +199,9 @@ func TestDisabledCacheAlwaysMisses(t *testing.T) {
 	if _, ok := c.getCount("ws-1", q); ok {
 		t.Fatal("disabled cache reported a hit")
 	}
-	c.bump("ws-1") // must not panic
+	c.bump("ws-1")
 }
 
-// Same contract when the backend is present but broken: a Redis outage must
-// degrade the leads page to "slower", never to "down".
 func TestFailingCacheDegradesToMisses(t *testing.T) {
 	state := newFakeState()
 	state.fail = true
@@ -239,9 +216,6 @@ func TestFailingCacheDegradesToMisses(t *testing.T) {
 
 func TestKeysAreBounded(t *testing.T) {
 	c := newAggregateCache(newFakeState())
-	// A filter expression can be long (every predicate the panel offers, plus a
-	// pasted search term). The key hashes it so one pathological filter cannot
-	// produce a multi-kilobyte cache key.
 	long := strings.Repeat("leads.name ILIKE ? AND ", 400)
 	if got := len(c.key("count", "ws-1", testQuery(long))); got > 128 {
 		t.Errorf("key length = %d, want <= 128", got)

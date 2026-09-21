@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// The delivery token is the ONLY authenticity control this channel has: the
-// provider signs nothing and accepts no header of ours. Every assertion here is
-// about that credential not leaking and not being guessable.
-
 func TestDeliveryTokensAreUniqueAndURLSafe(t *testing.T) {
 	seen := make(map[string]struct{}, 128)
 	for i := 0; i < 128; i++ {
@@ -21,21 +17,15 @@ func TestDeliveryTokensAreUniqueAndURLSafe(t *testing.T) {
 		}
 		seen[token] = struct{}{}
 
-		// It travels in a URL path. Anything needing escaping would be
-		// registered escaped and arrive unescaped, and the lookup would miss —
-		// a channel that silently receives nothing.
 		if strings.ContainsAny(token, "/?#%&= ") {
 			t.Fatalf("token %q needs URL escaping", token)
 		}
-		// 32 random bytes as unpadded base64url.
 		if len(token) < 40 {
 			t.Fatalf("token %q is shorter than expected; entropy may have been lost", token)
 		}
 	}
 }
 
-// The lookup key must be the digest, never the token. A dumped instances table
-// must not yield working webhook URLs.
 func TestHashDeliveryTokenIsStableAndOneWay(t *testing.T) {
 	token, err := GenerateDeliveryToken()
 	if err != nil {
@@ -71,9 +61,6 @@ func TestDeliveryTokenMatches(t *testing.T) {
 	}
 }
 
-// The access log must never carry the credential. Without this the rotation
-// story is meaningless: the token would be written in plaintext to every log
-// sink on every inbound message.
 func TestRedactWebhookPathHidesTheToken(t *testing.T) {
 	token, _ := GenerateDeliveryToken()
 	path := WebhookPathPrefix + "/" + token
@@ -86,8 +73,6 @@ func TestRedactWebhookPathHidesTheToken(t *testing.T) {
 		t.Errorf("redaction lost the route: %q", redacted)
 	}
 
-	// Unrelated paths pass through untouched, so the middleware can call this
-	// on everything.
 	if got := RedactWebhookPath("/conversations/123"); got != "/conversations/123" {
 		t.Errorf("unrelated path was rewritten to %q", got)
 	}
@@ -101,9 +86,6 @@ func TestWebhookURLFor(t *testing.T) {
 	}
 }
 
-// The base URL is validated at boot because every failure here is SILENT: a
-// wrong scheme or a stray path produces no error at registration time, only
-// events that never arrive.
 func TestValidateWebhookBaseURL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -114,8 +96,6 @@ func TestValidateWebhookBaseURL(t *testing.T) {
 		{"trailing slash tolerated", "https://api.example.com/", false},
 		{"localhost for development", "http://localhost:8080", false},
 		{"empty", "", true},
-		// The token travels in the path; plaintext http would hand the
-		// channel's only credential to anyone on the wire.
 		{"plain http in production", "http://api.example.com", true},
 		{"relative", "/webhooks", true},
 		{"carries a path we own", "https://api.example.com/api/v1", true},

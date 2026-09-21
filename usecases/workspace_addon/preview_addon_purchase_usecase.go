@@ -21,9 +21,6 @@ func NewPreviewAddonPurchaseUseCase(
 	return &previewAddonPurchaseUseCase{defs: defs, subs: subs, now: utcNow}
 }
 
-// Execute quotes an addon purchase without charging or persisting anything. It resolves the same
-// new-vs-top-up state as the purchase and calls the same billing.ActivationPeriod, so the previewed
-// ChargeNowMicros is exactly what PurchaseAddonUseCase would charge for the same inputs.
 func (uc *previewAddonPurchaseUseCase) Execute(workspaceID string, input workspace_addon.PurchaseAddonInput) (*workspace_addon.AddonPurchasePreview, error) {
 	if workspaceID == "" || input.AddonDefinitionID == "" {
 		return nil, workspace_addon.ErrInvalidAddonSubscription
@@ -68,8 +65,6 @@ func (uc *previewAddonPurchaseUseCase) Execute(workspaceID string, input workspa
 		Prorated:        prorated,
 		ProratedDays:    proratedDays,
 		PeriodEnd:       periodEnd,
-		// The first unified invoice bills this channel on its first billing anchor, which is exactly the
-		// co-term period end. Recurring charges follow on the anchor from there.
 		NextInvoiceDate: periodEnd,
 	}, nil
 }

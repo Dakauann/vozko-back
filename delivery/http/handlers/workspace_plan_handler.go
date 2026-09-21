@@ -42,7 +42,6 @@ type WorkspacePlanHandler struct {
 }
 
 type publicPlanDetailsResponse struct {
-	// Plan is the customer-safe plan view (see customer_billing_presenters.go): cost/markup stripped.
 	Plan customerPlanDetails `json:"plan"`
 }
 

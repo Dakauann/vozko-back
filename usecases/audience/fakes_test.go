@@ -15,11 +15,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Hand-written fakes with function fields, in the style of
-// usecases/instagram/fakes_test.go. The repository fake is a real in-memory
-// implementation of the status machine's persistence, because the engine
-// tests are about what ends up in the rows.
-
 var now = time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 
 type fixedClock struct{ t time.Time }
@@ -30,16 +25,11 @@ func ref() ca.ContainerRef {
 	return ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "media-1"}
 }
 
-// ---- repository ----
-
 type fakeRepo struct {
-	mu   sync.Mutex
-	rows map[string]*ca.Analysis
-	// Saved counts SaveMany calls, so a test can assert persistence happened.
-	Saved     int
-	InsertErr error
-	// failCountWaiting makes the backlog read fail, so a test can pin that the
-	// budget still reports its ceiling when the queue cannot be counted.
+	mu               sync.Mutex
+	rows             map[string]*ca.Analysis
+	Saved            int
+	InsertErr        error
 	failCountWaiting bool
 
 	AggregateAuthorsFn     func(source ca.Source, accountID string, since time.Time) ([]*ca.AuthorStats, error)
@@ -192,8 +182,6 @@ func (f *fakeRepo) CountPendingBySource(context.Context) (map[ca.Source]int, err
 	return out, nil
 }
 
-// CountWaiting answers ca.BacklogReader from the rows the fake already holds,
-// so a test that queues work sees the backlog without a second source of truth.
 func (f *fakeRepo) CountWaiting(_ context.Context, workspaceID string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -212,7 +200,6 @@ func (f *fakeRepo) CountWaiting(_ context.Context, workspaceID string) (int, err
 	return n, nil
 }
 
-// seedWaiting puts n unclassified rows in one workspace's queue.
 func (f *fakeRepo) seedWaiting(workspaceID string, n int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -225,10 +212,6 @@ func (f *fakeRepo) seedWaiting(workspaceID string, n int) {
 	}
 }
 
-// List filters the stored rows on the fields the use cases actually pass. It
-// used to return an empty page unconditionally, which made anything reading a
-// corpus back (the author pass) silently see nothing and pass for the wrong
-// reason.
 func (f *fakeRepo) List(_ context.Context, in ca.ListInput) (*shared.PaginatedResult[*ca.Analysis], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -324,7 +307,6 @@ func (f *fakeRepo) PurgeBefore(_ context.Context, cutoff time.Time, limit int) (
 	return n, nil
 }
 
-// helpers for assertions
 func (f *fakeRepo) bySourceID(id string) *ca.Analysis {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -347,8 +329,6 @@ func (f *fakeRepo) countStatus(s ca.Status) int {
 	}
 	return n
 }
-
-// ---- settings ----
 
 type fakeSettings struct {
 	byAccount map[string]*ca.Settings
@@ -392,8 +372,6 @@ func enabledSettings() *ca.Settings {
 	return &s
 }
 
-// ---- batches ----
-
 type fakeBatches struct {
 	mu   sync.Mutex
 	rows []ca.Batch
@@ -409,8 +387,6 @@ func (f *fakeBatches) Totals(context.Context, string, time.Time, time.Time) (*ca
 	return &ca.BatchTotals{}, nil
 }
 
-// ---- adapter ----
-
 type fakeAdapter struct {
 	texts   map[string]string
 	caption string
@@ -419,10 +395,9 @@ type fakeAdapter struct {
 	containerErr error
 
 	containers []ca.ContainerSummary
-	// pages maps containerID -> cursor -> (items, next cursor)
-	pages    map[string]map[string]fakePage
-	fetchErr error
-	Fetches  int
+	pages      map[string]map[string]fakePage
+	fetchErr   error
+	Fetches    int
 }
 
 type fakePage struct {
@@ -464,10 +439,6 @@ func (f *fakeAdapter) FetchCommentsPage(_ context.Context, ref ca.ContainerRef, 
 	return p.items, p.next, nil
 }
 
-// ---- classifier ----
-
-// fakeClassifier answers by script: each call pops the next response. Calls
-// are recorded so a test can assert what was sent (and that nothing was).
 type fakeClassifier struct {
 	mu        sync.Mutex
 	Calls     []ca.ClassifyRequest
@@ -478,7 +449,6 @@ func (f *fakeClassifier) push(fn func(req ca.ClassifyRequest) (*ca.ClassifyResul
 	f.responses = append(f.responses, fn)
 }
 
-// good answers every ref with a valid classification.
 func good(req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
 	res := &ca.ClassifyResult{FinishReason: "stop", Model: "test-model", PromptTokens: 100, CompletionTokens: 10 * len(req.Batch.Items)}
 	for _, it := range req.Batch.Items {
@@ -509,8 +479,6 @@ func (f *fakeClassifier) Classify(_ context.Context, req ca.ClassifyRequest) (*c
 	return fn(req)
 }
 
-// ---- scheduler ----
-
 type fakeScheduler struct {
 	mu    sync.Mutex
 	hints map[string]ca.Hint
@@ -540,17 +508,12 @@ func (f *fakeScheduler) Clear(_ context.Context, ref ca.ContainerRef) error {
 	return nil
 }
 
-
-// ---- balance ----
-
 type fakeBalance struct{ micros int64 }
 
 func (f *fakeBalance) HasSufficientBalance(string, int64) (bool, error) { return f.micros > 0, nil }
 func (f *fakeBalance) GetBalance(string) (int64, error)                 { return f.micros, nil }
 func (f *fakeBalance) Invalidate(string)                                {}
 func (f *fakeBalance) InvalidateDebounced(string)                       {}
-
-// ---- shared state (Redis) ----
 
 type fakeState struct {
 	mu   sync.Mutex
@@ -633,9 +596,6 @@ func (s *fakeState) HGetAll(key string) (map[string]string, error) {
 	return out, nil
 }
 
-// A real implementation, not a stub returning zero: the rolling usage budget
-// is stored as a hash of hourly buckets, so a no-op here would let every test
-// of it pass against a budget that was never spent.
 func (s *fakeState) HIncrBy(key, field string, n int64) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -665,8 +625,6 @@ func (s *fakeState) TryIncrBy(key string, delta, max int64) (bool, error) {
 }
 func (s *fakeState) Expire(string, time.Duration) (bool, error) { return true, nil }
 
-// ---- AI service (for the classifier tests) ----
-
 type fakeAI struct {
 	mu     sync.Mutex
 	Inputs []ai.GenerateInput
@@ -692,8 +650,6 @@ func (f *fakeAI) GenerateStream(context.Context, ai.GenerateInput) (<-chan ai.St
 func (f *fakeAI) GetAvaibleModels(context.Context) ([]string, error)           { return nil, nil }
 func (f *fakeAI) GetModelsWithPricing(context.Context) ([]ai.ModelInfo, error) { return nil, nil }
 
-// ---- test harness ----
-
 type harness struct {
 	repo            *fakeRepo
 	settings        *fakeSettings
@@ -708,7 +664,6 @@ type harness struct {
 	engine          *Engine
 }
 
-// fakeBroadcaster records what the live feed would have been sent.
 type fakeBroadcaster struct {
 	mu     sync.Mutex
 	events []ca.AnalysisBatchAnalyzed
@@ -743,8 +698,6 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 		Repo: h.repo, Settings: NewSettingsResolver(h.settings), Batches: h.batches,
 		Adapters:   map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: h.adapter},
 		Classifier: h.classifier, Scheduler: h.scheduler,
-		// The REAL limiter over the fake state: the budget is the thing under
-		// test in the cap cases, and a fake of it would only prove the fake.
 		Usage:           NewUsageLimiter(h.state),
 		WorkspaceLimits: h.workspaceLimits,
 		Balance:         h.balance, State: h.state, Clock: fixedClock{now}, Budget: budget,
@@ -757,7 +710,6 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 	return h
 }
 
-// seed inserts n pending comments c-1..c-n with text and a stamp.
 func (h *harness) seed(n int) {
 	for i := 1; i <= n; i++ {
 		id := "c-" + itoa(i)

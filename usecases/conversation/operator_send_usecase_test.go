@@ -6,15 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/user"
 )
-
-// What an operator send MEANS used to live inside the WebSocket hub's frame
-// handler: which signature the channel renders, how media differs from text,
-// and what the conversation is owed afterwards. These pin it here, where every
-// send surface reaches it.
 
 type opSentText struct{ entryID, entryType, text, userID, replyTo string }
 type opSentMedia struct{ entryID, entryType, mediaID, mediaType, userID, replyTo, caption string }
@@ -74,6 +70,7 @@ func (f *opRecordingFinalizer) FinalizeOperatorSend(_ context.Context, in conver
 
 type operatorSendFixture struct {
 	sender    *opRecordingSender
+	billing   *opStubBilling
 	finalizer *opRecordingFinalizer
 	uc        conversation.OperatorSendUseCase
 }
@@ -82,9 +79,10 @@ func newOperatorSendFixture(t *testing.T, u *user.User, userErr error) *operator
 	t.Helper()
 	f := &operatorSendFixture{
 		sender:    &opRecordingSender{},
+		billing:   &opStubBilling{},
 		finalizer: &opRecordingFinalizer{},
 	}
-	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer)
+	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer, f.billing)
 	if err != nil {
 		t.Fatalf("NewOperatorSendUseCase: %v", err)
 	}
@@ -123,9 +121,6 @@ func TestOperatorSendDeliversTextAndFinalizes(t *testing.T) {
 	}
 }
 
-// The signature is applied at SEND time, in the form the channel renders.
-// Asserted against SignOutbound rather than a literal, so a format change can
-// never make the composer and the scheduled dispatcher disagree.
 func TestOperatorSendAppliesTheChannelSignature(t *testing.T) {
 	for _, entryType := range []shared.EntryType{shared.EntryTypeWhatsApp, shared.EntryTypeInstagram} {
 		t.Run(string(entryType), func(t *testing.T) {
@@ -146,9 +141,6 @@ func TestOperatorSendAppliesTheChannelSignature(t *testing.T) {
 	}
 }
 
-// Resolve-and-continue: a dead user repository costs the signature prefix and
-// nothing else. Before this lived in one place, the hub read Username off a nil
-// user and took the process down.
 func TestOperatorSendSurvivesAUserLookupFailure(t *testing.T) {
 	f := newOperatorSendFixture(t, nil, errors.New("user lookup failed"))
 
@@ -169,8 +161,6 @@ func TestOperatorSendSurvivesAUserLookupFailure(t *testing.T) {
 	}
 }
 
-// Media carries the text as its caption, and the caption is signed exactly like
-// a text body would be.
 func TestOperatorSendRoutesMediaWithASignedCaption(t *testing.T) {
 	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
 
@@ -192,8 +182,6 @@ func TestOperatorSendRoutesMediaWithASignedCaption(t *testing.T) {
 	}
 }
 
-// An interactive prompt is never signed: the prefix would land in the body above
-// the buttons and read as part of the question.
 func TestOperatorSendDoesNotSignAnInteractivePrompt(t *testing.T) {
 	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
 
@@ -218,7 +206,6 @@ func TestOperatorSendDoesNotSignAnInteractivePrompt(t *testing.T) {
 	}
 }
 
-// A failed send has nothing to finalize, and the error reaches the caller.
 func TestOperatorSendDoesNotFinalizeAFailedSend(t *testing.T) {
 	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
 	f.sender.err = errors.New("provider refused")
@@ -231,8 +218,6 @@ func TestOperatorSendDoesNotFinalizeAFailedSend(t *testing.T) {
 	}
 }
 
-// The message is already with the customer by the time the finalizer runs, so a
-// failing side effect must never be reported as a failed send.
 func TestOperatorSendSucceedsWhenFinalizationFails(t *testing.T) {
 	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
 	f.finalizer.err = errors.New("telemetry down")
@@ -274,16 +259,82 @@ func TestOperatorSendValidatesItsInput(t *testing.T) {
 	}
 }
 
-// A missing dependency must stop the boot, not silently cost every reply its
-// side effects.
 func TestNewOperatorSendUseCaseRefusesMissingDependencies(t *testing.T) {
-	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}); err == nil {
+	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
 		t.Error("a nil message sender was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
 		t.Error("a nil user repository was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil, &opStubBilling{}); err == nil {
 		t.Error("a nil finalizer was accepted")
+	}
+}
+
+type opStubBilling struct {
+	allowErr error
+	calls    int
+}
+
+func (s *opStubBilling) AllowSend(string) error {
+	s.calls++
+	return s.allowErr
+}
+func (s *opStubBilling) ShouldCharge(conversation.DeliveryReceipt) bool { return false }
+func (s *opStubBilling) ChargeDelivered(string, conversation.DeliveryReceipt, string) error {
+	return nil
+}
+
+func TestOperatorSendRefusesWhatTheWorkspaceCannotPayFor(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+	f.billing.allowErr = balance.ErrInsufficientBalance
+
+	_, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:     "e-1",
+		EntryType:   string(shared.EntryTypeWhatsApp),
+		WorkspaceID: "ws-1",
+		Text:        "olá",
+	})
+
+	if !errors.Is(err, balance.ErrInsufficientBalance) {
+		t.Fatalf("Execute() = %v, want ErrInsufficientBalance", err)
+	}
+	if len(f.sender.texts) != 0 {
+		t.Error("the message was sent anyway; the gate has to run before the send")
+	}
+}
+
+func TestOperatorSendProceedsWhenServiceMessagesAreFree(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+
+	if _, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:     "e-1",
+		EntryType:   string(shared.EntryTypeWhatsApp),
+		WorkspaceID: "ws-1",
+		Text:        "olá",
+	}); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if f.billing.calls != 1 {
+		t.Errorf("the billing was asked %d times, want 1", f.billing.calls)
+	}
+	if len(f.sender.texts) != 1 {
+		t.Errorf("the message was sent %d times, want 1", len(f.sender.texts))
+	}
+}
+
+func TestOperatorSendSkipsTheGateWithoutAWorkspace(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+	f.billing.allowErr = balance.ErrInsufficientBalance
+
+	if _, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:   "e-1",
+		EntryType: string(shared.EntryTypeWhatsApp),
+		Text:      "olá",
+	}); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if f.billing.calls != 0 {
+		t.Errorf("the billing was asked %d times with no workspace, want 0", f.billing.calls)
 	}
 }

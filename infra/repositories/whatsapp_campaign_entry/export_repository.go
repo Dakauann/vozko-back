@@ -12,26 +12,12 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// exportPageSize is how many rows one query returns.
-//
-// The walk is paged rather than streamed from an open cursor on purpose: the
-// pool is 10 connections wide, and a workspace-wide export that held one of
-// them for the length of the download would be a tenant starving every other
-// request on the instance. Each page is a short query that returns its
-// connection immediately.
 const exportPageSize = 1000
 
 type exportRepository struct {
 	db *gorm.DB
 }
 
-// NewExportRepository builds the WhatsApp export source.
-//
-// WhatsApp used to be special-cased inside the export usecase: it was the one
-// channel that could not be a ChannelEntryLister, because the port took a
-// container id and nothing else, and a campaign export needs statuses and a
-// period. With the port carrying a Scope, WhatsApp is an ordinary channel, and
-// exporting every campaign at once is the same code path as exporting one.
 func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 	return &exportRepository{db: db}
 }
@@ -52,15 +38,6 @@ type exportRow struct {
 	LeadAge      *int                `gorm:"column:lead_age"`
 }
 
-// ListForExport walks one campaign's entries, or every campaign in the scope.
-//
-// Rows come out ordered by (campaign_id, status, created_at, id), which is the
-// leading edge of idx_wce_campaign_status_created. That ordering is not a
-// presentation choice: it is what lets each page be an index scan with a keyset
-// predicate instead of an OFFSET that re-reads and re-sorts everything before
-// it. A workspace-wide export therefore costs one index walk in total, not one
-// per page, and it groups the file by campaign, which is what makes a
-// multi-campaign export readable.
 func (r *exportRepository) ListForExport(
 	ctx context.Context,
 	scope export.Scope,
@@ -71,8 +48,6 @@ func (r *exportRepository) ListForExport(
 		return nil
 	}
 
-	// Keyset cursor. Zero values sort before every real row, so the first page
-	// needs no special case.
 	var (
 		lastCampaignID string
 		lastStatus     string
@@ -138,14 +113,7 @@ func (r *exportRepository) baseQuery(ctx context.Context, scope export.Scope) *g
 			COALESCE(l.name, '') AS lead_name,
 			l.age AS lead_age`).
 		Joins("JOIN whatsapp_campaigns c ON c.id = e.campaign_id AND c.deleted_at IS NULL").
-		// A lead can be deleted while its entry survives. LEFT JOIN keeps that
-		// row in the file with a blank identity rather than dropping a send the
-		// summary tiles still count — the file has to reconcile with the tiles.
-		// The workspace predicate on the join is a second tenancy barrier: even
-		// a mis-keyed lead_id cannot pull in another tenant's contact.
 		Joins("LEFT JOIN leads l ON l.id = e.lead_id AND l.deleted_at IS NULL AND l.workspace_id = c.workspace_id").
-		// Tenancy is enforced here, not by the caller: an operator must not be
-		// able to export another workspace's campaign by guessing its id.
 		Where("c.workspace_id = ?", scope.WorkspaceID).
 		Where("e.deleted_at IS NULL")
 
@@ -158,9 +126,6 @@ func (r *exportRepository) baseQuery(ctx context.Context, scope export.Scope) *g
 	if len(scope.Statuses) > 0 {
 		query = query.Where("e.status IN ?", scope.Statuses)
 	}
-	// Same bounds, on the same column, as the disparos summary: the campaign's
-	// creation date. Filtering entries by their own date instead would answer a
-	// different question and quietly disagree with the tiles.
 	if scope.CreatedFrom != nil {
 		query = query.Where("c.created_at >= ?", *scope.CreatedFrom)
 	}

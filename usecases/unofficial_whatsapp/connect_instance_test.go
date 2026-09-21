@@ -17,8 +17,6 @@ func connectFixture(status uw.Status) (*fakeInstanceRepo, *fakeServerRepo, *uw.I
 	return newFakeInstanceRepo(instance), newFakeServerRepo(healthyServer("srv-a", 10, 1)), instance
 }
 
-// The connect screen cannot render a deadline it was not told about, and a
-// screen that stalls past an expiry is indistinguishable from a broken one.
 func TestConnectAttachesTheProvidersOwnDeadline(t *testing.T) {
 	t.Run("qr", func(t *testing.T) {
 		instances, servers, _ := connectFixture(uw.StatusDisconnected)
@@ -60,16 +58,12 @@ func TestConnectAttachesTheProvidersOwnDeadline(t *testing.T) {
 		if challenge.PairCode == "" || challenge.ExpiresAt == nil {
 			t.Fatal("pairing needs a code and a deadline")
 		}
-		// The two deadlines genuinely differ; using the QR's for a pairing code
-		// would tell the customer their code expired while it was still valid.
 		if time.Until(*challenge.ExpiresAt) <= uw.QRCodeTTL {
 			t.Error("a pairing code has a longer deadline than a QR code")
 		}
 	})
 }
 
-// Linking moves the row to AWAITING_SCAN so the row and the screen agree about
-// what is happening.
 func TestConnectRecordsAwaitingScan(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusDisconnected)
 	uc := NewConnectInstanceUseCase(instances, servers, &fakeProvider{})
@@ -91,8 +85,6 @@ func TestConnectRecordsAwaitingScan(t *testing.T) {
 	}
 }
 
-// A banned number cannot be relinked. Offering a QR that can only fail wastes
-// the operator's time and teaches them to distrust the screen.
 func TestConnectRefusesABannedNumber(t *testing.T) {
 	instances, servers, _ := connectFixture(uw.StatusBanned)
 	provider := &fakeProvider{}
@@ -107,8 +99,6 @@ func TestConnectRefusesABannedNumber(t *testing.T) {
 	}
 }
 
-// Tenancy is enforced in the use case, not the handler: every caller needs it,
-// and one that forgot would expose another workspace's number.
 func TestConnectEnforcesTenancy(t *testing.T) {
 	instances, servers, _ := connectFixture(uw.StatusDisconnected)
 	uc := NewConnectInstanceUseCase(instances, servers, &fakeProvider{})
@@ -116,14 +106,11 @@ func TestConnectEnforcesTenancy(t *testing.T) {
 	_, err := uc.Connect(context.Background(), ConnectRequest{
 		InstanceID: "inst-1", WorkspaceID: "another-workspace",
 	})
-	// Not found rather than forbidden: confirming existence would let a caller
-	// enumerate other tenants' instance ids.
 	if !errors.Is(err, uw.ErrInstanceNotFound) {
 		t.Fatalf("err = %v, want ErrInstanceNotFound", err)
 	}
 }
 
-// Polling is what turns "the customer scanned it" into a connected row.
 func TestStatusPromotesToConnectedAndCapturesIdentity(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusAwaitingScan)
 	uc := NewConnectInstanceUseCase(instances, servers, &fakeProvider{})
@@ -138,8 +125,6 @@ func TestStatusPromotesToConnectedAndCapturesIdentity(t *testing.T) {
 	if instance.JID != "5511999999999@s.whatsapp.net" {
 		t.Errorf("jid = %q", instance.JID)
 	}
-	// The phone number is derived from the JID and is what bridges this channel
-	// to the CRM's leads.
 	if instance.PhoneNumber != "5511999999999" {
 		t.Errorf("phone = %q, want it derived from the JID", instance.PhoneNumber)
 	}
@@ -148,9 +133,6 @@ func TestStatusPromotesToConnectedAndCapturesIdentity(t *testing.T) {
 	}
 }
 
-// An unrecognised provider state must leave the status alone. Guessing would
-// report a live session as disconnected the first time the vendor adds a state,
-// closing every composer on the channel.
 func TestStatusIgnoresAnUnknownProviderState(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	provider := &fakeProvider{
@@ -171,8 +153,6 @@ func TestStatusIgnoresAnUnknownProviderState(t *testing.T) {
 	}
 }
 
-// A poll that comes back empty must not blank an identity we already knew, or
-// an operator looking at a dropped session cannot tell which number dropped.
 func TestStatusDoesNotBlankAKnownIdentity(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	instance.JID = "5511999999999@s.whatsapp.net"
@@ -197,8 +177,6 @@ func TestStatusDoesNotBlankAKnownIdentity(t *testing.T) {
 	}
 }
 
-// The host forgetting the instance is exactly what polling exists to notice:
-// the alternative is an inbox that goes quiet for a reason nobody can see.
 func TestStatusRecordsAHostThatNoLongerKnowsTheInstance(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	provider := &fakeProvider{
@@ -216,9 +194,6 @@ func TestStatusRecordsAHostThatNoLongerKnowsTheInstance(t *testing.T) {
 	}
 }
 
-// A host that has already forgotten the session answers 401 — which is the
-// state we were asking for. Treating it as a failure would leave the row
-// claiming to be connected.
 func TestDisconnectToleratesAnAlreadyGoneSession(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	provider := &fakeProvider{
@@ -236,8 +211,6 @@ func TestDisconnectToleratesAnAlreadyGoneSession(t *testing.T) {
 	}
 }
 
-// A real transport failure during disconnect must surface, or an operator
-// believes they disconnected a number that is still live.
 func TestDisconnectSurfacesARealFailure(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	provider := &fakeProvider{
@@ -253,9 +226,6 @@ func TestDisconnectSurfacesARealFailure(t *testing.T) {
 	}
 }
 
-// Rotation must persist before the host is told, or there is a window where the
-// provider posts to a URL we no longer resolve — and this provider has no
-// replay, so every event in that window is lost.
 func TestRotateDeliveryTokenPersistsBeforeReRegistering(t *testing.T) {
 	instances, servers, instance := connectFixture(uw.StatusConnected)
 	original := instance.DeliveryToken
@@ -281,8 +251,6 @@ func TestRotateDeliveryTokenPersistsBeforeReRegistering(t *testing.T) {
 	if rotated.DeliveryTokenHash != uw.HashDeliveryToken(rotated.DeliveryToken) {
 		t.Error("the digest must move with the token or the endpoint stops resolving")
 	}
-	// The URL registered with the host must be the NEW one, which is only true
-	// if persistence happened first.
 	if tokenAtRegistration != uw.WebhookURLFor(testWebhookBase, rotated.DeliveryToken) {
 		t.Errorf("registered %q, want the rotated URL", tokenAtRegistration)
 	}

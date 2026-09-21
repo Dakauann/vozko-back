@@ -37,6 +37,7 @@ import (
 	"vozko/infra/whisper"
 	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
+	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	shared_usecase "vozko/usecases/shared"
 	tools_usecase "vozko/usecases/tools"
@@ -52,41 +53,37 @@ const (
 )
 
 type handleWhatsAppMessageUseCase struct {
-	aiService             ai.Service
-	leadRepo              lead.Repository
-	agentRepo             agent.Repository
-	toolRegistry          toolsdomain.Service
-	whatsappClientFactory conversation.WhatsAppClientFactory
-	historyManager        conversation.MessageHistoryManager
-	messageRepo           conversation.MessageRepository
-	configRepo            config.SystemConfigRepository
-	whisperPool           *whisper.Pool
-	wcCampaignRepo        wc.Repository
-	wcEntryRepo           wce.Repository
-	businessPhoneRepo     businessphone.Repository
-	messageWindowRepo     lmw.Repository
-	fileStorage           media.FileStorage
-	conversationMediaRepo conversation.ConversationMediaRepository
-	hub                   conversation.EventBroadcaster
-	assignmentService     *ia_usecase.AssignmentService
-	aiAttendance          AIAttendanceRecorder
-	triggerEvaluator      workflow_domain.TriggerEvaluator
-	// turnAssembler is the shared agent-turn recipe. Optional: unset falls back
-	// to a locally constructed one so a partially-wired container still works.
+	aiService               ai.Service
+	leadRepo                lead.Repository
+	agentRepo               agent.Repository
+	toolRegistry            toolsdomain.Service
+	whatsappClientFactory   conversation.WhatsAppClientFactory
+	historyManager          conversation.MessageHistoryManager
+	messageRepo             conversation.MessageRepository
+	configRepo              config.SystemConfigRepository
+	whisperPool             *whisper.Pool
+	wcCampaignRepo          wc.Repository
+	wcEntryRepo             wce.Repository
+	businessPhoneRepo       businessphone.Repository
+	messageWindowRepo       lmw.Repository
+	fileStorage             media.FileStorage
+	conversationMediaRepo   conversation.ConversationMediaRepository
+	hub                     conversation.EventBroadcaster
+	assignmentService       *ia_usecase.AssignmentService
+	aiAttendance            AIAttendanceRecorder
+	triggerEvaluator        workflow_domain.TriggerEvaluator
 	turnAssembler           *agentturn.Assembler
 	stageRepo               stage.Repository
 	textExtractor           media.TextExtractor
 	sharedState             cache.SharedState
 	ragService              rag.RAGService
 	cachedBalanceChecker    balance.CachedBalanceChecker
+	spendGuard              balance_usecase.SpendGuard
 	llmPriceFetcher         workspace_pricing.LLMPriceFetcher
 	consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
-	// templateSendAttempts and ledger let a delivery-status webhook settle a
-	// SINGLE-TARGET send. Attached after construction rather than added to an
-	// already-vast constructor, and optional: without them the campaign path
-	// below still works exactly as before.
-	templateSendAttempts whatsapp_template.SendAttemptRepository
-	balanceLedger        balance.Repository
+	serviceMessageBilling   conversation.ServiceMessageBilling
+	templateSendAttempts    whatsapp_template.SendAttemptRepository
+	balanceLedger           balance.Repository
 
 	billingPub messaging.MessageQueuePub
 
@@ -101,7 +98,6 @@ func (uc *handleWhatsAppMessageUseCase) SetAssignmentService(svc *ia_usecase.Ass
 	uc.assignmentService = svc
 }
 
-// AIAttendanceRecorder is the hot-path AI session surface (queue publish only, no DB).
 type AIAttendanceRecorder interface {
 	RecordAIReply(in aa.StartInput, messageID string)
 }
@@ -157,15 +153,10 @@ func (uc *handleWhatsAppMessageUseCase) guardRecordAIResponse(ctx context.Contex
 	return uc.loopGuard.RecordAIResponse(ctx, workspaceID, conversationID)
 }
 
-// selectedInteractiveOption carries the STABLE identity of a tapped WhatsApp
-// interactive reply (button or list row) into the workflow engine. The webhook
-// flattening (extractInboundMessage) collapses the reply to its display text for
-// back-compat; this preserves the id so the interactive prompt node can branch
-// on the option chosen rather than on the localizable, length-capped title.
 type selectedInteractiveOption struct {
 	ID    string
 	Title string
-	Kind  string // "button" | "list"
+	Kind  string
 }
 
 func selectedOptionFromMessage(msg *conversation.WhatsAppMessage) *selectedInteractiveOption {
@@ -186,12 +177,6 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		return
 	}
 
-	// A human explicitly turned automation off for this lead (per-entry
-	// AutomationEnabled override == false). That must stop the campaign WORKFLOW
-	// too, not only the direct AI agent, otherwise the workflow keeps replying and
-	// the operator sees the "deactivated automation is still responding" bug. A nil
-	// override (never toggled) is left untouched, so normal workflow campaigns still
-	// run by default.
 	if agentCtx != nil && agentCtx.wcEntry != nil &&
 		agentCtx.wcEntry.AutomationEnabled != nil && !*agentCtx.wcEntry.AutomationEnabled {
 		log.Printf("[whatsapp-workflow] automation disabled for entry=%s, skipping workflow triggers", entryID)
@@ -218,16 +203,6 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	data := map[string]interface{}{
 		"message": messageText,
 	}
-	// The lead row first, because its number is the CRM's canonical spelling, and
-	// the raw sender when there is no lead to read it from.
-	//
-	// The fallback is load-bearing, not defensive: the lead lookup is a
-	// best-effort FindByNumber whose error is discarded, and it is skipped
-	// entirely when the receiving workspace could not be resolved. Depending on
-	// it alone left {{contact_number}} EMPTY on live traffic — a workflow
-	// building a per-contact URL then fetched ".jpeg" with nothing in front of
-	// it. senderNumber comes straight off the inbound message, so it is present
-	// whenever the message is.
 	contact := ""
 	if agentCtx != nil && agentCtx.wcLeadRecord != nil {
 		contact = agentCtx.wcLeadRecord.Number
@@ -243,10 +218,6 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		data["media_type"] = mediaType
 	}
 	if selected != nil {
-		// Stable identity of the tapped button / list row, keyed on by the
-		// interactive prompt node to branch by option id. Written through the
-		// shared helper so WhatsApp, Instagram and Telegram cannot drift on the
-		// key names AdvanceOnReply reads.
 		workflow_domain.ApplySelection(data, &workflow_domain.OptionSelection{
 			ID:    selected.ID,
 			Title: selected.Title,
@@ -289,13 +260,6 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		Data:        data,
 	})
 
-	// trigger_first_message must fire on the customer's FIRST inbound message,
-	// gate on the absence of a PRIOR inbound message, not on empty history. A
-	// campaign that sends an outbound template records it in history before the
-	// lead replies, so `len(history) == 0` was never true for template-first
-	// campaigns and this trigger silently never fired (the reply started no
-	// workflow). `history` excludes the message being processed, so "no prior
-	// inbound" == "this is the first customer message".
 	if isFirstInboundMessage(history) {
 		uc.triggerEvaluator.Evaluate(workflow_domain.TriggerEvent{
 			WorkspaceID: workspaceID,
@@ -307,10 +271,6 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	}
 }
 
-// isFirstInboundMessage reports whether the message currently being handled is the
-// first inbound (customer) message on the entry, i.e. prior history holds no
-// inbound message. Outbound messages (campaign templates, agent/operator replies)
-// do not count, they must not suppress the first-message trigger.
 func isFirstInboundMessage(history []*conversation.Message) bool {
 	for _, m := range history {
 		if m != nil && m.MessageType.IsInbound() {
@@ -321,50 +281,49 @@ func isFirstInboundMessage(history []*conversation.Message) bool {
 }
 
 func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) bool {
+	if !uc.spendGuard.Allow(workspaceID) {
+		return false
+	}
+
+	if uc.llmPriceFetcher == nil || model == "" {
+		return true
+	}
+	inputMicros, outputMicros, fetchErr := uc.llmPriceFetcher.FetchLLMPriceMicros(model)
+	if fetchErr != nil {
+		log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v, relying on balance floor only", model, fetchErr)
+		return true
+	}
+	return uc.spendGuard.CanAfford(workspaceID, estimatedAICallMicros(inputMicros, outputMicros))
+}
+
+func (uc *handleWhatsAppMessageUseCase) canAffordAIReply(workspaceID, model string) bool {
+	if !uc.canAffordAI(workspaceID, model) {
+		return false
+	}
+	if uc.serviceMessageBilling == nil {
+		return true
+	}
+	if err := uc.serviceMessageBilling.AllowSend(workspaceID); err != nil {
+		log.Printf("[whatsapp-usecase] workspace %s cannot pay for a service message, skipping AI reply: %v", workspaceID, err)
+		return false
+	}
+	return true
+}
+
+func estimatedAICallMicros(inputMicros, outputMicros int64) int64 {
 	const (
 		estimatedInputTokens  int64 = 4000
 		estimatedOutputTokens int64 = 1000
-
-		safetyMultiplier int64 = 2
+		safetyMultiplier      int64 = 2
 	)
-
-	if uc.cachedBalanceChecker == nil {
-		log.Printf("CRITICAL: cachedBalanceChecker is nil, blocking AI response for workspace %s (fail-closed)", workspaceID)
-		return false
+	if inputMicros <= 0 && outputMicros <= 0 {
+		return 0
 	}
-	bal, err := uc.cachedBalanceChecker.GetBalance(workspaceID)
-	if err != nil {
-		log.Printf("[whatsapp-usecase] balance check error for workspace %s: %v, blocking AI response (fail-closed)", workspaceID, err)
-		return false
+	estimated := (inputMicros*estimatedInputTokens + outputMicros*estimatedOutputTokens) * safetyMultiplier / 1_000_000
+	if estimated < 1 {
+		estimated = 1
 	}
-	if bal <= 0 {
-		log.Printf("[whatsapp-usecase] workspace %s has no balance (%d micros), blocking AI response", workspaceID, bal)
-		return false
-	}
-
-	if bal < balance.MinAIFloorMicros {
-		log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI response", workspaceID, bal, balance.MinAIFloorMicros)
-		return false
-	}
-
-	if uc.llmPriceFetcher != nil && model != "" {
-		inputMicros, outputMicros, fetchErr := uc.llmPriceFetcher.FetchLLMPriceMicros(model)
-		if fetchErr != nil {
-			log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v, relying on balance floor only", model, fetchErr)
-		} else if inputMicros > 0 || outputMicros > 0 {
-
-			estimatedCost := (inputMicros*estimatedInputTokens + outputMicros*estimatedOutputTokens) * safetyMultiplier / 1_000_000
-			if estimatedCost < 1 {
-				estimatedCost = 1
-			}
-			if bal < estimatedCost {
-				log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below estimated AI cost (%d micros, model=%s), blocking", workspaceID, bal, estimatedCost, model)
-				return false
-			}
-		}
-	}
-
-	return true
+	return estimated
 }
 
 type ResolvedTool struct {
@@ -373,7 +332,6 @@ type ResolvedTool struct {
 	Config     map[string]interface{}
 }
 
-// TODO: refactor, this shouldnt be in the logic of
 func (rt ResolvedTool) IsVisibleIn(v agent.ToolVisibility) bool {
 
 	if len(rt.Visibility) > 0 {
@@ -398,10 +356,6 @@ type WhatsAppContext struct {
 	Metadata            map[string]interface{}
 }
 
-// toConversationContext maps the WhatsApp context onto the shared identity the
-// assembler builds its preamble from. AvailableTools is deliberately not copied:
-// the assembler fills it from the tools actually attached to the turn, so the
-// preamble can never advertise a different set than the model receives.
 func (c WhatsAppContext) toConversationContext() shared_usecase.ConversationContext {
 	return shared_usecase.ConversationContext{
 		Channel:         shared_usecase.ChannelWhatsApp,
@@ -435,7 +389,6 @@ func (ctx *agentContext) getEntryInfo() (entryID string, entryType shared.EntryT
 	return "", ""
 }
 
-// getLeadID is the CRM identity behind this conversation; memories key on it.
 func (ctx *agentContext) getLeadID() string {
 	if ctx == nil || ctx.wcLeadRecord == nil {
 		return ""
@@ -504,7 +457,17 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling) (conversation.HandleWhatsAppMessageUseCase, error) {
+	if consumeWhatsappTemplate == nil {
+		return nil, fmt.Errorf("%w: whatsapp template billing", conversation.ErrRefundNotConfigured)
+	}
+	if wcCampaignRepo == nil {
+		return nil, fmt.Errorf("%w: whatsapp campaign repository", conversation.ErrRefundNotConfigured)
+	}
+	if serviceMessageBilling == nil {
+		return nil, fmt.Errorf("%w: whatsapp service message billing", conversation.ErrRefundNotConfigured)
+	}
+
 	return &handleWhatsAppMessageUseCase{
 		aiService:               aiService,
 		leadRepo:                leadRepo,
@@ -527,9 +490,11 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 		sharedState:             sharedState,
 		ragService:              ragService,
 		cachedBalanceChecker:    cachedBalanceChecker,
+		spendGuard:              balance_usecase.NewRequiredSpendGuard(cachedBalanceChecker, "whatsapp ai reply"),
 		llmPriceFetcher:         llmPriceFetcher,
 		consumeWhatsappTemplate: consumeWhatsappTemplate,
-	}
+		serviceMessageBilling:   serviceMessageBilling,
+	}, nil
 }
 
 func (uc *handleWhatsAppMessageUseCase) resolveWhatsAppClient(campaignBusinessPhoneID, receivedBusinessPhoneID string) (conversation.WhatsAppClient, error) {
@@ -580,9 +545,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		log.Printf("[whatsapp-status] continuing inbound message processing despite status update failure: %v", statusErr)
 	}
 
-	// Drop messages from blocked contacts before any processing. Meta-side
-	// blocking should already stop most of these, but this guard covers Meta lag,
-	// the 24h block window, and contacts that reach a second business phone.
 	if uc.isLeadBlocked(message.From, metadata) {
 		log.Printf("[whatsapp-usecase] ignoring inbound message from blocked lead %s", message.From)
 		return conversation.ErrWhatsAppWebhookSkipped
@@ -706,7 +668,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	}
 
 	if uc.assignmentService != nil && entryID != "" {
-		// TODO: makes no sense??????
 		phoneForAssignment := receivedBusinessPhoneID
 		if phoneForAssignment == "" {
 			phoneForAssignment = outboundBusinessPhoneID
@@ -743,9 +704,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			Text:           strings.TrimSpace(message.Text.Body),
 			Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
 		}
-		// The lead is already loaded, so the live broadcast is labelled without
-		// the hub re-resolving it. WhatsApp is the highest-volume channel here;
-		// making it pay for a lookup per inbound message would be a real cost.
 		if leadRecord != nil {
 			record.SenderName = leadRecord.Name
 			record.SenderAvatar = leadRecord.ProfilePictureURL
@@ -793,7 +751,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		messagingModel = agentCtx.agent.MessagingModel
 	}
 
-	if !uc.canAffordAI(agentCtx.getWorkspaceID(), messagingModel) {
+	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), messagingModel) {
 		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 		return nil
 	}
@@ -812,9 +770,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	incomingMessageID := strings.TrimSpace(message.ID)
 	initialTypingSentAt := ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-usecase]", time.Time{})
 
-	// Assembled here, AFTER the skip/flood/guard/balance gates: it runs a vector
-	// search, and the previous inline version paid for one on every message the
-	// system then declined to answer.
 	turnEntryID, turnEntryType := "", shared.EntryType("")
 	if agentCtx != nil {
 		turnEntryID, turnEntryType = agentCtx.getEntryInfo()
@@ -1080,8 +1035,6 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		}
 
 		if uc.sharedState != nil {
-			// The entry type travels with the timestamp: the hash is keyed by
-			// entry id alone, and an entry id does not say which channel it is on.
 			value := encodeAnalysisDebounceValue(shared.EntryTypeWhatsApp, time.Now().UTC())
 			if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
 				log.Printf("[whatsapp-usecase] failed to stamp analysis debounce for entry %s: %v", entryID, err)
@@ -1158,14 +1111,6 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
-	// Analysis leaves this call too.
-	//
-	// This was the most expensive analysis path in the system: an agent
-	// campaign ran one model call per TURN of conversation, each carrying the
-	// analysis tool, with no batching, no daily cap and no spend receipt. The
-	// conversation is now stamped for the debounce sweep, which hands it to the
-	// engine once it has gone quiet, so a conversation is analysed once when it
-	// settles instead of after every message.
 	if campaignAnalysisEnabled && uc.sharedState != nil {
 		value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
 		if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
@@ -1173,7 +1118,6 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		}
 	}
 
-	// wantAnalysis stays false: this call is now only ever about staging.
 	const wantAnalysis = false
 
 	if autoTagEnabled {
@@ -1258,9 +1202,8 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	}
 
 	response, err := uc.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID: workspaceID,
-		Model:       aiModel,
-		// Low temperature: analysis/auto-tag is classification, not generation.
+		WorkspaceID:  workspaceID,
+		Model:        aiModel,
 		Temperature:  0.2,
 		SystemPrompt: systemPrompt,
 		Messages: []ai.Message{
@@ -1312,10 +1255,6 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 				}
 				deliveryStatus, hasDeliveryStatus := mapWhatsAppWebhookDeliveryStatus(status.Status)
 
-				// Settle the paid send FIRST, and independently of the campaign
-				// entry. The entry lookup keys on the message id, which an
-				// accepted-without-an-id send does not have — so gating settlement
-				// behind it stranded exactly the attempts that needed it most.
 				uc.settleTemplateSendAttempt(status, deliveryStatus, hasDeliveryStatus)
 
 				if uc.wcEntryRepo != nil && status.ID != "" {
@@ -1347,22 +1286,14 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 				}
 
 				if uc.messageRepo != nil && status.ID != "" && hasDeliveryStatus {
-					// Carry the provider's own explanation onto the message. "Failed"
-					// with no reason is unactionable: a number that is not on WhatsApp
-					// is the operator's to fix, a billing hold on the business account
-					// is not, and the code is the only thing that tells them apart.
 					failureCode, failureMessage := formatWhatsAppStatusError(status)
-					// Meta's pricing verdict rides the same receipt. It used to be
-					// read once to pick a refund category and then dropped, which
-					// left the platform unable to answer what its own messaging
-					// costs: our inference from the message log cannot see a
-					// delivery inside the 72 hour free entry point, and Meta can.
-					if err := uc.messageRepo.UpdateDeliveryReceipt(
-						status.ID, buildDeliveryReceipt(status, deliveryStatus, failureCode, failureMessage),
-					); err != nil {
+					receipt := buildDeliveryReceipt(status, deliveryStatus, failureCode, failureMessage)
+					if err := uc.messageRepo.UpdateDeliveryReceipt(status.ID, receipt); err != nil {
 						log.Printf("[whatsapp-status] Failed to update delivery status for wamid %s: %v", status.ID, err)
 						statusErrors = append(statusErrors, fmt.Errorf("update delivery status for wamid %s: %w", status.ID, err))
 					}
+
+					uc.chargeServiceMessage(status, receipt)
 
 					if uc.hub != nil {
 						msg, err := uc.messageRepo.GetByWhatsAppMessageID(status.ID)
@@ -1463,12 +1394,6 @@ func formatWhatsAppStatusError(status conversation.WhatsAppStatus) (int, string)
 	return errorCode, message
 }
 
-// AttachTemplateSendAttempts wires single-target settlement onto a use case that
-// was handed back as its domain interface.
-//
-// The assertion lives here, in the package that owns both types, rather than at
-// the call site: the container should not have to know which concrete type
-// implements the port in order to finish wiring it.
 func AttachTemplateSendAttempts(
 	uc conversation.HandleWhatsAppMessageUseCase,
 	attempts whatsapp_template.SendAttemptRepository,
@@ -1480,11 +1405,6 @@ func AttachTemplateSendAttempts(
 	return uc
 }
 
-// WithTemplateSendAttempts lets the status webhook settle single-target sends.
-//
-// A fluent setter rather than two more constructor parameters: this use case's
-// constructor already takes more than thirty, and threading optional
-// bookkeeping through all of its call sites would obscure the change.
 func (uc *handleWhatsAppMessageUseCase) WithTemplateSendAttempts(
 	attempts whatsapp_template.SendAttemptRepository,
 	ledger balance.Repository,
@@ -1494,11 +1414,6 @@ func (uc *handleWhatsAppMessageUseCase) WithTemplateSendAttempts(
 	return uc
 }
 
-// resolveSendAttempt finds the paid send this status is about.
-//
-// The correlation id first, because it is OURS: Meta echoes it on every status
-// for the message, and it arrives even when the send never told us a wamid —
-// which is exactly the case the message-id lookup cannot serve.
 func (uc *handleWhatsAppMessageUseCase) resolveSendAttempt(
 	ctx context.Context,
 	status conversation.WhatsAppStatus,
@@ -1519,19 +1434,48 @@ func (uc *handleWhatsAppMessageUseCase) resolveSendAttempt(
 	return nil
 }
 
-// settleTemplateSendAttempt is what makes the reconcile backstop honest.
-//
-// It runs on EVERY status, independent of whether a campaign entry can be found
-// for the message. That independence is the point: a send Meta accepted without
-// giving us a message id stores no wamid, so gating this behind the entry lookup
-// made the correlation-id path — the one written precisely for that case —
-// unreachable.
-//
-// The promotion on success is the half the design claimed and did not have.
-// Without it, an attempt left `unknown` by a transport timeout stays unknown
-// forever, and the hourly sweep refunds it at the TTL. Meta bills on DELIVERY,
-// so that is the platform paying for a message the customer received and then
-// crediting them for it — the common flaky-network case, not a rare crash.
+func (uc *handleWhatsAppMessageUseCase) chargeServiceMessage(
+	status conversation.WhatsAppStatus,
+	receipt conversation.DeliveryReceipt,
+) {
+	if uc.serviceMessageBilling == nil {
+		return
+	}
+	if !uc.serviceMessageBilling.ShouldCharge(receipt) {
+		return
+	}
+
+	messageID := strings.TrimSpace(status.ID)
+	workspaceID := uc.resolveWorkspaceForProviderMessage(messageID)
+	if workspaceID == "" {
+		log.Printf("[whatsapp-status] service message %s is billable but its workspace could not be resolved; not charged", messageID)
+		return
+	}
+
+	if err := uc.serviceMessageBilling.ChargeDelivered(workspaceID, receipt, messageID); err != nil {
+		log.Printf("[whatsapp-status] could not charge service message %s for workspace %s: %v", messageID, workspaceID, err)
+	}
+}
+
+func (uc *handleWhatsAppMessageUseCase) resolveWorkspaceForProviderMessage(messageID string) string {
+	if messageID == "" || uc.messageRepo == nil || uc.wcEntryRepo == nil || uc.wcCampaignRepo == nil {
+		return ""
+	}
+	message, err := uc.messageRepo.GetByWhatsAppMessageID(messageID)
+	if err != nil || message == nil || message.EntryID == "" {
+		return ""
+	}
+	entry, err := uc.wcEntryRepo.FindByID(message.EntryID)
+	if err != nil || entry == nil || entry.CampaignID == "" {
+		return ""
+	}
+	campaign, err := uc.wcCampaignRepo.FindByID(entry.CampaignID)
+	if err != nil || campaign == nil {
+		return ""
+	}
+	return campaign.WorkspaceID
+}
+
 func (uc *handleWhatsAppMessageUseCase) settleTemplateSendAttempt(
 	status conversation.WhatsAppStatus,
 	deliveryStatus conversation.DeliveryStatus,
@@ -1551,8 +1495,6 @@ func (uc *handleWhatsAppMessageUseCase) settleTemplateSendAttempt(
 	case conversation.DeliveryStatusSent,
 		conversation.DeliveryStatusDelivered,
 		conversation.DeliveryStatusRead:
-		// Meta has it. Anything still in flight is now settled, and the sweep must
-		// never see it again.
 		if attempt.Status.InFlight() || attempt.Status == whatsapp_template.SendAttemptUnknown {
 			if err := uc.templateSendAttempts.MarkSent(
 				ctx, attempt.ID, strings.TrimSpace(status.ID), 200, time.Now().UTC(),
@@ -1568,15 +1510,6 @@ func (uc *handleWhatsAppMessageUseCase) settleTemplateSendAttempt(
 	}
 }
 
-// refundSingleTargetSend settles a failed status for a send that carries its own
-// attempt row, and reports whether it handled it.
-//
-// It runs BEFORE the campaign refund because the two disagree about what to
-// credit. The campaign path refunds under the campaign id — correct for a bulk
-// send, where every recipient was debited under it — but a single-target send is
-// debited under its own attempt, so the campaign path would credit a reference
-// nothing ever charged. `Refund` does not read the debit, so that credit would
-// succeed and hand the workspace money it never spent.
 func (uc *handleWhatsAppMessageUseCase) refundSingleTargetSend(status conversation.WhatsAppStatus, _ *wce.WhatsAppCampaignEntry) (bool, error) {
 	if uc.templateSendAttempts == nil || uc.consumeWhatsappTemplate == nil {
 		return false, nil
@@ -1603,9 +1536,6 @@ func (uc *handleWhatsAppMessageUseCase) refundSingleTargetSend(status conversati
 		}
 	}
 
-	// The STORED category, never the one on the status event. Meta re-categorises
-	// templates, and crediting at today's category refunds a different amount
-	// than was taken.
 	if err := uc.consumeWhatsappTemplate.Refund(attempt.WorkspaceID, whatsapp_template.ChargeReferenceID(attempt.ID), attempt.Category); err != nil {
 		return true, fmt.Errorf("refund send attempt %s: %w", attempt.ID, err)
 	}
@@ -1668,9 +1598,6 @@ func (uc *handleWhatsAppMessageUseCase) refundFailedWhatsAppCampaignEntry(status
 		return fmt.Errorf("resolve campaign %s for refund on message %s: %w", entry.CampaignID, messageID, err)
 	}
 
-	// An organic container is never debited under its own id — every send inside
-	// it is charged against its own attempt. Refunding under campaign.ID here
-	// would credit a reference nothing ever charged, and Refund does not check.
 	if campaign.IsOrganic() {
 		return nil
 	}
@@ -1711,13 +1638,6 @@ func (uc *handleWhatsAppMessageUseCase) retryFailedWhatsAppCampaignRefund(worksp
 	return lastErr
 }
 
-// buildDeliveryReceipt gathers everything one status event says about a message
-// into the single value the repository persists in one update.
-//
-// The pricing and the conversation origin are optional on the wire: Meta sends
-// several status events per message and only some carry them. A receipt that
-// did not carry them says so, and the repository leaves whatever an earlier
-// event recorded alone rather than blanking it.
 func buildDeliveryReceipt(
 	status conversation.WhatsAppStatus,
 	deliveryStatus conversation.DeliveryStatus,
@@ -1919,9 +1839,6 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentPromptAndTools(agentID, camp
 	return agentRecord, prompt, tools
 }
 
-// isLeadBlocked reports whether the contact behind an inbound message has been
-// blocked in the receiving workspace. It is a cheap pre-check run on every
-// inbound message, so it fails open (returns false) on any resolution error.
 func (uc *handleWhatsAppMessageUseCase) isLeadBlocked(from string, metadata *conversation.WhatsAppMetadata) bool {
 	if uc.leadRepo == nil || uc.businessPhoneRepo == nil || metadata == nil || strings.TrimSpace(metadata.PhoneNumberID) == "" {
 		return false
@@ -2475,7 +2392,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 			if agentCtx.agent != nil {
 				mediaModel = agentCtx.agent.MessagingModel
 			}
-			if !uc.canAffordAI(agentCtx.getWorkspaceID(), mediaModel) {
+			if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), mediaModel) {
 				log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 			} else if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, userMessage); dec.Block {
 				log.Printf("[whatsapp-media] loop suspected for entry=%s reason=%s count=%d, skipping AI response", entryID, dec.Reason, dec.Count)
@@ -2965,7 +2882,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		audioMessagingModel = agentCtx.agent.MessagingModel
 	}
 
-	if !uc.canAffordAI(agentCtx.getWorkspaceID(), audioMessagingModel) {
+	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), audioMessagingModel) {
 		log.Printf("[whatsapp-audio] audio transcribed and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 		return nil
 	}
@@ -3162,33 +3079,18 @@ func extractMetadataMap(metadata interface{}) map[string]interface{} {
 	}
 }
 
-// whatsAppTurn is the per-call variation between WhatsApp's three agent turns
-// (text, media and audio).
-//
-// Everything else about them was identical, interpolate the prompt, resolve
-// tools and stamp the same seven seeds, build the identity preamble from the
-// resolved tool names, then ground in the knowledge base, and had been
-// copy-pasted three times. Only these fields actually differed.
 type whatsAppTurn struct {
 	agentCtx    *agentContext
 	whatsappCtx WhatsAppContext
 
-	// Seeds. The business phone differs per turn: the text path uses the
-	// outbound phone, media and audio prefer the campaign's and fall back to
-	// the one the message arrived on.
 	RecipientPhone  string
 	BusinessPhoneID string
 	EntryID         string
 	EntryType       shared.EntryType
 
-	// Vars source also differs: text and audio interpolate from the WhatsApp
-	// context metadata, media from the campaign entry's.
 	Vars map[string]string
 
-	// Query drives knowledge-base retrieval: the message body, the extracted
-	// media content, or the transcription.
-	Query string
-	// Messages is the full history INCLUDING the turn being answered.
+	Query    string
 	Messages []ai.Message
 
 	Model       string
@@ -3196,12 +3098,6 @@ type whatsAppTurn struct {
 	Segmented   bool
 }
 
-// assembleWhatsAppTurn builds the model request through the shared recipe.
-//
-// WhatsApp resolved its tools earlier (agentCtx.tools, which carries the
-// campaign context a ContextualHandler needs), so this passes them through
-// rather than asking the assembler to resolve again, the seeds and the
-// identity/RAG assembly are what was duplicated, not the resolution.
 func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context, t whatsAppTurn) ai.GenerateInput {
 	var agentRecord *agent.Agent
 	if t.agentCtx != nil {
@@ -3218,8 +3114,6 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 	}
 	if agentRecord != nil {
 		seed["__workspace_id"] = agentRecord.WorkspaceID
-		// Attribution seed: memory writes (and any future CRM-writing tool)
-		// record WHICH agent acted, not just that "the AI" did.
 		seed["__agent_id"] = agentRecord.ID
 	}
 	leadID := t.agentCtx.getLeadID()
@@ -3235,9 +3129,6 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 		}
 	}
 
-	// The tools were resolved upstream with the campaign context, so they are
-	// handed over rather than resolved again. Seed stamping and the identity's
-	// tool awareness are the assembler's job either way.
 	var defs []toolsdomain.Definition
 	configs := make(map[string]map[string]interface{})
 	if t.agentCtx != nil {
@@ -3274,8 +3165,6 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 	return assembled.Input
 }
 
-// assembler returns the shared recipe, falling back to an empty one so a
-// partially-wired container still assembles a prompt.
 func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
 	if uc.turnAssembler != nil {
 		return uc.turnAssembler
@@ -3283,7 +3172,6 @@ func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
 	return agentturn.New(uc.toolRegistry, uc.ragService, nil)
 }
 
-// SetTurnAssembler wires the shared agent-turn recipe.
 func (uc *handleWhatsAppMessageUseCase) SetTurnAssembler(a *agentturn.Assembler) {
 	uc.turnAssembler = a
 }

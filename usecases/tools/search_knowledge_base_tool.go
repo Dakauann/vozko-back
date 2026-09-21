@@ -18,10 +18,6 @@ type searchKnowledgeBaseTool struct {
 	rag rag.RAGService
 }
 
-// NewSearchKnowledgeBaseToolUseCase lets the agent actively query its own
-// knowledge bases mid-turn. It complements the passive per-turn injection in
-// agentturn (which uses the raw user message as query): here the model
-// formulates and refines the query itself.
 func NewSearchKnowledgeBaseToolUseCase(ragService rag.RAGService) tools.Handler {
 	if ragService == nil {
 		return nil
@@ -74,8 +70,6 @@ func (t *searchKnowledgeBaseTool) Execute(ctx context.Context, params map[string
 }
 
 func (t *searchKnowledgeBaseTool) ExecuteWithConfig(ctx context.Context, config, params map[string]interface{}) (tools.ExecutionResult, error) {
-	// Identity comes from the seeded config, with the context agent as
-	// fallback; the context agent also supplies the operator-tuned RAGConfig.
 	agentID, _ := config["__agent_id"].(string)
 	agentID = strings.TrimSpace(agentID)
 	var ragCfg *agent.RAGConfig
@@ -121,8 +115,6 @@ func (t *searchKnowledgeBaseTool) ExecuteWithConfig(ctx context.Context, config,
 	return tools.ExecutionResult{Result: formatSearchResults(query, out.Results)}, nil
 }
 
-// formatSearchResults renders ranked excerpts with numbered source markers so
-// the model can ground and cite specific chunks in its reply.
 func formatSearchResults(query string, results []rag.QueryResult) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Encontrados %d trechos para %q (ordenados por relevância):\n\n", len(results), query))

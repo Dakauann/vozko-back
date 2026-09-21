@@ -53,16 +53,14 @@ var (
 	ErrNodeSegmentedSendConflict        = errors.New("workflow: AI agent with segmented response_mode sends messages automatically, remove the downstream send_text node to avoid duplicate messages")
 	ErrNodeInvalidInteractiveConfig     = errors.New("workflow: interactive prompt node has invalid buttons/list options (see WhatsApp limits)")
 
-	ErrRunNotFound          = errors.New("workflow: run not found")
-	ErrRunAlreadyExists     = errors.New("workflow: active run already exists for this workflow and entry")
-	ErrRunNotWaiting        = errors.New("workflow: run is not in waiting status")
-	ErrRunTerminal          = errors.New("workflow: run is in a terminal status")
-	ErrWorkflowIDRequired   = errors.New("workflow: workflow id is required")
-	ErrEntryIDRequired      = errors.New("workflow: entry id is required")
-	ErrEntryTypeRequired    = errors.New("workflow: entry type is required")
-	ErrMaxExecutionsReached = errors.New("workflow: maximum node executions reached (circuit breaker)")
-	// ErrDurableExecutionsReached fires when a run exceeds the lifetime node-execution
-	// cap across waits, the backstop for a loop that cycles through a wait node.
+	ErrRunNotFound              = errors.New("workflow: run not found")
+	ErrRunAlreadyExists         = errors.New("workflow: active run already exists for this workflow and entry")
+	ErrRunNotWaiting            = errors.New("workflow: run is not in waiting status")
+	ErrRunTerminal              = errors.New("workflow: run is in a terminal status")
+	ErrWorkflowIDRequired       = errors.New("workflow: workflow id is required")
+	ErrEntryIDRequired          = errors.New("workflow: entry id is required")
+	ErrEntryTypeRequired        = errors.New("workflow: entry type is required")
+	ErrMaxExecutionsReached     = errors.New("workflow: maximum node executions reached (circuit breaker)")
 	ErrDurableExecutionsReached = errors.New("workflow: maximum lifetime node executions across waits reached (circuit breaker)")
 	ErrInsufficientBalance      = errors.New("workflow: insufficient balance to execute node")
 

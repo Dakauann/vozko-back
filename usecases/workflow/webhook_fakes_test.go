@@ -115,8 +115,6 @@ func (f *fakeDedup) IsDuplicate(key string) bool {
 	return f.duplicate
 }
 
-// fakeSharedState is a minimal cache.SharedState for concurrency-slot tests. Only
-// TryIncr/Decr carry behavior; the rest satisfy the interface as no-ops.
 type fakeSharedState struct {
 	allow   bool
 	incrs   int

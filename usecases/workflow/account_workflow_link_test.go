@@ -6,12 +6,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// Instagram and Telegram both put the channel account's linked workflow id in
-// the trigger event, and nothing read it. The link was therefore decorative:
-// every active workflow in the workspace whose trigger matched ran on every
-// conversation, so a workspace with two workflows greeted the same contact
-// twice from two different runs.
-
 func workflowWithID(id string) *workflow.Workflow {
 	return &workflow.Workflow{ID: id}
 }
@@ -31,8 +25,6 @@ func TestAccountLinkSelectsOnlyTheLinkedWorkflow(t *testing.T) {
 	}
 }
 
-// A channel with no link keeps the previous behaviour: every matching workflow
-// is eligible. Changing that would silently stop existing setups.
 func TestNoAccountLinkLeavesEveryWorkflowEligible(t *testing.T) {
 	te := &triggerEvaluator{}
 
@@ -47,8 +39,6 @@ func TestNoAccountLinkLeavesEveryWorkflowEligible(t *testing.T) {
 	}
 }
 
-// The campaign link still wins where it applies, WhatsApp sets it and no
-// channel sets both.
 func TestCampaignLinkStillFilters(t *testing.T) {
 	te := &triggerEvaluator{}
 	event := workflow.TriggerEvent{

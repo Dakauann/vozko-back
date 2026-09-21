@@ -16,24 +16,6 @@ func New(db *gorm.DB) attendance.Repository {
 	return &repository{db: db}
 }
 
-// analytics runs fn with PostgreSQL's JIT disabled.
-//
-// Every query in this file is the same shape: a wide join over assignments and
-// messages, aggregated. Their estimated cost clears jit_above_cost (100k) and,
-// on a long period, jit_inline_above_cost and jit_optimize_above_cost (500k)
-// as well — so the planner compiles them with inlining and optimisation, the
-// two expensive phases, on EVERY call. Each call inlines its own dates and
-// workspace id, so no cached plan can amortise it.
-//
-// That compilation buys nothing here. JIT pays off for CPU-bound expression
-// evaluation over many rows; this work is index seeks and aggregation over rows
-// that have to be fetched either way. Measured over a 90-day window: the
-// attendant-stats query went from 386ms to 216ms, and the overview's scoped
-// entries from 6.92s to 2.42s, purely from turning it off.
-//
-// A transaction only so SET LOCAL has a scope to be local to: it reverts on
-// commit, and the connection goes back to the pool with JIT untouched for
-// everything else.
 func (r *repository) analytics(fn func(tx *gorm.DB) error) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
@@ -43,13 +25,6 @@ func (r *repository) analytics(fn func(tx *gorm.DB) error) error {
 	})
 }
 
-// campaignJoinForEntryColumn narrows attendant stats to one container.
-//
-// "Campaign" is the channel's container: a WhatsApp campaign, or the account row
-// for channels with none. Driving it from the channel registry means a new
-// channel's per-account stats work on the day it is registered, instead of
-// silently ignoring the filter and reporting the whole workspace, which is what
-// the previous `default: return "", "", nil` did.
 func campaignJoinForEntryColumn(filter attendance.StatsFilter, alias, entryColumn string) (joinSQL string, extraWhere string, extraArgs []interface{}) {
 	if filter.CampaignID == "" {
 		return "", "", nil
@@ -173,8 +148,6 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 		respondedMap[row.UserID] = row.RespondedCount
 	}
 
-	// Drive from assignments (workspace filter) + LATERAL first inbound/outbound.
-	// Avoids grouping all messages per entry when each entry has long history.
 	avgQuery := `
 		SELECT user_id, AVG(response_time_secs) AS avg_response_secs FROM (
 			SELECT ia.assigned_user_id AS user_id,
@@ -313,7 +286,6 @@ func (r *repository) GetWindowStats(workspaceID string, filter attendance.StatsF
 func (r *repository) GetResponseTimeDistribution(workspaceID string, filter attendance.StatsFilter) (*attendance.ResponseTimeDistribution, error) {
 	iaJoin, iaWhere, iaExtra := campaignJoinForIA(filter)
 
-	// Assignments in workspace + LATERAL first messages (O(assignments), not full msg scan).
 	query := `
 		SELECT response_time_secs FROM (
 			SELECT EXTRACT(EPOCH FROM (op.first_at - usr.first_at)) AS response_time_secs
@@ -382,8 +354,6 @@ func (r *repository) GetResponseTimeDistribution(workspaceID string, filter atte
 }
 
 func (r *repository) GetFRTStats(workspaceID string, filter attendance.StatsFilter) (*attendance.FRTStats, error) {
-	// Ownership start → first outbound after start via LATERAL (one index seek per
-	// assignment). Avoids joining every message on the entry (prod multi-k scale).
 	query := `
 		SELECT actor_kind, frt_secs FROM (
 			SELECT ah.actor_kind,
@@ -443,8 +413,6 @@ func (r *repository) GetFRTStats(workspaceID string, filter attendance.StatsFilt
 			sum += v
 		}
 		st.AvgFRTMins = math.Round(sum/float64(st.SampleCount)/60*100) / 100
-		// crude median
-		// sort
 		for i := 0; i < len(all); i++ {
 			for j := i + 1; j < len(all); j++ {
 				if all[j] < all[i] {

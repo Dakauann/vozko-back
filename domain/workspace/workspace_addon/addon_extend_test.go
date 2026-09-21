@@ -8,9 +8,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// TestAddonSubscription_Extend_MonthlyConvergesToAnchor mirrors the plan-side proof for channel addons:
-// a paid unified invoice snaps every monthly addon (even a swept, expired one) onto the global anchor,
-// so plan and channels always co-term to the same date.
 func TestAddonSubscription_Extend_MonthlyConvergesToAnchor(t *testing.T) {
 	from := time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC)
 	for _, day := range []int{5, 12, 27} {
@@ -29,24 +26,17 @@ func TestAddonSubscription_Extend_MonthlyConvergesToAnchor(t *testing.T) {
 	}
 }
 
-// TestActivation_NoGap_CoverageIsContinuous is the core proof of the activation fix: the up-front charge
-// covers [activation, firstAnchor], the addon co-terms to firstAnchor, and paying the first unified
-// invoice (on that anchor) extends the recurring period starting EXACTLY at firstAnchor. So there is no
-// uncovered window between activation and the first recurring period, for any activation day (the old
-// month-end stub left exactly such a gap for after-anchor activations, where Vozko paid the vendor but
-// nobody was billed).
 func TestActivation_NoGap_CoverageIsContinuous(t *testing.T) {
 	const emitDay, dueDay = 18, 23
-	// The risky windows: before the emit day, the emit-anchor window, on the anchor, and after it.
 	for _, day := range []int{5, 20, 23, 25, 28} {
 		at := time.Date(2026, time.June, day, 12, 0, 0, 0, billing.LocationBRT())
 		_, firstAnchor := billing.ActivationPeriod(at, emitDay, dueDay, 1, true, 30_000_000)
 
 		sub := &AddonSubscription{
 			BillingCycle:     workspace_plan.BillingCycleMonthly,
-			CurrentPeriodEnd: firstAnchor, // co-termed at activation
+			CurrentPeriodEnd: firstAnchor,
 		}
-		sub.Extend(firstAnchor, dueDay) // the customer pays the first unified invoice on the anchor
+		sub.Extend(firstAnchor, dueDay)
 
 		if !sub.CurrentPeriodStart.Equal(firstAnchor) {
 			t.Fatalf("day %d: recurring period starts %s, not the activation end %s -> COVERAGE GAP",

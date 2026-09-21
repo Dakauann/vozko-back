@@ -44,9 +44,6 @@ func (s *updateStageRepoStub) Create(st *stage.Stage) error {
 	return nil
 }
 
-// Editing a stage group must reconcile the shared conversation pipeline stamped from
-// it: a removed item's stage is deleted (so it stops showing up on the board / new
-// campaigns), a brand-new item is cloned in, and untouched items are left in place.
 func TestUpdateStageGroupSyncsMaterializedPipeline(t *testing.T) {
 	groupRepo := &updateGroupRepoStub{group: &stage.StageGroup{
 		WorkspaceID: "ws1", Name: "Funil PIB WhatsApp",
@@ -62,7 +59,6 @@ func TestUpdateStageGroupSyncsMaterializedPipeline(t *testing.T) {
 	}
 	uc := NewUpdateStageGroupUseCase(groupRepo, stageRepo)
 
-	// New group state: "em conversa" removed, "agendado" added, others kept.
 	_, err := uc.Execute("ws1", "grp1", stage.UpdateStageGroupInput{
 		Items: []stage.StageGroupItemInput{
 			{Name: "Novo no WhatsApp"},
@@ -85,8 +81,6 @@ func TestUpdateStageGroupSyncsMaterializedPipeline(t *testing.T) {
 	}
 }
 
-// When no campaign has materialized the group yet there is no pipeline to reconcile;
-// the update must not blow up or fabricate stages.
 func TestUpdateStageGroupNoPipelineNoop(t *testing.T) {
 	groupRepo := &updateGroupRepoStub{group: &stage.StageGroup{WorkspaceID: "ws1"}}
 	stageRepo := &updateStageRepoStub{pipelineID: ""}

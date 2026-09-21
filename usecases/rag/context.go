@@ -10,18 +10,12 @@ import (
 	"vozko/domain/rag"
 )
 
-// ContextInput selects which knowledge to retrieve for a single agent turn.
-// Retrieval precedence matches the workflow executors: an agent with RAG enabled
-// wins; otherwise KnowledgeBaseIDs (if any) are queried directly.
 type ContextInput struct {
 	Agent            *agent.Agent
 	KnowledgeBaseIDs []string
 	Query            string
 }
 
-// BuildContext retrieves knowledge for Query and renders it (grounding rules +
-// chunks) as a system-prompt suffix, or "" when nothing applies or matches. This
-// is the single source of RAG context for every channel (chat, voice, simulator).
 func BuildContext(ctx context.Context, ragService rag.RAGService, in ContextInput) string {
 	if ragService == nil || strings.TrimSpace(in.Query) == "" {
 		return ""
@@ -76,21 +70,12 @@ func BuildContext(ctx context.Context, ragService rag.RAGService, in ContextInpu
 	return FormatRAGContext(results)
 }
 
-// BuildRAGContext is the agent-scoped shortcut kept for existing callers.
 func BuildRAGContext(ctx context.Context, ragService rag.RAGService, ag *agent.Agent, userMessage string) string {
 	return BuildContext(ctx, ragService, ContextInput{Agent: ag, Query: userMessage})
 }
 
-// ContextHeader opens the knowledge-base block. Exported so surfaces that need
-// to know whether a prompt carries RAG grounding (the agent simulator's debug
-// view) test against the one real header instead of a copied literal.
 const ContextHeader = "# Contexto adicional (base de conhecimento)"
 
-// FormatRAGContext renders retrieved chunks as fenced reference context. Empty
-// results render as "". The framing is deliberately soft: the chunks are supporting
-// material, not a behavioral override. It guards against fabricating specific data,
-// but does NOT force a canned refusal or suppress the agent's own persona when the
-// chunks do not cover the question. This is the single source of the grounding block.
 func FormatRAGContext(results []rag.QueryResult) string {
 	if len(results) == 0 {
 		return ""

@@ -12,8 +12,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// TODO: validate this TTL, as it should be PER CALL, not per workspace, so when an workspace tried dialing,
-// it aways refreshs even if a call hanged or something like that, (IGNORE FOR NOW AS WE DONT HAVE THE LEAK SOURCE)
 const SlotKeyTTL = 45 * time.Second
 
 const SlotHeartbeatInterval = 15 * time.Second
@@ -303,8 +301,6 @@ func (m *CallSlotManager) refreshTTLs() {
 	}
 }
 
-// WorkspaceLimit returns the concurrent call channel max for the workspace
-// (entitlements / plan). Safe for read-only board capacity.
 func (m *CallSlotManager) WorkspaceLimit(workspaceID string) (int64, error) {
 	return m.resolveWorkspaceLimit(workspaceID)
 }

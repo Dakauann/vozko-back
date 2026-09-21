@@ -25,7 +25,6 @@ func (r *recordingIngestor) Enqueue(_ context.Context, in ca.IngestInput) error 
 	return nil
 }
 
-// stubMessages answers ListByEntry from a fixed history.
 type stubMessages struct {
 	conversation.MessageRepository
 	history []*conversation.Message
@@ -106,18 +105,14 @@ func TestAdapterEnqueuesAConversation(t *testing.T) {
 	if in.WorkspaceID != "ws-1" {
 		t.Errorf("workspace = %q", in.WorkspaceID)
 	}
-	// The ref must be one the engine will accept.
 	if err := in.Container.Validate(); err != nil {
 		t.Errorf("enqueued an invalid container ref: %v", err)
 	}
-	// Bucketed on the last message, not on now.
 	if want := base.Add(3 * time.Minute); !in.OccurredAt.Equal(want) {
 		t.Errorf("commentedAt = %v, want the last message at %v", in.OccurredAt, want)
 	}
 }
 
-// Switching analysis off on the container means nothing is queued and nothing
-// is billed. This is the cheapest guard in the system and the easiest to lose.
 func TestAdapterRespectsTheAnalysisSwitch(t *testing.T) {
 	subject := enabledSubject()
 	subject.EnableAnalysis = false
@@ -131,8 +126,6 @@ func TestAdapterRespectsTheAnalysisSwitch(t *testing.T) {
 	}
 }
 
-// An empty conversation must not be queued: it would spend a model call to
-// analyse nothing and store the result.
 func TestAdapterSkipsEmptyConversations(t *testing.T) {
 	a, ing := adapterWith(t, enabledSubject(), nil)
 	if err := a.Enqueue(context.Background(), "entry-1", shared.EntryTypeWhatsApp); err != nil {
@@ -143,8 +136,6 @@ func TestAdapterSkipsEmptyConversations(t *testing.T) {
 	}
 }
 
-// A channel with no resolver registered is not analysed, and that is a quiet
-// no-op rather than an error: it is how a channel is switched off.
 func TestAdapterIgnoresUnregisteredChannels(t *testing.T) {
 	a, ing := adapterWith(t, enabledSubject(), msgs(2, time.Now()))
 	if err := a.Enqueue(context.Background(), "entry-1", shared.EntryTypeTelegram); err != nil {
@@ -155,9 +146,6 @@ func TestAdapterIgnoresUnregisteredChannels(t *testing.T) {
 	}
 }
 
-// The stored message count is the conversation's REAL length, while the text
-// the model reads is windowed. Reporting the window as the length would
-// understate every long conversation in the dashboard.
 func TestAdapterCountsTheWholeConversationButWindowsTheText(t *testing.T) {
 	base := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 	total := transcriptMessageLimit + 37
@@ -178,7 +166,6 @@ func TestAdapterCountsTheWholeConversationButWindowsTheText(t *testing.T) {
 	if tr.MessageCount != total {
 		t.Errorf("message count = %d, want the full %d", tr.MessageCount, total)
 	}
-	// The oldest message is outside the window and must not be in the text.
 	if strings.Contains(tr.Text, "mensagem 0\n") {
 		t.Error("the transcript was not windowed to the most recent messages")
 	}
@@ -190,7 +177,6 @@ func TestAdapterCountsTheWholeConversationButWindowsTheText(t *testing.T) {
 	}
 }
 
-// One unreadable conversation must not fail the batch its peers are in.
 func TestReadTranscriptsSkipsUnreadableConversations(t *testing.T) {
 	ing := &recordingIngestor{}
 	a := NewAnalysisAdapter(ing, &stubMessages{history: msgs(3, time.Now())})
@@ -216,8 +202,6 @@ func TestReadTranscriptsSkipsUnreadableConversations(t *testing.T) {
 	}
 }
 
-// The campaign objective reaches the prompt when a channel provides one, and
-// its absence is not an error.
 func TestReadContainerContextResolvesTheObjective(t *testing.T) {
 	a, _ := adapterWith(t, enabledSubject(), msgs(2, time.Now()))
 	ref := ca.ContainerRef{
@@ -252,18 +236,8 @@ func TestReadContainerContextResolvesTheObjective(t *testing.T) {
 	}
 }
 
-// The adapter satisfies the engine's port. Compile-time, because a signature
-// drift here would otherwise only show up at container wiring.
 var _ ca.ConversationAdapter = (*AnalysisAdapter)(nil)
 
-// The revision is what lets a conversation be analysed more than once.
-//
-// It identifies the transcript that was read, not the conversation: queuing
-// the same quiet conversation twice yields the same revision, so the insert is
-// idempotent and a retry cannot pay for the same analysis twice. Once the
-// conversation moves on, the revision changes, and the new snapshot is queued
-// as a SECOND analysis on the same conversation's timeline instead of being
-// discarded as a duplicate, which is what used to happen.
 func TestRevisionIsStableUntilTheConversationMovesOn(t *testing.T) {
 	base := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 	history := msgs(4, base)
@@ -300,16 +274,11 @@ func TestRevisionIsStableUntilTheConversationMovesOn(t *testing.T) {
 	if ing.inputs[2].MessageCount != 6 {
 		t.Errorf("message count = %d, want the 6 messages the revision was taken over", ing.inputs[2].MessageCount)
 	}
-	// The queued text IS the snapshot the engine will classify, so it has to
-	// carry the new messages rather than a reference to be re-read later.
 	if !strings.Contains(ing.inputs[2].Text, "mensagem 5") {
 		t.Error("the queued snapshot does not contain the messages that triggered it")
 	}
 }
 
-// The revision covers the frozen business context too. Renaming a campaign or
-// rewriting an agent's instructions changes what the classifier is told, so it
-// is a different analysis rather than a duplicate of the last one.
 func TestRevisionCoversTheFrozenContext(t *testing.T) {
 	a, ing := adapterWith(t, enabledSubject(), msgs(3, time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)))
 	context1 := "Objetivo: agendar avaliacao"

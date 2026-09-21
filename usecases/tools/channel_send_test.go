@@ -11,14 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Adopting the shared agent turn made these tools reachable from Telegram and
-// Instagram. Reachable and WhatsApp-bound is the worst combination: the model is
-// offered a tool it will confidently call, and the customer gets nothing.
-//
-// These pin that the adapter path is taken for other channels, that WhatsApp is
-// untouched, and that a channel which cannot present choices says so rather than
-// sending a question with nothing to tap.
-
 type toolAdapter struct {
 	entryType   shared.EntryType
 	windowOpen  bool
@@ -81,8 +73,6 @@ func TestToolAdapterIsUsedForNonWhatsAppChannels(t *testing.T) {
 	}
 }
 
-// WhatsApp keeps its dedicated path: business phone resolution, image
-// normalisation, link fallback and the lead window do not generalise.
 func TestWhatsAppNeverTakesTheAdapterPath(t *testing.T) {
 	adapter := &toolAdapter{entryType: shared.EntryTypeWhatsApp, windowOpen: true}
 	reg := conversation.NewAdapterRegistry(adapter)
@@ -96,8 +86,6 @@ func TestWhatsAppNeverTakesTheAdapterPath(t *testing.T) {
 	}
 }
 
-// Without seeds there is no conversation to address. Falling through to the
-// WhatsApp path lets it fail with its own honest message.
 func TestNoSeedsFallsThroughToWhatsApp(t *testing.T) {
 	reg := conversation.NewAdapterRegistry(&toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true})
 
@@ -141,8 +129,6 @@ func TestMediaIsSentThroughTheAdapter(t *testing.T) {
 	}
 }
 
-// A closed window is a normal state, not a fault: the run must continue so the
-// agent can explain, rather than erroring the whole turn.
 func TestAClosedWindowIsReportedNotThrown(t *testing.T) {
 	adapter := &toolAdapter{entryType: shared.EntryTypeInstagram, windowOpen: false}
 	ec := &conversation.EntryContext{EntryID: "conv-1", EntryType: shared.EntryTypeInstagram}
@@ -174,8 +160,6 @@ func TestOptionsAreSentThroughTheInteractiveCapability(t *testing.T) {
 	}
 }
 
-// A channel with a send path but no interactive capability must refuse clearly.
-// Sending the question without its options leaves the contact nothing to tap.
 func TestAChannelWithoutChoicesRefusesInsteadOfSendingAQuestion(t *testing.T) {
 	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
 	ec := &conversation.EntryContext{EntryID: "conv-1", EntryType: shared.EntryTypeTelegram}
@@ -201,8 +185,6 @@ func TestAdapterMediaKindMapsOntoTheSharedVocabulary(t *testing.T) {
 		{"video", "video"},
 		{"audio", "audio"},
 		{"document", "document"},
-		// A sticker has no cross-channel equivalent; document is the honest
-		// fallback every adapter accepts.
 		{"sticker", "document"},
 	} {
 		if got := adapterMediaKind(&media.Media{Type: tc.stored}); got != tc.want {

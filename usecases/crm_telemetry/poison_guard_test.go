@@ -10,8 +10,6 @@ import (
 	"vozko/domain/crm_telemetry"
 )
 
-// recordingPublisher counts published events so we can assert the emitter drops
-// malformed ones before they ever reach the queue.
 type recordingPublisher struct{ published int }
 
 func (r *recordingPublisher) Publish(kind crm_telemetry.Kind, payload any) error {
@@ -19,9 +17,6 @@ func (r *recordingPublisher) Publish(kind crm_telemetry.Kind, payload any) error
 	return nil
 }
 
-// The emitter is the single choke point: a conversation event with an empty
-// workspace_id must be dropped, not published (it can never be persisted and
-// would poison the consumer). Regression for the analysis_created flood.
 func TestEmitter_ConversationEvent_DropsEmptyWorkspace(t *testing.T) {
 	rp := &recordingPublisher{}
 	e := NewEmitter(rp)
@@ -37,8 +32,6 @@ func TestEmitter_ConversationEvent_DropsEmptyWorkspace(t *testing.T) {
 	}
 }
 
-// AnalysisCreated (the exact producer that flooded prod) routes through the same
-// choke point, so an empty workspace never publishes.
 func TestEmitter_AnalysisCreated_EmptyWorkspaceDropped(t *testing.T) {
 	rp := &recordingPublisher{}
 	e := NewEmitter(rp)
@@ -52,8 +45,6 @@ func TestEmitter_AnalysisCreated_EmptyWorkspaceDropped(t *testing.T) {
 	}
 }
 
-// If a malformed event is already in the queue (e.g. the 217k backlog published
-// before this fix), the consumer must DROP it (Nack without requeue), never loop.
 func TestConsumer_EmptyWorkspace_DroppedNotRequeued(t *testing.T) {
 	evRepo := &memEvents{}
 	c := NewConsumerWithDeps(ConsumerDeps{

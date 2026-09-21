@@ -15,6 +15,7 @@ import (
 	template_infra "vozko/infra/whatsapp/template"
 
 	balance_usecase "vozko/usecases/balance"
+	"vozko/usecases/whatsapp/servicemessage"
 	workspace_plan_usecase "vozko/usecases/workspace_plan"
 )
 
@@ -22,8 +23,6 @@ func New() *Container {
 	c := &Container{}
 	c.cfg = config.LoadConfig()
 
-	// Refuse to start on an unsafe port plan (the WhatsApp media mux inside the OS
-	// ephemeral range) before anything binds.
 	c.validatePortLayout()
 
 	c.replicaID = c.cfg.ReplicaID
@@ -43,20 +42,28 @@ func New() *Container {
 	whatsappPricer := workspace_pricing.NewPricer(c.repositories.workspacePricing, workspace_pricing.WithPlanPricingProvider(planPricingAdapter))
 	consumeWhatsappTemplateUC := balance_usecase.NewConsumeWhatsappTemplateUseCase(c.repositories.balance, whatsappPricer, activeSubscriptionUC)
 
+	c.services.cachedBalanceChecker = balance_usecase.NewCachedBalanceChecker(
+		c.repositories.balance, c.redisProvider.SharedState(), 10*time.Second)
+
+	serviceMessageBilling, err := servicemessage.NewBilling(servicemessage.Deps{
+		Pricer:         whatsappPricer,
+		Ledger:         c.repositories.balance,
+		BalanceChecker: c.services.cachedBalanceChecker,
+	})
+	if err != nil {
+		log.Fatalf("Failed to build the WhatsApp service message billing: %v", err)
+	}
+
+	c.services.serviceMessageBilling = serviceMessageBilling
+
 	c.wireConversationHub(consumeWhatsappTemplateUC)
 	c.initCallSessionRegistries()
 	c.agentMCP = c.initAgentMCP()
-	// The Instagram channel is built before the usecases so its handler is
-	// available to initHandlers/initRouter; its runtime half (webhook consumer)
-	// is wired from inside initUseCases, where the shared history manager exists.
 	c.initInstagram()
 	c.initTelegram()
 	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
 	c.startConversationHub()
-	// Registered after the hub so the message sender exists: this is the strangler
-	// seam where Instagram joins the conversation stack while WhatsApp keeps its
-	// existing code path.
 	c.wireInstagramConversationStack()
 	c.wireTelegramConversationStack()
 	c.wireUnofficialWhatsAppConversationStack()

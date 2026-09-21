@@ -5,15 +5,6 @@ import (
 	"testing"
 )
 
-// The facts an alert can put into a template, and how they survive contact
-// with a template that declares a different number of them, or names them.
-//
-// Every case here is a real way a customer's approved template can be shaped.
-// WhatsApp rejects an empty parameter and a parameter count that disagrees with
-// the template, and a rejection means an alert that silently did not arrive.
-
-// The advertised count and the actual fact list must agree: the settings
-// screen shows one and the send fills the other.
 func TestAlertTemplateParamCountMatchesTheFacts(t *testing.T) {
 	if AlertTemplateParamCount != len(AlertFactKeys()) {
 		t.Fatalf("AlertTemplateParamCount = %d, AlertFactKeys has %d", AlertTemplateParamCount, len(AlertFactKeys()))
@@ -44,7 +35,6 @@ func TestAlertFactsAreNamedAndNonEmpty(t *testing.T) {
 	}
 }
 
-// A template with no variables is legal and common: "você tem um alerta".
 func TestTemplateParamsForNoVariables(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	if got := alert.TemplateParamsFor([]string{}); len(got) != 0 {
@@ -52,8 +42,6 @@ func TestTemplateParamsForNoVariables(t *testing.T) {
 	}
 }
 
-// A POSITIONAL template takes the facts in their canonical order, however many
-// it declares.
 func TestTemplateParamsForPositional(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 
@@ -65,8 +53,6 @@ func TestTemplateParamsForPositional(t *testing.T) {
 		t.Fatalf("the first parameter should be the rule name, got %q", two[0])
 	}
 
-	// More parameters than facts: padded rather than left empty, because an
-	// empty parameter is refused by the provider.
 	many := alert.TemplateParamsFor([]string{"1", "2", "3", "4", "5", "6", "7", "8"})
 	if len(many) != 8 {
 		t.Fatalf("params = %d, want 8", len(many))
@@ -78,8 +64,6 @@ func TestTemplateParamsForPositional(t *testing.T) {
 	}
 }
 
-// A NAMED template gets its facts matched by name, so "excerpt" receives the
-// comment even when the template lists it first.
 func TestTemplateParamsForNamedMatchesByName(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	got := alert.TemplateParamsFor([]string{"excerpt", "rule"})
@@ -95,8 +79,6 @@ func TestTemplateParamsForNamedMatchesByName(t *testing.T) {
 	}
 }
 
-// Name matching is forgiving about the shapes people actually name variables:
-// case, underscores and the {{ }} the editor sometimes leaves in.
 func TestTemplateParamsForNamedIsForgiving(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	for _, name := range []string{"Excerpt", "EXCERPT", "{{excerpt}}", " excerpt "} {
@@ -107,8 +89,6 @@ func TestTemplateParamsForNamedIsForgiving(t *testing.T) {
 	}
 }
 
-// A named parameter we do not recognise still has to receive something, in the
-// canonical order, rather than an empty string.
 func TestTemplateParamsForUnknownNameFallsBackPositionally(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	got := alert.TemplateParamsFor([]string{"customer_name", "order_id"})
@@ -121,15 +101,11 @@ func TestTemplateParamsForUnknownNameFallsBackPositionally(t *testing.T) {
 			t.Fatalf("param %d is empty: %v", i, got)
 		}
 	}
-	// The unmatched names are filled from the canonical order, so the first
-	// still carries the rule name.
 	if got[0] != validRule().Name {
 		t.Fatalf("first fallback param = %q", got[0])
 	}
 }
 
-// A named parameter that IS matched must not also be consumed by the
-// positional fallback, or two parameters carry the same fact.
 func TestTemplateParamsForMixedNamesDoNotRepeat(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	got := alert.TemplateParamsFor([]string{"rule", "whatever", "measurement"})
@@ -145,8 +121,6 @@ func TestTemplateParamsForMixedNamesDoNotRepeat(t *testing.T) {
 	}
 }
 
-// Every parameter is flattened: a newline inside one is rejected by WhatsApp,
-// and a comment can very much contain newlines.
 func TestTemplateParamsForFlattensControlCharacters(t *testing.T) {
 	obs := alertObservation()
 	obs.Comment.Excerpt = "primeira linha\nsegunda\tlinha"
@@ -160,7 +134,6 @@ func TestTemplateParamsForFlattensControlCharacters(t *testing.T) {
 	}
 }
 
-// A windowed alert has no comment, and every parameter still has to be filled.
 func TestTemplateParamsForWindowedAlert(t *testing.T) {
 	r := validRule()
 	r.Metric = AlertMetricHostileCount
@@ -176,8 +149,6 @@ func TestTemplateParamsForWindowedAlert(t *testing.T) {
 	}
 }
 
-// The legacy fixed-shape accessor keeps working and agrees with the general
-// one, so the two cannot drift.
 func TestTemplateParamsMatchesTheGeneralForm(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	fixed := alert.TemplateParams()

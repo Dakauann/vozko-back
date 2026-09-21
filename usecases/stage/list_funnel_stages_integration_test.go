@@ -16,15 +16,6 @@ import (
 	stage_usecase "vozko/usecases/stage"
 )
 
-// The grouped listing is what makes every funnel's stages reachable from the
-// inbox filter, and the claim worth checking is that it holds on the real
-// schema: that stages carry a usable pipeline_id, that funnels come back in
-// position order, and that two funnels sharing a stage name stay distinguishable.
-//
-// Everything runs inside a transaction that is always rolled back.
-//
-// Opt-in: set VOZKO_TEST_DB=1 and the DB_* variables the application reads.
-
 func funnelTx(t *testing.T) *gorm.DB {
 	t.Helper()
 	if os.Getenv("VOZKO_TEST_DB") != "1" {
@@ -52,8 +43,6 @@ func funnelTx(t *testing.T) *gorm.DB {
 	return tx
 }
 
-// conversationFunnels mirrors the composition root's adapter, so the test
-// exercises the same pairing production wires.
 type conversationFunnels struct{ repo pipeline_domain.Repository }
 
 func (a conversationFunnels) ListConversationFunnels(workspaceID string) ([]stage_usecase.Funnel, error) {
@@ -94,9 +83,6 @@ func seedStage(t *testing.T, tx *gorm.DB, ws, pipelineID, name string, position 
 	return id
 }
 
-// The UniFecaf shape: two funnels, one of them dead, sharing stage names. The
-// filter has to be able to tell them apart, which is the whole point of the
-// grouping.
 func TestListFunnelStagesAgainstPostgres(t *testing.T) {
 	tx := funnelTx(t)
 	ws := uuid.New().String()
@@ -121,7 +107,6 @@ func TestListFunnelStagesAgainstPostgres(t *testing.T) {
 		t.Fatalf("groups = %d, want 2: %+v", len(groups), groups)
 	}
 
-	// Funnel order follows position, so the filter reads like the funnels page.
 	if groups[0].PipelineName != "NÃO USAR" || groups[1].PipelineName != "FUNIL UNIFECAF" {
 		t.Fatalf("funnel order = %q, %q", groups[0].PipelineName, groups[1].PipelineName)
 	}
@@ -129,8 +114,6 @@ func TestListFunnelStagesAgainstPostgres(t *testing.T) {
 		t.Error("the default flag did not survive the read")
 	}
 
-	// The same stage NAME in two funnels must resolve to two different ids, or
-	// the filter is right back to addressing the wrong funnel.
 	if len(groups[0].Stages) != 1 || groups[0].Stages[0].ID != deadAgendamento {
 		t.Errorf("dead funnel stages = %+v", groups[0].Stages)
 	}
@@ -146,8 +129,6 @@ func TestListFunnelStagesAgainstPostgres(t *testing.T) {
 	}
 }
 
-// A funnel with no columns is still offered, so an operator who just created one
-// can see it rather than wondering where it went.
 func TestListFunnelStagesKeepsAnEmptyFunnelAgainstPostgres(t *testing.T) {
 	tx := funnelTx(t)
 	ws := uuid.New().String()
@@ -169,13 +150,11 @@ func TestListFunnelStagesKeepsAnEmptyFunnelAgainstPostgres(t *testing.T) {
 	if groups[1].PipelineName != "vazio" || len(groups[1].Stages) != 0 {
 		t.Errorf("empty funnel = %+v", groups[1])
 	}
-	// Never nil: a null here would crash a client that maps over it.
 	if groups[1].Stages == nil {
 		t.Error("an empty funnel must serialize its stages as [], not null")
 	}
 }
 
-// One workspace must never see another's funnels.
 func TestListFunnelStagesIsWorkspaceScopedAgainstPostgres(t *testing.T) {
 	tx := funnelTx(t)
 	mine := uuid.New().String()
@@ -198,12 +177,6 @@ func TestListFunnelStagesIsWorkspaceScopedAgainstPostgres(t *testing.T) {
 	}
 }
 
-// The Anhanguera bug, pinned against real data shapes.
-//
-// That workspace carries 728 stages with no pipeline_id — legacy per-campaign
-// clones, zero conversations on any of them — and the stage filter rendered
-// every one, mostly repeats of four names. This asserts the listing offers only
-// what belongs to a conversation funnel, whatever junk sits beside it.
 func TestListFunnelStagesIgnoresLegacyCampaignClonesAgainstPostgres(t *testing.T) {
 	tx := funnelTx(t)
 	ws := uuid.New().String()
@@ -212,7 +185,6 @@ func TestListFunnelStagesIgnoresLegacyCampaignClonesAgainstPostgres(t *testing.T
 	seedStage(t, tx, ws, live, "novo lead", 1)
 	seedStage(t, tx, ws, live, "em atendimento", 2)
 
-	// The clone shape: a campaign id, no pipeline, the same name over and over.
 	for i := 0; i < 40; i++ {
 		if err := tx.Exec(`
 			INSERT INTO stages (id, workspace_id, campaign_id, name, position, is_default, is_initial, created_at, updated_at)
@@ -236,7 +208,6 @@ func TestListFunnelStagesIgnoresLegacyCampaignClonesAgainstPostgres(t *testing.T
 	if len(groups[0].Stages) != 2 {
 		t.Fatalf("stages = %d, want 2; the 40 clones must not be offered", len(groups[0].Stages))
 	}
-	// The whole point: the dropdown holds two rows, not forty-two.
 	total := 0
 	for _, g := range groups {
 		total += len(g.Stages)

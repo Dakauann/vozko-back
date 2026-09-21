@@ -9,9 +9,6 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// Reasons a pool ended up the way it did. They are logged with every
-// assignment so "why did this conversation go to João?" is answerable from
-// logs alone, and so the two fallbacks below are alertable rather than silent.
 const (
 	PoolReasonOnline              = "online"
 	PoolReasonLastSeen            = "last_seen"
@@ -20,23 +17,13 @@ const (
 	PoolReasonLastSeenUnavailable = "last_seen_unwired_fallback"
 )
 
-// Pool is an ordered ring plus the rule for resuming when the round-robin
-// pointer names somebody who is no longer in it.
 type Pool struct {
 	Ring   []string
 	Resume ia.ResumePolicy
-	// Mode actually used, which may differ from the configured one when a
-	// fallback fired.
 	Mode   string
 	Reason string
 }
 
-// CandidateResolver builds the roulette ring.
-//
-// It is the single seam between the two modes. EnsureAssignment asks for a
-// pool and does not know which strategy produced it, which is what keeps the
-// online path — every existing workspace — on exactly one implementation
-// instead of a copy that can drift.
 type CandidateResolver struct {
 	online conversation.EligibleUserProvider
 	roster ia.RosterProvider
@@ -48,27 +35,16 @@ func NewCandidateResolver(online conversation.EligibleUserProvider) *CandidateRe
 	return &CandidateResolver{online: online, now: time.Now}
 }
 
-// SetRoster wires the membership-based pool. Until it is set (and SetPresence
-// with it) the resolver can only serve the online mode, and a workspace
-// configured for last_seen degrades to online with a logged reason rather than
-// stopping distribution.
 func (r *CandidateResolver) SetRoster(roster ia.RosterProvider) { r.roster = roster }
 
-// SetPresence wires the last-seen reader.
 func (r *CandidateResolver) SetPresence(seen ia.LastSeenReader) { r.seen = seen }
 
-// SetClock is for tests. Production uses time.Now.
 func (r *CandidateResolver) SetClock(now func() time.Time) {
 	if now != nil {
 		r.now = now
 	}
 }
 
-// Resolve returns the ring for this workspace/department under the given
-// config. It never returns an error: a roulette that refuses to pick because a
-// read failed is an outage, so every failure path degrades to the online pool,
-// which is the behaviour that predates this feature and therefore cannot be a
-// regression.
 func (r *CandidateResolver) Resolve(workspaceID, departmentID string, skipAdmins bool, cfg *wsc.WorkspaceConfig) Pool {
 	if r == nil {
 		return Pool{Mode: wsc.RouletteModeOnline, Reason: PoolReasonOnline}
@@ -99,9 +75,6 @@ func (r *CandidateResolver) Resolve(workspaceID, departmentID string, skipAdmins
 		return r.onlinePool(workspaceID, departmentID, skipAdmins, PoolReasonLastSeenError)
 	}
 
-	// The live connected set is read through the same provider the online mode
-	// uses, so "online" means one thing in both modes and a connected agent
-	// cannot be eligible in one and not the other.
 	onlineNow := make(map[string]bool)
 	for _, uid := range r.onlineUsers(workspaceID, departmentID, skipAdmins) {
 		onlineNow[uid] = true
@@ -114,15 +87,8 @@ func (r *CandidateResolver) Resolve(workspaceID, departmentID string, skipAdmins
 	for _, uid := range members {
 		c := ia.Candidate{UserID: uid, Online: onlineNow[uid]}
 		if c.Online {
-			// Connected right now beats whatever the presence table says: the
-			// telemetry queue can lag, and an open interval left by a crashed
-			// replica is deliberately read at its started_at (see the
-			// agent_presence repository), so this overlay is what keeps a
-			// genuinely-online agent at the head of the ring.
 			c.LastSeen = now
 		} else if seenAt, ok := lastSeen[uid]; ok {
-			// Clamp a skewed clock rather than trusting a timestamp from the
-			// future, which would pin one agent to the head forever.
 			if seenAt.After(now) {
 				seenAt = now
 			}

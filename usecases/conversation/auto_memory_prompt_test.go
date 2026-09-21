@@ -37,8 +37,6 @@ func TestBuildAutoMemoryPromptAnnouncesEmptyMemory(t *testing.T) {
 		MessageCount:  3,
 		Transcript:    "User: oi\n",
 	})
-	// An empty block must be said out loud: a model told nothing about the
-	// current memories would have no basis for choosing update over remember.
 	if !strings.Contains(prompt, "nenhuma memória salva") {
 		t.Fatalf("prompt does not announce the empty memory state:\n%s", prompt)
 	}

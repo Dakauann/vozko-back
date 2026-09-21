@@ -118,14 +118,12 @@ func TestAssemble_ResolvesToolsAndStampsSeeds(t *testing.T) {
 
 func TestAssemble_NoRAGWhenDisabled(t *testing.T) {
 	a := New(nil, fakeRAG{results: []rag.QueryResult{{Content: "SHOULD NOT APPEAR"}}}, nil)
-	ag := &agent.Agent{MessagingPrompt: "hi"} // RAG disabled
+	ag := &agent.Agent{MessagingPrompt: "hi"}
 	out := a.Assemble(context.Background(), Request{Agent: ag, RAGQuery: "x"})
 	if strings.Contains(out.Input.SystemPrompt, "SHOULD NOT APPEAR") {
 		t.Fatalf("RAG injected despite disabled agent: %q", out.Input.SystemPrompt)
 	}
 }
-
-// --- lead memory block ---
 
 type stubMemoryList struct {
 	items []leadmemory.MemoryView
@@ -164,7 +162,6 @@ func TestAssemble_MemoryBlockAfterRAGBeforeSuffix(t *testing.T) {
 	if ragIdx < 0 || memIdx < 0 || factIdx < 0 || sufIdx < 0 {
 		t.Fatalf("a section is missing: %q", sp)
 	}
-	// The order IS the contract: grounding, then memories, then the caller's tail.
 	if !(ragIdx < memIdx && memIdx < sufIdx) {
 		t.Fatalf("wrong ordering rag=%d mem=%d suffix=%d", ragIdx, memIdx, sufIdx)
 	}
@@ -172,8 +169,6 @@ func TestAssemble_MemoryBlockAfterRAGBeforeSuffix(t *testing.T) {
 
 func TestAssemble_NoMemoryBlockWithoutLead(t *testing.T) {
 	a := New(nil, fakeRAG{}, stubMemoryList{items: []leadmemory.MemoryView{memoryItem("SHOULD NOT APPEAR")}})
-	// An Instagram/Telegram conversation not yet bridged to a lead: no LeadID,
-	// no block, and no error either.
 	out := a.Assemble(context.Background(), Request{Agent: &agent.Agent{MessagingPrompt: "hi"}})
 	if strings.Contains(out.Input.SystemPrompt, "SHOULD NOT APPEAR") {
 		t.Fatalf("memory injected without a lead: %q", out.Input.SystemPrompt)
@@ -183,7 +178,6 @@ func TestAssemble_NoMemoryBlockWithoutLead(t *testing.T) {
 func TestAssemble_MemoryToolLineFollowsBinding(t *testing.T) {
 	mem := stubMemoryList{items: []leadmemory.MemoryView{memoryItem("Prefere boleto.")}}
 
-	// Agent WITHOUT the tool: block renders, tool instruction does not.
 	a := New(nil, fakeRAG{}, mem)
 	out := a.Assemble(context.Background(), Request{Agent: &agent.Agent{WorkspaceID: "ws1", MessagingPrompt: "hi"}, LeadID: "lead-1"})
 	if !strings.Contains(out.Input.SystemPrompt, "Memórias sobre este lead") {
@@ -193,7 +187,6 @@ func TestAssemble_MemoryToolLineFollowsBinding(t *testing.T) {
 		t.Fatal("tool instruction rendered for agent without the tool")
 	}
 
-	// Agent WITH the tool bound: instruction appears.
 	reg := stubRegistry{defs: []tools.Definition{{Name: "manage_lead_memory"}}}
 	a = New(reg, fakeRAG{}, mem)
 	out = a.Assemble(context.Background(), Request{

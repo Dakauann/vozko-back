@@ -748,8 +748,6 @@ func multipartFile(t *testing.T, field, filename string, data []byte) (*bytes.Bu
 	return &buf, mw.FormDataContentType()
 }
 
-// The header of a PNG is enough: the handler resolves the type from the .png
-// extension, so no full image is needed to exercise the happy path.
 var onePixelPNGHeader = []byte("\x89PNG\r\n\x1a\n")
 
 func TestUploadHeaderMedia_Success(t *testing.T) {

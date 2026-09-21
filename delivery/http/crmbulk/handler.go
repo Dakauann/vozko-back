@@ -48,10 +48,6 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// One of the two targeting forms must be present. A filter is a legitimate way
-	// to say "everything my view is showing", including an EMPTY filter (the whole
-	// scoped workspace) — which is why the check is on the pointer, not on whether
-	// the filter has any groups.
 	if strings.TrimSpace(req.Action) == "" || (len(req.Targets) == 0 && req.Filter == nil) {
 		response.WriteError(w, http.StatusBadRequest, "action and either targets or filter are required", nil)
 		return

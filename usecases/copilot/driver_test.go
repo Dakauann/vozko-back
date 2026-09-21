@@ -13,10 +13,6 @@ import (
 	"vozko/usecases/agentloop"
 )
 
-// The driver is tested against a generic fakeTool, it cares only about a tool's
-// Meta (read vs mutating, RBAC resource/action), not about any concrete tool. The
-// real agent tools are tested in package copilottools.
-
 type scriptAI struct {
 	turns [][]ai.ToolCall
 	texts []string
@@ -120,8 +116,6 @@ func driverWith(fa *fakeAccess, ts ...copilot.Tool) *Driver {
 	return NewDriver(ownerCtx, "m", NewRegistry(ts...), fa, func() string { return "act-1" })
 }
 
-// ---- reuse on the real engine --------------------------------------------
-
 func TestDriver_ReadExecutesAndScopes(t *testing.T) {
 	rt := &fakeTool{name: "read_x", meta: readMeta}
 	fa := &fakeAccess{}
@@ -162,8 +156,6 @@ func TestDriver_MutationPausesForApproval(t *testing.T) {
 		t.Fatal("a proposal event must be emitted")
 	}
 }
-
-// ---- driver units --------------------------------------------------------
 
 func TestDriver_RBACDeniedDoesNotExecuteOrPause(t *testing.T) {
 	rt := &fakeTool{name: "read_x", meta: readMeta}
@@ -226,9 +218,6 @@ func TestDriver_Accessors(t *testing.T) {
 	if len(drv.Tools()) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(drv.Tools()))
 	}
-	// The per-turn observation must NOT restate the request. It is already the
-	// first message of the conversation; repeating it as the newest message made
-	// the model answer the same question again on every iteration.
 	if strings.Contains(drv.Reground(1, 12, 0), "faça X") {
 		t.Fatal("reground must not restate the user's request")
 	}

@@ -710,10 +710,6 @@ func TestWhatsApp_Execute_ZeroPrice(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(emptyRepo)
 	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
 
-	// INVERTED. This asserted that a zero price returns (nil, nil) — a
-	// success-shaped answer that charged nothing, which every caller read as
-	// "billed" and none read as "this went out for free". An unpriced workspace
-	// must STOP.
 	tx, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if !errors.Is(err, balance.ErrPriceUnavailable) {
 		t.Fatalf("an unpriced template must be refused, got err=%v", err)
@@ -738,9 +734,6 @@ func TestWhatsApp_Refund_ZeroPrice(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(emptyRepo)
 	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
 
-	// INVERTED, for the mirror reason. A silent nil reported a refund that never
-	// happened, and the caller then recorded the attempt as refunded — the
-	// customer's money kept, with a record saying it was returned.
 	if err := uc.Refund("ws1", "ref1", "UTILITY"); !errors.Is(err, balance.ErrPriceUnavailable) {
 		t.Fatalf("a refund that cannot be priced must report failure, got err=%v", err)
 	}

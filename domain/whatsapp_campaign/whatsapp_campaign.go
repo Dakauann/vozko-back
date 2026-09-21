@@ -14,19 +14,17 @@ import (
 const MaxCampaignPhoneNumbers = 150000
 
 var (
-	ErrCampaignNameRequired            = errors.New("whatsapp campaign name is required")
-	ErrCampaignTemplateIDRequired      = errors.New("whatsapp campaign template id is required")
-	ErrCampaignBusinessPhoneIDRequired = errors.New("whatsapp campaign business phone id is required")
-	ErrCampaignScheduledStartInvalid   = errors.New("whatsapp campaign scheduled start time is invalid")
-	ErrCampaignScheduledStartTooSoon   = errors.New("whatsapp campaign scheduled start time must be at least 5 minutes in the future and no more than 1 year from now")
-	ErrCampaignBusinessPhoneNotFound   = errors.New("whatsapp campaign business phone not found")
-	ErrCampaignBusinessPhoneNoAccess   = errors.New("user does not have access to this business phone number")
-	ErrCampaignPhoneNumbersRequired    = errors.New("whatsapp campaign must contain at least one phone number")
-	ErrCampaignPhoneNumbersTooMany     = errors.New("whatsapp campaign phone numbers exceed allowed limit")
-	ErrCampaignPhoneNumberInvalid      = errors.New("whatsapp campaign phone number is invalid, must be E.164 format starting with 55 (e.g., 558499999999)")
-	ErrCampaignNotFound                = errors.New("whatsapp campaign not found")
-	// Aliased to the kernel so a refusal raised by campaign.ResolveTransition
-	// still matches the name the HTTP layer checks.
+	ErrCampaignNameRequired              = errors.New("whatsapp campaign name is required")
+	ErrCampaignTemplateIDRequired        = errors.New("whatsapp campaign template id is required")
+	ErrCampaignBusinessPhoneIDRequired   = errors.New("whatsapp campaign business phone id is required")
+	ErrCampaignScheduledStartInvalid     = errors.New("whatsapp campaign scheduled start time is invalid")
+	ErrCampaignScheduledStartTooSoon     = errors.New("whatsapp campaign scheduled start time must be at least 5 minutes in the future and no more than 1 year from now")
+	ErrCampaignBusinessPhoneNotFound     = errors.New("whatsapp campaign business phone not found")
+	ErrCampaignBusinessPhoneNoAccess     = errors.New("user does not have access to this business phone number")
+	ErrCampaignPhoneNumbersRequired      = errors.New("whatsapp campaign must contain at least one phone number")
+	ErrCampaignPhoneNumbersTooMany       = errors.New("whatsapp campaign phone numbers exceed allowed limit")
+	ErrCampaignPhoneNumberInvalid        = errors.New("whatsapp campaign phone number is invalid, must be E.164 format starting with 55 (e.g., 558499999999)")
+	ErrCampaignNotFound                  = errors.New("whatsapp campaign not found")
 	ErrCampaignStatusInvalid             = campaign.ErrStatusInvalid
 	ErrCampaignResetCodeInvalid          = errors.New("invalid reset confirmation code")
 	ErrCampaignResetNotAllowed           = errors.New("whatsapp campaign reset not allowed while running")
@@ -74,11 +72,6 @@ func (t CampaignType) IsValid() bool {
 	}
 }
 
-// Status is the campaign lifecycle, shared with every channel.
-//
-// The transition rules live in domain/campaign and are resolved by
-// campaign.ResolveTransition, so the Cloud API campaign and the linked-device
-// campaign cannot disagree about what "pause a stopped campaign" means.
 type Status = campaign.Status
 
 const (
@@ -88,15 +81,10 @@ const (
 	CampaignStatusCompleted = campaign.StatusCompleted
 )
 
-// CampaignMetrics is what the campaign card and the summary bar render. Shared
-// across channels; see campaign.Metrics.
 type CampaignMetrics = campaign.Metrics
 
-// CategoryDispatches is billed-send volume by WhatsApp template category.
-// Populated on workspace summary; values are current entry statuses (reset clears).
 type CategoryDispatches = campaign.CategoryDispatches
 
-// NewCampaignMetrics derives the rendered metrics from a status tally.
 func NewCampaignMetrics(counts *wce.StatusCounts) *CampaignMetrics {
 	return campaign.NewMetrics(counts)
 }
@@ -109,21 +97,18 @@ type PhoneInput struct {
 }
 
 type Campaign struct {
-	ID              string       `json:"id"`
-	WorkspaceID     string       `json:"workspaceId"`
-	DepartmentID    string       `json:"departmentId,omitempty"`
-	BusinessPhoneID string       `json:"businessPhoneId,omitempty"`
-	Name            string       `json:"name"`
-	Type            CampaignType `json:"type"`
-	TemplateID      string       `json:"templateId"`
-	// TemplateName / TemplateCategory are list-enrichment fields (not stored
-	// on the campaign row). Populated when the list use case can resolve the
-	// linked WhatsApp template so the UI can show message type + charged $.
+	ID                   string                      `json:"id"`
+	WorkspaceID          string                      `json:"workspaceId"`
+	DepartmentID         string                      `json:"departmentId,omitempty"`
+	BusinessPhoneID      string                      `json:"businessPhoneId,omitempty"`
+	Name                 string                      `json:"name"`
+	Type                 CampaignType                `json:"type"`
+	TemplateID           string                      `json:"templateId"`
 	TemplateName         string                      `json:"templateName,omitempty"`
 	TemplateCategory     string                      `json:"templateCategory,omitempty"`
 	AgentID              string                      `json:"agentId,omitempty"`
 	WorkflowID           string                      `json:"workflowId,omitempty"`
-	PipelineID           string                      `json:"pipelineId,omitempty"` // conversation funnel (empty = workspace default)
+	PipelineID           string                      `json:"pipelineId,omitempty"`
 	EnableAgentResponses bool                        `json:"enableAgentResponses"`
 	EnableWorkflow       bool                        `json:"enableWorkflow"`
 	EnableAnalysis       bool                        `json:"enableAnalysis"`

@@ -62,12 +62,6 @@ func (uc *UpdateStageGroupUseCase) Execute(workspaceID, groupID string, input st
 			}
 		}
 
-		// The group's items are also materialized once into a shared conversation
-		// pipeline ("same group → same board" in CloneStagesFromGroupUseCase):
-		// campaigns created from this group reuse that pipeline and never re-clone.
-		// So an edit here must be pushed onto that pipeline too, otherwise a removed
-		// item lingers as a live stage and keeps showing up on the board and on every
-		// newly created campaign.
 		if err := uc.syncPipelineToGroup(workspaceID, groupID, input.Items); err != nil {
 			return nil, err
 		}
@@ -76,12 +70,6 @@ func (uc *UpdateStageGroupUseCase) Execute(workspaceID, groupID string, input st
 	return uc.repo.FindByID(groupID)
 }
 
-// syncPipelineToGroup reconciles the conversation pipeline stamped from this group so
-// its stages mirror the group's items: stages whose (normalized) name is no longer in
-// the group are deleted, dropping their entry assignments, exactly as a manual stage
-// delete does, new item names are cloned in, and surviving stages take the item's
-// position/description/color. Matching is by normalized name, mirroring how the clone
-// stores stage names. No-op when the group was never materialized (no campaign yet).
 func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID string, items []stage.StageGroupItemInput) error {
 	pipelineID, err := uc.stageRepo.FindConversationPipelineByGroup(workspaceID, groupID)
 	if err != nil {
@@ -104,7 +92,6 @@ func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID stri
 		position    int
 		index       int
 	}
-	// Desired stage names in item order, deduped by normalized name.
 	desired := make(map[string]desiredMeta, len(items))
 	order := make([]string, 0, len(items))
 	for i, it := range items {
@@ -127,7 +114,6 @@ func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID stri
 		}
 	}
 
-	// Drop stages the group no longer has; refresh the ones it keeps.
 	hasInitial := false
 	present := make(map[string]bool, len(current))
 	for _, s := range current {
@@ -142,7 +128,7 @@ func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID stri
 		if s.IsInitial {
 			hasInitial = true
 		}
-		if present[name] { // a duplicate row for a name we already reconciled, leave it
+		if present[name] {
 			continue
 		}
 		present[name] = true
@@ -154,7 +140,6 @@ func (uc *UpdateStageGroupUseCase) syncPipelineToGroup(workspaceID, groupID stri
 		}
 	}
 
-	// Clone in item names that don't exist on the pipeline yet.
 	for _, name := range order {
 		if present[name] {
 			continue

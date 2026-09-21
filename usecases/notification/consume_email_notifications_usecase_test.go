@@ -142,7 +142,7 @@ func TestConsumeEmail_TransientFailure_BelowMax_SchedulesDelayedRetry(t *testing
 	pub := &stubPub{}
 	metrics := &stubMetrics{}
 	uc := NewConsumeEmailUseCase(nil, pub, &stubEmailSvc{err: errors.New("rate limit exceeded")}, metrics)
-	ack := newStubAck(1) // first delivery, below MaxRetries
+	ack := newStubAck(1)
 
 	uc.HandleEmailPublication(mustMessage(t), ack)
 	waitDone(t, ack)
@@ -165,7 +165,7 @@ func TestConsumeEmail_AtMaxRetries_DropsWithoutRepublish(t *testing.T) {
 	pub := &stubPub{}
 	metrics := &stubMetrics{}
 	uc := NewConsumeEmailUseCase(nil, pub, &stubEmailSvc{err: errors.New("rate limit exceeded")}, metrics)
-	ack := newStubAck(messaging.MaxRetries) // exhausted
+	ack := newStubAck(messaging.MaxRetries)
 
 	uc.HandleEmailPublication(mustMessage(t), ack)
 	waitDone(t, ack)
@@ -197,8 +197,6 @@ func TestConsumeEmail_MalformedPayload_Dropped(t *testing.T) {
 	ack := newStubAck(1)
 
 	uc.HandleEmailPublication([]byte("not json"), ack)
-	// Malformed payloads are handled synchronously (no goroutine), but wait
-	// defensively in case that changes.
 	waitDone(t, ack)
 
 	if !ack.nacked || ack.requeue {

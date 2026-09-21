@@ -10,17 +10,6 @@ import (
 	"vozko/domain/messaging"
 )
 
-// Alerts leave the analysis loop through a queue.
-//
-// The flush job walks every due container of every workspace SEQUENTIALLY, in
-// one goroutine, every 30 seconds. Dispatching inline put an outbound WhatsApp
-// call, and optionally a model call for the briefing, on that path: one
-// workspace's alert delayed every other workspace's analysis in the same tick,
-// and a slow provider stalled the lot.
-//
-// What does NOT move is the claim. That is a single conditional write and it is
-// what decides who sends, so it stays inline; only the slow half is handed off.
-
 type fakePublisher struct {
 	published [][]byte
 	err       error
@@ -61,9 +50,6 @@ func TestAlertIsQueuedRatherThanSentInsideTheAnalysisPass(t *testing.T) {
 		t.Fatalf("published %d alerts, want 1", len(pub.published))
 	}
 
-	// The claim still happened inline: that is what stops two replicas both
-	// queueing the same firing, and moving it off this path would have made the
-	// queue the thing deciding who sends.
 	if rules.claimed != 1 {
 		t.Errorf("claims = %d, want the firing claimed once before queueing", rules.claimed)
 	}
@@ -77,8 +63,6 @@ func TestAlertIsQueuedRatherThanSentInsideTheAnalysisPass(t *testing.T) {
 	}
 }
 
-// A queue that is down must not silence an alert. Falling back to the inline
-// send keeps the old behaviour, which is slower but not silent.
 func TestAlertFallsBackToSendingWhenTheQueueRefuses(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{qualityRule(0)}}
 	dispatcher := &fakeDispatcher{}
@@ -97,8 +81,6 @@ func TestAlertFallsBackToSendingWhenTheQueueRefuses(t *testing.T) {
 	}
 }
 
-// With no publisher wired at all, the evaluator behaves exactly as it did
-// before the queue existed. A deployment without a broker still alerts.
 func TestAlertSendsInlineWithoutAPublisher(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{qualityRule(0)}}
 	dispatcher := &fakeDispatcher{}
@@ -111,8 +93,6 @@ func TestAlertSendsInlineWithoutAPublisher(t *testing.T) {
 		t.Fatalf("sent %d alerts without a publisher, want 1", len(dispatcher.all()))
 	}
 }
-
-// ---- the consumer ----
 
 type fakeAck struct {
 	acked    bool
@@ -152,12 +132,6 @@ func TestAlertConsumerSendsWhatWasQueued(t *testing.T) {
 	}
 }
 
-// A dispatch failure is acknowledged, NOT requeued.
-//
-// The inline path never retried, deliberately: a refused send cannot be told
-// apart from one that arrived just before the connection dropped, and a
-// duplicate alert at 3am is unrecoverable. Moving to a queue must not quietly
-// turn that into at-least-once redelivery.
 func TestAlertConsumerDoesNotRequeueAFailedSend(t *testing.T) {
 	dispatcher := &fakeDispatcher{err: context.DeadlineExceeded}
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{qualityRule(0)}}
@@ -176,7 +150,6 @@ func TestAlertConsumerDoesNotRequeueAFailedSend(t *testing.T) {
 	if !ack.acked && !ack.nacked {
 		t.Error("the message was neither acked nor nacked, so it will be redelivered forever")
 	}
-	// And the reason is stored where the operator looks for it.
 	if len(rules.failures) == 0 {
 		t.Error("the failure was not recorded on the rule")
 	}

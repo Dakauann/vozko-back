@@ -36,10 +36,6 @@ type Repository interface {
 
 	CountByStatus(campaignID string) (*StatusCounts, error)
 
-	// CountByStatusForCampaigns aggregates per-status entry counts for many
-	// campaigns in a single query, keyed by campaign ID. Campaigns with no
-	// entries are simply absent from the returned map. This exists so list
-	// endpoints can build per-campaign metrics without an N+1 of CountByStatus.
 	CountByStatusForCampaigns(campaignIDs []string) (map[string]*StatusCounts, error)
 
 	UpdateStatus(entryID string, status SendStatus, messageID string, errorCode int, errorMessage string) error
@@ -78,17 +74,10 @@ type Repository interface {
 
 	UpdateMetadata(entryID string, metadata map[string]interface{}) error
 
-	// UpdateConversationStatus applies lifecycle fields in one UPDATE (no N+1).
-	// write.SetCloseMeta stamps close_* ; write.ClearCloseMeta nulls them.
 	UpdateConversationStatus(entryID string, write ConversationStatusWrite) error
 
-	// ListEligibleForAutoClose returns open conversations past workspace idle
-	// policy in a single JOIN (entries + campaigns + workspace_configs).
-	// Ordered by last_agent_message_at ASC, hard-capped by limit.
 	ListEligibleForAutoClose(limit int) ([]AutoCloseCandidate, error)
 
-	// ListEligibleForMaxAge returns open conversations with last_message_at
-	// older than workspace max-age (any side). Separate from customer_idle.
 	ListEligibleForMaxAge(limit int) ([]AutoCloseCandidate, error)
 
 	CountByConversationStatus(campaignID string) (map[string]int64, error)
@@ -96,7 +85,6 @@ type Repository interface {
 	CountByConversationStatusForWorkspace(workspaceID string) (map[string]int64, error)
 }
 
-// ConversationStatusWrite is the atomic status + close-meta patch for entries.
 type ConversationStatusWrite struct {
 	Status         string
 	SetCloseMeta   bool
@@ -106,7 +94,6 @@ type ConversationStatusWrite struct {
 	ClearCloseMeta bool
 }
 
-// AutoCloseCandidate is one WhatsApp entry eligible for system idle finish.
 type AutoCloseCandidate struct {
 	EntryID            string
 	WorkspaceID        string

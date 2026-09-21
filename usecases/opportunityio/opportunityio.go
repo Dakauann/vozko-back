@@ -1,13 +1,3 @@
-// Package opportunityio implements CSV import and export for sales
-// opportunities. It is a thin transport layer over the existing opportunity
-// usecase: it never writes opportunities directly, it maps CSV rows to
-// opportunity_usecase.CreateInput and delegates creation (and dry-run
-// validation) to that usecase so the custom-field and entity rules stay in one
-// place.
-//
-// MONEY GUARDRAIL: the "value" column is the CUSTOMER's own sales figure in the
-// major unit of the row Currency (e.g. reais). It is parsed to ValueCents (minor
-// units) and is never Vozko wallet money.
 package opportunityio
 
 import (
@@ -26,76 +16,46 @@ import (
 )
 
 const (
-	// objectType is the custom-field object discriminator for opportunities.
-	objectType = "opportunity"
-	// customFieldPrefix marks a CSV column that carries a custom field value; the
-	// remainder of the column name is the custom field key.
+	objectType        = "opportunity"
 	customFieldPrefix = "custom_field:"
-	// multiSelectDelim separates the members of a multiselect custom field inside
-	// a single CSV cell.
-	multiSelectDelim = "|"
-	// MaxImportRows caps a single import so a huge upload cannot exhaust memory or
-	// hammer the database. Rows beyond the cap are NOT processed and the report
-	// flags Truncated so the caller knows the file was not fully consumed.
-	MaxImportRows = 5000
+	multiSelectDelim  = "|"
+	MaxImportRows     = 5000
 )
 
 var (
-	// ErrPipelineRequired is returned by Export when no pipeline is supplied.
 	ErrPipelineRequired = errors.New("opportunityio: pipelineId is required")
-	// ErrInvalidValue is returned when the "value" column is not a parseable
-	// monetary amount.
-	ErrInvalidValue = errors.New("opportunityio: invalid monetary value")
-	// ErrInvalidDate is returned when the "close_date" column is not a parseable
-	// date.
-	ErrInvalidDate = errors.New("opportunityio: invalid date")
+	ErrInvalidValue     = errors.New("opportunityio: invalid monetary value")
+	ErrInvalidDate      = errors.New("opportunityio: invalid date")
 )
 
-// OpportunityService is the slice of the opportunity usecase this package
-// reuses. *opportunity_usecase.Service satisfies it, so creation and validation
-// logic is never duplicated here.
 type OpportunityService interface {
 	ListByPipelineScoped(workspaceID, pipelineID string, departmentIDs []string, restrict bool, assigneeOverrideUserID string) ([]*opportunity.Opportunity, error)
 	Create(workspaceID string, in opportunity_usecase.CreateInput) (*opportunity.Opportunity, error)
 	ValidateCreate(workspaceID string, in opportunity_usecase.CreateInput) error
 }
 
-// FieldLister lists a workspace's custom field definitions.
-// customfield.Repository satisfies it. It is used to order the export columns
-// and to coerce CSV strings to the right typed value on import.
 type FieldLister interface {
 	ListByObject(workspaceID, objectType string) ([]*customfield.Definition, error)
 }
 
-// Service performs opportunity CSV import/export.
 type Service struct {
 	opps   OpportunityService
 	fields FieldLister
 }
 
-// NewService wires the CSV usecase from the opportunity usecase and the custom
-// field lister. fields may be nil in contexts without custom fields.
 func NewService(opps OpportunityService, fields FieldLister) *Service {
 	return &Service{opps: opps, fields: fields}
 }
 
-// ---- Export ----
-
-// exportFixedColumns are the non-custom-field columns, in output order. "value"
-// is the deal amount in MAJOR units (e.g. reais), not cents.
 var exportFixedColumns = []string{
 	"id", "title", "value", "currency", "status",
 	"stage_id", "owner_id", "lead_id", "source", "close_date", "created_at",
 }
 
-// Export streams the workspace's opportunities for one pipeline as CSV to w and
-// returns the number of rows written (excluding the header). Custom fields are
-// appended as one column per key, named "custom_field:<key>".
 func (s *Service) Export(workspaceID, pipelineID string, departmentIDs []string, restrict bool, assigneeOverrideUserID string, w io.Writer) (int, error) {
 	if strings.TrimSpace(pipelineID) == "" {
 		return 0, ErrPipelineRequired
 	}
-	// Department-scoped: a restricted user must not export deals outside their scope.
 	opps, err := s.opps.ListByPipelineScoped(workspaceID, pipelineID, departmentIDs, restrict, assigneeOverrideUserID)
 	if err != nil {
 		return 0, err
@@ -142,10 +102,6 @@ func (s *Service) Export(workspaceID, pipelineID string, departmentIDs []string,
 	return len(opps), nil
 }
 
-// customFieldKeys returns the ordered set of custom field keys to export:
-// defined fields first (ordered by Position then key), then any extra keys that
-// exist in stored data but have no definition (sorted), so export never
-// silently drops a stored value.
 func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opportunity) []string {
 	seen := map[string]struct{}{}
 	var keys []string
@@ -182,42 +138,27 @@ func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opport
 	return append(keys, extra...)
 }
 
-// ---- Import ----
-
-// ImportOptions tunes an import run.
 type ImportOptions struct {
-	// DefaultPipelineID backs rows that omit a pipeline_id column (e.g. when
-	// re-importing an export, which does not emit that column). May be empty.
 	DefaultPipelineID string
-	// DryRun validates every row without creating anything.
-	DryRun bool
+	DryRun            bool
 }
 
-// ImportError describes one rejected row. Row is 1-based and counts the header
-// as row 1, so the first data row is row 2, matching what a spreadsheet shows.
 type ImportError struct {
 	Row     int    `json:"row"`
 	Message string `json:"message"`
 }
 
-// ImportReport is the JSON result of an import. Every rejected row appears in
-// Errors: rows are never silently dropped.
 type ImportReport struct {
-	Total   int           `json:"total"`
-	Created int           `json:"created"`
-	Skipped int           `json:"skipped"`
-	Errors  []ImportError `json:"errors"`
-	// Truncated is true when the file held more than MaxImportRows data rows; the
-	// rows beyond the cap were NOT processed.
-	Truncated bool `json:"truncated,omitempty"`
+	Total     int           `json:"total"`
+	Created   int           `json:"created"`
+	Skipped   int           `json:"skipped"`
+	Errors    []ImportError `json:"errors"`
+	Truncated bool          `json:"truncated,omitempty"`
 }
 
-// Import parses CSV from r, maps each row to an opportunity and (unless DryRun)
-// creates it through the opportunity usecase. On DryRun it validates each row
-// without persisting; Created then counts rows that WOULD be created.
 func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*ImportReport, error) {
 	reader := csv.NewReader(r)
-	reader.FieldsPerRecord = -1 // tolerate ragged rows; each row is validated
+	reader.FieldsPerRecord = -1
 	reader.TrimLeadingSpace = true
 
 	header, err := reader.Read()
@@ -229,8 +170,6 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 	}
 	colIndex := indexHeader(header)
 
-	// Load custom field definitions once so values coerce to the right type and
-	// unknown keys can still be surfaced (via the usecase) rather than dropped.
 	defsByKey := map[string]*customfield.Definition{}
 	if s.fields != nil {
 		if defs, e := s.fields.ListByObject(workspaceID, objectType); e == nil {
@@ -241,7 +180,7 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 	}
 
 	report := &ImportReport{Errors: []ImportError{}}
-	rowNum := 1 // header is row 1
+	rowNum := 1
 	for {
 		record, e := reader.Read()
 		if e == io.EOF {
@@ -249,8 +188,6 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 		}
 		rowNum++
 
-		// Cap guard: stop before processing beyond the limit and flag truncation
-		// rather than silently ignoring the remainder.
 		if report.Total >= MaxImportRows {
 			report.Truncated = true
 			break
@@ -263,7 +200,7 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 			continue
 		}
 		if isBlankRecord(record) {
-			continue // ignore stray blank lines without counting them
+			continue
 		}
 
 		report.Total++
@@ -295,9 +232,6 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 	return report, nil
 }
 
-// buildInput maps one CSV record to a CreateInput. It parses the monetary value
-// and close date and coerces custom field cells to typed values; it returns an
-// error (never a partial silent drop) when a cell cannot be parsed.
 func buildInput(idx map[string]int, record []string, defsByKey map[string]*customfield.Definition, defaultPipelineID string) (opportunity_usecase.CreateInput, error) {
 	get := func(col string) string {
 		i, ok := idx[col]
@@ -360,9 +294,6 @@ func buildInput(idx map[string]int, record []string, defsByKey map[string]*custo
 	return in, nil
 }
 
-// coerceCustomValue turns a raw CSV cell into the typed value the custom-field
-// validator expects. When def is nil (unknown key) the raw string is passed
-// through so the usecase rejects it as an unknown field rather than dropping it.
 func coerceCustomValue(raw string, def *customfield.Definition) (any, error) {
 	if def == nil {
 		return raw, nil
@@ -389,15 +320,11 @@ func coerceCustomValue(raw string, def *customfield.Definition) (any, error) {
 			}
 		}
 		return out, nil
-	default: // text, date, select
+	default:
 		return raw, nil
 	}
 }
 
-// ---- formatting / parsing helpers ----
-
-// formatCentsToMajor renders minor units as a fixed 2-decimal major-unit string
-// (e.g. 490000 -> "4900.00").
 func formatCentsToMajor(cents int64) string {
 	neg := cents < 0
 	if neg {
@@ -410,8 +337,6 @@ func formatCentsToMajor(cents int64) string {
 	return out
 }
 
-// parseMajorToCents parses a major-unit string ("4900.00", "1.234,56",
-// "1,234.56") into minor units, rounding half-up to two decimals.
 func parseMajorToCents(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -425,17 +350,14 @@ func parseMajorToCents(s string) (int64, error) {
 		s = s[1:]
 	}
 
-	// Normalise thousands/decimal separators to a single '.' decimal.
 	hasComma := strings.Contains(s, ",")
 	hasDot := strings.Contains(s, ".")
 	switch {
 	case hasComma && hasDot:
 		if strings.LastIndex(s, ",") > strings.LastIndex(s, ".") {
-			// "1.234,56" -> dot = thousands, comma = decimal
 			s = strings.ReplaceAll(s, ".", "")
 			s = strings.ReplaceAll(s, ",", ".")
 		} else {
-			// "1,234.56" -> comma = thousands
 			s = strings.ReplaceAll(s, ",", "")
 		}
 	case hasComma:
@@ -479,9 +401,6 @@ func parseMajorToCents(s string) (int64, error) {
 	return cents, nil
 }
 
-// parseDate accepts RFC3339, "2006-01-02" and "2006-01-02 15:04:05". Ambiguous
-// slash formats are rejected on purpose so an import cannot silently swap day
-// and month.
 func parseDate(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"} {
@@ -528,9 +447,6 @@ func formatCustomValue(v any) string {
 	}
 }
 
-// indexHeader maps normalised (trimmed, lowercased, BOM-stripped) column names
-// to their index. The first name wins on a duplicate. Custom field keys are
-// already lowercase (customfield.Normalize), so lowercasing is consistent.
 func indexHeader(header []string) map[string]int {
 	idx := make(map[string]int, len(header))
 	for i, h := range header {

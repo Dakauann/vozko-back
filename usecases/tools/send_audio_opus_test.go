@@ -10,14 +10,6 @@ import (
 	"vozko/domain/media"
 )
 
-// WhatsApp accepts exactly one OGG for audio: the OPUS one.
-//
-// A library file that is OGG/Vorbis carries the right container, the right
-// extension and the right Content-Type, and Meta still refuses it with 131053 —
-// "uploaded with mimetype as audio/ogg; codecs=opus, however on processing it is
-// of type application/octet-stream". Live case: a jingle went out to a whole
-// campaign and every single message came back undelivered.
-
 type audioClientStub struct {
 	conversation.WhatsAppClient
 	bytesCalls []struct {
@@ -44,8 +36,6 @@ func (c *audioClientStub) SendAudioMessage(_ context.Context, in conversation.Se
 	return &conversation.SendTextMessageOutput{}, nil
 }
 
-// stubConvert swaps ffmpeg out: these tests are about which bytes reach the
-// provider, and the box running them has no transcoder.
 func stubConvert(t *testing.T, out []byte, err error) {
 	t.Helper()
 	original := convertAudioToOGGOpusFn
@@ -77,8 +67,6 @@ func TestAudioIsTranscodedBeforeSending(t *testing.T) {
 	}
 }
 
-// The link is the fallback, not a regression: it is exactly what this did
-// before, so a box with no ffmpeg keeps sending what it used to.
 func TestAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 	srv := oggVorbisServer(t)
 	stubConvert(t, nil, errors.New("ffmpeg not found"))
@@ -110,8 +98,6 @@ func TestAudioFallsBackToLinkWhenDownloadFails(t *testing.T) {
 	}
 }
 
-// If the provider rejects the transcoded bytes, the link is still worth a try
-// rather than losing the message outright.
 func TestAudioFallsBackToLinkWhenByteSendFails(t *testing.T) {
 	srv := oggVorbisServer(t)
 	stubConvert(t, []byte("OggS-opus-bytes"), nil)

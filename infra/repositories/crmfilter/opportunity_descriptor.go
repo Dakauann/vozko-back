@@ -9,42 +9,14 @@ import (
 	"github.com/lib/pq"
 )
 
-// OpportunityDescriptor maps each crmfilter.Field onto the SQL for the
-// opportunities table (alias "o" by default). Unlike the conversation object,
-// where owner/stage live in join tables, the opportunity's owner, carteira,
-// pipeline, stage, status, source and lost_reason are plain columns, so they use
-// StyleColumn with "= ANY(?)" (via compileColumn's OpIn) for set membership.
-//
-// value:      compared against value_cents in MINOR UNITS (cents). A predicate of
-//
-//	value >= 100000 means R$1.000,00. This matches the money guardrail:
-//	the deal value is the customer's own sales figure, stored as a
-//	plain integer, never routed through Vozko wallet money.
-//
-// created_at / updated_at / close_date: date columns (gte/lte/between/before/after).
-// query:      free-text ILIKE over the deal title.
-// custom:     a jsonb path on custom_fields keyed by Predicate.Key. The stock
-//
-//	ObjectDescriptor.Field(field) interface cannot carry the per-
-//	predicate key, so Field(FieldCustom) reports ErrUnsupportedField
-//	and callers use CompileOpportunity (below), which binds the key as
-//	a positional "?" ("custom_fields->>?"). label is unsupported until
-//	an opportunity_labels link table exists; the conversation-only
-//	fields (channel, campaign, unread, window_open, last_activity_at)
-//	are also unsupported.
 type OpportunityDescriptor struct {
-	// Alias is the alias of the opportunities row in the surrounding query
-	// (default "o").
 	Alias string
 }
 
-// NewOpportunityDescriptor returns the descriptor for the opportunity board/list
-// query (alias "o").
 func NewOpportunityDescriptor() OpportunityDescriptor {
 	return OpportunityDescriptor{Alias: "o"}
 }
 
-// Object implements ObjectDescriptor.
 func (d OpportunityDescriptor) Object() string { return "opportunity" }
 
 func (d OpportunityDescriptor) alias() string {
@@ -54,7 +26,6 @@ func (d OpportunityDescriptor) alias() string {
 	return d.Alias
 }
 
-// Field implements ObjectDescriptor.
 func (d OpportunityDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 	a := d.alias()
 	col := func(name string) string { return a + "." + name }
@@ -90,23 +61,12 @@ func (d OpportunityDescriptor) Field(field crmfilter.Field) (FieldMapping, error
 		return FieldMapping{Style: StyleText, Kind: crmfilter.KindText, Template: col("title") + " ILIKE ?", Params: 1}, nil
 
 	default:
-		// custom (needs the key-aware CompileOpportunity pass), label (no
-		// opportunity_labels link table yet), and the conversation-only fields
-		// (channel, campaign, unread, window_open, last_activity_at).
 		return FieldMapping{}, fmt.Errorf("%w: %q on %s", ErrUnsupportedField, field, d.Object())
 	}
 }
 
-// CompileOpportunity compiles a validated Filter for the opportunities table. It
-// is the opportunity counterpart to Compile: standard predicates go through the
-// shared per-operator compilers (via the OpportunityDescriptor), and custom-field
-// predicates are compiled against the custom_fields jsonb column with the key
-// bound as a positional "?" ("custom_fields->>?"), which the field-only
-// ObjectDescriptor interface cannot express. The group/AND-OR nesting mirrors
-// Compile exactly: groups combine with AND, predicates within a group per
-// group.Conj() (default OR); an empty filter yields an empty clause.
 func CompileOpportunity(filter crmfilter.Filter, desc OpportunityDescriptor, argStart int) (whereSQL string, args []interface{}, err error) {
-	_ = argStart // not used by the "?" dialect; retained per the Compile signature
+	_ = argStart
 
 	if err := filter.Validate(); err != nil {
 		return "", nil, err
@@ -170,11 +130,6 @@ func CompileOpportunity(filter crmfilter.Filter, desc OpportunityDescriptor, arg
 	}
 }
 
-// compileOpportunityCustom compiles a FieldCustom predicate into a jsonb-path
-// fragment on custom_fields. The key is bound as the first positional "?"
-// (custom_fields->>?), so no key text is ever inlined into the SQL (no injection
-// surface). Equality/contains/in operate on the text projection; range operators
-// cast the projection to numeric.
 func compileOpportunityCustom(p crmfilter.Predicate, desc OpportunityDescriptor) (string, []interface{}, error) {
 	key := strings.TrimSpace(p.Key)
 	if key == "" {

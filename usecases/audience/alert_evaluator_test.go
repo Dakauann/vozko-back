@@ -12,22 +12,16 @@ import (
 	"vozko/domain/shared"
 )
 
-// ---- fakes ----
-
 type fakeAlertRules struct {
-	mu    sync.Mutex
-	rules []*ca.AlertRule
-	// claimed counts successful claims, and claimLimit makes the fake behave
-	// like the real conditional write: only the first caller wins.
+	mu         sync.Mutex
+	rules      []*ca.AlertRule
 	claimed    int
 	claimLimit int
 	claimErr   error
 	failures   []string
 	listErr    error
-	// created and updated record the writes, so a test can assert that a
-	// refused rule never reached the repository at all.
-	created *ca.AlertRule
-	updated *ca.AlertRule
+	created    *ca.AlertRule
+	updated    *ca.AlertRule
 }
 
 func (f *fakeAlertRules) Create(_ context.Context, r *ca.AlertRule) error {
@@ -53,9 +47,6 @@ func (f *fakeAlertRules) ListByAccount(context.Context, string, ca.Source, strin
 	return f.rules, nil
 }
 
-// Mirrors the repository's query, source filter included: this channel's rules
-// plus the ones that watch every channel. It used to return everything, which
-// made a rule appear to fire on channels it does not name.
 func (f *fakeAlertRules) ListArmed(_ context.Context, source ca.Source, _ string) ([]*ca.AlertRule, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
@@ -109,8 +100,6 @@ func (f *fakeDispatcher) all() []ca.AlertDelivery {
 	return append([]ca.AlertDelivery(nil), f.sent...)
 }
 
-// ---- fixtures ----
-
 func severityRule() *ca.AlertRule {
 	r := &ca.AlertRule{
 		ID: "rule-1", WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: ref().AccountID,
@@ -124,9 +113,6 @@ func severityRule() *ca.AlertRule {
 func analysedAt(id string, severity int, at time.Time) *ca.Analysis {
 	return &ca.Analysis{
 		ID: id, WorkspaceID: "ws-1", Source: ca.SourceInstagram, AccountID: ref().AccountID,
-		// The kind is load-bearing now: a rule selects only rows of the subject
-		// its metric reads, so an unset kind matches nothing. Production rows
-		// always carry it, since it is part of the row's unique key.
 		SubjectKind: ca.SubjectKindComment,
 		ContainerID: ref().ContainerID, SubjectID: id,
 		AuthorExternalID: "ig-9", AuthorHandle: "fulano",
@@ -135,9 +121,6 @@ func analysedAt(id string, severity int, at time.Time) *ca.Analysis {
 	}
 }
 
-// The evaluator claims and hands off; the consumer sends. Wiring the consumer
-// as the inline Sender is the no-broker path, which is what these cases
-// exercise: the same assertions, one indirection later.
 func newAlertEvaluator(rules *fakeAlertRules, dispatcher *fakeDispatcher, repo ca.Repository) ca.AlertEvaluator {
 	return NewAlertEvaluator(AlertDeps{
 		Rules: rules, Repo: repo, Clock: fixedClock{now},
@@ -146,8 +129,6 @@ func newAlertEvaluator(rules *fakeAlertRules, dispatcher *fakeDispatcher, repo c
 		}),
 	})
 }
-
-// ---- per-comment metric ----
 
 func TestAlertFiresOnASevereComment(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}
@@ -167,8 +148,6 @@ func TestAlertFiresOnASevereComment(t *testing.T) {
 	if got.Channel != ca.AlertChannelUnofficial || got.Recipient != "5511999999999" {
 		t.Fatalf("delivery = %+v", got)
 	}
-	// The WORST comment of the batch, not an arbitrary one: reporting the
-	// milder comment would understate what actually happened.
 	if !strings.Contains(got.Text, "92") {
 		t.Fatalf("text should report the worst comment:\n%s", got.Text)
 	}
@@ -191,8 +170,6 @@ func TestAlertStaysQuietBelowTheThreshold(t *testing.T) {
 	}
 }
 
-// THE backfill guard. Importing three months of history classifies thousands
-// of old comments; none of them is news, and none may wake anybody up.
 func TestAlertIgnoresBackfilledComments(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}
 	dispatcher := &fakeDispatcher{}
@@ -212,7 +189,6 @@ func TestAlertIgnoresBackfilledComments(t *testing.T) {
 	}
 }
 
-// A disabled rule is never even listed, let alone claimed.
 func TestAlertSkipsDisabledRules(t *testing.T) {
 	rule := severityRule()
 	rule.Enabled = false
@@ -226,8 +202,6 @@ func TestAlertSkipsDisabledRules(t *testing.T) {
 	}
 }
 
-// A rule belongs to one workspace. A batch of another workspace must not touch
-// it, even for the same account id.
 func TestAlertIsWorkspaceScoped(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}
 	dispatcher := &fakeDispatcher{}
@@ -239,8 +213,6 @@ func TestAlertIsWorkspaceScoped(t *testing.T) {
 	}
 }
 
-// THE concurrency property. Two replicas evaluating the same batch both decide
-// the rule should fire; only the one that wins the claim sends.
 func TestAlertOnlyTheClaimWinnerSends(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}, claimLimit: 1}
 	dispatcher := &fakeDispatcher{}
@@ -262,8 +234,6 @@ func TestAlertOnlyTheClaimWinnerSends(t *testing.T) {
 	}
 }
 
-// A send that fails records why and does NOT release the claim: releasing it
-// would retry on the next batch, seconds later, against a channel that is down.
 func TestAlertFailureIsRecordedAndNotRetriedImmediately(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}
 	dispatcher := &fakeDispatcher{err: errors.New("whatsapp offline")}
@@ -279,7 +249,6 @@ func TestAlertFailureIsRecordedAndNotRetriedImmediately(t *testing.T) {
 	}
 }
 
-// Nothing about alerts may break a classification that was already paid for.
 func TestAlertSurvivesAFailingRuleStore(t *testing.T) {
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}, listErr: errors.New("db down")}
 	dispatcher := &fakeDispatcher{}
@@ -291,13 +260,10 @@ func TestAlertSurvivesAFailingRuleStore(t *testing.T) {
 	}
 }
 
-// A deployment with no channel bound evaluates nothing rather than panicking.
 func TestAlertWithoutADispatcherDoesNothing(t *testing.T) {
 	uc := NewAlertEvaluator(AlertDeps{Rules: &fakeAlertRules{rules: []*ca.AlertRule{severityRule()}}, Clock: fixedClock{now}})
 	uc.EvaluateBatch(context.Background(), ref(), "ws-1", []*ca.Analysis{analysedAt("c-1", 100, now)})
 }
-
-// ---- windowed metrics ----
 
 type statsRepo struct {
 	*fakeRepo
@@ -342,12 +308,9 @@ func TestAlertFiresOnAWindowedCount(t *testing.T) {
 	if !strings.Contains(sent[0].Text, "14") {
 		t.Fatalf("the measured value must be reported:\n%s", sent[0].Text)
 	}
-	// A windowed alert has no single comment behind it, so it must not quote
-	// one as though that comment crossed the threshold.
 	if strings.Contains(sent[0].Text, "ladrões") {
 		t.Fatalf("a windowed alert must not quote a comment:\n%s", sent[0].Text)
 	}
-	// The window has to reach the query, or the count is over all time.
 	if len(repo.seen) == 0 || repo.seen[0].From == nil {
 		t.Fatal("the window must be sent to the stats query")
 	}
@@ -356,7 +319,6 @@ func TestAlertFiresOnAWindowedCount(t *testing.T) {
 	}
 }
 
-// Several rules watching the same span ask the database once.
 func TestAlertSharesOneQueryPerWindow(t *testing.T) {
 	repo := &statsRepo{fakeRepo: newFakeRepo(), stats: &ca.Stats{Counters: ca.Counters{Analyzed: 40, StanceHostile: 14, SeverityHighCount: 9}}}
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{
@@ -372,8 +334,6 @@ func TestAlertSharesOneQueryPerWindow(t *testing.T) {
 	}
 }
 
-// A quiet window has no score to have fallen. Reporting zero would fire every
-// acceptance rule on a night with no comments at all.
 func TestAlertAcceptanceScoreIgnoresAnEmptyWindow(t *testing.T) {
 	repo := &statsRepo{fakeRepo: newFakeRepo(), stats: &ca.Stats{Counters: ca.Counters{Analyzed: 0}}}
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{windowedRule("r", ca.AlertMetricAcceptanceScore, 40, 60)}}
@@ -386,8 +346,6 @@ func TestAlertAcceptanceScoreIgnoresAnEmptyWindow(t *testing.T) {
 	}
 }
 
-// A stats query that fails is "unknown", not zero: zero would fire an
-// acceptance rule every time the database hiccupped.
 func TestAlertWindowQueryFailureDoesNotFire(t *testing.T) {
 	repo := &statsRepo{fakeRepo: newFakeRepo(), stats: &ca.Stats{}, err: errors.New("timeout")}
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{windowedRule("r", ca.AlertMetricAcceptanceScore, 40, 60)}}
@@ -414,9 +372,6 @@ func TestAlertAcceptanceScoreFiresOnACollapse(t *testing.T) {
 	}
 }
 
-// Backfilled comments do not stop a WINDOWED rule from working: the window
-// counts by the comment's own timestamp, so old rows fall outside it anyway,
-// and the batch itself is only the trigger to look.
 func TestAlertWindowedRuleStillEvaluatesOnAnOldBatch(t *testing.T) {
 	repo := &statsRepo{fakeRepo: newFakeRepo(), stats: &ca.Stats{Counters: ca.Counters{Analyzed: 40, StanceHostile: 30}}}
 	rules := &fakeAlertRules{rules: []*ca.AlertRule{windowedRule("r", ca.AlertMetricHostileCount, 10, 60)}}

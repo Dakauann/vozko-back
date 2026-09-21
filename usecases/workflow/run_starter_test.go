@@ -40,7 +40,7 @@ func TestWorkspaceSlot(t *testing.T) {
 	if !tryAcquireWorkspaceSlot(nil, "ws1") {
 		t.Fatal("nil state must fail-open to true")
 	}
-	releaseWorkspaceSlot(nil, "ws1") // must not panic
+	releaseWorkspaceSlot(nil, "ws1")
 
 	deny := &fakeSharedState{allow: false}
 	if tryAcquireWorkspaceSlot(deny, "ws1") {
@@ -63,7 +63,7 @@ func TestWorkspaceSlotFailOpenOnError(t *testing.T) {
 		t.Fatal("TryIncr error must fail-open to true")
 	}
 	failing.decrErr = errorString("redis down")
-	releaseWorkspaceSlot(failing, "ws1") // must not panic on Decr error
+	releaseWorkspaceSlot(failing, "ws1")
 }
 
 func TestExecuteLockedLogsEngineError(t *testing.T) {
@@ -74,7 +74,7 @@ func TestExecuteLockedLogsEngineError(t *testing.T) {
 
 	w := webhookWorkflow()
 	run := newTriggeredRun(w, w.Graph.TriggerNodeByType(workflow.TriggerWebhook), webhookEvent())
-	executeLocked(engine, run, w) // Update error surfaces from Execute; branch must be handled, not panic
+	executeLocked(engine, run, w)
 }
 
 func TestBuildWebhookVars(t *testing.T) {
@@ -127,7 +127,7 @@ func TestNewEngineRunLauncherDefaultDispatch(t *testing.T) {
 	launcher := NewEngineRunLauncher(engine, &fakeSharedState{allow: true})
 	w := webhookWorkflow()
 	run := newTriggeredRun(w, w.Graph.TriggerNodeByType(workflow.TriggerWebhook), webhookEvent())
-	launcher.Launch(run, w) // async goroutine; just assert it does not panic
+	launcher.Launch(run, w)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

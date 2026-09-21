@@ -139,11 +139,6 @@ func normalizeDepartmentPtr(value *string) *string {
 	return &trimmed
 }
 
-// ---- Response DTOs ----
-// Delivery-layer representations of the short-link responses. They mirror the
-// domain JSON field-for-field (same tags, nil-ness preserved) so the wire output
-// is unchanged, while keeping the API contract owned by this package.
-
 type shortLinkResponse struct {
 	ID               string     `json:"id" example:"c7f1e2a0-9b3d-4a1e-8f2c-1d2e3f4a5b6c"`
 	WorkspaceID      string     `json:"workspaceId"`
@@ -238,8 +233,6 @@ func newClickResponse(c *shortlink.Click) clickResponse {
 	}
 }
 
-// newClickResponses preserves nil-ness so an empty result stays consistent with
-// the previous domain-typed output.
 func newClickResponses(clicks []*shortlink.Click) []clickResponse {
 	if clicks == nil {
 		return nil

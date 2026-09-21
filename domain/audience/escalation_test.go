@@ -28,9 +28,6 @@ func escalatedComment() *Analysis {
 	}
 }
 
-// The whole point of the value object: whoever sends it, the recipient reads
-// the same thing. So the message must carry the four facts the operator needs
-// to act without opening the dashboard: who, what they said, where, how bad.
 func TestEscalationMessageCarriesWhoWhatWhereAndSeverity(t *testing.T) {
 	e := NewEscalation(escalatedComment(), "https://instagram.com/p/abc", "olha isso")
 	msg := e.Message()
@@ -48,8 +45,6 @@ func TestEscalationMessageCarriesWhoWhatWhereAndSeverity(t *testing.T) {
 	}
 }
 
-// An author with no handle still has to be identifiable, or the recipient
-// cannot tell who they are being warned about.
 func TestEscalationFallsBackToTheExternalID(t *testing.T) {
 	c := escalatedComment()
 	c.AuthorHandle = ""
@@ -57,14 +52,11 @@ func TestEscalationFallsBackToTheExternalID(t *testing.T) {
 	if !strings.Contains(msg, "ig-99") {
 		t.Fatalf("message must identify the author:\n%s", msg)
 	}
-	// No permalink: the post is still named, by the only id we have.
 	if !strings.Contains(msg, "media-1") {
 		t.Fatalf("message must name the post:\n%s", msg)
 	}
 }
 
-// A note is the operator's own words. Absent, it must not leave a dangling
-// heading or blank block in the message.
 func TestEscalationWithoutANoteHasNoEmptyBlock(t *testing.T) {
 	msg := NewEscalation(escalatedComment(), "https://instagram.com/p/abc", "   ").Message()
 	if strings.Contains(msg, "\n\n\n") {
@@ -72,9 +64,6 @@ func TestEscalationWithoutANoteHasNoEmptyBlock(t *testing.T) {
 	}
 }
 
-// A comment that was never classified has no stance and no severity. It can
-// still be forwarded (that is often exactly why someone forwards it), and the
-// message must not claim a severity of zero as if it were measured.
 func TestEscalationOfAnUnanalysedCommentStatesNoSeverity(t *testing.T) {
 	c := escalatedComment()
 	c.Status = StatusPending
@@ -114,9 +103,6 @@ func TestEscalationValidate(t *testing.T) {
 	}
 }
 
-// The note is the one part a person types, so it is the one part that can be
-// abused to make the message say something else entirely. It is trimmed and
-// bounded, and it always sits BELOW our own text, never above it.
 func TestEscalationNoteIsBoundedAndComesLast(t *testing.T) {
 	long := strings.Repeat("x", MaxEscalationNote+500)
 	msg := NewEscalation(escalatedComment(), "", long).Message()

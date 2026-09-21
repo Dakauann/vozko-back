@@ -8,17 +8,15 @@ import (
 )
 
 type WhatsAppCampaign struct {
-	ID              string  `gorm:"primaryKey;type:uuid"`
-	WorkspaceID     string  `gorm:"type:uuid;not null;index;index:idx_wa_campaign_ws_del,priority:1"`
-	DepartmentID    *string `gorm:"type:uuid;index"`
-	BusinessPhoneID *string `gorm:"type:uuid;index"`
-	Name            string  `gorm:"size:255;not null"`
-	Type            string  `gorm:"size:20;not null;default:'standard'"`
-	TemplateID      *string `gorm:"type:uuid;index"`
-	AgentID         *string `gorm:"type:uuid;index"`
-	WorkflowID      *string `gorm:"type:uuid;index"`
-	// PipelineID is the campaign's conversation funnel (null = workspace default).
-	// The board, AI stage classifier and initial-stage all resolve through it.
+	ID                   string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID          string         `gorm:"type:uuid;not null;index;index:idx_wa_campaign_ws_del,priority:1"`
+	DepartmentID         *string        `gorm:"type:uuid;index"`
+	BusinessPhoneID      *string        `gorm:"type:uuid;index"`
+	Name                 string         `gorm:"size:255;not null"`
+	Type                 string         `gorm:"size:20;not null;default:'standard'"`
+	TemplateID           *string        `gorm:"type:uuid;index"`
+	AgentID              *string        `gorm:"type:uuid;index"`
+	WorkflowID           *string        `gorm:"type:uuid;index"`
 	PipelineID           *string        `gorm:"type:uuid;index"`
 	EnableAgentResponses bool           `gorm:"not null;default:false"`
 	EnableWorkflow       bool           `gorm:"not null;default:false"`

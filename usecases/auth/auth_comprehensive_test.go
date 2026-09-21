@@ -219,7 +219,7 @@ func (r *testEmailVerifRepo) CountByEmailInWindow(email string, windowDuration t
 }
 
 type testPasswordResetRepo struct {
-	tokens    map[string]*auth.PasswordResetToken // keyed by token ID
+	tokens    map[string]*auth.PasswordResetToken
 	markErr   error
 	createErr error
 	nextID    int
@@ -229,7 +229,6 @@ func newTestPasswordResetRepo() *testPasswordResetRepo {
 	return &testPasswordResetRepo{tokens: make(map[string]*auth.PasswordResetToken)}
 }
 
-// seed inserts a token with a known ID for a user and returns it.
 func (r *testPasswordResetRepo) seed(t *auth.PasswordResetToken) *auth.PasswordResetToken {
 	if t.ID == "" {
 		r.nextID++
@@ -408,7 +407,6 @@ func (r *testSessionRepo) UpdateRefreshToken(sessionID string, expectedTokenHash
 	if !ok {
 		return 0, auth.ErrSessionNotFound
 	}
-	// Compare-and-swap: only rotate while the row still holds the expected hash.
 	if s.RefreshTokenHash != expectedTokenHash {
 		return 0, nil
 	}
@@ -794,15 +792,12 @@ func TestRequestPasswordReset_RepoCreateError(t *testing.T) {
 	}
 }
 
-// seedResetUser wires a user into both lookup maps so FindByEmail and FindByID
-// resolve it, mirroring how the real repo behaves.
 func seedResetUser(repo *testUserRepo, id, email, password string) {
 	u := &user.User{ID: id, Email: email, Password: password}
 	repo.users[email] = u
 	repo.byID[id] = u
 }
 
-// seedResetToken stores an account-bound token whose hash matches code.
 func seedResetToken(repo *testPasswordResetRepo, userID, email, code string, expiresAt time.Time) *auth.PasswordResetToken {
 	return repo.seed(&auth.PasswordResetToken{
 		TokenHash: hashSecretCode(code),
@@ -866,8 +861,6 @@ func TestResetPassword_WrongCode_IncrementsAndStaysInvalid(t *testing.T) {
 	}
 }
 
-// The core P0.1 fix: a low-entropy code can't be brute-forced because the token
-// is burned after maxResetAttempts wrong guesses, even if a later guess is right.
 func TestResetPassword_BruteForce_LocksAfterMaxAttempts(t *testing.T) {
 	userRepo := newTestUserRepo()
 	seedResetUser(userRepo, "u1", "user@test.com", "old-hash")
@@ -892,7 +885,6 @@ func TestResetPassword_BruteForce_LocksAfterMaxAttempts(t *testing.T) {
 		t.Fatal("token should be burned after reaching the attempt cap")
 	}
 
-	// Even the correct code must now fail: the token is spent.
 	err := uc.Execute(auth.ResetPasswordInput{
 		Email:       "user@test.com",
 		Token:       "123456",
@@ -906,8 +898,6 @@ func TestResetPassword_BruteForce_LocksAfterMaxAttempts(t *testing.T) {
 	}
 }
 
-// A code is only valid against the account it was issued for; presenting it for a
-// different user must fail (no cross-account brute force via a single code).
 func TestResetPassword_CodeBoundToAccount(t *testing.T) {
 	userRepo := newTestUserRepo()
 	seedResetUser(userRepo, "victim", "victim@test.com", "victim-hash")
@@ -918,8 +908,6 @@ func TestResetPassword_CodeBoundToAccount(t *testing.T) {
 
 	uc := NewResetPasswordUseCase(userRepo, resetRepo, &testPasswordService{}, newTestSessionRepo(), newTestSharedState())
 
-	// Attacker knows the victim's code but submits it under their own email: no
-	// active token for that account, so it's rejected.
 	err := uc.Execute(auth.ResetPasswordInput{
 		Email:       "attacker@test.com",
 		Token:       "123456",
@@ -1032,8 +1020,6 @@ func TestResetPassword_WeakPassword(t *testing.T) {
 	}
 }
 
-// A correct code with a weak password must not consume the token: the user can
-// retry with the same code once they pick a stronger password.
 func TestResetPassword_WeakPasswordDoesNotBurnToken(t *testing.T) {
 	userRepo := newTestUserRepo()
 	seedResetUser(userRepo, "u1", "user@test.com", "old-hash")
@@ -1051,7 +1037,6 @@ func TestResetPassword_WeakPasswordDoesNotBurnToken(t *testing.T) {
 		t.Errorf("a correct code must not count as a wrong attempt, got %d", resetRepo.tokens[tok.ID].Attempts)
 	}
 
-	// Retrying with the same code and a strong password now succeeds.
 	if err := uc.Execute(auth.ResetPasswordInput{Email: "user@test.com", Token: "123456", NewPassword: "StrongPass1"}); err != nil {
 		t.Fatalf("expected retry to succeed, got: %v", err)
 	}

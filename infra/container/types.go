@@ -168,27 +168,18 @@ import (
 )
 
 type Container struct {
-	cfg           config.Config
-	db            *gorm.DB
-	redisProvider *redisCache.RedisProvider
-	replicaID     string
-	repositories  *repositories
-	services      *services
-	useCases      *useCases
-	handlers      *handlers_
-	agentMCP      *handlers.AgentMCPBundle
-	// instagram is the Instagram channel, wired as one self-contained bundle so
-	// it can be disabled without threading nil checks through the god-structs.
-	instagram *instagramBundle
-	// audience is the comment-classification engine, wired as one
-	// bundle like the channels; nil or disabled means no routes and no jobs.
-	audience *audienceBundle
-	// telegram is the Telegram channel, wired as one self-contained bundle for
-	// the same reason: it can be enabled or skipped without threading a dozen
-	// fields through the god-structs.
-	telegram *telegramBundle
-	// unofficialWhatsApp is WhatsApp over a linked-device session, wired as one
-	// self-contained bundle like the other two channels.
+	cfg                         config.Config
+	db                          *gorm.DB
+	redisProvider               *redisCache.RedisProvider
+	replicaID                   string
+	repositories                *repositories
+	services                    *services
+	useCases                    *useCases
+	handlers                    *handlers_
+	agentMCP                    *handlers.AgentMCPBundle
+	instagram                   *instagramBundle
+	audience                    *audienceBundle
+	telegram                    *telegramBundle
 	unofficialWhatsApp          *unofficialWhatsAppBundle
 	unofficialWhatsAppCampaigns *unofficialWhatsAppCampaignBundle
 	mcpCollection               domainmcp.CollectionRepository
@@ -204,29 +195,25 @@ type Container struct {
 }
 
 type repositories struct {
-	// conversationAnalyses is the engine's read side for conversations: what the
-	// inbox, the export and the lead screen ask about a thread.
-	conversationAnalyses audience_domain.ConversationReader
-	product              product.ProductRepository
-	property             property.PropertyRepository
-	category             category.Repository
-	agent                agent_domain.Repository
-	lead                 lead_domain.Repository
-	conversation         conversation_domain.MessageRepository
-	user                 user.UserRepository
-	media                media.MediaRepository
-	cart                 cart.CartRepository
-	address              address.AddressRepository
-	cep                  cep.CEPRepository
-	order                order.OrderRepository
-	payment              payment.PaymentRepository
-	paymentSplit         payment.PaymentSplitRepository
-	ticket               ticket.Repository
-	shippingAccount      shipping.ProviderAccountRepository
-	insurance            insurance.InsuranceRepository
-	whatsappTemplate     whatsapp_template.Repository
-	// whatsappTemplateSend is the paid-send attempt ledger: the row that makes
-	// a retried request cost money once.
+	conversationAnalyses    audience_domain.ConversationReader
+	product                 product.ProductRepository
+	property                property.PropertyRepository
+	category                category.Repository
+	agent                   agent_domain.Repository
+	lead                    lead_domain.Repository
+	conversation            conversation_domain.MessageRepository
+	user                    user.UserRepository
+	media                   media.MediaRepository
+	cart                    cart.CartRepository
+	address                 address.AddressRepository
+	cep                     cep.CEPRepository
+	order                   order.OrderRepository
+	payment                 payment.PaymentRepository
+	paymentSplit            payment.PaymentSplitRepository
+	ticket                  ticket.Repository
+	shippingAccount         shipping.ProviderAccountRepository
+	insurance               insurance.InsuranceRepository
+	whatsappTemplate        whatsapp_template.Repository
 	whatsappTemplateSend    whatsapp_template.SendAttemptRepository
 	passwordResetToken      auth.PasswordResetTokenRepository
 	emailVerification       auth.EmailVerificationRepository
@@ -306,44 +293,34 @@ type repositories struct {
 }
 
 type services struct {
-	amqpPool        *queue.ConnectionPool
-	workflowWakePub messaging.MessageQueuePub
-	workflowWakeSub messaging.MessageQueueSub
-	crmTelemetryPub messaging.MessageQueuePub
-	crmTelemetrySub messaging.MessageQueueSub
-	// The alert send path. Claiming a rule stays on the analysis walk; the
-	// briefing and the outbound message leave through here, because that walk is
-	// sequential across every workspace.
-	audienceAlertPub      messaging.MessageQueuePub
-	audienceAlertSub      messaging.MessageQueueSub
-	crmTelemetryPublisher crm_telemetry.Publisher
-	crmTelemetryEmitter   *crm_telemetry_usecase.Emitter
-	notificationsQueuePub messaging.MessageQueuePub
-	notificationQueueSub  messaging.MessageQueueSub
-	wcQueuePub            messaging.MessageQueuePub
-	wcQueueSub            messaging.MessageQueueSub
-	// Inbox seeding gets its own exchange rather than riding the campaign one.
-	// A single lead import can enqueue two hundred batches, and that backlog has
-	// no business sharing a topology with the queue that actually sends
-	// messages to customers.
-	uwSeedQueuePub     messaging.MessageQueuePub
-	uwSeedQueueSub     messaging.MessageQueueSub
-	cache              cache.Cache
-	rateLimiterFactory cache.RateLimiterFactory
-	clusterRegistry    *cluster.Registry
-	metrics            *prometheus_service.PrometheusService
-	ai                 ai.Service
-	whatsapp           conversation_domain.WhatsAppClient
-	password           auth.PasswordService
-	tokenService       *security.JWTTokenService
-	readMeTokenService *security.JWTTokenService
-	fileStorage        media.FileStorage
-	ticketFileStorage  ticket.FileStorage
-	asaasService       asaas_service.AsaasServiceUseCases
-	// paymentGateway is the provider-agnostic port every charging use case depends on.
-	// Which adapter sits behind it is decided once, from cfg.PaymentProvider.
-	paymentGateway payment.Gateway
-	// mercadoPagoWebhookResolver is nil unless Mercado Pago is the active provider.
+	amqpPool                      *queue.ConnectionPool
+	workflowWakePub               messaging.MessageQueuePub
+	workflowWakeSub               messaging.MessageQueueSub
+	crmTelemetryPub               messaging.MessageQueuePub
+	crmTelemetrySub               messaging.MessageQueueSub
+	audienceAlertPub              messaging.MessageQueuePub
+	audienceAlertSub              messaging.MessageQueueSub
+	crmTelemetryPublisher         crm_telemetry.Publisher
+	crmTelemetryEmitter           *crm_telemetry_usecase.Emitter
+	notificationsQueuePub         messaging.MessageQueuePub
+	notificationQueueSub          messaging.MessageQueueSub
+	wcQueuePub                    messaging.MessageQueuePub
+	wcQueueSub                    messaging.MessageQueueSub
+	uwSeedQueuePub                messaging.MessageQueuePub
+	uwSeedQueueSub                messaging.MessageQueueSub
+	cache                         cache.Cache
+	rateLimiterFactory            cache.RateLimiterFactory
+	clusterRegistry               *cluster.Registry
+	metrics                       *prometheus_service.PrometheusService
+	ai                            ai.Service
+	whatsapp                      conversation_domain.WhatsAppClient
+	password                      auth.PasswordService
+	tokenService                  *security.JWTTokenService
+	readMeTokenService            *security.JWTTokenService
+	fileStorage                   media.FileStorage
+	ticketFileStorage             ticket.FileStorage
+	asaasService                  asaas_service.AsaasServiceUseCases
+	paymentGateway                payment.Gateway
 	mercadoPagoWebhookResolver    payment.WebhookResolver
 	emailService                  notification.EmailService
 	templateLoaderService         notification.TemplateLoader
@@ -367,77 +344,53 @@ type services struct {
 	whatsappCallRegistry          conversation_domain.WhatsAppCallRegistry
 	whatsappPublicMediaIP         string
 	campaignWorkspaceResolver     conversation_domain.CampaignWorkspaceResolver
-	// messageSender / conversationStatusService / conversationAuthImpl are the
-	// CONCRETE types (not the domain interfaces) because per-channel registration
-	// setters live on the implementations. Kept so a channel can register itself
-	// after the conversation stack is built.
-	messageSender             *conversation_usecase.MessageSenderService
-	conversationStatusService *conversation_usecase.ConversationStatusService
-	conversationAuthImpl      *conversation_infra.Authorizer
-	requestCallPermission     conversation_domain.RequestCallPermissionUseCase
-	conversationHistory       conversation_domain.HistoryProvider
-	// channelAdapters accumulates every channel's send-side adapter. The registry
-	// handed to consumers is rebuilt from this slice, so wiring a second channel
-	// adds to it instead of replacing the first channel's registry.
-	channelAdapters []conversation_domain.ChannelAdapter
-	// liveChannelAdapters is the same set behind a registry that can be handed
-	// out before every channel has registered. Consumers built during container
-	// startup take this instead of a snapshot, so a channel wired later is still
-	// visible to them.
-	liveChannelAdapters *conversation_domain.LiveAdapterRegistry
-	// conversationAutomation flips the per-conversation automation override on
-	// any channel. Each channel registers its own setter.
-	conversationAutomation *conversation_usecase.ConversationAutomationService
-	// channelAIReply lets an agent attend any adapter-backed channel.
-	channelAIReply    *conversation_usecase.ChannelAIReplyService
-	callAdmission     callsession_domain.CallAdmissionCoordinator
-	startOutboundCall callsession_domain.StartOutboundCallUseCase
-	endOutboundCall   callsession_domain.EndOutboundCallUseCase
-	callLifecycle     *callsession_usecase.OutboundCallLifecycleRunner
-	conversationHub   *wsdelivery.ConversationHub
-	// conversationStatusUpdater is the single choke point for finish/reopen/auto-close.
-	conversationStatusUpdater conversation_domain.ConversationStatusUpdater
-	// operatorSendFinalizer is the single definition of what happens after a
-	// human reply is delivered. Held because more than one send surface needs it:
-	// the WebSocket composer and the scheduled-message dispatcher.
-	operatorSendFinalizer conversation_domain.OperatorSendFinalizer
-	// operatorSend delivers a human-authored message on any channel. The live
-	// wrapper is what the hub is constructed with; initConversationSenders points
-	// it at the real use case once the message sender exists.
-	operatorSend      conversation_domain.OperatorSendUseCase
-	liveOperatorSend  *conversation_domain.LiveOperatorSend
-	inboxService      conversation_domain.InboxService
-	conversationAuth  conversation_domain.ConversationAuthorizer
-	assignmentService *ia_usecase.AssignmentService
-	// messageMarker owns read state and read receipts for every channel.
-	messageMarker       *conversation_usecase.MessageMarkerService
-	aiAttendanceService *aa_usecase.AsyncSessionService
-	ragEmbedding        rag_domain.EmbeddingService
-	ragTextChunker      rag_domain.TextChunker
-	ragDocProcessor     rag_domain.DocumentProcessor
-	ragTextExtractor    rag_domain.TextExtractor
-	ragQueuePub         messaging.MessageQueuePub
-	ragQueueSub         messaging.MessageQueueSub
-	shortlinkQueuePub   messaging.MessageQueuePub
-	shortlinkQueueSub   messaging.MessageQueueSub
-	webhookQueuePub     messaging.MessageQueuePub
-	webhookQueueSub     messaging.MessageQueueSub
-	billingQueuePub     messaging.MessageQueuePub
-	// Scheduled messages get their own exchange so a backlog of delayed sends
-	// cannot sit behind another feature's traffic.
-	scheduledMsgQueuePub messaging.MessageQueuePub
-	scheduledMsgQueueSub messaging.MessageQueueSub
-	billingQueueSub      messaging.MessageQueueSub
-	recordingQueuePub    messaging.MessageQueuePub
-	recordingQueueSub    messaging.MessageQueueSub
-	googleCalendar       calendar_domain.GoogleOAuthService
-	cachedBalanceChecker balance_domain.CachedBalanceChecker
+	messageSender                 *conversation_usecase.MessageSenderService
+	conversationStatusService     *conversation_usecase.ConversationStatusService
+	conversationAuthImpl          *conversation_infra.Authorizer
+	requestCallPermission         conversation_domain.RequestCallPermissionUseCase
+	conversationHistory           conversation_domain.HistoryProvider
+	channelAdapters               []conversation_domain.ChannelAdapter
+	liveChannelAdapters           *conversation_domain.LiveAdapterRegistry
+	conversationAutomation        *conversation_usecase.ConversationAutomationService
+	channelAIReply                *conversation_usecase.ChannelAIReplyService
+	callAdmission                 callsession_domain.CallAdmissionCoordinator
+	startOutboundCall             callsession_domain.StartOutboundCallUseCase
+	endOutboundCall               callsession_domain.EndOutboundCallUseCase
+	callLifecycle                 *callsession_usecase.OutboundCallLifecycleRunner
+	conversationHub               *wsdelivery.ConversationHub
+	conversationStatusUpdater     conversation_domain.ConversationStatusUpdater
+	operatorSendFinalizer         conversation_domain.OperatorSendFinalizer
+	operatorSend                  conversation_domain.OperatorSendUseCase
+	liveOperatorSend              *conversation_domain.LiveOperatorSend
+	inboxService                  conversation_domain.InboxService
+	conversationAuth              conversation_domain.ConversationAuthorizer
+	assignmentService             *ia_usecase.AssignmentService
+	messageMarker                 *conversation_usecase.MessageMarkerService
+	aiAttendanceService           *aa_usecase.AsyncSessionService
+	ragEmbedding                  rag_domain.EmbeddingService
+	ragTextChunker                rag_domain.TextChunker
+	ragDocProcessor               rag_domain.DocumentProcessor
+	ragTextExtractor              rag_domain.TextExtractor
+	ragQueuePub                   messaging.MessageQueuePub
+	ragQueueSub                   messaging.MessageQueueSub
+	shortlinkQueuePub             messaging.MessageQueuePub
+	shortlinkQueueSub             messaging.MessageQueueSub
+	webhookQueuePub               messaging.MessageQueuePub
+	webhookQueueSub               messaging.MessageQueueSub
+	billingQueuePub               messaging.MessageQueuePub
+	scheduledMsgQueuePub          messaging.MessageQueuePub
+	scheduledMsgQueueSub          messaging.MessageQueueSub
+	billingQueueSub               messaging.MessageQueueSub
+	recordingQueuePub             messaging.MessageQueuePub
+	recordingQueueSub             messaging.MessageQueueSub
+	googleCalendar                calendar_domain.GoogleOAuthService
+	cachedBalanceChecker          balance_domain.CachedBalanceChecker
+	serviceMessageBilling         conversation_domain.ServiceMessageBilling
 
 	callSessions                callsession_domain.CallSessionRegistry
 	calls                       callsession_domain.CallRegistry
 	callSessionUsernameResolver *callSessionUsernameResolver
 
-	// Live telephony concurrency board (Redis).
 	callSlotManager    *workspace_domain.CallSlotManager
 	telephonyBoardSync telephony_domain.BoardSync
 	telephonyBoardGet  telephony_domain.GetBoardUseCase
@@ -561,9 +514,6 @@ type useCases struct {
 	syncWhatsAppTemplate          whatsapp_template.SyncTemplateUseCase
 	createWhatsAppTemplate        whatsapp_template.CreateTemplateUseCase
 
-	// Official-WhatsApp cold outbound. The billed sender is the one paid
-	// single-target template sender; the reconcile sweep and the dialog above it
-	// both hold it.
 	billedTemplateSend        whatsapp_template.BilledTemplateSendUseCase
 	reconcileTemplateSends    whatsapp_template.ReconcileSendAttemptsUseCase
 	startOfficialConversation whatsapp_outreach_domain.StartOfficialConversationUseCase
@@ -819,9 +769,6 @@ type useCases struct {
 	shortLinkQR           shortlink_domain.GenerateQRUseCase
 	purgeShortLinkClicks  shortlink_domain.PurgeClicksUseCase
 
-	// Scheduled messages. The dispatch use case is held because three surfaces
-	// reach it: the HTTP layer (never directly), the queue consumer and the
-	// sweep job.
 	scheduleMessage          scheduled_message_domain.ScheduleUseCase
 	rescheduleMessage        scheduled_message_domain.RescheduleUseCase
 	cancelScheduledMessage   scheduled_message_domain.CancelUseCase
@@ -831,9 +778,6 @@ type useCases struct {
 	sweepScheduledMessages   scheduled_message_domain.SweepJob
 	purgeScheduledMessages   scheduled_message_domain.PurgeJob
 
-	// Lead memories. The list use case is also held by the agentturn assembler
-	// (prompt injection) and the create/update/delete trio by the AI tool, so
-	// the same write model serves operators and agents.
 	createLeadMemory lead_memory_domain.CreateUseCase
 	updateLeadMemory lead_memory_domain.UpdateUseCase
 	deleteLeadMemory lead_memory_domain.DeleteUseCase
@@ -846,10 +790,8 @@ type useCases struct {
 	consumeWhatsAppPhoneWebhook businessphone.ConsumePhoneWebhookUseCase
 	consumeWhatsAppTplWebhook   whatsapp_template.ConsumeTemplateWebhookUseCase
 	consumeCoexistenceWebhook   coexistence_domain.ConsumeCoexistenceWebhookUseCase
-	// Exactly one of these is non-nil, matching cfg.PaymentProvider: starting a consumer
-	// for an unconfigured provider would subscribe to a queue nothing ever feeds.
-	consumeAsaasWebhook       payment.ConsumePaymentWebhookUseCase
-	consumeMercadoPagoWebhook payment.ConsumePaymentWebhookUseCase
+	consumeAsaasWebhook         payment.ConsumePaymentWebhookUseCase
+	consumeMercadoPagoWebhook   payment.ConsumePaymentWebhookUseCase
 
 	listBillingRecords call_billing_domain.ListBillingRecordsUseCase
 
@@ -946,21 +888,19 @@ type useCases struct {
 }
 
 type handlers_ struct {
-	product  *handlers.ProductHandler
-	property *handlers.PropertyHandler
-	category *handlers.CategoryHandler
-	agent    *handlers.AgentHandler
-	aichat   *handlers.AIChatHandler
-	auth     *authhttp.AuthHandler
-	user     *userhttp.UserHandler
-	media    *mediashttp.MediasHandler
-	cart     *handlers.CartHandler
-	address  *handlers.AddressHandler
-	order    *handlers.OrderHandler
-	cep      *cephttp.CEPHandler
-	webhook  *handlers.WebhookHandler
-	// mercadoPagoWebhook is nil unless Mercado Pago is the active provider; the route
-	// is then not mounted at all rather than answering 401 to every call.
+	product                 *handlers.ProductHandler
+	property                *handlers.PropertyHandler
+	category                *handlers.CategoryHandler
+	agent                   *handlers.AgentHandler
+	aichat                  *handlers.AIChatHandler
+	auth                    *authhttp.AuthHandler
+	user                    *userhttp.UserHandler
+	media                   *mediashttp.MediasHandler
+	cart                    *handlers.CartHandler
+	address                 *handlers.AddressHandler
+	order                   *handlers.OrderHandler
+	cep                     *cephttp.CEPHandler
+	webhook                 *handlers.WebhookHandler
 	mercadoPagoWebhook      *mercadopagohttp.WebhookHandler
 	readMe                  *readmehttp.Handler
 	paymentSplit            *paymentsplithttp.PaymentSplitHandler

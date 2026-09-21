@@ -11,8 +11,6 @@ import (
 	tgdomain "vozko/domain/telegram"
 )
 
-// asAPIError narrows an error to Telegram's structured form. Declared once here
-// so every usecase classifies failures the same way.
 func asAPIError(err error) (*tgdomain.APIError, bool) {
 	var apiErr *tgdomain.APIError
 	if errors.As(err, &apiErr) {
@@ -21,7 +19,6 @@ func asAPIError(err error) (*tgdomain.APIError, bool) {
 	return nil, false
 }
 
-// ListAccountsUseCase lists a workspace's connected bots.
 type ListAccountsUseCase struct {
 	accounts tgdomain.AccountRepository
 }
@@ -37,7 +34,6 @@ func (uc *ListAccountsUseCase) Execute(ctx context.Context, in tgdomain.ListAcco
 	return uc.accounts.ListByWorkspace(ctx, in)
 }
 
-// GetAccountUseCase reads one bot, scoped to the caller's workspace.
 type GetAccountUseCase struct {
 	accounts tgdomain.AccountRepository
 }
@@ -51,17 +47,12 @@ func (uc *GetAccountUseCase) Execute(ctx context.Context, workspaceID, accountID
 	if err != nil {
 		return nil, err
 	}
-	// Tenant scoping is enforced here rather than in the query so a mismatch is
-	// indistinguishable from "not found" to the caller.
 	if account.WorkspaceID != workspaceID {
 		return nil, tgdomain.ErrAccountNotFound
 	}
 	return account, nil
 }
 
-// UpdateAccountConfigInput carries the automation settings an operator may
-// change. Credentials are deliberately absent: rotating a token is a reconnect,
-// not a config edit.
 type UpdateAccountConfigInput struct {
 	DepartmentID         *string
 	AgentID              *string
@@ -74,7 +65,6 @@ type UpdateAccountConfigInput struct {
 	EnableAutoMemory     *bool
 }
 
-// UpdateAccountConfigUseCase edits a bot's automation configuration.
 type UpdateAccountConfigUseCase struct {
 	accounts tgdomain.AccountRepository
 }
@@ -92,9 +82,6 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, workspaceID, 
 		return nil, tgdomain.ErrAccountNotFound
 	}
 
-	// Every field is a pointer so "not supplied" is distinguishable from
-	// "cleared", otherwise a partial form submission would silently unset the
-	// agent.
 	if in.DepartmentID != nil {
 		account.DepartmentID = emptyToNil(in.DepartmentID)
 	}
@@ -141,7 +128,6 @@ func emptyToNil(v *string) *string {
 	return &trimmed
 }
 
-// DisconnectAccountUseCase removes a bot from a workspace.
 type DisconnectAccountUseCase struct {
 	accounts tgdomain.AccountRepository
 	api      tgdomain.BotAPI
@@ -160,10 +146,6 @@ func (uc *DisconnectAccountUseCase) Execute(ctx context.Context, workspaceID, ac
 		return tgdomain.ErrAccountNotFound
 	}
 
-	// Unregistering is best effort. If it fails the row still goes away, and the
-	// webhook handler answers 401 for an unknown account, so no traffic is
-	// accepted either way. Blocking the disconnect on a Telegram outage would
-	// leave the operator unable to remove a bot they no longer control.
 	if err := uc.api.DeleteWebhook(ctx, account.BotToken, false); err != nil {
 		log.Printf("[telegram] deleteWebhook failed for @%s during disconnect (continuing): %v",
 			account.BotUsername, err)
@@ -172,23 +154,10 @@ func (uc *DisconnectAccountUseCase) Execute(ctx context.Context, workspaceID, ac
 	return uc.accounts.Delete(ctx, accountID)
 }
 
-// ---------------------------------------------------------------- health
-
-// webhookHealthLead is how stale a probe may be before the cron re-runs it.
 const webhookHealthLead = time.Hour
 
-// pendingUpdateAlarm is the backlog at which an account is marked unhealthy.
-//
-// Deliberately low. Telegram discards undelivered updates after 24 hours and has
-// no history API, so a backlog is not a statistic, it is a countdown to
-// permanent message loss.
 const pendingUpdateAlarm = 20
 
-// CheckWebhookHealthUseCase probes every account's webhook.
-//
-// This is the channel's equivalent of Instagram's token-refresh cron, and it
-// matters for the same reason: it is the only thing standing between a silent
-// infrastructure change and a tenant quietly losing conversations.
 type CheckWebhookHealthUseCase struct {
 	accounts tgdomain.AccountRepository
 	api      tgdomain.BotAPI
@@ -211,8 +180,6 @@ func (uc *CheckWebhookHealthUseCase) Execute(ctx context.Context) error {
 
 	log.Printf("[telegram] probing webhook health for %d account(s)", len(accounts))
 	for _, account := range accounts {
-		// One tenant's failure must never abort the loop, the same isolation the
-		// Instagram refresh cron enforces.
 		uc.probe(ctx, account)
 	}
 	return nil
@@ -224,9 +191,6 @@ func (uc *CheckWebhookHealthUseCase) probe(ctx context.Context, account *tgdomai
 	info, err := uc.api.GetWebhookInfo(ctx, account.BotToken)
 	if err != nil {
 		if apiErr, ok := asAPIError(err); ok && apiErr.NeedsReconnect() {
-			// 401 is the only way a Telegram token dies: it was revoked in
-			// BotFather. Nothing recovers it but a new token, so the account is
-			// marked for reconnection rather than retried forever.
 			uc.transition(ctx, account, tgdomain.StatusTokenInvalid,
 				"the bot token was revoked in BotFather; reconnect with a new token")
 			return
@@ -263,8 +227,6 @@ func (uc *CheckWebhookHealthUseCase) probe(ctx context.Context, account *tgdomai
 		return
 	}
 
-	// Recovered: a previously failing webhook that now reports clean goes back to
-	// active without operator action.
 	if account.Status == tgdomain.StatusWebhookFailing {
 		uc.transition(ctx, account, tgdomain.StatusActive, "")
 	}
@@ -282,7 +244,6 @@ func (uc *CheckWebhookHealthUseCase) transition(ctx context.Context, account *tg
 	}
 }
 
-// PurgeProcessedEventsUseCase trims the durable dedup table.
 type PurgeProcessedEventsUseCase struct {
 	events    tgdomain.ProcessedEventRepository
 	retention time.Duration

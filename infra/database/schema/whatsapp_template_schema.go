@@ -39,17 +39,14 @@ func (t *WhatsAppTemplate) BeforeCreate(tx *gorm.DB) error {
 }
 
 type WhatsAppTemplateComponent struct {
-	Type       string                   `json:"type"`
-	Format     string                   `json:"format,omitempty"`
-	Text       string                   `json:"text,omitempty"`
-	Parameters []string                 `json:"parameters,omitempty"`
-	Buttons    []WhatsAppTemplateButton `json:"buttons,omitempty"`
-	Example    *WhatsAppTemplateExample `json:"example,omitempty"`
-	// Authentication templates. The components column is jsonb, so these are
-	// additive: a row written before they existed unmarshals with both nil,
-	// which is exactly "this is not an authentication template".
-	AddSecurityRecommendation *bool `json:"add_security_recommendation,omitempty"`
-	CodeExpirationMinutes     *int  `json:"code_expiration_minutes,omitempty"`
+	Type                      string                   `json:"type"`
+	Format                    string                   `json:"format,omitempty"`
+	Text                      string                   `json:"text,omitempty"`
+	Parameters                []string                 `json:"parameters,omitempty"`
+	Buttons                   []WhatsAppTemplateButton `json:"buttons,omitempty"`
+	Example                   *WhatsAppTemplateExample `json:"example,omitempty"`
+	AddSecurityRecommendation *bool                    `json:"add_security_recommendation,omitempty"`
+	CodeExpirationMinutes     *int                     `json:"code_expiration_minutes,omitempty"`
 }
 
 type WhatsAppTemplateButton struct {
@@ -58,9 +55,7 @@ type WhatsAppTemplateButton struct {
 	URL         string `json:"url,omitempty"`
 	PhoneNumber string `json:"phone_number,omitempty"`
 	Example     string `json:"example,omitempty"`
-	// OTPType is what makes a stored OTP button sendable: without it a reloaded
-	// template has a button of type OTP and no way to say which kind.
-	OTPType string `json:"otp_type,omitempty"`
+	OTPType     string `json:"otp_type,omitempty"`
 }
 
 type WhatsAppTemplateExample struct {

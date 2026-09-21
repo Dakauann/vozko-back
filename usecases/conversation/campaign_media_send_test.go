@@ -10,14 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// A campaign's attachment lives in the workspace media library, not in
-// conversation media.
-//
-// The send resolved it from the per-conversation store instead, where a library
-// id can never exist, so the first recipient of every media campaign failed with
-// "campaign send: media not found: conversation: media not found" and no
-// attachment was ever delivered on this channel.
-
 type campaignLibraryStub struct {
 	media.MediaRepository
 	row *media.Media
@@ -30,8 +22,6 @@ func (s *campaignLibraryStub) GetMediaByID(id string) (*media.Media, error) {
 	return s.row, s.err
 }
 
-// campaignConvMediaStub is the WRONG store for this lookup. GetByID fails the
-// test outright: consulting it at all is the bug.
 type campaignConvMediaStub struct {
 	conversation.ConversationMediaRepository
 	t       *testing.T
@@ -133,8 +123,6 @@ func TestCampaignMediaIsResolvedFromTheWorkspaceLibrary(t *testing.T) {
 	if req.URL != "https://cdn/promo.mp4" {
 		t.Errorf("URL = %q, the provider fetches this and it must be the library row's", req.URL)
 	}
-	// The library row carries no filename; the campaign spec does, and it is
-	// what a document renders as on the contact's device.
 	if req.FileName != "promo.mp4" {
 		t.Errorf("FileName = %q, want the spec's", req.FileName)
 	}
@@ -143,9 +131,6 @@ func TestCampaignMediaIsResolvedFromTheWorkspaceLibrary(t *testing.T) {
 	}
 }
 
-// conversation_messages.media_id resolves against conversation media, so writing
-// the library id onto the message points the CRM at a row that does not exist:
-// the contact gets the file and the operator sees a broken attachment.
 func TestCampaignMediaIsBridgedIntoTheConversationForTheTranscript(t *testing.T) {
 	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4"}}
 	svc, _, convMedia, msgs := newCampaignMediaSender(t, library)
@@ -177,8 +162,6 @@ func TestCampaignMediaIsBridgedIntoTheConversationForTheTranscript(t *testing.T)
 	}
 }
 
-// One bookkeeping failure must not cost a recipient: on a blast that would turn
-// a transient insert error into thousands of undelivered messages.
 func TestCampaignSendSurvivesAFailedTranscriptBridge(t *testing.T) {
 	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4"}}
 	svc, adapter, convMedia, msgs := newCampaignMediaSender(t, library)
@@ -195,9 +178,6 @@ func TestCampaignSendSurvivesAFailedTranscriptBridge(t *testing.T) {
 	}
 }
 
-// The create endpoint takes a media id straight from the client and never
-// validates it, so this is the only thing standing between a campaign and
-// another workspace's files.
 func TestCampaignMediaFromAnotherWorkspaceIsRefused(t *testing.T) {
 	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-OTHER", URL: "https://cdn/promo.mp4"}}
 	svc, adapter, _, _ := newCampaignMediaSender(t, library)
@@ -229,8 +209,6 @@ func TestCampaignMediaMissingFromTheLibraryIsRefused(t *testing.T) {
 	}
 }
 
-// Nothing about the text and menu payloads changed, and they must not start
-// depending on a library that only the media branch needs.
 func TestCampaignTextSendDoesNotTouchTheMediaLibrary(t *testing.T) {
 	library := &campaignLibraryStub{}
 	svc, adapter, convMedia, _ := newCampaignMediaSender(t, library)

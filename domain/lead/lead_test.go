@@ -35,7 +35,6 @@ func TestNormalizeRawNumber(t *testing.T) {
 		input string
 		want  string
 	}{
-		// SIP From headers: national number without country code → prepend 55.
 		{"inbound mobile no country code", "84994409624", "5584994409624"},
 		{"inbound landline no country code", "8433334444", "558433334444"},
 		{"already 55-prefixed 13", "5584994409624", "5584994409624"},

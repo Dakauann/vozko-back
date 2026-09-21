@@ -30,19 +30,13 @@ type JobRunner struct {
 	monitorLowBalance                  *balance_usecase.MonitorLowBalanceUseCase
 	renewCalendarChannels              calendar_domain.RenewExpiringChannelsUseCase
 	reconcileWhatsAppTemplates         whatsapp_template.ReconcileTemplatesUseCase
-	// Instagram jobs are registered with setters rather than through the
-	// constructor: the channel is optional, and threading two more positional
-	// arguments through a 17-arg constructor for an optional feature is not worth
-	// the churn. StartAll runs after the container has had a chance to set them.
-	// channelJobs holds the optional per-channel periodic jobs, appended by the
-	// Set*Jobs methods below.
-	channelJobs                   []channelJob
-	reconcileWhatsAppEntitlements businessphone.EntitlementReconciler
-	emitMonthlyInvoices           billing.EmitMonthlyInvoicesUseCase
-	cancelBillingSweep            billing.CancelSweepUseCase
-	vendorChannelReconciler       businessphone.VendorChannelReconciler
-	channelStatusReconciler       businessphone.ChannelStatusReconciler
-	purgeShortLinkClicks          shortlink_domain.PurgeClicksUseCase
+	channelJobs                        []channelJob
+	reconcileWhatsAppEntitlements      businessphone.EntitlementReconciler
+	emitMonthlyInvoices                billing.EmitMonthlyInvoicesUseCase
+	cancelBillingSweep                 billing.CancelSweepUseCase
+	vendorChannelReconciler            businessphone.VendorChannelReconciler
+	channelStatusReconciler            businessphone.ChannelStatusReconciler
+	purgeShortLinkClicks               shortlink_domain.PurgeClicksUseCase
 }
 
 func NewJobRunner(orderCleanupJob cron.OrderCleanupChecker, startScheduledWhatsappCampaignsJob wc_usecase.StartScheduleJob, shared cache.SharedState, analysisDebounceJob conversation.AnalysisDebounceJob, autoCloseJob conversation.AutoCloseJob, workflowManager workflow_domain.WorkflowManager, expireSubscriptions workspace_plan.ExpireSubscriptionsUseCase, remindExpiringSubscriptions workspace_plan.RemindExpiringSubscriptionsUseCase, monitorLowBalance *balance_usecase.MonitorLowBalanceUseCase, renewCalendarChannels calendar_domain.RenewExpiringChannelsUseCase, reconcileWhatsAppTemplates whatsapp_template.ReconcileTemplatesUseCase, reconcileWhatsAppEntitlements businessphone.EntitlementReconciler, emitMonthlyInvoices billing.EmitMonthlyInvoicesUseCase, cancelBillingSweep billing.CancelSweepUseCase, vendorChannelReconciler businessphone.VendorChannelReconciler, channelStatusReconciler businessphone.ChannelStatusReconciler, purgeShortLinkClicks shortlink_domain.PurgeClicksUseCase) *JobRunner {
@@ -67,52 +61,25 @@ func NewJobRunner(orderCleanupJob cron.OrderCleanupChecker, startScheduledWhatsa
 	}
 }
 
-// ctxJob is a context-aware periodic job. Newer usecases take a context, unlike
-// the older Execute() jobs above.
 type ctxJob interface {
 	Execute(ctx context.Context) error
 }
 
-// CtxJobFunc adapts a plain method to ctxJob.
-//
-// It exists because a use case can own more than one periodic sweep — the
-// unofficial WhatsApp health check runs a cheap session backstop and a slower
-// integrity pass over the same dependencies — and only one of them can be
-// called Execute. The alternative, a wrapper type per extra sweep, is
-// boilerplate that says nothing.
 type CtxJobFunc func(ctx context.Context) error
 
 func (f CtxJobFunc) Execute(ctx context.Context) error { return f(ctx) }
 
-// channelJobs are the optional per-channel periodic jobs.
-//
-// Every one of them is the same shape, a distributed lock, a ticker, a
-// context-aware Execute, so they are declared as data rather than as one
-// hand-written 25-line method each. That is what stopped Telegram's two jobs
-// from being a copy of Instagram's two.
 type channelJob struct {
 	name   string
 	period time.Duration
 	job    ctxJob
 }
 
-// SetInstagramJobs registers the Instagram periodic jobs. Safe to skip entirely:
-// nil jobs are not started.
 func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
-	// Instagram tokens last 60 days, cannot be refreshed in their first 24 hours,
-	// and die permanently if unused for 60 days, with no recovery except full
-	// re-auth. The usecase refreshes ~20 days ahead of expiry, so an hourly tick
-	// gives many chances to recover from a transient failure before a tenant is
-	// locked out.
 	r.addChannelJob("instagram_token_refresh", time.Hour, tokenRefresh)
 	r.addChannelJob("instagram_event_purge", 24*time.Hour, eventPurge)
 }
 
-// SetAudienceJobs registers the audience engine's jobs
-// (AUDIENCE_ANALYSIS_UNIFICATION_PLAN.md): the debounce flush
-// every 30s, the DB-only backstop every 5m, rollups and the author
-// projection hourly, retention daily, and the backfill drainer every minute.
-// nil jobs are skipped, so a deployment can leave the feature unwired.
 func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctxJob) {
 	r.addChannelJob("audience_flush", 30*time.Second, flush)
 	r.addChannelJob("audience_backstop", 5*time.Minute, backstop)
@@ -121,32 +88,11 @@ func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctx
 	r.addChannelJob("audience_backfill", time.Minute, backfill)
 }
 
-// SetTelegramJobs registers the Telegram periodic jobs.
 func (r *JobRunner) SetTelegramJobs(webhookHealth, eventPurge ctxJob) {
-	// Telegram has no token to refresh, a bot token never expires. What it has
-	// instead is a webhook that can start failing silently, and undelivered
-	// updates are DISCARDED after 24 hours with no history API to recover them.
-	// So the hourly job here is the data-loss alarm, not hygiene.
 	r.addChannelJob("telegram_webhook_health", time.Hour, webhookHealth)
 	r.addChannelJob("telegram_event_purge", 24*time.Hour, eventPurge)
 }
 
-// SetUnofficialWhatsAppJobs registers the linked-device WhatsApp periodic jobs.
-//
-// Three cadences, and the split is deliberate rather than cosmetic:
-//
-//   - Session health is a BACKSTOP, every 15 minutes. The provider pushes a
-//     `connection` event on every state change, so a dropped session is already
-//     known within seconds through the normal pipeline; this only covers the
-//     case where that pipeline is itself broken, and it skips any instance the
-//     webhook recently spoke for.
-//   - Integrity is hourly. It answers the two questions no event can — is our
-//     webhook still registered on the host, and is WhatsApp restricting this
-//     number — plus reads the host's short delivery-failure log. Three extra
-//     calls per instance, so it does not belong on the backstop's schedule.
-//   - Capacity reconciliation is daily: it corrects counter drift and names
-//     instances stranded on a host. Neither is urgent, and both sweep every
-//     configured host.
 func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, reconcileCapacity, purgeEvents ctxJob) {
 	r.addChannelJob("unofficial_whatsapp_session_health", 15*time.Minute, sessionHealth)
 	r.addChannelJob("unofficial_whatsapp_integrity", time.Hour, verifyIntegrity)
@@ -154,53 +100,18 @@ func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, re
 	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
 }
 
-// SetAssignmentJobs registers the roulette rescue sweep.
-//
-// One minute, because the shortest deadline an admin can set is one minute and
-// a rescue that fires five minutes late is a customer waiting five minutes
-// longer. The sweep is cheap when nothing is eligible: one indexed read over
-// workspace_configs, then nothing.
-//
-// It rides the channelJobs list, which by now is "optional periodic jobs
-// registered after construction" rather than anything channel-specific —
-// threading an eighteenth positional argument through NewJobRunner for it would
-// buy nothing, the same trade-off the Instagram setter already made.
 func (r *JobRunner) SetAssignmentJobs(rescue ctxJob) {
 	r.addChannelJob("assignment_rescue", time.Minute, rescue)
 }
 
-// SetUnofficialWhatsAppCampaignJobs registers the scheduled-start sweep.
-//
-// One minute, matching the official campaign's, because a campaign scheduled for
-// 09:00 that starts at 09:05 is a campaign an operator has to explain.
 func (r *JobRunner) SetUnofficialWhatsAppCampaignJobs(startScheduled ctxJob) {
 	r.addChannelJob("unofficial_whatsapp_campaign_scheduled_start", time.Minute, startScheduled)
 }
 
-// SetWhatsAppTemplateSendJobs registers the paid-send reconciliation sweep.
-//
-// Hourly, and the cadence is a money decision rather than a load one. The sweep
-// refunds sends that took a customer's balance and never reached a terminal
-// state — a crash between the debit and the provider call, or between the
-// provider's answer and our recording it. Every hour it does not run is an hour
-// somebody's money is held for a message that may not exist. Running it more
-// often would start refunding sends whose delivery webhook is merely late.
 func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
 	r.addChannelJob("whatsapp_template_send_reconcile", time.Hour, reconcile)
 }
 
-// SetScheduledMessageJobs registers the scheduled-message periodic jobs.
-//
-// Registration rather than construction, for the reason the channel jobs above
-// give: these are data (a name, a period, a ctxJob), and threading two more
-// positional arguments through a 17-argument constructor buys nothing. Neither
-// can arrive nil — the container validates both at construction and refuses to
-// boot without them.
-//
-//   - The sweep is the BACKSTOP that makes delivery correct without a broker: a
-//     lost delayed message, an outage during create, a consumer that was down.
-//     A minute is the worst-case lateness an operator would ever see.
-//   - The purge is hygiene on terminal rows only; daily is ample.
 func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {
 	r.addChannelJob("scheduled_message_sweep", time.Minute, sweep)
 	r.addChannelJob("scheduled_message_purge", 24*time.Hour, purge)
@@ -213,8 +124,6 @@ func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob)
 	r.channelJobs = append(r.channelJobs, channelJob{name: name, period: period, job: job})
 }
 
-// runChannelJob ticks one channel job under a distributed lock, so only one
-// replica runs it.
 func (r *JobRunner) runChannelJob(j channelJob) {
 	ticker := time.NewTicker(j.period)
 	defer ticker.Stop()
@@ -297,19 +206,11 @@ func (r *JobRunner) runReconcileWhatsAppTemplatesEvery15Minutes() {
 	}
 }
 
-// runReconcileChannelStatusEvery10Minutes syncs local dialog360 numbers with the
-// partner's actual channel state: backfilling metadata that lags channel_live (the
-// display number, WABA name) and SUSPENDING numbers whose channel was deactivated at
-// 360dialog/Meta (so a now-invalid API key is never used). One ListChannels per run,
-// so it never risks 360dialog's rate limit. Idempotent; a locked/missed tick self-heals.
 func (r *JobRunner) runReconcileChannelStatusEvery10Minutes() {
 	if r.channelStatusReconciler == nil {
 		return
 	}
 	period := 10 * time.Minute
-	// Run once shortly after startup so a fresh deploy backfills the number/metadata
-	// immediately instead of waiting a full period. The short delay lets the app settle
-	// (DB, redis, partner client) before the first partner API call.
 	time.Sleep(20 * time.Second)
 	r.reconcileChannelStatusOnce()
 
@@ -357,11 +258,6 @@ func (r *JobRunner) runReconcileWhatsAppEntitlementsEvery15Minutes() {
 	}
 }
 
-// runEmitMonthlyInvoicesHourly issues the unified monthly invoices during the emit window. It ticks
-// hourly (robust against deploy timing) but only acts on BRT days [EMIT_DAY, DUE_DAY): the invoice
-// anchor is the current month's due day, so emitting on or after it would bill next month's cycle weeks
-// early. The emit is idempotent per workspace/anchor, so the repeated in-window ticks are no-ops after
-// the first, and a tick missed to a deploy self-heals on the next hour.
 func (r *JobRunner) runEmitMonthlyInvoicesHourly() {
 	if r.emitMonthlyInvoices == nil {
 		return
@@ -389,9 +285,6 @@ func (r *JobRunner) runEmitMonthlyInvoicesHourly() {
 	}
 }
 
-// runCancelBillingSweepHourly registers the 360dialog cancellation for every workspace whose unified
-// invoice went unpaid through dunning. The use case self-gates to the cutoff day (a no-op before it),
-// so ticking hourly just makes the sweep robust and idempotent across the cutoff-to-month-end window.
 func (r *JobRunner) runCancelBillingSweepHourly() {
 	if r.cancelBillingSweep == nil {
 		return
@@ -415,10 +308,6 @@ func (r *JobRunner) runCancelBillingSweepHourly() {
 	}
 }
 
-// runVendorChannelReconcileDaily compares the platform's dialog360 channel state against the partner's actual
-// channel listing once a day, re-cancelling a channel still live at the vendor that the platform already
-// suspended (a lost cancellation) and alerting on an orphan. It is the financial backstop, so a daily
-// cadence is enough; it makes an external ListChannels call, so it is not run more often.
 func (r *JobRunner) runVendorChannelReconcileDaily() {
 	if r.vendorChannelReconciler == nil {
 		return
@@ -483,14 +372,11 @@ func (r *JobRunner) runAnalysisDebounceEveryMinute() {
 	}
 }
 
-// runConversationAutoCloseEvery5Minutes finishes idle open chats (system close).
-// Distributed lock so only one replica closes; batch capped inside the job.
 func (r *JobRunner) runConversationAutoCloseEvery5Minutes() {
 	if r.autoCloseJob == nil {
 		return
 	}
 	period := 5 * time.Minute
-	// Immediate first tick after boot (short delay so DB is ready).
 	time.Sleep(30 * time.Second)
 	if r.tryLock("conversation_auto_close", period) {
 		func() {

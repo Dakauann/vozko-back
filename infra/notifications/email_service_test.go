@@ -50,7 +50,6 @@ func TestParseRecipients(t *testing.T) {
 	}
 }
 
-// Without an API key the service must fail closed rather than panic.
 func TestSendEmailWithoutClient(t *testing.T) {
 	svc := NewEmailService(nil, "", "onboarding@resend.dev", "Vozko", 0)
 	if err := svc.SendEmail("a@x.com", "subject", "<p>body</p>"); err == nil {
@@ -80,15 +79,12 @@ func TestIsRetryableSendError(t *testing.T) {
 }
 
 func TestSendBackoff(t *testing.T) {
-	// Honour Retry-After when present and within cap.
 	if got := sendBackoff(1, &resend.RateLimitError{RetryAfter: "2"}); got != 2*time.Second {
 		t.Fatalf("retry-after backoff = %v, want 2s", got)
 	}
-	// Cap an excessive Retry-After.
 	if got := sendBackoff(1, &resend.RateLimitError{RetryAfter: "100"}); got != emailSendMaxBackoff {
 		t.Fatalf("capped retry-after = %v, want %v", got, emailSendMaxBackoff)
 	}
-	// Exponential growth for generic transient errors.
 	if got := sendBackoff(1, errors.New("boom")); got != emailSendBaseBackoff {
 		t.Fatalf("attempt 1 backoff = %v, want %v", got, emailSendBaseBackoff)
 	}

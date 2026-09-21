@@ -9,8 +9,6 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-// ---------------------------------------------------------------- reset
-
 type resetCampaignUseCase struct{ repos campaignRepos }
 
 func NewResetCampaignUseCase(campaigns uwc.Repository, entries uwc.EntryRepository) uwc.ResetCampaignUseCase {
@@ -25,8 +23,6 @@ func (uc *resetCampaignUseCase) PrepareReset(campaignID string) (*uwc.PrepareRes
 	if err != nil {
 		return nil, err
 	}
-	// Resetting a live campaign would return entries to PENDING underneath a
-	// consumer that is still sending them, producing duplicates.
 	if existing.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignResetNotAllowed
 	}
@@ -68,7 +64,6 @@ func (uc *resetCampaignUseCase) ConfirmReset(in uwc.ResetCampaignInput) (*uwc.Re
 	if err != nil {
 		return nil, fmt.Errorf("failed to reset entries: %w", err)
 	}
-	// The code is consumed, so a replayed confirmation cannot reset twice.
 	if err := uc.repos.campaigns.UpdateResetCode(in.CampaignID, ""); err != nil {
 		return nil, err
 	}
@@ -92,13 +87,6 @@ func (uc *resetCampaignUseCase) ConfirmReset(in uwc.ResetCampaignInput) (*uwc.Re
 	}, nil
 }
 
-// ---------------------------------------------------------------- clear history
-
-// ConversationWiper deletes the stored transcript for one conversation.
-//
-// Per-entry rather than a bulk method, because conversation.MessageRepository
-// already offers exactly this and a new bulk variant would be a second way to
-// do the same thing — with its own transaction semantics to get wrong.
 type ConversationWiper interface {
 	DeleteByEntry(entryID string, entryType shared.EntryType) error
 }
@@ -169,9 +157,6 @@ func (uc *clearHistoryUseCase) ConfirmClearHistory(in uwc.ClearHistoryInput) (*u
 	var deleted int64
 	if uc.wiper != nil {
 		for _, id := range ids {
-			// One failure does not abort the wipe: a partially cleared campaign
-			// is recoverable by running it again, while stopping halfway leaves
-			// the operator with no way to tell what was removed.
 			if err := uc.wiper.DeleteByEntry(id, shared.EntryTypeUnofficialWhatsApp); err != nil {
 				log.Printf("[unofficial-whatsapp-campaign] could not clear conversation %s: %v", id, err)
 				continue

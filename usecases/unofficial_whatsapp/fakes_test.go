@@ -10,18 +10,10 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// Hand-written fakes with XxxFn fields, matching the idiom the other channels'
-// suites use: a test overrides only the behaviour it is about, and everything
-// else keeps a sane default instead of nil-panicking.
-
-// ---------------------------------------------------------------- servers
-
 type fakeServerRepo struct {
 	mu sync.Mutex
 
-	servers map[string]*uw.Server
-	// claims and releases record capacity accounting so a test can assert that
-	// a failed provision gave its slot back.
+	servers  map[string]*uw.Server
 	claims   int
 	releases int
 
@@ -106,8 +98,6 @@ func (f *fakeServerRepo) RecordHealth(context.Context, string, *time.Time, strin
 	return nil
 }
 
-// ---------------------------------------------------------------- instances
-
 type fakeInstanceRepo struct {
 	mu sync.Mutex
 
@@ -119,8 +109,6 @@ type fakeInstanceRepo struct {
 	ListForHealthCheckFn func(before time.Time) ([]*uw.Instance, error)
 	ListConnectedFn      func() ([]*uw.Instance, error)
 
-	// Recorded writes, so a test can assert what was persisted rather than
-	// asserting on a returned value the caller could have fabricated.
 	statusWrites  []uw.Status
 	sessionWrites []uw.SessionUpdate
 	deleted       []string
@@ -213,15 +201,6 @@ func (f *fakeInstanceRepo) FindByProviderInstanceID(context.Context, string, str
 	return nil, uw.ErrInstanceNotFound
 }
 
-// ListByWorkspace filters by workspace and status, matching the real
-// repository's predicates.
-//
-// Deliberately returns the matches in an UNSTABLE order (map iteration). A
-// caller that needs a particular instance has to order the candidates itself,
-// which is the property TestSeedInboxPicksTheOldestConnectedInstance exists to
-// pin: the real listing is newest-first, so a fake that handed back a
-// convenient order would let "take the first row" pass here and change
-// behaviour in production the day a workspace connects a second number.
 func (f *fakeInstanceRepo) ListByWorkspace(_ context.Context, in uw.ListInstancesInput) (*shared.PaginatedResult[*uw.Instance], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -263,8 +242,6 @@ func (f *fakeInstanceRepo) ListConnected(context.Context, int) ([]*uw.Instance, 
 }
 func (f *fakeInstanceRepo) CountByServer(context.Context, string) (int, error) { return 0, nil }
 
-// CountByWorkspace counts every instance a workspace holds, connected or not:
-// the entitlement measures slots held, and a dead session still holds one.
 func (f *fakeInstanceRepo) CountByWorkspace(_ context.Context, workspaceID string) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -285,8 +262,6 @@ func (f *fakeInstanceRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------- provider
-
 type fakeProvider struct {
 	mu sync.Mutex
 
@@ -298,7 +273,6 @@ type fakeProvider struct {
 	DisconnectFn     func(ctx context.Context, ref uw.InstanceRef) error
 	DeleteInstanceFn func(ctx context.Context, ref uw.InstanceRef) error
 
-	// Call records, so a test can assert that a compensating action ran.
 	created         []uw.CreateInstanceInput
 	deletedTokens   []string
 	webhookSets     []uw.WebhookSubscription
@@ -387,8 +361,6 @@ func (f *fakeProvider) DisableBuiltInChatbot(context.Context, uw.InstanceRef) er
 
 var _ uw.ProviderAPI = (*fakeProvider)(nil)
 
-// errBoom is a generic transport failure for tests that only care that
-// something went wrong, not what.
 var errBoom = errors.New("boom")
 
 func healthyServer(id string, capacity, inUse int) *uw.Server {
@@ -398,8 +370,6 @@ func healthyServer(id string, capacity, inUse int) *uw.Server {
 		Capacity: capacity, InUse: inUse, Enabled: true,
 	}
 }
-
-// ---------------------------------------------------------------- messaging
 
 type fakeMessaging struct {
 	mu sync.Mutex
@@ -497,10 +467,6 @@ func (f *fakeMessaging) CheckNumbers(ctx context.Context, ref uw.InstanceRef, nu
 	return out, nil
 }
 
-// ChatDetails counts its calls, because how OFTEN it is reached is the thing
-// worth asserting: it is the channel's only profile read, and one per message
-// instead of one per week is the difference between an enriched inbox and a
-// number that looks automated to WhatsApp.
 func (f *fakeMessaging) ChatDetails(ctx context.Context, ref uw.InstanceRef, chatID string) (*uw.ChatProfile, error) {
 	f.mu.Lock()
 	f.chatDetails = append(f.chatDetails, chatID)
@@ -509,10 +475,6 @@ func (f *fakeMessaging) ChatDetails(ctx context.Context, ref uw.InstanceRef, cha
 	if fn != nil {
 		return fn(ctx, ref, chatID)
 	}
-	// No name, only a picture. That is the common real shape — most WhatsApp
-	// accounts have a picture and leave the profile name to the push name the
-	// message already carried — and a canned name here would mask whether a
-	// caller kept the right one.
 	return &uw.ChatProfile{
 		JID:        chatID,
 		PictureURL: "https://pps.whatsapp.net/avatar.jpg",
@@ -528,9 +490,6 @@ func (f *fakeMessaging) chatDetailCalls() []string {
 
 var _ uw.MessagingAPI = (*fakeMessaging)(nil)
 
-// ---------------------------------------------------------------- assets
-
-// fakeAssets stands in for the profile-picture download.
 type fakeAssets struct {
 	mu    sync.Mutex
 	urls  []string
@@ -560,8 +519,6 @@ func (f *fakeAssets) fetched() []string {
 
 var _ uw.RemoteAssetFetcher = (*fakeAssets)(nil)
 
-// fakeStorage records what was written, so a test can assert the stored avatar
-// is OURS rather than a link to the provider's short-lived CDN.
 type fakeStorage struct {
 	mu      sync.Mutex
 	uploads map[string][]byte
@@ -591,8 +548,6 @@ func (f *fakeStorage) keys() []string {
 	}
 	return out
 }
-
-// ---------------------------------------------------------------- groups
 
 type fakeGroupAPI struct {
 	mu sync.Mutex
@@ -672,7 +627,6 @@ func (f *fakeGroupAPI) LeaveGroup(_ context.Context, _ uw.InstanceRef, jid strin
 
 var _ uw.GroupAPI = (*fakeGroupAPI)(nil)
 
-// fakeGroupRepo is an in-memory group read model.
 type fakeGroupRepo struct {
 	mu     sync.Mutex
 	groups map[string]*uw.Group
@@ -761,8 +715,6 @@ func (f *fakeGroupRepo) Delete(_ context.Context, id string) error {
 
 var _ uw.GroupRepository = (*fakeGroupRepo)(nil)
 
-// ---------------------------------------------------------------- contacts
-
 type fakeContactRepo struct {
 	mu       sync.Mutex
 	contacts map[string]*uw.Contact
@@ -788,9 +740,6 @@ func (f *fakeContactRepo) FindOrCreate(_ context.Context, in uw.FindOrCreateCont
 	contact := &uw.Contact{
 		ID: "contact-" + in.JID, WorkspaceID: in.WorkspaceID, InstanceID: in.InstanceID,
 		JID: in.JID, LID: in.LID, PhoneNumber: in.PhoneNumber, Name: in.Name,
-		// Mirrors the real repository, which derives it from the JID when the
-		// caller did not say. A fake that only honoured the flag would let a
-		// caller that forgot to set it pass here and fail in production.
 		IsGroup: in.IsGroup || uw.IsGroupJID(in.JID),
 	}
 	f.contacts[contact.ID] = contact
@@ -861,8 +810,6 @@ func (f *fakeContactRepo) LinkLead(_ context.Context, id, leadID string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------- conversations
-
 type fakeConversationRepo struct {
 	mu      sync.Mutex
 	convs   map[string]*uw.Conversation
@@ -877,12 +824,6 @@ func newFakeConversationRepo(convs ...*uw.Conversation) *fakeConversationRepo {
 	return &fakeConversationRepo{convs: byID}
 }
 
-// FindOrCreate keys on the CHAT, matching the real repository.
-//
-// The fake used to key on the contact, which is exactly the bug the production
-// repository had: a group message resolved its contact from the participant who
-// sent it, so every member who spoke minted another conversation for the same
-// chat. Keying the fake the old way would let that regression pass its tests.
 func (f *fakeConversationRepo) FindOrCreate(_ context.Context, in uw.FindOrCreateConversationInput) (*uw.Conversation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

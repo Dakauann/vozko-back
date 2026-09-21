@@ -61,10 +61,6 @@ func (uc *purchaseAddonUseCase) Execute(workspaceID string, input workspace_addo
 
 	isNew := existing == nil
 
-	// A newly added monthly channel is charged a proration for the partial period from now to its first
-	// billing anchor (capped at one month) and co-terms to that anchor; annual addons and quantity
-	// top-ups of an existing addon keep the full-period behavior. billing.ActivationPeriod is the same
-	// function the purchase preview calls, so the amount shown before buying always equals what is charged.
 	amount, periodEnd := billing.ActivationPeriod(now, billing.DefaultEmitDay, billing.DefaultDueDay, cycle.PeriodMonths(), isNew, unitPrice*int64(qty))
 	cost, _ := billing.ActivationPeriod(now, billing.DefaultEmitDay, billing.DefaultDueDay, cycle.PeriodMonths(), isNew, unitCost*int64(qty))
 
@@ -120,8 +116,6 @@ func (uc *purchaseAddonUseCase) Execute(workspaceID string, input workspace_addo
 	}
 
 	if uc.onChange != nil {
-		// Best-effort: a successful purchase that raised the entitlement may
-		// reactivate numbers suspended by a prior lapse. Never fail the purchase.
 		_ = uc.onChange.OnEntitlementIncreased(workspaceID, def.EntitlementKind)
 	}
 	return sub, nil

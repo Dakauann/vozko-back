@@ -11,14 +11,6 @@ import (
 	"vozko/domain/cache"
 )
 
-// The debounce hint store (plan §6.2): one Redis hash, one field per
-// container, value "v1|{workspaceID}|{firstSeen}|{lastSeen}|{count}".
-//
-// It mirrors the conversation analysis_subject.go stamp in shape and in
-// posture: the hint says WHEN to look, the database says WHAT is pending.
-// Stamp is a read-modify-write without a lock on purpose; a lost update
-// costs at most one backstop interval of latency and never a comment.
-
 const (
 	hintHashKey  = "comment_analysis:debounce:pending"
 	hintVersion  = "v1"
@@ -30,7 +22,6 @@ type redisScheduler struct {
 	state cache.SharedState
 }
 
-// NewScheduler builds the hint store over the shared Redis state.
 func NewScheduler(state cache.SharedState) ca.Scheduler {
 	return &redisScheduler{state: state}
 }
@@ -62,15 +53,11 @@ func (s *redisScheduler) Hints(_ context.Context) ([]ca.Hint, error) {
 	for field, raw := range all {
 		ref, err := ca.ParseContainerKey(field)
 		if err != nil {
-			// A field this code did not write. Drop it so it cannot wedge the
-			// hash forever; the backstop covers whatever it referred to.
 			_ = s.state.HDel(hintHashKey, field)
 			continue
 		}
 		h, err := parseHint(ref, raw)
 		if err != nil {
-			// Same reasoning: a corrupt hint is treated as due (zero times)
-			// rather than skipped, so the container is still looked at.
 			h = ca.Hint{Ref: ref}
 		}
 		out = append(out, h)

@@ -30,14 +30,10 @@ type ConversationHandler struct {
 	automationService     ConversationAutomationService
 }
 
-// ConversationAutomationService is the narrow port this handler needs. Declared
-// here rather than importing the usecase so the delivery layer keeps depending
-// on a contract instead of a concrete service.
 type ConversationAutomationService interface {
 	SetAutomation(ctx context.Context, entryID string, entryType shared.EntryType, enabled *bool) error
 }
 
-// SetAutomationService wires the channel-neutral automation toggle.
 func (h *ConversationHandler) SetAutomationService(s ConversationAutomationService) {
 	h.automationService = s
 }
@@ -455,9 +451,6 @@ func (h *ConversationHandler) SearchInbox(w http.ResponseWriter, r *http.Request
 		selectedDepartmentID = *filter.SelectedDepartmentID
 	}
 
-	// container_kind narrows campaign_id to a CAMPAIGN rather than the channel's
-	// primary container. An unrecognised value falls back to the primary rather
-	// than matching nothing, so a stale client cannot produce an empty inbox.
 	containerKind := conversationdomain.ContainerKind(strings.TrimSpace(q.Get("container_kind")))
 	if !containerKind.Valid() {
 		containerKind = conversationdomain.ContainerKindAccount
@@ -770,17 +763,10 @@ func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *h
 	})
 }
 
-// SetAutomationRequest toggles the per-conversation automation override.
-//
-// A pointer, not a bool: null CLEARS the override so the conversation inherits
-// the account or campaign switch again, which is a different state from an
-// explicit false.
 type SetAutomationRequest struct {
 	AutomationEnabled *bool `json:"automationEnabled"`
 }
 
-// SetAutomation flips automation for one conversation, on any channel.
-//
 // @Summary		Ativar/desativar automação de uma conversa
 // @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha.
 // @Tags			Conversas
@@ -824,8 +810,6 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 	if err := h.automationService.SetAutomation(
 		r.Context(), entryID, shared.EntryType(entryType), req.AutomationEnabled,
 	); err != nil {
-		// A channel with no setter registered is a configuration gap, not a
-		// missing conversation, say which so it is not mistaken for bad input.
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}

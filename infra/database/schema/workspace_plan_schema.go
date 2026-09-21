@@ -8,23 +8,18 @@ import (
 )
 
 type WorkspacePlanDefinition struct {
-	ID                             string `gorm:"primaryKey;type:uuid"`
-	Name                           string `gorm:"type:varchar(120);not null"`
-	Description                    string `gorm:"type:text;not null;default:''"`
-	BasePriceBRLCents              int64  `gorm:"not null;default:0"`
-	MaxCallChannels                int    `gorm:"not null"`
-	IncludedWhatsAppBusinessPhones int    `gorm:"not null;default:0"`
-	// MaxBranches (branches/SIP extensions) defaults to 1 so every plan grants one
-	// member extension out of the box; an admin raises it per plan. AutoMigrate
-	// backfills existing rows (see migrate.go, which also lifts legacy 0 rows to 1).
-	MaxBranches int `gorm:"not null;default:1"`
-	// NOTE: the max_hold_music_tracks column is deliberately orphaned. Custom hold
-	// music went out with SIP telephony, and AutoMigrate never DROPs.
-	IsGloballyVisible    bool       `gorm:"not null;default:true"`
-	ExclusiveAffiliateID *string    `gorm:"type:uuid;index"`
-	ArchivedAt           *time.Time `gorm:"index"`
-	CreatedAt            time.Time  `gorm:"autoCreateTime"`
-	UpdatedAt            time.Time  `gorm:"autoUpdateTime"`
+	ID                             string     `gorm:"primaryKey;type:uuid"`
+	Name                           string     `gorm:"type:varchar(120);not null"`
+	Description                    string     `gorm:"type:text;not null;default:''"`
+	BasePriceBRLCents              int64      `gorm:"not null;default:0"`
+	MaxCallChannels                int        `gorm:"not null"`
+	IncludedWhatsAppBusinessPhones int        `gorm:"not null;default:0"`
+	MaxBranches                    int        `gorm:"not null;default:1"`
+	IsGloballyVisible              bool       `gorm:"not null;default:true"`
+	ExclusiveAffiliateID           *string    `gorm:"type:uuid;index"`
+	ArchivedAt                     *time.Time `gorm:"index"`
+	CreatedAt                      time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt                      time.Time  `gorm:"autoUpdateTime"`
 }
 
 func (WorkspacePlanDefinition) TableName() string { return "workspace_plan_definitions" }

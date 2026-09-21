@@ -33,18 +33,6 @@ func ConvertPCMToOGG(pcmData []byte, sampleRate int) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-// ConvertToOGGOpus re-encodes arbitrary audio into the ogg/opus a WhatsApp voice
-// note must be.
-//
-// Every channel needs this and none of them can skip it: WhatsApp voice notes
-// are opus, while the CRM's recorder hands us WAV (it records opus in the
-// browser and transcodes to WAV so the waveform and playback work everywhere).
-// Sending the WAV through unconverted is what "audio/wav is not accepted"
-// really meant — the file was never in a shape WhatsApp would take.
-//
-// The settings are voice settings, not music: 48kHz mono at 48kbps with the
-// voip profile and 20ms frames, which is what a phone produces and what keeps a
-// two-minute note small enough to send on a bad connection.
 func ConvertToOGGOpus(audioData []byte) ([]byte, error) {
 	cmd := exec.Command("ffmpeg",
 		"-hide_banner",

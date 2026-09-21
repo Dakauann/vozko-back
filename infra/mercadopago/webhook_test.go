@@ -16,8 +16,6 @@ import (
 
 const testSecret = "8f4b2c1d9e3a5f7b0c2d4e6f8a1b3c5d"
 
-// signManifest reproduces what Mercado Pago does, so the tests assert against an
-// independently built signature rather than against the implementation itself.
 func signManifest(secret, manifest string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(manifest))
@@ -47,8 +45,6 @@ func TestVerifySignature_ValidFullManifest(t *testing.T) {
 }
 
 func TestVerifySignature_ValidWithoutRequestID(t *testing.T) {
-	// Mercado Pago omits the request-id component entirely when the header is absent,
-	// rather than signing an empty value.
 	ts := time.Now().UnixMilli()
 	header := signatureHeader(testSecret, "1234567890", "", ts)
 
@@ -76,9 +72,6 @@ func TestVerifySignature_TimestampOnlyManifest(t *testing.T) {
 }
 
 func TestVerifySignature_AlphanumericIDAcceptedEitherCase(t *testing.T) {
-	// The docs say to lowercase an alphanumeric id; the official SDK hashes it
-	// verbatim. Both must verify, or a future non-numeric id would silently reject
-	// every webhook.
 	ts := time.Now().UnixMilli()
 
 	lowered := signatureHeader(testSecret, "abc-def", "req", ts)
@@ -101,8 +94,6 @@ func TestVerifySignature_RejectsWrongSecret(t *testing.T) {
 }
 
 func TestVerifySignature_RejectsTamperedDataID(t *testing.T) {
-	// The core forgery attempt: sign for a payment you own, then point the request at
-	// someone else's.
 	ts := time.Now().UnixMilli()
 	header := signatureHeader(testSecret, "1111111111", "req-abc", ts)
 
@@ -121,7 +112,6 @@ func TestVerifySignature_RejectsTamperedRequestID(t *testing.T) {
 func TestVerifySignature_RejectsTamperedTimestamp(t *testing.T) {
 	ts := time.Now().UnixMilli()
 	header := signatureHeader(testSecret, "1234567890", "req-abc", ts)
-	// Replace only the advertised ts, leaving the hash intact.
 	tampered := "ts=" + strconv.FormatInt(ts+1, 10) + header[len("ts="+strconv.FormatInt(ts, 10)):]
 
 	err := VerifySignature(tampered, "req-abc", "1234567890", testSecret, 0, time.Now())
@@ -132,8 +122,6 @@ func TestVerifySignature_FailsClosedWithoutSecret(t *testing.T) {
 	ts := time.Now().UnixMilli()
 	header := signatureHeader("", "1234567890", "req", ts)
 
-	// Even a signature that is internally consistent with an empty secret must be
-	// rejected: an unconfigured endpoint must never be an open one.
 	err := VerifySignature(header, "req", "1234567890", "", 0, time.Now())
 	assertSignatureReason(t, err, ReasonMissingSecret)
 }
@@ -169,7 +157,6 @@ func TestVerifySignature_MalformedHeaders(t *testing.T) {
 }
 
 func TestVerifySignature_IgnoresUnknownComponentsAndWhitespace(t *testing.T) {
-	// A future added component must not break verification of the v1 hash.
 	ts := time.Now().UnixMilli()
 	base := signatureHeader(testSecret, "1234567890", "req-abc", ts)
 	padded := " " + base + " , foo=bar "
@@ -180,8 +167,6 @@ func TestVerifySignature_IgnoresUnknownComponentsAndWhitespace(t *testing.T) {
 }
 
 func TestVerifySignature_ToleranceDisabledByDefaultAcceptsOldRetries(t *testing.T) {
-	// Mercado Pago retries for hours without re-signing. With tolerance off, a
-	// six-hour-old but authentic signature must still be accepted.
 	old := time.Now().Add(-6 * time.Hour).UnixMilli()
 	header := signatureHeader(testSecret, "1234567890", "req", old)
 
@@ -198,7 +183,6 @@ func TestVerifySignature_ToleranceRejectsOldWhenEnabled(t *testing.T) {
 	err := VerifySignature(header, "req", "1234567890", testSecret, 5*time.Minute, now)
 	assertSignatureReason(t, err, ReasonTimestampOutOfTolerance)
 
-	// Inside the window it passes.
 	fresh := now.Add(-time.Minute).UnixMilli()
 	freshHeader := signatureHeader(testSecret, "1234567890", "req", fresh)
 	if err := VerifySignature(freshHeader, "req", "1234567890", testSecret, 5*time.Minute, now); err != nil {
@@ -264,7 +248,6 @@ func TestParseNotification_ModernEnvelope(t *testing.T) {
 }
 
 func TestParseNotification_LegacyIPNQueryOnly(t *testing.T) {
-	// The legacy IPN sends no body at all: "?topic=payment&id=123".
 	q := url.Values{"topic": {"payment"}, "id": {"1234567890"}}
 
 	n, err := ParseNotification(nil, q)
@@ -277,7 +260,6 @@ func TestParseNotification_LegacyIPNQueryOnly(t *testing.T) {
 	if !n.IsPayment() {
 		t.Fatalf("expected a payment notification, got %q", n.NormalizedType())
 	}
-	// The event id falls back to the resource id when the envelope carries none.
 	if notificationEventID(n) != "1234567890" {
 		t.Fatalf("event id fallback: got %q", notificationEventID(n))
 	}
@@ -376,8 +358,6 @@ func TestToWebhookEvent_MapsFetchedPayment(t *testing.T) {
 	if event.Payment.Value != 49.9 {
 		t.Fatalf("value: got %v", event.Payment.Value)
 	}
-	// BillingType feeds the confirmation email's "payment method" line, which formats
-	// the canonical spelling.
 	if event.Payment.BillingType != string(payment.MethodPix) {
 		t.Fatalf("billing type: got %q", event.Payment.BillingType)
 	}
@@ -392,15 +372,10 @@ func TestToWebhookEvent_NoActionableState(t *testing.T) {
 	}
 }
 
-// TestVerifySignatureAny_MatchesBodyIDWhenQueryAbsent reproduces the production
-// symptom: Mercado Pago signed over the id it put in the BODY, and sent no data.id
-// query parameter. Verifying against the query alone rejected an authentic
-// notification, silently losing a paid invoice.
 func TestVerifySignatureAny_MatchesBodyIDWhenQueryAbsent(t *testing.T) {
 	ts := time.Now().UnixMilli()
 	header := signatureHeader(testSecret, "1234567890", "req-abc", ts)
 
-	// Query id is empty; the body id is the one that was signed.
 	matched, err := VerifySignatureAny(header, "req-abc", []string{"", "1234567890"}, testSecret, 0, time.Now())
 	if err != nil {
 		t.Fatalf("expected the body id candidate to verify, got %v", err)
@@ -423,9 +398,6 @@ func TestVerifySignatureAny_ReportsWhichCandidateMatched(t *testing.T) {
 	}
 }
 
-// TestVerifySignatureAny_ExtraCandidatesDoNotWeakenTheCheck: offering more candidates
-// must never let an unsigned request through. Each candidate is a full HMAC over the
-// same secret, so without the secret nothing passes regardless of how many are tried.
 func TestVerifySignatureAny_ExtraCandidatesDoNotWeakenTheCheck(t *testing.T) {
 	ts := time.Now().UnixMilli()
 	forged := signatureHeader("attacker-secret", "1", "req", ts)

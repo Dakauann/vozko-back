@@ -2,15 +2,6 @@ package copilot_usecase
 
 import "vozko/brand"
 
-// systemPrompt is the copilot's base instruction. It follows the structure common
-// to strong agent prompts (identity → scope/limits → workflow → strategic tool
-// guidance → safety): it gives the model *when/why* to use tools without repeating
-// each tool's description (those live in the tool definitions), tells it to ask one
-// clarifying question when a required field is missing, to resolve real ids before
-// creating/updating, and that data-changing actions require explicit approval.
-//
-// The brand name is injected from the active white-label brand; the codebase
-// carries no brand literal.
 func systemPrompt() string {
 	return "# Identidade\nVocê é o copiloto da " + brand.Active().Name + `, um assistente operacional dentro do painel. Você ajuda o
 usuário a entender e gerenciar o workspace dele (agentes de IA; futuramente campanhas e

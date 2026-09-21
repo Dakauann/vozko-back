@@ -18,25 +18,14 @@ import (
 	tools_usecase "vozko/usecases/tools"
 )
 
-// simulationEntryID is the conversation identity a simulated turn presents to
-// the prompt. It is deliberately not seeded as __entry_id: entry-scoped tools
-// are sandboxed anyway, and a fake entry id reaching a real repository would
-// be worse than an absent one.
 const simulationEntryID = "simulacao"
 
 type simulateTurnUseCase struct {
 	agents    agent.Repository
 	assembler *agentturn.Assembler
-	// ai is the SIMULATION service: same provider, same tool loop, but wired
-	// with SimulatedToolService so every execution is intercepted. Handing this
-	// use case the production service would silently turn the simulator into a
-	// live channel, hence the dedicated constructor argument.
-	ai ai.Service
+	ai        ai.Service
 }
 
-// NewSimulateTurnUseCase wires the simulator. The assembler is the SAME shared
-// recipe production uses (that equivalence is the product: what you debug is
-// what ships); the AI service must be the sandboxed one.
 func NewSimulateTurnUseCase(agents agent.Repository, assembler *agentturn.Assembler, sandboxedAI ai.Service) (agent.SimulateTurnUseCase, error) {
 	missing := []string{}
 	if agents == nil {
@@ -70,7 +59,6 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 	if err != nil || agentRecord == nil {
 		return nil, agent.ErrAgentNotFound
 	}
-	// Authorization boundary: a foreign agent behaves like a missing one.
 	if agentRecord.WorkspaceID != in.WorkspaceID {
 		return nil, agent.ErrAgentNotFound
 	}
@@ -89,19 +77,11 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 	}
 
 	identity := shared_usecase.ConversationContext{
-		// Messaging, like every adapter-backed channel: the simulator stands in
-		// for "some messaging surface", not for WhatsApp specifically.
 		Channel:        shared_usecase.ChannelMessaging,
 		AgentName:      agentRecord.Name,
 		ConversationID: simulationEntryID,
 	}
 
-	// The same per-request context every production channel installs
-	// (handle_whatsapp_message_usecase, channel_ai_reply). Without it the
-	// simulator diverges from production in ways that look like tool bugs:
-	// search_knowledge_base falls back to default RAG settings instead of the
-	// agent's tuned ones, MCP execution cannot resolve its workspace, and the
-	// in-turn dedup that stops a looping model never engages.
 	ctx = agentctx.WithAgent(ctx, agentRecord)
 	ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 
@@ -109,10 +89,7 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 	seed := map[string]interface{}{
 		"__workspace_id": agentRecord.WorkspaceID,
 		"__agent_id":     agentRecord.ID,
-		// Honest flag for anything downstream that ever wants to know; today
-		// nothing reads it, because which tools may really run is decided at
-		// the service (SimulationRunsForReal), not by each tool.
-		"__simulation": true,
+		"__simulation":   true,
 	}
 	if leadID != "" {
 		seed["__lead_id"] = leadID
@@ -129,9 +106,6 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 		RAGQuery: message,
 		LeadID:   leadID,
 
-		// This session's remembered facts ride the caller-tail slot, rendered
-		// by the same renderer real memories use. With a lead selected, its
-		// real memories (assembler) and the session's (here) both appear.
 		PromptSuffix: uc.sessionMemoryBlock(agentRecord, in.SessionMemories),
 
 		History:     history,
@@ -160,11 +134,7 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 		sim := agent.SimulatedToolCall{
 			Name:      call.Name,
 			Arguments: call.Arguments,
-			// Re-asking the sandbox's own predicate, with the same inputs it
-			// was given, rather than plumbing a verdict back through
-			// tools.Service. It is a pure function of name and config, both
-			// fixed for the turn, so the answer here is the one it gave.
-			Stubbed: !tools_usecase.SimulationRunsForReal(call.Name, input.ToolConfigs[strings.ToLower(call.Name)]),
+			Stubbed:   !tools_usecase.SimulationRunsForReal(call.Name, input.ToolConfigs[strings.ToLower(call.Name)]),
 		}
 		if call.Result != nil {
 			sim.Result = stringifyResult(call.Result.Result)
@@ -189,13 +159,8 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 	}, nil
 }
 
-// sessionMemoryIDPattern keeps client-chosen memory ids honest: short, lowercase
-// alphanumeric (plus dash), so the prompt block renders clean stable prefixes.
 var sessionMemoryIDPattern = regexp.MustCompile(`^[a-z0-9-]{8,36}$`)
 
-// sessionMemoryBlock renders this session's remembered facts through the SAME
-// renderer real memories use, so the model sees an indistinguishable block and
-// the update/forget half of the tool keeps working against stable short ids.
 func (uc *simulateTurnUseCase) sessionMemoryBlock(agentRecord *agent.Agent, memories []agent.SessionMemory) string {
 	items := make([]leadmemory.MemoryView, 0, len(memories))
 	now := time.Now()

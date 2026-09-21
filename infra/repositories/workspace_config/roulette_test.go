@@ -34,9 +34,6 @@ func newConfigDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	return db, mock, sqlDB
 }
 
-// The rescue sweep drives off this list, so the WHERE clause is what makes the
-// sweep free for every workspace on the default mode — and what makes flipping
-// the mode back stop pending rescues with no cleanup pass.
 func TestListRoulettePolicies_FiltersToLastSeenWithRescueOn(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -56,9 +53,6 @@ func TestListRoulettePolicies_FiltersToLastSeenWithRescueOn(t *testing.T) {
 	}
 }
 
-// A row written before these columns existed, or edited by hand, must not be
-// able to hand the sweep a zero deadline that rescues every conversation
-// instantly.
 func TestListRoulettePolicies_ClampsOutOfRangeRows(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -96,8 +90,6 @@ func TestListRoulettePolicies_ClampsOutOfRangeRows(t *testing.T) {
 	}
 }
 
-// A workspace with no config row gets the defaults, which are the historical
-// behaviour. This is the guard that keeps the feature dark on upgrade.
 func TestGetByWorkspaceID_MissingRowDefaultsToTheOnlineMode(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()
@@ -117,9 +109,6 @@ func TestGetByWorkspaceID_MissingRowDefaultsToTheOnlineMode(t *testing.T) {
 	}
 }
 
-// Normalized on read, the same way the auto-close hours already are: an unknown
-// mode from hand-written SQL must resolve to the historical behaviour rather
-// than putting the roulette into a mode that does not exist.
 func TestGetByWorkspaceID_NormalizesOnRead(t *testing.T) {
 	db, mock, sqlDB := newConfigDB(t)
 	defer sqlDB.Close()

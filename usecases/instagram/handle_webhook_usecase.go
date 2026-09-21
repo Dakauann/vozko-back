@@ -20,74 +20,37 @@ import (
 	"vozko/domain/workflow"
 )
 
-// profileTTL is how long a cached contact profile is considered fresh.
-//
-// Graph reads cost against a budget that scales with the account's audience
-// activity (4800 x impressions per 24h), so a brand-new tenant has almost no
-// budget. Enrichment is therefore lazy and cached rather than per-message.
 const profileTTL = 7 * 24 * time.Hour
 
-// AssignmentService is the subset of the round-robin assignment service we need.
-// Declared here as a narrow port so the Instagram usecase does not depend on the
-// whole conversation usecase package.
-//
-// The third argument is the channel account id. For WhatsApp that is the business
-// phone; for Instagram it is the Instagram account, which is what keeps
-// round-robin pools separate per connected account.
 type AssignmentService interface {
 	EnsureAssignment(entryID, entryType, accountID string) string
 }
 
-// AIReplier lets an AI agent attend this channel's conversations. Declared here
-// as a narrow port for the same reason AssignmentService is: the Instagram
-// usecase depends on the contract, not on the conversation usecase package.
-//
-// A nil message with a nil error means "deliberately not answered", automation
-// off, loop suspected, empty body, or a closed provider window. That is a normal
-// outcome, not a failure.
 type AIReplier interface {
 	Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error)
 }
 
-// WorkflowTrigger fires workflow triggers for a conversation. Narrow port, same
-// reasoning as AIReplier: the workflow engine keys on (entry_id, entry_type) and
-// needs nothing Instagram-specific.
 type WorkflowTrigger interface {
 	Evaluate(event workflow.TriggerEvent)
 }
 
-// AnalysisScheduler stamps a conversation for deferred AI analysis.
-//
-// Instagram's EnableAnalysis switch existed on the account row from day one and
-// did nothing, because nothing ever scheduled the job for this channel. This is
-// the missing call.
 type AnalysisScheduler interface {
 	ScheduleAnalysis(entryID string, entryType shared.EntryType)
 }
 
-// CommentRuleEvaluator applies comment automation to one mirrored comment.
-// Narrow port for the same reason as the others.
 type CommentRuleEvaluator interface {
 	Execute(ctx context.Context, comment *igdomain.Comment)
 }
 
-// AudienceEnqueuer hands one mirrored comment to the comment-analysis
-// engine. Narrow port so this package never imports the engine; best effort,
-// because failing an inbound webhook over a queue hiccup would redeliver a
-// comment that was already stored.
 type AudienceEnqueuer interface {
 	Enqueue(ctx context.Context, comment *igdomain.Comment)
-	// Forget tombstones the comment's analysis when the mirror is deleted.
 	Forget(ctx context.Context, igCommentID string)
 }
 
-// MediaFetcher downloads an attachment from a signed CDN URL. Narrowed to one
-// method so the webhook usecase does not pull in the whole posts client.
 type MediaFetcher interface {
 	FetchMediaBytes(ctx context.Context, url string) (data []byte, contentType string, err error)
 }
 
-// HandleWebhookUseCase turns one normalized Instagram entry into CRM state.
 type HandleWebhookUseCase struct {
 	accounts      igdomain.AccountRepository
 	contacts      igdomain.ContactRepository
@@ -97,28 +60,19 @@ type HandleWebhookUseCase struct {
 	messaging     igdomain.MessagingService
 	mediaFetcher  MediaFetcher
 
-	history     conversation.MessageHistoryManager
-	messages    conversation.MessageRepository
-	convMedia   conversation.ConversationMediaRepository
-	fileStorage media.FileStorage
-	broadcaster conversation.EventBroadcaster
-	assignments AssignmentService
-	// aiReply is the channel-agnostic AI attendant. Optional: when unset the
-	// channel simply has no agent, exactly as before.
-	aiReply AIReplier
-	// workflows fires trigger events. Optional: unset means the channel runs no
-	// workflows.
-	workflows WorkflowTrigger
-	// commentRules applies comment automation. Optional.
+	history      conversation.MessageHistoryManager
+	messages     conversation.MessageRepository
+	convMedia    conversation.ConversationMediaRepository
+	fileStorage  media.FileStorage
+	broadcaster  conversation.EventBroadcaster
+	assignments  AssignmentService
+	aiReply      AIReplier
+	workflows    WorkflowTrigger
 	commentRules CommentRuleEvaluator
-	// analysis schedules deferred AI analysis. Optional.
-	analysis AnalysisScheduler
-	// audience enqueues comments for classification. Optional.
-	audience AudienceEnqueuer
+	analysis     AnalysisScheduler
+	audience     AudienceEnqueuer
 }
 
-// HandleWebhookDeps groups the dependencies so the constructor stays readable as
-// the usecase grows.
 type HandleWebhookDeps struct {
 	Accounts      igdomain.AccountRepository
 	Contacts      igdomain.ContactRepository
@@ -138,42 +92,34 @@ type HandleWebhookDeps struct {
 	Workflows    WorkflowTrigger
 	CommentRules CommentRuleEvaluator
 	Analysis     AnalysisScheduler
-	// Audience enqueues comments for the audience analysis engine. Optional.
-	Audience AudienceEnqueuer
+	Audience     AudienceEnqueuer
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 	return &HandleWebhookUseCase{
-		accounts:        d.Accounts,
-		contacts:        d.Contacts,
-		conversations:   d.Conversations,
-		comments:        d.Comments,
-		mediaRepo:       d.Media,
-		messaging:       d.Messaging,
-		mediaFetcher:    d.MediaFetcher,
-		history:         d.History,
-		messages:        d.Messages,
-		convMedia:       d.ConvMedia,
-		fileStorage:     d.FileStorage,
-		broadcaster:     d.Broadcaster,
-		assignments:     d.Assignments,
-		aiReply:         d.AIReply,
-		workflows:       d.Workflows,
-		commentRules:    d.CommentRules,
-		analysis:        d.Analysis,
-		audience:        d.Audience,
+		accounts:      d.Accounts,
+		contacts:      d.Contacts,
+		conversations: d.Conversations,
+		comments:      d.Comments,
+		mediaRepo:     d.Media,
+		messaging:     d.Messaging,
+		mediaFetcher:  d.MediaFetcher,
+		history:       d.History,
+		messages:      d.Messages,
+		convMedia:     d.ConvMedia,
+		fileStorage:   d.FileStorage,
+		broadcaster:   d.Broadcaster,
+		assignments:   d.Assignments,
+		aiReply:       d.AIReply,
+		workflows:     d.Workflows,
+		commentRules:  d.CommentRules,
+		analysis:      d.Analysis,
+		audience:      d.Audience,
 	}
 }
 
-// ErrUnknownAccount means the event addresses an account we do not serve. The
-// consumer treats it as terminal: retrying can never make the account appear.
 var ErrUnknownAccount = errors.New("instagram: webhook for an unknown account")
 
-// Execute processes one entry envelope.
-//
-// Events are already sorted by their own timestamp by NormalizeEntry, because
-// Meta gives no ordering guarantee and directs implementers to order by the
-// webhook timestamp rather than arrival order.
 func (uc *HandleWebhookUseCase) Execute(ctx context.Context, env *igdomain.EntryEnvelope) error {
 	events := igdomain.NormalizeEntry(env)
 	if len(events) == 0 {
@@ -187,7 +133,6 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, env *igdomain.Entry
 	log.Printf("[instagram] entry account=%s normalized into %d event(s): %v",
 		env.Entry.ID, len(events), kinds)
 
-	// Every event in an entry belongs to one account, so it is resolved once.
 	account, err := uc.resolveAccount(ctx, events)
 	if err != nil {
 		log.Printf("[instagram] cannot resolve account for entry %s: %v", env.Entry.ID, err)
@@ -244,21 +189,15 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, account *igdoma
 	case igdomain.EventComment, igdomain.EventLiveComment:
 		return uc.handleComment(ctx, account, ev)
 	case igdomain.EventStandby:
-		// We do not own thread control, so the message is recorded for context
-		// but no automation or reply is triggered.
 		log.Printf("[instagram] standby event account=%s (thread owned by another app)", account.IGUserID)
 		return nil
 	case igdomain.EventUnknown:
-		// Three subscribable fields have no published payload shape, so the raw
-		// value is logged rather than guessed at.
 		log.Printf("[instagram] unhandled webhook field=%q account=%s raw=%s",
 			ev.RawField, account.IGUserID, truncateRaw(ev.RawValue, 512))
 		return nil
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------- messages
 
 func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	msg := ev.Message
@@ -277,8 +216,6 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	log.Printf("[instagram] inbound mid=%s account=@%s contact=%s conversation=%s",
 		msg.MID, account.Username, contact.IGSID, conv.ID)
 
-	// The customer clock is the anchor for the sliding 24h window, so it moves
-	// before anything that could fail.
 	if err := uc.conversations.RecordInbound(ctx, conv.ID, ev.Timestamp); err != nil {
 		return err
 	}
@@ -288,16 +225,10 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	msgType, metadata := classifyInbound(msg)
 	text := strings.TrimSpace(msg.Text)
 
-	// Attachments are an ARRAY and can hold several items in one message, so each
-	// is stored and recorded separately. `ephemeral` carries no payload at all.
 	stored := uc.storeAttachments(ctx, conv, msg)
 
-	// The contact is already loaded here, so naming the sender for the live
-	// broadcast is free; without it the CRM renders the raw IGSID until reload.
 	senderName, senderAvatar := contact.DisplayName(), contact.ProfilePictureURL
 
-	// A message with neither text nor storable media still needs a row so the
-	// operator sees that something arrived.
 	if text == "" && len(stored) == 0 {
 		if msgType == conversation.MessageTypeUserMessage {
 			msgType = conversation.MessageTypeUnsupported
@@ -332,8 +263,6 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	}
 
 	for i, item := range stored {
-		// Each attachment gets a distinct provider id suffix so the unique index
-		// on (entry_type, external_message_id) does not reject the second one.
 		providerID := msg.MID
 		if len(stored) > 1 || text != "" {
 			providerID = fmt.Sprintf("%s:att%d", msg.MID, i)
@@ -362,10 +291,6 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	return nil
 }
 
-// scheduleAnalysis stamps the conversation for deferred AI analysis.
-//
-// Gated on the account's own switches, exactly as the agent and workflows are,
-// so one toggle in the UI means one behaviour.
 func (uc *HandleWebhookUseCase) scheduleAnalysis(account *igdomain.Account, conv *igdomain.Conversation) {
 	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging || account.EnableAutoMemory) {
 		return
@@ -376,20 +301,6 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(account *igdomain.Account, conv
 	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeInstagram)
 }
 
-// fireWorkflowTriggers starts or advances workflows for this conversation.
-//
-// Gating matches the AI agent exactly, the account's workflow switch, overridden
-// per conversation by the automation toggle, so pausing automation on a
-// conversation silences BOTH the agent and its workflows. Otherwise an operator
-// who took over would still be interrupted by a workflow step.
-//
-// The trigger event itself is channel-neutral, so every node that keys on
-// (entry_id, entry_type) works here unchanged.
-// fireWorkflowTriggers evaluates workflow triggers for one inbound event.
-//
-// sel is non-nil only when the contact TAPPED a quick reply or a postback
-// button rather than typing. Without it a tap cannot reach the option's own
-// branch, AdvanceOnReply routes on the option id and falls back to no_match.
 func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	ctx context.Context,
 	account *igdomain.Account,
@@ -425,9 +336,6 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		Data:        data,
 	})
 
-	// trigger_first_message fires on the contact's first inbound message. The
-	// conversation's customer clock is set by RecordInbound before this runs, so
-	// "first" is derived from whether one had been recorded previously.
 	if uc.isFirstInboundMessage(ctx, conv) {
 		uc.workflows.Evaluate(workflow.TriggerEvent{
 			WorkspaceID: account.WorkspaceID,
@@ -439,37 +347,18 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	}
 }
 
-// isFirstInboundMessage reports whether the message just recorded is the first
-// one this contact has sent.
-//
-// It counts ALL of the contact's messages, not a page of recent history. A
-// windowed count is wrong in a way that only surfaces deep in a conversation:
-// once the agent has answered with several messages, the most recent rows are
-// mostly outbound, exactly one is inbound, and the check reports a "first
-// message" long after the first, starting a duplicate workflow run and
-// greeting the contact again.
 func (uc *HandleWebhookUseCase) isFirstInboundMessage(ctx context.Context, conv *igdomain.Conversation) bool {
 	if uc.messages == nil {
 		return false
 	}
-	// The message is already persisted, so exactly one means this is it.
 	count, err := uc.messages.CountInboundByEntry(conv.ID, shared.EntryTypeInstagram)
 	if err != nil {
-		// Fail closed: a spurious trigger is worse than a missed one here.
 		log.Printf("[instagram] could not count inbound messages for %s: %v", conv.ID, err)
 		return false
 	}
 	return count == 1
 }
 
-// maybeReplyWithAgent hands the message to the channel-agnostic AI service.
-//
-// The service owns every decision, automation gating, loop protection, the
-// outbound window, so this stays a hand-off rather than a second place where
-// "should the bot answer?" is implemented.
-//
-// Failures are logged, never returned: an AI problem must not fail the webhook
-// and trigger a redelivery of a message that was already stored.
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	ctx context.Context,
 	account *igdomain.Account,
@@ -480,8 +369,6 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	if uc.aiReply == nil || account.AgentID == nil {
 		return
 	}
-	// The contact's CRM bridge, when cross-channel identity established one.
-	// Nil keeps lead-scoped features (memory) inert for this conversation.
 	var leadID *string
 	if contact != nil {
 		leadID = contact.LeadID
@@ -500,12 +387,6 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	}
 }
 
-// handleEcho reconciles a message we sent.
-//
-// Our own outbound messages come back to us as an echo, so without a
-// read-before-insert every sent message would appear twice in the transcript.
-// The history manager already dedups on the provider id, so recording the echo
-// is safe and also covers messages sent from the Instagram app directly.
 func (uc *HandleWebhookUseCase) handleEcho(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	msg := ev.Message
 	if msg == nil {
@@ -531,8 +412,6 @@ func (uc *HandleWebhookUseCase) handleEcho(ctx context.Context, account *igdomai
 	})
 }
 
-// handleDeleted tombstones an unsent message rather than inserting a new row:
-// the tombstone arrives with the SAME mid as the original.
 func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Message == nil || uc.messages == nil {
 		return nil
@@ -551,7 +430,6 @@ func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *igdo
 	return nil
 }
 
-// handleEdited replaces the stored text for an edited DM.
 func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Edit == nil || uc.messages == nil {
 		return nil
@@ -575,10 +453,6 @@ func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *igdom
 	return nil
 }
 
-// handleReaction records a reaction against the target message.
-//
-// Instagram never echoes our own reactions, so only the contact's reactions
-// arrive here; ours are recorded locally at send time.
 func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Reaction == nil || uc.messages == nil {
 		return nil
@@ -591,8 +465,6 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igd
 		return err
 	}
 
-	// The reaction value is not a closed enum, the docs list different sets and
-	// allow "other", so the raw string and emoji are both stored verbatim.
 	payload := map[string]any{
 		"instagram_reaction_action": ev.Reaction.Action,
 		"instagram_reaction":        ev.Reaction.Reaction,
@@ -612,10 +484,6 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *igd
 	return nil
 }
 
-// handleRead marks our outbound message as read.
-//
-// Instagram sends a specific message id, NOT a watermark, so only that message
-// can be marked, "everything before T" cannot be inferred.
 func (uc *HandleWebhookUseCase) handleRead(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Read == nil || uc.messages == nil {
 		return nil
@@ -638,10 +506,6 @@ func (uc *HandleWebhookUseCase) handleRead(ctx context.Context, account *igdomai
 	return nil
 }
 
-// handlePostback records an icebreaker or CTA tap.
-//
-// The CRM keys off postback.payload, not the visible title, because the title is
-// display text that can change.
 func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Postback == nil {
 		return nil
@@ -673,9 +537,6 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 		return err
 	}
 
-	// A postback tap fired no workflow trigger at all before this: the run
-	// stayed parked at the prompt until it timed out, even though the contact
-	// had answered. The payload is the option id, exactly as for quick replies.
 	uc.fireWorkflowTriggers(ctx, account, conv, contact.IGSID, ev.Postback.Title, &workflow.OptionSelection{
 		ID:    ev.Postback.Payload,
 		Title: ev.Postback.Title,
@@ -684,12 +545,6 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 	return nil
 }
 
-// quickReplySelection lifts the tapped quick reply out of an inbound message.
-//
-// Instagram reports the tap as an ordinary message whose text is the button's
-// TITLE, with the payload tucked into message.quick_reply. Branching on the
-// title would break the moment an author reworded a label, so only the payload
-// is treated as the option id.
 func quickReplySelection(msg *igdomain.Message) *workflow.OptionSelection {
 	if msg == nil || msg.QuickReply == nil || msg.QuickReply.Payload == "" {
 		return nil
@@ -701,7 +556,6 @@ func quickReplySelection(msg *igdomain.Message) *workflow.OptionSelection {
 	}
 }
 
-// handleReferral stores ad/ig.me attribution on the conversation.
 func (uc *HandleWebhookUseCase) handleReferral(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	if ev.Referral == nil {
 		return nil
@@ -715,11 +569,6 @@ func (uc *HandleWebhookUseCase) handleReferral(ctx context.Context, account *igd
 	return nil
 }
 
-// ---------------------------------------------------------------- comments
-
-// handleComment mirrors a comment locally so the moderation queue is
-// push-driven. The Graph comments edge cannot be filtered by timestamp, so
-// webhooks are the only reliable incremental source.
 func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
 	cv := ev.Comment
 	if cv == nil || uc.comments == nil {
@@ -748,16 +597,12 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 		parent := cv.ParentID
 		record.ParentIGCommentID = &parent
 	}
-	// A comment authored by our own account arrives with our IGSID as the sender.
 	record.IsOurs = record.FromIGSID != "" && record.FromIGSID == account.IGUserID
 
 	if err := uc.comments.Upsert(ctx, record); err != nil {
 		return err
 	}
 
-	// Automation runs AFTER the mirror is written, so a rule's own public reply
-	// (which arrives back as another webhook) is evaluated against stored state
-	// rather than racing it.
 	if uc.commentRules != nil {
 		uc.commentRules.Execute(ctx, record)
 	}
@@ -767,21 +612,6 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 	return nil
 }
 
-// ---------------------------------------------------------------- helpers
-
-// messageByProviderID finds the message an edit, delete, reaction or read event
-// refers to, preferring this account's own conversation.
-//
-// The entry-scoped lookup is the correct one. A provider message id is unique
-// per conversation, not per platform: when both ends of a thread are accounts we
-// host, the same mid lives on two entries, and a channel-wide match could patch
-// the OTHER tenant's copy.
-//
-// It cannot always be used, though. These events name their SENDER as the
-// contact, so one the business itself raised — unsending its own message — hands
-// us the business id, and no contact resolves from it. Falling back to the
-// channel-wide lookup keeps those working exactly as they did rather than
-// silently skipping the tombstone.
 func (uc *HandleWebhookUseCase) messageByProviderID(
 	ctx context.Context,
 	account *igdomain.Account,
@@ -794,18 +624,6 @@ func (uc *HandleWebhookUseCase) messageByProviderID(
 	return uc.messages.GetByExternalMessageID(shared.EntryTypeInstagram, mid)
 }
 
-// findConversation resolves the conversation an event refers to WITHOUT creating
-// anything.
-//
-// resolveConversation's FindOrCreate is right when a contact is arriving; it is
-// wrong for an edit, a delete, a reaction or a read receipt, which name a
-// message that must already exist. A miss there has to stay a miss rather than
-// leave an empty conversation behind for a message we never held.
-//
-// It exists so those events can scope their message lookup to ONE entry. A
-// provider message id is unique per conversation, not per platform: when both
-// ends of a thread are accounts we host, the same id lives on two entries, and a
-// channel-wide lookup could patch the other tenant's copy.
 func (uc *HandleWebhookUseCase) findConversation(ctx context.Context, account *igdomain.Account, igsid string) (*igdomain.Conversation, error) {
 	if strings.TrimSpace(igsid) == "" {
 		return nil, igdomain.ErrConversationNotFound
@@ -832,18 +650,13 @@ func (uc *HandleWebhookUseCase) resolveConversation(ctx context.Context, account
 	return contact, conv, nil
 }
 
-// ensureAssignment hands the conversation to an operator. Assignment already
-// keys on (entry_id, entry_type), so it works for Instagram unchanged.
 func (uc *HandleWebhookUseCase) ensureAssignment(conv *igdomain.Conversation, account *igdomain.Account) {
 	if uc.assignments == nil {
 		return
 	}
-	// The account id takes the business-phone slot so each connected Instagram
-	// account keeps its own round-robin pool.
 	uc.assignments.EnsureAssignment(conv.ID, string(shared.EntryTypeInstagram), account.ID)
 }
 
-// historyInput is the per-message payload for the shared history manager.
 type historyInput struct {
 	MessageType       conversation.MessageType
 	ProviderMessageID string
@@ -856,15 +669,10 @@ type historyInput struct {
 	MediaURL          string
 	Metadata          json.RawMessage
 
-	// SenderName/SenderAvatar label the live broadcast, filled from the contact
-	// the inbound path already loaded so the hub does not re-read it.
 	SenderName   string
 	SenderAvatar string
 }
 
-// record persists and broadcasts through the SHARED history manager, so
-// Instagram reuses the same dedup, persistence and websocket fan-out as every
-// other channel instead of reimplementing them.
 func (uc *HandleWebhookUseCase) record(ctx context.Context, conv *igdomain.Conversation, direction conversation.MessageHistoryDirection, in historyInput) error {
 	if uc.history == nil {
 		return nil
@@ -895,17 +703,12 @@ func (uc *HandleWebhookUseCase) broadcastEntryUpdate(entryID string) {
 	uc.broadcaster.BroadcastEntryUpdate(entryID, string(shared.EntryTypeInstagram), nil)
 }
 
-// storedAttachment is a downloaded attachment persisted to object storage.
 type storedAttachment struct {
 	mediaID   string
 	mediaType conversation.MediaType
 	url       string
 }
 
-// storeAttachments downloads each attachment and persists it.
-//
-// The attachment URL is a short-lived signed CDN link, so it must be fetched
-// during processing and re-hosted; keeping the URL would leave a dead link.
 func (uc *HandleWebhookUseCase) storeAttachments(ctx context.Context, conv *igdomain.Conversation, msg *igdomain.Message) []storedAttachment {
 	if uc.fileStorage == nil || uc.mediaFetcher == nil || len(msg.Attachments) == 0 {
 		return nil
@@ -916,8 +719,6 @@ func (uc *HandleWebhookUseCase) storeAttachments(ctx context.Context, conv *igdo
 		if att == nil {
 			continue
 		}
-		// `ephemeral` (disappearing media) carries no payload at all, a naive
-		// dereference here would panic.
 		if att.Payload == nil || att.Payload.URL == "" {
 			continue
 		}
@@ -966,14 +767,12 @@ func (uc *HandleWebhookUseCase) storeAttachments(ctx context.Context, conv *igdo
 	return out
 }
 
-// enrichContact refreshes a stale contact profile.
 func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, account *igdomain.Account, contact *igdomain.Contact) {
 	if uc.messaging == nil || !contact.ProfileIsStale(time.Now().UTC(), profileTTL) {
 		return
 	}
 	profile, err := uc.messaging.GetContactProfile(ctx, account.AccessToken, contact.IGSID)
 	if err != nil {
-		// Profile enrichment is cosmetic; a failure must never drop a message.
 		log.Printf("[instagram] contact profile fetch failed igsid=%s: %v", contact.IGSID, err)
 		return
 	}
@@ -991,10 +790,6 @@ func (uc *HandleWebhookUseCase) enrichContact(ctx context.Context, account *igdo
 	}
 }
 
-// classifyInbound derives the CRM message type and the metadata to attach.
-//
-// reply_to is a UNION: a story object for a story reply, a mid for an inline
-// reply. Story mentions instead arrive as an attachment type.
 func classifyInbound(msg *igdomain.Message) (conversation.MessageType, json.RawMessage) {
 	meta := map[string]any{}
 	msgType := conversation.MessageTypeUserMessage
@@ -1029,7 +824,6 @@ func classifyInbound(msg *igdomain.Message) (conversation.MessageType, json.RawM
 				meta["instagram_shared_post_id"] = att.Payload.ID
 			}
 		case "ephemeral":
-			// Disappearing media has no URL and cannot be stored.
 			meta["instagram_ephemeral"] = true
 		}
 	}
@@ -1052,8 +846,6 @@ func classifyInbound(msg *igdomain.Message) (conversation.MessageType, json.RawM
 	return msgType, raw
 }
 
-// mediaMessageType keeps a story reply/mention classification when the message
-// also carries media, so the UI can still render the story context.
 func mediaMessageType(base conversation.MessageType, mediaType conversation.MediaType) conversation.MessageType {
 	switch base {
 	case conversation.MessageTypeStoryReply, conversation.MessageTypeStoryMention,
@@ -1079,9 +871,6 @@ func conversationMediaType(kind string) conversation.MediaType {
 	}
 }
 
-// unsupportedPlaceholder gives the operator something to see for a message we
-// cannot render. Note that gifs and stickers produce NO webhook at all, so they
-// never reach this path.
 func unsupportedPlaceholder(msg *igdomain.Message) string {
 	for _, att := range msg.Attachments {
 		if att != nil && att.Type == "ephemeral" {

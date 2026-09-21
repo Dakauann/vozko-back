@@ -64,8 +64,6 @@ func TestCreateDeduplicatesEquivalentContent(t *testing.T) {
 	uc, _ := NewCreateUseCase(repo, timeline)
 
 	first, _ := uc.Execute(ctx, createInput("Prefere boleto a PIX."))
-	// Same fact, different casing and spacing: must come back deduplicated,
-	// with no second row and no second event.
 	second, err := uc.Execute(ctx, createInput("  prefere  BOLETO a pix. "))
 	if err != nil {
 		t.Fatal(err)
@@ -98,12 +96,10 @@ func TestCreateResolvesDuplicateRace(t *testing.T) {
 	repo := newFakeRepo()
 	uc, _ := NewCreateUseCase(repo, nil)
 
-	// The probe misses but the insert collides (two writers racing): the use
-	// case must re-read and answer with the winner instead of erroring.
 	first, _ := uc.Execute(ctx, createInput("Prefere boleto."))
 	raced, err := uc.Execute(ctx, leadmemory.CreateInput{
 		WorkspaceID: "ws-1", LeadID: "lead-1",
-		Content:  "PREFERE   BOLETO.", // same norm; fake's Create rejects like the unique index
+		Content:  "PREFERE   BOLETO.",
 		Category: leadmemory.CategoryOther,
 		Actor:    humanActor(),
 	})
@@ -133,8 +129,6 @@ func TestUpdateByPrefixLastWriterWins(t *testing.T) {
 	if got.Content != "Orçamento aprovado de R$ 2.000." || got.Category != leadmemory.CategoryDeal {
 		t.Fatalf("update result = %+v", got)
 	}
-	// The correction belongs to the operator now; authorship history lives on
-	// the timeline, not the row.
 	if got.ActorKind != actor.KindHuman || got.ActorID != "user-1" {
 		t.Fatalf("last-writer attribution = %s/%s", got.ActorKind, got.ActorID)
 	}
@@ -169,15 +163,11 @@ func TestResolveRefGuards(t *testing.T) {
 		wantErr error
 	}{
 		{
-			// The authorization boundary: another workspace's id behaves like a
-			// missing row, never like a permission error.
 			name:    "foreign workspace is not found",
 			in:      leadmemory.UpdateInput{WorkspaceID: "ws-2", MemoryRef: created.Memory.ID, Content: "x", Actor: humanActor()},
 			wantErr: leadmemory.ErrNotFound,
 		},
 		{
-			// The tool always pins a lead; a full id of another lead's memory
-			// must not resolve through it.
 			name:    "full id of another lead is not found",
 			in:      leadmemory.UpdateInput{WorkspaceID: "ws-1", LeadID: "lead-2", MemoryRef: created.Memory.ID, Content: "x", Actor: humanActor()},
 			wantErr: leadmemory.ErrNotFound,
@@ -188,8 +178,6 @@ func TestResolveRefGuards(t *testing.T) {
 			wantErr: leadmemory.ErrNotFound,
 		},
 		{
-			// A prefix without a lead scope has no meaning: prefixes exist only
-			// inside one lead's prompt block.
 			name:    "prefix without lead is not found",
 			in:      leadmemory.UpdateInput{WorkspaceID: "ws-1", MemoryRef: created.Memory.ID[:leadmemory.MinIDPrefixLen], Content: "x", Actor: humanActor()},
 			wantErr: leadmemory.ErrNotFound,
@@ -234,7 +222,7 @@ func TestMutationsWithoutEntryStayOffTheTimeline(t *testing.T) {
 	uc, _ := NewCreateUseCase(repo, timeline)
 
 	in := createInput("Prefere boleto.")
-	in.SourceEntryID, in.SourceEntryType = nil, nil // lead-page edit: no conversation
+	in.SourceEntryID, in.SourceEntryType = nil, nil
 	if _, err := uc.Execute(ctx, in); err != nil {
 		t.Fatal(err)
 	}

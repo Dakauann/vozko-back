@@ -45,10 +45,6 @@ func newMetaCostUseCase() (*metaCostRepo, analytics_domain.GetMetaServiceMessage
 	return repo, NewGetMetaServiceMessageCostUseCase(repo)
 }
 
-// Meta bills per calendar month, so a request that names no period must land on
-// the month the operator is currently accruing cost in, not on a rolling
-// 30 days. A rolling window would straddle two Meta invoices and answer a
-// question nobody asked.
 func TestEmptyPeriodDefaultsToTheCurrentBillingMonth(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -69,8 +65,6 @@ func TestEmptyPeriodDefaultsToTheCurrentBillingMonth(t *testing.T) {
 	}
 }
 
-// A stated period is passed through untouched. The month default must not
-// quietly widen or trim a range the operator chose.
 func TestStatedPeriodIsPassedThrough(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -86,9 +80,6 @@ func TestStatedPeriodIsPassedThrough(t *testing.T) {
 	}
 }
 
-// A reversed range would make every count zero and read as "nobody sent
-// anything", which is the most dangerous wrong answer this page can give.
-// Swapping is safe and obvious; an error here would only strand the caller.
 func TestReversedPeriodIsSwappedRatherThanReturningNothing(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -105,8 +96,6 @@ func TestReversedPeriodIsSwappedRatherThanReturningNothing(t *testing.T) {
 	}
 }
 
-// An unknown provider must not widen the report to numbers somebody else pays
-// for, so it falls back to Meta rather than to "all".
 func TestUnknownProviderFallsBackToMeta(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -121,8 +110,6 @@ func TestUnknownProviderFallsBackToMeta(t *testing.T) {
 	}
 }
 
-// "All" is a decision, not an absent value, so it has to survive normalization
-// even though it is spelled with the empty string.
 func TestExplicitAllProviderSurvives(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -137,8 +124,6 @@ func TestExplicitAllProviderSurvives(t *testing.T) {
 	}
 }
 
-// The repository interpolates the sort field into SQL, so anything that is not
-// on the whitelist has to be replaced before it gets there, not escaped.
 func TestUnknownSortFallsBackToRatio(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -170,8 +155,6 @@ func TestKnownSortFieldsSurvive(t *testing.T) {
 	}
 }
 
-// Descending is the useful default: the page exists to surface the workspaces
-// sending most per send, and those sort to the top.
 func TestSortOrderDefaultsToDescending(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 
@@ -196,9 +179,6 @@ func TestAscendingSortOrderSurvives(t *testing.T) {
 	}
 }
 
-// The aggregate is expensive enough that an unbounded page size is a way to
-// take the database down from a query string. shared.NormalizePagination owns
-// the clamp; this pins that the usecase actually applies it.
 func TestPaginationIsClamped(t *testing.T) {
 	cases := []struct {
 		name             string
@@ -228,10 +208,6 @@ func TestPaginationIsClamped(t *testing.T) {
 	}
 }
 
-// Whether the counts are still an inference is the repository's to decide, from
-// how much of the period Meta has answered for. The usecase must not stamp it,
-// which it used to do unconditionally: the page then carried an "upper bound"
-// caveat forever, including after Meta had confirmed every message in it.
 func TestUseCaseDoesNotAssertTheInferredFlag(t *testing.T) {
 	repo, uc := newMetaCostUseCase()
 	repo.result = &analytics_domain.MetaServiceMessageCostReport{InferredOnly: false}
@@ -254,8 +230,6 @@ func TestRepositoryErrorPropagates(t *testing.T) {
 	}
 }
 
-// A repository that returns neither a report nor an error must not make the
-// usecase panic while stamping InferredOnly on it.
 func TestNilReportWithNoErrorDoesNotPanic(t *testing.T) {
 	repo := &metaCostRepo{result: nil, err: nil}
 	uc := NewGetMetaServiceMessageCostUseCase(repo)

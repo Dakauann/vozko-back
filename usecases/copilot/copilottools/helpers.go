@@ -30,8 +30,6 @@ func trimLower(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-// argStringList reads an array argument, tolerating the single string a model
-// sometimes sends when it means a one-element list.
 func argStringList(args map[string]interface{}, key string) []string {
 	switch v := args[key].(type) {
 	case []interface{}:
@@ -52,9 +50,6 @@ func argStringList(args map[string]interface{}, key string) []string {
 	return nil
 }
 
-// argToolBindings reads an array of {name, config} objects. Entries without a
-// name are dropped here rather than forwarded, so the use case's tool
-// validation reports on real requests only.
 func argToolBindings(args map[string]interface{}, key string) []toolBindingArg {
 	raw, ok := args[key].([]interface{})
 	if !ok {

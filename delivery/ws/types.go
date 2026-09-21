@@ -61,9 +61,6 @@ const (
 	WSEventConversationStatusUpdate       WSEventType = "conversation:conversation_status_update"
 	WSEventConversationStatusCountsUpdate WSEventType = "conversation:conversation_status_counts_update"
 
-	// The live comment feed (§7). Its own namespace, not conversation:, because
-	// it is not about a conversation entry and is scoped by a different
-	// permission.
 	WSEventAudienceAnalyzed WSEventType = "audience:analyzed"
 
 	WSEventStartCall WSEventType = "start_call"
@@ -82,8 +79,7 @@ const (
 	WSEventWaitingCallSlot WSEventType = "call:waiting_slot"
 
 	WSEventCallSessionPresence WSEventType = "call-session:presence"
-	// Supervisor live concurrency board (humans + AI seats + capacity).
-	WSEventTelephonyBoard WSEventType = "telephony:board"
+	WSEventTelephonyBoard      WSEventType = "telephony:board"
 )
 
 type WSIncomingMessage struct {
@@ -107,15 +103,13 @@ type WSConnection struct {
 	CampaignID           string
 	CampaignType         string
 	WhatsAppCampaignType string
-	// ContainerKind narrows CampaignID to a campaign rather than the channel's
-	// primary container. Empty is every channel's existing behaviour.
-	ContainerKind       string
-	CampaignWorkspaceID string
-	ViewMode            string
-	ConversationStatus  string
-	Done                chan struct{}
-	viewSeq             uint64
-	connectedAt         time.Time
+	ContainerKind        string
+	CampaignWorkspaceID  string
+	ViewMode             string
+	ConversationStatus   string
+	Done                 chan struct{}
+	viewSeq              uint64
+	connectedAt          time.Time
 }
 
 type SubscribePayload struct {
@@ -158,8 +152,6 @@ type SearchInboxPayload struct {
 	DateTo             string `json:"date_to,omitempty"`
 	ConversationStatus string `json:"conversation_status,omitempty"`
 
-	// User-facing "filter by responsible": a member id, or Unassigned for the
-	// no-responsible pool. Kept separate from the permission-scope AssignedUserID.
 	ResponsibleUserID     string `json:"responsible_user_id,omitempty"`
 	ResponsibleUnassigned bool   `json:"responsible_unassigned,omitempty"`
 
@@ -334,13 +326,7 @@ type AnalysisUpdatePayload struct {
 	EntryID   string      `json:"entry_id"`
 	EntryType string      `json:"entry_type"`
 	Analysis  interface{} `json:"analysis"`
-	// Pending says a NEW analysis is queued or running for this conversation.
-	//
-	// It travels beside Analysis rather than replacing it, because the two are
-	// independent: a conversation being re-analysed is pending AND still has
-	// last revision's verdict. A frame that carried only one of them would make
-	// the screen blink empty every time someone replied.
-	Pending bool `json:"pending"`
+	Pending   bool        `json:"pending"`
 }
 
 type UnreadCountPayload struct {
@@ -350,20 +336,18 @@ type UnreadCountPayload struct {
 }
 
 type SubscribedPayload struct {
-	EntryID           string                 `json:"entry_id"`
-	EntryType         string                 `json:"entry_type"`
-	LeadName          string                 `json:"lead_name,omitempty"`
-	LeadNumber        string                 `json:"lead_number,omitempty"`
-	LeadPicture       string                 `json:"lead_picture,omitempty"`
-	LeadMetadata      map[string]interface{} `json:"lead_metadata,omitempty"`
-	EntryVariables    []string               `json:"entry_variables,omitempty"`
-	UnreadCount       int64                  `json:"unread_count"`
-	AutomationEnabled bool                   `json:"automation_enabled"`
-	WindowOpen        bool                   `json:"window_open"`
-	WindowExpiresAt   *time.Time             `json:"window_expires_at,omitempty"`
-	// WindowClosedReason names WHY the composer is blocked, so the client says
-	// something true rather than inferring it from a missing expiry.
-	WindowClosedReason string `json:"window_closed_reason,omitempty"`
+	EntryID            string                 `json:"entry_id"`
+	EntryType          string                 `json:"entry_type"`
+	LeadName           string                 `json:"lead_name,omitempty"`
+	LeadNumber         string                 `json:"lead_number,omitempty"`
+	LeadPicture        string                 `json:"lead_picture,omitempty"`
+	LeadMetadata       map[string]interface{} `json:"lead_metadata,omitempty"`
+	EntryVariables     []string               `json:"entry_variables,omitempty"`
+	UnreadCount        int64                  `json:"unread_count"`
+	AutomationEnabled  bool                   `json:"automation_enabled"`
+	WindowOpen         bool                   `json:"window_open"`
+	WindowExpiresAt    *time.Time             `json:"window_expires_at,omitempty"`
+	WindowClosedReason string                 `json:"window_closed_reason,omitempty"`
 }
 
 type ErrorPayload struct {
@@ -432,14 +416,12 @@ type InboundCallActionPayload struct {
 }
 
 type CallSessionPresenceUser struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username,omitempty"`
-	Busy     bool   `json:"busy"`
-	OnCall   bool   `json:"on_call,omitempty"`
-	Ringing  bool   `json:"ringing,omitempty"`
-	// Endpoint kind the member currently holds. The panel shows a device badge
-	// from this; offline members are the workspace roster minus this list.
-	HasBrowser bool `json:"has_browser"`
+	UserID     string `json:"user_id"`
+	Username   string `json:"username,omitempty"`
+	Busy       bool   `json:"busy"`
+	OnCall     bool   `json:"on_call,omitempty"`
+	Ringing    bool   `json:"ringing,omitempty"`
+	HasBrowser bool   `json:"has_browser"`
 }
 
 type CallSessionPresencePayload struct {

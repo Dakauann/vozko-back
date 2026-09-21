@@ -205,17 +205,8 @@ func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*T
 	state := prepared.run.State
 	registry := prepared.registry
 
-	// Seed provided mocks up front so dependency satisfaction can recognise an
-	// already-mocked output (e.g. an AI response) and skip re-executing it.
 	applyMockedState(&state, input.MockedState)
 
-	// Satisfy NON-AI capture-variable dependencies, e.g. an HTTP node that
-	// captures an auth token into token_consulta_cadastro, by executing their
-	// producer node directly. Those are not "required mocks", so the mode gate
-	// below never runs them; without this, a reference like {{token[0].token}}
-	// resolves to nothing and the node fails (an empty Bearer header -> 401).
-	// Targets the specific producer instead of walking the whole graph, so it
-	// works even when the graph is strongly connected through an AI-agent hub.
 	uc.satisfyCaptureDeps(ctx, prepared.run, wf, node, registry, mockRootKeys(input.MockedState))
 
 	hasUserProvidedMocks := len(input.MockedState) > 0
@@ -390,9 +381,6 @@ func filterMocksForAIDeps(mocks []workflow.RequiredMock, g *workflow.Graph) []wo
 	return filtered
 }
 
-// mockRootKeys reduces the provided mock keys to their root variable names
-// (e.g. "ana_response.tool_args.cpf" -> "ana_response"), the granularity at which
-// a node's output is considered "already supplied by a mock".
 func mockRootKeys(mockedState map[string]interface{}) map[string]bool {
 	roots := make(map[string]bool, len(mockedState))
 	for k := range mockedState {
@@ -405,9 +393,6 @@ func mockRootKeys(mockedState map[string]interface{}) map[string]bool {
 	return roots
 }
 
-// nodeOutputMocked reports whether a node's captured output is already provided
-// by a mock, used to avoid re-executing it (notably AI agents, which are
-// expensive/nondeterministic and are meant to be mocked in a node test).
 func nodeOutputMocked(node *workflow.Node, mockRoots map[string]bool) bool {
 	if node == nil || len(mockRoots) == 0 {
 		return false
@@ -421,8 +406,6 @@ func nodeOutputMocked(node *workflow.Node, mockRoots map[string]bool) bool {
 	return false
 }
 
-// findCaptureProducer returns the node whose capture_variable/response_variable
-// equals varName, i.e. the node that produces that variable when executed.
 func findCaptureProducer(g *workflow.Graph, varName string) *workflow.Node {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
@@ -436,11 +419,6 @@ func findCaptureProducer(g *workflow.Graph, varName string) *workflow.Node {
 	return nil
 }
 
-// satisfyCaptureDeps walks a node's variable dependencies and, for every NON-AI
-// capture variable that is neither mocked nor already present in state, executes
-// the node that produces it (resolving that producer's own deps first). This is
-// how a node like s2_2 gets its upstream token: run s2_1 to populate
-// token_consulta_cadastro. AI-produced outputs are left to the mock layer.
 func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, target *workflow.Node, registry *NodeExecutorRegistry, mockRoots map[string]bool) {
 	visited := map[string]bool{}
 	var satisfy func(n *workflow.Node)
@@ -450,38 +428,31 @@ func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow
 		}
 		visited[n.ID] = true
 		for _, d := range workflow.ExtractDependencies(n.Config) {
-			// Only default-scope refs name a capture variable directly (e.g.
-			// token_consulta_cadastro). var/sys need no upstream; last/node/ai are
-			// handled by mocks or the upstream walk.
 			switch d.Scope {
 			case "var", "sys", "last", "node", "ai":
 				continue
 			}
-			// A direct-index ref ({{token[0].field}}) leaves the bracket on the
-			// scope segment; trim it to the root variable name.
 			varName := d.Scope
 			if i := strings.IndexByte(varName, '['); i >= 0 {
 				varName = varName[:i]
 			}
 			if varName == "" || mockRoots[varName] {
-				continue // supplied by a provided mock
+				continue
 			}
 			if _, ok := run.State.Get(varName); ok {
-				continue // already in state
+				continue
 			}
 			producer := findCaptureProducer(&wf.Graph, varName)
 			if producer == nil || producer.ID == target.ID || nodeOutputMocked(producer, mockRoots) {
 				continue
 			}
-			satisfy(producer) // resolve the producer's own dependencies first
+			satisfy(producer)
 			uc.executeProducer(ctx, run, wf, producer, registry)
 		}
 	}
 	satisfy(target)
 }
 
-// executeProducer runs a single upstream node against the shared run state,
-// letting its executor populate its capture variable and node/last outputs.
 func (uc *testNodeUseCase) executeProducer(_ context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, node *workflow.Node, registry *NodeExecutorRegistry) {
 	executor, ok := registry.Get(node.Type)
 	if !ok {

@@ -14,8 +14,6 @@ func TestIsWhatsAppCallID(t *testing.T) {
 		"wacid.ABGGFjFVU2AfAgo6V",
 		"WA-CALL-123",
 		"prefix-wa-call-123",
-		// Historical "sip-in-" CDR ids must NOT be treated as WhatsApp, so they
-		// keep classifying at the non-WhatsApp telephony rate.
 		"sip-in-9f2c1e4a-1234-4abc-8def-0123456789ab",
 	}
 	for _, id := range whatsapp {

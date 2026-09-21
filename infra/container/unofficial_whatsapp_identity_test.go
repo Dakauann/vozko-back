@@ -7,9 +7,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// identityContacts answers only the one method the inbox hydration calls. The
-// embedded nil interface makes anything else a loud panic rather than a silent
-// zero value.
 type identityContacts struct {
 	uw.ContactRepository
 
@@ -24,10 +21,6 @@ func (c *identityContacts) FindByIDs(_ context.Context, ids []string) ([]*uw.Con
 
 func strptr(s string) *string { return &s }
 
-// The inbox asks for a contact using whatever rode the lead slot, and on this
-// channel that is the CRM lead id once the contact has resolved to one. Keying
-// the answer only by contact id meant every linked row came back unmatched:
-// name, avatar, handle and the group flag all silently absent.
 func TestUnofficialWhatsAppContactIdentity_KeyedByBothIDs(t *testing.T) {
 	contacts := &identityContacts{contacts: []*uw.Contact{
 		{ID: "contact-1", LeadID: strptr("lead-1"), Name: "Dakauann", PictureURL: "pic"},
@@ -47,15 +40,11 @@ func TestUnofficialWhatsAppContactIdentity_KeyedByBothIDs(t *testing.T) {
 		t.Errorf("PictureURL = %q; a linked row would render with no avatar", byLead.PictureURL)
 	}
 
-	// Still keyed by contact id too: a group and a contact that has not resolved
-	// yet are addressed that way, and both share this one lookup.
 	if _, ok := got["contact-1"]; !ok {
 		t.Errorf("contact id key dropped; groups and unlinked contacts would stop hydrating: %+v", got)
 	}
 }
 
-// A contact with no lead — every group, and anyone whose first message has not
-// been bridged yet — must not add an empty key that swallows unrelated rows.
 func TestUnofficialWhatsAppContactIdentity_NoLeadAddsNoBlankKey(t *testing.T) {
 	contacts := &identityContacts{contacts: []*uw.Contact{
 		{ID: "group-1", IsGroup: true, Name: "Teste grupos"},

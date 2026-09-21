@@ -22,13 +22,11 @@ func TestQuickRepliesCarryTheIDAsThePayload(t *testing.T) {
 	if len(out) != 2 || len(dropped) != 0 {
 		t.Fatalf("out=%d dropped=%d, want 2 and 0", len(out), len(dropped))
 	}
-	// Branching on the title would break the moment an author reworded a label.
 	if out[0].Payload != "sim" || out[0].Title != "Sim" {
 		t.Errorf("option = %+v, want the id as payload", out[0])
 	}
 }
 
-// "A maximum of 13 quick replies are supported."
 func TestQuickRepliesStopAtInstagramsCap(t *testing.T) {
 	many := make([]conversation.InteractiveOption, 0, igdomain.MaxQuickReplies+4)
 	for i := 0; i < igdomain.MaxQuickReplies+4; i++ {
@@ -63,7 +61,6 @@ func TestQuickRepliesFallBackToTheIDAsLabel(t *testing.T) {
 	}
 }
 
-// Instagram has no header or footer slot; the author's words must survive.
 func TestComposeInteractiveBodyKeepsHeaderAndFooter(t *testing.T) {
 	body := composeInteractiveBody(conversation.SendInteractiveRequest{
 		Header: "Atendimento",
@@ -84,8 +81,6 @@ func TestInteractiveLimitsComeFromTheDescriptor(t *testing.T) {
 	if limits.MaxOptionsButtons != igdomain.MaxQuickReplies {
 		t.Errorf("MaxOptionsButtons = %d, want %d", limits.MaxOptionsButtons, igdomain.MaxQuickReplies)
 	}
-	// Instagram has ONE mechanism, so both prompt styles resolve to the same cap
-	// rather than the list style silently reporting zero.
 	if limits.MaxOptionsList != igdomain.MaxQuickReplies {
 		t.Errorf("MaxOptionsList = %d, want the same single mechanism", limits.MaxOptionsList)
 	}

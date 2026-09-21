@@ -13,8 +13,6 @@ func linkedObservation() AlertObservation {
 	return obs
 }
 
-// The recipient is on a phone, woken up. A link they can tap is the difference
-// between acting now and acting after they get to a laptop.
 func TestAlertMessageCarriesThePostLink(t *testing.T) {
 	msg := NewAlert(validRule(), linkedObservation(), alertNow()).Message()
 	if !strings.Contains(msg, "https://www.instagram.com/p/ABC123/") {
@@ -22,8 +20,6 @@ func TestAlertMessageCarriesThePostLink(t *testing.T) {
 	}
 }
 
-// A deep link to the COMMENT itself, so the reader lands on the thing that
-// fired the alert rather than on a post with four hundred comments.
 func TestAlertCommentLink(t *testing.T) {
 	alert := NewAlert(validRule(), linkedObservation(), alertNow())
 	got := alert.CommentLink()
@@ -35,8 +31,6 @@ func TestAlertCommentLink(t *testing.T) {
 	}
 }
 
-// A permalink without its trailing slash still produces a usable link rather
-// than one with a missing or doubled separator.
 func TestAlertCommentLinkNormalizesTheSeparator(t *testing.T) {
 	obs := linkedObservation()
 	obs.Permalink = "https://www.instagram.com/p/ABC123"
@@ -45,8 +39,6 @@ func TestAlertCommentLinkNormalizesTheSeparator(t *testing.T) {
 	}
 }
 
-// No permalink means no invented link. A dead link in an alert is worse than
-// no link: it teaches the reader not to trust the next one.
 func TestAlertLinksAreAbsentWithoutAPermalink(t *testing.T) {
 	obs := linkedObservation()
 	obs.Permalink = ""
@@ -60,8 +52,6 @@ func TestAlertLinksAreAbsentWithoutAPermalink(t *testing.T) {
 	}
 }
 
-// A windowed alert has no comment, so it links the account's post that
-// triggered the look, and never a comment.
 func TestAlertWindowedHasNoCommentLink(t *testing.T) {
 	r := validRule()
 	r.Metric = AlertMetricHostileCount
@@ -81,12 +71,8 @@ func TestAlertWindowedHasNoCommentLink(t *testing.T) {
 	}
 }
 
-// THE bug this suite was written for: with nothing resolved, the message used
-// to print the workspace's internal account UUID and the raw media id at the
-// recipient. Neither means anything to a human, and printing them is worse
-// than printing nothing.
 func TestAlertNeverPrintsInternalIDs(t *testing.T) {
-	obs := alertObservation() // no AccountName, no Permalink
+	obs := alertObservation()
 	obs.Comment.ContainerID = "17924500123456"
 	rule := validRule()
 	rule.AccountID = "22222222-2222-2222-2222-222222222222"
@@ -98,14 +84,11 @@ func TestAlertNeverPrintsInternalIDs(t *testing.T) {
 	if strings.Contains(msg, "17924500123456") {
 		t.Fatalf("the raw media id reached the recipient:\n%s", msg)
 	}
-	// It still has to say what happened and quote the comment.
 	if !strings.Contains(msg, "vocês são todos uns ladrões") && !strings.Contains(msg, "ladrões") {
 		t.Fatalf("the comment itself must survive:\n%s", msg)
 	}
 }
 
-// The account is named when we know its handle, and by nothing at all when we
-// do not.
 func TestAlertNamesTheAccountWhenKnown(t *testing.T) {
 	msg := NewAlert(validRule(), linkedObservation(), alertNow()).Message()
 	if !strings.Contains(msg, "prefeitura") {
@@ -113,10 +96,6 @@ func TestAlertNamesTheAccountWhenKnown(t *testing.T) {
 	}
 }
 
-// ---- the AI briefing ----
-
-// The briefing is guidance, not a fact, so it is clearly marked as the model's
-// reading and sits below what actually happened.
 func TestAlertBriefingIsMarkedAndLast(t *testing.T) {
 	obs := linkedObservation()
 	obs.Briefing = AlertBriefing{
@@ -131,7 +110,6 @@ func TestAlertBriefingIsMarkedAndLast(t *testing.T) {
 	if !strings.Contains(msg, "ofereça o direct") {
 		t.Fatalf("the suggestion is missing:\n%s", msg)
 	}
-	// The reader must be able to tell our facts from the model's reading.
 	if !strings.Contains(strings.ToLower(msg), "ia") {
 		t.Fatalf("the briefing is not attributed to the AI:\n%s", msg)
 	}
@@ -142,8 +120,6 @@ func TestAlertBriefingIsMarkedAndLast(t *testing.T) {
 	}
 }
 
-// No briefing, no empty heading. An alert without one has to read as a finished
-// message rather than a broken one.
 func TestAlertWithoutABriefingHasNoEmptySection(t *testing.T) {
 	msg := NewAlert(validRule(), linkedObservation(), alertNow()).Message()
 	if strings.Contains(msg, "\n\n\n") {
@@ -154,8 +130,6 @@ func TestAlertWithoutABriefingHasNoEmptySection(t *testing.T) {
 	}
 }
 
-// A briefing is model output about a real incident: it is bounded and stripped
-// of the control characters a template parameter cannot carry.
 func TestAlertBriefingIsBoundedAndFlattened(t *testing.T) {
 	obs := linkedObservation()
 	obs.Briefing = AlertBriefing{
@@ -172,8 +146,6 @@ func TestAlertBriefingIsBoundedAndFlattened(t *testing.T) {
 	}
 }
 
-// The briefing reaches a template as its own named variable, so an operator can
-// put it wherever their approved template has room.
 func TestBriefingIsATemplateFact(t *testing.T) {
 	obs := linkedObservation()
 	obs.Briefing = AlertBriefing{Context: "Pauta da obra.", Suggestion: "Responda no post."}
@@ -187,8 +159,6 @@ func TestBriefingIsATemplateFact(t *testing.T) {
 	}
 }
 
-// Without a briefing the variable is still filled, because an empty template
-// parameter is refused by the provider.
 func TestBriefingFactIsNeverEmpty(t *testing.T) {
 	params := NewAlert(validRule(), linkedObservation(), alertNow()).TemplateParamsFor([]string{"briefing"})
 	if strings.TrimSpace(params[0]) == "" {

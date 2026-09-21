@@ -1,12 +1,3 @@
-// Package opportunity_usecase implements the sales-deal lifecycle: create
-// (standalone or from a conversation), update, delete, get, move stage (with
-// won/lost + required lost reason enforced via the entity), and link/unlink
-// conversations. It validates typed CustomFields against the workspace's custom
-// field definitions. It depends only on the domain ports (opportunity.Repository,
-// opportunity.LinkRepository, customfield.Repository).
-//
-// MONEY GUARDRAIL: ValueCents is the customer's own sales amount; it is never
-// routed through Vozko wallet money. This layer treats it as a plain integer.
 package opportunity_usecase
 
 import (
@@ -19,34 +10,23 @@ import (
 	"vozko/domain/opportunity"
 )
 
-// objectType is the custom-field object discriminator for opportunities.
 const objectType = "opportunity"
 
 var (
-	// ErrUnknownCustomField is returned when CustomFields carries a key with no
-	// matching definition in the workspace.
 	ErrUnknownCustomField = errors.New("opportunity: unknown custom field")
-	// ErrEntryTypeRequired is returned when a link request omits the entry type.
-	ErrEntryTypeRequired = errors.New("opportunity: entry id and type are required for a link")
+	ErrEntryTypeRequired  = errors.New("opportunity: entry id and type are required for a link")
 )
 
-// Service is the opportunity usecase surface.
 type Service struct {
 	repo   opportunity.Repository
 	links  opportunity.LinkRepository
 	fields customfield.Repository
 }
 
-// NewService wires the opportunity usecases from the domain ports. links and
-// fields may be nil in contexts that do not need linking or custom fields.
 func NewService(repo opportunity.Repository, links opportunity.LinkRepository, fields customfield.Repository) *Service {
 	return &Service{repo: repo, links: links, fields: fields}
 }
 
-// CreateInput is the payload to open a deal. When OwnerID is empty and
-// ConversationAssigneeID is set (create-from-conversation), the owner is seeded
-// from the conversation assignee. When LinkEntryID/LinkEntryType are set, the
-// conversation is linked to the new deal.
 type CreateInput struct {
 	LeadID       string
 	PipelineID   string
@@ -56,8 +36,8 @@ type CreateInput struct {
 	Title        string
 	ValueCents   int64
 	Currency     string
-	Status       opportunity.Status // optional; defaults to open when empty
-	LostReasonID string             // required by the entity when Status is lost
+	Status       opportunity.Status
+	LostReasonID string
 	Source       string
 	CloseDate    *time.Time
 	CustomFields map[string]any
@@ -66,22 +46,15 @@ type CreateInput struct {
 	LinkEntryID            string
 	LinkEntryType          string
 
-	// CreatorUserID is the authenticated user opening the deal. It becomes the
-	// owner when no explicit owner (or conversation assignee) is given, so the
-	// creator is the responsável by default.
 	CreatorUserID string
 }
 
-// buildOpportunity constructs a normalized (not yet validated) entity from the
-// create input. Shared by Create and ValidateCreate so both agree on defaults
-// (owner seeding, default-open status).
 func (s *Service) buildOpportunity(workspaceID string, in CreateInput) *opportunity.Opportunity {
 	ownerID := in.OwnerID
 	if ownerID == "" && in.ConversationAssigneeID != "" {
 		ownerID = in.ConversationAssigneeID
 	}
 	if ownerID == "" {
-		// Default the responsável to whoever is opening the deal.
 		ownerID = in.CreatorUserID
 	}
 	status := in.Status
@@ -135,9 +108,6 @@ func (s *Service) Create(workspaceID string, in CreateInput) (*opportunity.Oppor
 	return s.repo.GetByID(workspaceID, o.ID)
 }
 
-// ValidateCreate runs the same custom-field and entity validation as Create
-// without persisting anything. It backs the CSV import dry-run so a caller can
-// preview which rows would be accepted without mutating state.
 func (s *Service) ValidateCreate(workspaceID string, in CreateInput) error {
 	o := s.buildOpportunity(workspaceID, in)
 	if err := s.validateCustomFields(workspaceID, o.CustomFields); err != nil {
@@ -146,10 +116,6 @@ func (s *Service) ValidateCreate(workspaceID string, in CreateInput) error {
 	return o.Validate()
 }
 
-// UpdateInput patches the editable fields of a deal. Nil pointer fields are left
-// unchanged; a non-nil CustomFields map replaces the stored custom fields. Stage
-// and status changes should go through MoveStage so won/lost rules are enforced,
-// but Status/LostReasonID here are still validated by the entity.
 type UpdateInput struct {
 	Title        *string
 	ValueCents   *int64
@@ -219,12 +185,9 @@ func (s *Service) Update(workspaceID, id string, in UpdateInput) (*opportunity.O
 	return s.repo.GetByID(workspaceID, id)
 }
 
-// MoveStageInput moves a deal to a stage and optionally closes it. When Status is
-// won/lost, the entity requires a lost reason for a loss; CloseDate is stamped on
-// close when not already set.
 type MoveStageInput struct {
 	StageID      string
-	Status       opportunity.Status // empty keeps the current status
+	Status       opportunity.Status
 	LostReasonID string
 }
 
@@ -264,8 +227,6 @@ func (s *Service) ListByPipeline(workspaceID, pipelineID string) ([]*opportunity
 	return s.repo.ListByPipeline(workspaceID, pipelineID)
 }
 
-// ListByPipelineScoped is the department-scoped whole-pipeline read used by the flat
-// GET endpoint and the CSV export, so neither leaks deals across departments.
 func (s *Service) ListByPipelineScoped(workspaceID, pipelineID string, departmentIDs []string, restrict bool, assigneeOverrideUserID string) ([]*opportunity.Opportunity, error) {
 	return s.repo.ListByPipelineScoped(workspaceID, pipelineID, departmentIDs, restrict, assigneeOverrideUserID)
 }
@@ -274,9 +235,6 @@ func (s *Service) Delete(workspaceID, id string) error {
 	return s.repo.Delete(workspaceID, id)
 }
 
-// LinkConversation attaches a conversation (entry) to a deal so its timeline
-// aggregates the WhatsApp/voice history. It verifies the deal exists in the
-// workspace first.
 func (s *Service) LinkConversation(workspaceID, opportunityID, entryID, entryType string) error {
 	if entryID == "" || entryType == "" {
 		return ErrEntryTypeRequired
@@ -302,12 +260,6 @@ func (s *Service) ListConversations(workspaceID, opportunityID string) ([]opport
 	return s.links.ListByOpportunity(workspaceID, opportunityID)
 }
 
-// ListOpportunitiesForEntry returns the deals linked to a conversation entry,
-// HYDRATED (title / value / stage / status) so the conversation side panel can
-// render deal cards. It is the reverse of ListConversations and is workspace-scoped
-// end to end: both the link lookup and every GetByID filter by workspaceID, so it
-// can never surface a deal from another workspace. A link whose deal was hard-deleted
-// is skipped rather than failing the whole panel.
 func (s *Service) ListOpportunitiesForEntry(workspaceID, entryID, entryType string) ([]*opportunity.Opportunity, error) {
 	if s.links == nil {
 		return nil, nil
@@ -320,16 +272,13 @@ func (s *Service) ListOpportunitiesForEntry(workspaceID, entryID, entryType stri
 	for _, l := range links {
 		o, err := s.repo.GetByID(workspaceID, l.OpportunityID)
 		if err != nil || o == nil {
-			continue // dangling link (deal deleted), omit, don't fail the panel
+			continue
 		}
 		out = append(out, o)
 	}
 	return out, nil
 }
 
-// validateCustomFields checks each provided value against its definition and
-// enforces required fields, using customfield.Definition.ValidateValue. Unknown
-// keys are rejected so deal data stays clean.
 func (s *Service) validateCustomFields(workspaceID string, values map[string]any) error {
 	if s.fields == nil {
 		return nil
@@ -353,7 +302,6 @@ func (s *Service) validateCustomFields(workspaceID string, values map[string]any
 		}
 	}
 
-	// Enforce required fields that were not supplied.
 	for _, def := range defs {
 		if !def.Required {
 			continue

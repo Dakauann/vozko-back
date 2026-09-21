@@ -30,10 +30,6 @@ func withDepartmentCreationScope(r *http.Request, explicitDepartmentID string) *
 	return r.WithContext(workspace_department.WithCreationScope(r.Context(), scope))
 }
 
-// The two below are thin aliases: the definitions moved to httpx so the export
-// package can apply the caller's department scope with exactly the same rule
-// this package does, instead of re-deriving it from the middleware and drifting.
-
 func departmentFilterIDs(r *http.Request) []string {
 	return httpx.DepartmentFilterIDs(r)
 }

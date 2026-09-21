@@ -1,18 +1,3 @@
-// Command mpprobe issues one real Mercado Pago charge with the exact payload the
-// application sends, and prints the raw request and response.
-//
-// It exists because Mercado Pago reports most charge failures through an opaque
-// wrapper ("fill and validate error list: communication_error"), which is impossible to
-// diagnose from an application log alone. Running the same request in isolation shows
-// the full response body and separates "our payload is wrong" from "the account is not
-// set up for this".
-//
-// Usage:
-//
-//	go run ./cmd/mpprobe -amount 5 -email buyer@example.com -doc 11144477735
-//
-// The access token is read from MERCADOPAGO_ACCESS_TOKEN, and the notification URL from
-// MERCADOPAGO_NOTIFICATION_URL, so it exercises the same configuration the server uses.
 package main
 
 import (
@@ -140,8 +125,6 @@ func main() {
 		return
 	}
 
-	// Reuse the production error parsing so the hint shown here is exactly the hint the
-	// server would log.
 	var apiErr mercadopago.APIError
 	_ = json.Unmarshal(raw, &apiErr)
 	respErr := &mercadopago.ResponseError{
@@ -189,14 +172,6 @@ func fail(format string, args ...any) {
 	os.Exit(1)
 }
 
-// createTestUser mints a sandbox test user and prints its credentials.
-//
-// This exists because the dashboard shows a test account's username but not its email,
-// while payer.email is exactly what a charge needs. POST /users/test_user returns the
-// address explicitly, which removes the guesswork.
-//
-// Per Mercado Pago, test users are created with the PRODUCTION access token of the
-// application, not a test one.
 func createTestUser(host, token, siteID string) {
 	body, err := json.Marshal(map[string]string{"site_id": siteID})
 	if err != nil {

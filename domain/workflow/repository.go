@@ -18,9 +18,6 @@ type WorkflowRunRepository interface {
 	FindByID(runID string) (*WorkflowRun, error)
 	FindActiveByEntry(workflowID, entryID string) (*WorkflowRun, error)
 	FindActiveByEntryAndTrigger(workflowID, entryID, triggerNodeID string) (*WorkflowRun, error)
-	// FindWaitingReplyByEntry finds a run parked at a wait-for-reply node for the
-	// given entry, regardless of its workflow or start trigger, so an incoming
-	// message can resume it even when the workflow isn't message_received-triggered.
 	FindWaitingReplyByEntry(entryID string) (*WorkflowRun, error)
 	List(input ListRunsInput) (*shared.PaginatedResult[*WorkflowRun], error)
 	FindWakeableRuns(now int64, limit int) ([]*WorkflowRun, error)

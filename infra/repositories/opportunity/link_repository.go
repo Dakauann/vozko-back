@@ -12,9 +12,6 @@ type linkRepository struct {
 	db *gorm.DB
 }
 
-// NewLinkRepository returns the domain opportunity.LinkRepository backed by GORM.
-// Links carry only (opportunity_id, entry_id, entry_type); workspace scoping on
-// reads is enforced by joining to the opportunities table.
 func NewLinkRepository(db *gorm.DB) opportunity.LinkRepository {
 	return &linkRepository{db: db}
 }
@@ -25,7 +22,6 @@ func (r *linkRepository) Link(link opportunity.ConversationLink) error {
 		EntryID:       link.EntryID,
 		EntryType:     link.EntryType,
 	}
-	// Idempotent: a duplicate (opportunity, entry) is a no-op rather than an error.
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "opportunity_id"}, {Name: "entry_id"}, {Name: "entry_type"}},
 		DoNothing: true,

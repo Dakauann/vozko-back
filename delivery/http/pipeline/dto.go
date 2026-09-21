@@ -13,20 +13,11 @@ type CreatePipelineRequest struct {
 	Position     int    `json:"position,omitempty" example:"0"`
 	IsDefault    bool   `json:"isDefault,omitempty" example:"false"`
 
-	// Stages are the columns the operator drew, in board order. The first is
-	// where arriving conversations land.
 	Stages []StageSeedRequest `json:"stages,omitempty"`
 
-	// CopyStagesFromPipelineID duplicates another funnel's columns. Ignored when
-	// Stages is present.
-	//
-	// It was missing from this struct until now, which is why every funnel came
-	// out with the product defaults no matter which source the client named: the
-	// field decoded into nothing and the use case saw an empty string.
 	CopyStagesFromPipelineID string `json:"copyStagesFromPipelineId,omitempty" example:"pipe_a1b2c3"`
 }
 
-// StageSeedRequest is one column in a new funnel.
 type StageSeedRequest struct {
 	Name        string `json:"name" example:"Triagem"`
 	Description string `json:"description,omitempty" example:"Primeiro contato, ainda sem resposta"`

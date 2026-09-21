@@ -10,10 +10,6 @@ import (
 	workspace_domain "vozko/domain/workspace"
 )
 
-// recordingAC captures the RBAC resource/action each route was registered with,
-// so the test asserts authorization is actually applied rather than just that a
-// path exists. Copied from the unofficial channel's harness on purpose: the two
-// features make the same promise and should be checked the same way.
 type recordingAC struct {
 	calls map[string]string
 }
@@ -27,14 +23,10 @@ func (r *recordingAC) fn(resource workspace_domain.Resource, action workspace_do
 	}
 }
 
-// The gate is the feature's whole safety story on the HTTP side: this endpoint
-// spends the workspace's balance, and the permission it demands must not be
-// quietly loosened to one every attendant already holds.
 func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}
 
-	// A zero handler is enough: this exercises registration, not behaviour.
 	RegisterProtectedRoutes(router, &Handler{}, ac.fn)
 
 	cases := []struct {
@@ -74,9 +66,6 @@ func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 	}
 }
 
-// A channel that is not wired registers nothing, rather than routes that would
-// nil-panic on the first request. For this feature that is also the safer
-// failure: absent beats present-and-half-wired when money is involved.
 func TestRegisterProtectedRoutes_NilHandlerRegistersNothing(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}

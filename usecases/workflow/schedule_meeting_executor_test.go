@@ -436,10 +436,8 @@ func TestScheduleMeetingExecutor_RejectsInvalidAttendees(t *testing.T) {
 	}
 }
 
-// Regression: a FAILED schedule must never flow down the success edge when no
-// "erro" edge is wired, it must end the run (NextNodeID empty) instead.
 func TestScheduleMeetingExecutor_FailureDoesNotFallThroughToSuccess(t *testing.T) {
-	repo := &scheduleMeetingRepoMock{} // no connection → failure
+	repo := &scheduleMeetingRepoMock{}
 	google := &scheduleMeetingGoogleMock{}
 	exec := node_executors.NewScheduleMeetingExecutor(repo, google)
 
@@ -458,7 +456,6 @@ func TestScheduleMeetingExecutor_FailureDoesNotFallThroughToSuccess(t *testing.T
 				{ID: "meeting-1", Type: workflow.NodeTypeActionScheduleMeeting, Config: config},
 				{ID: "success-node", Type: workflow.NodeTypeEnd},
 			},
-			// ONLY the success edge is wired, no "erro".
 			Edges: []workflow.Edge{
 				{Source: "meeting-1", Target: "success-node", Label: "sucesso"},
 			},
@@ -479,8 +476,6 @@ func TestScheduleMeetingExecutor_FailureDoesNotFallThroughToSuccess(t *testing.T
 	}
 }
 
-// Regression: when scheduled with only start_time + title (no duration and no
-// end_time, the AI's typical tool args), default to a 30-minute meeting.
 func TestScheduleMeetingExecutor_DefaultsDurationWhenMissing(t *testing.T) {
 	repo := &scheduleMeetingRepoMock{connection: &calendar.GoogleCalendarConnection{
 		ID: "conn-1", WorkspaceID: "ws-1", Email: "w@example.com",

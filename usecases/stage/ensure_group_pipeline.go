@@ -9,22 +9,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// ensurePipelineForGroup materializes a stage group into the conversation
-// pipeline it names, and returns that pipeline's id.
-//
-// It is the SINGLE place a group becomes a funnel. Two callers need that:
-// creating the group (so the funnel exists the moment the operator defines it,
-// and shows up in the CRM's funnel selector) and pointing a campaign at a group
-// (which used to be the only door, and is why a group created on its own was
-// invisible everywhere).
-//
-// Idempotent by construction: "same group → same pipeline" is enforced by
-// FindConversationPipelineByGroup, so calling this from both doors — in either
-// order, any number of times — converges on one pipeline instead of forking
-// duplicates. That property is what lets the second caller stay a one-liner.
-//
-// Per-item create errors do not abort the loop; the first is returned so the
-// caller can log a partially-seeded funnel rather than lose the pipeline.
 func ensurePipelineForGroup(
 	groupRepo stage.StageGroupRepository,
 	stageRepo stage.Repository,

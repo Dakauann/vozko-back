@@ -35,8 +35,6 @@ func TestCommentRuleMatching(t *testing.T) {
 		{"exact keyword", "promoção", true},
 		{"inside a sentence", "tem promoção ainda?", true},
 		{"second keyword", "eu QUERO esse", true},
-		// A Brazilian audience types the accented and unaccented spellings
-		// interchangeably; a rule that only matched one would miss most comments.
 		{"unaccented", "tem promocao?", true},
 		{"uppercase unaccented", "PROMOCAO!!", true},
 		{"no keyword", "que lindo", false},
@@ -77,7 +75,6 @@ func TestCommentRuleMatchAny(t *testing.T) {
 	if !rule.Matches(comment("anything at all")) {
 		t.Error("MatchAny should fire on any comment")
 	}
-	// Even MatchAny must not react to our own comment.
 	ours := comment("our own reply")
 	ours.IsOurs = true
 	if rule.Matches(ours) {
@@ -85,8 +82,6 @@ func TestCommentRuleMatchAny(t *testing.T) {
 	}
 }
 
-// Our public replies arrive back as webhooks. Without this guard a reply rule
-// would answer its own answer, forever.
 func TestCommentRuleNeverMatchesOurOwnComment(t *testing.T) {
 	rule := promoRule()
 	own := comment("promoção")
@@ -96,7 +91,6 @@ func TestCommentRuleNeverMatchesOurOwnComment(t *testing.T) {
 	}
 }
 
-// Re-acting on a hidden comment would fight an operator who moderated it.
 func TestCommentRuleSkipsHiddenComments(t *testing.T) {
 	rule := promoRule()
 	hidden := comment("promoção")
@@ -128,7 +122,6 @@ func TestCommentRuleMediaScope(t *testing.T) {
 		t.Error("a post-scoped rule must not fire on another post")
 	}
 
-	// An account-wide rule (empty media id) fires on every post.
 	rule.IGMediaID = ""
 	if !rule.Matches(other) {
 		t.Error("an account-wide rule must fire on any post")
@@ -143,8 +136,6 @@ func TestCommentRuleNormalize(t *testing.T) {
 	}
 	rule.Normalize()
 
-	// "promoção" and "PROMOCAO" fold to the same keyword; keeping both would
-	// double-scan every comment for no benefit.
 	if len(rule.Keywords) != 2 {
 		t.Errorf("expected duplicates and blanks removed, got %v", rule.Keywords)
 	}
@@ -182,7 +173,6 @@ func TestCommentRuleValidate(t *testing.T) {
 		})
 	}
 
-	// MatchAny needs no keywords: it fires on everything by design.
 	any := &CommentRule{Name: "All", Enabled: true, Match: MatchAny, Actions: []CommentRuleAction{ActionHide}}
 	any.Normalize()
 	if err := any.Validate(); err != nil {
@@ -198,11 +188,9 @@ func TestRenderText(t *testing.T) {
 		t.Errorf("RenderText = %q, want %q", got, want)
 	}
 
-	// A template with no variables passes through untouched.
 	if got := RenderText("obrigado!", c); got != "obrigado!" {
 		t.Errorf("plain template altered: %q", got)
 	}
-	// Nil comment must not panic.
 	if got := RenderText("hi {{username}}", nil); got != "hi {{username}}" {
 		t.Errorf("nil comment should return the template: %q", got)
 	}

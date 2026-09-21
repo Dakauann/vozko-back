@@ -12,15 +12,6 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// AutomationSource tells the channel which campaign owns replies on a
-// conversation, so a campaign's automation settings decide who answers instead
-// of the instance's.
-//
-// This exists because inbound on this transport carries a conversation and no
-// campaign — the entry POINTS AT a conversation rather than being one, unlike
-// the Cloud API campaign where the entry IS the conversation row. The link has
-// to be walked backwards, and it lives here rather than in the channel package
-// so the channel keeps no dependency on the campaign feature.
 type AutomationSource struct {
 	entries   uwc.EntryRepository
 	campaigns uwc.Repository
@@ -30,15 +21,6 @@ func NewAutomationSource(entries uwc.EntryRepository, campaigns uwc.Repository) 
 	return &AutomationSource{entries: entries, campaigns: campaigns}
 }
 
-// AutomationForConversation reports the owning campaign's automation, or false
-// when nobody was targeted here — an organic conversation, which the instance
-// configures.
-//
-// Fail-OPEN on a lookup error, deliberately and unlike assignment: a database
-// hiccup must not silently convert every campaign conversation into an organic
-// one, but it must also not strand the customer with nobody answering. Falling
-// back to "not a campaign" restores the instance's behaviour, which is the
-// conservative reading of an unknown, and the error is logged loudly.
 func (s *AutomationSource) AutomationForConversation(conversationID string) (*uwuc.CampaignAutomation, bool) {
 	if s == nil || s.entries == nil || s.campaigns == nil {
 		return nil, false
@@ -78,10 +60,6 @@ func (s *AutomationSource) AutomationForConversation(conversationID string) (*uw
 	}, true
 }
 
-// AnalysisResolver applies the owning campaign's enrichment settings. An
-// organic conversation inherits its instance; an explicit false on a campaign
-// must never fall back to an enabled instance. Database errors are retried by
-// the caller instead of being interpreted as permission to run.
 func (s *AutomationSource) AnalysisResolver(base convuc.AnalysisSubjectResolver) convuc.AnalysisSubjectResolver {
 	return func(ctx context.Context, entryID string) (*convuc.AnalysisSubject, error) {
 		subject, err := base(ctx, entryID)

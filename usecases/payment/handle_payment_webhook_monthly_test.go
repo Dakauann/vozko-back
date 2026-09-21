@@ -33,8 +33,8 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditsOnlyPlanPortionAndExtends(t *te
 			WorkspaceID:   "ws-1",
 			Purpose:       invoice.PurposeMonthlyBilling,
 			AmountBRL:     1399,
-			AmountUSD:     233_166_667, // plan + channels, in USD
-			CreditableUSD: 183_166_667, // plan portion only
+			AmountUSD:     233_166_667,
+			CreditableUSD: 183_166_667,
 			ExchangeRate:  6,
 		},
 	}}
@@ -62,7 +62,6 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditsOnlyPlanPortionAndExtends(t *te
 }
 
 func TestHandleAsaasWebhook_MonthlyBillingCreditableFallsBackToAmount(t *testing.T) {
-	// An invoice created before CreditableUSD existed (CreditableUSD == 0) credits the full AmountUSD.
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-old": {
 			ID: "inv-old", ExternalID: "pay-old", WorkspaceID: "ws-9",
@@ -129,7 +128,6 @@ func TestHandleAsaasWebhook_MonthlyBillingRefundDebitsWhenPaid(t *testing.T) {
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-r"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	// The refund claws back exactly the plan portion that was credited (not the channel repasse).
 	if len(debit.calls) != 1 || debit.calls[0].Amount != 8_000_000 {
 		t.Fatalf("expected one debit of the creditable plan portion (8_000_000), got %+v", debit.calls)
 	}
@@ -152,7 +150,6 @@ func TestHandleAsaasWebhook_MonthlyBillingRefundSkipsDebitWhenNeverPaid(t *testi
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_PARTIALLY_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-rn"}}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	// Nothing was ever credited (invoice was never paid), so nothing may be clawed back.
 	if len(debit.calls) != 0 {
 		t.Fatalf("a never-paid invoice must not be debited on refund, got %+v", debit.calls)
 	}
@@ -175,7 +172,6 @@ func TestHandleAsaasWebhook_MonthlyBillingCreditFailureRollsBackToPending(t *tes
 	if err == nil {
 		t.Fatal("a saldo-credit failure must surface as an error so the webhook is retried")
 	}
-	// Rolled back to Pending so a retry re-credits from a clean state, and subscriptions were NOT extended.
 	if last := repo.statusUpdates[len(repo.statusUpdates)-1]; last != invoice.StatusPending {
 		t.Fatalf("expected rollback to Pending after a failed credit, got %v", repo.statusUpdates)
 	}

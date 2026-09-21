@@ -224,9 +224,6 @@ func (r *subscriptionRepository) ExpireOverdue(at time.Time, batchSize int) ([]s
 	if batchSize <= 0 {
 		batchSize = 500
 	}
-	// Postgres has no UPDATE ... LIMIT, so select the batch first (capturing the
-	// workspace ids the caller needs for entitlement reconciliation), then update
-	// exactly those rows by primary key.
 	var due []struct {
 		ID          string
 		WorkspaceID string

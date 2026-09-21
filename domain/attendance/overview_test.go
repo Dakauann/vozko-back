@@ -40,7 +40,6 @@ func TestOverviewFinishedBySource_Shape(t *testing.T) {
 }
 
 func TestOverviewFilter_JSONTags(t *testing.T) {
-	// Smoke: zero filter is valid for unscoped overview
 	f := OverviewFilter{}
 	if f.IncludeAI {
 		t.Fatal("IncludeAI should default false in zero value (handler sets default true)")

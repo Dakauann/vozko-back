@@ -2,9 +2,6 @@ package conversation
 
 import "testing"
 
-// TestMessageTypeIsCallEvent locks which message types are call/permission
-// markers. These MUST be excluded from AI/analysis history so a "Chamada
-// recebida" log never reads to the model as something the lead said.
 func TestMessageTypeIsCallEvent(t *testing.T) {
 	events := []MessageType{
 		MessageTypeCallReceived,

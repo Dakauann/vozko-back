@@ -30,18 +30,13 @@ func (w *Workspace) BeforeCreate(tx *gorm.DB) error {
 }
 
 type WorkspaceMember struct {
-	ID          string  `gorm:"primaryKey;type:uuid"`
-	WorkspaceID string  `gorm:"type:uuid;not null;index;uniqueIndex:idx_ws_member_ws_user,priority:1"`
-	UserID      string  `gorm:"type:uuid;not null;index;uniqueIndex:idx_ws_member_ws_user,priority:2"`
-	Role        string  `gorm:"not null;size:50;default:''"`
-	RoleID      *string `gorm:"type:uuid;index"`
-	// NOTE: the ring_channels column is deliberately orphaned. It selected which
-	// endpoint kinds (browser softphone / SIP branch) rang for a member; SIP
-	// telephony is retired and WhatsApp calling rings the browser session only.
-	// AutoMigrate never DROPs, so the column stays behind unused (same precedent
-	// as the retired branch forward_policy column).
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+	ID          string    `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string    `gorm:"type:uuid;not null;index;uniqueIndex:idx_ws_member_ws_user,priority:1"`
+	UserID      string    `gorm:"type:uuid;not null;index;uniqueIndex:idx_ws_member_ws_user,priority:2"`
+	Role        string    `gorm:"not null;size:50;default:''"`
+	RoleID      *string   `gorm:"type:uuid;index"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
 
 	Workspace  Workspace            `gorm:"foreignKey:WorkspaceID;references:ID"`
 	User       User                 `gorm:"foreignKey:UserID;references:ID"`

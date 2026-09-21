@@ -11,13 +11,6 @@ import (
 	"vozko/domain/whatsapp/template"
 )
 
-// DefaultReconcileTTL is how long an unsettled attempt is left alone.
-//
-// One hour rather than a day. With the attempt id riding on the send and coming
-// back on the delivery-status webhook, a genuinely delivered message is promoted
-// within seconds — so a row still sitting at `charged` an hour later almost
-// certainly never reached Meta at all, and every extra hour is customer money
-// held for a message that does not exist.
 const DefaultReconcileTTL = time.Hour
 
 type reconcileSendAttemptsUseCase struct {
@@ -47,13 +40,6 @@ func NewReconcileSendAttemptsUseCase(
 	}
 }
 
-// Execute returns money that was taken for sends nobody can show.
-//
-// This is the backstop for the two crashes the exactly-once argument cannot
-// eliminate without a transactional outbox: one between the debit and the
-// provider call, one between the provider's answer and our recording it. Neither
-// is prevented here — they are BOUNDED. Money is held for at most the TTL and
-// then returned, which is the difference between a bug and a liability.
 func (uc *reconcileSendAttemptsUseCase) Execute(ctx context.Context) (int, error) {
 	if uc.attempts == nil || uc.consume == nil {
 		return 0, template.ErrBillingNotConfigured
@@ -70,8 +56,6 @@ func (uc *reconcileSendAttemptsUseCase) Execute(ctx context.Context) (int, error
 		if attempt == nil {
 			continue
 		}
-		// A row that learned its message id after the sweep listed it is a
-		// delivered message. Re-reading is cheap next to crediting one.
 		if fresh, readErr := uc.attempts.FindByID(ctx, attempt.ID); readErr == nil && fresh != nil {
 			if fresh.Status.IsTerminal() || fresh.ProviderMessageID != "" {
 				continue
@@ -92,9 +76,6 @@ func (uc *reconcileSendAttemptsUseCase) Execute(ctx context.Context) (int, error
 			}
 		}
 
-		// Refund under the STORED category, never today's. A template
-		// re-categorised upstream since the charge would otherwise be credited at
-		// a different price than it was taken at.
 		if err := uc.consume.Refund(attempt.WorkspaceID, template.ChargeReferenceID(attempt.ID), attempt.Category); err != nil {
 			uc.alert(ctx, "WhatsApp template reconcile refund failed",
 				fmt.Sprintf("attempt=%s workspace=%s err=%v", attempt.ID, attempt.WorkspaceID, err))
@@ -107,9 +88,6 @@ func (uc *reconcileSendAttemptsUseCase) Execute(ctx context.Context) (int, error
 	}
 
 	if reconciled > 0 {
-		// Never silent. A steady trickle here means sends are dying between the
-		// debit and the provider, which is a real problem wearing a refund as a
-		// disguise.
 		uc.alert(ctx, "WhatsApp template sends reconciled",
 			fmt.Sprintf("%d unsettled send(s) older than %s were refunded", reconciled, uc.ttl))
 	}

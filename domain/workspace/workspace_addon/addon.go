@@ -134,11 +134,6 @@ func (s *AddonSubscription) ExpireIfNeeded(at time.Time) bool {
 	return false
 }
 
-// Extend advances the subscription to its next billing period. Monthly subscriptions roll to the
-// next global billing anchor (dueDay, e.g. the 23rd) computed in the billing timezone, so a channel
-// stays co-termed to one unified monthly date even when payment lands mid-dunning. Annual
-// subscriptions roll 12 months. Continuity is preserved from the prior period end, and a long-lapsed
-// subscription advances from `from` rather than back-dating.
 func (s *AddonSubscription) Extend(from time.Time, dueDay int) {
 	if s == nil {
 		return

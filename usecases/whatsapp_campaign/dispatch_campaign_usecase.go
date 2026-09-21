@@ -62,10 +62,6 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 
 	currentStatus := campaignItem.Status
 
-	// The state machine is the shared one. It was previously a switch here and a
-	// second switch in the unofficial channel would have been the first place
-	// the two transports could disagree about what pausing a stopped campaign
-	// means.
 	transition, err := campaign.ResolveTransition(currentStatus, action)
 	if err != nil {
 		return err
@@ -81,9 +77,6 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 			return err
 		}
 		if !updated {
-			// Another request won the race. Report the refusal the operator
-			// would have seen had we read the winning status first, so one
-			// click cannot report two different things depending on timing.
 			return campaign.SwapFailure(action)
 		}
 
@@ -152,9 +145,6 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 	}
 
 	if err := c.dispatcher.Enqueue(input.CampaignID, messages); err != nil {
-		// The status was already swapped, so a failed fan-out has to put it
-		// back: leaving a campaign RUNNING with nothing queued is a campaign
-		// that can never complete and never restart.
 		if targetStatus != "" {
 			if _, revertErr := c.CampaignRepo.UpdateStatus(input.CampaignID, revertStatus, targetStatus); revertErr != nil {
 				return fmt.Errorf("failed to publish whatsapp campaign dispatch payload: %w (status revert failed: %v)", err, revertErr)

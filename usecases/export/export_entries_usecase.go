@@ -17,29 +17,13 @@ import (
 )
 
 const (
-	// maxExportRows is the ceiling on a single export. It is a refusal rather
-	// than a truncation: a file that silently stops at the cap looks complete
-	// and gets acted on as if it were. The operator narrows the period instead.
 	maxExportRows = 50_000
 
-	// enrichBatchSize is how many rows are held in memory at once. Analyses and
-	// stages are looked up per batch, so memory is O(batch) no matter how large
-	// the scope is, and each lookup stays a bounded indexed IN over ids we
-	// already have — never an N+1 and never a 50k-element IN clause.
 	enrichBatchSize = 500
 
-	// maxMetaColumns bounds the header. Metadata keys come from operator
-	// uploads, so a workspace that shipped a per-row unique key would otherwise
-	// widen the file until it stopped opening anywhere.
 	maxMetaColumns = 200
 )
 
-// AnalysisLookup and StageLookup are the two reads this usecase makes beyond
-// the channel's own rows. They are declared here, narrowed to the single method
-// each, rather than taking the full repositories: the concrete repositories
-// satisfy them implicitly, so nothing changes at the wiring, and a test does not
-// have to stub forty methods it never calls to exercise a CSV.
-// AnalysisLookup is satisfied by the analysis engine.s conversation reader.
 type AnalysisLookup interface {
 	LatestByEntries(ctx context.Context, workspaceID string, source ca.Source, entryIDs []string) (map[string]*ca.Analysis, error)
 }
@@ -51,16 +35,9 @@ type StageLookup interface {
 type exportEntriesUseCase struct {
 	analysisRepo AnalysisLookup
 	stageRepo    StageLookup
-	// listers supply channel-neutral rows for every channel, WhatsApp included.
-	// Keyed by entry type so registering one never displaces another.
-	listers map[export.EntryType]export.ChannelEntryLister
+	listers      map[export.EntryType]export.ChannelEntryLister
 }
 
-// SetChannelEntryLister registers a channel's export source.
-//
-// Without one, that channel's conversations cannot be exported at all, the old
-// behaviour for everything except WhatsApp, which returned "unsupported entry
-// type" and gave an operator no way to get their data out.
 func (uc *exportEntriesUseCase) SetChannelEntryLister(entryType export.EntryType, lister export.ChannelEntryLister) {
 	if uc == nil || lister == nil || entryType == "" {
 		return
@@ -81,17 +58,6 @@ func NewExportEntriesUseCase(
 	}
 }
 
-// Export walks the scope twice.
-//
-// The first walk measures: how many rows, how many template variables, which
-// metadata keys. That is what the CSV header is made of, and a header cannot be
-// written after the rows it labels — so a single-pass export would have to hold
-// every row in memory to learn its own shape. The second walk streams rows out
-// as they arrive, holding one batch at a time.
-//
-// The cost is reading the scope twice; the benefit is that a workspace-wide
-// export of hundreds of thousands of entries uses the same memory as one of
-// fifty, and that the row cap is enforced before a single byte is written.
 func (uc *exportEntriesUseCase) Export(ctx context.Context, filter export.ExportFilter, w io.Writer) (int, error) {
 	if strings.TrimSpace(filter.Scope.WorkspaceID) == "" {
 		return 0, fmt.Errorf("workspace id is required")
@@ -106,8 +72,6 @@ func (uc *exportEntriesUseCase) Export(ctx context.Context, filter export.Export
 	if err != nil {
 		return 0, err
 	}
-	// Nothing matched, so nothing is written — not even a header. The caller
-	// can still answer with a status code of its choosing.
 	if shape.rows == 0 {
 		return 0, nil
 	}
@@ -115,13 +79,9 @@ func (uc *exportEntriesUseCase) Export(ctx context.Context, filter export.Export
 	return uc.stream(ctx, lister, filter, shape, w)
 }
 
-// csvShape is everything about the file that has to be known before its first
-// line: which optional column groups exist and how wide they are.
 type csvShape struct {
-	rows    int
-	maxVars int
-	// metaKeys is sorted, so two exports of the same data produce byte-identical
-	// column order.
+	rows     int
+	maxVars  int
 	metaKeys []string
 
 	includeVariables bool
@@ -135,17 +95,9 @@ func (uc *exportEntriesUseCase) measure(
 	filter export.ExportFilter,
 ) (csvShape, error) {
 	shape := csvShape{
-		// Variables are template-positional, so variable_1 means one thing in
-		// one campaign and something else in the next. They are still carried
-		// across campaigns because the campaign column makes them readable, but
-		// only WhatsApp has them at all.
 		includeVariables: filter.EntryType == export.EntryTypeWhatsApp,
 		includeCampaign:  filter.Scope.SpansContainers(),
-		// Only a channel whose rows carry a send status has a failure to
-		// explain. On the others the pair of columns would be two empty cells
-		// on every line, which reads as "nothing went wrong" rather than as
-		// "this file cannot answer that".
-		includeFailure: filter.EntryType.HasSendStatus(),
+		includeFailure:   filter.EntryType.HasSendStatus(),
 	}
 
 	metaKeys := make(map[string]struct{})
@@ -209,8 +161,6 @@ func (uc *exportEntriesUseCase) stream(
 			return err
 		}
 		batch = batch[:0]
-		// Hand the bytes to the transport now rather than at the end, so a long
-		// export arrives as a download in progress instead of a stalled request.
 		sink.writer.Flush()
 		return sink.writer.Error()
 	}
@@ -239,11 +189,6 @@ func (uc *exportEntriesUseCase) stream(
 	return sink.count, nil
 }
 
-// writeBatch enriches one window of rows and writes it.
-//
-// Analyses and stages key on (entry_id, entry_type), so they are read exactly
-// the same way for every channel — no per-channel branch, and one lookup per
-// batch rather than one per row.
 func (uc *exportEntriesUseCase) writeBatch(
 	filter export.ExportFilter,
 	batch []export.ChannelEntry,
@@ -251,10 +196,6 @@ func (uc *exportEntriesUseCase) writeBatch(
 ) error {
 	entryIDs := make([]string, 0, len(batch))
 	for _, e := range batch {
-		// A row can have nothing to analyse: a campaign send that failed before
-		// a conversation existed has no id at all. Both lookups key on a uuid
-		// column, so an empty id is not merely a miss: it is a query that
-		// errors and takes the whole export with it.
 		if e.EntryID != "" {
 			entryIDs = append(entryIDs, e.EntryID)
 		}
@@ -310,11 +251,6 @@ func (uc *exportEntriesUseCase) writeBatch(
 	return nil
 }
 
-// csvSink writes the header lazily, immediately before the first data row.
-//
-// That is what lets Export write nothing at all when the filter excludes
-// everything: a file containing only a header is not "no results", it is an
-// empty spreadsheet an operator has to open to find that out.
 type csvSink struct {
 	writer    *csv.Writer
 	shape     csvShape
@@ -435,13 +371,6 @@ func populateAnalysisFields(row *export.ExportRow, a *ca.Analysis) {
 	row.AnalysisProductInterest = a.ProductInterest
 }
 
-// matchesEntryFilter holds the predicates answerable from the channel row
-// alone, so they can be applied on both walks and keep the measured row count
-// equal to the written one.
-//
-// Status is re-checked here even though every lister filters it in SQL: the
-// port cannot enforce that, and an export that quietly includes statuses the
-// operator excluded is worse than one that costs a string comparison per row.
 func matchesEntryFilter(f export.ExportFilter, e export.ChannelEntry) bool {
 	if len(f.Scope.Statuses) > 0 && !containsFold(f.Scope.Statuses, e.Status) {
 		return false
@@ -452,9 +381,6 @@ func matchesEntryFilter(f export.ExportFilter, e export.ChannelEntry) bool {
 	return true
 }
 
-// matchesEnrichedFilter holds the predicates that need data the channel query
-// does not carry. They run on the second walk only, which is why the header can
-// name a column that every surviving row leaves blank.
 func matchesEnrichedFilter(f export.ExportFilter, a *ca.Analysis, t *stage.EntryStage) bool {
 	if f.StageID != "" {
 		if t == nil || t.StageID != f.StageID {
@@ -516,10 +442,6 @@ func formatNumber(number string) string {
 	return cleaned
 }
 
-// formatErrorCode leaves the cell blank when there is no code.
-//
-// Zero is the column's "no error" default, and writing it would put a 0 beside
-// every delivered row, a value an operator has to learn to read as "none".
 func formatErrorCode(code int) string {
 	if code == 0 {
 		return ""
@@ -547,19 +469,6 @@ func formatMetaValue(v interface{}) string {
 	}
 }
 
-// safeCSVText prepares a free-text cell for a spreadsheet.
-//
-// Newlines are flattened so one record stays one line. The leading-quote is
-// formula injection defence: Excel and Sheets execute a cell beginning with
-// =, +, -, @, tab or CR, and every string that reaches here — contact names,
-// campaign names, uploaded metadata, AI summaries — is written by someone
-// outside this system. A crafted lead name would otherwise run as a formula on
-// the machine of whoever opens the export.
-//
-// The number column is deliberately not passed through this: formatNumber has
-// already reduced it to digits and a leading +, which cannot carry a payload,
-// and an apostrophe in the column operators paste into phone systems would break the
-// file's main job.
 func safeCSVText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")

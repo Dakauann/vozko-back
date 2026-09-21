@@ -7,19 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The container registers each channel's tenant lookup through a type
-// assertion, because the resolver is held as a domain interface. Instagram's
-// assertion spelled the parameter as an inline `interface{ ... }` literal with
-// the right methods, and Telegram's spelled it as the named EntryOwnerResolver.
-//
-// A defined type is never identical to a type literal, so only Telegram's
-// matched. Instagram's was false on every boot, the registration never ran, and
-// the compiler had nothing to complain about because a failed assertion is a
-// runtime value, not an error. Every inbound Instagram message then failed to
-// resolve a workspace: no inbox assignment, no initial tag, no agent reply.
-//
-// These pin the shape the container must assert against.
-
 type stubOwnerResolver struct{ workspace, department string }
 
 func (s stubOwnerResolver) WorkspaceIDForEntry(context.Context, string) (string, error) {
@@ -29,7 +16,6 @@ func (s stubOwnerResolver) DepartmentIDForEntry(context.Context, string) (string
 	return s.department, nil
 }
 
-// The assertion the container performs, written exactly as production writes it.
 type ownerResolverSetter interface {
 	SetEntryOwnerResolver(shared.EntryType, EntryOwnerResolver)
 }
@@ -43,8 +29,6 @@ func TestResolverSatisfiesTheAssertionTheContainerUses(t *testing.T) {
 	}
 }
 
-// The shape that shipped. An inline literal parameter never matches a method
-// declared with the named type, whatever its method set.
 func TestAnInlineInterfaceLiteralParameterDoesNotMatch(t *testing.T) {
 	var held interface{} = NewCampaignWorkspaceResolver(nil, nil)
 
@@ -57,11 +41,9 @@ func TestAnInlineInterfaceLiteralParameterDoesNotMatch(t *testing.T) {
 	if ok {
 		t.Skip("Go now treats these as identical; the named-type rule below is what matters")
 	}
-	// Documented so nobody 'simplifies' the container back to the literal form.
 	t.Log("confirmed: an inline interface literal parameter does not satisfy the assertion")
 }
 
-// Registration has to actually take effect for every channel that has one.
 func TestRegisteredChannelsResolveTheirOwnWorkspace(t *testing.T) {
 	resolver := NewCampaignWorkspaceResolver(nil, nil)
 	setter, ok := resolver.(ownerResolverSetter)
@@ -97,8 +79,6 @@ func TestRegisteredChannelsResolveTheirOwnWorkspace(t *testing.T) {
 	}
 }
 
-// An unregistered channel must still say so by name rather than resolve to an
-// empty workspace, which would silently cross tenants.
 func TestAnUnregisteredChannelIsRefusedByName(t *testing.T) {
 	resolver := NewCampaignWorkspaceResolver(nil, nil)
 

@@ -13,12 +13,6 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// Regression cover for the 2026-08-04 outage: an operator sent a voice note over the
-// WebSocket, SendAudioBytes failed, and the audio branch of SendMediaMessage had
-// short-declared its own err with `:=`. The failure landed in that shadow, the guard
-// after the switch read the outer err as nil, and `output.MessageID` dereferenced a
-// nil pointer — killing the process and every WebSocket on it.
-
 type stubAudioEntryRepo struct{ wce.Repository }
 
 func (stubAudioEntryRepo) FindByID(id string) (*wce.WhatsAppCampaignEntry, error) {
@@ -53,8 +47,6 @@ func (m stubAudioMediaRepo) GetByID(id string) (*conversation.ConversationMedia,
 	}, nil
 }
 
-// stubAudioClient returns exactly what each case configures, so the (nil, nil) shape
-// that the defensive guard exists for can be exercised too.
 type stubAudioClient struct {
 	conversation.WhatsAppClient
 	out *conversation.SendTextMessageOutput
@@ -87,9 +79,6 @@ func (r *stubAudioMessageRepo) Create(m *conversation.Message) error {
 	return nil
 }
 
-// newAudioSender wires the smallest service that reaches the audio branch, with the
-// ffmpeg call stubbed out (the box running these tests has no ffmpeg, and the
-// conversion is not what is under test — only what happens to its result).
 func newAudioSender(t *testing.T, out *conversation.SendTextMessageOutput, sendErr error) (*MessageSenderService, *stubAudioMessageRepo) {
 	t.Helper()
 
@@ -114,8 +103,6 @@ func newAudioSender(t *testing.T, out *conversation.SendTextMessageOutput, sendE
 	}, msgRepo
 }
 
-// TestSendMediaMessage_AudioSendFailure_ReturnsErrorWithoutPanic is the outage itself.
-// Before the fix this panics with "invalid memory address or nil pointer dereference".
 func TestSendMediaMessage_AudioSendFailure_ReturnsErrorWithoutPanic(t *testing.T) {
 	sendErr := errors.New("whatsapp send audio failed: status=400")
 	svc, msgRepo := newAudioSender(t, nil, sendErr)
@@ -142,8 +129,6 @@ func TestSendMediaMessage_AudioSendFailure_ReturnsErrorWithoutPanic(t *testing.T
 	}
 }
 
-// TestSendMediaMessage_NilOutputWithNilError_ReturnsErrorWithoutPanic covers the
-// defensive guard: no provider path may take the process down by returning (nil, nil).
 func TestSendMediaMessage_NilOutputWithNilError_ReturnsErrorWithoutPanic(t *testing.T) {
 	svc, msgRepo := newAudioSender(t, nil, nil)
 
@@ -166,8 +151,6 @@ func TestSendMediaMessage_NilOutputWithNilError_ReturnsErrorWithoutPanic(t *test
 	}
 }
 
-// TestSendMediaMessage_AudioSuccess_StillSends guards the happy path, so the fix above
-// cannot be satisfied by simply failing every audio send.
 func TestSendMediaMessage_AudioSuccess_StillSends(t *testing.T) {
 	out := &conversation.SendTextMessageOutput{MessageID: "wamid.TEST123"}
 	svc, msgRepo := newAudioSender(t, out, nil)
@@ -187,8 +170,6 @@ func TestSendMediaMessage_AudioSuccess_StillSends(t *testing.T) {
 	}
 }
 
-// TestSendMediaMessage_AudioConversionFailure_StillReturnsError pins the branch that
-// already worked, so the var-instead-of-:= change is proven not to have broken it.
 func TestSendMediaMessage_AudioConversionFailure_StillReturnsError(t *testing.T) {
 	svc, _ := newAudioSender(t, &conversation.SendTextMessageOutput{MessageID: "unused"}, nil)
 

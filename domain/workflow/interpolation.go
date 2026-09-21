@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Matches {{ path }} where path may contain array indexing (data[0]) and
-// optional surrounding whitespace.
 var interpolationPattern = regexp.MustCompile(`\{\{\s*([\w.\[\]]+)\s*\}\}`)
 
 func formatValue(val interface{}) string {
@@ -28,11 +26,6 @@ func formatValue(val interface{}) string {
 	}
 }
 
-// normalizeIndexing rewrites array indexing (data[0]) into dot form (data.0) so
-// every path segment is parsed uniformly by the resolver. It only changes how
-// the path is *tokenised*, an integer segment is applied as an index only when
-// the current value is an array (see deepResolve), so bracket indexing stays
-// array-only and never accidentally indexes a map.
 func normalizeIndexing(path string) string {
 	if !strings.ContainsRune(path, '[') {
 		return path
@@ -40,8 +33,6 @@ func normalizeIndexing(path string) string {
 	return strings.NewReplacer("[", ".", "]", "").Replace(path)
 }
 
-// deepResolve walks a dot-separated path (already normalized) into nested data:
-// string segments index maps by key, integer segments index arrays by position.
 func deepResolve(root interface{}, path string) (interface{}, bool) {
 	cur := root
 	for _, p := range strings.Split(path, ".") {
@@ -144,9 +135,6 @@ func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) st
 					if val, ok := state.Get(stateKey); ok {
 						return formatValue(val)
 					}
-					// Deep access: {{node.<id>.<outputKey>.<path...>}}, the first
-					// segment is the output key, the remainder a dot/bracket path into
-					// its value (mirrors var/last/ai and the n8n expression standard).
 					if dotIdx := strings.IndexByte(nodeParts[1], '.'); dotIdx > 0 {
 						if root, ok := state.Get("_node_" + nodeParts[0] + "_" + nodeParts[1][:dotIdx]); ok {
 							if resolved, ok2 := deepResolve(root, nodeParts[1][dotIdx+1:]); ok2 {
@@ -165,22 +153,15 @@ func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) st
 			}
 
 			if val, ok := state.Get(scope); ok {
-				// Fast path: a literal top-level map key (may itself contain dots).
 				if m, isMap := val.(map[string]interface{}); isMap {
 					if v, found := m[key]; found {
 						return formatValue(v)
 					}
 				}
-				// deepResolve walks both maps (by key) and arrays (by index), so a
-				// top-level array variable captured from a JSON array response,
-				// e.g. {{token_consulta_cadastro[0].token}}, resolves here too.
 				if resolved, ok3 := deepResolve(val, key); ok3 {
 					return formatValue(resolved)
 				}
 			}
-			// Fallback: HTTP response envelope for a captured variable, so
-			// {{captureVar.status_code}} / {{captureVar.success}} resolve even when
-			// the captured value is the bare body. Body fields win (checked above).
 			if meta, ok := state.Get("_httpmeta_" + scope); ok {
 				if resolved, ok3 := deepResolve(meta, key); ok3 {
 					return formatValue(resolved)
@@ -258,7 +239,6 @@ func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
 			if val, ok := state.Get(stateKey); ok {
 				return val, true
 			}
-			// Deep access into a node output value, e.g. node.<id>.tool_args.cep
 			if dotIdx := strings.IndexByte(nodeParts[1], '.'); dotIdx > 0 {
 				if root, ok := state.Get("_node_" + nodeParts[0] + "_" + nodeParts[1][:dotIdx]); ok {
 					if resolved, ok2 := deepResolve(root, nodeParts[1][dotIdx+1:]); ok2 {
@@ -280,12 +260,10 @@ func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
 					return v, true
 				}
 			}
-			// Index into a top-level array (or nested path) captured variable.
 			if resolved, ok := deepResolve(val, key); ok {
 				return resolved, true
 			}
 		}
-		// Fallback: HTTP response envelope companion (status_code/success/body).
 		if meta, ok := state.Get("_httpmeta_" + scope); ok {
 			if resolved, ok := deepResolve(meta, key); ok {
 				return resolved, true

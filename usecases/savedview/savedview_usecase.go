@@ -1,6 +1,3 @@
-// Package savedview_usecase implements the saved-view CRUD + set-default
-// usecases. It depends only on the domain savedview.Repository port. Views are
-// owned by a user and workspace-scoped; a user may only mutate their own views.
 package savedview_usecase
 
 import (
@@ -63,7 +60,6 @@ func (uc *UpdateSavedViewUseCase) Execute(workspaceID, ownerID, id string, patch
 		return nil, savedview.ErrUnauthorized
 	}
 
-	// Identity fields are preserved; everything else is replaced by the patch.
 	patch.ID = existing.ID
 	patch.WorkspaceID = workspaceID
 	patch.OwnerID = existing.OwnerID
@@ -125,8 +121,6 @@ func (uc *SetDefaultSavedViewUseCase) Execute(workspaceID, ownerID, id string) (
 		return nil, savedview.ErrUnauthorized
 	}
 
-	// Exclusive default: clear the user's current default for this object type
-	// first, then set this one.
 	if err := uc.repo.ClearDefault(workspaceID, ownerID, existing.ObjectType); err != nil {
 		return nil, err
 	}

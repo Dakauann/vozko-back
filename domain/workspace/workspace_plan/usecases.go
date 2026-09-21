@@ -84,8 +84,6 @@ type ExpireSubscriptionsUseCase interface {
 	Execute() (int64, error)
 }
 
-// RemindExpiringSubscriptionsUseCase emails owners whose plan expires within the
-// reminder lead time. Idempotent per period (safe to run daily).
 type RemindExpiringSubscriptionsUseCase interface {
 	RemindExpiring() (int, error)
 }

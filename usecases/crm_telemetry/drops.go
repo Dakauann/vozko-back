@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 )
 
-// LogDropRecorder is a process-local drop counter + log (safe when Prometheus not extended).
 type LogDropRecorder struct {
 	publishErrors atomic.Int64
 	consumeErrors atomic.Int64

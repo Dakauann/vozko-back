@@ -83,7 +83,6 @@ func TestMemoryToolRememberFlowsIdentityFromConfig(t *testing.T) {
 	if in == nil || in.WorkspaceID != "ws-1" || in.LeadID != "lead-1" {
 		t.Fatalf("identity not taken from config: %+v", in)
 	}
-	// Attribution is the seeded agent, formatted as an AI actor.
 	if in.Actor.Kind != actor.KindAI || in.Actor.ID != "ai:agent-1" {
 		t.Fatalf("actor = %+v", in.Actor)
 	}
@@ -104,8 +103,6 @@ func TestMemoryToolWithoutLeadIsGraceful(t *testing.T) {
 	res, err := tool.ExecuteWithConfig(context.Background(), cfg, map[string]interface{}{
 		"action": "remember", "content": "x",
 	})
-	// A conversation not bridged to a lead answers with a tool RESULT the model
-	// can act on, never a Go error, which would abort the turn.
 	if err != nil {
 		t.Fatalf("must not return a Go error: %v", err)
 	}
@@ -166,8 +163,6 @@ func TestMemoryToolTrackerDebouncesIdenticalCalls(t *testing.T) {
 	f.createdWith = nil
 
 	res, _ := tool.ExecuteWithConfig(ctx, memToolConfig(), params)
-	// The looping-model case: same call again in the same turn is answered
-	// without a second write.
 	if f.createdWith != nil {
 		t.Fatal("identical repeat within the turn reached storage")
 	}
@@ -175,7 +170,6 @@ func TestMemoryToolTrackerDebouncesIdenticalCalls(t *testing.T) {
 		t.Fatalf("expected debounce answer, got %+v", res)
 	}
 
-	// A DIFFERENT memory in the same turn must still go through.
 	other := map[string]interface{}{"action": "remember", "content": "Esposa se chama Ana.", "category": "personal"}
 	if res, _ := tool.ExecuteWithConfig(ctx, memToolConfig(), other); res.IsError || f.createdWith == nil {
 		t.Fatalf("different write was wrongly debounced: %+v", res)

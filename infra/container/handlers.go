@@ -83,30 +83,24 @@ func (c *Container) initHandlers() {
 	metricsQueryClient := &http.Client{Timeout: 30 * time.Second}
 	metricsQueryHandler := handlers.NewMetricsQueryHandler(c.cfg.PrometheusURL, metricsQueryClient)
 
-	// The CRM board read model, hoisted out of the handler literal because TWO
-	// surfaces need it: the board/table endpoints, and the bulk service, whose
-	// "apply to everything this filter matches" resolves its targets through this
-	// exact read path. Sharing the instance is what guarantees the operator's view
-	// and the bulk write agree on what the filter selects.
 	crmBoardService := crmboard_usecase.NewService(
-		c.repositories.conversation,    // EntrySearcher: SearchEntriesByFilter
-		c.repositories.stage,           // StageLister: ListByCampaign
-		c.useCases.listLabels,          // LabelLister: Execute(workspaceID)
-		c.services.conversationAuth,    // Authorizer: GetDepartmentScope
-		c.repositories.inboxAssignment, // AssignmentLookup: FindByEntries (responsável)
+		c.repositories.conversation,
+		c.repositories.stage,
+		c.useCases.listLabels,
+		c.services.conversationAuth,
+		c.repositories.inboxAssignment,
 	)
 
 	crmBulkService := crmbulk_usecase.NewService(
-		c.useCases.assignEntryStage,  // StageAssigner: move_stage
-		c.useCases.assignEntryLabel,  // LabelAssigner: add_label
-		c.useCases.removeEntryLabel,  // LabelRemover: remove_label
-		c.services.assignmentService, // EntryAssigner: assign (Reassign)
-		c.services.conversationAuth,  // Authorizer: RBAC + per-entry scope (reused)
-		c.services.conversationHub,   // Broadcaster: realtime updates (reused)
+		c.useCases.assignEntryStage,
+		c.useCases.assignEntryLabel,
+		c.useCases.removeEntryLabel,
+		c.services.assignmentService,
+		c.services.conversationAuth,
+		c.services.conversationHub,
 	)
 	crmBulkService.SetTargetResolver(crmBoardTargetResolver{board: crmBoardService})
 
-	// 360dialog Partner Hosted onboarding service (repos are ready at this point).
 	c.services.dialog360Onboarding = businessphone_infra.NewDialog360OnboardingService(
 		businessphone_infra.NewDialog360PartnerClient(
 			c.cfg.Dialog360PartnerAPIBase,
@@ -122,8 +116,6 @@ func (c *Container) initHandlers() {
 	c.services.dialog360Onboarding.WithProvisioningGate(c.useCases.phoneProvisioningGate)
 	c.services.dialog360Onboarding.WithNotifier(c.useCases.notifier, c.useCases.dashboardURL)
 	if c.cfg.Dialog360WebhookBaseURL != "" {
-		// Register the inbound messaging webhook on each channel at Finalize. The
-		// secret is echoed back by 360dialog and validated by the receiving endpoint.
 		base := strings.TrimRight(c.cfg.Dialog360WebhookBaseURL, "/")
 		msgWebhookURL := base + "/webhooks/360dialog/messages"
 		if c.cfg.Dialog360WebhookSecret != "" {
@@ -132,7 +124,6 @@ func (c *Container) initHandlers() {
 		c.services.dialog360Onboarding.WithMessagingWebhook(msgWebhookURL, &http.Client{Timeout: 15 * time.Second})
 	}
 	if c.cfg.Dialog360PartnerAPIKey != "" {
-		// Backstop so no billable 360dialog channel stays orphaned or stuck pending.
 		c.services.dialog360Onboarding.RunPeriodicReconcile(15*time.Minute, 1*time.Hour)
 	}
 
@@ -176,14 +167,9 @@ func (c *Container) initHandlers() {
 			c.repositories.workspaceTemplateAccess,
 			c.repositories.businessPhone,
 		),
-		// Cold outbound gets its own handler rather than another method on the
-		// template handler: the template surface is CRUD on a catalogue, this one
-		// spends money, and they are gated by different permissions.
 		whatsappOutreach: whatsappoutreachhttp.NewHandler(whatsappoutreachhttp.HandlerDeps{
-			Start: c.useCases.startOfficialConversation,
-			Quote: c.useCases.quoteTemplateSend,
-			// The platform's own conversation authorizer, so department scoping here
-			// is the same rule the inbox applies, not a second copy of it.
+			Start:       c.useCases.startOfficialConversation,
+			Quote:       c.useCases.quoteTemplateSend,
 			Departments: c.services.conversationAuthImpl,
 		}),
 		systemConfig:    systemconfighttp.NewSystemConfigHandler(c.useCases.getSystemConfig, c.useCases.updateSystemConfig),
@@ -377,12 +363,12 @@ func (c *Container) initHandlers() {
 		opportunity: opportunityhttp.NewOpportunityHandler(
 			c.useCases.opportunity,
 			opportunityio.NewService(c.useCases.opportunity, c.repositories.customField),
-			c.services.conversationAuth, // scoper: GetDepartmentScope for export/list reads
+			c.services.conversationAuth,
 		),
 		opportunityBoard: opportunityboardhttp.NewOpportunityBoardHandler(oppboard_usecase.NewService(
-			c.repositories.opportunity,  // OpportunitySearcher: SearchByFilter + SumValueByFilter
-			c.repositories.stage,        // StageLister: ListByWorkspace
-			c.services.conversationAuth, // Authorizer: GetDepartmentScope (access gate)
+			c.repositories.opportunity,
+			c.repositories.stage,
+			c.services.conversationAuth,
 		)),
 		customField: customfieldhttp.NewCustomFieldHandler(c.useCases.customField),
 		crmBoard:    crmboardhttp.NewCRMBoardHandler(crmBoardService),
@@ -649,8 +635,6 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 		log.Default(),
 	)
 
-	// The broker is the accept/decline rendezvous between the ringing agent's
-	// WebSocket and whichever channel raised the offer (today: WhatsApp calling).
 	inboundBroker := callsession_usecase.NewInboundOfferBroker()
 
 	if c.services.whatsappCallSignaling != nil && c.services.whatsappCallRegistry != nil {
@@ -688,9 +672,6 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 }
 
 func (c *Container) buildWebhookHandler() *handlers.WebhookHandler {
-	// Webhook signature verification accepts the primary app secret plus any extras
-	// (META_APP_SECRETS) so inbound webhooks stay verified while numbers span more than one
-	// app. Token exchange (ES handler) still uses META_APP_SECRET alone.
 	webhookAppSecrets := append([]string{c.cfg.MetaAppSecret}, c.cfg.MetaAppSecretsExtra...)
 	h := handlers.NewWebhookHandler(c.useCases.publishWebhook, c.cfg.AsaasWebhookToken, c.cfg.WhatsAppWebhookVerifyToken, webhookAppSecrets...)
 	if c.services.whatsappCallWebhook != nil {
@@ -707,11 +688,6 @@ func (c *Container) buildWebhookHandler() *handlers.WebhookHandler {
 	return h
 }
 
-// callSessionUsernameResolver maps user IDs to display names for the real-time presence
-// panel and the inbound-call notifications. Names are slowly-changing display data, so
-// it caches per id with a TTL: after warmup a presence broadcast (which fires on every
-// connect/disconnect) resolves entirely from memory and touches NO database. A name
-// edit propagates within cacheTTL.
 type callSessionUsernameResolver struct {
 	repo  user.UserRepository
 	ttl   time.Duration
@@ -752,12 +728,12 @@ func (r *callSessionUsernameResolver) ResolveUsernames(userIDs []string) map[str
 	r.mu.RUnlock()
 
 	if len(miss) == 0 {
-		return out // fully served from cache: no DB hit
+		return out
 	}
 
 	users, err := r.repo.FindByIDs(miss)
 	if err != nil {
-		return out // serve whatever the cache had; never fail a presence push on a DB blip
+		return out
 	}
 	found := make(map[string]string, len(users))
 	for _, u := range users {
@@ -767,8 +743,6 @@ func (r *callSessionUsernameResolver) ResolveUsernames(userIDs []string) map[str
 	}
 	r.mu.Lock()
 	for _, id := range miss {
-		// Cache the name, or "" for an unknown/blank id, so a repeated miss does not
-		// re-query every broadcast.
 		name := found[id]
 		r.cache[id] = cachedUsername{name: name, exp: now.Add(r.ttl)}
 		if name != "" {
@@ -779,12 +753,6 @@ func (r *callSessionUsernameResolver) ResolveUsernames(userIDs []string) map[str
 	return out
 }
 
-// newAuthHandler builds the auth handler and applies the cookie policy the
-// browser session rides on. Cookie mode is opt-in per request (X-Auth-Mode) and
-// only works when a domain is configured, so the domain/TTLs here must match the
-// JWT lifetimes the token service issues, or a cookie would outlive (or expire
-// before) the token it carries. Secure is on everywhere except a local
-// development run, where there is no TLS to attach the cookie to.
 func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 	h := authhttp.NewAuthHandler(
 		c.useCases.credentialsLogin,
@@ -801,11 +769,6 @@ func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 		c.useCases.listSessions,
 		c.useCases.revokeSession,
 	)
-	// Restored verbatim from the pre-removal implementation. Two details are
-	// load-bearing and must not be "improved": the cookie policy is applied
-	// ONLY when a cookie domain is configured (otherwise the handler keeps its
-	// own defaults), and the dev check is an EXACT match so any unrecognised
-	// AppEnv falls through to Secure=true rather than silently disabling it.
 	if c.cfg.CookieDomain != "" {
 		secure := c.cfg.AppEnv != "development"
 		h.SetCookieConfig(authhttp.CookieConfig{
@@ -820,10 +783,6 @@ func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 	return h
 }
 
-// buildMercadoPagoWebhookHandler returns nil unless Mercado Pago is the active
-// provider. A nil handler leaves the route unmounted, which is a clearer signal to an
-// operator poking at a misconfigured deployment than an endpoint that exists and
-// rejects everything.
 func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHandler {
 	if c.cfg.PaymentProvider != payment_domain.ProviderMercadoPago {
 		return nil
@@ -835,18 +794,7 @@ func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHan
 	)
 }
 
-// withLeadInboxSeeding attaches the unofficial WhatsApp seeding job to the lead
-// handler, when that channel is switched on.
-//
-// A function rather than an eighth positional argument to NewLeadHandler,
-// because seeding is genuinely optional: a deployment without the channel still
-// imports leads, it just reports nothing seeded. Going through the bundle also
-// keeps the lead handler from reaching into another channel's wiring to find
-// its publisher.
 func withLeadInboxSeeding(c *Container, h *leadhttp.LeadHandler) *leadhttp.LeadHandler {
-	// The gate goes on FIRST and unconditionally, so a handler that somehow
-	// receives a seeder without an authorizer refuses to seed rather than
-	// seeding unchecked.
 	h.SetAuthorizer(c.services.conversationAuth)
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return h

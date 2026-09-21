@@ -13,8 +13,6 @@ import (
 	"vozko/infra/meta"
 )
 
-// adapterFixture wires the adapter over fakes with one connected account and an
-// open messaging window.
 type adapterFixture struct {
 	adapter   conversation.ChannelAdapter
 	accounts  *fakeAccountRepo
@@ -40,8 +38,6 @@ func newAdapterFixture(t *testing.T, accounts []*igdomain.Account, lastInbound *
 		},
 	}
 
-	// Each conversation id encodes which account owns it, so a test can assert the
-	// adapter picked the right one.
 	convRepo := &fakeConversationRepo{
 		FindByIDFn: func(_ context.Context, id string) (*igdomain.Conversation, error) {
 			for _, a := range accounts {
@@ -120,10 +116,6 @@ func TestChannelAdapter_ResolveEntry(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_SendUsesTheOwningAccount is the multi-account correctness
-// property the whole design turns on: with several Instagram accounts in one
-// workspace, a reply must leave from the account the conversation belongs to,
-// using THAT account's IG id and token.
 func TestChannelAdapter_SendUsesTheOwningAccount(t *testing.T) {
 	first := connectedAccount()
 
@@ -162,9 +154,6 @@ func TestChannelAdapter_SendUsesTheOwningAccount(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_WindowState: Instagram's window is a sliding 24h deadline
-// anchored on the contact's last message, and a conversation with no inbound
-// message can never be written to first.
 func TestChannelAdapter_WindowState(t *testing.T) {
 	account := connectedAccount()
 
@@ -198,9 +187,6 @@ func TestChannelAdapter_WindowState(t *testing.T) {
 		if window.Open {
 			t.Error("window should be closed 25 hours after the last inbound message")
 		}
-		// The reason now carries what a past-dated expiry used to stand in for.
-		// A time on a CLOSED window means "blocked until then", so reporting the
-		// lapse here would invert it.
 		if window.Reason != conversation.WindowReasonExpired {
 			t.Errorf("reason = %q, want expired", window.Reason)
 		}
@@ -238,14 +224,11 @@ func TestChannelAdapter_SendRejectedWhenWindowClosed(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_TextLimitIsBytes: Instagram documents "1000 bytes", so a rune
-// count would let multibyte text through and fail upstream instead of here.
 func TestChannelAdapter_TextLimitIsBytes(t *testing.T) {
 	account := connectedAccount()
 	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
 	ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
 
-	// 400 emoji: well under 1000 runes, well over 1000 bytes.
 	emoji := strings.Repeat("😀", 400)
 	if len([]rune(emoji)) >= igdomain.MaxTextBytes {
 		t.Fatalf("fixture is not exercising the byte/rune difference: %d runes", len([]rune(emoji)))
@@ -258,7 +241,6 @@ func TestChannelAdapter_TextLimitIsBytes(t *testing.T) {
 		t.Fatalf("err = %v, want ErrTextTooLong", err)
 	}
 
-	// Just under the limit must pass.
 	f.messaging.Sent = nil
 	ok := strings.Repeat("a", igdomain.MaxTextBytes-1)
 	if _, err := f.adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: ok}); err != nil {
@@ -271,7 +253,6 @@ func TestChannelAdapter_SendMediaRequiresURL(t *testing.T) {
 	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
 	ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
 
-	// Instagram fetches the asset server-side, so raw bytes cannot be sent.
 	_, err := f.adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
 		Kind:  "image",
 		Bytes: []byte("raw"),
@@ -281,8 +262,6 @@ func TestChannelAdapter_SendMediaRequiresURL(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_SendMediaRejectsUnsupportedMIME: gif is not an accepted
-// Instagram image format, and images cap at 8MB while everything else caps at 25MB.
 func TestChannelAdapter_SendMediaRejectsUnsupportedMIME(t *testing.T) {
 	account := connectedAccount()
 	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
@@ -320,8 +299,6 @@ func TestChannelAdapter_SendMediaUnknownKind(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_RefusesAccountWithoutMessagingScope: users can decline
-// individual permissions, so a connected account is not necessarily a sendable one.
 func TestChannelAdapter_RefusesAccountWithoutMessagingScope(t *testing.T) {
 	account := connectedAccount()
 	account.GrantedScopes = []string{igdomain.ScopeBasic}
@@ -337,8 +314,6 @@ func TestChannelAdapter_RefusesAccountWithoutMessagingScope(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_DeadTokenMarksAccountForReconnect turns an invisible
-// "messages stopped working" into a visible Reconnect prompt.
 func TestChannelAdapter_DeadTokenMarksAccountForReconnect(t *testing.T) {
 	account := connectedAccount()
 	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
@@ -357,9 +332,6 @@ func TestChannelAdapter_DeadTokenMarksAccountForReconnect(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_ClosedWindowUpstreamSurfacesSentinel: when Instagram itself
-// reports the window closed, the caller must still see the sentinel so the UI
-// explains it rather than showing a generic failure.
 func TestChannelAdapter_ClosedWindowUpstreamSurfacesSentinel(t *testing.T) {
 	account := connectedAccount()
 	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
@@ -389,9 +361,6 @@ func TestChannelAdapter_RecordsOutboundClock(t *testing.T) {
 	}
 }
 
-// TestChannelAdapter_OptionalCapabilities documents that reactions and presence
-// are discovered by type assertion, matching the codebase's existing pattern for
-// optional provider features.
 func TestChannelAdapter_OptionalCapabilities(t *testing.T) {
 	f := newAdapterFixture(t, []*igdomain.Account{connectedAccount()}, openWindow())
 
@@ -403,9 +372,6 @@ func TestChannelAdapter_OptionalCapabilities(t *testing.T) {
 	}
 }
 
-// TestAdapterRegistry_RoutesByEntryType covers the strangler seam: only migrated
-// channels resolve, and an unmigrated one must report a clear error rather than
-// silently doing nothing.
 func TestAdapterRegistry_RoutesByEntryType(t *testing.T) {
 	f := newAdapterFixture(t, []*igdomain.Account{connectedAccount()}, openWindow())
 	registry := conversation.NewAdapterRegistry(f.adapter)
@@ -421,8 +387,6 @@ func TestAdapterRegistry_RoutesByEntryType(t *testing.T) {
 		t.Error("Has(instagram) = false")
 	}
 
-	// WhatsApp is deliberately NOT registered yet: it keeps its existing code path
-	// until its adapter lands.
 	if _, err := registry.For(shared.EntryTypeWhatsApp); !errors.Is(err, conversation.ErrNoAdapterForEntryType) {
 		t.Errorf("For(whatsapp) err = %v, want ErrNoAdapterForEntryType", err)
 	}

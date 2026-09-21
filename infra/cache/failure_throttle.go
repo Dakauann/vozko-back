@@ -9,11 +9,6 @@ import (
 	domain "vozko/domain/cache"
 )
 
-// sharedStateFailureThrottle implements domain.FailureThrottle on top of the shared
-// Redis state (memory in single-replica dev). The key is hashed so raw account
-// identifiers (emails) are never written to the cache. IncrWithTTL increments and
-// (re)sets the window TTL atomically; Allowed only reads, so it never consumes the
-// budget on a legitimate attempt.
 type sharedStateFailureThrottle struct {
 	shared    domain.SharedState
 	prefix    string
@@ -36,8 +31,6 @@ func (t *sharedStateFailureThrottle) Allowed(k string) (bool, time.Duration, err
 	}
 	v, err := t.shared.GetString(t.key(k))
 	if err != nil {
-		// Fail-open: a cache blip must not lock everyone out. The per-IP middleware
-		// is the fail-closed backstop.
 		return true, 0, err
 	}
 	if v == "" {
@@ -48,7 +41,6 @@ func (t *sharedStateFailureThrottle) Allowed(k string) (bool, time.Duration, err
 		return true, 0, nil
 	}
 	if n >= t.threshold {
-		// window is a safe upper bound for Retry-After (the real reset may be sooner).
 		return false, t.window, nil
 	}
 	return true, 0, nil

@@ -21,17 +21,6 @@ func NewUnassignOwnerUseCase(
 	return &unassignOwnerUseCase{repo: repo, phones: phones, partner: partner}
 }
 
-// Execute detaches the phone from its owning workspace, returning it to the
-// unassigned pool.
-//
-// For a Meta phone this is reversible and non-destructive, a Meta number costs
-// nothing to park. For a dialog360 phone the channel BILLS the vendor every
-// month, and an ownerless-but-live channel is funded by no plan and can never be
-// reactivated (reactivation is owner-keyed, see OnEntitlementIncreased). So a
-// live dialog360 channel is CANCELLED at the vendor before the owner is cleared;
-// if that cancellation cannot be guaranteed, the owner is left in place rather
-// than creating a channel that bills for nobody. (The vendor reconciler is the
-// backstop for any ownerless-live channel that still slips through.)
 func (uc *unassignOwnerUseCase) Execute(phoneID string) error {
 	if phoneID == "" {
 		return businessphone.ErrPhoneNumberNotFound
@@ -43,7 +32,6 @@ func (uc *unassignOwnerUseCase) Execute(phoneID string) error {
 	}
 
 	if phone.OwnerWorkspaceID == "" {
-		// Already unassigned, nothing to do, treat as success (idempotent).
 		return nil
 	}
 
@@ -62,18 +50,11 @@ func (uc *unassignOwnerUseCase) Execute(phoneID string) error {
 	return nil
 }
 
-// cancelLiveDialog360Channel cancels the phone's 360dialog channel at the vendor
-// (client + channel scoped) and suspends it locally, so detaching the phone never
-// leaves a channel billing for no owner. It returns an error, blocking the
-// unassign, if the channel cannot be cancelled, so the bad state is never created.
 func (uc *unassignOwnerUseCase) cancelLiveDialog360Channel(phone *businessphone.WhatsAppBusinessPhoneNumber) error {
 	if uc.partner == nil || uc.phones == nil {
 		return fmt.Errorf("unassign: dialog360 channel cancellation is not configured")
 	}
 
-	// The 360dialog cancel is client-scoped; the client id lives on the WABA and is
-	// exposed via the owner-scoped connected list. Look the phone up while it still
-	// has its owner.
 	connected, err := uc.phones.FindConnectedDialog360ByOwner(phone.OwnerWorkspaceID)
 	if err != nil {
 		return err
@@ -86,7 +67,6 @@ func (uc *unassignOwnerUseCase) cancelLiveDialog360Channel(phone *businessphone.
 		}
 	}
 	if target == nil || target.Dialog360ChannelID == "" {
-		// No live channel on record, nothing to cancel; safe to unassign.
 		return nil
 	}
 	if target.Dialog360ClientID == "" {

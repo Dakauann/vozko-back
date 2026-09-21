@@ -739,9 +739,6 @@ func TestStatusUpdate_FallbackToExternalIDOnly(t *testing.T) {
 	}
 }
 
-// 360dialog delivers status changes keyed by the channel-scoped template id
-// (stored as ExternalID), not Meta's numeric id. The status update must resolve
-// the record via ChannelExternalID when MessageTemplateID is absent.
 func TestStatusUpdate_Dialog360ChannelExternalID(t *testing.T) {
 	repo := newMockTemplateRepo()
 	seedTemplate(repo, "t1", "gqh7gkLf8nZPcY4EpEbmWT", "2044166682973889", "concluirinscricao_03", template.TemplateStatusPending, template.TemplateCategoryUtility)

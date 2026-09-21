@@ -118,9 +118,6 @@ import (
 	workspace_template_access_usecase "vozko/usecases/workspace_template_access"
 )
 
-// Per-account failed-login throttle (the brute-force defence that, unlike the
-// per-IP backstop, does not collide for users on a shared NAT). Generous enough
-// that ordinary mistyped passwords never trip it; resets on a successful login.
 const (
 	loginFailureThreshold = 10
 	loginFailureWindow    = 15 * time.Minute
@@ -128,14 +125,6 @@ const (
 
 func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.ConsumeWhatsappTemplateUseCase) {
 
-	// The activity-timeline logger, shared by every use case that records a
-	// conversation event. Available here because wireConversationHub, which
-	// builds the telemetry publisher, runs before initUseCases.
-	//
-	// Use cases hold this, not handlers. Stage and label events used to be
-	// written by the HTTP handlers, so the CRM's bulk action and the AI's stage
-	// tool — which call the same use cases directly — changed the board and left
-	// the conversation's history blank.
 	timeline := ce_usecase.NewLogger(c.services.crmTelemetryPublisher)
 
 	searchCEPUC := cep_usecase.NewSearchCEPUseCase(c.repositories.cep, http.DefaultClient)
@@ -151,17 +140,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	queryAgentKBUC := rag_usecase.NewQueryAgentKnowledgeBaseUseCase(c.repositories.ragAgentKB, queryKnowledgeBaseUC)
 	ragService := rag_usecase.NewRAGService(queryKnowledgeBaseUC, queryAgentKBUC)
 
-	// Reschedule engine (reagendamento): reused by both the AI tool and the workflow
-	// node executor so the move logic lives in one place.
 	rescheduleEventUC := calendar_usecase.NewRescheduleEventUseCase(
 		c.repositories.calendar,
 		c.services.googleCalendar,
 		calendar_usecase.NewUpdateEventUseCase(c.repositories.calendar, c.services.googleCalendar),
 	)
 
-	// The messaging tools reach every channel through the live adapter registry.
-	// Without it they stay WhatsApp-only, and since the agent turn now offers
-	// them on Telegram and Instagram too, they would be offered and then fail.
 	optionsTool := tools_usecase.NewSendWhatsappButtonMessageToolUseCase(context.Background(), c.services.whatsappClientFactory)
 	mediaTool := tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media)
 	for _, h := range []tools.Handler{optionsTool, mediaTool} {
@@ -172,16 +156,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// Built before the tool registry because the memory tool is one of its
-	// consumers; the same values are spread into the useCases literal below and
-	// handed to the agentturn assembler, so agents and operators share one
-	// write model. The emitter it captures was wired in wireConversationHub.
 	leadMemories := c.buildLeadMemories()
 
-	// One instance, three consumers: the stage HTTP handler, the CRM's bulk action
-	// and the AI's stage tool. Sharing it is the point — it carries the rule that a
-	// lead's stage must belong to the lead's own funnel, and a writer that skipped
-	// it would be a writer that rule cannot reach.
 	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
 
 	toolHandlers := []tools.Handler{
@@ -203,33 +179,22 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.services.toolRegistry = tools_usecase.NewCompositeToolService(c.services.toolRegistry, c.mcpRegistry, c.mcpCollection)
 	}
 
-	c.services.ai = openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
+	aiService, err := openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
+	if err != nil {
+		log.Fatalf("Failed to build the AI service: %v", err)
+	}
+	c.services.ai = aiService
 	log.Printf("AI provider: OpenRouter (model: %s)", c.cfg.OpenRouterDefaultModel)
 
-	// Before ANY channel runtime below: each one captures channelAIReply by
-	// value, so it has to exist first or the channel silently gets a nil.
 	c.initConversationSenders()
 
-	// The single agent-turn recipe, wired here because this is the first point
-	// where all three of its inputs exist: the tool registry and AI service
-	// above, and the channel AI service from initConversationSenders.
-	//
-	// Without it the service can only ever send plain text. Instagram and
-	// Telegram agents ran with no tools, no knowledge base and no channel
-	// identity, while WhatsApp had all three because it builds its own
-	// assembler, and an agent configured with a knowledge base in the UI simply
-	// ignored it everywhere else. That is exactly the drift the agentturn
-	// package was written to prevent, so it is asserted rather than guarded:
-	// a nil here is a wiring bug, not a supported configuration.
 	turnAssembler := agentturn.New(c.services.toolRegistry, ragService, leadMemories.list)
 	c.mustChannelAIReply().SetAssembler(turnAssembler)
 
-	// The agent simulator: the SAME provider and turn recipe, but its AI
-	// service is wired with the sandboxed registry, so every tool call the
-	// model makes is intercepted and answered with a canned result. This
-	// second service instance IS the sandbox boundary: never hand the
-	// simulator c.services.ai.
-	simulationAI := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	simulationAI, err := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	if err != nil {
+		log.Fatalf("Failed to build the simulation AI service: %v", err)
+	}
 	simulateAgentUC, err := agent_usecase.NewSimulateTurnUseCase(c.repositories.agent, turnAssembler, simulationAI)
 	if err != nil {
 		log.Fatalf("[container] agent simulator: %v", err)
@@ -248,27 +213,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	listCategoriesUC := category_usecase.NewListCategoriesUseCase(c.repositories.category)
 	resolveCreationDepartmentUC := workspace_department_usecase.NewResolveCreationDepartmentUseCase(c.repositories.workspace, c.repositories.workspaceDepartment)
 
-	// Built out here so the stage repository can be attached: with it, creating a
-	// stage group also materializes the conversation funnel it describes, which is
-	// what makes the new funnel appear in the CRM selector straight away instead of
-	// waiting for some campaign to reference the group.
 	createStageGroupUC := stage_usecase.NewCreateStageGroupUseCase(c.repositories.stageGroup, resolveCreationDepartmentUC)
 	createStageGroupUC.SetStageRepository(c.repositories.stage)
 
-	// Creating a funnel seeds its columns, so it arrives usable rather than as an
-	// empty board with no first column to anchor the next one against.
 	createPipelineUC := pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline)
 	createPipelineUC.SetStageSeeder(pipelineStageSeeder{stages: c.repositories.stage})
 
-	// Deleting a funnel spans six tables that name a pipeline_id, none of which
-	// the pipeline package may import. This adapter is the one place allowed to
-	// see them all; both the delete guard and the usage read it, so the dialog
-	// and the refusal can never disagree about what a funnel holds.
 	pipelineOccupancy := pipeline_repository.NewOccupancy(c.db)
 
-	// The knowledge-base and MCP repositories are the workspace-ownership
-	// guards for attached ids: an agent must never be pointed at another
-	// workspace's knowledge base, and an id on its own carries no proof.
 	createAgentUC := agent_usecase.NewCreateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry, c.repositories.ragKnowledgeBase, c.mcpCollection, resolveCreationDepartmentUC)
 	updateAgentUC := agent_usecase.NewUpdateAgentUseCase(c.repositories.agent, c.repositories.businessPhone, c.services.toolRegistry, c.repositories.ragKnowledgeBase, c.mcpCollection)
 	assignAgentDepartmentUC := agent_usecase.NewAssignDepartmentUseCase(c.repositories.agent, resolveCreationDepartmentUC)
@@ -281,7 +233,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	assignWCCampaignDepartmentUC := wc_usecase.NewAssignDepartmentUseCase(c.repositories.wcCampaign, resolveCreationDepartmentUC)
 	deleteWCCampaignUC := wc_usecase.NewDeleteCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	getWCCampaignUC := wc_usecase.NewGetCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
-	// Envios + type volume prefer the balance ledger (true charges) when available.
 	var waChargeAgg balance_domain.WhatsAppChargeAggregator
 	if agg, ok := c.repositories.balance.(balance_domain.WhatsAppChargeAggregator); ok {
 		waChargeAgg = agg
@@ -316,17 +267,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.whatsappTemplate,
 	)
 
-	cachedBalanceChecker := balance_usecase.NewCachedBalanceChecker(
-		c.repositories.balance, c.redisProvider.SharedState(), 10*time.Second)
+	cachedBalanceChecker := c.services.cachedBalanceChecker
 	inflightReserver := balance_usecase.NewInflightReserver(c.redisProvider.SharedState())
-	c.services.cachedBalanceChecker = cachedBalanceChecker
 
 	checkBalanceUC := balance_usecase.NewCheckBalanceUseCase(c.repositories.balance)
 
 	messageHistoryManager := conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub)
 	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), c.repositories.workspaceConfig, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
-	quickSendWCCampaignUC := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
+	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
+	if err != nil {
+		log.Fatalf("Failed to build the WhatsApp campaign quick send: %v", err)
+	}
 
 	var whisperURLs []string
 	if envURLs := whisper.GetURLsFromEnv(whisper.EnvWhisperURLs); len(envURLs) > 0 {
@@ -375,8 +327,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	describeRequirementsUC := insurance_usecase.NewDescribeRequirementsUseCase(insuranceProviders)
 
 	publishEmailUC := notification_usecase.NewPublishEmailUseCase(c.services.notificationsQueuePub)
-	// Request-path senders use a queued EmailService so registration/login/invite
-	// never block on the provider; the consumer keeps the real provider-backed one.
 	queuedEmailSvc := notification_service.NewQueuedEmailService(publishEmailUC)
 	consumeEmailUC := notification_usecase.NewConsumeEmailUseCase(c.services.notificationQueueSub, c.services.notificationsQueuePub, c.services.emailService, c.services.metrics)
 	notifierUC := notification_usecase.NewNotifier(
@@ -401,12 +351,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, notifierUC, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
 
-	// The workspace-config source is attached separately because exactly ONE
-	// entitlement kind takes its base from there rather than from the plan:
-	// unofficial WhatsApp numbers, whose allowance a platform administrator
-	// grants per workspace. Without this the kind resolves to zero and no
-	// workspace can connect a number however many it was granted — so it is
-	// attached to all three resolvers, not just the one the gate happens to use.
 	entitlementResolverUC := workspace_addon_usecase.NewEntitlementResolver(
 		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
 		c.repositories.addonSubscription, c.repositories.workspaceConfig)
@@ -424,7 +368,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	callSlotManager := workspace_domain.NewCallSlotManager(c.redisProvider.SharedState(), c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.replicaID).WithEntitlements(entitlementResolverUC)
 	c.services.callSlotManager = callSlotManager
 
-	// Live concurrency board (Redis only, paint path never hits Postgres).
 	boardStore := telephony_infra.NewBoardStore(c.redisProvider.SharedState())
 	capacityReader := telephony_usecase.NewSlotCapacityReader(c.redisProvider.SharedState(), callSlotManager)
 	boardSvc := telephony_usecase.NewBoardService(boardStore, capacityReader)
@@ -453,16 +396,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	)
 	c.services.endOutboundCall = callsession_usecase.NewEndOutboundCallUseCase(callAdmissionCoordinator)
 
-	c.services.callLifecycle = callsession_usecase.NewOutboundCallLifecycleRunner(
+	callLifecycle, err := callsession_usecase.NewOutboundCallLifecycleRunner(
 		callAdmissionCoordinator,
 		cachedBalanceChecker,
 		inflightReserver,
 		c.services.billingQueuePub,
 		log.Default(),
 	)
+	if err != nil {
+		log.Fatalf("Failed to build the outbound call lifecycle: %v", err)
+	}
+	c.services.callLifecycle = callLifecycle
 
-	// Temporary raw CDR until board-aware use cases are assigned below;
-	// re-wired after c.useCases.startCall is constructed.
 	c.services.callLifecycle.SetCDRStart(
 		calls_cdr_usecase.NewStartCallUseCase(c.repositories.callCDR),
 	)
@@ -485,9 +430,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	affiliateExchangeRateProvider := newAffiliateExchangeRateAdapter(c.repositories.workspacePricing)
 	affiliateRecordEarningUC := affiliate_usecase.NewRecordEarningUseCase(c.repositories.affiliate, affiliateExchangeRateProvider)
 
-	// Unified monthly billing: one Asaas invoice per workspace (plan + active channel addons). This is
-	// the full replacement for the old wallet-debit addon renewal. opsAlerter is the high-severity sink
-	// for an unconfirmed 360dialog cancellation or a reconciliation divergence.
 	opsAlerter := alerting.NewLogOpsAlerter()
 	emitMonthlyInvoicesUC := billing_usecase.NewEmitMonthlyInvoicesUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription, c.repositories.workspace, c.repositories.workspacePricing, createInvoiceUC)
 	confirmMonthlyBillingUC := billing_usecase.NewConfirmMonthlyBillingUseCase(c.repositories.workspaceSubscription, c.repositories.addonSubscription).WithReactivation(addonPhoneDeactivatorUC)
@@ -497,19 +439,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifier(notifierUC, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
 
-	// Both handlers share the single business use case above: the provider difference
-	// lives entirely in how a raw notification becomes a canonical payment.WebhookEvent.
-	//
-	// The Mercado Pago consumer runs only when Mercado Pago is the active provider, but
-	// the Asaas consumer runs whenever Asaas is configured AT ALL — including on a
-	// deployment that has already cut over.
-	//
-	// That asymmetry is deliberate and it matters. /webhooks/asaas is mounted
-	// unconditionally, so after a cutover Asaas keeps delivering notifications for
-	// charges issued before the switch. With no consumer draining that queue those
-	// messages pile up in RabbitMQ and the payments they represent are never credited:
-	// a customer pays, and the money silently never lands. Draining a queue that turns
-	// out to be empty costs nothing; not draining one costs a customer their balance.
 	var asaasConsumer, mercadoPagoConsumer payment_domain.ConsumePaymentWebhookUseCase
 	if c.cfg.PaymentProvider == payment_domain.ProviderMercadoPago {
 		mercadoPagoConsumer = payment_usecase.NewConsumeMercadoPagoWebhookUseCase(
@@ -526,34 +455,25 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
 		media_infra.NewXLSXParser(),
 		media_infra.NewPlainTextParser(),
-	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC)
+	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC, c.services.serviceMessageBilling)
+	if err != nil {
+		log.Fatalf("Failed to build the WhatsApp message handler: %v", err)
+	}
 
-	// Let the status webhook settle single-target sends. Without this a failed
-	// delivery for a dialog send would fall through to the campaign refund, which
-	// credits the campaign id — a reference that send never debited.
 	handleWhatsAppMessageUC = conversation_usecase.AttachTemplateSendAttempts(
 		handleWhatsAppMessageUC, c.repositories.whatsappTemplateSend, c.repositories.balance)
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
-	// Shared by the PATCH /header-media endpoint and reused by template create so a
-	// media-header template always has its WhatsApp media id minted (URL -> /media
-	// upload -> id, linked to the template) instead of only the public URL.
 	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)
 	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba).WithNotifier(notifierUC, dashboardURL)
 
 	affiliateStatsUC := affiliate_usecase.NewGetAffiliateStatsUseCase(c.repositories.affiliate)
 
-	// Affiliate wallet ids are an Asaas concept (a walletId identifies an Asaas
-	// subaccount), so validation always goes to Asaas no matter which gateway bills
-	// customers. On a Mercado Pago deployment that has kept its Asaas keys this still
-	// works; without them the validator is left nil, and the affiliate use cases treat
-	// that as "cannot verify" rather than failing every registration with an opaque
-	// credentials error.
 	var affiliateWalletValidator affiliate_domain.WalletValidator
 	if c.cfg.AsaasAPIKey != "" && c.cfg.AsaasBaseURL != "" {
 		affiliateWalletValidator = asaas_service.NewWalletValidator(c.services.asaasService)
@@ -562,22 +482,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			"(wallet ids are an Asaas concept and cannot be verified through another provider)")
 	}
 
-	// Single source of truth for member-visibility policy, shared by the HTTP
-	// assignable-members endpoint and the realtime conversation-assign guard.
 	memberVisibilityUC := workspace_usecase.NewMemberVisibilityUseCase(c.repositories.workspace, c.repositories.workspaceDepartment, c.repositories.workspaceConfig)
 
-	// CRM opportunity (sales-deal) board + workspace custom field definitions.
 	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
 	opportunitySvc := opportunity_usecase.NewService(c.repositories.opportunity, c.repositories.opportunityLink, c.repositories.customField)
 
-	// Built here rather than inside initConversationSenders: its inputs exist by
-	// then, but the useCases struct below does not, so writing onto it from
-	// there dereferenced a nil pointer at boot.
 	scheduledMessages := c.buildScheduledMessages()
 
-	// Cold outbound on the official channel. Built here for the same reason, and
-	// fatal on any wiring fault: its whole job is that a paid template is never
-	// sent unbilled, which a half-wired sender cannot promise.
 	whatsAppOutreach := c.buildWhatsAppOutreach(whatsAppOutreachDeps{
 		consume:       consumeWhatsappTemplateUC,
 		inflight:      inflightReserver,
@@ -1120,8 +1031,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		affiliateAdminUpdate:   affiliate_usecase.NewAdminUpdateAffiliateUseCase(c.repositories.affiliate),
 	}
 
-	// Re-wire all call paths to board-aware CDR (AI campaign bridge, call session, workflow).
-	// Bridges are constructed before startCall exists; SetCDR* swaps in the live hooks.
 	if c.useCases.startCall != nil {
 		if c.services.callLifecycle != nil {
 			c.services.callLifecycle.SetCDRStart(c.useCases.startCall)
@@ -1160,17 +1069,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		ConversationMediaRepo:   c.repositories.conversationMedia,
 		AIAttendance:            c.services.aiAttendanceService,
 		ConversationStatus:      c.services.conversationStatusUpdater,
-		// The LIVE registry, not a snapshot: channel adapters register as each
-		// channel initializes, and several do so after this point.
-		Adapters: c.liveAdapterRegistry(),
+		Adapters:                c.liveAdapterRegistry(),
 	}
 	workflow_usecase.RegisterDefaultExecutors(wfRegistry, executorDeps)
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
-	// Re-check automation when a PARKED run resumes, not only when one starts.
-	// Without this a workflow slept through the operator switching automation
-	// off and still messaged the contact hours later.
 	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(c.repositories.wcEntry))
 	c.useCases.aichat = aichat_usecase.NewService(
 		c.repositories.aichatThread,
@@ -1180,19 +1084,15 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.workspaceSubscription,
 	)
 
-	// The in-app AI chat is the copilot: it runs the shared agentloop harness with a
-	// workspace-scoped tool registry over the same aichat threads (sessions).
 	c.useCases.copilot = copilot_usecase.NewService(
 		agentloop.Engine{AI: c.services.ai},
 		copilot_usecase.NewRegistry(
-			// agents
 			copilottools.NewListAgentsTool(listAgentsUC),
 			copilottools.NewCountAgentsTool(listAgentsUC),
 			copilottools.NewGetAgentTool(getAgentUC),
 			copilottools.NewCreateAgentTool(createAgentUC),
 			copilottools.NewUpdateAgentTool(getAgentUC, updateAgentUC),
 			copilottools.NewDeleteAgentTool(getAgentUC, deleteAgentUC),
-			// reference / catalog lookups
 			copilottools.NewListDepartmentsTool(c.useCases.listWorkspaceDepartments),
 			copilottools.NewListModelsTool(c.services.ai),
 			copilottools.NewListAgentToolsTool(c.services.toolRegistry),
@@ -1236,10 +1136,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		GoogleCalendar: c.services.googleCalendar,
 		BillingPub:     c.services.billingQueuePub,
 	})
-	// Shared, TTL-cached model-id validity check (same caching discipline as the
-	// LLM price fetcher). Reused by the builder and the activate-time validator so
-	// neither re-fetches the ~300-model catalog per check, they validate only the
-	// model ids actually used.
 	var aiModelValidator workflow_usecase.ModelLookup
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {
 		aiModelValidator = openrouter_service.NewModelValidator(orSvc, 1*time.Hour)
@@ -1262,10 +1158,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		MaxTokens:                 1_000_000,
 		SessionTimeout:            10 * time.Minute,
 		MaxConcurrentPerWorkspace: 3,
-		// Gate each build turn on a positive workspace balance (fail-closed). A
-		// session that crosses zero mid-build is still bounded by MaxTokens.
-		BalanceGate:      cachedBalanceChecker,
-		MinBalanceMicros: 0,
+		BalanceGate:               cachedBalanceChecker,
+		MinBalanceMicros:          0,
 	})
 	c.useCases.testWorkflowNode = workflow_usecase.NewTestNodeUseCase(workflow_usecase.TestNodeDeps{
 		WorkflowRepo: c.repositories.workflow,
@@ -1335,7 +1229,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// TODO: validate all this messy checking, its not optional!
 	if c.services.assignmentService != nil {
 		if setter, ok := c.useCases.handleWhatsAppMessage.(interface {
 			SetAssignmentService(*ia_usecase.AssignmentService)
@@ -1358,8 +1251,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			setter.SetTriggerEvaluator(c.useCases.triggerEvaluator)
 		}
 
-		// The unofficial campaign consumer's workflow trigger, attached for the same
-		// reason the official one is: the workflow evaluator is built later.
 		if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 			if setter, ok := c.unofficialWhatsAppCampaigns.Consumer.(interface {
 				SetWorkflows(uwcuc.WorkflowTrigger)
@@ -1383,8 +1274,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// WhatsApp uses the same recipe as every other channel. Its three agent
-	// turns (text, media, audio) previously carried three copies of it.
 	if setter, ok := c.useCases.handleWhatsAppMessage.(interface {
 		SetTurnAssembler(*agentturn.Assembler)
 	}); ok {
@@ -1405,9 +1294,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatal("Failed to start email notification consumer:", err)
 	}
 
-	// The unofficial campaign consumer re-attaches to whatever was running when
-	// the process died. A failure here is logged rather than fatal: a campaign
-	// that cannot resume must not stop the rest of the platform from booting.
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		if err := c.unofficialWhatsAppCampaigns.Consumer.Start(); err != nil {
 			log.Printf("[unofficial-whatsapp-campaign] consumer failed to start: %v", err)
@@ -1432,10 +1318,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatal("Failed to start short link click consumer:", err)
 	}
 
-	// Scheduled messages: this is the timely trigger. The sweep would still
-	// deliver everything within a minute if it never started, which is why a
-	// failure here is loud but not fatal — degraded latency beats refusing to
-	// boot the whole platform.
 	if err := c.useCases.consumeScheduledMessage.Start(); err != nil {
 		log.Printf("Failed to start the scheduled message consumer: %v; the sweep will deliver messages up to a minute late", err)
 	}
@@ -1456,9 +1338,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatal("Failed to start coexistence webhook consumer:", err)
 	}
 
-	// Only the configured provider's consumer is started. A fatal on failure is
-	// correct here: with no payment consumer running, every paid invoice would be
-	// silently dropped, which is worse than not booting.
 	if c.useCases.consumeAsaasWebhook != nil {
 		if err := c.useCases.consumeAsaasWebhook.Start(); err != nil {
 			log.Fatal("Failed to start Asaas webhook consumer:", err)
@@ -1470,17 +1349,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// Instagram's runtime half is wired here rather than earlier: it needs both the
-	// shared history manager (a local in this function) and c.useCases.publishWebhook,
-	// which only exists once the useCases struct literal above has been assigned.
-	// The comment-analysis engine is built first: the Instagram webhook use
-	// case built inside initInstagramRuntime takes its enqueuer.
 	c.initCommentAnalysis(notifierUC, dashboardURL)
 	c.initInstagramRuntime(messageHistoryManager)
 
-	// Instagram subscribes three topics (messages, comments, account events).
-	// Unlike the WhatsApp consumers this is not fatal on failure: the channel is
-	// optional, so a broker hiccup here must not stop the product from booting.
 	if c.instagram != nil && c.instagram.Enabled && c.instagram.Consume != nil {
 		if err := c.instagram.Consume.Start(); err != nil {
 			log.Printf("[instagram] failed to start webhook consumers: %v", err)
@@ -1489,8 +1360,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// Telegram's runtime half, for the same reason and with the same
-	// non-fatal-on-failure rule: the channel is optional.
 	c.initTelegramRuntime(messageHistoryManager)
 	if c.telegram != nil && c.telegram.Enabled && c.telegram.Consume != nil {
 		if err := c.telegram.Consume.Start(); err != nil {
@@ -1500,10 +1369,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	// Campaigns are built HERE, not earlier in the pass: they need the metric
-	// recorder and the department resolver, and c.useCases is not assigned until
-	// this function is nearly done. initUnofficialWhatsAppRuntime below attaches
-	// the delivery hook onto them, so this has to come first.
 	c.initUnofficialWhatsAppCampaigns(
 		c.services.messageSender, resolveCreationDepartmentUC)
 
@@ -1527,7 +1392,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.callBilling,
 		c.repositories.balance,
 		pricer,
-		c.useCases.completeCall, // board-aware complete (AI seats Decr)
+		c.useCases.completeCall,
 		log.New(log.Writer(), "call-billing ", log.LstdFlags),
 	)
 	if err := billingConsumer.Start(); err != nil {

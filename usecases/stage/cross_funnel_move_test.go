@@ -7,19 +7,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// Moving a conversation between funnels is a real operator action: a lead
-// qualified on the support funnel belongs on the sales one, and until now the
-// only way was to have never staged them at all.
-//
-// It stays BLOCKED by default, on purpose. enforcePipelineCoherence exists
-// because a mis-scoped stage dropdown used to offer another funnel's stages, and
-// a click on one silently stranded the lead on a board nobody looks at. The
-// escape hatch is therefore opt-in per call: a caller has to say it means it.
-//
-// The three callers of this use case are the manual endpoint, the CRM bulk
-// action and the AI's manage_entry_stage tool. Only the first may set the flag,
-// and the tests below pin that the default keeps the other two out.
-
 func crossFunnelRepo() *coherenceRepo {
 	repo := newCoherenceRepo()
 	repo.stages["s-a"] = &stage.Stage{ID: "s-a", WorkspaceID: "ws", PipelineID: "pipe-a", Name: "qualificação"}
@@ -28,9 +15,6 @@ func crossFunnelRepo() *coherenceRepo {
 	return repo
 }
 
-// The default is unchanged: an ordinary move across funnels is still refused,
-// which is what protects an operator clicking a stage in a list that turned out
-// to belong to another funnel.
 func TestCrossFunnelMoveIsStillRefusedByDefault(t *testing.T) {
 	repo := crossFunnelRepo()
 	uc := NewAssignEntryStageUseCase(repo, nil)
@@ -46,8 +30,6 @@ func TestCrossFunnelMoveIsStillRefusedByDefault(t *testing.T) {
 	}
 }
 
-// The deliberate move. The operator picked a funnel, then a stage inside it, and
-// the client said so.
 func TestCrossFunnelMoveIsAllowedWhenExplicitlyRequested(t *testing.T) {
 	repo := crossFunnelRepo()
 	uc := NewAssignEntryStageUseCase(repo, nil)
@@ -70,9 +52,6 @@ func TestCrossFunnelMoveIsAllowedWhenExplicitlyRequested(t *testing.T) {
 	}
 }
 
-// The flag is an escape hatch for ONE rule and must not become a general
-// bypass. Another workspace's stage is an authorization failure, and no client
-// flag may reach past it.
 func TestCrossFunnelMoveStillRefusesAnotherWorkspacesStage(t *testing.T) {
 	repo := newCoherenceRepo()
 	repo.stages["s-a"] = &stage.Stage{ID: "s-a", WorkspaceID: "ws", PipelineID: "pipe-a"}
@@ -92,8 +71,6 @@ func TestCrossFunnelMoveStillRefusesAnotherWorkspacesStage(t *testing.T) {
 	}
 }
 
-// An invalid entry type is still rejected with the flag set: the escape hatch
-// comes after validation, not instead of it.
 func TestCrossFunnelMoveStillValidatesTheEntryType(t *testing.T) {
 	repo := crossFunnelRepo()
 	uc := NewAssignEntryStageUseCase(repo, nil)
@@ -109,8 +86,6 @@ func TestCrossFunnelMoveStillValidatesTheEntryType(t *testing.T) {
 	}
 }
 
-// A move WITHIN one funnel is unaffected by the flag, so a client that sets it
-// unconditionally does not change ordinary behaviour.
 func TestCrossFunnelFlagDoesNotChangeASameFunnelMove(t *testing.T) {
 	repo := newCoherenceRepo()
 	repo.stages["s-1"] = &stage.Stage{ID: "s-1", WorkspaceID: "ws", PipelineID: "pipe-a"}

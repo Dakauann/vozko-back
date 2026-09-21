@@ -155,9 +155,6 @@ func (r *repository) List(input template.ListInput) (*shared.PaginatedResult[*te
 		return nil, err
 	}
 
-	// Aggregate the business (WABA) name in the query layer: one LEFT JOIN on the
-	// indexed whatsapp_business_accounts.meta_waba_id, so the client renders the name
-	// inline and never refetches/joins WABAs itself.
 	dataQuery := r.db.Model(&schema.WhatsAppTemplate{}).
 		Select(templateTable + ".*, w.name AS joined_waba_name").
 		Joins("LEFT JOIN whatsapp_business_accounts w ON w.meta_waba_id = " + templateTable + ".waba_id AND w.deleted_at IS NULL").
@@ -183,8 +180,6 @@ func (r *repository) List(input template.ListInput) (*shared.PaginatedResult[*te
 	return shared.NewPaginatedResult(items, pagination, total), nil
 }
 
-// templateWithWABA is the List scan target: the template row plus the business name
-// joined from whatsapp_business_accounts in the same query.
 type templateWithWABA struct {
 	schema.WhatsAppTemplate
 	JoinedWABAName string `gorm:"column:joined_waba_name"`
@@ -246,8 +241,6 @@ func (r *repository) SyncFromExternal(t *template.Template) error {
 	return r.Update(existing.ID, t)
 }
 
-// templateTable qualifies columns so filters/sorts stay unambiguous once List LEFT
-// JOINs whatsapp_business_accounts (both tables carry id/created_at/updated_at).
 const templateTable = "whatsapp_templates"
 
 func applyFilters(query *gorm.DB, input template.ListInput) *gorm.DB {

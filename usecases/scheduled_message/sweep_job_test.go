@@ -43,8 +43,6 @@ func (f *sweepFixture) message(id string, status sm.Status, scheduledAt time.Tim
 	})
 }
 
-// The sweep is what makes the feature correct without a broker. This is the
-// case the queue would normally cover.
 func TestSweepDeliversDueMessages(t *testing.T) {
 	f := newSweepFixture(t)
 	f.message("due", sm.StatusPending, fixedNow.Add(-time.Minute), nil)
@@ -65,8 +63,6 @@ func TestSweepDeliversDueMessages(t *testing.T) {
 	}
 }
 
-// The sweep overlapping the queue consumer is the NORMAL steady state, not an
-// edge case: both are meant to be running.
 func TestSweepAndQueueTogetherSendOnce(t *testing.T) {
 	f := newSweepFixture(t)
 	f.message("due", sm.StatusPending, fixedNow.Add(-time.Minute), nil)
@@ -83,9 +79,6 @@ func TestSweepAndQueueTogetherSendOnce(t *testing.T) {
 	}
 }
 
-// A dispatcher that died mid-send leaves the row in `sending` forever. It is
-// retired with its OWN reason, never retried: we cannot tell a send that never
-// left from one that arrived.
 func TestSweepRetiresStuckClaimsWithoutResending(t *testing.T) {
 	f := newSweepFixture(t)
 	claimed := fixedNow.Add(-10 * time.Minute)
@@ -107,8 +100,6 @@ func TestSweepRetiresStuckClaimsWithoutResending(t *testing.T) {
 	}
 }
 
-// A claim younger than the lease belongs to a dispatcher that is still working.
-// Retiring it would report a message as failed while it is on its way.
 func TestSweepLeavesFreshClaimsAlone(t *testing.T) {
 	f := newSweepFixture(t)
 	claimed := fixedNow.Add(-30 * time.Second)
@@ -122,9 +113,6 @@ func TestSweepLeavesFreshClaimsAlone(t *testing.T) {
 	}
 }
 
-// A long-overdue message that CAN still go out should go out. There is no
-// separate "expiry" pass precisely because this one already covers it: the due
-// pass claims every pending row whose time has passed, however long ago.
 func TestSweepStillDeliversALongOverdueMessage(t *testing.T) {
 	f := newSweepFixture(t)
 	f.message("ancient", sm.StatusPending, fixedNow.Add(-48*time.Hour), nil)
@@ -137,8 +125,6 @@ func TestSweepStillDeliversALongOverdueMessage(t *testing.T) {
 	}
 }
 
-// And when it cannot go out, the same pass retires it with a reason. Either
-// way no row is left looking imminent forever.
 func TestSweepRetiresALongOverdueMessageItCannotDeliver(t *testing.T) {
 	f := newSweepFixture(t)
 	f.message("ancient", sm.StatusPending, fixedNow.Add(-48*time.Hour), nil)
@@ -157,8 +143,6 @@ func TestSweepRetiresALongOverdueMessageItCannotDeliver(t *testing.T) {
 	}
 }
 
-// One bad message must not strand the rest of a claimed batch: they have all
-// left pending already and would otherwise sit until the stuck pass retires them.
 func TestSweepContinuesAfterOneFailure(t *testing.T) {
 	f := newSweepFixture(t)
 	f.message("a", sm.StatusPending, fixedNow.Add(-time.Minute), nil)
@@ -212,7 +196,6 @@ func TestPurgeRemovesOnlyTerminalMessages(t *testing.T) {
 	if repo.get("recent-sent") == nil {
 		t.Error("a recent message was purged")
 	}
-	// An undelivered message is not litter, however old.
 	if repo.get("old-pending") == nil {
 		t.Error("a PENDING message was purged: the customer would never receive it and nobody would know")
 	}

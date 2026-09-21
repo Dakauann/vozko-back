@@ -25,18 +25,14 @@ func TestNormalizeAppSecrets(t *testing.T) {
 
 func TestVerifyHubSignatureAny(t *testing.T) {
 	body := []byte(`{"object":"whatsapp_business_account"}`)
-	sig := hubSig256ForTest("new-app-secret", body) // signed by the NEW app's secret
+	sig := hubSig256ForTest("new-app-secret", body)
 
-	// One endpoint carrying both old+new secrets accepts a webhook signed by either
-	// (the app-migration case the feature exists for).
 	if !verifyHubSignatureAny([]string{"old-app-secret", "new-app-secret"}, body, sig) {
 		t.Fatal("must verify against any configured secret")
 	}
-	// No matching secret → reject.
 	if verifyHubSignatureAny([]string{"old-app-secret"}, body, sig) {
 		t.Fatal("must reject when no configured secret matches")
 	}
-	// Empty signature header → reject.
 	if verifyHubSignatureAny([]string{"new-app-secret"}, body, "") {
 		t.Fatal("empty signature header must reject")
 	}

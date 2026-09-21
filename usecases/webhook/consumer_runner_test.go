@@ -11,11 +11,6 @@ import (
 	"vozko/domain/messaging"
 )
 
-// spinAck models RabbitMQ's actual behaviour, which is the whole point of these
-// tests: DeliveryCount() is read from the x-death header, and RabbitMQ only stamps
-// x-death when a message is genuinely dead-lettered. A message put back by
-// Nack(requeue=true) carries no such header, so its count stays at 1 no matter how
-// many times it has been tried.
 type spinAck struct {
 	mu sync.Mutex
 
@@ -24,8 +19,6 @@ type spinAck struct {
 	nackRequeue   int
 	nackDrop      int
 
-	// dispatch handles in a goroutine, so tests must wait for a terminal
-	// acknowledgement rather than asserting straight after the call.
 	once sync.Once
 	done chan struct{}
 }
@@ -34,7 +27,6 @@ func newSpinAck(deliveryCount int) *spinAck {
 	return &spinAck{deliveryCount: deliveryCount, done: make(chan struct{})}
 }
 
-// settle blocks until the message has been acked or nacked.
 func (a *spinAck) settle(t *testing.T) {
 	t.Helper()
 	select {
@@ -81,8 +73,6 @@ type delayedMessage struct {
 	delay   time.Duration
 }
 
-// recordingPub separates plain publishes (DLQ) from delayed ones (retries), which
-// the shared mockQueuePub deliberately conflates.
 type recordingPub struct {
 	mu      sync.Mutex
 	plain   []publishedMessage
@@ -122,17 +112,6 @@ type testPayload struct {
 	ID string `json:"id"`
 }
 
-// TestConsumerRunner_RetryableFailureDoesNotSpin is the regression test for a
-// production hot loop.
-//
-// A single message whose handler always failed was retried hundreds of times
-// inside one second, at full CPU, and never reached the DLQ. The cause was
-// Nack(requeue=true) on a retryable failure: the broker re-delivers immediately
-// AND without x-death, so DeliveryCount() reports 1 forever and the
-// "retries exhausted" check can never fire.
-//
-// The invariant: a retryable failure must never requeue directly. It must go
-// through the delay queue, which is what advances the attempt counter.
 func TestConsumerRunner_RetryableFailureDoesNotSpin(t *testing.T) {
 	pub := &recordingPub{}
 	var (
@@ -185,9 +164,6 @@ func TestConsumerRunner_RetryableFailureDoesNotSpin(t *testing.T) {
 	}
 }
 
-// TestConsumerRunner_ExhaustedRetriesDeadLetter: once the attempt counter has
-// actually advanced (which only the delay-queue path makes possible), the message
-// must be parked rather than retried forever.
 func TestConsumerRunner_ExhaustedRetriesDeadLetter(t *testing.T) {
 	pub := &recordingPub{}
 
@@ -216,9 +192,6 @@ func TestConsumerRunner_ExhaustedRetriesDeadLetter(t *testing.T) {
 	}
 }
 
-// TestConsumerRunner_NoPublisherParksInsteadOfSpinning covers the fallback path.
-// Without a publisher there is no way to delay, and an immediate requeue would
-// reintroduce the spin, so the message is parked instead.
 func TestConsumerRunner_NoPublisherParksInsteadOfSpinning(t *testing.T) {
 	runner := NewConsumerRunner(ConsumerConfig[testPayload]{
 		Name:  "test-consumer",
@@ -242,8 +215,6 @@ func TestConsumerRunner_NoPublisherParksInsteadOfSpinning(t *testing.T) {
 	}
 }
 
-// TestConsumerRunner_UnparseablePayloadIsDropped: a payload that cannot be decoded
-// will never decode, so requeueing it is a guaranteed infinite loop.
 func TestConsumerRunner_UnparseablePayloadIsDropped(t *testing.T) {
 	pub := &recordingPub{}
 	var called atomic.Bool
@@ -275,7 +246,6 @@ func TestConsumerRunner_UnparseablePayloadIsDropped(t *testing.T) {
 	}
 }
 
-// TestConsumerRunner_SuccessAcks is the happy path.
 func TestConsumerRunner_SuccessAcks(t *testing.T) {
 	pub := &recordingPub{}
 	var (
@@ -314,8 +284,6 @@ func TestConsumerRunner_SuccessAcks(t *testing.T) {
 	}
 }
 
-// TestConsumerRunner_DropDispositionAcks: a permanent failure is acked, not
-// retried, retrying something that cannot succeed is the spin in another form.
 func TestConsumerRunner_DropDispositionAcks(t *testing.T) {
 	pub := &recordingPub{}
 

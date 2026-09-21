@@ -38,8 +38,6 @@ func TestAuthorContainersInputValidate(t *testing.T) {
 	}
 }
 
-// Normalize must give the query a page even when the caller sent none, or the
-// repository would be asked for an unbounded read of someone's whole history.
 func TestAuthorContainersInputNormalizePages(t *testing.T) {
 	in := AuthorContainersInput{WorkspaceID: " ws ", AuthorExternalID: " a1 ", Options: shared.QueryOptions{}}
 	in.Normalize()
@@ -51,8 +49,6 @@ func TestAuthorContainersInputNormalizePages(t *testing.T) {
 	}
 }
 
-// A post's standing uses the same functions as the author's overall standing:
-// "hostile on this post" and "hostile overall" must not be two different rules.
 func TestAuthorContainerDeriveMatchesTheAuthorRules(t *testing.T) {
 	c := &AuthorContainer{
 		Comments:          4,
@@ -73,8 +69,6 @@ func TestAuthorContainerDeriveMatchesTheAuthorRules(t *testing.T) {
 	}
 }
 
-// A post someone commented on neutrally is neutral, not "no data": an empty
-// mix and a neutral mix must not collapse into the same answer by accident.
 func TestAuthorContainerDeriveNeutral(t *testing.T) {
 	c := &AuthorContainer{Comments: 2, Stances: StanceMix{Neutral: 2}}
 	c.Derive()

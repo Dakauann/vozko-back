@@ -41,7 +41,10 @@ func NewQuickSendUseCase(
 	messageQueuePub messaging.MessageQueuePub,
 	messageConsumerUC wc.MessageConsumerUseCase,
 	shared cache.SharedState,
-) wc.QuickSendUseCase {
+) (wc.QuickSendUseCase, error) {
+	if messageConsumerUC == nil {
+		return nil, fmt.Errorf("quick send use case: message consumer is required")
+	}
 	return &quickSendUseCase{
 		campaignRepo:      campaignRepo,
 		entryRepo:         entryRepo,
@@ -49,7 +52,7 @@ func NewQuickSendUseCase(
 		messageQueuePub:   messageQueuePub,
 		messageConsumerUC: messageConsumerUC,
 		shared:            shared,
-	}
+	}, nil
 }
 
 func quickSendLockKey(campaignID string) string {

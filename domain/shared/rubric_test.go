@@ -27,9 +27,6 @@ func TestClassificationField_Values(t *testing.T) {
 	}
 }
 
-// The tool-parameter description is the intro followed by one criterion per
-// line. Pinned byte-for-byte: the conversation_analysis tool schema was
-// rendering from this before the move, and its output must not change.
 func TestClassificationField_Description(t *testing.T) {
 	got := sampleField().Description()
 	want := "Tom predominante:\n- \"up\": animado\n- \"flat\": sem emoção\n- \"down\": irritado"
@@ -38,9 +35,6 @@ func TestClassificationField_Description(t *testing.T) {
 	}
 }
 
-// The prompt renderer numbers the fields and indents the criteria. Same
-// byte-for-byte guarantee as Description: the analysis prompts render through
-// this and a drift here is a drift in every prompt.
 func TestRenderClassificationRubric(t *testing.T) {
 	fields := []ClassificationField{
 		sampleField(),
@@ -80,9 +74,6 @@ func TestQualityLevelValues_Order(t *testing.T) {
 	}
 }
 
-// Two dimensions with 60/40 weights. The table below is the contract every
-// rubric built on this machinery inherits: the numbers here are the numbers
-// the attendance-quality tests were already asserting before the move.
 func twoDims() []QualityDimension {
 	return []QualityDimension{
 		{Key: "a", Weight: 0.60},
@@ -105,9 +96,7 @@ func TestWeightedScore(t *testing.T) {
 		{"all medium = 66", map[string]QualityLevel{"a": QualityLevelMedium, "b": QualityLevelMedium}, 66},
 		{"a high only = 60", map[string]QualityLevel{"a": QualityLevelHigh}, 60},
 		{"b high only = 40", map[string]QualityLevel{"b": QualityLevelHigh}, 40},
-		// 0.6*0.33 + 0.4*0.66 = 0.462 -> 46
 		{"a low, b medium = 46", map[string]QualityLevel{"a": QualityLevelLow, "b": QualityLevelMedium}, 46},
-		// An unknown level rates as none rather than poisoning the score.
 		{"garbage rates as none", map[string]QualityLevel{"a": "garbage", "b": QualityLevelHigh}, 40},
 		{"missing key rates as none", map[string]QualityLevel{}, 0},
 	}
@@ -130,8 +119,6 @@ func TestWeightedScore_AlwaysInRange(t *testing.T) {
 			}
 		}
 	}
-	// Even a mis-weighted rubric cannot escape the range: the score is a
-	// number customers read, so the bound is unconditional.
 	over := []QualityDimension{{Key: "a", Weight: 1.5}}
 	if s := WeightedScore(over, levels(map[string]QualityLevel{"a": QualityLevelHigh})); s != 100 {
 		t.Fatalf("over-weighted rubric scored %d, want clamped to 100", s)
@@ -154,8 +141,6 @@ func TestWeightsSumToOne(t *testing.T) {
 	}
 }
 
-// One line per dimension, key + label + weight + description. The analysis
-// prompt and the tool schema both render dimensions through this.
 func TestRenderQualityDimensions(t *testing.T) {
 	dims := []QualityDimension{
 		{Key: "a", Weight: 0.60, Label: "Alfa", Description: "primeira"},

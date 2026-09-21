@@ -12,25 +12,15 @@ var (
 	ErrInvalidPurpose             = errors.New("invalid invoice purpose")
 	ErrPlanDefinitionRequired     = errors.New("plan definition is required for subscription invoice")
 	ErrActiveSubscriptionRequired = errors.New("active workspace subscription required to recharge balance")
-	// ErrCustomerDocumentRequired is returned when the user has no CPF/CNPJ on file. Asaas cannot
-	// create a charge for a customer without a document, so we reject up front with a clear 4xx
-	// (and a stable machine code) instead of letting it surface as an opaque 500.
-	ErrCustomerDocumentRequired = errors.New("CPF/CNPJ obrigatório para gerar a cobrança")
-	// ErrBillingAddressRequired is returned when a boleto is requested but the user has
-	// no address on file and the active provider needs one. Mercado Pago rejects a
-	// boleto without a full payer address; Asaas derives it from the stored customer.
-	// Checking up front turns an opaque provider 500 into a 422 the UI can act on.
-	ErrBillingAddressRequired = errors.New("endereço obrigatório para gerar boleto")
+	ErrCustomerDocumentRequired   = errors.New("CPF/CNPJ obrigatório para gerar a cobrança")
+	ErrBillingAddressRequired     = errors.New("endereço obrigatório para gerar boleto")
 )
 
 type Purpose string
 
 const (
-	PurposeTopUp        Purpose = "TOP_UP"
-	PurposeSubscription Purpose = "SUBSCRIPTION"
-	// PurposeMonthlyBilling is the unified monthly charge (plan + active channel addons) on the
-	// workspace billing anchor. Only its plan portion becomes saldo (see Invoice.CreditableUSD);
-	// the channel portion is a vendor-cost repasse and is not credited.
+	PurposeTopUp          Purpose = "TOP_UP"
+	PurposeSubscription   Purpose = "SUBSCRIPTION"
 	PurposeMonthlyBilling Purpose = "MONTHLY_BILLING"
 )
 
@@ -51,7 +41,6 @@ func (p Purpose) Valid() bool {
 	}
 }
 
-// LineItemKind labels a line of a unified monthly invoice for the customer-facing breakdown.
 type LineItemKind string
 
 const (
@@ -59,9 +48,6 @@ const (
 	LineItemChannel LineItemKind = "CHANNEL"
 )
 
-// InvoiceLineItem is one customer-facing line of a unified monthly invoice. It carries the final PRICE
-// only, never our cost. Creditable marks the plan line, whose amount becomes saldo on payment; channel
-// lines are a vendor-cost pass-through and are not credited.
 type InvoiceLineItem struct {
 	Kind       LineItemKind `json:"kind"`
 	Label      string       `json:"label"`
@@ -83,41 +69,30 @@ const (
 )
 
 type Invoice struct {
-	ID               string  `json:"id"`
-	WorkspaceID      string  `json:"workspaceId"`
-	UserID           string  `json:"userId"`
-	Purpose          Purpose `json:"purpose"`
-	PlanDefinitionID *string `json:"planDefinitionId,omitempty"`
-	AmountBRL        float64 `json:"amountBRL"`
-	AmountUSD        int64   `json:"amountUSD"`
-	// CreditableUSD is the portion of AmountUSD that becomes saldo when the invoice is paid. For
-	// TOP_UP and SUBSCRIPTION it equals AmountUSD; for MONTHLY_BILLING it is only the plan portion,
-	// so channel-license repasse is never credited as saldo. A zero value means "credit the full
-	// AmountUSD" for backward compatibility with rows created before this field existed.
-	CreditableUSD int64   `json:"creditableUSD"`
-	ExchangeRate  float64 `json:"exchangeRate"`
-	Status        Status  `json:"status"`
-	BillingType   string  `json:"billingType"`
-	BillingCycle  string  `json:"billingCycle"`
-	ExternalID    string  `json:"externalId"`
-	// IdempotencyKey is a caller-supplied deterministic key (e.g. monthly:{workspace}:{anchor}) that
-	// makes invoice creation idempotent: create_invoice returns the existing invoice for a repeated
-	// key instead of charging Asaas again. Empty for invoices that do not need it. A partial unique
-	// index enforces uniqueness only for non-empty keys.
-	IdempotencyKey string  `json:"idempotencyKey,omitempty"`
-	PixQrCode      *string `json:"pixQrCode,omitempty"`
-	PixCopy        *string `json:"pixCopy,omitempty"`
-	BankSlipUrl    *string `json:"bankSlipUrl,omitempty"`
-	InvoiceUrl     *string `json:"invoiceUrl,omitempty"`
-	PaidAt         *int64  `json:"paidAt,omitempty"`
-	Description    string  `json:"description"`
-	// DueDate is when payment is due (the billing anchor for MONTHLY_BILLING). Nil for ad-hoc invoices.
-	DueDate *time.Time `json:"dueDate,omitempty"`
-	// LineItems is the customer-facing breakdown (plan + channel lines) of a unified monthly invoice,
-	// price only. Empty for single-amount invoices (TOP_UP, SUBSCRIPTION).
-	LineItems []InvoiceLineItem `json:"lineItems,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
+	ID               string            `json:"id"`
+	WorkspaceID      string            `json:"workspaceId"`
+	UserID           string            `json:"userId"`
+	Purpose          Purpose           `json:"purpose"`
+	PlanDefinitionID *string           `json:"planDefinitionId,omitempty"`
+	AmountBRL        float64           `json:"amountBRL"`
+	AmountUSD        int64             `json:"amountUSD"`
+	CreditableUSD    int64             `json:"creditableUSD"`
+	ExchangeRate     float64           `json:"exchangeRate"`
+	Status           Status            `json:"status"`
+	BillingType      string            `json:"billingType"`
+	BillingCycle     string            `json:"billingCycle"`
+	ExternalID       string            `json:"externalId"`
+	IdempotencyKey   string            `json:"idempotencyKey,omitempty"`
+	PixQrCode        *string           `json:"pixQrCode,omitempty"`
+	PixCopy          *string           `json:"pixCopy,omitempty"`
+	BankSlipUrl      *string           `json:"bankSlipUrl,omitempty"`
+	InvoiceUrl       *string           `json:"invoiceUrl,omitempty"`
+	PaidAt           *int64            `json:"paidAt,omitempty"`
+	Description      string            `json:"description"`
+	DueDate          *time.Time        `json:"dueDate,omitempty"`
+	LineItems        []InvoiceLineItem `json:"lineItems,omitempty"`
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
 }
 
 func (i *Invoice) NormalizedPurpose() Purpose {

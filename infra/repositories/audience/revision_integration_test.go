@@ -13,15 +13,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The revision SQL, against a real Postgres.
-//
-// Everything here is a claim sqlmock cannot check. A correlated NOT EXISTS
-// with a row-value comparison, DISTINCT ON, a unique index and date_trunc
-// grouping are all accepted as strings by a mock and rejected (or, worse,
-// quietly answered wrongly) by a database. These are the queries the
-// conversation timeline rests on, so they are exercised where the answer is
-// real.
-
 const revisionWorkspace = "33333333-3333-3333-3333-333333333333"
 
 func conversationRef() ca.ContainerRef {
@@ -31,8 +22,6 @@ func conversationRef() ca.ContainerRef {
 	}
 }
 
-// insertRevision stores one snapshot of a conversation, already classified
-// unless a status says otherwise.
 func insertRevision(
 	t *testing.T, repo ca.Repository, entryID, revision string, messages int, at time.Time, status ca.Status,
 ) *ca.Analysis {
@@ -80,8 +69,6 @@ func insertRevision(
 	return row
 }
 
-// The unique index is on the REVISION, so a conversation accumulates a
-// timeline of analyses while a redelivered snapshot is still refused.
 func TestIntegration_RevisionsAccumulateButSnapshotsDoNot(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -114,8 +101,6 @@ func TestIntegration_RevisionsAccumulateButSnapshotsDoNot(t *testing.T) {
 	}
 }
 
-// LatestOnly is what keeps a conversation from being counted once per analysis
-// in every total on the dashboard.
 func TestIntegration_LatestOnlyCountsAConversationOnce(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -157,8 +142,6 @@ func TestIntegration_LatestOnlyCountsAConversationOnce(t *testing.T) {
 	}
 }
 
-// A period's totals must describe that period. The newer revision is outside
-// it, so the conversation is counted at the verdict it held AT the time.
 func TestIntegration_LatestOnlyRespectsThePeriodEnd(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -181,8 +164,6 @@ func TestIntegration_LatestOnlyRespectsThePeriodEnd(t *testing.T) {
 	}
 }
 
-// The daily series groups by UTC day over the live rows, which is the path a
-// workspace-wide or mixed-channel view takes because it has no single rollup.
 func TestIntegration_GetTrendGroupsAnalysesByUTCDay(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -192,7 +173,6 @@ func TestIntegration_GetTrendGroupsAnalysesByUTCDay(t *testing.T) {
 	insertRevision(t, repo, "entry-1", "rev-a", 4, day1, ca.StatusAnalyzed)
 	insertRevision(t, repo, "entry-1", "rev-b", 9, day2, ca.StatusAnalyzed)
 	insertRevision(t, repo, "entry-2", "rev-a", 5, day2, ca.StatusAnalyzed)
-	// Still queued: a trend point is what was learned, not what is waiting.
 	insertRevision(t, repo, "entry-3", "rev-a", 3, day2, ca.StatusPending)
 
 	rows, err := repo.GetTrend(context.Background(), ca.ListInput{
@@ -215,9 +195,6 @@ func TestIntegration_GetTrendGroupsAnalysesByUTCDay(t *testing.T) {
 	}
 }
 
-// The inbox shows a verdict, so it reads the newest ANALYSED revision. A newer
-// one still in the queue must not blank out the answer already on the screen,
-// which is what "latest row wins" would do.
 func TestIntegration_ConversationReaderSkipsUnfinishedRevisions(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -248,9 +225,6 @@ func TestIntegration_ConversationReaderSkipsUnfinishedRevisions(t *testing.T) {
 	}
 }
 
-// The billing guard's lookup is the opposite question: it wants the newest row
-// whatever state it is in, because a snapshot already waiting in the queue is
-// exactly what must stop another from being paid for.
 func TestIntegration_LatestBySubjectSeesUnfinishedWork(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -275,9 +249,6 @@ func TestIntegration_LatestBySubjectSeesUnfinishedWork(t *testing.T) {
 	}
 }
 
-// A database deployed before revisions carries the old unique index, which
-// allows exactly one analysis per conversation. The migration has to remove it,
-// or every second analysis is silently dropped on conflict forever.
 func TestIntegration_MigrationReplacesThePreRevisionIndex(t *testing.T) {
 	db := integrationDB(t)
 	if err := db.Exec(`DROP INDEX ux_ca_revision`).Error; err != nil {
@@ -296,9 +267,6 @@ func TestIntegration_MigrationReplacesThePreRevisionIndex(t *testing.T) {
 	insertRevision(t, repo, "entry-1", "rev-b", 9, now.Add(time.Hour), ca.StatusAnalyzed)
 }
 
-// applyAudienceIndexesForTest runs the statements the schema migration runs for
-// this table. Kept beside the migration's own list on purpose: if they drift,
-// the test above stops describing what a deploy actually does.
 func applyAudienceIndexesForTest(db *gorm.DB) error {
 	for _, stmt := range []string{
 		`CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_revision
@@ -315,8 +283,6 @@ func applyAudienceIndexesForTest(db *gorm.DB) error {
 	return nil
 }
 
-// insertSubject stores one analysed conversation whose subject is exactly what
-// the model wrote, spelling and all.
 func insertSubject(t *testing.T, repo ca.Repository, entryID, revision, subject string, at time.Time) {
 	t.Helper()
 	row, err := ca.NewPending(ca.NewInput{
@@ -347,22 +313,14 @@ func insertSubject(t *testing.T, repo ca.Repository, entryID, revision, subject 
 	}
 }
 
-// The subject ranking, end to end through the database.
-//
-// The whole feature turns on spellings colliding in SQL, which is precisely
-// what cannot be checked without a database: the key is computed in Go but
-// GROUPed in Postgres, and a column that is never written or a GROUP BY on the
-// wrong one both produce a plausible-looking empty chart.
 func TestIntegration_SubjectRankingGroupsSpellingsTogether(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
 
-	// One subject, written four ways by the model.
 	insertSubject(t, repo, "entry-1", "rev-a", "Plano Família", now)
 	insertSubject(t, repo, "entry-2", "rev-a", "plano familia", now)
 	insertSubject(t, repo, "entry-3", "rev-a", "  PLANO  FAMÍLIA ", now)
 	insertSubject(t, repo, "entry-4", "rev-a", "Plano família!", now)
-	// A second subject, and one conversation with none.
 	insertSubject(t, repo, "entry-5", "rev-a", "clareamento dental", now)
 	insertSubject(t, repo, "entry-6", "rev-a", "clareamento dental", now)
 	insertSubject(t, repo, "entry-7", "rev-a", "n/a", now)
@@ -380,16 +338,11 @@ func TestIntegration_SubjectRankingGroupsSpellingsTogether(t *testing.T) {
 	if stats.Subjects[1].Count != 2 {
 		t.Errorf("second subject = %+v, want 2", stats.Subjects[1])
 	}
-	// The label is for reading, so it must be a real spelling rather than the
-	// stripped key.
 	if stats.Subjects[0].Label == "" {
 		t.Error("the top subject has no label to print")
 	}
 }
 
-// A subject the model could not name is not a subject. Counting "n/a" would
-// put a meaningless bar at the top of the chart on any workspace whose
-// conversations are mostly small talk.
 func TestIntegration_SubjectRankingIgnoresAbsentSubjects(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -407,8 +360,6 @@ func TestIntegration_SubjectRankingIgnoresAbsentSubjects(t *testing.T) {
 	}
 }
 
-// The ranking answers over the SAME filters as the numbers above it, so a
-// period that excludes a conversation excludes its subject too.
 func TestIntegration_SubjectRankingRespectsTheFilters(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -428,22 +379,14 @@ func TestIntegration_SubjectRankingRespectsTheFilters(t *testing.T) {
 	}
 }
 
-// Pending has to survive a reload, which means it comes from the database and
-// not only from the socket that announced it.
 func TestIntegration_PendingByEntriesReportsWaitingWork(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
 
-	// Analysed once, and a newer revision now queued: BOTH facts are true of
-	// this conversation at the same time, which is the case the inbox has to
-	// render as "here is the verdict, and a new one is coming".
 	insertRevision(t, repo, "entry-1", "rev-a", 4, now, ca.StatusAnalyzed)
 	insertRevision(t, repo, "entry-1", "rev-b", 9, now.Add(time.Hour), ca.StatusPending)
-	// Analysed and settled: nothing waiting.
 	insertRevision(t, repo, "entry-2", "rev-a", 5, now, ca.StatusAnalyzed)
-	// Never analysed, still queued.
 	insertRevision(t, repo, "entry-3", "rev-a", 3, now, ca.StatusPending)
-	// Failed: not waiting on anything, it is over.
 	insertRevision(t, repo, "entry-4", "rev-a", 6, now, ca.StatusFailed)
 
 	reader := NewConversationReader(db)
@@ -465,13 +408,10 @@ func TestIntegration_PendingByEntriesReportsWaitingWork(t *testing.T) {
 	if pending["entry-4"] {
 		t.Error("a failed analysis was reported as still waiting")
 	}
-	// Absent, not false: the map is the size of the answer, not of the page.
 	if len(pending) != 2 {
 		t.Errorf("map holds %d entries, want only the two with work waiting", len(pending))
 	}
 
-	// The verdict is unaffected: a queued revision must not blank out the
-	// answer already on the screen.
 	verdicts, err := reader.LatestByEntries(context.Background(), revisionWorkspace, ca.SourceWhatsApp, []string{"entry-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -481,9 +421,6 @@ func TestIntegration_PendingByEntriesReportsWaitingWork(t *testing.T) {
 	}
 }
 
-// Another workspace's queue is not this one's. The inbox passes entry ids it
-// already resolved, but the scope still travels, so a shared id can never leak
-// a pending marker across a tenant boundary.
 func TestIntegration_PendingByEntriesStaysInItsWorkspace(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)

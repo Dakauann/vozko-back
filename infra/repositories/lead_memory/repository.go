@@ -22,9 +22,6 @@ func (r *repository) Create(m *leadmemory.LeadMemory) error {
 	row := fromDomain(m)
 	if err := r.db.Create(&row).Error; err != nil {
 		if isDuplicateKey(err) {
-			// The partial unique index on (workspace_id, lead_id, content_norm)
-			// fired: an active memory with this content already exists. The use
-			// case resolves the race by re-reading.
 			return leadmemory.ErrDuplicate
 		}
 		return err
@@ -53,8 +50,6 @@ func (r *repository) FindByIDPrefix(workspaceID, leadID, prefix string) (*leadme
 		return nil, leadmemory.ErrNotFound
 	}
 
-	// LIMIT 2: one row is a resolution, two is an ambiguity, and we never need
-	// to know how many more there were.
 	var rows []schema.LeadMemory
 	err := r.db.
 		Where("workspace_id = ? AND lead_id = ? AND id::text LIKE ?", workspaceID, leadID, prefix+"%").
@@ -128,9 +123,6 @@ func (r *repository) FindByNormalizedContent(workspaceID, leadID, contentNorm st
 }
 
 func (r *repository) Update(m *leadmemory.LeadMemory) error {
-	// Column-explicit update guarded on workspace: only the fields an edit may
-	// change. The actor columns become the last writer: original authorship
-	// lives on the created timeline event, not on the row.
 	result := r.db.Model(&schema.LeadMemory{}).
 		Where("workspace_id = ? AND id = ?", m.WorkspaceID, m.ID).
 		Updates(map[string]interface{}{

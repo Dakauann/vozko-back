@@ -11,13 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// operatorSendFinalizer applies the four side effects every delivered human
-// reply owes its conversation.
-//
-// Lifted out of ConversationHub.afterOperatorSend. While it lived in the
-// delivery layer only the WebSocket composer ran it, so the HTTP send endpoint
-// and, later, the scheduled dispatcher would each have had to re-derive the
-// same steps or silently skip them.
 type operatorSendFinalizer struct {
 	statusUpdater     conversation.ConversationStatusUpdater
 	workspaceResolver conversation.CampaignWorkspaceResolver
@@ -26,13 +19,6 @@ type operatorSendFinalizer struct {
 	initialStage      conversation.InitialStageAssigner
 }
 
-// NewOperatorSendFinalizer wires the finalizer.
-//
-// Every dependency is required and checked here rather than at each use: a nil
-// one does not fail a send, it silently drops a conversation off the board or
-// out of the timeline, and that class of bug is invisible until someone asks why
-// a channel's conversations never close. Failing at container-wiring time turns
-// it into a deployment error instead.
 func NewOperatorSendFinalizer(
 	statusUpdater conversation.ConversationStatusUpdater,
 	workspaceResolver conversation.CampaignWorkspaceResolver,
@@ -69,11 +55,6 @@ func NewOperatorSendFinalizer(
 	}, nil
 }
 
-// FinalizeOperatorSend runs the four steps in the order the hub ran them.
-//
-// Individual steps degrade to a log line rather than an error: a conversation
-// must not lose a delivered message because its telemetry publisher is briefly
-// unreachable. Only a malformed input is refused.
 func (f *operatorSendFinalizer) FinalizeOperatorSend(_ context.Context, in conversation.FinalizeOperatorSendInput) error {
 	entryID := strings.TrimSpace(in.EntryID)
 	entryType := strings.TrimSpace(in.EntryType)
@@ -98,9 +79,6 @@ func (f *operatorSendFinalizer) FinalizeOperatorSend(_ context.Context, in conve
 	if in.Message != nil && in.Message.ID != "" {
 		details["message_id"] = in.Message.ID
 	}
-	// Every entry type names its own channel. This was a switch that listed
-	// three of them and defaulted to "whatsapp", so an operator's Telegram
-	// reply was recorded as a WhatsApp event.
 	f.events.Log(ce.New(workspaceID, entryID, entryType, ce.EventReplied).
 		WithActorHuman(in.ActorUserID).
 		WithChannel(shared.EntryType(entryType).EventChannel()).
@@ -115,9 +93,6 @@ func (f *operatorSendFinalizer) FinalizeOperatorSend(_ context.Context, in conve
 	return nil
 }
 
-// resolveWorkspace prefers the resolver's answer over the caller's hint: the
-// hint is the connection's workspace, which is right for the common case and
-// wrong for a platform admin working across workspaces.
 func (f *operatorSendFinalizer) resolveWorkspace(entryID, entryType, hint string) string {
 	resolved, err := f.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
 	if err != nil || resolved == "" {
@@ -126,11 +101,6 @@ func (f *operatorSendFinalizer) resolveWorkspace(entryID, entryType, hint string
 	return resolved
 }
 
-// ensureInitialStage puts a freshly-replied entry on the board.
-//
-// Both lookups are required and both are logged when empty: an entry with no
-// campaign cannot be staged, and a silent return here is what leaves a
-// conversation invisible on the kanban.
 func (f *operatorSendFinalizer) ensureInitialStage(workspaceID, entryID, entryType string) {
 	if workspaceID == "" {
 		log.Printf("[OperatorSend] ensureInitialStage: empty workspaceID for %s (%s)", entryID, entryType)

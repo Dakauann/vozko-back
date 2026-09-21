@@ -10,8 +10,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// fakeAdapter is a ChannelAdapter whose window and send outcome are dictated by
-// the test.
 type fakeAdapter struct {
 	entryType  shared.EntryType
 	windowOpen bool
@@ -57,7 +55,6 @@ func (a *fakeAdapter) SendMedia(_ context.Context, _ *conversation.EntryContext,
 	return &conversation.SendOutcome{ProviderMessageID: "provider-media-1"}, nil
 }
 
-// recordingHistory captures what the sender persisted.
 type recordingHistory struct {
 	records []conversation.MessageHistoryRecord
 	err     error
@@ -102,8 +99,6 @@ func TestChannelSenderSendsThroughAdapter(t *testing.T) {
 		t.Errorf("unexpected result: %+v", sent)
 	}
 
-	// The transcript must be written through the shared history manager, with the
-	// run's own channel, otherwise the message is delivered but invisible.
 	if len(history.records) != 1 {
 		t.Fatalf("expected one history record, got %d", len(history.records))
 	}
@@ -116,8 +111,6 @@ func TestChannelSenderSendsThroughAdapter(t *testing.T) {
 	}
 }
 
-// A closed window is normal on Instagram, not an error: the workflow must
-// continue with sent=false rather than failing the run.
 func TestChannelSenderWithheldWhenWindowClosed(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: false}
 	history := &recordingHistory{}
@@ -161,8 +154,6 @@ func TestChannelSenderPropagatesProviderFailure(t *testing.T) {
 	}
 }
 
-// WhatsApp must never be served by the adapter path: it keeps its dedicated
-// sender, which resolves lead numbers, phone selection and the lead window.
 func TestChannelSenderKeepsWhatsAppOnItsOwnPath(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	sender := &channelSender{adapters: conversation.NewAdapterRegistry(adapter)}
@@ -188,13 +179,10 @@ func TestChannelSenderSupports(t *testing.T) {
 	if !sender.Supports(igRun()) {
 		t.Error("a registered channel must be supported")
 	}
-	// A channel with no adapter, the state before a channel is wired, must
-	// report unsupported so nodes skip instead of pretending to send.
 	unknown := &workflow.WorkflowRun{ID: "r", EntryID: "e", EntryType: "telegram"}
 	if sender.Supports(unknown) {
 		t.Error("an unregistered channel must not be supported")
 	}
-	// Nil-safety: executors call this before every send.
 	if (*channelSender)(nil).Supports(igRun()) {
 		t.Error("a nil sender supports nothing")
 	}
@@ -203,8 +191,6 @@ func TestChannelSenderSupports(t *testing.T) {
 	}
 }
 
-// A history failure must fail the node: the message went out, and silently
-// losing it from the transcript would leave the operator blind.
 func TestChannelSenderFailsWhenTranscriptCannotBeWritten(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	sender := &channelSender{
@@ -217,9 +203,6 @@ func TestChannelSenderFailsWhenTranscriptCannotBeWritten(t *testing.T) {
 	}
 }
 
-// The bridge is not WhatsApp-only: an Instagram or Telegram attachment sent
-// without a caption hit the same Message.Validate rejection, so the adapter path
-// must register its own conversation_media row too.
 func TestChannelSenderBridgesMediaOnTheAdapterPath(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	history := &recordingHistory{}
@@ -254,7 +237,6 @@ func TestChannelSenderBridgesMediaOnTheAdapterPath(t *testing.T) {
 		t.Fatalf("expected one history record, got %d", len(history.records))
 	}
 	rec := history.records[0]
-	// Empty caption: the MediaID is the only content Message.Validate accepts.
 	if rec.Text != "" || rec.MediaID != created.ID {
 		t.Fatalf("captionless record has no content: %+v", rec)
 	}
@@ -263,8 +245,6 @@ func TestChannelSenderBridgesMediaOnTheAdapterPath(t *testing.T) {
 	}
 }
 
-// A channel with no media repository wired must still deliver and still record,
-// just without a thumbnail — the same degradation as a failed insert.
 func TestChannelSenderSendsMediaWithoutAMediaRepository(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	history := &recordingHistory{}

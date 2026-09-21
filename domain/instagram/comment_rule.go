@@ -9,17 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Comment automation: a stored rule reacts to a public comment.
-//
-// The rule is DATA, an ordered list of conditions and actions, rather than a
-// hardcoded if-chain, so a later "comment received" workflow trigger can consume
-// the same comment events without either engine rewriting the other.
-//
-// It deliberately stops at the comment. When a rule sends a private reply it
-// opens a DM conversation, and from that point the existing agent/workflow
-// automation attends it: the branching a marketer wants after "hello" happens on
-// the conversation, where the whole workflow canvas already works.
-
 var (
 	ErrCommentRuleNotFound      = errors.New("instagram: comment rule not found")
 	ErrCommentRuleNoActions     = errors.New("instagram: comment rule must define at least one action")
@@ -28,35 +17,22 @@ var (
 	ErrCommentRuleReplyEmpty    = errors.New("instagram: reply action requires a message")
 )
 
-// CommentRuleMatch is how a rule's keywords are compared against comment text.
 type CommentRuleMatch string
 
 const (
-	// MatchAny fires on every comment. Used for blanket moderation or a catch-all
-	// auto-reply; keywords are ignored.
-	MatchAny CommentRuleMatch = "any"
-	// MatchContains fires when the comment contains any keyword.
+	MatchAny      CommentRuleMatch = "any"
 	MatchContains CommentRuleMatch = "contains"
-	// MatchExact fires when the whole comment equals a keyword.
-	MatchExact CommentRuleMatch = "exact"
+	MatchExact    CommentRuleMatch = "exact"
 )
 
-// CommentRuleAction is one thing a rule does when it matches.
 type CommentRuleAction string
 
 const (
-	// ActionPublicReply posts a threaded reply under the comment.
-	ActionPublicReply CommentRuleAction = "public_reply"
-	// ActionPrivateReply DMs the comment's author, which opens a conversation the
-	// agent or workflow then attends. Instagram allows exactly one per comment,
-	// ever, within 7 days.
+	ActionPublicReply  CommentRuleAction = "public_reply"
 	ActionPrivateReply CommentRuleAction = "private_reply"
-	// ActionHide hides the comment. Hiding works on anyone's comment because we
-	// hold the media-owner token; deletion does not, so it is not offered.
-	ActionHide CommentRuleAction = "hide"
+	ActionHide         CommentRuleAction = "hide"
 )
 
-// CommentRule reacts to comments on one account.
 type CommentRule struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
@@ -65,30 +41,22 @@ type CommentRule struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 
-	// IGMediaID scopes the rule to a single post. Empty means the rule applies to
-	// every post on the account, the "account default" tier.
 	IGMediaID string `json:"igMediaId,omitempty"`
 
 	Match    CommentRuleMatch `json:"match"`
 	Keywords []string         `json:"keywords"`
 
-	// Actions run in this order. Ordering is meaningful: hiding a comment before
-	// replying to it would reply to something no one can see.
 	Actions []CommentRuleAction `json:"actions"`
 
-	// PublicReplyText and PrivateReplyText support {{username}} and {{comment}}.
 	PublicReplyText  string `json:"publicReplyText,omitempty"`
 	PrivateReplyText string `json:"privateReplyText,omitempty"`
 
-	// Priority orders rules against each other; lower runs first. The first
-	// matching rule wins, so a specific post rule can pre-empt an account default.
 	Priority int `json:"priority"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Normalize trims and canonicalizes a rule before validation or storage.
 func (r *CommentRule) Normalize() {
 	r.Name = strings.TrimSpace(r.Name)
 	r.IGMediaID = strings.TrimSpace(r.IGMediaID)
@@ -127,7 +95,6 @@ func (r *CommentRule) Normalize() {
 	r.Actions = actions
 }
 
-// Validate rejects a rule that could not act.
 func (r *CommentRule) Validate() error {
 	if r.Name == "" {
 		return ErrCommentRuleNameRequired
@@ -156,10 +123,6 @@ func (r *CommentRule) Validate() error {
 	return nil
 }
 
-// Matches reports whether this rule should fire for a comment.
-//
-// A rule never reacts to our own comment: our replies arrive back as webhooks,
-// so without this a reply rule would answer itself forever.
 func (r *CommentRule) Matches(c *Comment) bool {
 	if r == nil || c == nil || !r.Enabled {
 		return false
@@ -168,7 +131,6 @@ func (r *CommentRule) Matches(c *Comment) bool {
 		return false
 	}
 	if c.Hidden {
-		// Already moderated; re-acting would fight an operator's decision.
 		return false
 	}
 	if r.IGMediaID != "" && r.IGMediaID != c.IGMediaID {
@@ -192,7 +154,7 @@ func (r *CommentRule) Matches(c *Comment) bool {
 			if text == folded {
 				return true
 			}
-		default: // MatchContains
+		default:
 			if strings.Contains(text, folded) {
 				return true
 			}
@@ -201,10 +163,6 @@ func (r *CommentRule) Matches(c *Comment) bool {
 	return false
 }
 
-// RenderText fills a rule's message template.
-//
-// Kept to two variables on purpose: a public comment reply is a permanent,
-// brand-facing artifact, so the surface a marketer can get wrong is small.
 func RenderText(template string, c *Comment) string {
 	if c == nil {
 		return template
@@ -215,15 +173,11 @@ func RenderText(template string, c *Comment) string {
 	return strings.TrimSpace(out)
 }
 
-// CommentRuleRepository stores comment rules.
 type CommentRuleRepository interface {
 	Create(ctx context.Context, rule *CommentRule) error
 	Update(ctx context.Context, rule *CommentRule) error
 	Delete(ctx context.Context, workspaceID, id string) error
 	FindByID(ctx context.Context, workspaceID, id string) (*CommentRule, error)
-	// ListByAccount returns every rule for an account, ordered by priority.
 	ListByAccount(ctx context.Context, workspaceID, igAccountID string) ([]*CommentRule, error)
-	// ListCandidates returns the enabled rules that could match a post: those
-	// scoped to it, plus the account-wide defaults, ordered by priority.
 	ListCandidates(ctx context.Context, igAccountID, igMediaID string) ([]*CommentRule, error)
 }

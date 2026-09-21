@@ -8,31 +8,10 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// leadLinker bridges a contact to a CRM lead.
-//
-// This is the decisive difference between this channel and the other two added
-// recently. An Instagram IGSID and a Telegram user id are opaque identifiers no
-// other subsystem can address, so their contacts stay a parallel address book.
-// Here the contact IS an E.164 number — the same key `leads` is already indexed
-// on — so call sessions, boletos, opportunities, campaigns and export all reach the
-// same person the inbox shows.
-//
-// It find-or-CREATES rather than only looking up, unlike Telegram's, and the
-// difference is deliberate: a Telegram phone share is a rare consent event where
-// a miss is normal, while here every inbound message carries a real number, and
-// a customer who messages a connected line and does not become a lead is a hole
-// in the CRM.
-//
-// It lives here rather than in the container because it is a repository query
-// plus a normalization rule, not composition. The number goes through the same
-// Brazilian normalisation `leads` is keyed on (ux_leads_workspace_number stores
-// the 9th-digit-normalised form); comparing a raw JID-derived number against it
-// would miss a perfectly valid match and duplicate the lead.
 type leadLinker struct {
 	repo lead_domain.Repository
 }
 
-// NewLeadLinker builds the contact → lead bridge.
 func NewLeadLinker(repo lead_domain.Repository) uwuc.LeadLinker {
 	return &leadLinker{repo: repo}
 }
@@ -47,33 +26,13 @@ func (l *leadLinker) EnsureLeadForPhone(_ context.Context, workspaceID, phone, n
 		return "", nil
 	}
 
-	// A lead that already has a name is returned as-is, and the pushname is
-	// dropped on the floor.
-	//
-	// FindOrCreate applies a non-empty name to an EXISTING lead, and on this
-	// channel that ran on every single inbound message with whatever the
-	// handset was advertising at the time. An operator renaming a lead in the
-	// CRM therefore had their name silently rewritten by the next message the
-	// customer sent — the rename was real, it just never survived. The provider
-	// name fills a blank; it does not overrule a person.
-	//
-	// Same matching rule as FindOrCreate (normalised number plus the Brazilian
-	// 9th-digit alternate), so this cannot miss a lead the create path would
-	// have found and then overwrite it anyway.
 	if existing, err := l.repo.FindByNumber(workspaceID, normalized); err == nil &&
 		existing != nil && strings.TrimSpace(existing.Name) != "" {
 		return existing.ID, nil
 	}
 
-	// FindOrCreate rather than Create: two messages arriving together from the
-	// same new number would otherwise race and one would fail on the workspace
-	// uniqueness index, losing a message for a reason the customer never sees.
 	record, _, err := l.repo.FindOrCreate(workspaceID, normalized, lead_domain.LeadUpdate{Name: name})
 	if err != nil || record == nil {
-		// A failure here is not fatal to the message. The contact still renders
-		// through the identity lookup, and the next inbound message retries the
-		// bridge — whereas failing the whole delivery would redeliver a message
-		// that was already stored.
 		return "", err
 	}
 	return record.ID, nil

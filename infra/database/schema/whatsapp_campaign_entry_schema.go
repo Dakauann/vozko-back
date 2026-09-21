@@ -21,25 +21,15 @@ type WhatsAppCampaignEntry struct {
 	AutomationEnabled       *bool          `gorm:"default:null"`
 	Metadata                LeadMetadata   `gorm:"type:jsonb;default:'{}'"`
 	ConversationStatus      string         `gorm:"size:20;not null;default:'';index:idx_wce_conv_status"`
-	// Close provenance when conversation_status = finished (null while open).
-	CloseSource string         `gorm:"size:20"`
-	CloseReason string         `gorm:"size:40"`
-	ClosedAt    *time.Time     `gorm:"column:closed_at"`
-	CreatedAt   time.Time      `gorm:"autoCreateTime;index:idx_wce_campaign_status_created,priority:3;index:idx_wce_lead_created,priority:2"`
-	UpdatedAt   time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt   gorm.DeletedAt `gorm:"index;index:idx_wce_campaign_del,priority:2"`
-	// LastMessageAt denormalizes the newest conversation_messages.created_at for this
-	// entry. The inbox lists order and filter by it, which replaces a per-entry
-	// JOIN LATERAL over conversation_messages that forced a full scan of every entry
-	// in the workspace on each load. NULL means "no messages", such entries are not
-	// listed, matching the inner-join semantics the LATERAL had. Kept current by the
-	// conversation message repository; see idx_wce_campaign_lastmsg in indexes.go.
-	LastMessageAt *time.Time `gorm:"column:last_message_at"`
-	// LastCustomerMessageAt / LastAgentMessageAt drive idle auto-close eligibility
-	// without scanning conversation_messages. Agent clock includes operator, AI,
-	// and template outbound. Maintained with last_message_at on message write.
-	LastCustomerMessageAt *time.Time `gorm:"column:last_customer_message_at"`
-	LastAgentMessageAt    *time.Time `gorm:"column:last_agent_message_at"`
+	CloseSource             string         `gorm:"size:20"`
+	CloseReason             string         `gorm:"size:40"`
+	ClosedAt                *time.Time     `gorm:"column:closed_at"`
+	CreatedAt               time.Time      `gorm:"autoCreateTime;index:idx_wce_campaign_status_created,priority:3;index:idx_wce_lead_created,priority:2"`
+	UpdatedAt               time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt               gorm.DeletedAt `gorm:"index;index:idx_wce_campaign_del,priority:2"`
+	LastMessageAt           *time.Time     `gorm:"column:last_message_at"`
+	LastCustomerMessageAt   *time.Time     `gorm:"column:last_customer_message_at"`
+	LastAgentMessageAt      *time.Time     `gorm:"column:last_agent_message_at"`
 
 	Lead Lead `gorm:"foreignKey:LeadID;references:ID"`
 }

@@ -38,8 +38,8 @@ func TestBuildLastSeenRing_OrdersByRecency(t *testing.T) {
 func TestBuildLastSeenRing_DropsStaleAndNeverSeen(t *testing.T) {
 	ring := BuildLastSeenRing([]Candidate{
 		{UserID: "bob", LastSeen: ago(2 * time.Hour)},
-		{UserID: "dan", LastSeen: ago(72 * time.Hour)}, // past window
-		{UserID: "eve"}, // no presence record at all
+		{UserID: "dan", LastSeen: ago(72 * time.Hour)},
+		{UserID: "eve"},
 	}, refNow, 48*time.Hour)
 
 	if want := []string{"bob"}; !reflect.DeepEqual(ring, want) {
@@ -47,7 +47,6 @@ func TestBuildLastSeenRing_DropsStaleAndNeverSeen(t *testing.T) {
 	}
 }
 
-// E25: the window boundary is inclusive. Exactly `window` old stays in.
 func TestBuildLastSeenRing_WindowBoundary(t *testing.T) {
 	window := 48 * time.Hour
 	cases := []struct {
@@ -69,13 +68,10 @@ func TestBuildLastSeenRing_WindowBoundary(t *testing.T) {
 	}
 }
 
-// E16: a connected candidate is kept regardless of how old their presence row
-// is — the resolver hands us Online plus LastSeen=now, but the ring must not
-// depend on the caller remembering to do that.
 func TestBuildLastSeenRing_OnlineIsAlwaysKept(t *testing.T) {
 	ring := BuildLastSeenRing([]Candidate{
-		{UserID: "ghost", Online: true},                               // online, zero LastSeen
-		{UserID: "old", LastSeen: ago(300 * time.Hour), Online: true}, // online, ancient row
+		{UserID: "ghost", Online: true},
+		{UserID: "old", LastSeen: ago(300 * time.Hour), Online: true},
 	}, refNow, 48*time.Hour)
 
 	if len(ring) != 2 {
@@ -83,8 +79,6 @@ func TestBuildLastSeenRing_OnlineIsAlwaysKept(t *testing.T) {
 	}
 }
 
-// E24: identical timestamps must produce the same ring every time, or the
-// round-robin pointer walks a slice whose order keeps changing.
 func TestBuildLastSeenRing_TieBreakIsStable(t *testing.T) {
 	same := ago(time.Hour)
 	want := []string{"ana", "bob", "cid"}
@@ -100,8 +94,6 @@ func TestBuildLastSeenRing_TieBreakIsStable(t *testing.T) {
 	}
 }
 
-// E23: a presence timestamp in the future (clock skew) must not produce a
-// negative age that silently reorders the ring in a surprising way.
 func TestBuildLastSeenRing_FutureTimestampSortsToHead(t *testing.T) {
 	ring := BuildLastSeenRing([]Candidate{
 		{UserID: "bob", LastSeen: ago(time.Hour)},
@@ -126,9 +118,6 @@ func TestBuildLastSeenRing_Empty(t *testing.T) {
 	}
 }
 
-// Golden table for the historical behaviour: the online ring is sorted by id
-// and a departed last-assignee resumes at its insertion point. These cases are
-// the contract the pre-extraction inline code satisfied.
 func TestNextIndex_InsertionPointResume(t *testing.T) {
 	ring := []string{"ana", "bob", "cid"}
 	cases := []struct {
@@ -153,10 +142,8 @@ func TestNextIndex_InsertionPointResume(t *testing.T) {
 	}
 }
 
-// E30/E31: the last-seen ring resumes at the head, because an insertion point
-// by id means nothing in a ring ordered by recency.
 func TestNextIndex_HeadResume(t *testing.T) {
-	ring := []string{"cid", "ana", "bob"} // recency order, deliberately not sorted
+	ring := []string{"cid", "ana", "bob"}
 	cases := []struct {
 		name         string
 		lastAssigned string
@@ -183,7 +170,6 @@ func TestNextIndex_EmptyRing(t *testing.T) {
 	}
 }
 
-// E32: a ring of one always returns the same member, in both policies.
 func TestNextIndex_SingleMemberRing(t *testing.T) {
 	for _, resume := range []ResumePolicy{ResumeAtInsertionPoint, ResumeAtHead} {
 		if got := NextIndex([]string{"ana"}, "ana", resume); got != 0 {

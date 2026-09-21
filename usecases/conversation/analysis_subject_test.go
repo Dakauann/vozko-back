@@ -2,9 +2,6 @@ package conversation_usecase
 
 import "testing"
 
-// WantsWork gates the whole debounce pass: a subject it rejects is never
-// analysed, tagged or memorized. The memory case is the subtle one, because
-// auto-memory alone only counts when a lead is actually linked.
 func TestAnalysisSubjectWantsWork(t *testing.T) {
 	cases := []struct {
 		name    string

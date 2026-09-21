@@ -17,15 +17,14 @@ func (f *fakeOrganic) Execute(workspaceID, businessPhoneID, displayPhoneNumber s
 	return &wc.Campaign{}, true, nil
 }
 
-// fakePartner implements businessphone.Dialog360PartnerService for tests.
 type fakePartner struct {
 	channels            []businessphone.Dialog360Channel
 	genKeyCalls         int
 	genKeyResponse      *businessphone.APIKeyResult
 	createCalls         int
-	createErr           error  // when set, CreateClient returns this error
-	findByEmailID       string // when set, FindClientByEmail returns this id (existing client)
-	findOnlyAfterCreate bool   // models 360dialog's "created but returned error": empty until a create is attempted
+	createErr           error
+	findByEmailID       string
+	findOnlyAfterCreate bool
 	findCalls           int
 	registerCalls       int
 	registerErr         error
@@ -75,8 +74,6 @@ func (f *fakePartner) CancelChannel(clientID, channelID string) error           
 func (f *fakePartner) ReactivateChannel(clientID, channelID string) error          { return nil }
 func (f *fakePartner) SetWebhookURL(url string) error                              { return nil }
 
-// fakePhoneRepo embeds the interface so it satisfies it; only used methods are
-// overridden (others panic if unexpectedly called).
 type fakePhoneRepo struct {
 	businessphone.Repository
 	phones []*businessphone.WhatsAppBusinessPhoneNumber
@@ -214,7 +211,6 @@ func TestFinalize_IsIdempotentOnRedelivery(t *testing.T) {
 
 func TestReconcile_FlagsOrphanedChannelAndStalePending(t *testing.T) {
 	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
-	// One healthy connected row, one stale pending row (created 2h ago).
 	healthy := newPendingPhone("pnid-ok", "waba-ok", now)
 	healthy.Status = businessphone.StatusConnected
 	healthy.Dialog360ChannelID = "chan-ok"
@@ -222,8 +218,8 @@ func TestReconcile_FlagsOrphanedChannelAndStalePending(t *testing.T) {
 	phoneRepo := &fakePhoneRepo{phones: []*businessphone.WhatsAppBusinessPhoneNumber{healthy, stale}}
 
 	partner := &fakePartner{channels: []businessphone.Dialog360Channel{
-		{ID: "chan-ok", WABAExternalID: "waba-ok"},    // matches healthy
-		{ID: "chan-orphan", WABAExternalID: "waba-x"}, // no local row -> orphan
+		{ID: "chan-ok", WABAExternalID: "waba-ok"},
+		{ID: "chan-orphan", WABAExternalID: "waba-x"},
 	}}
 	svc := NewDialog360OnboardingService(partner, phoneRepo, &fakeWABARepo{}, nil)
 
@@ -251,11 +247,9 @@ func TestStartProvisioning_MarksFailedButKeepsRowWhenShareFails(t *testing.T) {
 		OwnerWorkspaceID: "ws-1",
 		OwnerAssignedBy:  "user-1",
 	})
-	// The handover error is returned...
 	if err == nil {
 		t.Fatalf("expected error when account_sharing/numbers fails")
 	}
-	// ...but the phone row MUST exist and be visibly failed (the user's requirement).
 	if phone == nil {
 		t.Fatalf("phone row must be returned even on handover failure (must be visible in UI)")
 	}
@@ -272,7 +266,6 @@ func TestStartProvisioning_MarksFailedButKeepsRowWhenShareFails(t *testing.T) {
 }
 
 func TestRetry_ReusesClientAndRecovers(t *testing.T) {
-	// A row left FAILED by a prior attempt where the client was already created.
 	failed := newPendingPhone("pnid-1", "waba-ext-1", time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC))
 	failed.Status = businessphone.StatusOnboardingFailed
 	failed.OnboardingError = "share number (account_sharing/numbers): 502"
@@ -280,7 +273,7 @@ func TestRetry_ReusesClientAndRecovers(t *testing.T) {
 	wabaRepo := &fakeWABARepo{accounts: []*waba.WhatsAppBusinessAccount{{
 		ID: "waba-1", MetaWABAId: "waba-ext-1", Provider: "dialog360", Dialog360ClientID: "client-1",
 	}}}
-	partner := &fakePartner{} // RegisterNumber now succeeds
+	partner := &fakePartner{}
 	svc := NewDialog360OnboardingService(partner, phoneRepo, wabaRepo, nil)
 
 	phone, err := svc.Retry("phone-pnid-1", "ws-1")
@@ -298,8 +291,6 @@ func TestRetry_ReusesClientAndRecovers(t *testing.T) {
 	}
 }
 
-// newFailedPhoneForRetry builds a FAILED dialog360 row to drive Retry through the
-// client-resolution path (no persisted WABA client id present).
 func newFailedPhoneForRetry() *fakePhoneRepo {
 	failed := newPendingPhone("pnid-1", "waba-ext-1", time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC))
 	failed.Status = businessphone.StatusOnboardingFailed
@@ -307,13 +298,9 @@ func newFailedPhoneForRetry() *fakePhoneRepo {
 	return &fakePhoneRepo{phones: []*businessphone.WhatsAppBusinessPhoneNumber{failed}}
 }
 
-// The number that motivated this fix: 360dialog created the client on prior attempts
-// but returned 429/500, so no id was persisted. A retry must REUSE the existing
-// client (found by its deterministic email) and never call CreateClient again, this
-// is the exact duplication the production incident produced (3 leaked clients).
 func TestRetry_ReusesExistingClientByEmail_NoDuplicate(t *testing.T) {
 	phoneRepo := newFailedPhoneForRetry()
-	wabaRepo := &fakeWABARepo{} // no persisted client id
+	wabaRepo := &fakeWABARepo{}
 	partner := &fakePartner{findByEmailID: "existing-client-9"}
 	svc := NewDialog360OnboardingService(partner, phoneRepo, wabaRepo, nil)
 
@@ -332,14 +319,11 @@ func TestRetry_ReusesExistingClientByEmail_NoDuplicate(t *testing.T) {
 	}
 }
 
-// If CreateClient itself errors but the client was actually created (360dialog's
-// ack-then-500 bug), the retry must recover the id via the email lookup rather than
-// failing, otherwise it re-creates on the next attempt and leaks duplicates.
 func TestRetry_RecoversWhenCreateErroredButClientExists(t *testing.T) {
 	phoneRepo := newFailedPhoneForRetry()
 	partner := &fakePartner{
 		createErr:           errors.New("360dialog returned 500: Internal Server Error"),
-		findOnlyAfterCreate: true, // empty before the create, present after (it was created)
+		findOnlyAfterCreate: true,
 		findByEmailID:       "leaked-client-3",
 	}
 	svc := NewDialog360OnboardingService(partner, phoneRepo, &fakeWABARepo{}, nil)
@@ -359,10 +343,9 @@ func TestRetry_RecoversWhenCreateErroredButClientExists(t *testing.T) {
 	}
 }
 
-// When no client exists yet, a single CreateClient runs and its id is used.
 func TestRetry_CreatesClientWhenNoneExists(t *testing.T) {
 	phoneRepo := newFailedPhoneForRetry()
-	partner := &fakePartner{} // findByEmailID empty → nothing to reuse
+	partner := &fakePartner{}
 	svc := NewDialog360OnboardingService(partner, phoneRepo, &fakeWABARepo{}, nil)
 
 	if _, err := svc.Retry("phone-pnid-1", "ws-1"); err != nil {
@@ -376,10 +359,6 @@ func TestRetry_CreatesClientWhenNoneExists(t *testing.T) {
 	}
 }
 
-// TestFinalize_PopulatesChannelMetadata proves a dialog360-hosted number gets its
-// verified name, quality, messaging tier and review status from the partner channel
-// at finalize time, the only source, since these numbers have no Meta access token
-// for the Graph sync. Without this the number connects but shows empty metadata.
 func TestFinalize_PopulatesChannelMetadata(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
 	phoneRepo := &fakePhoneRepo{phones: []*businessphone.WhatsAppBusinessPhoneNumber{
@@ -460,6 +439,5 @@ func TestFinalize_CoexistenceCreatesOrganicCampaign(t *testing.T) {
 	}
 }
 
-// guard against accidental interface drift
 var _ businessphone.Dialog360PartnerService = (*fakePartner)(nil)
 var _ = errors.New

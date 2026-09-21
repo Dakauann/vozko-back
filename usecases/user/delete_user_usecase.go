@@ -10,9 +10,6 @@ import (
 	"vozko/domain/workspace"
 )
 
-// Mirrors the revocation constants in the auth use-case package (kept local to
-// avoid importing an internal package). Keep these in sync with
-// usecases/auth/revoke_session_usecase.go.
 const (
 	revokedJTIPrefix = "revoked_jti:"
 	revokedJTITTL    = 16 * time.Minute
@@ -44,21 +41,18 @@ func NewDeleteUserUseCase(
 	}
 }
 
-// workspaceAction is the resolved per-workspace plan, computed for every
-// workspace before any mutation.
 type workspaceAction struct {
 	workspaceID    string
 	myMemberID     string
 	isOwner        bool
-	orphan         bool   // owner case with no admin successor: owner_id -> NULL
-	successorID    string // new owner's user id (owner case only)
-	successorMemID string // new owner's member id (owner case only)
+	orphan         bool
+	successorID    string
+	successorMemID string
 }
 
 func (uc *deleteUserUseCase) Execute(userID, currentPassword string) error {
 	u, err := uc.userRepo.FindByID(userID)
 	if err != nil {
-		// Includes user.ErrNotFound, which the handler treats as already deleted.
 		return err
 	}
 
@@ -66,9 +60,6 @@ func (uc *deleteUserUseCase) Execute(userID, currentPassword string) error {
 		return user.ErrInvalidPassword
 	}
 
-	// Plan every workspace before mutating anything. For workspaces the user
-	// owns: hand off to an admin if one exists, otherwise orphan the workspace
-	// (owner_id -> NULL). The user's account is deleted either way.
 	wss, err := uc.wsRepo.ListWorkspacesByUser(userID, "", "")
 	if err != nil {
 		return err
@@ -102,7 +93,6 @@ func (uc *deleteUserUseCase) Execute(userID, currentPassword string) error {
 				act.successorID = successor.UserID
 				act.successorMemID = successor.ID
 			} else {
-				// No admin to inherit: orphan the workspace.
 				act.orphan = true
 			}
 		}
@@ -110,14 +100,10 @@ func (uc *deleteUserUseCase) Execute(userID, currentPassword string) error {
 		actions = append(actions, act)
 	}
 
-	// Committed to deletion from here. Revoke sessions first so the access-token
-	// window (<=16m) is closed even though session rows also cascade-delete with
-	// the user record.
 	uc.revokeSessions(userID)
 
 	for _, act := range actions {
 		if act.isOwner {
-			// An empty successorID orphans the workspace (owner_id -> NULL).
 			if err := uc.wsRepo.TransferOwnership(act.workspaceID, act.successorID); err != nil {
 				return err
 			}
@@ -139,9 +125,6 @@ func (uc *deleteUserUseCase) Execute(userID, currentPassword string) error {
 	return uc.userRepo.Delete(userID)
 }
 
-// pickSuccessor returns the oldest remaining admin that should inherit
-// ownership. Returns nil when there is no other admin (the workspace is then
-// orphaned rather than handed to a non-admin member).
 func pickSuccessor(others []*workspace.Member) *workspace.Member {
 	admins := make([]*workspace.Member, 0, len(others))
 	for _, m := range others {

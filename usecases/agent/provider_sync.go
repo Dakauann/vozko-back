@@ -7,8 +7,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// syncAgentTools reconciles the agent's tool-binding map with its selected
-// internal tools, dropping bindings for tools that are no longer selected.
 func syncAgentTools(registry tools.Service, a *agent.Agent) error {
 	_ = registry
 	if a == nil {

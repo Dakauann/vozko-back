@@ -10,10 +10,6 @@ import (
 	tgdomain "vozko/domain/telegram"
 )
 
-// Hand-written fakes with XxxFn fields, matching the repo's established test
-// idiom: a test overrides only the behaviour it cares about, and any call it did
-// not anticipate fails loudly rather than returning a plausible zero value.
-
 type fakeAccounts struct {
 	mu sync.Mutex
 
@@ -26,7 +22,6 @@ type fakeAccounts struct {
 	ListForHealthCheckFn         func(ctx context.Context, before time.Time, limit int) ([]*tgdomain.Account, error)
 	UpdateWebhookHealthFn        func(ctx context.Context, id string, h tgdomain.WebhookHealth) error
 
-	// Recorded for assertions.
 	StatusWrites  []statusWrite
 	HealthWrites  []tgdomain.WebhookHealth
 	Created       []*tgdomain.Account
@@ -140,8 +135,6 @@ func (f *fakeAccounts) ListForHealthCheck(ctx context.Context, before time.Time,
 
 func (f *fakeAccounts) Delete(context.Context, string) error { return nil }
 
-// ---------------------------------------------------------------- contacts
-
 type fakeContacts struct {
 	mu sync.Mutex
 
@@ -196,8 +189,6 @@ func (f *fakeContacts) UpdateChatID(_ context.Context, _ string, chatID int64) e
 	f.mu.Unlock()
 	return nil
 }
-
-// ---------------------------------------------------------------- conversations
 
 type fakeConversations struct {
 	mu sync.Mutex
@@ -273,8 +264,6 @@ func (f *fakeConversations) CountByStatus(context.Context, string, string) (map[
 	return nil, nil
 }
 
-// ---------------------------------------------------------------- bot API
-
 type fakeBotAPI struct {
 	mu sync.Mutex
 
@@ -313,7 +302,6 @@ func (f *fakeBotAPI) GetWebhookInfo(ctx context.Context, token string) (*tgdomai
 	if f.GetWebhookInfoFn != nil {
 		return f.GetWebhookInfoFn(ctx, token)
 	}
-	// Echo back whatever URL was registered, which is what a healthy webhook does.
 	f.mu.Lock()
 	url := ""
 	if len(f.WebhookCfgs) > 0 {
@@ -371,8 +359,6 @@ func (f *fakeBotAPI) DownloadFile(context.Context, string, string) ([]byte, stri
 func (f *fakeBotAPI) GetUserProfilePhotoFileID(context.Context, string, int64) (string, error) {
 	return "", nil
 }
-
-// ---------------------------------------------------------------- file cache
 
 type fakeFileCache struct {
 	mu sync.Mutex

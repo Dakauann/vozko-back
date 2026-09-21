@@ -18,7 +18,6 @@ func TestInterpolate_VarScope(t *testing.T) {
 }
 
 func TestInterpolate_ArrayIndexing(t *testing.T) {
-	// Mirrors an HTTP node response captured into a variable: data is an array.
 	resp := map[string]interface{}{
 		"data": []interface{}{
 			map[string]interface{}{"link_2via": "https://example.com/boleto/1"},
@@ -32,9 +31,9 @@ func TestInterpolate_ArrayIndexing(t *testing.T) {
 	cases := map[string]string{
 		"{{resposta_pendencia.data[0].link_2via}}":   "https://example.com/boleto/1",
 		"{{resposta_pendencia.data[1].link_2via}}":   "https://example.com/boleto/2",
-		"{{ resposta_pendencia.data[0].link_2via }}": "https://example.com/boleto/1",             // whitespace
-		"{{last.data[1].link_2via}}":                 "https://example.com/boleto/2",             // last scope
-		"{{resposta_pendencia.data[9].link_2via}}":   "{{resposta_pendencia.data[9].link_2via}}", // out of range -> literal
+		"{{ resposta_pendencia.data[0].link_2via }}": "https://example.com/boleto/1",
+		"{{last.data[1].link_2via}}":                 "https://example.com/boleto/2",
+		"{{resposta_pendencia.data[9].link_2via}}":   "{{resposta_pendencia.data[9].link_2via}}",
 	}
 	for tmpl, want := range cases {
 		if got := Interpolate(tmpl, &state, nil); got != want {

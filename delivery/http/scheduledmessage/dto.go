@@ -7,11 +7,7 @@ import (
 )
 
 type ScheduleMessageRequest struct {
-	Text string `json:"text" example:"Bom dia! Seguindo nossa conversa..."`
-	// ScheduledAt is RFC3339 WITH the client's offset. The browser sends its
-	// real timezone and the server stores UTC, so an operator in Manaus and one
-	// in São Paulo picking "14:30" get two different instants, which is what
-	// they both mean.
+	Text             string    `json:"text" example:"Bom dia! Seguindo nossa conversa..."`
 	ScheduledAt      time.Time `json:"scheduled_at" example:"2026-08-13T14:30:00-03:00"`
 	MediaID          *string   `json:"media_id,omitempty" example:"med_a1b2c3"`
 	MediaType        *string   `json:"media_type,omitempty" example:"image"`
@@ -23,12 +19,6 @@ type RescheduleMessageRequest struct {
 	ScheduledAt time.Time `json:"scheduled_at" example:"2026-08-13T16:00:00-03:00"`
 }
 
-// WindowResponse tells the client what the conversation will accept.
-//
-// LatestAllowedAt is computed server-side and returned rather than left to the
-// client, so the date picker and the validator cannot disagree about a
-// boundary — a disagreement the operator would experience as a time the UI
-// offered and the server refused.
 type WindowResponse struct {
 	Open            bool       `json:"open"`
 	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
@@ -50,10 +40,7 @@ type ScheduledMessageResponse struct {
 
 	ScheduledAt time.Time `json:"scheduledAt"`
 
-	Status string `json:"status"`
-	// FailureReason is the machine-readable reason a message never arrived. The
-	// UI must render dispatch_interrupted differently from the rest: it means
-	// delivery could not be CONFIRMED, not that it definitely failed.
+	Status        string  `json:"status"`
 	FailureReason *string `json:"failureReason,omitempty"`
 	FailureDetail string  `json:"failureDetail,omitempty"`
 
@@ -82,8 +69,6 @@ type WorkspaceScheduledMessagesResponse struct {
 	TotalPages        int                        `json:"total_pages"`
 }
 
-// WindowErrorResponse is a refusal that names the boundary it refused against,
-// so the operator's next attempt is a correction rather than a guess.
 type WindowErrorResponse struct {
 	Error   bool           `json:"error"`
 	Code    string         `json:"code"`

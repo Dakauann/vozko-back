@@ -21,9 +21,6 @@ func TestDialog360PartnerClient_CancelChannel_UsesClientScopedCancellationReques
 	if gotMethod != http.MethodPost {
 		t.Fatalf("cancellation must be a POST (graceful, reversible), got %s", gotMethod)
 	}
-	// Validated against the live 360dialog API: the partner-scoped form (no
-	// /clients/ segment) returns 404 and never cancels, so the channel keeps
-	// billing. The client-scoped form is the only one that works.
 	want := "/partners/partner1/clients/client9/channels/chan123/control/cancellation_request"
 	if gotPath != want {
 		t.Fatalf("expected %s, got %s", want, gotPath)

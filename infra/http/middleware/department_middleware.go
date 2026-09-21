@@ -129,10 +129,6 @@ func GetDepartmentFilter(r *http.Request) *dept.DepartmentFilter {
 	return f
 }
 
-// SelectedDepartmentID is the department the request is scoped to, or "" for the
-// whole workspace. Handlers that pass this into a usecase should call this rather
-// than re-deriving it: the nil-filter and nil-pointer cases both mean "no
-// selection", and a handler that forgets either silently widens its scope.
 func SelectedDepartmentID(r *http.Request) string {
 	if f := GetDepartmentFilter(r); f != nil && f.SelectedDepartmentID != nil {
 		return *f.SelectedDepartmentID

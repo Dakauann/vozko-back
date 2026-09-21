@@ -111,10 +111,6 @@ func (r *runRepository) FindActiveByEntryAndTrigger(workflowID, entryID, trigger
 	return mapRunToDomain(&dbR)
 }
 
-// FindActiveByEntries batch-loads the active (running/waiting) run per entry for the
-// given entry ids in one indexed query, keeping the most recently updated run when an
-// entry has several. Returns a map keyed by entry id (entries with no active run are
-// absent). Used by inbox enrichment; stays O(page) via the (entry_id) active index.
 func (r *runRepository) FindActiveByEntries(entryIDs []string) (map[string]*workflow.WorkflowRun, error) {
 	out := make(map[string]*workflow.WorkflowRun, len(entryIDs))
 	if len(entryIDs) == 0 {
@@ -131,7 +127,7 @@ func (r *runRepository) FindActiveByEntries(entryIDs []string) (map[string]*work
 	for i := range rows {
 		eid := rows[i].EntryID
 		if _, seen := out[eid]; seen {
-			continue // rows are ordered newest-first per entry
+			continue
 		}
 		run, mErr := mapRunToDomain(&rows[i])
 		if mErr != nil {

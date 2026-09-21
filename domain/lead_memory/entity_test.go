@@ -42,7 +42,6 @@ func TestValidate(t *testing.T) {
 			wantErr: ErrContentRequired,
 		},
 		{
-			// Rune count, not byte count: 600 multi-byte characters must pass.
 			name:    "content at the rune cap passes",
 			mutate:  func(m *LeadMemory) { m.Content = strings.Repeat("ã", MaxContentLen) },
 			wantErr: nil,
@@ -82,7 +81,7 @@ func TestNormalize(t *testing.T) {
 		LeadID:        "lead-1",
 		Content:       "  Prefere boleto.  ",
 		ActorKind:     actor.KindAI,
-		ActorID:       "agent-1", // bare id: Normalize must add the ai: prefix
+		ActorID:       "agent-1",
 		SourceEntryID: &entry,
 	}
 	m.Normalize()
@@ -100,7 +99,6 @@ func TestNormalize(t *testing.T) {
 		t.Fatalf("source entry not trimmed: %v", m.SourceEntryID)
 	}
 
-	// An empty source pointer collapses to nil so "" and nil are one row shape.
 	empty := "   "
 	m.SourceEntryType = &empty
 	m.Normalize()
@@ -126,8 +124,6 @@ func TestNormalizeContent(t *testing.T) {
 }
 
 func TestCategoryEnumParity(t *testing.T) {
-	// AllCategories and Valid must describe the same set: the tool enum, the
-	// DB check, and the UI filter are all generated from these two.
 	for _, c := range AllCategories() {
 		if !c.Valid() {
 			t.Fatalf("AllCategories lists invalid category %q", c)

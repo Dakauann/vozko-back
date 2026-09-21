@@ -9,21 +9,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The alert briefing over the AI port.
-//
-// Two sentences for somebody who has just been woken up by a notification:
-// what is going on, and what to do about it. Same posture as the classifier and
-// the reply drafter, with one difference that matters more here than anywhere
-// else in the engine: this call sits between a threshold being crossed and a
-// message being sent, so it is bounded hard and every failure is silent. The
-// caller sends the alert without a briefing rather than not at all.
-//
-// The prompt's job is restraint. The model is reading a stranger's public
-// comment about a real organisation, and it is being asked to advise a human
-// under time pressure. It is told to describe rather than diagnose, never to
-// invent facts about the account, and to suggest an approach rather than words
-// to paste.
-
 const briefingSchemaName = "comment_alert_briefing"
 
 type aiAlertBriefer struct {
@@ -55,9 +40,7 @@ func (b *aiAlertBriefer) Brief(ctx context.Context, req ca.AlertBriefRequest) (*
 		SystemPrompt: buildBriefingSystemPrompt(req.Instructions),
 		Messages:     []ai.Message{{Role: ai.RoleUser, Content: buildBriefingUserMessage(req)}},
 		Temperature:  0.2,
-		// Two short sentences. The cap is the point: this runs while something
-		// is going wrong and nobody is waiting to read an essay.
-		MaxTokens: 220,
+		MaxTokens:    220,
 		ResponseFormat: &ai.ResponseFormat{
 			Type:                  ai.ResponseFormatJSONSchema,
 			JSONSchemaName:        briefingSchemaName,
@@ -70,8 +53,6 @@ func (b *aiAlertBriefer) Brief(ctx context.Context, req ca.AlertBriefRequest) (*
 		return nil, err
 	}
 	if out.FinishReason == "length" {
-		// A truncated briefing is a half sentence at somebody at 3am. Better
-		// none: the alert itself is complete without it.
 		return &ca.AlertBriefing{}, nil
 	}
 
@@ -129,8 +110,6 @@ func buildBriefingUserMessage(req ca.AlertBriefRequest) string {
 			b.WriteString("\n")
 		}
 	} else {
-		// A windowed alert. Saying so keeps the model from inventing a comment
-		// to explain.
 		b.WriteString("\nNão há um comentário único: o alerta é sobre o volume no período.\n")
 	}
 	return b.String()

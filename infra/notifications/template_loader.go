@@ -12,9 +12,6 @@ import (
 	"vozko/brand"
 )
 
-// emailFuncs are available inside every email template. dict lets a template pass
-// named arguments to a shared component (e.g. the CTA button); safeHTML injects a
-// pre-built SVG glyph without escaping.
 var emailFuncs = template.FuncMap{
 	"dict": func(values ...interface{}) (map[string]interface{}, error) {
 		if len(values)%2 != 0 {
@@ -51,9 +48,6 @@ func NewTemplateLoaderService(templatesDir string) *TemplateLoaderService {
 }
 
 func (tls *TemplateLoaderService) LoadTemplate(filePath string, data map[string]interface{}) (string, error) {
-	// Inject the active white-label brand so every template (and the shared layout)
-	// can render brand chrome via {{.Brand.Name}}, {{.Brand.LogoURL}}, etc. No email
-	// template carries a hardcoded brand.
 	if data == nil {
 		data = map[string]interface{}{}
 	}
@@ -74,10 +68,6 @@ func (tls *TemplateLoaderService) LoadTemplate(filePath string, data map[string]
 		return "", fmt.Errorf("failed to read template file %s: %w", fullPath, err)
 	}
 
-	// Templates that define a "content" block render inside the shared branded
-	// layout (header, footer, design-system styles, reusable components). Legacy
-	// standalone templates that do not are still rendered on their own, so the
-	// migration is incremental and nothing breaks mid-conversion.
 	if strings.Contains(string(tmplBytes), `{{define "content"}}`) {
 		return tls.renderWithLayout(templatesDir, fullPath, data)
 	}

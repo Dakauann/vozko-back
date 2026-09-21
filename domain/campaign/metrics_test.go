@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// The two channels' declared vocabularies, restated here so this package can
-// assert the derivation holds for both without importing either of them (which
-// would be a domain package depending on a domain package for a test).
 var (
 	officialSet = StatusSet{
 		All: []SendStatus{
@@ -31,9 +28,6 @@ var (
 	}
 )
 
-// Dispatched must be exactly All minus NonDispatch. This is the property the
-// subtractive definition exists to guarantee, and the reason a status added to
-// All cannot go missing from an export.
 func TestDispatchedIsAllMinusNonDispatch(t *testing.T) {
 	for name, set := range map[string]StatusSet{"official": officialSet, "unofficial": unofficialSet} {
 		excluded := map[SendStatus]bool{}
@@ -58,8 +52,6 @@ func TestDispatchedIsAllMinusNonDispatch(t *testing.T) {
 	}
 }
 
-// Both channels today happen to reduce to SENT+DELIVERED+READ. Pinning that
-// makes the subtractive form's equivalence explicit rather than assumed.
 func TestDispatchedIsTheDeliveryLifecycleToday(t *testing.T) {
 	want := []SendStatus{SendStatusSent, SendStatusDelivered, SendStatusRead}
 	for name, set := range map[string]StatusSet{"official": officialSet, "unofficial": unofficialSet} {
@@ -75,9 +67,6 @@ func TestDispatchedIsTheDeliveryLifecycleToday(t *testing.T) {
 	}
 }
 
-// A status a channel does not declare must not validate against it: the
-// official channel can never produce SKIPPED_NOT_ON_WHATSAPP, because it cannot
-// check a number before sending.
 func TestStatusSetRejectsForeignStatuses(t *testing.T) {
 	if officialSet.Valid(SendStatusSkippedNotOnWhatsApp) {
 		t.Fatal("official channel accepted SKIPPED_NOT_ON_WHATSAPP")
@@ -95,15 +84,11 @@ func TestProcessedAndDispatches(t *testing.T) {
 	if got, want := c.Processed(), int64(90); got != want {
 		t.Errorf("Processed() = %d, want %d", got, want)
 	}
-	// 100 - 10 pending - 8 failed - 5 spam - 2 not-on-whatsapp
 	if got, want := c.Dispatches(), int64(75); got != want {
 		t.Errorf("Dispatches() = %d, want %d", got, want)
 	}
 }
 
-// Counts arrive from a SQL aggregate and can disagree with Total for a moment
-// while a campaign is being written. A negative dispatch count rendered as
-// "-3 enviadas" is worse than a stale zero.
 func TestDispatchesNeverGoesNegative(t *testing.T) {
 	c := Counts{Total: 1, Pending: 5, Failed: 5}
 	if got := c.Dispatches(); got != 0 {
@@ -134,9 +119,6 @@ func TestNewMetricsRates(t *testing.T) {
 	}
 }
 
-// The official channel's JSON must not gain a field. The frontend has been
-// reading this shape since before this package existed, and an unexpected
-// skippedNotOnWhatsApp: 0 would read as "we checked and none were dead".
 func TestOfficialJSONIsUnchanged(t *testing.T) {
 	for _, v := range []any{NewMetrics(&Counts{Total: 3, Sent: 3}), Counts{Total: 3, Sent: 3}} {
 		blob, err := json.Marshal(v)

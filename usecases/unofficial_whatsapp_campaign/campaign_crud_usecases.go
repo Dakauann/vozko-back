@@ -11,10 +11,7 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// recentEntriesLimit is how many rows the detail header previews.
 const recentEntriesLimit = 20
-
-// ---------------------------------------------------------------- update
 
 type updateCampaignUseCase struct {
 	repos     campaignRepos
@@ -50,13 +47,6 @@ func (uc *updateCampaignUseCase) Execute(
 		return nil, err
 	}
 
-	// Edits are refused while the campaign is RUNNING.
-	//
-	// The official campaign does not guard this, and that is a gap rather than a
-	// precedent to follow: changing the message mid-blast means one list receives
-	// two different texts with no record of who got which, and changing the
-	// number mid-blast means half a campaign was sent from somewhere nobody
-	// intended.
 	if existing.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignRunning
 	}
@@ -76,10 +66,6 @@ func (uc *updateCampaignUseCase) Execute(
 	existing.SendDelayMinMS = in.SendDelayMinMS
 	existing.SendDelayMaxMS = in.SendDelayMaxMS
 	existing.DailyCap = in.DailyCap
-	// Copied from the input, which is what makes archiving persist: the handler
-	// loads the campaign, flips Archived and calls Execute. Leaving it out drops
-	// the flag silently — the row vanishes from the list optimistically and
-	// reappears on reload, a bug the official channel shipped once already.
 	existing.Archived = in.Archived
 
 	if in.InstanceID != "" {
@@ -117,8 +103,6 @@ func (uc *updateCampaignUseCase) Execute(
 	return saved, nil
 }
 
-// ---------------------------------------------------------------- get
-
 type getCampaignUseCase struct {
 	repos     campaignRepos
 	instances InstanceGateway
@@ -150,8 +134,6 @@ func (uc *getCampaignUseCase) Execute(ctx context.Context, campaignID string) (*
 	return c, nil
 }
 
-// ---------------------------------------------------------------- list
-
 type listCampaignsUseCase struct {
 	repos     campaignRepos
 	instances InstanceGateway
@@ -180,9 +162,6 @@ func (uc *listCampaignsUseCase) Execute(
 		return result, nil
 	}
 
-	// One aggregate query for the whole page, never a CountByStatus per row:
-	// the official channel learned that the hard way as workspaces accumulated
-	// campaigns and the list got slower with every one.
 	ids := make([]string, 0, len(result.Items))
 	for _, item := range result.Items {
 		ids = append(ids, item.ID)
@@ -192,16 +171,12 @@ func (uc *listCampaignsUseCase) Execute(
 		return nil, err
 	}
 	for _, item := range result.Items {
-		// NewMetrics tolerates a nil tally (a campaign with no entries is simply
-		// absent from the map) and returns a zeroed object.
 		item.Metrics = campaign.NewMetrics(countsByCampaign[item.ID])
 	}
 
 	enrichInstance(ctx, uc.instances, result.Items...)
 	return result, nil
 }
-
-// ---------------------------------------------------------------- delete
 
 type deleteCampaignUseCase struct{ repos campaignRepos }
 
@@ -213,15 +188,11 @@ func (uc *deleteCampaignUseCase) Execute(campaignID string) error {
 	if campaignID == "" {
 		return uwc.ErrCampaignNotFound
 	}
-	// Entries first: a campaign row removed while its entries survive leaves
-	// orphans that every aggregate still counts.
 	if err := uc.repos.entries.DeleteByCampaignID(campaignID); err != nil {
 		return err
 	}
 	return uc.repos.campaigns.Delete(campaignID)
 }
-
-// ---------------------------------------------------------------- department
 
 type assignDepartmentUseCase struct {
 	campaigns uwc.Repository
@@ -254,20 +225,12 @@ func (uc *assignDepartmentUseCase) Execute(ctx context.Context, campaignID strin
 	return uc.campaigns.FindByID(campaignID)
 }
 
-// ---------------------------------------------------------------- summary
-
 type getSummaryUseCase struct{ aggregator uwc.SummaryAggregator }
 
 func NewGetSummaryUseCase(aggregator uwc.SummaryAggregator) uwc.GetSummaryUseCase {
 	return &getSummaryUseCase{aggregator: aggregator}
 }
 
-// Execute rolls entry statuses up across every campaign the filter selects.
-//
-// No balance-ledger branch and no by-category split, unlike the official
-// summary: there is no ledger because there are no charges, and no categories
-// because there are no templates. The tiles that would show them are already
-// omitempty, so the same summary bar renders both channels.
 func (uc *getSummaryUseCase) Execute(filter uwc.WorkspaceSummaryFilter) (*campaign.Metrics, error) {
 	counts, err := uc.aggregator.CountByStatusForWorkspace(filter)
 	if err != nil {
@@ -275,8 +238,6 @@ func (uc *getSummaryUseCase) Execute(filter uwc.WorkspaceSummaryFilter) (*campai
 	}
 	return campaign.NewMetrics(counts), nil
 }
-
-// ---------------------------------------------------------------- entries list
 
 type listEntriesUseCase struct{ entries uwc.EntryRepository }
 

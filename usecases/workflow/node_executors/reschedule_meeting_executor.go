@@ -11,10 +11,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// rescheduleMeetingExecutor moves an existing Google Calendar event to a new time. It
-// delegates the actual move (provider update, persistence, conflict check) to the
-// reschedule use case and only maps node config → input and result → success/error
-// branches, reusing the schedule-meeting node helpers for interpolation/time parsing.
 type rescheduleMeetingExecutor struct {
 	reschedule calendar.RescheduleEventUseCase
 }
@@ -166,8 +162,6 @@ func rescheduleMeetingFailure(ctx *workflow.NodeContext, message string) *workfl
 	log.Printf("[workflow][reschedule_meeting][node:%s][run:%s] FAILED: %s",
 		scheduleMeetingNodeID(ctx), scheduleMeetingRunID(ctx), message)
 	return &workflow.NodeResult{
-		// STRICT "erro" routing: a failed reschedule must never flow down the success
-		// path; with no "erro" edge wired the run ends here.
 		NextNodeID: scheduleMeetingResolveEdgeStrict(ctx, "erro"),
 		Output: map[string]interface{}{
 			"success": false,

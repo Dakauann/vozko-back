@@ -51,11 +51,11 @@ func TestReservationState_ReleaseTokenScoped(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	r.Reserve("offer-1", false, now, testTTL)
 
-	r.Release("offer-2") // foreign
+	r.Release("offer-2")
 	if !r.ReservedLive(now, testTTL) {
 		t.Fatal("foreign release must not clear")
 	}
-	r.Release("") // empty
+	r.Release("")
 	if !r.ReservedLive(now, testTTL) {
 		t.Fatal("empty release must not clear")
 	}
@@ -63,7 +63,7 @@ func TestReservationState_ReleaseTokenScoped(t *testing.T) {
 	if r.ReservedLive(now, testTTL) {
 		t.Fatal("matching release must clear")
 	}
-	r.Release("offer-1") // double release safe
+	r.Release("offer-1")
 	if !r.Reserve("offer-2", false, now, testTTL) {
 		t.Fatal("freed session must be reservable again")
 	}
@@ -73,11 +73,11 @@ func TestReservationState_ClearConsumes(t *testing.T) {
 	var r ReservationState
 	now := time.Unix(1_700_000_000, 0)
 	r.Reserve("offer-1", false, now, testTTL)
-	r.Clear() // attach-consume
+	r.Clear()
 	if r.ReservedLive(now, testTTL) {
 		t.Fatal("Clear must drop the reservation")
 	}
-	r.Release("offer-1") // stale release after consume must be safe
+	r.Release("offer-1")
 	if r.ReservedLive(now, testTTL) {
 		t.Fatal("state must remain free")
 	}
@@ -100,8 +100,6 @@ func TestReservationState_TTLBackstop(t *testing.T) {
 }
 
 func TestReservationState_ConcurrentOnlyOneWinner(t *testing.T) {
-	// The state is caller-locked, so a real session guards it with a mutex; this
-	// test emulates that to prove exactly one token wins under contention.
 	var r ReservationState
 	var mu sync.Mutex
 	now := time.Unix(1_700_000_000, 0)

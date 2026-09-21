@@ -17,7 +17,6 @@ type conversationRepository struct {
 	db *gorm.DB
 }
 
-// NewConversationRepository builds the Telegram conversation (entry) repository.
 func NewConversationRepository(db *gorm.DB) tgdomain.ConversationRepository {
 	return &conversationRepository{db: db}
 }
@@ -47,8 +46,6 @@ func (r *conversationRepository) FindOrCreate(ctx context.Context, in tgdomain.F
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "account_id"}, {Name: "contact_id"}},
-			// Partial unique index: the predicate must be repeated or Postgres
-			// refuses to use it as the conflict arbiter (42P10).
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},
 			},
@@ -83,9 +80,6 @@ func (r *conversationRepository) FindByContact(ctx context.Context, accountID, c
 	return toConversationDomain(&record), nil
 }
 
-// FindByChat resolves straight from a chat id, which is what business-mode
-// deletions carry: deleted_business_messages names a chat and message ids, never
-// a contact.
 func (r *conversationRepository) FindByChat(ctx context.Context, accountID string, chatID int64) (*tgdomain.Conversation, error) {
 	var record schema.TelegramConversation
 	if err := r.db.WithContext(ctx).
@@ -113,14 +107,7 @@ func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryI
 	return workspaceID, nil
 }
 
-// DepartmentIDForEntry reads the department from the owning account, which is
-// the config carrier for its conversations.
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
-	// Plucked into a slice of NullString, not a *string: Pluck writes through a
-	// slice, and handing it a **string made every call fail with "sql: Scan
-	// called without calling Next" even when the row existed. Assignment then
-	// logged "cannot resolve department" for every inbound message. The column
-	// is nullable, so the element type has to tolerate NULL as well.
 	var departmentIDs []sql.NullString
 	if err := r.db.WithContext(ctx).
 		Table("telegram_conversations tgc").
@@ -146,12 +133,6 @@ func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, wo
 	return ids, nil
 }
 
-// RecordInbound advances the customer clock.
-//
-// The update is monotonic, GREATEST against the stored value, so an
-// out-of-order delivery cannot move the clock backwards. Telegram explicitly
-// warns updates may arrive out of order, and a clock that moved backwards would
-// both reorder the inbox and wrongly reopen a business-mode window.
 func (r *conversationRepository) RecordInbound(ctx context.Context, id string, at time.Time) error {
 	return r.touchClocks(ctx, id, at, "last_customer_message_at")
 }
@@ -179,11 +160,6 @@ func (r *conversationRepository) touchClocks(ctx context.Context, id string, at 
 	return nil
 }
 
-// StatusForEntry reads just the conversation status.
-//
-// A dedicated one-column read rather than FindByID + field access: the
-// conversation-status service consults it on every status transition, and
-// loading the whole row to look at one string is waste on a hot path.
 func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) (string, error) {
 	var status string
 	err := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
@@ -214,9 +190,6 @@ func (r *conversationRepository) SetStatus(ctx context.Context, id, status, clos
 	return nil
 }
 
-// SetStartPayload records the deep-link token the contact arrived with. It is
-// written once: a later /start must not overwrite the attribution that opened
-// the conversation.
 func (r *conversationRepository) SetStartPayload(ctx context.Context, id, payload string) error {
 	result := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
 		Where("id = ? AND start_payload IS NULL", id).
@@ -236,20 +209,12 @@ func (r *conversationRepository) UpdateChatID(ctx context.Context, id string, ch
 	return nil
 }
 
-// CountByStatus powers the inbox status chips.
-//
-// Conversations with no status yet count as "new", matching the inbox's own
-// IS DISTINCT FROM default, otherwise a channel's brand-new conversations would
-// be visible in the list but absent from every count above it.
 func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, accountID string) (map[string]int64, error) {
 	type row struct {
 		Status string `gorm:"column:status"`
 		Count  int64  `gorm:"column:cnt"`
 	}
 
-	// The status expression is repeated in GROUP BY rather than referenced
-	// positionally: GORM quotes Group("1") into GROUP BY "1", which Postgres
-	// reads as a column NAME and rejects with 42703.
 	const statusExpr = "COALESCE(NULLIF(conversation_status, ''), 'new')"
 
 	query := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
@@ -301,11 +266,6 @@ func toConversationDomain(record *schema.TelegramConversation) *tgdomain.Convers
 	}
 }
 
-// SetAutomationEnabled writes the per-conversation automation override.
-//
-// nil clears it, restoring inheritance from the account switch. Update with a
-// map is required for exactly that reason: GORM's struct update skips nil
-// fields, so clearing an override would silently do nothing.
 func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error {
 	result := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
 		Where("id = ?", id).

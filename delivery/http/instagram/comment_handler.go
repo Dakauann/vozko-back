@@ -12,19 +12,14 @@ import (
 	iguc "vozko/usecases/instagram"
 )
 
-// ListComments returns one page of comments on a post, with replies expanded.
-//
-// Graph caps this at 50 per query and cannot filter by timestamp, so the page
-// size is bounded upstream and paging is cursor-based.
-//
-//	@Summary		Listar comentários de uma publicação
-//	@Tags			Instagram
-//	@Param			id	path	string	true	"ID da conta do Instagram"
-//	@Param			mediaId	path	string	true	"ID da publicação"
-//	@Produce		json
-//	@Success		200	{object}	PageResponse[CommentResponse]
-//	@Security		BearerAuth
-//	@Router			/instagram/accounts/{id}/media/{mediaId}/comments [get]
+// @Summary		Listar comentários de uma publicação
+// @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Param			mediaId	path	string	true	"ID da publicação"
+// @Produce		json
+// @Success		200	{object}	PageResponse[CommentResponse]
+// @Security		BearerAuth
+// @Router			/instagram/accounts/{id}/media/{mediaId}/comments [get]
 func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -52,17 +47,15 @@ func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ReplyComment posts a public threaded reply.
-//
-//	@Summary		Responder comentário do Instagram
-//	@Tags			Instagram
-//	@Param			id	path	string	true	"ID da conta do Instagram"
-//	@Param			commentId	path	string	true	"ID do comentário"
-//	@Accept			json
-//	@Produce		json
-//	@Success		201	{object}	map[string]string
-//	@Security		BearerAuth
-//	@Router			/instagram/accounts/{id}/comments/{commentId}/replies [post]
+// @Summary		Responder comentário do Instagram
+// @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Param			commentId	path	string	true	"ID do comentário"
+// @Accept			json
+// @Produce		json
+// @Success		201	{object}	map[string]string
+// @Security		BearerAuth
+// @Router			/instagram/accounts/{id}/comments/{commentId}/replies [post]
 func (h *Handler) ReplyComment(w http.ResponseWriter, r *http.Request) {
 	var req ReplyCommentRequest
 	if !decodeJSON(w, r, &req) {
@@ -83,20 +76,15 @@ func (h *Handler) ReplyComment(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusCreated, map[string]string{"id": newID})
 }
 
-// HideComment hides or unhides a comment.
-//
-// Hiding is the moderation action that works on anyone's comment, because it only
-// needs the media owner's token. Deletion needs the comment author's token.
-//
-//	@Summary		Ocultar/exibir comentário do Instagram
-//	@Tags			Instagram
-//	@Param			id	path	string	true	"ID da conta do Instagram"
-//	@Param			commentId	path	string	true	"ID do comentário"
-//	@Accept			json
-//	@Produce		json
-//	@Success		200	{object}	map[string]bool
-//	@Security		BearerAuth
-//	@Router			/instagram/accounts/{id}/comments/{commentId}/hide [post]
+// @Summary		Ocultar/exibir comentário do Instagram
+// @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Param			commentId	path	string	true	"ID do comentário"
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	map[string]bool
+// @Security		BearerAuth
+// @Router			/instagram/accounts/{id}/comments/{commentId}/hide [post]
 func (h *Handler) HideComment(w http.ResponseWriter, r *http.Request) {
 	var req HideCommentRequest
 	if !decodeJSON(w, r, &req) {
@@ -112,17 +100,15 @@ func (h *Handler) HideComment(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]bool{"hidden": req.Hidden})
 }
 
-// DeleteComment deletes a comment we authored.
-//
-//	@Summary		Excluir comentário do Instagram
-//	@Description	Só é possível excluir comentários criados pela própria conta; para os demais, use ocultar.
-//	@Tags			Instagram
-//	@Param			id	path	string	true	"ID da conta do Instagram"
-//	@Param			commentId	path	string	true	"ID do comentário"
-//	@Produce		json
-//	@Success		200	{object}	map[string]string
-//	@Security		BearerAuth
-//	@Router			/instagram/accounts/{id}/comments/{commentId} [delete]
+// @Summary		Excluir comentário do Instagram
+// @Description	Só é possível excluir comentários criados pela própria conta; para os demais, use ocultar.
+// @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Param			commentId	path	string	true	"ID do comentário"
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Security		BearerAuth
+// @Router			/instagram/accounts/{id}/comments/{commentId} [delete]
 func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	if err := h.moderate.Delete(r.Context(),
@@ -133,21 +119,15 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// PrivateReply DMs the author of a public comment.
-//
-// Instagram permits exactly one per comment, ever, and only within 7 days. The
-// allowance is claimed before the upstream call, so a duplicate request is
-// rejected with a specific code rather than silently consuming it.
-//
-//	@Summary		Responder comentário por mensagem privada
-//	@Tags			Instagram
-//	@Param			id	path	string	true	"ID da conta do Instagram"
-//	@Param			commentId	path	string	true	"ID do comentário"
-//	@Accept			json
-//	@Produce		json
-//	@Success		200	{object}	map[string]string
-//	@Security		BearerAuth
-//	@Router			/instagram/accounts/{id}/comments/{commentId}/private-reply [post]
+// @Summary		Responder comentário por mensagem privada
+// @Tags			Instagram
+// @Param			id	path	string	true	"ID da conta do Instagram"
+// @Param			commentId	path	string	true	"ID do comentário"
+// @Accept			json
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Security		BearerAuth
+// @Router			/instagram/accounts/{id}/comments/{commentId}/private-reply [post]
 func (h *Handler) PrivateReply(w http.ResponseWriter, r *http.Request) {
 	var req PrivateReplyRequest
 	if !decodeJSON(w, r, &req) {

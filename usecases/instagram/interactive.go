@@ -11,16 +11,6 @@ import (
 	igdomain "vozko/domain/instagram"
 )
 
-// SendInteractive renders the options as quick replies.
-//
-// Instagram has ONE mechanism for a single choice and it is capped at 13, which
-// is the tightest count in the system. The generic template also carries
-// buttons but only three per element and only postback/web_url, so it is
-// strictly worse for this purpose.
-//
-// Options beyond the cap are dropped, not folded into the text: an option the
-// contact cannot tap is an option the workflow cannot branch on, and listing it
-// in prose invites a free-text answer that lands on no_match.
 func (a *channelAdapter) SendInteractive(
 	ctx context.Context,
 	ec *conversation.EntryContext,
@@ -67,8 +57,6 @@ func (a *channelAdapter) SendInteractive(
 	return &conversation.SendOutcome{ProviderMessageID: result.MessageID}, nil
 }
 
-// InteractiveLimits reports Instagram's bounds from the descriptor, so the
-// numbers the editor shows and the numbers the adapter enforces are the same.
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {
 	return a.caps.Interactive
 }
@@ -110,9 +98,6 @@ func quickReplyOptionsFor(options []conversation.InteractiveOption) ([]igdomain.
 	return out, dropped
 }
 
-// composeInteractiveBody folds header and footer into the message text.
-// Instagram has neither slot, and discarding the author's words silently is
-// worse than running them together.
 func composeInteractiveBody(req conversation.SendInteractiveRequest) string {
 	parts := make([]string, 0, 3)
 	if h := strings.TrimSpace(req.Header); h != "" {

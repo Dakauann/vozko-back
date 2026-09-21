@@ -6,8 +6,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The taxonomy is CLOSED. An unbounded job title cannot be filtered, counted
-// or trusted, and a model asked for free text will invent one every time.
 func TestAuthorRoleIsAClosedSet(t *testing.T) {
 	for _, r := range AllAuthorRoles() {
 		if !r.Valid() {
@@ -33,9 +31,6 @@ func TestParseAuthorRoleRefusesWhatItDoesNotKnow(t *testing.T) {
 	}
 }
 
-// The whole safety argument of this feature: a role is only ever shown when we
-// have both enough of the person's words and enough confidence. Below either
-// bar the answer is "unknown", not a quieter guess.
 func TestAuthorRoleInferenceHoldsBackWhenTheEvidenceIsThin(t *testing.T) {
 	cases := map[string]struct {
 		role       AuthorRole
@@ -60,8 +55,6 @@ func TestAuthorRoleInferenceHoldsBackWhenTheEvidenceIsThin(t *testing.T) {
 	}
 }
 
-// A stored inference that arrives with a role we no longer recognise (an older
-// taxonomy, a bad write) reads as unknown rather than as itself.
 func TestAuthorRoleInferenceNormalizes(t *testing.T) {
 	inf := AuthorRoleInference{Role: "influencer", Confidence: "very", BasedOnComments: 50}
 	inf.Normalize()
@@ -76,9 +69,6 @@ func TestAuthorRoleInferenceNormalizes(t *testing.T) {
 	}
 }
 
-// Re-running the pass on every new comment would re-bill a person's whole
-// corpus each time somebody replies to them. It re-runs only when the corpus
-// has grown materially, or when there is no inference at all yet.
 func TestShouldInferRole(t *testing.T) {
 	t.Run("never inferred, enough comments", func(t *testing.T) {
 		if !ShouldInferRole(AuthorRoleInference{}, MinCommentsForRole) {

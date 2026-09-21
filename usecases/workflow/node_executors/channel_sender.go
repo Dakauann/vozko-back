@@ -13,17 +13,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// channelSender routes a workflow's outbound message to whichever channel the
-// run belongs to.
-//
-// WhatsApp keeps its dedicated sender: it resolves a lead number, picks between
-// the campaign phone and the phone the customer wrote to, checks the 24h lead
-// window and consumes template balance, none of which generalizes.
-//
-// Every other channel goes through the shared ChannelAdapter registry, which
-// already owns that channel's send call and its outbound-window rule. So a
-// channel that can be replied to from the CRM can also be replied to from a
-// workflow, with no workflow code per channel.
 type channelSender struct {
 	whatsapp *whatsappSender
 	adapters conversation.AdapterRegistry
@@ -40,24 +29,13 @@ func newChannelSender(deps SenderDeps) *channelSender {
 	}
 }
 
-// SentMessage is the channel-neutral result of a workflow send.
 type SentMessage struct {
-	// ProviderMessageID is the id the channel assigned, when it reports one.
 	ProviderMessageID string
-	// AccountID is the channel account the message left from (a WhatsApp
-	// business phone id, an Instagram account id). Surfaced for observability.
-	AccountID string
+	AccountID         string
 }
 
-// ErrChannelCannotSend is returned when the run's channel has no send path at
-// all, neither the WhatsApp sender nor a registered adapter.
 var ErrChannelCannotSend = workflow.ErrNodeConfigMissing
 
-// SendText delivers text on the run's channel.
-//
-// A nil result with a nil error means the channel declined to send for a reason
-// that is not a fault, most often a closed outbound window, which on Instagram
-// is normal and only the contact can reopen.
 func (s *channelSender) SendText(
 	ctx context.Context,
 	run *workflow.WorkflowRun,
@@ -94,8 +72,6 @@ func (s *channelSender) SendText(
 		return nil, err
 	}
 
-	// The window is the channel's own rule, read from the same adapter the CRM
-	// composer reads, so a workflow can never send where an operator could not.
 	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
@@ -116,8 +92,6 @@ func (s *channelSender) SendText(
 		providerID = outcome.ProviderMessageID
 	}
 
-	// Persist through the shared history manager so the transcript, dedup and
-	// websocket fan-out match every other message on this channel.
 	if s.history != nil {
 		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
 			EntryID:           run.EntryID,
@@ -137,16 +111,6 @@ func (s *channelSender) SendText(
 	return &SentMessage{ProviderMessageID: providerID, AccountID: ec.AccountID}, nil
 }
 
-// SendMedia delivers an attachment on the run's channel.
-//
-// It mirrors SendText exactly, including the window check, because the rule
-// "a workflow can never send where an operator could not" does not change with
-// the payload. The media node used to refuse every non-WhatsApp channel, so a
-// workflow that answered a Telegram contact in text went silent the moment it
-// reached an image.
-//
-// Returning (nil, nil) means the channel declined for a non-fault reason,
-// a closed window, or no adapter, matching SendText.
 func (s *channelSender) SendMedia(
 	ctx context.Context,
 	run *workflow.WorkflowRun,
@@ -209,10 +173,6 @@ func (s *channelSender) SendMedia(
 	}
 
 	if s.history != nil {
-		// The media-id bridge this comment used to say no channel had. Without
-		// it the record carried only the caption, so an attachment sent without
-		// one had no content for Message.Validate and the whole send was
-		// reported as failed.
 		mediaID, mediaKind := bridgeConversationMedia(s.media, run.EntryID, entryType, mediaURL, kind)
 
 		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
@@ -236,8 +196,6 @@ func (s *channelSender) SendMedia(
 	return &SentMessage{ProviderMessageID: providerID, AccountID: ec.AccountID}, nil
 }
 
-// Supports reports whether the run's channel can send at all. Nodes use it to
-// decide between sending and skipping.
 func (s *channelSender) Supports(run *workflow.WorkflowRun) bool {
 	if s == nil || run == nil {
 		return false
@@ -259,12 +217,6 @@ func (s *channelSender) adapterFor(entryType shared.EntryType) conversation.Chan
 	return adapter
 }
 
-// skipUnsupportedNode records that a node could not run on this run's channel.
-//
-// The run continues by product decision, so the log line is the only trace an
-// operator gets, it names the node, the run and the channel precisely, because
-// "the workflow completed but the customer got nothing" is otherwise very hard
-// to reconstruct.
 func skipUnsupportedNode(ctx *workflow.NodeContext, nodeKind string) *workflow.NodeResult {
 	log.Printf("[workflow][node:%s][run:%s] %s is not supported on channel %q, node skipped, run continues (entry=%s)",
 		ctx.Node.ID, ctx.Run.ID, nodeKind, ctx.Run.EntryType, ctx.Run.EntryID)
@@ -279,9 +231,6 @@ func skipUnsupportedNode(ctx *workflow.NodeContext, nodeKind string) *workflow.N
 	}
 }
 
-// newChannelSenderFromWhatsApp adapts an already-built WhatsApp sender into a
-// channel sender. Used where a constructor receives the WhatsApp sender directly
-// and its adapter registry arrives through the same deps.
 func newChannelSenderFromWhatsApp(wa *whatsappSender) *channelSender {
 	s := &channelSender{whatsapp: wa}
 	if wa != nil {
@@ -292,12 +241,6 @@ func newChannelSenderFromWhatsApp(wa *whatsappSender) *channelSender {
 	return s
 }
 
-// SendInteractive delivers a single-choice prompt on the run's channel.
-//
-// Unlike SendText and SendMedia, this one is NOT implemented by every adapter:
-// presenting choices is an optional capability, so the adapter is type-asserted
-// and a channel without it is reported as unsupported rather than silently sent
-// a wall of text listing options the contact cannot tap.
 func (s *channelSender) SendInteractive(
 	ctx context.Context,
 	run *workflow.WorkflowRun,
@@ -349,11 +292,8 @@ func (s *channelSender) SendInteractive(
 			ProviderMessageID: providerID,
 			From:              ec.AccountID,
 			To:                ec.ContactRef,
-			// The transcript stores the prompt body. The options themselves are
-			// rendered by the provider and are not part of the message text on
-			// any of these channels.
-			Text:      req.Body,
-			Timestamp: time.Now().UTC(),
+			Text:              req.Body,
+			Timestamp:         time.Now().UTC(),
 		}); err != nil {
 			return nil, err
 		}
@@ -362,8 +302,6 @@ func (s *channelSender) SendInteractive(
 	return &SentMessage{ProviderMessageID: providerID, AccountID: ec.AccountID}, nil
 }
 
-// SupportsInteractive reports whether the run's channel can ask the contact to
-// pick an option. WhatsApp qualifies through its own sender.
 func (s *channelSender) SupportsInteractive(run *workflow.WorkflowRun) bool {
 	if s == nil || run == nil {
 		return false
@@ -375,8 +313,6 @@ func (s *channelSender) SupportsInteractive(run *workflow.WorkflowRun) bool {
 	return adapter != nil
 }
 
-// interactiveAdapterFor returns the interactive capability and the base adapter
-// it belongs to, or (nil, nil) when the channel cannot present choices.
 func (s *channelSender) interactiveAdapterFor(entryType shared.EntryType) (conversation.InteractiveAdapter, conversation.ChannelAdapter) {
 	base := s.adapterFor(entryType)
 	if base == nil {
@@ -389,13 +325,6 @@ func (s *channelSender) interactiveAdapterFor(entryType shared.EntryType) (conve
 	return interactive, base
 }
 
-// InteractiveSupport reports every channel's option limits, for the workflow
-// editor.
-//
-// Built by walking the adapter registry rather than from a hardcoded list, so a
-// channel added later appears here the moment its adapter is registered.
-// WhatsApp is added explicitly because it has no adapter yet, it is the
-// channel still being migrated onto the abstraction.
 func (s *channelSender) InteractiveSupport() map[shared.EntryType]channel.InteractiveLimits {
 	out := make(map[shared.EntryType]channel.InteractiveLimits, 4)
 	if s != nil && s.whatsapp != nil {
@@ -412,18 +341,6 @@ func (s *channelSender) InteractiveSupport() map[shared.EntryType]channel.Intera
 	return out
 }
 
-// SendSegments delivers a reply as several paced messages on an adapter-backed
-// channel.
-//
-// Segmented mode exists so a long answer arrives the way a person types it
-// rather than as one wall of text. It was implemented only for WhatsApp, and
-// the default single-send path was gated on NOT being segmented, so on every
-// other channel a segmented agent generated a reply, billed for it, and sent
-// nothing at all. Silent, and invisible in the run's own logs.
-//
-// The typing indicator is best-effort through the optional PresenceAdapter:
-// channels that have one look natural, channels that do not still get the
-// pacing. Returns true only when every segment was delivered.
 func (s *channelSender) SendSegments(
 	ctx context.Context,
 	run *workflow.WorkflowRun,
@@ -463,8 +380,6 @@ func (s *channelSender) SendSegments(
 
 	for i, text := range segments {
 		if presence != nil {
-			// Typing before each segment, not only between them: the first pause
-			// is what makes the opening message feel composed rather than instant.
 			if err := presence.SendTyping(ctx, ec, true); err != nil {
 				log.Printf("[workflow][run:%s] typing indicator failed on segment %d: %v", run.ID, i+1, err)
 			}
@@ -506,25 +421,6 @@ func (s *channelSender) SendSegments(
 	return true, nil
 }
 
-// bridgeConversationMedia registers a library attachment in the conversation
-// media space, and returns the id the transcript renders from.
-//
-// The two spaces are different tables: a workflow node names a `medias` row
-// (workspace library, reusable across conversations) while
-// conversation_messages.media_id resolves against `conversation_media`, which is
-// scoped to one entry and is what GetMedia authorises by EntryID. Writing the
-// library id into the message would point the transcript at a row that does not
-// exist there.
-//
-// Without this bridge the record carried only the caption, so a media message
-// sent WITHOUT one had no content at all: Message.Validate rejected it, the
-// history write failed, and the send node reported the whole delivery as failed
-// even though the customer received the file. Every media node with an empty
-// caption, on every channel.
-//
-// Best effort by design: the attachment has already reached the customer by the
-// time this runs, so a bookkeeping failure must not turn a successful send into
-// a failed one. It degrades to the caption-only record it replaced.
 func bridgeConversationMedia(
 	repo conversation.ConversationMediaRepository,
 	entryID string,
@@ -537,13 +433,11 @@ func bridgeConversationMedia(
 	}
 
 	media := &conversation.ConversationMedia{
-		ID:        uuid.NewString(),
-		EntryID:   entryID,
-		EntryType: entryType,
-		Type:      kind,
-		URL:       mediaURL,
-		// The filename is what a document renders as in the transcript; without
-		// it a sent PDF shows up nameless.
+		ID:               uuid.NewString(),
+		EntryID:          entryID,
+		EntryType:        entryType,
+		Type:             kind,
+		URL:              mediaURL,
 		OriginalFilename: mediaFilename(mediaURL),
 		CreatedAt:        time.Now().UTC(),
 	}

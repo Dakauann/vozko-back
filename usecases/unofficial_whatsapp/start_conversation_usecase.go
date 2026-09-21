@@ -9,34 +9,13 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// Errors an operator can act on, distinct from an infrastructure failure so the
-// UI can say what to do rather than "something went wrong".
 var (
-	// ErrNotOnWhatsApp means the number exists but has no WhatsApp account.
 	ErrNotOnWhatsApp = errors.New("unofficial whatsapp: this number is not on WhatsApp")
-	// ErrInvalidPhone means the number is not usable as an address at all.
-	ErrInvalidPhone = errors.New("unofficial whatsapp: not a valid phone number")
+	ErrInvalidPhone  = errors.New("unofficial whatsapp: not a valid phone number")
 )
 
-// minPhoneDigits is the shortest string that could be a real international
-// number. Below this the operator has mistyped rather than reached anyone, and
-// sending to it is a wasted provider call against the instance's budget.
 const minPhoneDigits = 8
 
-// StartConversationUseCase opens a conversation with a number nobody has
-// messaged us from.
-//
-// This is the channel's answer to cold outbound, and it exists here rather than
-// as a one-off in the CRM because it must reuse the SAME contact, lead and
-// conversation resolution the inbound path uses. A second "create a contact"
-// code path would produce a duplicate contact the moment the person replies:
-// the webhook would resolve them by JID, find nothing matching what the operator
-// typed, and open a second conversation for the same human.
-//
-// It deliberately stops at "the conversation exists". Sending is left to the
-// ordinary composer, which already carries pacing, window checks, restriction
-// handling and persistence — so this use case cannot drift from how every other
-// message on the channel is sent.
 type StartConversationUseCase struct {
 	instances     uw.InstanceRepository
 	servers       uw.ServerRepository
@@ -54,15 +33,6 @@ func NewStartConversationUseCase(
 	messaging uw.MessagingAPI,
 	leads LeadLinker,
 ) *StartConversationUseCase {
-	// Refused at construction, not at first send.
-	//
-	// The composition root once built this from bundle fields it had not
-	// assigned yet, so the use case captured nil repositories and every send
-	// through it panicked on the first call. That surfaced as an HTTP panic in
-	// an alert test months later, because the only caller is an alert and one
-	// that panics is indistinguishable from one nobody configured. A wiring
-	// mistake belongs at boot, where it is one line in the log and impossible
-	// to deploy past.
 	switch {
 	case instances == nil:
 		panic("unofficial whatsapp: start conversation needs an instance repository")
@@ -85,42 +55,22 @@ func NewStartConversationUseCase(
 	}
 }
 
-// StartConversationInput is one operator's request to reach a number.
 type StartConversationInput struct {
 	WorkspaceID string
 	InstanceID  string
-	// PhoneNumber as the operator typed it. Normalised here rather than in the
-	// handler, so every caller gets the same treatment.
 	PhoneNumber string
-	// Name is optional and only used when the contact is new; a number already
-	// known keeps the name WhatsApp gave it.
-	Name string
-	// Scope limits which numbers this caller may send from.
-	//
-	// Cold outbound is the sharpest reason department scoping exists on this
-	// channel: it messages someone who never wrote in, from a number that
-	// belongs to a specific team, and it is the fastest way to get that number
-	// banned. Someone outside the department must not be able to spend it.
-	Scope uw.DepartmentScope
+	Name        string
+	Scope       uw.DepartmentScope
 }
 
-// StartedConversation is where the operator should be taken.
 type StartedConversation struct {
 	ConversationID string
 	ContactID      string
-	// PhoneNumber is the normalised form actually addressed, which may differ
-	// from what was typed.
-	PhoneNumber string
-	// DisplayName is the profile name WhatsApp reports, when it has one. Worth
-	// returning: it is the operator's confirmation they reached the right person.
-	DisplayName string
-	// AlreadyExisted is true when this conversation was already in the inbox.
-	// The operator is taken to the same place either way, but the UI can say
-	// "opened" rather than "created" instead of implying a duplicate was made.
+	PhoneNumber    string
+	DisplayName    string
 	AlreadyExisted bool
 }
 
-// Execute resolves the number and opens the conversation.
 func (uc *StartConversationUseCase) Execute(
 	ctx context.Context,
 	in StartConversationInput,
@@ -134,9 +84,6 @@ func (uc *StartConversationUseCase) Execute(
 	if err != nil {
 		return nil, err
 	}
-	// Ownership is checked here as well as by the route's permission gate: the
-	// gate proves the caller may send from SOME instance in their workspace,
-	// not from this one.
 	if err := EnsureVisible(instance, in.WorkspaceID, in.Scope); err != nil {
 		return nil, err
 	}
@@ -150,13 +97,6 @@ func (uc *StartConversationUseCase) Execute(
 	}
 	ref := uw.RefFor(server, instance)
 
-	// The number is verified against WhatsApp BEFORE anything is written.
-	//
-	// This is the single most valuable step in the flow. Messaging numbers that
-	// are not on WhatsApp is one of the strongest ban signals there is, and an
-	// operator pasting a number from a spreadsheet has no way to know. It also
-	// yields the authoritative JID: constructing "<phone>@s.whatsapp.net" by
-	// hand addresses the wrong identity whenever the account has been migrated.
 	checks, err := uc.messaging.CheckNumbers(ctx, ref, []string{phone})
 	if err != nil {
 		return nil, fmt.Errorf("unofficial whatsapp: could not verify the number: %w", err)
@@ -166,11 +106,6 @@ func (uc *StartConversationUseCase) Execute(
 	}
 	check := checks[0]
 
-	// From here the flow is the INBOUND flow, deliberately. Same repositories,
-	// same lead bridge, same conversation resolution — so a contact opened by an
-	// operator, one opened by a campaign and one opened by an incoming message
-	// are the same record. The body lives in ConversationResolver because a
-	// second implementation would duplicate every contact it touched.
 	resolved, err := uc.resolver().Resolve(ctx, instance, ResolveInput{
 		JID:         check.JID,
 		LID:         check.LID,
@@ -191,8 +126,6 @@ func (uc *StartConversationUseCase) Execute(
 	}, nil
 }
 
-// resolver builds the shared resolution path from this use case's own
-// dependencies, so the two cannot be wired differently.
 func (uc *StartConversationUseCase) resolver() *ConversationResolver {
 	return NewConversationResolver(uc.contacts, uc.conversations, uc.leads)
 }

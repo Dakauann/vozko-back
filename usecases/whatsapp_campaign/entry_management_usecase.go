@@ -46,7 +46,6 @@ func (uc *deleteEntryUseCase) Execute(input wc.DeleteEntryInput) error {
 	return uc.entryRepo.Delete(input.EntryID)
 }
 
-// AIToggleTelemetrySink enables ai_enabled/disabled timeline events (optional).
 type AIToggleTelemetrySink interface {
 	AIToggle(workspaceID, entryID, entryType, actorUserID string, enabled bool)
 }
@@ -70,7 +69,6 @@ func NewUpdateEntryUseCase(
 	}
 }
 
-// SetAIToggleTelemetry enables ai_enabled/disabled timeline events (optional).
 func (uc *updateEntryUseCase) SetAIToggleTelemetry(t AIToggleTelemetrySink) {
 	if uc != nil {
 		uc.aiToggle = t

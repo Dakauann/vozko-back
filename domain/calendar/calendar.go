@@ -134,23 +134,17 @@ type UpdateEventInput struct {
 	RemindersUseDefault     *bool
 	ReminderOverrides       []ReminderOverride
 	SendUpdates             string
-	// CheckConflict, when true and the start/end change, verifies the new slot is free
-	// (excluding this event and free/transparent events) and returns ErrSlotConflict
-	// otherwise. Off by default so a plain edit never fails on an occupied slot.
-	CheckConflict bool
+	CheckConflict           bool
 }
 
-// RescheduleEventInput moves an existing appointment to a new start (and end/duration).
-// When neither NewEndTime nor DurationMinutes is given, the original duration is kept.
 type RescheduleEventInput struct {
-	EventID         string
-	WorkspaceID     string
-	UserID          string
-	NewStartTime    time.Time
-	NewEndTime      *time.Time
-	DurationMinutes int
-	SendUpdates     string
-	// SkipConflictCheck moves the event even if the new slot overlaps another event.
+	EventID           string
+	WorkspaceID       string
+	UserID            string
+	NewStartTime      time.Time
+	NewEndTime        *time.Time
+	DurationMinutes   int
+	SendUpdates       string
 	SkipConflictCheck bool
 }
 
@@ -200,9 +194,6 @@ type UpdateEventUseCase interface {
 	Execute(input UpdateEventInput) (*CalendarEvent, error)
 }
 
-// RescheduleEventUseCase changes an existing appointment's date/time (reagendamento),
-// keeping the same Google event (Meet link and attendees preserved) and checking the
-// new slot for conflicts by default.
 type RescheduleEventUseCase interface {
 	Execute(input RescheduleEventInput) (*CalendarEvent, error)
 }

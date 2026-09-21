@@ -9,7 +9,6 @@ func TestValidateComponent_CallPermissionRequest_Accepted(t *testing.T) {
 	if err := ValidateComponent(TemplateComponent{Type: ComponentTypeCallPermissionRequest}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Lowercase input should be normalized and accepted too.
 	if err := ValidateComponent(TemplateComponent{Type: "call_permission_request"}); err != nil {
 		t.Fatalf("unexpected error for lowercase type: %v", err)
 	}

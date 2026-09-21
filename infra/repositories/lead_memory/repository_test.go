@@ -67,8 +67,6 @@ func TestFindByIDPrefixResolution(t *testing.T) {
 	t.Run("one match resolves", func(t *testing.T) {
 		db, mock, sqlDB := newMockDB(t)
 		defer sqlDB.Close()
-		// The query must be lead-scoped and workspace-scoped: a prefix is only
-		// meaningful within one lead's prompt block.
 		mock.ExpectQuery(`SELECT .* FROM "lead_memories" WHERE \(workspace_id = .* AND lead_id = .* AND id::text LIKE .*\)`).
 			WithArgs("ws-1", "lead-1", "11111111%", 2).
 			WillReturnRows(memoryRow())
@@ -101,8 +99,6 @@ func TestListByLeadFiltersAndPages(t *testing.T) {
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "lead_memories" WHERE \(workspace_id = .* AND lead_id = .*\) AND category = .*`).
 		WithArgs("ws-1", "lead-1", "preference").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	// Newest first: the prompt block and the panel both lead with what was
-	// learned last.
 	mock.ExpectQuery(`SELECT .* FROM "lead_memories" .* ORDER BY created_at DESC, id DESC`).
 		WillReturnRows(memoryRow())
 
@@ -137,8 +133,6 @@ func TestSoftDeleteIsGuardedUpdate(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
-	// Soft delete must be an UPDATE (deleted_at), never a DELETE: forgotten
-	// memories stay for audit and only leave via the lead's own lifecycle.
 	mock.ExpectExec(`UPDATE "lead_memories" SET "deleted_at"=.* WHERE \(workspace_id = .* AND id = .*\)`).
 		WithArgs(sqlmock.AnyArg(), "ws-1", "m-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))

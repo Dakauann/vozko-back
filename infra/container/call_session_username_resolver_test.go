@@ -23,8 +23,6 @@ func (r *countingUserRepo) FindByIDs(ids []string) ([]*user.User, error) {
 	return out, nil
 }
 
-// The presence panel resolves usernames on every broadcast, so the resolver must serve
-// repeats from cache and only hit the DB for ids it has not seen (or that expired).
 func TestCallSessionUsernameResolver_CachesAndOnlyQueriesMisses(t *testing.T) {
 	repo := &countingUserRepo{names: map[string]string{"u1": "Alice", "u2": "Bob"}}
 	r := newCallSessionUsernameResolver(repo)
@@ -37,7 +35,6 @@ func TestCallSessionUsernameResolver_CachesAndOnlyQueriesMisses(t *testing.T) {
 		t.Fatalf("first resolve DB calls = %d, want 1", repo.calls)
 	}
 
-	// Repeats are fully cache-served: no more DB hits (this is the whole point).
 	for i := 0; i < 10; i++ {
 		if got := r.ResolveUsernames([]string{"u1", "u2"}); got["u1"] != "Alice" {
 			t.Fatalf("cached resolve %d = %v", i, got)
@@ -47,7 +44,6 @@ func TestCallSessionUsernameResolver_CachesAndOnlyQueriesMisses(t *testing.T) {
 		t.Fatalf("cache miss: DB called %d times across 11 resolves, want 1", repo.calls)
 	}
 
-	// A new id triggers exactly one more query, for the missing id only.
 	repo.names["u3"] = "Carol"
 	got = r.ResolveUsernames([]string{"u1", "u2", "u3"})
 	if got["u3"] != "Carol" {

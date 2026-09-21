@@ -8,17 +8,6 @@ import (
 	toolsdomain "vozko/domain/tools"
 )
 
-// A saved agent outlives the registry that defined its tools.
-//
-// conversation_analysis was superseded when the analysis job stopped asking the
-// model for a verdict — wantAnalysis in analysis_debounce_job.go is a hardcoded
-// false — so no handler defines it any more. But 54 agents still carried the
-// binding, and the editor resubmits whatever it loaded. Picking a knowledge
-// base therefore failed with "agent internal tool is invalid:
-// conversation_analysis", naming a binding the operator had not touched, and
-// the agent could not be saved at all.
-
-// stubDef is the minimum a registry entry needs for these tests.
 type stubDef struct{ name string }
 
 func (s stubDef) Definition() toolsdomain.Definition {
@@ -37,7 +26,6 @@ func indexWith(names ...string) *toolRegistryIndex {
 func TestRetiredToolIsDroppedNotRejected(t *testing.T) {
 	idx := indexWith("manage_entry_stage", "search_knowledge_base")
 
-	// The exact shape found in production: the dead tool sits alongside live ones.
 	got, err := validateRequestedTools(idx, []string{
 		"conversation_analysis", "manage_entry_stage", "search_knowledge_base",
 	})
@@ -54,8 +42,6 @@ func TestRetiredToolIsDroppedNotRejected(t *testing.T) {
 	}
 }
 
-// Bindings are the path the agent editor actually submits, and they carry
-// per-tool config, so they validate separately from bare names.
 func TestRetiredBindingIsDroppedNotRejected(t *testing.T) {
 	idx := indexWith("manage_entry_stage")
 
@@ -71,9 +57,6 @@ func TestRetiredBindingIsDroppedNotRejected(t *testing.T) {
 	}
 }
 
-// Dropping the retired name must not soften the check. A tool that is simply
-// misspelled or genuinely unknown still names nothing and must still fail,
-// otherwise a typo silently disables a capability the operator wanted.
 func TestAnUnknownToolStillFails(t *testing.T) {
 	idx := indexWith("manage_entry_stage")
 
@@ -88,8 +71,6 @@ func TestAnUnknownToolStillFails(t *testing.T) {
 	}
 }
 
-// Both retired names must behave the same way; query_knowledge_base was the
-// first and is what established the mechanism.
 func TestBothRetiredNamesAreDropped(t *testing.T) {
 	idx := indexWith("search_knowledge_base")
 

@@ -24,13 +24,8 @@ type TemplateWebhookChange struct {
 }
 
 type TemplateWebhookValue struct {
-	Event             string `json:"event"`
-	MessageTemplateID int64  `json:"message_template_id"`
-	// ChannelExternalID is a non-numeric template id used when the status change
-	// arrives via the 360dialog partner webhook. 360dialog identifies our template
-	// by its channel-scoped id (the value we store in Template.ExternalID), not
-	// Meta's numeric message_template_id. Set only on the 360dialog path; empty on
-	// the Meta path. Not a Meta wire field.
+	Event                   string         `json:"event"`
+	MessageTemplateID       int64          `json:"message_template_id"`
 	ChannelExternalID       string         `json:"-"`
 	MessageTemplateName     string         `json:"message_template_name"`
 	MessageTemplateLanguage string         `json:"message_template_language"`

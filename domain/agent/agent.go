@@ -107,9 +107,6 @@ func (tb ToolBinding) GetConfigMap(key string) map[string]interface{} {
 type AgentProvider string
 
 const (
-	// AgentProviderAI is the platform-managed AI voice provider. The value is
-	// brand-neutral: it is stored in the DB, returned by the API, and sent by
-	// clients. Existing rows were migrated in infra/database/migrate.go.
 	AgentProviderAI AgentProvider = "platform"
 )
 

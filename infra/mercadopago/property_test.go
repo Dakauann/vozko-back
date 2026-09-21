@@ -18,17 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Property tests. The table-driven tests elsewhere pin the documented examples; these
-// assert the invariants that must hold for EVERY input, which is where an integration
-// against someone else's API tends to break.
-
 var quickConfig = &quick.Config{MaxCount: 500}
 
-// --- FormatExpiration -------------------------------------------------------
-
-// Property: a clamped expiration always lands inside Mercado Pago's accepted PIX
-// window. Anything outside it is rejected outright, so this is the invariant that keeps
-// an odd due date from failing the charge.
 func TestProperty_FormatExpiration_AlwaysInsidePixWindow(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 
@@ -49,12 +40,8 @@ func TestProperty_FormatExpiration_AlwaysInsidePixWindow(t *testing.T) {
 	}
 }
 
-// Property: the rendered value always round-trips through the layout Mercado Pago
-// documents. A layout mistake here fails every charge, so it is worth asserting over
-// arbitrary instants rather than one example.
 func TestProperty_FormatExpiration_RoundTrips(t *testing.T) {
 	f := func(unixSeconds int64, offsetMinutes int16) bool {
-		// Keep to a sane range: year 2000-2100, offsets within ±14h.
 		sec := 946684800 + (unixSeconds%3_155_760_000+3_155_760_000)%3_155_760_000
 		off := int(offsetMinutes%840) * 60
 		due := time.Unix(sec, 0).In(time.FixedZone("test", off))
@@ -72,8 +59,6 @@ func TestProperty_FormatExpiration_RoundTrips(t *testing.T) {
 	}
 }
 
-// Property: clamping is idempotent. Re-clamping an already-clamped value must not drift
-// it further, or a retry could walk the expiry outward on every attempt.
 func TestProperty_FormatExpiration_ClampIsIdempotent(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 
@@ -92,7 +77,6 @@ func TestProperty_FormatExpiration_ClampIsIdempotent(t *testing.T) {
 	}
 }
 
-// Property: without clamping the caller's instant is preserved to the millisecond.
 func TestProperty_FormatExpiration_UnclampedPreservesInstant(t *testing.T) {
 	f := func(unixMillis int64) bool {
 		ms := 946684800000 + (unixMillis%3_155_760_000_000+3_155_760_000_000)%3_155_760_000_000
@@ -109,15 +93,10 @@ func TestProperty_FormatExpiration_UnclampedPreservesInstant(t *testing.T) {
 	}
 }
 
-// --- NormalizeIdempotencyKey ------------------------------------------------
-
-// Property: every non-empty caller key maps to a well-formed UUID, deterministically.
-// Mercado Pago documents a UUID for this header, and the determinism is what makes a
-// retried charge safe to repeat rather than double-charging.
 func TestProperty_NormalizeIdempotencyKey_IsDeterministicUUID(t *testing.T) {
 	f := func(raw string) bool {
 		if strings.TrimSpace(raw) == "" {
-			return true // empty is deliberately random; covered separately
+			return true
 		}
 		first := NormalizeIdempotencyKey(raw)
 		if _, err := uuid.Parse(first); err != nil {
@@ -131,8 +110,6 @@ func TestProperty_NormalizeIdempotencyKey_IsDeterministicUUID(t *testing.T) {
 	}
 }
 
-// Property: distinct logical keys do not collide. A collision would make two different
-// charges share an idempotency key, and the second would silently return the first.
 func TestProperty_NormalizeIdempotencyKey_NoCollisions(t *testing.T) {
 	seen := make(map[string]string, 5000)
 	for i := 0; i < 5000; i++ {
@@ -145,10 +122,6 @@ func TestProperty_NormalizeIdempotencyKey_NoCollisions(t *testing.T) {
 	}
 }
 
-// --- OnlyDigits / SplitName -------------------------------------------------
-
-// Property: the result contains only digits, and only digits that were in the input, in
-// order. Mercado Pago rejects a punctuated CPF, so nothing may survive but the digits.
 func TestProperty_OnlyDigits(t *testing.T) {
 	f := func(raw string) bool {
 		out := OnlyDigits(raw)
@@ -157,7 +130,6 @@ func TestProperty_OnlyDigits(t *testing.T) {
 				return false
 			}
 		}
-		// Idempotent, and equal to filtering the input directly.
 		if OnlyDigits(out) != out {
 			return false
 		}
@@ -174,9 +146,6 @@ func TestProperty_OnlyDigits(t *testing.T) {
 	}
 }
 
-// Property: the split name recombines to the whitespace-normalized original, and
-// neither half carries stray padding. Mercado Pago validates these fields, so a stray
-// space is a rejected charge.
 func TestProperty_SplitName_Recombines(t *testing.T) {
 	f := func(raw string) bool {
 		first, last := SplitName(raw)
@@ -191,8 +160,6 @@ func TestProperty_SplitName_Recombines(t *testing.T) {
 	}
 }
 
-// --- Status and event mapping -----------------------------------------------
-
 var (
 	allStatuses = []string{
 		StatusPending, StatusApproved, StatusAuthorized, StatusInProcess,
@@ -206,9 +173,6 @@ var (
 	}
 )
 
-// Property: no combination of status, detail and refunded amount ever produces
-// PAYMENT_RECEIVED for money that is not actually settled and unrefunded. This is the
-// invariant that stops a refunded or rejected charge from crediting saldo.
 func TestProperty_MapEvent_NeverCreditsUnsettledMoney(t *testing.T) {
 	amounts := []struct{ total, refunded float64 }{
 		{100, 0}, {100, 0.01}, {100, 50}, {100, 100}, {100, 150}, {0, 0}, {0, 10},
@@ -225,7 +189,6 @@ func TestProperty_MapEvent_NeverCreditsUnsettledMoney(t *testing.T) {
 				if event != EventReceivedForTest {
 					continue
 				}
-				// Only an approved, unrefunded payment may be reported as received.
 				if !strings.EqualFold(strings.TrimSpace(status), StatusApproved) {
 					t.Fatalf("status=%q detail=%q refunded=%v produced RECEIVED", status, detail, amt.refunded)
 				}
@@ -240,13 +203,8 @@ func TestProperty_MapEvent_NeverCreditsUnsettledMoney(t *testing.T) {
 	}
 }
 
-// EventReceivedForTest mirrors the canonical constant without importing the domain
-// package into this property helper's comparison, keeping the assertion above readable.
 const EventReceivedForTest = "PAYMENT_RECEIVED"
 
-// Property: mapping is total. Every combination returns without panicking, and every
-// non-empty event is one the shared handler recognizes. An unrecognized string would be
-// silently ignored downstream, which is exactly the kind of bug that loses a payment.
 func TestProperty_MapEvent_IsTotalAndKnown(t *testing.T) {
 	known := map[string]bool{
 		"PAYMENT_CREATED": true, "PAYMENT_RECEIVED": true, "PAYMENT_OVERDUE": true,
@@ -264,8 +222,6 @@ func TestProperty_MapEvent_IsTotalAndKnown(t *testing.T) {
 	}
 }
 
-// Property: mapping ignores case and surrounding whitespace, so a provider that starts
-// echoing " Approved " cannot silently stop crediting payments.
 func TestProperty_Mapping_IgnoresCaseAndPadding(t *testing.T) {
 	for _, status := range allStatuses {
 		for _, detail := range allDetails {
@@ -285,9 +241,6 @@ func TestProperty_Mapping_IgnoresCaseAndPadding(t *testing.T) {
 	}
 }
 
-// Property: a status this integration maps to "received" must never simultaneously map
-// to a cancelling event, and vice versa. The two mappings feed different tables and
-// must not contradict each other.
 func TestProperty_MapStatusAndMapEventAgree(t *testing.T) {
 	for _, status := range allStatuses {
 		event := MapEvent(&Payment{Status: status, TransactionAmount: 10})
@@ -310,12 +263,8 @@ func TestProperty_MapStatusAndMapEventAgree(t *testing.T) {
 	}
 }
 
-// --- Signature verification -------------------------------------------------
-
-// Property: any correctly signed request verifies, for arbitrary ids and request ids.
 func TestProperty_VerifySignature_RoundTrip(t *testing.T) {
 	f := func(dataID, requestID string, tsOffset int32) bool {
-		// The manifest is built from trimmed values, so compare on those.
 		dataID = strings.TrimSpace(dataID)
 		requestID = strings.TrimSpace(requestID)
 		ts := time.Now().UnixMilli() + int64(tsOffset)
@@ -333,9 +282,6 @@ func TestProperty_VerifySignature_RoundTrip(t *testing.T) {
 	}
 }
 
-// Property: mutating ANY signed component invalidates the signature. This is the
-// security core: it is what stops a valid notification being replayed against a
-// different payment.
 func TestProperty_VerifySignature_AnyMutationFails(t *testing.T) {
 	rng := rand.New(rand.NewSource(20260831))
 
@@ -345,7 +291,6 @@ func TestProperty_VerifySignature_AnyMutationFails(t *testing.T) {
 		ts := time.Now().UnixMilli()
 		header := signatureHeader(testSecret, dataID, requestID, ts)
 
-		// Sanity: the unmutated form must verify, or the mutations prove nothing.
 		if err := VerifySignature(header, requestID, dataID, testSecret, 0, time.Now()); err != nil {
 			t.Fatalf("baseline failed: %v", err)
 		}
@@ -368,7 +313,6 @@ func TestProperty_VerifySignature_AnyMutationFails(t *testing.T) {
 	}
 }
 
-// signatureHeaderRawTS swaps only the advertised ts, leaving the hash untouched.
 func signatureHeaderRawTS(header string, newTS int64) string {
 	_, rest, ok := strings.Cut(header, ",")
 	if !ok {
@@ -389,8 +333,6 @@ func flipLastHexDigit(header string) string {
 	return header[:len(header)-1] + string(replacement)
 }
 
-// Property: verification never panics, whatever arrives in the headers. This endpoint is
-// public, so any input at all can reach it.
 func TestProperty_VerifySignature_NeverPanics(t *testing.T) {
 	f := func(sig, reqID, dataID, secret string) bool {
 		_ = VerifySignature(sig, reqID, dataID, secret, 0, time.Now())
@@ -402,8 +344,6 @@ func TestProperty_VerifySignature_NeverPanics(t *testing.T) {
 	}
 }
 
-// Property: an empty secret rejects every input, always. This is the fail-closed
-// guarantee that keeps a misconfigured deployment from being an open endpoint.
 func TestProperty_VerifySignature_EmptySecretAlwaysRejects(t *testing.T) {
 	f := func(sig, reqID, dataID string) bool {
 		return VerifySignature(sig, reqID, dataID, "", 0, time.Now()) != nil
@@ -412,11 +352,6 @@ func TestProperty_VerifySignature_EmptySecretAlwaysRejects(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// --- Fuzz targets -----------------------------------------------------------
-//
-// These run their seed corpus as ordinary unit tests, and can be fuzzed on demand with
-// `go test -run XXX -fuzz FuzzParseNotification ./infra/mercadopago`.
 
 func FuzzParseNotification(f *testing.F) {
 	f.Add([]byte(`{"type":"payment","action":"payment.updated","data":{"id":"123"}}`), "", "")
@@ -437,18 +372,14 @@ func FuzzParseNotification(f *testing.F) {
 
 		n, err := ParseNotification(body, q)
 		if err != nil {
-			// Every failure must be one of the two terminal kinds the consumer knows
-			// how to drop, never an untyped surprise.
 			if !errors.Is(err, ErrNotificationMissingResourceID) && !strings.Contains(err.Error(), "invalid notification body") {
 				t.Fatalf("unexpected error shape: %v", err)
 			}
 			return
 		}
-		// Success must always yield something the consumer can act on.
 		if n.ResourceID() == "" {
 			t.Fatal("ParseNotification succeeded with no resource id")
 		}
-		// Accessors must be safe on whatever was parsed.
 		_ = n.IsPayment()
 		_ = n.NormalizedType()
 	})
@@ -474,8 +405,6 @@ func FuzzVerifySignature(f *testing.F) {
 	f.Fuzz(func(t *testing.T, sig, reqID, dataID string) {
 		err := VerifySignature(sig, reqID, dataID, testSecret, 0, time.Now())
 		if err == nil {
-			// The only way to pass is to hold the secret, so a passing input must
-			// reproduce under a recomputation with the same inputs.
 			if again := VerifySignature(sig, reqID, dataID, testSecret, 0, time.Now()); again != nil {
 				t.Fatal("verification is not deterministic")
 			}
@@ -512,7 +441,7 @@ func FuzzOnlyDigits(f *testing.F) {
 	f.Add("111.444.777-35")
 	f.Add("")
 	f.Add("abc")
-	f.Add("１２３") // full-width digits must NOT survive: Mercado Pago wants ASCII
+	f.Add("１２３")
 
 	f.Fuzz(func(t *testing.T, raw string) {
 		out := OnlyDigits(raw)

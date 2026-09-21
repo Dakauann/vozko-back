@@ -539,8 +539,6 @@ func (r *repository) CancelExpiredOrdersAndReturnInventory(orderIDs []string) er
 			}
 		}
 
-		// TODO: integrate with inventory service to return reserved stock.
-
 		return nil
 	})
 }

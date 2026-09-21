@@ -13,8 +13,6 @@ func NewListResourcePermissionsUseCase() workspace.ListResourcePermissionsUseCas
 }
 
 func (uc *listResourcePermissionsUseCase) Execute() []workspace.ResourcePermissionInfo {
-	// Iterate the permission catalogue (ResourceActions) with sorted keys so the
-	// listing is deterministic regardless of Go's map iteration order.
 	resources := make([]workspace.Resource, 0, len(workspace.ResourceActions))
 	for r := range workspace.ResourceActions {
 		resources = append(resources, r)

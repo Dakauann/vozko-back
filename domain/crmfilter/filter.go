@@ -1,10 +1,3 @@
-// Package crmfilter defines a reusable, object-agnostic filter value object
-// shared across the CRM read model (conversation entries today, sales
-// opportunities next). It is pure domain: it describes WHAT to filter, never
-// HOW to query. The infra FilterCompiler maps a Filter onto concrete SQL per
-// object, which is what lets the kanban board, the list view and the column
-// summaries all read from a single filter definition instead of the two
-// duplicated hand-written SQL builders that exist today.
 package crmfilter
 
 import (
@@ -15,9 +8,6 @@ import (
 	"time"
 )
 
-// Field identifies a filterable attribute. Fields are intentionally
-// object-agnostic; the compiler resolves each one to the right column/join for
-// the object being queried.
 type Field string
 
 const (
@@ -39,41 +29,23 @@ const (
 	FieldUnread         Field = "unread"
 	FieldWindowOpen     Field = "window_open"
 	FieldQuery          Field = "query"
-	// Lead-object fields. A lead is a person, not a conversation, so it has
-	// identity (name/number/age), a lifecycle flag (blocked), the campaigns it
-	// was reached by, and the memories written about it. Every one of these is
-	// resolved by the lead descriptor; other objects report them unsupported,
-	// exactly like lost_reason is opportunity-only and unread is
-	// conversation-only.
-	FieldName    Field = "name"
-	FieldNumber  Field = "number"
-	FieldAge     Field = "age"
-	FieldBlocked Field = "blocked"
+	FieldName           Field = "name"
+	FieldNumber         Field = "number"
+	FieldAge            Field = "age"
+	FieldBlocked        Field = "blocked"
 
-	// FieldCampaignStatus is the delivery outcome of the object in a campaign
-	// (SENT/DELIVERED/READ/FAILED...). It is distinct from FieldStatus, which
-	// is the object's own lifecycle: a lead is never "finished", its messages
-	// are.
 	FieldCampaignStatus Field = "campaign_status"
 	FieldCampaignCount  Field = "campaign_count"
 
-	// Memory fields address lead_memory rows from the lead they belong to:
-	// which categories were remembered, who wrote them, what they say, how
-	// many there are and how fresh they are. Together they make "leads we know
-	// something about" a first-class segment instead of a per-lead lookup.
 	FieldMemoryCategory  Field = "memory_category"
 	FieldMemoryAuthor    Field = "memory_author"
 	FieldMemoryText      Field = "memory_text"
 	FieldMemoryCount     Field = "memory_count"
 	FieldMemoryUpdatedAt Field = "memory_updated_at"
 
-	// FieldCustom targets a typed custom field. Predicate.Key must name the
-	// custom field; its value kind is resolved by the compiler from the
-	// custom-field definition, so validation here is intentionally permissive.
 	FieldCustom Field = "custom"
 )
 
-// Operator is the comparison applied to a field.
 type Operator string
 
 const (
@@ -93,7 +65,6 @@ const (
 	OpIsFalse   Operator = "is_false"
 )
 
-// Kind is the value type of a field, used for validation and by the compiler.
 type Kind int
 
 const (
@@ -101,12 +72,11 @@ const (
 	KindNumber
 	KindDate
 	KindBool
-	KindIDSet // references to entity ids (owner, stage, label, pipeline, ...)
+	KindIDSet
 	KindEnum
-	KindText // free-text search
+	KindText
 )
 
-// Conjunction combines predicates.
 type Conjunction string
 
 const (
@@ -114,26 +84,18 @@ const (
 	Or  Conjunction = "or"
 )
 
-// Predicate is one comparison. Values are string-encoded (numbers and dates as
-// text) so a Filter serializes cleanly to JSON for saved views; the compiler
-// parses them per the field Kind.
 type Predicate struct {
 	Field    Field    `json:"field"`
-	Key      string   `json:"key,omitempty"` // only for FieldCustom
+	Key      string   `json:"key,omitempty"`
 	Operator Operator `json:"operator"`
 	Values   []string `json:"values,omitempty"`
 }
 
-// Group is a set of predicates combined with Conjunction (defaults to Or).
 type Group struct {
 	Conjunction Conjunction `json:"conjunction,omitempty"`
 	Predicates  []Predicate `json:"predicates"`
 }
 
-// Conj returns the group's conjunction, defaulting to Or when unset. Groups
-// default to OR internally; the top-level Groups always combine with AND. That
-// yields the "AND across filters, OR within a group" model buyers expect
-// (e.g. stage=Proposal AND (source=whatsapp OR source=instagram)).
 func (g Group) Conj() Conjunction {
 	if g.Conjunction == And {
 		return And
@@ -141,17 +103,15 @@ func (g Group) Conj() Conjunction {
 	return Or
 }
 
-// Filter is the whole expression: Groups combined with AND.
 type Filter struct {
 	Groups []Group `json:"groups"`
 }
 
-// FieldSpec is the static metadata for a field.
 type FieldSpec struct {
 	Field Field
 	Kind  Kind
 	Ops   []Operator
-	Multi bool // supports multi-value IN / NOT IN
+	Multi bool
 }
 
 var (
@@ -171,9 +131,6 @@ var (
 	dateOps   = []Operator{OpBefore, OpAfter, OpBetween, OpGreaterEq, OpLessEq, OpIsSet, OpIsEmpty}
 	boolOps   = []Operator{OpIsTrue, OpIsFalse, OpEquals}
 	textOps   = []Operator{OpContains}
-	// stringOps back plain text columns (a lead's name or number): set
-	// membership and substring match, plus presence. is_set / is_empty are what
-	// make "leads with no name yet" expressible.
 	stringOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpIsSet, OpIsEmpty}
 	customOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpGreaterEq, OpLessEq, OpBetween, OpIsSet, OpIsEmpty}
 )
@@ -213,13 +170,11 @@ var registry = map[Field]FieldSpec{
 	FieldCustom: {FieldCustom, KindString, customOps, true},
 }
 
-// SpecFor returns the static spec for a field.
 func SpecFor(f Field) (FieldSpec, bool) {
 	spec, ok := registry[f]
 	return spec, ok
 }
 
-// IsEmpty reports whether the filter has no predicates.
 func (f Filter) IsEmpty() bool {
 	for _, g := range f.Groups {
 		if len(g.Predicates) > 0 {
@@ -229,8 +184,6 @@ func (f Filter) IsEmpty() bool {
 	return true
 }
 
-// Fields returns the unique set of fields referenced, so the compiler can plan
-// exactly the joins it needs and nothing more.
 func (f Filter) Fields() []Field {
 	seen := map[Field]struct{}{}
 	var out []Field
@@ -246,7 +199,6 @@ func (f Filter) Fields() []Field {
 	return out
 }
 
-// Validate checks every predicate against its field spec.
 func (f Filter) Validate() error {
 	for gi := range f.Groups {
 		for pi := range f.Groups[gi].Predicates {
@@ -258,7 +210,6 @@ func (f Filter) Validate() error {
 	return nil
 }
 
-// Validate checks a single predicate for field/operator/value coherence.
 func (p Predicate) Validate() error {
 	spec, ok := registry[p.Field]
 	if !ok {
@@ -273,7 +224,7 @@ func (p Predicate) Validate() error {
 
 	switch p.Operator {
 	case OpIsSet, OpIsEmpty, OpIsTrue, OpIsFalse:
-		return nil // presence/boolean operators take no value
+		return nil
 	case OpBetween:
 		if len(nonEmpty(p.Values)) != 2 {
 			return ErrBetweenValues
@@ -284,7 +235,6 @@ func (p Predicate) Validate() error {
 		}
 	}
 
-	// FieldCustom kind is resolved at compile time; skip static typing here.
 	if p.Field == FieldCustom {
 		return nil
 	}
@@ -311,7 +261,6 @@ func (p Predicate) Validate() error {
 	return nil
 }
 
-// ParseDate accepts RFC3339 timestamps and bare YYYY-MM-DD dates.
 func ParseDate(v string) (time.Time, error) {
 	s := strings.TrimSpace(v)
 	if t, err := time.Parse(time.RFC3339, s); err == nil {

@@ -9,10 +9,6 @@ import (
 	"vozko/domain/whatsapp/template"
 )
 
-// The sweep is the only thing that returns money taken for sends that never
-// completed. It had no tests at all, which is how a broken state transition sat
-// in it silently turning the backstop off.
-
 func newSweep(t *testing.T, attempts *fakeAttempts, billing *countingBilling, ledger *fakeLedger) template.ReconcileSendAttemptsUseCase {
 	t.Helper()
 	return NewReconcileSendAttemptsUseCase(attempts, billing, ledger, nil)
@@ -30,11 +26,6 @@ func staleAttempt(id string, status template.SendAttemptStatus) template.SendAtt
 	}
 }
 
-// THE regression. A charged row is the sweep's primary job, and `charged` was
-// not a legal predecessor of `refunded` — so the credit went out, the CAS
-// failed, the row kept its old updated_at, and it was re-listed every hour
-// forever. Sorted oldest-first, those zombies eventually filled the batch and
-// the sweep stopped refunding anything newer, without ever raising an error.
 func TestReconcile_ChargedRow_IsRefundedAndMarked(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -69,8 +60,6 @@ func TestReconcile_UnknownRow_IsRefundedAndMarked(t *testing.T) {
 	}
 }
 
-// Running twice must not credit twice. This is the property that makes an
-// hourly job safe to run at all.
 func TestReconcile_RunTwice_RefundsOnce(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -89,8 +78,6 @@ func TestReconcile_RunTwice_RefundsOnce(t *testing.T) {
 	}
 }
 
-// A delivered message must never be refunded. The provider message id is the
-// proof it left, and it can arrive after the sweep listed the row.
 func TestReconcile_AttemptThatGainedAMessageID_IsLeftAlone(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -108,7 +95,6 @@ func TestReconcile_AttemptThatGainedAMessageID_IsLeftAlone(t *testing.T) {
 	}
 }
 
-// Settled rows are not the sweep's business.
 func TestReconcile_TerminalRows_AreNotTouched(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -123,7 +109,6 @@ func TestReconcile_TerminalRows_AreNotTouched(t *testing.T) {
 	}
 }
 
-// A send that is still plausibly in flight must be given its window.
 func TestReconcile_FreshRow_IsNotRefundedYet(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -138,8 +123,6 @@ func TestReconcile_FreshRow_IsNotRefundedYet(t *testing.T) {
 	}
 }
 
-// A refund that FAILED must not be recorded as done, or the money is kept with a
-// record saying it was returned.
 func TestReconcile_RefundFailure_DoesNotMarkRefunded(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000, refundErr: errors.New("ledger unavailable")}
@@ -154,8 +137,6 @@ func TestReconcile_RefundFailure_DoesNotMarkRefunded(t *testing.T) {
 	}
 }
 
-// The refund must use the category the charge was taken under. Meta
-// recategorises templates, and today's category can be a different price.
 func TestReconcile_RefundsUnderTheStoredCategory(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -172,7 +153,6 @@ func TestReconcile_RefundsUnderTheStoredCategory(t *testing.T) {
 	}
 }
 
-// The reference must be the attempt's, not the raw uuid and not a campaign id.
 func TestReconcile_RefundsUnderThePrefixedAttemptReference(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -186,8 +166,6 @@ func TestReconcile_RefundsUnderThePrefixedAttemptReference(t *testing.T) {
 	}
 }
 
-// A ledger that already carries the credit means somebody else refunded it —
-// record it and move on rather than crediting again.
 func TestReconcile_AlreadyCreditedInLedger_MarksWithoutSecondCredit(t *testing.T) {
 	attempts := newFakeAttempts()
 	billing := &countingBilling{cost: 5_000}
@@ -205,7 +183,6 @@ func TestReconcile_AlreadyCreditedInLedger_MarksWithoutSecondCredit(t *testing.T
 	}
 }
 
-// Without billing wired, the sweep must refuse rather than silently do nothing.
 func TestReconcile_WithoutBilling_Refuses(t *testing.T) {
 	uc := NewReconcileSendAttemptsUseCase(newFakeAttempts(), nil, nil, nil)
 	if _, err := uc.Execute(context.Background()); !errors.Is(err, template.ErrBillingNotConfigured) {

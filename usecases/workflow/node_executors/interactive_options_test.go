@@ -7,7 +7,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// NodeContext carries a *RunState, while NewRunState returns a value.
 func newTestState() *workflow.RunState {
 	s := workflow.NewRunState()
 	return &s
@@ -65,16 +64,11 @@ func TestInteractiveOptionsReadsTheListShapeAcrossSections(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("options = %d, want 2", len(got))
 	}
-	// Order is the author's order, because it is also the order the options are
-	// rendered in and therefore which ones fall past a channel's cap.
 	if got[0].ID != "a" || got[1].ID != "b" {
 		t.Errorf("options = %+v, want the authored order preserved", got)
 	}
 }
 
-// Titles are shown to the contact and may reference run state; ids are routing
-// keys that must match the branch label byte-for-byte, so they are never
-// interpolated.
 func TestInteractiveOptionsInterpolatesTitlesButNeverIDs(t *testing.T) {
 	state := newTestState()
 	state.Set("nome", "Ana")

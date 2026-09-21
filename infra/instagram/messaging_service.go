@@ -13,38 +13,27 @@ import (
 	"vozko/infra/meta"
 )
 
-// Send API quotas, per Instagram professional account.
-//
-// The media bucket is 10x tighter than text, so media sends are throttled
-// separately, otherwise a burst of images starves text replies.
 const (
-	sendTextPerSecond  = 100
-	sendMediaPerSecond = 10
-	// The Conversations API is 2 calls/sec per account: 50x tighter than
-	// sending, which makes it the real bottleneck for any sync or probe.
+	sendTextPerSecond      = 100
+	sendMediaPerSecond     = 10
 	conversationsPerSecond = 2
 )
 
 type messagingService struct {
 	client *meta.Client
 
-	// Separate limiters per surface, keyed by account.
 	textLimiter  cache.RateLimiter
 	mediaLimiter cache.RateLimiter
 	convLimiter  cache.RateLimiter
 }
 
-// MessagingConfig configures the Send API client.
 type MessagingConfig struct {
-	GraphVersion string
-	AppSecret    string
-	HTTPClient   *http.Client
-	// RateLimiterFactory is the shared Redis-backed limiter factory, so limits
-	// hold across replicas rather than per process.
+	GraphVersion       string
+	AppSecret          string
+	HTTPClient         *http.Client
 	RateLimiterFactory cache.RateLimiterFactory
 }
 
-// NewMessagingService builds the Instagram Send API client.
 func NewMessagingService(cfg MessagingConfig) (igdomain.MessagingService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
@@ -65,17 +54,11 @@ func NewMessagingService(cfg MessagingConfig) (igdomain.MessagingService, error)
 	return s, nil
 }
 
-// sendResponse is the Send API acknowledgement. MessageID is absent on
-// react/unreact, which return recipient_id only.
 type sendResponse struct {
 	RecipientID string `json:"recipient_id"`
 	MessageID   string `json:"message_id"`
 }
 
-// textBody is a plain text or inline-reply send.
-//
-// ReplyTo is a TOP-LEVEL sibling of Recipient and Message, not nested inside
-// message, and its inner key is "mid".
 type textBody struct {
 	Recipient recipient   `json:"recipient"`
 	Message   textMessage `json:"message"`
@@ -83,21 +66,15 @@ type textBody struct {
 }
 
 type recipient struct {
-	ID string `json:"id,omitempty"`
-	// CommentID addresses the author of a public comment for a private reply.
+	ID        string `json:"id,omitempty"`
 	CommentID string `json:"comment_id,omitempty"`
 }
 
 type textMessage struct {
-	Text string `json:"text"`
-	// QuickReplies rides inside message, unlike reply_to which is a sibling of
-	// it. Omitted entirely when empty so an ordinary text send is byte-identical
-	// to what it was before quick replies existed.
+	Text         string       `json:"text"`
 	QuickReplies []quickReply `json:"quick_replies,omitempty"`
 }
 
-// quickReply is one tappable option. content_type is required and "text" is the
-// only value this surface uses.
 type quickReply struct {
 	ContentType string `json:"content_type"`
 	Title       string `json:"title"`
@@ -108,7 +85,6 @@ type replyTo struct {
 	MID string `json:"mid"`
 }
 
-// mediaBody sends a single attachment by URL.
 type mediaBody struct {
 	Recipient recipient    `json:"recipient"`
 	Message   mediaMessage `json:"message"`
@@ -128,8 +104,6 @@ type attachmentPayload struct {
 	URL string `json:"url"`
 }
 
-// reactionBody is a third, distinct shape on the same endpoint: sender_action
-// plus a top-level payload, and NO message key.
 type reactionBody struct {
 	Recipient    recipient        `json:"recipient"`
 	SenderAction string           `json:"sender_action"`
@@ -141,16 +115,12 @@ type reactionPayload struct {
 	Reaction  string `json:"reaction,omitempty"`
 }
 
-// senderActionBody is typing/seen. Meta documents that these requests must
-// contain ONLY recipient and sender_action, so this shape has no other fields.
 type senderActionBody struct {
 	Recipient    recipient `json:"recipient"`
 	SenderAction string    `json:"sender_action"`
 }
 
 func (s *messagingService) SendText(ctx context.Context, igUserID, token string, in igdomain.SendTextInput) (*igdomain.SendResult, error) {
-	// Enforce the documented limit in BYTES. A rune count would let multibyte
-	// emoji through and fail upstream.
 	if len(in.Text) > igdomain.MaxTextBytes {
 		return nil, igdomain.ErrTextTooLong
 	}
@@ -221,7 +191,6 @@ func (s *messagingService) SendReaction(ctx context.Context, igUserID, token, re
 		SenderAction: "react",
 		Payload:      &reactionPayload{MessageID: targetMID, Reaction: reaction},
 	}
-	// No output decoding: reaction sends return recipient_id only.
 	return s.client.Do(ctx, meta.Request{
 		Method: http.MethodPost,
 		Path:   "/" + igUserID + "/messages",
@@ -234,7 +203,6 @@ func (s *messagingService) RemoveReaction(ctx context.Context, igUserID, token, 
 	if err := s.allow(s.textLimiter, igUserID); err != nil {
 		return err
 	}
-	// On unreact the reaction key is omitted entirely.
 	body := reactionBody{
 		Recipient:    recipient{ID: recipientIGSID},
 		SenderAction: "unreact",
@@ -275,12 +243,6 @@ func (s *messagingService) senderAction(ctx context.Context, igUserID, token, re
 	}, nil)
 }
 
-// SendPrivateReply DMs the author of a public comment.
-//
-// The path carries OUR business account id, not the comment id and not the
-// recipient, and the comment is addressed via recipient.comment_id. Getting
-// this wrong is the most common private-reply bug. The single-allowance guard
-// lives in the usecase, which claims it before this is ever called.
 func (s *messagingService) SendPrivateReply(ctx context.Context, igUserID, token, igCommentID, text string) (*igdomain.SendResult, error) {
 	if len(text) > igdomain.MaxTextBytes {
 		return nil, igdomain.ErrTextTooLong
@@ -340,11 +302,6 @@ func (s *messagingService) GetContactProfile(ctx context.Context, token, igsid s
 	}, nil
 }
 
-// GetConversations is used only as a messaging-health probe and for gap repair.
-//
-// There is no API for the Instagram-app "Allow Access to Messages" toggle, so a
-// permission-shaped failure here is our only signal that DMs will silently not
-// arrive despite a successful OAuth.
 func (s *messagingService) GetConversations(ctx context.Context, igUserID, token string, limit int) error {
 	if err := s.allow(s.convLimiter, igUserID); err != nil {
 		return err
@@ -364,9 +321,6 @@ func (s *messagingService) GetConversations(ctx context.Context, igUserID, token
 	}, nil)
 }
 
-// allow applies a per-account rate limit. The limiter is intentionally
-// fail-open: a Redis outage must not stop an operator from replying to a
-// customer, and Meta enforces the real quota anyway.
 func (s *messagingService) allow(limiter cache.RateLimiter, accountID string) error {
 	if limiter == nil {
 		return nil
@@ -386,7 +340,6 @@ func (s *messagingService) allow(limiter cache.RateLimiter, accountID string) er
 	return nil
 }
 
-// attachmentTypeFor maps our media vocabulary onto Instagram's attachment types.
 func attachmentTypeFor(kind string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "image":
@@ -401,16 +354,6 @@ func attachmentTypeFor(kind string) (string, error) {
 	return "", fmt.Errorf("instagram: unsupported media kind %q", kind)
 }
 
-// quickRepliesFor maps our options onto Instagram's wire shape.
-//
-// Titles are truncated here rather than left to Instagram. Instagram truncates
-// at 20 characters silently on its side; doing it ourselves means the label we
-// log and the label the contact sees are the same string, so a support question
-// about "why does the button say something different" has an answer.
-//
-// Payloads are never truncated, a shortened payload comes back as an id that
-// matches no branch. Over-long ones are dropped by the caller, which knows the
-// option well enough to say so.
 func quickRepliesFor(options []igdomain.QuickReplyOption) []quickReply {
 	if len(options) == 0 {
 		return nil
@@ -429,9 +372,6 @@ func quickRepliesFor(options []igdomain.QuickReplyOption) []quickReply {
 	return out
 }
 
-// truncateRunes cuts to a CHARACTER count, not a byte count: Instagram's "20
-// characters" is about what the contact reads, and slicing bytes would split a
-// multibyte emoji into invalid UTF-8.
 func truncateRunes(s string, max int) string {
 	if max <= 0 {
 		return s

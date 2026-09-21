@@ -55,7 +55,6 @@ func (r *CachedRepository) FindByID(id string) (*agent.Agent, error) {
 	return a, nil
 }
 
-// FindByIDs delegates to the inner repository (batch display lookup, no per-id cache).
 func (r *CachedRepository) FindByIDs(agentIDs []string) ([]*agent.Agent, error) {
 	return r.inner.FindByIDs(agentIDs)
 }

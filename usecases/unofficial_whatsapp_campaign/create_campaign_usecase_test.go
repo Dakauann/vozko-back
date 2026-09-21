@@ -12,8 +12,6 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-// fakeLeadRepo resolves numbers to leads, mirroring FindOrCreateMany's contract:
-// keyed by the NORMALIZED number.
 type fakeLeadRepo struct {
 	mu    sync.Mutex
 	next  int
@@ -96,16 +94,12 @@ func TestCreateMaterializesLeadBackedEntries(t *testing.T) {
 		t.Fatalf("entries = %d, want 2", len(pending))
 	}
 	for _, e := range pending {
-		// The lead bridge is what makes these contacts reachable by exports and
-		// every other lead-keyed tool rather than living in a silo.
 		if e.LeadID == "" {
 			t.Errorf("entry %s has no lead", e.Number)
 		}
 	}
 }
 
-// Pacing is COPIED from the number, so widening the number's range later cannot
-// speed up a blast already in flight.
 func TestCreateCopiesPacingFromTheNumber(t *testing.T) {
 	uc, _, _, _, _ := newCreateHarness(t)
 
@@ -119,8 +113,6 @@ func TestCreateCopiesPacingFromTheNumber(t *testing.T) {
 	}
 }
 
-// A banned number can only ever fail. Refusing at creation beats letting the
-// operator discover it at Start, after importing forty thousand numbers.
 func TestCreateRefusesABannedNumber(t *testing.T) {
 	uc, _, _, gateway, _ := newCreateHarness(t)
 	gateway.instance.Status = uw.StatusBanned
@@ -132,8 +124,6 @@ func TestCreateRefusesABannedNumber(t *testing.T) {
 	}
 }
 
-// The spam window is applied at IMPORT, so an operator sees the real reachable
-// count before starting rather than discovering it mid-run.
 func TestCreateMarksCooldownSkipsUpFront(t *testing.T) {
 	uc, _, entries, _, spam := newCreateHarness(t)
 	spam.skip["lead-1"] = true
@@ -152,8 +142,6 @@ func TestCreateMarksCooldownSkipsUpFront(t *testing.T) {
 	}
 }
 
-// The same person written two ways is one person; blasting them twice is the
-// commonest ban complaint there is.
 func TestCreateDedupsTargets(t *testing.T) {
 	uc, _, entries, _, _ := newCreateHarness(t)
 	in := draft()
@@ -172,8 +160,6 @@ func TestCreateDedupsTargets(t *testing.T) {
 	}
 }
 
-// Variables are validated against the message BEFORE anything is written, so a
-// campaign that would send a raw {{2}} never reaches the database.
 func TestCreateRefusesTargetsMissingVariables(t *testing.T) {
 	uc, campaigns, _, _, _ := newCreateHarness(t)
 	in := draft()
@@ -188,7 +174,6 @@ func TestCreateRefusesTargetsMissingVariables(t *testing.T) {
 	}
 }
 
-// A caller outside the number's department must not be able to campaign from it.
 func TestCreateHonoursDepartmentScope(t *testing.T) {
 	uc, _, _, gateway, _ := newCreateHarness(t)
 	other := "dept-other"
@@ -202,8 +187,6 @@ func TestCreateHonoursDepartmentScope(t *testing.T) {
 	}
 }
 
-// A demonstration campaign is born carrying results, so an administrator can
-// show the product without blasting a real list to produce numbers.
 func TestCreateSeedsOutcomesWhenAsked(t *testing.T) {
 	uc, _, entries, _, _ := newCreateHarness(t)
 
@@ -228,8 +211,6 @@ func TestCreateSeedsOutcomesWhenAsked(t *testing.T) {
 		t.Fatalf("seeded split = %d sent / %d failed / %d pending, want 5 / 2 / 3",
 			len(sent), len(failed), len(pending))
 	}
-	// The entries table and the export both read sentAt to answer "when", so a
-	// settled row without one renders as a blank column.
 	for _, e := range append(sent, failed...) {
 		if e.SentAt == nil {
 			t.Fatalf("settled entry %s has no sentAt", e.ID)
@@ -242,8 +223,6 @@ func TestCreateSeedsOutcomesWhenAsked(t *testing.T) {
 	}
 }
 
-// The ordinary campaign is untouched: every entry starts PENDING, as it did
-// before this control existed.
 func TestCreateWithoutSeedOutcomeStaysPending(t *testing.T) {
 	uc, _, entries, _, _ := newCreateHarness(t)
 

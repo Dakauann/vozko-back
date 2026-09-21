@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// ErrMediaNotFound: the requested media does not exist, or belongs to another
-// workspace (the two are deliberately indistinguishable so lookups cannot be
-// used to probe for existence across workspaces).
 var ErrMediaNotFound = errors.New("media not found")
 
 type MediaType string

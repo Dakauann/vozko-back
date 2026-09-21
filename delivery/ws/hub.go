@@ -28,26 +28,19 @@ type workspaceDepartmentMemberLister interface {
 	ListMembers(departmentID string) ([]workspace_department.DepartmentMember, error)
 }
 
-// memberVisibilityChecker reports whether a caller may assign a conversation to
-// a target member, honouring department scoping. Satisfied by the workspace
-// MemberVisibilityUseCase.
 type memberVisibilityChecker interface {
 	CanView(callerUserID, targetUserID, workspaceID string, isPlatformAdmin bool) (bool, error)
 }
 
-// conversationAssigner is the choke point for ownership mutations + history/telemetry.
-// Implemented by usecases/inbox_assignment.AssignmentService.
 type conversationAssigner interface {
 	AssignOnOpen(entryID, entryType, businessPhoneID, workspaceID, userID string) (bool, error)
 	AssignManual(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger string) error
 }
 
-// presenceRecorder records human attendant online/offline intervals (optional).
 type presenceRecorder interface {
 	Transition(workspaceID, userID string, state string, source string) error
 }
 
-// aiSessionEnder closes open AI attendance sessions on human takeover (optional).
 type aiSessionEnder interface {
 	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
 }
@@ -98,25 +91,13 @@ type ConversationHub struct {
 	memberVisibility     memberVisibilityChecker
 	statusUpdater        conversation.ConversationStatusUpdater
 	wsMetrics            metrics.WSMetricsRecorder
-	// operatorSend delivers a human's message and applies everything that
-	// follows from it. Injected at construction rather than through a setter:
-	// it is not optional, and the send frames are unanswerable without it.
-	operatorSend conversation.OperatorSendUseCase
+	operatorSend         conversation.OperatorSendUseCase
 
 	connections map[string]*WSConnection
 	connMu      sync.RWMutex
 
 	userConnections map[string]map[string]bool
 
-	// Subscriptions are keyed by CONNECTION, not by user.
-	//
-	// An operator holds several conversations open at once (the web client's
-	// floating chat windows), and often in more than one tab. Keying by user
-	// conflated those: every connection was fed the traffic of every entry any
-	// of the user's connections had open, and one window closing removed the
-	// subscription for the whole user, silencing the same conversation
-	// elsewhere. Both are keyed on the connection now, so a window is opened
-	// and closed by the socket that owns it.
 	connSubscriptions map[string]map[entrySubscription]bool
 	entrySubscribers  map[entrySubscription]map[string]bool
 	subMu             sync.RWMutex
@@ -137,12 +118,6 @@ type ConversationHub struct {
 	publicAddress string
 }
 
-// NewConversationHub builds the WebSocket transport.
-//
-// operatorSend is a constructor parameter rather than one more setter because
-// the send frames are the hub's reason to exist and are unanswerable without
-// it. Passing it here makes forgetting it a compile error; the hub's remaining
-// setters are for genuinely optional collaborators.
 func NewConversationHub(
 	authorizer conversation.ConversationAuthorizer,
 	userRepo user.UserRepository,
@@ -288,10 +263,6 @@ func (h *ConversationHub) collectEligibleUsers(workspaceID string, allowedUsers 
 			continue
 		}
 
-		// Connection-scoped, so it stays here rather than moving into
-		// inbox_assignment.CanReceiveRoulette: it is a property of THIS socket
-		// (a platform admin viewing a workspace they do not belong to), not of
-		// the member, and it has no meaning for an offline candidate.
 		if conn.IsAdmin && !h.authorizer.IsWorkspaceMember(conn.UserID, workspaceID) {
 			continue
 		}
@@ -402,10 +373,6 @@ func (h *ConversationHub) ensureInitialTag(entryID, entryType string) {
 func (h *ConversationHub) BroadcastNewMessage(entryID, entryType string, message *conversation.Message) {
 	h.ensureInitialTag(entryID, entryType)
 
-	// Resolved here rather than in each producer. Nine call sites reach this
-	// method and every channel's inbound path funnels through it, so this is the
-	// one place a new channel cannot forget. The write happens before the
-	// channel send below, which is what publishes it safely to the pump.
 	if h.historyProvider != nil && message != nil {
 		h.historyProvider.ResolveSenderIdentity(entryID, entryType, message)
 	}
@@ -630,10 +597,6 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 		return
 	}
 
-	// The inbox service builds a fully-enriched entry (lead/sender/window +
-	// assignee + stage + labels + analysis) in one place, so the delivery layer
-	// just broadcasts it. Fall back to the base history provider when the inbox
-	// service isn't wired (e.g. focused unit tests).
 	var entry *conversation.InboxEntry
 	var err error
 	switch {
@@ -653,8 +616,6 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 		return
 	}
 
-	// Workspace/campaign are still needed for the connection filtering below
-	// (not for enrichment, the inbox service already handled that).
 	var workspaceID string
 	if h.workspaceResolver != nil {
 		workspaceID, _ = h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
@@ -701,7 +662,6 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 				}
 
 				if assignedUserID != "" && conn.UserID != assignedUserID && !conn.IsAdmin {
-					// TODO: fix this check to be more efficient, doing it for every connection is not optimal, we should check the permissions once and cache it for the duration of the broadcast.
 					if !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "conversations", "view_others", conn.IsAdmin) {
 						continue
 					}
@@ -783,7 +743,6 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 	if h.workspaceResolver == nil {
 		return
 	}
-	// Prefer assignment service (history + timeline). Fall back to raw repo for tests.
 	if h.assignmentService == nil && h.assignmentRepo == nil {
 		return
 	}
@@ -804,8 +763,6 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 		return
 	}
 
-	// The config read stays lazy — only an owner/admin can be excluded by
-	// SkipAdminAssignment, so an ordinary member's open never costs a query.
 	skipAdmins := false
 	if h.workspaceConfigRepo != nil && h.authorizer != nil && h.authorizer.IsWorkspaceOwnerOrAdmin(conn.UserID, workspaceID) {
 		if cfg, err := h.workspaceConfigRepo.GetByWorkspaceID(context.Background(), workspaceID); err == nil && cfg != nil {
@@ -1009,7 +966,6 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 	_ = h.sharedState.SAdd("hub:connected_users:"+conn.WorkspaceID, member)
 	_ = h.sharedState.SAdd("hub:workspaces", conn.WorkspaceID)
 
-	// First connection for this user → durable online presence (no UX change).
 	if firstConn && h.presence != nil {
 		_ = h.presence.Transition(conn.WorkspaceID, conn.UserID, "online", "ws_hub")
 	}
@@ -1551,10 +1507,6 @@ func (h *ConversationHub) handleUnregister(conn *WSConnection) {
 		}
 	}
 
-	// Unconditionally: a closing tab takes only its OWN open conversations with
-	// it. This used to be gated on the user having no other connection left,
-	// which was the same conflation the per-user keying caused — the last tab
-	// standing cleaned up for everyone, and any earlier one cleaned up nothing.
 	h.dropConnectionSubscriptions(conn.ID)
 
 	delete(h.sentMessageIDs, conn.ID)
@@ -1657,8 +1609,6 @@ func (h *ConversationHub) handleIncoming(msg *incomingMessage) {
 	}
 }
 
-// invalidEntryTypeMessage names the entry types a conversation can be opened
-// for, derived from the domain set so this text can never drift from it.
 func invalidEntryTypeMessage() string {
 	return "entry_type must be " + shared.FormatEntryTypes(shared.ConversationViewableEntryTypes())
 }
@@ -2051,11 +2001,6 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 	}()
 }
 
-// dropConnectionSubscriptions closes every conversation one socket had open.
-//
-// Used when that socket goes away, and when it switches view. It never touches
-// another connection's subscriptions, so a second tab keeps whatever windows it
-// has open.
 func (h *ConversationHub) dropConnectionSubscriptions(connID string) {
 	h.subMu.Lock()
 	defer h.subMu.Unlock()
@@ -2086,8 +2031,6 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 
 	sub := entrySubscription{entryID: p.EntryID, entryType: p.EntryType}
 
-	// Only THIS connection stops listening. The same conversation may be open
-	// in another tab, which keeps its own subscription.
 	h.subMu.Lock()
 	if subs, exists := h.connSubscriptions[conn.ID]; exists {
 		delete(subs, sub)
@@ -2146,10 +2089,6 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 	}
 
 	go func() {
-		// This goroutine is detached, so an unrecovered panic here does not just fail
-		// the send: it takes the whole process down, dropping every WebSocket and
-		// stopping HTTP, webhooks and campaign consumers with it. Contain it and
-		// report the failure back to the sender instead.
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[ConversationHub] PANIC in send goroutine (entry=%s type=%s user=%s): %v\n%s",
@@ -2183,12 +2122,6 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 	}()
 }
 
-// announceOperatorSend tells the connected clients about a delivered reply.
-//
-// Broadcasting is the transport's own job and stays here: everything a
-// delivered message means to the CONVERSATION (status, timeline, AI handoff,
-// initial stage) belongs to the send use case and is already done by the time
-// this runs.
 func (h *ConversationHub) announceOperatorSend(conn *WSConnection, requestID, entryID, entryType string, message *conversation.Message) {
 	h.BroadcastMessageSent(conn.UserID, requestID, entryID, entryType, message)
 	go h.BroadcastEntryUpdate(entryID, entryType, message)
@@ -2334,10 +2267,6 @@ func (h *ConversationHub) handleTyping(conn *WSConnection, payload json.RawMessa
 
 	h.BroadcastTyping(p.EntryID, p.EntryType, conn.UserID, isTyping)
 
-	// Every channel, not just the official WhatsApp one. The marker routes by
-	// entry type and no-ops for channels without a presence API, so the gate that
-	// used to live here only ever meant "no other channel may show typing" —
-	// including the two that can.
 	if !isTyping || h.messageMarker == nil {
 		return
 	}
@@ -2469,13 +2398,6 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	// The scopable set, not a hardcoded pair.
-	//
-	// Spelled inline this read `!= "whatsapp"`, which rejected
-	// Instagram, Telegram and the unofficial WhatsApp channel outright — all
-	// three of which shared.InboxScopableEntryTypes has listed as scopable since
-	// they shipped. The set is the single declaration; restating it here is how
-	// a channel silently loses its inbox filter.
 	if p.CampaignType != "" && !shared.EntryType(p.CampaignType).SupportsInboxScope() {
 		h.sendError(conn, "invalid_campaign_type",
 			"campaign_type must be one of "+shared.FormatEntryTypes(shared.InboxScopableEntryTypes()))
@@ -2505,9 +2427,6 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 			h.sendError(conn, "forbidden", "You don't have permission to view WhatsApp campaigns")
 			return
 		}
-		// Scoping to an unofficial CAMPAIGN needs the campaign permission, not
-		// the numbers one: an attendant who may answer on a number is not
-		// thereby entitled to see what a campaign sent from it.
 		if p.CampaignType == string(shared.EntryTypeUnofficialWhatsApp) &&
 			p.ContainerKind == string(conversation.ContainerKindCampaign) &&
 			!h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "unofficial_whatsapp_campaigns", "read", false) {
@@ -2516,8 +2435,6 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		}
 	}
 
-	// Switching view resets what this socket is looking at, so it closes the
-	// conversations IT had open. Another tab's windows are untouched.
 	h.dropConnectionSubscriptions(conn.ID)
 
 	delete(h.sentMessageIDs, conn.ID)
@@ -2559,8 +2476,6 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 		conn.CampaignID = ""
 		conn.CampaignType = p.CampaignType
 		conn.WhatsAppCampaignType = p.WhatsAppCampaignType
-		// A global view has no container to narrow to; clearing it stops a
-		// previous campaign scope leaking into the workspace-wide inbox.
 		conn.ContainerKind = ""
 		conn.ViewMode = "global"
 	}
@@ -2862,9 +2777,6 @@ func (h *ConversationHub) handleSearchMessages(conn *WSConnection, payload json.
 		}
 
 		if h.historyProvider != nil {
-			// The same resolution history uses. The hand-rolled version this
-			// replaced named only inbound text messages, so an operator or agent
-			// message in a search result rendered as a bare UUID.
 			for _, msg := range messages {
 				h.historyProvider.ResolveSenderIdentity(p.EntryID, p.EntryType, msg)
 			}
@@ -3190,11 +3102,6 @@ func (h *ConversationHub) handleReopenWindow(conn *WSConnection, payload json.Ra
 
 		log.Printf("[ConversationHub] Template sent to reopen window for entry %s (%s), messageID=%s", p.EntryID, p.EntryType, messageID)
 
-		// The `reopened` event is written by the template sender, which is the
-		// one writer this frame, the HTTP send-template endpoint and
-		// SendTemplateForEntry all pass through. It was written here, so only
-		// the WebSocket reopen left a trace.
-
 		h.sendToConnection(conn, &WSOutgoingMessage{
 			Type: WSEventWindowReopened,
 			Payload: WindowReopenedPayload{
@@ -3243,10 +3150,6 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 		}
 	}
 
-	// Department-scoped guard: the caller may only hand a conversation to members
-	// they are allowed to see (their own department(s), unless they are an
-	// owner/admin or hold members:view_others). Enforced on the mutation itself
-	// so a crafted payload cannot target a member outside the caller's scope.
 	if h.memberVisibility != nil {
 		canView, err := h.memberVisibility.CanView(conn.UserID, p.UserID, workspaceID, conn.IsAdmin)
 		if err != nil {
@@ -3277,9 +3180,6 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 			return
 		}
 	} else {
-		// Read the outgoing owner before overwriting it: without it the event
-		// says who received the conversation but not who lost it, and a handoff
-		// reads as a first assignment. AssignManual above does the same.
 		previousUserID := ""
 		if existing, err := h.assignmentRepo.FindByEntry(workspaceID, p.EntryID, p.EntryType); err == nil && existing != nil {
 			previousUserID = existing.AssignedUserID
@@ -3356,23 +3256,16 @@ func (h *ConversationHub) handleBroadcast(msg *broadcastMessage) {
 	h.connMu.RLock()
 	defer h.connMu.RUnlock()
 
-	// Straight to the connections that have THIS conversation open. A socket
-	// that never opened it is not fed its traffic, even when it belongs to the
-	// same operator working other conversations in other windows.
 	for connID := range subscribers {
 		conn, exists := h.connections[connID]
 		if !exists {
 			continue
 		}
 
-		// The exclusion stays per USER: an operator's own typing must not echo
-		// back to them on any of their tabs.
 		if msg.excludeUserID != "" && conn.UserID == msg.excludeUserID {
 			continue
 		}
 
-		// This connection was already handed the message inline (the subscribe
-		// reply, or its own send), so the broadcast copy is dropped once.
 		if broadcastMsgID != "" {
 			if connSubs, ok := h.sentMessageIDs[connID]; ok {
 				if ids, ok := connSubs[sub]; ok && ids[broadcastMsgID] {
@@ -3515,11 +3408,7 @@ func (h *ConversationHub) runRedisBroadcastSubscriber() {
 }
 
 type redisWorkspaceBroadcast struct {
-	Type string `json:"t"`
-	// Payload carries an already-marshalled event for broadcast kinds that are
-	// not entry-shaped. The entry-shaped kinds re-derive their payload on the
-	// receiving replica; a comment-analysis event has nothing to re-derive
-	// from, so it travels whole.
+	Type             string          `json:"t"`
 	Payload          json.RawMessage `json:"p,omitempty"`
 	EntryID          string          `json:"e,omitempty"`
 	EntryType        string          `json:"et,omitempty"`

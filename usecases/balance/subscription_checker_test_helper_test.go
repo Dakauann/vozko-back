@@ -4,10 +4,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// allowAllSubscriptionChecker is a shared test helper that stands in for the
-// subscription checker dependency. It was originally defined in the now-removed
-// consume_sms_usecase_test.go; it is recovered here because non-SMS tests
-// (e.g. the WhatsApp billing tests) still depend on it.
 type allowAllSubscriptionChecker struct {
 	err error
 }

@@ -38,25 +38,15 @@ type CallSessionWSHandler struct {
 
 	userResolver TransferUsernameResolver
 
-	// presenceTelemetry records durable on_call/online (queue only; optional).
 	presenceTelemetry func(workspaceID, userID, state, source string)
 
-	// boardSync updates Redis live board + returns snapshot for supervisor WS push.
-	boardSync telephony.BoardSync
-	// capacityReader supplies used/max concurrent call slots for the board bar.
+	boardSync      telephony.BoardSync
 	capacityReader telephony.CapacityReader
 
-	// presence broadcast is coalesced per workspace: a burst of changes (an offer
-	// reserving then cancelling several contacts, many agents reconnecting) collapses
-	// into ONE debounced push, and the DB-backed snapshot build + fan-out runs off the
-	// caller's goroutine so it never blocks the call hot paths.
 	presenceMu      sync.Mutex
 	presencePending map[string]bool
 }
 
-// presenceBroadcastDebounce coalesces a burst of presence changes into one push. Short
-// enough to feel real time, long enough that a multi-contact ring wave's
-// reserve/cancel storm becomes a single snapshot.
 const presenceBroadcastDebounce = 150 * time.Millisecond
 
 type TransferUsernameResolver interface {
@@ -86,8 +76,6 @@ func NewCallSessionWSHandler(
 	}
 }
 
-// WithRegistries wires the live call-session registries and subscribes the handler
-// to presence changes so it can broadcast the presence panel.
 func (h *CallSessionWSHandler) WithRegistries(
 	sessions callsession_domain.CallSessionRegistry,
 	calls callsession_domain.CallRegistry,
@@ -106,21 +94,17 @@ func (h *CallSessionWSHandler) WithUserResolver(resolver TransferUsernameResolve
 	return h
 }
 
-// WithPresenceTelemetry wires durable on_call/online telemetry (queue-backed).
 func (h *CallSessionWSHandler) WithPresenceTelemetry(fn func(workspaceID, userID, state, source string)) *CallSessionWSHandler {
 	h.presenceTelemetry = fn
 	return h
 }
 
-// WithLiveBoard wires Redis live concurrency board sync + capacity reader.
 func (h *CallSessionWSHandler) WithLiveBoard(sync telephony.BoardSync, capacity telephony.CapacityReader) *CallSessionWSHandler {
 	h.boardSync = sync
 	h.capacityReader = capacity
 	return h
 }
 
-// WithInboundCalls wires the responder that resolves a ringing inbound offer when
-// the agent's browser accepts or declines it.
 func (h *CallSessionWSHandler) WithInboundCalls(offers callsession_domain.InboundOfferResponder) *CallSessionWSHandler {
 	h.inboundOffers = offers
 	return h
@@ -406,12 +390,6 @@ func (h *CallSessionWSHandler) sendInboundCallError(session *callSession, offerI
 	session.send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: code, Message: message, EntryID: offerID}})
 }
 
-// OnPresenceChanged is the PresenceListener hook. It is called synchronously from the
-// registry on every presence change (connect/disconnect/call attach/detach, ring
-// reserve/release), including from latency-sensitive transfer paths, so it must return
-// fast. It schedules a coalesced, async broadcast rather than doing the DB-backed
-// snapshot build + fan-out inline: a burst of changes within the debounce window
-// collapses to a single push that reads the latest state.
 func (h *CallSessionWSHandler) OnPresenceChanged(workspaceID string) {
 	if h == nil || h.sessionRegistry == nil || workspaceID == "" {
 		return
@@ -422,7 +400,7 @@ func (h *CallSessionWSHandler) OnPresenceChanged(workspaceID string) {
 	}
 	if h.presencePending[workspaceID] {
 		h.presenceMu.Unlock()
-		return // a broadcast is already scheduled; it will pick up this change too
+		return
 	}
 	h.presencePending[workspaceID] = true
 	h.presenceMu.Unlock()
@@ -436,11 +414,6 @@ func (h *CallSessionWSHandler) OnPresenceChanged(workspaceID string) {
 	}()
 }
 
-// broadcastPresence builds the live presence snapshot (one row per online member with
-// status) and pushes it to every BROWSER session in the workspace,
-// permission-gated: a viewer with call_session:list_members sees everyone, otherwise they see
-// only themselves. Also refreshes the Redis live board and pushes telephony:board to
-// supervisors (list_members).
 func (h *CallSessionWSHandler) broadcastPresence(workspaceID string) {
 	if h == nil || h.sessionRegistry == nil || workspaceID == "" {
 		return
@@ -490,7 +463,6 @@ func (h *CallSessionWSHandler) broadcastPresence(workspaceID string) {
 		}
 	}
 
-	// Live board: Redis only (never blocks on SQL).
 	var boardSnap *telephony.BoardSnapshot
 	if h.boardSync != nil {
 		var used, max int64
@@ -533,7 +505,6 @@ func (h *CallSessionWSHandler) broadcastPresence(workspaceID string) {
 		if err := s.Notify(msg); err != nil {
 			h.logger.Printf("[CallSessionWS] presence notify session=%s user=%s: %v", s.ID(), s.UserID(), err)
 		}
-		// Supervisors get the full concurrency board (squares + capacity + AI).
 		if canList && boardSnap != nil {
 			_ = s.Notify(callsession_domain.CallSessionControlMessage{
 				Type:    string(WSEventTelephonyBoard),

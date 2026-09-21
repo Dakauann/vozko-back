@@ -14,7 +14,7 @@ import (
 type fakeSession struct {
 	id, user, ws string
 	active       atomic.Bool
-	reserved     atomic.Value // current reservation token (string)
+	reserved     atomic.Value
 	callID       atomic.Value
 	notifies     atomic.Int32
 }
@@ -65,14 +65,10 @@ func (s *fakeSession) Notify(_ callsession_domain.CallSessionControlMessage) err
 func TestInProcSessionRegistry_ListPresence(t *testing.T) {
 	r := NewInProcSessionRegistry()
 
-	// user-a: two browser sessions (a second tab), both free -> available.
 	aTab1 := newFakeSession("s-a-web", "user-a", "ws-1")
 	aTab2 := newFakeSession("s-a-web2", "user-a", "ws-1")
-	// user-b: one browser session, on a call -> busy.
 	busyWeb := newFakeSession("s-b-web", "user-b", "ws-1")
 	busyWeb.active.Store(true)
-	// user-c: two browser sessions, one of them on a call -> busy. A person on a call
-	// on ANY session is busy; an idle second tab must not mask an in-progress call.
 	cWeb := newFakeSession("s-c-web", "user-c", "ws-1")
 	cWeb2 := newFakeSession("s-c-web2", "user-c", "ws-1")
 	cWeb2.active.Store(true)
@@ -97,8 +93,6 @@ func TestInProcSessionRegistry_ListPresence(t *testing.T) {
 		t.Fatalf("user-c = %+v, want busy: on a call on one session even with an idle second tab", c)
 	}
 
-	// ListBrowserSessions is the push target: EVERY session, so a member's second tab
-	// is not skipped by a one-representative-per-member fan-out.
 	if browsers := r.ListBrowserSessions("ws-1"); len(browsers) != 5 {
 		t.Fatalf("ListBrowserSessions = %d, want all 5 sessions", len(browsers))
 	}
@@ -172,8 +166,6 @@ func TestInProcSessionRegistry_ListAvailableExcludesReserved(t *testing.T) {
 	_, _ = r.Register(a)
 	_, _ = r.Register(b)
 
-	// A reserved (ringing) agent has no attached call yet, but must drop out of the
-	// availability pool so no concurrent flow rings it a second time.
 	if !a.Reserve("offer-1") {
 		t.Fatal("Reserve should succeed on an idle session")
 	}
@@ -186,7 +178,6 @@ func TestInProcSessionRegistry_ListAvailableExcludesReserved(t *testing.T) {
 		t.Fatalf("ListAvailable must exclude the reserved session; got %v", got)
 	}
 
-	// Releasing returns it to the pool.
 	a.Release("offer-1")
 	if got := len(r.ListAvailable("ws-1")); got != 2 {
 		t.Fatalf("after release ListAvailable = %d, want 2", got)
@@ -194,12 +185,10 @@ func TestInProcSessionRegistry_ListAvailableExcludesReserved(t *testing.T) {
 }
 
 func TestInProcSessionRegistry_ListAvailableOneHumanOneCall(t *testing.T) {
-	// A member holding two browser sessions who is on a call on ONE of them is busy:
-	// an idle second tab must not make them offerable. "One human = one call".
 	r := NewInProcSessionRegistry()
 	idleTab := newFakeSession("m-web", "user-m", "ws-1")
 	busyTab := newFakeSession("m-web2", "user-m", "ws-1")
-	busyTab.active.Store(true) // on a call in this tab; the other one is idle
+	busyTab.active.Store(true)
 	_, _ = r.Register(idleTab)
 	_, _ = r.Register(busyTab)
 
@@ -210,7 +199,6 @@ func TestInProcSessionRegistry_ListAvailableOneHumanOneCall(t *testing.T) {
 		}
 		t.Fatalf("member busy on one session must be excluded from ListAvailable even with a free tab; got %v", got)
 	}
-	// They still appear in ListAll, represented by the busy session.
 	all := r.ListAll("ws-1")
 	if len(all) != 1 || all[0].ID() != "m-web2" {
 		t.Fatalf("ListAll should surface the member via the busy session; got %+v", all)

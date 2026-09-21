@@ -8,10 +8,8 @@ import (
 )
 
 type InboxAssignment struct {
-	ID          string `gorm:"primaryKey;type:text"`
-	WorkspaceID string `gorm:"type:uuid;not null;index:idx_inbox_assign_workspace;index:idx_inbox_assign_ws_user_type,priority:1"`
-	// Nullable: a manual owner-assign (and any voice entry) has no business phone,
-	// so this must be NULL, an empty string is not a valid uuid (SQLSTATE 22P02).
+	ID              string    `gorm:"primaryKey;type:text"`
+	WorkspaceID     string    `gorm:"type:uuid;not null;index:idx_inbox_assign_workspace;index:idx_inbox_assign_ws_user_type,priority:1"`
 	BusinessPhoneID *string   `gorm:"type:uuid;default:null;index:idx_inbox_assign_phone"`
 	EntryID         string    `gorm:"type:uuid;not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_user_entry,priority:2"`
 	EntryType       string    `gorm:"type:varchar(20);not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_ws_user_type,priority:3"`

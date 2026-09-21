@@ -9,10 +9,6 @@ import (
 	"vozko/domain/whatsapp/template"
 )
 
-// createMockWAClient embeds the full client mock and captures the
-// CreateTemplate input so we can assert exactly what parameter_format the use
-// case forwards to Meta, the field whose absence caused named templates to be
-// rejected with INVALID_FORMAT.
 type createMockWAClient struct {
 	syncTemplatesClientMock
 	createInput  *conversation.CreateTemplateInput
@@ -27,10 +23,6 @@ func (m *createMockWAClient) CreateTemplate(_ context.Context, input conversatio
 	return &conversation.CreateTemplateOutput{ID: "ext-created", Status: "PENDING"}, nil
 }
 
-// fakeSetHeaderMediaUC stands in for the reused SetTemplateHeaderMediaUseCase so
-// create tests can assert the WhatsApp media id is minted without hitting the
-// network. A default (no-op) instance leaves non-media tests unaffected, since
-// create only invokes it for a media header with a URL.
 type fakeSetHeaderMediaUC struct {
 	calls []template.SetTemplateHeaderMediaInput
 	err   error
@@ -74,9 +66,6 @@ func baseCreateInput(comps ...template.TemplateComponent) template.CreateTemplat
 	}
 }
 
-// Named placeholders ({{nome}}) must be sent to Meta with parameter_format=NAMED.
-// This is the exact defect: the app historically sent no parameter_format, so
-// Meta parsed the named placeholder as positional and rejected INVALID_FORMAT.
 func TestCreateTemplate_NamedParams_SendsNamedFormat(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -120,14 +109,12 @@ func TestCreateTemplate_NoParams_SendsPositionalFormat(t *testing.T) {
 	}
 }
 
-// The body is the source of truth: even if the client supplies a wrong/stale
-// ParameterFormat, the use case infers from the actual placeholders.
 func TestCreateTemplate_NamedParams_OverridesWrongClientFormat(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
 
 	in := baseCreateInput(namedBodyComponent())
-	in.ParameterFormat = "positional" // wrong on purpose
+	in.ParameterFormat = "positional"
 	_, err := uc.Execute(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -137,8 +124,6 @@ func TestCreateTemplate_NamedParams_OverridesWrongClientFormat(t *testing.T) {
 	}
 }
 
-// Mixing numbered ({{1}}) and named ({{nome}}) placeholders is rejected before
-// ever reaching Meta, it would otherwise come back as INVALID_FORMAT.
 func TestCreateTemplate_MixedFormat_Rejected(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -159,8 +144,6 @@ func TestCreateTemplate_MixedFormat_Rejected(t *testing.T) {
 	}
 }
 
-// A call-permission template with named params must also carry NAMED, and a
-// rejection reason from Meta must surface in the use-case output.
 func TestCreateTemplate_RejectedReason_Threaded(t *testing.T) {
 	client := &createMockWAClient{
 		createOutput: &conversation.CreateTemplateOutput{
@@ -189,11 +172,6 @@ func TestCreateTemplate_RejectedReason_Threaded(t *testing.T) {
 	}
 }
 
-// mediaHeaderMockClient captures the create payload and records whether the use
-// case uploaded the header media to a Resumable-Upload handle. wantsURL mirrors
-// the concrete client's TemplateHeaderMediaWantsURL: true for 360dialog (which
-// wants the public URL verbatim in header_handle), false for Meta (which wants an
-// uploaded handle).
 type mediaHeaderMockClient struct {
 	createMockWAClient
 	wantsURL    bool
@@ -231,10 +209,6 @@ func firstHeaderHandle(t *testing.T, in *conversation.CreateTemplateInput) strin
 	return ""
 }
 
-// 360dialog's channel-scoped template endpoint fetches the header media from the
-// URL itself and rejects an uploaded handle with 400 "it should be valid url
-// address". So for those channels the raw URL must be passed straight through in
-// header_handle, the use case must NOT upload it to a handle first.
 func TestCreateTemplate_Dialog360_MediaHeaderPassesURLThrough(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
 	client := &mediaHeaderMockClient{wantsURL: true}
@@ -252,8 +226,6 @@ func TestCreateTemplate_Dialog360_MediaHeaderPassesURLThrough(t *testing.T) {
 	}
 }
 
-// Meta's Graph endpoint requires a Resumable-Upload handle, so the URL must still
-// be uploaded and substituted for the Meta provider (no / false capability).
 func TestCreateTemplate_Meta_MediaHeaderUploadedToHandle(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
 	client := &mediaHeaderMockClient{wantsURL: false}
@@ -274,13 +246,9 @@ func TestCreateTemplate_Meta_MediaHeaderUploadedToHandle(t *testing.T) {
 	}
 }
 
-// A media-header template must have its WhatsApp media id minted at create time
-// (every campaign/workflow/tool send path attaches the header by id, not URL).
-// Create must delegate that to the shared SetTemplateHeaderMediaUseCase, keyed by
-// the persisted template id and the provided header URL.
 func TestCreateTemplate_MediaHeader_MintsMediaIDViaSetHeaderMedia(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
-	client := &mediaHeaderMockClient{wantsURL: true} // wantsURL avoids the network in processHeaderMediaURLs
+	client := &mediaHeaderMockClient{wantsURL: true}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
 	repo := &capturingTemplateRepo{}
 	setHeaderMedia := &fakeSetHeaderMediaUC{}
@@ -308,7 +276,6 @@ func TestCreateTemplate_MediaHeader_MintsMediaIDViaSetHeaderMedia(t *testing.T) 
 	}
 }
 
-// A non-media template must never trigger header-media minting.
 func TestCreateTemplate_NoMediaHeader_SkipsHeaderMediaMinting(t *testing.T) {
 	client := &createMockWAClient{}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
@@ -323,8 +290,6 @@ func TestCreateTemplate_NoMediaHeader_SkipsHeaderMediaMinting(t *testing.T) {
 	}
 }
 
-// capturingTemplateRepo records the persisted template so tests can assert what
-// actually landed in storage (the shared sendMockTemplateRepo.Create discards it).
 type capturingTemplateRepo struct {
 	sendMockTemplateRepo
 	created *template.Template
@@ -335,10 +300,6 @@ func (r *capturingTemplateRepo) Create(t *template.Template) error {
 	return nil
 }
 
-// 360dialog's channel-scoped create endpoint returns the status lowercased
-// ("pending"/"approved"/"rejected"). It must be normalised to the uppercase
-// domain constants, otherwise IsApproved/CanSend never recognise the template
-// and it can never be sent even after Meta approves it.
 func TestCreateTemplate_Dialog360LowercaseStatus_NormalizedToUppercase(t *testing.T) {
 	cases := []struct {
 		raw  string

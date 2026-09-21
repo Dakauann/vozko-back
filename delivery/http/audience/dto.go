@@ -6,14 +6,8 @@ import (
 	"vozko/domain/audience"
 )
 
-// Wire shapes. The front-end's lib/comment-analysis/types.ts mirrors these
-// one to one; a field added here is a field added there.
-
 type CommentResponse struct {
-	ID string `json:"id"`
-	// SubjectKind tells a client which half of this shape is populated: a
-	// comment carries stance and severity, a conversation carries disposition
-	// and attendance quality, and neither carries the other.
+	ID              string  `json:"id"`
 	SubjectKind     string  `json:"subjectKind"`
 	Source          string  `json:"source"`
 	AccountID       string  `json:"accountId"`
@@ -44,7 +38,6 @@ type CommentResponse struct {
 	Excerpt   string `json:"excerpt"`
 	Truncated bool   `json:"truncated"`
 
-	// Conversation subjects only.
 	Interest          string `json:"interest,omitempty"`
 	ProductInterest   string `json:"productInterest,omitempty"`
 	Disposition       string `json:"disposition,omitempty"`
@@ -80,13 +73,9 @@ func toCommentResponse(a *audience.Analysis) CommentResponse {
 	}
 }
 
-// StatsResponse is the live aggregate; Counters flatten into it.
 type StatsResponse struct {
 	audience.Counters
-	Topics []audience.TopicStat `json:"topics"`
-	// Subjects is what the conversations were about, ranked. Always an array,
-	// never null: a client that has to distinguish "no subjects" from "this
-	// field is missing" would branch on it everywhere.
+	Topics          []audience.TopicStat    `json:"topics"`
 	Subjects        []audience.SubjectCount `json:"subjects"`
 	AcceptanceScore int                     `json:"acceptanceScore"`
 }
@@ -107,7 +96,7 @@ func toStatsResponse(s *audience.Stats) StatsResponse {
 }
 
 type TrendPointResponse struct {
-	BucketDate      string `json:"bucketDate"` // YYYY-MM-DD, UTC
+	BucketDate      string `json:"bucketDate"`
 	AcceptanceScore int    `json:"acceptanceScore"`
 	audience.Counters
 }
@@ -117,27 +106,22 @@ func toTrendPoint(r *audience.Rollup) TrendPointResponse {
 }
 
 type AuthorResponse struct {
-	ID               string                `json:"id"`
-	Source           string                `json:"source"`
-	AccountID        string                `json:"accountId"`
-	AuthorExternalID string                `json:"authorExternalId"`
-	AuthorHandle     string                `json:"authorHandle,omitempty"`
-	FirstSeenAt      time.Time             `json:"firstSeenAt"`
-	LastSeenAt       time.Time             `json:"lastSeenAt"`
-	Counters         audience.Counters     `json:"counters"`
-	TopTopics        []audience.TopicCount `json:"topTopics"`
-	DerivedStance    string                `json:"derivedStance"`
-	// Reputation is the signed ledger the ranking sorts on: negative means the
-	// author has cost more than they gave. Sent alongside the raw counters so
-	// the client shows the score without re-deriving (and re-inventing) it.
-	Reputation int `json:"reputation"`
-	// Role is the §5 inference, sent WITH its evidence: a client that received
-	// only a label would have no way to present it as the inference it is.
-	Role            audience.AuthorRoleInference `json:"role"`
-	RoleDisplayable bool                         `json:"roleDisplayable"`
-	IsFlagged       bool                         `json:"isFlagged"`
-	ModerationState string                       `json:"moderationState"`
-	UpdatedAt       time.Time                    `json:"updatedAt"`
+	ID               string                       `json:"id"`
+	Source           string                       `json:"source"`
+	AccountID        string                       `json:"accountId"`
+	AuthorExternalID string                       `json:"authorExternalId"`
+	AuthorHandle     string                       `json:"authorHandle,omitempty"`
+	FirstSeenAt      time.Time                    `json:"firstSeenAt"`
+	LastSeenAt       time.Time                    `json:"lastSeenAt"`
+	Counters         audience.Counters            `json:"counters"`
+	TopTopics        []audience.TopicCount        `json:"topTopics"`
+	DerivedStance    string                       `json:"derivedStance"`
+	Reputation       int                          `json:"reputation"`
+	Role             audience.AuthorRoleInference `json:"role"`
+	RoleDisplayable  bool                         `json:"roleDisplayable"`
+	IsFlagged        bool                         `json:"isFlagged"`
+	ModerationState  string                       `json:"moderationState"`
+	UpdatedAt        time.Time                    `json:"updatedAt"`
 }
 
 func toAuthorResponse(a *audience.AuthorStats) AuthorResponse {
@@ -168,22 +152,16 @@ type ModerationRequest struct {
 	State string `json:"state"`
 }
 
-// EscalateRequest forwards one comment. The recipient is opaque here: whatever
-// channel the workspace escalates on is the only thing that resolves it.
 type EscalateRequest struct {
 	RecipientID   string `json:"recipientId"`
 	RecipientKind string `json:"recipientKind,omitempty"`
 	Note          string `json:"note,omitempty"`
 }
 
-// ReplyRequest publishes an answer the operator has read. The text is theirs,
-// whether they wrote it or edited a draft: nothing re-drafts at send time.
 type ReplyRequest struct {
 	Text string `json:"text"`
 }
 
-// EscalationResponse echoes what was actually sent, so the UI can show the
-// message rather than reassembling it and showing something slightly different.
 type EscalationResponse struct {
 	CommentID string `json:"commentId"`
 	Author    string `json:"author"`
@@ -226,7 +204,6 @@ func toSettingsResponse(s *audience.Settings) SettingsResponse {
 	}
 }
 
-// SettingsRequest is a PATCH-shaped update: absent fields are untouched.
 type SettingsRequest struct {
 	Enabled           *bool                 `json:"enabled,omitempty"`
 	Model             *string               `json:"model,omitempty"`
@@ -276,10 +253,6 @@ func toBackfillResponse(b *audience.Backfill) BackfillResponse {
 	}
 }
 
-// ---- per-post settings ----
-
-// ContainerOverrideRequest is PUT-shaped: it replaces the post's override.
-// A null or absent field means "inherit from the account".
 type ContainerOverrideRequest struct {
 	Enabled           *bool             `json:"enabled"`
 	Model             *string           `json:"model"`
@@ -298,8 +271,6 @@ type ContainerOverrideResponse struct {
 	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
-// ContainerSettingsResponse is what the post editor renders: the override as
-// stored (absent when the post inherits everything) and the effective result.
 type ContainerSettingsResponse struct {
 	Override  *ContainerOverrideResponse `json:"override,omitempty"`
 	Effective SettingsResponse           `json:"effective"`
@@ -321,11 +292,6 @@ func toContainerSettingsResponse(cs *audience.ContainerSettings) ContainerSettin
 	return out
 }
 
-// AuthorContainerResponse is one post an author has commented on (§2).
-//
-// `comments` is deliberately named for what we actually know: comments. Likes
-// and other interactions are not in the webhook and are not stored, so nothing
-// here may be presented as "interactions".
 type AuthorContainerResponse struct {
 	Source      string `json:"source"`
 	AccountID   string `json:"accountId"`
@@ -358,8 +324,6 @@ func toAuthorContainerResponse(c *audience.AuthorContainer) AuthorContainerRespo
 	}
 }
 
-// AuthorContainersResponse is the author plus the page of posts, so the panel
-// heading and the list arrive together.
 type AuthorContainersResponse struct {
 	Author     AuthorResponse            `json:"author"`
 	Containers []AuthorContainerResponse `json:"containers"`

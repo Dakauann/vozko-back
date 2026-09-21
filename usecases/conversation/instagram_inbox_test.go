@@ -10,8 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// fakeInstagramContacts is a stand-in for the Instagram repositories behind the
-// sender-identity port.
 type fakeInstagramContacts struct {
 	byID     map[string]InstagramContactDisplay
 	byConv   map[string]string
@@ -34,7 +32,6 @@ func (f *fakeInstagramContacts) ContactsByIDs(_ context.Context, ids []string) (
 	return out, nil
 }
 
-// No group conversations on this channel, so nobody is ever resolved here.
 func (f *fakeInstagramContacts) AuthorsByHandle(context.Context, string, []string) (map[string]InstagramContactDisplay, error) {
 	return nil, nil
 }
@@ -67,13 +64,9 @@ func TestHydrateInstagramSenders(t *testing.T) {
 	svc.SetInstagramContacts(igContactsFixture())
 
 	entries := []conversation.InboxEntry{
-		// Enriched profile: name + handle + avatar.
 		{EntryID: "conv-1", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-1"},
-		// Handle only (profile not enriched yet): the handle stands in for the name.
 		{EntryID: "conv-2", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-2"},
-		// Nothing known: must still render a usable label rather than blank.
 		{EntryID: "conv-3", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-3"},
-		// A WhatsApp row must be left exactly as it was.
 		{EntryID: "wa-1", EntryType: string(shared.EntryTypeWhatsApp), LeadID: "lead-9", LeadName: "Lead Nine", LeadNumber: "+5511999999999"},
 	}
 
@@ -88,8 +81,6 @@ func TestHydrateInstagramSenders(t *testing.T) {
 	if entries[0].LeadPicture != "https://cdn/avatar1.jpg" {
 		t.Errorf("entry 0 picture = %q", entries[0].LeadPicture)
 	}
-	// The last-message sender label was empty before hydration, so it adopts the
-	// contact, otherwise the inbox row shows a message with no author.
 	if entries[0].LastMessageSender != "Maria Silva" {
 		t.Errorf("entry 0 sender = %q, want %q", entries[0].LastMessageSender, "Maria Silva")
 	}
@@ -131,13 +122,11 @@ func TestHydrateInstagramSendersDegradesGracefully(t *testing.T) {
 		{EntryID: "conv-1", EntryType: string(shared.EntryTypeInstagram), LeadID: "contact-1"},
 	}
 
-	// No lookup wired: must not panic, and must leave the row untouched.
 	(&HistoryProviderService{}).hydrateContactSenders(entries)
 	if entries[0].LeadName != "" {
 		t.Errorf("expected no hydration without lookup, got %q", entries[0].LeadName)
 	}
 
-	// A failing lookup must never break the inbox listing.
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(&fakeInstagramContacts{err: errors.New("db down")})
 	svc.hydrateContactSenders(entries)
@@ -161,14 +150,11 @@ func TestGetEntryInfoInstagram(t *testing.T) {
 		t.Error("automation should default to enabled")
 	}
 
-	// Without the port the header cannot be resolved; an error is correct, a
-	// silent blank header is not.
 	if _, _, _, _, _, _, err := (&HistoryProviderService{}).GetEntryInfo("conv-1", string(shared.EntryTypeInstagram)); err == nil {
 		t.Error("expected an error when the contact lookup is not configured")
 	}
 }
 
-// fakeWindowAdapter is a minimal ChannelAdapter that reports a fixed window.
 type fakeWindowAdapter struct {
 	entryType  shared.EntryType
 	open       bool
@@ -200,8 +186,6 @@ func (a *fakeWindowAdapter) SendMedia(_ context.Context, _ *conversation.EntryCo
 	return &conversation.SendOutcome{}, nil
 }
 
-// The composer reads this window state; if it reported closed for Instagram the
-// operator could not reply even inside the 24h window.
 func TestGetWindowStatusForEntryUsesChannelAdapter(t *testing.T) {
 	expires := time.Now().Add(12 * time.Hour).UTC()
 	svc := &HistoryProviderService{}
@@ -222,14 +206,12 @@ func TestGetWindowStatusForEntryUsesChannelAdapter(t *testing.T) {
 }
 
 func TestGetWindowStatusForEntryClosedWithoutAdapter(t *testing.T) {
-	// No adapter registered: a channel we cannot evaluate must fail closed.
 	window := (&HistoryProviderService{}).GetWindowStatusForEntry("conv-1", string(shared.EntryTypeInstagram))
 	open, expiresAt := window.Open, window.ExpiresAt
 	if open || expiresAt != nil {
 		t.Errorf("expected a closed window without an adapter, got open=%v expiresAt=%v", open, expiresAt)
 	}
 
-	// A resolve failure must also fail closed rather than claim the window is open.
 	svc := &HistoryProviderService{}
 	svc.SetChannelAdapters(conversation.NewAdapterRegistry(&fakeWindowAdapter{
 		entryType:  shared.EntryTypeInstagram,
@@ -240,9 +222,6 @@ func TestGetWindowStatusForEntryClosedWithoutAdapter(t *testing.T) {
 	if unresolved.Open {
 		t.Error("expected a closed window when the entry cannot be resolved")
 	}
-	// An unresolvable entry is a REMOVED account or number, not a clock. Saying
-	// so is what stopped the composer claiming a 24h window on a channel that
-	// has none.
 	if unresolved.Reason != conversation.WindowReasonChannelUnavailable {
 		t.Errorf("reason = %q, want channel_unavailable", unresolved.Reason)
 	}

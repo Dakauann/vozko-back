@@ -29,8 +29,6 @@ func sampleRequest(n int) ca.ClassifyRequest {
 	}
 }
 
-// T-32. The adapter logs CRITICAL REVENUE LEAK for a call without a
-// workspace; this is the test that makes that impossible from here.
 func TestClassifier_SetsEveryProviderGuard(t *testing.T) {
 	svc := &fakeAI{Output: &ai.GenerateOutput{
 		Message: ai.Message{Role: ai.RoleAssistant, Content: `{"results":[]}`}, FinishReason: "stop",
@@ -104,8 +102,6 @@ func TestClassifier_FallsBackToDefaultModel(t *testing.T) {
 	}
 }
 
-// "length" is returned unparsed, with usage, so the engine can bill the
-// truncated call and halve.
 func TestClassifier_LengthIsNotParsed(t *testing.T) {
 	svc := &fakeAI{Output: &ai.GenerateOutput{
 		Message: ai.Message{Content: `{"results":[{"ref":1,"sen`}, FinishReason: "length",
@@ -136,8 +132,6 @@ func TestClassifier_ParsesFencedAndPlainJSON(t *testing.T) {
 	}
 }
 
-// Garbage is an error WITH the usage attached, so the batch is still
-// recorded and billed.
 func TestClassifier_GarbageIsAnErrorWithUsage(t *testing.T) {
 	svc := &fakeAI{Output: &ai.GenerateOutput{Message: ai.Message{Content: "Claro! Aqui está a análise:"}, FinishReason: "stop",
 		Usage: ai.Usage{PromptTokens: 50, CompletionTokens: 9}}}
@@ -157,4 +151,3 @@ func TestClassifier_ProviderErrorHasNoResult(t *testing.T) {
 		t.Fatalf("provider error: res=%+v err=%v", res, err)
 	}
 }
-

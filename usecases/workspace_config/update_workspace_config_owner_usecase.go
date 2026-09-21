@@ -51,10 +51,6 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 	if input.AutoCloseMaxAgeAfterHours != nil {
 		existing.AutoCloseMaxAgeAfterHours = wsc.ClampAutoCloseMaxAgeHours(*input.AutoCloseMaxAgeAfterHours)
 	}
-	// An unknown mode or an out-of-range window is normalized, not rejected —
-	// the same treatment the auto-close hours above get. The response echoes
-	// what was stored, so the UI shows the value that will actually be used
-	// rather than the one that was typed.
 	if input.RouletteMode != nil {
 		existing.RouletteMode = wsc.NormalizeRouletteMode(*input.RouletteMode)
 	}
@@ -68,11 +64,6 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 		existing.RouletteRescueAfterMinutes = wsc.ClampRouletteRescueMinutes(*input.RouletteRescueAfterMinutes)
 	}
 
-	// Working hours are REJECTED rather than normalized, unlike every field
-	// above. A window an admin cannot see is not a value that can be clamped
-	// into something sensible — silently rewriting "22:00-02:00" into some
-	// nearby legal thing would change who gets conversations at 1am without
-	// anyone being told. The error carries which rule was broken.
 	switch {
 	case input.ClearWorkingHours:
 		existing.WorkingHours = nil

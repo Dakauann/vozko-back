@@ -37,13 +37,6 @@ func (r *builderWARepo) FindByIDs(ids []string) ([]*wce.WhatsAppCampaignEntry, e
 	return r.entries, nil
 }
 
-// The drift the two copies had already accumulated.
-//
-// The campaign-scoped copy decided whether to load WhatsApp entries from the
-// REQUEST's entry type; the workspace-wide one decided per row. Those agree
-// only while a page holds a single channel, which the workspace-wide page never
-// does — and asking the WhatsApp repository for a Telegram conversation id is a
-// query that can only return nothing.
 func TestBuildInboxEntries_WhatsAppLookupIsPerRowNotPerRequest(t *testing.T) {
 	wa := &builderWARepo{}
 	svc := &HistoryProviderService{
@@ -69,9 +62,6 @@ func TestBuildInboxEntries_WhatsAppLookupIsPerRowNotPerRequest(t *testing.T) {
 	}
 }
 
-// Leads are fetched once per page, deduplicated. A lead with several
-// conversations is common — the same person on the official and unofficial
-// numbers — and a lookup per row would make the inbox N+1.
 func TestBuildInboxEntries_LeadsAreBatchedAndDeduplicated(t *testing.T) {
 	leads := &builderLeadRepo{byID: map[string]*lead.Lead{
 		"lead-1": {ID: "lead-1", Name: "Ana", Number: "5511999999999"},
@@ -90,8 +80,6 @@ func TestBuildInboxEntries_LeadsAreBatchedAndDeduplicated(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("got %d entries, want 3", len(entries))
 	}
-	// Both rows for that lead carry the name; the row without a lead does not
-	// borrow one.
 	if entries[0].LeadName != "Ana" || entries[1].LeadName != "Ana" {
 		t.Errorf("lead name not applied to every row of that lead: %+v", entries[:2])
 	}
@@ -100,7 +88,6 @@ func TestBuildInboxEntries_LeadsAreBatchedAndDeduplicated(t *testing.T) {
 	}
 }
 
-// An empty page must not reach the repositories at all.
 func TestBuildInboxEntries_EmptyPageAsksNothing(t *testing.T) {
 	leads := &builderLeadRepo{byID: map[string]*lead.Lead{}}
 	wa := &builderWARepo{}
@@ -115,8 +102,6 @@ func TestBuildInboxEntries_EmptyPageAsksNothing(t *testing.T) {
 	}
 }
 
-// A lead lookup that fails costs names, never rows: the conversation still has
-// to render, and channels whose contacts carry their own name are unaffected.
 func TestBuildInboxEntries_LeadFailureStillRendersTheRows(t *testing.T) {
 	svc := &HistoryProviderService{
 		leadRepo:     &builderLeadRepo{byID: nil},

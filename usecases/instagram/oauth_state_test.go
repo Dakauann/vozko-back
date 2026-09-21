@@ -45,9 +45,6 @@ func TestEncodeDecodeState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestDecodeState_RejectsWrongSecret is the CSRF property: a state we did not
-// sign must never be accepted, because the callback trusts it to identify the
-// tenant.
 func TestDecodeState_RejectsWrongSecret(t *testing.T) {
 	encoded, err := EncodeState(validState(), testSecret)
 	if err != nil {
@@ -59,9 +56,6 @@ func TestDecodeState_RejectsWrongSecret(t *testing.T) {
 	}
 }
 
-// TestDecodeState_RejectsTamperedPayload: flipping the payload must invalidate
-// the signature, otherwise a caller could rewrite the workspace id and connect an
-// account into someone else's tenant.
 func TestDecodeState_RejectsTamperedPayload(t *testing.T) {
 	tampered, err := EncodeState(OAuthState{
 		WorkspaceID: "attacker-ws",
@@ -73,12 +67,10 @@ func TestDecodeState_RejectsTamperedPayload(t *testing.T) {
 		t.Fatalf("EncodeState: %v", err)
 	}
 
-	// Keep the attacker's payload, but present it to the real secret.
 	if _, err := DecodeState(tampered, testSecret); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("err = %v, want ErrInvalidState", err)
 	}
 
-	// Splice a valid signature onto a different payload.
 	valid, _ := EncodeState(validState(), testSecret)
 	parts := strings.SplitN(valid, ".", 2)
 	spliced := strings.SplitN(tampered, ".", 2)[0] + "." + parts[1]
@@ -150,9 +142,6 @@ func TestNewNonce_IsRandomAndNonEmpty(t *testing.T) {
 	}
 }
 
-// TestSafeReturnPath_BlocksOpenRedirects: the return path travels inside the
-// signed state, so a tenant admin (or anyone who can craft a start request) must
-// not be able to turn the callback into a redirect to another origin.
 func TestSafeReturnPath_BlocksOpenRedirects(t *testing.T) {
 	const fallback = "/dashboard/instagram-accounts"
 

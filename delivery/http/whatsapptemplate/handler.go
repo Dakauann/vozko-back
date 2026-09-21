@@ -376,24 +376,6 @@ func (h *WhatsAppTemplateHandler) Create(w http.ResponseWriter, r *http.Request)
 	response.WriteSuccess(w, http.StatusCreated, result)
 }
 
-// writeTemplateError turns a create/update failure into a response the UI can
-// act on: a stable code it translates, plus a message it can fall back to.
-//
-// Three classes, and they need different answers:
-//
-//   - our validation — the operator can fix it, 400, and the code names which
-//     rule so the UI shows the sentence in their language rather than the
-//     English one this codebase happens to be written in;
-//   - Meta refusing the template — also the operator's to fix, 422 because our
-//     request was well-formed, carrying Meta's own error_user_msg, which Meta
-//     already localises;
-//   - Meta unreachable or 5xx — ours, 502, and explicitly retryable, so the UI
-//     can say "try again" instead of "your template is wrong".
-//
-// The previous version had only two branches and put everything that was not a
-// hand-listed sentinel into a 500 whose message was "Failed to create template:"
-// concatenated with whatever Go string it received — including, for a Meta
-// rejection, the entire raw JSON envelope.
 func writeTemplateError(w http.ResponseWriter, err error) {
 	if whatsapptemplatedomain.IsValidationError(err) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest,
@@ -408,8 +390,6 @@ func writeTemplateError(w http.ResponseWriter, err error) {
 				"WhatsApp is temporarily unavailable. Please try again.", nil)
 			return
 		}
-		// Meta's own words, already in the operator's language. When Meta sent
-		// nothing usable we say so plainly rather than echoing a status code.
 		message := apiErr.UserMessage()
 		if message == "" {
 			message = "WhatsApp rejected this template but gave no reason."
@@ -571,18 +551,6 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 
 	result, err := h.createUseCase.Execute(input)
 	if err != nil {
-		// The SAME classifier the admin route uses.
-		//
-		// This route had its own, older handling: a hand-listed set of
-		// sentinels for 400 and everything else as a 500 whose message was
-		// "Failed to create template: " plus whatever Go string arrived. For a
-		// Meta rejection that meant the operator saw
-		// "http=400 code=100 subcode=2388024 ... Invalid parameter" while Meta
-		// had actually sent "Já existe conteúdo em Portuguese (BR) para esse
-		// modelo" — the sentence that says what to do.
-		//
-		// This is the route the product calls; the admin one is barely used.
-		// So the good errors existed and nobody could see them.
 		writeTemplateError(w, err)
 		return
 	}

@@ -16,19 +16,10 @@ type contactRepository struct {
 	db *gorm.DB
 }
 
-// NewContactRepository builds the Instagram contact repository.
 func NewContactRepository(db *gorm.DB) igdomain.ContactRepository {
 	return &contactRepository{db: db}
 }
 
-// FindOrCreate resolves a contact by (account, IGSID).
-//
-// Identity is account-scoped on purpose: an Instagram-scoped ID is unique only
-// within the (app, professional account) pair, so the same human legitimately has
-// a different IGSID on each connected account and must become a separate contact.
-//
-// The insert is an upsert on the unique index so two consumers racing on the same
-// first inbound message cannot create duplicates.
 func (r *contactRepository) FindOrCreate(ctx context.Context, workspaceID, igAccountID, igsid string) (*igdomain.Contact, error) {
 	existing, err := r.FindByIGSID(ctx, igAccountID, igsid)
 	if err == nil {
@@ -46,11 +37,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, workspaceID, igAcc
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "ig_account_id"}, {Name: "igsid"}},
-			// The unique index is PARTIAL (WHERE deleted_at IS NULL), because a soft-deleted
-			// row must not block re-creating the same contact. Postgres will not infer a
-			// partial index as the conflict arbiter unless the predicate is repeated here,
-			// a bare ON CONFLICT (cols) fails outright with 42P10 "no unique or exclusion
-			// constraint matching the ON CONFLICT specification".
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},
 			},
@@ -60,8 +46,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, workspaceID, igAcc
 		return nil, err
 	}
 
-	// OnConflict/DoNothing leaves RowsAffected at zero when another writer won
-	// the race, so re-read rather than trusting the returned row.
 	return r.FindByIGSID(ctx, igAccountID, igsid)
 }
 

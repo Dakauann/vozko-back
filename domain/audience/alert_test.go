@@ -26,8 +26,6 @@ func validRule() AlertRule {
 	return r
 }
 
-// ---- the vocabulary ----
-
 func TestAlertMetricIsAClosedSet(t *testing.T) {
 	for _, m := range AllAlertMetrics() {
 		if !m.Valid() {
@@ -41,9 +39,6 @@ func TestAlertMetricIsAClosedSet(t *testing.T) {
 	}
 }
 
-// Each metric carries its own direction. A count alarms when it RISES and a
-// score alarms when it FALLS, and asking an operator to pick the comparison is
-// asking them to configure an alert that can never fire.
 func TestAlertMetricDirectionIsNotConfigurable(t *testing.T) {
 	if AlertMetricAcceptanceScore.TriggersWhenBelow() != true {
 		t.Fatal("a falling acceptance score is the alarming direction")
@@ -58,9 +53,6 @@ func TestAlertMetricDirectionIsNotConfigurable(t *testing.T) {
 	}
 }
 
-// A per-comment metric is evaluated on the comment that just arrived; a
-// windowed one needs a span to count over. Mixing them up is the difference
-// between "avise quando alguém xingar" and "avise quando eu levar dez".
 func TestAlertMetricWindowing(t *testing.T) {
 	if AlertMetricCommentSeverity.IsWindowed() {
 		t.Fatal("severity is a property of one comment")
@@ -74,8 +66,6 @@ func TestAlertMetricWindowing(t *testing.T) {
 		}
 	}
 }
-
-// ---- validation ----
 
 func TestAlertRuleValidate(t *testing.T) {
 	cases := map[string]struct {
@@ -109,9 +99,6 @@ func TestAlertRuleValidate(t *testing.T) {
 	}
 }
 
-// The official channel spends money on a template, so it cannot be configured
-// half way: a rule with no template would fail at the moment it mattered, in
-// the middle of an incident.
 func TestAlertRuleOfficialChannelNeedsItsTemplate(t *testing.T) {
 	r := validRule()
 	r.Channel = AlertChannelOfficial
@@ -128,8 +115,6 @@ func TestAlertRuleOfficialChannelNeedsItsTemplate(t *testing.T) {
 	}
 }
 
-// The unofficial channel picks the workspace's own connected number when none
-// is named, the same way the inbox seeding does, so it needs nothing extra.
 func TestAlertRuleUnofficialChannelNeedsNothingExtra(t *testing.T) {
 	r := validRule()
 	r.InstanceID = ""
@@ -145,9 +130,6 @@ func TestAlertRuleWindowedMetricNeedsAWindow(t *testing.T) {
 	r.Threshold = 5
 	r.WindowMinutes = 0
 	r.Normalize()
-	// Normalize fills a sane default rather than refusing, because "nos
-	// últimos X minutos" has an obvious answer and an error here would only
-	// teach the operator to type 60.
 	if r.WindowMinutes != DefaultAlertWindowMinutes {
 		t.Fatalf("window = %d, want the default", r.WindowMinutes)
 	}
@@ -162,9 +144,6 @@ func TestAlertRuleWindowedMetricNeedsAWindow(t *testing.T) {
 	}
 }
 
-// THE safety property. A rule that could fire on every batch would turn one bad
-// afternoon into a thousand WhatsApp messages, so the floor is enforced by
-// Normalize and cannot be configured away.
 func TestAlertRuleCooldownAndCapAreFloored(t *testing.T) {
 	r := validRule()
 	r.CooldownMinutes = 0
@@ -189,10 +168,8 @@ func TestAlertRuleCooldownAndCapAreFloored(t *testing.T) {
 	}
 }
 
-// ---- firing ----
-
 func TestAlertRuleFiresOnlyWhenTheThresholdIsCrossed(t *testing.T) {
-	r := validRule() // severity >= 80
+	r := validRule()
 	now := alertNow()
 
 	if r.ShouldFire(79, now) {
@@ -206,7 +183,6 @@ func TestAlertRuleFiresOnlyWhenTheThresholdIsCrossed(t *testing.T) {
 	}
 }
 
-// A score alarms on the way DOWN.
 func TestAlertRuleFiresBelowForAcceptanceScore(t *testing.T) {
 	r := validRule()
 	r.Metric = AlertMetricAcceptanceScore
@@ -233,7 +209,6 @@ func TestAlertRuleDisabledNeverFires(t *testing.T) {
 	}
 }
 
-// The cooldown is what stops one incident becoming a flood.
 func TestAlertRuleRespectsTheCooldown(t *testing.T) {
 	r := validRule()
 	now := alertNow()
@@ -251,7 +226,6 @@ func TestAlertRuleRespectsTheCooldown(t *testing.T) {
 	}
 }
 
-// The daily cap is the backstop for a condition that persists all day.
 func TestAlertRuleRespectsTheDailyCap(t *testing.T) {
 	r := validRule()
 	now := alertNow()
@@ -263,15 +237,12 @@ func TestAlertRuleRespectsTheDailyCap(t *testing.T) {
 		t.Fatal("a rule that hit its daily cap stays quiet")
 	}
 
-	// Yesterday's tally does not count against today.
 	r.FiredDay = now.Add(-24 * time.Hour).Format(alertDayLayout)
 	if !r.ShouldFire(100, now) {
 		t.Fatal("the cap resets with the day")
 	}
 }
 
-// RegisterFire is what the caller applies after a successful send, and it has
-// to roll the day over rather than accumulate forever.
 func TestAlertRuleRegisterFire(t *testing.T) {
 	r := validRule()
 	now := alertNow()
@@ -296,8 +267,6 @@ func TestAlertRuleRegisterFire(t *testing.T) {
 	}
 }
 
-// ---- the message ----
-
 func alertObservation() AlertObservation {
 	return AlertObservation{
 		Metric:      AlertMetricCommentSeverity,
@@ -312,8 +281,6 @@ func alertObservation() AlertObservation {
 	}
 }
 
-// The recipient is being woken up by a machine, so the message has to say what
-// happened, how bad, and where, without them opening anything.
 func TestAlertMessageCarriesTheReason(t *testing.T) {
 	r := validRule()
 	msg := NewAlert(r, alertObservation(), alertNow()).Message()
@@ -328,8 +295,6 @@ func TestAlertMessageCarriesTheReason(t *testing.T) {
 	}
 }
 
-// A windowed alert has no single comment behind it, and the message must not
-// pretend otherwise.
 func TestAlertMessageForAWindowedMetric(t *testing.T) {
 	r := validRule()
 	r.Metric = AlertMetricHostileCount
@@ -348,8 +313,6 @@ func TestAlertMessageForAWindowedMetric(t *testing.T) {
 	}
 }
 
-// The official channel sends a TEMPLATE, so the same facts have to survive as
-// ordered parameters. Templates reject empty parameters, so none may be blank.
 func TestAlertTemplateParamsAreOrderedAndNonEmpty(t *testing.T) {
 	alert := NewAlert(validRule(), alertObservation(), alertNow())
 	params := alert.TemplateParams()
@@ -361,7 +324,6 @@ func TestAlertTemplateParamsAreOrderedAndNonEmpty(t *testing.T) {
 		if strings.TrimSpace(p) == "" {
 			t.Fatalf("param %d is empty, which WhatsApp rejects: %v", i, params)
 		}
-		// A newline inside a template parameter is rejected too.
 		if strings.ContainsAny(p, "\n\t") {
 			t.Fatalf("param %d contains a control character: %q", i, p)
 		}
@@ -371,7 +333,6 @@ func TestAlertTemplateParamsAreOrderedAndNonEmpty(t *testing.T) {
 	}
 }
 
-// A windowed alert has no comment, and the parameters still cannot be blank.
 func TestAlertTemplateParamsSurviveAMissingComment(t *testing.T) {
 	r := validRule()
 	r.Metric = AlertMetricCommentVolume
@@ -386,8 +347,6 @@ func TestAlertTemplateParamsSurviveAMissingComment(t *testing.T) {
 	}
 }
 
-// The idempotency key must be stable for one firing and different for the
-// next, so a retry cannot double-send and tomorrow's alert is not swallowed.
 func TestAlertIdempotencyKey(t *testing.T) {
 	r := validRule()
 	now := alertNow()

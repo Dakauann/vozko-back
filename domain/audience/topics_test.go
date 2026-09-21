@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// Topics are a CLOSED set per account (§5.2). Free-text topics drift into
-// hundreds of near-duplicates within a week; a closed set is the only thing
-// that makes the cluster view aggregatable.
-
 func TestNormalizeTopicKey(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"Saúde Pública", "saude-publica"},
@@ -29,8 +25,6 @@ func TestNormalizeTopicKey(t *testing.T) {
 	}
 }
 
-// "Saúde Pública" and "saude publica" are one topic. This is the test the
-// plan names: accents must not fork a topic.
 func TestNormalizeTopicKey_CollapsesAccents(t *testing.T) {
 	if NormalizeTopicKey("Saúde Pública") != NormalizeTopicKey("saude publica") {
 		t.Fatal("accented and unaccented spellings must normalise to one key")
@@ -44,19 +38,15 @@ func TestOtherTopic(t *testing.T) {
 	}
 }
 
-// "other" is the pressure valve and must always be present, whatever the
-// operator saved.
 func TestTopicSet_NormalizeAlwaysHasOther(t *testing.T) {
 	ts := TopicSet{{Key: "saude", Label: "Saúde"}}
 	ts = ts.Normalize()
 	if !ts.Has(TopicKeyOther) {
 		t.Fatal("normalised set must contain other")
 	}
-	// Placed last, so the model reads the real topics first.
 	if ts[len(ts)-1].Key != TopicKeyOther {
 		t.Fatalf("other should be last, got %+v", ts)
 	}
-	// And only once, even if the operator added it themselves.
 	ts = TopicSet{OtherTopic(), {Key: "saude", Label: "Saúde"}, {Key: "Other", Label: "Outros"}}.Normalize()
 	if n := ts.count(TopicKeyOther); n != 1 {
 		t.Fatalf("other appears %d times, want 1", n)
@@ -71,7 +61,7 @@ func TestTopicSet_NormalizeDedupesAndFolds(t *testing.T) {
 		{Key: "asfalto", Label: "  Asfalto  ", Description: " buracos "},
 	}.Normalize()
 
-	if len(ts) != 3 { // saude-publica, asfalto, other
+	if len(ts) != 3 {
 		t.Fatalf("expected 3 topics, got %+v", ts)
 	}
 	if ts[0].Key != "saude-publica" || ts[0].Label != "Saúde Pública" {
@@ -107,7 +97,6 @@ func TestTopicSet_Validate(t *testing.T) {
 	}
 }
 
-// Resolve accepts the key, the label, or any spelling that folds to either.
 func TestTopicSet_Resolve(t *testing.T) {
 	ts := DefaultTopicsFor(VerticalGov)
 	for _, in := range []string{"saude", "Saúde", "SAUDE", " saude "} {
@@ -142,7 +131,6 @@ func TestDefaultTopicsFor(t *testing.T) {
 			}
 		}
 	}
-	// An unknown vertical still yields a usable set rather than nothing.
 	if ts := DefaultTopicsFor("nope"); !ts.Has(TopicKeyOther) {
 		t.Error("unknown vertical must fall back to a valid set")
 	}

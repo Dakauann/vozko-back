@@ -14,7 +14,6 @@ import (
 	"vozko/infra/meta"
 )
 
-// ListCommentsInput is one page of comments on a post.
 type ListCommentsInput struct {
 	WorkspaceID string
 	AccountID   string
@@ -23,12 +22,6 @@ type ListCommentsInput struct {
 	After       string
 }
 
-// ListCommentsUseCase lists comments with their replies expanded.
-//
-// Graph caps this edge at 50 per query, returns only top-level comments unless
-// `replies` is field-expanded, and cannot be filtered by timestamp, so this is a
-// live paginated read, and the local mirror is kept current from webhooks rather
-// than by polling.
 type ListCommentsUseCase struct {
 	accountResolver
 	comments     igdomain.CommentService
@@ -68,11 +61,6 @@ func (uc *ListCommentsUseCase) Execute(ctx context.Context, in ListCommentsInput
 	for _, c := range page.Items {
 		replies += len(c.Replies)
 	}
-	// Logged because a media object's comments_count can legitimately exceed what
-	// this edge returns: it counts every comment, while the edge returns only
-	// top-level ones and additionally applies privacy filtering (a commenter with a
-	// private or restricted account is omitted). A visible mismatch is expected
-	// behaviour, not necessarily a fault, this line is how to tell them apart.
 	log.Printf("[instagram] list comments account=@%s media=%s -> %d top-level + %d replies (hasNext=%t cursor=%t)",
 		account.Username, in.IGMediaID, len(page.Items), replies, page.HasNext, page.NextCursor != "")
 
@@ -80,8 +68,6 @@ func (uc *ListCommentsUseCase) Execute(ctx context.Context, in ListCommentsInput
 	return page, nil
 }
 
-// mirror keeps the local projection current so the moderation view has data even
-// when the read budget is exhausted. Best effort by design.
 func (uc *ListCommentsUseCase) mirror(ctx context.Context, account *igdomain.Account, igMediaID string, items []*igdomain.RemoteComment) {
 	if uc.commentsRepo == nil || len(items) == 0 {
 		return
@@ -105,7 +91,6 @@ func (uc *ListCommentsUseCase) mirror(ctx context.Context, account *igdomain.Acc
 	}
 }
 
-// ReplyToCommentUseCase posts a public threaded reply.
 type ReplyToCommentUseCase struct {
 	accountResolver
 	comments     igdomain.CommentService
@@ -142,9 +127,6 @@ func (uc *ReplyToCommentUseCase) Execute(ctx context.Context, workspaceID, accou
 		return "", err
 	}
 
-	// Record our own reply immediately so the thread updates without waiting for
-	// the webhook, and so IsOurs is set correctly (it decides whether the reply
-	// can later be deleted).
 	if uc.commentsRepo != nil && newID != "" {
 		parent := igCommentID
 		mediaID := uc.parentMediaID(ctx, account, igCommentID)
@@ -178,17 +160,13 @@ func (uc *ReplyToCommentUseCase) parentMediaID(ctx context.Context, account *igd
 	return parent.IGMediaID
 }
 
-// ModerateCommentUseCase hides, unhides and deletes comments.
 type ModerateCommentUseCase struct {
 	accountResolver
 	comments     igdomain.CommentService
 	commentsRepo igdomain.CommentRepository
-	// audience tombstones a deleted comment's analysis. Optional.
-	audience AudienceEnqueuer
+	audience     AudienceEnqueuer
 }
 
-// SetCommentAnalysis attaches the comment-analysis engine so a deleted
-// comment leaves the feed and the live stats (its rollups are untouched).
 func (uc *ModerateCommentUseCase) SetCommentAnalysis(e AudienceEnqueuer) {
 	uc.audience = e
 }
@@ -205,10 +183,6 @@ func NewModerateCommentUseCase(
 	}
 }
 
-// SetHidden hides or unhides a comment.
-//
-// Hiding requires the MEDIA OWNER's token, which we have, so this is the
-// moderation action that works on anyone's comment, unlike deletion.
 func (uc *ModerateCommentUseCase) SetHidden(ctx context.Context, workspaceID, accountID, igCommentID string, hidden bool) error {
 	account, err := uc.resolve(ctx, workspaceID, accountID)
 	if err != nil {
@@ -229,11 +203,6 @@ func (uc *ModerateCommentUseCase) SetHidden(ctx context.Context, workspaceID, ac
 	return nil
 }
 
-// Delete removes a comment.
-//
-// Graph requires a token from the COMMENT CREATOR, so this only works for replies
-// we authored. Attempting it on someone else's comment would fail upstream, so it
-// is rejected here with a message that points at hiding instead.
 func (uc *ModerateCommentUseCase) Delete(ctx context.Context, workspaceID, accountID, igCommentID string) error {
 	account, err := uc.resolve(ctx, workspaceID, accountID)
 	if err != nil {
@@ -266,11 +235,6 @@ func (uc *ModerateCommentUseCase) Delete(ctx context.Context, workspaceID, accou
 	return nil
 }
 
-// SendPrivateReplyUseCase DMs the author of a public comment.
-//
-// Instagram permits exactly ONE private reply per comment, ever, and only within
-// 7 days. The allowance is claimed in Postgres BEFORE the HTTP call, so a retry
-// after an ambiguous timeout cannot silently burn it.
 type SendPrivateReplyUseCase struct {
 	accountResolver
 	messaging      igdomain.MessagingService
@@ -278,13 +242,9 @@ type SendPrivateReplyUseCase struct {
 	privateReplies igdomain.PrivateReplyRepository
 	contacts       igdomain.ContactRepository
 	conversations  igdomain.ConversationRepository
-	// history records the reply in the CRM transcript. Optional, but without it
-	// the conversation this reply opens stays invisible: the inbox lists only
-	// conversations that have a last message.
-	history conversation.MessageHistoryManager
+	history        conversation.MessageHistoryManager
 }
 
-// SetHistoryManager wires transcript recording for private replies.
 func (uc *SendPrivateReplyUseCase) SetHistoryManager(h conversation.MessageHistoryManager) {
 	uc.history = h
 }
@@ -312,7 +272,6 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 	if err != nil {
 		return err
 	}
-	// Private replies are gated by the COMMENTS scope, not a messaging scope.
 	if !account.CanManageComments() {
 		return fmt.Errorf("instagram account %s cannot send private replies (missing %s)",
 			account.Username, igdomain.ScopeManageComments)
@@ -324,7 +283,6 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 		return igdomain.ErrTextTooLong
 	}
 
-	// Enforce the 7-day window before spending the allowance.
 	if uc.commentsRepo != nil {
 		stored, err := uc.commentsRepo.FindByIGCommentID(ctx, account.ID, igCommentID)
 		if err == nil && stored != nil && stored.Timestamp != nil {
@@ -334,7 +292,6 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 		}
 	}
 
-	// Claim first. If this returns false the allowance is already gone.
 	claimed, err := uc.privateReplies.Claim(ctx, igCommentID, account.ID)
 	if err != nil {
 		return err
@@ -349,8 +306,6 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 		if apiErr, ok := meta.AsError(err); ok {
 			code = apiErr.Code
 		}
-		// The row deliberately stays claimed: we cannot know whether Meta
-		// processed the send, so handing the allowance back could double-send.
 		if markErr := uc.privateReplies.MarkFailed(ctx, igCommentID, code, err.Error()); markErr != nil {
 			log.Printf("[instagram] mark private reply failed comment=%s: %v", igCommentID, markErr)
 		}
@@ -361,20 +316,11 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 		log.Printf("[instagram] mark private reply sent comment=%s: %v", igCommentID, err)
 	}
 
-	// The response carries the commenter's IGSID, which is the handle needed for
-	// every subsequent normal DM, so the conversation is created now.
 	conv := uc.ensureConversation(ctx, account, result.RecipientID)
 	uc.recordInTranscript(ctx, account, conv, result, text)
 	return nil
 }
 
-// recordInTranscript writes the private reply into the CRM conversation.
-//
-// Without this the reply is delivered on Instagram but absent from the CRM, and
-// the conversation it opened does not appear in the inbox at all, the inbox
-// lists conversations by their last message, and this would be a conversation
-// with none. The operator would then meet the customer's answer with no record
-// of what was said to them.
 func (uc *SendPrivateReplyUseCase) recordInTranscript(
 	ctx context.Context,
 	account *igdomain.Account,

@@ -29,36 +29,21 @@ func (rlm *RateLimiterMiddleware) SkipPathPrefixes(prefixes ...string) *RateLimi
 	return rlm
 }
 
-// Named sets the limiter's label used in logs and the rate_limited_total metric
-// (e.g. "global", "login"), so rejections can be attributed to a specific limiter.
 func (rlm *RateLimiterMiddleware) Named(name string) *RateLimiterMiddleware {
 	rlm.name = name
 	return rlm
 }
 
-// WithMetrics wires the recorder that counts rejections by limiter, client IP and
-// reason. Safe to pass nil (metrics simply disabled).
 func (rlm *RateLimiterMiddleware) WithMetrics(rec metrics.RateLimitMetricsRecorder) *RateLimiterMiddleware {
 	rlm.metrics = rec
 	return rlm
 }
 
-// WithUserIdentity makes the limiter identity-aware: when the request carries a
-// valid auth token, it is limited per USER (its own budget); otherwise it falls
-// back to per-IP. This is the industry-standard split, rate-limit authenticated
-// traffic by stable identity, reserve per-IP for anonymous traffic, so that many
-// users behind one shared IP (an office NAT, or first-party SSR calls) each get an
-// independent budget instead of colliding on one per-IP bucket. Anonymous floods
-// (no/invalid token) still hit the per-IP path, so DoS protection is preserved.
 func (rlm *RateLimiterMiddleware) WithUserIdentity(fn func(*http.Request) (string, bool)) *RateLimiterMiddleware {
 	rlm.identifyUser = fn
 	return rlm
 }
 
-// UserFromToken builds an identity function for WithUserIdentity from the same
-// token verifier the auth middleware uses. It only checks the signature (not
-// revocation/version), enough to pick a stable per-user rate-limit key cheaply;
-// any revoked/expired token still gets rejected downstream by the auth middleware.
 func UserFromToken(verifier auth.TokenVerifier) func(*http.Request) (string, bool) {
 	return func(r *http.Request) (string, bool) {
 		token := tokenFromRequest(r)
@@ -73,8 +58,6 @@ func UserFromToken(verifier auth.TokenVerifier) func(*http.Request) (string, boo
 	}
 }
 
-// tokenFromRequest mirrors AuthMiddleware.Authenticate's extraction order:
-// Authorization: Bearer, then ?token=, then the accessToken cookie.
 func tokenFromRequest(r *http.Request) string {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		if parts := strings.Split(authHeader, " "); len(parts) == 2 && parts[0] == "Bearer" {
@@ -90,9 +73,6 @@ func tokenFromRequest(r *http.Request) string {
 	return ""
 }
 
-// observeRejection emits the structured log line (pinpoints the offending IP) and
-// increments the metric (powers the dashboard/alert). Kept in one place so both the
-// fail-closed and limit-exceeded branches report identically.
 func (rlm *RateLimiterMiddleware) observeRejection(r *http.Request, ip, reason string, retryAfter time.Duration) {
 	log.Printf("[rate-limit] REJECT limiter=%s ip=%s method=%s path=%s reason=%s retry_after=%s",
 		rlm.name, ip, r.Method, r.URL.Path, reason, retryAfter)
@@ -112,10 +92,6 @@ func (rlm *RateLimiterMiddleware) Validate(next http.Handler) http.Handler {
 
 		ip := getClientIP(r)
 
-		// Authenticated traffic is limited per user (its own budget); anonymous
-		// traffic falls back to per-IP. Keys are namespaced so a user id can never
-		// collide with an IP. The client IP is still what we log/meter, so the
-		// dashboard keeps pinpointing offending IPs regardless of the key used.
 		key := ip
 		if rlm.identifyUser != nil {
 			if uid, ok := rlm.identifyUser(r); ok {
@@ -149,12 +125,6 @@ func GetClientIP(r *http.Request) string {
 }
 
 func getClientIP(r *http.Request) string {
-	// CF-Connecting-IP is set authoritatively by Cloudflare and strips any
-	// client-supplied value, so it cannot be spoofed for traffic proxied through
-	// Cloudflare. Prefer it, then the reverse-proxy's X-Real-IP. We deliberately
-	// avoid trusting the FIRST X-Forwarded-For entry as the primary source, since
-	// that is attacker-controllable; it is kept only as a last-resort fallback so a
-	// proxy that sets neither header still yields a usable key.
 	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
 		return cf
 	}

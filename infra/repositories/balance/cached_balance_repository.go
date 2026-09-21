@@ -72,8 +72,6 @@ func (r *CachedBalanceRepository) GetByWorkspaceID(workspaceID string) (*balance
 	return r.inner.GetByWorkspaceID(workspaceID)
 }
 
-// ListWorkspacesBelowBalance is a cold-path query (a daily monitor), so it is not
-// cached; it delegates to the underlying repository when it supports the port.
 func (r *CachedBalanceRepository) ListWorkspacesBelowBalance(thresholdMicros int64) ([]balance.LowBalanceRow, error) {
 	lister, ok := r.inner.(balance.LowBalanceLister)
 	if !ok {
@@ -112,18 +110,6 @@ func (r *CachedBalanceRepository) AggregateDailyCosts(date time.Time) ([]balance
 	return r.inner.AggregateDailyCosts(date)
 }
 
-// chargeFlight collapses concurrent identical charge aggregations into one.
-//
-// The aggregation is seconds of work over two multi-gigabyte tables, and this
-// method had no coalescing at all: every caller ran its own copy. On
-// 2026-09-08 nine of them accumulated, each holding a core at 100%, and the
-// database stopped answering anything else — login included.
-//
-// Identical calls asking the same question at the same moment can only produce
-// the same answer, so the second one waits for the first instead of paying for
-// it again. This is the narrow fix: it does not cache across time (a charge
-// report must stay live), it only stops the same report being computed N times
-// in parallel, which is exactly the shape that piled up.
 var chargeFlight singleflight.Group
 
 func chargeFlightKey(f balance.WhatsAppChargeFilter) string {
@@ -139,8 +125,6 @@ func chargeFlightKey(f balance.WhatsAppChargeFilter) string {
 	if f.To != nil {
 		b.WriteString(f.To.UTC().Format(time.RFC3339))
 	}
-	// Sorted, because the same set of departments in a different order is the
-	// same question and must share a flight.
 	depts := append([]string(nil), f.DepartmentIDs...)
 	sort.Strings(depts)
 	for _, d := range depts {
@@ -166,9 +150,6 @@ func (r *CachedBalanceRepository) AggregateWhatsAppTemplateCharges(filter balanc
 	if stats == nil {
 		return &balance.WhatsAppChargeStats{}, nil
 	}
-	// A copy per caller: the value is shared between everyone who joined the
-	// flight, and handing out the same pointer would let one caller's mutation
-	// be seen by the others.
 	out := *stats
 	return &out, nil
 }

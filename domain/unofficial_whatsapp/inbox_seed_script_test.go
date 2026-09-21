@@ -29,9 +29,6 @@ func TestSeedScriptNormalizeTrimsAndDropsBlankBodies(t *testing.T) {
 	}
 }
 
-// An unset cap is the middle of the range rather than zero. Zero would be a
-// thread with no reply in it, which is the blank placeholder the operator
-// already had and did not tick this box for.
 func TestSeedScriptNormalizeDefaultsAndClampsTheMessageCap(t *testing.T) {
 	s := SeedScript{Bodies: []string{"Oi"}}
 	s.Normalize()
@@ -40,9 +37,6 @@ func TestSeedScriptNormalizeDefaultsAndClampsTheMessageCap(t *testing.T) {
 			s.MaxMessages, ScriptMinMessages, ScriptMaxMessages)
 	}
 
-	// Clamped rather than rejected: an out-of-range cap is a caller bug, and
-	// the operator's import should not fail over it when the nearest legal
-	// value is obvious.
 	over := SeedScript{Bodies: []string{"Oi"}, MaxMessages: 99}
 	over.Normalize()
 	if over.MaxMessages != ScriptMaxMessages {
@@ -55,9 +49,6 @@ func TestSeedScriptNormalizeDefaultsAndClampsTheMessageCap(t *testing.T) {
 	}
 }
 
-// The context is the operator's free text about what the business sells. It is
-// truncated rather than refused: it goes into a prompt, and a long paste should
-// cost the tail of a sentence, not the import.
 func TestSeedScriptNormalizeTruncatesTheContext(t *testing.T) {
 	s := SeedScript{Bodies: []string{"Oi"}, Context: strings.Repeat("a", MaxScriptContextRunes+500)}
 	s.Normalize()
@@ -89,9 +80,6 @@ func TestSeedScriptValidate(t *testing.T) {
 			ErrScriptBodyTooLong,
 		},
 		{
-			// The rule the whole variant set exists for: same count, different
-			// variables. The second body would render a raw "{{2}}" into a real
-			// CRM conversation.
 			"variants using different variables",
 			SeedScript{Bodies: []string{"Oi {{1}}", "Oi {{2}}"}, MaxMessages: 4},
 			ErrScriptVariantMismatch,
@@ -102,9 +90,6 @@ func TestSeedScriptValidate(t *testing.T) {
 			ErrScriptTooManyVariants,
 		},
 		{
-			// Validate runs on what a CALLER sent, which may not have been
-			// normalized. An out-of-range cap must be caught rather than let
-			// through to write a one-message or a fifty-message thread.
 			"a message cap outside the range",
 			SeedScript{Bodies: []string{"Oi"}, MaxMessages: 99},
 			ErrScriptMessageCountOutOfRange,
@@ -129,19 +114,14 @@ func manyBodies(n int) []string {
 	return out
 }
 
-// A nil script is not an invalid one. The field is optional on the request, and
-// "no script" has to be distinguishable from "a broken script".
 func TestSeedScriptNilIsSafe(t *testing.T) {
 	var s *SeedScript
-	s.Normalize() // must not panic
+	s.Normalize()
 	if err := s.Validate(); err != nil {
 		t.Fatalf("a nil script failed validation: %v", err)
 	}
 }
 
-// Which variant a person gets is keyed on their NUMBER, so a re-import gives
-// the same person the same opening line and "which text did this contact get"
-// is answerable from the row.
 func TestSeedScriptOpeningForIsDeterministicPerNumber(t *testing.T) {
 	s := SeedScript{
 		Bodies:      []string{"Oi {{1}}, variante A", "Oi {{1}}, variante B", "Oi {{1}}, variante C"},
@@ -168,9 +148,6 @@ func TestSeedScriptOpeningForRendersOnlyTheName(t *testing.T) {
 	s := SeedScript{Bodies: []string{"Oi {{1}}, aqui e a Ana. {{2}} segue aberto."}, MaxMessages: 4}
 	s.Normalize()
 	got := s.OpeningFor(SeedTarget{Number: "5511999999999", Name: "Marina"})
-	// {{1}} is the lead's name and the ONLY variable this feature supplies.
-	// Anything else is left as written, so a script asking for a column that
-	// does not exist is visibly wrong rather than silently blank.
 	if !strings.Contains(got, "Marina") || !strings.Contains(got, "{{2}}") {
 		t.Fatalf("opening = %q, want {{1}} rendered and {{2}} untouched", got)
 	}
@@ -187,14 +164,10 @@ func TestSeedScriptUsesName(t *testing.T) {
 	}
 }
 
-// AcceptTurns is the enforcement half of the cap. Whatever the model returned,
-// this decides what gets written.
 func TestAcceptTurnsCapsTheThreadIncludingTheOperatorsOpening(t *testing.T) {
 	s := SeedScript{Bodies: []string{"Oi"}, MaxMessages: 4}
 	s.Normalize()
 
-	// Six replies offered for a four-message thread. The opening counts as one,
-	// so three survive.
 	got := s.AcceptTurns([]ScriptTurn{
 		{FromLead: true, Text: "a"},
 		{FromLead: false, Text: "b"},
@@ -212,9 +185,6 @@ func TestAcceptTurnsEnforcesAlternationStartingWithTheLead(t *testing.T) {
 	s := SeedScript{Bodies: []string{"Oi"}, MaxMessages: 8}
 	s.Normalize()
 
-	// The model repeated our opening and then doubled the lead up. Both are
-	// dropped rather than relabelled: putting our words on the lead's side of a
-	// real CRM thread is worse than a shorter thread.
 	got := s.AcceptTurns([]ScriptTurn{
 		{FromLead: false, Text: "our opening again"},
 		{FromLead: true, Text: "lead one"},
@@ -275,15 +245,11 @@ func TestAcceptTurnsOnNothingReturnsNothing(t *testing.T) {
 	if got := s.AcceptTurns(nil); len(got) != 0 {
 		t.Fatalf("accepted %d turns from nothing", len(got))
 	}
-	// Every line unusable is the same as none. The caller falls back to a plain
-	// empty chat rather than writing a one-sided thread.
 	if got := s.AcceptTurns([]ScriptTurn{{FromLead: false, Text: "ours"}}); len(got) != 0 {
 		t.Fatalf("accepted %d turns where none alternated correctly", len(got))
 	}
 }
 
-// The schema is what makes the model's answer parseable at all. It is rendered
-// for a given cap so the model is told the limit as well as asked for it.
 func TestScriptResponseSchemaDeclaresTheThreadShape(t *testing.T) {
 	schema := ScriptResponseSchema(3)
 	if schema["additionalProperties"] != false {
@@ -304,9 +270,6 @@ func TestScriptResponseSchemaDeclaresTheThreadShape(t *testing.T) {
 	item := threads["items"].(map[string]any)
 	itemProps := item["properties"].(map[string]any)
 	turns := itemProps["turns"].(map[string]any)
-	// The cap is IN the schema, not only in the prose: a strict-schema provider
-	// enforces maxItems, which is one more thing standing between the model and
-	// a thread nobody asked for.
 	if turns["maxItems"] != 3 {
 		t.Errorf("turns maxItems = %v, want 3", turns["maxItems"])
 	}

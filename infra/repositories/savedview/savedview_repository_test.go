@@ -40,8 +40,6 @@ func sampleFilter() crmfilter.Filter {
 	}}}
 }
 
-// TestFilterMarshalUnmarshalRoundTrip proves the crmfilter.Filter survives the
-// jsonb marshal/unmarshal used by the repository, in both directions.
 func TestFilterMarshalUnmarshalRoundTrip(t *testing.T) {
 	want := sampleFilter()
 
@@ -58,8 +56,6 @@ func TestFilterMarshalUnmarshalRoundTrip(t *testing.T) {
 	}
 }
 
-// TestGetByID_FilterRoundTrip exercises the read path end-to-end: a jsonb
-// filter column stored in the DB is unmarshaled back into the domain Filter.
 func TestGetByID_FilterRoundTrip(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()

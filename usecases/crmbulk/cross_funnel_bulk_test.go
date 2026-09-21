@@ -7,20 +7,6 @@ import (
 	"vozko/domain/workspace"
 )
 
-// Moving conversations to ANOTHER funnel is a separate privilege from sorting
-// the funnel you work in, and in bulk it is the sharpest version of that: one
-// click takes every conversation a filter matches off one team's board and puts
-// it on another's, with no undo.
-//
-// It is therefore its own ACTION rather than a flag on move_stage, so the
-// permission it needs is answered by the same actionPermission switch every
-// other bulk action goes through. There is no second gate to keep in step.
-//
-// Every test below runs with IsAdmin FALSE and grants permissions explicitly.
-// mockAuthorizer short-circuits to true for a system admin, so an admin fixture
-// would pass whether the gate existed or not.
-
-// grant builds an authorizer holding exactly the named "resource:action" pairs.
 func grant(perms ...string) *mockAuthorizer {
 	allowed := make(map[string]bool, len(perms))
 	for _, p := range perms {
@@ -49,8 +35,6 @@ func oneTarget() []EntryRef {
 	return []EntryRef{{EntryID: "e1", EntryType: "whatsapp"}}
 }
 
-// The ordinary bulk move is unchanged: stages:assign is enough, and the funnel
-// guard stays on.
 func TestBulkMoveStageNeedsOnlyAssignAndKeepsTheFunnelGuard(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign))
@@ -71,8 +55,6 @@ func TestBulkMoveStageNeedsOnlyAssignAndKeepsTheFunnelGuard(t *testing.T) {
 	}
 }
 
-// The gate. Holding stages:assign is NOT enough to reorganise other people's
-// boards, and the refusal happens before any target is touched.
 func TestBulkMoveFunnelIsRefusedWithoutTransfer(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	authz := grant(permAssign)
@@ -89,8 +71,6 @@ func TestBulkMoveFunnelIsRefusedWithoutTransfer(t *testing.T) {
 	if len(assigner.calls) != 0 {
 		t.Fatalf("a refused bulk touched %d targets", len(assigner.calls))
 	}
-	// It has to be the TRANSFER permission that was consulted, not assign under
-	// a different name.
 	var askedTransfer bool
 	for _, p := range authz.permCalls {
 		if p == permTransfer {
@@ -102,8 +82,6 @@ func TestBulkMoveFunnelIsRefusedWithoutTransfer(t *testing.T) {
 	}
 }
 
-// With the privilege, every target carries the authorisation into the stage use
-// case, which is the only place the funnel rule actually lives.
 func TestBulkMoveFunnelWithTransferAuthorisesEveryTarget(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign, permTransfer))
@@ -130,9 +108,6 @@ func TestBulkMoveFunnelWithTransferAuthorisesEveryTarget(t *testing.T) {
 	}
 }
 
-// Holding transfer does not imply the base action: the switch answers one
-// permission per action, and a caller with only transfer has not been granted
-// the right to sort stages at all.
 func TestBulkMoveStageStillNeedsAssignEvenWithTransfer(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permTransfer))
@@ -150,8 +125,6 @@ func TestBulkMoveStageStillNeedsAssignEvenWithTransfer(t *testing.T) {
 	}
 }
 
-// An unknown action is a hard denial rather than a silent no-op, so a client
-// typo cannot look like a successful bulk of nothing.
 func TestBulkUnknownFunnelishActionIsRefused(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign, permTransfer))

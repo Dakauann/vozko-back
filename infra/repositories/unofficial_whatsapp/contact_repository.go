@@ -17,33 +17,15 @@ type contactRepository struct {
 	db *gorm.DB
 }
 
-// NewContactRepository builds the contact repository.
 func NewContactRepository(db *gorm.DB) uw.ContactRepository {
 	return &contactRepository{db: db}
 }
 
-// FindOrCreate resolves a conversation subject and reconciles WhatsApp's two
-// identifier forms.
-//
-// The same human reaches us under a phone-number JID and under a LID, and which
-// one arrives depends on privacy settings and on whether the number is saved.
-// Creating a second row for the second form would split one real chat into two
-// CRM conversations, which reads to an operator as data loss rather than as a
-// bug — so a lookup that misses on the JID falls back to the LID (and vice
-// versa) and backfills whichever identifier was missing.
-//
-// A group subject takes the same path with none of the reconciliation: a group
-// has exactly one identifier, no phone number and no LID, so it resolves by JID
-// alone.
 func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreateContactInput) (*uw.Contact, error) {
 	jid := strings.TrimSpace(in.JID)
 	lid := strings.TrimSpace(in.LID)
 	isGroup := in.IsGroup || uw.IsGroupJID(jid)
 
-	// A group has no number. PhoneFromJID already refuses to derive one from a
-	// group id, and the explicit zeroing here says so at the boundary rather
-	// than relying on that: this column is what call sessions, the lead bridge and
-	// broadcast targeting read, and a group id in it is addressable nonsense.
 	phone := ""
 	if !isGroup {
 		phone = uw.NormalizePhone(in.PhoneNumber)
@@ -70,8 +52,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreate
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "instance_id"}, {Name: "jid"}},
-			// Partial unique index: the predicate must be repeated or Postgres
-			// refuses to use it as the conflict arbiter (42P10).
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},
 			},
@@ -83,9 +63,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in uw.FindOrCreate
 	return r.FindByJID(ctx, in.InstanceID, jid)
 }
 
-// resolveExisting looks the contact up by each identifier we hold, in
-// descending order of trust: the JID identifies a chat, the LID identifies a
-// person, and the phone number is the CRM's own key.
 func (r *contactRepository) resolveExisting(ctx context.Context, instanceID, jid, lid, phone string) (*uw.Contact, error) {
 	lookups := []struct{ column, value string }{
 		{"jid", jid},
@@ -110,11 +87,6 @@ func (r *contactRepository) resolveExisting(ctx context.Context, instanceID, jid
 	return nil, nil
 }
 
-// backfillIdentity fills in identifiers the stored row was missing.
-//
-// It never OVERWRITES a stored identifier with a different one: that would mean
-// two people share a row, and silently repointing it would attach one person's
-// transcript to the other.
 func (r *contactRepository) backfillIdentity(
 	ctx context.Context,
 	contact *uw.Contact,
@@ -144,10 +116,6 @@ func (r *contactRepository) backfillIdentity(
 	if err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppContact{}).
 		Where("id = ?", contact.ID).
 		Updates(update).Error; err != nil {
-		// A conflict here means another row already owns that identifier, i.e.
-		// the merge we were about to perform is not safe. Keep what we have
-		// rather than failing the inbound message: a slightly under-populated
-		// contact is recoverable, a dropped message is not.
 		if isUniqueViolation(err) {
 			return contact, nil
 		}
@@ -167,15 +135,6 @@ func (r *contactRepository) FindByID(ctx context.Context, id string) (*uw.Contac
 	return toContactDomain(&record), nil
 }
 
-// FindByIDs batch-loads one page of inbox senders. A per-row lookup here would
-// make the inbox N+1 on every render.
-//
-// Matches on lead_id as well as id, because the ids handed to it are whatever
-// rode the inbox's lead slot — the CRM lead once a contact has resolved to one,
-// the contact's own id before that and for every group. Both are uuids from one
-// table's indexed columns, so this stays a single query either way. Without the
-// second column, linking a contact to a lead would make its avatar, handle and
-// group flag disappear from the inbox.
 func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.Contact, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -193,13 +152,6 @@ func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.
 	return out, nil
 }
 
-// FindByHandles resolves a page of group authors from the handles their message
-// rows carry.
-//
-// Two columns, because Handle has two forms: a person with a known number reads
-// as "+<digits>", and one first seen under a LID — no number yet — reads as the
-// raw JID. Both are indexed, and the query is scoped to the instance so a handle
-// can never resolve to a contact of another connected number.
 func (r *contactRepository) FindByHandles(
 	ctx context.Context,
 	instanceID string,
@@ -231,9 +183,6 @@ func (r *contactRepository) FindByHandles(
 	case len(phones) > 0 && len(jids) > 0:
 		query = query.Where("phone_number IN ? OR jid IN ?", phones, jids)
 	case len(phones) > 0:
-		// Never an unqualified `phone_number IN ?` with an empty list, and never
-		// a bare OR against one: a group's phone_number is '', so a degenerate
-		// predicate here would return every group on the instance.
 		query = query.Where("phone_number IN ?", phones)
 	default:
 		query = query.Where("jid IN ?", jids)
@@ -263,26 +212,11 @@ func (r *contactRepository) FindByJID(ctx context.Context, instanceID, jid strin
 	return toContactDomain(&record), nil
 }
 
-// UpdateProfile refreshes the enrichable fields.
-//
-// Empty values are skipped rather than written, ALL of them: a profile read that
-// came back partial must not blank what an earlier one resolved, which is how a
-// named contact turns back into a bare number.
-//
-// That rule used to hold for the strings only. `is_business` and
-// `profile_fetched_at` were written unconditionally, so every caller that
-// updated one field reset both — a contacts-webhook rename demoted a verified
-// business account to an ordinary one, and any caller that did not mean to
-// advance the staleness clock advanced it anyway.
 func (r *contactRepository) UpdateProfile(ctx context.Context, id string, p uw.ContactProfile) error {
 	update := map[string]any{}
-	// A false here means "this read did not establish it", never "this account
-	// stopped being a business".
 	if p.IsBusiness {
 		update["is_business"] = true
 	}
-	// The zero time means "not a profile read" — the caller touched one field
-	// and must not consume the subject's refresh budget for a week.
 	if !p.FetchedAt.IsZero() {
 		update["profile_fetched_at"] = p.FetchedAt
 	}
@@ -325,10 +259,6 @@ func (r *contactRepository) SetBlocked(ctx context.Context, id string, blocked b
 	return nil
 }
 
-// LinkLead attaches the CRM lead this contact resolved to.
-//
-// Written once, never repointed: a contact whose lead changed under it would
-// move its whole transcript to a different person in every CRM view.
 func (r *contactRepository) LinkLead(ctx context.Context, id, leadID string) error {
 	return r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppContact{}).
 		Where("id = ? AND lead_id IS NULL", id).

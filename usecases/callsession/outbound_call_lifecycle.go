@@ -3,6 +3,7 @@ package callsession_usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -25,7 +26,6 @@ type OutboundCallLifecycleInput struct {
 	WorkspaceID string
 	StartedAt   time.Time
 
-	// OwnerUserID is the call session human (stored as calls.agent_id for member metrics).
 	OwnerUserID string
 
 	Direction cdr.Direction
@@ -68,7 +68,10 @@ func NewOutboundCallLifecycleRunner(
 	inflightReserver balance.InflightReserver,
 	billingPub messaging.MessageQueuePub,
 	logger *log.Logger,
-) *OutboundCallLifecycleRunner {
+) (*OutboundCallLifecycleRunner, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: outbound call lifecycle", callsession.ErrBillingNotConfigured)
+	}
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -80,7 +83,7 @@ func NewOutboundCallLifecycleRunner(
 		balanceGuardInterval: balanceGuardDefaultInterval,
 		logger:               logger,
 		nowFn:                time.Now,
-	}
+	}, nil
 }
 
 func (r *OutboundCallLifecycleRunner) SetBalanceGuardInterval(d time.Duration) {

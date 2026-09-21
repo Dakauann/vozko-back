@@ -70,9 +70,6 @@ func (r *mockRepo) SaveRoundRobinState(state *ia.RoundRobinState) error {
 	return nil
 }
 
-// CompareAndSwapRoundRobinState records into savedStates like the plain save
-// above, so the assertions about what gets persisted keep their meaning. The
-// contention path is covered separately in round_robin_race_test.go.
 func (r *mockRepo) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
 	if r.saveStateErr != nil {
 		return false, r.saveStateErr
@@ -1676,8 +1673,6 @@ func (r *constrainedRepo) SaveRoundRobinState(state *ia.RoundRobinState) error {
 	return nil
 }
 
-// The compare-and-swap must hit the same simulated constraint, or this fixture
-// would stop reproducing the schema bug it exists to document.
 func (r *constrainedRepo) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, expected string) (bool, error) {
 	threeColKey := rrKey(state.WorkspaceID, state.BusinessPhoneID, state.DepartmentID)
 	if current := r.rrStates[threeColKey]; current != nil && current.LastAssignedUserID != expected {

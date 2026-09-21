@@ -8,12 +8,6 @@ import (
 
 const migrationLockID = 123456789
 
-// RunMigrations brings the database up to the schema the code expects.
-//
-// It is schema-only: AutoMigrate creates/extends every table from the Go
-// structs, and the statements after it add the partial and unique indexes
-// GORM's struct tags cannot express. Everything is idempotent, so this runs on
-// every boot and is a no-op once the database matches.
 func RunMigrations(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock($1)", migrationLockID).Error; err != nil {
@@ -24,14 +18,6 @@ func RunMigrations(db *gorm.DB) error {
 			return err
 		}
 
-		// The same rename, in the schema itself.
-		//
-		// This MUST run before AutoMigrate. AutoMigrate creates whatever it does
-		// not find and never renames, so if it ran first it would create eight
-		// empty audience_* tables beside the populated comment_analysis_* ones,
-		// and every customer's history would still be in the old tables while
-		// the application read the new, empty ones. The same applies to each
-		// column.
 		if err := renameCommentAnalysisToAudience(tx); err != nil {
 			return err
 		}
@@ -189,8 +175,6 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.UnofficialWhatsAppConversation{},
 			&schema.UnofficialWhatsAppGroup{},
 			&schema.UnofficialWhatsAppGroupParticipant{},
-			// Campaigns come after the instance and contact tables they
-			// reference, so the FK targets exist when these are created.
 			&schema.UnofficialWhatsAppCampaign{},
 			&schema.UnofficialWhatsAppCampaignEntry{},
 			&schema.WebhookProcessedEvent{},
@@ -198,17 +182,10 @@ func RunMigrations(db *gorm.DB) error {
 			return err
 		}
 
-		// Data repairs run BEFORE the constraints, because a constraint that
-		// codifies a rule the existing rows break cannot be created until they
-		// stop breaking it. Each one is idempotent and a no-op on a database
-		// that never had the defect.
 		if err := runDataRepairs(tx); err != nil {
 			return err
 		}
 
-		// Every index in this codebase is declared in indexes.go. These run
-		// inside the migration transaction because they are constraints rather
-		// than tuning, so a failure has to abort rather than warn.
 		return createSchemaConstraints(tx)
 	})
 }

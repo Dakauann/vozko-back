@@ -17,18 +17,11 @@ type whatsappEntryAccessRepository interface {
 	GetAccessibleEntryIDs(workspaceID string, isAdmin bool) ([]string, error)
 }
 
-// entryAccessRepository is the port for channels whose conversations carry
-// workspace_id directly, so the check is a single ownership comparison with no
-// campaign indirection to walk. Kept narrow here rather than importing each
-// channel's repository, so the authorizer stays decoupled from all of them.
 type entryAccessRepository interface {
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 }
 
-// instagramEntryAccessRepository is the previous name of entryAccessRepository.
-//
-// Deprecated: use entryAccessRepository.
 type instagramEntryAccessRepository = entryAccessRepository
 
 type workspaceMembershipRepository interface {
@@ -47,10 +40,6 @@ type assignmentLookupRepository interface {
 
 type Authorizer struct {
 	whatsappEntryRepo whatsappEntryAccessRepository
-	// entryRepos holds one reader per channel whose conversations own their
-	// workspace id, keyed by entry type. Registering one never displaces
-	// another, the mistake a single Instagram-shaped field would have forced on
-	// the second such channel.
 	entryRepos        map[shared.EntryType]entryAccessRepository
 	workspaceRepo     workspaceMembershipRepository
 	departmentRepo    departmentMembershipRepository
@@ -292,8 +281,6 @@ func (a *Authorizer) GetAccessibleEntryIDs(workspaceID, entryType string, isAdmi
 	return nil
 }
 
-// SetEntryAccessRepo registers a channel's entry-access reader. Optional, so the
-// authorizer still constructs when a channel is disabled.
 func (a *Authorizer) SetEntryAccessRepo(entryType shared.EntryType, repo entryAccessRepository) {
 	if a == nil || repo == nil || entryType == "" {
 		return
@@ -304,14 +291,10 @@ func (a *Authorizer) SetEntryAccessRepo(entryType shared.EntryType, repo entryAc
 	a.entryRepos[entryType] = repo
 }
 
-// SetInstagramEntryRepo registers the Instagram reader.
-//
-// Deprecated: use SetEntryAccessRepo(shared.EntryTypeInstagram, repo).
 func (a *Authorizer) SetInstagramEntryRepo(repo entryAccessRepository) {
 	a.SetEntryAccessRepo(shared.EntryTypeInstagram, repo)
 }
 
-// SetTelegramEntryRepo registers the Telegram reader.
 func (a *Authorizer) SetTelegramEntryRepo(repo entryAccessRepository) {
 	a.SetEntryAccessRepo(shared.EntryTypeTelegram, repo)
 }

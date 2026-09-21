@@ -30,7 +30,6 @@ func (f *fakeTemplateWebhook) Execute(p *template.TemplateWebhookPayload) error 
 	return nil
 }
 
-// A real waba_template_status_changed body (360dialog partner webhook shape).
 const d360TemplateStatusBody = `{
   "id": "evt1",
   "event": "waba_template_status_changed",
@@ -48,7 +47,6 @@ const d360TemplateStatusBody = `{
 }`
 
 func TestParseDialog360TemplateStatus_ObjectAndArray(t *testing.T) {
-	// Single object.
 	got := parseDialog360TemplateStatusPayloads([]byte(d360TemplateStatusBody))
 	if len(got) != 1 {
 		t.Fatalf("object: got %d payloads, want 1", len(got))
@@ -67,19 +65,16 @@ func TestParseDialog360TemplateStatus_ObjectAndArray(t *testing.T) {
 		t.Errorf("field = %q, want status update", got[0].Entry[0].Changes[0].Field)
 	}
 
-	// Array envelope.
 	arr := []byte("[" + d360TemplateStatusBody + "]")
 	if g := parseDialog360TemplateStatusPayloads(arr); len(g) != 1 || g[0].Entry[0].Changes[0].Value.ChannelExternalID != "gqh7gkLf8nZPcY4EpEbmWT" {
 		t.Fatalf("array: got %d payloads (want 1) with the channel id", len(g))
 	}
 
-	// Non-template partner events yield nothing.
 	other := `{"event":"channel_live","data":{"id":"chan1"}}`
 	if g := parseDialog360TemplateStatusPayloads([]byte(other)); len(g) != 0 {
 		t.Errorf("non-template event produced %d payloads, want 0", len(g))
 	}
 
-	// Missing new_status is skipped (nothing to apply).
 	noStatus := `{"event":"waba_template_status_changed","data":{"id":"w","template":{"id":"x","name":"n"}}}`
 	if g := parseDialog360TemplateStatusPayloads([]byte(noStatus)); len(g) != 0 {
 		t.Errorf("missing new_status produced %d payloads, want 0", len(g))

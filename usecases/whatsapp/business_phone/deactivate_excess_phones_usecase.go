@@ -35,8 +35,6 @@ func NewDeactivateExcessPhonesUseCase(
 	}
 }
 
-// WithNotifier enables the owner email when a number is suspended. dashboardURL is
-// the customer app base (CTA target). Returns the use case for chaining at wiring.
 func (uc *deactivateExcessPhonesUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *deactivateExcessPhonesUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL
@@ -96,8 +94,6 @@ func (uc *deactivateExcessPhonesUseCase) OnEntitlementReduced(workspaceID string
 	for i := 0; i < excess && i < len(connected); i++ {
 		ph := connected[i]
 		if !uc.cancelAtPartner(ph) {
-			// Leave the number CONNECTED so the reconcile job retries the cancel.
-			// Marking it SUSPENDED here would hide a channel that is still billing.
 			continue
 		}
 		if uerr := uc.phoneRepo.UpdateStatus(ph.ID, businessphone.StatusSuspended); uerr != nil {
@@ -143,7 +139,6 @@ func (uc *deactivateExcessPhonesUseCase) OnEntitlementIncreased(workspaceID stri
 	for i := 0; i < room && i < len(suspended); i++ {
 		ph := suspended[i]
 		if !uc.reactivateAtPartner(ph) {
-			// Leave the number SUSPENDED so the reconcile job retries the reactivate.
 			continue
 		}
 		if uerr := uc.phoneRepo.UpdateStatus(ph.ID, businessphone.StatusConnected); uerr != nil {
@@ -155,12 +150,6 @@ func (uc *deactivateExcessPhonesUseCase) OnEntitlementIncreased(workspaceID stri
 	return nil
 }
 
-// cancelAtPartner submits the 360dialog cancellation for ph and reports whether the
-// channel is now guaranteed to stop billing. A phone with no channel id has no
-// billable 360dialog channel, so suspending it locally is safe. A missing client id
-// or a failed cancel returns false: the caller then leaves the number CONNECTED for
-// the reconcile job to retry, rather than hiding a still-billing channel behind a
-// SUSPENDED row.
 func (uc *deactivateExcessPhonesUseCase) cancelAtPartner(ph businessphone.OwnerPhone) bool {
 	if ph.Dialog360ChannelID == "" || uc.partner == nil {
 		return true
@@ -176,8 +165,6 @@ func (uc *deactivateExcessPhonesUseCase) cancelAtPartner(ph businessphone.OwnerP
 	return true
 }
 
-// reactivateAtPartner mirrors cancelAtPartner for the reactivate direction: only on
-// a confirmed 360dialog reactivation does the caller flip the row back to CONNECTED.
 func (uc *deactivateExcessPhonesUseCase) reactivateAtPartner(ph businessphone.OwnerPhone) bool {
 	if ph.Dialog360ChannelID == "" || uc.partner == nil {
 		return true

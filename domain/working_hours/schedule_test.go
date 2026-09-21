@@ -8,9 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A fixed zone rather than a loaded one: the build host may have no tz
-// database, and Brazil has observed no DST since 2019. Same reasoning as
-// domain/billing/location.go.
 var brt = time.FixedZone("BRT", -3*60*60)
 
 func hm(h, m int) int { return h*60 + m }
@@ -19,8 +16,6 @@ func at(y int, mo time.Month, d, h, m int) time.Time {
 	return time.Date(y, mo, d, h, m, 0, 0, brt)
 }
 
-// Calendar anchors these tests depend on. If this fails, every other date
-// assertion below is meaningless, so it is asserted rather than assumed.
 func TestFixtureCalendarIsWhatTheTestsAssume(t *testing.T) {
 	assert.Equal(t, time.Monday, at(2026, 9, 7, 0, 0).Weekday())
 	assert.Equal(t, time.Friday, at(2026, 9, 11, 0, 0).Weekday())
@@ -29,7 +24,6 @@ func TestFixtureCalendarIsWhatTheTestsAssume(t *testing.T) {
 	assert.Equal(t, time.Monday, at(2026, 9, 14, 0, 0).Weekday())
 }
 
-// office is Mon-Fri 09:00-18:00.
 func office() *Schedule {
 	iv := []Interval{{StartMin: hm(9, 0), EndMin: hm(18, 0)}}
 	return New(brt, map[time.Weekday][]Interval{
@@ -38,14 +32,10 @@ func office() *Schedule {
 	})
 }
 
-// -- IsOpen ------------------------------------------------------------------
-
 func TestIsOpen_InsideTheWindow(t *testing.T) {
 	assert.True(t, office().IsOpen(at(2026, 9, 7, 12, 0)))
 }
 
-// Half-open [start, end): the minute the office opens is open, the minute it
-// closes is not. Anything else makes "09:00-18:00" and "18:00-22:00" overlap.
 func TestIsOpen_BoundariesAreHalfOpen(t *testing.T) {
 	s := office()
 	assert.True(t, s.IsOpen(at(2026, 9, 7, 9, 0)), "opening minute is open")
@@ -59,8 +49,6 @@ func TestIsOpen_DayWithNoIntervalsIsClosed(t *testing.T) {
 	assert.False(t, office().IsOpen(at(2026, 9, 13, 12, 0)), "sunday")
 }
 
-// A support desk running 22:00-02:00 is a single interval whose end runs past
-// midnight, not two intervals on two days.
 func TestIsOpen_OvernightShift(t *testing.T) {
 	s := New(brt, map[time.Weekday][]Interval{
 		time.Monday: {{StartMin: hm(22, 0), EndMin: hm(26, 0)}},
@@ -71,14 +59,10 @@ func TestIsOpen_OvernightShift(t *testing.T) {
 	assert.False(t, s.IsOpen(at(2026, 9, 7, 21, 59)), "before it starts")
 }
 
-// The backward-compatible default. Every workspace that never configures hours
-// must keep behaving exactly as it does today.
 func TestIsOpen_NilScheduleIsAlwaysOpen(t *testing.T) {
 	var s *Schedule
 	assert.True(t, s.IsOpen(at(2026, 9, 13, 3, 0)), "sunday at 3am")
 }
-
-// -- Elapsed: the theory -----------------------------------------------------
 
 func TestElapsed_WithinASingleDay(t *testing.T) {
 	got := office().Elapsed(at(2026, 9, 7, 10, 0), at(2026, 9, 7, 12, 30))
@@ -86,15 +70,13 @@ func TestElapsed_WithinASingleDay(t *testing.T) {
 }
 
 func TestElapsed_ClipsToTheOpenWindow(t *testing.T) {
-	// 06:00 -> 20:00 spans the whole working day and nothing else counts.
 	got := office().Elapsed(at(2026, 9, 7, 6, 0), at(2026, 9, 7, 20, 0))
 	assert.Equal(t, 9*time.Hour, got)
 }
 
-// THE scenario the feature exists for.
 func TestElapsed_TheRescueScenario(t *testing.T) {
 	s := office()
-	handout := at(2026, 9, 7, 17, 55) // Monday, five minutes before close
+	handout := at(2026, 9, 7, 17, 55)
 
 	assert.Equal(t, 5*time.Minute, s.Elapsed(handout, at(2026, 9, 7, 18, 0)),
 		"five minutes accrue before close")
@@ -110,7 +92,7 @@ func TestElapsed_TheRescueScenario(t *testing.T) {
 
 func TestElapsed_SkipsTheWeekend(t *testing.T) {
 	s := office()
-	handout := at(2026, 9, 11, 17, 55) // Friday
+	handout := at(2026, 9, 11, 17, 55)
 	assert.Equal(t, 5*time.Minute, s.Elapsed(handout, at(2026, 9, 13, 23, 0)),
 		"saturday and sunday add nothing")
 	assert.Equal(t, 15*time.Minute, s.Elapsed(handout, at(2026, 9, 14, 9, 10)),
@@ -140,8 +122,6 @@ func TestElapsed_ReversedOrEmptyRangeIsZero(t *testing.T) {
 	assert.Zero(t, s.Elapsed(at(2026, 9, 7, 12, 0), at(2026, 9, 7, 12, 0)), "empty")
 }
 
-// A schedule that never opens accrues nothing, forever. That is faithful to
-// what was configured, and it is why Validate rejects it.
 func TestElapsed_NeverOpenScheduleAccruesNothing(t *testing.T) {
 	s := New(brt, nil)
 	assert.Zero(t, s.Elapsed(at(2026, 9, 7, 0, 0), at(2026, 10, 7, 0, 0)))
@@ -154,24 +134,18 @@ func TestElapsed_OvernightShiftAccruesAcrossMidnight(t *testing.T) {
 	assert.Equal(t, 3*time.Hour, s.Elapsed(at(2026, 9, 7, 23, 0), at(2026, 9, 8, 5, 0)))
 }
 
-// An overnight shift that runs into the next day's own window describes the
-// same wall-clock minutes twice. They must be counted once.
 func TestElapsed_DoesNotDoubleCountOverlappingSegments(t *testing.T) {
 	s := New(brt, map[time.Weekday][]Interval{
-		time.Monday:  {{StartMin: hm(22, 0), EndMin: hm(30, 0)}}, // mon 22:00 -> tue 06:00
-		time.Tuesday: {{StartMin: hm(0, 0), EndMin: hm(8, 0)}},   // tue 00:00 -> 08:00
+		time.Monday:  {{StartMin: hm(22, 0), EndMin: hm(30, 0)}},
+		time.Tuesday: {{StartMin: hm(0, 0), EndMin: hm(8, 0)}},
 	})
-	// Real span is mon 22:00 -> tue 08:00 = 10h, not 8h + 8h.
 	assert.Equal(t, 10*time.Hour, s.Elapsed(at(2026, 9, 7, 22, 0), at(2026, 9, 8, 8, 0)))
 }
 
 func TestElapsed_MultiWeekSpan(t *testing.T) {
-	// Mon 09:00 through the following Mon 09:00: five 9h working days.
 	got := office().Elapsed(at(2026, 9, 7, 9, 0), at(2026, 9, 14, 9, 0))
 	assert.Equal(t, 45*time.Hour, got, "five 9h days")
 }
-
-// -- NextOpen ----------------------------------------------------------------
 
 func TestNextOpen_WhenAlreadyOpenReturnsNow(t *testing.T) {
 	now := at(2026, 9, 7, 12, 0)
@@ -187,7 +161,7 @@ func TestNextOpen_JumpsToTheNextMorning(t *testing.T) {
 }
 
 func TestNextOpen_JumpsAcrossTheWeekend(t *testing.T) {
-	got, ok := office().NextOpen(at(2026, 9, 12, 10, 0)) // saturday
+	got, ok := office().NextOpen(at(2026, 9, 12, 10, 0))
 	require.True(t, ok)
 	assert.True(t, at(2026, 9, 14, 9, 0).Equal(got), "expected mon 09:00, got %s", got)
 }
@@ -204,8 +178,6 @@ func TestNextOpen_NilScheduleIsOpenNow(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, now, got)
 }
-
-// -- Resolve: workspace vs department ----------------------------------------
 
 func TestResolve_DepartmentOverridesWorkspace(t *testing.T) {
 	ws := office()
@@ -229,8 +201,6 @@ func TestResolve_NeitherConfiguredIsAlwaysOpen(t *testing.T) {
 	assert.Equal(t, time.Hour, got.Elapsed(at(2026, 9, 13, 3, 0), at(2026, 9, 13, 4, 0)))
 }
 
-// -- Validate ----------------------------------------------------------------
-
 func TestValidate_AcceptsAnOrdinaryWeek(t *testing.T) {
 	assert.NoError(t, office().Validate())
 }
@@ -240,8 +210,6 @@ func TestValidate_NilIsValid(t *testing.T) {
 	assert.NoError(t, s.Validate())
 }
 
-// The foot-gun: a schedule with no open time at all would silently disable the
-// rescue for that workspace forever.
 func TestValidate_RejectsAScheduleThatNeverOpens(t *testing.T) {
 	assert.ErrorIs(t, New(brt, nil).Validate(), ErrNoOpenTime)
 }

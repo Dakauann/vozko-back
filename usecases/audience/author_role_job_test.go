@@ -30,8 +30,6 @@ func (f *fakeInferrer) InferRole(_ context.Context, req ca.RoleInferRequest) (*c
 	return &ca.RoleInferResult{Role: ca.RolePolitician, Confidence: string(shared.QualityLevelHigh), Model: "m"}, nil
 }
 
-// roleFixture seeds one author with `comments` analysed comments, so the pass
-// has a corpus to read.
 func roleFixture(t *testing.T, comments int, previous ca.AuthorRoleInference) (*RoleInferenceJob, *fakeAuthors, *fakeInferrer, *fakeBatches) {
 	t.Helper()
 	repo := newFakeRepo()
@@ -76,7 +74,6 @@ func roleFixture(t *testing.T, comments int, previous ca.AuthorRoleInference) (*
 	return job, authors, inferrer, batches
 }
 
-// The happy path: a big enough corpus is read once and the answer is stored.
 func TestRolePassInfersAndStores(t *testing.T) {
 	job, authors, inferrer, batches := roleFixture(t, 20, ca.AuthorRoleInference{})
 
@@ -93,8 +90,6 @@ func TestRolePassInfersAndStores(t *testing.T) {
 	if !stored.Displayable() {
 		t.Fatal("a high-confidence role over a 20-comment corpus must be displayable")
 	}
-	// The pass is a new token consumer and has to show up on the invoice under
-	// its own name.
 	if len(batches.rows) != 1 {
 		t.Fatalf("batches = %d, the pass must be billed", len(batches.rows))
 	}
@@ -103,8 +98,6 @@ func TestRolePassInfersAndStores(t *testing.T) {
 	}
 }
 
-// Nobody is judged on a handful of comments, and the model is never called for
-// them, because the call is what costs money.
 func TestRolePassSkipsThinCorpora(t *testing.T) {
 	job, _, inferrer, batches := roleFixture(t, ca.MinCommentsForRole-1, ca.AuthorRoleInference{})
 
@@ -119,8 +112,6 @@ func TestRolePassSkipsThinCorpora(t *testing.T) {
 	}
 }
 
-// THE cost test. An author already inferred whose corpus barely grew must not
-// be re-read: otherwise every new comment re-bills their whole history.
 func TestRolePassDoesNotRebillAnUnchangedCorpus(t *testing.T) {
 	previous := ca.AuthorRoleInference{
 		Role: ca.RolePolitician, Confidence: shared.QualityLevelHigh, BasedOnComments: 20,
@@ -135,7 +126,6 @@ func TestRolePassDoesNotRebillAnUnchangedCorpus(t *testing.T) {
 	}
 }
 
-// A corpus that doubled is worth another look.
 func TestRolePassRerunsOnAGrownCorpus(t *testing.T) {
 	previous := ca.AuthorRoleInference{
 		Role: ca.RoleUnknown, Confidence: shared.QualityLevelNone, BasedOnComments: 12,
@@ -150,8 +140,6 @@ func TestRolePassRerunsOnAGrownCorpus(t *testing.T) {
 	}
 }
 
-// A model that cannot answer costs the customer a failed call and nothing
-// else: the author keeps whatever they had, and the pass moves on.
 func TestRolePassSurvivesAModelError(t *testing.T) {
 	job, authors, inferrer, batches := roleFixture(t, 20, ca.AuthorRoleInference{})
 	inferrer.err = errors.New("model down")
@@ -167,8 +155,6 @@ func TestRolePassSurvivesAModelError(t *testing.T) {
 	}
 }
 
-// A label outside the taxonomy is discarded on the way in, not stored and
-// filtered on the way out.
 func TestRolePassDiscardsAnInventedLabel(t *testing.T) {
 	job, authors, inferrer, _ := roleFixture(t, 20, ca.AuthorRoleInference{})
 	inferrer.result = &ca.RoleInferResult{Role: "influencer", Confidence: string(shared.QualityLevelHigh), Model: "m"}
@@ -182,7 +168,6 @@ func TestRolePassDiscardsAnInventedLabel(t *testing.T) {
 	}
 }
 
-// A deployment with no model configured runs the rollup exactly as before.
 func TestRolePassWithoutAnInferrerDoesNothing(t *testing.T) {
 	job, _, _, _ := roleFixture(t, 20, ca.AuthorRoleInference{})
 	job.Inferrer = nil
@@ -191,8 +176,6 @@ func TestRolePassWithoutAnInferrerDoesNothing(t *testing.T) {
 	}
 }
 
-// The model reads the person's WORDS, and nothing that would let it answer
-// from a stereotype instead.
 func TestRolePassSendsOnlyTheWords(t *testing.T) {
 	job, _, inferrer, _ := roleFixture(t, 20, ca.AuthorRoleInference{})
 	job.RunAccount(context.Background(), ca.SourceInstagram, ref().AccountID)

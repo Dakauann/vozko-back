@@ -32,8 +32,6 @@ func TestConnectRegistersWebhookAndActivates(t *testing.T) {
 		t.Errorf("identity not taken from getMe: %+v", account)
 	}
 
-	// The secret is generated per account and is the only authenticity control
-	// the channel has.
 	if account.WebhookSecret == "" {
 		t.Fatal("a webhook secret must be generated")
 	}
@@ -47,15 +45,11 @@ func TestConnectRegistersWebhookAndActivates(t *testing.T) {
 	if cfg.URL != tgdomain.WebhookURLFor(webhookBase, account.ID) {
 		t.Errorf("registered URL = %q, want the per-account path", cfg.URL)
 	}
-	// Passing nothing would subscribe us to every update kind except three, which
-	// wastes the delivery budget on inline queries and polls we do not handle.
 	if len(cfg.AllowedUpdates) == 0 {
 		t.Error("allowed_updates must be narrowed explicitly")
 	}
 }
 
-// The token is proved BEFORE a row is created, so a typo fails immediately with a
-// clear message instead of leaving a dead account behind.
 func TestConnectValidatesTokenBeforeCreating(t *testing.T) {
 	accounts := &fakeAccounts{}
 	api := &fakeBotAPI{
@@ -85,8 +79,6 @@ func TestConnectRequiresTokenAndWorkspace(t *testing.T) {
 	}
 }
 
-// A bot is a single identity with a single webhook URL. Letting two workspaces
-// claim it would silently redirect one tenant's messages to the other.
 func TestConnectRefusesBotOwnedByAnotherWorkspace(t *testing.T) {
 	existing := &tgdomain.Account{ID: "acct-1", WorkspaceID: "ws-OTHER", BotUserID: 77777}
 	accounts := &fakeAccounts{
@@ -102,8 +94,6 @@ func TestConnectRefusesBotOwnedByAnotherWorkspace(t *testing.T) {
 	}
 }
 
-// Reconnecting a previously removed bot must restore the soft-deleted row rather
-// than colliding with the unique index.
 func TestConnectRestoresSoftDeletedAccount(t *testing.T) {
 	existing := &tgdomain.Account{
 		ID: "acct-1", WorkspaceID: "ws-1", BotUserID: 77777, Status: tgdomain.StatusRevoked,
@@ -130,9 +120,6 @@ func TestConnectRestoresSoftDeletedAccount(t *testing.T) {
 	}
 }
 
-// setWebhook answering true is not proof of a working endpoint: Telegram accepts
-// the registration and only then discovers it cannot reach us. Catching that at
-// connect time is what stops it surfacing later as silence.
 func TestConnectFailsWhenTelegramCannotReachUs(t *testing.T) {
 	accounts := &fakeAccounts{}
 	api := &fakeBotAPI{
@@ -149,8 +136,6 @@ func TestConnectFailsWhenTelegramCannotReachUs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when Telegram reports a delivery failure")
 	}
-	// The account is kept: the credentials are valid and the operator can retry
-	// from the UI rather than hunting for the token again.
 	if account == nil {
 		t.Fatal("the account must be returned so the UI can offer a retry")
 	}
@@ -159,8 +144,6 @@ func TestConnectFailsWhenTelegramCannotReachUs(t *testing.T) {
 	}
 }
 
-// A mismatch between the URL Telegram holds and the one we registered means a
-// misconfigured base URL, which otherwise produces no error, only silence.
 func TestConnectDetectsWebhookURLMismatch(t *testing.T) {
 	api := &fakeBotAPI{
 		GetWebhookInfoFn: func(context.Context, string) (*tgdomain.WebhookInfo, error) {
@@ -175,10 +158,6 @@ func TestConnectDetectsWebhookURLMismatch(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- health
-
-// The health cron is this channel's data-loss alarm: undelivered updates are
-// discarded after 24 hours and there is no history API to recover them.
 func TestHealthCheckMarksFailingWebhook(t *testing.T) {
 	account := &tgdomain.Account{
 		ID: "acct-1", BotUsername: "vozko_bot", BotToken: "t", Status: tgdomain.StatusActive,
@@ -206,8 +185,6 @@ func TestHealthCheckMarksFailingWebhook(t *testing.T) {
 	}
 }
 
-// A previously failing webhook that now reports clean recovers without operator
-// action.
 func TestHealthCheckRecoversWebhook(t *testing.T) {
 	account := &tgdomain.Account{
 		ID: "acct-1", BotToken: "t", Status: tgdomain.StatusWebhookFailing, WebhookPendingCount: 500,
@@ -231,8 +208,6 @@ func TestHealthCheckRecoversWebhook(t *testing.T) {
 	}
 }
 
-// 401 is the only way a Telegram token dies: it was revoked in BotFather. Nothing
-// recovers it but a new token, so the account is marked rather than retried.
 func TestHealthCheckMarksRevokedToken(t *testing.T) {
 	account := &tgdomain.Account{ID: "acct-1", BotToken: "t", Status: tgdomain.StatusActive}
 	accounts := &fakeAccounts{
@@ -254,8 +229,6 @@ func TestHealthCheckMarksRevokedToken(t *testing.T) {
 	}
 }
 
-// One tenant's failure must never abort the loop, or a single broken bot stops
-// every other tenant's alarm from running.
 func TestHealthCheckIsolatesTenantFailures(t *testing.T) {
 	broken := &tgdomain.Account{ID: "acct-broken", BotToken: "bad", Status: tgdomain.StatusActive}
 	healthy := &tgdomain.Account{ID: "acct-ok", BotToken: "good", Status: tgdomain.StatusActive}
@@ -282,8 +255,6 @@ func TestHealthCheckIsolatesTenantFailures(t *testing.T) {
 	}
 }
 
-// Re-registration rotates the secret. It costs nothing and closes the window
-// where a secret leaked from a misconfigured proxy would still be accepted.
 func TestReregisterRotatesTheSecret(t *testing.T) {
 	account := &tgdomain.Account{
 		ID:            "acct-1",
@@ -314,8 +285,6 @@ func TestReregisterRotatesTheSecret(t *testing.T) {
 	}
 }
 
-// Tenant scoping is enforced in the usecase, so a guessed account id from another
-// workspace is indistinguishable from "not found".
 func TestReregisterRefusesForeignWorkspace(t *testing.T) {
 	account := &tgdomain.Account{ID: "acct-1", WorkspaceID: "ws-OTHER", BotToken: "t"}
 	accounts := &fakeAccounts{

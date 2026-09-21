@@ -12,14 +12,9 @@ func TestParseAuthorSortKey(t *testing.T) {
 		"camel from a UI": {"lastSeen", SortAuthorLastSeen, true},
 		"upper":           {"NEGATIVE", SortAuthorNegative, true},
 		"padded":          {"  severity  ", SortAuthorSeverity, true},
-		// Refused, not defaulted. A client asking for an ordering we do not
-		// have has a bug; answering with a different one hides it behind a page
-		// of plausible results.
-		"unknown": {"karma", "", false},
-		"empty":   {"", "", false},
-		// Not a column name the client may guess at: the repository owns the
-		// key→SQL mapping, and leaking a column would freeze the schema.
-		"column name": {"severity_high_count", "", false},
+		"unknown":         {"karma", "", false},
+		"empty":           {"", "", false},
+		"column name":     {"severity_high_count", "", false},
 	}
 
 	for name, c := range cases {
@@ -32,8 +27,6 @@ func TestParseAuthorSortKey(t *testing.T) {
 	}
 }
 
-// Every advertised key must parse. A key offered by AllAuthorSortKeys but
-// rejected by the parser would render a sort control that errors on click.
 func TestEveryAdvertisedAuthorSortKeyParses(t *testing.T) {
 	for _, key := range AllAuthorSortKeys() {
 		if !key.Valid() {
@@ -42,14 +35,10 @@ func TestEveryAdvertisedAuthorSortKeyParses(t *testing.T) {
 	}
 }
 
-// The default has to be one of the real keys, or an unsorted request asks the
-// repository for an ordering it cannot map.
 func TestDefaultAuthorSortIsAValidKey(t *testing.T) {
 	if !DefaultAuthorSort.Key.Valid() {
 		t.Fatalf("default sort key %q is not valid", DefaultAuthorSort.Key)
 	}
-	// Ascending on reputation means the most hostile first: a moderation table
-	// opens on the people who need attention.
 	if !DefaultAuthorSort.Ascending {
 		t.Error("the default should surface the worst reputations first")
 	}

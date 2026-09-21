@@ -33,8 +33,6 @@ func TestDailyCapStopsAtTheCeiling(t *testing.T) {
 	}
 }
 
-// A refusal must not leave the counter permanently above the cap, or a paused
-// campaign would lock the number out for the rest of the day.
 func TestRefusalDoesNotOvercount(t *testing.T) {
 	b, _ := newBudget(t)
 	for i := 0; i < 2; i++ {
@@ -48,8 +46,6 @@ func TestRefusalDoesNotOvercount(t *testing.T) {
 	}
 }
 
-// A budgeted send that did not happen returns its reservation. Without this a
-// 30%-dead list burns 30% of the number's allowance on nobody.
 func TestReleaseReturnsAnUnspentReservation(t *testing.T) {
 	b, _ := newBudget(t)
 	b.TryConsumeDaily("inst-1", 5)
@@ -60,7 +56,6 @@ func TestReleaseReturnsAnUnspentReservation(t *testing.T) {
 	}
 }
 
-// A cache we cannot reach is not permission to blast.
 func TestBudgetFailsClosedOnCacheError(t *testing.T) {
 	shared := newFakeShared()
 	shared.failIncr = true
@@ -85,8 +80,6 @@ func TestUnlimitedCapSkipsTheCounter(t *testing.T) {
 	}
 }
 
-// The lease is per NUMBER, not per process: two campaigns on one instance must
-// not both send at once.
 func TestPaceLeaseIsExclusivePerInstance(t *testing.T) {
 	b, _ := newBudget(t)
 	b.jitter = func(minMS, maxMS int) int { return minMS }
@@ -103,14 +96,11 @@ func TestPaceLeaseIsExclusivePerInstance(t *testing.T) {
 		t.Fatal("a refused caller was given no wait")
 	}
 
-	// A different number is independent.
 	if ok, _ := b.AcquirePace("inst-2", 1000, 2000); !ok {
 		t.Fatal("a different number was blocked by another number's lease")
 	}
 }
 
-// A campaign may be slower than its number but never faster: the ban risk
-// belongs to the number.
 func TestPacingNeverGoesBelowTheInstanceFloor(t *testing.T) {
 	instance := &uw.Instance{SendDelayMinMS: 5000, SendDelayMaxMS: 9000}
 	camp := &uwc.Campaign{SendDelayMinMS: 600, SendDelayMaxMS: 900}
@@ -134,8 +124,6 @@ func TestPacingAllowsACampaignToBeSlower(t *testing.T) {
 	}
 }
 
-// The jitter must actually vary, or the cadence is machine-regular — the exact
-// signature the whole control exists to avoid.
 func TestJitterVaries(t *testing.T) {
 	seen := map[int]bool{}
 	for i := 0; i < 200; i++ {

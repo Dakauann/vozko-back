@@ -17,8 +17,6 @@ type finishConversationTool struct {
 	hub    conversation.EventBroadcaster
 }
 
-// NewFinishConversationToolUseCase lets the AI finish a conversation with
-// close_source=ai. All status mutations go through ConversationStatusService.
 func NewFinishConversationToolUseCase(status conversation.ConversationStatusUpdater, hub conversation.EventBroadcaster) tools.Handler {
 	if status == nil {
 		return nil
@@ -74,9 +72,6 @@ func (t *finishConversationTool) ExecuteWithConfig(ctx context.Context, config m
 			IsError: true,
 		}, nil
 	}
-	// Ask the domain whether this channel can be closed rather than listing
-	// channels here. An inline allowlist fails closed for every channel added
-	// after it was written, which is how Instagram ended up unclosable.
 	if !shared.EntryType(entryType).SupportsConversationClosing() {
 		return tools.ExecutionResult{
 			Result:  "Tipo de conversa não suportado para finalização.",
@@ -96,7 +91,6 @@ func (t *finishConversationTool) ExecuteWithConfig(ctx context.Context, config m
 	}
 
 	if t.hub != nil {
-		// Best-effort live UI update; status service already persisted.
 		if broadcaster, ok := t.hub.(interface {
 			BroadcastConversationStatus(entryID, entryType, status string)
 		}); ok {

@@ -27,12 +27,10 @@ func TestLocationBRT_IsUTCMinus3(t *testing.T) {
 	if loc == nil {
 		t.Fatal("LocationBRT must never be nil")
 	}
-	// A fixed instant, viewed in the billing zone, must read as UTC-3 (Brazil has no DST since 2019).
 	ref := time.Date(2026, time.June, 30, 15, 0, 0, 0, time.UTC).In(loc)
 	if _, offset := ref.Zone(); offset != -3*60*60 {
 		t.Fatalf("billing zone offset = %d seconds, want -10800 (UTC-3)", offset)
 	}
-	// The same instant is 12:00 local.
 	if ref.Hour() != 12 {
 		t.Fatalf("15:00 UTC should be 12:00 in BRT, got %02d:00", ref.Hour())
 	}

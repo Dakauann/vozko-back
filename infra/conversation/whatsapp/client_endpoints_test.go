@@ -6,8 +6,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// metaClient and dialog360Client build the two provider variants the factory
-// produces, so the endpoint builders are exercised exactly as in production.
 func metaClient() *Client {
 	return NewClient(Config{
 		BaseURL:       "https://graph.facebook.com/v22.0",
@@ -31,7 +29,6 @@ func dialog360Client() *Client {
 
 func TestEndpoints_Meta(t *testing.T) {
 	c := metaClient()
-	// Guards against the infinite-recursion regression in the non-omit branch.
 	if got, want := c.messagesEndpoint(), "https://graph.facebook.com/v22.0/PNID/messages"; got != want {
 		t.Fatalf("messagesEndpoint = %q, want %q", got, want)
 	}
@@ -56,8 +53,6 @@ func TestEndpoints_Dialog360(t *testing.T) {
 	}
 }
 
-// mapTemplateResponse must key 360dialog templates (which carry no numeric id) by
-// their name, while leaving Meta's numeric id untouched.
 func TestMapTemplateResponse_IDFallsBackToName(t *testing.T) {
 	meta := mapTemplateResponse(templateResponse{ID: "123", Name: "promo"})
 	if meta.ID != "123" {

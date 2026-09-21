@@ -8,14 +8,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// Tool names are persisted in every agent's InternalTools bindings. The resolver
-// looks a binding's name up in its definition index and `continue`s on a miss,
-// so renaming a tool does not fail loudly, it silently removes that tool from
-// every agent already configured with it. Nobody sees an error; the agent simply
-// stops being able to do something it could do yesterday.
-//
-// These pin the aliases that make a rename safe.
-
 type aliasRegistry struct{ defs []tools.Definition }
 
 func (r aliasRegistry) Definitions() []tools.Definition                          { return r.defs }
@@ -47,15 +39,11 @@ func TestCurrentNamesAreUnchangedAndCaseInsensitive(t *testing.T) {
 	if got := CanonicalToolName("  Send_WhatsApp_Media "); got != ToolNameSendMedia {
 		t.Errorf("alias lookup is not normalised: %q", got)
 	}
-	// An unknown name passes through lowercased, exactly as the resolver's own
-	// key normalisation did before aliases existed.
 	if got := CanonicalToolName("Some_Other_Tool"); got != "some_other_tool" {
 		t.Errorf("unknown name = %q", got)
 	}
 }
 
-// The behaviour that actually matters: an agent saved with the old binding must
-// still receive the tool.
 func TestAnAgentBoundToTheOldNameStillGetsTheTool(t *testing.T) {
 	reg := aliasRegistry{defs: []tools.Definition{{
 		Name:       ToolNameSendMedia,
@@ -73,8 +61,6 @@ func TestAnAgentBoundToTheOldNameStillGetsTheTool(t *testing.T) {
 	}
 }
 
-// A binding under the current name must not be double-resolved alongside an
-// aliased one, the model would be offered the same tool twice.
 func TestOldAndNewBindingsDoNotDuplicateTheTool(t *testing.T) {
 	reg := aliasRegistry{defs: []tools.Definition{{
 		Name:       ToolNameSendMedia,
@@ -91,10 +77,6 @@ func TestOldAndNewBindingsDoNotDuplicateTheTool(t *testing.T) {
 	}
 }
 
-// The names are channel-neutral because the model reads them. A tool called
-// "send_whatsapp_media" offered inside a Telegram conversation reads as
-// belonging to another channel, and a model that declines to use it is behaving
-// correctly.
 func TestToolNamesDoNotNameAChannel(t *testing.T) {
 	for _, name := range []string{ToolNameSendMedia, ToolNameSendOptions} {
 		if got := CanonicalToolName(name); got != name {
@@ -120,12 +102,7 @@ func contains(s, sub string) bool {
 		})())
 }
 
-// The alias must be a FALLBACK, never a rewrite. Applying it before the direct
-// lookup breaks a registry that still registers the old name: the direct hit is
-// skipped in favour of a lookup that misses, and the agent silently loses the
-// tool, the exact failure aliases exist to prevent.
 func TestADirectNameMatchWinsOverTheAlias(t *testing.T) {
-	// A registry that still registers the retired name.
 	reg := aliasRegistry{defs: []tools.Definition{{
 		Name:       "send_whatsapp_media",
 		Visibility: []tools.ToolVisibility{tools.VisibilityMessaging},

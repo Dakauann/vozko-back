@@ -31,12 +31,6 @@ type SyncTemplateUseCase interface {
 	Execute(input SyncTemplateInput) (*Template, error)
 }
 
-// The single-target template sender used to live here as SendTemplateMessageInput
-// + SendTemplateMessageUseCase, with billing behind `if WorkspaceID != ""`. It
-// has been replaced by BilledTemplateSendUseCase (billed_sender.go), whose input
-// makes the workspace and the idempotency key required fields rather than
-// optional ones — so an unbilled send is not expressible.
-
 type CreateTemplateInput struct {
 	BusinessPhoneID string
 	Name            string
@@ -73,13 +67,6 @@ type SetTemplateHeaderMediaInput struct {
 	HeaderMediaURL *string
 }
 
-// SetTemplateHeaderMediaUseCase resolves the header media for a media-header
-// template: it downloads the given public URL, uploads it to the channel's
-// WhatsApp /media endpoint to mint the media id that sends attach by, and links
-// both URL and id to the template. A nil/empty URL clears the header media.
-// It is invoked when a media-header template is first created and by the PATCH
-// /whatsapp/templates/{id}/header-media endpoint, so both paths share one
-// download/upload/link implementation.
 type SetTemplateHeaderMediaUseCase interface {
 	Execute(input SetTemplateHeaderMediaInput) error
 }

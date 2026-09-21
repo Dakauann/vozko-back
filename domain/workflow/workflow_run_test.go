@@ -2,10 +2,6 @@ package workflow
 
 import "testing"
 
-// The durable circuit-breaker counter is stored in run state, which is persisted
-// as JSON between waits. After a JSON round-trip an int becomes a float64, so
-// GetInt must recover it, otherwise the counter would read back as 0 on every
-// wake and the lifetime breaker could never accumulate.
 func TestRunState_GetInt_SurvivesJSONRoundTrip(t *testing.T) {
 	orig := NewRunState()
 	orig.Set(StateKeyDurableSteps, 4321)

@@ -17,10 +17,6 @@ func (uc *deletePhoneNumberUseCase) Execute(phoneID string) error {
 		return businessphone.ErrPhoneNumberNotFound
 	}
 
-	// Delete only removes the local record; it does NOT deregister at Meta.
-	// Refuse to delete a CONNECTED number so we can never leave it orphaned
-	// (still live at Meta, webhooks firing) while it vanishes from our view.
-	// Callers must Deregister or Remove (release) a connected number first.
 	phone, err := uc.repo.FindByID(phoneID)
 	if err != nil {
 		return err

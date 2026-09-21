@@ -50,9 +50,6 @@ func validateAsaasID(id, label string) error {
 	return nil
 }
 
-// ErrCustomerDocumentRequired guards against issuing a customer lookup with an empty cpfCnpj.
-// Asaas treats `?cpfCnpj=` as a wildcard over document-less customers, so an empty document would
-// resolve to an unrelated customer (mis-billing risk) instead of the intended one.
 var ErrCustomerDocumentRequired = fmt.Errorf("cpfCnpj is required to resolve an asaas customer")
 
 func (s *AsaasService) GetOrCreateCustomer(name string, cpf string) (*AsaasCustomer, error) {

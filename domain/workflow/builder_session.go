@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// BuilderMessageRole identifies who/what produced a builder conversation entry.
 type BuilderMessageRole string
 
 const (
@@ -15,19 +14,14 @@ const (
 	BuilderMessageRoleSystem    BuilderMessageRole = "system"
 )
 
-// BuilderMessage is one entry in an AI-builder conversation thread, exactly what
-// the user saw in the copilot panel: a prompt, an assistant reply, or a tool call.
 type BuilderMessage struct {
 	Role BuilderMessageRole `json:"role"`
 	Text string             `json:"text"`
-	Tool string             `json:"tool,omitempty"` // tool name, when Role == tool
-	Ok   *bool              `json:"ok,omitempty"`   // tool success, when Role == tool
+	Tool string             `json:"tool,omitempty"`
+	Ok   *bool              `json:"ok,omitempty"`
 	At   time.Time          `json:"at"`
 }
 
-// BuilderSession is a persisted AI-builder chat thread, so a user can revisit a
-// past conversation with the copilot (including its tool calls). It is always
-// workspace-scoped, reads MUST be filtered by workspace.
 type BuilderSession struct {
 	ID           string           `json:"id"`
 	WorkspaceID  string           `json:"workspaceId"`

@@ -22,8 +22,6 @@ func TestResolver_ProviderIsMercadoPago(t *testing.T) {
 	}
 }
 
-// TestResolver_FetchesPaymentBeforeDeciding is the defining behaviour: the notification
-// carries no state, so the resolver must exchange the id for a payment.
 func TestResolver_FetchesPaymentBeforeDeciding(t *testing.T) {
 	f := &fakeClient{getResponse: &Payment{
 		ID:                1234567890,
@@ -53,8 +51,6 @@ func TestResolver_FetchesPaymentBeforeDeciding(t *testing.T) {
 	}
 }
 
-// TestResolver_IsIdempotentUnderRedelivery documents why deriving the event from the
-// payment's CURRENT state is the right design: two deliveries resolve identically.
 func TestResolver_IsIdempotentUnderRedelivery(t *testing.T) {
 	f := &fakeClient{getResponse: &Payment{
 		ID: 1, Status: StatusApproved, StatusDetail: DetailAccredited, TransactionAmount: 10,
@@ -66,8 +62,6 @@ func TestResolver_IsIdempotentUnderRedelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// A second delivery labelled with a different action still resolves to the same
-	// event, because the payment's state has not moved.
 	second, err := r.Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,7 +87,6 @@ func TestResolver_IgnoresNonPaymentTopics(t *testing.T) {
 }
 
 func TestResolver_IgnoresNonActionableState(t *testing.T) {
-	// in_process is real and authentic but must move nothing locally.
 	f := &fakeClient{getResponse: &Payment{ID: 1, Status: StatusInProcess}}
 	r := NewWebhookResolver(f)
 
@@ -102,7 +95,6 @@ func TestResolver_IgnoresNonActionableState(t *testing.T) {
 		t.Fatal("in_process should resolve to the informational event, not be dropped")
 	}
 
-	// An unmappable status is dropped instead.
 	f2 := &fakeClient{getResponse: &Payment{ID: 1, Status: "status_from_the_future"}}
 	_, err = NewWebhookResolver(f2).Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
 	if !errors.Is(err, payment.ErrWebhookIgnored) {
@@ -129,8 +121,6 @@ func TestResolver_NonNumericIDIsTerminal(t *testing.T) {
 	}
 }
 
-// TestResolver_NotFoundIsDropped: a payment from another account or environment will
-// 404 forever, so retrying only fills the queue.
 func TestResolver_NotFoundIsDropped(t *testing.T) {
 	r := NewWebhookResolver(&fakeClient{getErr: &ResponseError{StatusCode: 404}})
 	_, err := r.Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
@@ -139,8 +129,6 @@ func TestResolver_NotFoundIsDropped(t *testing.T) {
 	}
 }
 
-// TestResolver_UnauthorizedIsRetryable: a rotated token must NOT drop the message, or
-// every payment received during the outage is silently lost.
 func TestResolver_UnauthorizedIsRetryable(t *testing.T) {
 	r := NewWebhookResolver(&fakeClient{getErr: &ResponseError{StatusCode: 401}})
 	_, err := r.Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
@@ -171,8 +159,6 @@ func TestResolver_NilClientIsSafe(t *testing.T) {
 }
 
 func TestResolver_LegacyIPNEnvelope(t *testing.T) {
-	// The delivery layer normalizes query-only IPNs into a body before queueing, so
-	// the resolver sees the topic form rather than raw query parameters.
 	f := &fakeClient{getResponse: &Payment{ID: 77, Status: StatusApproved, TransactionAmount: 5}}
 	r := NewWebhookResolver(f)
 
@@ -183,7 +169,6 @@ func TestResolver_LegacyIPNEnvelope(t *testing.T) {
 	if event.Payment.ID != "77" {
 		t.Fatalf("charge id: got %q", event.Payment.ID)
 	}
-	// With no notification id in the envelope, the resource id stands in.
 	if event.ID != "77" {
 		t.Fatalf("event id fallback: got %q", event.ID)
 	}

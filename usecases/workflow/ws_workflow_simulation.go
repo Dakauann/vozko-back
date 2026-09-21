@@ -272,8 +272,6 @@ func (s *wsWorkflowSimulation) HandleSession(ctx context.Context, conn *websocke
 		case initialMsg := <-replyCh:
 
 			run.State.Set("message", initialMsg)
-			// Same fake contact the simulated transcript records as From/To, so
-			// {{contact_number}} previews with the number the tester is looking at.
 			run.State.Set(workflow.DataKeyContactNumber, "5511999990000")
 
 			_ = simMsgRepo.Create(&conversation.Message{
@@ -369,10 +367,6 @@ func (s *wsWorkflowSimulation) HandleSession(ctx context.Context, conn *websocke
 				case replyText := <-replyCh:
 					timer.Stop()
 
-					// Same reply-resume path production uses (AdvanceOnReply) so the
-					// simulator can't diverge from real behavior. For an interactive
-					// prompt (buttons/list) the typed reply IS the chosen option id,
-					// mirroring the button/list reply id production receives.
 					replyData := map[string]interface{}{"message": replyText}
 					if waitNode.Type.IsInteractivePrompt() {
 						replyData["selected_option_id"] = replyText

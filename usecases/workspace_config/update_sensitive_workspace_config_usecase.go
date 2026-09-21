@@ -19,7 +19,6 @@ func (uc *updateWorkspaceConfigUseCase) Execute(ctx context.Context, workspaceID
 		return nil, wsc.ErrUnauthorized
 	}
 
-	// TODO: create a history of changes, tracking who made the action
 	existing, err := uc.repo.GetByWorkspaceID(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -29,15 +28,6 @@ func (uc *updateWorkspaceConfigUseCase) Execute(ctx context.Context, workspaceID
 		existing.CampaignSpamProtectionDays = *input.CampaignSpamProtectionDays
 	}
 
-	// The unofficial-WhatsApp allowance. Reachable ONLY here: the workspace-facing
-	// update takes a different input type that has no such field, and the role
-	// check above is re-asserted by the router's RoleAdmin guard. Both matter —
-	// this grants capacity on hosts we pay for, on a channel where a connected
-	// number can get a customer banned.
-	//
-	// A negative value is REJECTED rather than clamped: it is a typo, and quietly
-	// turning it into zero would revoke a workspace's whole allowance while
-	// reporting success.
 	if input.IncludedUnofficialWhatsAppInstances != nil {
 		granted := *input.IncludedUnofficialWhatsAppInstances
 		if granted < 0 {

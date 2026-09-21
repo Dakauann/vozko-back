@@ -27,8 +27,6 @@ type StageHandler struct {
 	reorderUseCase      stagedomain.ReorderStagesUseCase
 	broadcaster         conversation.EventBroadcaster
 
-	// funnelStages backs the inbox filter, which needs EVERY funnel rather than
-	// the single one listUseCase resolves. Optional: a nil lister answers 501.
 	funnelStages FunnelStagesLister
 }
 
@@ -331,13 +329,6 @@ func (h *StageHandler) MoveEntryToFunnel(w http.ResponseWriter, r *http.Request)
 	h.assignEntryStage(w, r, true)
 }
 
-// assignEntryStage is the one body both routes share.
-//
-// The PRIVILEGE is carried by the route, not by a flag in the payload and not
-// by a permission check written here: `ac()` is where every other gate in this
-// codebase lives, and asking a second question inside the handler would put
-// authorization in two places for one endpoint. Two routes, two gates, one
-// implementation.
 func (h *StageHandler) assignEntryStage(w http.ResponseWriter, r *http.Request, crossFunnel bool) {
 	var req AssignEntryTagRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -357,18 +348,11 @@ func (h *StageHandler) assignEntryStage(w http.ResponseWriter, r *http.Request, 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	// The timeline event is written by the use case, not here. It used to be
-	// written in this handler, which meant the CRM's bulk move and the AI's
-	// manage_entry_stage tool — both of which call the same use case directly —
-	// changed the board and left the conversation's history blank.
 	EntryStage, err := h.assignUseCase.Execute(wsID, stagedomain.AssignEntryStageInput{
-		StageID:   req.StageID,
-		EntryID:   req.EntryID,
-		EntryType: req.EntryType,
-		ActorID:   claims.UserID,
-		// Only this endpoint can carry it, and only when the client asked. The
-		// bulk action and the AI tool build their own input and leave it false,
-		// so neither can move a conversation off its funnel.
+		StageID:            req.StageID,
+		EntryID:            req.EntryID,
+		EntryType:          req.EntryType,
+		ActorID:            claims.UserID,
 		AllowCrossPipeline: crossFunnel,
 	})
 	if err != nil {
@@ -532,8 +516,6 @@ func (h *StageHandler) handleDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, stagedomain.ErrInvalidEntryType):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, stagedomain.ErrStagePipelineMismatch):
-		// 409, not 400: the request is well-formed and the stage is real — it just
-		// conflicts with the funnel this conversation is already on.
 		response.WriteError(w, http.StatusConflict,
 			"Esta etapa pertence a outro funil. Mova a conversa de funil para usá-la.", nil)
 	case errors.Is(err, stagedomain.ErrUnauthorized):
@@ -543,19 +525,10 @@ func (h *StageHandler) handleDomainError(w http.ResponseWriter, err error) {
 	}
 }
 
-// FunnelStagesLister returns every conversation stage in a workspace, grouped
-// by the funnel it belongs to.
-//
-// A port declared at the edge rather than a domain use case interface, matching
-// how the handler already treats its optional collaborators: seeing the whole
-// workspace's funnels is a read the inbox filter needs and nothing else does.
 type FunnelStagesLister interface {
 	Execute(workspaceID string) ([]stagedomain.FunnelStages, error)
 }
 
-// SetFunnelStagesLister attaches the grouped listing. A handler without one
-// answers 501 rather than pretending the workspace has no funnels, which would
-// render an empty filter and look like a data problem.
 func (h *StageHandler) SetFunnelStagesLister(l FunnelStagesLister) {
 	h.funnelStages = l
 }

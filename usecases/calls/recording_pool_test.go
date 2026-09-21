@@ -90,15 +90,12 @@ func TestRecordingUploadPool_StagesUploadsAndCleansUp(t *testing.T) {
 		t.Fatalf("unexpected R2 key: %s", key)
 	}
 
-	// Staged files are removed only after a successful upload+publish.
 	waitFor(t, func() bool { return countStaged(dir) == 0 }, 3*time.Second, "staging dir not cleaned up")
 }
 
 func TestRecordingUploadPool_RecoversStagedAfterCrash(t *testing.T) {
 	dir := t.TempDir()
 
-	// Simulate a recording staged by a previous process that then crashed:
-	// the WAV + sidecar are on disk but were never uploaded.
 	base := filepath.Join(dir, "wa-in-orphan_123")
 	wavPath := base + recordingStageExt
 	if err := os.WriteFile(wavPath, validWAV(), 0o644); err != nil {
@@ -140,13 +137,11 @@ func TestRecordingUploadPool_RetainsStagedOnUploadFailure(t *testing.T) {
 		Meta:    recordings.RecordingUploadEvent{CallID: "wa-call-fail", WorkspaceID: "ws-2"},
 	})
 
-	// Wait for the upload to be attempted (and fail through its retries).
 	select {
 	case <-storage.attempts:
 	case <-time.After(5 * time.Second):
 		t.Fatal("upload was never attempted")
 	}
 
-	// The staged copy must survive a failed upload so recovery can retry it.
 	waitFor(t, func() bool { return countStaged(dir) == 1 }, 3*time.Second, "staged recording was dropped after upload failure")
 }

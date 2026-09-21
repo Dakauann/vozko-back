@@ -13,12 +13,6 @@ import (
 	callsession_usecase "vozko/usecases/callsession"
 )
 
-// waSession is a fake callsession.CallSession for the WhatsApp inbound ring tests.
-// Reserve/Release/HasActiveCall mirror the real session's token-scoped semantics
-// so the tests exercise the reservation handoff exactly as production does. All
-// mutation happens on the ringing goroutine; tests read s.reserved only after the
-// goroutine has delivered its result on a channel (happens-before), so no lock is
-// needed.
 type waSession struct {
 	id, userID, ws string
 	reserved       string
@@ -103,7 +97,7 @@ func TestRingCandidate_AcceptHoldsReservation(t *testing.T) {
 	res := make(chan candidateOutcome, 1)
 	go func() { res <- uc.ringCandidate(context.Background(), cand, offer, signals, 2*time.Second, nil) }()
 
-	<-cand.notifyCh // offer rang
+	<-cand.notifyCh
 	acceptOffer(t, uc, offer, cand)
 
 	if got := <-res; got != candAccepted {
@@ -195,7 +189,7 @@ func TestRingCandidate_CallerHangupReleasesReservation(t *testing.T) {
 func TestRingCandidate_ReserveFailsLeavesForeignReservationUntouched(t *testing.T) {
 	uc := newRingUseCase()
 	cand := newWASession("s-1", "u-1")
-	cand.reserved = "foreign" // another flow already rang this agent
+	cand.reserved = "foreign"
 	offer := waOffer("offer-1", cand, time.Second)
 	signals := make(chan conversation_domain.WhatsAppCallSignal)
 
@@ -249,9 +243,6 @@ func TestRingCandidate_OnReservedRunsAfterReserveBeforeRing(t *testing.T) {
 	}
 }
 
-// ringSequentially must fall through a declining agent to the next, releasing the
-// decliner so they are free again, and return the accepting agent with its
-// reservation still held for the attach handoff.
 func TestRingSequentially_FallsThroughDeclineToAccept(t *testing.T) {
 	uc := newRingUseCase()
 	c1 := newWASession("s-1", "u-1")
@@ -266,12 +257,10 @@ func TestRingSequentially_FallsThroughDeclineToAccept(t *testing.T) {
 			[]callsession.CallSession{c1, c2}, signals, deadline)
 	}()
 
-	// First agent rings and declines.
 	msg1 := <-c1.notifyCh
 	offer1 := msg1.Payload.(callsession.InboundCallOffer)
 	declineOffer(t, uc, offer1, c1)
 
-	// Roulette falls through to the second agent, who accepts.
 	msg2 := <-c2.notifyCh
 	offer2 := msg2.Payload.(callsession.InboundCallOffer)
 	acceptOffer(t, uc, offer2, c2)
@@ -291,14 +280,11 @@ func TestRingSequentially_FallsThroughDeclineToAccept(t *testing.T) {
 	}
 }
 
-// When every candidate lets the ring time out, ringSequentially reports no
-// session and leaves nobody reserved.
 func TestRingSequentially_AllTimeoutLeavesNobodyReserved(t *testing.T) {
 	uc := newRingUseCase()
 	c1 := newWASession("s-1", "u-1")
 	connect := conversation_domain.WhatsAppInboundConnect{CallID: "wa-call-1", FromNumber: "+5511999999999"}
 	signals := make(chan conversation_domain.WhatsAppCallSignal)
-	// Deadline far enough to ring once, but the per-candidate ring is bounded by it.
 	deadline := time.Now().Add(40 * time.Millisecond)
 
 	outcome := uc.ringSequentially(context.Background(), connect, "bp-1", "ws-1", "", false,

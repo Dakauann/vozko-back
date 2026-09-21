@@ -9,9 +9,6 @@ import (
 	"testing"
 )
 
-// TestCalling_Dialog360_ChannelScoped verifies the 360dialog path: channel-scoped
-// endpoint /calling/settings, D360-API-KEY auth, Meta-shaped body/response (validated
-// live against waba-v2.360dialog.io).
 func TestCalling_Dialog360_ChannelScoped(t *testing.T) {
 	var gotPath, gotAuth, gotBody, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +53,6 @@ func TestCalling_Dialog360_ChannelScoped(t *testing.T) {
 		t.Fatalf("enable body must set calling.status=ENABLED with messaging_product; got %s", gotBody)
 	}
 
-	// Disable path sends DISABLED.
 	if err := calling.SetCallingStatus(context.Background(), false); err != nil {
 		t.Fatalf("SetCallingStatus(false): %v", err)
 	}
@@ -65,7 +61,6 @@ func TestCalling_Dialog360_ChannelScoped(t *testing.T) {
 	}
 }
 
-// NOT_SET (and DISABLED) must read as not-enabled.
 func TestCalling_NotSetReadsDisabled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"calling":{"status":"NOT_SET"}}`))
@@ -78,7 +73,6 @@ func TestCalling_NotSetReadsDisabled(t *testing.T) {
 	}
 }
 
-// The Meta path (no OmitPhoneNumberInPath) scopes by phone number id: /{id}/settings.
 func TestCalling_Meta_PhoneScopedEndpoint(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

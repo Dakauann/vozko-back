@@ -10,8 +10,7 @@ import (
 type updateBusinessProfileUseCase struct {
 	repo       businessphone.Repository
 	metaClient businessphone.MetaAPIService
-	// factory builds the 360dialog channel client for numbers that carry no Meta token.
-	factory conversation.WhatsAppClientFactory
+	factory    conversation.WhatsAppClientFactory
 }
 
 func NewUpdateBusinessProfileUseCase(repo businessphone.Repository, metaClient businessphone.MetaAPIService, factory conversation.WhatsAppClientFactory) businessphone.UpdateBusinessProfileUseCase {
@@ -37,7 +36,6 @@ func (uc *updateBusinessProfileUseCase) Execute(input businessphone.UpdateBusine
 	}
 
 	if phone.Provider.IsDialog360() {
-		// dialog360 numbers write the profile through the channel API (no Meta token).
 		if err := uc.updateDialog360Profile(phone.ID, input.Profile); err != nil {
 			return nil, err
 		}

@@ -8,7 +8,6 @@ import (
 	igdomain "vozko/domain/instagram"
 )
 
-// recordingActions captures what the evaluator asked the provider to do.
 type recordingActions struct {
 	public    []string
 	private   []string
@@ -42,7 +41,6 @@ func (a *recordingActions) SetHidden(_ context.Context, _, _, commentID string, 
 	return nil
 }
 
-// stubRules serves a fixed candidate list.
 type stubRules struct {
 	igdomain.CommentRuleRepository
 	candidates []*igdomain.CommentRule
@@ -95,8 +93,6 @@ func TestEvaluateRunsMatchingRuleActions(t *testing.T) {
 	}
 }
 
-// Action order is the rule's own: replying after hiding would answer a comment
-// nobody can see.
 func TestEvaluatePreservesActionOrder(t *testing.T) {
 	actions := &recordingActions{}
 	uc := NewEvaluateCommentRulesUseCase(
@@ -119,8 +115,6 @@ func TestEvaluatePreservesActionOrder(t *testing.T) {
 	}
 }
 
-// Only the first matching rule runs: a comment tripping both a promo rule and a
-// spam rule must not be replied to AND hidden.
 func TestEvaluateFirstMatchWins(t *testing.T) {
 	actions := &recordingActions{}
 	spam := rule("spam", igdomain.ActionHide)
@@ -142,7 +136,6 @@ func TestEvaluateFirstMatchWins(t *testing.T) {
 	}
 }
 
-// Our own replies come back as webhooks; evaluating them would loop forever.
 func TestEvaluateIgnoresOurOwnComments(t *testing.T) {
 	actions := &recordingActions{}
 	rules := &stubRules{candidates: []*igdomain.CommentRule{rule("promo", igdomain.ActionPublicReply)}}
@@ -160,8 +153,6 @@ func TestEvaluateIgnoresOurOwnComments(t *testing.T) {
 	}
 }
 
-// The one-per-comment private reply allowance being spent is an expected
-// outcome, not a fault: the remaining actions must still run.
 func TestEvaluateContinuesWhenPrivateReplyAlreadyUsed(t *testing.T) {
 	actions := &recordingActions{privErr: igdomain.ErrPrivateReplyUsed}
 	uc := NewEvaluateCommentRulesUseCase(
@@ -178,8 +169,6 @@ func TestEvaluateContinuesWhenPrivateReplyAlreadyUsed(t *testing.T) {
 	}
 }
 
-// One provider failure must not cancel the rest: hiding spam is still worth
-// doing when the reply failed.
 func TestEvaluateContinuesAfterActionFailure(t *testing.T) {
 	actions := &recordingActions{publicErr: errors.New("rate limited")}
 	uc := NewEvaluateCommentRulesUseCase(
@@ -210,8 +199,6 @@ func TestEvaluateNoMatchDoesNothing(t *testing.T) {
 	}
 }
 
-// A repository failure must be survivable: the comment is already mirrored, and
-// failing here would only trigger a webhook redelivery.
 func TestEvaluateSurvivesRepositoryFailure(t *testing.T) {
 	actions := &recordingActions{}
 	uc := NewEvaluateCommentRulesUseCase(&stubRules{err: errors.New("db down")}, actions)
@@ -224,8 +211,6 @@ func TestEvaluateSurvivesRepositoryFailure(t *testing.T) {
 }
 
 func TestEvaluateNilSafety(t *testing.T) {
-	// Unconfigured evaluator (channel wired without rules) and nil comment must
-	// both be no-ops rather than panics.
 	(&EvaluateCommentRulesUseCase{}).Execute(context.Background(), inbound("quero"))
 	NewEvaluateCommentRulesUseCase(&stubRules{}, &recordingActions{}).Execute(context.Background(), nil)
 }

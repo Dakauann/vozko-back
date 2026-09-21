@@ -1,8 +1,3 @@
-// Package customfield_repository is the GORM implementation of the domain
-// customfield.Repository (custom field definitions). Schema rows live in
-// infra/database/schema and are hand-mapped here; the select/multiselect Options
-// list is marshaled through datatypes.JSON. The constructor returns the domain
-// interface.
 package customfield_repository
 
 import (
@@ -16,16 +11,12 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// ErrNotFound is returned when a custom field definition does not exist in the
-// given workspace. The domain customfield package defines no not-found sentinel,
-// so it lives here; the HTTP handler maps it to 404.
 var ErrNotFound = errors.New("customfield: not found")
 
 type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository returns the domain customfield.Repository backed by GORM.
 func NewRepository(db *gorm.DB) customfield.Repository {
 	return &repository{db: db}
 }

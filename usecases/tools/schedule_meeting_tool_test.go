@@ -278,9 +278,6 @@ func TestScheduleMeeting_InvalidAttendeeSkippedWithNote(t *testing.T) {
 	google := &mockGoogleCalendarService{createID: "event-skip", meetLink: "https://meet.google.com/abc"}
 	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
 
-	// A WhatsApp lead's phone number alongside a valid e-mail: the phone can't be a
-	// calendar invitee, but the meeting must still be created and the AI must be
-	// told what was skipped (so it shares the link in the chat).
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
 	}, map[string]interface{}{

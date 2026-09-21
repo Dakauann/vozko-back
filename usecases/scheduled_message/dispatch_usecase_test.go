@@ -53,9 +53,6 @@ func (f *dispatchFixture) pending(id string) *sm.ScheduledMessage {
 	})
 }
 
-// THE test. Twenty dispatchers race on one message; exactly one send may reach
-// the customer. If the claim ever stops being a single conditional write —
-// here or in SQL — this is what fails.
 func TestConcurrentDispatchSendsExactlyOnce(t *testing.T) {
 	f := newDispatchFixture(t)
 	f.pending("sched-1")
@@ -92,8 +89,6 @@ func TestConcurrentDispatchSendsExactlyOnce(t *testing.T) {
 	}
 }
 
-// A queue redelivery after a successful send must not send again. This is the
-// ordinary consequence of at-least-once delivery, not an edge case.
 func TestDispatchingAnAlreadySentMessageDoesNothing(t *testing.T) {
 	f := newDispatchFixture(t)
 	f.pending("sched-1")
@@ -109,8 +104,6 @@ func TestDispatchingAnAlreadySentMessageDoesNothing(t *testing.T) {
 	}
 }
 
-// Cancel racing a fire: whichever conditional write lands first wins, and the
-// loser does nothing. There is no interleaving where both succeed.
 func TestDispatchingACancelledMessageDoesNothing(t *testing.T) {
 	f := newDispatchFixture(t)
 	f.pending("sched-1")
@@ -129,8 +122,6 @@ func TestDispatchingACancelledMessageDoesNothing(t *testing.T) {
 	}
 }
 
-// A fire for an id that no longer exists is expected — a purge could have
-// removed it — and must not error the consumer into a retry loop.
 func TestDispatchingAnUnknownMessageDoesNothing(t *testing.T) {
 	f := newDispatchFixture(t)
 	if err := f.uc.Execute(context.Background(), "does-not-exist"); err != nil {
@@ -141,9 +132,6 @@ func TestDispatchingAnUnknownMessageDoesNothing(t *testing.T) {
 	}
 }
 
-// A window that closed between scheduling and firing is a real outcome — the
-// contact can block the bot, a session can die — and must surface as its own
-// reason, not as a generic provider failure.
 func TestDispatchFailsWithWindowClosedWhenTheWindowShut(t *testing.T) {
 	f := newDispatchFixture(t)
 	f.pending("sched-1")
@@ -195,9 +183,6 @@ func TestDispatchClassifiesSendErrors(t *testing.T) {
 	}
 }
 
-// A provider error is terminal on purpose: we cannot tell a refused send from
-// one that reached the customer before the connection dropped, and a duplicate
-// is unrecoverable while a visible failure costs one click.
 func TestAFailedDispatchIsNeverRetried(t *testing.T) {
 	f := newDispatchFixture(t)
 	f.pending("sched-1")
@@ -217,8 +202,6 @@ func TestAFailedDispatchIsNeverRetried(t *testing.T) {
 	}
 }
 
-// The message must reach the customer as the OPERATOR who wrote it, carrying
-// everything they composed.
 func TestDispatchPreservesTheOperatorsMessage(t *testing.T) {
 	f := newDispatchFixture(t)
 	mediaID, mediaType, replyTo := "med-1", "image", "msg-9"
@@ -251,9 +234,6 @@ func TestDispatchPreservesTheOperatorsMessage(t *testing.T) {
 	if in.Text != "oi" || in.MediaID != "med-1" || in.MediaType != "image" || in.ReplyToMessageID != "msg-9" {
 		t.Errorf("input = %+v", in)
 	}
-	// Signing happens inside the send use case, at delivery, so the operator's
-	// CURRENT display name is used rather than a stale copy taken at compose
-	// time. The flag has to survive the trip for that to happen.
 	if !in.Signed {
 		t.Error("the signature flag was lost between scheduling and sending")
 	}
@@ -282,8 +262,6 @@ func TestDispatchMarksSentAndBroadcasts(t *testing.T) {
 	}
 }
 
-// The sweep claims in batches, so it hands the dispatcher rows that have
-// already left pending. Re-claiming them would fail and strand the batch.
 func TestDispatchClaimedSkipsTheClaim(t *testing.T) {
 	f := newDispatchFixture(t)
 	message := f.pending("sched-1")

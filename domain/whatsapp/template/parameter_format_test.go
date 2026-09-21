@@ -10,9 +10,6 @@ func positionalBody() TemplateComponent {
 	return TemplateComponent{Type: "BODY", Text: "Olá {{1}}, sua matrícula {{2}}"}
 }
 
-// A named body must be detected as NAMED even when the stored parameter_format is
-// wrongly "positional", otherwise the send omits parameter_name and Meta rejects
-// the whole campaign message with (#100) "Parameter name is missing or empty".
 func TestIsNamedParameterFormat_BodyIsSourceOfTruth(t *testing.T) {
 	cases := []struct {
 		name string

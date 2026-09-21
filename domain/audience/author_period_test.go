@@ -8,8 +8,6 @@ import (
 
 func timePtr(t time.Time) *time.Time { return &t }
 
-// The ranking over a window is a different question from the ranking over a
-// lifetime, and the input has to be able to express it.
 func TestAuthorsInputAcceptsAPeriod(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	to := from.Add(7 * 24 * time.Hour)
@@ -30,8 +28,6 @@ func TestAuthorsInputAcceptsAPeriod(t *testing.T) {
 	}
 }
 
-// An open-ended range is still a period: "desde o dia 1" is a question people
-// ask, and answering it with the lifetime ranking would be wrong.
 func TestAuthorsInputOpenEndedPeriod(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	in := AuthorsInput{WorkspaceID: "ws-1", From: timePtr(from)}
@@ -54,9 +50,6 @@ func TestAuthorsInputRejectsABadPeriod(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidFilter for an inverted range", err)
 	}
 
-	// The period ranking is computed from the comments themselves rather than
-	// read off a projection, so an unbounded range is a table scan somebody
-	// asked for by accident.
 	huge := AuthorsInput{
 		WorkspaceID: "ws-1",
 		From:        timePtr(from.Add(-MaxAuthorRankingRange - time.Hour)),
@@ -68,7 +61,6 @@ func TestAuthorsInputRejectsABadPeriod(t *testing.T) {
 	}
 }
 
-// The same question, for the posts one person turned up on.
 func TestAuthorContainersInputAcceptsAPeriod(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	to := from.Add(30 * 24 * time.Hour)

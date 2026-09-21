@@ -41,9 +41,6 @@ func TestBuildSendInput_CarriesTheOrdinaryFields(t *testing.T) {
 	}
 }
 
-// Meta wants the one-time code twice: once as the body variable and once as the
-// button parameter. Callers supply it once, as an ordinary body parameter, and
-// the button copy is derived here so no send path has to know the rule.
 func TestBuildSendInput_AuthenticationMirrorsTheCodeOntoTheButton(t *testing.T) {
 	tmpl := authTemplate(copyCodeButton())
 
@@ -63,9 +60,6 @@ func TestBuildSendInput_AuthenticationMirrorsTheCodeOntoTheButton(t *testing.T) 
 	}
 
 	btn := out.Buttons[0]
-	// sub_type is "url" for every OTP button, copy-code included. Meta keys the
-	// authentication button on the URL sub-type regardless of otp_type; only a
-	// coupon COPY_CODE button uses sub_type "copy_code".
 	if btn.SubType != conversation.TemplateButtonSubTypeURL {
 		t.Errorf("subType = %q, want %q", btn.SubType, conversation.TemplateButtonSubTypeURL)
 	}
@@ -95,9 +89,6 @@ func TestBuildSendInput_AuthenticationUsesTheButtonsOwnIndex(t *testing.T) {
 	}
 }
 
-// Refusing beats sending: Meta rejects the message with a parameter-count
-// mismatch, and a refusal names the real problem instead of leaving an operator
-// to read error 132000.
 func TestBuildSendInput_AuthenticationWithoutACodeIsRefused(t *testing.T) {
 	tmpl := authTemplate(copyCodeButton())
 
@@ -111,8 +102,6 @@ func TestBuildSendInput_AuthenticationWithoutACodeIsRefused(t *testing.T) {
 	}
 }
 
-// An authentication template with no OTP button is a plain one-variable
-// template. It still sends; there is simply no button to parameterize.
 func TestBuildSendInput_AuthenticationWithoutAnOTPButtonSendsNoButton(t *testing.T) {
 	tmpl := authTemplate()
 	tmpl.Components = tmpl.Components[:1]
@@ -149,9 +138,6 @@ func TestBuildSendInput_NamedParameterFormat(t *testing.T) {
 	}
 }
 
-// The media id is what every send path is meant to use. The URL is the fallback
-// for a template whose id was never minted, which is the state the conversation
-// send path used to rely on exclusively.
 func TestBuildSendInput_MediaHeaderPrefersTheIDAndFallsBackToTheURL(t *testing.T) {
 	id := "media_123"
 	url := "https://cdn.exemplo.com/capa.jpg"

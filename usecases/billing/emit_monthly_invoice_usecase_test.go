@@ -14,10 +14,6 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
-// The fakes embed the real domain interfaces and override only the methods the emitter calls; any
-// unused method stays nil and would panic if called, which keeps the fakes small while still binding
-// to the actual repository contracts.
-
 type fakeSubs struct {
 	workspace_plan.SubscriptionRepository
 	subs      []*workspace_plan.WorkspaceSubscription
@@ -28,8 +24,6 @@ type fakeSubs struct {
 	updateErr error
 }
 
-// ListActiveBillingDue mimics the GORM query: active subscriptions only, ordered by id, keyset after
-// afterID, capped at limit.
 func (f *fakeSubs) ListActiveBillingDue(_ time.Time, afterID string, limit int) ([]*workspace_plan.WorkspaceSubscription, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -73,7 +67,7 @@ type fakeAddons struct {
 	err              error
 	updated          []*workspace_addon.AddonSubscription
 	updateErr        error
-	reactivatedSince time.Time // captures the expiredSince argument the confirm passes
+	reactivatedSince time.Time
 }
 
 func (f *fakeAddons) ListActiveByWorkspace(ws string) ([]*workspace_addon.AddonSubscription, error) {
@@ -101,7 +95,7 @@ func (f *fakeWorkspaces) GetWorkspaceByID(id string) (*workspace.Workspace, erro
 
 type fakePricing struct {
 	workspace_pricing.Repository
-	rate float64 // BRL per USD; 0 means "no item configured" so the helper falls back
+	rate float64
 	err  error
 }
 
@@ -132,9 +126,6 @@ func (f *fakeCreateInvoice) Execute(in invoice.CreateInvoiceInput) (*invoice.Cre
 	return &invoice.CreateInvoiceOutput{Invoice: &invoice.Invoice{ID: "inv-" + in.IdempotencyKey, WorkspaceID: in.WorkspaceID}}, nil
 }
 
-// TestEmit_BuildsLineItemsAndAnchorDueDate checks the unified invoice carries a customer-facing,
-// price-only breakdown (plan line credited to saldo + channel line as pass-through) and is due on the
-// 23rd anchor. The InvoiceLineItem type structurally cannot carry cost.
 func TestEmit_BuildsLineItemsAndAnchorDueDate(t *testing.T) {
 	addon := channelAddon(25_000_000, 1)
 	addon.AddonKey = "whatsapp_channel"
@@ -148,7 +139,6 @@ func TestEmit_BuildsLineItemsAndAnchorDueDate(t *testing.T) {
 		t.Fatalf("emit: n=%d err=%v", n, err)
 	}
 	in := inv.calls[0]
-	// Plan R$500 + one $25 channel * FX 6 = R$150 -> R$650 total, R$500 creditable (plan only).
 	if in.AmountBRL != 650 || in.CreditableBRL != 500 {
 		t.Fatalf("amounts: total=%.2f creditable=%.2f, want 650/500", in.AmountBRL, in.CreditableBRL)
 	}
@@ -190,8 +180,6 @@ func owner(ws, userID string) *workspace.Workspace {
 	return &workspace.Workspace{ID: ws, OwnerID: userID}
 }
 
-// emitFixture wires the usecase with a fixed clock at 2026-03-18 (so the upcoming anchor is the 23rd)
-// and an FX of 6.0 BRL/USD.
 func emitFixture(subs *fakeSubs, plans *fakePlans, addons *fakeAddons, wss *fakeWorkspaces, inv *fakeCreateInvoice) *emitMonthlyInvoicesUseCase {
 	return emitWith(subs, plans, addons, wss, &fakePricing{rate: 6.0}, inv)
 }
@@ -206,7 +194,7 @@ func TestEmit_HappyPath_OneUnifiedInvoice(t *testing.T) {
 	subs := &fakeSubs{subs: []*workspace_plan.WorkspaceSubscription{activeSub("ws-1", "plan-1")}}
 	plans := &fakePlans{plans: map[string]*workspace_plan.PlanDefinition{"plan-1": {ID: "plan-1", BasePriceBRLCents: 109_900}}}
 	addons := &fakeAddons{byWS: map[string][]*workspace_addon.AddonSubscription{
-		"ws-1": {channelAddon(25_000_000, 1), channelAddon(25_000_000, 1)}, // two $25 channels
+		"ws-1": {channelAddon(25_000_000, 1), channelAddon(25_000_000, 1)},
 	}}
 	wss := &fakeWorkspaces{byWS: map[string]*workspace.Workspace{"ws-1": owner("ws-1", "user-1")}}
 	inv := &fakeCreateInvoice{}
@@ -222,7 +210,7 @@ func TestEmit_HappyPath_OneUnifiedInvoice(t *testing.T) {
 	if got.Purpose != invoice.PurposeMonthlyBilling {
 		t.Errorf("purpose = %q, want MONTHLY_BILLING", got.Purpose)
 	}
-	if got.AmountBRL != 1399.00 { // 1099 + 2*(25*6)
+	if got.AmountBRL != 1399.00 {
 		t.Errorf("AmountBRL = %.2f, want 1399.00", got.AmountBRL)
 	}
 	if got.CreditableBRL != 1099.00 {
@@ -236,9 +224,6 @@ func TestEmit_HappyPath_OneUnifiedInvoice(t *testing.T) {
 	}
 }
 
-// TestEmit_AnnualPlanChargedFullYear is the annual-cycle guard: an annual subscription must be billed
-// the full-year plan price (base * 12, less any annual discount), because payment confirmation extends
-// it a full 12 months. Charging a single month here would grant a year of access for a month's money.
 func TestEmit_AnnualPlanChargedFullYear(t *testing.T) {
 	annual := activeSub("ws-1", "plan-1")
 	annual.BillingCycle = workspace_plan.BillingCycleAnnual
@@ -251,7 +236,6 @@ func TestEmit_AnnualPlanChargedFullYear(t *testing.T) {
 		t.Fatalf("emit: n=%d err=%v", n, err)
 	}
 	got := inv.calls[0]
-	// Plan R$500/mo on an annual cycle -> R$6000 for the year (no discount configured today).
 	want := float64(workspace_plan.BillingCycleAnnual.TotalPriceBRLCents(50_000)) / 100.0
 	if want != 6000.00 {
 		t.Fatalf("precondition: annual price = %.2f, want 6000.00", want)
@@ -283,7 +267,6 @@ func TestEmit_CancelledNotBilled(t *testing.T) {
 }
 
 func TestEmit_KeysetPaginationCoversEveryWorkspace(t *testing.T) {
-	// Five workspaces but a page size of two: keyset pagination must emit all five without looping.
 	var list []*workspace_plan.WorkspaceSubscription
 	wsMap := map[string]*workspace.Workspace{}
 	for _, ws := range []string{"ws-1", "ws-2", "ws-3", "ws-4", "ws-5"} {
@@ -309,7 +292,7 @@ func TestEmit_KeysetPaginationCoversEveryWorkspace(t *testing.T) {
 func TestEmit_PerWorkspaceFailureIsolated(t *testing.T) {
 	subs := &fakeSubs{subs: []*workspace_plan.WorkspaceSubscription{
 		activeSub("ws-1", "plan-1"),
-		activeSub("ws-2", "missing-plan"), // GetByID fails for this one
+		activeSub("ws-2", "missing-plan"),
 	}}
 	plans := &fakePlans{plans: map[string]*workspace_plan.PlanDefinition{"plan-1": {ID: "plan-1", BasePriceBRLCents: 50_000}}}
 	wss := &fakeWorkspaces{byWS: map[string]*workspace.Workspace{"ws-1": owner("ws-1", "user-1")}}
@@ -342,7 +325,7 @@ func TestEmit_ZeroTotalSkipped(t *testing.T) {
 func TestEmit_MissingOwnerSkipped(t *testing.T) {
 	subs := &fakeSubs{subs: []*workspace_plan.WorkspaceSubscription{activeSub("ws-1", "plan-1")}}
 	plans := &fakePlans{plans: map[string]*workspace_plan.PlanDefinition{"plan-1": {ID: "plan-1", BasePriceBRLCents: 50_000}}}
-	wss := &fakeWorkspaces{byWS: map[string]*workspace.Workspace{}} // no owner row
+	wss := &fakeWorkspaces{byWS: map[string]*workspace.Workspace{}}
 	inv := &fakeCreateInvoice{}
 
 	n, err := emitFixture(subs, plans, &fakeAddons{}, wss, inv).Execute()
@@ -363,8 +346,6 @@ func TestEmit_SubsRepoErrorPropagates(t *testing.T) {
 }
 
 func TestEmit_FXErrorUsesFallbackRate(t *testing.T) {
-	// A transient pricing-read failure must not block billing; it falls back to the default rate
-	// (mirroring create_invoice), so the workspace is still billed.
 	subs := &fakeSubs{subs: []*workspace_plan.WorkspaceSubscription{activeSub("ws-1", "plan-1")}}
 	plans := &fakePlans{plans: map[string]*workspace_plan.PlanDefinition{"plan-1": {ID: "plan-1", BasePriceBRLCents: 50_000}}}
 	wss := &fakeWorkspaces{byWS: map[string]*workspace.Workspace{"ws-1": owner("ws-1", "user-1")}}
@@ -377,7 +358,7 @@ func TestEmit_FXErrorUsesFallbackRate(t *testing.T) {
 	if n != 1 || len(inv.calls) != 1 {
 		t.Fatalf("FX failure should fall back and still bill, emitted=%d calls=%d", n, len(inv.calls))
 	}
-	if inv.calls[0].AmountBRL != 500.00 { // 50_000 cents, no addons
+	if inv.calls[0].AmountBRL != 500.00 {
 		t.Fatalf("AmountBRL = %.2f, want 500.00", inv.calls[0].AmountBRL)
 	}
 }

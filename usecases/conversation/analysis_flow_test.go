@@ -63,8 +63,6 @@ func TestAnalysisDebounceAcknowledgesOnlyCompletedVersion(t *testing.T) {
 				}
 				return nil
 			}))
-			// No transcript repository is installed: an analysis-only handoff
-			// must not fetch the same transcript ahead of the analysis adapter.
 			if err := job.ProcessPendingAnalyses(); err != nil {
 				t.Fatal(err)
 			}

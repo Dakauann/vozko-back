@@ -7,8 +7,6 @@ import (
 	"vozko/domain/user"
 )
 
-// updateUserRepoStub embeds the repository interface so only Update needs an
-// implementation; the rest stay inert.
 type updateUserRepoStub struct {
 	user.UserRepository
 	gotID   string
@@ -22,8 +20,6 @@ func (s *updateUserRepoStub) Update(id string, u *user.User) error {
 	return s.err
 }
 
-// The usecase must call repo.Update with the exact same args the handler used to
-// pass directly, this is the behavior-preservation guarantee for the swap.
 func TestUpdateUserUseCaseDelegatesToRepo(t *testing.T) {
 	repo := &updateUserRepoStub{}
 	uc := NewUpdateUserUseCase(repo)

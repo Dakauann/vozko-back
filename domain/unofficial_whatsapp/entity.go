@@ -1,23 +1,3 @@
-// Package unofficial_whatsapp holds the contracts and rules for WhatsApp
-// reached through a linked-device session rather than through Meta's Cloud API.
-//
-// It deliberately contains no HTTP: the vendor's wire format lives in
-// infra/uazapi, and uazapi is one PROVIDER of this channel rather than the
-// channel itself. Nothing in this package may name it.
-//
-// Three rules shape everything downstream, and none of them is inferable from a
-// generic messaging model:
-//
-//  1. There is no messaging window and no template. Cold outbound works. The
-//     composer closes only when the SESSION dies, when WhatsApp restricts the
-//     number, or when the contact blocks it — never on a clock.
-//  2. The contact is an E.164 phone number, so it maps onto a CRM lead. That is
-//     the decisive difference from Instagram and Telegram, whose contacts are
-//     opaque provider ids that no call session, boleto or export can address.
-//  3. The account can be BANNED. This is an unofficial transport, and abuse is
-//     not punished with a rejected API call but with the customer losing their
-//     number. Every rule below that looks conservative is that risk showing
-//     through.
 package unofficial_whatsapp
 
 import (
@@ -50,17 +30,8 @@ var (
 	ErrRestrictedByWA = errors.New("whatsapp is currently restricting new conversations from this number")
 )
 
-// MaxTextRunes bounds an outbound body.
-//
-// This is OUR cap, not the provider's: the vendor documents no text limit at
-// all. WhatsApp's own client ceiling is 65536 characters, and a limit we chose
-// is labelled as such rather than presented as a contract we can rely on.
 const MaxTextRunes = 65536
 
-// Media ceilings. Also OURS, and also conservative, for the same reason: the
-// vendor documents no size limits, and discovering one by having a 90 MB upload
-// rejected mid-send is a bad way to find out. Seeded from WhatsApp's published
-// client limits.
 const (
 	MaxImageBytes    int64 = 16 << 20
 	MaxVideoBytes    int64 = 16 << 20
@@ -68,9 +39,6 @@ const (
 	MaxDocumentBytes int64 = 100 << 20
 )
 
-// Interactive limits, from WhatsApp's own interactive message types. Unlike the
-// sizes above these are the platform's, not ours: WhatsApp splits at three
-// buttons into a different message type and caps a list at ten rows.
 const (
 	MaxButtonOptions      = 3
 	MaxListOptions        = 10
@@ -78,52 +46,26 @@ const (
 	MaxOptionPayloadBytes = 256
 )
 
-// Default pacing between outbound sends on one instance.
-//
-// A constant cadence is the most legible bot signature there is, so sends are
-// jittered inside a range rather than spaced by a fixed delay. These are the
-// defaults an instance starts with; an operator can widen them and, deliberately,
-// cannot narrow them below MinSendDelayMS.
 const (
 	DefaultSendDelayMinMS = 3000
 	DefaultSendDelayMaxMS = 12000
 	MinSendDelayMS        = 500
 )
 
-// ProviderUazapi is the first (and today only) provider of this channel.
-//
-// It is a value rather than an assumption so a second provider is another
-// adapter behind the same ProviderAPI port, not a second entry type and a second
-// pass over every registry in the CRM.
 const ProviderUazapi = "uazapi"
 
-// ---------------------------------------------------------------- server
-
-// Server is one provider host we can place instances on.
-//
-// It is a row rather than a config string because a host has a hard ceiling on
-// connected instances and answers 429 past it. Capacity that is not modelled is
-// capacity that fails at the moment a customer clicks Connect, with an error
-// nobody can explain.
 type Server struct {
-	ID string `json:"id"`
-	// WorkspaceID is nil for a platform-owned host usable by any workspace, and
-	// set for a bring-your-own host. Nil is the normal case: the admin token is
-	// host-wide, so a tenant must never hold ours and we must never hold theirs.
+	ID          string  `json:"id"`
 	WorkspaceID *string `json:"workspaceId,omitempty"`
 
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
-	BaseURL  string `json:"baseUrl"`
-	// AdminToken is host-wide and never serialized. Encrypted at rest, and
-	// rotatable, because it can create and delete every instance on the host.
+	Name       string `json:"name"`
+	Provider   string `json:"provider"`
+	BaseURL    string `json:"baseUrl"`
 	AdminToken string `json:"-"`
 
 	Capacity int  `json:"capacity"`
 	InUse    int  `json:"inUse"`
 	Enabled  bool `json:"enabled"`
-	// Draining stops new placements without evicting what is already running, so
-	// a host can be retired without disconnecting live customers.
 	Draining bool `json:"draining"`
 
 	LastHealthyAt *time.Time `json:"lastHealthyAt,omitempty"`
@@ -152,42 +94,19 @@ func (s *Server) Validate() error {
 	return nil
 }
 
-// HasCapacity reports whether one more instance may be placed here.
-//
-// A zero Capacity means "unknown", not "unlimited", and is treated as full. The
-// safe default matters: guessing unlimited means we keep placing instances onto
-// a host that has already started refusing them.
 func (s *Server) HasCapacity() bool {
 	return s.Enabled && !s.Draining && s.Capacity > 0 && s.InUse < s.Capacity
 }
 
-// ---------------------------------------------------------------- instance
-
-// Status is the instance lifecycle.
-//
-// The first four mirror the provider's own states; the last three are ours,
-// because "the host says disconnected" and "Meta banned this number" need
-// different copy, different alerting and different remedies, and the provider
-// reports both the same way.
 type Status string
 
 const (
-	// StatusProvisioning is between our row being created and the instance
-	// existing on the host.
-	StatusProvisioning Status = "PROVISIONING"
-	// StatusAwaitingScan means a QR code or pairing code is live and unexpired.
-	StatusAwaitingScan Status = "AWAITING_SCAN"
-	StatusConnected    Status = "CONNECTED"
-	// StatusHibernated is the provider's paused-but-credentialed state. It
-	// reconnects without a new scan, which is why it is not DISCONNECTED.
-	StatusHibernated Status = "HIBERNATED"
-	// StatusDisconnected means the session is gone and a new scan is required.
-	StatusDisconnected Status = "DISCONNECTED"
-	// StatusBanned means WhatsApp has disabled the number. Terminal: no
-	// reconnection recovers it, and the UI must say so rather than offering a
-	// Reconnect button that can only fail.
-	StatusBanned Status = "BANNED"
-	// StatusProvisionFailed means the host never created the instance.
+	StatusProvisioning    Status = "PROVISIONING"
+	StatusAwaitingScan    Status = "AWAITING_SCAN"
+	StatusConnected       Status = "CONNECTED"
+	StatusHibernated      Status = "HIBERNATED"
+	StatusDisconnected    Status = "DISCONNECTED"
+	StatusBanned          Status = "BANNED"
 	StatusProvisionFailed Status = "PROVISION_FAILED"
 )
 
@@ -200,8 +119,6 @@ func (s Status) Valid() bool {
 	return false
 }
 
-// CanTransitionTo guards the lifecycle, following the precedent set by the two
-// existing channels of having a guard from day one rather than bare assignment.
 func (s Status) CanTransitionTo(next Status) bool {
 	if !next.Valid() {
 		return false
@@ -213,7 +130,6 @@ func (s Status) CanTransitionTo(next Status) bool {
 	case StatusProvisioning:
 		return next == StatusAwaitingScan || next == StatusProvisionFailed
 	case StatusAwaitingScan:
-		// A scan can expire back to DISCONNECTED without ever connecting.
 		return next == StatusConnected || next == StatusDisconnected ||
 			next == StatusProvisionFailed || next == StatusBanned
 	case StatusConnected:
@@ -223,43 +139,25 @@ func (s Status) CanTransitionTo(next Status) bool {
 	case StatusDisconnected:
 		return next == StatusAwaitingScan || next == StatusConnected || next == StatusBanned
 	case StatusProvisionFailed:
-		// Retrying provisioning is the only way out.
 		return next == StatusProvisioning
 	case StatusBanned:
-		// Terminal by design.
 		return false
 	}
 	return false
 }
 
-// Terminal reports whether no automatic recovery is possible.
 func (s Status) Terminal() bool { return s == StatusBanned }
 
-// Restriction is WhatsApp's own limiting state for the connected number,
-// cached from the provider's diagnostics endpoint.
-//
-// Load-bearing, not decoration: every send checks it, and WhatsApp signals a
-// restriction before it bans. Ignoring the signal is the difference between a
-// number that stops sending for a while and one that is gone.
 type Restriction struct {
-	// CanSendNewChats is nil when the diagnosis could not be completed. Nil is
-	// not "yes": an unknown answer must not authorise a blast.
 	CanSendNewChats *bool      `json:"canSendNewChats,omitempty"`
 	Key             string     `json:"key,omitempty"`
 	Message         string     `json:"message,omitempty"`
 	Until           *time.Time `json:"until,omitempty"`
-	// UsedQuota / TotalQuota mirror the new-conversation cap when WhatsApp
-	// reports one, so the UI can show "8 de 10" instead of a bare refusal.
-	UsedQuota  int        `json:"usedQuota,omitempty"`
-	TotalQuota int        `json:"totalQuota,omitempty"`
-	CheckedAt  *time.Time `json:"checkedAt,omitempty"`
+	UsedQuota       int        `json:"usedQuota,omitempty"`
+	TotalQuota      int        `json:"totalQuota,omitempty"`
+	CheckedAt       *time.Time `json:"checkedAt,omitempty"`
 }
 
-// Active reports whether WhatsApp is currently restricting new conversations.
-//
-// It fails CLOSED on an unknown answer only when a restriction window is still
-// running; a never-checked instance is not treated as restricted, or no instance
-// could ever send its first message.
 func (r Restriction) Active(now time.Time) bool {
 	if r.Until != nil && now.Before(*r.Until) {
 		return true
@@ -267,11 +165,6 @@ func (r Restriction) Active(now time.Time) bool {
 	return r.CanSendNewChats != nil && !*r.CanSendNewChats
 }
 
-// Instance is one connected WhatsApp number.
-//
-// It doubles as the config carrier for its conversations, the role
-// whatsapp_campaigns plays for the Cloud API and telegram_accounts plays for
-// Telegram, which is why the automation fields live here.
 type Instance struct {
 	ID           string  `json:"id"`
 	WorkspaceID  string  `json:"workspaceId"`
@@ -279,27 +172,14 @@ type Instance struct {
 	ServerID     string  `json:"serverId"`
 	Provider     string  `json:"provider"`
 
-	// ProviderInstanceID is the host's own id. It is what an inbound webhook
-	// body carries, and therefore the second factor that makes forging one need
-	// more than the delivery URL.
 	ProviderInstanceID string `json:"providerInstanceId"`
 	ProviderName       string `json:"providerName,omitempty"`
-	// InstanceToken authenticates every call for this instance. It never
-	// expires and grants full control of the customer's WhatsApp, so it is
-	// encrypted at rest and never serialized.
-	InstanceToken string `json:"-"`
+	InstanceToken      string `json:"-"`
 
-	// DeliveryToken is the unguessable path segment of our webhook URL.
-	//
-	// It is the ONLY authenticity control this channel has: the provider does
-	// not sign webhook bodies and offers no way to send a header of ours. A
-	// bearer credential in a URL is a weak control, which is why it is
-	// rotatable, stored as a digest for lookup, and never logged.
 	DeliveryToken     string     `json:"-"`
 	DeliveryTokenHash string     `json:"-"`
 	WebhookSetAt      *time.Time `json:"webhookSetAt,omitempty"`
 
-	// The connected WhatsApp account.
 	JID            string `json:"jid,omitempty"`
 	LID            string `json:"lid,omitempty"`
 	PhoneNumber    string `json:"phoneNumber,omitempty"`
@@ -315,15 +195,10 @@ type Instance struct {
 	ConnectedAt       *time.Time `json:"connectedAt,omitempty"`
 	LastDisconnectAt  *time.Time `json:"lastDisconnectAt,omitempty"`
 	LastDisconnectWhy string     `json:"lastDisconnectReason,omitempty"`
-	// LastPolledAt is when the health cron last reconciled with the host. A
-	// stale value IS the alarm: this channel fails silently, and "quiet inbox"
-	// and "session died an hour ago" look identical without it.
-	LastPolledAt *time.Time `json:"lastPolledAt,omitempty"`
+	LastPolledAt      *time.Time `json:"lastPolledAt,omitempty"`
 
 	Restriction Restriction `json:"restriction"`
 
-	// Ban-risk controls. Nothing in the provider's API offers these; they are
-	// ours, and they are the highest-value protection in the channel.
 	DailySendCap    int        `json:"dailySendCap"`
 	WarmupStartedAt *time.Time `json:"warmupStartedAt,omitempty"`
 	SendDelayMinMS  int        `json:"sendDelayMinMs"`
@@ -338,10 +213,7 @@ type Instance struct {
 	EnableAnalysis       bool    `json:"enableAnalysis"`
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
 	EnableAutoMemory     bool    `json:"enableAutoMemory"`
-	// HandleGroups is off by default and is a decision, not an oversight: a
-	// group conversation is stored and visible but runs no automation, because
-	// an agent answering a group thread is answering the wrong audience.
-	HandleGroups bool `json:"handleGroups"`
+	HandleGroups         bool    `json:"handleGroups"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -361,10 +233,6 @@ func (i *Instance) Normalize() {
 	if i.Status == "" {
 		i.Status = StatusProvisioning
 	}
-	// Each bound falls back independently. Defaulting only the minimum and then
-	// clamping would collapse an unset range to min..min, i.e. a FIXED cadence —
-	// the exact machine-regular rhythm the jitter exists to avoid, applied to
-	// every instance that never touched the setting.
 	if i.SendDelayMinMS <= 0 {
 		i.SendDelayMinMS = DefaultSendDelayMinMS
 	}
@@ -392,9 +260,6 @@ func (i *Instance) Validate() error {
 	return nil
 }
 
-// Label is what the CRM shows for this instance. It never falls back to a
-// provider id: an operator choosing which number to reply from must see a
-// number, not an opaque handle.
 func (i *Instance) Label() string {
 	if i.DisplayName != "" {
 		return i.DisplayName
@@ -408,16 +273,10 @@ func (i *Instance) Label() string {
 	return i.ProviderName
 }
 
-// SessionLive reports whether the host currently holds a usable session.
 func (i *Instance) SessionLive() bool {
 	return i.Status == StatusConnected
 }
 
-// CanSend reports whether outbound is permitted right now, and why not.
-//
-// The three refusals are distinguished rather than collapsed into a bool
-// because they need different words and different remedies in the UI:
-// reconnect, wait, or nothing-you-can-do.
 func (i *Instance) CanSend(now time.Time) (bool, error) {
 	if !i.SessionLive() {
 		return false, ErrInstanceNotConnected
@@ -428,8 +287,6 @@ func (i *Instance) CanSend(now time.Time) (bool, error) {
 	return true, nil
 }
 
-// SendDelayRange returns the jitter bounds for one outbound send, clamped so a
-// misconfigured instance cannot send at machine speed.
 func (i *Instance) SendDelayRange() (minMS, maxMS int) {
 	minMS, maxMS = i.SendDelayMinMS, i.SendDelayMaxMS
 	if minMS < MinSendDelayMS {
@@ -441,60 +298,21 @@ func (i *Instance) SendDelayRange() (minMS, maxMS int) {
 	return minMS, maxMS
 }
 
-// ---------------------------------------------------------------- contact
-
-// Contact is the SUBJECT of a conversation: the person on the other side of one
-// of our numbers, or the group the chat is.
-//
-// Groups live here rather than in a table of their own because the CRM asks one
-// question of every conversation — "who is this with?" — and answers it with a
-// name, a handle, a picture and a blocked flag. A group answers all four. The
-// facts that are genuinely group-shaped (subject history, roster, admin rules)
-// are NOT here; they live in Group, which the inbox never reads.
-//
-// WhatsApp addresses the same human by two identifiers: a phone-number JID and a
-// LID. Both are stored, because treating them as two people splits one real chat
-// into two CRM conversations, which reads to an operator as data loss rather
-// than as a bug.
 type Contact struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
 	InstanceID  string `json:"instanceId"`
 
-	JID string `json:"jid"`
-	LID string `json:"lid,omitempty"`
-	// IsGroup marks this subject as a group chat rather than a person.
-	//
-	// It is the predicate every person-only path reads — lead bridging, the
-	//     call sessions, broadcast targeting — instead of each of them re-deriving it from
-	// the JID suffix. A predicate re-derived at four call sites is a predicate
-	// that will be missed at the fifth.
-	IsGroup bool `json:"isGroup"`
-	// PhoneNumber is E.164 without a leading +. It is the CRM bridge, and the
-	// reason this channel's contacts are first-class where Instagram's and
-	// Telegram's are not.
-	PhoneNumber string `json:"phoneNumber,omitempty"`
-	// LeadID links to the CRM lead this contact is. Resolved on first inbound.
-	LeadID *string `json:"leadId,omitempty"`
+	JID         string  `json:"jid"`
+	LID         string  `json:"lid,omitempty"`
+	IsGroup     bool    `json:"isGroup"`
+	PhoneNumber string  `json:"phoneNumber,omitempty"`
+	LeadID      *string `json:"leadId,omitempty"`
 
-	Name         string `json:"name,omitempty"`
-	ContactName  string `json:"contactName,omitempty"`
-	VerifiedName string `json:"verifiedName,omitempty"`
-	// PictureURL is OUR re-hosted copy — the only one anything renders.
-	PictureURL string `json:"pictureUrl,omitempty"`
-	// PictureSourceURL is the PROVIDER's url the copy above was made from.
-	//
-	// It is the change detector, and it is what makes a profile picture update
-	// nearly free. WhatsApp's avatar urls carry a content id, so a url that has
-	// not changed means a picture that has not changed: seeing the same value
-	// again skips the download and the upload entirely. Without it there is no
-	// way to tell "the same photo, read again" from "a new photo", so either
-	// every read re-downloads or a change is invisible until the TTL expires —
-	// which is exactly the bug where an operator changed a group's picture and
-	// the CRM kept the old one.
-	//
-	// Never rendered: it is short-lived and unauthenticated, which is why the
-	// bytes are re-hosted in the first place.
+	Name             string     `json:"name,omitempty"`
+	ContactName      string     `json:"contactName,omitempty"`
+	VerifiedName     string     `json:"verifiedName,omitempty"`
+	PictureURL       string     `json:"pictureUrl,omitempty"`
 	PictureSourceURL string     `json:"-"`
 	IsBusiness       bool       `json:"isBusiness"`
 	ProfileFetchedAt *time.Time `json:"profileFetchedAt,omitempty"`
@@ -506,14 +324,6 @@ type Contact struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// DisplayName prefers the name the operator's own phone knows, then the
-// business-verified name, then the WhatsApp profile name, and only then the
-// number. A row is never blank.
-//
-// A group whose subject has not synced yet falls back to UnnamedGroupLabel
-// rather than to its JID: the first inbound message creates the conversation and
-// the metadata sync lands moments later, and "120363…@g.us" in the inbox for
-// those moments looks like a broken row rather than a pending one.
 func (c *Contact) DisplayName() string {
 	for _, candidate := range []string{c.ContactName, c.VerifiedName, c.Name} {
 		if v := strings.TrimSpace(candidate); v != "" {
@@ -526,11 +336,6 @@ func (c *Contact) DisplayName() string {
 	return c.Handle()
 }
 
-// Handle fills the CRM's "number" slot, which is what an operator searches by.
-//
-// A group has no number, and it returns empty rather than its JID: the slot is
-// rendered as a phone number everywhere it appears, and a group id shown there
-// reads as a number an operator could dial.
 func (c *Contact) Handle() string {
 	if c.IsGroup {
 		return ""
@@ -541,16 +346,6 @@ func (c *Contact) Handle() string {
 	return c.JID
 }
 
-// ProfileRef is how this subject is addressed when READING its profile.
-//
-// The bare phone number is preferred over the JID, and that is not cosmetic: the
-// provider's chat-details endpoint documents its argument as "a phone number or
-// a group id", and a subject first seen under a LID has a JID of the form
-// "…@lid" that identifies nobody outside WhatsApp's own privacy layer. Asking
-// with that yields nothing, which looks exactly like "this person has no
-// picture".
-//
-// A group is addressed by its JID, because that IS its id.
 func (c *Contact) ProfileRef() string {
 	if !c.IsGroup && c.PhoneNumber != "" {
 		return c.PhoneNumber
@@ -558,8 +353,6 @@ func (c *Contact) ProfileRef() string {
 	return c.JID
 }
 
-// ProfileIsStale reports whether the cached profile should be refreshed.
-// Enrichment is lazy because profile reads compete with the send budget.
 func (c *Contact) ProfileIsStale(now time.Time, ttl time.Duration) bool {
 	if c.ProfileFetchedAt == nil {
 		return true
@@ -567,15 +360,6 @@ func (c *Contact) ProfileIsStale(now time.Time, ttl time.Duration) bool {
 	return now.Sub(*c.ProfileFetchedAt) > ttl
 }
 
-// ---------------------------------------------------------------- conversation
-
-// Conversation is the ENTRY, what the CRM treats as a conversation.
-//
-// One real WhatsApp chat is one conversation, always. This is a deliberate
-// divergence from the Cloud API channel, where the entry is (campaign, lead) and
-// the same person in two campaigns has two transcripts: an inbound webhook here
-// carries no campaign, so it could not choose between them, and the operator
-// would see one chat on their phone and two in the CRM.
 type Conversation struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspaceId"`
@@ -599,28 +383,10 @@ type Conversation struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// InScope reports whether this conversation is ATTENDED at all — whether it
-// enters the round-robin, gets analysed, and counts as work.
-//
-// Separate from RunsAutomation because the two answer different questions and
-// folding them cost both: an operator pausing the AI on one conversation must
-// not also un-assign it, and a group that automation ignores must still be
-// visible, repliable and manually assignable.
-//
-// A group is out of scope unless its instance opts in, because auto-assigning
-// group threads to a random agent is almost never what a workspace wants.
-// Sending is never gated by this: the send path checks the session, the
-// restriction and the block, and nothing else.
 func (c *Conversation) InScope(instanceHandlesGroups bool) bool {
 	return !c.IsGroup || instanceHandlesGroups
 }
 
-// RunsAutomation reports whether AI replies and workflows may act here.
-//
-// Two gates, in order: the conversation has to be in scope at all, and the
-// per-conversation override has to allow it. With a partial view of a group
-// thread an agent answers a conversation it cannot see, which is why the group
-// gate is an instance-level opt-in rather than a default.
 func (c *Conversation) RunsAutomation(instanceHandlesGroups bool) bool {
 	if !c.InScope(instanceHandlesGroups) {
 		return false
@@ -628,13 +394,6 @@ func (c *Conversation) RunsAutomation(instanceHandlesGroups bool) bool {
 	return c.AutomationEnabled == nil || *c.AutomationEnabled
 }
 
-// ---------------------------------------------------------------- phone
-
-// NormalizePhone reduces a number to digits only.
-//
-// WhatsApp JIDs, the provider's `number` field and our leads table all disagree
-// about the leading +, and comparing an un-normalized pair is how a lead ends up
-// duplicated. Everything in this channel stores and compares digits.
 func NormalizePhone(raw string) string {
 	var b strings.Builder
 	b.Grow(len(raw))
@@ -646,18 +405,6 @@ func NormalizePhone(raw string) string {
 	return b.String()
 }
 
-// PhoneFromJID extracts the phone number from a JID.
-//
-// Only a user JID carries one. Every other form is an opaque identifier whose
-// numeric part is NOT a number, and returning it would invent one:
-//
-//   - "…@lid" is WhatsApp's privacy identifier for a person;
-//   - "…@g.us" is a group's id, and treating it as a phone produced contacts
-//     that rendered as "+120363…" and could be handed to a call session;
-//   - "…@newsletter" is a channel id.
-//
-// Matching a lead against any of them attaches a conversation to the wrong
-// person, so they all return empty.
 func PhoneFromJID(jid string) string {
 	jid = strings.TrimSpace(jid)
 	if jid == "" {
@@ -667,12 +414,10 @@ func PhoneFromJID(jid string) string {
 	if found && !strings.EqualFold(domain, DomainUser) {
 		return ""
 	}
-	// Multi-device JIDs carry a device suffix ("5511999999999:12@…").
 	user, _, _ = strings.Cut(user, ":")
 	return NormalizePhone(user)
 }
 
-// JID domains, as they appear in the provider's chat ids.
 const (
 	DomainUser       = "s.whatsapp.net"
 	DomainLID        = "lid"
@@ -680,18 +425,14 @@ const (
 	DomainNewsletter = "newsletter"
 )
 
-// IsGroupJID reports whether a chat id addresses a group.
 func IsGroupJID(jid string) bool {
 	return strings.HasSuffix(strings.TrimSpace(jid), "@"+DomainGroup)
 }
 
-// IsNewsletterJID reports whether a chat id addresses a channel/newsletter.
-// Those are a publishing surface, not an attendance surface, and are ignored.
 func IsNewsletterJID(jid string) bool {
 	return strings.HasSuffix(strings.TrimSpace(jid), "@"+DomainNewsletter)
 }
 
-// UserJID renders the addressable JID for an E.164 number.
 func UserJID(phone string) string {
 	digits := NormalizePhone(phone)
 	if digits == "" {

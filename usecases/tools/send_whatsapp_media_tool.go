@@ -30,12 +30,9 @@ type SendWhatsappMediaTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	mediaRepo             media.MediaRepository
-	// adapters routes the send on every channel that is not WhatsApp. Optional:
-	// unset keeps the tool WhatsApp-only, which is what it was before.
-	adapters conversation.AdapterRegistry
+	adapters              conversation.AdapterRegistry
 }
 
-// SetAdapters wires the channel registry so the tool can send anywhere.
 func (uc *SendWhatsappMediaTool) SetAdapters(r conversation.AdapterRegistry) {
 	uc.adapters = r
 }
@@ -48,11 +45,6 @@ const (
 	maxStickerBytes  = 500 * 1024
 )
 
-// ToolNameSendMedia is deliberately channel-neutral. The name is part of the
-// prompt the model reads, and a tool called "send_whatsapp_media" offered inside
-// a Telegram conversation reads as belonging to another channel, a model that
-// declines to use it is behaving sensibly. Saved bindings under the old name
-// keep working through CanonicalToolName.
 const ToolNameSendMedia = "send_media"
 
 const LegacyToolNameSendWhatsappImage = "send_whatsapp_image"
@@ -78,11 +70,7 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 		DisplayDescription: "Envia uma mídia (imagem, vídeo, áudio, documento ou sticker) ao contato.",
 		Parameters: map[string]tools.Parameter{
 			"to": {
-				Type: "string",
-				// Optional: the recipient is the conversation the agent is
-				// already in. It remains accepted because saved WhatsApp agents
-				// were taught to pass a number, and because the WhatsApp path
-				// still addresses by number.
+				Type:               "string",
 				Description:        "Opcional. Destinatário no WhatsApp (formato 5511999999999). Deixe vazio para enviar ao contato da conversa atual.",
 				DisplayName:        "Destinatário",
 				DisplayDescription: "Opcional, por padrão, o contato da conversa atual",
@@ -108,10 +96,6 @@ func (uc *SendWhatsappMediaTool) Definition() tools.Definition {
 				DisplayDescription: "Legenda opcional (apenas para imagem, vídeo e documento)",
 			},
 		},
-		// Neither media field is listed: the tool takes media_id OR media_url, and a
-		// schema cannot express that choice. ExecuteWithConfig rejects a call that
-		// brings neither, with a message that names both. Requiring "to" would make
-		// the tool unusable on every channel that has no phone number.
 		Required: []string{},
 		Visibility: []tools.ToolVisibility{
 			tools.VisibilityMessaging,
@@ -180,8 +164,6 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 		return tools.ExecutionResult{}, err
 	}
 
-	// Every channel but WhatsApp sends through its adapter, addressed by the
-	// conversation rather than by a phone number.
 	if adapter, ec, ok := resolveToolAdapter(ctx, uc.adapters, config); ok {
 		return sendMediaViaAdapter(ctx, adapter, ec, mediaItem, caption)
 	}
@@ -207,17 +189,12 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 	}
 }
 
-// resolveMediaItem picks what to send from either source. Everything downstream
-// already works off a URL alone, so a direct URL only has to skip the library
-// lookup and carry a type; nothing about fetching, normalizing or uploading changes.
 func (uc *SendWhatsappMediaTool) resolveMediaItem(params map[string]interface{}) (*media.Media, error) {
 	mediaID, _ := params["media_id"].(string)
 	mediaID = strings.TrimSpace(mediaID)
 	mediaURL, _ := params["media_url"].(string)
 	mediaURL = strings.TrimSpace(mediaURL)
 
-	// media_id wins when both arrive: it names a curated row, so it is the more
-	// deliberate of the two.
 	if mediaID != "" {
 		item, err := uc.mediaRepo.GetMediaByID(mediaID)
 		if err != nil {
@@ -242,11 +219,6 @@ func (uc *SendWhatsappMediaTool) resolveMediaItem(params map[string]interface{})
 	return nil, fmt.Errorf("%s requires media_id (from the agent's library) or media_url (a direct CDN link)", ToolNameSendMedia)
 }
 
-// allowedMediaURL is the boundary that a media_id never needed. A library id is
-// chosen by an operator; a URL is chosen by the model from whatever it just read in
-// a conversation or an API response. Without this, a crafted message could steer
-// the fetch below at an internal address and have the reply mailed to the contact.
-// Fails closed: no configured CDN means no URL sends at all.
 func allowedMediaURL(raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -266,9 +238,6 @@ func allowedMediaURL(raw string) error {
 	return nil
 }
 
-// mediaURLAllowedHost reads the host from the same setting that produces our media
-// URLs, so the allowlist follows the CDN instead of being a second value to keep in
-// sync with it.
 func mediaURLAllowedHost() string {
 	endpoint := strings.TrimSpace(os.Getenv("CLOUDFLARE_R2_ENDPOINT"))
 	if endpoint == "" {
@@ -281,9 +250,6 @@ func mediaURLAllowedHost() string {
 	return parsed.Hostname()
 }
 
-// mediaTypeFromURL infers the send path from the extension. A library row carries a
-// declared type; a bare URL has only its name to go on, and the send switch needs
-// one. Anything unrecognized goes out as a document, which every channel accepts.
 func mediaTypeFromURL(raw string) media.MediaType {
 	ext := strings.ToLower(path.Ext(strings.SplitN(raw, "?", 2)[0]))
 	switch ext {
@@ -395,23 +361,8 @@ func (uc *SendWhatsappMediaTool) sendVideoByLink(ctx context.Context, c conversa
 	return tools.ExecutionResult{Result: fmt.Sprintf("Video sent successfully to %s (via link)", to)}, nil
 }
 
-// convertAudioToOGGOpusFn indirects the transcode so a test can drive both the
-// happy path and the fallback on a machine with no ffmpeg.
 var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
 
-// sendAudio delivers audio the way the Cloud API actually accepts it.
-//
-// Handing Meta a link let it fetch the file and decide, and for audio it accepts
-// exactly one OGG: the OPUS one. A library file that is OGG/Vorbis — what most
-// converters and DAWs export by default — has the right container, the right
-// extension and the right Content-Type, and is still refused with 131053
-// ("uploaded with mimetype as audio/ogg; codecs=opus, however on processing it
-// is of type application/octet-stream"). The whole campaign fails, one
-// undelivered message at a time, and the file looks perfectly fine.
-//
-// So transcode first and upload the bytes, which is what the operator send and
-// the workflow send node already do. The link stays as the fallback: it is what
-// this did before, so a download or ffmpeg failure is no worse than today.
 func (uc *SendWhatsappMediaTool) sendAudio(ctx context.Context, c conversation.WhatsAppClient, to string, m *media.Media) (tools.ExecutionResult, error) {
 	data, _, _, err := fetchMedia(m.URL, maxAudioBytes)
 	if err != nil {

@@ -9,8 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// fakeChannelContacts is a minimal ContactIdentityLookup: the inbox hydration
-// only ever calls ContactsByIDs.
 type fakeChannelContacts struct {
 	byID map[string]ContactDisplay
 }
@@ -33,13 +31,6 @@ func (f *fakeChannelContacts) AuthorsByHandle(context.Context, string, []string)
 	return nil, nil
 }
 
-// The read half of the rename bug.
-//
-// On unofficial WhatsApp the contact IS the lead, so hydration was overwriting
-// leads.name with the handset's pushname on EVERY read. The rename was stored
-// correctly and the CRM simply never showed it — the operator saw their edit
-// accepted on the leads page and unchanged in the inbox, with nothing to
-// suggest the two were even reading the same row.
 func TestHydrateContactSenders_OperatorsLeadNameSurvivesThePushname(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &fakeChannelContacts{
@@ -53,7 +44,7 @@ func TestHydrateContactSenders_OperatorsLeadNameSurvivesThePushname(t *testing.T
 		EntryID:   "uw-1",
 		EntryType: string(shared.EntryTypeUnofficialWhatsApp),
 		LeadID:    "lead-1",
-		LeadName:  "Dakauann Teste", // what the operator renamed it to
+		LeadName:  "Dakauann Teste",
 	}}
 	svc.hydrateContactSenders(entries)
 
@@ -61,14 +52,11 @@ func TestHydrateContactSenders_OperatorsLeadNameSurvivesThePushname(t *testing.T
 		t.Fatalf("LeadName = %q, want the operator's name; the pushname overruled it",
 			entries[0].LeadName)
 	}
-	// Everything the contact is still authoritative for keeps coming from it.
 	if entries[0].LeadNumber != "+5584994409624" || entries[0].LeadPicture != "pic" {
 		t.Errorf("contact-owned fields lost: %+v", entries[0])
 	}
 }
 
-// The gap the lookup exists for: a contact that has not resolved to a named
-// lead yet must still get a label, or the row renders as a bare JID.
 func TestHydrateContactSenders_StillFillsABlankLeadName(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &fakeChannelContacts{
@@ -90,9 +78,6 @@ func TestHydrateContactSenders_StillFillsABlankLeadName(t *testing.T) {
 	}
 }
 
-// The sender label follows what is actually displayed. Replacing a raw JID with
-// the pushname while the row above it reads the operator's name would put two
-// different names on one conversation.
 func TestHydrateContactSenders_SenderLabelUsesTheDisplayedName(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &fakeChannelContacts{
@@ -106,7 +91,7 @@ func TestHydrateContactSenders_SenderLabelUsesTheDisplayedName(t *testing.T) {
 		EntryType:         string(shared.EntryTypeUnofficialWhatsApp),
 		LeadID:            "lead-1",
 		LeadName:          "Dakauann Teste",
-		LastMessageSender: "5584994409624@s.whatsapp.net", // the raw JID leaking through
+		LastMessageSender: "5584994409624@s.whatsapp.net",
 	}}
 	svc.hydrateContactSenders(entries)
 
@@ -116,7 +101,6 @@ func TestHydrateContactSenders_SenderLabelUsesTheDisplayedName(t *testing.T) {
 	}
 }
 
-// An operator's label on the sender line is still never touched.
 func TestHydrateContactSenders_LeavesARealSenderLabelAlone(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &fakeChannelContacts{
@@ -139,8 +123,6 @@ func TestHydrateContactSenders_LeavesARealSenderLabelAlone(t *testing.T) {
 	}
 }
 
-// headerLeadRepo answers FindByID and nothing else; the embedded nil interface
-// turns any other call into a panic rather than a silent zero value.
 type headerLeadRepo struct {
 	lead.Repository
 
@@ -157,8 +139,6 @@ func (r *headerLeadRepo) FindByID(workspaceID, id string) (*lead.Lead, error) {
 	return nil, lead.ErrLeadNotFound
 }
 
-// headerContacts resolves the subject of ONE open conversation, which is the
-// only method GetEntryInfo calls on this port.
 type headerContacts struct {
 	contact ContactDisplay
 	ws      string
@@ -176,9 +156,6 @@ func (h *headerContacts) AuthorsByHandle(context.Context, string, []string) (map
 	return nil, nil
 }
 
-// The conversation HEADER, which is a different resolver from the list and was
-// the last surface still disagreeing with itself: the inbox row said the new
-// name and the conversation you opened from it said the old one.
 func TestGetEntryInfo_HeaderPrefersTheLeadNameOverThePushname(t *testing.T) {
 	leads := &headerLeadRepo{byID: map[string]*lead.Lead{
 		"lead-1": {ID: "lead-1", Name: "DakauannT", Number: "558494409624"},
@@ -200,20 +177,14 @@ func TestGetEntryInfo_HeaderPrefersTheLeadNameOverThePushname(t *testing.T) {
 	if name != "DakauannT" {
 		t.Fatalf("header name = %q, want the CRM lead's name", name)
 	}
-	// The lead is looked up in the workspace the CONTACT belongs to, never one
-	// inferred from elsewhere.
 	if leads.askedWS != "ws-1" || leads.askedLead != "lead-1" {
 		t.Errorf("looked up lead %q in workspace %q", leads.askedLead, leads.askedWS)
 	}
-	// Everything the contact still owns is untouched.
 	if handle != "+5584994409624" || picture != "pic" {
 		t.Errorf("contact-owned header fields lost: %q %q", handle, picture)
 	}
 }
 
-// A group has no lead, and a contact whose first message has not been bridged
-// yet has none either. Both must keep the provider label — the alternative is a
-// header that renders blank.
 func TestGetEntryInfo_HeaderKeepsThePushnameWithoutALead(t *testing.T) {
 	leads := &headerLeadRepo{byID: map[string]*lead.Lead{}}
 	svc := &HistoryProviderService{leadRepo: leads}
@@ -235,8 +206,6 @@ func TestGetEntryInfo_HeaderKeepsThePushnameWithoutALead(t *testing.T) {
 	}
 }
 
-// An empty lead name means the operator CLEARED it, and the header falls back
-// to the pushname rather than rendering nothing.
 func TestGetEntryInfo_HeaderFallsBackWhenTheLeadNameIsBlank(t *testing.T) {
 	leads := &headerLeadRepo{byID: map[string]*lead.Lead{
 		"lead-1": {ID: "lead-1", Name: "   "},

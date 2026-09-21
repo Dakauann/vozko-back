@@ -78,10 +78,6 @@ var (
 	ErrTagGroupNotFound     = errors.New("tag group not found")
 	ErrTagGroupNameRequired = errors.New("tag group name is required")
 
-	// ErrStagePipelineMismatch is returned when a stage from one funnel is assigned
-	// to an entry that currently sits on another. A lead belongs to exactly one
-	// funnel; crossing funnels is an explicit move that changes stage and funnel
-	// together, never a side effect of picking from the wrong list.
 	ErrStagePipelineMismatch = errors.New("stage belongs to a different funnel than this conversation")
 )
 
@@ -100,12 +96,6 @@ func (t *Stage) Validate() error {
 	return nil
 }
 
-// ValidateEntryType gates which conversations can be staged and labelled.
-//
-// The set lives in domain/shared so this and the label/stage counterpart cannot
-// drift apart, and so adding a channel does not mean hunting for hardcoded
-// entry-type lists. Instagram was rejected here while its cards already rendered
-// on the board.
 func ValidateEntryType(entryType string) error {
 	if !shared.EntryType(entryType).SupportsCRMTagging() {
 		return ErrInvalidEntryType
@@ -130,16 +120,6 @@ type StageGroupItem struct {
 	Position     int    `json:"position"`
 }
 
-// FunnelStages is one funnel and the columns it holds.
-//
-// A read model for the inbox filter, which offers stages grouped by funnel: the
-// flat list it used to render could only ever come from ONE funnel, so in a
-// workspace with several, filtering by a stage returned nothing because the
-// conversations were staged in a funnel the filter never mentioned.
-//
-// PipelineID is empty on the trailing group that carries stages whose funnel is
-// missing. Those still filter and are still assigned, so they are listed rather
-// than dropped.
 type FunnelStages struct {
 	PipelineID   string   `json:"pipelineId"`
 	PipelineName string   `json:"pipelineName"`

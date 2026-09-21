@@ -43,9 +43,6 @@ func TestCSRFMiddleware(t *testing.T) {
 		{"POST cookie + trusted Referer fallback passes", req(http.MethodPost, accessCookie, referer("https://app.example.com/page")), http.StatusOK},
 		{"POST refresh cookie + untrusted Origin blocked", req(http.MethodPost, refreshCookie, origin("https://evil.example")), http.StatusForbidden},
 		{"DELETE cookie + trusted Origin passes", req(http.MethodDelete, accessCookie, origin("https://app.example.com")), http.StatusOK},
-		// Same-origin: the API serves its own pages (e.g. the Meta Embedded Signup
-		// popup) that POST back to the API with the API's own origin, which is not in
-		// the frontend allowlist. These are not cross-site and must pass.
 		{"POST cookie + same-origin (API's own page) passes", req(http.MethodPost, accessCookie, origin("https://api.example.com")), http.StatusOK},
 		{"POST cookie + same-origin via Referer fallback passes", req(http.MethodPost, accessCookie, referer("https://api.example.com/oauth/meta/embedded")), http.StatusOK},
 		{"POST cookie + same host but wrong scheme blocked", req(http.MethodPost, accessCookie, origin("http://api.example.com")), http.StatusForbidden},
@@ -62,11 +59,7 @@ func TestCSRFMiddleware(t *testing.T) {
 	}
 }
 
-// TestCSRFMiddlewareSameOriginScheme exercises the scheme reconstruction used by
-// the same-origin trust: TLS is terminated at the proxy (r.TLS nil in prod), so
-// the scheme comes from X-Forwarded-Proto, with a localhost fallback for dev.
 func TestCSRFMiddlewareSameOriginScheme(t *testing.T) {
-	// No frontend origins trusted at all: any pass here is the same-origin path.
 	mw := NewCSRFMiddleware(nil)
 	h := mw.Handler(csrfOKHandler())
 

@@ -153,7 +153,6 @@ func toSchema(a *ia.InboxAssignment) *schema.InboxAssignment {
 		EntryType:      a.EntryType,
 		AssignedUserID: a.AssignedUserID,
 	}
-	// Empty → NULL: an empty string is not a valid uuid for business_phone_id.
 	if a.BusinessPhoneID != "" {
 		bp := a.BusinessPhoneID
 		rec.BusinessPhoneID = &bp
@@ -176,14 +175,9 @@ func (r *repository) CompareAndSwapRoundRobinState(state *ia.RoundRobinState, ex
 		return true, nil
 	}
 	if expected != "" {
-		// Zero rows with a non-empty expectation means somebody else advanced
-		// the pointer between our read and this write.
 		return false, nil
 	}
 
-	// No pointer yet. DO NOTHING rather than DO UPDATE so a concurrent inserter
-	// is reported as the winner instead of both callers believing they claimed
-	// the first turn.
 	rec := schema.InboxRoundRobinState{
 		ID:                 state.ID,
 		WorkspaceID:        state.WorkspaceID,

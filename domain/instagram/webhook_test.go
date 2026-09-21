@@ -8,12 +8,6 @@ import (
 	"time"
 )
 
-// loadFixture reads a webhook payload captured verbatim from Meta's documentation.
-//
-// Testing against the real payload shapes (rather than hand-written structs) is
-// what catches the traps that make Instagram integrations fail: the array-vs-object
-// top level, field/value hoisted onto the entry with no changes array,
-// presence-only booleans, and a string-typed num_edit.
 func loadFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("testdata", "webhooks", name))
@@ -50,9 +44,6 @@ func firstEvent(t *testing.T, name string) *Event {
 	return events[0]
 }
 
-// TestDecodeEnvelope_AcceptsBothTopLevelShapes covers the trap that silently
-// drops traffic: Meta documents the same payload as a bare object on some pages
-// and as a single-element ARRAY on others.
 func TestDecodeEnvelope_AcceptsBothTopLevelShapes(t *testing.T) {
 	for _, name := range []string{"text_dm.json", "top_level_array.json"} {
 		envelopes, err := DecodeEnvelope(loadFixture(t, name))
@@ -88,7 +79,6 @@ func TestNormalizeEntry_TextDM(t *testing.T) {
 	if ev.ContactIGSID != "IGSID" {
 		t.Errorf("contact = %q, want IGSID", ev.ContactIGSID)
 	}
-	// The business must be identified by recipient.id, not entry.id.
 	if ev.IGAccountExternalID != "IGID" {
 		t.Errorf("account = %q, want IGID", ev.IGAccountExternalID)
 	}
@@ -98,7 +88,6 @@ func TestNormalizeEntry_TextDM(t *testing.T) {
 	if ev.IdempotencyKey != "ig:IGID:messages:MESSAGE-ID" {
 		t.Errorf("idempotency key = %q", ev.IdempotencyKey)
 	}
-	// This fixture uses epoch milliseconds.
 	if ev.Timestamp.UnixMilli() != 1569262485349 {
 		t.Errorf("timestamp = %d, want 1569262485349", ev.Timestamp.UnixMilli())
 	}
@@ -126,9 +115,6 @@ func TestNormalizeChange_UsesSecondsForCurrentMetaPayloads(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_EchoIsDistinguished guards the double-insert bug: our own
-// outbound messages come back as echoes, and on an echo the sender/recipient roles
-// are reversed.
 func TestNormalizeEntry_EchoIsDistinguished(t *testing.T) {
 	ev := firstEvent(t, "echo_outbound.json")
 
@@ -138,19 +124,14 @@ func TestNormalizeEntry_EchoIsDistinguished(t *testing.T) {
 	if !ev.IsOutbound() {
 		t.Error("IsOutbound() = false, want true")
 	}
-	// The counterparty on an echo is the RECIPIENT, since we are the sender.
 	if ev.ContactIGSID != "IGSID" {
 		t.Errorf("contact = %q, want IGSID", ev.ContactIGSID)
 	}
-	// An echo shares the original's key so the read-before-insert dedup matches.
 	if ev.IdempotencyKey != "ig:IGID:messages:MESSAGE-ID" {
 		t.Errorf("idempotency key = %q, want the same key as the inbound message", ev.IdempotencyKey)
 	}
 }
 
-// TestNormalizeEntry_PresenceOnlyBooleans: is_echo/is_deleted/is_unsupported are
-// included ONLY when true, so a plain bool would lose the absent/false
-// distinction.
 func TestNormalizeEntry_PresenceOnlyBooleans(t *testing.T) {
 	plain := firstEvent(t, "text_dm.json")
 	if plain.Message.IsEcho != nil {
@@ -167,16 +148,11 @@ func TestNormalizeEntry_PresenceOnlyBooleans(t *testing.T) {
 	if deleted.Message.IsDeleted == nil || !*deleted.Message.IsDeleted {
 		t.Error("is_deleted should decode to true")
 	}
-	// A tombstone carries the SAME mid as the original, so its key must differ or
-	// the dedup guard would swallow one of them.
 	if deleted.IdempotencyKey != "ig:IGID:deleted:MESSAGE-ID" {
 		t.Errorf("idempotency key = %q, want a deleted-scoped key", deleted.IdempotencyKey)
 	}
 }
 
-// TestNormalizeEntry_ReplyToIsAUnion: reply_to carries a story for a story reply
-// and a mid for an inline reply. Misreading it classifies story replies as normal
-// replies.
 func TestNormalizeEntry_ReplyToIsAUnion(t *testing.T) {
 	story := firstEvent(t, "story_reply.json")
 	if story.Message.ReplyTo == nil || story.Message.ReplyTo.Story == nil {
@@ -206,14 +182,11 @@ func TestNormalizeEntry_StoryMentionIsAnAttachment(t *testing.T) {
 	if ev.Message.Attachments[0].Type != "story_mention" {
 		t.Errorf("attachment type = %q, want story_mention", ev.Message.Attachments[0].Type)
 	}
-	// A story mention never arrives via reply_to.
 	if ev.Message.ReplyTo != nil {
 		t.Error("story mention must not populate reply_to")
 	}
 }
 
-// TestNormalizeEntry_MultipleAttachments: attachments is an ARRAY and Meta's own
-// example carries an image and a video in one message.
 func TestNormalizeEntry_MultipleAttachments(t *testing.T) {
 	ev := firstEvent(t, "media_dm_multi_attachment.json")
 	if len(ev.Message.Attachments) != 2 {
@@ -227,8 +200,6 @@ func TestNormalizeEntry_MultipleAttachments(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_EphemeralHasNoPayload guards a nil dereference: disappearing
-// media arrives with no payload object at all.
 func TestNormalizeEntry_EphemeralHasNoPayload(t *testing.T) {
 	ev := firstEvent(t, "ephemeral_no_url.json")
 	if len(ev.Message.Attachments) != 1 {
@@ -257,7 +228,6 @@ func TestNormalizeEntry_Reaction(t *testing.T) {
 	if react.Reaction.Emoji == "" {
 		t.Error("emoji should be preserved verbatim")
 	}
-	// react and unreact on the same mid must not collide.
 	unreact := firstEvent(t, "reaction_unreact.json")
 	if react.IdempotencyKey == unreact.IdempotencyKey {
 		t.Errorf("react and unreact share an idempotency key: %q", react.IdempotencyKey)
@@ -267,8 +237,6 @@ func TestNormalizeEntry_Reaction(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_ReadUsesMidNotWatermark: Instagram sends a specific message
-// id, unlike Messenger's watermark, so "everything before T" cannot be inferred.
 func TestNormalizeEntry_ReadUsesMidNotWatermark(t *testing.T) {
 	ev := firstEvent(t, "read_receipt.json")
 	if ev.Kind != EventRead {
@@ -279,8 +247,6 @@ func TestNormalizeEntry_ReadUsesMidNotWatermark(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_EditNumEditIsAString: num_edit is documented with a string
-// placeholder, so an int field would fail to unmarshal.
 func TestNormalizeEntry_EditNumEditIsAString(t *testing.T) {
 	ev := firstEvent(t, "edited_message.json")
 	if ev.Kind != EventEditedMessage {
@@ -297,9 +263,6 @@ func TestNormalizeEntry_EditNumEditIsAString(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_PostbackIdentifiesBusinessByRecipient: Meta's own postback
-// example sets entry[].id to the SENDER's scoped id, so entry.id is not a reliable
-// account discriminator for this event.
 func TestNormalizeEntry_PostbackIdentifiesBusinessByRecipient(t *testing.T) {
 	ev := firstEvent(t, "postback.json")
 	if ev.Kind != EventPostback {
@@ -308,7 +271,6 @@ func TestNormalizeEntry_PostbackIdentifiesBusinessByRecipient(t *testing.T) {
 	if ev.IGAccountExternalID != "IGID" {
 		t.Errorf("account = %q, want IGID (from recipient.id, not entry.id)", ev.IGAccountExternalID)
 	}
-	// The CRM must key off the opaque payload, not the display title.
 	if ev.Postback.Payload != "ICEBREAKER_1" {
 		t.Errorf("payload = %q", ev.Postback.Payload)
 	}
@@ -321,9 +283,6 @@ func TestNormalizeEntry_Unsupported(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_CommentBothLoginShapes is the single most commonly missed
-// shape: under Instagram Login the field/value sit DIRECTLY on the entry with no
-// changes array, and the comment id key differs between the two login types.
 func TestNormalizeEntry_CommentBothLoginShapes(t *testing.T) {
 	igLogin := firstEvent(t, "comment_ig_login.json")
 	if igLogin.Kind != EventComment {
@@ -355,9 +314,6 @@ func TestNormalizeEntry_Standby(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_UnknownFieldIsNotDropped: three subscribable fields have no
-// published payload shape, so an unrecognised field must surface as an event that
-// can be logged rather than vanishing.
 func TestNormalizeEntry_UnknownFieldIsNotDropped(t *testing.T) {
 	ev := firstEvent(t, "unknown_field.json")
 	if ev.Kind != EventUnknown {
@@ -375,8 +331,6 @@ func TestNormalizeEntry_UnknownFieldIsNotDropped(t *testing.T) {
 	}
 }
 
-// TestSplitEntries_MultiAccountBatch: one POST can span several accounts, so
-// splitting per entry is what gives per-tenant failure isolation.
 func TestSplitEntries_MultiAccountBatch(t *testing.T) {
 	envelopes, err := DecodeEnvelope(loadFixture(t, "multi_account_batch.json"))
 	if err != nil {
@@ -402,9 +356,6 @@ func TestSplitEntries_MultiAccountBatch(t *testing.T) {
 	}
 }
 
-// TestNormalizeEntry_SortsByEventTimestamp: Meta gives no ordering guarantee and
-// directs implementers to order by the webhook timestamp, so a shuffled batch must
-// come out chronological or the transcript is wrong.
 func TestNormalizeEntry_SortsByEventTimestamp(t *testing.T) {
 	events := normalizeFixture(t, "out_of_order_batch.json")
 	if len(events) != 3 {
@@ -421,10 +372,6 @@ func TestNormalizeEntry_SortsByEventTimestamp(t *testing.T) {
 	}
 }
 
-// TestIdempotencyKeys_DistinguishEventKindsOnTheSameMid is the core dedup
-// property: one mid legitimately recurs across the original message, its
-// tombstone, an edit, a read receipt and reactions, so keying on mid alone would
-// drop real events.
 func TestIdempotencyKeys_DistinguishEventKindsOnTheSameMid(t *testing.T) {
 	fixtures := []string{
 		"text_dm.json",

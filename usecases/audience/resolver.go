@@ -9,16 +9,10 @@ import (
 	"vozko/domain/shared"
 )
 
-// Settings resolution: the ONE place the "post override falls back to the
-// account" rule lives. The engine and the ingest path ask this; the API's
-// per-post editor reads and writes through the same use cases so what the
-// operator sees as "effective" is what the engine will run with.
-
 type settingsResolver struct {
 	settings ca.SettingsRepository
 }
 
-// NewSettingsResolver builds the resolver over the settings repository.
 func NewSettingsResolver(settings ca.SettingsRepository) ca.SettingsResolver {
 	return &settingsResolver{settings: settings}
 }
@@ -32,22 +26,6 @@ func (r *settingsResolver) Resolve(ctx context.Context, ref ca.ContainerRef) (*c
 		if !errors.Is(err, ca.ErrNotFound) {
 			return nil, err
 		}
-		// Never configured. What that MEANS depends on the subject, and
-		// getting it wrong is silent in both directions.
-		//
-		// For a COMMENT, this row is the switch: an operator configures an
-		// account's topic set, threshold and cap, and nothing runs until they
-		// do. Defaulting to off is the whole safety model, and a post override
-		// cannot exist without an account row that owns it, so nothing to
-		// layer either.
-		//
-		// For a CONVERSATION there is no such row and never will be: the
-		// operator's decision lives on the CHANNEL (a WhatsApp campaign's
-		// EnableAnalysis, an instance's, an account's), and the ingest path
-		// already refused to enqueue anything that switch had turned off.
-		// Demanding a second row here meant every conversation was enqueued and
-		// then immediately skipped as analysis_disabled, so the channel toggle
-		// appeared to do nothing at all.
 		def := ca.NewSettings("", ref.Source, ref.AccountID, ca.VerticalServices)
 		def.Enabled = ref.Normalized().Kind == ca.SubjectKindConversation
 		return &def, nil
@@ -60,8 +38,6 @@ func (r *settingsResolver) Resolve(ctx context.Context, ref ca.ContainerRef) (*c
 	return &effective, nil
 }
 
-// ---- per-post settings use cases ----
-
 type containerSettingsUseCases struct {
 	settings  ca.SettingsRepository
 	resolver  ca.SettingsResolver
@@ -69,9 +45,6 @@ type containerSettingsUseCases struct {
 	clock     ca.Clock
 }
 
-// NewContainerSettingsUseCases builds the get/put/delete trio and the
-// workspace listing over one set of dependencies; all share the ownership
-// check and the resolver.
 func NewContainerSettingsUseCases(
 	settings ca.SettingsRepository,
 	resolver ca.SettingsResolver,
@@ -134,8 +107,6 @@ func (p putContainerSettings) Execute(ctx context.Context, o ca.ContainerOverrid
 	if err := p.verify(ctx, o.WorkspaceID, o.Ref()); err != nil {
 		return nil, err
 	}
-	// An override that changes nothing is not stored: "inherits everything"
-	// is the absence of a row, so the UI's "reset to account" is honest.
 	if o.IsEmpty() {
 		if err := p.settings.DeleteOverride(ctx, o.Ref()); err != nil {
 			return nil, err

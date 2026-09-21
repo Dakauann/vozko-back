@@ -24,7 +24,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	wsc "vozko/domain/workspace_config"
 	"vozko/usecases/campaignqueue"
-
 )
 
 const messageSendDelay = 15 * time.Millisecond
@@ -61,8 +60,6 @@ type messageConsumerUseCase struct {
 	CachedBalanceChecker    balance.CachedBalanceChecker
 	triggerEvaluator        workflow_domain.TriggerEvaluator
 
-	// runner owns the queue: subscription bookkeeping, pause/stop, requeue and
-	// completion. Everything above is what this channel adds on top.
 	runner *campaignqueue.Runner
 }
 
@@ -106,11 +103,6 @@ func NewMessageConsumerUseCase(
 	return uc
 }
 
-// attachRunner builds the shared queue runner for this consumer.
-//
-// Separate from the constructor so the test harness, which assembles the struct
-// field by field to inject doubles, gets the SAME runner configuration as
-// production instead of a second copy that can drift from it.
 func (c *messageConsumerUseCase) attachRunner(
 	sub messaging.MessageQueueSub,
 	pub messaging.MessageQueuePub,
@@ -124,9 +116,7 @@ func (c *messageConsumerUseCase) attachRunner(
 			Namespace:         wc.QueueNamespace,
 			PauseRequeueDelay: pauseRequeueDelay,
 			Precheck:          c.precheck,
-			// Meta throttles this channel, so the pace is a token delay rather
-			// than a ban-avoidance control.
-			Pace: func(string) time.Duration { return messageSendDelay },
+			Pace:              func(string) time.Duration { return messageSendDelay },
 			Logf: func(format string, args ...any) {
 				fmt.Printf("whatsapp "+format+"\n", args...)
 			},
@@ -135,9 +125,6 @@ func (c *messageConsumerUseCase) attachRunner(
 	)
 }
 
-// campaignStatusStore and pendingEntryCounter adapt this channel's repositories
-// onto the two narrow ports the shared runner needs, so the runner never sees a
-// campaign repository and cannot start depending on one.
 type campaignStatusStore struct{ repo wc.Repository }
 
 func (s campaignStatusStore) ListRunningCampaignIDs() ([]string, error) {
@@ -172,13 +159,6 @@ func (c *messageConsumerUseCase) SetTriggerEvaluator(eval workflow_domain.Trigge
 	c.triggerEvaluator = eval
 }
 
-// The queue lifecycle is the shared runner's. Everything this consumer still
-// owns below is about Meta: templates, billing categories and balance.
-// Start asserts this channel's own wiring, then hands the queue to the runner.
-//
-// The two preconditions are deliberately checked here rather than in the shared
-// runner: a WhatsApp client factory is a Cloud API concept, and a runner that
-// knew about one could not serve a channel that has none.
 func (c *messageConsumerUseCase) Start() error {
 	if c.MessageQueueSub == nil {
 		return fmt.Errorf("whatsapp campaign consumer: message queue subscriber is required")
@@ -188,7 +168,6 @@ func (c *messageConsumerUseCase) Start() error {
 		return nil
 	}
 
-	// Paired with SignalSendingsAvailable, which publishes on this channel.
 	go c.shared.Subscribe(context.Background(), "signal:wa_sendings", func(_ []byte) {})
 
 	return c.runner.Start()
@@ -207,11 +186,6 @@ func (c *messageConsumerUseCase) StopCampaignConsumer(id string) error {
 }
 func (c *messageConsumerUseCase) IsSubscribed(id string) bool { return c.runner.IsSubscribed(id) }
 
-// precheck refuses to subscribe a campaign whose template can no longer be sent.
-//
-// The campaign is STOPPED here rather than left running, because an unapproved
-// template is not a transient condition: every entry would fail identically, and
-// a campaign that fails 40.000 times is worse than one that refuses to start.
 func (c *messageConsumerUseCase) precheck(campaignID string) error {
 	initial, err := c.CampaignRepo.FindByID(campaignID)
 	if err != nil || initial == nil {
@@ -229,13 +203,6 @@ func (c *messageConsumerUseCase) precheck(campaignID string) error {
 	return nil
 }
 
-// handle is this channel's send step: resolve the template, charge the
-// workspace, send, and refund if the send never reached the customer.
-//
-// Every return is one of the four shared outcomes. The distinction that matters
-// most is Drop versus RetryLater: a Drop resolves the entry and counts it toward
-// completion, while a RetryLater leaves it pending and must NOT count, or the
-// campaign completes with work still queued.
 func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue.Result {
 	campaignItem, err := c.CampaignRepo.FindByID(msg.CampaignID)
 	if err != nil || campaignItem == nil {
@@ -275,8 +242,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 			return campaignqueue.Drop
 		}
 		if errors.Is(err, balance.ErrPriceUnavailable) {
-			// No price configured. Requeuing spins forever and sending would be
-			// free, so the entry fails and says why.
 			fmt.Printf("whatsapp campaign consumer: no price configured for workspace %s (campaign %s), refusing to send unbilled\n", campaignItem.WorkspaceID, msg.CampaignID)
 			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
 			return campaignqueue.Drop
@@ -285,9 +250,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.Requeue
 	}
 
-	// Belt as well as braces. The price guard lives in the billing use case so
-	// every sender inherits it, but this path sends at bulk volume and a zero
-	// slipping through here is a whole campaign delivered free.
 	if templateCostMicros <= 0 {
 		fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaignItem.WorkspaceID, msg.CampaignID)
 		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
@@ -318,15 +280,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		_ = c.InflightReserver.Release(campaignItem.WorkspaceID, templateCostMicros)
 	}()
 
-	// The debit is keyed on the ENTRY, not the campaign.
-	//
-	// Every recipient of a campaign previously shared one reference — the
-	// campaign id — which is wrong in both directions. The ledger cannot tell two
-	// charges for one recipient apart from two recipients charged once each, so a
-	// redelivered queue message is indistinguishable from a legitimate second
-	// send; and any dedup keyed on the reference would collapse a whole campaign
-	// into a single charge. A per-entry reference is what makes a charge
-	// attributable to the person who received it.
 	_, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaignItem.WorkspaceID, msg.EntryID, templateCategory)
 	if consumeErr != nil {
 		if errors.Is(consumeErr, balance.ErrInsufficientBalance) || errors.Is(consumeErr, balance.ErrBalanceNotFound) {
@@ -352,8 +305,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	sendResult := c.sendTemplateMessage(campaignItem, currentTemplate, msg.EntryID, msg.PhoneNumber)
 
 	if sendResult == sendResultConfigError || sendResult == sendResultAPIError {
-		// Refunded under the SAME reference the debit used, or the credit cannot
-		// be paired with the charge it reverses.
 		if refundErr := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, msg.EntryID, templateCategory); refundErr != nil {
 			fmt.Printf("whatsapp campaign consumer: WARNING: failed to refund balance for workspace %s after send failure: %v\n", campaignItem.WorkspaceID, refundErr)
 		} else {
@@ -361,8 +312,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		}
 	}
 
-	// Done regardless of the send's own result: the entry has been resolved
-	// either way, and the pacing delay applies because a provider call was made.
 	return campaignqueue.Done
 }
 
@@ -372,10 +321,6 @@ const (
 	sendResultSuccess sendTemplateMessageResult = iota
 	sendResultConfigError
 	sendResultAPIError
-	// sendResultUnknown is Meta ACCEPTING the send and our failing to read the
-	// answer. It is deliberately NOT an error result: refunding here would credit
-	// a message the customer has already received, so the charge stands and the
-	// delivery-status webhook settles the entry.
 	sendResultUnknown
 )
 
@@ -388,12 +333,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 		return sendResultConfigError
 	}
 
-	// Fetch the campaign entry once and reuse it for the spam check, variables,
-	// template-info and send record below. Previously each of those steps
-	// re-queried the same fat row (jsonb metadata + variables array), up to 4×
-	// per message on the hottest path. The row is read at the start and the only
-	// later read (recordCampaignSend → LeadID) is of an immutable field, so a
-	// single fetch is safe.
 	entry, entryErr := c.EntryRepo.FindByID(entryID)
 	if entryErr != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to find entry %s: %v\n", entryID, entryErr)
@@ -436,10 +375,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	fmt.Printf("whatsapp campaign consumer: template '%s' isNamedFormat=%v, paramNames=%v\n",
 		tmpl.Name, tmpl.IsNamedParameterFormat(), tmpl.GetParameterNames())
 
-	// One assembly for every send path, in the domain. It is what puts the
-	// one-time code on an authentication template's button, which this consumer
-	// has no reason to know about: the code arrives as the entry's first
-	// variable, like any other.
 	sendInput, err := tmpl.BuildSendInput(template.SendInputParams{
 		To:         normalizedPhone,
 		BodyParams: variables,
@@ -458,9 +393,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	result, err := whatsappClient.SendTemplateMessage(ctx, sendInput)
 
 	if errors.Is(err, conversation.ErrSendOutcomeUnknown) {
-		// Delivered as far as Meta is concerned. Anything that looks like a
-		// failure from here — refund, retry, a failed entry status — acts on a
-		// message the recipient already has.
 		fmt.Printf("whatsapp campaign consumer: send outcome unknown for %s (Meta accepted, response unreadable), keeping the charge: %v\n", phoneNumber, err)
 		c.updateEntryStatus(entryID, wce.SendStatusSent, "")
 		return sendResultUnknown
@@ -489,9 +421,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	c.updateEntryStatus(entryID, wce.SendStatusSent, messageID)
 	c.recordCampaignSend(entry, campaign.BusinessPhoneID, campaignID)
 
-	// When enabled on the campaign, persist + broadcast the sent template as a
-	// real conversation message so it shows up in the CRM even if the recipient
-	// never replies.
 	if campaign.ShowTemplateInCrm {
 		c.recordTemplateMessage(entry, tmpl, variables, normalizedPhone, messageID)
 	}
@@ -507,15 +436,11 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 			EntryType:   "whatsapp_campaign_entry",
 			TriggerType: workflow_domain.TriggerCampaignSent,
 			Data: map[string]interface{}{
-				"campaign_id":  campaignID,
-				"phone_number": phoneNumber,
-				"template_id":  campaign.TemplateID,
-				"message_id":   messageID,
-				"entry_id":     entryID,
-				// The canonical spelling every channel seeds on message_received.
-				// Kept alongside the legacy phone_number so one workflow can use
-				// {{contact_number}} on both triggers. Normalized, so it equals
-				// what a later inbound reply will seed for the same lead.
+				"campaign_id":                        campaignID,
+				"phone_number":                       phoneNumber,
+				"template_id":                        campaign.TemplateID,
+				"message_id":                         messageID,
+				"entry_id":                           entryID,
 				workflow_domain.DataKeyContactNumber: normalizedPhone,
 			},
 		})
@@ -524,8 +449,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	return sendResultSuccess
 }
 
-// storeTemplateInfoOnEntry renders the sent template and stores it on the entry
-// metadata (template_info), the source the CRM entry panel reads.
 func (c *messageConsumerUseCase) storeTemplateInfoOnEntry(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string) {
 	if entry == nil || tmpl == nil {
 		return
@@ -543,12 +466,6 @@ func (c *messageConsumerUseCase) storeTemplateInfoOnEntry(entry *wce.WhatsAppCam
 	}
 }
 
-// recordTemplateMessage persists the outbound campaign template as a real
-// conversation message (type=template) and broadcasts it, so the send appears
-// in the CRM (inbox + thread) even when the recipient never replies. Gated per
-// campaign by ShowTemplateInCrm. The metadata mirrors the entry's template_info
-// so the CRM TemplateBubble renders any template shape (header/media, body,
-// footer, buttons). Dedup by WhatsApp message id keeps retries idempotent.
 func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string, toPhone, messageID string) {
 	if c.MessageHistoryManager == nil || entry == nil || tmpl == nil {
 		return
@@ -588,8 +505,6 @@ func (c *messageConsumerUseCase) updateEntryStatusWithError(entryID string, stat
 	}
 }
 
-// parseMetaAPIError delegates to the domain so the campaign pipeline and cold
-// outbound report a provider failure the same way.
 func parseMetaAPIError(result *conversation.SendTextMessageOutput) (int, string) {
 	return template.ParseProviderError(result)
 }

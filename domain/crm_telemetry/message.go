@@ -1,5 +1,3 @@
-// Package crm_telemetry defines the async CRM operational telemetry bus.
-// Hot paths must only Publish; consumers persist to Postgres (replica-safe, no DB hammering).
 package crm_telemetry
 
 import "time"
@@ -7,8 +5,7 @@ import "time"
 const (
 	Exchange = "crm_telemetry_exchange"
 
-	Topic = "crm_telemetry"
-	// MaxDeliveryAttempts before dead-letter drop (Nack without requeue).
+	Topic               = "crm_telemetry"
 	MaxDeliveryAttempts = 5
 )
 
@@ -22,27 +19,23 @@ const (
 	KindPresence          Kind = "presence"
 )
 
-// Envelope is the Rabbit payload. Payload is kind-specific JSON.
 type Envelope struct {
-	// ID is the idempotency key for this envelope (UUID). Consumer dedupes on it.
 	ID         string    `json:"id"`
 	Kind       Kind      `json:"kind"`
 	Payload    []byte    `json:"payload"`
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
-// PresencePayload is a human attendant presence transition.
 type PresencePayload struct {
 	WorkspaceID string    `json:"workspace_id"`
 	UserID      string    `json:"user_id"`
-	State       string    `json:"state"` // online | offline | on_call | wrap_up
+	State       string    `json:"state"`
 	Source      string    `json:"source"`
 	At          time.Time `json:"at"`
 }
 
-// AssignmentHistoryPayload opens a new ownership interval (consumer closes any open one first).
 type AssignmentHistoryPayload struct {
-	ID                string    `json:"id,omitempty"` // becomes assignment_history.id when set
+	ID                string    `json:"id,omitempty"`
 	WorkspaceID       string    `json:"workspace_id"`
 	EntryID           string    `json:"entry_id"`
 	EntryType         string    `json:"entry_type"`
@@ -56,7 +49,6 @@ type AssignmentHistoryPayload struct {
 	StartedAt         time.Time `json:"started_at"`
 }
 
-// AISessionOp is a deferred AI attendance mutation.
 type AISessionOp string
 
 const (
@@ -66,7 +58,6 @@ const (
 	AISessionOpEnsureOpen   AISessionOp = "ensure_open"
 )
 
-// AISessionPayload is processed by the consumer against ai_attendance_sessions.
 type AISessionPayload struct {
 	Op                  AISessionOp `json:"op"`
 	WorkspaceID         string      `json:"workspace_id"`
@@ -83,7 +74,6 @@ type AISessionPayload struct {
 	HandoffTargetUserID string      `json:"handoff_target_user_id,omitempty"`
 }
 
-// QueueEventPayload mirrors call session queue lifecycle for durable SLA stats.
 type QueueEventPayload struct {
 	ID          string    `json:"id,omitempty"`
 	WorkspaceID string    `json:"workspace_id"`
@@ -97,19 +87,14 @@ type QueueEventPayload struct {
 	OccurredAt  time.Time `json:"occurred_at"`
 }
 
-// Publisher is the only telemetry surface allowed on hot paths.
-// Implementations must not perform Postgres writes.
 type Publisher interface {
-	// Publish enqueues telemetry. Failures must not fail the caller (log + return).
 	Publish(kind Kind, payload any) error
 }
 
-// Consumer starts the durable worker.
 type Consumer interface {
 	Start() error
 }
 
-// DropRecorder records publish/consume drops for ops (optional Prometheus hook).
 type DropRecorder interface {
 	IncTelemetryPublishError(kind string)
 	IncTelemetryConsumeError(kind, reason string)

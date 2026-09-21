@@ -56,40 +56,22 @@ type ListMembersPaginatedUseCase interface {
 	Execute(workspaceID string, page, pageSize int) ([]*Member, int64, error)
 }
 
-// MemberVisibilityScope describes which workspace members a given caller is
-// allowed to see. Restrict=false means "all members"; Restrict=true means
-// "only members in DepartmentIDs" (an empty DepartmentIDs means the caller
-// belongs to no department and may therefore see only themselves).
 type MemberVisibilityScope struct {
 	Restrict      bool     `json:"restrict"`
 	DepartmentIDs []string `json:"departmentIds,omitempty"`
-	// IncludeAdmins lets a department-scoped caller also reach workspace
-	// owners/admins (so escalation works) when the workspace lets admins
-	// participate in roulette (SkipAdminAssignment=false). It is only meaningful
-	// when Restrict is true.
-	IncludeAdmins bool `json:"includeAdmins,omitempty"`
+	IncludeAdmins bool     `json:"includeAdmins,omitempty"`
 }
 
-// MemberVisibilityUseCase is the single source of truth for member-visibility
-// policy: owner/admin (or platform admin) see everyone; a workspace with no
-// departments imposes no scope; members:view_others widens a regular member to
-// all departments; otherwise a regular member is scoped to their own
-// department(s), or to just themselves when they belong to none.
 type MemberVisibilityUseCase interface {
 	Scope(userID, workspaceID string, isPlatformAdmin bool) (MemberVisibilityScope, error)
 	CanView(callerUserID, targetUserID, workspaceID string, isPlatformAdmin bool) (bool, error)
 }
 
-// DepartmentRef is a lightweight department identity used to bucket members in
-// the assignable-members picker.
 type DepartmentRef struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-// AssignableMember is a workspace member annotated with the departments (within
-// the caller's visible scope) it belongs to, so the picker can group by
-// department. Departments is empty when the workspace has no departments.
 type AssignableMember struct {
 	*Member
 	Departments []DepartmentRef `json:"departments"`

@@ -43,16 +43,11 @@ func NewCredentialsLoginUseCase(
 	}
 }
 
-// WithFailureThrottle enables the per-account failed-login throttle (the brute
-// force defence that, unlike the per-IP limit, does not collide for users on a
-// shared network). Returns the use case for chaining at wiring time.
 func (uc *credentialsLoginUseCase) WithFailureThrottle(t cache.FailureThrottle) *credentialsLoginUseCase {
 	uc.throttle = t
 	return uc
 }
 
-// WithNotifier enables the security alert email when an account is locked by the
-// throttle. dashboardURL is the customer app base. Returns the use case for chaining.
 func (uc *credentialsLoginUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *credentialsLoginUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL
@@ -63,7 +58,6 @@ func (uc *credentialsLoginUseCase) notifyAccountLocked(account string) {
 	if uc.notifier == nil {
 		return
 	}
-	// Deduped per account/window so an attacker hammering a victim cannot spam them.
 	_ = uc.notifier.Notify(notification.Notification{
 		Email:    account,
 		Subject:  "Acesso bloqueado temporariamente - " + brand.Active().Name,
@@ -93,8 +87,6 @@ func (uc *credentialsLoginUseCase) Execute(input auth.CredentialsInput) (*auth.T
 	u, err := uc.userRepo.FindByEmail(input.Email)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			// Record the failure for a non-existent account too: uniform behaviour
-			// avoids leaking which emails exist, and throttles email enumeration.
 			uc.registerLoginFailure(account)
 			return nil, auth.ErrInvalidCredentials
 		}

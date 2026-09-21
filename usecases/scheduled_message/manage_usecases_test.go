@@ -68,8 +68,6 @@ func TestCancelPendingMessage(t *testing.T) {
 	}
 }
 
-// Cancelling something already sent must not succeed quietly: the operator
-// needs to know the customer has it.
 func TestCancelRefusesATerminalMessage(t *testing.T) {
 	f := newManageFixture(t)
 	m := f.pending("sched-1", "ws-1")
@@ -80,8 +78,6 @@ func TestCancelRefusesATerminalMessage(t *testing.T) {
 	}
 }
 
-// Tenant isolation. Answering ErrNotFound rather than a distinct "forbidden"
-// avoids confirming that an id the caller cannot see exists.
 func TestCancelRefusesAnotherWorkspacesMessage(t *testing.T) {
 	f := newManageFixture(t)
 	f.pending("sched-1", "ws-other")
@@ -111,8 +107,6 @@ func TestRescheduleMovesTheTimeAndReEnqueues(t *testing.T) {
 	if !f.repo.get("sched-1").ScheduledAt.Equal(newTime) {
 		t.Error("the new time was not persisted")
 	}
-	// A stale fire from the original time is harmless: the claim admits one
-	// caller and the row is not yet due.
 	if f.wake.count() != 1 {
 		t.Errorf("fires enqueued = %d, want 1", f.wake.count())
 	}
@@ -136,9 +130,6 @@ func TestRescheduleValidatesAgainstTheLiveWindow(t *testing.T) {
 	}
 }
 
-// The window can only have grown since creation, so a reschedule validated
-// against the LIVE window is never stricter — and it is what lets an operator
-// push a message further out after the customer writes again.
 func TestRescheduleUsesTheWidenedWindow(t *testing.T) {
 	f := newManageFixture(t)
 	f.pending("sched-1", "ws-1")
@@ -171,8 +162,6 @@ func TestRescheduleRefusesATerminalMessage(t *testing.T) {
 	}
 }
 
-// The composer needs the window with the list, or it makes two requests that
-// can disagree by the width of a round trip.
 func TestListForEntryCarriesTheLiveWindow(t *testing.T) {
 	f := newManageFixture(t)
 	f.pending("sched-1", "ws-1")

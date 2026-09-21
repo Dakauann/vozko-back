@@ -52,8 +52,6 @@ func (uc *requestPasswordResetUseCase) Execute(input auth.RequestPasswordResetIn
 		return err
 	}
 
-	// One live code per account: drop any outstanding tokens so a fresh request
-	// always resets the attempt counter and can't be raced against a stale code.
 	if err := uc.tokenRepo.DeleteByUserID(u.ID); err != nil {
 		return err
 	}

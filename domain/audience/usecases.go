@@ -7,10 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Use-case ports the delivery layer depends on. Every read is scoped to the
-// caller's workspace INSIDE the use case, never from a query parameter,
-// which is the posture every existing handler takes.
-
 type ListUseCase interface {
 	Execute(ctx context.Context, in ListInput) (*shared.PaginatedResult[*Analysis], error)
 }
@@ -28,8 +24,6 @@ type ListAuthorsUseCase interface {
 	Execute(ctx context.Context, in AuthorsInput) (*shared.PaginatedResult[*AuthorStats], error)
 }
 
-// AuthorDetail is one author plus their comments: the row a flagged-authors
-// table expands into.
 type AuthorDetail struct {
 	Author   *AuthorStats                       `json:"author"`
 	Comments *shared.PaginatedResult[*Analysis] `json:"comments"`
@@ -39,19 +33,11 @@ type GetAuthorUseCase interface {
 	Execute(ctx context.Context, workspaceID, authorID string, page shared.Pagination) (*AuthorDetail, error)
 }
 
-// AuthorContainers is one author plus the posts they have commented on (§2).
-//
-// The author travels with the page for the same reason AuthorDetail carries
-// them: the panel's heading is "@fulano nestes posts", and a client that had to
-// fetch the handle separately would render the heading empty on first paint.
 type AuthorContainers struct {
 	Author     *AuthorStats                              `json:"author"`
 	Containers *shared.PaginatedResult[*AuthorContainer] `json:"containers"`
 }
 
-// AuthorContainersRequest is what the posts-of-one-author read takes. A struct
-// rather than five positional arguments, because the window arrived after the
-// first three and the next filter will too.
 type AuthorContainersRequest struct {
 	WorkspaceID string
 	AuthorID    string
@@ -75,8 +61,6 @@ type SetModerationStateUseCase interface {
 }
 
 type GetSettingsUseCase interface {
-	// Execute returns the stored settings or, for an account never
-	// configured, the disabled defaults for its vertical.
 	Execute(ctx context.Context, workspaceID string, source Source, accountID string) (*Settings, error)
 }
 
@@ -99,48 +83,24 @@ type UpdateSettingsUseCase interface {
 	Execute(ctx context.Context, in UpdateSettingsInput) (*Settings, error)
 }
 
-// RetryUseCase re-queues a failed row (§8: never silently dropped).
 type RetryUseCase interface {
 	Execute(ctx context.Context, workspaceID, id string) (*Analysis, error)
 }
 
-// UsageUseCase reports a workspace's rolling analysis budget: how much has been
-// analysed inside the window, the ceiling it counts against, and how much is
-// queued behind it.
-//
-// The third number is what makes the first two actionable. Reaching the ceiling
-// never throws work away, it postpones it, so what a ceiling set too low costs
-// is delay, and the queue is the only place that delay is visible.
 type UsageUseCase interface {
 	Execute(ctx context.Context, workspaceID string) (Usage, error)
 }
 
-// UpdateWorkspaceSettingsInput is a partial update: a nil field is "leave this
-// alone", which is what lets two controls on one screen write independently
-// without either having to send the other's value back.
 type UpdateWorkspaceSettingsInput struct {
 	DailyCap        *int
 	DebounceMinutes *int
 }
 
-// WorkspaceSettingsUseCase reads and writes what the WORKSPACE decides about
-// its own analysis: the rolling ceiling and the debounce window.
-//
-// One use case over one row rather than one per setting. Both are read-modify-
-// write against a configuration record shared with the rest of the platform, so
-// two independent writers would be two chances to blank each other's field, and
-// that is the bug class this whole area keeps producing.
-//
-// Deliberately NOT the workspace-config use cases, even though the row is the
-// same: those are gated on admin-or-owner, while analysis is gated on
-// audience:update. A setting reachable from both would have two different
-// answers to "who may change this".
 type WorkspaceSettingsUseCase interface {
 	Execute(ctx context.Context, workspaceID string) (WorkspaceSettings, error)
 	Update(ctx context.Context, workspaceID string, in UpdateWorkspaceSettingsInput) (WorkspaceSettings, error)
 }
 
-// SpendUseCase is the §9.4 receipt: what the workspace bought this period.
 type SpendUseCase interface {
 	Execute(ctx context.Context, workspaceID string, in SpendInput) (*BatchTotals, error)
 }
@@ -148,11 +108,8 @@ type SpendUseCase interface {
 type SpendInput struct {
 	Source    Source
 	AccountID string
-	// Days back from now; 0 means the current calendar month.
-	Days int
+	Days      int
 }
-
-// ---- Backfill (§10) ----
 
 type BackfillEstimate struct {
 	Containers        int `json:"containers"`
@@ -163,10 +120,8 @@ type StartBackfillInput struct {
 	WorkspaceID       string
 	Source            Source
 	AccountID         string
-	ContainerID       string // empty: the whole account
+	ContainerID       string
 	RequestedByUserID string
-	// ConfirmedEstimate must match what the estimate endpoint returned;
-	// silently charging for a 100k-comment backfill is a support incident.
 	ConfirmedEstimate int
 }
 
@@ -186,16 +141,10 @@ type CancelBackfillUseCase interface {
 	Execute(ctx context.Context, workspaceID, id string) (*Backfill, error)
 }
 
-// ---- Workspace-wide and per-post settings ----
-
-// ListAccountSettingsUseCase lists every configured account of the caller's
-// workspace (the audience dashboard's picker).
 type ListAccountSettingsUseCase interface {
 	Execute(ctx context.Context, workspaceID string) ([]*Settings, error)
 }
 
-// ContainerSettings is what the post-level editor shows: the override as
-// stored (nil when the post inherits everything) and the effective result.
 type ContainerSettings struct {
 	Override  *ContainerOverride `json:"override,omitempty"`
 	Effective Settings           `json:"effective"`
@@ -205,8 +154,6 @@ type GetContainerSettingsUseCase interface {
 	Execute(ctx context.Context, workspaceID string, ref ContainerRef) (*ContainerSettings, error)
 }
 
-// PutContainerSettingsUseCase replaces a post's override. An override that
-// changes nothing is deleted rather than stored.
 type PutContainerSettingsUseCase interface {
 	Execute(ctx context.Context, o ContainerOverride) (*ContainerSettings, error)
 }
@@ -215,19 +162,10 @@ type DeleteContainerSettingsUseCase interface {
 	Execute(ctx context.Context, workspaceID string, ref ContainerRef) (*ContainerSettings, error)
 }
 
-// ---- Escalation (§3) ----
-
-// EscalateCommentInput forwards one comment to someone who needs to see it.
-// The workspace comes from the session; the recipient is chosen by the caller
-// and resolved by the bound sender, never here.
 type EscalateCommentInput struct {
-	WorkspaceID string
-	UserID      string
-	CommentID   string
-	// Recipient names an existing conversation of the workspace, in the terms
-	// the bound sender understands. Deliberately an EXISTING conversation:
-	// forwarding must not become a way to cold-message a stranger from the
-	// comment dashboard, which is a different privilege and a different risk.
+	WorkspaceID   string
+	UserID        string
+	CommentID     string
 	RecipientID   string
 	RecipientKind string
 	Note          string
@@ -237,9 +175,6 @@ type EscalateCommentUseCase interface {
 	Execute(ctx context.Context, in EscalateCommentInput) (*Escalation, error)
 }
 
-// ---- Replying (§6) ----
-
-// SuggestReplyInput drafts an answer to one comment. Drafting never posts.
 type SuggestReplyInput struct {
 	WorkspaceID string
 	CommentID   string
@@ -249,9 +184,6 @@ type SuggestCommentReplyUseCase interface {
 	Execute(ctx context.Context, in SuggestReplyInput) (*ReplySuggestion, error)
 }
 
-// PostReplyInput publishes an answer. The text is the operator's, whether they
-// wrote it or edited a draft: nothing here re-drafts at send time, so what was
-// on screen is what gets posted.
 type PostReplyInput struct {
 	WorkspaceID string
 	UserID      string

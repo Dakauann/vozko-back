@@ -188,9 +188,6 @@ func (r *repository) UpdateWorkspace(ws *workspace.Workspace) error {
 	}).Error
 }
 
-// TransferOwnership reassigns workspaces.owner_id to newOwnerID. An empty
-// newOwnerID orphans the workspace by setting owner_id to NULL (used when a
-// deleting user solely owns it and there is no admin to inherit).
 func (r *repository) TransferOwnership(workspaceID, newOwnerID string) error {
 	if newOwnerID == "" {
 		return r.db.Model(&schema.Workspace{}).
@@ -198,9 +195,6 @@ func (r *repository) TransferOwnership(workspaceID, newOwnerID string) error {
 			Update("owner_id", nil).Error
 	}
 	updates := map[string]interface{}{"owner_id": newOwnerID}
-	// The (owner_id, is_default) unique index forbids a user owning two default
-	// workspaces. If the new owner already has a default, demote the transferred
-	// workspace to non-default so the update cannot collide.
 	var existingDefault int64
 	if err := r.db.Model(&schema.Workspace{}).
 		Where("owner_id = ? AND is_default = ?", newOwnerID, true).
@@ -276,11 +270,6 @@ func (r *repository) ListMembers(workspaceID string) ([]*workspace.Member, error
 	return result, nil
 }
 
-// ListAssignableMembers returns members visible to the caller, filtered by a
-// pre-resolved scope (it makes no policy decisions). When restrict is false all
-// workspace members are returned; when restrict is true only members in
-// departmentIDs (plus selfUserID) are returned, and an empty departmentIDs
-// yields just the caller. Results are searched by username/email and paginated.
 func (r *repository) ListAssignableMembers(workspaceID, search string, restrict bool, departmentIDs []string, includeAdmins bool, selfUserID string, page, pageSize int) ([]*workspace.Member, int64, error) {
 	build := func() *gorm.DB {
 		q := r.db.Model(&schema.WorkspaceMember{}).
@@ -293,8 +282,6 @@ func (r *repository) ListAssignableMembers(workspaceID, search string, restrict 
 		}
 
 		if restrict {
-			// Build an OR of the visible sets: the caller's department members,
-			// optionally owners/admins (roulette), and always the caller.
 			clauses := make([]string, 0, 3)
 			args := make([]interface{}, 0, 3)
 			if len(departmentIDs) > 0 {
@@ -389,17 +376,12 @@ func (r *repository) UpdateMemberRoleID(memberID string, roleID string) error {
 
 func (r *repository) RemoveMember(memberID string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Clear the member's permission grants.
 		if err := tx.Where("member_id = ?", memberID).Delete(&schema.WorkspaceMemberPermission{}).Error; err != nil {
 			return err
 		}
-		// Unlink the member from every department they belong to. These rows carry a
-		// RESTRICT foreign key to the member, so leaving them would block the member
-		// deletion below (this is what forced users to unlink departments by hand).
 		if err := tx.Where("member_id = ?", memberID).Delete(&schema.WorkspaceDepartmentMember{}).Error; err != nil {
 			return err
 		}
-		// Drop any resource assignments held by the member (same RESTRICT concern).
 		if err := tx.Where("member_id = ?", memberID).Delete(&schema.WorkspaceResourceAssignment{}).Error; err != nil {
 			return err
 		}

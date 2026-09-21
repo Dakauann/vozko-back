@@ -15,7 +15,6 @@ type serverRepository struct {
 	db *gorm.DB
 }
 
-// NewServerRepository builds the provider-host repository.
 func NewServerRepository(db *gorm.DB) uw.ServerRepository {
 	return &serverRepository{db: db}
 }
@@ -42,9 +41,6 @@ func (r *serverRepository) Update(ctx context.Context, s *uw.Server) error {
 		"enabled":      record.Enabled,
 		"draining":     record.Draining,
 	}
-	// InUse is deliberately absent: it is owned by ClaimCapacity /
-	// ReleaseCapacity / SyncCapacity, and letting a config save write it would
-	// silently undo concurrent placements.
 	if s.AdminToken != "" {
 		update["admin_token"] = record.AdminToken
 	}
@@ -83,18 +79,11 @@ func (r *serverRepository) FindByBaseURL(ctx context.Context, baseURL string) (*
 	return toServerDomain(&record), nil
 }
 
-// ListPlacementCandidates returns the hosts a workspace may place on.
-//
-// Platform hosts (workspace_id IS NULL) plus that workspace's own, and never
-// another workspace's: the admin token is host-wide, so placing a tenant on
-// another tenant's host would hand them control of every instance on it.
 func (r *serverRepository) ListPlacementCandidates(ctx context.Context, workspaceID string) ([]*uw.Server, error) {
 	var records []schema.UnofficialWhatsAppServer
 	err := r.db.WithContext(ctx).
 		Where("enabled = ? AND draining = ?", true, false).
 		Where("workspace_id IS NULL OR workspace_id = ?", workspaceID).
-		// Least loaded first, so placement spreads rather than filling one host
-		// to its ceiling and then discovering the ceiling.
 		Order("(in_use::float / NULLIF(capacity, 0)) ASC NULLS LAST").
 		Find(&records).Error
 	if err != nil {
@@ -111,11 +100,6 @@ func (r *serverRepository) ListAll(ctx context.Context) ([]*uw.Server, error) {
 	return serversToDomain(records), nil
 }
 
-// ClaimCapacity takes one slot if the host still has room.
-//
-// A conditional UPDATE rather than read-then-write: two concurrent connects on
-// the last free slot would both pass a read check, and one tenant would be told
-// the connection succeeded before the host refused it.
 func (r *serverRepository) ClaimCapacity(ctx context.Context, serverID string) (bool, error) {
 	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppServer{}).
 		Where("id = ? AND enabled = ? AND draining = ? AND capacity > 0 AND in_use < capacity",
@@ -127,9 +111,6 @@ func (r *serverRepository) ClaimCapacity(ctx context.Context, serverID string) (
 	return result.RowsAffected == 1, nil
 }
 
-// ReleaseCapacity returns a slot. Floored at zero so a double release, which is
-// the normal shape of a retried rollback, cannot drive the counter negative and
-// make a full host look empty.
 func (r *serverRepository) ReleaseCapacity(ctx context.Context, serverID string) error {
 	return r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppServer{}).
 		Where("id = ? AND in_use > 0", serverID).

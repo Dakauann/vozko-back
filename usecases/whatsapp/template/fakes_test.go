@@ -1,9 +1,3 @@
-// Shared test doubles for the WhatsApp template use cases.
-//
-// They lived in send_template_message_usecase_test.go until that sender was
-// deleted — its billing was conditional on a field being non-empty, and the
-// billed sender replaced it. The doubles outlived it because the create and
-// sync tests use them too.
 package template_usecase
 
 import (
@@ -48,8 +42,6 @@ func (f *sendMockClientFactory) WABAIdForPhone(string) (string, error) {
 type sendMockTemplateRepo struct {
 	tmpl    *template.Template
 	findErr error
-	// created is what Create persisted, so a test can assert the template that
-	// was stored rather than only the one that was sent to the provider.
 	created *template.Template
 }
 

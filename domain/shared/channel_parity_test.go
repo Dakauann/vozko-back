@@ -5,20 +5,6 @@ import (
 	"testing"
 )
 
-// Every guard in this file exists because a real feature was silently unavailable
-// on a real channel for months.
-//
-// The pattern was always the same: a call site asked `entryType == "whatsapp"`
-// instead of asking what the channel can DO, and the `default` branch returned
-// "not supported" with no error and no log line. Instagram shipped that way, its
-// conversations could be transferred and staged but never closed, never analysed,
-// never exported, and never counted in any dashboard.
-//
-// These tests pin the predicate sets together so the NEXT channel cannot inherit
-// the same holes by omission.
-
-// A channel that reaches the kanban board must be able to carry a stage and a
-// label. A card that renders but cannot be moved is worse than no card.
 func TestEveryViewableChannelIsTaggable(t *testing.T) {
 	for _, e := range ConversationViewableEntryTypes() {
 		if !e.SupportsCRMTagging() {
@@ -27,9 +13,6 @@ func TestEveryViewableChannelIsTaggable(t *testing.T) {
 	}
 }
 
-// A conversation an operator can open is one they will eventually want to close.
-// The AI finish tool, the workflow finish node and the manual close all consult
-// SupportsConversationClosing.
 func TestEveryViewableChannelCanBeClosed(t *testing.T) {
 	for _, e := range ConversationViewableEntryTypes() {
 		if !e.SupportsConversationClosing() {
@@ -38,8 +21,6 @@ func TestEveryViewableChannelCanBeClosed(t *testing.T) {
 	}
 }
 
-// Every messaging channel must be a valid inbox scope, or an operator cannot
-// narrow the inbox to it and the websocket rejects the connection with a 400.
 func TestEveryMessagingChannelIsInboxScopable(t *testing.T) {
 	for _, e := range messagingTypesSorted() {
 		if !e.SupportsInboxScope() {
@@ -48,9 +29,6 @@ func TestEveryMessagingChannelIsInboxScopable(t *testing.T) {
 	}
 }
 
-// IsKnown is the weakest predicate, "is this a real entry type?", and the HTTP
-// conversation endpoints depend on it. It must be the union of every other set,
-// or an endpoint rejects a channel the rest of the system accepts.
 func TestIsKnownIsTheUnionOfEverySet(t *testing.T) {
 	union := map[EntryType]struct{}{}
 	for _, set := range []map[EntryType]struct{}{
@@ -78,9 +56,6 @@ func TestIsKnownIsTheUnionOfEverySet(t *testing.T) {
 	}
 }
 
-// A container-scoped inbox is necessarily a valid inbox scope. The reverse does
-// not hold, voice and support are selectable but have no container query, which
-// is exactly why they are separate sets.
 func TestContainerScopedIsSubsetOfInboxScopable(t *testing.T) {
 	for _, e := range ContainerScopedInboxEntryTypes() {
 		if !e.SupportsInboxScope() {
@@ -89,9 +64,6 @@ func TestContainerScopedIsSubsetOfInboxScopable(t *testing.T) {
 	}
 }
 
-// Telegram is registered everywhere a messaging channel belongs. This is the
-// concrete assertion the abstract ones above cannot make: a channel could satisfy
-// every invariant by being absent from all of them.
 func TestTelegramIsFullyRegistered(t *testing.T) {
 	tg := EntryTypeTelegram
 
@@ -111,15 +83,6 @@ func TestTelegramIsFullyRegistered(t *testing.T) {
 	}
 }
 
-// The unofficial WhatsApp channel is registered everywhere a messaging channel
-// belongs.
-//
-// It needs its own concrete assertion for the same reason Telegram does — the
-// abstract invariants above can all be satisfied by a channel that is absent
-// from every set — and for one more: it is the first entry type whose name
-// contains another entry type's name, so a sloppy prefix or contains check
-// anywhere would make it collide with `whatsapp` and silently route its
-// conversations into the Cloud API's template-and-balance path.
 func TestUnofficialWhatsAppIsFullyRegistered(t *testing.T) {
 	uw := EntryTypeUnofficialWhatsApp
 
@@ -138,9 +101,6 @@ func TestUnofficialWhatsAppIsFullyRegistered(t *testing.T) {
 		}
 	}
 
-	// The two WhatsApp transports must stay distinct everywhere it matters.
-	// Sharing an entry type would send every linked-device reply through the
-	// Cloud API adapter, which resolves templates and consumes balance.
 	if uw == EntryTypeWhatsApp {
 		t.Fatal("the two WhatsApp transports must not share an entry type")
 	}
@@ -150,9 +110,6 @@ func TestUnofficialWhatsAppIsFullyRegistered(t *testing.T) {
 	}
 }
 
-// Instagram must keep everything Telegram gained. The parity work was done once,
-// generically; a later change that re-narrows a predicate would silently take
-// these back from Instagram too.
 func TestInstagramKeepsFullParity(t *testing.T) {
 	ig := EntryTypeInstagram
 
@@ -172,7 +129,6 @@ func TestInstagramKeepsFullParity(t *testing.T) {
 	}
 }
 
-// WhatsApp is the revenue path. Nothing in the parity refactor may narrow it.
 func TestWhatsAppKeepsEveryCapability(t *testing.T) {
 	wa := EntryTypeWhatsApp
 
@@ -192,8 +148,6 @@ func TestWhatsAppKeepsEveryCapability(t *testing.T) {
 	}
 }
 
-// An unregistered channel must satisfy nothing. This is the guard that proves the
-// predicates are real membership tests rather than accidentally-true defaults.
 func TestUnregisteredChannelSatisfiesNothing(t *testing.T) {
 	const messenger EntryType = "messenger"
 
@@ -212,9 +166,6 @@ func TestUnregisteredChannelSatisfiesNothing(t *testing.T) {
 	}
 }
 
-// The exported lists must mirror their predicates exactly: they are rendered into
-// user-facing "must be one of …" messages, and a list naming a type the handler
-// rejects sends an operator chasing a value that cannot work.
 func TestExportedListsMirrorTheirPredicates(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -238,7 +189,6 @@ func TestExportedListsMirrorTheirPredicates(t *testing.T) {
 				t.Errorf("%s lists %q but the predicate rejects it", c.name, e)
 			}
 		}
-		// Sorted, so the rendered message is stable rather than map-order random.
 		sorted := append([]EntryType(nil), c.list...)
 		for i := 1; i < len(sorted); i++ {
 			if sorted[i-1] > sorted[i] {
@@ -266,13 +216,11 @@ func TestFormatEntryTypesReadsAsProse(t *testing.T) {
 	}
 }
 
-// messagingTypesSorted lists the messaging set deterministically.
 func messagingTypesSorted() []EntryType {
 	out := make([]EntryType, 0, len(messagingEntryTypes))
 	for e := range messagingEntryTypes {
 		out = append(out, e)
 	}
-	// Reuse the exported sort ordering so the two never disagree.
 	sorted := KnownEntryTypes()
 	filtered := out[:0]
 	for _, e := range sorted {
@@ -283,8 +231,6 @@ func messagingTypesSorted() []EntryType {
 	return filtered
 }
 
-// A guard against silently dropping a channel from the messaging set, which would
-// make Valid() reject its messages on write.
 func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	want := []EntryType{
 		EntryTypeInstagram,

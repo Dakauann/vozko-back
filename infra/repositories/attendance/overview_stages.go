@@ -6,36 +6,6 @@ import (
 	"vozko/domain/attendance"
 )
 
-// overviewStageTalliesTX reads where the scoped conversations are sitting.
-//
-// It is ONE more pass over msgTmp, the per-entry aggregate the overview has
-// already materialised. That table is the whole reason this page stopped
-// re-joining conversation_messages five times, so the stage panel reads it too:
-// no second scope derivation, no second message scan.
-//
-//	msgTmp ──join──▶ entry_stages (one live row per entry)
-//	                 ──join──▶ stages ──left join──▶ pipelines
-//
-// Driving the assignment lookup FROM msgTmp is what keeps this cheap: the scope
-// is already narrowed to the period, so entry_stages is probed through
-// idx_et_entry_type_ws (entry_id, entry_type, workspace_id) instead of scanning
-// every stage assignment the workspace has ever made.
-//
-// The DISTINCT ON is not defensive decoration. AssignStage soft-deletes the
-// previous row and inserts a new one, so a conversation can carry more than one
-// row that looks live, and a plain join would count it in two stages at once.
-// GetBatchEntryStages already resolves the same ambiguity when reading a single
-// entry; this picks the most recent assignment for the same reason.
-//
-// Column types were verified against production rather than read off the gorm
-// tags, which disagree: entry_stages.stage_id and stages.id are both text (the
-// type:uuid tag on the former is not what the column is), every channel's entry
-// id is uuid, and stages.pipeline_id / pipelines.id are uuid. Only the nullable
-// funnel id needs a cast.
-//
-// The shaping (grouping, ordering, percentages) is deliberately NOT here. It
-// lives in domain/attendance/stage_distribution.go, where it is unit-tested
-// without a database.
 func overviewStageTalliesTX(tx *gorm.DB, workspaceID, msgTmp string) ([]attendance.StageTally, error) {
 	sql := `
 		WITH live_stage AS (
@@ -93,10 +63,6 @@ func overviewStageTalliesTX(tx *gorm.DB, workspaceID, msgTmp string) ([]attendan
 			s.id, s.name, s.color, s.position, s.is_won, s.is_lost, s.rot_days
 	`
 
-	// Dwell and the stuck count measure OPEN engaged conversations against NOW,
-	// not against the period end. "9,4 days in Documentação" is a fact about this
-	// moment, and the panel says so; measuring to the period end would report a
-	// backlog that has since cleared as though it were still sitting there.
 	type row struct {
 		FunnelID        string   `gorm:"column:funnel_id"`
 		FunnelName      string   `gorm:"column:funnel_name"`

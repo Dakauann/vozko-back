@@ -13,8 +13,6 @@ type CreateDepartmentRequest struct {
 }
 
 type UpdateDepartmentRequest struct {
-	// WorkingHours is this department's own weekly schedule. Send null to clear
-	// it and inherit the workspace's; omit it to leave it unchanged.
 	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
 	Name         *string             `json:"name" example:"Suporte"`
 	Description  *string             `json:"description" example:"Equipe de atendimento ao cliente"`
@@ -25,8 +23,6 @@ type AddMemberRequest struct {
 }
 
 type DepartmentResponse struct {
-	// WorkingHours is set only when this department overrides the workspace
-	// schedule; absent means it inherits.
 	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
 	ID           string              `json:"id" example:"dept_a1b2c3"`
 	WorkspaceID  string              `json:"workspaceId" example:"ws_a1b2c3"`

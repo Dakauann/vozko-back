@@ -11,10 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// metricsNamespace is the fixed, brand-neutral prefix for all app metrics
-// (e.g. app_http_requests_total). It is intentionally NOT the brand key: metric
-// names must stay stable across brands so one set of dashboards/alert rules works
-// for every deployment. Per-brand distinction, if ever needed, belongs in a label.
 const metricsNamespace = "app"
 
 type PrometheusService struct {
@@ -122,9 +118,6 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 		[]string{"reason"},
 	)
 
-	// client_ip is labelled ONLY here, on the rejection path. Cardinality stays
-	// bounded to IPs that actually hit a limit, a single IP with a large count
-	// means many users behind one NAT (e.g. an office) sharing one per-IP budget.
 	rateLimited := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace, Subsystem: "http",
@@ -156,11 +149,6 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 	wsConnections.WithLabelValues(metrics.WSEndpointCallSession).Set(0)
 	wsConnections.WithLabelValues(metrics.WSEndpointWorkflowSimulator).Set(0)
 
-	// Register the Go runtime and process collectors through the replica_id-wrapped
-	// registerer (reg), not the raw registry, so go_* and process_* series carry the
-	// same replica_id label as our app metrics. Without this they only get the
-	// scrape-time `instance` label (host:port), which makes the resources dashboard
-	// host-scoped ("localhost:9213") instead of replica-scoped.
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 

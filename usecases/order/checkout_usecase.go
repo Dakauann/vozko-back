@@ -31,11 +31,8 @@ type checkoutUseCase struct {
 	paymentSplitRepo payment.PaymentSplitRepository
 	pricingService   payment.PricingService
 	docValidator     customer.DocumentValidator
-	// gateway is the provider-agnostic payment port. Checkout is the one flow that
-	// genuinely requires split support, so it checks Capabilities before charging
-	// rather than discovering the limitation at the provider.
-	gateway      payment.Gateway
-	emailService notification.EmailService
+	gateway          payment.Gateway
+	emailService     notification.EmailService
 }
 
 func NewCheckoutUseCase(
@@ -337,10 +334,6 @@ func (uc *checkoutUseCase) Execute(userID string, request *order.CheckoutRequest
 		}
 	}
 
-	// Marketplace checkout divides one charge among suppliers and owners. Unlike the
-	// affiliate commission on an invoice, that split IS the transaction: charging
-	// without it would deposit every supplier's money into the platform account. So
-	// this flow refuses to run on a provider that cannot split, rather than degrading.
 	if len(paymentSplits) > 0 && !uc.gateway.Capabilities().Split {
 		return nil, fmt.Errorf("%w: checkout requires split charges but provider %s cannot perform them",
 			payment.ErrSplitUnsupported, uc.gateway.Provider())
@@ -364,8 +357,6 @@ func (uc *checkoutUseCase) Execute(userID string, request *order.CheckoutRequest
 		return nil, err
 	}
 
-	// PIX is the only method offered here, so a charge without a payable code is
-	// useless to the customer and must not be persisted as if it were fine.
 	if createdPayment.PixCopyPaste == "" {
 		return nil, fmt.Errorf("payment provider %s returned no PIX code for charge %s",
 			uc.gateway.Provider(), createdPayment.ID)

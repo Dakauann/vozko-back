@@ -56,10 +56,6 @@ func metaCostInput() analytics_domain.MetaServiceMessageCostInput {
 	}
 }
 
-// Only what genuinely varies per request may be bound: the period, the
-// provider, the search and the page. Everything else is inlined so the partial
-// index can serve the query, and this pins the exact argument list so a stray
-// bind parameter cannot creep back into the message predicate unnoticed.
 func TestMetaServiceMessageCostBindsOnlyWhatVaries(t *testing.T) {
 	db, mock, sqlDB := newMetaCostDB(t)
 	defer sqlDB.Close()
@@ -71,8 +67,6 @@ func TestMetaServiceMessageCostBindsOnlyWhatVaries(t *testing.T) {
 	mock.ExpectExec(`SET LOCAL statement_timeout`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(`FROM conversation_messages cm[\s\S]*FROM balance_transactions[\s\S]*FROM exposure_rows`).
 		WithArgs(
-			// The provider filter appears twice, once for the count and once for
-			// the provider list, before the period.
 			string(analytics_domain.ServiceMessageProviderMeta),
 			string(analytics_domain.ServiceMessageProviderMeta),
 			string(analytics_domain.ServiceMessageProviderMeta),
@@ -94,13 +88,6 @@ func TestMetaServiceMessageCostBindsOnlyWhatVaries(t *testing.T) {
 	}
 }
 
-// The message predicate must carry the domain's constants as SQL literals.
-//
-// If any of them became a bind parameter the query would still be correct, and
-// would silently stop matching idx_cm_service_exposure once Postgres switched
-// that prepared statement to a generic plan: a full scan of three million rows,
-// in production only, with every test still green. That is exactly the failure
-// this test exists to prevent.
 func TestServiceMessagePredicateInlinesTheDomainConstants(t *testing.T) {
 	for _, mt := range conversation.ServiceMessageTypeStrings() {
 		if !strings.Contains(serviceMessagePredicate, "'"+mt+"'") {
@@ -123,9 +110,6 @@ func TestServiceMessagePredicateInlinesTheDomainConstants(t *testing.T) {
 	}
 }
 
-// An unbounded analytical query over these exact tables took the platform down
-// on 2026-09-08, and the server still runs statement_timeout = 0. The ceiling
-// is part of the query, not an optional extra, so it is pinned here.
 func TestMetaServiceMessageCostRunsUnderAStatementTimeout(t *testing.T) {
 	db, mock, sqlDB := newMetaCostDB(t)
 	defer sqlDB.Close()
@@ -145,10 +129,6 @@ func TestMetaServiceMessageCostRunsUnderAStatementTimeout(t *testing.T) {
 	}
 }
 
-// The provider filter rides a FILTER clause rather than the WHERE, so that one
-// scan can answer both "how many match this provider" and "how many could not
-// be attributed to any provider". Moving it into the WHERE would lose the
-// second answer and hide messages from the report.
 func TestProviderNarrowingIsAFilterNotAWhere(t *testing.T) {
 	clause, needsArg := providerFilterClause(analytics_domain.ServiceMessageProviderMeta)
 	if !needsArg {
@@ -169,8 +149,6 @@ func TestProviderNarrowingIsAFilterNotAWhere(t *testing.T) {
 	}
 }
 
-// The sort field is interpolated into the query, so every branch must return a
-// column this query actually has, and nothing may pass through unmapped.
 func TestOrderExpressionIsAClosedSet(t *testing.T) {
 	allowed := map[string]bool{
 		"ratio_sort": true, "service_messages": true,
@@ -190,9 +168,6 @@ func TestOrderExpressionIsAClosedSet(t *testing.T) {
 	}
 }
 
-// The window columns repeat the same totals on every row, so the report reads
-// them once. A page that shows ten workspaces must still report the totals for
-// all sixty-nine, or the headline contradicts the table under it.
 func TestTotalsComeFromTheWindowNotThePage(t *testing.T) {
 	rows := []metaServiceMessageCostRow{
 		{WorkspaceID: "a", ServiceMessages: 10, NetBillableSends: 5, TotalItems: 69, TotalServiceMsgs: 319134, TotalNetSends: 690608, TotalUnattrib: 7},
@@ -216,9 +191,6 @@ func TestTotalsComeFromTheWindowNotThePage(t *testing.T) {
 	}
 }
 
-// A workspace that sent service messages and bought nothing has no ratio. Zero
-// would read as "sends nothing per send", the exact opposite of the truth, so
-// the field stays nil and the UI renders it as its own state.
 func TestNoBillableSendsProducesNoRatioRatherThanZero(t *testing.T) {
 	rows := []metaServiceMessageCostRow{{WorkspaceID: "a", ServiceMessages: 900, NetBillableSends: 0, TotalItems: 1}}
 
@@ -246,8 +218,6 @@ func TestRatioIsComputedFromTheCountedRows(t *testing.T) {
 	}
 }
 
-// An empty result is a legitimate answer (nothing matched the filters), not an
-// error, and it must not read as a page of unknown totals.
 func TestEmptyResultReportsZeroTotals(t *testing.T) {
 	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, nil)
 
@@ -259,9 +229,6 @@ func TestEmptyResultReportsZeroTotals(t *testing.T) {
 	}
 }
 
-// The provider list is aggregated as a delimited string so it scans on any
-// driver without a driver-specific array type. Splitting it must not invent an
-// empty provider for a workspace that matched nothing.
 func TestProviderListSplitting(t *testing.T) {
 	cases := map[string][]string{
 		"":                {},
@@ -283,11 +250,6 @@ func TestProviderListSplitting(t *testing.T) {
 	}
 }
 
-// Meta's own verdict is counted from columns, not inferred, and a row Meta has
-// not spoken about must not be counted as a confirmed zero. NULL is excluded by
-// IS TRUE rather than by "= true", which NULL would also fail but less
-// obviously, and the free entry point is excluded explicitly because that is
-// the one exemption our inference cannot see.
 func TestMetaConfirmedPredicateExcludesUnknownAndFreeEntryPoint(t *testing.T) {
 	if !strings.Contains(metaConfirmedPredicate, "meta_pricing_billable IS TRUE") {
 		t.Error("confirmed count must use IS TRUE so an unspoken NULL is not read as false")
@@ -303,8 +265,6 @@ func TestMetaConfirmedPredicateExcludesUnknownAndFreeEntryPoint(t *testing.T) {
 	}
 }
 
-// The confirmed count rides the same aggregate as the inferred one, so it must
-// come back on every row and total the same way.
 func TestConfirmedCountIsCarriedThrough(t *testing.T) {
 	rows := []metaServiceMessageCostRow{
 		{WorkspaceID: "a", ServiceMessages: 100, MetaConfirmed: 40, NetBillableSends: 50,
@@ -324,9 +284,6 @@ func TestConfirmedCountIsCarriedThrough(t *testing.T) {
 	}
 }
 
-// The "still an estimate" flag is derived from coverage here, where coverage is
-// known. It used to be asserted unconditionally by the usecase, which meant the
-// page would have carried an upper bound caveat forever.
 func TestInferredFlagFollowsMetaCoverage(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -357,9 +314,6 @@ func TestInferredFlagFollowsMetaCoverage(t *testing.T) {
 	}
 }
 
-// Answered counts every verdict, billable or not. Reusing the confirmed
-// predicate would make a period where Meta said "this was free" look like a
-// period Meta had not answered at all, and the caveat would never lift.
 func TestAnsweredPredicateIsNotTheConfirmedPredicate(t *testing.T) {
 	if strings.Contains(metaConfirmedPredicate, "IS NOT NULL") {
 		t.Error("the confirmed predicate must test the verdict, not merely its presence")

@@ -2,9 +2,11 @@ package openrouter
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 	"vozko/domain/ai"
 
 	"github.com/joho/godotenv"
@@ -20,10 +22,13 @@ func TestAiCompletetion(t *testing.T) {
 		t.Skip("OPENROUTER_API_KEY not set, skipping test")
 	}
 
-	aiService := NewService(Config{
+	aiService, err := NewService(Config{
 		APIKey:       apiKey,
 		DefaultModel: "x-ai/grok-4.1-fast",
-	}, nil, nil)
+	}, nil, noopBillingPub{})
+	if err != nil {
+		t.Fatalf("NewService() = %v", err)
+	}
 
 	ctx := context.Background()
 	response, err := aiService.Generate(ctx, ai.GenerateInput{
@@ -51,4 +56,21 @@ Exemplo ERRADO: ["Oi, sou seu professor de IA e é um prazer te conhecer..."]`,
 		t.Logf("  [%d]: %s", i, msg)
 	}
 
+}
+
+type noopBillingPub struct{}
+
+func (noopBillingPub) Publish(string, []byte) error { return nil }
+func (noopBillingPub) PublishWithDelay(string, []byte, time.Duration) error {
+	return nil
+}
+func (noopBillingPub) ValidateConnection() error { return nil }
+
+func TestNewServiceRequiresABillingPublisher(t *testing.T) {
+	if _, err := NewService(Config{APIKey: "k"}, nil, nil); !errors.Is(err, ai.ErrBillingNotConfigured) {
+		t.Fatalf("NewService() = %v, want ai.ErrBillingNotConfigured", err)
+	}
+	if _, err := NewService(Config{APIKey: "k"}, nil, noopBillingPub{}); err != nil {
+		t.Fatalf("a service with a publisher failed to build: %v", err)
+	}
 }

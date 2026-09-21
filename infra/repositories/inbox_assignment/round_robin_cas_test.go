@@ -41,9 +41,6 @@ func rrState() *ia.RoundRobinState {
 	}
 }
 
-// The guard clause is the whole point: without last_assigned_user_id in the
-// WHERE, this is the unconditional write it replaces, and two conversations
-// arriving together both draw the same agent.
 func TestCompareAndSwap_GuardsOnTheExpectedPointer(t *testing.T) {
 	db, mock, sqlDB := newRRDB(t)
 	defer sqlDB.Close()
@@ -65,8 +62,6 @@ func TestCompareAndSwap_GuardsOnTheExpectedPointer(t *testing.T) {
 	}
 }
 
-// Zero rows with a non-empty expectation means somebody else advanced the
-// pointer between our read and this write. The caller recomputes.
 func TestCompareAndSwap_ReportsALostRace(t *testing.T) {
 	db, mock, sqlDB := newRRDB(t)
 	defer sqlDB.Close()
@@ -83,9 +78,6 @@ func TestCompareAndSwap_ReportsALostRace(t *testing.T) {
 	}
 }
 
-// No pointer yet: insert, and lose to whoever inserts first. DO NOTHING rather
-// than DO UPDATE, so two callers cannot both believe they claimed the first
-// turn.
 func TestCompareAndSwap_FirstTurnInsertsAndCanLose(t *testing.T) {
 	for name, tc := range map[string]struct {
 		inserted int64

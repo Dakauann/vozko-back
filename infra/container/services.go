@@ -73,9 +73,6 @@ func (c *Container) initServices() {
 	recordingExchange := recordings_domain.Exchange
 	scheduledMessageExchange := scheduled_message_domain.Exchange
 	unofficialWhatsAppSeedExchange := unofficial_whatsapp_domain.SeedExchange
-	// Its own exchange, for the same reason inbox seeding gets one: an alert
-	// send is a customer-facing message and has no business queuing behind
-	// analysis telemetry.
 	audienceAlertExchange := audience_domain.AlertExchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
@@ -150,14 +147,8 @@ func (c *Container) initServices() {
 	c.services.coexistenceMetaAPI = businessphone_infra.NewMetaCoexistenceClient(httpClient)
 }
 
-// initCallSessionRegistries builds the in-process call-session registries the live
-// call plane runs on. Both are needed by WhatsApp calling (inbound offer/answer
-// and the attached call handle) and by /attendance/overview, which reads live
-// session presence.
 func (c *Container) initCallSessionRegistries() {
 	c.services.callSessions = callsession_infra.NewInProcSessionRegistry()
 	c.services.calls = callsession_infra.NewInProcCallRegistry()
-	// Display-name resolver for the presence panel and the WhatsApp inbound-call
-	// notifications; cached per id so a presence broadcast touches no database.
 	c.services.callSessionUsernameResolver = newCallSessionUsernameResolver(c.repositories.user)
 }

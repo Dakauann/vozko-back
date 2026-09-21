@@ -9,13 +9,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// The Resumable Upload API differs per provider: Meta scopes the session
-// endpoint by app id and authenticates the binary upload with
-// "Authorization: OAuth <token>"; 360dialog proxies the same API scoped by the
-// channel API key ("{base}/uploads", D360-API-KEY on both steps, no app id,
-// verified against docs.360dialog.com and the live waba-v2 routing). These
-// tests pin both contracts.
-
 func newUploadTestServer(t *testing.T, wantSessionPath string, onSession, onUpload func(r *http.Request)) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -36,7 +29,6 @@ func newUploadTestServer(t *testing.T, wantSessionPath string, onSession, onUplo
 	return httptest.NewServer(mux)
 }
 
-// pngHeader is enough for http.DetectContentType to say image/png.
 var pngBytes = []byte("\x89PNG\r\n\x1a\n0000000000")
 
 func TestUploadMediaForTemplate_Dialog360(t *testing.T) {
@@ -68,7 +60,6 @@ func TestUploadMediaForTemplate_Dialog360(t *testing.T) {
 		t.Fatalf("handle = %q, want 4::HANDLE", handle)
 	}
 
-	// Session creation: channel-scoped path, D360-API-KEY auth, docs-style params.
 	if sessionReq == nil {
 		t.Fatal("session request never made")
 	}
@@ -86,7 +77,6 @@ func TestUploadMediaForTemplate_Dialog360(t *testing.T) {
 		t.Fatalf("session must not carry Authorization for 360dialog, got %q", got)
 	}
 
-	// Binary upload: same channel API key header, never Meta's OAuth scheme.
 	if uploadReq == nil {
 		t.Fatal("upload request never made")
 	}
@@ -149,7 +139,7 @@ func TestUploadMediaForTemplate_Meta(t *testing.T) {
 }
 
 func TestUploadMediaForTemplate_MetaStillRequiresAppID(t *testing.T) {
-	c := metaClient() // no AppID configured
+	c := metaClient()
 	_, err := c.UploadMediaForTemplate(context.Background(), conversation.UploadMediaForTemplateInput{Data: pngBytes})
 	if err == nil {
 		t.Fatal("expected error for Meta client without App ID")
@@ -157,8 +147,6 @@ func TestUploadMediaForTemplate_MetaStillRequiresAppID(t *testing.T) {
 }
 
 func TestUploadMediaForTemplate_Dialog360NeedsNoAppID(t *testing.T) {
-	// Regression: 360dialog channels have no Meta App ID; the guard must not
-	// reject them before the request is even attempted.
 	c := dialog360Client()
 	_, err := c.UploadMediaForTemplate(context.Background(), conversation.UploadMediaForTemplateInput{})
 	if err == nil || err.Error() != "either URL or Data must be provided" {

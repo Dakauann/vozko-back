@@ -79,9 +79,6 @@ func (h *ConversationWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.R
 	campaignID := query.Get("campaignId")
 	campaignType := query.Get("campaignType")
 
-	// Empty means the global (all-channel) inbox. Otherwise the selector must
-	// name a channel the inbox can be scoped to; the message is generated from
-	// the domain set so it cannot drift from what is actually accepted.
 	if campaignType != "" && !shared.EntryType(campaignType).SupportsInboxScope() {
 		http.Error(w, "campaignType must be "+shared.FormatEntryTypes(shared.InboxScopableEntryTypes()), http.StatusBadRequest)
 		return

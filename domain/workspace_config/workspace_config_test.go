@@ -103,8 +103,6 @@ func TestClampRouletteRescueMinutes(t *testing.T) {
 	}
 }
 
-// The guard that keeps this feature dark on upgrade: every existing workspace
-// must land on the historical mode.
 func TestRouletteDefaultsAreTheHistoricalBehaviour(t *testing.T) {
 	if DefaultRouletteMode != RouletteModeOnline {
 		t.Fatal("the default roulette mode must stay online, or an upgrade silently changes distribution for every workspace")
@@ -136,7 +134,6 @@ func TestEffectiveRouletteHelpers(t *testing.T) {
 	}
 }
 
-// E10: rescue is gated on the mode, not only on its own toggle.
 func TestRouletteRescueActive(t *testing.T) {
 	cases := []struct {
 		mode    string

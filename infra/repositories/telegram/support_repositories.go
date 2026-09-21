@@ -12,13 +12,10 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// ---------------------------------------------------------------- deep links
-
 type deepLinkRepository struct {
 	db *gorm.DB
 }
 
-// NewDeepLinkRepository builds the deep-link attribution store.
 func NewDeepLinkRepository(db *gorm.DB) tgdomain.DeepLinkRepository {
 	return &deepLinkRepository{db: db}
 }
@@ -72,8 +69,6 @@ func (r *deepLinkRepository) ListByAccount(ctx context.Context, accountID string
 	return out, nil
 }
 
-// MarkUsed counts a redemption rather than consuming the link: a QR code on a
-// printed invoice is scanned many times and must keep working.
 func (r *deepLinkRepository) MarkUsed(ctx context.Context, token string, at time.Time) error {
 	return r.db.WithContext(ctx).Model(&schema.TelegramDeepLink{}).
 		Where("token = ?", token).
@@ -112,13 +107,10 @@ func toDeepLinkDomain(record *schema.TelegramDeepLink) *tgdomain.DeepLink {
 	}
 }
 
-// ---------------------------------------------------------------- file cache
-
 type fileCacheRepository struct {
 	db *gorm.DB
 }
 
-// NewFileCacheRepository builds the object-key → file_id cache.
 func NewFileCacheRepository(db *gorm.DB) tgdomain.FileCacheRepository {
 	return &fileCacheRepository{db: db}
 }
@@ -135,11 +127,6 @@ func (r *fileCacheRepository) Get(ctx context.Context, accountID, sourceKey stri
 	return fileID, nil
 }
 
-// Put records the id Telegram assigned to an uploaded asset.
-//
-// A conflict is an update rather than an error: Telegram may hand out a
-// different valid file_id for the same content ("a file can have different valid
-// file_ids even for the same bot"), and the newest one is always usable.
 func (r *fileCacheRepository) Put(ctx context.Context, accountID, sourceKey, fileID string) error {
 	if fileID == "" || sourceKey == "" {
 		return nil
@@ -156,17 +143,10 @@ func (r *fileCacheRepository) Put(ctx context.Context, accountID, sourceKey, fil
 		}).Error
 }
 
-// ---------------------------------------------------------------- dedup
-
 type processedEventRepository struct {
 	db *gorm.DB
 }
 
-// NewProcessedEventRepository builds the durable webhook dedup store.
-//
-// It shares the webhook_processed_events table with Instagram: the guarantee
-// needed is identical (at-least-once delivery, survive a Redis eviction), and a
-// per-channel table would duplicate the purge cron for nothing.
 func NewProcessedEventRepository(db *gorm.DB) tgdomain.ProcessedEventRepository {
 	return &processedEventRepository{db: db}
 }
@@ -185,7 +165,6 @@ func (r *processedEventRepository) Claim(ctx context.Context, key, channel, acco
 	if result.Error != nil {
 		return false, result.Error
 	}
-	// No row inserted means the key was already claimed by an earlier delivery.
 	return result.RowsAffected > 0, nil
 }
 

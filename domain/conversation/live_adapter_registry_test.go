@@ -33,15 +33,9 @@ func (f fakeInteractiveAdapter) InteractiveLimits() channel.InteractiveLimits {
 	return channel.InteractiveLimits{MaxOptionsButtons: 3, MaxOptionsList: 10}
 }
 
-// Channel adapters register one at a time during container startup, and several
-// consumers are constructed in between. A consumer handed a snapshot sees only
-// the channels registered so far, and a missing adapter is indistinguishable
-// from "this channel cannot send", so every workflow send node silently skipped
-// on Instagram and Telegram while the run reported itself completed.
 func TestLiveRegistrySeesAdaptersRegisteredAfterItWasHandedOut(t *testing.T) {
 	live := NewLiveAdapterRegistry()
 
-	// A consumer takes the registry now, before any channel has registered.
 	var consumer AdapterRegistry = live
 	if consumer.Has(shared.EntryTypeTelegram) {
 		t.Fatal("an empty registry must not claim to have a channel")
@@ -53,7 +47,6 @@ func TestLiveRegistrySeesAdaptersRegisteredAfterItWasHandedOut(t *testing.T) {
 		fakeAdapter{entryType: shared.EntryTypeTelegram},
 	)
 
-	// The consumer's reference must reflect both, without being re-wired.
 	if !consumer.Has(shared.EntryTypeTelegram) {
 		t.Error("a channel registered after hand-out must still be visible")
 	}
@@ -73,9 +66,6 @@ func TestLiveRegistryResolvesTheAdapterItself(t *testing.T) {
 	if err != nil {
 		t.Fatalf("For: %v", err)
 	}
-	// The optional capability must survive the indirection, it is discovered by
-	// type assertion, so a wrapper that hid it would disable interactive prompts
-	// on every channel at once.
 	if _, ok := adapter.(InteractiveAdapter); !ok {
 		t.Error("the interactive capability must be reachable through the live registry")
 	}

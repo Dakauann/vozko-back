@@ -135,7 +135,6 @@ func TestEnsureOpenAndHandoff(t *testing.T) {
 		t.Fatalf("ended=%+v", ended)
 	}
 
-	// second end is no-op
 	svc.EndOpen("ws", "e1", "whatsapp", aa.OutcomeContained, "x", "")
 
 	var hasStart, hasReply, hasEnd bool
@@ -165,7 +164,6 @@ func TestEndOpenByCallIDFallback(t *testing.T) {
 	if s == nil {
 		t.Fatal("expected session")
 	}
-	// Handoff only knows call_id (transfer adapter path).
 	svc.EndOpenWithCallID("ws", "", "voice", "sip-call-xyz", aa.OutcomeHandedOff, "transfer_completed", "user-1")
 	open, _ := repo.FindOpenByEntry("ws", "entry-uuid", "voice")
 	if open != nil {

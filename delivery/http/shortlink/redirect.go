@@ -59,7 +59,6 @@ type passwordPageData struct {
 	Error  string
 }
 
-// Redirect godoc
 // @Summary		Redirecionar um link curto
 // @Description	Resolve o código público e redireciona para a URL de destino, exibe a página de senha quando o link é protegido, ou retorna 404. O clique é contabilizado de forma assíncrona.
 // @Tags			Links Curtos
@@ -90,7 +89,6 @@ func (h *ShortLinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Unlock godoc
 // @Summary		Desbloquear um link curto protegido por senha
 // @Description	Valida a senha de um link protegido e redireciona para a URL de destino em caso de sucesso. Se a senha estiver incorreta, reexibe a página de senha.
 // @Tags			Links Curtos

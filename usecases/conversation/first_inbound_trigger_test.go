@@ -10,10 +10,6 @@ func msg(t conversation.MessageType) *conversation.Message {
 	return &conversation.Message{MessageType: t}
 }
 
-// TestIsFirstInboundMessage guards the trigger_first_message fix: a template-first
-// campaign records an outbound template before the lead replies, so the reply must
-// still count as the first customer message. Only a PRIOR inbound message
-// suppresses the trigger.
 func TestIsFirstInboundMessage(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -22,7 +18,6 @@ func TestIsFirstInboundMessage(t *testing.T) {
 	}{
 		{"empty history (organic inbound-first)", nil, true},
 		{
-			// The incident: outbound template in history, lead's first reply.
 			"only outbound template", []*conversation.Message{msg(conversation.MessageTypeTemplate)}, true,
 		},
 		{

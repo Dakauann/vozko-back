@@ -83,8 +83,6 @@ func TestCreateInputRejectsScopeFromArgs(t *testing.T) {
 	}
 }
 
-// Asserted against the DEFINITIONS the model actually receives, not against a
-// reflection call a refactor could quietly repoint somewhere else.
 func TestAgentSchemasExcludeScope(t *testing.T) {
 	create := NewCreateAgentTool(nil).Definition().Parameters
 	update := NewUpdateAgentTool(nil, nil).Definition().Parameters

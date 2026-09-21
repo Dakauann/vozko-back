@@ -10,22 +10,17 @@ import (
 	"vozko/domain/queue_event"
 )
 
-// getOverviewUseCase composes the attendance repository overview with optional
-// queue, presence, and live call session ports. Keeps infra adapters out of the repository.
 type getOverviewUseCase struct {
 	repo     attendance.Repository
 	queue    queue_event.Repository
 	presence agent_presence.Repository
-	// live is optional; when set, fills Overview.Live from live call sessions.
-	live callsession.CallSessionRegistry
+	live     callsession.CallSessionRegistry
 }
 
-// NewGetOverviewUseCase builds the overview use case (queue/presence/live optional).
 func NewGetOverviewUseCase(repo attendance.Repository) attendance.GetOverviewUseCase {
 	return &getOverviewUseCase{repo: repo}
 }
 
-// NewGetOverviewUseCaseWithDeps injects queue ASA/abandon, occupancy, and live callsession.
 func NewGetOverviewUseCaseWithDeps(
 	repo attendance.Repository,
 	queue queue_event.Repository,

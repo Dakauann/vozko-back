@@ -21,25 +21,10 @@ type Repository interface {
 
 	FindOrCreateMany(workspaceID string, inputs []BulkLeadInput) (map[string]*Lead, error)
 
-	// ImportMany is the operator-facing bulk create, and differs from
-	// FindOrCreateMany in the one way that matters to a person watching an
-	// import finish: it reports what actually happened per number.
-	//
-	// FindOrCreateMany returns a flat map with no created/matched distinction,
-	// which is right for a campaign upload (it only needs lead ids to attach
-	// entries to) and useless here: "1.000 importados" is a lie when 700 were
-	// already in the workspace. Rather than change a signature four call sites
-	// depend on, importing gets its own method.
 	ImportMany(workspaceID string, inputs []BulkLeadInput, policy ExistingPolicy) (*ImportOutcome, error)
 
 	Update(workspaceID, id string, update LeadUpdate) error
 
-	// Rename sets the lead name directly, and is the ONLY way to clear it.
-	//
-	// Update goes through Merge, where an empty name means "leave it alone" —
-	// correct when a webhook merges partial provider data, wrong when a person
-	// deliberately erases a name so the lead shows its number again. Same field,
-	// opposite meanings, so the human path is its own method rather than a flag.
 	Rename(workspaceID, id, name string) error
 
 	Delete(workspaceID, id string) error
@@ -48,11 +33,6 @@ type Repository interface {
 
 	ListWithSummary(input ListLeadsInput) (*shared.PaginatedResult[*LeadWithSummary], error)
 
-	// Facets counts the same filtered set the list returns, broken down by the
-	// dimensions the filter UI offers. It exists so the counts beside each
-	// filter option come from the query that produced the rows, not from the
-	// current page (which is how a "3 bloqueados" badge ends up meaning "3 on
-	// this page of 20").
 	Facets(input ListLeadsInput) (*LeadFacets, error)
 
 	ResolveCampaignNames(wcIDs []string) map[string]string
@@ -64,24 +44,12 @@ type BulkLeadInput struct {
 	Age    *int
 }
 
-// ListLeadsInput is the whole read query: who is asking, what to keep, how to
-// order and page it.
-//
-// Filter is the reusable crmfilter expression compiled by the lead descriptor.
-// There is deliberately no second set of scalar filter fields beside it: the
-// legacy `?number=&name=&ageFrom=` query params are translated into predicates
-// at the HTTP edge, so one filter model reaches the database no matter which
-// client shape asked for it.
 type ListLeadsInput struct {
 	WorkspaceID string
 	Filter      crmfilter.Filter
 	Options     shared.QueryOptions
 }
 
-// SortKey is a stable, client-facing ordering key. The repository owns the
-// mapping from key to SQL, so no layer above it ever names a column — which is
-// what lets `lastActivity` be a five-table GREATEST() without the HTTP handler
-// knowing.
 type SortKey string
 
 const (
@@ -96,10 +64,8 @@ const (
 	SortLastMemoryAt   SortKey = "lastMemoryAt"
 )
 
-// DefaultSort is what an unsorted request gets: newest leads first.
 var DefaultSort = shared.Sort{Field: string(SortCreatedAt), Direction: shared.SortDesc}
 
-// AllSortKeys lists every valid key, in the order a UI should offer them.
 func AllSortKeys() []SortKey {
 	return []SortKey{
 		SortCreatedAt, SortUpdatedAt, SortLastActivityAt,
@@ -108,7 +74,6 @@ func AllSortKeys() []SortKey {
 	}
 }
 
-// ParseSortKey resolves a case-insensitive client value to a known key.
 func ParseSortKey(value string) (SortKey, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	for _, key := range AllSortKeys() {
@@ -124,10 +89,6 @@ func (k SortKey) Valid() bool {
 	return ok
 }
 
-// LeadFacets are the aggregate counts over a filtered lead set. Zero-valued
-// buckets are still reported so a filter option can render "0" instead of
-// disappearing, which is the difference between "none match" and "we forgot to
-// count".
 type LeadFacets struct {
 	Total           int64 `json:"total"`
 	Blocked         int64 `json:"blocked"`
@@ -141,8 +102,6 @@ type LeadFacets struct {
 	Named           int64 `json:"named"`
 	Unnamed         int64 `json:"unnamed"`
 
-	// Keyed breakdowns. Each counts DISTINCT leads, never rows: a lead with
-	// four `deal` memories is one lead under "deal".
 	MemoryCategories map[string]int64 `json:"memoryCategories"`
 	Channels         map[string]int64 `json:"channels"`
 	CampaignStatuses map[string]int64 `json:"campaignStatuses"`

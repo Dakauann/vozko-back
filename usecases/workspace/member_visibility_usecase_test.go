@@ -9,13 +9,10 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// fakeWsRepo embeds workspace.Repository (nil) and only implements the methods
-// the visibility policy actually calls; any other call would panic, which keeps
-// the fake honest about what the policy depends on.
 type fakeWsRepo struct {
 	workspace.Repository
-	membersByUser map[string]*workspace.Member // userID -> member
-	perms         map[string]bool              // memberID|resource|action
+	membersByUser map[string]*workspace.Member
+	perms         map[string]bool
 }
 
 func (f *fakeWsRepo) GetMember(workspaceID, userID string) (*workspace.Member, error) {
@@ -29,7 +26,7 @@ func (f *fakeWsRepo) HasPermission(memberID string, r workspace.Resource, a work
 type fakeDeptRepo struct {
 	workspace_department.Repository
 	departments []workspace_department.Department
-	deptsByUser map[string][]string // userID -> department IDs
+	deptsByUser map[string][]string
 }
 
 func (f *fakeDeptRepo) ListDepartments(workspaceID string) ([]workspace_department.Department, error) {
@@ -167,8 +164,6 @@ func TestMemberVisibilityScope(t *testing.T) {
 func TestMemberVisibilityCanView(t *testing.T) {
 	twoDepts := []workspace_department.Department{{ID: "A"}, {ID: "B"}}
 
-	// caller u1: plain member in dept A. u2: dept A. u3: dept B. o1: owner (no
-	// dept). a1: admin (no dept). b1: departmentless regular member (idle).
 	members := map[string]*workspace.Member{
 		"u1": {ID: "m1", UserID: "u1", Role: workspace.RoleMember},
 		"u2": {ID: "m2", UserID: "u2", Role: workspace.RoleMember},

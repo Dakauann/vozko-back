@@ -15,9 +15,6 @@ import (
 	webhook_usecase "vozko/usecases/webhook"
 )
 
-// resolveTimeout bounds the API call the resolver makes. It is well under Mercado
-// Pago's 22-second webhook deadline, but that deadline applies to the HTTP handler,
-// not here: by this point the notification has already been acknowledged and queued.
 const mercadoPagoResolveTimeout = 20 * time.Second
 
 type consumeMercadoPagoWebhookUseCase struct {
@@ -28,10 +25,6 @@ type consumeMercadoPagoWebhookUseCase struct {
 	semaphore chan struct{}
 }
 
-// NewConsumeMercadoPagoWebhookUseCase mirrors the Asaas consumer: same dedup window,
-// same bounded concurrency, same ack semantics. The one structural difference is the
-// resolver, because a Mercado Pago notification carries only a resource id and must be
-// exchanged for a payment before anything can be decided.
 func NewConsumeMercadoPagoWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
 	resolver payment.WebhookResolver,
@@ -53,9 +46,6 @@ func (uc *consumeMercadoPagoWebhookUseCase) Start() error {
 	})
 }
 
-// notificationEnvelope is the minimum shape needed to build a dedup key without
-// re-parsing the provider's full notification here. The delivery layer normalizes
-// every inbound notification into this shape before publishing.
 type notificationEnvelope struct {
 	Action string `json:"action"`
 	Type   string `json:"type"`
@@ -72,9 +62,6 @@ func (uc *consumeMercadoPagoWebhookUseCase) handle(raw []byte, ack messaging.Mes
 		return
 	}
 
-	// Dedup on resource + action rather than the notification id: Mercado Pago sends a
-	// distinct notification id per delivery attempt, so keying on it would dedupe
-	// nothing.
 	dedupKey := envelope.Data.ID + ":" + envelope.Action
 	if dedupKey != ":" && uc.dedup.IsDuplicate("mercadopago:"+dedupKey) {
 		log.Printf("[webhook-consumer] duplicate mercadopago event ignored: %s", dedupKey)
@@ -97,8 +84,6 @@ func (uc *consumeMercadoPagoWebhookUseCase) handle(raw []byte, ack messaging.Mes
 
 		event, err := uc.resolver.Resolve(ctx, raw)
 		if err != nil {
-			// Ignored and malformed are both terminal: acknowledging stops Mercado Pago
-			// from retrying a notification no retry can help.
 			if errors.Is(err, payment.ErrWebhookIgnored) || errors.Is(err, payment.ErrWebhookMalformed) {
 				log.Printf("[webhook-consumer] mercadopago event dropped: %v", err)
 				_ = ack.Ack()

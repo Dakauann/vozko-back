@@ -26,11 +26,6 @@ func (t *updateAgentTool) Definition() tools.Definition {
 	params, _ := scalarParams()
 	params["id"] = tools.Parameter{Type: "string", Description: "id do agente a atualizar"}
 
-	// Add/remove rather than a full list, because ApplyUpdate REPLACES the
-	// bindings when the field is set: a model that sent only the new tool
-	// would silently delete every tool the agent already had. Stating an
-	// intent it cannot get catastrophically wrong beats trusting it to echo
-	// the complete list back on every call.
 	params["addTools"] = toolListParam(agentFieldDescriptions["addTools"])
 	params["removeTools"] = stringListParam(agentFieldDescriptions["removeTools"])
 	params["addKnowledgeBaseIds"] = stringListParam(agentFieldDescriptions["addKnowledgeBaseIds"])
@@ -57,9 +52,6 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	// The workspace and department gate, before anything is read off the agent
-	// and before any merge: a foreign agent must be indistinguishable from a
-	// missing one, including through the merged result we would echo back.
 	if a == nil || a.WorkspaceID != cc.WorkspaceID || !inDeptScope(cc.DeptScope, a.DepartmentID) {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "agente não encontrado neste workspace"}
 	}
@@ -68,8 +60,6 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	bindArgs(args, &fields)
 	in := fields.toUpdateInput()
 
-	// Merged against the agent we just authorized, so "add" can never mean
-	// "replace" and the ids come from this workspace's own agent.
 	in.InternalTools = mergeToolBindings(
 		a.InternalTools,
 		argToolBindings(args, "addTools"),

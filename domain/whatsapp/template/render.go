@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-// RenderedButton / RenderedComponent / TemplateInfo are the shape the CRM
-// template bubble reads. The json tags are load-bearing: they are the wire
-// contract with the frontend renderer, not an internal detail.
 type RenderedButton struct {
 	Type        string `json:"type"`
 	Text        string `json:"text"`
@@ -22,18 +19,6 @@ type RenderedComponent struct {
 	Buttons []RenderedButton `json:"buttons,omitempty"`
 }
 
-// RenderInfo substitutes a send's variables into the template and returns what
-// the CRM should draw.
-//
-// It lives on the entity because three callers needed it and each had grown its
-// own copy: the campaign consumer, the reopen-window sender, and now cold
-// outbound. Three copies of a substitution rule is three ways for the message a
-// customer received to disagree with the message the operator is shown.
-//
-// Substitution accepts BOTH placeholder styles for every parameter, because a
-// template's declared format and the format its body actually uses have been
-// observed to disagree after an upstream edit, and rendering "{{1}}" to a
-// customer is worse than trying both.
 func (t *Template) RenderInfo(params []string) map[string]interface{} {
 	bodyText := strings.TrimSpace(t.GetBodyText())
 	paramNames := t.GetParameterNames()
@@ -47,15 +32,10 @@ func (t *Template) RenderInfo(params []string) map[string]interface{} {
 		}
 	}
 	if bodyText == "" {
-		// A template with no body still has to render as something in a list of
-		// conversations; an empty bubble reads as a bug.
 		bodyText = fmt.Sprintf("[Template: %s]", t.Name)
 	}
 
 	var components []RenderedComponent
-	// paramIdx walks forward across components: the parameters are one flat list
-	// shared by header and body, so a header that consumed {{1}} must not let the
-	// body consume it again.
 	paramIdx := 0
 	for _, comp := range t.Components {
 		rc := RenderedComponent{Type: comp.Type, Format: comp.Format, Text: comp.Text}
@@ -103,8 +83,6 @@ func (t *Template) RenderInfo(params []string) map[string]interface{} {
 	return info
 }
 
-// RenderedBodyText is the one-line form, for callers that want the resolved text
-// without the component tree.
 func (t *Template) RenderedBodyText(params []string) string {
 	info := t.RenderInfo(params)
 	if s, ok := info["body_text"].(string); ok {

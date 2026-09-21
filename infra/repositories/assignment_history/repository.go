@@ -118,9 +118,6 @@ func toSchema(h *ia.AssignmentHistory) *schema.AssignmentHistory {
 }
 
 func (r *repository) ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error) {
-	// An empty trigger set would render as IN (), which Postgres rejects, and
-	// an empty workspace set has nothing to ask about. Both mean "no candidates"
-	// rather than "everything".
 	if len(workspaceIDs) == 0 || len(triggers) == 0 {
 		return nil, nil
 	}
@@ -143,18 +140,6 @@ func (r *repository) ListOpenOlderThan(workspaceIDs []string, triggers []string,
 	return out, nil
 }
 
-// CountRescuesSinceHandout counts rescue hops since the roulette last handed
-// this entry out.
-//
-// One query, not two. The rescue sweep calls this once per stalled
-// conversation, so a second round-trip per candidate is a per-candidate cost on
-// the one path that is already the most query-hungry in the feature.
-//
-// Reading the tail newest-first and stopping at the roulette hand-out is
-// correct for any real chain — the hop cap is a single digit — and the LIMIT
-// bounds an entry that has been reassigned by hand hundreds of times. An entry
-// whose history holds no hand-out at all (it began as a manual assignment) has
-// no rescue chain to bound, so it counts zero.
 func (r *repository) CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error) {
 	type row struct {
 		Trigger string `gorm:"column:trigger"`
@@ -174,18 +159,12 @@ func (r *repository) CountRescuesSinceHandout(workspaceID, entryID, entryType st
 	for _, item := range rows {
 		switch item.Trigger {
 		case ia.TriggerInboundRR:
-			// The hand-out that opened the current chain: everything older
-			// belongs to a previous one.
 			return count, nil
 		case ia.TriggerRescue:
 			count++
 		}
 	}
-	// No hand-out in the scanned tail: nothing to bound.
 	return 0, nil
 }
 
-// rescueChainScanLimit bounds the tail read above. The hop cap is
-// MaxRescueHops, so a real chain is at most a handful of rows; this only has to
-// survive an entry somebody reassigned by hand many times.
 const rescueChainScanLimit = 50

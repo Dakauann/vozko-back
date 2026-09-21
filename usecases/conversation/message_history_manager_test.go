@@ -174,8 +174,6 @@ func TestMessageHistoryManager_Record_EmptyWamidStillPersists(t *testing.T) {
 	}
 }
 
-// GetByEntryAndExternalMessageID mirrors the production dedup lookup and the
-// partial unique index behind it: (entry_type, entry_id, external_message_id).
 func (m *dedupMessageRepo) GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error) {
 	atomic.AddInt32(&m.getCalls, 1)
 	if externalID == "" {
@@ -205,11 +203,6 @@ func providerRecord(entryID, providerID string, dir conversation.MessageHistoryD
 	}
 }
 
-// Both ends of a conversation can be OUR instances: one tenant messages another
-// tenant that is also on the platform. The provider stamps ONE message id, which
-// then legitimately arrives twice — outbound on the sender's entry, inbound on
-// the receiver's. Deduping across entries drops the inbound copy, and the
-// receiving tenant simply never sees the message.
 func TestMessageHistoryManager_Record_SameProviderIDOnAnotherEntryIsNotADuplicate(t *testing.T) {
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
@@ -230,8 +223,6 @@ func TestMessageHistoryManager_Record_SameProviderIDOnAnotherEntryIsNotADuplicat
 	}
 }
 
-// A genuine replay: the SAME entry, the same id. Webhook delivery is
-// at-least-once, so this must still collapse to one row.
 func TestMessageHistoryManager_Record_SameProviderIDOnSameEntryStaysDeduped(t *testing.T) {
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
@@ -246,13 +237,6 @@ func TestMessageHistoryManager_Record_SameProviderIDOnSameEntryStaysDeduped(t *t
 		t.Fatalf("a replay must not duplicate, got %d", got)
 	}
 }
-
-// A quoted reply reaches the manager as the PROVIDER's message id, but the
-// transcript resolves a quote by matching reply_to_message_id against a
-// message's own id. Storing the provider id would fill the column and render
-// nothing, so the manager has to translate — and before this it did neither:
-// the field was read by nobody, and inbound quotes never reached the database
-// on any channel.
 
 func (m *dedupMessageRepo) seed(msg *conversation.Message) {
 	m.mu.Lock()
@@ -288,8 +272,6 @@ func TestMessageHistoryManager_Record_TranslatesQuotedProviderIDToOurID(t *testi
 	}
 }
 
-// Official WhatsApp keeps its id in the other column, so the translation has to
-// consult both rather than only the one the newer channels use.
 func TestMessageHistoryManager_Record_TranslatesQuotedWamid(t *testing.T) {
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
@@ -313,8 +295,6 @@ func TestMessageHistoryManager_Record_TranslatesQuotedWamid(t *testing.T) {
 	}
 }
 
-// Quoting something older than our history is normal. It must land as an
-// ordinary message, not fail and not carry a reference nothing can resolve.
 func TestMessageHistoryManager_Record_UnknownQuoteStillPersistsTheMessage(t *testing.T) {
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
@@ -333,9 +313,6 @@ func TestMessageHistoryManager_Record_UnknownQuoteStillPersistsTheMessage(t *tes
 	}
 }
 
-// The quoted message may live on another entry when both ends of a chat are
-// hosted here. The precise lookup runs first so a reply points at the copy in
-// its OWN conversation.
 func TestMessageHistoryManager_Record_QuotePrefersTheSameEntry(t *testing.T) {
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)

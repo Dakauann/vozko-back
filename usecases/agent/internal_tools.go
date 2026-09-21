@@ -9,21 +9,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// deprecatedTools are names a saved agent may still carry that the registry no
-// longer offers. They are dropped on the way through rather than rejected.
-//
-// An agent keeps whatever it was configured with, and a tool can be retired
-// from the code long after agents bound it. The editor loads an agent's stored
-// bindings, the operator changes something unrelated — picking a knowledge
-// base, say — and the whole set is submitted back, so validation failed with
-// "agent internal tool is invalid" over a binding the operator never touched
-// and the agent became uneditable through the UI.
-//
-// conversation_analysis is the second such name. It was superseded when the
-// analysis job stopped asking the model for a verdict: see wantAnalysis in
-// usecases/conversation/analysis_debounce_job.go, which is a hardcoded false,
-// so the tool is never handed to a model and no handler defines it. 54 agents
-// still had it bound.
 var deprecatedTools = map[string]struct{}{
 	"query_knowledge_base":  {},
 	"conversation_analysis": {},

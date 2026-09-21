@@ -8,12 +8,6 @@ import (
 	"vozko/domain/label"
 )
 
-// The label change's timeline event belongs to the USE CASE.
-//
-// It used to be written by the label HTTP handler, so the CRM's bulk
-// "add label" / "remove label" — which call these use cases directly — changed
-// the conversation and left its history blank.
-
 type fakeLabelRepo struct {
 	label.Repository
 
@@ -71,11 +65,9 @@ func TestAssignEntryLabel_RecordsTheLabelOnTheTimeline(t *testing.T) {
 	if ev.ActorID != "user-1" || ev.ActorKind != actor.KindHuman {
 		t.Fatalf("actor = %s/%s, want user-1/human", ev.ActorKind, ev.ActorID)
 	}
-	// The channel used to default to "whatsapp" for every non-voice type.
 	if ev.Channel != "telegram" {
 		t.Fatalf("Channel = %q, want telegram", ev.Channel)
 	}
-	// The name, not just the id: the row rendered as a bare "Label added".
 	if got := ev.DetailsMap()["label_name"]; got != "urgente" {
 		t.Fatalf("label_name = %q, want urgente", got)
 	}
@@ -100,7 +92,6 @@ func TestRemoveEntryLabel_RecordsTheRemoval(t *testing.T) {
 	}
 }
 
-// A rejected change must leave no trace: the conversation did not change.
 func TestLabelUseCases_RecordNothingWhenRejected(t *testing.T) {
 	repo := repoWith(&label.Label{ID: "l1", WorkspaceID: "other-ws", Name: "urgente"})
 
@@ -125,7 +116,6 @@ func TestLabelUseCases_RecordNothingWhenRejected(t *testing.T) {
 	}
 }
 
-// A nil logger is the unit-test wiring; it must not panic a real change.
 func TestLabelUseCases_SurviveWithoutALogger(t *testing.T) {
 	repo := repoWith(&label.Label{ID: "l1", WorkspaceID: "ws", Name: "urgente"})
 	if _, err := NewAssignEntryLabelUseCase(repo, nil).Execute("ws", label.AssignEntryLabelInput{

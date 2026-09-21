@@ -10,22 +10,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// An operator holding several conversations open at once — the web client's
-// floating chat windows, and any second tab — subscribes to more than one entry
-// on the same socket, and to overlapping entries across sockets.
-//
-// Subscriptions used to be keyed by USER, which broke both cases:
-//
-//   - every frame for every entry ANY of that user's connections had open was
-//     delivered to ALL of them, so a second tab received traffic for threads it
-//     had never opened;
-//   - closing one window sent `unsubscribe`, which dropped the subscription for
-//     the whole user, so the other tab still showing that conversation went
-//     silent until it was reopened.
-//
-// Both are invisible until an operator actually works two conversations at
-// once, which is exactly what the feature is for.
-
 type multiOpenAuthorizer struct{}
 
 func (multiOpenAuthorizer) CanAccessEntry(string, string, string, string, bool) bool    { return true }
@@ -43,14 +27,10 @@ func (multiOpenAuthorizer) GetDepartmentScope(string, string, bool) (conversatio
 func newMultiOpenHub(t *testing.T) *ConversationHub {
 	t.Helper()
 	hub := NewConversationHub(multiOpenAuthorizer{}, nil, nil, nil, "test-replica", "")
-	// The hub records connect/disconnect; the container wires the real
-	// recorder, so the disconnect path needs one here too.
 	hub.SetWSMetrics(noopWSMetricsRecorder{})
 	return hub
 }
 
-// subscribeConn registers a connection and subscribes it to one entry, the way
-// handleSubscribe does, without the history/lead hydration a nil provider skips.
 func subscribeConn(t *testing.T, hub *ConversationHub, conn *WSConnection, entryID, entryType string) {
 	t.Helper()
 	payload, err := json.Marshal(SubscribePayload{EntryID: entryID, EntryType: entryType})
@@ -114,8 +94,6 @@ func openConn(id, userID string) *WSConnection {
 	}
 }
 
-// One socket, several conversations open: every one of them must receive its
-// own traffic. This is the feature itself.
 func TestOneConnectionReceivesEveryConversationItHasOpen(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	conn := openConn("conn-1", "user-1")
@@ -142,7 +120,6 @@ func TestOneConnectionReceivesEveryConversationItHasOpen(t *testing.T) {
 		"a conversation opened in its own window must receive its own frames")
 }
 
-// A second tab must not be fed the conversations only the first tab has open.
 func TestFramesReachOnlyTheConnectionThatOpenedTheConversation(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	first := openConn("conn-1", "user-1")
@@ -165,7 +142,6 @@ func TestFramesReachOnlyTheConnectionThatOpenedTheConversation(t *testing.T) {
 		"a connection that never opened entry-a must not be fed its traffic")
 }
 
-// Closing one window must not silence the same conversation somewhere else.
 func TestClosingOneWindowKeepsAnotherConnectionSubscribed(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	keeper := openConn("conn-keeper", "user-1")
@@ -190,7 +166,6 @@ func TestClosingOneWindowKeepsAnotherConnectionSubscribed(t *testing.T) {
 	assert.Empty(t, frameTypes(closer), "the closed window must stop receiving")
 }
 
-// Closing one window must not silence the OTHER windows on the same socket.
 func TestClosingOneWindowKeepsTheOtherOpenConversations(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	conn := openConn("conn-1", "user-1")
@@ -218,7 +193,6 @@ func TestClosingOneWindowKeepsTheOtherOpenConversations(t *testing.T) {
 		"only the window that was closed should stop receiving")
 }
 
-// A disconnecting tab takes its own subscriptions with it and nobody else's.
 func TestDisconnectDropsOnlyThatConnectionsSubscriptions(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	staying := openConn("conn-staying", "user-1")
@@ -242,7 +216,6 @@ func TestDisconnectDropsOnlyThatConnectionsSubscriptions(t *testing.T) {
 		"one tab closing must not unsubscribe the tab that stayed")
 }
 
-// The sender never receives the echo of their own typing, on any of their tabs.
 func TestTypingIsNotEchoedToTheSender(t *testing.T) {
 	hub := newMultiOpenHub(t)
 	sender := openConn("conn-sender", "user-1")

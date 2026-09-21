@@ -7,11 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The engine used to accept exactly one channel. It now accepts every channel
-// the shared sets declare analysable, and Valid() must mean THAT rather than
-// "is a messaging channel": the two differ on support (messaging, never
-// analysed) and on voice, which has a conversation history but no resolver and
-// so is analysable by neither measure.
 func TestSourceValidFollowsTheAnalysisSets(t *testing.T) {
 	for _, s := range []Source{SourceInstagram, SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp} {
 		if !s.Valid() {
@@ -33,7 +28,6 @@ func TestSourceEntryTypeRoundTrip(t *testing.T) {
 	}
 }
 
-// Which subject exists is a narrower question than which channel is analysable.
 func TestSubjectKindSupportedOn(t *testing.T) {
 	if !SubjectKindComment.SupportedOn(SourceInstagram) {
 		t.Error("instagram should carry comments")
@@ -53,8 +47,6 @@ func TestSubjectKindSupportedOn(t *testing.T) {
 	}
 }
 
-// Rows written before conversations existed have no subject kind, and must keep
-// reading as comments rather than becoming an unknown kind.
 func TestEmptySubjectKindReadsAsComment(t *testing.T) {
 	a := &Analysis{Source: SourceInstagram, AccountID: "acc", ContainerID: "post"}
 	if a.Kind() != SubjectKindComment {
@@ -99,14 +91,12 @@ func TestValidateConversationAcceptsAndTrims(t *testing.T) {
 
 func TestValidateConversationRejectsEveryBadLabel(t *testing.T) {
 	for name, mutate := range map[string]func(*Classification){
-		"sentiment":     func(c *Classification) { c.Sentiment = "angry" },
-		"interest":      func(c *Classification) { c.Interest = "maybe" },
-		"disposition":   func(c *Classification) { c.Disposition = "sold" },
-		"qualification": func(c *Classification) { c.Qualification = "hot" },
-		"next action":   func(c *Classification) { c.NextAction = "call" },
-		"empty quality": func(c *Classification) { c.Quality = ConversationQuality{} },
-		// The dangerous one: a model that rates three of four dimensions would
-		// otherwise score as if the fourth were genuinely "none".
+		"sentiment":       func(c *Classification) { c.Sentiment = "angry" },
+		"interest":        func(c *Classification) { c.Interest = "maybe" },
+		"disposition":     func(c *Classification) { c.Disposition = "sold" },
+		"qualification":   func(c *Classification) { c.Qualification = "hot" },
+		"next action":     func(c *Classification) { c.NextAction = "call" },
+		"empty quality":   func(c *Classification) { c.Quality = ConversationQuality{} },
 		"partial quality": func(c *Classification) { c.Quality.AgentConduct = "" },
 	} {
 		c := conversationClassification()
@@ -117,8 +107,6 @@ func TestValidateConversationRejectsEveryBadLabel(t *testing.T) {
 	}
 }
 
-// Free text is bounded here, not trusted from the model: the summary is the
-// only unredacted customer content the engine stores.
 func TestValidateConversationBoundsFreeText(t *testing.T) {
 	c := conversationClassification()
 	c.Summary = string(make([]rune, MaxSummaryRunes+500))
@@ -134,9 +122,6 @@ func TestValidateConversationBoundsFreeText(t *testing.T) {
 	}
 }
 
-// ValidateFor dispatches on the kind, and the two taxonomies must not be
-// interchangeable: conversation labels are not a valid comment classification
-// and vice versa.
 func TestValidateForRefusesTheWrongTaxonomy(t *testing.T) {
 	topics := DefaultTopicsFor(VerticalServices)
 
@@ -154,9 +139,6 @@ func TestValidateForRefusesTheWrongTaxonomy(t *testing.T) {
 	}
 }
 
-// A classified conversation must not look like a harmless comment. Writing a
-// computed severity of 0 would sort every conversation to the bottom of a
-// severity ranking as though it had been assessed and found benign.
 func TestApplyConversationLeavesCommentDimensionsUnset(t *testing.T) {
 	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	a, err := NewPending(NewInput{
@@ -200,7 +182,6 @@ func TestApplyConversationLeavesCommentDimensionsUnset(t *testing.T) {
 		t.Error("summary not written")
 	}
 
-	// The comment dimensions stay zero, severity included.
 	if a.Stance != "" || a.Intent != "" || a.TopicKey != "" {
 		t.Errorf("comment labels leaked onto a conversation: stance=%q intent=%q topic=%q", a.Stance, a.Intent, a.TopicKey)
 	}
@@ -212,8 +193,6 @@ func TestApplyConversationLeavesCommentDimensionsUnset(t *testing.T) {
 	}
 }
 
-// RequiresAction on a conversation is the escalate signal, not a severity
-// threshold, because there is no severity to threshold.
 func TestConversationRequiresActionOnEscalate(t *testing.T) {
 	now := time.Now().UTC()
 	build := func(next NextAction) *Analysis {
@@ -247,9 +226,6 @@ func TestConversationRequiresActionOnEscalate(t *testing.T) {
 	}
 }
 
-// A conversation on a channel that has no conversations, or a comment on a
-// channel that has no posts, must be refused at ingest rather than queued and
-// failed later.
 func TestNewPendingRefusesImpossibleSubjects(t *testing.T) {
 	now := time.Now().UTC()
 	for name, ref := range map[string]ContainerRef{
@@ -266,10 +242,6 @@ func TestNewPendingRefusesImpossibleSubjects(t *testing.T) {
 	}
 }
 
-// Refs are compared by meaning, not by struct identity. This is a real trap:
-// a literal ref carries no Kind, Container() returns an explicit one, and Go's
-// == calls those different. The symptom is silent, a lookup that simply finds
-// nothing, which is exactly how it first showed up.
 func TestContainerRefEqualIgnoresTheImplicitKind(t *testing.T) {
 	implicit := ContainerRef{Source: SourceInstagram, AccountID: "a", ContainerID: "c"}
 	explicit := ContainerRef{Kind: SubjectKindComment, Source: SourceInstagram, AccountID: "a", ContainerID: "c"}
@@ -286,15 +258,12 @@ func TestContainerRefEqualIgnoresTheImplicitKind(t *testing.T) {
 		t.Error("a comment container must not equal a conversation container on the same ids")
 	}
 
-	// And the row's own ref round-trips through Equal.
 	row := &Analysis{Source: SourceInstagram, AccountID: "a", ContainerID: "c"}
 	if !row.Container().Equal(implicit) {
 		t.Error("a row's container must equal the literal ref it was built from")
 	}
 }
 
-// The new filters are validated like every other one: a bad value from a query
-// string is refused rather than silently matching nothing.
 func TestListInputValidatesTheConversationFilters(t *testing.T) {
 	base := func() ListInput {
 		return ListInput{WorkspaceID: "ws"}
@@ -310,7 +279,6 @@ func TestListInputValidatesTheConversationFilters(t *testing.T) {
 		t.Fatalf("valid conversation filters rejected: %v", err)
 	}
 
-	// Empty means every kind; it must not be mistaken for a bad value.
 	if err := base().Validate(); err != nil {
 		t.Fatalf("an empty filter set should be valid: %v", err)
 	}

@@ -197,9 +197,6 @@ func (m *mockRepository) IsMember(departmentID, memberID string) (bool, error) {
 	return exists, nil
 }
 
-// ListWorkingHours mirrors the repository: only departments that actually carry
-// their own schedule appear, so "inherits the workspace" stays distinguishable
-// from "has an empty policy".
 func (m *mockRepository) ListWorkingHours(workspaceIDs []string) ([]wd.DepartmentSchedule, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

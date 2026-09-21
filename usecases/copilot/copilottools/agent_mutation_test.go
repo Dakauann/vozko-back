@@ -46,9 +46,6 @@ func boundAgent() *agent.Agent {
 
 func okContext() copilot.Context { return copilot.Context{WorkspaceID: "ws-1"} }
 
-// The bug this whole change exists for: the assistant asked to add a tool, the
-// update reported success, and the tool was never there, because update_agent
-// had no parameter able to carry it.
 func TestUpdateAgentAddsAToolAndKeepsTheExistingOnes(t *testing.T) {
 	upd := &fakeUpdateAgent{}
 	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
@@ -82,8 +79,6 @@ func TestUpdateAgentAddsAToolAndKeepsTheExistingOnes(t *testing.T) {
 	}
 }
 
-// A model that only names the tool it wants must never be able to wipe the
-// rest, which is why the parameter is addTools and not internalTools.
 func TestUpdateAgentRemovesOnlyWhatWasAsked(t *testing.T) {
 	upd := &fakeUpdateAgent{}
 	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
@@ -100,8 +95,6 @@ func TestUpdateAgentRemovesOnlyWhatWasAsked(t *testing.T) {
 	}
 }
 
-// Touching only the prompt must leave membership alone: nil is how
-// ApplyUpdate is told "keep what is there".
 func TestUpdateAgentLeavesMembershipUntouchedWhenNotMentioned(t *testing.T) {
 	upd := &fakeUpdateAgent{}
 	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
@@ -118,7 +111,6 @@ func TestUpdateAgentLeavesMembershipUntouchedWhenNotMentioned(t *testing.T) {
 	}
 }
 
-// Re-adding a bound tool is how a misconfiguration gets corrected.
 func TestUpdateAgentReAddReplacesConfig(t *testing.T) {
 	current := boundAgent()
 	current.InternalTools = append(current.InternalTools, agent.ToolBinding{
@@ -148,8 +140,6 @@ func TestUpdateAgentReAddReplacesConfig(t *testing.T) {
 	}
 }
 
-// The workspace gate must fire before anything is read off the agent, so a
-// foreign agent is indistinguishable from a missing one.
 func TestUpdateAgentDeniesForeignWorkspace(t *testing.T) {
 	foreign := boundAgent()
 	foreign.WorkspaceID = "ws-OTHER"
@@ -213,8 +203,6 @@ func TestCreateAgentCarriesToolsAndAttachments(t *testing.T) {
 	}
 }
 
-// An agent with no tools is legitimate, but the create use case rejects a NIL
-// selection, so the empty case must stay non-nil.
 func TestCreateAgentWithoutToolsSendsEmptyNotNil(t *testing.T) {
 	crt := &fakeCreateAgent{}
 	NewCreateAgentTool(crt).Execute(context.Background(), okContext(), map[string]interface{}{
@@ -225,8 +213,6 @@ func TestCreateAgentWithoutToolsSendsEmptyNotNil(t *testing.T) {
 	}
 }
 
-// The array-of-objects schema has to reach the provider with an item shape;
-// a bare {"type":"array"} leaves the model guessing the element fields.
 func TestToolListParamDeclaresItsItemShape(t *testing.T) {
 	p := NewUpdateAgentTool(nil, nil).Definition().Parameters["addTools"]
 	if p.Type != "array" || p.Items == nil || p.Items.Type != "object" {

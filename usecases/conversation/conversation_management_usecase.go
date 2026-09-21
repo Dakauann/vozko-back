@@ -39,9 +39,6 @@ import (
 	balance_domain "vozko/domain/balance"
 )
 
-// workflowRunLookup and workflowLookup are the narrow read-only ports the inbox
-// enrichment needs from the workflow package, so the conversation read model does not
-// depend on the full workflow repositories.
 type workflowRunLookup interface {
 	FindActiveByEntries(entryIDs []string) (map[string]*workflow.WorkflowRun, error)
 }
@@ -51,8 +48,6 @@ type workflowLookup interface {
 }
 
 type HistoryProviderService struct {
-	// automationReaders resolve the per-conversation automation override for
-	// channels that store it on the conversation instead of a campaign entry.
 	automationReaders map[shared.EntryType]func(ctx context.Context, entryID string) (*bool, error)
 
 	messageRepo       conversation.MessageRepository
@@ -64,96 +59,30 @@ type HistoryProviderService struct {
 	assignmentRepo    ia.Repository
 	workflowRunRepo   workflowRunLookup
 	workflowRepo      workflowLookup
-	// contactIdentities resolves display names for channels whose contacts are
-	// not leads, keyed by entry type so registering one never displaces another.
 	contactIdentities map[shared.EntryType]ContactIdentityLookup
 	channelAdapters   conversation.AdapterRegistry
 }
 
-// ContactDisplay is the sender identity shown for a channel whose contacts are
-// not leads.
-//
-// The inbox resolves display names through the lead repository. Instagram and
-// Telegram contacts are not leads, so without a per-channel lookup those rows
-// render with no name, handle or avatar.
 type ContactDisplay struct {
-	ContactID string
-	// Ref is the provider-facing id (an IGSID, a Telegram user id). It is what
-	// the message rows carry as the sender, so it is also how a raw id leaking
-	// into a display label is recognised.
-	Ref    string
-	Handle string
-	// Name is what the PROVIDER calls this contact — a pushname, a verified
-	// business name, a username. It is a guess about who someone is, and any
-	// name a person typed into the CRM outranks it. See LeadID.
+	ContactID  string
+	Ref        string
+	Handle     string
 	Name       string
 	PictureURL string
-	// LeadID is the CRM lead this contact resolved to, empty when it has none.
-	//
-	// Only unofficial WhatsApp fills it: its contacts ARE leads, keyed on the
-	// same phone number, where an Instagram IGSID and a Telegram user id have no
-	// lead to point at. It exists so the header can prefer the lead's name over
-	// Name above — without it, renaming a contact in the CRM changed the list
-	// and left the open conversation still showing the pushname.
-	LeadID string
-	// IsGroup marks a conversation whose subject is a group chat rather than a
-	// person.
-	//
-	// It rides on the identity lookup rather than through the inbox SQL because
-	// this is already the one place that answers "who is this conversation with"
-	// for every channel whose subject is not a lead — so a channel that grows
-	// group support declares it in one adapter instead of touching the registry
-	// the other channels' queries share.
-	//
-	// The UI needs it for more than a badge: a group has no phone number to dial,
-	// no lead to open, and no single person to attribute the thread to, so
-	// several affordances have to be suppressed rather than merely relabelled.
-	IsGroup bool
+	LeadID     string
+	IsGroup    bool
 }
 
-// ContactIdentityLookup is the narrow read port for one channel's sender
-// identity. Declared here (rather than importing each channel's domain) so the
-// conversation usecase stays channel-agnostic and testable with a plain fake.
 type ContactIdentityLookup interface {
-	// ContactsByIDs batch-loads display identities for one page of entries. The
-	// inbox hydrates a whole page with one call; a per-row lookup would make the
-	// inbox N+1.
 	ContactsByIDs(ctx context.Context, contactIDs []string) (map[string]ContactDisplay, error)
-	// ContactForConversation resolves the sender plus the owning workspace for a
-	// single conversation, backing the open-conversation header.
 	ContactForConversation(ctx context.Context, conversationID string) (ContactDisplay, string, error)
-	// AuthorsByHandle resolves who WROTE each message on a page, keyed by the
-	// handle stored in from_participant.
-	//
-	// Needed only where the conversation's subject is not the author: a group,
-	// where the subject is the group itself and each message came from a
-	// different member. Everywhere else the subject answers it and this is never
-	// called.
-	//
-	// Batched because it runs per page of history: a lookup per bubble would make
-	// opening a busy group conversation an N+1.
-	//
-	// A channel with no such concept returns an empty map, and the reader falls
-	// back to the subject exactly as before.
 	AuthorsByHandle(ctx context.Context, entryID string, handles []string) (map[string]ContactDisplay, error)
 }
 
-// InstagramContactDisplay is the previous name of ContactDisplay.
-//
-// Deprecated: use ContactDisplay. Kept so the Instagram wiring and its tests
-// compile unchanged through the rename.
 type InstagramContactDisplay = ContactDisplay
 
-// InstagramContactLookup is the previous name of ContactIdentityLookup.
-//
-// Deprecated: use ContactIdentityLookup.
 type InstagramContactLookup = ContactIdentityLookup
 
-// SetContactIdentityLookup registers a channel's sender-identity lookup.
-//
-// Registration is keyed by entry type and lookups accumulate, so adding a
-// channel cannot silently disable another's, the mistake the send-adapter
-// registry documents and guards against in exactly the same way.
 func (s *HistoryProviderService) SetContactIdentityLookup(entryType shared.EntryType, lookup ContactIdentityLookup) {
 	if s == nil || lookup == nil || entryType == "" {
 		return
@@ -164,14 +93,10 @@ func (s *HistoryProviderService) SetContactIdentityLookup(entryType shared.Entry
 	s.contactIdentities[entryType] = lookup
 }
 
-// SetInstagramContacts wires Instagram sender identity.
-//
-// Deprecated: use SetContactIdentityLookup(shared.EntryTypeInstagram, lookup).
 func (s *HistoryProviderService) SetInstagramContacts(lookup ContactIdentityLookup) {
 	s.SetContactIdentityLookup(shared.EntryTypeInstagram, lookup)
 }
 
-// contactLookupFor resolves the registered lookup for an entry type.
 func (s *HistoryProviderService) contactLookupFor(entryType shared.EntryType) (ContactIdentityLookup, bool) {
 	if s == nil || s.contactIdentities == nil {
 		return nil, false
@@ -180,26 +105,11 @@ func (s *HistoryProviderService) contactLookupFor(entryType shared.EntryType) (C
 	return lookup, ok && lookup != nil
 }
 
-// hydrateContactSenders fills name/handle/avatar on inbox rows whose contacts are
-// not leads.
-//
-// The lead slot is what the lookup is keyed on, and what it holds depends on the
-// channel. Instagram and Telegram put their own contact id there, because there
-// is no lead to point at. Unofficial WhatsApp puts the CRM lead once the contact
-// has resolved to one — its contacts ARE leads — and falls back to the contact
-// id for a group or a contact seen for the first time. Its adapter answers to
-// both, so nothing here has to know which one it is holding.
-//
-// This must be applied at EVERY point that produces inbox rows, the
-// container-scoped list, the workspace list AND GetInboxEntry, which backs the
-// entry_update broadcast. Missing that third one is what made an Instagram
-// conversation's name vanish every time a new message arrived.
 func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.InboxEntry) {
 	if len(s.contactIdentities) == 0 || len(entries) == 0 {
 		return
 	}
 
-	// Group by channel first so each registered lookup is called once per page.
 	byType := make(map[shared.EntryType]map[string][]int)
 	for i := range entries {
 		et := shared.EntryType(entries[i].EntryType)
@@ -236,17 +146,6 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 			}
 			name, handle := contactDisplayNames(et, contact)
 			for _, i := range positions {
-				// The contact name FILLS IN, it does not overrule.
-				//
-				// On unofficial WhatsApp the contact and the lead are the same
-				// person, so overwriting here painted the provider pushname over
-				// whatever an operator had typed: a rename landed in the leads
-				// table and the inbox went on showing the old name, on every
-				// read, forever. This lookup exists to cover the gap BEFORE a
-				// contact resolves to a lead, which is precisely the blank case.
-				//
-				// Instagram and Telegram are unaffected: their rows arrive with
-				// no lead name at all, so the fallback still supplies one.
 				display := name
 				if existing := strings.TrimSpace(entries[i].LeadName); existing != "" {
 					display = existing
@@ -257,14 +156,6 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 				entries[i].LeadPicture = contact.PictureURL
 				entries[i].IsGroup = contact.IsGroup
 
-				// The sender label is replaced when it is blank OR when it is the
-				// raw provider id. Story replies, mentions, shares and unsupported
-				// messages fall through the sender resolver's default branch,
-				// which returns the sender ref verbatim, so without this the
-				// inbox would show a numeric provider id where the contact's name
-				// belongs.
-				//
-				// Any other label (an operator's or agent's name) is left alone.
 				if entries[i].LastMessageSender == "" || entries[i].LastMessageSender == contact.Ref {
 					entries[i].LastMessageSender = display
 					entries[i].LastMessageSenderAvatar = contact.PictureURL
@@ -274,15 +165,9 @@ func (s *HistoryProviderService) hydrateContactSenders(entries []conversation.In
 	}
 }
 
-// contactDisplayNames derives the (name, handle) pair shown in the CRM. A contact
-// whose profile has not been enriched yet still gets a usable label, falling back
-// to the channel name so a row is never blank.
 func contactDisplayNames(entryType shared.EntryType, c ContactDisplay) (name, handle string) {
 	handle = strings.TrimSpace(c.Handle)
-	// The "@" is a SOCIAL HANDLE marker, not decoration: it is what makes an
 	// @instagram or @telegram username read as one. A phone number is not a
-	// handle, and this used to prefix one anyway — every unofficial WhatsApp
-	// conversation rendered its contact as "@+5511999999999".
 	if handle != "" && !strings.HasPrefix(handle, "@") && !strings.HasPrefix(handle, "+") {
 		handle = "@" + handle
 	}
@@ -296,8 +181,6 @@ func contactDisplayNames(entryType shared.EntryType, c ContactDisplay) (name, ha
 	return name, handle
 }
 
-// channelDisplayLabel is the last-resort label for a contact with no name and no
-// handle.
 func channelDisplayLabel(entryType shared.EntryType) string {
 	switch entryType {
 	case shared.EntryTypeInstagram:
@@ -308,9 +191,6 @@ func channelDisplayLabel(entryType shared.EntryType) string {
 	return string(entryType)
 }
 
-// SetWorkflowLookups wires the optional workflow read ports used to show which
-// workflow (and current node) attends a conversation. When unset, inbox entries simply
-// omit workflow-run detail (agents still resolve).
 func (s *HistoryProviderService) SetWorkflowLookups(runs workflowRunLookup, workflows workflowLookup) {
 	s.workflowRunRepo = runs
 	s.workflowRepo = workflows
@@ -441,17 +321,6 @@ func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.Ent
 	return messages, hasMore, total, nil
 }
 
-// authorsFor resolves who wrote each message on a page.
-//
-// Returns nil for every conversation whose subject IS the author, which is all
-// of them except a group — and nil costs the caller nothing, because applyAuthor
-// leaves the subject-derived name in place.
-//
-// This exists because SenderName is deliberately never persisted on a message
-// row (a frozen name goes stale after a rename), so it only ever reached the
-// live websocket push. On reload the reader fell back to the conversation's
-// subject, and in a group that is the GROUP — every bubble in a group thread was
-// labelled with the group's own name and picture.
 func (s *HistoryProviderService) authorsFor(
 	entryType shared.EntryType,
 	entryID string,
@@ -467,8 +336,6 @@ func (s *HistoryProviderService) authorsFor(
 	handles := make([]string, 0, len(messages))
 	seen := make(map[string]struct{}, len(messages))
 	for _, msg := range messages {
-		// Inbound only. An operator's or an agent's message is already
-		// attributed by getSenderInfo, from the user or agent record.
 		if !isInboundMessageType(msg.MessageType) {
 			continue
 		}
@@ -476,13 +343,6 @@ func (s *HistoryProviderService) authorsFor(
 		if from == "" {
 			continue
 		}
-		// The author IS the subject — every ordinary one-to-one conversation.
-		// getSenderInfo already named them, so there is nothing to resolve, and
-		// skipping them here means a non-group thread issues no query at all.
-		//
-		// A group never takes this branch: a group's handle is empty, because the
-		// "number" slot it would fill does not exist for one, so no participant
-		// can match it.
 		if subjectHandle != "" && from == subjectHandle {
 			continue
 		}
@@ -498,16 +358,12 @@ func (s *HistoryProviderService) authorsFor(
 
 	authors, err := lookup.AuthorsByHandle(context.Background(), entryID, handles)
 	if err != nil {
-		// Cosmetic: a failure leaves the subject's name in place, which is what
-		// it was before this existed. Never a reason to fail a history read.
 		log.Printf("[HistoryProvider] %s author lookup failed for entry %s: %v", entryType, entryID, err)
 		return nil
 	}
 	return authors
 }
 
-// applyAuthor overrides the subject-derived identity when the page resolved a
-// real author for this message.
 func applyAuthor(msg *conversation.Message, authors map[string]ContactDisplay) {
 	if len(authors) == 0 || msg == nil {
 		return
@@ -519,13 +375,9 @@ func applyAuthor(msg *conversation.Message, authors map[string]ContactDisplay) {
 	if author.Name != "" {
 		msg.SenderName = author.Name
 	}
-	// The picture is replaced even when empty: a participant with no photo must
-	// not inherit the GROUP's, which is exactly the confusion this fixes.
 	msg.SenderAvatar = author.PictureURL
 }
 
-// isInboundMessageType reports whether a message came from the other side.
-// The same three types getSenderInfo attributes to the conversation's subject.
 func isInboundMessageType(t conversation.MessageType) bool {
 	switch t {
 	case conversation.MessageTypeUserMessage,
@@ -645,12 +497,6 @@ func reverseMessages(msgs []*conversation.Message) {
 	}
 }
 
-// GetWindowStatusForEntry is the ONE answer to "may we send on this
-// conversation right now, and if not, why".
-//
-// Every surface reads it through this: the composer's disabled state and copy,
-// the WebSocket subscribe frame, and the scheduled-message rules. Nothing else
-// may re-derive the answer, or two of them will disagree.
 func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType string) conversation.WindowState {
 	var leadID, businessPhoneID string
 
@@ -666,9 +512,6 @@ func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType stri
 			businessPhoneID = campaign.BusinessPhoneID
 		}
 	default:
-		// Channels with an adapter own their own window rule. Reusing the
-		// adapter keeps one definition of "can we send right now" for the
-		// composer, the sender service and the scheduler.
 		adapter := s.adapterFor(entryType)
 		if adapter == nil {
 			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
@@ -677,9 +520,6 @@ func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType stri
 		ctx := context.Background()
 		ec, err := adapter.ResolveEntry(ctx, entryID)
 		if err != nil {
-			// The account, instance or conversation is gone — most often a
-			// number that was removed. That is a different sentence from any
-			// clock, and the operator can act on it.
 			log.Printf("[window] cannot resolve %s (%s): %v", entryID, entryType, err)
 			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 		}
@@ -694,7 +534,6 @@ func (s *HistoryProviderService) GetWindowStatusForEntry(entryID, entryType stri
 	return s.getWindowStatus(leadID, businessPhoneID)
 }
 
-// adapterFor resolves a channel adapter, or nil when the channel has none.
 func (s *HistoryProviderService) adapterFor(entryType string) conversation.ChannelAdapter {
 	if s.channelAdapters == nil {
 		return nil
@@ -706,8 +545,6 @@ func (s *HistoryProviderService) adapterFor(entryType string) conversation.Chann
 	return adapter
 }
 
-// SetChannelAdapters wires the channel adapters used for window state. Optional:
-// without it, non-WhatsApp channels simply report no window.
 func (s *HistoryProviderService) SetChannelAdapters(registry conversation.AdapterRegistry) {
 	s.channelAdapters = registry
 }
@@ -736,9 +573,6 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 		}
 
 	default:
-		// Channels whose senders are contacts rather than leads resolve the
-		// header through their registered identity lookup and return directly,
-		// instead of falling through to the lead lookup below.
 		et := shared.EntryType(entryType)
 		lookup, ok := s.contactLookupFor(et)
 		if !ok {
@@ -749,15 +583,6 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 			return "", "", "", nil, nil, true, cErr
 		}
 		name, handle := contactDisplayNames(et, contact)
-		// Same precedence the inbox list uses: a name someone typed into the CRM
-		// beats the one the handset advertises. Only reachable for a channel
-		// whose contacts are leads, and only when the lead actually has a name —
-		// so a group, an unresolved contact and every channel without a lead all
-		// keep the provider label they had.
-		//
-		// Without this the header was the last surface still disagreeing: the
-		// list said the new name, the conversation you opened from it said the
-		// old one.
 		if contact.LeadID != "" && contactWorkspaceID != "" && s.leadRepo != nil {
 			if l, lErr := s.leadRepo.FindByID(contactWorkspaceID, contact.LeadID); lErr == nil && l != nil {
 				if leadOwned := strings.TrimSpace(l.Name); leadOwned != "" {
@@ -765,9 +590,6 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 				}
 			}
 		}
-		// Read the override rather than assuming enabled. Returning a hard true
-		// here is what made a paused Telegram or Instagram conversation report
-		// itself as still automated: the write landed and every read denied it.
 		return name, handle, contact.PictureURL, nil, nil, s.automationFor(entryID, et), nil
 	}
 
@@ -783,17 +605,6 @@ func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadNa
 	return leadRecord.Name, leadRecord.Number, leadRecord.ProfilePictureURL, entryMetadata, entryVariables, automationEnabled, nil
 }
 
-// buildInboxEntries turns repository rows into the inbox rows the CRM renders.
-//
-// ONE builder for both read paths. The campaign-scoped inbox and the
-// workspace-wide search each carried their own ~80-line copy of this, identical
-// but for variable names, and they had already drifted: the campaign one gated
-// the WhatsApp lookup on the request's entry type instead of the row's, which
-// is only equivalent while every row is the same channel — true there, and a
-// trap for the first caller where it is not.
-//
-// Everything is batched over the visible page: one lead query, one window pass,
-// one WhatsApp-entry query, regardless of page size.
 func (s *HistoryProviderService) buildInboxEntries(
 	rows []conversation.EntryWithLastMessage,
 	workspaceID string,
@@ -812,8 +623,6 @@ func (s *HistoryProviderService) buildInboxEntries(
 				seenLead[e.LeadID] = struct{}{}
 			}
 		}
-		// Per ROW, not per request: a workspace-wide page mixes channels, and
-		// asking the WhatsApp repository for a Telegram id finds nothing.
 		if e.EntryType == shared.EntryTypeWhatsApp {
 			waEntryIDs = append(waEntryIDs, e.EntryID)
 		}
@@ -821,9 +630,6 @@ func (s *HistoryProviderService) buildInboxEntries(
 
 	leadMap := make(map[string]*lead.Lead, len(leadIDs))
 	if len(leadIDs) > 0 {
-		// A failure here costs names, not rows. The conversation still has to
-		// render, and the identity hydration below covers channels whose
-		// contacts carry their own name.
 		if leads, err := s.leadRepo.FindByIDs(workspaceID, leadIDs); err == nil {
 			for _, l := range leads {
 				leadMap[l.ID] = l
@@ -859,17 +665,9 @@ func (s *HistoryProviderService) buildInboxEntries(
 			windowOpen, windowExpiresAt = ws.open, ws.expiresAt
 		}
 
-		// From SQL for every channel. This used to be read only inside the
-		// WhatsApp branch below, so every other channel reported "enabled"
-		// regardless of the stored override.
 		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 
 		var entryVariables []string
-		// From SQL for every channel, same as the override above and for the
-		// same reason: read only from the WhatsApp entry below, every other
-		// channel's row was built with no status and rendered as "Nova" over a
-		// conversation that was ongoing. The WhatsApp branch overwrites it from
-		// its own entry, which is the authoritative row for that channel.
 		convStatus := conversation.ConversationStatus(e.ConversationStatus)
 		var closeSource conversation.CloseSource
 		var closeReason conversation.CloseReason
@@ -927,10 +725,6 @@ func (s *HistoryProviderService) buildInboxEntries(
 		})
 	}
 
-	// Both enrichments belong to every inbox row, so they live with the builder
-	// rather than being remembered at each call site. Missing hydrateContactSenders
-	// at one of them is what made an Instagram conversation's name vanish on
-	// every new message.
 	s.hydrateContactSenders(entries)
 	s.enrichAssignments(entries, workspaceID)
 	return entries
@@ -977,17 +771,6 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		return nil, 0, fmt.Errorf("campaignID and campaignType are required")
 	}
 
-	// CampaignType is really the channel selector, and the question both branches
-	// ask is whether the repository can serve a container-scoped read for it.
-	//
-	// It used to accept only "whatsapp": in global mode every other channel fell
-	// through to "all channels", and in container-scoped mode every other channel
-	// was rejected with a 400. That is why an Instagram account could never have
-	// its own scoped inbox even though the repository could already serve one,
-	// and Telegram would have inherited exactly the same hole.
-	//
-	// Channels with no container-scoped query (voice, support) keep falling
-	// through to the workspace-wide view in global mode, unchanged.
 	candidate := shared.EntryType(input.CampaignType)
 
 	var entryType shared.EntryType
@@ -1044,10 +827,6 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 	return entries, totalCount, nil
 }
 
-// enrichAIHandlers attaches the effective AI handler (direct agent or workflow, plus
-// the live workflow-run/current-node when running) to each inbox entry. Everything is
-// batched over the visible page only, one query for active runs, one for agents, one
-// for workflows, so it stays O(page) regardless of how many conversations exist.
 func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEntry, results []conversation.EntryWithLastMessage) {
 	if len(entries) == 0 {
 		return
@@ -1108,9 +887,6 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 	}
 }
 
-// buildAIHandler resolves the effective handler for one entry. Workflow beats a direct
-// agent (mirrors the message-time rule in resolveAgentContext): a configured workflow,
-// or a live run, even if the campaign flag was since toggled off, is the handler.
 func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
 	hasWorkflow := r.WorkflowEnabled && r.WorkflowID != ""
 	hasAgent := r.AgentResponsesEnabled && r.AgentID != ""
@@ -1176,8 +952,6 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	senderName, senderAvatar := s.getSenderInfo(e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
 
 	var entryVariables []string
-	// Same source as the list paths: the entry row carries the override for
-	// every channel.
 	automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
 	var convStatus conversation.ConversationStatus
 	var closeSource conversation.CloseSource
@@ -1193,19 +967,6 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 			closedAt = waEntry.ClosedAt
 		}
 	} else {
-		// EVERY other channel reads the status off the row, which carries it
-		// for all of them.
-		//
-		// It used to be resolved only in the WhatsApp branch above, so an
-		// unofficial WhatsApp, Instagram or Telegram entry was built with no
-		// status and the inbox rendered it as "Nova" over a conversation the
-		// database had as ongoing. An operator would reply and the conversation
-		// appeared to move backwards.
-		//
-		// Close provenance still comes from the WhatsApp entry alone: the other
-		// channels store it, but nothing outside this branch reads it yet, and
-		// inventing a second source for it here would be the same mistake one
-		// field over.
 		convStatus = conversation.ConversationStatus(e.ConversationStatus)
 	}
 
@@ -1234,17 +995,10 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 		ClosedAt:                closedAt,
 	}
 
-	// Channel identity for entries whose sender is not a lead. This is the
-	// single-entry twin of the list paths: without it an entry_update broadcast
-	// would rebuild the row with an empty name, blanking the Instagram
-	// conversation's title in the live inbox.
 	batch := []conversation.InboxEntry{*entry}
 	s.hydrateContactSenders(batch)
 	*entry = batch[0]
 
-	// Channels with an adapter own their window rule; getWindowStatus below is
-	// the WhatsApp lead/business-phone rule and reports closed for anything else,
-	// which would lock the composer on an Instagram update.
 	var window conversation.WindowState
 	if e.EntryType == shared.EntryTypeWhatsApp {
 		window = s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
@@ -1255,11 +1009,6 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	entry.WindowClosedReason = string(window.Reason)
 	entry.BusinessPhoneID = e.BusinessPhoneID
 
-	// Reuse the same assignee enrichment the inbox list uses, so the build logic
-	// stays in one place. entry_update broadcasts rebuild the list item from this
-	// single-entry load, so without this the assigned agent would disappear
-	// whenever an event (e.g. the inbound-call "Chamada recebida" message)
-	// triggers an entry_update.
 	enriched := []conversation.InboxEntry{*entry}
 	s.enrichAssignments(enriched, workspaceID)
 	s.enrichAIHandlers(enriched, []conversation.EntryWithLastMessage{*e})
@@ -1279,12 +1028,6 @@ func (s *HistoryProviderService) getLeadInfo(workspaceID, leadID string) (name, 
 	return lead.Name, lead.Number, lead.ProfilePictureURL, nil, lead.Blocked
 }
 
-// getWindowStatus is the official WhatsApp rule: a 24-hour clock anchored on
-// the customer's last inbound message.
-//
-// Every closure here is the clock running out or never having started, so the
-// reasons are only ever "expired" or "never wrote" — never a session or a
-// block, which this channel does not have.
 func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string) conversation.WindowState {
 	if leadID == "" || s.messageWindowRepo == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
@@ -1306,9 +1049,6 @@ func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string)
 
 	window, err := s.messageWindowRepo.FindByLeadAndBusinessPhone(leadID, businessPhoneID)
 	if err != nil || window == nil {
-		// No window row at all means the customer has never written to this
-		// number, which is a different thing from a clock that ran out: only a
-		// template can open it.
 		return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
 	}
 
@@ -1410,18 +1150,6 @@ func (s *HistoryProviderService) getSenderInfo(from string, messageType conversa
 	}
 }
 
-// ResolveSenderIdentity fills a message's display identity in place.
-//
-// Every read path already did this through getSenderInfo; the live broadcast
-// did not, so the frontend fell back to rendering `from` raw. On WhatsApp that
-// is a phone number and looked merely unpolished, so it went unnoticed for as
-// long as WhatsApp was the only channel. On Telegram `from` is a bare numeric
-// user id, which is unreadable, the same bug, finally visible.
-//
-// Only the message types that actually consume lead/contact identity pay for
-// the entry lookup. Agent, operator and system messages resolve from the
-// repositories getSenderInfo already consults, or from a constant, so a
-// conversation full of outbound traffic costs nothing extra here.
 func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string, message *conversation.Message) {
 	if s == nil || message == nil || message.SenderName != "" {
 		return
@@ -1436,17 +1164,12 @@ func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string
 		var err error
 		leadName, leadNumber, leadPicture, _, _, _, err = s.GetEntryInfo(entryID, entryType)
 		if err != nil {
-			// A failed lookup must not cost the user the message. Leaving the
-			// identity empty falls back to `from`, which is what shipped before
-			// this method existed.
 			log.Printf("[HistoryProvider] could not resolve sender for %s:%s: %v", entryType, entryID, err)
 			return
 		}
 	}
 
 	message.SenderName, message.SenderAvatar = s.getSenderInfo(message.From, message.MessageType, leadName, leadNumber, leadPicture)
-	// One message is still a page of one: a group's bubble must name whoever
-	// wrote it here too, or the live fallback re-labels it with the group.
 	applyAuthor(message, s.authorsFor(shared.EntryType(message.EntryType), message.EntryID, leadNumber,
 		[]*conversation.Message{message}))
 }
@@ -1492,16 +1215,11 @@ type MessageMarkerService struct {
 	messageRepo           conversation.MessageRepository
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	whatsappRepo          wce.Repository
-	// channelAdapters serves every migrated channel's read receipts. Held as the
-	// LIVE registry rather than a snapshot, because channels register their
-	// adapters after this service is built.
-	channelAdapters     conversation.AdapterRegistry
-	typingMu            sync.Mutex
-	lastTypingIndicator map[string]time.Time
+	channelAdapters       conversation.AdapterRegistry
+	typingMu              sync.Mutex
+	lastTypingIndicator   map[string]time.Time
 }
 
-// SetChannelAdapters wires the adapter registry, so read receipts reach every
-// migrated channel rather than only the official WhatsApp client.
 func (s *MessageMarkerService) SetChannelAdapters(registry conversation.AdapterRegistry) {
 	s.channelAdapters = registry
 }
@@ -1532,20 +1250,11 @@ func (s *MessageMarkerService) MarkAsRead(entryID string, entryType shared.Entry
 		return err
 	}
 
-	// Off the request path: a receipt is a courtesy to the contact, and an
-	// operator's inbox must never wait on the provider to mark a chat read.
 	go s.sendReadReceipts(entryID, entryType, messageIDs)
 
 	return nil
 }
 
-// sendReadReceipts tells the contact's app that we read their messages.
-//
-// Routed by channel: the official WhatsApp integration keeps its dedicated
-// client, and everything adapter-backed goes through the SeenAdapter capability.
-// Without this branch, opening an unofficial WhatsApp or Telegram conversation
-// marked it read for the OPERATOR only — the customer's ticks never turned blue,
-// which reads to them as being ignored.
 func (s *MessageMarkerService) sendReadReceipts(
 	entryID string,
 	entryType shared.EntryType,
@@ -1558,11 +1267,6 @@ func (s *MessageMarkerService) sendReadReceipts(
 	s.sendAdapterReadReceipts(entryID, entryType, messageIDs)
 }
 
-// sendAdapterTyping shows the composing indicator on a migrated channel.
-//
-// Throttled through the same reservation the WhatsApp path uses: an operator
-// typing a paragraph emits a websocket event per keystroke burst, and every one
-// of them would otherwise become a provider call on the instance's send budget.
 func (s *MessageMarkerService) sendAdapterTyping(entryID string, entryType shared.EntryType) error {
 	if s.channelAdapters == nil {
 		return nil
@@ -1600,7 +1304,6 @@ func (s *MessageMarkerService) sendAdapterReadReceipts(
 	if err != nil || adapter == nil {
 		return
 	}
-	// A channel without read receipts is a normal channel, not an error.
 	seen, ok := adapter.(conversation.SeenAdapter)
 	if !ok {
 		return
@@ -1621,25 +1324,6 @@ func (s *MessageMarkerService) sendAdapterReadReceipts(
 	}
 }
 
-// latestInboundProviderID finds the newest INBOUND message with a provider id.
-//
-// Newest-first and inbound-only, both load-bearing: the receipt marks everything
-// up to one message, so an older id would leave later messages unread forever,
-// and our own outbound ids are not ours to mark as read.
-//
-// This runs only for adapter-backed channels, and NONE of them fills
-// whatsapp_message_id — that column belongs to the official integration. Reading
-// it alone returned "" every time, so the receipt was silently never sent and an
-// operator could read a whole conversation while the contact's ticks stayed
-// grey. Direction decides who sent it, because the message TYPE cannot: an
-// unofficial WhatsApp message is user_message whichever side wrote it, and
-// asking IsInbound() there would offer our own outbound ids to be marked read.
-//
-// Scoped to the entry as well, because the ids arrive from the CLIENT and this
-// receipt LEAVES the platform. The database write is already entry-scoped, but
-// a foreign id reaching MarkSeen would acknowledge someone else's message on
-// this conversation's channel. The entry type is part of the check for the same
-// reason: a Telegram row must not answer a receipt going out over WhatsApp.
 func (s *MessageMarkerService) latestInboundProviderID(
 	entryID string,
 	entryType shared.EntryType,
@@ -1666,8 +1350,6 @@ func (s *MessageMarkerService) latestInboundProviderID(
 	return ""
 }
 
-// isInboundMessage prefers the stored direction and falls back to the message
-// type, which is all the rows written before direction existed carry.
 func isInboundMessage(msg *conversation.Message) bool {
 	switch msg.Direction {
 	case conversation.MessageDirectionInbound:
@@ -1721,8 +1403,6 @@ func (s *MessageMarkerService) SendTypingIndicator(entryID string, entryType sha
 	if s == nil {
 		return nil
 	}
-	// Migrated channels carry their own presence API; only the official
-	// WhatsApp integration needs the business-phone lookup below.
 	if entryType != shared.EntryTypeWhatsApp {
 		return s.sendAdapterTyping(entryID, entryType)
 	}
@@ -1820,15 +1500,11 @@ func (s *MessageMarkerService) resolveBusinessPhoneID(entryID, entryType string)
 }
 
 type MessageSenderService struct {
-	messageRepo       conversation.MessageRepository
-	leadRepo          lead.Repository
-	whatsappRepo      wce.Repository
-	messageWindowRepo lmw.Repository
-	mediaRepo         conversation.ConversationMediaRepository
-	// mediaLibrary is the WORKSPACE library (`medias`), a different store from
-	// mediaRepo above. Only the campaign path reads it: a campaign attaches one
-	// curated file to thousands of conversations, so its id cannot come from a
-	// per-conversation store.
+	messageRepo           conversation.MessageRepository
+	leadRepo              lead.Repository
+	whatsappRepo          wce.Repository
+	messageWindowRepo     lmw.Repository
+	mediaRepo             conversation.ConversationMediaRepository
 	mediaLibrary          media.MediaRepository
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	hub                   conversation.EventBroadcaster
@@ -1841,14 +1517,6 @@ type MessageSenderService struct {
 
 	callPermissionRepo callpermission.Repository
 
-	// channelAdapters routes sends for channels that have been migrated onto the
-	// channel-agnostic port. When an entry type has an adapter, it is used; when
-	// it does not, the legacy WhatsApp path below runs unchanged.
-	//
-	// This is the strangler seam that replaces the per-channel `switch entryType`
-	// in getEntryInfo. Instagram is the first channel through it; WhatsApp keeps
-	// its existing code until its adapter lands, so its behaviour (and its tests)
-	// are untouched.
 	channelAdapters conversation.AdapterRegistry
 }
 
@@ -1856,22 +1524,14 @@ func (s *MessageSenderService) SetCallPermissionRepo(repo callpermission.Reposit
 	s.callPermissionRepo = repo
 }
 
-// SetMediaLibrary wires the workspace media library the campaign send resolves
-// attachments from. A setter rather than a constructor argument for the same
-// reason SetCallPermissionRepo is one: every existing caller keeps working, and
-// a deployment that never wires it fails the media campaign loudly instead of
-// sending the wrong file.
 func (s *MessageSenderService) SetMediaLibrary(repo media.MediaRepository) {
 	s.mediaLibrary = repo
 }
 
-// SetChannelAdapters registers the channel-agnostic send adapters.
 func (s *MessageSenderService) SetChannelAdapters(registry conversation.AdapterRegistry) {
 	s.channelAdapters = registry
 }
 
-// adapterFor returns the adapter for an entry type, or nil when the channel has
-// not been migrated yet.
 func (s *MessageSenderService) adapterFor(entryType string) conversation.ChannelAdapter {
 	if s.channelAdapters == nil {
 		return nil
@@ -1883,14 +1543,6 @@ func (s *MessageSenderService) adapterFor(entryType string) conversation.Channel
 	return adapter
 }
 
-// sendViaAdapter performs a send through a migrated channel and persists the
-// result.
-//
-// Persistence is deliberately shared with the legacy path's shape (same Message
-// fields, same repository) so the CRM renders both channels identically. The
-// provider id goes to ExternalMessageID rather than the WhatsApp column, which is
-// also what lets the later echo webhook reconcile against this row instead of
-// inserting a duplicate.
 func (s *MessageSenderService) sendViaAdapter(
 	adapter conversation.ChannelAdapter,
 	entryID, entryType, userID, replyToMessageID string,
@@ -1906,9 +1558,6 @@ func (s *MessageSenderService) sendViaAdapter(
 		return nil, err
 	}
 
-	// A closed window is an expected state, not a fault: on Instagram it closes
-	// 24h after the contact's last message and only a new inbound message reopens
-	// it. Surfacing the sentinel lets the UI explain it.
 	window, err := adapter.WindowState(ctx, ec)
 	if err != nil {
 		return nil, err
@@ -1938,13 +1587,6 @@ func (s *MessageSenderService) sendViaAdapter(
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	// read_by is a uuid column, so it may only carry a real id.
-	//
-	// It used to be set unconditionally to &userID, which is fine for an
-	// operator send and fatal for one with no author: a campaign message is not
-	// typed by anybody, so userID is "" and Postgres rejects the whole INSERT
-	// with 22P02 — the customer receives the message and the transcript loses
-	// it. Nil is also the honest value: nobody read it.
 	if userID != "" {
 		author := userID
 		message.ReadBy = &author
@@ -2002,8 +1644,6 @@ func NewMessageSenderService(
 }
 
 func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error) {
-	// Migrated channels take the adapter path; everything else falls through to
-	// the WhatsApp implementation below.
 	if adapter := s.adapterFor(entryType); adapter != nil {
 		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
 		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
@@ -2075,20 +1715,10 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 
 	log.Printf("[MessageSender] Sent message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	// Deferred analysis runs on every channel now, not only WhatsApp.
 	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
 
-// SendAgentTextMessage delivers a reply authored by an AI agent.
-//
-// It is the agent-authored twin of SendTextMessage: the same adapter, window
-// check and persistence, but recorded as an AI response attributed to the agent
-// rather than an operator message. Because no operator socket is involved, the
-// result is broadcast here so open inboxes see the reply immediately.
-//
-// Only adapter-backed channels are served. WhatsApp keeps its existing dedicated
-// pipeline, which carries campaign tooling this path deliberately does not.
 func (s *MessageSenderService) SendAgentTextMessage(entryID, entryType, text, agentID string) (*conversation.Message, error) {
 	adapter := s.adapterFor(entryType)
 	if adapter == nil {
@@ -2193,10 +1823,6 @@ func (s *MessageSenderService) RequestCallPermission(input conversation.RequestC
 	return message, nil
 }
 
-// CallPermissionStatus reports the lead's current WhatsApp call-permission state
-// for a conversation so the UI can enable or disable the call action. It resolves
-// the lead and business phone the same way RequestCallPermission does, so a
-// "granted" result here corresponds to the same permission a call would target.
 func (s *MessageSenderService) CallPermissionStatus(entryID, entryType string) (conversation.CallPermissionStatus, error) {
 	entryID = strings.TrimSpace(entryID)
 	entryType = strings.TrimSpace(entryType)
@@ -2206,8 +1832,6 @@ func (s *MessageSenderService) CallPermissionStatus(entryID, entryType string) (
 		return conversation.CallPermissionStatus{}, err
 	}
 
-	// No WhatsApp business phone (or no permission store) means there is nothing to
-	// call from, report "none" so the UI simply keeps the call action disabled.
 	if strings.TrimSpace(businessPhoneID) == "" || s.callPermissionRepo == nil {
 		return conversation.CallPermissionStatus{Status: "none"}, nil
 	}
@@ -2222,8 +1846,6 @@ func (s *MessageSenderService) CallPermissionStatus(entryID, entryType string) (
 
 	active := perm.IsActive(time.Now())
 	status := string(perm.Status)
-	// A granted permission whose window has lapsed reads as expired to the UI, so
-	// the operator knows a fresh request is needed rather than seeing "granted".
 	if perm.Status == callpermission.StatusGranted && !active {
 		status = string(callpermission.StatusExpired)
 	}
@@ -2276,11 +1898,6 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 }
 
 func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID string, caption string) (*conversation.Message, error) {
-	// Migrated channels take the adapter path.
-	//
-	// Note the difference from WhatsApp: Instagram fetches the asset server-side
-	// from a public URL rather than accepting an upload, so the stored CDN URL is
-	// handed over instead of the bytes.
 	if adapter := s.adapterFor(entryType); adapter != nil {
 		mediaRecord, err := s.mediaRepo.GetByID(mediaID)
 		if err != nil || mediaRecord == nil {
@@ -2363,10 +1980,6 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	case conversation.MediaTypeAudio:
 		log.Printf("[MessageSender] Converting audio to OGG Opus format...")
-		// Declared with var rather than `:=` on purpose. A short declaration here opens a
-		// new scope for err, so the SendAudioBytes failure below would land in the shadow
-		// and the `if err != nil` guard after the switch would read the outer err as nil,
-		// falling through to dereference a nil output.
 		var oggData []byte
 		oggData, err = convertAudioToOGGOpusFn(mediaData)
 		if err != nil {
@@ -2402,9 +2015,6 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 		return nil, err
 	}
 
-	// Belt and braces behind the err check: a provider path that ever returns
-	// (nil, nil) must surface as a failed send, not as a nil dereference that takes
-	// the whole process down.
 	if output == nil {
 		log.Printf("[MessageSender] WhatsApp send returned no output for media type %s", mediaType)
 		return nil, fmt.Errorf("whatsapp send returned no output for media type %s", mediaType)
@@ -2444,7 +2054,6 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	log.Printf("[MessageSender] Sent %s media to %s, WhatsApp ID: %s", mediaType, leadNumber, output.MessageID)
 
-	// Deferred analysis runs on every channel now, not only WhatsApp.
 	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
@@ -2515,17 +2124,10 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 
 	log.Printf("[MessageSender] Sent button message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	// Deferred analysis runs on every channel now, not only WhatsApp.
 	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
 	return message, nil
 }
 
-// scheduleAnalysis stamps a conversation for deferred AI analysis.
-//
-// It is channel-agnostic: the entry type is carried in the value so the debounce
-// job knows which resolver to use. It used to be named for WhatsApp campaigns
-// and was only ever called on that path, which is half of why analysis never ran
-// on any other channel.
 func (s *MessageSenderService) scheduleAnalysis(_ context.Context, entryID, entryType, _ string) {
 	if s.sharedState == nil || entryID == "" {
 		return
@@ -2734,8 +2336,6 @@ func (s *MessageSenderService) resolveContextMessageID(replyToMessageID string) 
 	return ""
 }
 
-// mediaKindForChannel maps the CRM's media type onto the channel-agnostic kind
-// vocabulary the adapters use.
 func mediaKindForChannel(mediaType string) string {
 	switch conversation.MediaType(mediaType) {
 	case conversation.MediaTypeImage, conversation.MediaTypeSticker:
@@ -2749,10 +2349,6 @@ func mediaKindForChannel(mediaType string) string {
 	}
 }
 
-// resolveProviderMessageID is the channel-agnostic form of
-// resolveContextMessageID: it reads the generic external_message_id column that
-// migrated channels write, falling back to the WhatsApp column so a mixed-history
-// entry still resolves.
 func (s *MessageSenderService) resolveProviderMessageID(replyToMessageID string) string {
 	if replyToMessageID == "" || s.messageRepo == nil {
 		return ""
@@ -2770,9 +2366,6 @@ func (s *MessageSenderService) resolveProviderMessageID(replyToMessageID string)
 	return ""
 }
 
-// ChannelMessageSender is the send surface shared by the WebSocket and HTTP
-// paths. Declared as a narrow port so this usecase depends on the contract, not
-// on the concrete MessageSenderService.
 type ChannelMessageSender interface {
 	SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error)
 	SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID, caption string) (*conversation.Message, error)
@@ -2790,26 +2383,15 @@ type sendConversationMessageUseCase struct {
 	stageRepo             stage.Repository
 	sharedState           cache.SharedState
 
-	// channelAdapters and sender route adapter-backed channels.
-	//
-	// This endpoint used to be WhatsApp-only while its route accepted several
-	// entry types, so a Telegram or Instagram send fell through getEntryInfo's
-	// default branch and surfaced as "conversation not found", a lie, since the
-	// conversation exists and is perfectly sendable over the WebSocket path.
-	// Rather than grow a second per-channel send implementation here, the
-	// migrated channels delegate to the one that already exists.
 	channelAdapters conversation.AdapterRegistry
 	sender          ChannelMessageSender
 }
 
-// SetChannelSender wires the shared adapter-backed sender. Optional: without it
-// the usecase keeps its WhatsApp-only behaviour.
 func (uc *sendConversationMessageUseCase) SetChannelSender(registry conversation.AdapterRegistry, sender ChannelMessageSender) {
 	uc.channelAdapters = registry
 	uc.sender = sender
 }
 
-// adapterBacked reports whether this channel sends through a ChannelAdapter.
 func (uc *sendConversationMessageUseCase) adapterBacked(entryType string) bool {
 	if uc.channelAdapters == nil || uc.sender == nil {
 		return false
@@ -2857,19 +2439,10 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 		return nil, errors.New("text or media_id is required")
 	}
 
-	// Channels with an adapter send through the shared path. ResolveEntry queries
-	// that channel's own conversation table, so it also verifies the
-	// (entry_id, entry_type) pair actually belongs together, passing a Telegram
-	// id with entry_type=instagram resolves to nothing rather than sending
-	// somewhere unintended.
 	if uc.adapterBacked(input.EntryType) {
 		return uc.sendViaChannel(input)
 	}
 
-	// A channel with no adapter and no WhatsApp path cannot send. Saying so
-	// plainly beats the previous behaviour, where getEntryInfo's default branch
-	// surfaced as "conversation not found", a lie about a conversation that
-	// exists.
 	if input.EntryType != string(shared.EntryTypeWhatsApp) {
 		return nil, conversation.ErrEntryTypeInvalid
 	}
@@ -2957,11 +2530,6 @@ func (uc *sendConversationMessageUseCase) Execute(input conversation.SendMessage
 	return message, nil
 }
 
-// sendViaChannel delegates to the shared adapter-backed sender.
-//
-// It performs no persistence or broadcasting of its own: the sender already owns
-// the window check, the provider call, the row and the websocket fan-out, and
-// duplicating any of that here would mean two places to fix every future bug.
 func (uc *sendConversationMessageUseCase) sendViaChannel(input conversation.SendMessageInput) (*conversation.Message, error) {
 	if input.MediaID != nil && *input.MediaID != "" {
 		mediaType := ""
@@ -3029,11 +2597,6 @@ func (uc *uploadConversationMediaUseCase) Execute(input conversation.UploadMedia
 	}
 
 	mediaID := uuid.NewString()
-	// The extension is part of the key on purpose. The stored object's URL is
-	// handed to Telegram and Meta, which fetch it themselves, and a bare UUID
-	// with no extension gives their fetchers nothing to identify the asset by.
-	// The inbound Telegram and Instagram paths already key their objects this
-	// way; the operator upload path did not.
 	key := fmt.Sprintf("conversations/%s/%s/%s%s",
 		input.EntryType, input.EntryID, mediaID,
 		storageExtensionFor(input.MimeType, input.Filename))
@@ -3094,9 +2657,6 @@ func (uc *getConversationMediaUseCase) Execute(mediaID string) (*conversation.Co
 	return mediaRecord, nil
 }
 
-// convertAudioToOGGOpusFn indirects the ffmpeg conversion so the audio send path
-// can be exercised in tests on machines without ffmpeg installed. The conversion
-// itself lives in infra/media; only the seam belongs here.
 var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
 
 type TemplateSenderService struct {
@@ -3107,9 +2667,7 @@ type TemplateSenderService struct {
 	whatsappRepo            wce.Repository
 	hub                     conversation.EventBroadcaster
 	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase
-	// events records the reopen on the conversation's timeline. Optional: a
-	// delivered, paid-for template must never fail over its telemetry.
-	events ce.Logger
+	events                  ce.Logger
 }
 
 func NewTemplateSenderService(
@@ -3184,14 +2742,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		return "", fmt.Errorf("error creating WhatsApp client: %w", err)
 	}
 
-	// One assembly for every send path, in the domain. Two things change for
-	// this caller: a media header now attaches by media id when one exists,
-	// which is what every other path already did and what Meta expects, falling
-	// back to the URL as before; and an authentication template gets its
-	// one-time code mirrored onto the copy button.
-	//
-	// Built before the balance is consumed below, so a send that cannot be
-	// assembled is refused rather than charged and refunded.
 	sendInput, err := tmpl.BuildSendInput(whatsappTemplate.SendInputParams{
 		To:         phoneNumber,
 		BodyParams: parameters,
@@ -3211,7 +2761,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 
 	result, err := client.SendTemplateMessage(context.Background(), sendInput)
 	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
-		// Meta took it. A refund here credits a message the customer already has.
 		log.Printf("[TemplateSender] send outcome unknown for entry %s (Meta accepted, response unreadable), keeping the charge: %v", entryID, err)
 		err = nil
 	}
@@ -3226,9 +2775,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	log.Printf("[TemplateSender] Sent template '%s' to %s for entry %s (%s), messageID=%s",
 		tmpl.Name, phoneNumber, entryID, entryType, result.MessageID)
 
-	// One renderer for every template message on the platform. This block used to
-	// be a verbatim copy of the campaign consumer's, which meant the same template
-	// could render two different ways depending on which code path sent it.
 	templateInfo := tmpl.RenderInfo(parameters)
 	bodyText, _ := templateInfo["body_text"].(string)
 
@@ -3256,11 +2802,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		CreatedAt:         time.Now().UTC(),
 	}
 	if err := s.messageRepo.Create(msg); err != nil {
-		// The template was SENT and PAID FOR. Returning an error here tells the
-		// caller the send failed, and a caller that believes that retries — a
-		// second delivered message and a second charge, caused by a bookkeeping
-		// failure. The message is lost from the thread, which is visible and
-		// fixable; the double charge would not be.
 		log.Printf("[TemplateSender] WARNING: template delivered but could not be recorded for entry %s: %v", entryID, err)
 	}
 
@@ -3268,11 +2809,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		s.hub.BroadcastNewMessage(entryID, entryType, msg)
 	}
 
-	// Sending a template is what reopens a closed 24h window, so this is the
-	// reopen. The event used to be written by the WebSocket hub's reopen frame
-	// handler, one of THREE callers of this method — the HTTP send-template
-	// endpoint and the hub's own SendTemplateForEntry wrote nothing, so the same
-	// action left a timeline entry or not depending on which button was pressed.
 	if s.events != nil {
 		s.events.Log(ce.New(workspaceID, entryID, entryType, ce.EventReopened).
 			WithActor(userID).
@@ -3288,12 +2824,6 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	return result.MessageID, nil
 }
 
-// automationFor reads the per-conversation automation override for a channel
-// that stores it on the conversation rather than on a campaign entry.
-//
-// Defaults to enabled, matching the inherit-from-container semantics of a nil
-// override, and on a lookup failure, an inbox that showed every conversation
-// as paused because one query failed would be worse than the opposite.
 func (s *HistoryProviderService) automationFor(entryID string, entryType shared.EntryType) bool {
 	if s.automationReaders == nil {
 		return true
@@ -3310,7 +2840,6 @@ func (s *HistoryProviderService) automationFor(entryID string, entryType shared.
 	return enabled == nil || *enabled
 }
 
-// SetAutomationReader registers a channel's automation override reader.
 func (s *HistoryProviderService) SetAutomationReader(
 	entryType shared.EntryType,
 	read func(ctx context.Context, entryID string) (*bool, error),
@@ -3324,14 +2853,6 @@ func (s *HistoryProviderService) SetAutomationReader(
 	s.automationReaders[entryType] = read
 }
 
-// storageExtensionFor picks the file extension an object key should carry.
-//
-// The URL of a stored asset is what Telegram and Meta fetch, and both decide
-// from the extension and the Content-Type whether the asset is sendable. An
-// object keyed as a bare UUID gives them neither.
-//
-// The uploader's own filename wins, because it is the only source that knows
-// the difference between formats sharing one media type.
 func storageExtensionFor(mimeType, filename string) string {
 	if filename != "" {
 		if ext := path.Ext(filename); ext != "" {

@@ -8,10 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// SavedView is the GORM row model for a persisted board/list configuration. The
-// embedded crmfilter.Filter and the visible-column list are stored as jsonb via
-// datatypes.JSON and hand-marshaled in the repository. Kept separate from the
-// domain savedview.SavedView entity. Added to AutoMigrate in migrate.go.
 type SavedView struct {
 	ID          string `gorm:"primaryKey;type:uuid"`
 	WorkspaceID string `gorm:"type:uuid;not null;index:idx_saved_view_ws_owner_object,priority:1"`

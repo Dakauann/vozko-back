@@ -7,19 +7,6 @@ import (
 	gormschema "gorm.io/gorm/schema"
 )
 
-// This channel's repositories and its partial indexes address columns by NAME,
-// in raw SQL and in Updates maps. GORM derives those names from the Go field
-// names, and its naming strategy is not the obvious lowercase-with-underscores:
-// it first runs a common-initialism replacer.
-//
-// `JID` matches that replacer's `ID` entry and becomes `JId`, which snake-cases
-// to `j_id` rather than `jid`. The failure surfaces at migration time as
-// "column does not exist", and it surfaces only for whichever column happens to
-// have an index — every OTHER mismatch would have run fine and then silently
-// written to a column nothing reads.
-//
-// So the column names are pinned here rather than trusted.
-
 func columnNames(t *testing.T, model any) map[string]string {
 	t.Helper()
 	parsed, err := gormschema.Parse(model, &sync.Map{}, gormschema.NamingStrategy{})
@@ -49,15 +36,11 @@ func assertColumns(t *testing.T, model any, want map[string]string) {
 	}
 }
 
-// The two that actually broke, plus every neighbour whose name could plausibly
-// be mangled the same way.
 func TestUnofficialWhatsAppInstanceColumnNames(t *testing.T) {
 	assertColumns(t, &UnofficialWhatsAppInstance{}, map[string]string{
-		// The bug: without an explicit column tag these become j_id and l_id.
 		"JID": "jid",
 		"LID": "lid",
 
-		// Neighbours with initialisms or acronyms, verified rather than assumed.
 		"ProviderInstanceID": "provider_instance_id",
 		"DeliveryTokenHash":  "delivery_token_hash",
 		"ProfilePicURL":      "profile_pic_url",
@@ -65,7 +48,6 @@ func TestUnofficialWhatsAppInstanceColumnNames(t *testing.T) {
 		"SendDelayMinMS":     "send_delay_min_ms",
 		"SendDelayMaxMS":     "send_delay_max_ms",
 
-		// Restriction columns, all written by a narrow Updates map.
 		"RestrictionCanSendNew": "restriction_can_send_new",
 		"RestrictionUntil":      "restriction_until",
 		"RestrictionCheckedAt":  "restriction_checked_at",
@@ -110,10 +92,6 @@ func TestUnofficialWhatsAppServerColumnNames(t *testing.T) {
 	})
 }
 
-// The table names are referenced verbatim in entry_sources, channel_queries,
-// channel_sources, the ownership registry, the stage subquery and every partial
-// index. A rename here silently removes the channel from the inbox and the
-// board rather than failing loudly.
 func TestUnofficialWhatsAppTableNames(t *testing.T) {
 	cases := map[string]string{
 		UnofficialWhatsAppServer{}.TableName():       "unofficial_whatsapp_servers",

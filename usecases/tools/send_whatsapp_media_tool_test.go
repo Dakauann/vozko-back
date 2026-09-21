@@ -450,10 +450,6 @@ func TestSendWhatsappMediaTool_Execute_VslVideo_TreatedAsVideo(t *testing.T) {
 	}
 }
 
-// The link is now the FALLBACK, not the primary path: WhatsApp accepts only
-// OGG/Opus for audio, so the bytes are transcoded and uploaded first. This URL
-// does not resolve, which is exactly what drives the fallback — and pins that an
-// unreachable CDN still delivers the message the way it always did.
 func TestSendWhatsappMediaTool_Execute_Audio_FallsBackToLink(t *testing.T) {
 	client := &recordingWhatsAppClient{}
 	tool := newMediaToolWith(t, client,
@@ -618,8 +614,6 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
 	d := tool.Definition()
 
-	// Channel-neutral: the name reaches the model, and one naming a channel
-	// makes the model decline to use it in a conversation on another.
 	if d.Name != ToolNameSendMedia {
 		t.Errorf("expected name %q, got %q", ToolNameSendMedia, d.Name)
 	}
@@ -628,16 +622,9 @@ func TestSendWhatsappMediaTool_Definition_HasExpectedShape(t *testing.T) {
 			t.Errorf("expected parameter %q", k)
 		}
 	}
-	// media_id is no longer required: the media may come from the library OR from a
-	// direct CDN link, and a JSON schema cannot express "exactly one of these".
-	// Marking either one required would forbid the other, so the choice is enforced
-	// at execution instead, by an error that names both.
 	if sliceContains(d.Required, "media_id") || sliceContains(d.Required, "media_url") {
 		t.Errorf("neither media field may be required, got %v", d.Required)
 	}
-	// "to" is a phone number, which does not exist on Telegram or Instagram;
-	// requiring it made the tool unusable there. It remains accepted for saved
-	// WhatsApp agents that were taught to pass one.
 	if sliceContains(d.Required, "to") {
 		t.Errorf("\"to\" must be optional so the tool works without a phone number, got %v", d.Required)
 	}
@@ -650,15 +637,11 @@ func (f *recordingWhatsAppClient) SendCallPermissionRequest(context.Context, con
 	return &conversation.SendTextMessageOutput{}, nil
 }
 
-// An agent can now send a file it discovered rather than one an operator filed in
-// advance. The case this exists for: http_request finds an image keyed by the
-// contact's own number, so there is no library entry to point at and never will be
-// — one per customer is not a library.
 func TestSendWhatsappMediaTool_MediaURL_SendsWithoutALibraryEntry(t *testing.T) {
 	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
 
 	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
-	tool := newMediaToolWith(t, &recordingWhatsAppClient{}) // no medias seeded
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
 	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
 
 	config := telegramSeeds()
@@ -676,7 +659,6 @@ func TestSendWhatsappMediaTool_MediaURL_SendsWithoutALibraryEntry(t *testing.T) 
 	if adapter.sentMedia.URL != url {
 		t.Errorf("URL = %q, want %q", adapter.sentMedia.URL, url)
 	}
-	// .jpeg has to reach the channel as an image, not as a document attachment.
 	if adapter.sentMedia.Kind != "image" {
 		t.Errorf("Kind = %q, want image", adapter.sentMedia.Kind)
 	}
@@ -685,9 +667,6 @@ func TestSendWhatsappMediaTool_MediaURL_SendsWithoutALibraryEntry(t *testing.T) 
 	}
 }
 
-// A media_id is picked by an operator from a fixed list; a media_url is picked by
-// the model from text it just read. That difference is the whole reason for a host
-// check: without it, a crafted message could aim the fetch at an internal address.
 func TestSendWhatsappMediaTool_MediaURL_OnlyTheCDNIsAccepted(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -699,7 +678,6 @@ func TestSendWhatsappMediaTool_MediaURL_OnlyTheCDNIsAccepted(t *testing.T) {
 		{"loopback", "https://cdn.vozkoia.com", "https://127.0.0.1:8080/admin"},
 		{"plain http", "https://cdn.vozkoia.com", "http://cdn.vozkoia.com/x.jpeg"},
 		{"host is a prefix of ours", "https://cdn.vozkoia.com", "https://cdn.vozkoia.com.evil.net/x.jpeg"},
-		// No CDN configured must not mean "anything goes".
 		{"no cdn configured", "", "https://cdn.vozkoia.com/x.jpeg"},
 	}
 
@@ -724,7 +702,6 @@ func TestSendWhatsappMediaTool_MediaURL_OnlyTheCDNIsAccepted(t *testing.T) {
 	}
 }
 
-// The schema cannot say "one of these two", so the refusal has to teach it.
 func TestSendWhatsappMediaTool_NeitherMediaIDNorURL_NamesBoth(t *testing.T) {
 	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
 
@@ -741,7 +718,6 @@ func TestSendWhatsappMediaTool_NeitherMediaIDNorURL_NamesBoth(t *testing.T) {
 	}
 }
 
-// A curated row beats a guessed link when both arrive.
 func TestSendWhatsappMediaTool_MediaIDWinsOverURL(t *testing.T) {
 	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
 
@@ -760,8 +736,6 @@ func TestSendWhatsappMediaTool_MediaIDWinsOverURL(t *testing.T) {
 	}
 }
 
-// A library row declares its type; a bare URL has only its name to go on, and the
-// send switch needs one either way.
 func TestMediaTypeFromURL(t *testing.T) {
 	cases := map[string]media.MediaType{
 		"https://c/x.jpeg":           media.MediaTypeProductImage,

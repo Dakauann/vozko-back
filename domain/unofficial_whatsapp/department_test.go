@@ -4,8 +4,6 @@ import "testing"
 
 func deptPtr(id string) *string { return &id }
 
-// The visibility rule, exhaustively. Every case is one a real operator hits,
-// and the third group is the one that decides whether the feature is safe.
 func TestDepartmentScopeAllows(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -14,7 +12,6 @@ func TestDepartmentScopeAllows(t *testing.T) {
 		want       bool
 		why        string
 	}{
-		// Owners and admins.
 		{
 			name:       "unrestricted sees a scoped number",
 			scope:      Unrestricted(),
@@ -28,7 +25,6 @@ func TestDepartmentScopeAllows(t *testing.T) {
 			want:       true,
 		},
 
-		// Ordinary members.
 		{
 			name:       "member sees their own department's number",
 			scope:      DepartmentScope{DepartmentIDs: []string{"dept-a"}, Restrict: true},
@@ -49,7 +45,6 @@ func TestDepartmentScopeAllows(t *testing.T) {
 			why:        "this is the whole feature",
 		},
 
-		// The fail-closed cases.
 		{
 			name:       "member does not see an UNSCOPED number",
 			scope:      DepartmentScope{DepartmentIDs: []string{"dept-a"}, Restrict: true},
@@ -81,10 +76,6 @@ func TestDepartmentScopeAllows(t *testing.T) {
 	}
 }
 
-// Unrestricted must be the "sees everything" scope, not the "sees nothing" one.
-//
-// The two are opposite and a bool's zero value silently picks one, which is why
-// the constructor is named rather than spelled `DepartmentScope{}` at call sites.
 func TestUnrestrictedSeesEverything(t *testing.T) {
 	if !Unrestricted().Allows(deptPtr("anything")) {
 		t.Error("Unrestricted() refused a scoped number")
@@ -94,9 +85,6 @@ func TestUnrestrictedSeesEverything(t *testing.T) {
 	}
 }
 
-// A restricted caller in no department can match nothing, and the repository
-// relies on being told so: an `IN ()` is a syntax error in some dialects and a
-// silent match-ALL in others.
 func TestBlocksEverything(t *testing.T) {
 	cases := map[string]struct {
 		scope DepartmentScope
@@ -116,8 +104,6 @@ func TestBlocksEverything(t *testing.T) {
 	}
 }
 
-// AllowsInstance reads the rule off a loaded instance, and refuses a nil one
-// rather than treating "no instance" as "no department" and letting it through.
 func TestAllowsInstance(t *testing.T) {
 	restricted := DepartmentScope{DepartmentIDs: []string{"dept-a"}, Restrict: true}
 

@@ -2,11 +2,6 @@ package ai
 
 import "testing"
 
-// Every caller that asks a model for strict-schema JSON has to survive the
-// markdown fence some providers still wrap it in. Tolerated rather than
-// refused, because the alternative is throwing away an answer that has already
-// been paid for.
-
 func TestUnfenceJSONStripsTheFenceProvidersAdd(t *testing.T) {
 	cases := map[string]struct{ in, want string }{
 		"a json-tagged fence": {
@@ -26,8 +21,6 @@ func TestUnfenceJSONStripsTheFenceProvidersAdd(t *testing.T) {
 			want: `{"results":[]}`,
 		},
 		"empty": {in: "   ", want: ""},
-		// A fenced block whose body itself contains backticks must not lose
-		// them: only the outermost fence is the provider's.
 		"backticks inside the body": {
 			in:   "```json\n{\"text\":\"use ` here\"}\n```",
 			want: "{\"text\":\"use ` here\"}",

@@ -58,9 +58,6 @@ func eventToStatus(event string) (template.TemplateStatus, bool) {
 }
 
 func (h *handleTemplateWebhook) handleStatusUpdate(wabaID string, v template.TemplateWebhookValue) {
-	// 360dialog identifies the template by its channel-scoped id (what we store as
-	// ExternalID); Meta uses the numeric message_template_id. Prefer the string id
-	// when present so both webhook sources resolve the same stored record.
 	externalID := strings.TrimSpace(v.ChannelExternalID)
 	if externalID == "" && v.MessageTemplateID != 0 {
 		externalID = fmt.Sprintf("%d", v.MessageTemplateID)

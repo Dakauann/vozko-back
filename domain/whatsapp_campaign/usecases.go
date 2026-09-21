@@ -33,17 +33,10 @@ type ListCampaignsUseCase interface {
 	Execute(input ListCampaignsInput) (*shared.PaginatedResult[*Campaign], error)
 }
 
-// GetSummaryUseCase returns the workspace-level metrics rollup (the "disparos"
-// summary) across all campaigns matching the filter, date range, type and
-// department. An empty filter yields the all-time total.
 type GetSummaryUseCase interface {
 	Execute(filter wce.WorkspaceSummaryFilter) (*CampaignMetrics, error)
 }
 
-// EnsureOrganicCoexistenceCampaignUseCase returns the latest organic campaign
-// for a business phone, creating a running organic campaign if none exists. The
-// boolean reports whether a new campaign was created. Used by the Meta embedded
-// signup coexistence flow.
 type EnsureOrganicCoexistenceCampaignUseCase interface {
 	Execute(workspaceID, businessPhoneID, displayPhoneNumber string) (*Campaign, bool, error)
 }
@@ -74,7 +67,6 @@ type ResetCampaignUseCase interface {
 	ConfirmReset(input ResetCampaignInput) (*ResetCampaignOutput, error)
 }
 
-// CampaignAction is the shared lifecycle verb.
 type CampaignAction = campaign.Action
 
 const (
@@ -89,10 +81,6 @@ const (
 	WhatsAppCampaignDispatchTopic = "whatsapp_campaign_dispatch"
 )
 
-// QueueNamespace keys this channel's queue topic and coordination keys.
-//
-// Distinct prefixes per channel are what stop two campaigns with the same id —
-// impossible today, but only because both use UUIDs — from sharing a pause flag.
 var QueueNamespace = campaign.Namespace{
 	Topic: WhatsAppCampaignDispatchTopic,
 	Key:   "campaign:whatsapp",

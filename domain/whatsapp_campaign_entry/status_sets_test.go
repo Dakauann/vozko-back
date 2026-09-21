@@ -2,12 +2,6 @@ package whatsapp_campaign_entry
 
 import "testing"
 
-// The three status sets are one list plus two derivations. These tests exist to
-// fail the day someone adds a seventh status without deciding which side of the
-// billing line it falls on — the alternative is a status that is Valid(), is
-// counted in Total, and is silently absent from both Dispatches() and every
-// export that asks for "what we sent".
-
 func TestAllStatusesIsTheSetValidAccepts(t *testing.T) {
 	for _, s := range AllStatuses() {
 		if !ValidStatus(s) {
@@ -45,10 +39,6 @@ func TestDispatchedStatusesPartitionsAllStatuses(t *testing.T) {
 	}
 }
 
-// The additive spelling of "enviados, entregues e lidos" is what an operator
-// asks for; the subtractive one is what stays correct. This pins that they mean
-// the same thing today, so the export's default preset and the summary's
-// headline count the same entries.
 func TestDispatchedStatusesMatchesDispatchesArithmetic(t *testing.T) {
 	counts := StatusCounts{
 		Total:                   100,

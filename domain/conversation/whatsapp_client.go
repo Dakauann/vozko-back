@@ -10,11 +10,6 @@ import (
 	"vozko/domain/channel"
 )
 
-// WhatsApp interactive-message limits, per Meta's WhatsApp Cloud API docs.
-// Reply buttons: developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons-messages
-// List messages: developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-list-messages
-// Kept here as the single source of truth so the typed Send*Input.Validate and the
-// workflow node config validation enforce the SAME numbers.
 const (
 	WhatsAppButtonMaxCount    = 3
 	WhatsAppButtonIDMaxLen    = 256
@@ -34,31 +29,16 @@ const (
 	WhatsAppListSectionsMax        = 10
 )
 
-// WhatsAppInteractiveLimits states WhatsApp's single-choice bounds in the same
-// shape every other channel reports through its Descriptor.
-//
-// WhatsApp has no Descriptor yet, it is the channel still being migrated onto
-// the adapter abstraction, so this stands in for one. It is built from the
-// constants directly above so the numbers the workflow editor shows and the
-// numbers Validate enforces cannot drift apart.
 func WhatsAppInteractiveLimits() channel.InteractiveLimits {
 	return channel.InteractiveLimits{
-		MaxOptionsButtons: WhatsAppButtonMaxCount,
-		MaxOptionsList:    WhatsAppListRowsMax,
-		// The button title cap is the tighter of the two styles, so quoting it
-		// keeps an author inside both.
-		MaxLabelRunes: WhatsAppButtonTitleMaxLen,
-		// Likewise the list row id, the tighter of 256 and 200.
-		MaxPayloadBytes: WhatsAppListRowIDMaxLen,
-		// List rows carry a description line; button replies do not. WhatsApp is
-		// the only channel with the slot at all.
+		MaxOptionsButtons:          WhatsAppButtonMaxCount,
+		MaxOptionsList:             WhatsAppListRowsMax,
+		MaxLabelRunes:              WhatsAppButtonTitleMaxLen,
+		MaxPayloadBytes:            WhatsAppListRowIDMaxLen,
 		SupportsOptionDescriptions: true,
 	}
 }
 
-// overLimit reports whether s exceeds max WhatsApp-counted characters. Meta
-// counts characters (code points), not bytes, so accented Portuguese and emoji
-// are counted correctly.
 func overLimit(s string, max int) bool {
 	return utf8.RuneCountInString(s) > max
 }
@@ -71,17 +51,6 @@ var (
 	ErrWhatsAppTemplateIDRequired   = errors.New("template ID is required")
 	ErrWhatsAppWABAIDRequired       = errors.New("whatsapp business account ID is required")
 
-	// ErrSendOutcomeUnknown means the provider ACCEPTED the send and we then
-	// failed to understand the answer.
-	//
-	// It exists because "we could not parse Meta's 200" and "the request never
-	// arrived" are opposite facts that used to arrive as the same bare error, and
-	// every caller treated both as a failure and refunded the customer. Refunding
-	// a message Meta has already accepted means we pay Meta and collect nothing —
-	// the one billing mistake that costs real money on every occurrence.
-	//
-	// A caller seeing this must NOT refund and must NOT resend. The charge stands
-	// and the attempt is reconciled from the delivery-status webhook.
 	ErrSendOutcomeUnknown = errors.New("whatsapp: send outcome unknown, provider accepted the request")
 )
 
@@ -115,9 +84,6 @@ type WhatsAppClient interface {
 	UploadMediaForTemplate(ctx context.Context, input UploadMediaForTemplateInput) (string, error)
 }
 
-// WhatsAppBusinessProfile is the provider-neutral business profile (about, address,
-// etc.) exchanged with the Cloud API. Mirrors the Meta/360dialog whatsapp_business_profile
-// fields.
 type WhatsAppBusinessProfile struct {
 	About                string
 	Address              string
@@ -129,42 +95,17 @@ type WhatsAppBusinessProfile struct {
 	Vertical             string
 }
 
-// WhatsAppBusinessProfileClient reads and writes a channel's business profile. Like
-// WhatsAppCallingClient it is a narrow capability implemented by the concrete Cloud API
-// client (Meta at "{base}/{phone}/whatsapp_business_profile", 360dialog at the
-// channel-scoped "{base}/whatsapp_business_profile"); obtain it by type-asserting a
-// WhatsAppClient. Kept separate so message-only fakes need not implement it.
 type WhatsAppBusinessProfileClient interface {
 	GetBusinessProfile(ctx context.Context) (*WhatsAppBusinessProfile, error)
 	UpdateBusinessProfile(ctx context.Context, profile WhatsAppBusinessProfile) error
 }
 
-// WhatsAppTemplateMediaClient reports how a channel wants a media (IMAGE/VIDEO/
-// DOCUMENT) header asset referenced inside a create-template payload's
-// example.header_handle. Meta's Graph endpoint wants a Resumable-Upload handle
-// (so the URL must be uploaded first), whereas 360dialog's channel-scoped
-// "/v1/configs/templates" endpoint wants the public media URL as-is and fetches
-// it itself, it rejects an uploaded handle with 400 "it should be valid url
-// address". It is a narrow capability implemented by the concrete Cloud API
-// client; callers obtain it by type-asserting a WhatsAppClient. Kept separate so
-// message-only fakes need not implement it (a fake that doesn't implement it
-// keeps the historical upload-to-handle behaviour).
 type WhatsAppTemplateMediaClient interface {
-	// TemplateHeaderMediaWantsURL reports whether header_handle should carry the
-	// public media URL verbatim (true, 360dialog) instead of an uploaded handle
-	// (false, Meta).
 	TemplateHeaderMediaWantsURL() bool
 }
 
-// WhatsAppCallingClient reads and toggles WhatsApp Business Calling for a channel.
-// It is a narrow capability implemented by the concrete Cloud API client (Meta at
-// "{base}/{phone}/settings", 360dialog at "{base}/calling/settings"); callers obtain
-// it by type-asserting a WhatsAppClient. Kept separate from WhatsAppClient so the many
-// message-only fakes need not implement it.
 type WhatsAppCallingClient interface {
-	// GetCallingStatus reports whether calling is ENABLED for the channel.
 	GetCallingStatus(ctx context.Context) (bool, error)
-	// SetCallingStatus enables or disables calling for the channel.
 	SetCallingStatus(ctx context.Context, enabled bool) error
 }
 
@@ -378,7 +319,6 @@ func (in SendButtonMessageInput) Validate() error {
 			if overLimit(b.ID, WhatsAppButtonIDMaxLen) {
 				return fmt.Errorf("button id exceeds %d characters", WhatsAppButtonIDMaxLen)
 			}
-			// Meta requires reply button titles to be unique within a message.
 			if _, dup := seenTitles[title]; dup {
 				return fmt.Errorf("duplicate reply button title %q", title)
 			}
@@ -394,9 +334,6 @@ func (in SendButtonMessageInput) Validate() error {
 	return nil
 }
 
-// ListRow is a single selectable row of a WhatsApp interactive list message. The
-// ID is the stable identifier echoed back in the reply (WhatsAppListReply.ID);
-// routing keys off it, never the Title (which is user-facing and length-capped).
 type ListRow struct {
 	ID          string
 	Title       string
@@ -408,9 +345,6 @@ type ListSection struct {
 	Rows  []ListRow
 }
 
-// SendListMessageInput is a WhatsApp interactive "list" message: a body with a
-// menu button that opens up to 10 selectable rows grouped into sections. It is
-// the >3-option counterpart to SendButtonMessageInput (reply buttons, max 3).
 type SendListMessageInput struct {
 	To         string
 	HeaderText string
@@ -498,48 +432,19 @@ type SendTemplateMessageInput struct {
 	HeaderFilename         string
 	HeaderTextParams       []string
 	FromPhoneNumberID      string
-	// Buttons parameterizes the template's button components.
-	//
-	// Separate from Parameters because Meta addresses a button by its own index
-	// inside the BUTTONS component rather than by position in the body, and
-	// because a button parameter is not always a text one. Empty for the
-	// overwhelming majority of templates, whose buttons carry no variables.
-	Buttons []TemplateButtonParam
-	// BizOpaqueCallbackData is echoed back by Meta on every delivery-status
-	// webhook for this message. Carrying our own send-attempt id through it is
-	// what lets a status event be matched to the charge that paid for it, even
-	// when we never learned the provider message id.
-	BizOpaqueCallbackData string
+	Buttons                []TemplateButtonParam
+	BizOpaqueCallbackData  string
 }
 
-// Button sub-types, as Meta names them on a template send.
-//
-// These are NOT the button types a template is created with. A template
-// declares an OTP button; the send addresses it as "url". The two vocabularies
-// genuinely differ, and collapsing them is how the code ends up on a button
-// Meta cannot find.
 const (
-	// TemplateButtonSubTypeURL addresses an authentication OTP button, whatever
-	// its otp_type: copy-code, one-tap and zero-tap all take this sub-type.
-	TemplateButtonSubTypeURL = "url"
-	// TemplateButtonSubTypeCopyCode addresses a coupon COPY_CODE button in a
-	// marketing or utility template, which takes a coupon_code parameter rather
-	// than a text one.
+	TemplateButtonSubTypeURL      = "url"
 	TemplateButtonSubTypeCopyCode = "copy_code"
 )
 
-// TemplateButtonParam is one parameterized button on a template send.
 type TemplateButtonParam struct {
-	// SubType is one of the TemplateButtonSubType constants above.
-	SubType string
-	// Index is the button's position inside the template's BUTTONS component,
-	// zero based.
-	Index int
-	// Text is the value for a text parameter: the one-time code on an
-	// authentication button.
-	Text string
-	// CouponCode is the value for a coupon COPY_CODE button, which Meta reads
-	// from a "coupon_code" parameter instead of a "text" one.
+	SubType    string
+	Index      int
+	Text       string
 	CouponCode string
 }
 
@@ -564,18 +469,13 @@ type Template struct {
 }
 
 type TemplateComponent struct {
-	Type    string
-	Format  string
-	Text    string
-	Buttons []TemplateButton
-	Example *TemplateExample
-	// AddSecurityRecommendation asks Meta to append its own "do not share this
-	// code" line to an authentication template's BODY. Meta owns that text, so
-	// this is a flag rather than a string.
+	Type                      string
+	Format                    string
+	Text                      string
+	Buttons                   []TemplateButton
+	Example                   *TemplateExample
 	AddSecurityRecommendation *bool
-	// CodeExpirationMinutes renders Meta's own "expires in N minutes" line in an
-	// authentication template's FOOTER. Nil means no expiry line.
-	CodeExpirationMinutes *int
+	CodeExpirationMinutes     *int
 }
 
 type TemplateButton struct {
@@ -584,9 +484,7 @@ type TemplateButton struct {
 	URL         string `json:"url,omitempty"`
 	PhoneNumber string `json:"phone_number,omitempty"`
 	Example     string `json:"example,omitempty"`
-	// OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button, which is
-	// how an authentication template declares its code button.
-	OTPType string `json:"otp_type,omitempty"`
+	OTPType     string `json:"otp_type,omitempty"`
 }
 
 type TemplateExample struct {

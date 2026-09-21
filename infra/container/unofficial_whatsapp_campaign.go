@@ -19,12 +19,6 @@ import (
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
 
-// unofficialWhatsAppCampaignBundle groups the campaign feature so it can be
-// wired, or skipped, as one unit.
-//
-// Built in the use-case pass rather than alongside the channel, because it needs
-// the message sender, the assignment service and the workflow evaluator — none
-// of which exist when initUnofficialWhatsApp runs.
 type unofficialWhatsAppCampaignBundle struct {
 	Enabled bool
 
@@ -39,12 +33,6 @@ type unofficialWhatsAppCampaignBundle struct {
 	Handler *uwhttp.CampaignHandler
 }
 
-// initUnofficialWhatsAppCampaigns builds the campaign feature.
-// The parameters are explicit rather than read off the container, and that is
-// the point: c.useCases is not assigned until the END of initUseCases, so an
-// earlier call reaching for c.useCases.recordMetric dereferences nil and takes
-// the whole process down at boot. A signature that names what it needs makes
-// the wiring order a compile-time conversation instead of a segfault.
 func (c *Container) initUnofficialWhatsAppCampaigns(
 	sender *conversation_usecase.MessageSenderService,
 	departments workspace_department.CreationDepartmentResolver,
@@ -52,9 +40,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	bundle := &unofficialWhatsAppCampaignBundle{}
 	c.unofficialWhatsAppCampaigns = bundle
 
-	// Campaigns exist only where the channel does. A workspace with no connected
-	// numbers has nothing to campaign from, and registering the routes anyway
-	// would offer a screen every request 500s on.
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return
 	}
@@ -83,9 +68,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 
 	budget := uwcuc.NewSendBudget(c.redisProvider.SharedState())
 
-	// The consumer and the circuit breaker are mutually dependent: the breaker
-	// has to detach consumers, and the consumer has to call the breaker. Built
-	// in two steps rather than merged, so neither grows the other's job.
 	consumer := uwcuc.NewMessageConsumerUseCase(uwcuc.ConsumerDeps{
 		QueueSub:    c.services.wcQueueSub,
 		QueuePub:    c.services.wcQueuePub,
@@ -102,8 +84,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	bundle.Consumer = consumer
 	bundle.PauseForInst = uwcuc.NewPauseCampaignsForInstanceUseCase(bundle.Campaigns, consumer)
 
-	// Attached after construction for the same reason the official consumer's
-	// trigger evaluator is: the workflow stack is built later in the pass.
 	if attachable, ok := consumer.(interface {
 		SetPauseAll(uwc.PauseCampaignsForInstanceUseCase)
 	}); ok {
@@ -150,12 +130,6 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	})
 }
 
-// unofficialCampaignGateway adapts the channel's repositories and provider onto
-// the single port the campaign package needs.
-//
-// One adapter rather than five constructor arguments: every campaign call site
-// needs the instance AND its server to build a provider ref, and threading both
-// through each use case duplicated the same two lookups eleven times.
 type unofficialCampaignGateway struct {
 	instances uw.InstanceRepository
 	servers   uw.ServerRepository
@@ -192,13 +166,6 @@ func (g *unofficialCampaignGateway) Resolve(ctx context.Context, instance *uw.In
 	return g.resolver.Resolve(ctx, instance, in)
 }
 
-// workspaceSpamGuard is the workspace's own re-contact cooldown.
-//
-// It reads the SAME setting and the SAME ledger the official campaign and both
-// cold-outbound dialogs use, so one switch in workspace settings governs every
-// way of reaching somebody. The sender id here is the INSTANCE id where the
-// official channel passes a business phone id; both are UUIDs from disjoint
-// tables, so the shared ledger cannot confuse them.
 type workspaceSpamGuard struct {
 	config workspaceConfigReader
 	sends  lcs.Repository
@@ -258,7 +225,6 @@ func (g *workspaceSpamGuard) Record(leadID, senderID, campaignID string) error {
 	return g.sends.Record(leadID, senderID, campaignID)
 }
 
-// campaignWorkflowTrigger fires the campaign-sent trigger.
 type campaignWorkflowTrigger struct {
 	evaluator workflow_domain.TriggerEvaluator
 }
@@ -281,12 +247,6 @@ func (t *campaignWorkflowTrigger) CampaignSent(in uwcuc.CampaignSentTrigger) {
 	})
 }
 
-// campaignEntryBroadcaster narrows the hub onto the port the campaign package
-// declares.
-//
-// The hub's signature carries a *conversation.Message; a campaign entry update
-// carries no message, so the adapter passes nil rather than the campaign
-// package importing the websocket layer to say so.
 type campaignEntryBroadcaster struct{ hub *wsdelivery.ConversationHub }
 
 func (b *campaignEntryBroadcaster) BroadcastEntryUpdate(entryID, entryType string, _ interface{}) {
@@ -296,8 +256,6 @@ func (b *campaignEntryBroadcaster) BroadcastEntryUpdate(entryID, entryType strin
 	b.hub.BroadcastEntryUpdate(entryID, entryType, nil)
 }
 
-// unofficialWhatsAppCampaignHandler returns the handler, or nil when campaigns
-// are not wired.
 func unofficialWhatsAppCampaignHandler(c *Container) *uwhttp.CampaignHandler {
 	if c.unofficialWhatsAppCampaigns == nil || !c.unofficialWhatsAppCampaigns.Enabled {
 		return nil

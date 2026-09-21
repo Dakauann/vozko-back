@@ -6,73 +6,30 @@ import (
 	"vozko/domain/shared"
 )
 
-// The workspace-wide read paths, the CRM inbox list and the CRM board, both
-// answer the same question: "which conversations exist in this workspace?"
-// Each channel stores its conversations in its own table, so the answer is a
-// UNION whose branches differ only in table names and column expressions.
-//
-// Those branches used to be written out inline, once per query path. Adding a
-// channel therefore meant editing every path, and forgetting one produced
-// exactly the bug Instagram shipped with: DMs appeared in the live inbox but
-// were missing from the list on reload, and never reached the board at all.
-//
-// A channel is declared ONCE below. Everything that reads conversations
-// workspace-wide, the inbox list, the board, and the stage/label/filter
-// machinery layered on top of them, picks it up automatically, because those
-// features key on (entry_id, entry_type) and never on a specific table.
-
-// entrySource declares how one channel's conversations are selected.
-//
-// Column fields are SQL expressions evaluated against From/WorkspaceJoin, so a
-// channel can project a literal where it has no equivalent column (support has
-// no campaign, Instagram has no business phone).
 type entrySource struct {
 	EntryType shared.EntryType
 
-	// From is the channel's conversation table with its alias.
-	From string
-	// WorkspaceJoin scopes rows to one workspace and must contain exactly one
-	// placeholder, bound to the workspace id.
+	From          string
 	WorkspaceJoin string
 
-	// EntryID identifies the conversation; it becomes entry_id.
 	EntryID string
-	// Account is the channel account that owns the conversation (WhatsApp business
-	// phone, Instagram account). Carried in the business_phone_id slot.
 	Account string
 
-	// ConversationStatus is the status column, or "" when the channel has none.
 	ConversationStatus string
-	// CampaignID is the owning campaign, or "" when the channel has no campaigns.
-	CampaignID string
+	CampaignID         string
 
 	CreatedAt     string
 	UpdatedAt     string
 	LastMessageAt string
-	// Deleted is the soft-delete guard, e.g. "igc.deleted_at IS NULL".
-	Deleted string
+	Deleted       string
 
-	// Department is the column carrying the owning department, or "" when the
-	// channel is not department-scoped.
-	Department string
-	// DepartmentExempt lets a channel with no Department column stay visible to
-	// department-restricted operators. Without it such a channel is hidden from
-	// them, which is the safe default for anything new; support opts out because
-	// it has always been visible to everyone in the workspace and hiding it would
-	// take a restricted agent's queue away.
+	Department       string
 	DepartmentExempt bool
 
-	// WhatsAppCampaignScoped marks the channel a WhatsApp campaign-type filter
-	// applies to. Every other channel is excluded when that filter is set, since
-	// the filter names a WhatsApp concept.
 	WhatsAppCampaignScoped bool
-	// CampaignKind is the column a campaign-type filter ("standard"/"organic")
-	// compares against. Only meaningful together with WhatsAppCampaignScoped.
-	CampaignKind string
+	CampaignKind           string
 }
 
-// joinClause returns the workspace join plus any campaign-kind narrowing, with
-// its bound arguments in placeholder order.
 func (src entrySource) joinClause(scope entrySourceScope, workspaceID string) (string, []interface{}) {
 	join := src.WorkspaceJoin
 	args := []interface{}{workspaceID}
@@ -83,10 +40,6 @@ func (src entrySource) joinClause(scope entrySourceScope, workspaceID string) (s
 	return join, args
 }
 
-// entrySources is the channel registry.
-//
-// To add a channel (Telegram, Messenger, …): append its descriptor. No query
-// path, usecase or delivery handler changes.
 var entrySources = []entrySource{
 	{
 		EntryType:     shared.EntryTypeWhatsApp,
@@ -110,10 +63,6 @@ var entrySources = []entrySource{
 		CampaignKind:           "wc.type",
 	},
 	{
-		// The Instagram account plays the container role whatsapp_campaigns plays
-		// for WhatsApp: it carries the department and the automation config. There
-		// is no campaign, and an Instagram contact is not a lead, the contact id
-		// rides the lead slot and the usecase layer resolves it to a name.
 		EntryType:     shared.EntryTypeInstagram,
 		From:          "instagram_conversations igc",
 		WorkspaceJoin: "JOIN instagram_accounts iga ON iga.id = igc.ig_account_id AND iga.workspace_id = ?",
@@ -133,10 +82,6 @@ var entrySources = []entrySource{
 		Department: "iga.department_id",
 	},
 	{
-		// Telegram mirrors Instagram's container shape: the bot account carries
-		// the department and the automation config, there is no campaign, and a
-		// Telegram contact is not a lead, the contact id rides the lead slot and
-		// the usecase layer resolves it to a name.
 		EntryType:     shared.EntryTypeTelegram,
 		From:          "telegram_conversations tgc",
 		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
@@ -156,11 +101,6 @@ var entrySources = []entrySource{
 		Department: "tga.department_id",
 	},
 	{
-		// The instance plays the container role: it carries the department and
-		// the automation config. There is no campaign — a broadcast on this
-		// channel writes into whichever conversation already exists rather than
-		// owning one — and the contact id rides the lead slot, which the usecase
-		// layer resolves to a name.
 		EntryType:     shared.EntryTypeUnofficialWhatsApp,
 		From:          "unofficial_whatsapp_conversations uwc",
 		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",
@@ -169,9 +109,6 @@ var entrySources = []entrySource{
 		Account: "COALESCE(uwc.instance_id::text, '')",
 
 		ConversationStatus: "uwc.conversation_status",
-		// The campaign that targeted this conversation, or NULL when none did and
-		// the instance is the container. A scalar subquery rather than a join so
-		// this row keeps its one-row-per-conversation shape in the UNION.
 		CampaignID: `(SELECT uwce.campaign_id::text
 		              FROM unofficial_whatsapp_campaign_entries uwce
 		              JOIN unofficial_whatsapp_campaigns uwcamp
@@ -188,9 +125,6 @@ var entrySources = []entrySource{
 		Department: "uwi.department_id",
 	},
 	{
-		// Support entries have neither campaign nor conversation status; the
-		// literals below keep them visible under a default status filter, which
-		// uses IS DISTINCT FROM.
 		EntryType:     shared.EntryTypeSupport,
 		From:          "support_entries se",
 		WorkspaceJoin: "JOIN support_inboxes si ON si.id = se.inbox_id AND si.workspace_id = ?",
@@ -212,33 +146,18 @@ var entrySources = []entrySource{
 	},
 }
 
-// entrySourceScope narrows which channels a query reads.
 type entrySourceScope struct {
-	// EntryType selects a single channel; empty means every channel.
-	EntryType shared.EntryType
-	// WhatsAppCampaignType, when set, restricts the read to WhatsApp-campaign
-	// channels only.
+	EntryType            shared.EntryType
 	WhatsAppCampaignType string
-	// ConversationStatus filters on status. Channels without a status column are
-	// dropped, since the filter cannot be evaluated for them.
-	ConversationStatus string
-	// ExcludeFinished hides finished conversations when ConversationStatus names
-	// no explicit status.
-	//
-	// This is the inbox list's default and NOT the board's: on the kanban a
-	// finished conversation still owns a card in whatever stage it ended in, and
-	// filtering it out here would delete those cards from the board and make the
-	// board's own status filter unable to ever select them.
-	ExcludeFinished bool
+	ConversationStatus   string
+	ExcludeFinished      bool
 
 	DepartmentIDs          []string
 	RestrictDepartments    bool
 	AssigneeOverrideUserID string
-	// AssignedUserID applies the board's "assigned to me or unassigned" scope.
-	AssignedUserID string
+	AssignedUserID         string
 }
 
-// selected returns the channels a scope reads, in registry order.
 func (s entrySourceScope) selected() []entrySource {
 	out := make([]entrySource, 0, len(entrySources))
 	for _, src := range entrySources {
@@ -256,8 +175,6 @@ func (s entrySourceScope) selected() []entrySource {
 	return out
 }
 
-// conditions builds the per-channel WHERE fragment shared by both projections:
-// soft-delete, "has messages", status, department scope and assignment scope.
 func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}) {
 	var sql strings.Builder
 	var args []interface{}
@@ -269,7 +186,6 @@ func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}
 			sql.WriteString(" AND " + src.ConversationStatus + " = ?")
 			args = append(args, scope.ConversationStatus)
 		} else if scope.ExcludeFinished {
-			// IS DISTINCT FROM keeps rows that never had a status.
 			sql.WriteString(" AND " + src.ConversationStatus + " IS DISTINCT FROM 'finished'")
 		}
 	}
@@ -279,9 +195,6 @@ func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}
 		sql.WriteString(clause)
 		args = append(args, deptArgs...)
 	} else if scope.RestrictDepartments && !src.DepartmentExempt {
-		// A department-restricted operator must not see conversations from a
-		// channel that has no department to check. Fail closed unless the channel
-		// declares itself exempt.
 		sql.WriteString(" AND 1 = 0")
 	}
 
@@ -294,7 +207,6 @@ func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}
 	return sql.String(), args
 }
 
-// inboxSelect projects the five columns the inbox list's union expects.
 func (src entrySource) inboxSelect(scope entrySourceScope, workspaceID string) (string, []interface{}) {
 	join, args := src.joinClause(scope, workspaceID)
 	where, whereArgs := src.conditions(scope)
@@ -307,7 +219,6 @@ func (src entrySource) inboxSelect(scope entrySourceScope, workspaceID string) (
 	return sql, append(args, whereArgs...)
 }
 
-// boardSelect projects the nine columns the CRM board's filter compiler reads.
 func (src entrySource) boardSelect(scope entrySourceScope, workspaceID string) (string, []interface{}) {
 	join, args := src.joinClause(scope, workspaceID)
 	where, whereArgs := src.conditions(scope)
@@ -334,8 +245,6 @@ func (src entrySource) boardSelect(scope entrySourceScope, workspaceID string) (
 	return sql, append(args, whereArgs...)
 }
 
-// buildEntryUnion joins every selected channel into one UNION ALL, using the
-// given per-channel projection.
 func buildEntryUnion(
 	scope entrySourceScope,
 	workspaceID string,

@@ -7,8 +7,7 @@ import (
 )
 
 type CreateLeadMemoryRequest struct {
-	Content string `json:"content" example:"Prefere boleto a PIX"`
-	// Category: personal | preference | deal | objection | commitment | event | other
+	Content  string `json:"content" example:"Prefere boleto a PIX"`
 	Category string `json:"category" example:"preference"`
 }
 
@@ -23,9 +22,6 @@ type LeadMemoryResponse struct {
 	Category string `json:"category"`
 	Content  string `json:"content"`
 
-	// ActorKind + ActorID say who wrote the current version: "ai" with
-	// "ai:{agentId}", "human" with a user id, or "system". ActorLabel is the
-	// resolved display name, best-effort: empty means "render the kind".
 	ActorKind  string `json:"actorKind"`
 	ActorID    string `json:"actorId"`
 	ActorLabel string `json:"actorLabel,omitempty"`
@@ -42,14 +38,9 @@ type LeadMemoryEnvelope struct {
 }
 
 type LeadMemoryListResponse struct {
-	Memories []LeadMemoryResponse `json:"memories"`
-	Total    int64                `json:"total"`
-	// LeadLinked reports whether the id in the path resolved to a CRM lead.
-	// False means this conversation has no lead behind it (an Instagram or
-	// Telegram contact, or a WhatsApp contact whose bridge has not landed
-	// yet), so the list is empty and a write would be refused. It lets the
-	// panel distinguish "no memories yet" from "memories do not apply here".
-	LeadLinked bool `json:"leadLinked"`
+	Memories   []LeadMemoryResponse `json:"memories"`
+	Total      int64                `json:"total"`
+	LeadLinked bool                 `json:"leadLinked"`
 }
 
 func toResponse(m *leadmemory.LeadMemory, actorLabel string) LeadMemoryResponse {

@@ -126,8 +126,6 @@ func fromDomain(a *ca.Analysis) *schema.AudienceAnalysis {
 	return row
 }
 
-// ---- settings ----
-
 func settingsToDomain(row *schema.AudienceSettings) (*ca.Settings, error) {
 	s := &ca.Settings{
 		WorkspaceID:  row.WorkspaceID,
@@ -176,8 +174,6 @@ func settingsFromDomain(s *ca.Settings) (*schema.AudienceSettings, error) {
 	}, nil
 }
 
-// ---- authors ----
-
 func authorToDomain(row *schema.AudienceAuthor) (*ca.AuthorStats, error) {
 	a := &ca.AuthorStats{
 		ID:               row.ID,
@@ -212,14 +208,6 @@ func authorToDomain(row *schema.AudienceAuthor) (*ca.AuthorStats, error) {
 	if a.TopTopics == nil {
 		a.TopTopics = []ca.TopicCount{}
 	}
-	// Re-derive rather than trust the columns.
-	//
-	// The standing, the flag and the reputation are pure functions of the
-	// counters, so this returns the same values the writer stored — except on a
-	// row written before one of them existed, where the column is a default and
-	// the counters are still right. Deriving on read means such a row is
-	// correct immediately instead of waiting for its next rollup. The columns
-	// remain what the query FILTERS and SORTS on; this is what it returns.
 	a.Derive()
 	return a, nil
 }
@@ -247,27 +235,23 @@ func authorFromDomain(a *ca.AuthorStats) (*schema.AudienceAuthor, error) {
 		FirstSeenAt:      a.FirstSeenAt,
 		LastSeenAt:       a.LastSeenAt,
 		Counters:         datatypes.JSON(counters),
-		// The ranking columns are denormalised out of the JSON so the flagged
-		// table sorts on an index instead of parsing jsonb per row.
-		TotalComments:   a.Total,
-		MaxSeverity:     a.SeverityMax,
-		HighSevCount:    a.SeverityHighCount,
-		StanceHostile:   a.StanceHostile,
-		StanceSupporter: a.StanceSupporter,
-		Reputation:      a.Reputation,
-		TopTopics:       datatypes.JSON(top),
-		DerivedStance:   string(a.DerivedStance),
-		IsFlagged:       a.IsFlagged,
-		ModerationState: string(a.ModerationState),
-		Role:            string(a.Role.Role),
-		RoleConfidence:  string(a.Role.Confidence),
-		RoleComments:    a.Role.BasedOnComments,
-		RoleRationale:   a.Role.Rationale,
-		UpdatedAt:       a.UpdatedAt,
+		TotalComments:    a.Total,
+		MaxSeverity:      a.SeverityMax,
+		HighSevCount:     a.SeverityHighCount,
+		StanceHostile:    a.StanceHostile,
+		StanceSupporter:  a.StanceSupporter,
+		Reputation:       a.Reputation,
+		TopTopics:        datatypes.JSON(top),
+		DerivedStance:    string(a.DerivedStance),
+		IsFlagged:        a.IsFlagged,
+		ModerationState:  string(a.ModerationState),
+		Role:             string(a.Role.Role),
+		RoleConfidence:   string(a.Role.Confidence),
+		RoleComments:     a.Role.BasedOnComments,
+		RoleRationale:    a.Role.Rationale,
+		UpdatedAt:        a.UpdatedAt,
 	}, nil
 }
-
-// ---- rollups ----
 
 func rollupToDomain(row *schema.AudienceRollup) (*ca.Rollup, error) {
 	r := &ca.Rollup{
@@ -306,8 +290,6 @@ func rollupFromDomain(r *ca.Rollup) (*schema.AudienceRollup, error) {
 	}, nil
 }
 
-// ---- batches ----
-
 func batchFromDomain(b *ca.Batch) *schema.AudienceBatch {
 	return &schema.AudienceBatch{
 		ID:               b.ID,
@@ -325,8 +307,6 @@ func batchFromDomain(b *ca.Batch) *schema.AudienceBatch {
 		CreatedAt:        b.CreatedAt,
 	}
 }
-
-// ---- backfills ----
 
 func backfillToDomain(row *schema.AudienceBackfill) *ca.Backfill {
 	return &ca.Backfill{
@@ -367,8 +347,6 @@ func backfillFromDomain(b *ca.Backfill) *schema.AudienceBackfill {
 		FinishedAt:        b.FinishedAt,
 	}
 }
-
-// ---- container overrides ----
 
 func overrideToDomain(row *schema.AudienceContainerSettings) (*ca.ContainerOverride, error) {
 	o := &ca.ContainerOverride{

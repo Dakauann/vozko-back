@@ -48,7 +48,6 @@ func (a *recordingAI) all() []conversation.AIReplyRequest {
 	return append([]conversation.AIReplyRequest(nil), a.requests...)
 }
 
-// stubAutomationSource stands in for the campaign lookup.
 type stubAutomationSource struct {
 	found *CampaignAutomation
 }
@@ -67,9 +66,6 @@ type autoHarness struct {
 	convs     *fakeConversationRepo
 }
 
-// newAutoHarness wires the channel with an instance that has BOTH automations
-// enabled. That is the whole point: every campaign expectation below has to hold
-// against a number that would happily answer on its own.
 func newAutoHarness(t *testing.T, src CampaignAutomationSource) *autoHarness {
 	t.Helper()
 
@@ -134,12 +130,6 @@ func campaignAuto(a campaign.Automation) *stubAutomationSource {
 	return &stubAutomationSource{found: &CampaignAutomation{CampaignID: "camp-1", Automation: a}}
 }
 
-// The incident, as a test.
-//
-// A campaign with no agent and no workflow, sent from an instance that has both
-// enabled, must answer with SILENCE. Before this gate existed the instance's
-// workflow attended the reply and the campaign the operator deliberately left
-// manual started replying by itself.
 func TestCampaignWithNoAutomationSilencesTheInstance(t *testing.T) {
 	h := newAutoHarness(t, campaignAuto(campaign.Automation{}))
 	h.deliverInbound(t)
@@ -165,15 +155,11 @@ func TestCampaignAgentAnswersInsteadOfTheInstanceAgent(t *testing.T) {
 	if reqs[0].AgentID != "camp-agent" {
 		t.Fatalf("replied with agent %q, want the CAMPAIGN's agent", reqs[0].AgentID)
 	}
-	// A campaign running an agent must not also run the instance's workflow.
 	if events := h.workflows.all(); len(events) != 0 {
 		t.Fatalf("fired %d workflow triggers alongside the agent, want 0", len(events))
 	}
 }
 
-// A campaign's workflow must be the ONLY workflow that attends, which the
-// evaluator enforces from the campaign_workflow_id scope key. Without the key
-// every active workspace workflow answers the same message.
 func TestCampaignWorkflowIsScopedAndSuppressesTheAgent(t *testing.T) {
 	h := newAutoHarness(t, campaignAuto(campaign.Automation{
 		AgentID: "camp-agent", EnableAgentResponses: true,
@@ -191,14 +177,11 @@ func TestCampaignWorkflowIsScopedAndSuppressesTheAgent(t *testing.T) {
 	if got := events[0].Data["campaign_id"]; got != "camp-1" {
 		t.Fatalf("campaign_id = %v, want camp-1", got)
 	}
-	// Workflow beats agent, exactly as the Cloud API campaign decides it.
 	if reqs := h.ai.all(); len(reqs) != 0 {
 		t.Fatalf("made %d AI replies while a workflow was running, want 0 — the customer gets two answers", len(reqs))
 	}
 }
 
-// An organic conversation — nobody targeted it — still belongs to the instance.
-// This is the pre-existing behaviour and it must not regress.
 func TestOrganicConversationStillUsesTheInstance(t *testing.T) {
 	h := newAutoHarness(t, &stubAutomationSource{found: nil})
 	h.deliverInbound(t)
@@ -207,8 +190,6 @@ func TestOrganicConversationStillUsesTheInstance(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("fired %d workflow triggers, want 1", len(events))
 	}
-	// The scope key the channel never used to seed. Without it a second
-	// workspace workflow answers the same message.
 	if got := events[0].Data["account_workflow_id"]; got != "inst-workflow" {
 		t.Fatalf("account_workflow_id = %v, want the instance's workflow", got)
 	}
@@ -217,8 +198,6 @@ func TestOrganicConversationStillUsesTheInstance(t *testing.T) {
 	}
 }
 
-// Campaigns not wired at all: the channel behaves exactly as it did before they
-// existed.
 func TestNoAutomationSourceFallsBackToTheInstance(t *testing.T) {
 	h := newAutoHarness(t, nil)
 	h.deliverInbound(t)

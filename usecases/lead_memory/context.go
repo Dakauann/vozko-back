@@ -9,19 +9,13 @@ import (
 	leadmemory "vozko/domain/lead_memory"
 )
 
-// ContextInput selects whose memories to render for one agent turn.
 type ContextInput struct {
 	WorkspaceID string
 	LeadID      string
 
-	// HasMemoryTool controls the "how to write" line: only an agent that
-	// actually has manage_lead_memory bound should be told to call it.
 	HasMemoryTool bool
 }
 
-// promptGroupOrder is the rendering order: what the agent must honor first
-// (combinados), then what moves the deal, then color. Within a group, newest
-// first.
 var promptGroupOrder = []leadmemory.Category{
 	leadmemory.CategoryCommitment,
 	leadmemory.CategoryDeal,
@@ -42,16 +36,8 @@ var promptGroupLabels = map[leadmemory.Category]string{
 	leadmemory.CategoryOther:      "Outros",
 }
 
-// ContextHeader opens the memory block. Exported so surfaces that need to
-// know whether a prompt carries memories (the agent simulator's debug view)
-// test against the one real header instead of a copied literal.
 const ContextHeader = "# Memórias sobre este lead"
 
-// BuildContext renders the lead's memories as a system-prompt block, or ""
-// when there is no lead, no memory, or any failure. It never returns an error:
-// a memory outage must degrade the prompt, not take down replies, the same
-// posture the RAG block takes. This is the single source of the memory block
-// for every channel; render it nowhere else.
 func BuildContext(ctx context.Context, list leadmemory.ListUseCase, in ContextInput) string {
 	if list == nil || strings.TrimSpace(in.WorkspaceID) == "" || strings.TrimSpace(in.LeadID) == "" {
 		return ""
@@ -72,11 +58,6 @@ func BuildContext(ctx context.Context, list leadmemory.ListUseCase, in ContextIn
 	return FormatMemoryContext(out.Items, out.Total, in.HasMemoryTool)
 }
 
-// FormatMemoryContext renders memories grouped by category under a hard char
-// budget. The framing line is the memory-poisoning mitigation: memories are
-// lead-derived text living inside the system prompt, so the block declares
-// itself data, not instructions. Truncation is always announced: a model that
-// silently lost memories would confidently "not know" things it was told.
 func FormatMemoryContext(items []leadmemory.MemoryView, total int64, hasMemoryTool bool) string {
 	if len(items) == 0 {
 		return ""

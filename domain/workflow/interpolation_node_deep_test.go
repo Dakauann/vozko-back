@@ -2,9 +2,6 @@ package workflow
 
 import "testing"
 
-// Deep dot-access for node-scoped references, e.g. the AI agent's tool arguments:
-// {{node.<id>.tool_args.cep}}. Previously only single-level lookups worked, which
-// is why an AI-built HTTP URL like .../{{node.n2.tool_args.cep}}/ stayed literal.
 func TestInterpolate_NodeScopeDeepAccess(t *testing.T) {
 	rs := NewRunState()
 	state := &rs
@@ -12,15 +9,14 @@ func TestInterpolate_NodeScopeDeepAccess(t *testing.T) {
 		"cep":    "59255000",
 		"nested": map[string]interface{}{"x": "y"},
 	})
-	// Each tool arg is also flattened to its own key by the executor.
 	state.Set("_node_n2_cep", "59255000")
 
 	cases := []struct{ in, want string }{
-		{"{{node.n2.cep}}", "59255000"},                                         // flattened single-level
-		{"https://x/{{node.n2.tool_args.cep}}/json", "https://x/59255000/json"}, // deep into object
-		{"{{node.n2.tool_args.nested.x}}", "y"},                                 // nested deep
-		{"{{node.n2.tool_args.missing}}", "{{node.n2.tool_args.missing}}"},      // unknown stays literal
-		{"{{node.ghost.tool_args.cep}}", "{{node.ghost.tool_args.cep}}"},        // unknown node stays literal
+		{"{{node.n2.cep}}", "59255000"},
+		{"https://x/{{node.n2.tool_args.cep}}/json", "https://x/59255000/json"},
+		{"{{node.n2.tool_args.nested.x}}", "y"},
+		{"{{node.n2.tool_args.missing}}", "{{node.n2.tool_args.missing}}"},
+		{"{{node.ghost.tool_args.cep}}", "{{node.ghost.tool_args.cep}}"},
 	}
 	for _, c := range cases {
 		if got := Interpolate(c.in, state, nil); got != c.want {

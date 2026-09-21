@@ -12,9 +12,6 @@ import (
 	igdomain "vozko/domain/instagram"
 )
 
-// newTestOAuth points the service at a stub so the three-host flow can be exercised
-// without touching Instagram. Only the transport is substituted, the request
-// shapes and decoding are the real ones.
 func newTestOAuth(t *testing.T, handler http.HandlerFunc) (igdomain.OAuthService, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -27,8 +24,6 @@ func newTestOAuth(t *testing.T, handler http.HandlerFunc) (igdomain.OAuthService
 		HTTPClient:  srv.Client(),
 	})
 
-	// Rewrite requests to the stub, preserving path and query so the assertions
-	// below still see what would have gone to Instagram.
 	base, err := url.Parse(srv.URL)
 	if err != nil {
 		t.Fatalf("parse stub url: %v", err)
@@ -55,11 +50,6 @@ func (r rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return inner.RoundTrip(req)
 }
 
-// TestExchangeCode_PermissionsAsArray is the regression test for a real production
-// failure: the code exchange returned 200 with a valid token, but decoding blew up
-// with "cannot unmarshal array into Go struct field ... of type string" because the
-// live endpoint returns `permissions` as a JSON ARRAY while the docs show a
-// comma-separated string. A decode error there discards an already-issued token.
 func TestExchangeCode_PermissionsAsArray(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -84,8 +74,6 @@ func TestExchangeCode_PermissionsAsArray(t *testing.T) {
 	if grant.AccessToken != "IGAA-short-lived" {
 		t.Errorf("token = %q", grant.AccessToken)
 	}
-	// user_id arrives as a JSON number and must survive as a string without
-	// scientific notation.
 	if grant.UserID != "17841458366137975" {
 		t.Errorf("user_id = %q, want 17841458366137975", grant.UserID)
 	}
@@ -97,8 +85,6 @@ func TestExchangeCode_PermissionsAsArray(t *testing.T) {
 	}
 }
 
-// TestExchangeCode_PermissionsAsString keeps the documented shape working, since it
-// may still be returned by other hosts or API versions.
 func TestExchangeCode_PermissionsAsString(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{
@@ -117,8 +103,6 @@ func TestExchangeCode_PermissionsAsString(t *testing.T) {
 	}
 }
 
-// TestExchangeCode_FlatResponse: the array-wrapped envelope is documented, but a
-// flat object must not silently yield a zero-valued token.
 func TestExchangeCode_FlatResponse(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"flat-tok","user_id":"999","permissions":["instagram_business_basic"]}`))
@@ -133,7 +117,6 @@ func TestExchangeCode_FlatResponse(t *testing.T) {
 	}
 }
 
-// TestExchangeCode_EmptyTokenIsAnError guards the silent-zero-token failure mode.
 func TestExchangeCode_EmptyTokenIsAnError(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{"user_id":"1"}]}`))
@@ -144,8 +127,6 @@ func TestExchangeCode_EmptyTokenIsAnError(t *testing.T) {
 	}
 }
 
-// TestExchangeCode_SendsCorrectForm asserts the request Instagram actually needs:
-// the code exchange is form-encoded and carries the same redirect_uri as authorize.
 func TestExchangeCode_SendsCorrectForm(t *testing.T) {
 	var got url.Values
 	var gotPath, gotContentType string
@@ -174,14 +155,11 @@ func TestExchangeCode_SendsCorrectForm(t *testing.T) {
 	if got.Get("code") != "the-code" {
 		t.Errorf("code = %q", got.Get("code"))
 	}
-	// Instagram requires the same redirect_uri here as on the authorize call.
 	if got.Get("redirect_uri") != "https://api.example.com"+igdomain.OAuthCallbackPath {
 		t.Errorf("redirect_uri = %q", got.Get("redirect_uri"))
 	}
 }
 
-// TestRefreshToken_OmitsClientSecret: unlike the long-lived exchange, this endpoint
-// does not take client_secret. Sending it is a request-shape error.
 func TestRefreshToken_OmitsClientSecret(t *testing.T) {
 	var query url.Values
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
@@ -202,15 +180,11 @@ func TestRefreshToken_OmitsClientSecret(t *testing.T) {
 	if query.Get("client_secret") != "" {
 		t.Error("refresh must not send client_secret")
 	}
-	// ~60 days.
 	if grant.ExpiresIn.Hours() < 24*59 {
 		t.Errorf("expires_in = %v, want ~60 days", grant.ExpiresIn)
 	}
 }
 
-// TestGetProfile_UsesUserIDNotID is the single most common Instagram Login mistake:
-// GET /me returns BOTH `user_id` (the account id used in endpoint paths) and `id`
-// (app-scoped, unusable as <IG_ID>).
 func TestGetProfile_UsesUserIDNotID(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{
@@ -239,7 +213,6 @@ func TestGetProfile_UsesUserIDNotID(t *testing.T) {
 
 func TestGetProfile_MissingUserIDIsAnError(t *testing.T) {
 	svc, _ := newTestOAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		// Only the app-scoped id: unusable, and must not be silently accepted.
 		_, _ = w.Write([]byte(`{"id":"9999999999","username":"x"}`))
 	})
 
@@ -248,7 +221,6 @@ func TestGetProfile_MissingUserIDIsAnError(t *testing.T) {
 	}
 }
 
-// TestBuildAuthorizeURL asserts the parts Instagram is strict about.
 func TestBuildAuthorizeURL(t *testing.T) {
 	svc := NewOAuthService(OAuthConfig{
 		AppID:       "app-1",
@@ -272,7 +244,6 @@ func TestBuildAuthorizeURL(t *testing.T) {
 	if q.Get("state") != "the-state" {
 		t.Errorf("state = %q", q.Get("state"))
 	}
-	// Scope must be COMMA-separated on the Instagram authorize endpoint.
 	scope := q.Get("scope")
 	if strings.Contains(scope, " ") {
 		t.Errorf("scope %q is space-separated; Instagram requires commas", scope)
@@ -282,8 +253,6 @@ func TestBuildAuthorizeURL(t *testing.T) {
 	}
 }
 
-// TestPermissionList_Shapes exercises the decoder directly, including the shapes
-// that must degrade to "not reported" rather than failing an exchange.
 func TestPermissionList_Shapes(t *testing.T) {
 	cases := []struct {
 		raw  string
@@ -291,12 +260,10 @@ func TestPermissionList_Shapes(t *testing.T) {
 	}{
 		{`["a","b"]`, []string{"a", "b"}},
 		{`"a,b"`, []string{"a", "b"}},
-		{`"a, b ,, a"`, []string{"a", "b"}}, // trimmed and de-duplicated
+		{`"a, b ,, a"`, []string{"a", "b"}},
 		{`""`, nil},
 		{`[]`, nil},
 		{`null`, nil},
-		// Unknown shapes must not fail: a decode error here would throw away a
-		// token that Instagram already issued.
 		{`123`, nil},
 		{`{"unexpected":true}`, nil},
 	}
@@ -319,16 +286,8 @@ func TestPermissionList_Shapes(t *testing.T) {
 	}
 }
 
-// TestGraphID_PreservesExactDigits is the regression test for a silent data
-// corruption: an Instagram account id exceeds float64's exact-integer range, so
-// decoding it through `any` (float64) changed 17841458366137975 into
-// 17841458366137976. The wrong id would be stored, and every inbound webhook,
-// which carries the REAL id in entry.id, would then fail to resolve an account and
-// be dropped as "unknown account", with messages never arriving and nothing logged
-// as an error.
 func TestGraphID_PreservesExactDigits(t *testing.T) {
 	cases := map[string]string{
-		// A real id, larger than 2^53.
 		`17841458366137975`:   "17841458366137975",
 		`"17841458366137975"`: "17841458366137975",
 		`123`:                 "123",
@@ -350,8 +309,6 @@ func TestGraphID_PreservesExactDigits(t *testing.T) {
 	}
 }
 
-// TestGraphID_BeatsFloat64 states the invariant explicitly, so nobody "simplifies"
-// graphID back into an `any`/float64 field.
 func TestGraphID_BeatsFloat64(t *testing.T) {
 	const raw = `17841458366137975`
 

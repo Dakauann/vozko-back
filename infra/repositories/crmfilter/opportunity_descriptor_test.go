@@ -11,9 +11,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// Golden SQL fragments produced by OpportunityDescriptor (alias "o"). Owner,
-// stage, pipeline, etc. are plain columns on the opportunities table, so set
-// membership is "= ANY(?)" via compileColumn's OpIn (no join subquery).
 const (
 	oppOwnerInSQL    = "o.owner_id = ANY(?)"
 	oppStageInSQL    = "o.stage_id = ANY(?)"
@@ -29,9 +26,6 @@ const (
 	oppCustomGteSQL  = "(o.custom_fields->>?)::numeric >= ?"
 )
 
-// TestOpportunityDescriptor_StandardFields runs standard predicates through the
-// shared Compile using the OpportunityDescriptor (which implements
-// ObjectDescriptor), proving the column mappings and money-in-cents value column.
 func TestOpportunityDescriptor_StandardFields(t *testing.T) {
 	desc := NewOpportunityDescriptor()
 
@@ -99,7 +93,6 @@ func TestOpportunityDescriptor_StandardFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Both entry points must agree for standard fields.
 			for _, entry := range []string{"Compile", "CompileOpportunity"} {
 				var gotSQL string
 				var gotArgs []interface{}
@@ -130,8 +123,6 @@ func TestOpportunityDescriptor_StandardFields(t *testing.T) {
 	}
 }
 
-// TestOpportunityDescriptor_CustomFields proves custom-field predicates compile
-// to jsonb-path fragments with the key bound as the leading positional "?".
 func TestOpportunityDescriptor_CustomFields(t *testing.T) {
 	desc := NewOpportunityDescriptor()
 
@@ -188,9 +179,6 @@ func TestOpportunityDescriptor_CustomFields(t *testing.T) {
 	}
 }
 
-// TestOpportunityDescriptor_MixedGroups proves the group AND/OR nesting of
-// CompileOpportunity matches Compile when standard and custom predicates mix:
-// value >= 100000 AND (custom origem = whatsapp OR status = won).
 func TestOpportunityDescriptor_MixedGroups(t *testing.T) {
 	desc := NewOpportunityDescriptor()
 	f := crmfilter.Filter{Groups: []crmfilter.Group{
@@ -214,9 +202,6 @@ func TestOpportunityDescriptor_MixedGroups(t *testing.T) {
 	}
 }
 
-// TestOpportunityDescriptor_UnsupportedFields verifies fields with no opportunity
-// column (label, conversation-only fields) and custom (via the field-only
-// interface) report ErrUnsupportedField.
 func TestOpportunityDescriptor_UnsupportedFields(t *testing.T) {
 	desc := NewOpportunityDescriptor()
 	for _, field := range []crmfilter.Field{
@@ -234,7 +219,6 @@ func TestOpportunityDescriptor_UnsupportedFields(t *testing.T) {
 	}
 }
 
-// TestOpportunityDescriptor_EmptyFilter mirrors Compile's empty-filter contract.
 func TestOpportunityDescriptor_EmptyFilter(t *testing.T) {
 	desc := NewOpportunityDescriptor()
 	sql, args, err := CompileOpportunity(crmfilter.Filter{}, desc, 1)

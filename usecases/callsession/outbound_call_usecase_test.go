@@ -88,9 +88,6 @@ func TestStartOutboundCallUseCaseSuccessWithTargetPhone(t *testing.T) {
 	if callSource.lastIn.PhoneNumber == "" {
 		t.Fatal("expected dial input to contain normalized phone")
 	}
-	// No entry_type is derived from a bare phone number any more: the "sip" default
-	// went out with SIP telephony, and only an explicit entry_type (or a WhatsApp
-	// phone id) names a channel.
 	if callSource.lastIn.EntryType != "" {
 		t.Fatalf("EntryType = %q, want %q", callSource.lastIn.EntryType, "")
 	}

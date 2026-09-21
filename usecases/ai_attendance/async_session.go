@@ -7,8 +7,6 @@ import (
 	"vozko/domain/crm_telemetry"
 )
 
-// AsyncSessionService is the hot-path facade: publishes only, no DB.
-// Consumer runs SessionService against Postgres.
 type AsyncSessionService struct {
 	pub crm_telemetry.Publisher
 }
@@ -62,13 +60,7 @@ func (s *AsyncSessionService) TouchInbound(workspaceID, entryID, entryType strin
 	})
 }
 
-// Ensure compatibility with SetAIAttendance(*SessionService), WhatsApp use case
-// should switch to interface. Provide adapter methods matching SessionService surface
-// used on hot path only.
-
 func (s *AsyncSessionService) EnsureOpen(in aa.StartInput) *aa.Session {
-	// No DB: fire a record-reply-less open via publish is not enough for return value.
-	// Hot path must not need the session row. Publish is done on RecordAIReply.
 	_ = in
 	return nil
 }
@@ -77,5 +69,4 @@ func (s *AsyncSessionService) EndOpen(workspaceID, entryID, entryType string, ou
 	s.EndOpenRaw(workspaceID, entryID, entryType, string(outcome), reason, handoffUserID)
 }
 
-// idle is unused but keeps imports honest if we add timestamps later.
 var _ = time.Time{}

@@ -8,9 +8,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// batchSubscriptionReader and batchAddonReader are satisfied implicitly by the
-// concrete subscription / addon repositories. Keeping them narrow here avoids
-// widening the per-workspace domain reader interfaces (and their fakes).
 type batchSubscriptionReader interface {
 	GetCurrentByWorkspaceIDs(workspaceIDs []string, at time.Time) (map[string]*workspace_plan.WorkspaceSubscription, error)
 }
@@ -27,12 +24,6 @@ type batchEntitlementResolver struct {
 	now           clockFn
 }
 
-// NewBatchEntitlementResolver builds the sweep resolver.
-//
-// `configs` is batched — one query for every workspace in the sweep rather than
-// one each — because a reconciliation over a few thousand tenants is exactly
-// where an N+1 stops being a style question. Required for the same reason as in
-// the per-workspace resolver.
 func NewBatchEntitlementResolver(
 	subscriptions batchSubscriptionReader,
 	plans workspace_plan.PlanReader,
@@ -62,10 +53,6 @@ func (r *batchEntitlementResolver) ResolveMany(workspaceIDs []string, kind works
 	if err != nil {
 		return nil, err
 	}
-	// The one kind whose base is per-workspace configuration. Read in a single
-	// query up front, and — like the per-workspace resolver — it does not require
-	// an active subscription: a granted allowance is revoked by an administrator,
-	// not by a lapsed plan.
 	var included map[string]int
 	if kind == workspace_addon.EntitlementUnofficialWhatsAppInstances && r.configs != nil {
 		included, err = r.configs.GetIncludedUnofficialInstancesByWorkspaceIDs(context.Background(), workspaceIDs)
@@ -77,9 +64,6 @@ func (r *batchEntitlementResolver) ResolveMany(workspaceIDs []string, kind works
 	planCache := map[string]*workspace_plan.PlanDefinition{}
 	for _, ws := range workspaceIDs {
 		base := included[ws]
-		// Plan base counts only while the subscription is active; no plan (or an
-		// inactive one) means base 0, mirroring the per-workspace resolver and the
-		// GetWorkspaceEntitlements semantics.
 		if sub, ok := subs[ws]; ok && sub != nil && sub.Status == workspace_plan.SubscriptionStatusActive {
 			plan, cached := planCache[sub.PlanDefinitionID]
 			if !cached {

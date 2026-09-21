@@ -10,8 +10,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// reservationTestCall is a minimal conversation.CRMCall used only to give a
-// session an attached call so we can exercise the reserved-vs-attached boundary.
 type reservationTestCall struct {
 	id   string
 	done chan struct{}
@@ -104,7 +102,7 @@ func TestRelease_TokenScoped(t *testing.T) {
 	s := newReservationTestSession()
 	s.Reserve("offer-1")
 
-	s.Release("offer-2") // foreign token: must be a no-op
+	s.Release("offer-2")
 	if !s.HasActiveCall() {
 		t.Fatal("releasing a foreign token must not clear the reservation")
 	}
@@ -118,16 +116,15 @@ func TestRelease_TokenScoped(t *testing.T) {
 func TestRelease_IdempotentAndEmptyTokenSafe(t *testing.T) {
 	s := newReservationTestSession()
 	s.Reserve("offer-1")
-	s.Release("") // no-op, must not clear
+	s.Release("")
 	if !s.HasActiveCall() {
 		t.Fatal("Release(\"\") must not clear a live reservation")
 	}
 	s.Release("offer-1")
-	s.Release("offer-1") // double release must be safe
+	s.Release("offer-1")
 	if s.HasActiveCall() {
 		t.Fatal("session should be free after release")
 	}
-	// Re-reserve must work after release.
 	if !s.Reserve("offer-2") {
 		t.Fatal("Reserve after Release should succeed")
 	}
@@ -149,16 +146,12 @@ func TestAttach_ConsumesReservation(t *testing.T) {
 	}
 	attachTestCall(t, s, "call-1")
 
-	// Accept consumed the reservation: after the call detaches, the session must be
-	// fully free. If Attach had NOT cleared `reserved`, HasActiveCall would still be
-	// true here and a stale reservation would leak.
 	if _, ok := s.Detach(); !ok {
 		t.Fatal("Detach should report the attached call")
 	}
 	if s.HasActiveCall() {
 		t.Fatal("session must be free after detach; Attach must have consumed the reservation")
 	}
-	// A stale Release for the consumed token must not resurrect/confuse state.
 	s.Release("offer-1")
 	if s.HasActiveCall() {
 		t.Fatal("session must remain free")
@@ -183,17 +176,14 @@ func TestReserve_TTLBackstopLazilyExpires(t *testing.T) {
 	if !s.Reserve("offer-1") {
 		t.Fatal("Reserve should succeed")
 	}
-	// Still within TTL: occupied.
 	cur = base.Add(callSessionReservationTTL - time.Millisecond)
 	if !s.HasActiveCall() {
 		t.Fatal("reservation within TTL must still be occupied")
 	}
-	// Past TTL: the backstop lazily frees it even though Release was never called.
 	cur = base.Add(callSessionReservationTTL)
 	if s.HasActiveCall() {
 		t.Fatal("reservation past TTL must be treated as expired (leak backstop)")
 	}
-	// And the slot is reusable by a fresh offer.
 	if !s.Reserve("offer-2") {
 		t.Fatal("a fresh offer must be able to reserve after TTL expiry")
 	}
@@ -204,24 +194,18 @@ func TestShutdown_ReleasesRingReservation(t *testing.T) {
 	if !s.Reserve("offer-1") {
 		t.Fatal("Reserve should succeed")
 	}
-	// No call attached: an agent disconnecting mid-ring. Shutdown must still free
-	// the reservation (otherwise it leaks until the TTL backstop).
 	s.Shutdown(context.Background())
 	if s.HasActiveCall() {
 		t.Fatal("Shutdown must release an outstanding ring reservation")
 	}
 }
 
-// Regression: a natural call end (far side hung up -> dispatchEnded) must broadcast
-// a presence change, otherwise OTHER members keep seeing this agent as busy in the
-// roster/transfer picker even though they ended their call.
 func TestDispatchEnded_ClearsCurrentAndBroadcastsPresence(t *testing.T) {
 	s := newReservationTestSession()
 	var presenceCalls int32
 	s.SetPresenceCallback(func() { atomic.AddInt32(&presenceCalls, 1) })
 
 	lc := attachTestCall(t, s, "call-1")
-	// Attach broadcast once; isolate the call-end broadcast.
 	atomic.StoreInt32(&presenceCalls, 0)
 
 	s.dispatchEnded(lc, "ended", 0)
@@ -233,7 +217,6 @@ func TestDispatchEnded_ClearsCurrentAndBroadcastsPresence(t *testing.T) {
 		t.Fatalf("a natural call end must broadcast presence exactly once, got %d", got)
 	}
 
-	// A stale/foreign leg's dispatchEnded (not the current call) must NOT broadcast.
 	other := &liveCall{call: newReservationTestCall("call-2"), lifecycleDone: make(chan struct{})}
 	atomic.StoreInt32(&presenceCalls, 0)
 	s.dispatchEnded(other, "ended", 0)

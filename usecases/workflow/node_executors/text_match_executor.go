@@ -33,9 +33,6 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 			"cases":      []interface{}{},
 			"match_mode": "exact",
 		},
-		// Base handle ships in the catalog (the optional "default" fallback). The
-		// per-case routes are config-dependent, DynamicHandles tells the frontend
-		// to resolve the full set via the backend (TextMatchOutputs).
 		Outputs: []workflow.HandleDefinition{
 			{ID: "default", Label: "Padrão", Optional: true},
 		},
@@ -132,9 +129,6 @@ func TextMatchOutputs(config map[string]interface{}) []workflow.HandleDefinition
 		})
 	}
 
-	// "default" is the optional fallback (unmatched input): a flow may legitimately
-	// handle only specific cases and let the rest end. Declared cases above, by
-	// contrast, are required, a case that routes nowhere is a dead-end.
 	outputs = append(outputs, workflow.HandleDefinition{
 		ID:       "default",
 		Label:    "Padrão",

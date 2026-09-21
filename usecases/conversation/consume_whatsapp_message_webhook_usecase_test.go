@@ -732,14 +732,11 @@ func TestConsumeWhatsAppMessage_InProgressDuplicateFallsBackToImmediateRequeueWh
 	}
 }
 
-// --- Per-sender in-flight lock (safe concurrency / prefetch>1) ---
-
 func TestConsumeWhatsAppMessage_SameSenderInFlightDelaysRetry(t *testing.T) {
 	sub := &mockWhatsAppQueueSub{}
 	pub := &mockWhatsAppQueuePub{}
 	handler := &mockWhatsAppHandler{}
 	state := newMockWhatsAppSharedState()
-	// Simulate another message from this sender already being processed.
 	state.store["inflight:wa:5511999999999"] = true
 
 	uc := NewConsumeWhatsAppMessageWebhookUseCaseWithPublisher(sub, pub, handler, state)
@@ -772,7 +769,7 @@ func TestConsumeWhatsAppMessage_SameSenderInFlightImmediateRequeueWithoutPublish
 	state := newMockWhatsAppSharedState()
 	state.store["inflight:wa:5511999999999"] = true
 
-	uc := NewConsumeWhatsAppMessageWebhookUseCase(sub, handler, state) // no publisher
+	uc := NewConsumeWhatsAppMessageWebhookUseCase(sub, handler, state)
 	_ = uc.Start()
 
 	ack := &mockMessageAck{}
@@ -791,7 +788,7 @@ func TestConsumeWhatsAppMessage_DifferentSenderNotBlocked(t *testing.T) {
 	sub := &mockWhatsAppQueueSub{}
 	handler := &mockWhatsAppHandler{}
 	state := newMockWhatsAppSharedState()
-	state.store["inflight:wa:5511000000000"] = true // a DIFFERENT sender is busy
+	state.store["inflight:wa:5511000000000"] = true
 
 	uc := NewConsumeWhatsAppMessageWebhookUseCase(sub, handler, state)
 	_ = uc.Start()
@@ -812,8 +809,6 @@ func TestConsumeWhatsAppMessage_StatusEventNotBlockedByUnrelatedSenderLock(t *te
 	sub := &mockWhatsAppQueueSub{}
 	handler := &mockWhatsAppHandler{}
 	state := newMockWhatsAppSharedState()
-	// A sender's in-flight lock must not block an unrelated status event: status
-	// events serialize on their own per-event key (wamid+status), not the sender.
 	state.store["inflight:wa:5511999999999"] = true
 
 	uc := NewConsumeWhatsAppMessageWebhookUseCase(sub, handler, state)
@@ -831,17 +826,11 @@ func TestConsumeWhatsAppMessage_StatusEventNotBlockedByUnrelatedSenderLock(t *te
 	}
 }
 
-// Critical safety property: failed-status webhooks are NOT deduped (they trigger
-// refunds), so under prefetch>1 a duplicate failed webhook for the same message
-// must be serialized by the in-flight lock, otherwise the refund guard could run
-// concurrently and double-refund (money leak).
 func TestConsumeWhatsAppMessage_DuplicateFailedStatusSerializedByInFlightLock(t *testing.T) {
 	sub := &mockWhatsAppQueueSub{}
 	pub := &mockWhatsAppQueuePub{}
 	handler := &mockWhatsAppHandler{}
 	state := newMockWhatsAppSharedState()
-	// Simulate the same failed-status event already being processed. The lock key
-	// is per status event: "inflight:wa:" + extractWhatsAppMessageID.
 	state.store["inflight:wa:status:wamid.failed-dup:failed"] = true
 
 	uc := NewConsumeWhatsAppMessageWebhookUseCaseWithPublisher(sub, pub, handler, state)
@@ -881,7 +870,6 @@ func TestConsumeWhatsAppMessage_SenderLockReleasedAfterProcessing(t *testing.T) 
 		t.Fatal("sender lock must be released after the message finishes processing")
 	}
 
-	// A second, different message from the same sender must now proceed.
 	ack2 := &mockMessageAck{}
 	sub.handler(makeTextMessagePayload("wamid.rel-second", "5511999999999", "two"), ack2)
 	time.Sleep(100 * time.Millisecond)

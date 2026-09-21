@@ -14,9 +14,6 @@ import (
 	"vozko/domain/export"
 )
 
-// capturedSQL records every statement the repository issues. The predicates
-// under test are tenancy and scoping, and a result-only assertion would pass
-// just as happily with them dropped.
 type capturedSQL struct{ statements []string }
 
 func (c *capturedSQL) matcher() sqlmock.QueryMatcher {
@@ -61,8 +58,6 @@ func campaignEntryRows() *sqlmock.Rows {
 		"created_at", "updated_at", "number", "entry_name",
 		"contact_name", "verified_name", "profile_name",
 	}).
-		// A target that failed before it ever had a chat: no conversation id,
-		// no contact, only the name the operator imported.
 		AddRow("", "FAILED", 1001, "message not sent", at, at, "5511900000001", "Ana Importada", "", "", "").
 		AddRow("conv-2", "SENT", 0, "", at, at, "5511900000002", "Bruno", "Bruno Silva", "", "")
 }
@@ -84,10 +79,6 @@ func collect(t *testing.T, db *gorm.DB, scope export.Scope) []export.ChannelEntr
 	return got
 }
 
-// The card: the campaign detail shows why a send failed; the export did not.
-// It could not: it walked the CONVERSATIONS the campaign produced, and a
-// target only gets one once its send succeeds, so the failures were not in the
-// file at all.
 func TestCampaignExportWalksTargetsAndCarriesTheFailure(t *testing.T) {
 	db, mock, captured, sqlDB := newExportDB(t)
 	defer sqlDB.Close()
@@ -112,18 +103,13 @@ func TestCampaignExportWalksTargetsAndCarriesTheFailure(t *testing.T) {
 	if failed.Number != "+5511900000001" {
 		t.Errorf("number is %q", failed.Number)
 	}
-	// No chat, so nothing to key an analysis or a stage on. An empty id must
-	// reach the usecase as empty rather than as some placeholder.
 	if failed.EntryID != "" {
 		t.Errorf("entry id is %q, want empty for a target with no conversation", failed.EntryID)
 	}
-	// The imported name is the only one a never-contacted target has.
 	if failed.Name != "Ana Importada" {
 		t.Errorf("name is %q", failed.Name)
 	}
 
-	// The contact's own name wins once there is one, so the file and the inbox
-	// agree on who someone is.
 	if got[1].Name != "Bruno Silva" {
 		t.Errorf("sent row name is %q, want the contact name", got[1].Name)
 	}
@@ -132,9 +118,6 @@ func TestCampaignExportWalksTargetsAndCarriesTheFailure(t *testing.T) {
 	}
 }
 
-// The status filter is a SEND status. It used to narrow the entries and then
-// emit the conversation status, so the usecase's own re-check threw every row
-// away and asking for the failed ones returned an empty file.
 func TestCampaignExportScopesTenancyStatusAndDepartment(t *testing.T) {
 	db, mock, captured, sqlDB := newExportDB(t)
 	defer sqlDB.Close()
@@ -150,8 +133,6 @@ func TestCampaignExportScopesTenancyStatusAndDepartment(t *testing.T) {
 		"uwce.workspace_id",
 		"uwce.campaign_id",
 		"uwce.status IN",
-		// The CAMPAIGN's department, the same column the campaign list scopes
-		// by: an export must not reach what the list hides.
 		"uwcp.department_id IN",
 	} {
 		if !strings.Contains(sql, want) {
@@ -160,8 +141,6 @@ func TestCampaignExportScopesTenancyStatusAndDepartment(t *testing.T) {
 	}
 }
 
-// Without the campaign container type the channel's container is a NUMBER, and
-// a row is a conversation again.
 func TestNumberExportStillWalksConversations(t *testing.T) {
 	db, mock, captured, sqlDB := newExportDB(t)
 	defer sqlDB.Close()
@@ -180,7 +159,6 @@ func TestNumberExportStillWalksConversations(t *testing.T) {
 	if len(got) != 1 || got[0].Status != "open" {
 		t.Fatalf("emitted %#v", got)
 	}
-	// Nothing was sent here, so there is nothing that could have failed.
 	if got[0].FailureCode != 0 || got[0].FailureReason != "" {
 		t.Errorf("conversation row carries a failure: %d/%q", got[0].FailureCode, got[0].FailureReason)
 	}

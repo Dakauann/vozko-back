@@ -8,9 +8,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// explodingService stands in for the production registry: any execution
-// reaching it means the sandbox leaked a side effect. recordingService below
-// is the opposite check, for the tools that are SUPPOSED to reach it.
 type explodingService struct {
 	defs []tools.Definition
 }
@@ -51,15 +48,11 @@ func TestSimulatedServiceStubsEverythingThatCouldChangeSomething(t *testing.T) {
 		t.Fatalf("sandboxed executeWithConfig = (%+v, %v)", res, err)
 	}
 
-	// The canned result must declare itself simulated AND tell the model to
-	// proceed: a result that reads like a failure would derail the turn.
 	text, _ := res.Result.(string)
 	if !strings.Contains(text, "SIMULAÇÃO") || !strings.Contains(text, "send_whatsapp_media") {
 		t.Fatalf("canned result = %q", text)
 	}
 
-	// An MCP tool is unknown to the native registry, so it cannot be
-	// classified and must be stubbed rather than called.
 	if _, err := sandbox.ExecuteWithConfig(context.Background(), "remote_x__create_issue", nil, nil); err != nil {
 		t.Fatalf("mcp tool = %v", err)
 	}
@@ -94,8 +87,6 @@ func TestSimulatedServiceRunsRetrievalForReal(t *testing.T) {
 	}
 }
 
-// http_request is the one tool whose safety depends on its configuration, so
-// only the unambiguously safe verbs may reach the network for real.
 func TestSimulationRunsForRealHTTPMethods(t *testing.T) {
 	for method, want := range map[string]bool{
 		"GET": true, "get": true, " HEAD ": true,
@@ -105,7 +96,6 @@ func TestSimulationRunsForRealHTTPMethods(t *testing.T) {
 			t.Errorf("method %q: runs for real = %v, want %v", method, got, want)
 		}
 	}
-	// A missing config cannot be proven safe.
 	if SimulationRunsForReal(httpRequestToolName, nil) {
 		t.Error("http_request with no config must not run for real")
 	}

@@ -17,14 +17,6 @@ func NewEntryResolverRepository(db *gorm.DB) workflow.EntryResolver {
 	return &entryResolverRepository{db: db}
 }
 
-// ResolveByPhone maps an inbound phone number to the most recently active
-// WhatsApp campaign entry in the workspace. The phone lives on the lead
-// (whatsapp_campaign_entries.lead_id -> leads.number), so it normalizes the raw
-// number with the shared lead helpers (BR country code plus the 9th-digit
-// alternate) and matches either form. The campaign join keeps the lookup scoped
-// to workspaceID, so it can never surface an entry from another workspace.
-// "most recent activity" wins ties via last_message_at. Returns ("", "", nil)
-// when the phone matches no entry.
 func (r *entryResolverRepository) ResolveByPhone(workspaceID, phone string) (string, string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	canonical := lead.NormalizeRawNumber(phone)

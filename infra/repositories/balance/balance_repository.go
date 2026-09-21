@@ -63,9 +63,6 @@ func (r *BalanceRepositoryImpl) Create(b *balance.Balance) error {
 	return nil
 }
 
-// ListWorkspacesBelowBalance returns funded wallets at or below thresholdMicros in
-// a single indexed scan (one balance row per workspace). amount > 0 excludes
-// never-funded and fully-drained wallets so only paying customers are warned.
 func (r *BalanceRepositoryImpl) ListWorkspacesBelowBalance(thresholdMicros int64) ([]balance.LowBalanceRow, error) {
 	var rows []balance.LowBalanceRow
 	err := r.db.Model(&schema.Balance{}).
@@ -333,21 +330,6 @@ func (r *BalanceRepositoryImpl) ExistsTransactionByReferenceID(referenceID strin
 	return exists, err
 }
 
-// AggregateWhatsAppTemplateCharges returns net billed template sends from the
-// balance ledger (debits − refunds). Date filter is transaction created_at so
-// campaign reset does not erase the count.
-//
-// Performance notes (see indexes.go idx_bt_ws_svc_created_charges):
-//   - Predicates are ordered workspace_id → service_type → created_at range so
-//     the composite partial index can drive an index-only range scan.
-//   - Avoid COALESCE on is_refund (column is NOT NULL) so the planner can match
-//     simple boolean predicates.
-//   - Category is derived from description only after the index filters rows for
-//     one workspace + service + period (small set). A dedicated category column
-//     would be better long-term; description parse is acceptable post-filter.
-//   - Campaign type/department use EXISTS against whatsapp_campaigns PK / dept
-//     index, not a join expression on substring(reference_id), so the campaign
-//     side stays indexable.
 func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.WhatsAppChargeFilter) (*balance.WhatsAppChargeStats, error) {
 	stats := &balance.WhatsAppChargeStats{}
 	ws := strings.TrimSpace(filter.WorkspaceID)
@@ -355,9 +337,6 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		return stats, nil
 	}
 
-	// Debit descriptions: "Template WhatsApp utility (ref: …)"
-	// Refund credits: "Reembolso: template WhatsApp utility …" + reference refund:<id>
-	// position() is sargable-free but runs only on the index-filtered subset.
 	sql := `
 		SELECT
 			CASE
@@ -391,9 +370,6 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		args = append(args, *filter.To)
 	}
 
-	// Scope to campaigns matching type/department without materializing a CTE.
-	// Two EXISTS branches cover debit reference_id = campaign.id and refund
-	// reference_id = 'refund:' || campaign.id (both equality matches).
 	needCampaign := strings.TrimSpace(filter.CampaignType) != "" || len(filter.DepartmentIDs) > 0
 	if needCampaign {
 		campConds := []string{`c.workspace_id = ?`, `c.deleted_at IS NULL`}
@@ -454,7 +430,6 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		    )
 		  )
 		`
-		// One copy of campArgs per EXISTS branch, in order.
 		for i := 0; i < 6; i++ {
 			args = append(args, campArgs...)
 		}
@@ -467,23 +442,6 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		Net      int64
 	}
 	var rows []row
-	// Hard ceiling, because this query took the platform down on 2026-09-08.
-	//
-	// It is six OR'd EXISTS branches over balance_transactions (3.4M rows, 3GB)
-	// and whatsapp_campaign_entries (3.4M rows, 5.8GB). Alone it plans well and
-	// runs in 2-4s. Concurrently it does not: shared_buffers is 2GB against
-	// ~9GB of table, so copies past the first fall to disk and slow each other
-	// down. Nine of them accumulated, each pinning a core at 100%, load hit
-	// 14, and every request that needed the database queued behind them —
-	// including /auth/login, which stopped answering entirely.
-	//
-	// The server has statement_timeout = 0, so nothing stopped them; the
-	// oldest had been running eleven minutes when it was cancelled by hand.
-	// A report that cannot finish in half a minute is a failed report, and a
-	// failed report is survivable. A query with no ceiling is not.
-	//
-	// LOCAL to this transaction: the pooled connection is handed back with the
-	// server default, so nothing else inherits a timeout it did not ask for.
 	if err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SET LOCAL statement_timeout = '30s'").Error; err != nil {
 			return err
@@ -510,7 +468,6 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 			stats.Authentication = n
 			total += n
 		default:
-			// Keep unknown in total so Envios still reflects all charged sends.
 			total += n
 		}
 	}

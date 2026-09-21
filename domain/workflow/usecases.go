@@ -122,48 +122,20 @@ type TriggerEvent struct {
 	Data        map[string]interface{}
 }
 
-// Trigger-data keys the interactive prompt node branches on.
-//
-// They are named constants rather than string literals at each call site
-// because they are a contract between three channel handlers and
-// AdvanceOnReply. A typo in any one channel does not fail loudly, it silently
-// routes every button press down the no_match branch, which reads as "the
-// customer typed something unexpected" and is very hard to trace back.
 const (
 	DataKeySelectedOptionID    = "selected_option_id"
 	DataKeySelectedOptionTitle = "selected_option_title"
 	DataKeySelectedOptionKind  = "selected_option_type"
 
-	// DataKeyContactNumber is the contact's address on the channel the message
-	// arrived through: the phone number on WhatsApp, the chat id on Telegram,
-	// the scoped user id (IGSID) on Instagram. It is the id the channel itself
-	// replies to — the same value each adapter carries as ContactRef — so a
-	// workflow can use {{contact_number}} in lookups and sends without knowing
-	// which channel it is running on.
 	DataKeyContactNumber = "contact_number"
 )
 
-// OptionSelection is the option a contact tapped, when the inbound event was a
-// tap on an interactive prompt rather than typed text.
-//
-// Every channel reports one differently, WhatsApp nests it under
-// interactive.button_reply/list_reply, Telegram sends a callback_query,
-// Instagram sets message.quick_reply.payload, and all three normalize to this.
 type OptionSelection struct {
-	// ID is the payload the option was sent with. It is what the workflow
-	// branches on, and it must survive the round trip byte-for-byte.
-	ID string
-	// Title is the label the contact saw. Display only: an author may reword it
-	// between the send and the reply.
+	ID    string
 	Title string
-	// Kind names the provider mechanism, for observability only.
-	Kind string
+	Kind  string
 }
 
-// ApplySelection writes the tapped-option keys into a trigger's data map.
-//
-// A nil selection writes nothing, so a channel can call this unconditionally
-// for both typed replies and taps.
 func ApplySelection(data map[string]interface{}, sel *OptionSelection) {
 	if data == nil || sel == nil || sel.ID == "" {
 		return
@@ -177,14 +149,6 @@ func ApplySelection(data map[string]interface{}, sel *OptionSelection) {
 	}
 }
 
-// ApplyContactNumber writes the contact's channel address into a trigger's data
-// map. Same shape as ApplySelection, and for the same reason: the key is a
-// contract between four channel handlers and every {{contact_number}} an author
-// types, and a channel writing its own spelling would not fail loudly — the
-// variable would just interpolate to nothing on that one channel.
-//
-// An empty address writes nothing rather than an empty value, so a template
-// falls back the same way it does on channels that never learned the id.
 func ApplyContactNumber(data map[string]interface{}, number string) {
 	number = strings.TrimSpace(number)
 	if data == nil || number == "" {

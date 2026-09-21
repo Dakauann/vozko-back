@@ -1,10 +1,3 @@
-// Package unofficial_whatsapp_repository persists the unofficial WhatsApp
-// channel.
-//
-// It maps between domain entities and GORM records and holds no rules: whether
-// a status transition is legal, whether an instance may send, and how a phone
-// number is normalized all live in domain/unofficial_whatsapp, so a second
-// caller cannot get a different answer than this one.
 package unofficial_whatsapp_repository
 
 import (
@@ -17,8 +10,6 @@ import (
 	"vozko/infra/crypto/piigorm"
 	"vozko/infra/database/schema"
 )
-
-// ---------------------------------------------------------------- server
 
 func toServerSchema(s *uw.Server) *schema.UnofficialWhatsAppServer {
 	record := &schema.UnofficialWhatsAppServer{
@@ -61,8 +52,6 @@ func toServerDomain(record *schema.UnofficialWhatsAppServer) *uw.Server {
 		UpdatedAt:     record.UpdatedAt,
 	}
 }
-
-// ---------------------------------------------------------------- instance
 
 func toInstanceSchema(i *uw.Instance) *schema.UnofficialWhatsAppInstance {
 	record := &schema.UnofficialWhatsAppInstance{
@@ -118,8 +107,6 @@ func toInstanceSchema(i *uw.Instance) *schema.UnofficialWhatsAppInstance {
 		EnableAutoMemory:     i.EnableAutoMemory,
 		HandleGroups:         i.HandleGroups,
 	}
-	// Credentials are written only when supplied, so a config-only update
-	// cannot blank a live token and silently take the number offline.
 	if i.InstanceToken != "" {
 		record.InstanceToken = piigorm.NewEncrypted(i.InstanceToken)
 	}
@@ -195,8 +182,6 @@ func toInstanceDomain(record *schema.UnofficialWhatsAppInstance) *uw.Instance {
 	}
 }
 
-// ---------------------------------------------------------------- contact
-
 func toContactDomain(record *schema.UnofficialWhatsAppContact) *uw.Contact {
 	if record == nil {
 		return nil
@@ -224,8 +209,6 @@ func toContactDomain(record *schema.UnofficialWhatsAppContact) *uw.Contact {
 	}
 }
 
-// ---------------------------------------------------------------- conversation
-
 func toConversationDomain(record *schema.UnofficialWhatsAppConversation) *uw.Conversation {
 	if record == nil {
 		return nil
@@ -249,8 +232,6 @@ func toConversationDomain(record *schema.UnofficialWhatsAppConversation) *uw.Con
 		UpdatedAt:             record.UpdatedAt,
 	}
 }
-
-// ---------------------------------------------------------------- group
 
 func toGroupDomain(
 	record *schema.UnofficialWhatsAppGroup,
@@ -303,8 +284,6 @@ func toGroupParticipantDomain(record *schema.UnofficialWhatsAppGroupParticipant)
 	}
 }
 
-// ---------------------------------------------------------------- helpers
-
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -312,8 +291,6 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// isUniqueViolation recognises a Postgres unique-index conflict without
-// depending on the driver's concrete error type.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false

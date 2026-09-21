@@ -11,12 +11,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// The most consequential code in this package is decodeError: the host's own
-// failures and WhatsApp's forwarded refusals arrive through the same HTTP
-// status, and only the body tells them apart. Getting it wrong means retrying
-// into a WhatsApp limit, which is how a temporary warning becomes a permanent
-// ban.
-
 func TestDecodeErrorClassifiesAWhatsAppRestriction(t *testing.T) {
 	body := `{
 		"error": "cannot start new conversation",
@@ -44,8 +38,6 @@ func TestDecodeErrorClassifiesAWhatsAppRestriction(t *testing.T) {
 	if !provErr.IsRestriction() {
 		t.Error("a provider_code 463 must be recognised as a WhatsApp restriction")
 	}
-	// The decisive assertion: a restriction must never be retried. Retrying is
-	// exactly the behaviour that escalates a limit into a ban.
 	if provErr.Retryable() {
 		t.Error("a WhatsApp restriction must not be retryable")
 	}
@@ -64,8 +56,6 @@ func TestDecodeErrorClassifiesAWhatsAppRestriction(t *testing.T) {
 	}
 }
 
-// A quota that is merely counted, not exhausted, is not a refusal. Treating it
-// as one would pause a broadcast that is still allowed to run.
 func TestDecodeErrorQuotaNotYetExhausted(t *testing.T) {
 	body := `{
 		"error": "capped",
@@ -93,8 +83,6 @@ func TestDecodeErrorQuotaNotYetExhausted(t *testing.T) {
 	}
 }
 
-// A plain host failure must NOT masquerade as a WhatsApp restriction, or the
-// circuit breaker pauses broadcasts for the wrong reason.
 func TestDecodeErrorPlainHostFailure(t *testing.T) {
 	provErr, ok := uw.AsProviderError(decodeError(http.StatusInternalServerError, []byte(`{"error":"No session"}`)))
 	if !ok {
@@ -141,9 +129,6 @@ func TestDecodeErrorClassification(t *testing.T) {
 	}
 }
 
-// A body that does not parse must still yield a classifiable error. Returning a
-// bare "unexpected response" would make a 401 indistinguishable from a 503 and
-// break both the reconnect and the capacity paths.
 func TestDecodeErrorSurvivesAnUnparseableBody(t *testing.T) {
 	provErr, ok := uw.AsProviderError(decodeError(http.StatusUnauthorized, []byte("<html>gateway timeout</html>")))
 	if !ok {
@@ -156,8 +141,6 @@ func TestDecodeErrorSurvivesAnUnparseableBody(t *testing.T) {
 		t.Error("some diagnostic text must survive")
 	}
 }
-
-// ---------------------------------------------------------------- transport
 
 func TestCreateInstanceSendsAdminTokenAndTracingMetadata(t *testing.T) {
 	var gotAdminToken, gotPath string
@@ -187,8 +170,6 @@ func TestCreateInstanceSendsAdminTokenAndTracingMetadata(t *testing.T) {
 	if gotPath != "/instance/create" {
 		t.Errorf("path = %q", gotPath)
 	}
-	// The admin metadata is what makes an instance stranded on a host traceable
-	// back to a tenant after a crash between the remote create and our write.
 	if gotBody["adminField01"] != "ws-1" || gotBody["adminField02"] != "inst-1" {
 		t.Errorf("tracing metadata not sent: %v", gotBody)
 	}
@@ -197,8 +178,6 @@ func TestCreateInstanceSendsAdminTokenAndTracingMetadata(t *testing.T) {
 	}
 }
 
-// An instance created without an addressable id or token is unusable and can
-// never be cleaned up by id. Failing loudly beats persisting a ghost.
 func TestCreateInstanceRejectsAnUnaddressableResult(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"instance": map[string]any{"id": "r18"}})
@@ -213,9 +192,6 @@ func TestCreateInstanceRejectsAnUnaddressableResult(t *testing.T) {
 	}
 }
 
-// Connect switches mode by the PRESENCE of a phone number on the wire, which is
-// why the domain carries an explicit mode: an empty phone in pairing mode would
-// silently fall back to a QR the customer is not looking at.
 func TestConnectModeSelection(t *testing.T) {
 	t.Run("qr omits the phone", func(t *testing.T) {
 		var body map[string]any
@@ -282,9 +258,6 @@ func TestConnectModeSelection(t *testing.T) {
 	})
 }
 
-// /instance/connect answers with the flags at the top level and /instance/status
-// nests them under "status". Both must normalise to the same Session, or a
-// connected number reads as disconnected on one of the two paths.
 func TestStatusNormalisesTheNestedResponseShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -314,8 +287,6 @@ func TestStatusNormalisesTheNestedResponseShape(t *testing.T) {
 	if session.JID != "5511999999999@s.whatsapp.net" {
 		t.Errorf("jid = %q", session.JID)
 	}
-	// The vendor spells this field "plataform"; a silent typo here loses the
-	// platform on every instance.
 	if session.Platform != "Android" {
 		t.Errorf("platform = %q", session.Platform)
 	}
@@ -324,8 +295,6 @@ func TestStatusNormalisesTheNestedResponseShape(t *testing.T) {
 	}
 }
 
-// The jid field is null when logged out, a string when connected, and sometimes
-// an object. A decoder that assumed one shape would fail the whole poll.
 func TestJIDDecodingToleratesEveryShape(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -347,9 +316,6 @@ func TestJIDDecodingToleratesEveryShape(t *testing.T) {
 	}
 }
 
-// Our registration must never carry an exclusion filter. Excluding API-sent
-// messages — which the vendor's docs recommend — would silently cost the
-// delivery-status track and every message an operator types on their own phone.
 func TestSetWebhookRegistersWithoutExclusions(t *testing.T) {
 	var body map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -375,8 +341,6 @@ func TestSetWebhookRegistersWithoutExclusions(t *testing.T) {
 	if len(excludes) != 0 {
 		t.Errorf("no exclusion filter may be registered, got %v", excludes)
 	}
-	// The event kind is read from the body, which has to be parsed anyway. A
-	// second source of truth in the URL is one that can drift.
 	if body["addUrlEvents"] != false || body["addUrlTypesMessages"] != false {
 		t.Error("URL-decorated events must stay off")
 	}
@@ -385,8 +349,6 @@ func TestSetWebhookRegistersWithoutExclusions(t *testing.T) {
 func TestMessagingLimitsTreatsAnActiveTimelockAsBlocking(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			// Deliberately absent top-level flag: an active timelock must block
-			// on its own, because a missing answer must never read as permission.
 			"reachout_timelock": map[string]any{
 				"available": true, "active": true, "until": "2026-08-07T12:00:00Z",
 			},
@@ -409,8 +371,6 @@ func TestMessagingLimitsTreatsAnActiveTimelockAsBlocking(t *testing.T) {
 
 func TestParseTimeRejectsGarbage(t *testing.T) {
 	if parseTime("") != nil || parseTime("not a date") != nil {
-		// A zero time downstream renders as "January 1st, year 1" in the UI,
-		// which is worse than an absent value.
 		t.Error("an unparseable timestamp must yield nil, never the zero time")
 	}
 	if got := parseTime("2026-08-07T12:00:00Z"); got == nil || got.Year() != 2026 {

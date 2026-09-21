@@ -7,13 +7,6 @@ import (
 	"testing"
 )
 
-// loadFixture reads an update payload shaped exactly as Telegram delivers it.
-//
-// Testing against real payloads rather than hand-written structs is what catches
-// the traps that make Telegram integrations fail: 52-bit ids rounded through a
-// 32-bit field, photo size arrays read from the wrong end, a /start payload that
-// is ordinary message text, and business messages whose direction is not implied
-// by the update kind.
 func loadFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("testdata", "updates", name))
@@ -37,8 +30,6 @@ func normalizeFixture(t *testing.T, name string) *Event {
 	return ev
 }
 
-// Every fixture must normalize to the kind the handler dispatches on. A wrong
-// kind is silent: the update is acked and the conversation simply never updates.
 func TestNormalizeUpdateKinds(t *testing.T) {
 	cases := []struct {
 		fixture string
@@ -83,9 +74,6 @@ func TestNormalizeUpdateKinds(t *testing.T) {
 	}
 }
 
-// A Telegram id carries "at most 52 significant bits". Rounding one through a
-// 32-bit field is the single most common Telegram integration bug, and it
-// corrupts identity silently, the contact simply becomes a different person.
 func TestLargeIdsSurviveDecoding(t *testing.T) {
 	ev := normalizeFixture(t, "large_ids.json")
 
@@ -100,8 +88,6 @@ func TestLargeIdsSurviveDecoding(t *testing.T) {
 	}
 }
 
-// The idempotency key must be scoped by account: update_id is unique per BOT,
-// so two workspaces' bots collide on low ids on their first day.
 func TestIdempotencyKeyIsScopedByAccount(t *testing.T) {
 	raw := loadFixture(t, "text_message.json")
 	update, err := DecodeUpdate(raw)
@@ -118,10 +104,6 @@ func TestIdempotencyKeyIsScopedByAccount(t *testing.T) {
 	}
 }
 
-// /start carries the only attribution this channel has, and Telegram delivers it
-// as ordinary message text. Matching on the bot_command entity rather than a
-// string prefix is what stops a message that merely mentions "/start" from being
-// mistaken for one.
 func TestStartPayloadExtraction(t *testing.T) {
 	withPayload := normalizeFixture(t, "start_with_payload.json")
 	if !withPayload.IsCommand {
@@ -139,15 +121,12 @@ func TestStartPayloadExtraction(t *testing.T) {
 		t.Errorf("StartPayload = %q, want empty for a bare /start", bare.StartPayload)
 	}
 
-	// A plain message must not be mistaken for a command.
 	plain := normalizeFixture(t, "text_message.json")
 	if plain.IsCommand || plain.StartPayload != "" {
 		t.Error("an ordinary message must not parse as a /start")
 	}
 }
 
-// In groups the command arrives as "/start@thebot"; stripping the suffix is what
-// makes a group deep link work at all.
 func TestStartCommandInGroupStripsBotSuffix(t *testing.T) {
 	ev := normalizeFixture(t, "group_message.json")
 	if !ev.IsCommand {
@@ -158,9 +137,6 @@ func TestStartCommandInGroupStripsBotSuffix(t *testing.T) {
 	}
 }
 
-// A payload outside Telegram's alphabet is silently dropped by Telegram itself,
-// so accepting one here would produce a link that opens an ordinary chat with no
-// attribution, the hardest kind of bug to notice.
 func TestValidDeepLinkToken(t *testing.T) {
 	valid := []string{"abc", "A-Z_0-9", "Zm9vYmFyMTIzNDU2Nzg"}
 	for _, tok := range valid {
@@ -170,11 +146,11 @@ func TestValidDeepLinkToken(t *testing.T) {
 	}
 
 	invalid := []string{
-		"",                       // empty
-		"has space",              // space
-		"has.dot",                // dot
-		"café",                   // non-ASCII
-		string(make([]byte, 65)), // over the 64-character ceiling
+		"",
+		"has space",
+		"has.dot",
+		"café",
+		string(make([]byte, 65)),
 	}
 	for _, tok := range invalid {
 		if ValidDeepLinkToken(tok) {
@@ -183,8 +159,6 @@ func TestValidDeepLinkToken(t *testing.T) {
 	}
 }
 
-// Telegram sends every size of a photo, smallest first. Taking the first would
-// store a 90px thumbnail in place of the customer's document.
 func TestPhotoPicksTheLargestSize(t *testing.T) {
 	ev := normalizeFixture(t, "photo.json")
 	if len(ev.Attachments) != 1 {
@@ -197,15 +171,11 @@ func TestPhotoPicksTheLargestSize(t *testing.T) {
 	if att.Kind != MediaPhoto {
 		t.Errorf("kind = %q, want photo", att.Kind)
 	}
-	// The caption is the message body when there is no text.
 	if ev.Text != "comprovante" {
 		t.Errorf("Text = %q, want the caption", ev.Text)
 	}
 }
 
-// The 20MB download ceiling is the channel's hardest product limit. Detecting it
-// from the size Telegram already reported means the handler renders a real
-// placeholder instead of attempting a fetch that can only fail.
 func TestOversizedAttachmentIsFlaggedBeforeDownload(t *testing.T) {
 	ev := normalizeFixture(t, "document_oversized.json")
 	if len(ev.Attachments) != 1 {
@@ -215,14 +185,10 @@ func TestOversizedAttachmentIsFlaggedBeforeDownload(t *testing.T) {
 	if !att.TooLarge {
 		t.Errorf("a %d-byte file must be flagged TooLarge (ceiling is %d)", att.Size, MaxDownloadBytes)
 	}
-	// The MIME type and name are captured from the webhook, because getFile "may
-	// not preserve the original file name and MIME type".
 	if att.MIMEType != "application/pdf" || att.FileName != "contrato-assinado.pdf" {
 		t.Errorf("mime/name = %q/%q, want them carried from the update", att.MIMEType, att.FileName)
 	}
 
-	// A small file must NOT be flagged, or every attachment would render as a
-	// placeholder.
 	small := normalizeFixture(t, "voice.json")
 	if small.Attachments[0].TooLarge {
 		t.Error("a 24KB voice note must not be flagged TooLarge")
@@ -232,8 +198,6 @@ func TestOversizedAttachmentIsFlaggedBeforeDownload(t *testing.T) {
 	}
 }
 
-// A sticker has no useful body. Recording its emoji is the only thing that keeps
-// the transcript from silently missing a turn.
 func TestStickerCarriesItsEmoji(t *testing.T) {
 	ev := normalizeFixture(t, "sticker.json")
 	if len(ev.Attachments) != 1 || ev.Attachments[0].Emoji != "👍" {
@@ -241,10 +205,6 @@ func TestStickerCarriesItsEmoji(t *testing.T) {
 	}
 }
 
-// business_message carries BOTH the customer's messages and the owner's own
-// replies. sender_business_bot is the only thing in the payload that proves
-// which, so misreading it would file the business's own replies as customer
-// messages and corrupt every response-time metric.
 func TestBusinessMessageDirection(t *testing.T) {
 	inbound := normalizeFixture(t, "business_message_inbound.json")
 	if inbound.Kind != EventInboundMessage {
@@ -263,8 +223,6 @@ func TestBusinessMessageDirection(t *testing.T) {
 		t.Error("a normal reply must not be flagged automatic")
 	}
 
-	// An away/greeting message is Telegram's own automation, not an operator's
-	// reply; labelling it as one would corrupt response-time metrics.
 	away := normalizeFixture(t, "business_message_away.json")
 	if !away.IsAutomatic {
 		t.Error("is_from_offline must mark the message automatic")
@@ -294,9 +252,6 @@ func TestBusinessConnectionRights(t *testing.T) {
 	}
 }
 
-// Only a SELF-share links an identity. A customer can forward anyone's contact
-// card, and treating a third party's number as the sender's would merge two
-// unrelated people in the CRM.
 func TestSharedContactCarriesUserID(t *testing.T) {
 	self := normalizeFixture(t, "contact_shared.json")
 	if self.SharedContact == nil || self.From == nil {
@@ -337,8 +292,6 @@ func TestCallbackQueryCarriesIDAndData(t *testing.T) {
 	}
 }
 
-// An unrecognised update must keep its raw payload. The Bot API adds update
-// kinds several times a year, and silence would hide real traffic.
 func TestUnknownUpdateKeepsRawPayload(t *testing.T) {
 	ev := normalizeFixture(t, "unknown_update.json")
 	if len(ev.Raw) == 0 {
@@ -354,9 +307,6 @@ func TestDecodeUpdateRejectsMalformed(t *testing.T) {
 	}
 }
 
-// message_id is unique only INSIDE a chat, so pairing it with the chat id is what
-// makes the partial unique index on (entry_type, external_message_id) actually
-// prevent duplicates instead of rejecting unrelated messages.
 func TestProviderMessageIDRoundTrips(t *testing.T) {
 	cases := [][3]int64{
 		{77777, 5041234567, 4821},
@@ -379,12 +329,6 @@ func TestProviderMessageIDRoundTrips(t *testing.T) {
 	}
 }
 
-// The id must differ per bot. A private chat's id IS the contact's user id and
-// message_id restarts at 1 for every new bot chat, so the same person's first
-// message to two bots produced the identical id. The unique index on
-// (entry_type, external_message_id) is global, so the second bot's message was
-// read as a replay of the first bot's and dropped: the contact wrote and
-// nothing ever reached the inbox.
 func TestProviderMessageIDIsScopedToTheBot(t *testing.T) {
 	const chatID, messageID = 6979451734, 1
 
@@ -402,8 +346,6 @@ func TestProviderMessageIDIsScopedToTheBot(t *testing.T) {
 	}
 }
 
-// Ids written before the bot id was prefixed are still stored, and an operator
-// editing or deleting one of those messages must still resolve it.
 func TestParseProviderMessageIDAcceptsLegacyTwoFieldForm(t *testing.T) {
 	chatID, messageID, ok := ParseProviderMessageID("6979451734:4")
 	if !ok || chatID != 6979451734 || messageID != 4 {
@@ -411,8 +353,6 @@ func TestParseProviderMessageIDAcceptsLegacyTwoFieldForm(t *testing.T) {
 	}
 }
 
-// Telegram warns that updates may arrive out of order. Arrival order is
-// therefore not transcript order.
 func TestSortByUpdateID(t *testing.T) {
 	events := []*Event{{UpdateID: 30}, {UpdateID: 10}, {UpdateID: 20}}
 	SortByUpdateID(events)
@@ -423,12 +363,6 @@ func TestSortByUpdateID(t *testing.T) {
 	}
 }
 
-// A tapped button reports an internal payload, not the words the contact read.
-// Storing the payload as the message text put a raw id like "support" into the
-// transcript AND handed it to the AI agent as the customer's message, where an
-// agent whose tool description mentioned "Suporte" matched it and acted on it,
-// re-showing the menu forever. The label is what a reader needs; the payload is
-// what routing needs; they are not interchangeable.
 func TestCallbackQueryUsesTheButtonLabelAsTheMessageText(t *testing.T) {
 	ev := normalizeFixture(t, "callback_query_with_keyboard.json")
 
@@ -438,15 +372,11 @@ func TestCallbackQueryUsesTheButtonLabelAsTheMessageText(t *testing.T) {
 	if ev.Text != "Suporte" {
 		t.Errorf("Text = %q, want the label the contact tapped", ev.Text)
 	}
-	// The payload must survive untouched, it is the branch key.
 	if ev.CallbackData != "support" {
 		t.Errorf("CallbackData = %q, want the payload", ev.CallbackData)
 	}
 }
 
-// Telegram does not always echo the keyboard (an old message, an edited one).
-// Falling back to the payload is worse than a label but never leaves the
-// transcript blank.
 func TestCallbackQueryFallsBackToThePayloadWithoutAKeyboard(t *testing.T) {
 	ev := normalizeFixture(t, "callback_query.json")
 

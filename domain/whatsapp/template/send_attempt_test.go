@@ -8,8 +8,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// The classification table is the billing decision in one place. Each row is a
-// way a send can end and the money consequence of reading it wrongly.
 func TestClassifySendOutcome(t *testing.T) {
 	cases := []struct {
 		name string
@@ -28,9 +26,6 @@ func TestClassifySendOutcome(t *testing.T) {
 			want: OutcomeAcceptedNoID,
 		},
 		{
-			// The expensive one. A 2xx with an error means WE broke, not them: the
-			// provider already took the message. Refunding here credits something
-			// the customer has already received.
 			name: "2xx alongside an error is our failure, not a rejection",
 			out:  &conversation.SendTextMessageOutput{ResponseStatus: 200},
 			err:  errors.New("json: cannot unmarshal"),
@@ -72,8 +67,6 @@ func TestClassifySendOutcome(t *testing.T) {
 	}
 }
 
-// Only an outright refusal returns money. Everything else either delivered or
-// might have.
 func TestOnlyRejectedRefunds(t *testing.T) {
 	for _, o := range []SendOutcome{OutcomeAccepted, OutcomeAcceptedNoID, OutcomeUnknown} {
 		if o.ShouldRefund() {
@@ -85,15 +78,10 @@ func TestOnlyRejectedRefunds(t *testing.T) {
 	}
 }
 
-// The state machine is what makes "the money gate is crossed once" a database
-// property rather than a matter of careful coding.
 func TestSendAttemptTransitions(t *testing.T) {
 	legal := [][2]SendAttemptStatus{
 		{SendAttemptPending, SendAttemptCharged},
-		// The sweep's job: money left and no send was ever confirmed.
 		{SendAttemptCharged, SendAttemptRefunded},
-		// Delivery-failure settlement. Meta bills on delivery, so an accepted
-		// send that later fails delivery must be refundable.
 		{SendAttemptSent, SendAttemptRefunded},
 		{SendAttemptCharged, SendAttemptSent},
 		{SendAttemptCharged, SendAttemptRejected},
@@ -108,11 +96,9 @@ func TestSendAttemptTransitions(t *testing.T) {
 	}
 
 	illegal := [][2]SendAttemptStatus{
-		// Nothing returns to pending: that would reopen the money gate.
 		{SendAttemptCharged, SendAttemptPending},
 		{SendAttemptSent, SendAttemptPending},
 		{SendAttemptRefunded, SendAttemptCharged},
-		// Charging twice is the failure this whole design exists to prevent.
 		{SendAttemptCharged, SendAttemptCharged},
 	}
 	for _, edge := range illegal {
@@ -129,8 +115,6 @@ func TestPredecessorsOfChargedIsPendingOnly(t *testing.T) {
 	}
 }
 
-// The prefix is what keeps an ad-hoc charge from ever being mistaken for a
-// campaign's in department reporting.
 func TestChargeReferenceIsPrefixed(t *testing.T) {
 	if ref := ChargeReferenceID("abc"); ref != "waba:abc" {
 		t.Fatalf("charge reference = %q", ref)

@@ -346,9 +346,6 @@ var (
 	errDocumentImmutable = errors.New("document already set")
 )
 
-// applyDocument validates and sets the user's CPF/CNPJ. It is set-once: once a document exists it
-// cannot be changed here (an Asaas customer is keyed to it), though re-submitting the same value is a
-// no-op. An 11-digit document is stored as CPF (individual), 14 digits as CNPJ (company).
 func (h *UserHandler) applyDocument(u *userdomain.User, raw string) error {
 	if h.documentValidator == nil || !h.documentValidator.ValidateCPFOrCNPJ(raw) {
 		return errDocumentInvalid
@@ -361,7 +358,7 @@ func (h *UserHandler) applyDocument(u *userdomain.User, raw string) error {
 	}
 	if existing != "" {
 		if existing == normalized {
-			return nil // idempotent: same document re-submitted
+			return nil
 		}
 		return errDocumentImmutable
 	}
@@ -381,8 +378,6 @@ func (h *UserHandler) applyDocument(u *userdomain.User, raw string) error {
 	return nil
 }
 
-// maskUserDocument returns the user's CPF/CNPJ with all but the last two digits masked, and whether a
-// document is set. Example: "12345678909" -> "*********09".
 func maskUserDocument(u *userdomain.User) (masked string, has bool) {
 	doc := strings.TrimSpace(u.CPF)
 	if doc == "" {

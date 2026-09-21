@@ -6,10 +6,6 @@ import (
 	conversation_domain "vozko/domain/conversation"
 )
 
-// DispatchingCallSource routes an outbound dial to a channel call source.
-// WhatsApp calling is the only channel left since SIP telephony was retired, so
-// the dispatch is a single hop; the indirection stays so a second channel can be
-// added back without touching every caller.
 type DispatchingCallSource struct {
 	whatsapp conversation_domain.CallSource
 }

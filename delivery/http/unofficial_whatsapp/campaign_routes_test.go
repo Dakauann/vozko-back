@@ -8,12 +8,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// The campaign surface, asserted route by route.
-//
-// Registration is worth pinning on its own: a route that exists without its
-// guard is an authorization hole, and a route that does not exist at all is a
-// 404 the frontend reads as an empty list — which is how the official channel
-// once told operators their campaigns were empty.
 func TestRegisterCampaignRoutes_AppliesRBAC(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}
@@ -26,14 +20,12 @@ func TestRegisterCampaignRoutes_AppliesRBAC(t *testing.T) {
 		path   string
 		want   string
 	}{
-		// Reads.
 		{http.MethodGet, "/unofficial-whatsapp/campaigns", res + ":read"},
 		{http.MethodGet, "/unofficial-whatsapp/campaigns/archived", res + ":read"},
 		{http.MethodGet, "/unofficial-whatsapp/campaigns/summary", res + ":read"},
 		{http.MethodGet, "/unofficial-whatsapp/campaigns/c-1", res + ":read"},
 		{http.MethodGet, "/unofficial-whatsapp/campaigns/c-1/entries", res + ":read"},
 
-		// Writes.
 		{http.MethodPost, "/unofficial-whatsapp/campaigns", res + ":create"},
 		{http.MethodPut, "/unofficial-whatsapp/campaigns/c-1", res + ":update"},
 		{http.MethodDelete, "/unofficial-whatsapp/campaigns/c-1", res + ":delete"},
@@ -41,21 +33,17 @@ func TestRegisterCampaignRoutes_AppliesRBAC(t *testing.T) {
 		{http.MethodPatch, "/unofficial-whatsapp/campaigns/c-1/archive", res + ":update"},
 		{http.MethodPatch, "/unofficial-whatsapp/campaigns/c-1/unarchive", res + ":update"},
 
-		// Entries.
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/entries", res + ":update"},
 		{http.MethodPatch, "/unofficial-whatsapp/campaigns/c-1/entries/e-1", res + ":update"},
 		{http.MethodDelete, "/unofficial-whatsapp/campaigns/c-1/entries/e-1", res + ":delete"},
 
-		// Lifecycle. Halting must not require the privilege to launch.
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/start", res + ":start"},
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/quick-send", res + ":start"},
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/pause", res + ":stop"},
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/stop", res + ":stop"},
 
-		// The pre-flight clean sends nothing, so it is an update rather than a start.
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/validate", res + ":update"},
 
-		// Destructive.
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/reset/prepare", res + ":update"},
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/reset", res + ":update"},
 		{http.MethodPost, "/unofficial-whatsapp/campaigns/c-1/clear-history/prepare", res + ":update"},
@@ -77,8 +65,6 @@ func TestRegisterCampaignRoutes_AppliesRBAC(t *testing.T) {
 	}
 }
 
-// A nil handler means campaigns are not wired. Registering routes anyway would
-// give every request a nil-pointer panic instead of an honest 404.
 func TestRegisterCampaignRoutes_NilHandlerRegistersNothing(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}
@@ -97,9 +83,6 @@ func TestRegisterCampaignRoutes_NilHandlerRegistersNothing(t *testing.T) {
 	}
 }
 
-// The campaign resource must be DISTINCT from the instances one. Sharing it
-// would mean anyone who can reconnect a dropped session can also start a
-// 40.000-number blast from it.
 func TestCampaignsAreASeparateResourceFromInstances(t *testing.T) {
 	router := mux.NewRouter()
 	ac := &recordingAC{calls: map[string]string{}}

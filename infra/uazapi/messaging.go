@@ -9,26 +9,12 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// The send and media half of the client.
-//
-// One vendor quirk shapes most of this file: every send endpoint accepts the
-// same optional envelope (delay, reply, tracking), and the message TYPE is
-// selected by a field rather than by the path. Building that envelope once,
-// here, is what keeps the five send methods from drifting apart.
-
 var _ uw.MessagingAPI = (*Client)(nil)
 
-// sendEnvelope is the option set every send endpoint shares.
 type sendEnvelope struct {
-	Number  string `json:"number"`
-	ReplyID string `json:"replyid,omitempty"`
-	// Delay renders "Digitando…" for its duration. Always sent when non-zero:
-	// human pacing is what keeps a number from looking automated.
-	Delay int `json:"delay,omitempty"`
-	// Async is deliberately absent (false). We need the real provider message id
-	// synchronously to write external_message_id BEFORE the echo can arrive;
-	// queueing would return a 200 with no id and make the echo insert a
-	// duplicate.
+	Number      string `json:"number"`
+	ReplyID     string `json:"replyid,omitempty"`
+	Delay       int    `json:"delay,omitempty"`
 	TrackSource string `json:"track_source,omitempty"`
 	TrackID     string `json:"track_id,omitempty"`
 }
@@ -40,7 +26,6 @@ func envelopeFor(chatID, replyID string, delayMS int, trackSource, trackID strin
 	}
 }
 
-// sendResponse is the message object every send endpoint answers with.
 type sendResponse struct {
 	ID        string `json:"id"`
 	MessageID string `json:"messageid"`
@@ -49,9 +34,6 @@ type sendResponse struct {
 
 func (r sendResponse) result() *uw.SendResult {
 	return &uw.SendResult{
-		// Prefer the bare provider id over the composite "owner:messageid":
-		// inbound webhooks carry the bare form, and storing the composite would
-		// make the echo fail to match the row it should update.
 		ProviderMessageID: firstNonEmpty(r.MessageID, r.ID),
 		Status:            uw.DeliveryStatus(strings.ToLower(r.Status)),
 	}
@@ -107,10 +89,6 @@ func (c *Client) SendMedia(ctx context.Context, ref uw.InstanceRef, in uw.SendMe
 	return resp.result(), nil
 }
 
-// providerMediaType maps our normalized kinds onto the vendor's.
-//
-// A voice note is `ptt`, not `audio`: the vendor renders the two differently,
-// and a customer receiving a voice message as a music player is a visible bug.
 func providerMediaType(kind uw.MediaKind) string {
 	switch kind {
 	case uw.MediaImage:
@@ -158,20 +136,12 @@ func (c *Client) SendMenu(ctx context.Context, ref uw.InstanceRef, in uw.SendMen
 	return resp.result(), nil
 }
 
-// encodeChoices renders options in the vendor's pipe-delimited form.
-//
-// The id is what a workflow branches on, so it must survive intact: a label
-// containing a pipe would otherwise split into the wrong fields and silently
-// change which option id comes back. Pipes in author-supplied text are replaced
-// rather than escaped, because the vendor documents no escape syntax.
 func encodeChoices(options []uw.InteractiveOption, withDescription bool) []string {
 	out := make([]string, 0, len(options))
 	for _, opt := range options {
 		title := strings.ReplaceAll(opt.Title, "|", "/")
 		id := strings.ReplaceAll(opt.ID, "|", "/")
 		choice := title + "|" + id
-		// Only list rows render a description; appending one to a button would
-		// put stray text in the button's own id field.
 		if withDescription && opt.Description != "" {
 			choice += "|" + strings.ReplaceAll(opt.Description, "|", "/")
 		}
@@ -187,8 +157,6 @@ type presenceRequest struct {
 }
 
 func (c *Client) SendPresence(ctx context.Context, ref uw.InstanceRef, chatID string, presence uw.Presence, delayMS int) error {
-	// The provider caps one presence request; a larger value is rejected rather
-	// than clamped on their side.
 	if delayMS > uw.MaxPresenceMS {
 		delayMS = uw.MaxPresenceMS
 	}
@@ -206,8 +174,6 @@ func (c *Client) MarkRead(ctx context.Context, ref uw.InstanceRef, providerMessa
 }
 
 func (c *Client) React(ctx context.Context, ref uw.InstanceRef, chatID, providerMessageID, emoji string) error {
-	// An empty emoji REMOVES the reaction, which is the documented contract and
-	// the reason this is one method rather than two.
 	return c.instanceCall(ctx, ref, http.MethodPost, "/message/react",
 		map[string]any{"number": chatID, "id": providerMessageID, "text": emoji}, nil)
 }
@@ -233,15 +199,6 @@ type downloadResponse struct {
 	Base64Data string `json:"base64Data"`
 }
 
-// DownloadMedia fetches an inbound attachment.
-//
-// base64 rather than the provider's hosted link, deliberately: a third-party URL
-// is not a durable asset and would leak tenant media to anyone holding it. The
-// bytes go straight to our own object storage.
-//
-// `transcribe` is deliberately NOT requested. The provider can transcribe audio,
-// but only by routing the customer's voice through its own model relay under a
-// key we would have to store — and we already run speech-to-text ourselves.
 func (c *Client) DownloadMedia(ctx context.Context, ref uw.InstanceRef, providerMessageID string) (*uw.RemoteMedia, error) {
 	var resp downloadResponse
 	err := c.instanceCall(ctx, ref, http.MethodPost, "/message/download", map[string]any{
@@ -249,9 +206,7 @@ func (c *Client) DownloadMedia(ctx context.Context, ref uw.InstanceRef, provider
 		"return_base64": true,
 		"return_link":   false,
 		"transcribe":    false,
-		// OGG rather than a re-encoded MP3: the original is what the customer
-		// sent, and a lossy conversion before speech-to-text costs accuracy.
-		"generate_mp3": false,
+		"generate_mp3":  false,
 	}, &resp)
 	if err != nil {
 		return nil, err

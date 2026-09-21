@@ -3,10 +3,6 @@ package conversation
 import (
 	"time"
 
-	// Imported under its own name rather than aliased: swag resolves a type by
-	// the identifier written in the file, so an alias here makes ca.Analysis
-	// unresolvable and fails `swag init` for the WHOLE project, not just this
-	// endpoint. Two references are not worth a broken docs build.
 	"vozko/domain/audience"
 	"vozko/domain/shared"
 )
@@ -18,47 +14,24 @@ const (
 	MaxHistoryPageSize     = 100
 )
 
-// AnalysisPhase says where an upcoming analysis has got to.
-//
-// The two states are not the same thing to a person and must not share a word.
-// A conversation that is still going is WAITING: nothing is being analysed, and
-// nothing will be until it settles, so telling someone it is "analysing" is
-// simply untrue for the minutes that usually follow a reply. A conversation the
-// engine has been handed is genuinely in progress and will answer on its own.
-//
-// Modelled as a phase rather than two booleans because they are mutually
-// exclusive: a conversation cannot be both waiting to be handed over and
-// already handed over.
 type AnalysisPhase string
 
 const (
-	// AnalysisPhaseNone: nothing coming that anyone needs to know about.
-	AnalysisPhaseNone AnalysisPhase = ""
-	// AnalysisPhaseAwaiting: the conversation is still active. It has been
-	// stamped, and the engine takes it once it has been quiet long enough.
+	AnalysisPhaseNone     AnalysisPhase = ""
 	AnalysisPhaseAwaiting AnalysisPhase = "awaiting"
-	// AnalysisPhaseQueued: handed to the engine, waiting on a batch.
-	AnalysisPhaseQueued AnalysisPhase = "queued"
+	AnalysisPhaseQueued   AnalysisPhase = "queued"
 )
 
 type InboxEntry struct {
-	EntryID      string `json:"entry_id"`
-	EntryType    string `json:"entry_type"`
-	CampaignID   string `json:"campaign_id,omitempty"`
-	CampaignName string `json:"campaign_name,omitempty"`
-	LeadID       string `json:"lead_id,omitempty"`
-	LeadName     string `json:"lead_name,omitempty"`
-	LeadNumber   string `json:"lead_number,omitempty"`
-	Blocked      bool   `json:"blocked"`
-	LeadPicture  string `json:"lead_picture,omitempty"`
-	// IsGroup marks a conversation whose other side is a group chat rather than
-	// a person.
-	//
-	// The UI needs this for more than a badge. A group has no number to dial, no
-	// lead to open and no single person to attribute the thread to, so the row's
-	// affordances have to be suppressed rather than relabelled — and until this
-	// existed a group was indistinguishable from a contact in every list the CRM
-	// renders.
+	EntryID                 string                 `json:"entry_id"`
+	EntryType               string                 `json:"entry_type"`
+	CampaignID              string                 `json:"campaign_id,omitempty"`
+	CampaignName            string                 `json:"campaign_name,omitempty"`
+	LeadID                  string                 `json:"lead_id,omitempty"`
+	LeadName                string                 `json:"lead_name,omitempty"`
+	LeadNumber              string                 `json:"lead_number,omitempty"`
+	Blocked                 bool                   `json:"blocked"`
+	LeadPicture             string                 `json:"lead_picture,omitempty"`
 	IsGroup                 bool                   `json:"is_group,omitempty"`
 	LeadMetadata            map[string]interface{} `json:"lead_metadata,omitempty"`
 	EntryVariables          []string               `json:"entry_variables,omitempty"`
@@ -70,42 +43,27 @@ type InboxEntry struct {
 	LastMessageSenderAvatar string                 `json:"last_message_sender_avatar,omitempty"`
 	WindowOpen              bool                   `json:"window_open"`
 	WindowExpiresAt         *time.Time             `json:"window_expires_at,omitempty"`
-	// WindowClosedReason names WHY sending is blocked, so the composer can say
-	// something true instead of inferring it from the absence of an expiry.
-	// Empty when the window is open. See WindowClosedReason.
-	WindowClosedReason string            `json:"window_closed_reason,omitempty"`
-	BusinessPhoneID    string            `json:"business_phone_id,omitempty"`
-	AssignedUserID     string            `json:"assigned_user_id,omitempty"`
-	AssignedUsername   string            `json:"assigned_username,omitempty"`
-	AutomationEnabled  bool              `json:"automation_enabled"`
-	Stage              *InboxEntryStage  `json:"stage,omitempty"`
-	Labels             []InboxEntryLabel `json:"labels,omitempty"`
-	AvailableStages    []InboxEntryStage `json:"available_stages,omitempty"`
-	MatchedMessages    []MatchedMessage  `json:"matched_messages,omitempty"`
-	TotalMatches       int               `json:"total_matches,omitempty"`
-	LatestAnalysis     *audience.Analysis      `json:"latest_analysis,omitempty"`
-	// AnalysisPhase says where an upcoming analysis has got to. Independent of
-	// LatestAnalysis, which keeps showing the previous revision's verdict while
-	// the next one is computed, and carried on the entry rather than only on
-	// the socket so a page reload still shows it.
-	AnalysisPhase      AnalysisPhase      `json:"analysis_phase,omitempty"`
-	ConversationStatus ConversationStatus `json:"conversation_status,omitempty"`
-	// Close provenance when status is finished (omitted when open / cleared on reopen).
-	CloseSource CloseSource `json:"close_source,omitempty"`
-	CloseReason CloseReason `json:"close_reason,omitempty"`
-	ClosedAt    *time.Time  `json:"closed_at,omitempty"`
-	// AIHandler names the AI attending the conversation (direct agent or workflow) and
-	// the live workflow-run state. Nil when no AI is configured on the campaign. The
-	// per-conversation on/off state remains AutomationEnabled above.
-	AIHandler *AIHandler `json:"ai_handler,omitempty"`
+	WindowClosedReason      string                 `json:"window_closed_reason,omitempty"`
+	BusinessPhoneID         string                 `json:"business_phone_id,omitempty"`
+	AssignedUserID          string                 `json:"assigned_user_id,omitempty"`
+	AssignedUsername        string                 `json:"assigned_username,omitempty"`
+	AutomationEnabled       bool                   `json:"automation_enabled"`
+	Stage                   *InboxEntryStage       `json:"stage,omitempty"`
+	Labels                  []InboxEntryLabel      `json:"labels,omitempty"`
+	AvailableStages         []InboxEntryStage      `json:"available_stages,omitempty"`
+	MatchedMessages         []MatchedMessage       `json:"matched_messages,omitempty"`
+	TotalMatches            int                    `json:"total_matches,omitempty"`
+	LatestAnalysis          *audience.Analysis     `json:"latest_analysis,omitempty"`
+	AnalysisPhase           AnalysisPhase          `json:"analysis_phase,omitempty"`
+	ConversationStatus      ConversationStatus     `json:"conversation_status,omitempty"`
+	CloseSource             CloseSource            `json:"close_source,omitempty"`
+	CloseReason             CloseReason            `json:"close_reason,omitempty"`
+	ClosedAt                *time.Time             `json:"closed_at,omitempty"`
+	AIHandler               *AIHandler             `json:"ai_handler,omitempty"`
 }
 
-// AIHandler describes which AI attends a conversation. Kind is the effective handler
-// configured on the campaign ("agent" or "workflow"); a workflow that is currently
-// running also carries its live run + current-node state. Whether the AI is paused for
-// this specific conversation is the entry's AutomationEnabled flag, not repeated here.
 type AIHandler struct {
-	Kind string `json:"kind"` // "agent" | "workflow"
+	Kind string `json:"kind"`
 
 	AgentID     string `json:"agent_id,omitempty"`
 	AgentName   string `json:"agent_name,omitempty"`
@@ -158,10 +116,8 @@ type SearchFilters struct {
 }
 
 type SearchInboxInput struct {
-	UserID     string
-	CampaignID string
-	// ContainerKind narrows CampaignID to a campaign rather than the channel's
-	// primary container. Empty is today's behaviour for every channel.
+	UserID               string
+	CampaignID           string
 	ContainerKind        ContainerKind
 	CampaignType         string
 	WhatsAppCampaignType string
@@ -191,9 +147,6 @@ type SearchInboxInput struct {
 
 	AssignedUserID string
 
-	// ResponsibleUserID / ResponsibleUnassigned are the USER-FACING "filter by
-	// responsible" selection, distinct from AssignedUserID (the permission scope, which
-	// inbox_service clears for privileged users). These must SURVIVE that clearing.
 	ResponsibleUserID     string
 	ResponsibleUnassigned bool
 
@@ -230,24 +183,9 @@ type LabelProvider interface {
 
 type AnalysisProvider interface {
 	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*audience.Analysis, error)
-	// GetBatchAnalysisPending reports which of these conversations have an
-	// analysis waiting. One read for the page, beside the one above.
 	GetBatchAnalysisPending(entryIDs []string, entryType string) (map[string]bool, error)
 }
 
-// AnalysisScheduleReader reports which conversations are waiting for their
-// inactivity window to elapse before an analysis is even queued.
-//
-// This is the OTHER half of "an analysis is coming", and the half a
-// conversation spends most of its time in. A reply stamps the conversation and
-// the engine only takes it once it has been quiet for a few minutes, so between
-// those two moments AnalysisProvider has nothing to report and the screen looks
-// exactly like a conversation nobody is going to analyse.
-//
-// Separate from AnalysisProvider because it answers from somewhere else: the
-// debounce stamp is the conversation layer's handoff, not a row in the
-// engine's queue. The inbox is what joins the two into one thing a person
-// reads.
 type AnalysisScheduleReader interface {
 	AwaitingAnalysis(entryIDs []string, entryType string) (map[string]bool, error)
 }
@@ -256,25 +194,17 @@ type InitialStageAssigner interface {
 	AutoAssignInitialStage(workspaceID, campaignID, campaignType, entryID, entryType string)
 }
 
-// FinishOptions stamps who/why when moving to finished.
 type FinishOptions struct {
-	Source CloseSource
-	Reason CloseReason
-	// ActorID is the user (source=human) or agent (source=ai) that closed the
-	// conversation. Recorded on the timeline event so "who finalized this?" is
-	// answerable. Empty for system closes.
+	Source  CloseSource
+	Reason  CloseReason
 	ActorID string
 }
 
 type ConversationStatusUpdater interface {
 	GetConversationStatus(entryID, entryType string) ConversationStatus
 
-	// SetConversationStatus applies a non-finish transition (e.g. ongoing) or
-	// finishes with empty FinishOptions treated as human/manual when status is finished.
-	// Prefer Finish for explicit provenance.
 	SetConversationStatus(entryID, entryType string, status ConversationStatus) error
 
-	// Finish moves to finished with required close_source / close_reason.
 	Finish(entryID, entryType string, opts FinishOptions) error
 
 	TransitionOnMessage(entryID, entryType string, msgType MessageType, direction MessageHistoryDirection) error
@@ -330,13 +260,6 @@ type HistoryProvider interface {
 	GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*Message, bool, bool, int64, error)
 	GetUnreadCount(entryID string, entryType shared.EntryType) (int64, error)
 	GetEntryInfo(entryID, entryType string) (leadName, leadNumber, leadPicture string, leadMetadata map[string]interface{}, entryVariables []string, automationEnabled bool, err error)
-	// ResolveSenderIdentity fills SenderName/SenderAvatar on a single message.
-	//
-	// Reading a page of history resolves the sender; a message that arrives
-	// while the conversation is already open did not, so the two paths
-	// disagreed and a reload "fixed" the label. It belongs on the provider
-	// because resolving a sender is a lookup across leads, contacts, agents and
-	// users, the provider already owns all four.
 	ResolveSenderIdentity(entryID, entryType string, message *Message)
 	GetWindowStatusForEntry(entryID, entryType string) WindowState
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)

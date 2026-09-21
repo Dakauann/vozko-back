@@ -16,9 +16,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Handler serves the workflow webhook trigger: the workspace-scoped config
-// lifecycle (/workflows/{id}/webhook) and the public receiver
-// (/webhooks/workflow/{token}) that starts a run.
 type Handler struct {
 	configUC  workflow_usecase.WorkflowWebhookUseCase
 	triggerUC workflow_usecase.HandleWebhookTriggerUseCase
@@ -31,7 +28,6 @@ func NewHandler(
 	return &Handler{configUC: configUC, triggerUC: triggerUC}
 }
 
-// GetWorkflowWebhook godoc
 // @Summary Obter a configuração do gatilho de webhook de um workflow
 // @Description Retorna a URL pública e o modo de autenticação do webhook do workflow. O segredo não é retornado aqui; use a rotação para gerar um novo.
 // @Tags workflows
@@ -53,7 +49,6 @@ func (h *Handler) GetWorkflowWebhook(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toWebhookResponse(wh))
 }
 
-// CreateWorkflowWebhook godoc
 // @Summary Criar o gatilho de webhook de um workflow
 // @Description Cria a URL pública que sistemas externos usam para iniciar este workflow. Retorna a URL e, uma única vez, o segredo quando o modo de autenticação exige. Um workflow só pode ter um webhook.
 // @Tags workflows
@@ -80,7 +75,6 @@ func (h *Handler) CreateWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 	response.WriteSuccess(w, http.StatusCreated, toWebhookResponse(wh))
 }
 
-// UpdateWorkflowWebhook godoc
 // @Summary Atualizar a configuração do gatilho de webhook
 // @Description Atualiza o modo de autenticação, o método HTTP aceito ou o estado ativo do webhook. A URL e o token são preservados.
 // @Tags workflows
@@ -108,7 +102,6 @@ func (h *Handler) UpdateWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 	response.WriteSuccess(w, http.StatusOK, toWebhookResponse(wh))
 }
 
-// RotateWorkflowWebhook godoc
 // @Summary Rotacionar o token e o segredo do webhook
 // @Description Gera um novo token (nova URL pública) e um novo segredo. As integrações existentes param de funcionar até serem atualizadas com a nova URL e o novo segredo.
 // @Tags workflows
@@ -126,7 +119,6 @@ func (h *Handler) RotateWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 	response.WriteSuccess(w, http.StatusOK, toWebhookResponse(wh))
 }
 
-// DeleteWorkflowWebhook godoc
 // @Summary Remover o gatilho de webhook de um workflow
 // @Description Remove o webhook. A URL pública deixa de existir e não inicia mais execuções.
 // @Tags workflows
@@ -141,7 +133,6 @@ func (h *Handler) DeleteWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 	response.WriteSuccess(w, http.StatusNoContent, nil)
 }
 
-// HandleWebhookTrigger godoc
 // @Summary Receptor público de webhook que inicia uma execução de workflow
 // @Description Endpoint público, autenticado pelo token na URL e, opcionalmente, por header_token ou HMAC, que inicia uma execução do workflow associado. O corpo JSON identifica a entrada de UMA forma: entry_id + entry_type, quando o chamador já conhece o id interno; OU phone, que é resolvido para a conversa de WhatsApp mais recente da workspace. Redisparos idênticos são deduplicados (status "duplicate"); se já houver execução ativa para a mesma entrada e gatilho, retorna "already_running". Campos extras do provedor ficam disponíveis no workflow em {{webhook.body}}.
 // @Tags webhooks

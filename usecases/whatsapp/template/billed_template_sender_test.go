@@ -13,12 +13,6 @@ import (
 	"vozko/domain/whatsapp/template"
 )
 
-// ---------------------------------------------------------------- test doubles
-
-// fakeAttempts models the ONE property the real table provides: a unique index
-// on (workspace, key), so exactly one caller may create a given attempt. If this
-// fake were permissive the tests below would pass while the feature double
-// charged.
 type fakeAttempts struct {
 	mu     sync.Mutex
 	byKey  map[string]*template.SendAttempt
@@ -70,8 +64,6 @@ func (f *fakeAttempts) FindByProviderMessageID(context.Context, string, string) 
 	return nil, nil
 }
 
-// transition enforces the same guard the real UPDATE does, so a losing writer
-// gets a conflict here exactly as it would in Postgres.
 func (f *fakeAttempts) transition(id string, next template.SendAttemptStatus, apply func(*template.SendAttempt)) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -122,9 +114,6 @@ func (f *fakeAttempts) MarkRefunded(_ context.Context, id string, at time.Time) 
 	return f.transition(id, template.SendAttemptRefunded, func(a *template.SendAttempt) { a.RefundedAt = &at })
 }
 
-// ListNeedingReconciliation mirrors the real query: attempts that took money and
-// never settled, oldest first. Without this the sweep's tests would pass against
-// an empty list and prove nothing.
 func (f *fakeAttempts) ListNeedingReconciliation(_ context.Context, olderThan time.Time, limit int) ([]*template.SendAttempt, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -146,8 +135,6 @@ func (f *fakeAttempts) ListNeedingReconciliation(_ context.Context, olderThan ti
 	return out, nil
 }
 
-// seed installs an attempt in a chosen state, for tests about what happens after
-// the send rather than during it.
 func (f *fakeAttempts) seed(a template.SendAttempt) *template.SendAttempt {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -169,8 +156,6 @@ func (f *fakeAttempts) statusOf(id string) template.SendAttemptStatus {
 	return ""
 }
 
-// countingBilling records every movement so a test can assert on the NUMBER of
-// charges, which is the only assertion that catches a double charge.
 type countingBilling struct {
 	mu               sync.Mutex
 	debits           []string
@@ -219,7 +204,6 @@ func (c *countingBilling) refundCount() int {
 	return len(c.refunds)
 }
 
-// fakeLedger answers "was this reference already charged", the belt.
 type fakeLedger struct {
 	balance.Repository
 	mu   sync.Mutex
@@ -292,8 +276,6 @@ func (s *stubFactory) ClientForWABA(string) (conversation.WhatsAppClient, error)
 }
 func (s *stubFactory) WABAIdForPhone(string) (string, error) { return s.waba, nil }
 
-// ---------------------------------------------------------------- harness
-
 type harness struct {
 	uc       template.BilledTemplateSendUseCase
 	attempts *fakeAttempts
@@ -348,9 +330,6 @@ func validInput() template.BilledSendInput {
 	}
 }
 
-// ---------------------------------------------------------------- the money
-
-// F-01. The failure this whole type exists to make unrepresentable.
 func TestBilledSend_EmptyWorkspace_RefusedBeforeAnyClientCall(t *testing.T) {
 	h := newHarness(t)
 	in := validInput()
@@ -380,7 +359,6 @@ func TestBilledSend_MissingIdempotencyKey_Refused(t *testing.T) {
 	}
 }
 
-// F-02/F-03. The headline guarantee.
 func TestBilledSend_SameIdempotencyKey_ChargesOnceSendsOnce(t *testing.T) {
 	h := newHarness(t)
 
@@ -410,7 +388,6 @@ func TestBilledSend_SameIdempotencyKey_ChargesOnceSendsOnce(t *testing.T) {
 	}
 }
 
-// F-02 under concurrency: the double-clicked button, two replicas.
 func TestBilledSend_ConcurrentSameKey_OneChargeOneSend(t *testing.T) {
 	h := newHarness(t)
 
@@ -433,7 +410,6 @@ func TestBilledSend_ConcurrentSameKey_OneChargeOneSend(t *testing.T) {
 	}
 }
 
-// F-04. The bug that was live in this codebase: refunding a delivered message.
 func TestBilledSend_ProviderAcceptedButUnreadable_ChargeStands(t *testing.T) {
 	h := newHarness(t, func(d *BilledTemplateSenderDeps) {})
 	h.client.out = &conversation.SendTextMessageOutput{ResponseStatus: 200}
@@ -454,7 +430,6 @@ func TestBilledSend_ProviderAcceptedButUnreadable_ChargeStands(t *testing.T) {
 	}
 }
 
-// F-09. A refusal is refunded, and refunded once.
 func TestBilledSend_ProviderRejected_RefundsExactlyOnce(t *testing.T) {
 	h := newHarness(t)
 	h.client.out = &conversation.SendTextMessageOutput{
@@ -478,8 +453,6 @@ func TestBilledSend_ProviderRejected_RefundsExactlyOnce(t *testing.T) {
 	}
 }
 
-// Not knowing is not the same as failing. Refunding here risks crediting a
-// delivered message; the reconcile sweep decides later.
 func TestBilledSend_TransportUnknown_NoRefund_MarkedUnknown(t *testing.T) {
 	h := newHarness(t)
 	h.client.out = &conversation.SendTextMessageOutput{ResponseStatus: 503}
@@ -494,8 +467,6 @@ func TestBilledSend_TransportUnknown_NoRefund_MarkedUnknown(t *testing.T) {
 	}
 }
 
-// F-05. An unusable template is refused BEFORE the debit, not charged and
-// refunded.
 func TestBilledSend_TemplateNotReady_NoCharge(t *testing.T) {
 	notApproved := approvedUtility()
 	notApproved.Status = template.TemplateStatusPending
@@ -511,7 +482,6 @@ func TestBilledSend_TemplateNotReady_NoCharge(t *testing.T) {
 	}
 }
 
-// F-08. The fail-open that used to send for free.
 func TestBilledSend_ZeroPrice_RefusesInsteadOfSendingFree(t *testing.T) {
 	h := newHarness(t)
 	h.billing.cost = 0
@@ -524,7 +494,6 @@ func TestBilledSend_ZeroPrice_RefusesInsteadOfSendingFree(t *testing.T) {
 	}
 }
 
-// F-07. Template and number must belong to the same WhatsApp Business Account.
 func TestBilledSend_TemplateFromAnotherWABA_Refused(t *testing.T) {
 	h := newHarness(t, func(d *BilledTemplateSenderDeps) {
 		d.ClientFactory = &stubFactory{client: &stubClient{}, waba: "waba-somebody-else"}
@@ -538,37 +507,30 @@ func TestBilledSend_TemplateFromAnotherWABA_Refused(t *testing.T) {
 	}
 }
 
-// F-21. A mis-wired container must not produce a sender that sends for free.
 func TestBilledSend_MissingBillingDependency_ConstructorRefuses(t *testing.T) {
 	_, err := NewBilledTemplateSendUseCase(BilledTemplateSenderDeps{
 		Templates:     &stubTemplateRepo{tmpl: approvedUtility()},
 		Attempts:      newFakeAttempts(),
 		ClientFactory: &stubFactory{},
-		// no billing at all
 	})
 	if !errors.Is(err, template.ErrBillingNotConfigured) {
 		t.Fatalf("want ErrBillingNotConfigured, got %v", err)
 	}
 }
 
-// The belt: a resumed attempt whose debit already committed must not debit again.
 func TestBilledSend_ExistingDebitForAttempt_IsNotChargedTwice(t *testing.T) {
 	h := newHarness(t)
 
-	// First call dies after the debit but before the provider call.
 	h.client.err = errors.New("process died")
 	h.client.out = nil
 	_, _ = h.uc.Execute(context.Background(), validInput())
 	if h.billing.debitCount() != 1 {
 		t.Fatalf("setup: want one debit, got %d", h.billing.debitCount())
 	}
-	// The ledger now knows about that charge.
 	for _, ref := range h.billing.debits {
 		h.ledger.refs[ref] = true
 	}
 
-	// A retry with the same key finds the attempt in `unknown` and replays it
-	// rather than charging again.
 	h.client.err = nil
 	h.client.out = &conversation.SendTextMessageOutput{MessageID: "wamid.2", ResponseStatus: 200}
 	if _, err := h.uc.Execute(context.Background(), validInput()); err != nil {
@@ -579,7 +541,6 @@ func TestBilledSend_ExistingDebitForAttempt_IsNotChargedTwice(t *testing.T) {
 	}
 }
 
-// The correlation id is what lets a delivery-status webhook find the charge.
 func TestBilledSend_SendsAttemptIDAsCallbackData(t *testing.T) {
 	h := newHarness(t)
 
@@ -593,7 +554,6 @@ func TestBilledSend_SendsAttemptIDAsCallbackData(t *testing.T) {
 	}
 }
 
-// The reservation must always be given back, including on the failure paths.
 func TestBilledSend_ReleasesInflightReservation(t *testing.T) {
 	h := newHarness(t)
 	if _, err := h.uc.Execute(context.Background(), validInput()); err != nil {

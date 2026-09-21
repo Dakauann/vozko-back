@@ -13,21 +13,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// The messaging tools address WhatsApp by phone number. Every other channel
-// addresses a conversation, so these resolve the recipient from the seeds the
-// agent turn already stamps (__entry_id / __entry_type) and send through that
-// channel's adapter.
-//
-// WhatsApp deliberately keeps its own path: it resolves a business phone,
-// normalises images, falls back to a link when an upload fails, and checks the
-// lead window, none of which generalises.
-
-// resolveToolAdapter returns the channel adapter for the conversation this tool
-// call belongs to.
-//
-// Reports false for WhatsApp (which has its own path), for a conversation with
-// no seeds, and when no adapter is registered, in each case the caller falls
-// back to the WhatsApp path and fails honestly there rather than here.
 func resolveToolAdapter(
 	ctx context.Context,
 	registry conversation.AdapterRegistry,
@@ -63,8 +48,6 @@ func resolveToolAdapter(
 	return adapter, ec, true
 }
 
-// sendMediaViaAdapter delivers a stored media item on any adapter-backed
-// channel.
 func sendMediaViaAdapter(
 	ctx context.Context,
 	adapter conversation.ChannelAdapter,
@@ -99,9 +82,6 @@ func sendMediaViaAdapter(
 	}}, nil
 }
 
-// sendOptionsViaAdapter delivers a single-choice prompt on channels that can
-// present one. A channel without the capability says so plainly: sending the
-// question without its options would leave the contact nothing to tap.
 func sendOptionsViaAdapter(
 	ctx context.Context,
 	adapter conversation.ChannelAdapter,
@@ -147,14 +127,10 @@ func assertWindowOpen(ctx context.Context, adapter conversation.ChannelAdapter, 
 	return nil
 }
 
-// toolRefusal is a non-fault outcome the model can act on. Returned as a
-// successful execution with IsError so the turn continues, the agent can
-// explain in text instead of the run failing.
 func toolRefusal(reason string) tools.ExecutionResult {
 	return tools.ExecutionResult{Result: reason, IsError: true, ContextUpdateText: reason}
 }
 
-// adapterMediaKind maps our stored media type onto the adapters' vocabulary.
 func adapterMediaKind(item *media.Media) string {
 	switch mediaKindFor(item.Type) {
 	case kindImage:
@@ -164,8 +140,6 @@ func adapterMediaKind(item *media.Media) string {
 	case kindAudio:
 		return "audio"
 	default:
-		// Stickers have no cross-channel equivalent; a document is the honest
-		// fallback and every adapter accepts one.
 		return "document"
 	}
 }

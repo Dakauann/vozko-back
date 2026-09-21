@@ -52,9 +52,6 @@ func (e *filterExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResul
 		expected = workflow.Interpolate(expStr, ctx.State, nil)
 	}
 
-	// Same operand handling as the condition node: {{...}} references interpolate to
-	// their value (e.g. {{node.n2.count}}); a bare name still resolves against state
-	// (legacy form); a literal that matches no variable is used as-is.
 	actual := resolveOperand(variable, ctx.State)
 	matched := EvaluateCondition(actual, operator, expected)
 

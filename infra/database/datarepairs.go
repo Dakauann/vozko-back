@@ -9,25 +9,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Data repairs: one-off corrections to rows a shipped bug produced.
-//
-// They live beside the schema rather than in a script because the constraint
-// that prevents a bug from recurring cannot be created while the broken rows are
-// still there, and a constraint that fails to build aborts the boot. Repair then
-// constrain, in one transaction, is the only ordering that leaves the database
-// in a state the code can rely on.
-//
-// Every repair below MUST be idempotent and MUST be a no-op on a database that
-// never had the defect: this runs on every boot, forever.
-
 type dataRepair struct {
 	name string
 	run  func(*gorm.DB) error
 }
 
-// repairNames lists the registered repairs in order. A repair only runs because
-// it is in this list, which is easy to forget and invisible when forgotten, so
-// tests assert their own registration through here.
 func repairNames() []string {
 	all := dataRepairs()
 	names := make([]string, 0, len(all))
@@ -55,13 +41,6 @@ func dataRepairs() []dataRepair {
 	}
 }
 
-// repairInstagramSecondTimestamps fixes Instagram webhook rows written while
-// entry.time was incorrectly interpreted as milliseconds. Current Meta payloads
-// use Unix seconds, which otherwise rendered as January 1970 and excluded the
-// comments from every recent-period audience query. The original comment time
-// is not present in the webhook, so the ingest timestamp is the safest value
-// available for these legacy rows. Graph backfill timestamps are real dates and
-// are not touched.
 func repairInstagramSecondTimestamps(tx *gorm.DB) error {
 	if err := tx.Exec(`
 		UPDATE instagram_comments
@@ -92,17 +71,6 @@ func runDataRepairs(tx *gorm.DB) error {
 	return nil
 }
 
-// clearGroupContactPhoneNumbers erases the fake numbers a group id produced.
-//
-// PhoneFromJID used to strip the domain off any JID, so "120363…@g.us" yielded
-// "120363…" and was stored as a phone number. Those rows render as "+120363…"
-// in the CRM's number column, and are addressable by a call session and by the
-// lead bridge — neither of which can reach a group.
-//
-// The type flag is set in the same pass, so a group subject that predates the
-// column is correctly typed rather than waiting for its next inbound message.
-// Runs BEFORE the conversation merge, which relies on group subjects being
-// identifiable.
 func clearGroupContactPhoneNumbers(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("unofficial_whatsapp_contacts") ||
 		!tx.Migrator().HasColumn("unofficial_whatsapp_contacts", "is_group") {
@@ -116,22 +84,6 @@ func clearGroupContactPhoneNumbers(tx *gorm.DB) error {
 	`).Error
 }
 
-// retireUnattributableConversations hides the catch-all row every instance grew.
-//
-// The defect: a webhook payload the decoder could not read yielded an event with
-// no chat id and no sender, and the ingest path resolved it anyway — creating a
-// contact with an EMPTY jid. Because contact identity is uniquely
-// (instance, jid), every such event afterwards resolved to that same row, so one
-// conversation per number accumulated every unattributable message. It rendered
-// in the inbox titled with the raw entry type ("unofficial_whatsapp"), because a
-// contact with no name and no handle falls through to that last-resort label,
-// and its messages read "[mensagem sem conteúdo]" because they had no text
-// either. The normalizer now refuses to attribute these at all.
-//
-// Soft-deleted, never dropped, and the MESSAGES are left alone. The conversation
-// is unusable — its chat id is empty, so nothing can be sent to it — but the
-// rows underneath are the only surviving record of payloads we failed to decode,
-// and they are what a future investigation would need.
 func retireUnattributableConversations(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("unofficial_whatsapp_conversations") ||
 		!tx.Migrator().HasTable("unofficial_whatsapp_contacts") {
@@ -148,25 +100,6 @@ func retireUnattributableConversations(tx *gorm.DB) error {
 	`).Error
 }
 
-// resetNeverReadProfileClocks un-stamps a staleness clock that was never earned.
-//
-// `profile_fetched_at` changed meaning. It used to be written by a NAME-only
-// refresh — the push name that rode in on a message — even though no profile was
-// ever read and no picture was ever stored. It now means "we asked the provider
-// who this is", and the enrichment path is gated on it.
-//
-// Left alone, every contact created before this change claims a recent profile
-// read, so the first real read is suppressed for a whole TTL: a customer with a
-// perfectly good WhatsApp photo keeps rendering as initials for a week after the
-// deploy, which is exactly the symptom this fixes.
-//
-// The predicate is the honest one — a subject with no stored picture was never
-// profile-read, because nothing before this change could write that column.
-//
-// It re-runs on every boot for contacts whose read genuinely finds no picture
-// (privacy settings hide it, or they simply have none), costing them one extra
-// read per deploy. That is bounded and self-correcting, and much better than the
-// alternative of never retrying a contact who later adds a photo.
 func resetNeverReadProfileClocks(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("unofficial_whatsapp_contacts") {
 		return nil
@@ -180,20 +113,10 @@ func resetNeverReadProfileClocks(tx *gorm.DB) error {
 	`).Error
 }
 
-// entryTable is one table that keys rows by (entry_id, entry_type).
 type entryTable struct {
-	name string
-	// idIsText marks the tables whose entry_id is text rather than uuid.
-	// ai_attendance_sessions is one, because a voice session's entry can be a
-	// SIP identifier. Casting the wrong way there fails the whole migration.
-	idIsText bool
-	// dedupeOn is what makes a row "already present" on the survivor, beyond the
-	// entry itself. Empty means the entry alone is the key: at most one row.
-	// Nil-and-absent (see appendOnly below) means duplicates are the normal
-	// state and everything is repointed.
-	dedupeOn []string
-	// softDeleted marks tables carrying a deleted_at, so the "does the survivor
-	// already have this" test does not count a row no read path can see.
+	name        string
+	idIsText    bool
+	dedupeOn    []string
 	softDeleted bool
 }
 
@@ -204,33 +127,12 @@ func (t entryTable) idExpr(column string) string {
 	return column
 }
 
-// mergeSplitGroupConversations folds the duplicate conversations one WhatsApp
-// group produced into a single entry.
-//
-// The defect: unofficial_whatsapp conversations were keyed by (instance,
-// contact), and a group message's contact was resolved from its SENDER — a
-// participant — rather than from the chat. So every member who spoke created
-// another conversation for the same `chat_id`, each labelled with that member's
-// name and number, and the lookup that resolves a chat for delivery receipts and
-// calls picked one of them arbitrarily.
-//
-// The merge keeps the OLDEST row per (instance_id, chat_id): it holds the
-// beginning of the thread, and any stage or label an operator attached is most
-// likely on it. Everything entry-keyed is repointed at it and the rest are
-// soft-deleted.
-//
-// Scoped to `entry_type = 'unofficial_whatsapp'` throughout. No other channel
-// could produce these rows, and a repair that ranged wider is one nobody can
-// reason about.
 func mergeSplitGroupConversations(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("unofficial_whatsapp_conversations") ||
 		!tx.Migrator().HasColumn("unofficial_whatsapp_conversations", "chat_id") {
 		return nil
 	}
 
-	// One consistent mapping of superseded conversation -> survivor, reused by
-	// every repoint below so the tables cannot disagree about which row won.
-	// Both columns are uuid, matching the conversation table's own id type.
 	const duplicatesCTE = `
 		SELECT id AS duplicate_id, survivor_id
 		FROM (
@@ -251,14 +153,9 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 		return err
 	}
 	if duplicateCount == 0 {
-		// The overwhelmingly common case, including every fresh database. Doing
-		// the count first keeps the steady-state cost of this repair at one
-		// cheap query per boot instead of a dozen no-op UPDATEs.
 		return repointGroupSubjects(tx)
 	}
 
-	// Append-only histories: several rows per entry is their normal state, so a
-	// merge simply lengthens the list and nothing can collide.
 	appendOnly := []entryTable{
 		{name: "conversation_messages"},
 		{name: "conversation_media"},
@@ -285,10 +182,6 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 		}
 	}
 
-	// At-most-one-per-entry tables. Each carries a single logical value the UI
-	// renders as one thing — the assignment, the current stage, this label,
-	// this opportunity link — so a second row is not a longer history, it is a
-	// contradiction. Move what the survivor lacks; delete what it already has.
 	guarded := []entryTable{
 		{name: "inbox_assignments"},
 		{name: "entry_stages", dedupeOn: []string{"stage_id"}, softDeleted: true},
@@ -320,9 +213,6 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 			return fmt.Errorf("repointing %s: %w", t.name, err)
 		}
 
-		// Whatever could not move is deleted rather than left pointing at a
-		// conversation that is about to disappear: a row keyed to a soft-deleted
-		// entry is invisible to every read path and immortal.
 		drop := fmt.Sprintf(`
 			DELETE FROM %s AS t
 			USING (%s) AS d
@@ -334,9 +224,6 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 		}
 	}
 
-	// The duplicate conversations themselves. Soft-deleted rather than dropped:
-	// this is a live database, and a merge that folded something it should not
-	// have is only recoverable while the rows still exist.
 	soft := fmt.Sprintf(`
 		UPDATE unofficial_whatsapp_conversations AS c
 		SET deleted_at = NOW()
@@ -350,13 +237,6 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 	return repointGroupSubjects(tx)
 }
 
-// repointGroupSubjects makes each surviving group conversation point at the
-// GROUP as its subject instead of at whichever participant happened to speak
-// first.
-//
-// Only where a group subject contact already exists. The webhook path creates
-// one on the next inbound message, and inventing a row here would duplicate that
-// work and race it.
 func repointGroupSubjects(tx *gorm.DB) error {
 	if !tx.Migrator().HasColumn("unofficial_whatsapp_contacts", "is_group") {
 		return nil
@@ -374,66 +254,10 @@ func repointGroupSubjects(tx *gorm.DB) error {
 	`).Error
 }
 
-// backfillMessageDirection fills the direction column on rows written before it
-// existed, from the message type.
-//
-// That is precisely the inference every reader used to make, so this changes
-// nothing about how a historical conversation renders — it just moves the
-// derivation from read time to one write, so the readers can stop guessing.
-// Where the inference was wrong it is still wrong after this, and
-// correctUnofficialDeviceSentDirection repairs the cases that can be proven.
-//
-// Idempotent: only ever touches rows where direction is still empty.
-//
-// DISABLED ON PURPOSE — do not re-enable as a boot-time statement.
-//
-// conversation_messages is ~1.8M rows / 2.3GB here, and this is a single
-// unbatched UPDATE that ran inside the migration transaction, holding the
-// advisory lock every other replica waits on to boot. It took minutes, and any
-// container started meanwhile sat blocked on pg_advisory_xact_lock and never
-// became healthy: one deploy landed 19 seconds after a customer replied and the
-// AI never answered her, because the process was gone before the workflow could.
-//
-// The backfill itself is still wanted. It belongs in an out-of-band batched job
-// (small chunks, one short transaction each, pauses between) that can run
-// against a live system, not in the boot path. Re-enable here only if this table
-// is ever small enough that a full pass is instant, which it is not.
 func backfillMessageDirection(tx *gorm.DB) error {
 	return nil
 }
 
-// relinkUnofficialOrphanedMedia reattaches attachments the message rows lost.
-//
-// The defect: the inbound path asked the media repository to store a row, then
-// read the new id back off its own struct. The repository writes through a
-// separate schema value, so the id the database minted never reached the caller
-// and MediaID arrived empty — which made the history manager drop MediaType with
-// it. Every inbound photo, voice note and document on this channel was fetched
-// and uploaded correctly and then filed under a row nothing referenced: the
-// operator saw a bare "[imagem]" while the bytes sat in object storage.
-//
-// The pairing is exact rather than heuristic. The object key is
-// `conversations/unofficial_whatsapp/{entryID}/{providerMessageID}{ext}`, so
-// stripping the directory and the extension off the stored URL yields precisely
-// the value the message carries in external_message_id. Nothing here matches on
-// a timestamp window, so it cannot attach the wrong attachment to a message.
-//
-// Deliberately NOT matched on original_filename: that column holds the
-// CUSTOMER's filename when they sent a document, and only falls back to the
-// object key's basename. The URL is the one field that always carries the id.
-//
-// Cheap by construction, which matters after what backfillMessageDirection did
-// to a boot. The UPDATE is driven from conversation_media — a table with a
-// handful of rows per channel, not the multi-million-row message table — and
-// each row resolves its message through the existing partial unique index on
-// (entry_type, external_message_id). It is a few index lookups, not a scan.
-//
-// The placeholder text is cleared in the same pass, since it only exists to
-// stand in for media that could not be shown. Left behind, it would render as
-// the word "[imagem]" underneath the image it was apologising for. Only the
-// exact placeholders are touched, so a real caption is never destroyed.
-//
-// Idempotent: only rows whose media_id is still NULL are considered.
 func relinkUnofficialOrphanedMedia(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("conversation_media") ||
 		!tx.Migrator().HasTable("conversation_messages") {
@@ -468,30 +292,6 @@ func relinkUnofficialOrphanedMedia(tx *gorm.DB) error {
 	`).Error
 }
 
-// correctUnofficialDeviceSentDirection fixes the rows the type-based inference
-// got backwards: a message the owner typed on their own WhatsApp app.
-//
-// Those arrive over the webhook with the honest content type of what they
-// contained — a text is a text — so the inference filed the owner's own reply on
-// the customer's side of the thread, showed it with the customer's name and
-// picture, and left the conversation sitting in NEW as though nobody had
-// answered.
-//
-// Proving one is outbound without trusting anything mutable: within a single
-// conversation, compare the sender string against the sender string of a
-// message we KNOW we sent — an operator reply, an agent reply, a template. Those
-// carry the number's own label in from_participant. A row whose sender is byte
-// for byte that same label came from the same place, so it is ours.
-//
-// Deliberately NOT derived from the instance's label column: an operator can
-// rename a number at any time, and matching against today's name would miss
-// every message sent under the old one while silently claiming completeness.
-// Learning the label from the conversation's own history has no such drift.
-//
-// The limit, stated plainly: a conversation where nobody ever replied through
-// the CRM has no known-outbound row to learn from, so its device-sent messages
-// stay as they were. That is the status quo rather than a regression, and the
-// next CRM reply makes them repairable on the following boot.
 func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 	return tx.Exec(`
 		UPDATE conversation_messages AS m
@@ -511,35 +311,14 @@ func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 	`).Error
 }
 
-// retiredPermissionResources are workspace resources whose feature no longer has
-// a surface to gate.
-//
-// They were registered, granted to roles, and then their management API was
-// removed — leaving rows in workspace_member_permissions that name a resource
-// the code no longer knows. Those rows are not merely untidy: the permissions
-// editor renders one row per GRANTED resource it cannot label, and every
-// authorization check against them is dead weight.
-//
-// Keep this list append-only and never reuse a name. Re-registering a retired
-// resource later would silently resurrect grants this repair deleted.
 var retiredPermissionResources = []string{
-	// Telephony MANAGEMENT surfaces. The call session runtime is untouched and
-	// still carries every call; only the CRUD APIs are gone.
 	"sip_trunks",
 	"branches",
-	// Superseded by the per-channel resources (whatsapp_campaigns).
 	"campaigns",
-	// The affiliate program is per-USER, not per-workspace-role: its routes are
-	// /affiliate/me and /affiliate/register, gated by authentication alone.
 	"affiliate",
-	// Never had a surface.
 	"usage",
 }
 
-// dropRetiredPermissionResources deletes grants for resources the code retired.
-//
-// Idempotent and a no-op on a database that never granted them, which is the
-// contract every repair here holds.
 func dropRetiredPermissionResources(tx *gorm.DB) error {
 	result := tx.Exec(
 		"DELETE FROM workspace_member_permissions WHERE resource IN ?",
@@ -555,41 +334,12 @@ func dropRetiredPermissionResources(tx *gorm.DB) error {
 	return nil
 }
 
-// The web call-session feature was called "dialer" until the rename. Both
-// repairs below exist for the same reason: a Go constant whose VALUE was
-// persisted. Renaming the constant alone would orphan every row that still
-// carries the old string, so the rows are migrated to the new value on boot.
-//
-// Neither is a schema change and neither can be expressed as a migration that
-// runs once: a replica still serving the previous build can write the old value
-// during a rolling deploy, so this has to be re-checked on every boot. That is
-// exactly the contract this file already holds.
 const (
-	// legacyCallSessionValue is the pre-rename string as it sits in the database.
-	legacyCallSessionValue = "dialer"
-	// callSessionResourceValue matches workspace_domain.ResourceCallSession.
-	callSessionResourceValue = "call_session"
-	// callSessionPresenceSource matches the source the call session emits into
-	// agent_presence_intervals.
+	legacyCallSessionValue    = "dialer"
+	callSessionResourceValue  = "call_session"
 	callSessionPresenceSource = "call_session"
 )
 
-// renameDialerResourcePermissions moves granted permission rows onto the renamed
-// RBAC resource.
-//
-// workspace_member_permissions.resource stored the literal registered by
-// workspace_domain.ResourceCallSession, which was registerResource("dialer").
-// Left behind, those grants name a resource the code no longer knows: every
-// authorization check against the call session fails for members who HAD the
-// permission, and the permissions editor renders an unlabelled row.
-//
-// The collision delete runs first because (member_id, resource, action) is not
-// unique at the database level. On the first run nothing can collide — the new
-// value never existed before this deploy — but an old replica writing "dialer"
-// after a member was already granted "call_session" would otherwise leave a
-// duplicate grant behind.
-//
-// Idempotent and a no-op on a database that never held the old value.
 func renameDialerResourcePermissions(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("workspace_member_permissions") {
 		return nil
@@ -634,20 +384,6 @@ func renameDialerResourcePermissions(tx *gorm.DB) error {
 	return nil
 }
 
-// renameDialerPresenceSource moves presence intervals onto the renamed source.
-//
-// agent_presence_intervals.source records WHICH surface put the agent in that
-// state — "ws_hub" for the inbox socket, and the call session's own value for
-// on_call/online transitions. That second value was "dialer".
-//
-// Left behind, historical occupancy is split across two names for one surface,
-// so any read that filters or groups by source under-counts every interval
-// written before the rename.
-//
-// The probe runs first so the steady-state cost is one cheap count rather than
-// an UPDATE that takes row locks and writes WAL on every boot.
-//
-// Idempotent and a no-op on a database that never held the old value.
 func renameDialerPresenceSource(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("agent_presence_intervals") {
 		return nil
@@ -678,22 +414,6 @@ func renameDialerPresenceSource(tx *gorm.DB) error {
 	return nil
 }
 
-// materializeStageGroupPipelines gives every stage group a conversation funnel.
-//
-// A stage group used to become a funnel only when some campaign referenced it, so
-// a group created on its own produced no pipelines row: it was absent from the
-// CRM's funnel selector, from "Gerenciar Etapas" and from every stage filter,
-// with nothing to tell the operator why. Group creation now materializes its
-// funnel directly; this backfills the groups that predate that.
-//
-// Idempotent and additive. It touches only groups with no funnel of their own
-// (pipelines.stage_group_id is the link), never renames or moves an existing one,
-// and creates nothing when there are no orphan groups. No conversation changes
-// funnel here — entries are not reassigned.
-//
-// Ids are generated in Go, not by gen_random_uuid(): every other id in this
-// codebase is, the DB function needs PG13+ or pgcrypto, and depending on it here
-// would make this repair the only place that assumes either.
 func materializeStageGroupPipelines(tx *gorm.DB) error {
 	type orphanGroup struct {
 		ID          string
@@ -714,8 +434,6 @@ func materializeStageGroupPipelines(tx *gorm.DB) error {
 		  )
 	`).Scan(&orphans).Error
 	if err != nil {
-		// A deployment that has never used stage groups may not have the tables yet.
-		// Nothing to repair is not a boot failure.
 		log.Printf("[data-repair] stage-group funnels: skipped (%v)", err)
 		return nil
 	}
@@ -747,8 +465,6 @@ func materializeStageGroupPipelines(tx *gorm.DB) error {
 			return fmt.Errorf("read items of stage group %s: %w", g.ID, err)
 		}
 		if len(items) == 0 {
-			// An empty group would produce an empty funnel: a board with no columns
-			// and no way to add the first one. Leave it alone.
 			continue
 		}
 
@@ -768,8 +484,6 @@ func materializeStageGroupPipelines(tx *gorm.DB) error {
 			return fmt.Errorf("create funnel for stage group %s: %w", g.ID, err)
 		}
 
-		// Same shape ensurePipelineForGroup produces for new groups: names lowered
-		// and trimmed, first column initial, positions kept from the group.
 		for i, it := range items {
 			if err := tx.Exec(`
 				INSERT INTO stages (id, workspace_id, pipeline_id, name, description, color, position, is_initial, created_at, updated_at)
@@ -791,29 +505,6 @@ func materializeStageGroupPipelines(tx *gorm.DB) error {
 	return nil
 }
 
-// demoteDuplicateDefaultPipelines leaves exactly one default funnel per
-// workspace and object kind.
-//
-// Nothing ever enforced that. UpdatePipelineUseCase set is_default and never
-// cleared it on the incumbent, so "tornar padrão" accumulated defaults, and
-// pipeline.ErrDeleteDefault then made every one of them undeletable. Five
-// production workspaces ended up with two to four default conversation funnels,
-// and because the stage repository resolves the OLDEST default, the CRM showed
-// stages from a funnel nobody used — in one workspace, one the operators had
-// renamed "NÃO USAR". 17% of all staged conversations were unreachable by the
-// inbox stage filter.
-//
-// The survivor is the funnel holding the most staged conversations, ties broken
-// by age then id. That is the funnel the workspace demonstrably works in, and
-// it is stable: the same input always elects the same winner, so re-running
-// this changes nothing.
-//
-// Demoting is not deleting. The other funnels keep their stages and their
-// conversations; they simply become removable, and the inbox filter reaches
-// them either way once it groups by funnel.
-//
-// Runs BEFORE ux_pipelines_default_per_object is created, which is the whole
-// reason it lives here: that index cannot be built while the duplicates exist.
 func demoteDuplicateDefaultPipelines(tx *gorm.DB) error {
 	res := tx.Exec(`
 		WITH scored AS (

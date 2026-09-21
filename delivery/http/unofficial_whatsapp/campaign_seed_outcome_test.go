@@ -14,9 +14,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// capturingCreate records the campaign the handler actually handed down, which
-// is the only place the admin gate can be observed: everything below this layer
-// trusts what it is given.
 type capturingCreate struct{ got *uwc.Campaign }
 
 func (c *capturingCreate) Execute(_ context.Context, in *uwc.Campaign, _ uw.DepartmentScope) (*uwc.Campaign, error) {
@@ -48,7 +45,6 @@ const seededBody = `{"name":"demo","instanceId":"inst-1",
 	"targets":[{"number":"5584999990001"}],
 	"seedOutcome":{"sentPercent":40,"failedPercent":10}}`
 
-// A platform administrator may create a campaign that already carries results.
 func TestCreateCarriesSeedOutcomeForAnAdmin(t *testing.T) {
 	got := postCampaign(t, "admin", seededBody)
 
@@ -61,16 +57,12 @@ func TestCreateCarriesSeedOutcomeForAnAdmin(t *testing.T) {
 	}
 }
 
-// Everyone else gets an ordinary campaign. The workspace role does not matter:
-// this is the platform role, and a workspace OWNER passes every gate the route
-// applies and still must not fabricate results.
 func TestCreateDropsSeedOutcomeForEveryoneElse(t *testing.T) {
 	for _, role := range []string{"user", ""} {
 		got := postCampaign(t, role, seededBody)
 		if got.SeedOutcome != nil {
 			t.Fatalf("role %q kept the seed outcome: %+v", role, *got.SeedOutcome)
 		}
-		// Dropped, not refused: they asked for a campaign and they get one.
 		if len(got.Targets) != 1 {
 			t.Fatalf("role %q lost its targets", role)
 		}

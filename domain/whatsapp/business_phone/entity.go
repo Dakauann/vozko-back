@@ -41,10 +41,6 @@ var (
 	ErrInvalidBusinessVertical      = errors.New("invalid business vertical - must be one of: ALCOHOL, APPAREL, AUTO, BEAUTY, EDU, ENTERTAIN, EVENT_PLAN, FINANCE, GOVT, GROCERY, HEALTH, HOTEL, MATRIMONY_SERVICE, NONPROFIT, ONLINE_GAMBLING, OTC_DRUGS, OTHER, PHYSICAL_GAMBLING, PROF_SERVICES, RESTAURANT, RETAIL, TRAVEL, or empty string to clear")
 )
 
-// Provider identifies which WhatsApp Business Solution Provider a phone (and
-// its WABA) is hosted through. Existing numbers were onboarded directly against
-// Meta; new numbers are onboarded through 360dialog as our BSP partner. Empty is
-// treated as ProviderMeta so historical rows keep their behavior.
 type Provider string
 
 const (
@@ -52,8 +48,6 @@ const (
 	ProviderDialog360 Provider = "dialog360"
 )
 
-// Normalized returns the provider, defaulting an empty value to ProviderMeta so
-// no code path has to special case the zero value.
 func (p Provider) Normalized() Provider {
 	if strings.TrimSpace(string(p)) == "" {
 		return ProviderMeta
@@ -66,18 +60,14 @@ func (p Provider) IsDialog360() bool { return p.Normalized() == ProviderDialog36
 type Status string
 
 const (
-	StatusPending      Status = "PENDING"
-	StatusVerifying    Status = "VERIFYING"
-	StatusConnected    Status = "CONNECTED"
-	StatusDisconnected Status = "DISCONNECTED"
-	StatusBanned       Status = "BANNED"
-	StatusFlagged      Status = "FLAGGED"
-	StatusRestricted   Status = "RESTRICTED"
-	StatusRateLimited  Status = "RATE_LIMITED"
-	// StatusOnboardingFailed marks a number whose 360dialog provisioning handover
-	// did not complete (for example account_sharing/numbers failed). The phone row
-	// is kept so the failure is visible in the UI and can be retried; see
-	// OnboardingError for the reason.
+	StatusPending          Status = "PENDING"
+	StatusVerifying        Status = "VERIFYING"
+	StatusConnected        Status = "CONNECTED"
+	StatusDisconnected     Status = "DISCONNECTED"
+	StatusBanned           Status = "BANNED"
+	StatusFlagged          Status = "FLAGGED"
+	StatusRestricted       Status = "RESTRICTED"
+	StatusRateLimited      Status = "RATE_LIMITED"
 	StatusOnboardingFailed Status = "ONBOARDING_FAILED"
 	StatusSuspended        Status = "SUSPENDED"
 )
@@ -184,36 +174,34 @@ func ValidVerticals() []BusinessVertical {
 }
 
 type WhatsAppBusinessPhoneNumber struct {
-	ID                     string          `json:"id"`
-	Provider               Provider        `json:"provider,omitempty"`
-	MetaPhoneNumberID      string          `json:"metaPhoneNumberId"`
-	WABAId                 string          `json:"wabaId"`
-	OwnerWorkspaceID       string          `json:"ownerWorkspaceId,omitempty"`
-	OwnerAssignedBy        string          `json:"ownerAssignedBy,omitempty"`
-	OwnerAssignedAt        *time.Time      `json:"ownerAssignedAt,omitempty"`
-	BusinessPortfolioID    string          `json:"businessPortfolioId,omitempty"`
-	DisplayPhoneNumber     string          `json:"displayPhoneNumber"`
-	VerifiedName           string          `json:"verifiedName"`
-	Status                 Status          `json:"status"`
-	QualityRating          QualityRating   `json:"qualityRating"`
-	NameStatus             NameStatus      `json:"nameStatus"`
-	CodeVerificationStatus string          `json:"codeVerificationStatus"`
-	IsOfficialBusiness     bool            `json:"isOfficialBusiness"`
-	BusinessProfile        BusinessProfile `json:"businessProfile,omitempty"`
-	AccessToken            string          `json:"-"`
-	Dialog360ChannelID     string          `json:"dialog360ChannelId,omitempty"`
-	Dialog360APIKey        string          `json:"-"`
-	// OnboardingError carries the reason a 360dialog provisioning handover failed,
-	// surfaced to the UI alongside StatusOnboardingFailed. Empty when healthy.
-	OnboardingError            string    `json:"onboardingError,omitempty"`
-	WABAName                   string    `json:"wabaName,omitempty"`
-	AccountReviewStatus        string    `json:"accountReviewStatus,omitempty"`
-	BusinessVerificationStatus string    `json:"businessVerificationStatus,omitempty"`
-	OwnershipType              string    `json:"ownershipType,omitempty"`
-	MessagingLimitTier         string    `json:"messagingLimitTier,omitempty"`
-	CallsEnabled               bool      `json:"callsEnabled"`
-	CreatedAt                  time.Time `json:"createdAt"`
-	UpdatedAt                  time.Time `json:"updatedAt"`
+	ID                         string          `json:"id"`
+	Provider                   Provider        `json:"provider,omitempty"`
+	MetaPhoneNumberID          string          `json:"metaPhoneNumberId"`
+	WABAId                     string          `json:"wabaId"`
+	OwnerWorkspaceID           string          `json:"ownerWorkspaceId,omitempty"`
+	OwnerAssignedBy            string          `json:"ownerAssignedBy,omitempty"`
+	OwnerAssignedAt            *time.Time      `json:"ownerAssignedAt,omitempty"`
+	BusinessPortfolioID        string          `json:"businessPortfolioId,omitempty"`
+	DisplayPhoneNumber         string          `json:"displayPhoneNumber"`
+	VerifiedName               string          `json:"verifiedName"`
+	Status                     Status          `json:"status"`
+	QualityRating              QualityRating   `json:"qualityRating"`
+	NameStatus                 NameStatus      `json:"nameStatus"`
+	CodeVerificationStatus     string          `json:"codeVerificationStatus"`
+	IsOfficialBusiness         bool            `json:"isOfficialBusiness"`
+	BusinessProfile            BusinessProfile `json:"businessProfile,omitempty"`
+	AccessToken                string          `json:"-"`
+	Dialog360ChannelID         string          `json:"dialog360ChannelId,omitempty"`
+	Dialog360APIKey            string          `json:"-"`
+	OnboardingError            string          `json:"onboardingError,omitempty"`
+	WABAName                   string          `json:"wabaName,omitempty"`
+	AccountReviewStatus        string          `json:"accountReviewStatus,omitempty"`
+	BusinessVerificationStatus string          `json:"businessVerificationStatus,omitempty"`
+	OwnershipType              string          `json:"ownershipType,omitempty"`
+	MessagingLimitTier         string          `json:"messagingLimitTier,omitempty"`
+	CallsEnabled               bool            `json:"callsEnabled"`
+	CreatedAt                  time.Time       `json:"createdAt"`
+	UpdatedAt                  time.Time       `json:"updatedAt"`
 }
 
 type BusinessProfile struct {

@@ -15,11 +15,6 @@ type listCampaignsUseCase struct {
 	templateRepo wa_template.Repository
 }
 
-// NewListCampaignsUseCase builds the paginated list use case.
-// templateRepo may be nil; when set, each campaign is enriched with the live
-// template name and Meta category (not stored on the campaign row).
-// No pricing is attached: charged amounts belong on the balance ledger, not a
-// price×dispatches estimate that vanishes on campaign reset.
 func NewListCampaignsUseCase(
 	campaignRepo wc.Repository,
 	entryRepo wce.Repository,
@@ -42,9 +37,6 @@ func (uc *listCampaignsUseCase) Execute(input wc.ListCampaignsInput) (*shared.Pa
 		return result, nil
 	}
 
-	// Aggregate per-status counts for every campaign on the page in one query
-	// instead of an N+1 of CountByStatus, so adding the metrics summary doesn't
-	// slow down list loading as workspaces accumulate campaigns.
 	ids := make([]string, len(result.Items))
 	for i, item := range result.Items {
 		ids[i] = item.ID
@@ -56,8 +48,6 @@ func (uc *listCampaignsUseCase) Execute(input wc.ListCampaignsInput) (*shared.Pa
 	}
 
 	for _, item := range result.Items {
-		// NewCampaignMetrics tolerates a nil StatusCounts (campaign with no
-		// entries → absent from the map) and returns a zeroed metrics object.
 		item.Metrics = wc.NewCampaignMetrics(countsByCampaign[item.ID])
 
 		recentEntries, err := uc.entryRepo.ListRecentlyUpdated(item.ID, recentEntriesLimit)
@@ -72,9 +62,6 @@ func (uc *listCampaignsUseCase) Execute(input wc.ListCampaignsInput) (*shared.Pa
 	return result, nil
 }
 
-// enrichTemplateMeta attaches template name + category from the live template
-// row. Survives campaign reset (template_id is unchanged). Missing if template
-// was deleted.
 func (uc *listCampaignsUseCase) enrichTemplateMeta(items []*wc.Campaign) {
 	if uc.templateRepo == nil || len(items) == 0 {
 		return

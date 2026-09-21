@@ -14,12 +14,6 @@ import (
 	"vozko/infra/meta"
 )
 
-// channelAdapter is the Instagram implementation of conversation.ChannelAdapter.
-//
-// It is what makes a reply leave from the SAME account the message arrived on:
-// ResolveEntry walks entry -> conversation -> account, and every send uses that
-// account's own IG id and token. With several accounts connected to one
-// workspace, nothing else keeps them apart.
 type channelAdapter struct {
 	accounts      igdomain.AccountRepository
 	contacts      igdomain.ContactRepository
@@ -29,7 +23,6 @@ type channelAdapter struct {
 	caps channel.Capabilities
 }
 
-// NewChannelAdapter builds the Instagram send adapter.
 func NewChannelAdapter(
 	accounts igdomain.AccountRepository,
 	contacts igdomain.ContactRepository,
@@ -47,7 +40,6 @@ func NewChannelAdapter(
 
 func (a *channelAdapter) EntryType() shared.EntryType { return shared.EntryTypeInstagram }
 
-// ResolveEntry loads the account and contact behind an entry id.
 func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*conversation.EntryContext, error) {
 	conv, err := a.conversations.FindByID(ctx, entryID)
 	if err != nil {
@@ -74,18 +66,11 @@ func (a *channelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 	}, nil
 }
 
-// WindowState reports whether the 24h window is open.
-//
-// The window is a sliding deadline anchored on the contact's last inbound
-// message, so it reopens every time they write to us. Reporting expiresAt lets
-// the UI explain *why* the composer is disabled instead of failing the send.
 func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
 	if ec.LastInboundAt == nil {
-		// No inbound message ever: Instagram forbids initiating a conversation,
-		// and no amount of waiting changes that — only the customer writing does.
 		return conversation.ClosedWindow(conversation.WindowReasonNoInbound), nil
 	}
 
@@ -93,7 +78,6 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if time.Now().UTC().Before(expires) {
 		return conversation.OpenWindow(&expires), nil
 	}
-	// A real clock ran out. This is the one reason that reopens on its own.
 	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
@@ -105,8 +89,6 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 	if err := a.assertWindowOpen(ctx, ec); err != nil {
 		return nil, err
 	}
-	// Enforce the documented BYTE limit here as well as in the client so the
-	// error surfaces as a domain error rather than an API rejection.
 	if len(req.Body) > a.caps.MaxTextBytes {
 		return nil, igdomain.ErrTextTooLong
 	}
@@ -136,7 +118,6 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 	if err := a.assertWindowOpen(ctx, ec); err != nil {
 		return nil, err
 	}
-	// Instagram fetches the asset server-side, so raw bytes cannot be sent.
 	if req.URL == "" {
 		return nil, fmt.Errorf("%w: instagram media must be sent as a publicly reachable URL",
 			conversation.ErrCapabilityUnsupported)
@@ -163,10 +144,6 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 	return &conversation.SendOutcome{ProviderMessageID: result.MessageID}, nil
 }
 
-// SendReaction implements conversation.ReactingAdapter.
-//
-// Note that Instagram never echoes our own reactions back, so the caller must
-// record them locally, no webhook will confirm this.
 func (a *channelAdapter) SendReaction(ctx context.Context, ec *conversation.EntryContext, targetProviderMessageID, reaction string) error {
 	account, err := a.sendableAccount(ctx, ec)
 	if err != nil {
@@ -191,7 +168,6 @@ func (a *channelAdapter) RemoveReaction(ctx context.Context, ec *conversation.En
 	return nil
 }
 
-// SendTyping implements conversation.PresenceAdapter.
 func (a *channelAdapter) SendTyping(ctx context.Context, ec *conversation.EntryContext, on bool) error {
 	account, err := a.sendableAccount(ctx, ec)
 	if err != nil {
@@ -203,8 +179,6 @@ func (a *channelAdapter) SendTyping(ctx context.Context, ec *conversation.EntryC
 	return nil
 }
 
-// MarkSeen sends a read receipt. Instagram has no watermark, so the argument is
-// accepted for interface symmetry but the provider marks the thread, not a range.
 func (a *channelAdapter) MarkSeen(ctx context.Context, ec *conversation.EntryContext, _ string) error {
 	account, err := a.sendableAccount(ctx, ec)
 	if err != nil {
@@ -215,8 +189,6 @@ func (a *channelAdapter) MarkSeen(ctx context.Context, ec *conversation.EntryCon
 	}
 	return nil
 }
-
-// ---------------------------------------------------------------- internals
 
 func (a *channelAdapter) sendableAccount(ctx context.Context, ec *conversation.EntryContext) (*igdomain.Account, error) {
 	if ec == nil || ec.AccountID == "" {
@@ -247,9 +219,6 @@ func (a *channelAdapter) assertWindowOpen(ctx context.Context, ec *conversation.
 	return nil
 }
 
-// validateMedia checks kind, MIME type and size against the channel descriptor
-// before spending a Graph call. Note images cap at 8MB while audio/video/pdf cap
-// at 25MB, and gif is unsupported.
 func (a *channelAdapter) validateMedia(req conversation.SendMediaRequest) error {
 	kind := channel.MediaKind(req.Kind)
 	limit, ok := a.caps.MediaLimits[kind]
@@ -268,17 +237,10 @@ func (a *channelAdapter) validateMedia(req conversation.SendMediaRequest) error 
 	return nil
 }
 
-// recordOutbound advances the agent clock. Best effort: the message is already
-// delivered, so a bookkeeping failure must not surface as a send failure.
 func (a *channelAdapter) recordOutbound(ctx context.Context, ec *conversation.EntryContext) {
 	_ = a.conversations.RecordOutbound(ctx, ec.EntryID, time.Now().UTC())
 }
 
-// classify maps a Graph failure onto a domain error and reacts to a dead token.
-//
-// A revoked or expired token is not transient, so the account is marked
-// immediately: that is what turns an invisible "messages stopped working" into a
-// visible Reconnect prompt.
 func (a *channelAdapter) classify(ctx context.Context, account *igdomain.Account, err error) error {
 	apiErr, ok := meta.AsError(err)
 	if !ok {

@@ -6,7 +6,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TelemetryDedupe records processed crm_telemetry envelope IDs for idempotent consume.
 type TelemetryDedupe struct {
 	ID        string    `gorm:"primaryKey;type:text"`
 	Kind      string    `gorm:"type:varchar(40);not null;index"`

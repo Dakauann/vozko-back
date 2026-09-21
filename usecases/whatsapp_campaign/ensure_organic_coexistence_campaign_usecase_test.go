@@ -38,7 +38,6 @@ func TestEnsureOrganicReturnsExistingWithoutCreating(t *testing.T) {
 }
 
 func TestEnsureOrganicCreatesWhenMissing(t *testing.T) {
-	// Both a nil result and a lookup error must trigger creation.
 	for _, tc := range []struct {
 		name string
 		repo *ensureOrganicRepoStub

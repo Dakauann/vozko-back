@@ -11,11 +11,6 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// The unofficial-WhatsApp allowance is the only entitlement whose base comes
-// from per-workspace configuration rather than from the plan. These tests pin
-// that difference, because everything about it looks like the other kinds until
-// it does not.
-
 type fakeConfigReader struct {
 	included int
 	err      error
@@ -51,7 +46,6 @@ func activeSubscription() *fakeCurrentSub {
 	}}
 }
 
-// The base is what a platform administrator granted on the workspace config.
 func TestInstanceBaseComesFromWorkspaceConfig(t *testing.T) {
 	configs := &fakeConfigReader{included: 4}
 	resolver := NewEntitlementResolver(
@@ -70,7 +64,6 @@ func TestInstanceBaseComesFromWorkspaceConfig(t *testing.T) {
 	}
 }
 
-// Addons top the grant up, exactly like every other kind.
 func TestAddonsTopUpTheGrantedAllowance(t *testing.T) {
 	addons := newFakeSubRepo(&workspace_addon.AddonSubscription{
 		ID: "sub-1", WorkspaceID: "ws-1",
@@ -93,16 +86,9 @@ func TestAddonsTopUpTheGrantedAllowance(t *testing.T) {
 	}
 }
 
-// A GRANTED allowance survives a lapsed plan.
-//
-// Every other kind resolves to nothing without an active subscription, and that
-// is right for a plan-derived base. This one is not plan-derived: an
-// administrator granted it deliberately, and it is revoked the same way —
-// deliberately — rather than evaporating because a card expired and taking a
-// customer's connected WhatsApp numbers out of the CRM with it.
 func TestGrantedAllowanceSurvivesAnInactivePlan(t *testing.T) {
 	resolver := NewEntitlementResolver(
-		&fakeCurrentSub{}, // no current subscription at all
+		&fakeCurrentSub{},
 		&fakePlanReader{},
 		newFakeSubRepo(), &fakeConfigReader{included: 3})
 
@@ -115,7 +101,6 @@ func TestGrantedAllowanceSurvivesAnInactivePlan(t *testing.T) {
 	}
 }
 
-// The plan-derived kinds are UNAFFECTED — they still require an active plan.
 func TestPlanDerivedKindsStillRequireAnActivePlan(t *testing.T) {
 	resolver := NewEntitlementResolver(
 		&fakeCurrentSub{}, &fakePlanReader{}, newFakeSubRepo(), &fakeConfigReader{included: 3})
@@ -127,12 +112,6 @@ func TestPlanDerivedKindsStillRequireAnActivePlan(t *testing.T) {
 	}
 }
 
-// A config read failure is REPORTED, not silently read as zero.
-//
-// This number decides whether a customer may connect another WhatsApp. A
-// database blip answering "none" would be indistinguishable from an
-// administrator having granted them nothing, and the provisioning gate treats
-// the two completely differently.
 func TestConfigReadFailurePropagates(t *testing.T) {
 	boom := errors.New("database is unhappy")
 	resolver := NewEntitlementResolver(
@@ -144,11 +123,6 @@ func TestConfigReadFailurePropagates(t *testing.T) {
 	}
 }
 
-// The entitlements LIST — what the provisioning gate actually reads — includes
-// the new kind with its config-derived base.
-//
-// Without this the gate sees zero for every workspace and nobody can connect a
-// number however many they were granted.
 func TestEntitlementsListIncludesTheInstanceKind(t *testing.T) {
 	uc := NewGetWorkspaceEntitlementsUseCase(
 		activeSubscription(), &fakePlanReader{plan: &workspace_plan.PlanDefinition{}},
@@ -171,7 +145,6 @@ func TestEntitlementsListIncludesTheInstanceKind(t *testing.T) {
 	t.Fatal("the unofficial-whatsapp entitlement is absent from the list the gate reads")
 }
 
-// The batch resolver reads the grants in ONE query, not one per workspace.
 func TestBatchResolverUsesTheConfigBase(t *testing.T) {
 	resolver := NewBatchEntitlementResolver(
 		&fakeBatchSubs{}, &fakePlanReader{}, &fakeBatchAddons{},
@@ -186,15 +159,11 @@ func TestBatchResolverUsesTheConfigBase(t *testing.T) {
 	if out["ws-1"] != 2 || out["ws-2"] != 5 {
 		t.Errorf("out = %v, want the per-workspace grants", out)
 	}
-	// A workspace with no config row was granted nothing, which is zero rather
-	// than an absent entry: every requested workspace gets an answer.
 	if got, ok := out["ws-3"]; !ok || got != 0 {
 		t.Errorf("ws-3 = %v (present=%v), want 0", got, ok)
 	}
 }
 
-// The new kind must be a VALID entitlement kind, or addon definitions for it are
-// rejected at creation and nobody can sell one.
 func TestInstanceKindIsSellable(t *testing.T) {
 	kind := workspace_addon.EntitlementUnofficialWhatsAppInstances
 	if !kind.IsValid() {

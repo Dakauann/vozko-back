@@ -14,20 +14,10 @@ type exportRepository struct {
 	db *gorm.DB
 }
 
-// NewExportRepository builds the Instagram export source.
-//
-// Export was WhatsApp-only and structurally campaign-keyed, so an Instagram
-// tenant had no way to get their conversation data out at all. The account is
-// the container here, exactly as it is everywhere else on this channel.
 func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 	return &exportRepository{db: db}
 }
 
-// ListForExport lists one account's conversations, or the whole workspace when
-// no account is named.
-//
-// Instagram has no send statuses and no campaign period, so the corresponding
-// Scope fields are not applicable here and are ignored rather than faked.
 func (r *exportRepository) ListForExport(
 	ctx context.Context,
 	scope export.Scope,
@@ -57,7 +47,6 @@ func (r *exportRepository) ListForExport(
 			COALESCE(igcont.name, '') AS name,
 			igcont.igsid`).
 		Joins("JOIN instagram_contacts igcont ON igcont.id = igc.contact_id AND igcont.deleted_at IS NULL").
-		// Tenancy is enforced here, not by the caller.
 		Where("igc.workspace_id = ?", workspaceID).
 		Where("igc.deleted_at IS NULL")
 
@@ -71,8 +60,6 @@ func (r *exportRepository) ListForExport(
 	}
 
 	for _, rw := range rows {
-		// An Instagram contact has no phone number, so the handle fills the
-		// identity slot, that is what an operator recognises.
 		identity := rw.IGSID
 		if rw.Username != "" {
 			identity = "@" + rw.Username

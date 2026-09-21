@@ -63,9 +63,6 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 		AutoCloseMaxAgeEnabled:              row.AutoCloseMaxAgeEnabled,
 		AutoCloseMaxAgeAfterHours:           maxAgeHours,
 
-		// Normalized on read, the same way the auto-close hours above are: a
-		// row written before these columns existed, or edited by hand, must
-		// not be able to put the roulette into a mode that does not exist.
 		RouletteMode:                wsc.NormalizeRouletteMode(row.RouletteMode),
 		RouletteLastSeenWindowHours: wsc.ClampRouletteLastSeenWindowHours(row.RouletteLastSeenWindowHours),
 		RouletteRescueEnabled:       row.RouletteRescueEnabled,
@@ -73,9 +70,6 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 
 		WorkingHours: decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
 
-		// Carried through even though nothing in this package reads them: the
-		// audience use case writes them via Upsert below, and an unmapped column
-		// would be reset to zero by the next workspace-config save.
 		AudienceDailyCap:        row.AudienceDailyCap,
 		AudienceDebounceMinutes: row.AudienceDebounceMinutes,
 
@@ -110,9 +104,6 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 		UpdatedBy: cfg.UpdatedBy,
 	}
 
-	// An unencodable schedule aborts the write. Storing the rest of the config
-	// and dropping this one field would silently put the workspace back on
-	// around-the-clock rescuing without telling anyone.
 	encoded, err := working_hours.EncodeSpec(cfg.WorkingHours)
 	if err != nil {
 		return err
@@ -125,13 +116,6 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 	return r.db.WithContext(ctx).Save(row).Error
 }
 
-// decodeWorkingHours reads a stored schedule, degrading to "none configured"
-// when the document cannot be parsed.
-//
-// Always open is the behaviour that predates the feature, so a corrupt row
-// costs a workspace its working-hours policy rather than its inbox: the sweep
-// keeps running, which is strictly the recoverable failure. It is logged with
-// the workspace id because nothing else would reveal it.
 func decodeWorkingHours(workspaceID string, raw *string) *working_hours.Spec {
 	spec, err := working_hours.DecodeSpec(raw)
 	if err != nil {
@@ -166,13 +150,6 @@ func (r *Repository) EnsureExists(ctx context.Context, workspaceID string) error
 	return r.db.WithContext(ctx).Omit("UpdatedBy").Create(row).Error
 }
 
-// GetIncludedUnofficialInstancesByWorkspaceIDs reads the granted allowance for
-// many workspaces in one query.
-//
-// Only workspaces with a config row appear in the result; a missing entry means
-// zero, which is what the caller must already assume for a workspace that has
-// never been granted anything. Returning explicit zeros instead would make the
-// map larger without making it more informative.
 func (r *Repository) GetIncludedUnofficialInstancesByWorkspaceIDs(
 	ctx context.Context,
 	workspaceIDs []string,
@@ -201,13 +178,6 @@ func (r *Repository) GetIncludedUnofficialInstancesByWorkspaceIDs(
 	return out, nil
 }
 
-// ListRoulettePolicies returns only the workspaces running the last_seen
-// roulette with rescue enabled.
-//
-// The rescue sweep drives off this: filtering here is what makes the sweep free
-// for every other tenant (one indexed read, then nothing), and what makes
-// switching a workspace back to the online mode stop its pending rescues on the
-// next tick without a cleanup pass or a flag to unset on any assignment row.
 func (r *Repository) ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePolicy, error) {
 	type row struct {
 		WorkspaceID  string  `gorm:"column:workspace_id"`

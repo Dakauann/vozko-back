@@ -13,7 +13,6 @@ import (
 )
 
 type SimulateAgentHistoryMessage struct {
-	// Role: "user" (o operador, no papel do lead) | "assistant" (o agente).
 	Role    string `json:"role" example:"user"`
 	Content string `json:"content" example:"quanto custa o plano?"`
 }
@@ -25,15 +24,10 @@ type SimulateAgentSessionMemory struct {
 }
 
 type SimulateAgentRequest struct {
-	Message string `json:"message" example:"quero saber os preços"`
-	// LeadID opcional: simula a conversa como se fosse com este lead: as
-	// memórias reais dele são injetadas (somente leitura).
-	LeadID  string                        `json:"lead_id,omitempty" example:"5f1c…"`
-	History []SimulateAgentHistoryMessage `json:"history,omitempty"`
-	// SessionMemories: fatos que o agente "memorizou" nesta simulação (as
-	// chamadas de manage_lead_memory são interceptadas e nada persiste; o
-	// cliente as reapresenta aqui para que o agente as veja no próximo turno).
-	SessionMemories []SimulateAgentSessionMemory `json:"session_memories,omitempty"`
+	Message         string                        `json:"message" example:"quero saber os preços"`
+	LeadID          string                        `json:"lead_id,omitempty" example:"5f1c…"`
+	History         []SimulateAgentHistoryMessage `json:"history,omitempty"`
+	SessionMemories []SimulateAgentSessionMemory  `json:"session_memories,omitempty"`
 }
 
 type SimulatedToolCallResponse struct {
@@ -41,10 +35,7 @@ type SimulatedToolCallResponse struct {
 	Arguments map[string]interface{} `json:"arguments"`
 	Result    string                 `json:"result,omitempty"`
 	IsError   bool                   `json:"isError"`
-	// Stubbed: false quando a ferramenta rodou de verdade (busca na base de
-	// conhecimento, GET configurado) e o resultado é real; true quando foi
-	// interceptada e o resultado é simulado.
-	Stubbed bool `json:"stubbed"`
+	Stubbed   bool                   `json:"stubbed"`
 }
 
 type SimulationDebugResponse struct {
@@ -90,8 +81,6 @@ func (h *AgentHandler) Simulate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Same access model as Get: workspace boundary lives in the use case; the
-	// department gate is a delivery concern and mirrors the read path.
 	agentItem, err := h.getUseCase.Execute(mux.Vars(r)["id"])
 	if err != nil || agentItem == nil {
 		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", "agente não encontrado", nil)
@@ -147,9 +136,6 @@ func (h *AgentHandler) Simulate(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, agent.ErrAgentNotFound):
 			response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", err.Error(), nil)
 		default:
-			// The provider's own message goes back to the operator on purpose:
-			// "model deprecated" or "context too long" IS the debugging signal
-			// this page exists to surface.
 			response.WriteErrorWithCode(w, http.StatusBadGateway, "ai_error", err.Error(), nil)
 		}
 		return

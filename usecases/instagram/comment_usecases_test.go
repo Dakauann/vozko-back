@@ -21,15 +21,11 @@ func accountRepoFor(account *igdomain.Account) *fakeAccountRepo {
 	}
 }
 
-// TestSendPrivateReply_ClaimsBeforeSending is the critical guard: Instagram permits
-// exactly ONE private reply per comment, ever. The allowance must be claimed before
-// the HTTP call, so an ambiguous failure can never be "retried" into a double-send.
 func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 	account := connectedAccount()
 	messaging := &fakeMessagingService{}
 	claims := &fakePrivateReplyRepo{}
 
-	// Record the ordering: the claim must land before any send.
 	var order []string
 	claims.ClaimFn = func(context.Context, string, string) (bool, error) {
 		order = append(order, "claim")
@@ -53,8 +49,6 @@ func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 	if len(messaging.Sent) != 1 {
 		t.Fatalf("got %d sends, want 1", len(messaging.Sent))
 	}
-	// The path takes OUR business account id, and the comment travels in the
-	// recipient, not the other way round.
 	if messaging.Sent[0].IGUserID != account.IGUserID {
 		t.Errorf("sent from %q, want the business IG id %q", messaging.Sent[0].IGUserID, account.IGUserID)
 	}
@@ -66,8 +60,6 @@ func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 	}
 }
 
-// TestSendPrivateReply_SecondAttemptRefused: once the allowance is gone the second
-// attempt must not reach Instagram at all.
 func TestSendPrivateReply_SecondAttemptRefused(t *testing.T) {
 	account := connectedAccount()
 	messaging := &fakeMessagingService{}
@@ -92,9 +84,6 @@ func TestSendPrivateReply_SecondAttemptRefused(t *testing.T) {
 	}
 }
 
-// TestSendPrivateReply_FailureKeepsAllowanceConsumed: we cannot know whether Meta
-// processed a send that failed to answer, so handing the allowance back would risk
-// a double-send. The row stays claimed and is marked failed.
 func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 	account := connectedAccount()
 	claims := &fakePrivateReplyRepo{}
@@ -103,8 +92,6 @@ func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 			return nil, errors.New("gateway timeout")
 		},
 	}
-	// SendPrivateReply on the fake does not route through SendTextFn, so force the
-	// failure through a dedicated stub.
 	failing := &failingPrivateReplyMessaging{}
 
 	uc := NewSendPrivateReplyUseCase(
@@ -121,14 +108,11 @@ func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 		t.Errorf("MarkFailed calls = %d, want 1", claims.Failed)
 	}
 
-	// A retry must still be refused: the allowance is spent.
 	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hi again"); !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
 		t.Fatalf("retry err = %v, want ErrPrivateReplyUsed", err)
 	}
 }
 
-// TestSendPrivateReply_RefusesOutsideSevenDayWindow: Instagram requires the reply
-// within 7 days, so an older comment must be rejected before the allowance is spent.
 func TestSendPrivateReply_RefusesOutsideSevenDayWindow(t *testing.T) {
 	account := connectedAccount()
 	stale := time.Now().UTC().Add(-8 * 24 * time.Hour)
@@ -157,8 +141,6 @@ func TestSendPrivateReply_RefusesOutsideSevenDayWindow(t *testing.T) {
 	}
 }
 
-// TestSendPrivateReply_CreatesConversationFromRecipientID: the response carries the
-// commenter's IGSID, which is the only handle available for follow-up DMs.
 func TestSendPrivateReply_CreatesConversationFromRecipientID(t *testing.T) {
 	account := connectedAccount()
 	contacts := &fakeContactRepo{}
@@ -183,7 +165,6 @@ func TestSendPrivateReply_CreatesConversationFromRecipientID(t *testing.T) {
 
 func TestSendPrivateReply_RequiresCommentsScope(t *testing.T) {
 	account := connectedAccount()
-	// Private replies are gated by the COMMENTS scope, not a messaging scope.
 	account.GrantedScopes = []string{igdomain.ScopeBasic, igdomain.ScopeManageMessages}
 
 	claims := &fakePrivateReplyRepo{}
@@ -219,9 +200,6 @@ func TestSendPrivateReply_EnforcesByteLimit(t *testing.T) {
 	}
 }
 
-// TestModerateComment_DeleteRefusedForOthersComments: Instagram requires the
-// COMMENT CREATOR's token to delete, so a third party's comment can only be hidden.
-// Refusing locally gives a useful message instead of an upstream permission error.
 func TestModerateComment_DeleteRefusedForOthersComments(t *testing.T) {
 	account := connectedAccount()
 	comments := &fakeCommentRepo{
@@ -281,8 +259,6 @@ func TestModerateComment_HideMirrorsState(t *testing.T) {
 	}
 }
 
-// TestAccountResolver_EnforcesWorkspaceOwnership: an id from another tenant must
-// read as not-found rather than revealing that it exists.
 func TestAccountResolver_EnforcesWorkspaceOwnership(t *testing.T) {
 	account := connectedAccount()
 	uc := NewModerateCommentUseCase(accountRepoFor(account), &fakeCommentService{}, &fakeCommentRepo{})
@@ -293,8 +269,6 @@ func TestAccountResolver_EnforcesWorkspaceOwnership(t *testing.T) {
 	}
 }
 
-// failingPrivateReplyMessaging fails only SendPrivateReply, so the failure path can
-// be exercised without affecting the other send methods.
 type failingPrivateReplyMessaging struct {
 	fakeMessagingService
 }

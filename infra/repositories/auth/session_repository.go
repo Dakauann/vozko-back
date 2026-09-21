@@ -107,10 +107,6 @@ func (r *SessionRepositoryImpl) UpdateRefreshToken(sessionID string, expectedTok
 		"access_jti":                  newAccessJTI,
 		"expires_at":                  newExpiresAt,
 	}
-	// Compare-and-swap: the row is only rotated while it still holds the token the
-	// caller read. A concurrent rotation changes refresh_token_hash first and this
-	// UPDATE matches nothing (RowsAffected == 0), so the loser never overwrites the
-	// winner's freshly issued token.
 	res := r.db.Model(&schema.Session{}).
 		Where("id = ? AND refresh_token_hash = ?", sessionID, expectedTokenHash).
 		Updates(updates)

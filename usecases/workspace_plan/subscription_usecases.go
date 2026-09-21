@@ -277,11 +277,6 @@ func (uc *subscribeWorkspaceUseCase) Execute(workspaceID, planID string, billing
 	return &workspace_plan.WorkspaceSubscriptionDetails{Subscription: subscription, Plan: plan}, nil
 }
 
-// firstPeriodEnd returns the end of a new subscription's first billing period. Monthly plans
-// co-term to the global billing anchor (BILLING_DUE_DAY) computed in São Paulo time via
-// PlanFirstAnchor (which honors the first-cycle floor), so plan and channel charges land on one
-// unified monthly date. Annual plans keep a 12-month period; the monthly anchor model does not
-// apply to them.
 func firstPeriodEnd(now time.Time, cycle workspace_plan.BillingCycle) time.Time {
 	if cycle == workspace_plan.BillingCycleAnnual {
 		return now.AddDate(0, 12, 0)
@@ -289,10 +284,6 @@ func firstPeriodEnd(now time.Time, cycle workspace_plan.BillingCycle) time.Time 
 	return billing.PlanFirstAnchor(now.In(billing.LocationBRT()), billing.DefaultDueDay, billing.DefaultPlanFirstAnchorFloorDays)
 }
 
-// nextPeriodEnd rolls an existing subscription to its next billing period end. Monthly subscriptions
-// advance to the next global anchor strictly after `from` (no first-cycle floor, since this is a
-// renewal, not a signup), keeping them co-termed to the unified billing day. Annual subscriptions
-// advance 12 months.
 func nextPeriodEnd(from time.Time, cycle workspace_plan.BillingCycle) time.Time {
 	if cycle == workspace_plan.BillingCycleAnnual {
 		return from.AddDate(0, 12, 0)
@@ -399,11 +390,6 @@ func (uc *ensureCurrentWorkspaceSubscriptionUseCase) Execute(workspaceID string)
 
 const defaultExpireBatchSize = 500
 
-// expireDunningGraceDays keeps this job from expiring (and cancelling the channels of) a subscription
-// during the unified-billing dunning window. A monthly subscription's period ends on the anchor/due
-// day; if unpaid it must stay serving through dunning until the day-27 cancel sweep owns the
-// cancellation. Deriving the grace from the knobs (cutoff - due, plus a day of slack) means this job
-// only force-expires a subscription that is overdue BEYOND dunning, deferring to the sweep in between.
 const expireDunningGraceDays = billing.DefaultCancelDeadlineDay - billing.DefaultDueDay + 1
 
 type expireSubscriptionsUseCase struct {
@@ -425,8 +411,6 @@ func NewExpireSubscriptionsUseCase(subscriptions workspace_plan.SubscriptionRepo
 }
 
 func (uc *expireSubscriptionsUseCase) Execute() (int64, error) {
-	// Only expire subscriptions overdue beyond the dunning grace, so a monthly subscription unpaid at
-	// its anchor keeps serving through dunning and the day-27 sweep owns its cancellation.
 	cutoff := uc.now().AddDate(0, 0, -uc.graceDays)
 	var total int64
 	affected := map[string]struct{}{}
@@ -448,12 +432,6 @@ func (uc *expireSubscriptionsUseCase) Execute() (int64, error) {
 	return total, nil
 }
 
-// reconcileWhatsApp suspends WhatsApp numbers a lapsed plan was funding. A plan
-// expiry drops its IncludedWhatsAppBusinessPhones to 0 in the resolver, so this
-// treats the included number exactly like a lapsed addon: OnEntitlementReduced
-// cancels (cancellation_request) and suspends any dialog360 number now over the
-// effective entitlement. Best-effort and idempotent: a failure is logged and the
-// number stays over-cap until the next reconcile pass.
 func (uc *expireSubscriptionsUseCase) reconcileWhatsApp(workspaceIDs map[string]struct{}) {
 	if uc.onReduced == nil {
 		return

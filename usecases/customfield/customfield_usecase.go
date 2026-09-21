@@ -1,7 +1,3 @@
-// Package customfield_usecase implements CRUD for workspace custom field
-// definitions. It depends only on the domain customfield.Repository port. Keys
-// are unique per (workspace, object_type); the usecase pre-checks for a clean
-// conflict error in addition to the DB unique index.
 package customfield_usecase
 
 import (
@@ -12,21 +8,16 @@ import (
 	"vozko/domain/customfield"
 )
 
-// ErrKeyExists is returned when a definition with the same key already exists for
-// the workspace + object type.
 var ErrKeyExists = errors.New("customfield: key already exists for this object")
 
-// Service is the custom field definition usecase surface.
 type Service struct {
 	repo customfield.Repository
 }
 
-// NewService wires the custom field usecases from the domain port.
 func NewService(repo customfield.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// CreateInput is the payload to define a custom field.
 type CreateInput struct {
 	ObjectType string
 	Key        string
@@ -70,8 +61,6 @@ func (s *Service) Create(workspaceID string, in CreateInput) (*customfield.Defin
 	return s.repo.GetByID(workspaceID, d.ID)
 }
 
-// UpdateInput patches a definition. The object type and key are immutable
-// (identity); everything else may change.
 type UpdateInput struct {
 	Label    *string
 	Type     *customfield.FieldType

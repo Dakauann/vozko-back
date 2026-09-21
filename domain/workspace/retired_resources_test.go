@@ -2,17 +2,7 @@ package workspace
 
 import "testing"
 
-// A saved role outlives the code that defined its resources.
-//
-// Retiring SIP telephony left 14 roles carrying `sip_trunks`, 7 carrying
-// `usage` and one carrying `affiliate`. The permissions editor loads a role's
-// stored set, the operator toggles something unrelated, and the whole set goes
-// back — so the request was rejected with "invalid resource" and the role could
-// never be edited through the UI again. The operator's actual change was never
-// the problem.
-
 func TestRetiredResourcesAreDroppedNotRejected(t *testing.T) {
-	// The real stored shape: live permissions either side of dead ones.
 	perms := []PermissionEntry{
 		{Resource: ResourceConversations, Action: ActionRead},
 		{Resource: Resource("sip_trunks"), Action: ActionRead},
@@ -36,8 +26,6 @@ func TestRetiredResourcesAreDroppedNotRejected(t *testing.T) {
 		t.Errorf("reported %d dropped, want 3: %v", len(dropped), dropped)
 	}
 
-	// Order must survive: the set is rendered back to the operator, and
-	// reshuffling it makes a diff of two saves unreadable.
 	want := []Resource{ResourceConversations, ResourceLeads, ResourceBalance}
 	for i, w := range want {
 		if kept[i].Resource != w {
@@ -46,8 +34,6 @@ func TestRetiredResourcesAreDroppedNotRejected(t *testing.T) {
 	}
 }
 
-// Every resource named twice must be reported once, so the log line stays
-// readable when a role carries several actions of the same dead resource.
 func TestDroppedResourcesAreReportedOnce(t *testing.T) {
 	perms := []PermissionEntry{
 		{Resource: Resource("sip_trunks"), Action: ActionRead},
@@ -65,8 +51,6 @@ func TestDroppedResourcesAreReportedOnce(t *testing.T) {
 	}
 }
 
-// A set with nothing retired must come back untouched, and report nothing —
-// the caller only logs when something was actually dropped.
 func TestALiveSetIsUntouched(t *testing.T) {
 	perms := []PermissionEntry{
 		{Resource: ResourceConversations, Action: ActionRead},
@@ -83,9 +67,6 @@ func TestALiveSetIsUntouched(t *testing.T) {
 	}
 }
 
-// Dropping unknown resources must not soften the check on known ones. A real
-// resource paired with a wrong action names something that exists and got used
-// wrongly, which is a mistake worth failing on.
 func TestAKnownResourceStillValidatesItsAction(t *testing.T) {
 	perms := []PermissionEntry{{Resource: ResourceConversations, Action: Action("not_an_action")}}
 

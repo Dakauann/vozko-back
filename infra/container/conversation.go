@@ -39,18 +39,11 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		workspaceResolver,
 		c.redisProvider.SharedState(),
 	)
-	// Both fields point at the same object: the interface for existing consumers,
-	// the concrete type so channels can register their per-entry lookups.
 	c.services.conversationAuth = conversationAuthorizer
 	if impl, ok := conversationAuthorizer.(*conversation_infra.Authorizer); ok {
 		c.services.conversationAuthImpl = impl
 	}
 
-	// Sending has a construction cycle: the hub needs the send use case, which
-	// needs the message sender, which needs the hub to broadcast through. The
-	// late binding is confined to this one object so every consumer around the
-	// ring still takes plain constructor injection. initConversationSenders
-	// points it at the real use case.
 	c.services.liveOperatorSend = conversation_domain.NewLiveOperatorSend()
 
 	c.services.conversationHub = wsdelivery.NewConversationHub(
@@ -74,9 +67,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHistory = historyProvider
 	c.services.conversationHub.SetHistoryProvider(historyProvider)
 
-	// Read-only workflow lookups for the inbox "which AI attends this conversation"
-	// enrichment. Adapted from the concrete repos (batch methods kept off the domain
-	// interfaces); a nil match simply omits workflow-run detail.
 	if runs, ok := c.repositories.workflowRun.(interface {
 		FindActiveByEntries(entryIDs []string) (map[string]*workflow_domain.WorkflowRun, error)
 	}); ok {
@@ -93,8 +83,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.wcEntry,
 	)
 	c.services.conversationHub.SetMessageMarker(messageMarker)
-	// Held so registerChannelAdapter can hand it the accumulated registry; this
-	// service is built before any channel exists.
 	c.services.messageMarker = messageMarker
 
 	StageProvider := stage_usecase.NewStageProviderService(c.repositories.stage)
@@ -106,8 +94,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	labelProvider := label_usecase.NewLabelProviderService(c.repositories.label)
 	c.services.conversationHub.SetLabelProvider(labelProvider)
 
-	// The inbox reads conversation analyses from the engine. Nil until the
-	// engine is wired, in which case the inbox simply shows no verdicts.
 	var analysisProvider conversation_domain.AnalysisProvider
 	if c.repositories.conversationAnalyses != nil {
 		analysisProvider = cauc.NewConversationAnalysisProvider(c.repositories.conversationAnalyses)
@@ -119,7 +105,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	)
 	c.services.conversationStatusService = conversationStatusUpdater
 	c.services.campaignWorkspaceResolver = workspaceResolver
-	// Telemetry publisher is queue-only (no DB). Never Transition/Create on the hub path.
 	if c.services.crmTelemetryPublisher == nil && c.services.crmTelemetryPub != nil {
 		drops := crm_telemetry_usecase.NewLogDropRecorder()
 		c.services.crmTelemetryPublisher = crm_telemetry_usecase.NewPublisherWithDrops(c.services.crmTelemetryPub, drops)
@@ -154,9 +139,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		conversationStatusUpdater,
 	)
 	c.services.inboxService = inboxSvc
-	// The debounce stamps the send path writes. Without this the inbox can only
-	// report an analysis once the engine has been handed the conversation,
-	// which is minutes after the reply that scheduled it.
 	if setter, ok := inboxSvc.(interface {
 		SetAnalysisScheduleReader(conversation_domain.AnalysisScheduleReader)
 	}); ok {
@@ -169,13 +151,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.assignmentService = ia_usecase.NewAssignmentService(assignmentRepo, c.services.conversationHub, workspaceResolver, c.repositories.workspaceConfig)
 	c.services.assignmentService.SetTelemetry(telemetryPub)
 	c.services.assignmentService.SetEventLogger(eventLoggerEarly)
-	// The last_seen roulette mode's two readers. The roster answers "who may
-	// receive a conversation" from workspace membership rather than from open
-	// sockets, using the SAME permission predicate the hub uses; presence
-	// answers "when were they last here". Both are optional at the type level
-	// so a workspace configured for last_seen degrades to the connected pool
-	// with a logged reason rather than stopping distribution — but they are
-	// wired unconditionally here, because there is no reason not to.
 	c.services.assignmentService.SetRoster(ia_usecase.NewRosterService(
 		c.repositories.workspace,
 		c.repositories.workspaceDepartment,
@@ -183,9 +158,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.redisProvider.SharedState(),
 	))
 	c.services.assignmentService.SetPresence(c.repositories.agentPresence)
-	// Hot path: async queue only. Consumer runs the real SessionService against DB.
 	c.services.aiAttendanceService = aa_usecase.NewAsyncSessionService(telemetryPub)
-	// Contained AI sessions when conversation is marked finished (WA or voice entry).
 	conversationStatusUpdater.SetAISessionEnder(c.services.aiAttendanceService)
 
 	templateSender := conversation_usecase.NewTemplateSenderService(
@@ -196,8 +169,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.wcEntry,
 		c.services.conversationHub,
 		consumeWhatsappTemplate,
-		// Sending a template IS the window reopen, and this service is the one
-		// writer all three send paths go through.
 		eventLoggerEarly,
 	)
 	c.services.conversationHub.SetTemplateSender(templateSender)
@@ -214,10 +185,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHub.SetAssignmentRepo(assignmentRepo)
 	c.services.conversationHub.SetAssignmentService(c.services.assignmentService)
 	c.services.conversationHub.SetAISessionEnder(c.services.aiAttendanceService)
-	// Everything a delivered human reply means to the conversation, shared by
-	// every send surface. Required dependencies are validated here, so a missing
-	// one stops the boot instead of silently costing every reply its status
-	// transition and its timeline entry.
 	operatorSendFinalizer, err := conversation_usecase.NewOperatorSendFinalizer(
 		conversationStatusUpdater,
 		workspaceResolver,
@@ -229,13 +196,9 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		log.Fatalf("[container] %v", err)
 	}
 	c.services.operatorSendFinalizer = operatorSendFinalizer
-	// Presence: publish only (no inline Transition/DB on WS register).
 	c.services.conversationHub.SetPresenceRecorder(crm_telemetry_usecase.NewPresenceAdapter(telemetryPub))
 	c.services.conversationHub.SetWorkspaceConfigRepo(c.repositories.workspaceConfig)
 	historyProvider.SetAssignmentRepo(assignmentRepo)
-	// WhatsApp calling: the only voice channel. Built unconditionally, it used to
-	// hang off the SIP trunk manager's presence, which would have silently disabled
-	// calling once the trunk went away.
 	{
 		callRegistry := whatsapp_infra.NewInMemoryCallRegistry()
 		signaling := whatsapp_infra.NewCallSignalingClient(c.repositories.businessPhone, nil, "")
@@ -287,19 +250,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 
 }
 
-// initConversationSenders builds the message sender and the channel-agnostic AI
-// attendance service.
-//
-// Called from initUseCases rather than from startConversationHub, and that
-// ordering is load-bearing: every channel captures c.services.channelAIReply
-// while initUseCases wires its runtime, so building it afterwards handed all of
-// them a nil. Because the field is a concrete pointer assigned into an interface,
-// the result was a NON-nil interface holding a nil pointer — every `!= nil` guard
-// passed and the first inbound message that had an agent panicked.
-//
-// Its dependencies are ready by then: the repositories exist from
-// initRepositories, and the AI service and tool registry are built at the top of
-// initUseCases, well before any channel runtime.
 func (c *Container) initConversationSenders() {
 	messageSender := conversation_usecase.NewMessageSenderService(
 		c.repositories.conversation,
@@ -319,12 +269,11 @@ func (c *Container) initConversationSenders() {
 	messageSender.SetMediaLibrary(c.repositories.media)
 	c.services.messageSender = messageSender
 
-	// Close the send ring: the hub was constructed with the live wrapper, and
-	// this is the point where the real use case exists to fill it.
 	operatorSend, err := conversation_usecase.NewOperatorSendUseCase(
 		messageSender,
 		c.repositories.user,
 		c.services.operatorSendFinalizer,
+		c.services.serviceMessageBilling,
 	)
 	if err != nil {
 		log.Fatalf("[container] %v", err)
@@ -332,9 +281,6 @@ func (c *Container) initConversationSenders() {
 	c.services.operatorSend = operatorSend
 	c.services.liveOperatorSend.Use(operatorSend)
 
-	// Channel-agnostic AI attendance. WhatsApp keeps its own richer pipeline;
-	// this serves every adapter-backed channel so a channel gains an agent by
-	// wiring rather than by growing AI code.
 	c.services.channelAIReply = conversation_usecase.NewChannelAIReplyService(
 		c.repositories.agent,
 		c.services.ai,
@@ -343,14 +289,6 @@ func (c *Container) initConversationSenders() {
 	)
 }
 
-// mustChannelAIReply returns the AI attendance service, refusing to boot if it
-// does not exist yet.
-//
-// The channels capture this BY VALUE while initUseCases wires their runtimes, so
-// reading it too early hands them a nil that no `!= nil` check can catch (a nil
-// pointer in an interface is not nil). That shipped once and cost every channel
-// its agent replies; asserting here turns the same mistake into a boot failure
-// that names itself.
 func (c *Container) mustChannelAIReply() *conversation_usecase.ChannelAIReplyService {
 	if c.services.channelAIReply == nil {
 		log.Fatal("[container] channel AI reply service read before initConversationSenders; " +
@@ -362,9 +300,6 @@ func (c *Container) mustChannelAIReply() *conversation_usecase.ChannelAIReplySer
 func (c *Container) startConversationHub() {
 	messageSender := c.services.messageSender
 
-	// The per-conversation automation override, for every channel. Each channel
-	// registers its own setter as it initialises; WhatsApp is registered here
-	// because its entry repository already exists at this point.
 	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
 		c.services.conversationHub,
 	)
@@ -380,23 +315,11 @@ func (c *Container) startConversationHub() {
 
 	c.services.requestCallPermission = messageSender
 
-	// Department-scoped guard for manual conversation assignment (resolved after
-	// initUseCases has populated c.useCases).
 	c.services.conversationHub.SetMemberVisibility(c.useCases.memberVisibility)
 
 	go c.services.conversationHub.Run()
 }
 
-// registerChannelAdapter adds one channel's send-side adapter and refreshes
-// every consumer of the adapter registry.
-//
-// Adapters ACCUMULATE: the registry is rebuilt from all channels registered so
-// far. Handing each channel's adapter straight to SetChannelAdapters would make
-// the last channel wired silently replace the previous ones, disabling their
-// send path and window checks.
-//
-// Both consumers are refreshed together so the composer's "can I reply now?"
-// and the actual send path can never disagree.
 func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAdapter) {
 	if adapter == nil {
 		return
@@ -404,24 +327,14 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	c.services.channelAdapters = append(c.services.channelAdapters, adapter)
 	registry := conversation_domain.NewAdapterRegistry(c.services.channelAdapters...)
 
-	// Consumers that were built before this channel registered hold the live
-	// registry rather than a snapshot, so updating it is what makes the new
-	// adapter visible to them.
 	c.liveAdapterRegistry().Replace(c.services.channelAdapters...)
 
 	if c.services.messageSender != nil {
 		c.services.messageSender.SetChannelAdapters(registry)
 	}
-	// Read receipts travel the same registry as sends. Refreshed here for the
-	// same reason: a snapshot taken at build time would hold only the channels
-	// registered before this one.
 	if c.services.messageMarker != nil {
 		c.services.messageMarker.SetChannelAdapters(registry)
 	}
-	// The HTTP send endpoint shares the same sender rather than carrying a second
-	// per-channel implementation. Without this it stays WhatsApp-only while its
-	// route accepts every known entry type, which fails as a misleading
-	// "conversation not found" instead of an honest refusal.
 	if setter, ok := c.useCases.sendConversationMessage.(interface {
 		SetChannelSender(conversation_domain.AdapterRegistry, conversation_usecase.ChannelMessageSender)
 	}); ok && c.services.messageSender != nil {
@@ -434,14 +347,6 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	}
 }
 
-// liveAdapterRegistry returns the container's swappable adapter registry,
-// creating it on first use.
-//
-// It exists because channel adapters register one at a time during startup
-// while several consumers are constructed in between. A consumer handed a
-// snapshot sees only the channels registered so far, and a missing adapter is
-// indistinguishable from "this channel cannot send", which is how every
-// workflow send node came to be skipped on Instagram and Telegram.
 func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegistry {
 	if c.services.liveChannelAdapters == nil {
 		c.services.liveChannelAdapters = conversation_domain.NewLiveAdapterRegistry()
@@ -449,11 +354,6 @@ func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegist
 	return c.services.liveChannelAdapters
 }
 
-// logChannelCapabilities reports which optional capabilities a channel got.
-//
-// Shared rather than per-channel because the failure it guards against is not
-// channel-specific: every channel wires the same set behind nil checks, and a
-// capability that quietly went missing looks identical to a quiet channel.
 func logChannelCapabilities(channel string, capabilities map[string]bool) {
 	names := make([]string, 0, len(capabilities))
 	for name := range capabilities {
@@ -472,8 +372,6 @@ func logChannelCapabilities(channel string, capabilities map[string]bool) {
 
 	log.Printf("[%s] capabilities: %s", channel, strings.Join(active, ", "))
 	if len(missing) > 0 {
-		// Warned, not fatal: a deployment may legitimately run without workflows
-		// or media. Naming them beats an operator wondering why nothing fires.
 		log.Printf("[%s] WARNING: inactive capabilities: %s (these fail silently at runtime)",
 			channel, strings.Join(missing, ", "))
 	}

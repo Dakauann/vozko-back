@@ -7,15 +7,6 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// instanceDTO is the wire shape of a connected number.
-//
-// Three fields the entity carries are deliberately absent and must stay absent:
-// the instance token, the delivery token, and the webhook URL built from it.
-// The first grants full control of the customer's WhatsApp; the other two ARE
-// the channel's only authenticity control, since the provider signs nothing. An
-// operator never needs to see any of them — registration is automatic and
-// rotation is a button — so returning them would add leak surface (browser
-// history, screenshots, support tickets) for no capability.
 type instanceDTO struct {
 	ID           string  `json:"id"`
 	WorkspaceID  string  `json:"workspaceId"`
@@ -31,10 +22,7 @@ type instanceDTO struct {
 
 	Status       string `json:"status"`
 	StatusReason string `json:"statusReason,omitempty"`
-	// SessionLive is the single fact the UI branches on. Derived here rather
-	// than re-implemented in the browser, so the composer and the backend agree
-	// on what "connected" means.
-	SessionLive bool `json:"sessionLive"`
+	SessionLive  bool   `json:"sessionLive"`
 
 	ConnectedAt          *time.Time `json:"connectedAt,omitempty"`
 	LastDisconnectAt     *time.Time `json:"lastDisconnectAt,omitempty"`
@@ -64,11 +52,6 @@ type instanceDTO struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// restrictionDTO is WhatsApp's own limiting state.
-//
-// Surfaced verbatim, including the provider's pt-BR wording: it describes a
-// state the customer can verify in their own WhatsApp, and re-writing it in our
-// words would drift from what they see.
 type restrictionDTO struct {
 	Active     bool       `json:"active"`
 	Key        string     `json:"key,omitempty"`
@@ -138,17 +121,11 @@ func toInstanceDTO(i *uw.Instance) instanceDTO {
 	}
 }
 
-// linkChallengeDTO is what the connect screen renders and polls.
 type linkChallengeDTO struct {
-	Instance instanceDTO `json:"instance"`
-	// QRCode is a data URI. It rotates, so the screen re-reads it rather than
-	// caching one.
-	QRCode   string `json:"qrCode,omitempty"`
-	PairCode string `json:"pairCode,omitempty"`
-	// ExpiresAt is the provider's own deadline. Sent so the screen can offer a
-	// fresh code at the right moment instead of stalling silently, which is
-	// indistinguishable from being broken.
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Instance  instanceDTO `json:"instance"`
+	QRCode    string      `json:"qrCode,omitempty"`
+	PairCode  string      `json:"pairCode,omitempty"`
+	ExpiresAt *time.Time  `json:"expiresAt,omitempty"`
 }
 
 func toLinkChallengeDTO(c *uwuc.LinkChallenge) linkChallengeDTO {

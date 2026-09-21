@@ -10,15 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Integration tests for the WINDOWED author ranking. They share the harness in
-// integration_test.go and, like it, are opt-in behind VOZKO_TEST_DB=1.
-//
-// These are the tests that justify the second code path existing at all: that
-// a window changes the answer, and that a window wide enough to hold
-// everything does NOT.
-
-// seedAuthorComments writes n analysed comments by one person at a given time,
-// so a windowed ranking has something real to regroup.
 func seedAuthorComments(t *testing.T, repo ca.Repository, ws, author string, n int, st ca.Stance, harm shared.QualityLevel, at time.Time) {
 	t.Helper()
 	for i := 0; i < n; i++ {
@@ -56,9 +47,6 @@ func periodHandles(t *testing.T, repo ca.AuthorRepository, in ca.AuthorsInput) (
 	return out, page.TotalItems
 }
 
-// THE test the windowed ranking exists for: the answer must change with the
-// window. Someone hostile last month and quiet since must not head the ranking
-// for this week.
 func TestIntegration_AuthorRankingRespectsTheWindow(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -68,11 +56,8 @@ func TestIntegration_AuthorRankingRespectsTheWindow(t *testing.T) {
 	lastMonth := now.Add(-40 * 24 * time.Hour)
 	thisWeek := now.Add(-2 * 24 * time.Hour)
 
-	// Loud last month, silent since.
 	seedAuthorComments(t, repo, ws, "ext-old", 6, ca.StanceHostile, shared.QualityLevelHigh, lastMonth)
-	// Quiet last month, hostile this week.
 	seedAuthorComments(t, repo, ws, "ext-new", 5, ca.StanceHostile, shared.QualityLevelHigh, thisWeek)
-	// Supportive, so the other end of the ranking has an occupant.
 	seedAuthorComments(t, repo, ws, "ext-fan", 4, ca.StanceSupporter, shared.QualityLevelNone, thisWeek)
 
 	weekFrom := now.Add(-7 * 24 * time.Hour)
@@ -94,8 +79,6 @@ func TestIntegration_AuthorRankingRespectsTheWindow(t *testing.T) {
 		}
 	}
 
-	// Widen the window and last month's author comes back, ahead of the newer
-	// one because they said more.
 	monthFrom := now.Add(-60 * 24 * time.Hour)
 	wide := week
 	wide.From = &monthFrom
@@ -111,9 +94,6 @@ func TestIntegration_AuthorRankingRespectsTheWindow(t *testing.T) {
 	}
 }
 
-// The two code paths must not disagree. A window wide enough to contain
-// everything has to rank people exactly as the lifetime projection does,
-// because it is the same question asked twice.
 func TestIntegration_WideWindowMatchesTheLifetimeRanking(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -126,8 +106,6 @@ func TestIntegration_WideWindowMatchesTheLifetimeRanking(t *testing.T) {
 	seedAuthorComments(t, repo, ws, "ext-c", 7, ca.StanceSupporter, shared.QualityLevelNone, at)
 	seedAuthorComments(t, repo, ws, "ext-d", 2, ca.StanceNeutral, shared.QualityLevelNone, at)
 
-	// Build the lifetime projection from the same comments, the way the rollup
-	// does, so both paths start from one set of facts.
 	rebuilt, err := repo.AggregateAuthors(context.Background(), ca.SourceInstagram, integrationRef().AccountID, now.Add(-365*24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -161,8 +139,6 @@ func TestIntegration_WideWindowMatchesTheLifetimeRanking(t *testing.T) {
 	}
 }
 
-// The derived filters mean what they say INSIDE the window: flagged here is
-// "flagged by what they did in this window", not "flagged all time".
 func TestIntegration_WindowedRankingFiltersOnDerivedStanding(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -172,10 +148,8 @@ func TestIntegration_WindowedRankingFiltersOnDerivedStanding(t *testing.T) {
 	old := now.Add(-40 * 24 * time.Hour)
 	recent := now.Add(-2 * 24 * time.Hour)
 
-	// Flagged by their history, but this week they only said nice things.
 	seedAuthorComments(t, repo, ws, "ext-reformed", 5, ca.StanceHostile, shared.QualityLevelHigh, old)
 	seedAuthorComments(t, repo, ws, "ext-reformed", 3, ca.StanceSupporter, shared.QualityLevelNone, recent)
-	// Hostile this week, and severe enough to flag.
 	seedAuthorComments(t, repo, ws, "ext-angry", 4, ca.StanceHostile, shared.QualityLevelHigh, recent)
 
 	weekFrom := now.Add(-7 * 24 * time.Hour)
@@ -197,8 +171,6 @@ func TestIntegration_WindowedRankingFiltersOnDerivedStanding(t *testing.T) {
 	}
 }
 
-// Paging over a window must not repeat or skip a person, and the total must
-// count PEOPLE rather than their comments.
 func TestIntegration_WindowedRankingPagesOverPeople(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -236,8 +208,6 @@ func TestIntegration_WindowedRankingPagesOverPeople(t *testing.T) {
 	}
 }
 
-// A person the operator muted keeps that state in a windowed ranking: it is
-// theirs, not a function of the window.
 func TestIntegration_WindowedRankingKeepsOperatorState(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -257,8 +227,6 @@ func TestIntegration_WindowedRankingKeepsOperatorState(t *testing.T) {
 	if err := authors.UpsertMany(context.Background(), rebuilt); err != nil {
 		t.Fatal(err)
 	}
-	// AggregateAuthors counts; it does not assign ids. The row id exists only
-	// once the projection is written, so it is read back rather than assumed.
 	projected, err := authors.List(context.Background(), lifetimeInput(ws))
 	if err != nil || len(projected.Items) != 1 {
 		t.Fatalf("projection: %v, %d rows", err, len(projected.Items))
@@ -288,13 +256,10 @@ func TestIntegration_WindowedRankingKeepsOperatorState(t *testing.T) {
 	if got.ModerationState != ca.ModerationMuted {
 		t.Fatalf("moderation = %q, the operator's decision must survive the window", got.ModerationState)
 	}
-	// The row id has to come back too, or nothing in the UI can open, moderate
-	// or escalate the person the ranking just listed.
 	if got.ID != authorID {
 		t.Fatalf("id = %q, want the author row id %q", got.ID, authorID)
 	}
 
-	// And the same state filters, since it is an ordinary column on the row.
 	muted := in
 	muted.ModerationState = ca.ModerationMuted
 	if _, total := periodHandles(t, authors, muted); total != 1 {
@@ -307,15 +272,12 @@ func TestIntegration_WindowedRankingKeepsOperatorState(t *testing.T) {
 	}
 }
 
-// lifetimeInput is the all-time ranking for one workspace, used to read a
-// projection back after a rebuild.
 func lifetimeInput(ws string) ca.AuthorsInput {
 	in := ca.AuthorsInput{WorkspaceID: ws, AccountID: integrationRef().AccountID, Sort: ca.DefaultAuthorSort}
 	in.Normalize()
 	return in
 }
 
-// minComments filters people, and the total has to agree with the page.
 func TestIntegration_WindowedRankingMinComments(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)
@@ -337,8 +299,6 @@ func TestIntegration_WindowedRankingMinComments(t *testing.T) {
 	}
 }
 
-// The window narrows the posts too, so the author dialog and the ranking agree
-// about what "this week" means.
 func TestIntegration_AuthorContainersRespectsTheWindow(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewRepository(db)

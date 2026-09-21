@@ -11,16 +11,11 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// The hot path used to re-query the same fat entry row up to 4× per message
-// (spam check, variables, template-info, send record). After consolidating to a
-// single fetch threaded through the helpers, a successful send must hit
-// EntryRepo.FindByID exactly once, while preserving status + metadata behavior.
-
 func TestSendTemplateMessage_FetchesEntryOnce(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}
 	campaign := &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", BusinessPhoneID: "bp-1", TemplateID: "tmpl-1"}
-	tmpl := approvedMarketingTemplate("tmpl-1") // no parameters
+	tmpl := approvedMarketingTemplate("tmpl-1")
 	h.entryRepo.entries["e-1"] = &wce.WhatsAppCampaignEntry{ID: "e-1", LeadID: "lead-1"}
 
 	res := h.consumer.sendTemplateMessage(campaign, tmpl, "e-1", "+5511999999999")
@@ -60,7 +55,6 @@ func TestSendTemplateMessage_WithVariables_SingleFetch(t *testing.T) {
 	if res != sendResultSuccess {
 		t.Fatalf("expected sendResultSuccess, got %v", res)
 	}
-	// The variables read must reuse the single fetch, still exactly one.
 	if n := h.entryRepo.findByIDCount(); n != 1 {
 		t.Errorf("expected exactly 1 entry fetch with variables, got %d", n)
 	}
@@ -71,7 +65,6 @@ func TestSendTemplateMessage_WithVariables_SingleFetch(t *testing.T) {
 
 func TestSendTemplateMessage_SpamSkip_Preserved(t *testing.T) {
 	h := newTestHarness()
-	// Enable spam protection and make the lead's last send recent.
 	h.consumer.WorkspaceConfigRepo = spamWorkspaceConfigRepo{days: 7}
 	h.consumer.LeadCampaignSendRepo = recentLeadSendRepo{last: time.Now().UTC()}
 
@@ -87,13 +80,10 @@ func TestSendTemplateMessage_SpamSkip_Preserved(t *testing.T) {
 	if got := h.entryRepo.getStatus("e-3"); got != wce.SendStatusNotEligiblePossibleSpam {
 		t.Errorf("expected status NotEligiblePossibleSpam, got %v", got)
 	}
-	// Even the spam-skip path fetches the entry at most once.
 	if n := h.entryRepo.findByIDCount(); n > 1 {
 		t.Errorf("expected at most 1 entry fetch on the spam path, got %d", n)
 	}
 }
-
-// --- configurable mocks for the spam path ---
 
 type spamWorkspaceConfigRepo struct{ days int }
 
@@ -113,8 +103,6 @@ func (m recentLeadSendRepo) GetLastSendTimesBatch(_ []string, _ string) (map[str
 	return nil, nil
 }
 
-// The entitlement sweep's batch read. This fake serves an unrelated use case and
-// only needs to satisfy the interface.
 func (m spamWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
 	return map[string]int{}, nil
 }

@@ -38,20 +38,15 @@ func (s *SupportInbox) BeforeCreate(tx *gorm.DB) error {
 }
 
 type SupportEntry struct {
-	ID           string         `gorm:"primaryKey;type:uuid"`
-	InboxID      string         `gorm:"type:uuid;not null;index;index:idx_se_inbox_del,priority:1"`
-	ContactName  string         `gorm:"size:255"`
-	ContactEmail string         `gorm:"size:320"`
-	SourceURL    string         `gorm:"size:2048"`
-	CreatedAt    time.Time      `gorm:"autoCreateTime"`
-	UpdatedAt    time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt    gorm.DeletedAt `gorm:"index;index:idx_se_inbox_del,priority:2"`
-	// LastMessageAt denormalizes the newest conversation_messages.created_at for this
-	// entry. The inbox lists order and filter by it, which replaces a per-entry
-	// JOIN LATERAL over conversation_messages that forced a full scan of every entry
-	// in the workspace on each load. NULL means "no messages", such entries are not
-	// listed, matching the inner-join semantics the LATERAL had.
-	LastMessageAt *time.Time `gorm:"column:last_message_at"`
+	ID            string         `gorm:"primaryKey;type:uuid"`
+	InboxID       string         `gorm:"type:uuid;not null;index;index:idx_se_inbox_del,priority:1"`
+	ContactName   string         `gorm:"size:255"`
+	ContactEmail  string         `gorm:"size:320"`
+	SourceURL     string         `gorm:"size:2048"`
+	CreatedAt     time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt     gorm.DeletedAt `gorm:"index;index:idx_se_inbox_del,priority:2"`
+	LastMessageAt *time.Time     `gorm:"column:last_message_at"`
 }
 
 func (SupportEntry) TableName() string {

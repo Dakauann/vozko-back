@@ -6,14 +6,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// A parked run outlives the decision that started it.
-//
-// The inbound path refuses to start a workflow while automation is off, but a
-// run already asleep on a timer had nothing re-ask on the way back: it woke up
-// and messaged the contact anyway. Live case, AMS SUZANO: automation was
-// switched off at 11:13 and the run still sent at 15:21, cutting across an
-// attendant who was talking to the patient.
-
 type gateStub struct {
 	enabled  bool
 	asked    int
@@ -27,7 +19,6 @@ func (g *gateStub) AutomationEnabled(entryID, entryType string) bool {
 	return g.enabled
 }
 
-// runRepoStub records what the resumer wrote without a database.
 type runRepoStub struct {
 	workflow.WorkflowRunRepository
 	updated *workflow.WorkflowRun
@@ -40,7 +31,6 @@ func (r *runRepoStub) Update(run *workflow.WorkflowRun) error {
 	return nil
 }
 
-// workflowRepoStub fails loudly: a cancelled run must never reach the graph.
 type workflowRepoStub struct {
 	workflow.WorkflowRepository
 	t       *testing.T
@@ -94,16 +84,12 @@ func TestResumeCancelsWhenAutomationWasTurnedOff(t *testing.T) {
 	}
 }
 
-// The guard must not fire when nothing was switched off, or every parked run
-// on the platform would die on its next wake.
 func TestResumeProceedsWhenAutomationIsOn(t *testing.T) {
 	engine := NewRunEngine(nil, nil, nil)
 	engine.SetAutomationGate(&gateStub{enabled: true})
 
 	run := parkedRun()
 	runs := &runRepoStub{}
-	// FindByID returning (nil, nil) makes the resumer stop right after the
-	// gate, which is enough to prove it got past it.
 	wfs := &passthroughWorkflowRepo{}
 
 	_ = resumeRunFromCurrent(wfs, runs, engine, run)
@@ -126,8 +112,6 @@ func (w *passthroughWorkflowRepo) FindByID(string) (*workflow.Workflow, error) {
 	return nil, nil
 }
 
-// No gate wired is the state every deployment starts in, and it must behave
-// exactly as it did before the check existed.
 func TestResumeIsUnchangedWithoutAGate(t *testing.T) {
 	engine := NewRunEngine(nil, nil, nil)
 
@@ -140,8 +124,6 @@ func TestResumeIsUnchangedWithoutAGate(t *testing.T) {
 	}
 }
 
-// automationOff is the engine's own guard, and its defaults decide what happens
-// on the unhappy paths.
 func TestAutomationOffDefaultsToAllowing(t *testing.T) {
 	var nilEngine *RunEngine
 	if nilEngine.automationOff("entry-1", "whatsapp") {

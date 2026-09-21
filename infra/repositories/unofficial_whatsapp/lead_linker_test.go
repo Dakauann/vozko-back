@@ -8,17 +8,12 @@ import (
 	"vozko/domain/shared"
 )
 
-// linkerLeadRepo records what the linker asks of the lead port. Only the two
-// methods the bridge uses are real; the rest of the port is satisfied by the
-// embedded nil interface, which panics loudly if anything else is called.
 type linkerLeadRepo struct {
 	lead_domain.Repository
 
 	byNumber map[string]*lead_domain.Lead
 	findErr  error
 
-	// What FindOrCreate was asked to write, so a test can assert on the write
-	// that did NOT happen.
 	findOrCreateCalls []lead_domain.LeadUpdate
 }
 
@@ -45,16 +40,8 @@ func (r *linkerLeadRepo) FindOrCreate(workspaceID, number string, update lead_do
 	return created, true, nil
 }
 
-var _ = shared.EntryTypeUnofficialWhatsApp // keep the channel this guards named
+var _ = shared.EntryTypeUnofficialWhatsApp
 
-// THE regression this file exists for.
-//
-// The contact and the lead are the same person on this channel, and the linker
-// runs on every inbound message carrying whatever name the handset advertises.
-// Passing that name through to an already-named lead rewrote the column each
-// time, so an operator's rename in the CRM survived exactly until the customer
-// sent their next message — a data loss with no error, no log and no way for
-// the operator to tell it had happened.
 func TestEnsureLeadForPhone_PushnameNeverOverwritesAnOperatorsName(t *testing.T) {
 	repo := &linkerLeadRepo{byNumber: map[string]*lead_domain.Lead{
 		"5584994409624": {ID: "lead-1", Name: "Dakauann Teste"},
@@ -77,8 +64,6 @@ func TestEnsureLeadForPhone_PushnameNeverOverwritesAnOperatorsName(t *testing.T)
 	}
 }
 
-// The other half: the pushname is still what gives a brand-new lead a name, so
-// the leads page does not fill up with bare numbers.
 func TestEnsureLeadForPhone_PushnameStillNamesANewLead(t *testing.T) {
 	repo := &linkerLeadRepo{byNumber: map[string]*lead_domain.Lead{}}
 	linker := NewLeadLinker(repo)
@@ -95,9 +80,6 @@ func TestEnsureLeadForPhone_PushnameStillNamesANewLead(t *testing.T) {
 	}
 }
 
-// A lead that exists but has never been named is the gap the pushname is FOR:
-// it must still be filled, otherwise clearing a name once would leave the row
-// permanently anonymous.
 func TestEnsureLeadForPhone_PushnameFillsABlankName(t *testing.T) {
 	repo := &linkerLeadRepo{byNumber: map[string]*lead_domain.Lead{
 		"5584994409624": {ID: "lead-1", Name: "   "},
@@ -112,9 +94,6 @@ func TestEnsureLeadForPhone_PushnameFillsABlankName(t *testing.T) {
 	}
 }
 
-// A lookup failure must not cost the message its lead. FindOrCreate still runs,
-// which is the pre-existing behaviour, so the worst case degrades to what the
-// code did before rather than dropping the link.
 func TestEnsureLeadForPhone_LookupFailureStillLinks(t *testing.T) {
 	repo := &linkerLeadRepo{
 		byNumber: map[string]*lead_domain.Lead{},

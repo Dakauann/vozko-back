@@ -9,29 +9,18 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The periodic jobs (plan §6.2, §6.3, §11.3, §11.4, retention). Each is a
-// ctxJob for infra/cron's addChannelJob: the runner holds the distributed
-// lock per job name, so a tick never overlaps itself across replicas.
-
 const (
-	// staleInFlightAfter is how long a claimed row may sit before the
-	// backstop assumes its replica died (plan §8).
 	staleInFlightAfter = 10 * time.Minute
 
 	backstopContainersPerTick = 200
 	staleRowsPerTick          = 2000
 
-	// rollupLookback bounds how far back a tick rebuilds when the last-run
-	// marker is missing (first boot, Redis flush).
 	rollupLookback   = 3 * time.Hour
 	rollupLastRunKey = "comment_analysis:rollup:last_run"
 
 	purgeBatchSize = 5000
 )
 
-// ---- flush (30s) ----
-
-// FlushJob turns due debounce hints into container passes.
 type FlushJob struct{ engine *Engine }
 
 func NewFlushJob(engine *Engine) *FlushJob { return &FlushJob{engine: engine} }
@@ -54,8 +43,6 @@ func (j *FlushJob) Execute(ctx context.Context) error {
 		}
 		res, err := e.ProcessContainer(ctx, h.Ref, h.WorkspaceID, cyc)
 		if err != nil {
-			// One container's failure must not stop the others; the first is
-			// returned so the runner sees the tick failed.
 			log.Printf("[comment-analysis-flush] %s: %v", h.Ref.Key(), err)
 			if firstErr == nil {
 				firstErr = err
@@ -68,11 +55,6 @@ func (j *FlushJob) Execute(ctx context.Context) error {
 	return firstErr
 }
 
-// ---- backstop (5m) ----
-
-// BackstopJob is the DB-only sweep: containers whose hint was lost, and
-// rows a dead replica left in flight. It is what makes a Redis failure cost
-// latency instead of data.
 type BackstopJob struct{ engine *Engine }
 
 func NewBackstopJob(engine *Engine) *BackstopJob { return &BackstopJob{engine: engine} }
@@ -81,8 +63,6 @@ func (j *BackstopJob) Execute(ctx context.Context) error {
 	e := j.engine
 	now := e.Clock.Now()
 
-	// Rows stuck in flight: attempts were counted at claim, so releasing
-	// them cannot loop forever.
 	stale, err := e.Repo.ListStaleInFlight(ctx, now.Add(-staleInFlightAfter), staleRowsPerTick)
 	if err != nil {
 		return err
@@ -121,11 +101,6 @@ func (j *BackstopJob) Execute(ctx context.Context) error {
 	return firstErr
 }
 
-// ---- rollup (1h) ----
-
-// RollupJob rebuilds the daily snapshots for every day touched since the
-// last run (so a backfill lands on its own days) and the author projection
-// for every enabled account.
 type RollupJob struct {
 	repo     ca.Repository
 	settings ca.SettingsRepository
@@ -133,18 +108,11 @@ type RollupJob struct {
 	rollups  ca.RollupRepository
 	state    lastRunStore
 	clock    ca.Clock
-	// roles is the §5 author pass. Optional and attached rather than
-	// constructor-injected, so a deployment without a model runs the rollup
-	// exactly as it did before this existed.
-	roles *RoleInferenceJob
+	roles    *RoleInferenceJob
 }
 
-// SetRoleInference attaches the author pass. It runs right after the author
-// projection is rebuilt, which is the only moment the corpus sizes it decides
-// on are known to be current.
 func (j *RollupJob) SetRoleInference(roles *RoleInferenceJob) { j.roles = roles }
 
-// lastRunStore is the two SharedState methods the job needs.
 type lastRunStore interface {
 	GetString(key string) (string, error)
 	SetString(key string, value string, ttl time.Duration) error
@@ -192,8 +160,6 @@ func (j *RollupJob) Execute(ctx context.Context) error {
 		if err := j.authors.UpsertMany(ctx, authors); err != nil {
 			return err
 		}
-		// Best effort and capped inside: an account whose author pass fails
-		// still gets its counters, which is the part the dashboard needs.
 		if j.roles != nil {
 			j.roles.RunAccount(ctx, s.Source, s.AccountID)
 		}
@@ -205,8 +171,6 @@ func (j *RollupJob) Execute(ctx context.Context) error {
 	return nil
 }
 
-// lastRun overlaps the previous window by a minute so a row saved while the
-// last tick was running is not missed.
 func (j *RollupJob) lastRun(now time.Time) time.Time {
 	fallback := now.Add(-rollupLookback)
 	raw, err := j.state.GetString(rollupLastRunKey)
@@ -220,9 +184,6 @@ func (j *RollupJob) lastRun(now time.Time) time.Time {
 	return t.Add(-time.Minute)
 }
 
-// ---- purge (24h) ----
-
-// PurgeJob is retention. Rows older than the window are deleted in slices.
 type PurgeJob struct {
 	repo      ca.Repository
 	retention time.Duration
@@ -258,8 +219,6 @@ func (j *PurgeJob) Execute(ctx context.Context) error {
 	return nil
 }
 
-// ---- helpers ----
-
 func (e *Engine) publishPendingGauge(ctx context.Context) {
 	if e.Metrics == nil {
 		return
@@ -285,7 +244,6 @@ func logResult(job string, ref ca.ContainerRef, res containerResult) {
 		job, ref.Key(), res.Analyzed, res.Released, res.Skipped, res.Deferred, res.Batches, stopped)
 }
 
-// IsCapStop reports whether an error is one of the expected early stops.
 func IsCapStop(err error) bool {
 	return errors.Is(err, ca.ErrDailyCapReached) || errors.Is(err, ca.ErrBalanceBelowFloor) || errors.Is(err, ca.ErrCycleCapReached)
 }

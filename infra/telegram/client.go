@@ -1,8 +1,3 @@
-// Package telegram is the Bot API transport for the Telegram channel.
-//
-// It is deliberately the only place that knows about HTTPS, multipart bodies or
-// Telegram's response envelope. Everything above it works with
-// domain/telegram's contracts.
 package telegram
 
 import (
@@ -22,41 +17,22 @@ import (
 	tgdomain "vozko/domain/telegram"
 )
 
-// DefaultBaseURL is Telegram's hosted Bot API.
-//
-// It is configurable for one reason: a self-hosted Local Bot API Server lifts
-// the 20MB inbound download ceiling and raises uploads to 2000MB. That is the
-// only escape from the channel's hardest product limit, so the knob exists even
-// though almost every deployment leaves it alone.
 const DefaultBaseURL = "https://api.telegram.org"
 
-// requestTimeout bounds a single Bot API call. Telegram's own webhook delivery
-// is impatient, and a send that hangs holds a rate-limit slot the whole time.
 const requestTimeout = 30 * time.Second
 
-// maxDownloadBytes mirrors the documented bot download ceiling. Enforced here as
-// well as at classification time so a lying file_size cannot make us stream an
-// unbounded body into memory.
 const maxDownloadBytes = tgdomain.MaxDownloadBytes
 
-// Config configures the client.
 type Config struct {
-	// BaseURL defaults to DefaultBaseURL.
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
-// Client implements domain/telegram.BotAPI.
-//
-// The bot token is a per-call argument rather than client state: a workspace can
-// connect several bots, and binding the token to the call is what guarantees a
-// reply leaves from the same bot the message arrived on.
 type Client struct {
 	baseURL string
 	http    *http.Client
 }
 
-// NewClient builds the Bot API client.
 func NewClient(cfg Config) *Client {
 	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if base == "" {
@@ -71,10 +47,6 @@ func NewClient(cfg Config) *Client {
 
 var _ tgdomain.BotAPI = (*Client)(nil)
 
-// ---------------------------------------------------------------- envelope
-
-// apiResponse is Telegram's uniform reply: "The response contains a JSON object,
-// which always has a Boolean field 'ok'".
 type apiResponse struct {
 	OK          bool                `json:"ok"`
 	Result      json.RawMessage     `json:"result"`
@@ -83,14 +55,11 @@ type apiResponse struct {
 	Parameters  *responseParameters `json:"parameters"`
 }
 
-// responseParameters is the part of a failure that makes recovery possible
-// rather than guessed: an explicit wait, and the new id of a migrated chat.
 type responseParameters struct {
 	MigrateToChatID int64 `json:"migrate_to_chat_id"`
 	RetryAfter      int   `json:"retry_after"`
 }
 
-// AsAPIError extracts a structured Bot API error, if this is one.
 func AsAPIError(err error) (*tgdomain.APIError, bool) {
 	var apiErr *tgdomain.APIError
 	if errors.As(err, &apiErr) {
@@ -99,7 +68,6 @@ func AsAPIError(err error) (*tgdomain.APIError, bool) {
 	return nil, false
 }
 
-// call issues a JSON request and decodes result into out.
 func (c *Client) call(ctx context.Context, token, method string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -127,8 +95,6 @@ func (c *Client) do(req *http.Request, method string, out any) error {
 	}
 	defer resp.Body.Close()
 
-	// Bounded read: a Bot API response is small, and an unbounded one from a
-	// misconfigured proxy should not be able to exhaust memory.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return fmt.Errorf("telegram: %s: read body: %w", method, err)
@@ -136,8 +102,6 @@ func (c *Client) do(req *http.Request, method string, out any) error {
 
 	var envelope apiResponse
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		// A non-JSON body means something in front of Telegram answered, a
-		// proxy, a captive portal. Surface the status so it is diagnosable.
 		return &tgdomain.APIError{
 			HTTPStatus:  resp.StatusCode,
 			Code:        resp.StatusCode,
@@ -174,8 +138,6 @@ func (c *Client) methodURL(token, method string) string {
 	return c.baseURL + "/bot" + token + "/" + method
 }
 
-// ---------------------------------------------------------------- identity
-
 type getMeResult struct {
 	ID                   int64  `json:"id"`
 	IsBot                bool   `json:"is_bot"`
@@ -203,8 +165,6 @@ func (c *Client) GetMe(ctx context.Context, token string) (*tgdomain.BotProfile,
 		CanConnectToBusiness: res.CanConnectToBusiness,
 	}, nil
 }
-
-// ---------------------------------------------------------------- webhooks
 
 type setWebhookBody struct {
 	URL                string   `json:"url"`
@@ -261,13 +221,6 @@ func (c *Client) GetWebhookInfo(ctx context.Context, token string) (*tgdomain.We
 	return info, nil
 }
 
-// ---------------------------------------------------------------- sending
-
-// messageResult is the Message a successful send returns.
-//
-// Telegram answering synchronously with the full message is what removes the
-// echo-reconciliation step every Meta channel needs: the provider id is known
-// before the row is written.
 type messageResult struct {
 	MessageID int64 `json:"message_id"`
 	Date      int64 `json:"date"`
@@ -289,8 +242,6 @@ type fileIDOnly struct {
 	FileID string `json:"file_id"`
 }
 
-// fileID extracts the id Telegram assigned to the asset it just accepted, so it
-// can be cached and reused for free on the next send.
 func (m messageResult) fileID() string {
 	switch {
 	case len(m.Photo) > 0:
@@ -331,10 +282,8 @@ type sendMessageBody struct {
 }
 
 type replyParams struct {
-	MessageID int64 `json:"message_id"`
-	// AllowSendingWithoutReply keeps the send working when the quoted message has
-	// since been deleted, otherwise a reply to an unsent message fails outright.
-	AllowSendingWithoutReply bool `json:"allow_sending_without_reply"`
+	MessageID                int64 `json:"message_id"`
+	AllowSendingWithoutReply bool  `json:"allow_sending_without_reply"`
 }
 
 func (c *Client) SendText(ctx context.Context, token string, in tgdomain.SendTextInput) (*tgdomain.SendResult, error) {
@@ -358,7 +307,6 @@ func (c *Client) SendText(ctx context.Context, token string, in tgdomain.SendTex
 	return res.toResult(), nil
 }
 
-// sendMethod maps a media kind onto its Bot API method and form field.
 func sendMethod(kind tgdomain.MediaKind) (method, field string) {
 	switch kind {
 	case tgdomain.MediaPhoto:
@@ -377,9 +325,6 @@ func sendMethod(kind tgdomain.MediaKind) (method, field string) {
 func (c *Client) SendMedia(ctx context.Context, token string, in tgdomain.SendMediaInput) (*tgdomain.SendResult, error) {
 	method, field := sendMethod(in.Kind)
 
-	// A cached file_id or a URL is a plain JSON send; only raw bytes need
-	// multipart. Preferring the id is what makes a repeat send of the same asset
-	// free and unbounded.
 	if in.FileID != "" || in.URL != "" {
 		value := in.FileID
 		if value == "" {
@@ -453,9 +398,6 @@ func (c *Client) sendMultipart(ctx context.Context, token, method, field string,
 	if filename == "" {
 		filename = "file"
 	}
-	// The part is written by hand rather than with CreateFormFile so the
-	// Content-Type survives: Telegram uses it to decide how to render a document,
-	// and CreateFormFile always writes application/octet-stream.
 	header := make(textproto.MIMEHeader)
 	header.Set("Content-Disposition",
 		fmt.Sprintf(`form-data; name="%s"; filename="%s"`, field, escapeQuotes(filename)))
@@ -486,8 +428,6 @@ func (c *Client) sendMultipart(ctx context.Context, token, method, field string,
 	return res.toResult(), nil
 }
 
-// ---------------------------------------------------------------- mutations
-
 func (c *Client) EditText(ctx context.Context, token string, chatID, messageID int64, text, parseMode, businessConnectionID string) error {
 	body := map[string]any{
 		"chat_id":    chatID,
@@ -514,7 +454,6 @@ func (c *Client) DeleteBusinessMessages(ctx context.Context, token, businessConn
 	if len(messageIDs) == 0 {
 		return nil
 	}
-	// "A JSON-serialized list of 1-100 identifiers of messages to delete."
 	const maxBatch = 100
 	for start := 0; start < len(messageIDs); start += maxBatch {
 		end := start + maxBatch
@@ -542,7 +481,6 @@ func (c *Client) SendChatAction(ctx context.Context, token string, chatID int64,
 func (c *Client) SetMessageReaction(ctx context.Context, token string, chatID, messageID int64, emoji string) error {
 	body := map[string]any{"chat_id": chatID, "message_id": messageID}
 	if emoji == "" {
-		// An empty list clears the reaction. Bots may set at most one.
 		body["reaction"] = []any{}
 	} else {
 		body["reaction"] = []map[string]string{{"type": "emoji", "emoji": emoji}}
@@ -565,8 +503,6 @@ func (c *Client) AnswerCallbackQuery(ctx context.Context, token, callbackQueryID
 	}
 	return c.call(ctx, token, "answerCallbackQuery", body, nil)
 }
-
-// ---------------------------------------------------------------- files
 
 type getFileResult struct {
 	FileID   string `json:"file_id"`
@@ -611,8 +547,6 @@ func (c *Client) DownloadFile(ctx context.Context, token, filePath string) ([]by
 		}
 	}
 
-	// Read one byte past the ceiling so an oversized body is detected rather than
-	// silently truncated into a corrupt file.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownloadBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("telegram: download: %w", err)
@@ -625,9 +559,7 @@ func (c *Client) DownloadFile(ctx context.Context, token, filePath string) ([]by
 
 type userProfilePhotos struct {
 	TotalCount int `json:"total_count"`
-	// Photos is an array of size-arrays: one entry per photo, each holding that
-	// photo's sizes smallest-first.
-	Photos [][]struct {
+	Photos     [][]struct {
 		FileID string `json:"file_id"`
 	} `json:"photos"`
 }
@@ -646,8 +578,6 @@ func (c *Client) GetUserProfilePhotoFileID(ctx context.Context, token string, us
 	sizes := res.Photos[0]
 	return sizes[len(sizes)-1].FileID, nil
 }
-
-// ---------------------------------------------------------------- helpers
 
 func escapeQuotes(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)

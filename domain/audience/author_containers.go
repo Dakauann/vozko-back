@@ -8,29 +8,12 @@ import (
 	"vozko/domain/shared"
 )
 
-// "Filtrar todos os posts que aquela pessoa comentou" (§2).
-//
-// The feed answers "who said what on this post"; this is the inverse, and the
-// navigation the rest of the author view hangs off: given one person, which of
-// our posts do they turn up on, how often, and how they behave on each.
-//
-// A deliberate limit, stated here because the UI must not overpromise it: we
-// know about COMMENTS. A like is not in the comment webhook and is not stored,
-// so "interagiu" here means "commented" and nothing else.
-
-// AuthorContainersInput asks for the posts one author has commented on.
-//
-// The author is addressed by their external id rather than their handle:
-// handles are renameable on every channel we mirror, and a rename would
-// silently split one person's history in two.
 type AuthorContainersInput struct {
 	WorkspaceID      string
 	Source           Source
 	AccountID        string
 	AuthorExternalID string
 
-	// From and To narrow the answer to a window, by the comment's own
-	// timestamp: "em quais posts esta pessoa comentou este mês".
 	From *time.Time
 	To   *time.Time
 
@@ -60,12 +43,6 @@ func (in AuthorContainersInput) Validate() error {
 	return nil
 }
 
-// AuthorContainer is one post an author has commented on, with how they behaved
-// on it.
-//
-// The repository fills the counts; the standing is derived here by the SAME
-// functions that derive the author's overall standing, so "hostile on this
-// post" and "hostile overall" cannot mean two different things.
 type AuthorContainer struct {
 	Source      Source `json:"source"`
 	AccountID   string `json:"accountId"`
@@ -83,8 +60,6 @@ type AuthorContainer struct {
 	Reputation    int    `json:"reputation"`
 }
 
-// Derive computes this post's standing from its counts. Pure, like every other
-// derived number in the engine: a rebuild lands on the same figures.
 func (c *AuthorContainer) Derive() {
 	c.DerivedStance = DerivedStance(c.Stances)
 	c.Reputation = AuthorReputation(c.Stances, c.SeverityHighCount)

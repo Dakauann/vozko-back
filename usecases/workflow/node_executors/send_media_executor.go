@@ -8,11 +8,7 @@ import (
 )
 
 type sendMediaExecutor struct {
-	// sender stays for the media-library lookup, which is channel-neutral and
-	// lives on the WhatsApp sender's deps.
-	sender *whatsappSender
-	// channel routes the actual send, so every channel with an adapter can
-	// attach media from a workflow.
+	sender  *whatsappSender
 	channel *channelSender
 }
 
@@ -55,9 +51,6 @@ func (e *sendMediaExecutor) Definition() workflow.NodeDefinition {
 }
 
 func (e *sendMediaExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
-	// Any channel with a registered adapter can attach media; only a channel
-	// with no send path at all is skipped, and it is skipped loudly rather than
-	// reporting a success the customer never saw.
 	if !e.channel.Supports(ctx.Run) {
 		return skipUnsupportedNode(ctx, "action_send_media"), nil
 	}
@@ -116,9 +109,6 @@ func (e *sendMediaExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		log.Printf("[workflow][node:%s][run:%s] send_media error: %v", ctx.Node.ID, ctx.Run.ID, err)
 		return fail(mediaURL), nil
 	}
-	// A nil result with no error is a deliberate decline, most often a closed
-	// outbound window. Reporting sent=true there would tell the workflow the
-	// customer received something they did not.
 	if sent == nil {
 		return fail(mediaURL), nil
 	}

@@ -30,10 +30,6 @@ func NewUploadMediaUseCase(
 	}
 }
 
-// UploadMedia stores a media file owned by the WORKSPACE it was uploaded in, the
-// same workspace scoping every other resource (agent, label, department) follows, so a
-// workflow can validate and use only media belonging to its own workspace. The caller
-// resolves workspaceID from the request's workspace context (middleware.GetWorkspaceID).
 func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, mediaName string, mediaType media.MediaType, description string) (media.Media, error) {
 	if !uc.isValidMediaType(mediaType) {
 		return media.Media{}, fmt.Errorf("invalid media type: %s", mediaType)

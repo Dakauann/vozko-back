@@ -7,11 +7,6 @@ import (
 	"vozko/domain/calendar"
 )
 
-// rescheduleEventUseCase moves an existing appointment to a new time. It only computes
-// the target start/end (preserving the original duration when the caller gives neither
-// a new end nor a duration) and delegates the actual move, provider update, local
-// persistence, and the new-slot conflict check, to the update use case, so the
-// reschedule path reuses that engine rather than re-implementing it.
 type rescheduleEventUseCase struct {
 	repo     calendar.Repository
 	google   calendar.GoogleOAuthService
@@ -63,8 +58,6 @@ func (uc *rescheduleEventUseCase) Execute(input calendar.RescheduleEventInput) (
 	})
 }
 
-// originalDuration returns the existing event's duration so a start-only reschedule
-// keeps the same length. Falls back to 30 minutes when the event cannot be resolved.
 func (uc *rescheduleEventUseCase) originalDuration(eventID, workspaceID string) time.Duration {
 	const fallback = 30 * time.Minute
 	ev := uc.resolveExisting(eventID, workspaceID)
@@ -77,8 +70,6 @@ func (uc *rescheduleEventUseCase) originalDuration(eventID, workspaceID string) 
 	return fallback
 }
 
-// resolveExisting best-effort loads the event (local cache first, Google as fallback)
-// only to read its current duration; the authoritative move is done by updateUC.
 func (uc *rescheduleEventUseCase) resolveExisting(eventID, workspaceID string) *calendar.CalendarEvent {
 	googleEventID, isGoogleRouteID := googleCalendarEventIDFromRouteID(eventID)
 	if !isGoogleRouteID {

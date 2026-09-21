@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-// The normalizer is where this channel is most likely to be wrong, because the
-// provider does not document its webhook payloads at all. Every test here pins a
-// classification whose failure mode is silent: a message attributed to the wrong
-// person, an AI answering itself, or a transcript that quietly loses a turn.
-
 func envelopeJSON(t *testing.T, event string, data any) *Envelope {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{
@@ -35,8 +30,6 @@ func onlyEvent(t *testing.T, events []*Event) *Event {
 	return events[0]
 }
 
-// The three-way split on fromMe is the whole reason this channel can be honest
-// about who said what. Each branch has a distinct, expensive failure.
 func TestMessageClassification(t *testing.T) {
 	cases := []struct {
 		name string
@@ -85,14 +78,6 @@ func TestMessageClassification(t *testing.T) {
 	}
 }
 
-// Only a live inbound message may trigger attendance. Every other answer here is
-// a loop or a burst.
-//
-// A group is deliberately NOT excluded here, and that is a fix rather than an
-// omission: an event cannot know whether its instance opted into group
-// attendance, so the hard exclusion that used to live here ran before
-// Instance.HandleGroups was ever consulted and made that setting unreachable.
-// Conversation.InScope owns the group decision because it has both facts.
 func TestRunsAutomationGating(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -114,10 +99,6 @@ func TestRunsAutomationGating(t *testing.T) {
 	}
 }
 
-// The conversation's subject is the CHAT, never the participant who spoke.
-//
-// Resolving it from the sender is what forked one group thread into one CRM
-// conversation per member, each labelled with a random participant.
 func TestSubjectJIDIsTheChatForGroups(t *testing.T) {
 	group := Event{
 		IsGroup:   true,
@@ -137,12 +118,6 @@ func TestSubjectJIDIsTheChatForGroups(t *testing.T) {
 	}
 }
 
-// A `groups` delivery is an INVALIDATION, not data.
-//
-// The provider documents its payload only as "a map, the shape varies", so the
-// normalizer reads one field — which group — and ignores everything else. A
-// normalizer that guessed at "renamed to X" would write a roster that is
-// confidently wrong, which is worse than one that is briefly stale.
 func TestGroupEventIsInvalidationOnly(t *testing.T) {
 	body := envelopeJSON(t, "groups", map[string]any{
 		"groupjid": "120363012345678901@g.us",
@@ -164,9 +139,6 @@ func TestGroupEventIsInvalidationOnly(t *testing.T) {
 	}
 }
 
-// The timestamp is in MILLISECONDS. Every other channel in this codebase carries
-// seconds, and a missed division puts every message in the year 57000 and
-// silently destroys inbox ordering.
 func TestTimestampIsMilliseconds(t *testing.T) {
 	const millis int64 = 1754500000000
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
@@ -182,8 +154,6 @@ func TestTimestampIsMilliseconds(t *testing.T) {
 	}
 }
 
-// A provider that sends seconds despite documenting milliseconds must not push
-// every message a thousand years into the past.
 func TestTimestampToleratesSeconds(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 		"fromMe": false, "messageid": "m1", "messageTimestamp": 1754500000,
@@ -193,8 +163,6 @@ func TestTimestampToleratesSeconds(t *testing.T) {
 	}
 }
 
-// A missing timestamp falls back to now rather than to the zero time, which
-// would sort the message to the start of every inbox forever.
 func TestTimestampMissingFallsBackToNow(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 		"fromMe": false, "messageid": "m1",
@@ -204,8 +172,6 @@ func TestTimestampMissingFallsBackToNow(t *testing.T) {
 	}
 }
 
-// Identity resolution decides which CONTACT a message belongs to. Getting it
-// wrong attaches one person's message to another's conversation.
 func TestSenderIdentityResolution(t *testing.T) {
 	t.Run("inbound prefers the resolved phone JID over a LID", func(t *testing.T) {
 		ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
@@ -226,9 +192,6 @@ func TestSenderIdentityResolution(t *testing.T) {
 		}
 	})
 
-	// For an outbound message the "sender" is OUR number, so the chat is what
-	// identifies the other party. Using the sender would attribute every
-	// outbound message to the business's own number.
 	t.Run("outbound identifies the contact by the chat", func(t *testing.T) {
 		ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 			"fromMe": true, "messageid": "m2",
@@ -240,7 +203,6 @@ func TestSenderIdentityResolution(t *testing.T) {
 		}
 	})
 
-	// A LID's numeric part is an opaque identifier, not a phone number.
 	t.Run("a LID-only contact yields no phone", func(t *testing.T) {
 		ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 			"fromMe": false, "messageid": "m1",
@@ -252,8 +214,6 @@ func TestSenderIdentityResolution(t *testing.T) {
 	})
 }
 
-// A history replay is many messages in one delivery, and it must be marked so
-// attendance stays off for all of them.
 func TestHistoryBatchIsMarkedAsBackfill(t *testing.T) {
 	events := NormalizeEnvelope("inst-1", envelopeJSON(t, "history", []map[string]any{
 		{"fromMe": false, "messageid": "h1", "text": "um"},
@@ -272,8 +232,6 @@ func TestHistoryBatchIsMarkedAsBackfill(t *testing.T) {
 	}
 }
 
-// A single object and an array must both decode: the vendor has been observed
-// sending either, and rejecting one shape would discard a whole delivery.
 func TestMessagesAcceptObjectOrArray(t *testing.T) {
 	single := NormalizeEnvelope("inst-1", envelopeJSON(t, "messages",
 		map[string]any{"fromMe": false, "messageid": "m1"}))
@@ -285,9 +243,6 @@ func TestMessagesAcceptObjectOrArray(t *testing.T) {
 	}
 }
 
-// A status update repeats the same message id for every step. The status must be
-// part of the dedup key, or only the first one is processed and the delivery
-// track never advances past Sent.
 func TestStatusUpdatesAreNotDeduplicatedIntoOne(t *testing.T) {
 	keys := map[string]struct{}{}
 	for _, status := range []string{"Sent", "Delivered", "Read"} {
@@ -316,8 +271,6 @@ func TestDeliveryStatusNormalization(t *testing.T) {
 	}
 }
 
-// A deletion must be a tombstone, not a status tick, or a message the customer
-// removed stays visible in the CRM.
 func TestDeletionIsClassifiedSeparately(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages_update",
 		map[string]any{"messageid": "m1", "status": "Deleted"})))
@@ -334,9 +287,6 @@ func TestEditIsClassifiedSeparately(t *testing.T) {
 	}
 }
 
-// A tapped button carries the option ID a workflow branches on. Losing it routes
-// every press down the no-match branch, which reads as "the customer typed
-// something unexpected" and is very hard to trace.
 func TestInteractiveReplyCarriesItsOptionID(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 		"fromMe": false, "messageid": "m1",
@@ -347,8 +297,6 @@ func TestInteractiveReplyCarriesItsOptionID(t *testing.T) {
 	}
 }
 
-// A newsletter is a publishing surface, not an attendance surface. Creating a
-// conversation for one would put a broadcast channel in an operator's queue.
 func TestNewsletterMessagesAreDropped(t *testing.T) {
 	events := NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 		"fromMe": false, "messageid": "m1", "chatid": "120363012345678901@newsletter",
@@ -370,9 +318,6 @@ func TestGroupMessagesAreClassifiedNotDropped(t *testing.T) {
 	}
 }
 
-// An event kind the vendor adds must be visible, never discarded: this provider
-// ships new types without notice, and a silent drop is indistinguishable from a
-// working integration.
 func TestUnknownEventIsClassifiedAndKeepsItsPayload(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "quantum_flux",
 		map[string]any{"whatever": true})))
@@ -387,8 +332,6 @@ func TestUnknownEventIsClassifiedAndKeepsItsPayload(t *testing.T) {
 	}
 }
 
-// High-volume events with no CRM meaning are classified rather than dropped, so
-// their volume stays visible in metrics.
 func TestIgnoredEvents(t *testing.T) {
 	for _, name := range []string{"presence", "newsletter_messages"} {
 		ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, name, map[string]any{})))
@@ -414,9 +357,6 @@ func TestBlockToggleCarriesItsState(t *testing.T) {
 	}
 }
 
-// Dedup keys must be scoped by instance: a provider message id is unique per
-// account, not globally, and two workspaces would otherwise suppress each
-// other's messages.
 func TestIdempotencyKeysAreScopedByInstance(t *testing.T) {
 	data := map[string]any{"fromMe": false, "messageid": "shared-id"}
 	a := onlyEvent(t, NormalizeEnvelope("inst-a", envelopeJSON(t, "messages", data)))
@@ -435,16 +375,11 @@ func TestDecodeEnvelopeRejectsGarbage(t *testing.T) {
 	}
 }
 
-// The provider substitutes {{...}} from ITS lead store, which is not ours. An
-// operator typing it literally, or an agent emitting a stray brace, would
-// otherwise leak another record's data into a customer's chat.
 func TestSanitizeOutboundTextNeutralisesProviderPlaceholders(t *testing.T) {
 	out := SanitizeOutboundText("Olá {{name}}, tudo bem?")
 	if out == "Olá {{name}}, tudo bem?" {
 		t.Fatal("the provider's placeholder syntax was left intact")
 	}
-	// The visible text must be unchanged: stripping the braces would silently
-	// alter what an operator wrote.
 	if len([]rune(out)) < len([]rune("Olá {{name}}, tudo bem?")) {
 		t.Errorf("sanitising removed visible characters: %q", out)
 	}
@@ -453,19 +388,7 @@ func TestSanitizeOutboundTextNeutralisesProviderPlaceholders(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- wire shapes
-
-// Every event type the provider is known to emit must survive decoding and come
-// out classified. This is the regression test for the failure that shipped: the
-// live host spells the event key `EventType`, the decoder only read `event`, and
-// so EVERY inbound webhook — messages included — was answered 200 and thrown
-// away. A drop is indistinguishable from silence, which is why it went unnoticed
-// until someone watched the log.
 func TestEveryProviderEventTypeIsDecodedAndClassified(t *testing.T) {
-	// needsKey marks the events where a redelivery would DOUBLE-APPLY. It is
-	// false for contact/chat refreshes and for ignored ticks on purpose: a
-	// profile update is idempotent, and giving it a payload digest would stop a
-	// contact renamed back to an earlier value from ever updating again.
 	cases := []struct {
 		event    string
 		data     map[string]any
@@ -486,9 +409,6 @@ func TestEveryProviderEventTypeIsDecodedAndClassified(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.event, func(t *testing.T) {
-			// Encoded and decoded through the real path rather than built as a
-			// struct: the bug was IN the decoder, so a test that skips it proves
-			// nothing about what arrives from the host.
 			body, err := json.Marshal(map[string]any{
 				"EventType": tc.event, "instance": "r18", "data": tc.data,
 			})
@@ -510,9 +430,6 @@ func TestEveryProviderEventTypeIsDecodedAndClassified(t *testing.T) {
 	}
 }
 
-// The same event arrives spelled several ways depending on which surface of the
-// host emitted it. Each variant here was cheap to support and would otherwise
-// discard live traffic.
 func TestDecodeEnvelopeAcceptsProviderShapeVariants(t *testing.T) {
 	cases := []struct {
 		name string
@@ -536,9 +453,6 @@ func TestDecodeEnvelopeAcceptsProviderShapeVariants(t *testing.T) {
 				t.Fatalf("event = %q, want normalized to %q", env.Event, "messages")
 			}
 			ev := onlyEvent(t, NormalizeEnvelope("inst-1", env))
-			// The payload has to be REACHED, not merely accepted: a decoder that
-			// returns an envelope with empty Data turns every message into a
-			// contentless row, which looks like it works.
 			if ev.ProviderMessageID != "m1" {
 				t.Errorf("provider message id = %q, want %q — the payload was not located",
 					ev.ProviderMessageID, "m1")
@@ -547,8 +461,6 @@ func TestDecodeEnvelopeAcceptsProviderShapeVariants(t *testing.T) {
 	}
 }
 
-// The instance second factor must keep working across those variants, since it
-// is what stops one tenant's URL from injecting events into another's inbox.
 func TestDecodeEnvelopeKeepsTheInstanceIdentifier(t *testing.T) {
 	for _, body := range []string{
 		`{"EventType":"connection","instance":"r18","data":{}}`,
@@ -565,10 +477,6 @@ func TestDecodeEnvelopeKeepsTheInstanceIdentifier(t *testing.T) {
 	}
 }
 
-// A body we cannot read is usually a real customer message. Reporting its keys
-// is how a shape change gets noticed; reporting its VALUES would put message
-// text and phone numbers in the log sink, which is the one thing this channel
-// must never do.
 func TestDescribeUnknownBodyReportsKeysNeverValues(t *testing.T) {
 	keys := DescribeUnknownBody([]byte(
 		`{"weird":"shape","text":"segredo do cliente","phone":"5511999999999"}`))
@@ -589,12 +497,6 @@ func TestDescribeUnknownBodyReportsKeysNeverValues(t *testing.T) {
 	}
 }
 
-// A tapped button IS a message, even though `text` is empty.
-//
-// Regression test for a live drop: an interactive reply normalized to empty
-// text, persistence rejected it with "message content is required", the
-// consumer treated that as retryable, and the customer's answer was retried
-// three times and lost. The operator saw their own question and silence.
 func TestInteractiveReplyAlwaysCarriesABody(t *testing.T) {
 	cases := []struct {
 		name string
@@ -639,8 +541,6 @@ func TestInteractiveReplyAlwaysCarriesABody(t *testing.T) {
 			if ev.Text != tc.want {
 				t.Errorf("text = %q, want %q", ev.Text, tc.want)
 			}
-			// The machine-readable id must survive alongside it: workflows branch
-			// on the id, never on the label an operator can rename.
 			if ev.OptionID == "" {
 				t.Error("option id lost; workflows would have nothing to branch on")
 			}
@@ -648,8 +548,6 @@ func TestInteractiveReplyAlwaysCarriesABody(t *testing.T) {
 	}
 }
 
-// Explicit text always wins over a label, so a button carrying both does not
-// have the customer's own words replaced.
 func TestInteractiveReplyKeepsExplicitText(t *testing.T) {
 	ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
 		"fromMe": false, "messageid": "m1", "text": "o que o cliente digitou",
@@ -660,8 +558,6 @@ func TestInteractiveReplyKeepsExplicitText(t *testing.T) {
 	}
 }
 
-// A message with a sender but no chat id is still filable: the sender IS the
-// chat in a private conversation, which is what SubjectJID falls back to.
 func TestMessageWithSenderButNoChatStillResolves(t *testing.T) {
 	body := envelopeJSON(t, "messages", map[string]any{
 		"messageid": "m1",

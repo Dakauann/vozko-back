@@ -18,22 +18,10 @@ type conversationRepository struct {
 	db *gorm.DB
 }
 
-// NewConversationRepository builds the conversation-entry repository.
 func NewConversationRepository(db *gorm.DB) uw.ConversationRepository {
 	return &conversationRepository{db: db}
 }
 
-// FindOrCreate resolves the conversation a chat belongs to.
-//
-// Keyed on the CHAT, not on the subject. The two are equivalent for a private
-// chat — the chat id is the person's JID — but only one of them is right for a
-// group, and keying on the subject is what let a group thread fork into one
-// conversation per participant that spoke. The chat id is the identity the
-// provider itself uses for addressing, so it is the honest key for both.
-//
-// The subject lookup remains as a fallback for rows written before chat ids were
-// enforced; it can only match when the chat lookup missed, which on a repaired
-// database means the row predates the column.
 func (r *conversationRepository) FindOrCreate(
 	ctx context.Context,
 	in uw.FindOrCreateConversationInput,
@@ -66,8 +54,6 @@ func (r *conversationRepository) FindOrCreate(
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "instance_id"}, {Name: "chat_id"}},
-			// Partial unique index: the predicate must be repeated or Postgres
-			// refuses to use it as the conflict arbiter (42P10).
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "chat_id <> '' AND deleted_at IS NULL"}},
 			},
@@ -94,9 +80,6 @@ func (r *conversationRepository) FindByID(ctx context.Context, id string) (*uw.C
 	return toConversationDomain(&record), nil
 }
 
-// FindByChatID resolves straight from a chat id, which is what the events that
-// name a chat but no sender carry: a chat-level read receipt, a chat archive, a
-// deletion.
 func (r *conversationRepository) FindByChatID(ctx context.Context, instanceID, chatID string) (*uw.Conversation, error) {
 	var record schema.UnofficialWhatsAppConversation
 	err := r.db.WithContext(ctx).
@@ -138,26 +121,7 @@ func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryI
 	return workspaceID, nil
 }
 
-// DepartmentIDForEntry reads the department that owns this conversation:
-// the campaign that created it if there is one, else the instance.
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
-	// Plucked into a slice of NullString, not a *string: Pluck writes through a
-	// slice, and handing it a **string made every call fail with "sql: Scan
-	// called without calling Next" even when the row existed. Assignment is
-	// fail-closed on that error, so this channel silently assigned NOBODY —
-	// the same bug already fixed in the Telegram copy of this lookup. The
-	// column is nullable, so the element type has to tolerate NULL as well.
-	//
-	// The campaign that put this conversation here outranks the instance.
-	// A campaign is scoped to a department deliberately, while the instance is
-	// just the number the message happened to leave from — assigning a
-	// department-A campaign to department B's operators because they share a
-	// phone is how a reply lands with someone who has no idea what was sent.
-	// The instance stays the fallback for organic conversations, which have no
-	// campaign to ask.
-	//
-	// Most recently sent campaign wins, matching FindLatestByConversationID:
-	// the person is answering the last thing they received.
 	var departmentIDs []sql.NullString
 	if err := r.db.WithContext(ctx).
 		Table("unofficial_whatsapp_conversations uwc").
@@ -184,11 +148,6 @@ func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entry
 	return departmentIDs[0].String, nil
 }
 
-// CampaignIDForEntry reports the campaign that owns this conversation, or ""
-// when no campaign targeted it.
-//
-// Most recently sent wins, the same ordering DepartmentIDForEntry uses: the
-// person is answering the last thing they received.
 func (r *conversationRepository) CampaignIDForEntry(ctx context.Context, entryID string) (string, error) {
 	var ids []string
 	if err := r.db.WithContext(ctx).
@@ -216,12 +175,6 @@ func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, wo
 	return ids, nil
 }
 
-// RecordInbound advances the customer clock.
-//
-// Monotonic (GREATEST against the stored value) so an out-of-order delivery
-// cannot move the clock backwards. This channel has no messaging window, so a
-// backwards clock would not wrongly close a composer — but it WOULD reorder the
-// inbox under an operator mid-triage, which is its own kind of broken.
 func (r *conversationRepository) RecordInbound(ctx context.Context, id string, at time.Time) error {
 	return r.touchClocks(ctx, id, at, "last_customer_message_at")
 }
@@ -267,12 +220,6 @@ func (r *conversationRepository) SetStatus(ctx context.Context, id, status, clos
 	return nil
 }
 
-// SetAutomationEnabled writes the per-conversation override.
-//
-// A nil value CLEARS it, so the conversation inherits the instance switch again.
-// That is a genuinely different state from an explicit false — "follow the
-// instance" versus "off for this one conversation" — and collapsing them would
-// make an operator's takeover permanent by accident.
 func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error {
 	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
 		Where("id = ?", id).
@@ -286,9 +233,6 @@ func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id st
 	return nil
 }
 
-// StatusForEntry reads just the status column. A dedicated one-column read
-// rather than FindByID plus field access: the conversation-status service
-// consults it on every transition.
 func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) (string, error) {
 	var status string
 	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
@@ -301,21 +245,12 @@ func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) 
 	return status, nil
 }
 
-// CountByStatus powers the inbox status chips.
-//
-// Conversations with no status yet count as "new", matching the inbox's own
-// IS DISTINCT FROM default. Without that, brand-new conversations are visible in
-// the list but absent from every count above it, and the header reads "no work
-// here" over a list full of work.
 func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, instanceID string) (map[string]int64, error) {
 	type row struct {
 		Status string `gorm:"column:status"`
 		Count  int64  `gorm:"column:cnt"`
 	}
 
-	// The expression is repeated in GROUP BY rather than referenced
-	// positionally: GORM quotes Group("1") into GROUP BY "1", which Postgres
-	// reads as a column NAME and rejects with 42703.
 	const statusExpr = "COALESCE(NULLIF(conversation_status, ''), 'new')"
 
 	query := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).

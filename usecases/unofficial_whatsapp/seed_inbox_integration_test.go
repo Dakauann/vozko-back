@@ -21,27 +21,11 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// The claim this feature rests on cannot be checked with a fake: that a seeded
-// conversation is VISIBLE in the inbox. Visibility is decided by two SQL gates
-// in infra (the union's `last_message_at IS NOT NULL` and the hydration's
-// inner JOIN LATERAL over conversation_messages), and no in-memory double
-// models either of them.
-//
-// So this runs the real use case, through the real repositories, against a real
-// Postgres, and then asks the production inbox query whether the conversation
-// it created shows up. Everything happens inside a transaction that is always
-// rolled back, so the development database is untouched.
-//
-// Opt-in: set VOZKO_TEST_DB=1 and the DB_* variables the application reads.
-
 func integrationTx(t *testing.T) *gorm.DB {
 	t.Helper()
 	if os.Getenv("VOZKO_TEST_DB") != "1" {
 		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
 	}
-	// The instance row carries an encrypted provider token, so reading one at
-	// all needs the PII service the container installs at startup. Same keys
-	// from the same environment, or the rows do not decrypt.
 	piiSvc, err := pii.LoadFromEnv()
 	if err != nil {
 		t.Skipf("PII encryption is not configured in this environment: %v", err)
@@ -71,9 +55,6 @@ func integrationTx(t *testing.T) *gorm.DB {
 	return tx
 }
 
-// anyConnectedInstance finds a workspace that has a live number to seed onto.
-// The fixture is whatever the development database happens to hold, so the test
-// skips rather than fails when there is none.
 func anyConnectedInstance(t *testing.T, tx *gorm.DB) (workspaceID, instanceID string) {
 	t.Helper()
 	var row struct {
@@ -90,9 +71,6 @@ func anyConnectedInstance(t *testing.T, tx *gorm.DB) (workspaceID, instanceID st
 	return row.WorkspaceID, row.ID
 }
 
-// visibleInInbox reproduces the two production gates, verbatim in shape:
-// entry_sources.go's union predicate, and message_repository.go's hydration
-// LATERAL. If a seeded conversation survives both, it renders in the CRM.
 func visibleInInbox(t *testing.T, tx *gorm.DB, workspaceID, conversationID string) bool {
 	t.Helper()
 	var found int64
@@ -127,13 +105,6 @@ func newIntegrationSeeder(tx *gorm.DB) *uwuc.SeedInboxUseCase {
 	return newIntegrationSeederWith(tx, nil)
 }
 
-// newIntegrationSeederWith is the same seeder with a scripter attached.
-//
-// The scripter is a FAKE even here, and deliberately: this test is about what
-// Postgres and the production inbox queries do with a written thread, not about
-// what a model writes. Calling a real provider would make it slow, non
-// deterministic and billable, and would be a test of OpenRouter rather than of
-// us.
 func newIntegrationSeederWith(tx *gorm.DB, scripter uw.ConversationScripter) *uwuc.SeedInboxUseCase {
 	return uwuc.NewSeedInboxUseCase(
 		uwrepo.NewInstanceRepository(tx),
@@ -142,15 +113,10 @@ func newIntegrationSeederWith(tx *gorm.DB, scripter uw.ConversationScripter) *uw
 		uwrepo.NewLeadLinker(lead_repository.NewRepository(tx)),
 		conversation_repository.NewRepository(tx),
 		scripter,
-		// No balance checker: a nil one allows, and the floor has its own unit
-		// test. Wiring a real one here would make this skip on any database
-		// whose workspaces happen to sit at zero.
 		nil,
 	)
 }
 
-// scriptedFake answers every subject with the same four-message shape the
-// dialog's default asks for, ending on the lead's turn.
 type scriptedFake struct{}
 
 func (scriptedFake) Script(_ context.Context, req uw.ScriptRequest) (*uw.ScriptResult, error) {
@@ -178,8 +144,6 @@ func TestSeedInboxMakesTheConversationVisibleInTheInbox(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)
 
-	// A number this database has certainly never seen, so the run exercises
-	// creation rather than reconciliation.
 	const number = "5511900000001"
 	seeder := newIntegrationSeeder(tx)
 
@@ -208,12 +172,10 @@ func TestSeedInboxMakesTheConversationVisibleInTheInbox(t *testing.T) {
 		t.Fatal("no conversation was created for the seeded number")
 	}
 
-	// The whole point.
 	if !visibleInInbox(t, tx, workspaceID, conversationID) {
 		t.Fatal("the seeded conversation does not pass the production inbox gates")
 	}
 
-	// It must be visible WITHOUT looking like a message the lead sent.
 	var inbound int64
 	if err := tx.Raw(`
 		SELECT COUNT(*) FROM conversation_messages
@@ -226,8 +188,6 @@ func TestSeedInboxMakesTheConversationVisibleInTheInbox(t *testing.T) {
 		t.Fatalf("seeding wrote %d inbound messages; it must write none", inbound)
 	}
 
-	// And the lead bridge has to have happened, or the inbox row renders a bare
-	// number where every other conversation renders a name.
 	var leadID string
 	if err := tx.Raw(`
 		SELECT COALESCE(uwct.lead_id::text, '')
@@ -242,8 +202,6 @@ func TestSeedInboxMakesTheConversationVisibleInTheInbox(t *testing.T) {
 	}
 }
 
-// Running the same import twice must not write a second placeholder, and must
-// not move the conversation in the inbox.
 func TestSeedInboxIsIdempotentAgainstPostgres(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)
@@ -277,8 +235,6 @@ func TestSeedInboxIsIdempotentAgainstPostgres(t *testing.T) {
 	}
 }
 
-// A conversation that already carries real history must come out untouched:
-// same message count, same last_message_at, no blank placeholder appended.
 func TestSeedInboxLeavesALiveConversationAlone(t *testing.T) {
 	tx := integrationTx(t)
 
@@ -347,15 +303,6 @@ func entryState(t *testing.T, tx *gorm.DB, conversationID string) entrySnapshot 
 	return snap
 }
 
-
-// ---- scripted seeding ----
-
-// inboxPreview reproduces the hydration LATERAL the inbox list uses to pick the
-// message shown under each row, and the unread predicate beside it.
-//
-// Both live in infra, in SQL, and no in-memory double models either. A scripted
-// thread that wrote four rows but renders the operator's own opening as the
-// preview would look, in the product, like a conversation nobody answered.
 func inboxPreview(t *testing.T, tx *gorm.DB, conversationID string) (string, int64) {
 	t.Helper()
 	var text string
@@ -380,7 +327,6 @@ func inboxPreview(t *testing.T, tx *gorm.DB, conversationID string) (string, int
 	return text, unread
 }
 
-// locateSeededConversation finds the conversation a number was seeded into.
 func locateSeededConversation(t *testing.T, tx *gorm.DB, workspaceID, number string) string {
 	t.Helper()
 	var conversationID string
@@ -411,9 +357,6 @@ func countSeededMessages(t *testing.T, tx *gorm.DB, conversationID string) int64
 	return messages
 }
 
-// The claim the whole feature rests on, checked against the real queries: a
-// scripted conversation is visible, reads as a conversation, and carries
-// exactly one unread message because it ends on the lead's turn.
 func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)
@@ -438,7 +381,6 @@ func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 
 	conversationID := locateSeededConversation(t, tx, workspaceID, number)
 
-	// Gate one and gate two, the same pair the blank placeholder has to pass.
 	if !visibleInInbox(t, tx, workspaceID, conversationID) {
 		t.Fatal("the scripted conversation does not pass the production inbox gates")
 	}
@@ -446,21 +388,14 @@ func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 		t.Fatalf("wrote %d messages, want the 4-message thread", got)
 	}
 
-	// The preview is the LEAD's last line, not ours. This is what an operator
-	// actually sees in the list, and getting it wrong makes a seeded inbox look
-	// like a list of messages nobody replied to.
 	preview, unread := inboxPreview(t, tx, conversationID)
 	if preview != "pode sim, to olhando agora" {
 		t.Errorf("inbox preview = %q, want the lead's last line", preview)
 	}
-	// Exactly one: the trailing inbound message. The three before it are read.
 	if unread != 1 {
 		t.Errorf("unread_count = %d, want 1", unread)
 	}
 
-	// last_message_at has to land on the newest turn, or the conversation sinks
-	// in a list sorted by it. touchEntryMessageClocks is monotonic and the
-	// thread is written in order, which is what makes backdating safe.
 	var lastMessageAt, newestMessage string
 	if err := tx.Raw(`SELECT COALESCE(last_message_at::text, '')
 	                  FROM unofficial_whatsapp_conversations WHERE id = ?`,
@@ -477,9 +412,6 @@ func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 		t.Errorf("last_message_at = %q, want the newest message at %q", lastMessageAt, newestMessage)
 	}
 
-	// Ending on the lead's turn sets last_customer_message_at, which puts the
-	// thread into the ordinary idle auto-close window. Correct, and worth
-	// pinning before someone reports seeded conversations "closing themselves".
 	var customerClock string
 	if err := tx.Raw(`SELECT COALESCE(last_customer_message_at::text, '')
 	                  FROM unofficial_whatsapp_conversations WHERE id = ?`,
@@ -490,8 +422,6 @@ func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 		t.Error("a thread ending on the lead's turn did not set last_customer_message_at")
 	}
 
-	// Every row is marked, so these are findable and deletable later without
-	// guessing from the text.
 	var marked int64
 	if err := tx.Raw(`
 		SELECT COUNT(*) FROM conversation_messages
@@ -504,8 +434,6 @@ func TestSeedInboxScriptedConversationIsVisibleAndReadsAsAThread(t *testing.T) {
 	}
 }
 
-// Re-running a scripted import must not write a second thread, and must not
-// call the model again.
 func TestSeedInboxScriptedSeedingIsIdempotentAgainstPostgres(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)
@@ -538,9 +466,6 @@ func TestSeedInboxScriptedSeedingIsIdempotentAgainstPostgres(t *testing.T) {
 	}
 }
 
-// A scripter that fails must leave a conversation that still renders, with
-// today's placeholder in it. The degradation the whole feature promises,
-// checked against the gates rather than against a fake.
 func TestSeedInboxFallsBackToAVisiblePlaceholderAgainstPostgres(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)
@@ -572,10 +497,6 @@ func TestSeedInboxFallsBackToAVisiblePlaceholderAgainstPostgres(t *testing.T) {
 	}
 }
 
-// The whole suite runs inside a transaction that is always rolled back, so the
-// development database is untouched. This is the test that says so: it counts
-// the rows a scripted seed would add, in a nested transaction it aborts itself,
-// and asserts the counts come back to where they started.
 func TestSeedInboxScriptedSeedingLeavesNoRowsBehind(t *testing.T) {
 	tx := integrationTx(t)
 	workspaceID, _ := anyConnectedInstance(t, tx)

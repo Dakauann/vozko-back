@@ -14,8 +14,6 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
-// defaultEmitBatchSize is the keyset page size. The emitter streams through every due workspace in
-// pages of this size, so there is no per-run cap regardless of how many workspaces share the anchor.
 const defaultEmitBatchSize = 500
 
 type emitMonthlyInvoicesUseCase struct {
@@ -31,8 +29,6 @@ type emitMonthlyInvoicesUseCase struct {
 	now           clockFn
 }
 
-// NewEmitMonthlyInvoicesUseCase builds the monthly emitter on the real domain repositories. The
-// default billing type is PIX.
 func NewEmitMonthlyInvoicesUseCase(
 	subs workspace_plan.SubscriptionRepository,
 	plans workspace_plan.PlanReader,
@@ -55,15 +51,7 @@ func NewEmitMonthlyInvoicesUseCase(
 	}
 }
 
-// Execute composes and issues one unified MONTHLY_BILLING invoice per active workspace whose plan
-// period ends at the upcoming anchor. It streams through all due workspaces with keyset pagination,
-// so it scales to any number of customers. Each invoice carries a deterministic idempotency key
-// (workspace + anchor period), so a re-run returns the existing invoices without charging Asaas
-// again. Per-workspace failures are logged and skipped so one bad workspace cannot stall the rest.
-// Returns the number of invoices emitted (or already present).
 func (uc *emitMonthlyInvoicesUseCase) Execute() (int, error) {
-	// Evaluate the anchor in the billing timezone regardless of the clock's location, so the anchor
-	// date (and the idempotency key derived from it) is stable.
 	now := uc.now().In(billing.LocationBRT())
 	windowEnd := billing.NextAnchor(now, uc.dueDay)
 	rate := uc.exchangeRate()
@@ -79,7 +67,7 @@ func (uc *emitMonthlyInvoicesUseCase) Execute() (int, error) {
 			break
 		}
 		for _, sub := range page {
-			afterID = sub.ID // advance the cursor past every row, including skipped or failed ones
+			afterID = sub.ID
 			created, err := uc.emitForWorkspace(sub, windowEnd, rate)
 			if err != nil {
 				log.Printf("[billing-emit] workspace %s emit failed: %v", sub.WorkspaceID, err)
@@ -96,8 +84,6 @@ func (uc *emitMonthlyInvoicesUseCase) Execute() (int, error) {
 	return emitted, nil
 }
 
-// exchangeRate fetches the USD->BRL rate once per run, falling back to the default on a fetch error
-// (mirroring create_invoice) so a transient pricing read does not block billing.
 func (uc *emitMonthlyInvoicesUseCase) exchangeRate() float64 {
 	items, err := uc.pricing.ListDefaultPricingItems()
 	if err != nil {
@@ -107,8 +93,6 @@ func (uc *emitMonthlyInvoicesUseCase) exchangeRate() float64 {
 	return workspace_pricing.USDToBRLRate(items)
 }
 
-// emitForWorkspace composes and issues the workspace's monthly invoice. It returns created=false
-// (with a nil error) when there is nothing billable, so a skip is not counted as an emission.
 func (uc *emitMonthlyInvoicesUseCase) emitForWorkspace(sub *workspace_plan.WorkspaceSubscription, anchor time.Time, rate float64) (bool, error) {
 	plan, err := uc.plans.GetByID(sub.PlanDefinitionID)
 	if err != nil {
@@ -125,19 +109,12 @@ func (uc *emitMonthlyInvoicesUseCase) emitForWorkspace(sub *workspace_plan.Works
 		addonUSD = append(addonUSD, a.UnitPriceMicros*int64(a.Quantity))
 	}
 
-	// Charge the plan on its own billing cycle: a monthly subscription pays one month's base, an
-	// annual subscription pays the full year (base * 12, less any annual discount). This is the amount
-	// `Extend` grants a period for on payment (monthly -> next anchor, annual -> +12 months), so the
-	// money charged and the access granted always agree. Using BasePriceBRLCents directly would charge
-	// an annual subscriber a single month while extending them a full year.
 	planBRLCents := sub.BillingCycle.TotalPriceBRLCents(plan.BasePriceBRLCents)
 	totalBRL, creditableBRL := billing.MonthlyChargeBRL(planBRLCents, addonUSD, rate)
 	if totalBRL <= 0 {
-		return false, nil // nothing billable (free plan, no addons)
+		return false, nil
 	}
 
-	// Customer-facing breakdown, price only: the plan line (credited to saldo) plus one line per channel
-	// addon (a vendor-cost pass-through, not credited). Labels are addon keys the frontend localizes.
 	lineItems := make([]invoice.InvoiceLineItem, 0, len(addons)+1)
 	if creditableBRL > 0 {
 		lineItems = append(lineItems, invoice.InvoiceLineItem{
@@ -165,8 +142,6 @@ func (uc *emitMonthlyInvoicesUseCase) emitForWorkspace(sub *workspace_plan.Works
 		return false, fmt.Errorf("workspace %s has no owner to bill", sub.WorkspaceID)
 	}
 
-	// Idempotency key: one invoice per workspace per anchor cycle. The anchor period is the upcoming
-	// anchor date in the billing timezone, so re-runs within the same cycle return the same invoice.
 	key := fmt.Sprintf("monthly:%s:%s", sub.WorkspaceID, anchor.In(billing.LocationBRT()).Format("2006-01-02"))
 
 	_, err = uc.createInvoice.Execute(invoice.CreateInvoiceInput{

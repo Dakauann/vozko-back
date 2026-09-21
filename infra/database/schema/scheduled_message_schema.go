@@ -7,13 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ScheduledMessage is one operator message parked for later delivery.
-//
-// Status carries a plain index rather than a composite with scheduled_at: the
-// query that matters (everything due) is served by a PARTIAL index on
-// scheduled_at restricted to pending rows, declared in indexes.go because GORM
-// tags cannot express a WHERE clause. That is what keeps the sweep's cost
-// proportional to the messages actually due rather than to the table.
 type ScheduledMessage struct {
 	ID          string `gorm:"primaryKey;type:uuid"`
 	WorkspaceID string `gorm:"type:uuid;not null;index:idx_sched_msg_ws"`
@@ -38,8 +31,6 @@ type ScheduledMessage struct {
 	SentAt        *time.Time
 	SentMessageID *string `gorm:"type:uuid"`
 
-	// IdempotencyKey is unique per workspace, enforced by a PARTIAL unique index
-	// (indexes.go) so the many rows without one do not collide on NULL.
 	IdempotencyKey *string `gorm:"size:128"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime"`

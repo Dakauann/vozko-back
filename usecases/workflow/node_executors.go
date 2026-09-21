@@ -57,17 +57,9 @@ type ExecutorDeps struct {
 	FileStorage             media_domain.FileStorage
 	ConversationMediaRepo   conversation.ConversationMediaRepository
 
-	// AIAttendance is optional; when set, WhatsApp workflow AI agent nodes publish sessions.
-	AIAttendance node_executors.WorkflowAIAttendance
-	// ConversationStatus is the single finish/reopen choke point (shared with AI tools / hub).
+	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
-	// Adapters is the channel registry every non-WhatsApp send goes through.
-	//
-	// Without it the channel-neutral senders resolve no adapter and every send
-	// node SKIPS on Instagram and Telegram, text, media and interactive alike,
-	// while the run reports itself completed. Pass the container's live registry
-	// so adapters registered after this point are still seen.
-	Adapters conversation.AdapterRegistry
+	Adapters           conversation.AdapterRegistry
 }
 
 func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) {

@@ -35,64 +35,26 @@ type Config struct {
 
 	OllamaURL string
 
-	// PaymentProvider selects which gateway backs every charge in this deployment:
-	// "asaas" (default) or "mercadopago". Only the selected provider's credentials are
-	// required at boot, so a Mercado Pago deployment need not carry Asaas secrets and
-	// vice versa.
 	PaymentProvider payment.Provider
 
 	AsaasAPIKey       string
 	AsaasBaseURL      string
 	AsaasWebhookToken string
 
-	// MercadoPagoAccessToken is the account access token. It alone decides whether
-	// charges are real: a TEST-prefixed token issues sandbox payments against the same
-	// api.mercadopago.com host, so there is no separate sandbox base URL to configure.
-	MercadoPagoAccessToken string
-	// MercadoPagoWebhookSecret is the per-application secret from the Webhooks panel,
-	// used to verify the x-signature HMAC. Distinct from the access token.
-	MercadoPagoWebhookSecret string
-	// MercadoPagoBaseURL overrides the API host. Empty uses the production host; its
-	// only real use is pointing tests or a proxy somewhere else.
-	MercadoPagoBaseURL string
-	// MercadoPagoNotificationURL is our own public webhook URL, sent as notification_url
-	// on every charge. Setting it per payment rather than relying on the dashboard-wide
-	// value is what guarantees the data.id query parameter the signature is built over.
-	MercadoPagoNotificationURL string
-	// MercadoPagoSignatureTolerance optionally bounds signature age. Zero (the default)
-	// disables the check because Mercado Pago retries for hours without re-signing.
+	MercadoPagoAccessToken        string
+	MercadoPagoWebhookSecret      string
+	MercadoPagoBaseURL            string
+	MercadoPagoNotificationURL    string
 	MercadoPagoSignatureTolerance time.Duration
-	// MercadoPagoSandboxPayerEmail replaces the real payer email on every charge.
-	//
-	// It exists because Mercado Pago's sandbox refuses a charge whose payer is not one
-	// of its own test users, while this system takes the payer from the signed-in
-	// user's account. Without an override there is no way to exercise the real billing
-	// flow end to end against sandbox credentials.
-	//
-	// It is honoured ONLY when APP_ENV=development, and is forced empty otherwise, so a
-	// value left in a production environment file cannot silently redirect who a real
-	// charge is addressed to.
-	MercadoPagoSandboxPayerEmail string
-	// MercadoPagoSandboxPayerStatus forces every sandbox charge into a chosen final
-	// state (APRO approved, CONT pending, OTHE rejected) by sending the keyword as
-	// payer.first_name. It is the only way to drive a PIX payment to completion in
-	// sandbox, because test QR codes cannot be paid by a real bank app. Honoured under
-	// the same APP_ENV=development gate as the payer override.
+	MercadoPagoSandboxPayerEmail  string
 	MercadoPagoSandboxPayerStatus string
 
 	ReadMeWebhookSecret string
 
-	// Resend is the sole transactional email provider (auth, orders, tickets,
-	// workspace invites, payment receipts). ResendAPIKey is required at boot.
-	// The workflow "Send Email" node keeps its own per-call SMTP config and is
-	// unrelated to these values.
 	ResendAPIKey    string
 	ResendFromEmail string
 	ResendFromName  string
-	// ResendMaxRPS throttles outbound sends client-side to stay under Resend's
-	// per-team rate limit (5 req/s by default; raisable on request). Bursts
-	// beyond this queue rather than 429.
-	ResendMaxRPS int
+	ResendMaxRPS    int
 
 	RecordingsDir string
 
@@ -105,115 +67,37 @@ type Config struct {
 	WhatsAppWebhookVerifyToken string
 	MetaAppSecret              string
 	MetaConfigID               string
-	// MetaAppSecretsExtra are ADDITIONAL app secrets accepted only for inbound webhook
-	// signature verification (X-Hub-Signature-256). Meta signs each webhook with the secret
-	// of the app the WABA is subscribed to, so while numbers span more than one app (e.g. an
-	// app migration) the verifier must accept any of them. Token exchange still uses
-	// META_APP_SECRET only. Comma-separated via META_APP_SECRETS.
-	MetaAppSecretsExtra []string
+	MetaAppSecretsExtra        []string
 
-	// Instagram (Business Login for Instagram). The Instagram API setup nests
-	// inside the same Meta app as WhatsApp but carries its OWN app id and app
-	// secret, using the Facebook ones here fails. Webhooks are signed with the
-	// Instagram app secret, which is why it is also fed into the inbound
-	// signature verifier's accepted-secret list.
-	//
-	// The three OAuth hosts are fixed by the login path and live as constants in
-	// infra/instagram, not here. The scope list is likewise code (see
-	// instagram.RequiredScopes): it is a contract with the implementation and with
-	// what was submitted for App Review, so a deployment must not be able to
-	// silently drop a permission.
-	//
-	// InstagramRedirectURI is NOT caller-supplied, in OAuth the redirect URI is
-	// the security boundary, and it must match the App Dashboard exactly. Only the
-	// Graph version is genuinely deployment-owned, because Meta sunsets versions on
-	// published dates and it must be bumpable without a code deploy.
-	//
-	// These are REQUIRED, exactly like the WhatsApp equivalents: Instagram is a
-	// first-class channel, and a half-configured deployment that silently serves
-	// 404s on every Instagram route is far worse than failing fast at boot.
 	InstagramAppID              string
 	InstagramAppSecret          string
 	InstagramRedirectURI        string
 	InstagramWebhookVerifyToken string
 	InstagramGraphVersion       string
-	// FrontendBaseURL is where OAuth callbacks send the browser back to.
-	FrontendBaseURL string
+	FrontendBaseURL             string
 
-	// Telegram.
-	//
-	// TelegramWebhookBaseURL is our own public origin; Telegram POSTs updates to
-	// {base}/webhooks/telegram/{accountId}.
-	//
-	// REQUIRED, exactly like the Instagram equivalents: Telegram is a first-class
-	// channel, and a half-configured deployment that silently serves 404s on every
-	// Telegram route is far worse than failing fast at boot. Telegram's own
-	// constraints on this URL also fail SILENTLY, https is mandatory and only
-	// ports 443, 80, 88 and 8443 are ever delivered to, so
-	// telegram.ValidateWebhookBaseURL checks it at boot too.
-	//
-	// There are deliberately no token or secret variables: a bot token is tenant
-	// data (one per connected bot, pasted by the operator, encrypted at rest),
-	// and the webhook secret is generated per account.
 	TelegramWebhookBaseURL string
-	// TelegramBotAPIBaseURL overrides Telegram's hosted API. Its only real use is
-	// pointing at a self-hosted Local Bot API Server, which lifts the 20MB
-	// inbound download ceiling, the channel's hardest product limit. Empty uses
-	// https://api.telegram.org, so this one stays optional.
-	TelegramBotAPIBaseURL string
+	TelegramBotAPIBaseURL  string
 
-	// Unofficial WhatsApp (linked-device sessions).
-	//
-	// UnofficialWhatsAppWebhookBaseURL is our own public origin; the provider
-	// POSTs events to {base}/webhooks/unofficial-whatsapp/{deliveryToken}.
-	//
-	// REQUIRED for the same reason Telegram's is: a half-configured deployment
-	// that silently 404s every inbound event is worse than failing at boot. The
-	// stakes are higher here — the provider does NOT sign webhook bodies, so the
-	// delivery token in that path is the channel's only authenticity control,
-	// which is why unofficial_whatsapp.ValidateWebhookBaseURL insists on https.
 	UnofficialWhatsAppWebhookBaseURL string
-	// The platform provider host seeded at boot. Instances are placed on it, and
-	// its admin token can create and delete every instance it holds, so it is
-	// deployment configuration rather than tenant data.
-	//
-	// ALL REQUIRED, matching WhatsApp, Instagram and Telegram: a half-configured
-	// channel that accepts a connect click and then fails on capacity is worse
-	// than a boot that refuses to start and names the missing variable.
-	UnofficialWhatsAppServerURL   string
-	UnofficialWhatsAppAdminToken  string
-	UnofficialWhatsAppServerName  string
-	UnofficialWhatsAppMaxSessions int
+	UnofficialWhatsAppServerURL      string
+	UnofficialWhatsAppAdminToken     string
+	UnofficialWhatsAppServerName     string
+	UnofficialWhatsAppMaxSessions    int
 
-	// 360dialog partner (BSP) integration. New onboarding goes through 360dialog;
-	// the reconciliation backstop activates when Dialog360PartnerAPIKey is set.
 	Dialog360PartnerID          string
 	Dialog360PartnerAPIKey      string
 	Dialog360PartnerAPIBase     string
 	Dialog360MessagingBase      string
 	Dialog360PartnerRedirectURL string
 	Dialog360WebhookSecret      string
-	// Dialog360WebhookBaseURL is our public base (e.g. https://api.example.com).
-	// When set, the inbound messaging webhook is registered on each channel as
-	// {base}/webhooks/360dialog/messages?secret={Dialog360WebhookSecret}. Empty
-	// relies on the partner Hub default webhook.
-	Dialog360WebhookBaseURL string
-	// Dialog360SolutionID is the Meta Multi-Partner Solution id (Tech Provider +
-	// 360dialog). It is required by account_sharing/numbers to share a WABA.
-	Dialog360SolutionID string
-	// Dialog360OnboardingEnabled selects the Embedded Signup onboarding path.
-	// false (default) => native Meta path: the callback exchanges the code for a
-	// Graph token and registers the number directly on the Cloud API.
-	// true => 360dialog Partner-Hosted handover. Env: ENABLE_360DIALOG_ONBOARDING.
-	Dialog360OnboardingEnabled bool
+	Dialog360WebhookBaseURL     string
+	Dialog360SolutionID         string
+	Dialog360OnboardingEnabled  bool
 
 	PrometheusURL string
 
 	MetricsListenAddr string
-
-	// NOTE: the SIP_TRUNK_*, SIP_REALM, PUBLIC_SIP_HOST and BRANCH_SIP_LISTEN_PORT
-	// variables are gone with SIP telephony. They are simply ignored if still set in
-	// a deployment's environment.
 
 	WhatsAppStunServers []string
 
@@ -246,8 +130,6 @@ type Config struct {
 }
 
 func LoadConfig() Config {
-	// The app ships no brand of its own: fail fast at boot if the BRAND_* identity
-	// is not fully provided via env (white-label; see package brand).
 	brand.MustLoad()
 
 	provider, asaasAPIKey, asaasBaseURL, asaasWebhookToken,
@@ -316,25 +198,18 @@ func LoadConfig() Config {
 		InstagramAppSecret:          mustGetEnvTrimmed("INSTAGRAM_APP_SECRET"),
 		InstagramRedirectURI:        mustGetEnvTrimmed("INSTAGRAM_REDIRECT_URI"),
 		InstagramWebhookVerifyToken: mustGetEnvTrimmed("INSTAGRAM_WEBHOOK_VERIFY_TOKEN"),
-		// Empty means "use the client default", so a deployment only pins a version
-		// when it needs to.
-		InstagramGraphVersion: trimEnv("INSTAGRAM_GRAPH_VERSION"),
-		FrontendBaseURL:       strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
+		InstagramGraphVersion:       trimEnv("INSTAGRAM_GRAPH_VERSION"),
+		FrontendBaseURL:             strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
 
 		TelegramWebhookBaseURL: strings.TrimRight(mustGetEnvTrimmed("TELEGRAM_WEBHOOK_BASE_URL"), "/"),
-		// Optional: empty means Telegram's hosted API, which is right for every
-		// deployment that does not run its own Bot API server.
-		TelegramBotAPIBaseURL: strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),
+		TelegramBotAPIBaseURL:  strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),
 
 		UnofficialWhatsAppWebhookBaseURL: strings.TrimRight(
 			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_WEBHOOK_BASE_URL"), "/"),
 		UnofficialWhatsAppServerURL: strings.TrimRight(
 			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_URL"), "/"),
-		UnofficialWhatsAppAdminToken: mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_ADMIN_TOKEN"),
-		UnofficialWhatsAppServerName: getEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_NAME", "platform"),
-		// Required rather than defaulted: zero capacity is read as "unknown" and
-		// treated as full, so a missing value would make every connect answer
-		// "no capacity" — a silent, confusing failure instead of a loud one.
+		UnofficialWhatsAppAdminToken:  mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_ADMIN_TOKEN"),
+		UnofficialWhatsAppServerName:  getEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_NAME", "platform"),
 		UnofficialWhatsAppMaxSessions: mustGetEnvInt("UNOFFICIAL_WHATSAPP_MAX_SESSIONS"),
 
 		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -425,11 +300,6 @@ func parseCSVEnv(key string) []string {
 	return out
 }
 
-// envInt reads an integer setting, falling back when unset.
-//
-// A malformed value aborts boot rather than silently falling back: a capacity
-// of "one hundred" quietly read as the fallback is how a host ends up
-// overfilled by a typo nobody sees.
 func envInt(key string, fallback int) int {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
@@ -442,11 +312,6 @@ func envInt(key string, fallback int) int {
 	return parsed
 }
 
-// mustGetEnvInt reads a required integer setting, aborting boot when absent.
-//
-// Separate from envInt because a fallback is exactly what must not happen here:
-// silently defaulting a capacity to zero produces a channel that boots fine and
-// refuses every connection.
 func mustGetEnvInt(key string) int {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
@@ -551,13 +416,6 @@ func splitTrimmed(s string) []string {
 	return out
 }
 
-// loadPaymentProvider resolves PAYMENT_PROVIDER and enforces the credentials that
-// provider actually needs.
-//
-// The requirement is conditional on purpose. Making every provider's secrets mandatory
-// would force a Mercado Pago deployment to invent Asaas credentials it will never use,
-// and a placeholder there is worse than a missing value: it boots fine and fails at the
-// first charge. Only the selected provider's variables abort boot when absent.
 func loadPaymentProvider() (
 	provider payment.Provider,
 	asaasAPIKey, asaasBaseURL, asaasWebhookToken string,
@@ -573,13 +431,7 @@ func loadPaymentProvider() (
 	case payment.ProviderMercadoPago:
 		mpAccessToken = mustGetEnvTrimmed("MERCADOPAGO_ACCESS_TOKEN")
 		mpWebhookSecret = mustGetEnvTrimmed("MERCADOPAGO_WEBHOOK_SECRET")
-		// Required, not optional: without a per-payment notification_url Mercado Pago
-		// falls back to the dashboard URL, which may omit the data.id query parameter
-		// the signature is computed over. Every webhook would then fail verification,
-		// and paid invoices would silently never be credited.
 		mpNotificationURL = strings.TrimRight(mustGetEnvTrimmed("MERCADOPAGO_NOTIFICATION_URL"), "/")
-		// Asaas stays optional here. A deployment migrating off it keeps its keys so
-		// historical charges remain refundable and inspectable, but must not be forced to.
 		asaasAPIKey = trimEnv("ASAAS_API_KEY")
 		asaasBaseURL = trimEnv("ASAAS_BASE_URL")
 		asaasWebhookToken = trimEnv("ASAAS_WEBHOOK_TOKEN")
@@ -597,14 +449,6 @@ func loadPaymentProvider() (
 	return provider, asaasAPIKey, asaasBaseURL, asaasWebhookToken, mpAccessToken, mpWebhookSecret, mpNotificationURL
 }
 
-// sandboxPayerEmail resolves MERCADOPAGO_SANDBOX_PAYER_EMAIL, refusing to honour it
-// outside development.
-//
-// The gate is deliberately at load time rather than at the call site: once the value is
-// empty, no amount of downstream wiring can reintroduce it, so a stray line in a
-// production environment file is inert instead of quietly rewriting who every charge is
-// addressed to. Being ignored is logged, because silently dropping a setting an
-// operator deliberately set is its own kind of bug.
 func sandboxPayerEmail() string {
 	email := trimEnv("MERCADOPAGO_SANDBOX_PAYER_EMAIL")
 	if email == "" {
@@ -618,11 +462,6 @@ func sandboxPayerEmail() string {
 	return email
 }
 
-// sandboxPayerStatus resolves MERCADOPAGO_SANDBOX_PAYER_STATUS under the same
-// development-only gate as sandboxPayerEmail, and rejects anything that is not one of
-// Mercado Pago's documented keywords. An unrecognised value would be sent as a literal
-// first name and silently produce an ordinary pending charge, which looks exactly like
-// the keyword not working.
 func sandboxPayerStatus() string {
 	status := strings.ToUpper(trimEnv("MERCADOPAGO_SANDBOX_PAYER_STATUS"))
 	if status == "" {

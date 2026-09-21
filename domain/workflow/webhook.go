@@ -86,11 +86,6 @@ type EntryOwnershipChecker interface {
 	OwnsEntry(workspaceID, entryID, entryType string) (bool, error)
 }
 
-// EntryResolver maps a business key carried by an external webhook payload (a
-// phone number) to a concrete entry in the workspace, so callers that do not
-// know Vozko's internal entry_id can still trigger a workflow. Implementations
-// must stay scoped to the given workspace and never resolve an entry belonging
-// to another workspace. It returns ("", "", nil) when nothing matches.
 type EntryResolver interface {
 	ResolveByPhone(workspaceID, phone string) (entryID string, entryType string, err error)
 }

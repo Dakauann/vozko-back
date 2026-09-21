@@ -161,9 +161,6 @@ func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calenda
 		return nil, calendar.ErrInvalidTimeRange
 	}
 
-	// Reschedule guard: when asked, verify the (new) slot is free before moving the
-	// event. The event being moved is excluded by its Google id, and free/transparent
-	// and all-day events never block. A listing error is non-fatal (fail open).
 	if input.CheckConflict && googleEventID != "" && !existing.AllDay {
 		if busy, other := uc.slotOccupied(accessToken, googleEventID, existing.StartTime, existing.EndTime); busy {
 			log.Printf("[calendar] reschedule conflict: slot %s–%s overlaps %q",
@@ -196,9 +193,6 @@ func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calenda
 	return existing, nil
 }
 
-// slotOccupied reports whether any busy event other than excludeGoogleID overlaps
-// [start, end). Free/transparent and all-day events do not block. A listing error is
-// treated as "not occupied" (fail open) so a transient Google error never blocks a move.
 func (uc *updateEventUseCase) slotOccupied(accessToken, excludeGoogleID string, start, end time.Time) (bool, string) {
 	events, err := uc.google.ListGoogleEvents(accessToken, start, end, "", 20)
 	if err != nil {

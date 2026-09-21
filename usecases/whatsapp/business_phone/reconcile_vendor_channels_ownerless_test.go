@@ -6,9 +6,6 @@ import (
 	businessphone "vozko/domain/whatsapp/business_phone"
 )
 
-// THE FIX: a 360dialog channel that is live at the vendor and CONNECTED at Vozko but owned by no
-// workspace bills for nobody and can never be reactivated (reactivation is owner-keyed). The vendor
-// reconciler must cancel it, otherwise an unassigned live channel bills forever.
 func TestVendorReconcile_CancelsOwnerlessLiveChannel(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chO")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{activeRef("chO", "clO", "")}}
@@ -29,8 +26,6 @@ func TestVendorReconcile_CancelsOwnerlessLiveChannel(t *testing.T) {
 	}
 }
 
-// An ownerless live channel whose WABA (client id) is gone cannot be auto-cancelled, it must alert
-// for manual action, never silently keep billing.
 func TestVendorReconcile_OwnerlessMissingClientID_Alerts(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chO")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{activeRef("chO", "", "")}}
@@ -51,7 +46,6 @@ func TestVendorReconcile_OwnerlessMissingClientID_Alerts(t *testing.T) {
 	}
 }
 
-// An OWNED active channel remains consistent (untouched), the ownerless case must not over-trigger.
 func TestVendorReconcile_OwnedActiveStaysConsistent(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chO")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{activeRef("chO", "clO", "ws-1")}}

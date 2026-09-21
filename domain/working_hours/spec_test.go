@@ -16,8 +16,6 @@ func mondayNineToSix() *Spec {
 	}
 }
 
-// The embedded tzdata is what makes an arbitrary IANA zone work on a host with
-// no zoneinfo. If this fails, every schedule silently degrades to always-open.
 func TestSpec_LoadsAnIANAZoneWithoutHostTzdata(t *testing.T) {
 	for _, zone := range []string{"America/Sao_Paulo", "UTC", "Europe/Lisbon", "America/New_York"} {
 		_, err := (&Spec{Timezone: zone, Days: map[string][]Window{"mon": {{Start: "09:00", End: "18:00"}}}}).Compile()
@@ -42,8 +40,6 @@ func TestSpec_NilIsAlwaysOpen(t *testing.T) {
 	assert.True(t, sched.IsOpen(time.Now()), "a nil schedule is always open")
 }
 
-// End at or before start runs past midnight. One row in the UI, one interval in
-// the domain, instead of two halves on two weekdays.
 func TestSpec_EndBeforeStartIsAnOvernightShift(t *testing.T) {
 	s := &Spec{
 		Timezone: "America/Sao_Paulo",
@@ -88,8 +84,6 @@ func TestSpec_LunchBreakIsTwoWindowsOnOneDay(t *testing.T) {
 		time.Date(2026, 9, 7, 14, 0, 0, 0, time.UTC)))
 }
 
-// -- rejections ---------------------------------------------------------------
-
 func TestSpec_RejectsAnUnknownTimezone(t *testing.T) {
 	s := &Spec{Timezone: "Mars/Olympus_Mons", Days: map[string][]Window{"mon": {{Start: "09:00", End: "18:00"}}}}
 	assert.ErrorIs(t, s.Validate(), ErrUnknownTimezone)
@@ -112,8 +106,6 @@ func TestSpec_RejectsMalformedTimes(t *testing.T) {
 	}
 }
 
-// Ambiguous between "closed" and "open all day", so it is refused and the admin
-// is pushed to 00:00-24:00.
 func TestSpec_RejectsEqualStartAndEnd(t *testing.T) {
 	s := &Spec{Timezone: "UTC", Days: map[string][]Window{"mon": {{Start: "09:00", End: "09:00"}}}}
 	assert.ErrorIs(t, s.Validate(), ErrIntervalEmpty)
@@ -124,8 +116,6 @@ func TestSpec_RejectsTwentyFourHundredAsAStart(t *testing.T) {
 	assert.ErrorIs(t, s.Validate(), ErrIntervalOutOfRange)
 }
 
-// A schedule with no window anywhere would freeze every deadline in its scope,
-// and in a UI showing an empty week it is indistinguishable from "not set".
 func TestSpec_RejectsAWeekWithNoOpenTime(t *testing.T) {
 	assert.ErrorIs(t, (&Spec{Timezone: "UTC"}).Validate(), ErrNoOpenTime)
 	assert.ErrorIs(t, (&Spec{Timezone: "UTC", Days: map[string][]Window{"mon": {}}}).Validate(), ErrNoOpenTime)
@@ -147,8 +137,6 @@ func TestSpec_NilValidatesAsNotConfigured(t *testing.T) {
 	assert.NoError(t, s.Validate())
 }
 
-// -- normalization and round-trip ---------------------------------------------
-
 func TestSpec_NormalizedPadsTimesAndOrdersDays(t *testing.T) {
 	s := &Spec{
 		Timezone: " America/Sao_Paulo ",
@@ -165,7 +153,6 @@ func TestSpec_NormalizedPadsTimesAndOrdersDays(t *testing.T) {
 		"zero-padded and ordered by start")
 	assert.NotContains(t, got.Days, "sat", "an empty day is dropped rather than stored as noise")
 
-	// Key order is canonical, so repeated writes produce the same document.
 	raw, err := json.Marshal(got)
 	require.NoError(t, err)
 	assert.JSONEq(t,
@@ -187,9 +174,6 @@ func TestSpec_SurvivesAJSONRoundTrip(t *testing.T) {
 	assert.True(t, sched.IsOpen(time.Date(2026, 9, 7, 12, 0, 0, 0, sched.Location())))
 }
 
-// -- the property the sweep depends on ----------------------------------------
-
-// A department's hours replace the workspace's; without its own it inherits.
 func TestSpec_ResolvesDepartmentOverWorkspace(t *testing.T) {
 	ws, err := mondayNineToSix().Compile()
 	require.NoError(t, err)

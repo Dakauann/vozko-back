@@ -11,9 +11,6 @@ func TestClampDebounceMinutes(t *testing.T) {
 		given int
 		want  int
 	}{
-		// Every workspace is in this state until somebody changes it, so an
-		// unset value resolving to anything but the old constant would silently
-		// change behaviour for all of them.
 		{"unset falls back to the default", 0, DefaultDebounceMinutes},
 		{"negative is treated as unset", -10, DefaultDebounceMinutes},
 		{"a set value is honoured", 30, 30},
@@ -30,9 +27,6 @@ func TestClampDebounceMinutes(t *testing.T) {
 }
 
 func TestDebounceWindowMatchesTheOldConstant(t *testing.T) {
-	// The window an unconfigured workspace gets must be exactly what was
-	// hardcoded before, or making this configurable changes behaviour for
-	// everyone who never asked for it.
 	if got := DebounceWindow(0); got != 5*time.Minute {
 		t.Errorf("DebounceWindow(0) = %v, want the historical 5m", got)
 	}
@@ -41,8 +35,6 @@ func TestDebounceWindowMatchesTheOldConstant(t *testing.T) {
 	}
 }
 
-// The write path rejects rather than clamps, so an operator who types 5000
-// finds out instead of quietly getting 1440.
 func TestValidDebounceMinutesRejectsWhatTheWritePathMustNotAccept(t *testing.T) {
 	for _, bad := range []int{0, -1, MaxDebounceMinutes + 1} {
 		if ValidDebounceMinutes(bad) {

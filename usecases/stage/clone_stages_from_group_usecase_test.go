@@ -20,7 +20,7 @@ type cloneStageRepoStub struct {
 	created          []*stage.Stage
 	createdPipeline  string
 	createdGroupID   string
-	existingPipeline string // when set, FindConversationPipelineByGroup returns it (reuse path)
+	existingPipeline string
 	setCampaign      string
 	setPipeline      string
 	err              error
@@ -44,9 +44,6 @@ func (s *cloneStageRepoStub) SetCampaignPipeline(campaignID, _, pipelineID strin
 	return nil
 }
 
-// A campaign's group is cloned into a NEW conversation pipeline (pipeline-scoped,
-// not campaign_id-scoped); the campaign is then pointed at that pipeline. First
-// item is the initial stage, names lower-cased/trimmed.
 func TestCloneStagesFromGroupCreatesStagesWithInitialFirst(t *testing.T) {
 	groupRepo := &cloneGroupRepoStub{group: &stage.StageGroup{
 		WorkspaceID: "ws1",
@@ -101,8 +98,6 @@ func TestCloneStagesFromGroupPropagatesGroupError(t *testing.T) {
 	}
 }
 
-// Same group → same board: when a pipeline already exists for the group, the
-// campaign is pointed at THAT pipeline and no stages are cloned (no duplicate).
 func TestCloneStagesFromGroupReusesExistingPipeline(t *testing.T) {
 	groupRepo := &cloneGroupRepoStub{group: &stage.StageGroup{
 		WorkspaceID: "ws1", Name: "Vendas",

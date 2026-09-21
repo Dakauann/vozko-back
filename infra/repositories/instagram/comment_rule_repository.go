@@ -31,8 +31,6 @@ func (r *commentRuleRepository) Create(ctx context.Context, rule *igdomain.Comme
 }
 
 func (r *commentRuleRepository) Update(ctx context.Context, rule *igdomain.CommentRule) error {
-	// Scoped by workspace as well as id: a rule id from another tenant must not
-	// be updatable even if it is guessed.
 	result := r.db.WithContext(ctx).
 		Model(&schema.InstagramCommentRule{}).
 		Where("id = ? AND workspace_id = ?", rule.ID, rule.WorkspaceID).
@@ -92,11 +90,6 @@ func (r *commentRuleRepository) ListByAccount(ctx context.Context, workspaceID, 
 	return toCommentRuleDomainList(records), nil
 }
 
-// ListCandidates returns the enabled rules that could fire for one post: those
-// scoped to it plus the account-wide defaults.
-//
-// Both tiers come back in one query, ordered so a post-scoped rule is evaluated
-// before a default of the same priority, the specific rule should win.
 func (r *commentRuleRepository) ListCandidates(ctx context.Context, igAccountID, igMediaID string) ([]*igdomain.CommentRule, error) {
 	var records []schema.InstagramCommentRule
 	if err := r.db.WithContext(ctx).

@@ -19,7 +19,6 @@ func (f *fakeOpsAlerter) Alert(_ context.Context, subject, detail string) error 
 	return f.err
 }
 
-// live builds a partner channel listing entry in the billing state.
 func live(id string) businessphone.Dialog360Channel {
 	return businessphone.Dialog360Channel{ID: id, PhoneNumber: "+55119" + id, WABAExternalID: "waba-" + id, Status: "live"}
 }
@@ -32,8 +31,6 @@ func activeRef(channelID, clientID, ws string) businessphone.Dialog360ChannelRef
 	return businessphone.Dialog360ChannelRef{Dialog360ChannelID: channelID, Dialog360ClientID: clientID, WorkspaceID: ws, Active: true}
 }
 
-// TestVendorReconcile_RecancelsLeakedChannel: the core leak. The vendor still has a live channel that
-// Vozko already suspended (a cancellation that never landed). The pass must re-cancel it and not alert.
 func TestVendorReconcile_RecancelsLeakedChannel(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chA")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{suspendedRef("chA", "clA", "ws-1")}}
@@ -55,8 +52,6 @@ func TestVendorReconcile_RecancelsLeakedChannel(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_AlertsOnOrphan: a live vendor channel Vozko has no record of. Vozko cannot cancel
-// it (no client id), so it must alert for manual action and never silently leave it billing.
 func TestVendorReconcile_AlertsOnOrphan(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("ghost")}}
 	reader := &fakeOwnerReader{channelRefs: nil}
@@ -78,8 +73,6 @@ func TestVendorReconcile_AlertsOnOrphan(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_ConsistentActiveChannelNoAction: Vozko considers the channel active and the
-// vendor bills it. This is the healthy state. No cancel, no alert.
 func TestVendorReconcile_ConsistentActiveChannelNoAction(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chOK")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{activeRef("chOK", "clOK", "ws-1")}}
@@ -98,9 +91,6 @@ func TestVendorReconcile_ConsistentActiveChannelNoAction(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_IgnoresAlreadyCancelledChannel: a channel Vozko suspended that the vendor already
-// shows as pending_deletion is consistent (the cancel landed). It is not billing next month, so the
-// pass must NOT count it or re-cancel it.
 func TestVendorReconcile_IgnoresAlreadyCancelledChannel(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{
 		{ID: "chGone", Status: "pending_deletion"},
@@ -121,8 +111,6 @@ func TestVendorReconcile_IgnoresAlreadyCancelledChannel(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_AlertsWhenRecancelFails: the cancellation re-submit errors at the vendor. The
-// leak is counted but NOT marked recancelled, and an ops alert is raised so a human resolves it.
 func TestVendorReconcile_AlertsWhenRecancelFails(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chA")}, cancelErr: errors.New("vendor 500")}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{suspendedRef("chA", "clA", "ws-1")}}
@@ -141,8 +129,6 @@ func TestVendorReconcile_AlertsWhenRecancelFails(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_AlertsWhenClientIDMissing: a leaked channel with no client id cannot be cancelled
-// from here at all (the WABA join carried no client id), so it must alert rather than attempt a cancel.
 func TestVendorReconcile_AlertsWhenClientIDMissing(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("chA")}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{suspendedRef("chA", "", "ws-1")}}
@@ -164,13 +150,12 @@ func TestVendorReconcile_AlertsWhenClientIDMissing(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_MixedFleetCounts drives every branch in one pass and asserts the aggregate report.
 func TestVendorReconcile_MixedFleetCounts(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{
-		live("ok"),                               // consistent active
-		live("leak"),                             // suspended in Vozko -> re-cancel
-		live("ghost"),                            // no Vozko record -> orphan
-		{ID: "gone", Status: "pending_deletion"}, // not billing -> ignored
+		live("ok"),
+		live("leak"),
+		live("ghost"),
+		{ID: "gone", Status: "pending_deletion"},
 	}}
 	reader := &fakeOwnerReader{channelRefs: []businessphone.Dialog360ChannelRef{
 		activeRef("ok", "clOK", "ws-1"),
@@ -212,8 +197,6 @@ func TestVendorReconcile_PropagatesVozkoListError(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_NilAlerterDoesNotPanic: alerting is best-effort. A pass with no alerter sink
-// wired must still detect divergence and never panic.
 func TestVendorReconcile_NilAlerterDoesNotPanic(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("ghost")}}
 	uc := NewReconcileVendorChannelsUseCase(partner, &fakeOwnerReader{}, nil)
@@ -226,8 +209,6 @@ func TestVendorReconcile_NilAlerterDoesNotPanic(t *testing.T) {
 	}
 }
 
-// TestVendorReconcile_AlertSinkErrorIsSwallowed: if the ops-alert sink itself fails, the pass must not
-// fail (a broken alerter must never block the reconcile loop).
 func TestVendorReconcile_AlertSinkErrorIsSwallowed(t *testing.T) {
 	partner := &fakePartnerSvc{channels: []businessphone.Dialog360Channel{live("ghost")}}
 	alerter := &fakeOpsAlerter{err: errors.New("sink down")}

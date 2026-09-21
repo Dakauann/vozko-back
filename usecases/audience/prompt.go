@@ -8,20 +8,10 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The batch prompt. The rubric itself is rendered by the domain
-// (ca.RubricPrompt), so the criteria are worded in exactly one place; this
-// file only frames the task, adds the post's context and lays out the
-// items. Refs, never text, come back (plan §2.3).
-
-// BuildSystemPrompt builds the comment prompt. Kept for the call sites and
-// tests that only ever mean comments; BuildSystemPromptFor is the kind-aware
-// entry point the engine uses.
 func BuildSystemPrompt(topics ca.TopicSet, ctx ca.ContainerContext, instructions string) string {
 	return BuildSystemPromptFor(ca.SubjectKindComment, topics, ctx, instructions)
 }
 
-// BuildSystemPromptFor frames the task for the subject kind. The rubric itself
-// is rendered by the domain, so the criteria are worded in exactly one place.
 func BuildSystemPromptFor(kind ca.SubjectKind, topics ca.TopicSet, ctx ca.ContainerContext, instructions string) string {
 	if kind == ca.SubjectKindConversation {
 		return buildConversationSystemPrompt(ctx, instructions)
@@ -29,9 +19,6 @@ func BuildSystemPromptFor(kind ca.SubjectKind, topics ca.TopicSet, ctx ca.Contai
 	var b strings.Builder
 	b.WriteString("Você é um analista de audiência. Vai receber uma lista de comentários públicos feitos em UMA publicação de rede social e deve classificar CADA comentário, individualmente, seguindo a rubrica abaixo.\n\n")
 
-	// Operator context: what the account is, what this post is about, what
-	// to watch for. Quoted so it cannot read as an instruction to change the
-	// rubric; the rubric below is the only authority on labels.
 	if instructions = strings.TrimSpace(instructions); instructions != "" {
 		b.WriteString("CONTEXTO DO OPERADOR (sobre a conta e esta publicação; use para interpretar, não para mudar a rubrica):\n\"\"\"\n")
 		b.WriteString(truncateRunes(instructions, ca.MaxInstructionsRunes))
@@ -56,14 +43,11 @@ func BuildSystemPromptFor(kind ca.SubjectKind, topics ca.TopicSet, ctx ca.Contai
 	return b.String()
 }
 
-// batchItem is one comment as the model sees it.
 type batchItem struct {
 	Ref  int    `json:"ref"`
 	Text string `json:"text"`
 }
 
-// BuildUserMessage lays the batch out as a JSON array so quoting, newlines
-// and emoji inside comments cannot be read as prompt structure.
 func BuildUserMessage(plan ca.BatchPlan) (string, error) {
 	items := make([]batchItem, len(plan.Items))
 	for i, it := range plan.Items {
@@ -81,15 +65,6 @@ func truncateRunes(s string, max int) string {
 	return out
 }
 
-// buildConversationSystemPrompt frames a batch of conversations.
-//
-// The shape mirrors the comment prompt deliberately: operator context first,
-// then what the subjects are FOR, then the rubric. The middle part is what
-// differs in kind rather than in wording. A comment is judged against a post; a
-// conversation is judged against an OBJECTIVE, and every criterion in the
-// conversation rubric is written relative to it. Without the campaign's
-// objective the model is left inferring what "progress" means, which is how a
-// scheduling conversation ends up scored as a failed sale.
 func buildConversationSystemPrompt(ctx ca.ContainerContext, instructions string) string {
 	var b strings.Builder
 	b.WriteString("Você é um analista de atendimento. Vai receber uma lista de CONVERSAS entre uma empresa e seus clientes e deve classificar CADA conversa, individualmente, seguindo a rubrica abaixo.\n\n")

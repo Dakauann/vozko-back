@@ -23,8 +23,6 @@ const (
 	ServerTypeSpeaches   ServerType = "speaches"
 )
 
-// pcmSampleRate is the 16 kHz mono rate the transcription servers expect; it is
-// used to estimate an audio duration from a raw PCM byte count.
 const pcmSampleRate = 16000
 
 type Client struct {

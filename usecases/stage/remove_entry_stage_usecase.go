@@ -11,11 +11,6 @@ type RemoveEntryStageUseCase struct {
 	events ce.Logger
 }
 
-// NewRemoveEntryStageUseCase wires the stage removal.
-//
-// events may be nil (unit tests). It is a dependency of the USE CASE and not of
-// the HTTP handler that used to hold it, so any future caller records the
-// removal without having to remember to.
 func NewRemoveEntryStageUseCase(repo stage.Repository, events ce.Logger) stage.RemoveEntryStageUseCase {
 	return &RemoveEntryStageUseCase{repo: repo, events: events}
 }

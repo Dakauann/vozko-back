@@ -26,13 +26,8 @@ type Service struct {
 	defaultTemp       float32
 	maxToolIterations int
 	billingPub        messaging.MessageQueuePub
-	// usageFetcher recovers token usage when a stream is cut before the inline
-	// usage chunk arrives (cancel/timeout/abort), so the turn is still billed.
-	// Optional: nil disables recovery.
-	usageFetcher generationUsageFetcher
-	// catalogFetcher loads the priced, popularity-sorted model catalog for the UI
-	// (GetModelsWithPricing). Optional: nil falls back to the library ListModels.
-	catalogFetcher *modelCatalogFetcher
+	usageFetcher      generationUsageFetcher
+	catalogFetcher    *modelCatalogFetcher
 }
 
 type Config struct {
@@ -42,7 +37,11 @@ type Config struct {
 	XTitle       string
 }
 
-func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub) *Service {
+func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub) (*Service, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: openrouter ai service", ai.ErrBillingNotConfigured)
+	}
+
 	var opts []openrouter.Option
 	if cfg.HTTPReferer != "" {
 		opts = append(opts, openrouter.WithHTTPReferer(cfg.HTTPReferer))
@@ -60,7 +59,7 @@ func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQ
 		billingPub:        billingPub,
 		usageFetcher:      newHTTPGenerationFetcher(cfg.APIKey, openRouterDefaultBaseURL),
 		catalogFetcher:    newModelCatalogFetcher(cfg.APIKey, openRouterDefaultBaseURL),
-	}
+	}, nil
 }
 
 func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<-chan ai.StreamEvent, error) {
@@ -100,10 +99,6 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			toolAcc := make(map[int]*openrouter.ToolCall)
 			var iterText strings.Builder
 			finishReason := ""
-			// Per-iteration: each stream reports its own usage in a final chunk and
-			// carries the generation id on every chunk. Scoping these to the iteration
-			// prevents a cut stream from re-billing the previous iteration's usage and
-			// lets us recover usage by id when the final chunk never arrives.
 			var totalUsage *openrouter.Usage
 			var genID string
 
@@ -423,10 +418,6 @@ func (s *Service) GetAvaibleModels(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// GetModelsWithPricing returns the priced model catalog for the picker UI. It
-// prefers the direct /models?sort=most-popular fetch (popularity order + created +
-// context length, TTL-cached) and falls back to the library's unsorted ListModels
-// when that's unavailable.
 func (s *Service) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, error) {
 	if models, ok := s.catalogFetcher.FetchModelsWithPricing(ctx); ok {
 		return models, nil
@@ -474,9 +465,6 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 		case ai.RoleSystem:
 			messages = append(messages, openrouter.SystemMessage(m.Content))
 		case ai.RoleAssistant:
-			// An assistant message that made tool calls must replay them (the chat
-			// API requires the matching RoleTool results to follow), so serialize
-			// them onto the message instead of dropping them.
 			if len(m.ToolCalls) > 0 {
 				messages = append(messages, openrouter.ChatCompletionMessage{
 					Role:      openrouter.ChatMessageRoleAssistant,
@@ -499,12 +487,6 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 	}
 
 	defs := input.Tools
-	// Only fall back to the full default tool registry when the caller actually
-	// allows tool execution. Callers that disable execution (ToolExecutionModeNone,
-	// e.g. workflow AI-agent nodes in prompt mode with no custom tools) and pass no
-	// tools want *none*. Injecting the default set here let the model emit tool
-	// calls it could never run, which suppressed its text reply (the node would
-	// finish with response=0 chars and deliver nothing).
 	if defs == nil && s.toolService != nil && input.ToolExecutionMode != ai.ToolExecutionModeNone {
 		defs = s.toolService.Definitions()
 	}
@@ -525,8 +507,6 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 		req.MaxTokens = input.MaxTokens
 	}
 	if input.ReasoningMaxTokens > 0 {
-		// Cap chain-of-thought so it can't consume the whole output budget (which on
-		// reasoning models like Gemini 3 leaves no room for the actual answer/tool call).
 		mt := input.ReasoningMaxTokens
 		req.Reasoning = &openrouter.ChatCompletionReasoning{MaxTokens: &mt}
 	}
@@ -560,17 +540,10 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 			}
 		}
 	}
-	// Ask for the accounting, on every request, streamed or not.
-	//
-	// StreamOptions.IncludeUsage asks for the token COUNTS in the final chunk;
-	// this asks for usage.cost — the figure OpenRouter actually debits. Without
-	// it the field is simply absent from the response and there is nothing to
-	// bill from but an estimate.
 	req.Usage = &openrouter.IncludeUsage{Include: true}
 	return req
 }
 
-// openrouterJSONSchema adapts a plain map schema to json.Marshaler for the SDK.
 type openrouterJSONSchema map[string]any
 
 func (s openrouterJSONSchema) MarshalJSON() ([]byte, error) {
@@ -580,8 +553,6 @@ func (s openrouterJSONSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any(s))
 }
 
-// toOpenRouterToolCalls converts domain tool calls back into the provider's
-// wire format so a caller-supplied assistant turn can replay its tool calls.
 func toOpenRouterToolCalls(calls []ai.ToolCall) []openrouter.ToolCall {
 	out := make([]openrouter.ToolCall, 0, len(calls))
 	for _, c := range calls {
@@ -611,10 +582,6 @@ func (s *Service) resolveMaxIterations(requested int) int {
 	return limit
 }
 
-// streamReasoningDelta extracts the reasoning/thinking text from a streamed delta.
-// Providers expose it either as `reasoning` (most models) or `reasoning_content`
-// (deepseek-style); we forward whichever is present so callers can render a live
-// thinking view. Returns "" when the delta carries no reasoning.
 func streamReasoningDelta(delta openrouter.ChatCompletionStreamChoiceDelta) string {
 	if delta.Reasoning != nil && *delta.Reasoning != "" {
 		return *delta.Reasoning
@@ -640,8 +607,6 @@ func getBrazilTimePrefix() string {
 	return fmt.Sprintf("[Current Date/Time in Brazil: %s]\n\n", time.Now().In(loc).Format("02/01/2006 15:04:05"))
 }
 
-// resolveParamType delegates to the shared tools.ResolveParamType so the LLM
-// tool-schema mapping and the workflow builder validation stay on one list.
 func resolveParamType(raw string) (schemaType, formatHint string) {
 	return tools.ResolveParamType(raw)
 }
@@ -787,8 +752,6 @@ func parseFloat64(s string) float64 {
 	return v
 }
 
-// costToMicros converts the provider's reported USD cost into micros, rounding
-// UP so a sub-micro call is never recorded as free.
 func costToMicros(cost float64) int64 {
 	if cost <= 0 {
 		return 0

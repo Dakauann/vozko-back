@@ -13,47 +13,33 @@ import (
 	"vozko/infra/meta"
 )
 
-// nonceTTL must outlive the authorize round trip but stay short; the state
-// itself carries the same expiry.
 const nonceTTL = 15 * time.Minute
 
-// StartConnectInput begins onboarding.
 type StartConnectInput struct {
 	WorkspaceID string
 	UserID      string
 	ReturnPath  string
-	// Popup marks a popup-transport launch, so the callback answers with a
-	// postMessage page instead of a redirect.
-	Popup bool
+	Popup       bool
 }
 
-// StartConnectOutput carries the URL to redirect to.
 type StartConnectOutput struct {
 	AuthorizeURL string
 }
 
-// CompleteConnectInput finishes onboarding from the OAuth callback.
 type CompleteConnectInput struct {
-	Code  string
-	State string
-	// Error and ErrorReason are set when the user declined. Instagram sends
-	// ?error=access_denied&error_reason=user_denied rather than a code.
+	Code        string
+	State       string
 	Error       string
 	ErrorReason string
 }
 
-// CompleteConnectOutput is the connected account plus where to send the browser.
 type CompleteConnectOutput struct {
-	Account    *igdomain.Account
-	ReturnPath string
-	// Popup mirrors the launch transport so the handler knows how to answer.
-	Popup bool
-	// Reconnected is true when this replaced an existing (possibly expired)
-	// connection rather than creating a new one.
+	Account     *igdomain.Account
+	ReturnPath  string
+	Popup       bool
 	Reconnected bool
 }
 
-// ConnectAccountUseCase runs Business Login for Instagram end to end.
 type ConnectAccountUseCase struct {
 	oauth        igdomain.OAuthService
 	subscription igdomain.SubscriptionService
@@ -65,7 +51,6 @@ type ConnectAccountUseCase struct {
 	defaultReturnPath string
 }
 
-// NewConnectAccountUseCase builds the connect usecase.
 func NewConnectAccountUseCase(
 	oauth igdomain.OAuthService,
 	subscription igdomain.SubscriptionService,
@@ -89,7 +74,6 @@ func NewConnectAccountUseCase(
 	}
 }
 
-// Start mints a signed, single-use state and returns the authorize URL.
 func (uc *ConnectAccountUseCase) Start(ctx context.Context, in StartConnectInput) (*StartConnectOutput, error) {
 	if strings.TrimSpace(in.WorkspaceID) == "" {
 		return nil, igdomain.ErrWorkspaceIDRequired
@@ -112,8 +96,6 @@ func (uc *ConnectAccountUseCase) Start(ctx context.Context, in StartConnectInput
 		return nil, err
 	}
 
-	// The nonce is recorded so the callback can consume it exactly once. This is
-	// what turns signature verification into replay protection.
 	if uc.sharedState != nil {
 		ok, err := uc.sharedState.SetNX(nonceKey(nonce), in.WorkspaceID, nonceTTL)
 		if err != nil {
@@ -127,12 +109,6 @@ func (uc *ConnectAccountUseCase) Start(ctx context.Context, in StartConnectInput
 	return &StartConnectOutput{AuthorizeURL: uc.oauth.BuildAuthorizeURL(state)}, nil
 }
 
-// Complete exchanges the code and persists the account.
-//
-// Every stage logs, because a failure here is otherwise invisible: the user only
-// sees a translated toast, and the interesting detail (which upstream call failed,
-// which scope was withheld, whether the account already existed) lives entirely in
-// the error chain.
 func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnectInput) (*CompleteConnectOutput, error) {
 	log.Printf("[instagram] callback received (code=%t state=%t error=%q reason=%q)",
 		in.Code != "", in.State != "", in.Error, in.ErrorReason)
@@ -145,12 +121,6 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	log.Printf("[instagram] state ok (workspace=%s user=%s popup=%t returnPath=%s)",
 		state.WorkspaceID, state.UserID, state.Popup, state.ReturnPath)
 
-	// Consume the nonce before anything else so a replayed callback cannot
-	// re-run the exchange.
-	//
-	// Consumption is a SetNX on a separate "used" marker rather than a Delete:
-	// Del reports no existence information, so a check-then-delete would leave a
-	// race in which two concurrent callbacks both proceed.
 	if uc.sharedState != nil {
 		issued, err := uc.sharedState.Exists(nonceKey(state.Nonce))
 		if err != nil {
@@ -168,19 +138,15 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 			log.Printf("[instagram] nonce %s already consumed; refusing a replayed callback", state.Nonce)
 			return nil, ErrReplayedState
 		}
-		// Best effort: the used-marker already enforces single use.
 		_ = uc.sharedState.Del(nonceKey(state.Nonce))
 	}
 
 	returnPath := SafeReturnPath(state.ReturnPath, uc.defaultReturnPath)
 
-	// The user declined on Instagram's consent screen.
 	if in.Error != "" || in.ErrorReason != "" {
 		log.Printf("[instagram] user declined authorization: error=%q reason=%q", in.Error, in.ErrorReason)
 		return nil, fmt.Errorf("instagram: authorization declined (%s/%s)", in.Error, in.ErrorReason)
 	}
-	// A caller-supplied token is never accepted: the code exchange is the only
-	// way to obtain credentials here.
 	if strings.TrimSpace(in.Code) == "" {
 		return nil, fmt.Errorf("instagram: authorization code is required")
 	}
@@ -206,9 +172,6 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	log.Printf("[instagram] profile read (ig_user_id=%s username=%s type=%s)",
 		profile.IGUserID, profile.Username, profile.AccountType)
 
-	// Granted scopes come from the token exchange, since the long-lived response
-	// may omit them. Users can decline individual permissions, so this is the
-	// authoritative set rather than what we requested.
 	granted := longLived.Permissions
 	if len(granted) == 0 {
 		granted = shortLived.Permissions
@@ -238,16 +201,6 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 		return nil, err
 	}
 
-	// Messaging is the whole point of the channel, so a genuinely declined
-	// messaging scope is a hard failure rather than a half-connected account that
-	// silently never receives DMs.
-	//
-	// But only when the permission list was actually REPORTED. The long-lived
-	// exchange does not return `permissions` at all, and the code exchange has been
-	// observed omitting it too, in which case an absent list means "unknown", not
-	// "declined". Rejecting on unknown would refuse a perfectly good connection, so
-	// we record the scopes we requested, let the messaging health probe below be the
-	// real signal, and surface the truth on the first API call.
 	if len(granted) == 0 {
 		log.Printf("[instagram] account %s: Instagram did not report granted permissions; assuming the requested scopes",
 			profile.IGUserID)
@@ -269,8 +222,6 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 
 	log.Printf("[instagram] connect complete for @%s (id=%s)", account.Username, account.ID)
 
-	// Subscription and the health probe are best-effort: the account is already
-	// usable and both are surfaced in the UI and retried by cron.
 	uc.subscribeWebhooks(ctx, account)
 	uc.probeMessagingHealth(ctx, account)
 
@@ -282,10 +233,6 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	}, nil
 }
 
-// persist upserts by IGUserID, restoring a previously disconnected row.
-//
-// ig_user_id is globally unique (mirroring WhatsApp's meta_phone_number_id), so
-// a soft-deleted row must be restored rather than inserted around.
 func (uc *ConnectAccountUseCase) persist(ctx context.Context, account *igdomain.Account) (bool, error) {
 	existing, err := uc.accounts.FindByIGUserIDUnscoped(ctx, account.IGUserID)
 	switch {
@@ -293,13 +240,10 @@ func (uc *ConnectAccountUseCase) persist(ctx context.Context, account *igdomain.
 		log.Printf("[instagram] ig_user_id=%s already exists (id=%s workspace=%s), restoring and updating",
 			account.IGUserID, existing.ID, existing.WorkspaceID)
 		if existing.WorkspaceID != account.WorkspaceID {
-			// Connected elsewhere. Surfacing this beats silently moving an
-			// account between tenants.
 			return false, fmt.Errorf("%w: already connected to another workspace",
 				igdomain.ErrAccountAlreadyLinked)
 		}
 		account.ID = existing.ID
-		// Preserve automation config across a reconnect.
 		account.AgentID = existing.AgentID
 		account.WorkflowID = existing.WorkflowID
 		account.PipelineID = existing.PipelineID
@@ -351,14 +295,6 @@ func (uc *ConnectAccountUseCase) subscribeWebhooks(ctx context.Context, account 
 	}
 }
 
-// probeMessagingHealth detects the Instagram-app "Allow Access to Messages"
-// toggle being off.
-//
-// There is no API for that flag, and when it is off DMs and messaging webhooks
-// fail SILENTLY despite a fully successful OAuth, a classic invisible failure.
-// Reading the conversations edge is the closest available signal: a
-// permission-shaped error means messaging will not work. This is a heuristic, so
-// a transient failure is not treated as unhealthy.
 func (uc *ConnectAccountUseCase) probeMessagingHealth(ctx context.Context, account *igdomain.Account) {
 	if uc.messaging == nil {
 		return
@@ -372,8 +308,6 @@ func (uc *ConnectAccountUseCase) probeMessagingHealth(ctx context.Context, accou
 			log.Printf("[instagram] messaging health probe failed account=%s code=%d: %v",
 				account.IGUserID, apiErr.Code, err)
 		} else {
-			// Transient or transport failure: leave the previous verdict alone
-			// rather than flagging a working account as broken.
 			log.Printf("[instagram] messaging health probe inconclusive account=%s: %v",
 				account.IGUserID, err)
 			return

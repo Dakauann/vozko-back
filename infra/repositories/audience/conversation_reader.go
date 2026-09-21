@@ -10,13 +10,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// The read the rest of the system makes about conversations.
-//
-// Separate from the engine's repository on purpose: these callers need two
-// reads and have no business holding the queue, the claim or the purge. It is
-// the same table and the same mapper, so there is no second definition of what
-// an analysis is.
-
 type conversationReader struct {
 	db *gorm.DB
 }
@@ -25,11 +18,6 @@ func NewConversationReader(db *gorm.DB) ca.ConversationReader {
 	return &conversationReader{db: db}
 }
 
-// LatestByEntries answers for many conversations in ONE query.
-//
-// The previous engine's equivalent ran a query per entry from a loop in the
-// websocket path, which is what made opening the inbox slow in proportion to
-// how many conversations were on screen.
 func (r *conversationReader) LatestByEntries(
 	ctx context.Context, workspaceID string, source ca.Source, entryIDs []string,
 ) (map[string]*ca.Analysis, error) {
@@ -42,9 +30,6 @@ func (r *conversationReader) LatestByEntries(
 	q := r.db.WithContext(ctx).
 		Where("subject_kind = ? AND subject_id IN ? AND deleted_at IS NULL AND status = 'analyzed'",
 			string(ca.SubjectKindConversation), entryIDs)
-	// Both scopes are optional so a caller that legitimately has neither (a
-	// background reconciler) is not forced to invent one, but a workspace is
-	// applied whenever it is known: these rows carry customer prose.
 	if workspaceID != "" {
 		q = q.Where("workspace_id = ?", workspaceID)
 	}
@@ -57,8 +42,6 @@ func (r *conversationReader) LatestByEntries(
 	}
 
 	for i := range rows {
-		// SQL selected the latest completed revision; pending work never erases
-		// the last available verdict on the inbox.
 		out[rows[i].SubjectID] = toDomain(&rows[i])
 	}
 	return out, nil
@@ -86,13 +69,6 @@ func (r *conversationReader) LatestByEntry(
 	return toDomain(&row), nil
 }
 
-// PendingByEntries is ONE indexed read for a whole inbox page.
-//
-// Deliberately narrow: it selects the subject ids and nothing else, so the
-// answer is a handful of strings however large the transcripts behind them are.
-// The inbox calls it beside LatestByEntries on the same page of entries, which
-// is why it must not become a per-entry query, and why it returns only the ids
-// that actually have work waiting.
 func (r *conversationReader) PendingByEntries(
 	ctx context.Context, workspaceID string, source ca.Source, entryIDs []string,
 ) (map[string]bool, error) {

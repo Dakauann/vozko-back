@@ -29,11 +29,9 @@ type Invoice struct {
 	PaidAt           *int64
 	Description      string     `gorm:"size:500"`
 	DueDate          *time.Time `gorm:"index"`
-	// LineItemsJSON stores the customer-facing breakdown (price only) as JSON. Empty for single-amount
-	// invoices. Stored as JSON text so no extra driver dependency is needed.
-	LineItemsJSON string    `gorm:"type:jsonb;not null;default:'[]'"`
-	CreatedAt     time.Time `gorm:"autoCreateTime;index"`
-	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
+	LineItemsJSON    string     `gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt        time.Time  `gorm:"autoCreateTime;index"`
+	UpdatedAt        time.Time  `gorm:"autoUpdateTime"`
 }
 
 func (Invoice) TableName() string { return "invoices" }

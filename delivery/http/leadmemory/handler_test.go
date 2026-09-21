@@ -17,10 +17,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// The delivery layer's job is translation: a frame in, a status and a code
-// out. These pin the permission each route is gated on, where the actor comes
-// from (claims, never the body), and which status each refusal carries.
-
 type stubCreate struct {
 	result *leadmemory.CreateResult
 	err    error
@@ -78,9 +74,6 @@ type handlerFixture struct {
 	gates  []gateCall
 }
 
-// stubResolver stands in for the contact→lead bridge. An empty resolved value
-// is the real state of an Instagram or Telegram conversation: a contact that
-// keys no lead.
 type stubResolver struct{ resolved string }
 
 func (s stubResolver) ResolveLeadRef(_, _ string) string { return s.resolved }
@@ -96,8 +89,6 @@ func newFixtureWith(resolver LeadRefResolver) *handlerFixture {
 	}
 	h := NewLeadMemoryHandler(f.create, f.update, f.delete, f.list, resolver)
 	f.router = mux.NewRouter()
-	// The recording gate stands in for the workspace RBAC middleware: it lets
-	// everything through while pinning WHICH permission each route asked for.
 	ac := func(res workspace_domain.Resource, act workspace_domain.Action, next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			f.gates = append(f.gates, gateCall{resource: res, action: act})
@@ -110,8 +101,6 @@ func newFixtureWith(resolver LeadRefResolver) *handlerFixture {
 
 func (f *handlerFixture) do(method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	// GetWorkspaceID falls back to this header, so no workspace middleware is
-	// needed to exercise the handler.
 	req.Header.Set("X-Workspace-ID", "ws-1")
 	req = req.WithContext(context.WithValue(req.Context(),
 		middleware.ClaimsContextKey, &auth.Claims{UserID: "user-1", Role: "member"}))
@@ -166,7 +155,6 @@ func TestCreateTakesActorFromClaimsAndLeadFromPath(t *testing.T) {
 	if in.WorkspaceID != "ws-1" || in.LeadID != "lead-1" {
 		t.Fatalf("scope = %+v", in)
 	}
-	// The actor is the authenticated operator: the body cannot spoof it.
 	if string(in.Actor.Kind) != "human" || in.Actor.ID != "user-1" {
 		t.Fatalf("actor = %+v", in.Actor)
 	}
@@ -247,11 +235,6 @@ func TestDomainErrorsCarryTheirStatuses(t *testing.T) {
 	}
 }
 
-// A conversation with no lead behind it is an answerable state, not a failure.
-// Before this, the unresolved ref passed through as if it were a lead: the list
-// came back empty (indistinguishable from "no memories yet"), the operator
-// typed a memory, and the write died on the lead foreign key as a 500.
-
 func TestListWithoutLinkedLeadIsEmptyAndSaysSo(t *testing.T) {
 	f := newFixtureWith(stubResolver{resolved: ""})
 
@@ -270,8 +253,6 @@ func TestListWithoutLinkedLeadIsEmptyAndSaysSo(t *testing.T) {
 	if len(body.Memories) != 0 || body.Total != 0 {
 		t.Fatalf("body = %+v, want an empty list", body)
 	}
-	// The list is answered from the resolution alone: querying memories for an
-	// id that keys nothing is work with a known result.
 	if f.list.last.LeadID != "" {
 		t.Fatalf("list usecase was called with %q, want no call", f.list.last.LeadID)
 	}
@@ -287,8 +268,6 @@ func TestCreateWithoutLinkedLeadIsRefusedNotAttempted(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "lead_not_linked") {
 		t.Fatalf("body = %s, want the lead_not_linked code", rec.Body.String())
 	}
-	// Refused before storage: the old path reached the lead foreign key and
-	// surfaced as an opaque 500.
 	if f.create.last.LeadID != "" {
 		t.Fatalf("create usecase was called with %q, want no call", f.create.last.LeadID)
 	}
@@ -315,8 +294,6 @@ func TestResolvedContactRefBecomesTheLeadID(t *testing.T) {
 	}
 }
 
-// A nil resolver means "not configured", not "no lead": plain lead ids must
-// keep working untouched.
 func TestNilResolverKeepsPlainLeadIDsLinked(t *testing.T) {
 	f := newFixture()
 

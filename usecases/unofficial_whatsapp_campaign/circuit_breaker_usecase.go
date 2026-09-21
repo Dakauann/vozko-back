@@ -8,16 +8,6 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-// pauseCampaignsForInstanceUseCase is the circuit breaker's actuator.
-//
-// It pauses EVERY running campaign on a number, because the thing that went
-// wrong — a WhatsApp restriction, a dead session, a ban warning — belongs to the
-// number and not to the campaign that happened to discover it. Pausing only the
-// noticing campaign would leave the other two blasting into the same limit.
-//
-// Resume is deliberately manual. An automatic resume would re-enter the exact
-// condition that triggered the breaker, and on this channel the cost of being
-// wrong is the customer losing their WhatsApp number.
 type pauseCampaignsForInstanceUseCase struct {
 	campaigns uwc.Repository
 	consumer  uwc.MessageConsumerUseCase
@@ -50,13 +40,8 @@ func (uc *pauseCampaignsForInstanceUseCase) Execute(
 			continue
 		}
 		if !swapped {
-			// Somebody else already moved it. Not an error: the goal was that it
-			// stop running, and it has.
 			continue
 		}
-		// The reason is what makes an automatic pause legible. Without it a
-		// campaign the system stopped looks identical to one somebody paused by
-		// hand, and an operator restarts it straight back into the restriction.
 		if err := uc.campaigns.UpdateStatusReason(camp.ID, reason); err != nil {
 			log.Printf("[unofficial-whatsapp-campaign] could not record why %s paused: %v", camp.ID, err)
 		}

@@ -26,8 +26,6 @@ func newResolverMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	return db, mock, sqlDB
 }
 
-// A resolvable phone returns the entry id joined through the workspace-scoped
-// campaign, tagged as a whatsapp entry.
 func TestResolveByPhone_Match(t *testing.T) {
 	db, mock, sqlDB := newResolverMockDB(t)
 	defer sqlDB.Close()
@@ -48,7 +46,6 @@ func TestResolveByPhone_Match(t *testing.T) {
 	}
 }
 
-// A phone with no matching entry resolves to empty, not an error.
 func TestResolveByPhone_NoMatch(t *testing.T) {
 	db, mock, sqlDB := newResolverMockDB(t)
 	defer sqlDB.Close()
@@ -69,7 +66,6 @@ func TestResolveByPhone_NoMatch(t *testing.T) {
 	}
 }
 
-// An unparseable phone short-circuits before touching the DB (no query expected).
 func TestResolveByPhone_InvalidPhoneSkipsDB(t *testing.T) {
 	db, mock, sqlDB := newResolverMockDB(t)
 	defer sqlDB.Close()
@@ -87,7 +83,6 @@ func TestResolveByPhone_InvalidPhoneSkipsDB(t *testing.T) {
 	}
 }
 
-// An empty workspace never queries either.
 func TestResolveByPhone_EmptyWorkspaceSkipsDB(t *testing.T) {
 	db, mock, sqlDB := newResolverMockDB(t)
 	defer sqlDB.Close()

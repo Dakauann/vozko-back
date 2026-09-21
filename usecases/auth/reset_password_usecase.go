@@ -13,9 +13,6 @@ import (
 	"vozko/domain/user"
 )
 
-// maxResetAttempts bounds how many wrong codes may be tried against a single
-// issued reset token before it is burned. With a 6-digit code (900k values) and
-// a 1-hour window, 5 guesses keeps the online brute-force probability negligible.
 const maxResetAttempts = 5
 
 type resetPasswordUseCase struct {
@@ -46,8 +43,6 @@ func NewResetPasswordUseCase(
 	}
 }
 
-// WithNotifier enables the "password changed" confirmation email. Returns the use
-// case for chaining at wiring time.
 func (uc *resetPasswordUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *resetPasswordUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL
@@ -72,9 +67,6 @@ func (uc *resetPasswordUseCase) notifyPasswordChanged(email string) {
 }
 
 func (uc *resetPasswordUseCase) Execute(input auth.ResetPasswordInput) error {
-	// Every failure below returns the same generic error so the response never
-	// reveals whether the email exists, whether a code is outstanding, or whether
-	// the code itself was wrong.
 	if input.Email == "" || input.Token == "" {
 		return auth.ErrInvalidResetToken
 	}
@@ -84,8 +76,6 @@ func (uc *resetPasswordUseCase) Execute(input auth.ResetPasswordInput) error {
 		return auth.ErrInvalidResetToken
 	}
 
-	// Bind the code to this account: we look up the user's own active token and
-	// compare, rather than trusting a code presented on its own.
 	resetToken, err := uc.tokenRepo.FindActiveByUserID(u.ID)
 	if err != nil {
 		return auth.ErrInvalidResetToken
@@ -100,8 +90,6 @@ func (uc *resetPasswordUseCase) Execute(input auth.ResetPasswordInput) error {
 		return auth.ErrInvalidResetToken
 	}
 
-	// Constant-time compare of the code hashes so a wrong guess leaks no timing
-	// signal about how many leading digits matched.
 	presented := hashSecretCode(input.Token)
 	if subtle.ConstantTimeCompare([]byte(presented), []byte(resetToken.TokenHash)) != 1 {
 		attempts, _ := uc.tokenRepo.IncrementAttempts(resetToken.ID)
@@ -112,8 +100,6 @@ func (uc *resetPasswordUseCase) Execute(input auth.ResetPasswordInput) error {
 		return auth.ErrInvalidResetToken
 	}
 
-	// Code is correct. A weak new password must not burn the token: let the user
-	// retry with the same code.
 	if !isStrongPassword(input.NewPassword) {
 		return auth.ErrWeakPassword
 	}
@@ -148,9 +134,6 @@ func (uc *resetPasswordUseCase) Execute(input auth.ResetPasswordInput) error {
 	return nil
 }
 
-// notifyResetLocked warns the account owner that their reset code was burned by
-// too many wrong guesses, which is the visible symptom of someone brute-forcing
-// it. Best-effort: delivery failures never block the reset flow.
 func (uc *resetPasswordUseCase) notifyResetLocked(email string) {
 	if uc.notifier == nil || email == "" {
 		log.Printf("PASSWORD RESET LOCKED after %d attempts for %s", maxResetAttempts, email)

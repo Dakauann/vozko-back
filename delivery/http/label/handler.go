@@ -265,9 +265,6 @@ func (h *LabelHandler) AssignEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	// The timeline event is written by the use case, not here. It used to be
-	// written in this handler, so the CRM's bulk "add label" — which calls the
-	// same use case directly — left no trace on any conversation it touched.
 	entryLabel, err := h.assignUseCase.Execute(wsID, labeldomain.AssignEntryLabelInput{
 		LabelID:   req.LabelID,
 		EntryID:   req.EntryID,

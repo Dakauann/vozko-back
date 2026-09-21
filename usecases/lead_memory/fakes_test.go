@@ -11,15 +11,12 @@ import (
 	"vozko/domain/user"
 )
 
-// fakeRepo is an in-memory leadmemory.Repository honoring the same contracts
-// the Postgres one does: workspace scoping, soft-delete invisibility, dedup by
-// normalized content, prefix ambiguity.
 type fakeRepo struct {
 	rows    map[string]*leadmemory.LeadMemory
 	deleted map[string]bool
 	seq     int
 
-	failWith error // when set, every method fails with it
+	failWith error
 }
 
 func newFakeRepo() *fakeRepo {
@@ -40,7 +37,6 @@ func (f *fakeRepo) Create(m *leadmemory.LeadMemory) error {
 		}
 	}
 	if m.ID == "" {
-		// Deterministic 36-char ids with distinct 8-char prefixes.
 		f.seq++
 		m.ID = strings.Replace(
 			"0000000#-0000-4000-8000-000000000000", "#", string(rune('0'+f.seq)), 1)
@@ -160,7 +156,6 @@ func (f *fakeRepo) SoftDelete(workspaceID, id string) error {
 
 var _ leadmemory.Repository = (*fakeRepo)(nil)
 
-// fakeTimeline captures emitted events.
 type fakeTimeline struct {
 	events []*ce.ConversationEvent
 }

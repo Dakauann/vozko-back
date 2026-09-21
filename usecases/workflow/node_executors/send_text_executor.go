@@ -49,10 +49,6 @@ func (e *sendTextExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRes
 	}
 	text = workflow.Interpolate(text, ctx.State, nil)
 
-	// Text is the one message shape every channel has, so this node routes
-	// through the channel sender rather than testing the entry type: WhatsApp
-	// keeps its dedicated path, and any adapter-backed channel (Instagram today,
-	// Telegram next) sends with no change here.
 	if !e.sender.Supports(ctx.Run) {
 		return skipUnsupportedNode(ctx, "action_send_text"), nil
 	}
@@ -62,9 +58,6 @@ func (e *sendTextExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRes
 		return nil, err
 	}
 	if sent == nil {
-		// The channel declined without failing, a closed outbound window is the
-		// usual reason. `sent:false` is reported rather than a false success, so a
-		// downstream condition can branch on it.
 		log.Printf("[workflow][node:%s][run:%s] action_send_text: not delivered on channel %q for entry=%s",
 			ctx.Node.ID, ctx.Run.ID, ctx.Run.EntryType, ctx.Run.EntryID)
 		return &workflow.NodeResult{
@@ -76,11 +69,9 @@ func (e *sendTextExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRes
 		ctx.Node.ID, ctx.Run.ID, ctx.Run.EntryType, ctx.Run.EntryID, sent.AccountID, sent.ProviderMessageID)
 	return &workflow.NodeResult{
 		Output: map[string]interface{}{
-			"text":       text,
-			"sent":       true,
-			"message_id": sent.ProviderMessageID,
-			// Kept under the historical key so existing workflows reading
-			// business_phone_id keep working; it is the channel account id.
+			"text":              text,
+			"sent":              true,
+			"message_id":        sent.ProviderMessageID,
 			"business_phone_id": sent.AccountID,
 		},
 	}, nil

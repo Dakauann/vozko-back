@@ -13,8 +13,6 @@ import (
 )
 
 const (
-	// maxHistoryMessages caps how many prior turns we replay to the model, bounding
-	// per-turn token cost on long threads.
 	maxHistoryMessages = 40
 	defaultChatTemp    = 0.7
 	maxTitleLen        = 60
@@ -22,25 +20,16 @@ const (
 )
 
 var (
-	// ErrForbidden means the thread exists but isn't owned by this workspace/user.
-	ErrForbidden = errors.New("aichat: forbidden")
-	// ErrNoSubscription means the workspace has no active plan (chat requires one).
-	ErrNoSubscription = errors.New("aichat: active subscription required")
-	// ErrInsufficientBalance means the workspace balance is depleted.
+	ErrForbidden           = errors.New("aichat: forbidden")
+	ErrNoSubscription      = errors.New("aichat: active subscription required")
 	ErrInsufficientBalance = errors.New("aichat: insufficient balance")
 	ErrEmptyMessage        = errors.New("aichat: empty message")
 )
 
-// subscriptionReader is the slice of the plan subscription repo we need to gate
-// chat on an active plan.
 type subscriptionReader interface {
 	GetCurrentByWorkspaceID(workspaceID string, at time.Time) (*workspace_plan.WorkspaceSubscription, error)
 }
 
-// Service orchestrates the in-app AI chat: thread/message persistence plus the
-// streamed, billing-safe generation turn. Billing itself is handled by the AI
-// service (it publishes ai.billing.completed keyed on the request, idempotently),
-// so this layer only gates entry (active plan + positive balance) and persists.
 type Service struct {
 	threads  aichat.ThreadRepository
 	messages aichat.MessageRepository
@@ -105,9 +94,6 @@ func (s *Service) DeleteThread(workspaceID, userID, threadID string) error {
 	return s.threads.Delete(threadID)
 }
 
-// Precheck authorizes the thread and gates on plan + balance. The SSE handler
-// calls this BEFORE writing stream headers so gate failures map to real HTTP
-// status codes (403/402) instead of an in-stream error.
 func (s *Service) Precheck(workspaceID, userID, threadID string) (*aichat.Thread, error) {
 	thread, err := s.authorizeThread(workspaceID, userID, threadID)
 	if err != nil {
@@ -119,10 +105,6 @@ func (s *Service) Precheck(workspaceID, userID, threadID string) (*aichat.Thread
 	return thread, nil
 }
 
-// Stream persists the user turn, replays bounded history to the model, relays
-// every stream event via emit, then persists the assistant turn (even a partial
-// one if the client disconnected, the AI service still bills the partial). The
-// thread passed in must already be authorized + gated via Precheck.
 func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content, model string, emit func(ai.StreamEvent)) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -171,8 +153,6 @@ func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content, mo
 		}
 	}
 
-	// Persist whatever the assistant produced (partial included), so the thread is
-	// consistent even if the client cancelled mid-stream.
 	assistant := &aichat.Message{
 		ThreadID: thread.ID,
 		Role:     aichat.RoleAssistant,
@@ -219,7 +199,6 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 		case aichat.RoleSystem:
 			role = ai.RoleSystem
 		case aichat.RoleTool:
-			// Tool turns aren't replayed in plain chat v1.
 			continue
 		}
 		out = append(out, ai.Message{Role: role, Content: m.Content})
@@ -238,7 +217,6 @@ func (s *Service) authorizeThread(workspaceID, userID, threadID string) (*aichat
 	return t, nil
 }
 
-// gate fails closed: chat requires an active subscription and a positive balance.
 func (s *Service) gate(workspaceID string) error {
 	sub, err := s.subs.GetCurrentByWorkspaceID(workspaceID, time.Now().UTC())
 	if err != nil || sub == nil {
@@ -248,7 +226,6 @@ func (s *Service) gate(workspaceID string) error {
 	if err != nil {
 		return err
 	}
-	// TODO: FIX, this should calculate, the max use of the selected ai model: MaxTokens * PricePerToken, and compare to the balance. For now, just check if the balance is positive.
 	if bal <= 0 {
 		return ErrInsufficientBalance
 	}

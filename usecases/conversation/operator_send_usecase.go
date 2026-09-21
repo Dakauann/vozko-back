@@ -11,30 +11,18 @@ import (
 	"vozko/domain/user"
 )
 
-// operatorSendUseCase delivers a message a human authored, on any channel.
-//
-// It is the single answer to "what happens when an operator sends", assembled
-// from the WebSocket hub's frame handler where it used to live inline. Three
-// things were trapped in that handler and are now reachable by every send
-// surface: which signature format the channel renders, how a media send differs
-// from a text send, and the four side effects a delivered reply owes its
-// conversation.
 type operatorSendUseCase struct {
 	sender    conversation.MessageSender
 	users     user.UserRepository
 	finalizer conversation.OperatorSendFinalizer
+	billing   conversation.ServiceMessageBilling
 }
 
-// NewOperatorSendUseCase wires the use case.
-//
-// All three dependencies are required. A nil sender cannot deliver anything and
-// a nil finalizer would deliver messages that leave the conversation in the
-// wrong status and off the activity timeline — a silent loss, which is worse
-// than refusing to start.
 func NewOperatorSendUseCase(
 	sender conversation.MessageSender,
 	users user.UserRepository,
 	finalizer conversation.OperatorSendFinalizer,
+	billing conversation.ServiceMessageBilling,
 ) (conversation.OperatorSendUseCase, error) {
 	missing := []string{}
 	if sender == nil {
@@ -46,11 +34,14 @@ func NewOperatorSendUseCase(
 	if finalizer == nil {
 		missing = append(missing, "operator send finalizer")
 	}
+	if billing == nil {
+		missing = append(missing, "service message billing")
+	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("operator send use case: missing %s", strings.Join(missing, ", "))
 	}
 
-	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer}, nil
+	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer, billing: billing}, nil
 }
 
 func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.OperatorSendInput) (*conversation.Message, error) {
@@ -68,13 +59,17 @@ func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.Oper
 		return nil, conversation.ErrMessageContentRequired
 	}
 
+	if in.WorkspaceID != "" {
+		if err := uc.billing.AllowSend(in.WorkspaceID); err != nil {
+			return nil, err
+		}
+	}
+
 	message, err := uc.send(in)
 	if err != nil {
 		return nil, err
 	}
 
-	// Best-effort by contract: the message is already with the customer, so a
-	// failing side effect is reported, never propagated as a send failure.
 	if err := uc.finalizer.FinalizeOperatorSend(ctx, conversation.FinalizeOperatorSendInput{
 		EntryID:     in.EntryID,
 		EntryType:   in.EntryType,
@@ -88,11 +83,8 @@ func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.Oper
 	return message, nil
 }
 
-// send routes to the one of three shapes this input describes.
 func (uc *operatorSendUseCase) send(in conversation.OperatorSendInput) (*conversation.Message, error) {
 	if in.Buttons != nil {
-		// An interactive prompt is not signed: the signature would land in the
-		// body above the buttons and read as part of the question.
 		return uc.sender.SendButtonMessage(in.EntryID, in.EntryType, in.SenderUserID, in.ReplyToMessageID, *in.Buttons)
 	}
 
@@ -102,8 +94,6 @@ func (uc *operatorSendUseCase) send(in conversation.OperatorSendInput) (*convers
 	}
 
 	if in.MediaID != "" {
-		// Media carries the text as its caption, which is why signing happens
-		// before this branch rather than inside each one.
 		return uc.sender.SendMediaMessage(
 			in.EntryID, in.EntryType, in.MediaID, in.MediaType,
 			in.SenderUserID, in.ReplyToMessageID, text,
@@ -112,11 +102,6 @@ func (uc *operatorSendUseCase) send(in conversation.OperatorSendInput) (*convers
 	return uc.sender.SendTextMessage(in.EntryID, in.EntryType, text, in.SenderUserID, in.ReplyToMessageID)
 }
 
-// senderName resolves the operator's display name for the signature.
-//
-// Resolve-and-continue: a lookup failure costs the signature prefix and nothing
-// else. SignOutbound treats an empty name as "do not sign", so a dead user
-// repository can never produce a message that opens with a stray "*:".
 func (uc *operatorSendUseCase) senderName(userID string) string {
 	record, err := uc.users.FindByID(userID)
 	if err != nil || record == nil {

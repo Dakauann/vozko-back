@@ -7,13 +7,11 @@ import (
 	"vozko/brand"
 )
 
-// loaderForTests resolves the real templates dir relative to this package.
 func loaderForTests() *TemplateLoaderService {
 	return NewTemplateLoaderService("templates")
 }
 
 func TestLoadTemplate_ComposesLayoutAndRendersData(t *testing.T) {
-	// The layout renders brand chrome from the active brand; set one for the test.
 	brand.SetForTest(brand.Brand{
 		Name: "Vozko", LegalName: "VOZKO GLOBAL TECNOLOGIA LTDA", CNPJ: "63.819.955/0001-95",
 		SiteURL: "https://vozkoglobal.com", EmailDomain: "vozkoglobal.com",
@@ -30,13 +28,11 @@ func TestLoadTemplate_ComposesLayoutAndRendersData(t *testing.T) {
 		t.Fatalf("LoadTemplate: %v", err)
 	}
 
-	// Composed into the shared layout (header + footer + shell).
 	for _, want := range []string{"<!DOCTYPE html>", "Vozko", "CNPJ", "vozkoglobal.com"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected rendered email to contain %q", want)
 		}
 	}
-	// Placeholders rendered.
 	for _, want := range []string{"user@example.com", "482913", "15 minutos"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected rendered email to contain placeholder value %q", want)
@@ -52,12 +48,10 @@ func TestLoadTemplate_FollowsDesignSystem(t *testing.T) {
 		t.Fatalf("LoadTemplate: %v", err)
 	}
 
-	// The one action voice: Signal Blue must be present.
 	if !strings.Contains(out, "#2463eb") {
 		t.Fatal("expected Signal Blue (#2463eb) in the rendered email")
 	}
 
-	// Forbidden patterns (design-system violations) must be gone.
 	lower := strings.ToLower(out)
 	forbidden := map[string]string{
 		"linear-gradient":  "gradients are not allowed in transactional UI",
@@ -72,7 +66,6 @@ func TestLoadTemplate_FollowsDesignSystem(t *testing.T) {
 		}
 	}
 
-	// No em-dash / en-dash in copy (CLAUDE.md text rule).
 	if strings.ContainsRune(out, '—') || strings.ContainsRune(out, '–') {
 		t.Fatal("em-dash/en-dash found in email copy; use a single space")
 	}
@@ -141,8 +134,6 @@ func TestConvertedExistingTemplates_RenderWithRealSenderData(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: render error: %v", c.name, err)
 		}
-		// Catches a converted template referencing a placeholder the real sender
-		// does not pass (Go renders the missing map key as "<no value>").
 		if strings.Contains(out, "<no value>") {
 			t.Fatalf("%s: references a placeholder not supplied by its sender", c.name)
 		}
@@ -159,8 +150,6 @@ func TestConvertedExistingTemplates_RenderWithRealSenderData(t *testing.T) {
 }
 
 func TestLoadTemplate_LegacyStandaloneStillRenders(t *testing.T) {
-	// A template without a {{define "content"}} block must still render on its own
-	// (so the migration to the shared layout can be incremental).
 	out, err := loaderForTests().LoadTemplate("welcome_email.html", map[string]interface{}{
 		"Email": "user@example.com",
 	})

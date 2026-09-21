@@ -11,10 +11,6 @@ import (
 
 const testWebhookBase = "https://api.example.com"
 
-// Provisioning is the only flow in this channel that can fail with side effects
-// on a remote system. Every test here is about a partial failure leaving either
-// nothing or something an operator can retry — never an orphan holding a slot.
-
 func TestProvisionHappyPath(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-a", 10, 0))
 	instances := newFakeInstanceRepo()
@@ -36,8 +32,6 @@ func TestProvisionHappyPath(t *testing.T) {
 		t.Errorf("status = %q, want %q (provisioned, awaiting a link)", instance.Status, uw.StatusDisconnected)
 	}
 
-	// The delivery token is the channel's only authenticity control, so it must
-	// exist and its digest must match before any event can be resolved.
 	if instance.DeliveryToken == "" {
 		t.Fatal("no delivery token was minted")
 	}
@@ -45,8 +39,6 @@ func TestProvisionHappyPath(t *testing.T) {
 		t.Error("the stored digest does not match the token; the webhook would never resolve")
 	}
 
-	// The host's built-in chatbot must be switched off, or two AI brains answer
-	// the same customer and neither knows about the other.
 	if provider.chatbotDisabled != 1 {
 		t.Errorf("the host's chatbot was disabled %d times, want once", provider.chatbotDisabled)
 	}
@@ -58,8 +50,6 @@ func TestProvisionHappyPath(t *testing.T) {
 	if !strings.HasSuffix(sub.URL, instance.DeliveryToken) {
 		t.Errorf("registered URL %q does not carry the delivery token", sub.URL)
 	}
-	// Excluding API-sent messages would cost the delivery-status track and
-	// every message an operator types on their own phone.
 	if len(sub.ExcludeMessages) != 0 {
 		t.Errorf("no exclusion filter may be registered, got %v", sub.ExcludeMessages)
 	}
@@ -68,9 +58,6 @@ func TestProvisionHappyPath(t *testing.T) {
 	}
 }
 
-// The host's console is a shared operational surface. Putting a phone number or
-// a company name in the instance name would leak a tenant's identity to anyone
-// with access to it.
 func TestProvisionDoesNotLeakTenantIdentityToTheHost(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-a", 10, 0))
 	provider := &fakeProvider{}
@@ -88,15 +75,11 @@ func TestProvisionDoesNotLeakTenantIdentityToTheHost(t *testing.T) {
 	if strings.Contains(strings.ToLower(name), "loja") || strings.Contains(name, "João") {
 		t.Errorf("instance name %q leaks the tenant's own naming to the host console", name)
 	}
-	// The tracing metadata IS how an orphan is matched back to a tenant, so it
-	// must be present even though the name is opaque.
 	if provider.created[0].WorkspaceID != "ws-1" || provider.created[0].OurInstanceID == "" {
 		t.Errorf("tracing metadata missing: %+v", provider.created[0])
 	}
 }
 
-// A slot claimed for an attempt that failed must go back, or every failure
-// permanently shrinks the host's usable capacity.
 func TestProvisionReleasesCapacityWhenTheHostRefuses(t *testing.T) {
 	server := healthyServer("srv-a", 10, 0)
 	servers := newFakeServerRepo(server)
@@ -119,8 +102,6 @@ func TestProvisionReleasesCapacityWhenTheHostRefuses(t *testing.T) {
 	}
 }
 
-// If the host created an instance we could not persist, that instance is
-// unaddressable and would hold a slot forever. It must be deleted.
 func TestProvisionDeletesTheOrphanWhenPersistenceFails(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-a", 10, 0))
 	instances := newFakeInstanceRepo()
@@ -140,9 +121,6 @@ func TestProvisionDeletesTheOrphanWhenPersistenceFails(t *testing.T) {
 	}
 }
 
-// Webhook registration failing does NOT throw away a working instance: the
-// credentials are valid and the operator can retry. But the state must say so,
-// because an instance that receives nothing looks exactly like a quiet one.
 func TestProvisionKeepsTheInstanceWhenWebhookRegistrationFails(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-a", 10, 0))
 	instances := newFakeInstanceRepo()
@@ -170,8 +148,6 @@ func TestProvisionKeepsTheInstanceWhenWebhookRegistrationFails(t *testing.T) {
 	}
 }
 
-// Placement must skip hosts with no room rather than failing the tenant's click
-// at the first full one.
 func TestProvisionSkipsFullHosts(t *testing.T) {
 	full := healthyServer("srv-full", 1, 1)
 	free := healthyServer("srv-free", 10, 0)
@@ -190,9 +166,6 @@ func TestProvisionSkipsFullHosts(t *testing.T) {
 	}
 }
 
-// Losing the compare-and-swap for the last slot is a race, not an error: the
-// next host must be tried. Two concurrent connects would otherwise both pass a
-// read check and one tenant would be told it worked before the host refused.
 func TestProvisionRetriesAnotherHostAfterLosingTheCapacityRace(t *testing.T) {
 	contended := healthyServer("srv-contended", 1, 0)
 	backup := healthyServer("srv-backup", 10, 0)
@@ -217,7 +190,6 @@ func TestProvisionRetriesAnotherHostAfterLosingTheCapacityRace(t *testing.T) {
 	}
 }
 
-// No capacity anywhere is an honest, actionable answer, not an internal error.
 func TestProvisionWithNoCapacityAnywhere(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-full", 1, 1))
 	provider := &fakeProvider{}
@@ -232,8 +204,6 @@ func TestProvisionWithNoCapacityAnywhere(t *testing.T) {
 	}
 }
 
-// A host that refuses on capacity despite our bookkeeping must still read as a
-// capacity problem to the caller, not as an opaque provider failure.
 func TestProvisionTranslatesAHostCapacityRefusal(t *testing.T) {
 	servers := newFakeServerRepo(healthyServer("srv-a", 10, 0))
 	provider := &fakeProvider{

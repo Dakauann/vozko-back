@@ -8,17 +8,6 @@ import (
 	workspace_domain "vozko/domain/workspace"
 )
 
-// RegisterRoutes wires the scheduled-message endpoints.
-//
-// No new workspace resource: scheduling IS sending, just later, so it is gated
-// on the permissions that already exist. Inventing a `scheduled_messages`
-// resource would mean every existing role silently losing the ability the day
-// this deploys.
-//
-// The entry-scoped routes are nested under the conversation because that is
-// where entryType/entryId are validated and the caller's access to the
-// conversation is checked; the by-id routes are flat, matching every other
-// resource.
 func RegisterRoutes(
 	protected *mux.Router,
 	h *ScheduledMessageHandler,

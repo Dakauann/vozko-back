@@ -145,9 +145,6 @@ func (e *countingAIExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 	}, nil
 }
 
-// captureHTTPExecutor mimics the real HTTP node: it writes its capture_variable
-// into shared state (here, a JSON-array token payload) so downstream nodes can
-// index into it.
 type captureHTTPExecutor struct{ ran *int }
 
 func (e *captureHTTPExecutor) Definition() workflow.NodeDefinition {
@@ -164,10 +161,6 @@ func (e *captureHTTPExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	return &workflow.NodeResult{Output: map[string]interface{}{"status_code": 200}}, nil
 }
 
-// Reproduces the production node-test gap: testing s2_2 (which needs BOTH a
-// mocked AI value AND a non-AI HTTP token from s2_1) must execute s2_1 to
-// populate the token, without re-running the mocked AI agent, so the auth
-// token interpolates instead of staying an empty/literal Bearer (the 401 cause).
 func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	repo := NewMockWorkflowRepository()
 	registry := NewNodeExecutorRegistry()
@@ -215,7 +208,6 @@ func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
-	// The producer (s2_1) must have run so the token resolves; the AI must NOT.
 	if aiRan != 0 {
 		t.Fatalf("expected mocked AI agent to be skipped, ran %d time(s)", aiRan)
 	}

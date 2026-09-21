@@ -49,7 +49,7 @@ type fakePartnerSvc struct {
 	cancelErr     error
 	channels      []businessphone.Dialog360Channel
 	listErr       error
-	getChannelRes *businessphone.Dialog360Channel // returned by GetChannel (default nil,nil)
+	getChannelRes *businessphone.Dialog360Channel
 	getChannelErr error
 }
 
@@ -124,7 +124,6 @@ func TestOnEntitlementIncreased_ReactivatesUpToRoom(t *testing.T) {
 			{ID: "p2", Dialog360ChannelID: "ch2", Dialog360ClientID: "cl2"},
 		},
 	}
-	// total 1, active 0 -> room for 1 reactivation.
 	uc := NewDeactivateExcessPhonesUseCase(&fakeEntitlements{total: 1}, reader, repo, partner)
 
 	if err := uc.OnEntitlementIncreased("ws", workspace_addon.EntitlementWhatsAppBusinessPhones); err != nil {
@@ -156,8 +155,6 @@ func TestOnEntitlementReduced_CancelFailure_LeavesConnected(t *testing.T) {
 	if len(partner.cancelled) != 1 {
 		t.Fatalf("expected a cancel attempt, got %v", partner.cancelled)
 	}
-	// The cancel failed, so the channel may still be billing: the number MUST stay
-	// connected (visible + retried), never hidden behind a SUSPENDED row.
 	if repo.phoneNumbers["pA"].Status != businessphone.StatusConnected {
 		t.Fatalf("expected pA to stay connected after a failed cancel, got %s", repo.phoneNumbers["pA"].Status)
 	}

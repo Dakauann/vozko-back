@@ -26,7 +26,7 @@ func (f *fakeInvoiceRepo) ListUnpaidByPurpose(_ invoice.Purpose, afterID string,
 	var out []invoice.Invoice
 	for _, inv := range f.unpaid {
 		if f.statuses[inv.ID] == invoice.StatusExpired {
-			continue // already swept; mimics the "status IN (PENDING, OVERDUE)" filter
+			continue
 		}
 		if inv.ID > afterID {
 			out = append(out, inv)

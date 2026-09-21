@@ -8,14 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// CustomFieldDefinition is the GORM row model for a workspace-defined custom
-// field schema attached to a CRM object (opportunity | conversation | lead). It
-// is kept separate from the domain customfield.Definition entity and hand-mapped
-// in the repository. The select/multiselect Options list is stored as jsonb via
-// datatypes.JSON. The (workspace_id, object_type, key) triple is unique so a key
-// is stable per object within a workspace.
-//
-// Added to AutoMigrate in migrate.go (see WIRING notes).
 type CustomFieldDefinition struct {
 	ID          string `gorm:"primaryKey;type:uuid"`
 	WorkspaceID string `gorm:"type:uuid;not null;uniqueIndex:idx_custom_field_ws_object_key,priority:1"`

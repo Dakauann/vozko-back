@@ -9,9 +9,6 @@ import (
 	sm "vozko/domain/scheduled_message"
 )
 
-// terminalRetention is how long a delivered, failed or cancelled message stays
-// readable. Long enough to answer "what did we send that customer in March",
-// short enough that the table does not grow without bound.
 const terminalRetention = 90 * 24 * time.Hour
 
 type purgeJob struct {
@@ -26,8 +23,6 @@ func NewPurgeJob(repo sm.Repository, clock sm.Clock) (sm.PurgeJob, error) {
 	return &purgeJob{repo: repo, clock: clock}, nil
 }
 
-// Execute drops terminal rows past the retention window. Pending and in-flight
-// messages are never touched, however old: an undelivered message is not litter.
 func (j *purgeJob) Execute(_ context.Context) error {
 	cutoff := j.clock.Now().Add(-terminalRetention)
 

@@ -7,19 +7,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The live comment feed's transport (§7).
-//
-// Scoping is the whole content of this file. A comment-analysis event is not
-// about a conversation entry, so `CanAccessEntry` says nothing useful about it;
-// what governs it is the same permission the REST reads carry, asked of the
-// authorizer the hub already holds. No second RBAC implementation, and no
-// broadcast to a connection whose user may not read the feature.
-//
-// Delivery is best effort by contract: a full send buffer drops the event
-// rather than blocking, because the row is already stored and the viewer will
-// see it on their next read.
-
-// BroadcastCommentsAnalyzed implements ca.AnalysisBroadcaster.
 func (h *ConversationHub) BroadcastCommentsAnalyzed(event ca.AnalysisBatchAnalyzed) {
 	if h == nil || event.WorkspaceID == "" || len(event.Items) == 0 {
 		return
@@ -33,14 +20,9 @@ func (h *ConversationHub) BroadcastCommentsAnalyzed(event ca.AnalysisBatchAnalyz
 		return
 	}
 	h.sendToWorkspaceWithPermission(event.WorkspaceID, "audience", "read", data)
-	// The other replicas hold the rest of this workspace's viewers. The event
-	// travels whole because there is nothing on the far side to rebuild it
-	// from, unlike the entry-shaped broadcasts next door.
 	h.publishWorkspacePayload("audience_analyzed", event.WorkspaceID, data)
 }
 
-// sendToWorkspaceWithPermission fans one already-marshalled frame out to every
-// connection of a workspace whose user holds the given permission.
 func (h *ConversationHub) sendToWorkspaceWithPermission(workspaceID, resource, action string, data []byte) {
 	if workspaceID == "" || len(data) == 0 || h.authorizer == nil {
 		return
@@ -58,15 +40,11 @@ func (h *ConversationHub) sendToWorkspaceWithPermission(workspaceID, resource, a
 		select {
 		case conn.Send <- data:
 		default:
-			// Dropped, not blocked: the row is stored, and a viewer whose
-			// buffer is full is behind on everything anyway.
 			log.Printf("[ConversationHub] Send buffer full for user %s (connection %s)", conn.UserID, connID)
 		}
 	}
 }
 
-// publishWorkspacePayload is publishWorkspaceBroadcast for the kinds that carry
-// their own body rather than being rebuilt on the receiving replica.
 func (h *ConversationHub) publishWorkspacePayload(bType, workspaceID string, payload []byte) {
 	if h.sharedState == nil {
 		return
@@ -83,23 +61,10 @@ func (h *ConversationHub) publishWorkspacePayload(bType, workspaceID string, pay
 	_ = h.sharedState.Publish("hub:workspace_broadcast", data)
 }
 
-// AnalysisStateChanged implements ca.ConversationAnalysisLive.
-//
-// It rides the ENTRY-scoped channel, not the workspace audience one above, and
-// that is the whole point: this says something about one conversation, so it
-// belongs to whoever can already open that conversation. Sending it beside the
-// audience feed would gate it on audience:read and hide it from the inbox,
-// which is the screen that needs it.
-//
-// The hub's own entry fan-out does the access check, so there is no second RBAC
-// implementation here either.
 func (h *ConversationHub) AnalysisStateChanged(state ca.ConversationAnalysisState) {
 	if h == nil || state.EntryID == "" || state.EntryType == "" {
 		return
 	}
-	// Analysis stays nil on a queued frame rather than being an empty object:
-	// a client that overwrote the verdict it already has with a blank one would
-	// lose the previous revision's answer for the minutes until the batch runs.
 	var analysis interface{}
 	if state.Analysis != nil {
 		analysis = state.Analysis

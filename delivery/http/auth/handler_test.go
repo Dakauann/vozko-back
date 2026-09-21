@@ -736,9 +736,6 @@ func TestRegister_DocumentAlreadyExists(t *testing.T) {
 		"verificationToken": "valid-token",
 	})
 
-	// A duplicate document is a client conflict, not a server error: the handler
-	// maps authdomain.ErrDocumentAlreadyExists to 409 (this assertion previously still
-	// expected the old 500 and was stale on both main and this branch).
 	if rr.Code != http.StatusConflict {
 		t.Errorf("expected 409, got %d", rr.Code)
 	}

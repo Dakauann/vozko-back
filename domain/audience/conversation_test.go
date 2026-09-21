@@ -8,10 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Each enum accepts exactly its own values and nothing adjacent. Values arrive
-// from a model's JSON and from URL query strings, neither of which is
-// normalised on the way in, so a near-miss must be rejected rather than
-// silently stored.
 func TestConversationEnumsRejectNearMisses(t *testing.T) {
 	for _, v := range InterestValues() {
 		if !Interest(v).Valid() {
@@ -58,11 +54,6 @@ func TestConversationEnumsRejectNearMisses(t *testing.T) {
 	}
 }
 
-// The rubric and the enums must not drift. This is the guard the legacy engine
-// did not have: its taxonomy was restated in the domain, the tool schema and
-// two prompt strings, and they diverged. Here every option the model is offered
-// has to be a value the domain will accept back, or the model is being invited
-// to answer something we then reject as invalid.
 func TestConversationRubricOptionsAreValidEnumValues(t *testing.T) {
 	valid := map[string]func(string) bool{
 		FieldInterest:      func(v string) bool { return Interest(v).Valid() },
@@ -104,8 +95,6 @@ func TestConversationRubricOptionsAreValidEnumValues(t *testing.T) {
 	}
 }
 
-// Every enum value must be OFFERED, not just accepted. A disposition the domain
-// stores but the rubric never describes can only ever be reached by accident.
 func TestConversationRubricOffersEveryEnumValue(t *testing.T) {
 	offered := map[string]map[string]bool{}
 	for _, f := range ConversationClassificationFields() {
@@ -129,9 +118,6 @@ func TestConversationRubricOffersEveryEnumValue(t *testing.T) {
 	}
 }
 
-// The weights must sum to 1, or the score cannot span its own range: a perfect
-// conversation would top out below 100 and the number would be quietly wrong
-// rather than visibly broken.
 func TestConversationQualityWeightsSumToOne(t *testing.T) {
 	var sum float64
 	for _, d := range ConversationQualityDimensions() {
@@ -159,8 +145,6 @@ func TestConversationQualityScoreSpansItsRange(t *testing.T) {
 		t.Errorf("all high scored %d, want 100", got)
 	}
 
-	// Weighted, not averaged: the heaviest dimension alone must outscore the
-	// lightest alone, otherwise the weights are not being applied.
 	goal := ConversationQuality{GoalProgress: shared.QualityLevelHigh}
 	prof := ConversationQuality{Professionalism: shared.QualityLevelHigh}
 	if goal.Score() <= prof.Score() {
@@ -178,9 +162,6 @@ func TestConversationQualityScoreSpansItsRange(t *testing.T) {
 	}
 }
 
-// A partially rated conversation is a failed classification, not a score
-// computed from zero values. Without this, a model that omits one dimension
-// silently produces a lower number that looks like a real assessment.
 func TestConversationQualityValidRequiresEveryDimension(t *testing.T) {
 	full := ConversationQuality{
 		GoalProgress:       shared.QualityLevelHigh,
@@ -205,9 +186,6 @@ func TestConversationQualityValidRequiresEveryDimension(t *testing.T) {
 	}
 }
 
-// The map constructor is what the decoder uses, so it must cover every
-// dimension the rubric declares; a key added to one and not the other would
-// silently rate as none.
 func TestNewConversationQualityCoversEveryDimension(t *testing.T) {
 	levels := map[string]shared.QualityLevel{}
 	for _, d := range ConversationQualityDimensions() {
@@ -218,8 +196,6 @@ func TestNewConversationQualityCoversEveryDimension(t *testing.T) {
 	}
 }
 
-// The prompts must actually name the values and dimensions, since that text is
-// the model's only contract.
 func TestConversationPromptsRenderTheRubric(t *testing.T) {
 	prompt := ConversationRubricPrompt()
 	for _, v := range append(append(InterestValues(), DispositionValues()...), NextActionValues()...) {
@@ -241,9 +217,6 @@ func TestConversationPromptsRenderTheRubric(t *testing.T) {
 	}
 }
 
-// The comment taxonomy and the conversation taxonomy are different subjects and
-// must not be merged by accident: a conversation has no stance and a comment has
-// no disposition.
 func TestCommentAndConversationTaxonomiesStayDistinct(t *testing.T) {
 	commentKeys := map[string]bool{}
 	for _, f := range ClassificationFields() {
@@ -259,25 +232,18 @@ func TestCommentAndConversationTaxonomiesStayDistinct(t *testing.T) {
 			t.Errorf("comment rubric must not carry the conversation field %q", key)
 		}
 	}
-	// Sentiment is the one they legitimately share.
 	if !commentKeys[FieldSentiment] {
 		t.Error("comment rubric lost sentiment")
 	}
 }
 
 func TestConversationValueListsMirrorValid(t *testing.T) {
-	// Guards against a constant added to the type but not to its Values list,
-	// which would make it storable but never offered or filterable.
 	if got := len(InterestValues()); got != 3 {
 		t.Errorf("InterestValues has %d entries", got)
 	}
 	if !reflect.DeepEqual(DispositionValues(), []string{"sale", "filling_info", "callback", "declined", "pending"}) {
 		t.Errorf("DispositionValues = %v", DispositionValues())
 	}
-	// no_answer and voicemail were voice-call outcomes ("apenas para chamadas de
-	// voz" in the rubric) on a product with no voice channel. Offering them gave
-	// the model an escape hatch that produced a meaningless label on a messaging
-	// conversation, which is exactly what it did.
 	for _, gone := range []Disposition{"no_answer", "voicemail"} {
 		if gone.Valid() {
 			t.Errorf("%q is a voice-call outcome and must not be a valid disposition", gone)

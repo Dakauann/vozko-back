@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// oggVorbisServer serves the exact shape that fooled the link path: a real OGG
-// container whose codec is Vorbis, not Opus, under a .ogg name and an audio/ogg
-// Content-Type. Everything about it looks right except the one thing WhatsApp
-// checks.
 func oggVorbisServer(t *testing.T) string {
 	t.Helper()
 	body := append([]byte("OggS\x00\x02"), []byte("\x00\x00\x00\x00\x00\x00\x00\x00vorbis")...)

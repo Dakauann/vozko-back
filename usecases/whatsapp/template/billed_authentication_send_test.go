@@ -30,8 +30,6 @@ func authHarness(t *testing.T) *harness {
 	})
 }
 
-// The send that used to go out wrong: the code reached the body and nothing
-// reached the button, and Meta answered 132000.
 func TestBilledSend_AuthenticationPutsTheCodeOnTheButton(t *testing.T) {
 	h := authHarness(t)
 
@@ -60,8 +58,6 @@ func TestBilledSend_AuthenticationPutsTheCodeOnTheButton(t *testing.T) {
 	}
 }
 
-// The reason the payload is assembled before the debit rather than after it.
-// A caller that forgot the code must not pay for a message Meta will refuse.
 func TestBilledSend_AuthenticationWithoutACodeIsRefusedBeforeTheCharge(t *testing.T) {
 	h := authHarness(t)
 
@@ -80,7 +76,6 @@ func TestBilledSend_AuthenticationWithoutACodeIsRefusedBeforeTheCharge(t *testin
 	}
 }
 
-// An ordinary template is untouched by any of this.
 func TestBilledSend_UtilityStillSendsNoButtons(t *testing.T) {
 	h := newHarness(t)
 
@@ -95,9 +90,6 @@ func TestBilledSend_UtilityStillSendsNoButtons(t *testing.T) {
 	}
 }
 
-// The attempt id still reaches Meta as biz_opaque_callback_data. It is stamped
-// on after the payload is built, so this is the test that catches the stamping
-// being dropped along with the restructure.
 func TestBilledSend_StillCarriesTheAttemptID(t *testing.T) {
 	h := newHarness(t)
 

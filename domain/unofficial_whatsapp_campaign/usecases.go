@@ -8,10 +8,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// The use-case ports, mirroring domain/whatsapp_campaign/usecases.go one for
-// one so the two channels' handlers, wiring and screens have the same shape —
-// plus the two this channel needs and the official one has no reason to.
-
 type CreateCampaignUseCase interface {
 	Execute(ctx context.Context, in *Campaign, scope uw.DepartmentScope) (*Campaign, error)
 }
@@ -44,8 +40,6 @@ type ListEntriesUseCase interface {
 	Execute(in ListEntriesInput) (*shared.PaginatedResult[*EntryWithLead], error)
 }
 
-// ---------------------------------------------------------------- lifecycle
-
 type DispatchEntry struct {
 	EntryID     string
 	PhoneNumber string
@@ -73,8 +67,6 @@ type MessageConsumerUseCase interface {
 type StartScheduleJob interface {
 	StartScheduledCampaigns() error
 }
-
-// ---------------------------------------------------------------- reset / clear
 
 type ResetCampaignInput struct {
 	CampaignID string
@@ -120,8 +112,6 @@ type ClearHistoryUseCase interface {
 	PrepareClearHistory(campaignID string) (*PrepareClearHistoryOutput, error)
 	ConfirmClearHistory(in ClearHistoryInput) (*ClearHistoryOutput, error)
 }
-
-// ---------------------------------------------------------------- entries
 
 type EntryInput struct {
 	Number    string                 `json:"number"`
@@ -200,9 +190,6 @@ type QuickSendUseCase interface {
 	Execute(ctx context.Context, in QuickSendInput) (*QuickSendOutput, error)
 }
 
-// ---------------------------------------------------------------- this channel only
-
-// ValidateTargetsOutput reports what an up-front list clean found.
 type ValidateTargetsOutput struct {
 	CampaignID string `json:"campaignId"`
 	Checked    int    `json:"checked"`
@@ -210,24 +197,10 @@ type ValidateTargetsOutput struct {
 	Skipped    int    `json:"skipped"`
 }
 
-// ValidateTargetsUseCase checks pending numbers against WhatsApp in batches and
-// marks the dead ones SKIPPED_NOT_ON_WHATSAPP.
-//
-// Optional — the consumer checks per send anyway — but an operator cleaning a
-// purchased list before committing to it is the difference between a blast that
-// is 30% dead on arrival and one that is not. Sending to unregistered numbers is
-// the loudest spam signal a linked device can emit.
 type ValidateTargetsUseCase interface {
 	Execute(ctx context.Context, campaignID string) (*ValidateTargetsOutput, error)
 }
 
-// PauseCampaignsForInstanceUseCase is the circuit breaker's actuator.
-//
-// Called when WhatsApp restricts a number, when the session drops, or when the
-// health cron notices either. It pauses EVERY running campaign on that number,
-// because the restriction belongs to the number and not to the campaign that
-// happened to discover it. Resume is manual by design: somebody should look at
-// the number before blasting from it again.
 type PauseCampaignsForInstanceUseCase interface {
 	Execute(ctx context.Context, instanceID, reason string) (paused int, err error)
 }

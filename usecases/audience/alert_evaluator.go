@@ -12,55 +12,16 @@ import (
 	"vozko/domain/shared"
 )
 
-// Evaluating the alert rules after a batch is classified.
-//
-// It hangs off the same point the live feed does, for the same reason: that is
-// where new facts land, already written. Everything here is best effort, and an
-// alert that cannot be sent must never fail an analysis that was already paid
-// for.
-//
-// Three guards, and each one exists because of a specific way this could go
-// wrong in production:
-//
-//   - AlertFreshness stops a BACKFILL waking somebody up. Importing three
-//     months of history classifies thousands of old comments; without this, a
-//     comment from March would page someone tonight. Windowed metrics are
-//     immune already (they count by occurred_at, so old rows fall outside the
-//     window), but a per-comment rule would fire on every severe comment ever
-//     written.
-//   - One stats query per distinct WINDOW, not per rule. Three rules watching
-//     the last hour ask once.
-//   - The claim, in the repository, is what decides. ShouldFire only avoids
-//     attempting a claim that would obviously lose.
-
-// AlertFreshness is how recent a comment must be to trigger a per-comment
-// alert. A day is generous for a live webhook and far short of any backfill.
 const AlertFreshness = 24 * time.Hour
 
-// AlertDeps groups what the evaluator needs. Any of them missing means alerts
-// are simply not evaluated, which is how a deployment without a channel or
-// without the table behaves.
 type AlertDeps struct {
-	Rules ca.AlertRuleRepository
-	Repo  ca.Repository
-	// Adapters resolve the post's public link and the account's handle. Without
-	// them the alert still fires, it just cannot say where: the engine knows an
-	// account by a workspace UUID and a post by a numeric id, and neither means
-	// anything to the person being woken up.
-	Adapters map[ca.Source]ca.SourceAdapter
-	// Publisher hands a claimed alert to the sender. The briefing and the
-	// outbound send are the two slow things an alert does, and this walk is
-	// sequential across every workspace, so neither belongs on it.
-	//
-	// Optional. Without one, or when publishing fails, Sender is called inline:
-	// a broker that is down makes alerts slow, never silent.
+	Rules     ca.AlertRuleRepository
+	Repo      ca.Repository
+	Adapters  map[ca.Source]ca.SourceAdapter
 	Publisher messaging.MessageQueuePub
 	Sender    AlertSender
-	// State dedupes alerts per SUBJECT. Optional: without it a rule still
-	// respects its cooldown and daily cap, it just cannot tell two bad
-	// conversations from the same bad conversation twice.
-	State cache.SharedState
-	Clock ca.Clock
+	State     cache.SharedState
+	Clock     ca.Clock
 }
 
 type alertEvaluator struct{ AlertDeps }
@@ -68,9 +29,6 @@ type alertEvaluator struct{ AlertDeps }
 func NewAlertEvaluator(d AlertDeps) ca.AlertEvaluator { return &alertEvaluator{AlertDeps: d} }
 
 func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef, workspaceID string, rows []*ca.Analysis) {
-	// Nowhere to hand an alert off to is the same as having no alerts: a
-	// deployment with neither a queue nor a sender evaluates nothing rather
-	// than claiming rules whose firings could never leave.
 	if e.Rules == nil || (e.Publisher == nil && e.Sender == nil) || len(rows) == 0 {
 		return
 	}
@@ -84,13 +42,9 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 	}
 
 	now := e.now()
-	// Windowed values are fetched lazily and shared: several rules commonly
-	// watch the same span.
 	windows := map[int]*ca.Stats{}
 	var placeOnce *alertPlace
 
-	// One selection per subject kind, reused across every rule that watches it:
-	// a batch is one kind, so in practice this resolves once.
 	subjects := map[ca.SubjectKind]*ca.Analysis{}
 
 	for _, rule := range rules {
@@ -103,8 +57,6 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 			worst = worstFresh(kind, rows, now)
 			subjects[kind] = worst
 		}
-		// Is this subject worth judging at all? Asked before measuring, so a
-		// conversation too short to mean anything costs nothing to reject.
 		if !rule.Accepts(worst) {
 			continue
 		}
@@ -112,15 +64,9 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 		if !observed || !rule.ShouldFire(value, now) {
 			continue
 		}
-		// One subject must not consume the rule's whole daily cap. Without
-		// this, a single conversation re-analysed every few minutes would send
-		// every alert the rule is allowed to send that day, and the second
-		// conversation to go wrong would be silently dropped.
 		if !e.claimSubject(rule, worst) {
 			continue
 		}
-		// Resolved lazily and once: a tick where nothing fires must not cost a
-		// lookup, and several rules firing together share one.
 		place := e.place(ctx, ref, &placeOnce)
 		observation := ca.AlertObservation{
 			Metric:      rule.Metric,
@@ -133,16 +79,12 @@ func (e *alertEvaluator) EvaluateBatch(ctx context.Context, ref ca.ContainerRef,
 	}
 }
 
-// alertPlace is what a human needs to be told about where this happened, and
-// what the model needs to read it in context.
 type alertPlace struct {
 	AccountName string
 	Permalink   string
 	Caption     string
 }
 
-// place resolves the post and the account once per evaluation, and only once
-// something is actually firing.
 func (e *alertEvaluator) place(ctx context.Context, ref ca.ContainerRef, cache **alertPlace) alertPlace {
 	if *cache != nil {
 		return **cache
@@ -161,9 +103,6 @@ func (e *alertEvaluator) place(ctx context.Context, ref ca.ContainerRef, cache *
 	return resolved
 }
 
-// measure returns the value a rule is watching, and whether it could be read at
-// all. A windowed query that fails is "not observed" rather than zero, because
-// zero is a real value that would fire an acceptance-score rule.
 func (e *alertEvaluator) measure(
 	ctx context.Context,
 	rule *ca.AlertRule,
@@ -206,8 +145,6 @@ func (e *alertEvaluator) measure(
 	case ca.AlertMetricCommentVolume:
 		return stats.Analyzed, true
 	case ca.AlertMetricAcceptanceScore:
-		// A window with nothing in it has no score to fall: reporting zero
-		// would fire every acceptance rule on a quiet night.
 		if stats.Analyzed == 0 {
 			return 0, false
 		}
@@ -237,9 +174,6 @@ func (e *alertEvaluator) windowStats(ctx context.Context, ref ca.ContainerRef, r
 	return stats, nil
 }
 
-// fire claims the rule and sends. The claim comes FIRST: losing it means
-// another replica is already sending this, and sending anyway is the double
-// message the whole design is trying to avoid.
 func (e *alertEvaluator) fire(ctx context.Context, rule *ca.AlertRule, observation ca.AlertObservation, now time.Time) {
 	claimed, err := e.Rules.ClaimFire(ctx, rule.WorkspaceID, rule.ID, now)
 	if err != nil {
@@ -250,14 +184,6 @@ func (e *alertEvaluator) fire(ctx context.Context, rule *ca.AlertRule, observati
 		return
 	}
 
-	// The claim already happened, so this firing is owned: queueing it cannot
-	// produce a second message, and the send is free to take as long as the
-	// provider takes.
-	//
-	// The claim is also deliberately never released on failure. Releasing it
-	// would retry on the next batch, which during an incident is seconds away,
-	// and a channel that is down would then be hammered. The cooldown is the
-	// retry interval, and the reason is stored where the operator looks.
 	alert := ca.NewAlert(*rule, observation, now)
 	if e.handOff(alert) {
 		return
@@ -269,9 +195,6 @@ func (e *alertEvaluator) fire(ctx context.Context, rule *ca.AlertRule, observati
 	_ = e.Sender.Send(ctx, alert)
 }
 
-// handOff queues the alert, reporting whether it got there. A broker that
-// refuses is not a reason to lose an alert, so the caller sends it inline
-// instead: slower, and the behaviour this had before the queue existed.
 func (e *alertEvaluator) handOff(alert ca.Alert) bool {
 	if e.Publisher == nil {
 		return false
@@ -288,13 +211,6 @@ func (e *alertEvaluator) handOff(alert ca.Alert) bool {
 	return true
 }
 
-// worstFresh is the RECENT row of the batch that a per-subject rule should be
-// judged on. Recency is the backfill guard; "worst" is because a rule that
-// fired on an arbitrary member of the batch would report a milder subject than
-// the one that actually crossed the threshold.
-//
-// What "worst" means is the subject's own question: the most severe comment,
-// the least well handled conversation.
 func worstFresh(kind ca.SubjectKind, rows []*ca.Analysis, now time.Time) *ca.Analysis {
 	var worst *ca.Analysis
 	for _, row := range rows {
@@ -318,11 +234,6 @@ func worseFor(kind ca.SubjectKind, candidate, incumbent *ca.Analysis) bool {
 	return candidate.Severity > incumbent.Severity
 }
 
-// claimSubject is the per-subject dedupe: one alert per rule per subject per
-// AlertSubjectSuppression, on top of the rule's own cooldown and daily cap.
-//
-// Best effort. A store that is down must not silence alerts, so a failure reads
-// as "not seen before" and the rule's cooldown and cap remain the backstop.
 func (e *alertEvaluator) claimSubject(rule *ca.AlertRule, worst *ca.Analysis) bool {
 	if e.State == nil || rule.Metric.IsWindowed() || worst == nil || worst.ID == "" {
 		return true
@@ -335,9 +246,6 @@ func (e *alertEvaluator) claimSubject(rule *ca.AlertRule, worst *ca.Analysis) bo
 	return first
 }
 
-// commentFor attaches the comment only to a per-comment alert. A windowed alert
-// has no single row behind it, and quoting one would tell the reader that this
-// particular comment crossed a threshold it had nothing to do with.
 func commentFor(rule *ca.AlertRule, worst *ca.Analysis) *ca.Analysis {
 	if rule.Metric.IsWindowed() {
 		return nil

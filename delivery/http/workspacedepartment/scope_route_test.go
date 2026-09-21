@@ -15,8 +15,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// withFilter puts a resolved department filter on the request the way the
-// department middleware does for every protected route.
 func withFilter(r *http.Request, f *dept.DepartmentFilter) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), middleware.DepartmentFilterContextKey, f))
 }
@@ -38,8 +36,6 @@ func scopeOf(t *testing.T, f *dept.DepartmentFilter) dept.Scope {
 	return scope
 }
 
-// The member who most needs this answer is the one with the least access, so
-// the endpoint must work for them and must still say nothing about anyone else.
 func TestMyScopeTellsABlockedMemberWhyTheySeeNothing(t *testing.T) {
 	got := scopeOf(t, &dept.DepartmentFilter{WorkspaceHasDepartments: true})
 
@@ -54,9 +50,6 @@ func TestMyScopeTellsABlockedMemberWhyTheySeeNothing(t *testing.T) {
 	}
 }
 
-// An admin is never scoped, so there is nothing to explain to them about their
-// own visibility, and an "ask someone to add you to a department" message on an
-// admin's screen would be nonsense.
 func TestMyScopeSaysNothingIsWrongForAnAdmin(t *testing.T) {
 	got := scopeOf(t, &dept.DepartmentFilter{IsOwnerOrAdmin: true, WorkspaceHasDepartments: true})
 	if got.BlockedByMissingDepartment || got.RestrictedToOwnDepartments {
@@ -64,17 +57,12 @@ func TestMyScopeSaysNothingIsWrongForAnAdmin(t *testing.T) {
 	}
 }
 
-// A workspace that does not use departments must report nothing at all, so the
-// explanation never appears where it would be noise.
 func TestMyScopeIsSilentWithoutDepartments(t *testing.T) {
 	if got := (scopeOf(t, &dept.DepartmentFilter{})); got != (dept.Scope{}) {
 		t.Errorf("scope = %+v, want everything false", got)
 	}
 }
 
-// The response is the caller's own facts. Department names and ids must never
-// appear in it: this is the one department endpoint a member with no
-// departments:read can reach.
 func TestMyScopeLeaksNoDepartmentIdentity(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := withFilter(httptest.NewRequest(http.MethodGet, "/departments/scope", nil), &dept.DepartmentFilter{
@@ -89,10 +77,6 @@ func TestMyScopeLeaksNoDepartmentIdentity(t *testing.T) {
 	}
 }
 
-// Registration order decides whether this route exists at all: /departments/{id}
-// is greedy and would answer "scope" as a department id, which for a member
-// without departments:read is a 403 on the one endpoint meant to explain their
-// empty screen.
 func TestScopeRouteIsNotSwallowedByTheIdRoute(t *testing.T) {
 	router := mux.NewRouter()
 	reached := ""

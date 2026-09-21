@@ -13,14 +13,8 @@ var (
 	ErrLeadNotFound          = errors.New("lead: lead not found")
 	ErrLeadDuplicate         = errors.New("lead: phone number already exists")
 	ErrLeadWorkspaceRequired = errors.New("lead: workspace id is required")
-	// ErrLeadFilterInvalid means the caller sent a filter expression the lead
-	// object cannot answer (an unknown field, an operator the field does not
-	// support, a malformed date). It is a 400, never a 500: the query is wrong,
-	// not the database.
-	ErrLeadFilterInvalid = errors.New("lead: invalid filter")
-	// ErrLeadNameTooLong is a name a person typed that will not fit the surfaces
-	// it has to render in.
-	ErrLeadNameTooLong = errors.New("lead: name is too long")
+	ErrLeadFilterInvalid     = errors.New("lead: invalid filter")
+	ErrLeadNameTooLong       = errors.New("lead: name is too long")
 )
 
 type Lead struct {
@@ -165,8 +159,6 @@ func GetAlternatePhoneFormat(number string) string {
 		}
 	}
 
-	// TODO: validate in prod if this is actually the case, i have seen some landline numbers starting with a 9
-
 	if len(normalized) == 12 && strings.HasPrefix(normalized, "55") && normalized[4] >= '6' {
 		return normalized[:4] + "9" + normalized[4:]
 	}
@@ -174,10 +166,6 @@ func GetAlternatePhoneFormat(number string) string {
 	return ""
 }
 
-// NormalizeRawNumber normalizes a raw phone number that may lack the country
-// code (e.g. a SIP From header like "84994409624") into the canonical BR format
-// (12/13 digits, "55"-prefixed), or "" if it cannot be normalized. Use this for
-// inbound caller IDs where the carrier omits the country code.
 func NormalizeRawNumber(value string) string {
 	return normalizeRawInput(value)
 }
@@ -214,22 +202,8 @@ func normalizeRawInput(value string) string {
 	return number
 }
 
-// MaxLeadNameLength bounds a human-entered lead name.
-//
-// Generous — a full legal name with titles fits easily — but bounded, because
-// this string is rendered in the inbox row, the CRM header and the conversation
-// list, none of which have room for a pasted paragraph.
 const MaxLeadNameLength = 120
 
-// ValidateName checks a name an operator typed.
-//
-// Empty is VALID and meaningful: it clears the name so the lead shows its phone
-// number again, the way removing a contact's name in WhatsApp does. That is the
-// one thing LeadUpdate.Name cannot express — Merge reads empty as "leave it
-// alone", which is right for a webhook merging partial provider data and wrong
-// for a person deliberately erasing a name. The two callers want opposite
-// things from the same empty string, so renaming gets its own path rather than
-// a flag on the shared one.
 func ValidateName(name string) error {
 	trimmed := strings.TrimSpace(name)
 	if utf8.RuneCountInString(trimmed) > MaxLeadNameLength {
@@ -238,9 +212,6 @@ func ValidateName(name string) error {
 	return nil
 }
 
-// NormalizeName is what gets stored: trimmed, with internal whitespace runs
-// collapsed so "Ana   Maria" and "Ana Maria" are not two different leads to the
-// eye in a list.
 func NormalizeName(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }

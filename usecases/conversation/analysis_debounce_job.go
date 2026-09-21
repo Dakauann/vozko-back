@@ -24,72 +24,41 @@ import (
 
 const analysisDebounceTimeout = 30 * time.Second
 
-// AnalysisDebouncePolicy reports the workspaces that changed their debounce
-// window from the product default.
-//
-// Only the ones that CHANGED it, which is what keeps this cheap: the map is
-// empty for almost every deployment, and an empty map means the sweep behaves
-// exactly as it did when the window was a constant, with no per-entry work
-// added at all. See windowFor below for what a non-empty one costs.
 type AnalysisDebouncePolicy interface {
 	ConfiguredDebounceWindows(ctx context.Context) (map[string]time.Duration, error)
 }
 
 type analysisDebounceJob struct {
-	sharedState    cache.SharedState
-	messageRepo    conversation.MessageRepository
-	wcEntryRepo    wce.Repository
-	wcCampaignRepo wc.Repository
-	leadRepo       lead.Repository
-	aiService      ai.Service
-	toolRegistry   toolsdomain.Service
-	stageRepo      stage.Repository
-	// leadMemories renders the lead's current memory block into the memory
-	// pass, so the model updates existing facts instead of re-adding them.
+	sharedState          cache.SharedState
+	messageRepo          conversation.MessageRepository
+	wcEntryRepo          wce.Repository
+	wcCampaignRepo       wc.Repository
+	leadRepo             lead.Repository
+	aiService            ai.Service
+	toolRegistry         toolsdomain.Service
+	stageRepo            stage.Repository
 	leadMemories         leadmemory.ListUseCase
 	hub                  conversation.EventBroadcaster
 	cachedBalanceChecker balance.CachedBalanceChecker
-	// resolvers load an AnalysisSubject per channel. WhatsApp keeps its own
-	// resolver below rather than being registered here, because it is the one
-	// channel whose configuration lives behind a campaign indirection.
-	resolvers map[shared.EntryType]AnalysisSubjectResolver
-	// analysisQueue hands the conversation to the analysis engine instead of
-	// classifying it here. See runAnalysisForEntry.
-	analysisQueue ConversationAnalysisEnqueuer
-	// debouncePolicy is the per-workspace quiet period. Optional: without one
-	// every workspace waits the product default, which is what this job did
-	// when the window was a constant.
-	debouncePolicy AnalysisDebouncePolicy
+	resolvers            map[shared.EntryType]AnalysisSubjectResolver
+	analysisQueue        ConversationAnalysisEnqueuer
+	debouncePolicy       AnalysisDebouncePolicy
 }
 
-// ConversationAnalysisEnqueuer queues one conversation for the analysis engine.
-//
-// Narrow on purpose: this job needs to hand a conversation over, nothing more.
-// It does not need to know that the engine batches, budgets, retries or bills.
 type ConversationAnalysisEnqueuer interface {
 	EnqueueSubject(ctx context.Context, subject *AnalysisSubject) error
 }
 
-// SetAnalysisDebouncePolicy wires the per-workspace quiet period. Without one
-// the job waits audience.DefaultDebounceMinutes for everybody, which is the
-// behaviour it had when that number was a constant.
 func (j *analysisDebounceJob) SetAnalysisDebouncePolicy(p AnalysisDebouncePolicy) {
 	j.debouncePolicy = p
 }
 
-// SetAnalysisQueue wires the engine. Without one, conversation analysis simply
-// does not run, and auto-staging and auto-memory are unaffected.
 func (j *analysisDebounceJob) SetAnalysisQueue(q ConversationAnalysisEnqueuer) {
 	if j != nil && q != nil {
 		j.analysisQueue = q
 	}
 }
 
-// SetAnalysisSubjectResolver registers a channel's subject loader.
-//
-// Without one, a channel's conversations are simply never analysed, which is
-// what happened to Instagram for months, silently, while its EnableAnalysis
-// switch sat in the UI doing nothing.
 func (j *analysisDebounceJob) SetAnalysisSubjectResolver(entryType shared.EntryType, resolver AnalysisSubjectResolver) {
 	if j == nil || resolver == nil || entryType == "" {
 		return
@@ -157,8 +126,6 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 			continue
 		}
 
-		// The cheap gate first: nothing can be due before the shortest window
-		// any workspace has, and no workspace has to be identified to know it.
 		age := now.Sub(pendingEntry.At)
 		if age < shortest {
 			continue
@@ -188,11 +155,6 @@ func (j *analysisDebounceJob) ProcessPendingAnalyses() error {
 	return nil
 }
 
-// configuredWindows lists the workspaces that changed their quiet period.
-//
-// Read once per tick, not once per entry. A failure degrades to "nobody changed
-// it", which is the product default for everyone: a sweep that stopped because
-// a settings read failed would silently hold up every analysis in the system.
 func (j *analysisDebounceJob) configuredWindows() map[string]time.Duration {
 	if j.debouncePolicy == nil {
 		return nil
@@ -207,11 +169,6 @@ func (j *analysisDebounceJob) configuredWindows() map[string]time.Duration {
 	return windows
 }
 
-// shortestDebounceWindow is the soonest anything can possibly be due.
-//
-// It is the floor the loop gates on before identifying whose entry it is. With
-// no workspace configured it equals the default, so the gate alone decides every
-// entry and the sweep costs exactly what it always did.
 func shortestDebounceWindow(windows map[string]time.Duration) time.Duration {
 	shortest := audience.DebounceWindow(0)
 	for _, w := range windows {
@@ -222,15 +179,6 @@ func shortestDebounceWindow(windows map[string]time.Duration) time.Duration {
 	return shortest
 }
 
-// windowFor is the quiet period this entry has to clear.
-//
-// The default, unless the entry belongs to a workspace that changed it. Finding
-// out which workspace costs a resolve, so it is skipped entirely when no
-// workspace configured anything, which is the normal case. When one has, the
-// cost is one resolve per entry per tick while that entry sits between the
-// shortest configured window and its own. That is bounded by how many
-// conversations are mid-debounce at once, and it is paid only by deployments
-// that asked for a non-default window.
 func (j *analysisDebounceJob) windowFor(entryID string, entryType shared.EntryType, windows map[string]time.Duration) time.Duration {
 	fallback := audience.DebounceWindow(0)
 	if len(windows) == 0 {
@@ -238,8 +186,6 @@ func (j *analysisDebounceJob) windowFor(entryID string, entryType shared.EntryTy
 	}
 	subject, err := j.resolveSubject(entryID, entryType)
 	if err != nil || subject == nil || subject.WorkspaceID == "" {
-		// Unattributable: the default is the safe answer, since the alternative
-		// is either analysing too early or never analysing at all.
 		return fallback
 	}
 	if w, ok := windows[subject.WorkspaceID]; ok && w > 0 {
@@ -248,16 +194,9 @@ func (j *analysisDebounceJob) windowFor(entryID string, entryType shared.EntryTy
 	return fallback
 }
 
-// resolveSubject loads the channel-specific facts for one entry.
-//
-// WhatsApp is resolved inline because its configuration lives behind a campaign
-// indirection no other channel has; every other channel registers a resolver.
 func (j *analysisDebounceJob) resolveSubject(entryID string, entryType shared.EntryType) (*AnalysisSubject, error) {
 	resolver, ok := j.resolvers[entryType]
 	if !ok || resolver == nil {
-		// No resolver means the channel is switched off in this deployment. Not
-		// an error, but worth saying out loud: silence here is exactly how the
-		// Instagram gap stayed invisible.
 		log.Printf("[analysis-debounce] no analysis resolver registered for %q, skipping entry %s",
 			entryType, entryID)
 		return nil, nil
@@ -265,13 +204,6 @@ func (j *analysisDebounceJob) resolveSubject(entryID string, entryType shared.En
 	return resolver(context.Background(), entryID)
 }
 
-// NewWhatsAppAnalysisResolver walks entry → campaign → workspace.
-//
-// WhatsApp used to be special-cased inside this job rather than registered like
-// every other channel. That was invisible until a SECOND consumer of the
-// resolvers appeared: the analysis engine saw every channel except the one the
-// feature was originally built for. A constructor, registered through the same
-// registry, means there is one way to answer "what is this conversation".
 func NewWhatsAppAnalysisResolver(
 	wcEntryRepo wce.Repository,
 	wcCampaignRepo wc.Repository,
@@ -297,10 +229,6 @@ func resolveWhatsAppSubject(
 		return nil, err
 	}
 
-	// The lead's phone number is WhatsApp's contact label. It is still required
-	// HERE, a WhatsApp conversation without one is malformed, but it is no
-	// longer a precondition for the job as a whole, which is what excluded every
-	// channel whose contacts have no phone.
 	var contactLabel string
 	if wcEntry.LeadID != "" {
 		if leadRecord, err := leadRepo.FindByID(wcCampaign.WorkspaceID, wcEntry.LeadID); err == nil && leadRecord != nil {
@@ -327,11 +255,6 @@ func resolveWhatsAppSubject(
 	}, nil
 }
 
-// runAnalysisForEntry analyses one conversation on any channel.
-//
-// Everything channel-specific is resolved into an AnalysisSubject first; the rest
-// of the function reads the shared transcript and drives the same two tools it
-// always did.
 func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shared.EntryType) error {
 	subject, err := j.resolveSubject(entryID, entryType)
 	if err != nil || subject == nil {
@@ -374,8 +297,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
-	// wantAnalysis stays false: the prompt below is now only ever about staging
-	// or memory, and if neither is enabled no call is made at all.
 	const wantAnalysis = false
 
 	autoTagEnabled := subject.EnableAutoStaging
@@ -401,11 +322,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	ctx, cancel := context.WithTimeout(context.Background(), analysisDebounceTimeout)
 	defer cancel()
 
-	// Auto-memorization is the third capability of this same pass: the seeded
-	// manage_lead_memory tool joins the call, so caps, dedup, attribution and
-	// timeline events all come from the one write model the operators and the
-	// live agent already use. A lead is required: without one there is nowhere
-	// to remember to.
 	wantMemory := subject.EnableAutoMemory && subject.LeadID != ""
 	var memoryBlock string
 	if wantMemory {
@@ -418,9 +334,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 				"__entry_id":     entryID,
 				"__entry_type":   entryTypeStr,
 			}
-			// Injecting the current memories is what makes repeated extraction
-			// idempotent: the model sees what is already known and updates
-			// instead of re-adding.
 			memoryBlock = lead_memory_usecase.BuildContext(ctx, j.leadMemories, lead_memory_usecase.ContextInput{
 				WorkspaceID:   workspaceID,
 				LeadID:        subject.LeadID,
@@ -467,8 +380,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			Tags:           allTags,
 		})
 	default:
-		// Memory-only container: one memory-focused call instead of grafting the
-		// task onto an analysis prompt that was never requested.
 		systemPrompt = BuildAutoMemoryPrompt(AutoMemoryPromptInput{
 			ContainerName:   campaignName,
 			ContactLabel:    userPhoneNumber,
@@ -478,8 +389,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		})
 	}
 
-	// When analysis or auto-tag already runs for this entry, memory extraction
-	// joins the same call rather than paying for a second one.
 	if wantMemory && (wantAnalysis || wantAutoTag) {
 		systemPrompt += BuildAutoMemorySection(memoryBlock)
 	}
@@ -504,9 +413,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		aiModel = subject.AIModel
 	}
 
-	// The product-wide AI floor, fail-closed: a balance we cannot read counts
-	// as too low. The number comes from the domain so every path that spends on
-	// a model agrees on one floor.
 	if j.cachedBalanceChecker != nil {
 		bal, err := j.cachedBalanceChecker.GetBalance(workspaceID)
 		if err != nil {
@@ -520,9 +426,8 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	}
 
 	response, err := j.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID: workspaceID,
-		Model:       aiModel,
-		// Low temperature: analysis/auto-tag is classification, not generation.
+		WorkspaceID:  workspaceID,
+		Model:        aiModel,
 		Temperature:  0.2,
 		SystemPrompt: systemPrompt,
 		Messages: []ai.Message{

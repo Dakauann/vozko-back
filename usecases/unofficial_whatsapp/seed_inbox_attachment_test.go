@@ -12,8 +12,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// ---- fakes ----
-
 type fakeAssetReader struct {
 	byID map[string]*media.Media
 	err  error
@@ -69,7 +67,6 @@ func scriptWithAttachment(kind uw.MediaKind) *uw.SeedScript {
 	return script
 }
 
-// attachedSeedUseCase is the scripted harness plus the two media stores.
 func attachedSeedUseCase(
 	t *testing.T,
 	writer *fakePlaceholderWriter,
@@ -85,10 +82,6 @@ func assetLibrary() *fakeAssetReader {
 	return &fakeAssetReader{byID: map[string]*media.Media{"media-1": workspaceAsset()}}
 }
 
-// ---- the tests ----
-
-// The opening carries the file, and the file belongs to the conversation it was
-// written into.
 func TestSeededOpeningCarriesItsAttachment(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	attachments := &fakeAttachmentWriter{}
@@ -116,13 +109,10 @@ func TestSeededOpeningCarriesItsAttachment(t *testing.T) {
 	if opening.MediaType != conversation.MediaTypeImage {
 		t.Fatalf("MediaType = %q, want image", opening.MediaType)
 	}
-	// The caption is still the operator own rendered text.
 	if opening.Text == "" {
 		t.Fatal("the opening lost its caption")
 	}
 
-	// The row belongs to THIS conversation, which is what the media endpoint
-	// checks before it will serve the file.
 	if row.EntryID != opening.EntryID {
 		t.Fatalf("media row is on conversation %q, the message on %q", row.EntryID, opening.EntryID)
 	}
@@ -140,8 +130,6 @@ func TestSeededOpeningCarriesItsAttachment(t *testing.T) {
 	}
 }
 
-// Inbound-ness is decided from the message TYPE in SQL, so the opening must not
-// be typed as media however much media it carries.
 func TestSeededAttachmentStaysAnOutboundOperatorMessage(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc := attachedSeedUseCase(t, writer, assetLibrary(), &fakeAttachmentWriter{})
@@ -164,8 +152,6 @@ func TestSeededAttachmentStaysAnOutboundOperatorMessage(t *testing.T) {
 	}
 }
 
-// One row per conversation, because the endpoint the chat fetches through
-// refuses a media row belonging to a different conversation.
 func TestEachSeededConversationGetsItsOwnMediaRow(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	attachments := &fakeAttachmentWriter{}
@@ -193,8 +179,6 @@ func TestEachSeededConversationGetsItsOwnMediaRow(t *testing.T) {
 	}
 }
 
-// Every kind the channel can carry reaches the conversation as the media type
-// the CRM renders.
 func TestSeededAttachmentMapsEveryKind(t *testing.T) {
 	cases := map[uw.MediaKind]conversation.MediaType{
 		uw.MediaImage:    conversation.MediaTypeImage,
@@ -218,8 +202,6 @@ func TestSeededAttachmentMapsEveryKind(t *testing.T) {
 	}
 }
 
-// A workspace may not seed another workspace file. The queue message carries no
-// session, so this is the only layer that can refuse it.
 func TestSeededAttachmentRefusesAnotherWorkspacesFile(t *testing.T) {
 	foreign := workspaceAsset()
 	foreign.WorkspaceID = "ws-2"
@@ -238,7 +220,6 @@ func TestSeededAttachmentRefusesAnotherWorkspacesFile(t *testing.T) {
 	if len(attachments.created()) != 0 {
 		t.Fatal("another workspace file was attached")
 	}
-	// Degraded, not dropped: the thread still lands, as the text it always was.
 	if out.Scripted != 1 {
 		t.Fatalf("outcome = %+v, want the thread seeded anyway", out)
 	}
@@ -247,7 +228,6 @@ func TestSeededAttachmentRefusesAnotherWorkspacesFile(t *testing.T) {
 	}
 }
 
-// An unresolvable or unwritable file costs the file, never the conversation.
 func TestSeededAttachmentDegradesToText(t *testing.T) {
 	cases := map[string]func() (SeedAssetReader, SeedAttachmentWriter){
 		"asset not found": func() (SeedAssetReader, SeedAttachmentWriter) {
@@ -286,8 +266,6 @@ func TestSeededAttachmentDegradesToText(t *testing.T) {
 	}
 }
 
-// A deployment that never wired the media stores seeds exactly what it did
-// before attachments existed.
 func TestSeedingWithoutAttachmentStoresIsUnchanged(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, _ := newScriptedSeedUseCase(t, writer, &fakeScripter{}, &fakeBalance{micros: 5_000_000})

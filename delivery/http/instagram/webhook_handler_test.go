@@ -21,7 +21,6 @@ const (
 	testVerify   = "verify-token"
 )
 
-// publishedMessage records one enqueued entry.
 type publishedMessage struct {
 	Topic   string
 	Payload []byte
@@ -48,7 +47,6 @@ func sign(secret string, body []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// fixture loads a payload captured verbatim from Meta's documentation.
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "domain", "instagram", "testdata", "webhooks", name))
@@ -59,8 +57,6 @@ func fixture(t *testing.T, name string) []byte {
 }
 
 func newTestHandler(pub *fakePublisher) *WebhookHandler {
-	// Both secrets are registered: the Instagram API setup has its own app secret,
-	// and the docs do not state unambiguously which one signs Instagram webhooks.
 	return NewWebhookHandler(pub, []string{testIGSecret, testWASecret}, testVerify)
 }
 
@@ -75,14 +71,9 @@ func postWebhook(t *testing.T, h *WebhookHandler, body []byte, signature string)
 	return rec
 }
 
-// ---------------------------------------------------------------- handshake
-
-// TestVerify_EchoesChallengeVerbatim: the challenge must come back byte-for-byte.
-// Parsing it to an int and reprinting risks changing the bytes.
 func TestVerify_EchoesChallengeVerbatim(t *testing.T) {
 	h := newTestHandler(&fakePublisher{})
 
-	// Note the DOTTED parameter names: hub.mode, not hub_mode.
 	req := httptest.NewRequest(http.MethodGet,
 		"/webhooks/instagram?hub.mode=subscribe&hub.challenge=1158201444&hub.verify_token="+testVerify, nil)
 	rec := httptest.NewRecorder()
@@ -109,8 +100,6 @@ func TestVerify_RejectsWrongToken(t *testing.T) {
 	}
 }
 
-// TestVerify_FailsClosedWithoutConfiguredToken: an unconfigured endpoint must not
-// accept anyone's subscription.
 func TestVerify_FailsClosedWithoutConfiguredToken(t *testing.T) {
 	h := NewWebhookHandler(&fakePublisher{}, []string{testIGSecret}, "")
 
@@ -137,8 +126,6 @@ func TestVerify_RejectsWrongMode(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- signature
-
 func TestReceive_AcceptsInstagramAppSecret(t *testing.T) {
 	pub := &fakePublisher{}
 	body := fixture(t, "text_dm.json")
@@ -152,8 +139,6 @@ func TestReceive_AcceptsInstagramAppSecret(t *testing.T) {
 	}
 }
 
-// TestReceive_AcceptsEitherRegisteredSecret is what de-risks the documentation
-// ambiguity: whichever secret Meta actually signs with, verification succeeds.
 func TestReceive_AcceptsEitherRegisteredSecret(t *testing.T) {
 	body := fixture(t, "text_dm.json")
 
@@ -194,8 +179,6 @@ func TestReceive_RejectsMissingSignature(t *testing.T) {
 	}
 }
 
-// TestReceive_RefusesWhenNoSecretConfigured: the WhatsApp handler logs a warning and
-// processes anyway; that default is deliberately not copied here.
 func TestReceive_RefusesWhenNoSecretConfigured(t *testing.T) {
 	pub := &fakePublisher{}
 	h := NewWebhookHandler(pub, nil, testVerify)
@@ -210,14 +193,10 @@ func TestReceive_RefusesWhenNoSecretConfigured(t *testing.T) {
 	}
 }
 
-// TestReceive_SignatureIsOverExactBytes: re-serialising the body before hashing
-// produces a different signature, so a payload whose bytes differ from what was
-// signed must be rejected even if the JSON is equivalent.
 func TestReceive_SignatureIsOverExactBytes(t *testing.T) {
 	pub := &fakePublisher{}
 	body := fixture(t, "text_dm.json")
 
-	// Re-marshal to equivalent-but-different bytes, keeping the original signature.
 	var parsed any
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -233,10 +212,6 @@ func TestReceive_SignatureIsOverExactBytes(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- routing
-
-// TestReceive_RoutesByEventFamily keeps a burst of comment moderation from delaying
-// DM delivery, since each family has its own queue and prefetch.
 func TestReceive_RoutesByEventFamily(t *testing.T) {
 	cases := []struct {
 		fixture string
@@ -247,8 +222,6 @@ func TestReceive_RoutesByEventFamily(t *testing.T) {
 		{"standby.json", webhook.TopicInstagramMessage},
 		{"comment_ig_login.json", webhook.TopicInstagramComment},
 		{"comment_fb_login.json", webhook.TopicInstagramComment},
-		// An undocumented field must still be enqueued so it can be logged, not
-		// silently dropped.
 		{"unknown_field.json", webhook.TopicInstagramAccount},
 	}
 
@@ -271,9 +244,6 @@ func TestReceive_RoutesByEventFamily(t *testing.T) {
 	}
 }
 
-// TestReceive_SplitsMultiAccountBatchPerEntry is what gives per-tenant failure
-// isolation: one POST can span several accounts, so each entry becomes its own
-// independently retryable queue message.
 func TestReceive_SplitsMultiAccountBatchPerEntry(t *testing.T) {
 	pub := &fakePublisher{}
 	body := fixture(t, "multi_account_batch.json")
@@ -318,9 +288,6 @@ func TestReceive_AcceptsArrayWrappedPayload(t *testing.T) {
 	}
 }
 
-// TestReceive_PublishFailureReturns500: acknowledging an event we failed to persist
-// would lose it. A 500 makes Meta redeliver, which is safe because the pipeline is
-// idempotent.
 func TestReceive_PublishFailureReturns500(t *testing.T) {
 	pub := &fakePublisher{Err: errAlwaysFails}
 	body := fixture(t, "text_dm.json")
@@ -331,8 +298,6 @@ func TestReceive_PublishFailureReturns500(t *testing.T) {
 	}
 }
 
-// TestReceive_UndecodablePayloadIsAcked: a body that will never parse must not be
-// retried for 36 hours; it is acked and logged instead.
 func TestReceive_UndecodablePayloadIsAcked(t *testing.T) {
 	pub := &fakePublisher{}
 	body := []byte("this is not json")

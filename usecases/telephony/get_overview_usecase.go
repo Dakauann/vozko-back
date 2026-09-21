@@ -17,12 +17,10 @@ type getOverviewUseCase struct {
 	live     callsession.CallSessionRegistry
 }
 
-// NewGetOverviewUseCase builds a VoIP overview use case (extras optional).
 func NewGetOverviewUseCase(repo telephony.Repository) telephony.GetOverviewUseCase {
 	return &getOverviewUseCase{repo: repo}
 }
 
-// NewGetOverviewUseCaseWithDeps composes CDR aggregates with queue, presence, live callsession.
 func NewGetOverviewUseCaseWithDeps(
 	repo telephony.Repository,
 	queue queue_event.Repository,
@@ -49,14 +47,12 @@ func (uc *getOverviewUseCase) Execute(workspaceID string, filter telephony.Overv
 	uc.fillOccupancy(workspaceID, filter, out)
 	uc.fillLive(workspaceID, out)
 	uc.enrichMembersWithOccupancy(workspaceID, filter, out)
-	// CDR service level is computed in the repository; mark available when we have answered calls.
 	if out.KPIs.Answered > 0 || out.KPIs.TotalCalls > 0 {
 		out.SLAAvailable = true
 	}
 	return out, nil
 }
 
-// enrichMembersWithOccupancy merges presence occupancy into by_member rows.
 func (uc *getOverviewUseCase) enrichMembersWithOccupancy(workspaceID string, filter telephony.OverviewFilter, out *telephony.Overview) {
 	if uc.presence == nil || out == nil || len(out.ByMember) == 0 {
 		return

@@ -9,19 +9,9 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// Managing the alert rules, and firing one on demand to prove it works.
-//
-// The tenancy check is the same shape ManageCommentRulesUseCase uses next door:
-// every write resolves the rule inside the caller's workspace first, so an id
-// from elsewhere is not found rather than editable.
-
-// ManageAlertRulesUseCase is the CRUD behind the settings panel.
 type ManageAlertRulesUseCase struct {
-	rules ca.AlertRuleRepository
-	clock ca.Clock
-	// senders is optional. When wired, an ARMED rule is checked against what
-	// the workspace can actually send on before it is stored. See
-	// domain/comment_analysis/alert_channels.go for why that check exists.
+	rules   ca.AlertRuleRepository
+	clock   ca.Clock
 	senders ca.AlertSenderDirectory
 }
 
@@ -29,21 +19,11 @@ func NewManageAlertRulesUseCase(rules ca.AlertRuleRepository, clock ca.Clock) *M
 	return &ManageAlertRulesUseCase{rules: rules, clock: clock}
 }
 
-// WithSenderDirectory arms the channel-readiness check. Optional rather than a
-// constructor argument so a deployment that never wired one keeps saving rules
-// exactly as before instead of failing every write.
 func (uc *ManageAlertRulesUseCase) WithSenderDirectory(d ca.AlertSenderDirectory) *ManageAlertRulesUseCase {
 	uc.senders = d
 	return uc
 }
 
-// checkSender refuses a rule that claims to be armed on a channel this
-// workspace cannot send on.
-//
-// A directory ERROR is not a verdict on the rule: the instance table being
-// briefly unreachable must not block every alert edit in the product, so the
-// check stands down and the save proceeds. It guards against a silent lie, and
-// it is not worth trading that for a loud outage.
 func (uc *ManageAlertRulesUseCase) checkSender(ctx context.Context, rule ca.AlertRule) error {
 	if uc.senders == nil {
 		return nil
@@ -70,9 +50,6 @@ func (uc *ManageAlertRulesUseCase) List(ctx context.Context, workspaceID string,
 }
 
 func (uc *ManageAlertRulesUseCase) Create(ctx context.Context, rule ca.AlertRule) (*ca.AlertRule, error) {
-	// The id is never the caller's to choose, and neither is the history: a
-	// rule that arrived claiming it had already fired today would silence
-	// itself, and one claiming it never had would skip its own cooldown.
 	rule.ID = ""
 	rule.LastFiredAt, rule.FiredToday, rule.FiredDay, rule.LastError = nil, 0, "", ""
 
@@ -95,8 +72,6 @@ func (uc *ManageAlertRulesUseCase) Update(ctx context.Context, workspaceID, id s
 		return nil, err
 	}
 
-	// The account a rule watches is immutable, like the account on a comment
-	// rule: moving it would silently repoint an alert somebody trusts.
 	next := *current
 	next.Name = patch.Name
 	next.Enabled = patch.Enabled
@@ -130,12 +105,6 @@ func (uc *ManageAlertRulesUseCase) Delete(ctx context.Context, workspaceID, id s
 	return uc.rules.Delete(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(id))
 }
 
-// TestAlertRuleUseCase sends one alert on demand.
-//
-// It exists because the alternative way to find out whether a rule works is to
-// wait for a bad day. It deliberately does NOT claim, so testing does not
-// consume the cooldown or the daily cap that the real firing depends on, and it
-// carries an idempotency key of its own so a double click does not send twice.
 type TestAlertRuleUseCase struct {
 	rules      ca.AlertRuleRepository
 	dispatcher ca.AlertDispatcher
@@ -154,8 +123,6 @@ func (uc *TestAlertRuleUseCase) Execute(ctx context.Context, workspaceID, id, ac
 	if err != nil {
 		return err
 	}
-	// A rule that would be refused at firing time must be refused here too,
-	// otherwise a test passes and the real alert never arrives.
 	if err := rule.Validate(); err != nil {
 		return err
 	}
@@ -166,8 +133,6 @@ func (uc *TestAlertRuleUseCase) Execute(ctx context.Context, workspaceID, id, ac
 		Value:  rule.Threshold,
 	}, now)
 
-	// The person pressing Test is the author of THIS message, even if somebody
-	// else armed the rule.
 	actor := strings.TrimSpace(actorUserID)
 	if actor == "" {
 		actor = rule.CreatedByUserID
@@ -183,28 +148,13 @@ func (uc *TestAlertRuleUseCase) Execute(ctx context.Context, workspaceID, id, ac
 		Facts:           alert.Facts(),
 		InstanceID:      rule.InstanceID,
 		Text:            testPrefix + alert.Message() + testFooter(*rule),
-		// Its own key, so a test and a real firing at the same instant are two
-		// different sends rather than one swallowing the other.
-		IdempotencyKey: "test-" + alert.IdempotencyKey(),
-		ActorUserID:    actor,
+		IdempotencyKey:  "test-" + alert.IdempotencyKey(),
+		ActorUserID:     actor,
 	})
 }
 
-// testPrefix marks the message so the recipient is not misled into acting on an
-// incident that is not happening.
 const testPrefix = "[TESTE] "
 
-// testFooter says what a test is NOT.
-//
-// The number in a test message is the rule's own threshold, not a measurement,
-// so the line above it reads exactly like a real verdict about a real
-// conversation. The first operator to receive one asked why the AI reading was
-// missing, which is the same confusion from the other end: a test has no
-// conversation behind it, so there is no excerpt to quote, nowhere to link, and
-// nothing for the model to read.
-//
-// Saying so costs one line and stops somebody concluding the feature is broken,
-// or worse, acting on an incident that is not happening.
 func testFooter(rule ca.AlertRule) string {
 	footer := "\n\nEste é um teste: o número acima é o limite configurado, não uma medição, e não há conversa por trás dele."
 	if rule.Brief {

@@ -22,31 +22,26 @@ import (
 
 const maxRequestBody = 256 << 10
 
-// Handler serves the comment-analysis API. Every read is scoped to the
-// caller's workspace INSIDE the use case; the handler only passes the
-// session's workspace through and never a query parameter's.
 type Handler struct {
-	list       ca.ListUseCase
-	stats      ca.StatsUseCase
-	trends     ca.TrendsUseCase
-	authors    ca.ListAuthorsUseCase
-	author     ca.GetAuthorUseCase
-	containers ca.ListAuthorContainersUseCase
-	escalate   ca.EscalateCommentUseCase
-	recipients cauc.ListEscalationRecipientsUseCase
-	alerts     *cauc.ManageAlertRulesUseCase
-	channels   *cauc.GetAlertChannelsUseCase
-	testAlert  *cauc.TestAlertRuleUseCase
-	suggest    ca.SuggestCommentReplyUseCase
-	postReply  ca.PostCommentReplyUseCase
-	moderate   ca.SetModerationStateUseCase
-	getSet     ca.GetSettingsUseCase
-	updateSet  ca.UpdateSettingsUseCase
-	retry      ca.RetryUseCase
-	spend      ca.SpendUseCase
-	usage      ca.UsageUseCase
-	// workspaceSettings is the workspace's own analysis configuration: the
-	// ceiling the budget above is measured against, and the debounce window.
+	list              ca.ListUseCase
+	stats             ca.StatsUseCase
+	trends            ca.TrendsUseCase
+	authors           ca.ListAuthorsUseCase
+	author            ca.GetAuthorUseCase
+	containers        ca.ListAuthorContainersUseCase
+	escalate          ca.EscalateCommentUseCase
+	recipients        cauc.ListEscalationRecipientsUseCase
+	alerts            *cauc.ManageAlertRulesUseCase
+	channels          *cauc.GetAlertChannelsUseCase
+	testAlert         *cauc.TestAlertRuleUseCase
+	suggest           ca.SuggestCommentReplyUseCase
+	postReply         ca.PostCommentReplyUseCase
+	moderate          ca.SetModerationStateUseCase
+	getSet            ca.GetSettingsUseCase
+	updateSet         ca.UpdateSettingsUseCase
+	retry             ca.RetryUseCase
+	spend             ca.SpendUseCase
+	usage             ca.UsageUseCase
 	workspaceSettings ca.WorkspaceSettingsUseCase
 	estimate          ca.EstimateBackfillUseCase
 	start             ca.StartBackfillUseCase
@@ -59,32 +54,26 @@ type Handler struct {
 	delContainer ca.DeleteContainerSettingsUseCase
 }
 
-// Deps groups the use cases the handler serves.
 type Deps struct {
-	List       ca.ListUseCase
-	Stats      ca.StatsUseCase
-	Trends     ca.TrendsUseCase
-	Authors    ca.ListAuthorsUseCase
-	Author     ca.GetAuthorUseCase
-	Containers ca.ListAuthorContainersUseCase
-	Escalate   ca.EscalateCommentUseCase
-	Recipients cauc.ListEscalationRecipientsUseCase
-	Alerts     *cauc.ManageAlertRulesUseCase
-	// Channels reports which alert channels this workspace can actually send
-	// on, so the picker offers what the save will accept.
-	Channels  *cauc.GetAlertChannelsUseCase
-	TestAlert *cauc.TestAlertRuleUseCase
-	Suggest   ca.SuggestCommentReplyUseCase
-	PostReply ca.PostCommentReplyUseCase
-	Moderate  ca.SetModerationStateUseCase
-	GetSet    ca.GetSettingsUseCase
-	UpdateSet ca.UpdateSettingsUseCase
-	Retry     ca.RetryUseCase
-	Spend     ca.SpendUseCase
-	// Usage is the rolling analysis budget the dashboard reports against.
-	Usage ca.UsageUseCase
-	// WorkspaceSettings is what that budget is measured against, plus the
-	// debounce window. Written under audience:update.
+	List              ca.ListUseCase
+	Stats             ca.StatsUseCase
+	Trends            ca.TrendsUseCase
+	Authors           ca.ListAuthorsUseCase
+	Author            ca.GetAuthorUseCase
+	Containers        ca.ListAuthorContainersUseCase
+	Escalate          ca.EscalateCommentUseCase
+	Recipients        cauc.ListEscalationRecipientsUseCase
+	Alerts            *cauc.ManageAlertRulesUseCase
+	Channels          *cauc.GetAlertChannelsUseCase
+	TestAlert         *cauc.TestAlertRuleUseCase
+	Suggest           ca.SuggestCommentReplyUseCase
+	PostReply         ca.PostCommentReplyUseCase
+	Moderate          ca.SetModerationStateUseCase
+	GetSet            ca.GetSettingsUseCase
+	UpdateSet         ca.UpdateSettingsUseCase
+	Retry             ca.RetryUseCase
+	Spend             ca.SpendUseCase
+	Usage             ca.UsageUseCase
 	WorkspaceSettings ca.WorkspaceSettingsUseCase
 	Estimate          ca.EstimateBackfillUseCase
 	Start             ca.StartBackfillUseCase
@@ -109,10 +98,6 @@ func NewHandler(d Deps) *Handler {
 	}
 }
 
-// ---- reads ----
-
-// listInput builds the domain filter from the query. Workspace comes from
-// the session; a `workspaceId` query parameter is ignored by construction.
 func listInput(r *http.Request) ca.ListInput {
 	v := r.URL.Query()
 	in := ca.ListInput{
@@ -135,10 +120,6 @@ func listInput(r *http.Request) ca.ListInput {
 			in.Statuses = append(in.Statuses, ca.Status(s))
 		}
 	}
-	// Subject kind and the conversation labels. Empty kinds means EVERY kind,
-	// which is the point of this surface: an operator asking "what is my
-	// audience saying" means comments and conversations, not one of them. A
-	// screen that wants only one passes subjectKind.
 	in.SubjectKinds = parseSubjectKinds(v.Get("subjectKind"))
 	in.Interest = ca.Interest(strings.TrimSpace(v.Get("interest")))
 	in.Disposition = ca.Disposition(strings.TrimSpace(v.Get("disposition")))
@@ -165,8 +146,6 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	h.listFiltered(w, r, listInput(r))
 }
 
-// listFiltered is the one body behind both the comment feed and the audience
-// feed. They differ only in the filter handed to them.
 func (h *Handler) listFiltered(w http.ResponseWriter, r *http.Request, in ca.ListInput) {
 	result, err := h.list.Execute(r.Context(), in)
 	if err != nil {
@@ -192,8 +171,6 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	h.statsFiltered(w, r, listInput(r))
 }
 
-// statsFiltered is the one body behind both stats endpoints, so the numbers
-// above a feed always describe the rows in it.
 func (h *Handler) statsFiltered(w http.ResponseWriter, r *http.Request, in ca.ListInput) {
 	stats, err := h.stats.Execute(r.Context(), in)
 	if err != nil {
@@ -255,28 +232,20 @@ func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListAuthors(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
 	in := ca.AuthorsInput{
-		WorkspaceID:     middleware.GetWorkspaceID(r),
-		Source:          ca.Source(strings.TrimSpace(v.Get("source"))),
-		AccountID:       strings.TrimSpace(v.Get("accountId")),
-		FlaggedOnly:     v.Get("flagged") == "true",
-		Stance:          ca.Stance(strings.TrimSpace(v.Get("stance"))),
-		ModerationState: ca.ModerationState(strings.TrimSpace(v.Get("moderation"))),
-		// Resolves an @ seen in the feed to its author row, so clicking a
-		// handle anywhere can open that person's view.
+		WorkspaceID:      middleware.GetWorkspaceID(r),
+		Source:           ca.Source(strings.TrimSpace(v.Get("source"))),
+		AccountID:        strings.TrimSpace(v.Get("accountId")),
+		FlaggedOnly:      v.Get("flagged") == "true",
+		Stance:           ca.Stance(strings.TrimSpace(v.Get("stance"))),
+		ModerationState:  ca.ModerationState(strings.TrimSpace(v.Get("moderation"))),
 		AuthorExternalID: strings.TrimSpace(v.Get("authorExternalId")),
 		Options:          shared.QueryOptions{Pagination: httpx.ParsePagination(v)},
 	}
 	if n := intParam(v, "minComments"); n != nil {
 		in.MinComments = *n
 	}
-	// A window changes where the ranking is computed from, not just what it
-	// returns. Same parameter names the feed uses, so one period control on
-	// screen drives both.
 	in.From = timeParam(v, "from")
 	in.To = timeParam(v, "to")
-	// An unknown sort key is refused, not defaulted: a client asking for an
-	// ordering we do not have gets a 400 it can act on, rather than a page of
-	// plausible results in a different order that hides the bug.
 	if raw := strings.TrimSpace(v.Get("sort")); raw != "" {
 		key, ok := ca.ParseAuthorSortKey(raw)
 		if !ok {
@@ -377,8 +346,6 @@ func (h *Handler) SetModeration(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toAuthorResponse(author))
 }
 
-// ---- settings ----
-
 func accountRef(r *http.Request) (ca.Source, string) {
 	vars := mux.Vars(r)
 	source := ca.Source(strings.TrimSpace(vars["source"]))
@@ -446,8 +413,6 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	response.WriteSuccess(w, http.StatusOK, toSettingsResponse(s))
 }
-
-// ---- retry / spend ----
 
 // @Summary	Reprocessar um comentário com falha
 // @Tags		Analysis
@@ -571,8 +536,6 @@ func (h *Handler) PostReply(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, posted)
 }
 
-// intOrZero unwraps an optional query int; absent means "let the use case
-// choose", which is what zero means to it.
 func intOrZero(v *int) int {
 	if v == nil {
 		return 0
@@ -599,8 +562,6 @@ func (h *Handler) Spend(w http.ResponseWriter, r *http.Request) {
 	}
 	response.WriteSuccess(w, http.StatusOK, SpendResponse{BatchTotals: *totals})
 }
-
-// ---- backfill ----
 
 // @Summary	Estimar um reprocessamento de comentários antigos
 // @Tags		Analysis
@@ -681,8 +642,6 @@ func (h *Handler) CancelBackfill(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toBackfillResponse(b))
 }
 
-// ---- helpers ----
-
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxRequestBody)).Decode(target); err != nil {
 		response.WriteInvalidBodyError(w, nil)
@@ -715,7 +674,6 @@ func boolParam(v url.Values, key string) *bool {
 	return nil
 }
 
-// timeParam accepts RFC3339 or a plain date (YYYY-MM-DD, read as UTC).
 func timeParam(v url.Values, key string) *time.Time {
 	raw := strings.TrimSpace(v.Get(key))
 	if raw == "" {
@@ -731,7 +689,6 @@ func timeParam(v url.Values, key string) *time.Time {
 	return nil
 }
 
-// writeDomainError maps domain errors onto HTTP statuses in one place.
 func writeDomainError(w http.ResponseWriter, err error, fallback string) {
 	switch {
 	case errors.Is(err, ca.ErrNotFound):
@@ -742,9 +699,6 @@ func writeDomainError(w http.ResponseWriter, err error, fallback string) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, ca.ErrStatusTransition):
 		response.WriteErrorWithCode(w, http.StatusConflict, "invalid_state", err.Error(), nil)
-	// 422 rather than 400: the rule itself is well formed, the workspace just
-	// has nothing to send it from. The code lets the form point at the connect
-	// screen instead of printing a validation error against a field.
 	case errors.Is(err, ca.ErrChannelUnavailable):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "channel_unavailable", err.Error(), nil)
 	case errors.Is(err, cauc.ErrBackfillAlreadyActive):
@@ -757,8 +711,6 @@ func writeDomainError(w http.ResponseWriter, err error, fallback string) {
 		response.WriteError(w, http.StatusInternalServerError, fallback, nil)
 	}
 }
-
-// ---- workspace listing and per-post settings ----
 
 // @Summary	Contas com análise de comentários configurada no workspace
 // @Tags		Analysis
@@ -852,9 +804,6 @@ func (h *Handler) DeleteContainerSettings(w http.ResponseWriter, r *http.Request
 	response.WriteSuccess(w, http.StatusOK, toContainerSettingsResponse(cs))
 }
 
-// authorSortKeyNames renders the accepted keys for a 400 body, straight from
-// the domain's own list. Restating them here would let the error message drift
-// from what the parser actually takes.
 func authorSortKeyNames() []string {
 	keys := ca.AllAuthorSortKeys()
 	out := make([]string, 0, len(keys))
@@ -873,8 +822,6 @@ func authorSortKeyNames() []string {
 // @Router			/audience/usage [get]
 func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 	if h.usage == nil {
-		// A deployment without the limiter has no ceiling to report, which is
-		// not an error: the dashboard simply shows no budget panel.
 		response.WriteSuccess(w, http.StatusOK, ca.Usage{})
 		return
 	}
@@ -886,22 +833,9 @@ func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, usage)
 }
 
-// WorkspaceSettingsResponse is what the workspace decides about its own
-// analysis, as STORED.
-//
-// Zero means "never set" for both fields, and the screen needs to tell that
-// apart from a value somebody chose, so the resolved numbers ride alongside
-// rather than replacing them: the operator sees the default as a placeholder
-// and the effective window as a fact.
 type WorkspaceSettingsResponse struct {
-	DailyCap        int `json:"dailyCap"`
-	DebounceMinutes int `json:"debounceMinutes"`
-	// The values actually IN FORCE, which is what a screen shows in the box.
-	//
-	// Both are resolved HERE rather than by the client: the ceiling falls back
-	// through the workspace, then the channel accounts, then the product
-	// default, and a browser reproducing that chain would be a second copy of
-	// ResolveDailyCap free to disagree with the engine's.
+	DailyCap                 int `json:"dailyCap"`
+	DebounceMinutes          int `json:"debounceMinutes"`
 	EffectiveDailyCap        int `json:"effectiveDailyCap"`
 	EffectiveDebounceMinutes int `json:"effectiveDebounceMinutes"`
 	MinDebounceMinutes       int `json:"minDebounceMinutes"`
@@ -919,10 +853,6 @@ func workspaceSettingsResponse(s ca.WorkspaceSettings, effectiveDailyCap int) Wo
 	}
 }
 
-// effectiveDailyCap is the ceiling the engine would enforce right now.
-//
-// Read back through the usage use case, which is the one place that resolves it,
-// so this endpoint and the meter beside it cannot name different numbers.
 func (h *Handler) effectiveDailyCap(r *http.Request) int {
 	if h.usage == nil {
 		return 0
@@ -954,8 +884,6 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, h.effectiveDailyCap(r)))
 }
 
-// UpdateWorkspaceSettingsRequest is a partial update: an omitted field is left
-// alone, so two controls on one screen never overwrite each other.
 type UpdateWorkspaceSettingsRequest struct {
 	DailyCap        *int `json:"dailyCap,omitempty"`
 	DebounceMinutes *int `json:"debounceMinutes,omitempty"`

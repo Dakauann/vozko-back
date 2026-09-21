@@ -31,7 +31,6 @@ func (p PublishEmailUseCase) Publish(userEmail string, subject string, template 
 
 	if err := p.publisher.Publish(notification.EmailNotificationTopic, payload); err != nil {
 		return err
-		// TODO: make this pass the error to prometheus logging
 	}
 
 	return nil

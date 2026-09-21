@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-// Every case below is a failure this channel can actually have. The ones about
-// identity and status are the expensive kind: they do not error, they quietly
-// attach a conversation to the wrong person or close a composer that should be
-// open.
-
 func TestStatusLifecycle(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -40,8 +35,6 @@ func TestStatusLifecycle(t *testing.T) {
 	}
 }
 
-// A banned number is the one state no automation may try to recover from.
-// Offering a reconnect that can only fail teaches operators to distrust the UI.
 func TestBanIsTerminal(t *testing.T) {
 	if !StatusBanned.Terminal() {
 		t.Error("a banned number must be terminal")
@@ -53,9 +46,6 @@ func TestBanIsTerminal(t *testing.T) {
 	}
 }
 
-// The three refusals must stay distinguishable: they need different copy and
-// different remedies, and collapsing them into a bool is what produces a
-// composer that says "cannot send" and nothing else.
 func TestCanSendDistinguishesItsRefusals(t *testing.T) {
 	now := time.Now().UTC()
 	future := now.Add(time.Hour)
@@ -108,16 +98,12 @@ func TestCanSendDistinguishesItsRefusals(t *testing.T) {
 	}
 }
 
-// A never-checked instance must not read as restricted, or no number could ever
-// send its first message.
 func TestRestrictionUnknownIsNotRestricted(t *testing.T) {
 	if (Restriction{}).Active(time.Now().UTC()) {
 		t.Error("an unchecked restriction must not block sending")
 	}
 }
 
-// An expired restriction window must release on its own; leaving it active
-// would need a manual unblock for something WhatsApp already lifted.
 func TestRestrictionExpires(t *testing.T) {
 	now := time.Now().UTC()
 	past := now.Add(-time.Hour)
@@ -141,17 +127,6 @@ func TestNormalizePhoneKeepsOnlyDigits(t *testing.T) {
 	}
 }
 
-// PhoneFromJID must refuse to invent a number out of anything that is not one.
-//
-// Only a user JID carries a phone number. Every other form's numeric part is an
-// opaque identifier, and returning it matches a lead by coincidence and attaches
-// one party's conversation to another's CRM record — a silent, high-damage
-// error.
-//
-// The group case is a real bug this pins, not a hypothetical: a group id used to
-// come back as digits and get stored as a contact's phone number, so the CRM
-// rendered groups as "+120363…" and handed that to call sessions and the lead
-// bridge.
 func TestPhoneFromJIDOnlyReadsUserJIDs(t *testing.T) {
 	cases := map[string]string{
 		"5511999999999@s.whatsapp.net":    "5511999999999",
@@ -160,9 +135,8 @@ func TestPhoneFromJIDOnlyReadsUserJIDs(t *testing.T) {
 		"189923456789012@LID":             "",
 		"120363012345678901@g.us":         "",
 		"120363012345678901@newsletter":   "",
-		// No domain at all is a bare number, which several provider fields carry.
-		"+55 11 99999-9999": "5511999999999",
-		"":                  "",
+		"+55 11 99999-9999":               "5511999999999",
+		"":                                "",
 	}
 	for in, want := range cases {
 		if got := PhoneFromJID(in); got != want {
@@ -171,12 +145,6 @@ func TestPhoneFromJIDOnlyReadsUserJIDs(t *testing.T) {
 	}
 }
 
-// A group is a conversation subject with no number and no lead.
-//
-// Both halves matter. The empty handle keeps a group id out of the CRM's number
-// column, which is rendered as a dialable phone everywhere it appears; the
-// labelled fallback keeps a freshly-created group from rendering as a blank row
-// in the seconds before its metadata read lands.
 func TestGroupSubjectHasNoNumber(t *testing.T) {
 	group := &Contact{JID: "120363012345678901@g.us", IsGroup: true}
 	if got := group.Handle(); got != "" {
@@ -197,9 +165,6 @@ func TestGroupSubjectHasNoNumber(t *testing.T) {
 	}
 }
 
-// InScope and RunsAutomation answer different questions, and folding them cost
-// both: an operator pausing the AI on one conversation must not also un-assign
-// it, and a group automation ignores must still be visible and assignable.
 func TestGroupScopeAndAutomationAreSeparate(t *testing.T) {
 	off := false
 	group := &Conversation{IsGroup: true}
@@ -249,9 +214,6 @@ func TestJIDClassification(t *testing.T) {
 	}
 }
 
-// Pacing has a floor that configuration cannot go under. A zero delay is the
-// single most legible automation signature there is, and this channel's failure
-// mode for looking automated is a banned customer number.
 func TestSendDelayRangeIsClamped(t *testing.T) {
 	instance := Instance{SendDelayMinMS: 0, SendDelayMaxMS: 0}
 	minMS, maxMS := instance.SendDelayRange()
@@ -262,7 +224,6 @@ func TestSendDelayRangeIsClamped(t *testing.T) {
 		t.Errorf("max delay %d is below min %d", maxMS, minMS)
 	}
 
-	// An inverted range must be repaired rather than producing a negative jitter.
 	instance = Instance{SendDelayMinMS: 9000, SendDelayMaxMS: 1000}
 	minMS, maxMS = instance.SendDelayRange()
 	if maxMS < minMS {
@@ -288,9 +249,6 @@ func TestNormalizeAppliesPacingDefaults(t *testing.T) {
 	}
 }
 
-// Zero capacity means "unknown", and unknown must fail closed. Reading it as
-// unlimited keeps placing numbers onto a host that has already begun refusing
-// them, and the tenant sees the refusal, not us.
 func TestServerCapacityFailsClosed(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -312,8 +270,6 @@ func TestServerCapacityFailsClosed(t *testing.T) {
 	}
 }
 
-// A group thread must never run automation unless explicitly enabled: an agent
-// answering from a partial view of a group is answering the wrong audience.
 func TestGroupsDoNotRunAutomationByDefault(t *testing.T) {
 	group := Conversation{IsGroup: true}
 	if group.RunsAutomation(false) {
@@ -328,8 +284,6 @@ func TestGroupsDoNotRunAutomationByDefault(t *testing.T) {
 		t.Error("a private conversation with no override must run automation")
 	}
 
-	// An explicit per-conversation false is an operator taking over, and it
-	// must win over the instance switch.
 	off := false
 	paused := Conversation{AutomationEnabled: &off}
 	if paused.RunsAutomation(true) {
@@ -337,8 +291,6 @@ func TestGroupsDoNotRunAutomationByDefault(t *testing.T) {
 	}
 }
 
-// Display names must never fall back to a raw provider id: an inbox row reading
-// "189923456789012@lid" is worse than one reading a phone number.
 func TestContactDisplayNamePrefersHumanNames(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -367,8 +319,6 @@ func TestInstanceLabelNeverShowsAProviderID(t *testing.T) {
 	}
 }
 
-// MapState must not guess. A vendor that adds a state would otherwise have every
-// live session reported as disconnected, closing every composer on the channel.
 func TestMapStateRefusesToGuess(t *testing.T) {
 	cases := []struct {
 		state     string

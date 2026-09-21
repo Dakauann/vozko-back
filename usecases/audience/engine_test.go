@@ -10,17 +10,12 @@ import (
 	"vozko/domain/shared"
 )
 
-// The plan's second test block (§15): what the engine does with what the
-// model returns, asserted on the rows that end up persisted.
-
 func smallBudget() ca.Budget {
 	b := ca.DefaultBudget()
 	b.MaxBatchItems = 20
 	return b
 }
 
-// The happy path: 20 comments, one call, 20 analysed rows carrying the
-// labels for THEIR ref.
 func TestEngine_ClassifiesABatch(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(20)
@@ -46,7 +41,6 @@ func TestEngine_ClassifiesABatch(t *testing.T) {
 	if h.repo.countStatus(ca.StatusAnalyzed) != 20 {
 		t.Fatalf("analyzed rows = %d", h.repo.countStatus(ca.StatusAnalyzed))
 	}
-	// Ref 3 was the third item planned: the oldest-first order is c-1, c-2, c-3.
 	third := h.repo.bySourceID("c-3")
 	if third.Stance != ca.StanceHostile || third.Severity != 80 || !third.RequiresAction {
 		t.Fatalf("labels did not land on the right comment: %+v", third)
@@ -60,16 +54,12 @@ func TestEngine_ClassifiesABatch(t *testing.T) {
 	if _, still := h.scheduler.hints[ref().Key()]; still {
 		t.Fatal("a fully flushed container must drop its hint")
 	}
-	// The call carried the guards of §7.1 as far as the port can show them.
 	call := h.classifier.Calls[0]
 	if call.WorkspaceID != "ws-1" {
 		t.Fatal("WorkspaceID must be on the request (token billing)")
 	}
 }
 
-// THE reconciliation test. A response missing ref 7 leaves item 7 pending
-// with attempts=1 and persists the other 19; a duplicated ref and an
-// out-of-range ref are dropped, not applied to the wrong comment.
 func TestEngine_ReconcilesRefs(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(20)
@@ -77,13 +67,11 @@ func TestEngine_ReconcilesRefs(t *testing.T) {
 		res := &ca.ClassifyResult{FinishReason: "stop", Model: "m"}
 		for _, it := range req.Batch.Items {
 			if it.Ref == 7 {
-				continue // missing
+				continue
 			}
 			res.Results = append(res.Results, okResult(it.Ref))
 		}
-		// A duplicate of ref 2 with hostile labels: must NOT overwrite c-2.
 		res.Results = append(res.Results, hostileResult(2))
-		// Refs the batch never had.
 		res.Results = append(res.Results, hostileResult(21), hostileResult(0), hostileResult(-4))
 		return res, nil
 	})
@@ -111,7 +99,6 @@ func TestEngine_ReconcilesRefs(t *testing.T) {
 	}
 }
 
-// An out-of-set label is refused per item; the other items land.
 func TestEngine_BadLabelsReleaseOnlyThatItem(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(3)
@@ -132,15 +119,12 @@ func TestEngine_BadLabelsReleaseOnlyThatItem(t *testing.T) {
 	}
 }
 
-// FinishReason "length": the truncated body is never parsed; the batch is
-// halved and retried, and the halves succeed.
 func TestEngine_LengthHalvesAndRetries(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(8)
 	h.classifier.push(func(req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
 		return &ca.ClassifyResult{FinishReason: "length", Model: "m", CompletionTokens: 4000}, nil
 	})
-	// The two halves answer normally (default script).
 	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
 	if err != nil {
 		t.Fatal(err)
@@ -151,19 +135,16 @@ func TestEngine_LengthHalvesAndRetries(t *testing.T) {
 	if len(h.classifier.Calls) != 3 || len(h.classifier.Calls[1].Batch.Items) != 4 || len(h.classifier.Calls[2].Batch.Items) != 4 {
 		t.Fatalf("calls = %d, halves = %d/%d", len(h.classifier.Calls), len(h.classifier.Calls[1].Batch.Items), len(h.classifier.Calls[2].Batch.Items))
 	}
-	// Each half was renumbered 1..4 for the model.
 	for _, it := range h.classifier.Calls[2].Batch.Items {
 		if it.Ref > 4 {
 			t.Fatalf("half not renumbered: ref %d", it.Ref)
 		}
 	}
-	// And the receipts record the truncated call too, with its tokens.
 	if len(h.batches.rows) != 3 || h.batches.rows[0].Outcome != ca.OutcomeLength || h.batches.rows[0].CompletionTokens != 4000 {
 		t.Fatalf("receipts = %+v", h.batches.rows)
 	}
 }
 
-// A single item that still does not fit after halving spends its attempt.
 func TestEngine_LengthOnASingleSpendsTheAttempt(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(1)
@@ -182,14 +163,12 @@ func TestEngine_LengthOnASingleSpendsTheAttempt(t *testing.T) {
 	}
 }
 
-// MaxAttempts turns the row into a visible failure; the retry use case
-// resets it.
 func TestEngine_MaxAttemptsThenRetry(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(1)
 	for i := 0; i < ca.MaxAttempts; i++ {
 		h.classifier.push(func(req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
-			return &ca.ClassifyResult{FinishReason: "stop", Results: nil}, nil // never answers
+			return &ca.ClassifyResult{FinishReason: "stop", Results: nil}, nil
 		})
 		if _, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle()); err != nil {
 			t.Fatal(err)
@@ -207,14 +186,11 @@ func TestEngine_MaxAttemptsThenRetry(t *testing.T) {
 	if retried.Status != ca.StatusPending || retried.Attempts != 0 || retried.FailureReason != "" {
 		t.Fatalf("after retry: %+v", retried)
 	}
-	// Another workspace cannot retry it.
 	if _, err := NewRetryUseCase(h.repo, fixedClock{now}).Execute(context.Background(), "ws-2", r.ID); !errors.Is(err, ca.ErrNotFound) {
 		t.Fatalf("cross-workspace retry: %v", err)
 	}
 }
 
-// A provider outage hands every row back WITHOUT an attempt and stops the
-// container for this tick.
 func TestEngine_ProviderErrorUnclaims(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(5)
@@ -236,7 +212,6 @@ func TestEngine_ProviderErrorUnclaims(t *testing.T) {
 	}
 }
 
-// Balance below the floor: no AI call at all, rows untouched.
 func TestEngine_BalanceFloorIsFailClosed(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(5)
@@ -256,17 +231,11 @@ func TestEngine_BalanceFloorIsFailClosed(t *testing.T) {
 	}
 }
 
-// Volume budget exhausted: the cycle stops, rows stay pending, the hint stays.
-//
-// The ceiling now comes from the workspace's own setting through the rolling
-// limiter, rather than from a fake that answered yes or no on command, so this
-// exercises the real budget arithmetic on the way past.
 func TestEngine_DailyCapStopsTheCycle(t *testing.T) {
 	b := smallBudget()
 	b.MaxBatchItems = 10
 	h := newHarness(t, b)
 	h.seed(30)
-	// One batch of 10 fits, the second does not.
 	for _, s := range h.settings.byAccount {
 		s.DailyCap = 15
 	}
@@ -289,17 +258,12 @@ func TestEngine_DailyCapStopsTheCycle(t *testing.T) {
 	}
 }
 
-// The per-cycle token ceiling defers whole batches to the next tick and
-// never counts an attempt against a deferred row.
 func TestEngine_CycleCeilingDefers(t *testing.T) {
 	b := smallBudget()
 	b.MaxBatchItems = 10
 	h := newHarness(t, b)
 	h.seed(25)
 
-	// Spend the workspace's cycle down to exactly one batch's ESTIMATE (the
-	// ceiling counts estimates, not maxima), the way earlier containers in
-	// the same tick would have.
 	var items []ca.Item
 	for i := 1; i <= 25; i++ {
 		items = append(items, ca.Item{ID: "row-" + itoa(i), Text: h.adapter.texts["c-"+itoa(i)]})
@@ -320,14 +284,11 @@ func TestEngine_CycleCeilingDefers(t *testing.T) {
 	if r := h.repo.bySourceID("c-25"); r.Status != ca.StatusPending || r.Attempts != 0 {
 		t.Fatalf("deferred row was touched: %+v", r)
 	}
-	// The same cycle has no room left for a second container of the
-	// workspace either.
 	if cyc.remaining("ws-1", b) > 0 {
 		t.Fatalf("cycle should be spent, %d left", cyc.remaining("ws-1", b))
 	}
 }
 
-// Turning the switch off stops all work: pending rows are skipped, visibly.
 func TestEngine_DisabledSkipsPending(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(4)
@@ -344,8 +305,6 @@ func TestEngine_DisabledSkipsPending(t *testing.T) {
 	}
 }
 
-// A comment deleted on the channel between ingest and flush is skipped and
-// never sent; the others go through.
 func TestEngine_VanishedTextIsSkipped(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(3)
@@ -365,7 +324,6 @@ func TestEngine_VanishedTextIsSkipped(t *testing.T) {
 	}
 }
 
-// Two replicas on one post: the lock makes the second a no-op.
 func TestEngine_ContainerLockIsExclusive(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(2)
@@ -381,14 +339,9 @@ func TestEngine_ContainerLockIsExclusive(t *testing.T) {
 	}
 }
 
-// ---- jobs ----
-
-// The flush job only touches DUE hints; the backstop finds work without
-// any hint at all and resets rows a dead replica left in flight.
 func TestFlushAndBackstopJobs(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(3)
-	// Make the hint look fresh: last comment seconds ago, not due.
 	_ = h.scheduler.Clear(context.Background(), ref())
 	_ = h.scheduler.Stamp(context.Background(), ref(), "ws-1", now.Add(-10*time.Second))
 
@@ -399,38 +352,32 @@ func TestFlushAndBackstopJobs(t *testing.T) {
 		t.Fatal("a post still receiving comments must wait")
 	}
 
-	// A row a dead replica left in flight an hour ago.
 	stuck, _ := ca.NewPending(ca.NewInput{WorkspaceID: "ws-1", Container: ref(), SubjectID: "c-stuck",
 		AuthorExternalID: "u", Text: "x", Now: now.Add(-2 * time.Hour)})
 	stuck.ID = "row-stuck"
 	_ = stuck.Claim(now.Add(-time.Hour))
 	_ = h.repo.Save(context.Background(), stuck)
 	h.adapter.texts["c-stuck"] = "x"
-	// And drop the hint entirely: the backstop must not need it.
 	_ = h.scheduler.Clear(context.Background(), ref())
 
-	// The seeded rows were created "now" and the backstop only sweeps rows
-	// older than MaxAge; move the clock forward.
 	h.engine.Clock = fixedClock{now.Add(time.Hour)}
 	if err := NewBackstopJob(h.engine).Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.repo.countStatus(ca.StatusAnalyzed) != 4 { // 3 seeded + the reset one
+	if h.repo.countStatus(ca.StatusAnalyzed) != 4 {
 		t.Fatalf("analyzed = %d, want 4", h.repo.countStatus(ca.StatusAnalyzed))
 	}
-	if r := h.repo.bySourceID("c-stuck"); r.Attempts != 2 { // 1 from the dead claim, 1 from this one
+	if r := h.repo.bySourceID("c-stuck"); r.Attempts != 2 {
 		t.Fatalf("stuck row attempts = %d, want 2", r.Attempts)
 	}
 }
-
-// ---- ingest ----
 
 func TestIngest_IdempotentAndSkipsOurs(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	ingest := NewIngestUseCase(h.repo, NewSettingsResolver(h.settings), h.scheduler, nil, fixedClock{now})
 	in := ca.IngestInput{WorkspaceID: "ws-1", Container: ref(), SubjectID: "c-1", AuthorExternalID: "u-1", Text: "oi"}
 
-	for i := 0; i < 3; i++ { // the same webhook, redelivered
+	for i := 0; i < 3; i++ {
 		if err := ingest.Enqueue(context.Background(), in); err != nil {
 			t.Fatal(err)
 		}
@@ -451,7 +398,6 @@ func TestIngest_IdempotentAndSkipsOurs(t *testing.T) {
 		t.Fatal("our own reply must never be enqueued")
 	}
 
-	// An account with analysis off (or never configured) enqueues nothing.
 	other := in
 	other.SubjectID = "c-other"
 	other.Container.AccountID = "acc-unconfigured"
@@ -462,7 +408,6 @@ func TestIngest_IdempotentAndSkipsOurs(t *testing.T) {
 		t.Fatal("an unconfigured account must not enqueue")
 	}
 
-	// Blank text is recorded as skipped and never scheduled.
 	blank := in
 	blank.SubjectID, blank.Text = "c-blank", "   "
 	if err := ingest.Enqueue(context.Background(), blank); err != nil {
@@ -475,8 +420,6 @@ func TestIngest_IdempotentAndSkipsOurs(t *testing.T) {
 		t.Fatal("a skipped row must not stamp the hint")
 	}
 }
-
-// ---- scheduler encoding ----
 
 func TestHintEncodingRoundTrip(t *testing.T) {
 	h := ca.Hint{Ref: ref(), WorkspaceID: "ws-1", FirstSeen: now, LastSeen: now.Add(time.Minute), Count: 42}
@@ -504,7 +447,6 @@ func TestRedisScheduler_StampHintsClear(t *testing.T) {
 	if err := s.Stamp(ctx, ref(), "ws-1", now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	// A foreign field in the hash is dropped, not fatal.
 	_ = state.HSet(hintHashKey, "garbage", "v1|x")
 	hints, err := s.Hints(ctx)
 	if err != nil {
@@ -521,9 +463,6 @@ func TestRedisScheduler_StampHintsClear(t *testing.T) {
 	}
 }
 
-// The live feed (§7): one broadcast per BATCH, not per comment, and only after
-// the rows are stored. Per-comment events during a backfill are the failure
-// this coalescing exists to prevent.
 func TestEngine_BroadcastsOneEventPerBatch(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.seed(20)
@@ -550,7 +489,6 @@ func TestEngine_BroadcastsOneEventPerBatch(t *testing.T) {
 	if len(e.Items) == 0 {
 		t.Fatal("an empty broadcast is not worth sending")
 	}
-	// Everything broadcast must be a row that actually reached the store.
 	for _, item := range e.Items {
 		row, err := h.repo.FindByID(context.Background(), "ws-1", item.CommentID)
 		if err != nil {
@@ -562,8 +500,6 @@ func TestEngine_BroadcastsOneEventPerBatch(t *testing.T) {
 	}
 }
 
-// A deployment with no socket classifies exactly the same. The broadcaster is
-// optional, and a nil one must not be a nil-pointer panic in the hot path.
 func TestEngine_WithoutABroadcasterStillClassifies(t *testing.T) {
 	h := newHarness(t, smallBudget())
 	h.engine.Broadcaster = nil
@@ -585,13 +521,6 @@ func TestEngine_WithoutABroadcasterStillClassifies(t *testing.T) {
 	}
 }
 
-// A provider outage must not cost budget.
-//
-// The claim happens BEFORE the model call, which is the only order that stops
-// two replicas overspending together. The consequence is that a batch the
-// provider drops has already been counted, and under the counter this replaced
-// it stayed counted until midnight: a bad afternoon upstream could exhaust a
-// workspace's whole allowance having classified nothing at all.
 func TestEngine_ProviderFailureReturnsTheBudget(t *testing.T) {
 	b := smallBudget()
 	b.MaxBatchItems = 10
@@ -608,7 +537,6 @@ func TestEngine_ProviderFailureReturnsTheBudget(t *testing.T) {
 		t.Fatal("a provider failure must surface")
 	}
 
-	// The whole allowance is back, so the retry on the next tick is affordable.
 	usage, err := NewUsageLimiter(h.state).Read(context.Background(), "ws-1", 10, now)
 	if err != nil {
 		t.Fatal(err)
@@ -617,8 +545,6 @@ func TestEngine_ProviderFailureReturnsTheBudget(t *testing.T) {
 		t.Errorf("budget used = %d after a failure that classified nothing, want 0", usage.Used)
 	}
 
-	// And the retry actually goes through rather than being refused by a
-	// ceiling spent on work nobody received.
 	h.classifier.push(good)
 	res, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
 	if err != nil {
@@ -629,23 +555,14 @@ func TestEngine_ProviderFailureReturnsTheBudget(t *testing.T) {
 	}
 }
 
-// The ceiling an operator sets on the workspace screen has to be the ceiling
-// that actually stops a pass.
-//
-// It used to come from the resolved ACCOUNT settings while the dashboard read
-// the highest account row it could find, so the two could name different
-// numbers, and a workspace with no channel account had no ceiling it could set
-// at all. Both now resolve through ca.ResolveDailyCap over the same store.
 func TestEngine_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
 	b := smallBudget()
 	b.MaxBatchItems = 10
 	h := newHarness(t, b)
 	h.seed(30)
-	// The account would happily allow the whole lot.
 	for _, s := range h.settings.byAccount {
 		s.DailyCap = 20000
 	}
-	// The workspace says otherwise: one batch of 10 fits, the second does not.
 	if err := h.workspaceLimits.Save(context.Background(), "ws-1", ca.WorkspaceSettings{DailyCap: 15}); err != nil {
 		t.Fatal(err)
 	}
@@ -660,8 +577,6 @@ func TestEngine_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
 	if h.repo.countStatus(ca.StatusPending) != 20 {
 		t.Fatalf("pending = %d, want the other 20 left for the next pass", h.repo.countStatus(ca.StatusPending))
 	}
-	// Nothing is thrown away when the ceiling is reached: the hint survives, so
-	// the backstop picks the rest up rather than the work disappearing.
 	if _, still := h.scheduler.hints[ref().Key()]; !still {
 		t.Fatal("the hint must survive a cap stop")
 	}

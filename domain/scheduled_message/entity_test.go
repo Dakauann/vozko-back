@@ -15,8 +15,6 @@ func at(d time.Duration) *time.Time {
 	return &t
 }
 
-// LatestAllowed is the whole product rule in one function, so it gets the
-// exhaustive table.
 func TestLatestAllowed(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -31,17 +29,12 @@ func TestLatestAllowed(t *testing.T) {
 			wantErr: ErrWindowClosed,
 		},
 		{
-			// THE case. The unofficial WhatsApp adapter reports an expiry while
-			// CLOSED — it is the countdown on a provider restriction, not a
-			// deadline to schedule up to. Reading it as a bound would let an
-			// operator park a message on a number WhatsApp has restricted.
 			name:      "a closed window with an expiry is still closed",
 			open:      false,
 			expiresAt: at(6 * time.Hour),
 			wantErr:   ErrWindowClosed,
 		},
 		{
-			// Telegram in bot mode, a healthy linked device: open, no clock.
 			name: "an open window with no expiry is bounded only by the horizon",
 			open: true,
 			want: now.Add(MaxScheduleHorizon),
@@ -117,8 +110,6 @@ func TestValidateScheduledAt(t *testing.T) {
 			wantErr: ErrScheduledAtTooSoon,
 		},
 		{
-			// A clockless channel refuses on the horizon, and must say so —
-			// "past the window" would name a window that does not exist.
 			name: "past the horizon on a clockless channel is a horizon error",
 			at:   now.Add(MaxScheduleHorizon + time.Hour), open: true,
 			wantErr: ErrScheduledAtTooFar,
@@ -129,8 +120,6 @@ func TestValidateScheduledAt(t *testing.T) {
 			wantErr: ErrWindowClosed,
 		},
 		{
-			// Both bounds are breached; the window is the one the operator can
-			// act on, so it wins the message.
 			name: "a window breach outranks a horizon breach",
 			at:   now.Add(MaxScheduleHorizon + time.Hour), open: true, expiresAt: windowIn6h,
 			wantErr: ErrScheduledAtPastWindow,
@@ -147,8 +136,6 @@ func TestValidateScheduledAt(t *testing.T) {
 	}
 }
 
-// The state machine is what makes delivery at-most-once. A single wrong edge —
-// sending back to pending — is a duplicate message to a paying customer.
 func TestStatusTransitions(t *testing.T) {
 	all := []Status{StatusPending, StatusSending, StatusSent, StatusFailed, StatusCanceled}
 	allowed := map[Status]map[Status]bool{
@@ -226,8 +213,6 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// A caller passing "" and a caller passing nil must produce the same row, or
-// the same message scheduled from two surfaces stores differently.
 func TestNormalizeCollapsesEmptyOptionals(t *testing.T) {
 	blank := "   "
 	m := validMessage()

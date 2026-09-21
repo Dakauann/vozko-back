@@ -16,10 +16,6 @@ type noopWSMetrics struct{}
 func (noopWSMetrics) IncWSConnections(string) {}
 func (noopWSMetrics) DecWSConnections(string) {}
 
-// Verify the AI builder WebSocket routes are registered (edit + create) when the
-// handler is wired. The NewRouter positional wiring is already type-checked by
-// the compiler (the handler type differs from its neighbors), so this guards the
-// route paths/methods specifically.
 func TestSetupWorkflowRoutes_RegistersAIBuilderRoutes(t *testing.T) {
 	var m metrics.WSMetricsRecorder = noopWSMetrics{}
 	uc := workflow_usecase.NewAIBuilderUseCase(workflow_usecase.AIBuilderUseCaseDeps{})

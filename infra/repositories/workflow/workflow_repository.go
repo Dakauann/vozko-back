@@ -94,9 +94,6 @@ func (r *repository) FindByID(workflowID string) (*workflow.Workflow, error) {
 	return mapWorkflowToDomain(&dbW)
 }
 
-// FindByIDs batch-loads workflows by id in one query. Used by inbox enrichment to
-// resolve a workflow's name and its current-node type; kept off the domain interface
-// (a narrow concrete method) since only the read model needs it.
 func (r *repository) FindByIDs(ids []string) ([]*workflow.Workflow, error) {
 	if len(ids) == 0 {
 		return nil, nil

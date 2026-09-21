@@ -14,14 +14,6 @@ import (
 	stage_usecase "vozko/usecases/stage"
 )
 
-// These wire the REAL use cases behind the handler, over a fake repository, so
-// the whole delivery → use case → domain path is exercised: the query parameter
-// is parsed, the funnel actually decides which stages are read, and the domain's
-// coherence rule reaches the client as a status code. Stubbing the use cases here
-// would have tested only that the handler calls something.
-
-// --- fake repository ---------------------------------------------------------
-
 type funnelRepo struct {
 	stagedomain.Repository
 
@@ -78,21 +70,19 @@ func (r *funnelRepo) AssignStage(et *stagedomain.EntryStage) error {
 	return nil
 }
 
-// --- harness -----------------------------------------------------------------
-
 func newFunnelHandler(repo *funnelRepo) *StageHandler {
 	return NewStageHandler(
 		stage_usecase.NewCreateStageUseCase(repo),
-		nil, // update
-		nil, // delete
+		nil,
+		nil,
 		stage_usecase.NewListStagesUseCase(repo),
-		nil, // set initial
+		nil,
 		stage_usecase.NewAssignEntryStageUseCase(repo, nil),
-		nil, // remove
-		nil, // get entry stage
-		nil, // batch
+		nil,
+		nil,
+		nil,
 		stage_usecase.NewReorderStagesUseCase(repo),
-		nil, // broadcaster
+		nil,
 	)
 }
 
@@ -102,8 +92,6 @@ func authed(req *http.Request) *http.Request {
 	ctx = context.WithValue(ctx, middleware.WorkspaceIDContextKey, "ws-1")
 	return req.WithContext(ctx)
 }
-
-// --- GET /stages -------------------------------------------------------------
 
 func TestListStages_PipelineIDReachesTheRepository(t *testing.T) {
 	repo := newFunnelRepo()
@@ -152,8 +140,6 @@ func TestListStages_WithoutPipelineKeepsTheLegacyResolution(t *testing.T) {
 	}
 }
 
-// --- POST /stages ------------------------------------------------------------
-
 func TestCreateStage_AttachesToTheRequestedFunnel(t *testing.T) {
 	repo := newFunnelRepo()
 	repo.byPipeline["pipe-b"] = []*stagedomain.Stage{
@@ -196,7 +182,6 @@ func TestCreateStage_DuplicateNameWithinTheFunnelIs409(t *testing.T) {
 }
 
 func TestCreateStage_SameNameOnAnotherFunnelIsAllowed(t *testing.T) {
-	// Two funnels may each have a "fechado"; uniqueness is per funnel.
 	repo := newFunnelRepo()
 	repo.byPipeline["pipe-a"] = []*stagedomain.Stage{
 		{ID: "s1", Name: "fechado", PipelineID: "pipe-a"},
@@ -211,8 +196,6 @@ func TestCreateStage_SameNameOnAnotherFunnelIsAllowed(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
-
-// --- the coherence rule, end to end ------------------------------------------
 
 func TestAssignEntryStage_CrossFunnelIs409WithAReadableMessage(t *testing.T) {
 	repo := newFunnelRepo()
@@ -231,7 +214,6 @@ func TestAssignEntryStage_CrossFunnelIs409WithAReadableMessage(t *testing.T) {
 	if len(repo.assigned) != 0 {
 		t.Error("a rejected move must write nothing")
 	}
-	// The operator sees this string; a bare error identifier would not help them.
 	if !strings.Contains(rec.Body.String(), "outro funil") {
 		t.Errorf("expected an actionable message, got %s", rec.Body.String())
 	}

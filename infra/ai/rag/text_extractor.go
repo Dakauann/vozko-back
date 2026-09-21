@@ -205,7 +205,6 @@ func (e *TextExtractor) extractCSV(data []byte) (string, error) {
 	r.LazyQuotes = true
 	rows, err := r.ReadAll()
 	if err != nil && len(rows) == 0 {
-		// Not valid CSV, fall back to raw text so nothing is lost.
 		return string(data), nil
 	}
 	result := serializeRecords("", rows)
@@ -216,9 +215,6 @@ func (e *TextExtractor) extractCSV(data []byte) (string, error) {
 	return result, nil
 }
 
-// serializeRecords turns a table (header row + data rows) into one self-describing
-// "label: value | label: value" record per data row, records separated by a blank line,
-// aligned to the header by column index. An optional section title leads the block.
 func serializeRecords(section string, rows [][]string) string {
 	clean := make([][]string, 0, len(rows))
 	for _, row := range rows {

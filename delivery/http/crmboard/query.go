@@ -16,9 +16,6 @@ const (
 	crmBoardMaxPageSize     = 200
 )
 
-// selectedDepartmentID is the shared middleware accessor; kept as a named
-// function here because the board handler calls it three times (same reason
-// decodeFilterParam below is).
 func selectedDepartmentID(r *http.Request) string {
 	return middleware.SelectedDepartmentID(r)
 }
@@ -49,8 +46,6 @@ func get(q map[string][]string, key string) string {
 	return ""
 }
 
-// decodeFilterParam is the shared httpx decoder; kept as a named function here
-// because the board handler calls it three times.
 func decodeFilterParam(raw string) (crmfilter.Filter, error) {
 	return httpx.DecodeFilterParam(raw)
 }

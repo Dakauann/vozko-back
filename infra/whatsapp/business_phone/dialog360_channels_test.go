@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// channelsPageJSON builds a /channels page with `count` channels starting at `start`,
-// reporting `total` overall, matching the shape the client decodes.
 func channelsPageJSON(start, count, total int) string {
 	page := dialog360ChannelPage{Total: total}
 	for i := 0; i < count; i++ {
@@ -24,11 +22,8 @@ func channelsPageJSON(start, count, total int) string {
 	return string(b)
 }
 
-// TestListChannels_PagesThroughEveryChannel is the regression test for the large-fleet
-// bug: the old ListChannels fetched only the first page, so the reconcile silently
-// missed every channel beyond it. It must page until the fleet is exhausted.
 func TestListChannels_PagesThroughEveryChannel(t *testing.T) {
-	const total = 450 // pages of 200 -> 200, 200, 50
+	const total = 450
 	var offsetsSeen []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -60,7 +55,6 @@ func TestListChannels_PagesThroughEveryChannel(t *testing.T) {
 	}
 }
 
-// A partial first page must stop after one request (no needless extra call).
 func TestListChannels_SinglePartialPage(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -78,7 +72,6 @@ func TestListChannels_SinglePartialPage(t *testing.T) {
 	}
 }
 
-// GetChannel must fetch a single channel via the id filter, one call, no paging.
 func TestGetChannel_SingleCallViaFilter(t *testing.T) {
 	var sawFilter bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

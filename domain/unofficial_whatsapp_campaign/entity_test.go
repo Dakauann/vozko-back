@@ -42,8 +42,6 @@ func TestValidateRequiresNameInstanceAndTargets(t *testing.T) {
 	}
 }
 
-// The same person written two ways is one person. Sending them a campaign twice
-// is the single most common cause of a ban complaint.
 func TestNormalizeDedupsByNormalizedNumber(t *testing.T) {
 	c := validCampaign()
 	c.Targets = []TargetInput{
@@ -60,15 +58,13 @@ func TestNormalizeDedupsByNormalizedNumber(t *testing.T) {
 	}
 }
 
-// Unlike the official campaign this channel is not Brazil-pinned: it connects
-// the customer's own handset and is used to reach numbers anywhere.
 func TestTargetNumbersAreNotCountryPinned(t *testing.T) {
 	cases := map[string]bool{
-		"5584999990001":    true,  // BR
-		"351912345678":     true,  // PT
-		"12025550123":      true,  // US
-		"123":              false, // too short
-		"1234567890123456": false, // past E.164
+		"5584999990001":    true,
+		"351912345678":     true,
+		"12025550123":      true,
+		"123":              false,
+		"1234567890123456": false,
 		"":                 false,
 	}
 	for number, want := range cases {
@@ -82,7 +78,6 @@ func TestTargetsCapEnforced(t *testing.T) {
 	c := validCampaign()
 	c.Targets = make([]TargetInput, MaxCampaignTargets+1)
 	for i := range c.Targets {
-		// Distinct numbers, or Normalize would dedup them below the cap.
 		c.Targets[i] = TargetInput{Number: "55849" + padded(i)}
 	}
 	c.Normalize()
@@ -102,9 +97,6 @@ func padded(i int) string {
 	return s
 }
 
-// Defaulting only the minimum and then clamping would collapse an unset range to
-// min..min — a FIXED cadence, which is the machine-regular rhythm the jitter
-// exists to avoid.
 func TestUnsetDelaysDoNotCollapseToAFixedCadence(t *testing.T) {
 	c := validCampaign()
 	c.Normalize()
@@ -117,8 +109,6 @@ func TestUnsetDelaysDoNotCollapseToAFixedCadence(t *testing.T) {
 	}
 }
 
-// An operator must not be able to configure a campaign faster than the channel
-// floor, whatever they put in the form.
 func TestDelaysClampToTheChannelFloor(t *testing.T) {
 	c := validCampaign()
 	c.SendDelayMinMS = 1
@@ -141,9 +131,6 @@ func TestInvertedDelayRangeIsRepaired(t *testing.T) {
 	}
 }
 
-// The effective cap is always the lower of the two, and a campaign cap of zero
-// means "no campaign limit" — never "no limit", because the ban risk belongs to
-// the number.
 func TestEffectiveDailyCapTakesTheLower(t *testing.T) {
 	cases := []struct {
 		campaignCap, instanceCap, want int
@@ -228,7 +215,6 @@ func TestValidateWorkflowVars(t *testing.T) {
 	}
 }
 
-// A status column that is somehow empty must not read as permission to send.
 func TestEmptyStatusNormalizesToStopped(t *testing.T) {
 	c := validCampaign()
 	c.Normalize()

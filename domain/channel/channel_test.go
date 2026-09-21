@@ -45,10 +45,6 @@ func TestRegistry_ResolvesByKindAndEntryType(t *testing.T) {
 	}
 }
 
-// TestRegistry_UnregisteredChannelsError documents the migration state: WhatsApp and
-// the support widget still carry their behaviour in per-channel switches, so the
-// registry must report them as absent rather than returning a zero descriptor that
-// would silently do the wrong thing.
 func TestRegistry_UnregisteredChannelsError(t *testing.T) {
 	registry, err := NewRegistry(descriptor(KindInstagram, shared.EntryTypeInstagram))
 	if err != nil {
@@ -86,8 +82,6 @@ func TestRegistry_IgnoresNilDescriptors(t *testing.T) {
 	}
 }
 
-// TestRegistry_AllReturnsACopy: a caller must not be able to mutate the registry's
-// internal ordering.
 func TestRegistry_AllReturnsACopy(t *testing.T) {
 	registry, err := NewRegistry(descriptor(KindInstagram, shared.EntryTypeInstagram))
 	if err != nil {
@@ -108,7 +102,6 @@ func TestMediaLimit_Allows(t *testing.T) {
 	if !limit.Allows("image/png") {
 		t.Error("image/png should be allowed")
 	}
-	// gif is not an accepted Instagram image format.
 	if limit.Allows("image/gif") {
 		t.Error("image/gif should not be allowed")
 	}

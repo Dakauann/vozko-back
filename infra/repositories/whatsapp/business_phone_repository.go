@@ -48,8 +48,7 @@ func (r *businessPhoneRepository) Update(phoneID string, phone *businessphone.Wh
 		"is_official_business":     phone.IsOfficialBusiness,
 		"business_profile":         mapBusinessProfileToSchema(phone.BusinessProfile),
 		"business_portfolio_id":    phone.BusinessPortfolioID,
-		// Always written so a successful retry can clear a prior failure reason.
-		"onboarding_error": phone.OnboardingError,
+		"onboarding_error":         phone.OnboardingError,
 	}
 
 	if phone.OwnerWorkspaceID != "" {
@@ -75,10 +74,6 @@ func (r *businessPhoneRepository) Update(phoneID string, phone *businessphone.Wh
 	if phone.Dialog360APIKey != "" {
 		update["dialog360_api_key"] = piigorm.NewEncrypted(phone.Dialog360APIKey)
 	}
-	// Persist the display number when set. Written conditionally (like the other
-	// vendor-sourced fields below) so an Update that doesn't carry it can't blank it.
-	// Without this, Finalize/reconcile set phone.DisplayPhoneNumber in memory but it was
-	// never written, dialog360 numbers connected showing no phone number.
 	if phone.DisplayPhoneNumber != "" {
 		update["display_phone_number"] = phone.DisplayPhoneNumber
 	}
@@ -140,10 +135,6 @@ func (r *businessPhoneRepository) ClearAccessToken(phoneID string) error {
 	return nil
 }
 
-// ClearOwner detaches a phone from its owning workspace, returning it to the
-// unassigned pool. It nulls only the ownership columns and leaves the Meta
-// registration and connection state untouched (reversible, the number can be
-// re-assigned afterwards).
 func (r *businessPhoneRepository) ClearOwner(phoneID string) error {
 	result := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).Where("id = ?", phoneID).Updates(map[string]interface{}{
 		"owner_workspace_id": gorm.Expr("NULL"),
@@ -236,10 +227,6 @@ func (r *businessPhoneRepository) List(input businessphone.ListInput) (*shared.P
 		return nil, err
 	}
 
-	// Aggregate the business (WABA) name in the query layer: a single LEFT JOIN on the
-	// indexed whatsapp_business_accounts.meta_waba_id, so the client renders the name
-	// inline and never refetches/joins WABAs itself. joined_waba_name (authoritative,
-	// from the WABA record) overrides the phone's own stale waba_name denormalization.
 	dataQuery := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
 		Select(phoneTable + ".*, w.name AS joined_waba_name").
 		Joins("LEFT JOIN whatsapp_business_accounts w ON w.meta_waba_id = " + phoneTable + ".waba_id AND w.deleted_at IS NULL").
@@ -265,8 +252,6 @@ func (r *businessPhoneRepository) List(input businessphone.ListInput) (*shared.P
 	return shared.NewPaginatedResult(items, pagination, total), nil
 }
 
-// phoneWithWABA is the List scan target: the phone row plus the business name joined
-// from whatsapp_business_accounts in the same query.
 type phoneWithWABA struct {
 	schema.WhatsAppBusinessPhoneNumber
 	JoinedWABAName string `gorm:"column:joined_waba_name"`
@@ -345,8 +330,6 @@ func (r *businessPhoneRepository) ListAll() ([]*businessphone.WhatsAppBusinessPh
 	return items, nil
 }
 
-// phoneTable qualifies columns so the filters/sorts stay unambiguous once List LEFT
-// JOINs whatsapp_business_accounts (both tables carry id/created_at/updated_at).
 const phoneTable = "whatsapp_business_phone_numbers"
 
 func applyPhoneFilters(query *gorm.DB, input businessphone.ListInput) *gorm.DB {

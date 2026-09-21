@@ -463,9 +463,6 @@ func seedPerm(memberID string, resource workspace.Resource, action workspace.Act
 	return &workspace.Permission{ID: "p-" + string(resource) + "-" + string(action), MemberID: memberID, Resource: resource, Action: action}
 }
 
-// The route access check and the presence/WS check share this repo; both call
-// HasPermission for non-admin members. The grant set must be served from one
-// cached key so repeats never touch the DB.
 func TestCachedWS_HasPermission_CachesGrantSet(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
@@ -480,8 +477,6 @@ func TestCachedWS_HasPermission_CachesGrantSet(t *testing.T) {
 		t.Fatalf("first HasPermission should load grants once, got %d", got)
 	}
 
-	// Repeated permission checks (granted, denied, and full-set reads) all serve
-	// from the single cached grant set: no further DB loads.
 	for i := 0; i < 10; i++ {
 		if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); !ok {
 			t.Fatalf("cached grant check %d returned false", i)
@@ -498,9 +493,6 @@ func TestCachedWS_HasPermission_CachesGrantSet(t *testing.T) {
 	}
 }
 
-// A member with no explicit grants is the common case and was the DB-hammering
-// path: every route check and every presence broadcast used to COUNT rows. The
-// empty grant set must be negatively cached so repeats never touch the DB.
 func TestCachedWS_HasPermission_NegativeCachesEmptyGrantSet(t *testing.T) {
 	repo := newFakeRepo()
 	shared := newFakeSharedState()
@@ -522,7 +514,6 @@ func TestCachedWS_SetPermissions_InvalidatesGrantCache(t *testing.T) {
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
 	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 
-	// Warm the cache, then a fresh grant set must be observed immediately.
 	_, _ = cached.HasPermission("mem-1", "call_session", "list_members")
 	if _, ok := shared.data[permCacheKey("mem-1")]; !ok {
 		t.Fatalf("expected grant cache entry after read")
@@ -548,7 +539,6 @@ func TestCachedWS_AddRemovePermission_InvalidatesGrantCache(t *testing.T) {
 	shared := newFakeSharedState()
 	cached := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
 
-	// Deny is cached; granting must invalidate so the new grant is seen at once.
 	if ok, _ := cached.HasPermission("mem-1", "call_session", "list_members"); ok {
 		t.Fatalf("unexpected initial grant")
 	}
@@ -562,7 +552,6 @@ func TestCachedWS_AddRemovePermission_InvalidatesGrantCache(t *testing.T) {
 		t.Fatalf("added grant must be observed after invalidation")
 	}
 
-	// Revoking must invalidate so the removed grant stops being served.
 	if err := cached.RemovePermission("mem-1", "call_session", "list_members"); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
@@ -575,8 +564,6 @@ func TestCachedWS_AddRemovePermission_InvalidatesGrantCache(t *testing.T) {
 }
 
 func TestCachedWS_HasPermission_NilSharedAndEmptyIDFallThrough(t *testing.T) {
-	// With no shared state every check must hit the inner repo (fail-open to the
-	// source of truth, never a silent deny).
 	repo := newFakeRepo()
 	_ = repo.AddPermission(seedPerm("mem-1", "call_session", "list_members"))
 	cached := NewCachedWorkspaceRepository(repo, nil).(*CachedWorkspaceRepository)
@@ -590,7 +577,6 @@ func TestCachedWS_HasPermission_NilSharedAndEmptyIDFallThrough(t *testing.T) {
 		t.Fatalf("nil shared must load from inner every call; got %d (want 5)", got)
 	}
 
-	// Empty memberID must bypass the cache and never be persisted.
 	shared := newFakeSharedState()
 	cached2 := NewCachedWorkspaceRepository(repo, shared).(*CachedWorkspaceRepository)
 	if _, err := cached2.HasPermission("", "call_session", "list_members"); err != nil {
@@ -617,7 +603,6 @@ func TestCachedWS_HasPermission_ConcurrentRaceSafe(t *testing.T) {
 					t.Errorf("concurrent HasPermission: ok=%v err=%v", ok, err)
 					return
 				}
-				// Interleave a grant mutation so reads race against invalidation.
 				if n%8 == 0 && j == 50 {
 					_ = cached.SetPermissions("mem-1", []*workspace.Permission{seedPerm("mem-1", "call_session", "list_members")})
 				}

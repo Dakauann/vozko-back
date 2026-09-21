@@ -10,9 +10,6 @@ import (
 	igdomain "vozko/domain/instagram"
 )
 
-// The adapter is the only file that knows both the Instagram tables and the
-// engine's ports. These pin the translation in both directions.
-
 type captureIngestor struct {
 	in  []ca.IngestInput
 	err error
@@ -71,8 +68,6 @@ func TestAdapter_EnqueueTranslatesTheComment(t *testing.T) {
 	}
 }
 
-// A comment without a post or an id cannot be a container ref; the adapter
-// drops it rather than letting the engine reject it per call.
 func TestAdapter_EnqueueSkipsIncomplete(t *testing.T) {
 	a, ingestor, _, _ := caAdapterFixture()
 	a.Enqueue(context.Background(), &igdomain.Comment{WorkspaceID: "ws-1", IGAccountID: "acc-1", IGCommentID: "c-1"})
@@ -117,8 +112,6 @@ func TestAdapter_ReadContainerContextUsesTheCaption(t *testing.T) {
 	if err != nil || c.Caption != "Asfalto novo" || c.Permalink != "https://ig/p/1" {
 		t.Fatalf("context = %+v %v", c, err)
 	}
-	// An unknown post is an empty context, not an error: the engine
-	// classifies without the caption.
 	c, err = a.ReadContainerContext(context.Background(), ca.ContainerRef{Source: ca.SourceInstagram, AccountID: "acc-1", ContainerID: "gone"})
 	if err != nil || c.Caption != "" {
 		t.Fatalf("missing post: %+v %v", c, err)
@@ -139,8 +132,6 @@ func TestAdapter_ListContainersMapsCounts(t *testing.T) {
 	}
 }
 
-// The verifier answers ownership from the account row, never trusting the
-// caller's workspace id.
 func TestAccountVerifier(t *testing.T) {
 	accounts := &fakeAccountRepo{FindByIDFn: func(_ context.Context, id string) (*igdomain.Account, error) {
 		if id == "acc-1" {
@@ -169,8 +160,6 @@ func (r *recordingEnqueuer) Enqueue(_ context.Context, c *igdomain.Comment) {
 }
 func (r *recordingEnqueuer) Forget(context.Context, string) {}
 
-// T-29: the one line on the hot path. After the mirror is written, the
-// comment reaches the engine; without the port wired, nothing else changes.
 func TestHandleComment_EnqueuesAfterMirror(t *testing.T) {
 	comments := &fakeCommentRepo{}
 	enq := &recordingEnqueuer{}
@@ -191,7 +180,6 @@ func TestHandleComment_EnqueuesAfterMirror(t *testing.T) {
 		t.Fatalf("enqueued = %+v", enq.enqueued)
 	}
 
-	// Unwired: the webhook behaves exactly as before.
 	plain := NewHandleWebhookUseCase(HandleWebhookDeps{Comments: comments})
 	if err := plain.handleComment(context.Background(), account, ev); err != nil {
 		t.Fatal(err)

@@ -19,26 +19,14 @@ type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository builds the comment-analysis store.
 func NewRepository(db *gorm.DB) ca.Repository {
 	return &repository{db: db}
 }
 
-// NewBacklogReader exposes the same store under the one-method port the usage
-// use case takes. A separate constructor rather than a wider Repository: only
-// the budget screen asks this question, and every other caller of Repository
-// would otherwise carry a method it has no use for.
 func NewBacklogReader(db *gorm.DB) ca.BacklogReader {
 	return &repository{db: db}
 }
 
-// Insert is ON CONFLICT DO NOTHING on (source, subject_kind,
-// subject_id). That one clause is what makes webhook redelivery free: a
-// subject delivered twice is classified (and billed) once.
-//
-// subject_kind is in the key because the id spaces overlap. Instagram carries
-// both comments and conversations, so without it a conversation entry id could
-// collide with a comment id and one of the two would silently never ingest.
 func (r *repository) Insert(ctx context.Context, a *ca.Analysis) (bool, error) {
 	row := fromDomain(a)
 	res := r.db.WithContext(ctx).
@@ -85,12 +73,6 @@ func (r *repository) FindBySourceComment(ctx context.Context, source ca.Source, 
 	return toDomain(&row), nil
 }
 
-// LatestBySubject reads the newest row for a subject regardless of status.
-//
-// Ordered the same way every "latest" read in this file is — the last message
-// first, then insertion order, then the id — so a revision queued in the same
-// second as another still has ONE definite newest row rather than whichever
-// the planner happened to return.
 func (r *repository) LatestBySubject(
 	ctx context.Context, workspaceID string, source ca.Source, kind ca.SubjectKind, subjectID string,
 ) (*ca.Analysis, error) {
@@ -105,8 +87,6 @@ func (r *repository) LatestBySubject(
 	}
 	err := q.Order("occurred_at DESC, created_at DESC, id DESC").First(&row).Error
 	if err != nil {
-		// No row yet is the normal answer the first time a conversation is
-		// queued, so it is not an error the caller has to special-case.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -132,10 +112,6 @@ func (r *repository) ListPending(ctx context.Context, ref ca.ContainerRef, limit
 	return toDomainSlice(rows), nil
 }
 
-// ClaimByIDs is ONE conditional write. The status guard is what makes two
-// replicas that planned the same rows receive disjoint sets: only the first
-// UPDATE observes pending. The attempt is counted in the same write, so a
-// crash after this point still consumed a try and a crash loop terminates.
 func (r *repository) ClaimByIDs(ctx context.Context, ids []string, now time.Time) ([]string, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -174,9 +150,6 @@ func (r *repository) SaveMany(ctx context.Context, rows []*ca.Analysis) error {
 	})
 }
 
-// saveColumns is the full mutable set, listed explicitly so a zero value
-// (Severity 0, RequiresAction false, FailureReason "") is written rather
-// than skipped, which is what GORM's struct Updates would do.
 func saveColumns(a *ca.Analysis) map[string]any {
 	var batchID *string
 	if a.BatchID != "" {
@@ -217,8 +190,6 @@ func saveColumns(a *ca.Analysis) map[string]any {
 	}
 }
 
-// ListPendingContainers is the backstop (§6.3): what is waiting, from the
-// database alone.
 func (r *repository) ListPendingContainers(ctx context.Context, olderThan time.Time, limit int) ([]ca.PendingContainer, error) {
 	if limit < 1 {
 		limit = 100
@@ -247,9 +218,6 @@ func (r *repository) ListPendingContainers(ctx context.Context, olderThan time.T
 	out := make([]ca.PendingContainer, 0, len(rows))
 	for _, x := range rows {
 		out = append(out, ca.PendingContainer{
-			// The kind is grouped and carried, not defaulted: without it the
-			// backstop would hand a container of conversations to the comment
-			// adapter and fail every row it found.
 			Ref: ca.ContainerRef{
 				Kind: ca.SubjectKind(x.SubjectKind), Source: ca.Source(x.Source),
 				AccountID: x.AccountID, ContainerID: x.ContainerID,
@@ -299,11 +267,6 @@ func (r *repository) CountPendingBySource(ctx context.Context) (map[ca.Source]in
 	return out, nil
 }
 
-// CountWaiting counts one workspace's unfinished rows.
-//
-// Pending and in-flight together: to an operator asking "is my ceiling holding
-// things up" a row that has been claimed but not answered is still waiting, and
-// splitting them would only invite the question of which number to trust.
 func (r *repository) CountWaiting(ctx context.Context, workspaceID string) (int, error) {
 	if workspaceID == "" {
 		return 0, nil
@@ -319,8 +282,6 @@ func (r *repository) CountWaiting(ctx context.Context, workspaceID string) (int,
 	return int(n), nil
 }
 
-// applyFilters is the ONE place ListInput becomes SQL, shared by List and
-// GetStats so the feed and the numbers above it describe the same rows.
 func applyFilters(q *gorm.DB, in ca.ListInput) *gorm.DB {
 	q = q.Where("audience_analyses.workspace_id = ? AND audience_analyses.deleted_at IS NULL", in.WorkspaceID)
 	if in.LatestOnly {
@@ -434,17 +395,6 @@ func (r *repository) List(ctx context.Context, in ca.ListInput) (*shared.Paginat
 	return shared.NewPaginatedResult(toDomainSlice(rows), pagination, total), nil
 }
 
-// ListAuthorContainers answers "which posts does this person turn up on" with
-// one GROUP BY over the comments we already store (§2).
-//
-// The count is `COUNT(DISTINCT container_id)` over the same predicate rather
-// than a count of the grouped rows: a grouped query's Count would return the
-// number of comments, and a table paging on posts would then claim a page count
-// it cannot fill.
-//
-// Ordered by the author's most recent activity on each post, with the container
-// id as the tiebreak, so paging cannot repeat or skip a post when someone
-// commented on two of them in the same second.
 func (r *repository) ListAuthorContainers(ctx context.Context, in ca.AuthorContainersInput) (*shared.PaginatedResult[*ca.AuthorContainer], error) {
 	pagination := shared.NormalizePagination(in.Options.Pagination)
 
@@ -537,13 +487,6 @@ func direction(d shared.SortDirection) string {
 	return "DESC"
 }
 
-// countersSelect is the §11.1 set as one COUNT(*) FILTER per column, the
-// same technique the conversation analysis GetStats uses.
-//
-// author_external_id is table-qualified because the windowed author ranking
-// joins audience_authors, which has a column of the same name; every
-// other column here exists only on audience_analyses. Qualifying it is harmless
-// for the callers that do not join.
 const countersSelect = `
 	COUNT(*) AS total,
 	COUNT(*) FILTER (WHERE status = 'analyzed') AS analyzed,
@@ -682,13 +625,6 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 		})
 	}
 
-	// What the conversations were about, ranked.
-	//
-	// Grouped on the canonical key, never on the text: the same subject arrives
-	// written three ways and has to be one bar. The label is a real example of
-	// how it was written, picked with MIN so the answer is stable between two
-	// calls over the same rows rather than whichever spelling the planner
-	// happened to read first.
 	type subjectRow struct {
 		ProductInterestKey string
 		Label              string
@@ -714,7 +650,6 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 		})
 	}
 
-	// Flagged authors come from the projection, scoped the same way.
 	fq := r.db.WithContext(ctx).Model(&schema.AudienceAuthor{}).
 		Where("workspace_id = ? AND is_flagged = true", in.WorkspaceID)
 	if in.Source != "" {
@@ -731,9 +666,6 @@ func (r *repository) GetStats(ctx context.Context, in ca.ListInput) (*ca.Stats, 
 	return stats, nil
 }
 
-// GetTrend groups the live analysis rows by UTC day after applying the exact
-// same filters as List and GetStats. It serves workspace-wide and mixed-channel
-// views, where no single account/container rollup can represent the request.
 func (r *repository) GetTrend(ctx context.Context, in ca.ListInput) ([]*ca.Rollup, error) {
 	type row struct {
 		CountersRow
@@ -763,8 +695,6 @@ func (r *repository) GetTrend(ctx context.Context, in ca.ListInput) ([]*ca.Rollu
 	return out, nil
 }
 
-// AggregateAuthors counts, per author, over the account's rows. The
-// derivation (stance, flag) is the domain's; this only fills Counters.
 func (r *repository) AggregateAuthors(ctx context.Context, source ca.Source, accountID string, changedSince time.Time) ([]*ca.AuthorStats, error) {
 	type row struct {
 		CountersRow
@@ -792,7 +722,6 @@ func (r *repository) AggregateAuthors(ctx context.Context, source ca.Source, acc
 		return nil, nil
 	}
 
-	// Top topics per author, in one query; the top 3 are cut in Go.
 	authorIDs := make([]string, len(rows))
 	for i, x := range rows {
 		authorIDs[i] = x.AuthorExternalID
@@ -842,8 +771,6 @@ func (r *repository) AggregateAuthors(ctx context.Context, source ca.Source, acc
 	return out, nil
 }
 
-// AggregateRollups computes the three scopes for one UTC day by
-// occurred_at. Soft-deleted rows are deliberately included.
 func (r *repository) AggregateRollups(ctx context.Context, day time.Time) ([]*ca.Rollup, error) {
 	day = ca.BucketDate(day)
 	next := day.Add(24 * time.Hour)
@@ -909,11 +836,6 @@ func (r *repository) DaysAnalyzedSince(ctx context.Context, since time.Time) ([]
 	return days, nil
 }
 
-// SoftDeleteBySourceComment tombstones a deleted comment. Scoped to the comment
-// kind because that is what addresses a subject this way: the channel's
-// "comment deleted" webhook. A conversation is never removed by id from
-// outside, and leaving the kind out would let a colliding entry id tombstone
-// the wrong row.
 func (r *repository) SoftDeleteBySourceComment(ctx context.Context, source ca.Source, sourceCommentID string, now time.Time) error {
 	return r.db.WithContext(ctx).Model(&schema.AudienceAnalysis{}).
 		Where("source = ? AND subject_kind = ? AND subject_id = ? AND deleted_at IS NULL",
@@ -921,8 +843,6 @@ func (r *repository) SoftDeleteBySourceComment(ctx context.Context, source ca.So
 		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
 }
 
-// PurgeBefore deletes in bounded slices so retention never holds a long
-// lock on the table the flush job is writing to.
 func (r *repository) PurgeBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
 	if limit < 1 {
 		limit = 1000

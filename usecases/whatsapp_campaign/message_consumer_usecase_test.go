@@ -883,8 +883,6 @@ func (m *mockWorkspaceConfigRepo) GetByWorkspaceID(_ context.Context, _ string) 
 func (m *mockWorkspaceConfigRepo) Upsert(_ context.Context, _ *wsc.WorkspaceConfig) error { return nil }
 func (m *mockWorkspaceConfigRepo) EnsureExists(_ context.Context, _ string) error         { return nil }
 
-// The entitlement sweep's batch read; this mock only needs to satisfy the
-// interface.
 func (m *mockWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
 	return map[string]int{}, nil
 }

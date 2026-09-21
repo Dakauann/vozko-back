@@ -22,10 +22,6 @@ func (r *repository) Create(c *uwc.Campaign) error {
 }
 
 func (r *repository) Update(campaignID string, c *uwc.Campaign) error {
-	// An explicit column map rather than Save(): a struct update would write
-	// every zero-valued field, and the ones this method must never touch —
-	// status, the confirmation codes, created_at — are exactly the ones that are
-	// empty on an update payload.
 	updates := map[string]interface{}{
 		"name":                   c.Name,
 		"message_kind":           string(c.Message.Kind),
@@ -107,8 +103,6 @@ func (r *repository) ListByStatus(status campaign.Status) ([]*uwc.Campaign, erro
 	return mapRows(rows), nil
 }
 
-// ListRunningByInstance backs the circuit breaker: when WhatsApp restricts a
-// number, EVERY campaign on it has to stop, not only the one that noticed.
 func (r *repository) ListRunningByInstance(instanceID string) ([]*uwc.Campaign, error) {
 	var rows []schema.UnofficialWhatsAppCampaign
 	if err := r.db.
@@ -135,10 +129,6 @@ func (r *repository) ListScheduledToStart(at time.Time, limit int) ([]*uwc.Campa
 	return mapRows(rows), nil
 }
 
-// UpdateStatus is a compare-and-swap when allowed is non-empty.
-//
-// The bool reports whether a row actually changed, which is what lets two
-// replicas race to complete the same campaign and have exactly one of them win.
 func (r *repository) UpdateStatus(campaignID string, status campaign.Status, allowed ...campaign.Status) (bool, error) {
 	query := r.db.Model(&schema.UnofficialWhatsAppCampaign{}).Where("id = ?", campaignID)
 	if len(allowed) > 0 {
@@ -153,8 +143,6 @@ func (r *repository) UpdateStatus(campaignID string, status campaign.Status, all
 		"status":     string(status),
 		"updated_at": time.Now().UTC(),
 	}
-	// Leaving a stale reason on a campaign an operator just restarted would
-	// show "paused: WhatsApp restricted this number" next to a RUNNING chip.
 	if status == campaign.StatusRunning {
 		updates["status_reason"] = ""
 	}
@@ -206,9 +194,6 @@ func applyFilters(db *gorm.DB, input uwc.ListCampaignsInput) *gorm.DB {
 	if search := strings.TrimSpace(input.Search); search != "" {
 		db = db.Where("name ILIKE ?", "%"+search+"%")
 	}
-	// Archived defaults to "not archived" rather than "all": every list screen
-	// asks for the active set, and an archived campaign appearing in it is the
-	// bug the official channel shipped once already.
 	if input.Archived != nil {
 		db = db.Where("archived = ?", *input.Archived)
 	} else {
@@ -217,8 +202,6 @@ func applyFilters(db *gorm.DB, input uwc.ListCampaignsInput) *gorm.DB {
 	return db
 }
 
-// sortableColumns is an allowlist, not a passthrough: a sort key is
-// caller-supplied and interpolating one into ORDER BY is an injection.
 var sortableColumns = map[string]string{
 	"name":       "name",
 	"status":     "status",

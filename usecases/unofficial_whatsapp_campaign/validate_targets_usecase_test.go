@@ -29,7 +29,6 @@ func newValidateHarness(t *testing.T) (uwc.ValidateTargetsUseCase, *fakeCampaign
 	return NewValidateTargetsUseCase(campaigns, entries, gateway), campaigns, entries, gateway
 }
 
-// A dead number becomes a SKIP, never a failure: it is a fact about the list.
 func TestValidateMarksDeadNumbersAsSkipped(t *testing.T) {
 	uc, _, entries, gateway := newValidateHarness(t)
 	gateway.checkResult = []uw.NumberCheck{
@@ -49,8 +48,6 @@ func TestValidateMarksDeadNumbersAsSkipped(t *testing.T) {
 	if skipped.Status != campaign.SendStatusSkippedNotOnWhatsApp {
 		t.Fatalf("status = %q, want SKIPPED_NOT_ON_WHATSAPP", skipped.Status)
 	}
-	// A dead number keeps no JID: leaving a stale one would let a later send
-	// address an identity that does not exist.
 	if skipped.JID != "" {
 		t.Fatalf("a dead number kept a JID: %q", skipped.JID)
 	}
@@ -64,8 +61,6 @@ func TestValidateMarksDeadNumbersAsSkipped(t *testing.T) {
 	}
 }
 
-// Numbers the provider did not answer for are left alone: a missing answer is
-// not a "no", and marking them dead would silently shrink the campaign.
 func TestValidateLeavesUnansweredNumbersAlone(t *testing.T) {
 	uc, _, entries, gateway := newValidateHarness(t)
 	gateway.checkResult = []uw.NumberCheck{
@@ -84,7 +79,6 @@ func TestValidateLeavesUnansweredNumbersAlone(t *testing.T) {
 	}
 }
 
-// A freshly-checked entry is not re-verified, so a second run costs nothing.
 func TestValidateSkipsFreshlyCheckedEntries(t *testing.T) {
 	uc, _, entries, gateway := newValidateHarness(t)
 	now := time.Now().UTC()
@@ -107,8 +101,6 @@ func TestValidateSkipsFreshlyCheckedEntries(t *testing.T) {
 	}
 }
 
-// A dead session cannot answer the question. Refusing beats marking a whole
-// list unreachable because OUR connection was down.
 func TestValidateRefusesOnADeadSession(t *testing.T) {
 	uc, _, _, gateway := newValidateHarness(t)
 	gateway.instance.Status = uw.StatusDisconnected
@@ -118,8 +110,6 @@ func TestValidateRefusesOnADeadSession(t *testing.T) {
 	}
 }
 
-// A provider failure keeps whatever progress was made: a second run resumes,
-// because a checked entry is skipped by NeedsNumberCheck.
 func TestValidateKeepsPartialProgressOnFailure(t *testing.T) {
 	uc, _, _, gateway := newValidateHarness(t)
 	gateway.checkErr = errBoom

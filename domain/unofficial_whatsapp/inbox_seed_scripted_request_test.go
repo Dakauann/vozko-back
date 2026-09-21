@@ -8,7 +8,6 @@ import (
 func scriptedTargets(n int) []SeedTarget {
 	out := make([]SeedTarget, 0, n)
 	for i := 0; i < n; i++ {
-		// Distinct, valid, and long enough to survive Normalize.
 		out = append(out, SeedTarget{Number: numberFor(i), Name: "Lead"})
 	}
 	return out
@@ -46,9 +45,6 @@ func TestSeedRequestNormalizeNormalizesItsScript(t *testing.T) {
 	}
 }
 
-// A script that normalizes down to nothing is DROPPED rather than left to fail
-// validation. The operator ticked a box and typed only whitespace; the leads
-// still import and the conversations still open, plain.
 func TestSeedRequestNormalizeDropsAnEmptyScript(t *testing.T) {
 	req := SeedRequest{
 		WorkspaceID: "ws-1",
@@ -61,9 +57,6 @@ func TestSeedRequestNormalizeDropsAnEmptyScript(t *testing.T) {
 	}
 }
 
-// A malformed script is the request's error, not a field quietly ignored. A
-// caller that sent two variants using different variables has a bug, and
-// silently seeding plain would hide it.
 func TestSeedRequestValidateReturnsTheScriptsError(t *testing.T) {
 	req := SeedRequest{
 		WorkspaceID: "ws-1",
@@ -82,8 +75,6 @@ func TestSeedRequestValidateAcceptsNoScript(t *testing.T) {
 	}
 }
 
-// The money cap, pinned. This is the test that stops MaxScriptedTargets being
-// quietly raised or bypassed by a caller that builds its own batches.
 func TestSplitScriptsOnlyTheFirstMaxScriptedTargets(t *testing.T) {
 	total := MaxScriptedTargets + 137
 	req := SeedRequest{
@@ -118,8 +109,6 @@ func TestSplitScriptsOnlyTheFirstMaxScriptedTargets(t *testing.T) {
 	if scripted != MaxScriptedTargets {
 		t.Errorf("scripted %d targets, want exactly %d", scripted, MaxScriptedTargets)
 	}
-	// Nothing is dropped. Row 201 gets today's plain empty chat; truncating the
-	// import would be the failure mode the whole feature is built to avoid.
 	if plain != total-MaxScriptedTargets {
 		t.Errorf("plain %d targets, want %d", plain, total-MaxScriptedTargets)
 	}
@@ -128,9 +117,6 @@ func TestSplitScriptsOnlyTheFirstMaxScriptedTargets(t *testing.T) {
 	}
 }
 
-// Scripted first, so the visible part of the import happens first: the operator
-// who ticked the box watches the interesting conversations appear while the
-// long tail of empty ones is still draining.
 func TestSplitPublishesScriptedBatchesFirst(t *testing.T) {
 	req := SeedRequest{
 		WorkspaceID: "ws-1",
@@ -151,9 +137,6 @@ func TestSplitPublishesScriptedBatchesFirst(t *testing.T) {
 	}
 }
 
-// Every batch carries the script it will be executed with. The consumer reads
-// one queue message and must not have to consult anything else to know whether
-// that batch is paid for.
 func TestSplitCopiesTheScriptOntoEveryScriptedBatch(t *testing.T) {
 	script := &SeedScript{Bodies: []string{"Oi {{1}}"}, MaxMessages: 6, Context: "curso"}
 	req := SeedRequest{WorkspaceID: "ws-1", Targets: scriptedTargets(60), Script: script}
@@ -172,8 +155,6 @@ func TestSplitCopiesTheScriptOntoEveryScriptedBatch(t *testing.T) {
 	}
 }
 
-// Without a script nothing changes: the old batch size, the old shape, the old
-// behaviour. The existing split test covers the counts; this covers the field.
 func TestSplitWithoutAScriptCarriesNone(t *testing.T) {
 	req := SeedRequest{WorkspaceID: "ws-1", Targets: scriptedTargets(1200)}
 	req.Normalize()
@@ -191,9 +172,6 @@ func TestSplitWithoutAScriptCarriesNone(t *testing.T) {
 	}
 }
 
-// ScriptedCount is what the import response tells the operator. It has to be
-// the number that will actually be scripted, never the number they asked for:
-// "500 conversas de exemplo" over a 500-row import would be a lie by 300.
 func TestScriptedCountIsTheTruthNotTheRequest(t *testing.T) {
 	cases := []struct {
 		name    string

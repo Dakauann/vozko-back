@@ -51,9 +51,6 @@ func adapterFixture(t *testing.T, mutate func(*uw.Instance, *uw.Contact)) (
 	return adapter, messaging, ec, instances
 }
 
-// The single most dangerous data bug this channel can have: the provider
-// substitutes {{...}} from ITS lead store, which is not ours, so an unescaped
-// placeholder leaks another record's data into a customer's chat.
 func TestSendTextNeutralisesProviderPlaceholders(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 
@@ -72,8 +69,6 @@ func TestSendTextNeutralisesProviderPlaceholders(t *testing.T) {
 	}
 }
 
-// The correlation tag is what makes the echo recognisable. Without it, our own
-// send comes back looking like the owner typed it on their phone.
 func TestSendTextStampsTheEchoTag(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 
@@ -87,15 +82,11 @@ func TestSendTextStampsTheEchoTag(t *testing.T) {
 		t.Errorf("echo tag = %q/%q, want %q/%q",
 			sent.TrackSource, sent.TrackID, uw.TrackSource, ec.EntryID)
 	}
-	// Paced, because this request is not marked human-initiated: an automated
-	// burst of instant replies is one of the signals that gets a number banned.
 	if sent.DelayMS < uw.MinSendDelayMS {
 		t.Errorf("delay = %dms, below the pacing floor", sent.DelayMS)
 	}
 }
 
-// Three distinct things close the composer, each needing different words and a
-// different remedy. Only one of them has an expiry to count down.
 func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 	future := time.Now().UTC().Add(2 * time.Hour)
 
@@ -105,8 +96,6 @@ func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 		if err != nil || !window.Open {
 			t.Fatalf("window.Open = %v, err = %v", window.Open, err)
 		}
-		// No clock on this channel: an expiry here would make the UI render a
-		// countdown that means nothing.
 		if window.ExpiresAt != nil {
 			t.Errorf("expiry = %v; this channel has no messaging window", window.ExpiresAt)
 		}
@@ -152,9 +141,6 @@ func TestWindowStateDistinguishesItsThreeRefusals(t *testing.T) {
 	})
 }
 
-// The send path must refuse before reaching the provider, for the same reasons
-// the composer does — otherwise a workflow keeps blasting a number WhatsApp has
-// already begun limiting.
 func TestSendRefusesWhenTheInstanceCannotSend(t *testing.T) {
 	future := time.Now().UTC().Add(time.Hour)
 
@@ -186,9 +172,6 @@ func TestSendRefusesWhenTheInstanceCannotSend(t *testing.T) {
 	}
 }
 
-// A restriction seen once must be cached on the instance, so every later send —
-// including a running broadcast — is refused before reaching the provider.
-// Learning it once per message is how a limited number becomes a banned one.
 func TestSendCachesAWhatsAppRestriction(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 	blocked := false
@@ -204,7 +187,6 @@ func TestSendCachesAWhatsAppRestriction(t *testing.T) {
 		t.Fatal("a restriction must surface as an error")
 	}
 
-	// The next window check must already know, without another provider call.
 	cached, _ := adapter.WindowState(context.Background(), ec)
 	if cached.Open {
 		t.Error("the restriction was not cached; the next send would hit the provider again")
@@ -214,9 +196,6 @@ func TestSendCachesAWhatsAppRestriction(t *testing.T) {
 	}
 }
 
-// The adapter applies WhatsApp's own caps rather than trusting the caller: an
-// author's option list is unbounded upstream, and the provider truncates
-// silently with no error.
 func TestSendInteractiveAppliesWhatsAppsCaps(t *testing.T) {
 	t.Run("more than three options becomes a list", func(t *testing.T) {
 		adapter, messaging, ec, _ := adapterFixture(t, nil)
@@ -262,9 +241,6 @@ func TestSendInteractiveAppliesWhatsAppsCaps(t *testing.T) {
 	})
 }
 
-// Every optional capability is discovered by type assertion. A method that
-// drifts out of shape makes the channel silently lose the feature, so the
-// assertions are pinned here as well as at compile time.
 func TestAdapterImplementsEveryClaimedCapability(t *testing.T) {
 	adapter, _, _, _ := adapterFixture(t, nil)
 
@@ -285,8 +261,6 @@ func TestAdapterImplementsEveryClaimedCapability(t *testing.T) {
 	}
 }
 
-// An empty emoji is the provider's documented REMOVAL, which is why remove and
-// set are the same call with a different argument.
 func TestRemoveReactionSendsAnEmptyEmoji(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 	reacting := adapter.(conversation.ReactingAdapter)
@@ -299,8 +273,6 @@ func TestRemoveReactionSendsAnEmptyEmoji(t *testing.T) {
 	}
 }
 
-// Editing must sanitise too: a corrected message goes through the same provider
-// substitution as the original.
 func TestEditTextSanitises(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 	editing := adapter.(conversation.EditingAdapter)
@@ -313,8 +285,6 @@ func TestEditTextSanitises(t *testing.T) {
 	}
 }
 
-// A body over the cap must be refused locally rather than by the provider, so
-// the operator gets an error they can act on.
 func TestSendRefusesAnOversizedBody(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 	huge := strings.Repeat("a", uw.MaxTextRunes+1)
@@ -328,9 +298,6 @@ func TestSendRefusesAnOversizedBody(t *testing.T) {
 	}
 }
 
-// ResolveEntry must address the CHAT, not the contact's own JID: they are equal
-// in a private chat but diverge for a group, and using the participant's JID
-// would send a group reply to one member.
 func TestResolveEntryAddressesTheChat(t *testing.T) {
 	adapter, _, _, _ := adapterFixture(t, nil)
 
@@ -346,14 +313,6 @@ func TestResolveEntryAddressesTheChat(t *testing.T) {
 	}
 }
 
-// An operator's own message must not be paced.
-//
-// Regression test for a live complaint that messages took "a lot of time" to
-// send. The delay is not a local wait: it is handed to the host, which renders
-// "Digitando…" for its full duration BEFORE dispatching. With the instance at
-// its default 3-12s range, every operator reply sat for up to twelve seconds
-// while the operator watched. Pacing exists to make MACHINE traffic look human;
-// a human reply is the thing it is imitating, so it buys nothing here.
 func TestOperatorSendsAreNotPaced(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 
@@ -367,13 +326,9 @@ func TestOperatorSendsAreNotPaced(t *testing.T) {
 	}
 }
 
-// The exemption is opt-IN, so a caller that forgets it is merely slow rather
-// than unpaced. On a channel where looking automated costs the customer their
-// number, that is the only safe direction for the default to fail.
 func TestAutomatedSendsStayPacedByDefault(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 
-	// An AI reply: constructed without naming the field at all.
 	if _, err := adapter.SendText(context.Background(), ec,
 		conversation.SendTextRequest{Body: "resposta automática"}); err != nil {
 		t.Fatalf("SendText: %v", err)
@@ -384,8 +339,6 @@ func TestAutomatedSendsStayPacedByDefault(t *testing.T) {
 	}
 }
 
-// Media follows the same rule: an operator attaching a file waits no longer
-// than an operator typing.
 func TestOperatorMediaSendsAreNotPaced(t *testing.T) {
 	adapter, messaging, ec, _ := adapterFixture(t, nil)
 
@@ -404,15 +357,6 @@ func TestOperatorMediaSendsAreNotPaced(t *testing.T) {
 	}
 }
 
-// A recording made in the CRM must send.
-//
-// Regression test for a live failure: "unofficial whatsapp: audio/wav is not
-// accepted for audio media". The composer records opus in the browser and
-// transcodes to WAV so the waveform and playback work everywhere, so WAV is the
-// ONE format every voice note in this product actually has — and the descriptor
-// mirrored WhatsApp's published accept-list, which excludes it. The send path
-// now converts instead of refusing, exactly as the official WhatsApp path
-// always has.
 type fakeVoiceTranscoder struct {
 	calledWith string
 	out        []byte
@@ -452,8 +396,6 @@ func TestWavRecordingIsConvertedRatherThanRefused(t *testing.T) {
 		t.Fatalf("expected one media send, got %d", len(messaging.media))
 	}
 	sent := messaging.media[0]
-	// What reaches the provider must be the CONVERTED file, never the WAV: the
-	// whole point is that WhatsApp would not take the original.
 	if sent.MIMEType != "audio/ogg" {
 		t.Errorf("mime = %q, want audio/ogg", sent.MIMEType)
 	}
@@ -468,8 +410,6 @@ func TestWavRecordingIsConvertedRatherThanRefused(t *testing.T) {
 	}
 }
 
-// Without a transcoder the failure names itself, rather than the channel
-// refusing to start or the audio silently going out unconverted.
 func TestAudioWithoutATranscoderFailsWithAReason(t *testing.T) {
 	adapter, _, ec, _ := adapterFixture(t, nil)
 

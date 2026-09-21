@@ -10,7 +10,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// confirmFixture pins the clock at payment time on the 23rd, so extension rolls to the next anchor.
 func confirmFixture(subs *fakeSubs, addons *fakeAddons) *confirmMonthlyBillingUseCase {
 	uc := NewConfirmMonthlyBillingUseCase(subs, addons)
 	uc.now = func() time.Time { return time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC) }
@@ -42,7 +41,7 @@ func isApril23(t *testing.T, label string, got time.Time) {
 }
 
 func TestConfirm_ExtendsPlanAndAddons(t *testing.T) {
-	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC) // the period just paid
+	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 	subs := &fakeSubs{latest: planSub("ws-1", anchor)}
 	addons := &fakeAddons{byWS: map[string][]*workspace_addon.AddonSubscription{
 		"ws-1": {addonSub(anchor)},
@@ -66,7 +65,7 @@ func TestConfirm_ExtendsPlanAndAddons(t *testing.T) {
 
 func TestConfirm_NoPlanSubscriptionStillExtendsAddons(t *testing.T) {
 	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
-	subs := &fakeSubs{latest: nil} // no plan subscription found
+	subs := &fakeSubs{latest: nil}
 	addons := &fakeAddons{byWS: map[string][]*workspace_addon.AddonSubscription{"ws-1": {addonSub(anchor)}}}
 
 	if err := confirmFixture(subs, addons).Execute("ws-1"); err != nil {
@@ -119,13 +118,7 @@ func TestConfirm_AddonListErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestConfirm_ConvergesAnyScatteredDateToAnchor is the proof of the self-alignment claim: a customer
-// on ANY prior renewal date, once they pay a single unified invoice, lands on the global 23rd anchor.
-// No migration is required for alignment; the payment-confirmation Extend snaps every subscription to
-// the next anchor. This is Maria's case (last paid Mar 7) generalized across past, this-month, and
-// far-future period ends.
 func TestConfirm_ConvergesAnyScatteredDateToAnchor(t *testing.T) {
-	// Payment lands on Mar 23; each sub starts on a different scattered renewal date.
 	scattered := []struct {
 		name string
 		end  time.Time
@@ -146,7 +139,6 @@ func TestConfirm_ConvergesAnyScatteredDateToAnchor(t *testing.T) {
 			if err := confirmFixture(subs, addons).Execute("ws-1"); err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			// The whole claim: whatever the start date, the new period end is the 23rd (in the billing tz).
 			planDay := subs.updated[0].CurrentPeriodEnd.In(billing.LocationBRT()).Day()
 			if planDay != billing.DefaultDueDay {
 				t.Fatalf("plan starting %s did not converge to the anchor: landed on day %d, want %d",
@@ -157,7 +149,6 @@ func TestConfirm_ConvergesAnyScatteredDateToAnchor(t *testing.T) {
 				t.Fatalf("addon starting %s did not converge to the anchor: landed on day %d, want %d",
 					tc.end.Format("2006-01-02"), addonDay, billing.DefaultDueDay)
 			}
-			// And the new period is strictly in the future of the payment, never backdated.
 			if !subs.updated[0].CurrentPeriodEnd.After(time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC)) {
 				t.Fatalf("period end %s must be after the payment date", subs.updated[0].CurrentPeriodEnd)
 			}
@@ -177,12 +168,8 @@ func expiredAddonSub(end time.Time) *workspace_addon.AddonSubscription {
 	return a
 }
 
-// TestConfirm_LatePaymentRevivesSweptSubsAndReactivatesChannels is the step-9 core: a workspace the
-// cancel sweep already expired (plan and addon expired, channel suspended at the vendor) pays late. The
-// confirm must revive both subscriptions to active, roll them to the next anchor, and reactivate the
-// suspended channels through the entitlement handler.
 func TestConfirm_LatePaymentRevivesSweptSubsAndReactivatesChannels(t *testing.T) {
-	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC) // the unpaid cycle the sweep expired
+	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 	subs := &fakeSubs{latest: expiredPlanSub("ws-1", anchor)}
 	addons := &fakeAddons{byWS: map[string][]*workspace_addon.AddonSubscription{"ws-1": {expiredAddonSub(anchor)}}}
 	handler := &fakeEntitlementHandler{}
@@ -204,15 +191,12 @@ func TestConfirm_LatePaymentRevivesSweptSubsAndReactivatesChannels(t *testing.T)
 	if len(handler.increased) != 1 || handler.increased[0] != "ws-1" {
 		t.Fatalf("reviving a swept subscription must reactivate channels, got increased=%v", handler.increased)
 	}
-	// The revival window is the prior anchor (now - 1 month), so an earlier-cycle lapse is excluded.
 	wantSince := time.Date(2026, 2, 23, 12, 0, 0, 0, time.UTC)
 	if !addons.reactivatedSince.Equal(wantSince) {
 		t.Errorf("expiredSince = %s, want the prior anchor %s", addons.reactivatedSince, wantSince)
 	}
 }
 
-// TestConfirm_OnTimePaymentDoesNotReactivate: a normal on-time payment (subs still active) extends the
-// periods but must NOT call the reactivation handler, since nothing was suspended.
 func TestConfirm_OnTimePaymentDoesNotReactivate(t *testing.T) {
 	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 	subs := &fakeSubs{latest: planSub("ws-1", anchor)}
@@ -227,8 +211,6 @@ func TestConfirm_OnTimePaymentDoesNotReactivate(t *testing.T) {
 	}
 }
 
-// TestConfirm_RevivalWithoutHandlerDoesNotPanic: reactivation is best-effort. With no handler wired, a
-// revival still extends the subscriptions and must not panic.
 func TestConfirm_RevivalWithoutHandlerDoesNotPanic(t *testing.T) {
 	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 	subs := &fakeSubs{latest: nil}
@@ -242,8 +224,6 @@ func TestConfirm_RevivalWithoutHandlerDoesNotPanic(t *testing.T) {
 	}
 }
 
-// TestConfirm_ReactivationFailureIsNotFatal: if the vendor reactivation fails, the confirmed payment
-// must still succeed (the subscriptions are already extended; the reconcile job retries the channel).
 func TestConfirm_ReactivationFailureIsNotFatal(t *testing.T) {
 	anchor := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 	subs := &fakeSubs{latest: nil}

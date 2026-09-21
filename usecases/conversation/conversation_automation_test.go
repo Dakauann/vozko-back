@@ -10,15 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The only way to flip a conversation's automation override was a PATCH on a
-// WhatsApp CAMPAIGN entry. Instagram and Telegram conversations have no
-// campaign, so the caller resolved no campaign id and returned before issuing a
-// request: no error, no feedback, nothing written. The control looked
-// functional and did nothing.
-//
-// These pin that every channel has a setter, and that a channel WITHOUT one is
-// refused loudly instead of silently succeeding.
-
 type recordingBroadcaster struct {
 	conversation.EventBroadcaster
 	entries chan string
@@ -51,9 +42,6 @@ func TestAutomationIsWrittenThroughTheChannelsOwnSetter(t *testing.T) {
 	}
 }
 
-// nil is not the same as false: it CLEARS the override so the conversation
-// inherits the account switch again. Flattening it to a bool would make
-// "inherit" unreachable.
 func TestClearingTheOverridePassesNilThrough(t *testing.T) {
 	var called bool
 	var gotEnabled *bool
@@ -75,7 +63,6 @@ func TestClearingTheOverridePassesNilThrough(t *testing.T) {
 	}
 }
 
-// The bug's shape: a channel with no setter. It must be refused, not accepted.
 func TestAChannelWithNoSetterIsRefusedNotIgnored(t *testing.T) {
 	svc := NewConversationAutomationService(nil)
 	svc.Register(shared.EntryTypeWhatsApp, func(context.Context, string, *bool) error { return nil })
@@ -86,9 +73,6 @@ func TestAChannelWithNoSetterIsRefusedNotIgnored(t *testing.T) {
 	}
 }
 
-// The broadcast must carry the entry's OWN type. The handler this replaces
-// always broadcast "whatsapp", so a toggle on another channel would not have
-// refreshed its own conversation even once the write worked.
 func TestTheBroadcastCarriesTheEntrysOwnChannel(t *testing.T) {
 	hub := &recordingBroadcaster{entries: make(chan string, 1)}
 	svc := NewConversationAutomationService(hub)
@@ -100,7 +84,6 @@ func TestTheBroadcastCarriesTheEntrysOwnChannel(t *testing.T) {
 		t.Fatalf("SetAutomation: %v", err)
 	}
 
-	// Fired in a goroutine so the write is not held up by it.
 	select {
 	case got := <-hub.entries:
 		if got != "telegram:conv-1" {
@@ -111,8 +94,6 @@ func TestTheBroadcastCarriesTheEntrysOwnChannel(t *testing.T) {
 	}
 }
 
-// A failing write must surface rather than report success and leave the
-// operator believing the agent is paused.
 func TestASetterErrorSurfaces(t *testing.T) {
 	sentinel := errors.New("conversation not found")
 	svc := NewConversationAutomationService(nil)

@@ -9,10 +9,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// The channel registry backs both workspace-wide read paths (inbox list and CRM
-// board). These tests pin the contract a channel descriptor must satisfy, so a
-// channel added later inherits correct scoping instead of re-deriving it.
-
 func sourceFor(t *testing.T, entryType shared.EntryType) entrySource {
 	t.Helper()
 	for _, src := range entrySources {
@@ -42,7 +38,6 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		}
 		seen[src.EntryType] = true
 
-		// Every descriptor must be complete enough to build valid SQL.
 		for name, value := range map[string]string{
 			"From": src.From, "WorkspaceJoin": src.WorkspaceJoin, "EntryID": src.EntryID,
 			"Account": src.Account, "CreatedAt": src.CreatedAt,
@@ -52,7 +47,6 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 				t.Errorf("%s: %s must not be empty", src.EntryType, name)
 			}
 		}
-		// The workspace join is what prevents cross-tenant leakage.
 		if strings.Count(src.WorkspaceJoin, "?") != 1 {
 			t.Errorf("%s: WorkspaceJoin must bind exactly one workspace placeholder", src.EntryType)
 		}
@@ -64,9 +58,6 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 	}
 }
 
-// Both projections must emit the same column list for every channel, or the
-// UNION is rejected by Postgres and the whole inbox/board breaks, including for
-// WhatsApp-only tenants.
 func TestEntrySourceProjectionsShareOneShape(t *testing.T) {
 	inboxCols := []string{"AS entry_id", "AS entry_type", "AS lead_id", "AS business_phone_id", "AS lm_created_at"}
 	boardCols := append([]string{"AS conversation_status", "AS campaign_id", "AS created_at", "AS updated_at"}, inboxCols...)
@@ -95,14 +86,11 @@ func TestEntrySourceProjectionsShareOneShape(t *testing.T) {
 
 func assertPlaceholdersMatchArgs(t *testing.T, sql string, args []interface{}) {
 	t.Helper()
-	// A mismatch shifts every later bound value in the UNION, silently corrupting
-	// the other channels' filters too.
 	if got, want := strings.Count(sql, "?"), len(args); got != want {
 		t.Errorf("%d placeholders but %d args:\n%s\nargs=%v", got, want, sql, args)
 	}
 }
 
-// Every channel must be workspace-scoped through a bound parameter.
 func TestEntrySourceIsAlwaysWorkspaceScoped(t *testing.T) {
 	for _, src := range entrySources {
 		sql, args := src.inboxSelect(entrySourceScope{}, "ws-42")
@@ -121,14 +109,11 @@ func TestEntrySourceGuardsSoftDeleteAndEmptyConversations(t *testing.T) {
 		if !strings.Contains(sql, src.Deleted) {
 			t.Errorf("%s: missing soft-delete guard:\n%s", src.EntryType, sql)
 		}
-		// A conversation with no messages must never reach the inbox.
 		if !strings.Contains(sql, src.LastMessageAt+" IS NOT NULL") {
 			t.Errorf("%s: missing empty-conversation guard:\n%s", src.EntryType, sql)
 		}
 	}
 }
-
-// --- scope selection ---
 
 func TestScopeSelectsChannels(t *testing.T) {
 	all := entrySourceScope{}.selected()
@@ -141,15 +126,11 @@ func TestScopeSelectsChannels(t *testing.T) {
 		t.Errorf("entry-type scope should select exactly that channel, got %+v", only)
 	}
 
-	// A WhatsApp campaign-type filter names a WhatsApp concept, so no other
-	// channel can satisfy it.
 	campaign := entrySourceScope{WhatsAppCampaignType: "organic"}.selected()
 	if len(campaign) != 1 || campaign[0].EntryType != shared.EntryTypeWhatsApp {
 		t.Errorf("campaign-type scope should select WhatsApp only, got %+v", campaign)
 	}
 
-	// Channels with no status column cannot answer a status filter and are
-	// dropped rather than silently matching.
 	status := entrySourceScope{ConversationStatus: "finished"}.selected()
 	for _, src := range status {
 		if src.ConversationStatus == "" {
@@ -160,7 +141,6 @@ func TestScopeSelectsChannels(t *testing.T) {
 		t.Error("a status filter should still select the channels that support it")
 	}
 
-	// An unknown channel selects nothing rather than everything.
 	if got := (entrySourceScope{EntryType: "messenger"}).selected(); len(got) != 0 {
 		t.Errorf("unregistered channel should select nothing, got %+v", got)
 	}
@@ -177,7 +157,6 @@ func TestScopeAppliesCampaignKindOnlyWhereItExists(t *testing.T) {
 	}
 	assertPlaceholdersMatchArgs(t, sql, args)
 
-	// An unrecognised campaign-type value must not inject a predicate.
 	sql, args = wa.inboxSelect(entrySourceScope{WhatsAppCampaignType: "bogus"}, "ws-1")
 	if strings.Contains(sql, wa.CampaignKind+" = ?") {
 		t.Errorf("unknown campaign kind should be ignored:\n%s", sql)
@@ -185,21 +164,14 @@ func TestScopeAppliesCampaignKindOnlyWhereItExists(t *testing.T) {
 	assertPlaceholdersMatchArgs(t, sql, args)
 }
 
-// --- scoping guarantees ---
-
 func TestEntrySourceDepartmentScopeFailsClosed(t *testing.T) {
 	scope := entrySourceScope{RestrictDepartments: true}
 
 	for _, src := range entrySources {
 		if src.DepartmentExempt {
-			// An exempt channel is visible to every operator by declaration; the
-			// exemption itself is covered by
-			// TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise.
 			continue
 		}
 		sql, _ := src.inboxSelect(scope, "ws-1")
-		// Whether the channel has a department column or not, a restricted
-		// operator with no departments must see nothing.
 		if !strings.Contains(sql, "1 = 0") {
 			t.Errorf("%s: restricted scope must fail closed:\n%s", src.EntryType, sql)
 		}
@@ -216,9 +188,6 @@ func TestEntrySourceDepartmentScopeBindsDepartments(t *testing.T) {
 	}
 	assertPlaceholdersMatchArgs(t, sql, args)
 
-	// Support has no department column and never had one filtered, so it stays
-	// visible to a department-restricted operator rather than losing them their
-	// whole support queue.
 	sup := sourceFor(t, shared.EntryTypeSupport)
 	supSQL, supArgs := sup.inboxSelect(scope, "ws-1")
 	if strings.Contains(supSQL, "1 = 0") {
@@ -231,8 +200,6 @@ func TestEntrySourceDepartmentScopeBindsDepartments(t *testing.T) {
 }
 
 func TestEntrySourceAssignmentScope(t *testing.T) {
-	// The board's "mine or unassigned" scope must apply to every channel, keyed on
-	// that channel's own entry id column.
 	for _, src := range entrySources {
 		sql, args := src.boardSelect(entrySourceScope{AssignedUserID: "user-1"}, "ws-1")
 		if !strings.Contains(sql, "inbox_assignments") {
@@ -244,8 +211,6 @@ func TestEntrySourceAssignmentScope(t *testing.T) {
 		assertPlaceholdersMatchArgs(t, sql, args)
 	}
 }
-
-// --- union assembly ---
 
 func TestBuildEntryUnionJoinsEverySelectedChannel(t *testing.T) {
 	sql, args := buildEntryUnion(entrySourceScope{}, "ws-1", entrySource.boardSelect)
@@ -259,9 +224,6 @@ func TestBuildEntryUnionJoinsEverySelectedChannel(t *testing.T) {
 	}
 	assertPlaceholdersMatchArgs(t, sql, args)
 
-	// Instagram on the board is the capability this registry unlocked: stages,
-	// labels and filters all key on (entry_id, entry_type), so appearing here is
-	// what makes an Instagram conversation usable on the kanban.
 	if !strings.Contains(sql, "'instagram'::text AS entry_type") {
 		t.Errorf("board union must include Instagram:\n%s", sql)
 	}
@@ -274,8 +236,6 @@ func TestBuildEntryUnionEmptyWhenNothingSelected(t *testing.T) {
 	}
 }
 
-// Registering a channel is the whole cost of adding one: the descriptor flows
-// into both read paths with no further edits.
 func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
 	const messenger shared.EntryType = "messenger"
 	entrySources = append(entrySources, entrySource{
@@ -307,16 +267,11 @@ func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
 		assertPlaceholdersMatchArgs(t, sql, args)
 	}
 
-	// And it participates in scoping like every other channel.
 	if got := (entrySourceScope{EntryType: messenger}).selected(); len(got) != 1 {
 		t.Errorf("new channel should be selectable by entry type, got %+v", got)
 	}
 }
 
-// The registry builds SQL by concatenating identifiers, which is only safe if
-// every caller-supplied VALUE is bound rather than interpolated. This asserts
-// that property directly: hostile input in each scope field must appear in the
-// args, never in the SQL text.
 func TestEntrySourceNeverInterpolatesCallerInput(t *testing.T) {
 	const inj = "'; DROP TABLE conversation_messages; --"
 
@@ -344,9 +299,6 @@ func TestEntrySourceNeverInterpolatesCallerInput(t *testing.T) {
 	}
 }
 
-// Identifiers come from the registry, which is compile-time data. This pins that
-// the SQL text is built only from those constants plus placeholders, the
-// invariant that makes the concatenation safe.
 func TestEntrySourceSQLIsBuiltFromRegistryConstantsOnly(t *testing.T) {
 	for _, src := range entrySources {
 		sql, _ := src.boardSelect(entrySourceScope{
@@ -363,15 +315,6 @@ func TestEntrySourceSQLIsBuiltFromRegistryConstantsOnly(t *testing.T) {
 	}
 }
 
-// --- parity with the hand-written queries this registry replaced ---
-
-// The board must NOT hide finished conversations.
-//
-// A finished conversation still owns a card in whatever stage it ended in, so
-// filtering it out here deletes those cards from the kanban and makes the
-// board's own status filter unable to ever select them. The hand-written board
-// CTE applied no status predicate; only the inbox list did. Regressed once when
-// the default moved into the shared conditions() and both paths inherited it.
 func TestBoardKeepsFinishedConversationsAndInboxDoesNot(t *testing.T) {
 	board, _ := buildEntryUnion(entrySourceScope{}, "ws-1", entrySource.boardSelect)
 	if strings.Contains(board, "IS DISTINCT FROM 'finished'") {
@@ -383,7 +326,6 @@ func TestBoardKeepsFinishedConversationsAndInboxDoesNot(t *testing.T) {
 		t.Errorf("inbox default must hide finished conversations:\n%s", inbox)
 	}
 
-	// An explicitly named status always wins, on either path.
 	for name, project := range map[string]func(entrySource, entrySourceScope, string) (string, []interface{}){
 		"inbox": entrySource.inboxSelect,
 		"board": entrySource.boardSelect,
@@ -397,10 +339,6 @@ func TestBoardKeepsFinishedConversationsAndInboxDoesNot(t *testing.T) {
 	}
 }
 
-// Support entries were never department-filtered, because they carry no
-// department. Failing them closed under a department restriction would take a
-// restricted agent's whole support queue away, so support declares itself exempt
-// while any other department-less channel still fails closed.
 func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *testing.T) {
 	scope := entrySourceScope{
 		DepartmentIDs:       []string{"11111111-1111-1111-1111-111111111111"},
@@ -417,7 +355,6 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 		}
 	}
 
-	// A department-less channel that has NOT opted out stays hidden.
 	entrySources = append(entrySources, entrySource{
 		EntryType: "messenger", From: "messenger_conversations mgc",
 		WorkspaceJoin: "JOIN messenger_accounts mga ON mga.id = mgc.account_id AND mga.workspace_id = ?",
@@ -433,12 +370,6 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 	}
 }
 
-// A channel on the board must be able to carry CRM metadata.
-//
-// Instagram shipped as a card that rendered on the kanban but was rejected by
-// the stage and label gates, so it could not be moved or labelled, worse than
-// not appearing at all. The board registry and the tagging set are two separate
-// lists, so this pins them together rather than trusting them to stay in step.
 func TestEveryBoardChannelCanCarryStagesAndLabels(t *testing.T) {
 	for _, src := range entrySources {
 		if !src.EntryType.SupportsCRMTagging() {

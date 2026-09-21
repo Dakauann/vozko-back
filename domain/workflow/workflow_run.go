@@ -68,8 +68,6 @@ func (s *RunState) GetString(key string) string {
 	return fmt.Sprintf("%v", val)
 }
 
-// GetInt reads an integer state value, tolerating the float64 that a numeric
-// value becomes after a JSON persistence round-trip (state survives waits as JSON).
 func (s *RunState) GetInt(key string) int {
 	val, ok := s.Get(key)
 	if !ok {

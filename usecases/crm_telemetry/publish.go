@@ -16,12 +16,10 @@ type publisher struct {
 	drops    crm_telemetry.DropRecorder
 }
 
-// NewPublisher returns a hot-path safe publisher (Rabbit only, no DB).
 func NewPublisher(queuePub messaging.MessageQueuePub) crm_telemetry.Publisher {
 	return &publisher{queuePub: queuePub}
 }
 
-// NewPublisherWithDrops records publish failures for ops.
 func NewPublisherWithDrops(queuePub messaging.MessageQueuePub, drops crm_telemetry.DropRecorder) crm_telemetry.Publisher {
 	return &publisher{queuePub: queuePub, drops: drops}
 }
@@ -44,7 +42,6 @@ func (p *publisher) Publish(kind crm_telemetry.Kind, payload any) error {
 		Payload:    body,
 		OccurredAt: time.Now().UTC(),
 	}
-	// Prefer payload-native IDs for conversation events (stable redelivery).
 	if kind == crm_telemetry.KindConversationEvent {
 		var partial struct {
 			ID string `json:"id"`
@@ -79,7 +76,6 @@ func (p *publisher) Publish(kind crm_telemetry.Kind, payload any) error {
 	return nil
 }
 
-// PresenceAdapter implements hub presenceRecorder via the telemetry queue.
 type PresenceAdapter struct {
 	pub crm_telemetry.Publisher
 }
@@ -101,8 +97,7 @@ func (a *PresenceAdapter) Transition(workspaceID, userID, state, source string) 
 	})
 }
 
-// EmitEvent is the shared helper for timeline events (no duplication across handlers).
-func EmitEvent(pub crm_telemetry.Publisher, ev interface { /* any */
+func EmitEvent(pub crm_telemetry.Publisher, ev interface {
 }) {
 	if pub == nil || ev == nil {
 		return

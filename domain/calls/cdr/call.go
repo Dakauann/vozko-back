@@ -74,16 +74,15 @@ type Call struct {
 	PhoneFrom      string
 	PhoneTo        string
 	TrunkID        *string
-	// AgentID is the call session member who owned the leg (member metrics / filters).
-	AgentID      *string
-	ParentCallID *string
-	EndReason    *string
-	StartedAt    time.Time
-	AnsweredAt   *time.Time
-	EndedAt      *time.Time
-	DurationSec  int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	AgentID        *string
+	ParentCallID   *string
+	EndReason      *string
+	StartedAt      time.Time
+	AnsweredAt     *time.Time
+	EndedAt        *time.Time
+	DurationSec    int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 func (c *Call) Validate() error {

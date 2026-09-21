@@ -5,21 +5,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Descriptor returns the channel registration.
-//
-// Read against the Cloud API's descriptor, the differences are the whole reason
-// this is a separate entry type:
-//
-//   - CanInitiateConversation is TRUE and SupportsTemplates is FALSE. Cold
-//     outbound works without a template. That is what customers want from this
-//     channel and simultaneously the reason it can get their number banned.
-//   - OutboundWindow is ZERO. There is no 24h rule. The composer closes on
-//     session loss, on a WhatsApp restriction, or on a block — all facts about
-//     the instance or contact, none of them a clock, which is why they are
-//     resolved in the send adapter's WindowState rather than encoded here.
-//   - SupportsReadReceipts is TRUE. Unlike Telegram, this channel delivers real
-//     Sent/Delivered/Read callbacks, so the CRM's status track is honest and
-//     must be rendered.
 func Descriptor() *channel.Descriptor {
 	return &channel.Descriptor{
 		Kind:      channel.KindUnofficialWhatsApp,
@@ -30,14 +15,8 @@ func Descriptor() *channel.Descriptor {
 			SupportsReactions:       true,
 			SupportsTypingIndicator: true,
 			SupportsReadReceipts:    true,
-			// WhatsApp renders *bold* / _italic_ / ~strike~ / ```mono```, not
-			// HTML. Reusing Telegram's HTML signature here would print literal
-			// tags into a customer's chat.
-			SupportsRichText: true,
+			SupportsRichText:        true,
 
-			// Runes, not bytes: the provider documents no text limit, so this is
-			// our own cap and it is measured the way WhatsApp's own client
-			// counts.
 			MaxTextRunes:   MaxTextRunes,
 			OutboundWindow: 0,
 			ExtendedWindow: 0,
@@ -53,11 +32,6 @@ func Descriptor() *channel.Descriptor {
 					MaxBytes:  MaxVideoBytes,
 					MIMETypes: []string{"video/mp4", "video/3gpp"},
 				},
-				// What an operator may HAND us, not what WhatsApp accepts raw:
-				// the send path re-encodes every audio to ogg/opus, so the list
-				// covers what the CRM recorder and a file picker produce. It
-				// previously mirrored WhatsApp's published list, which rejected
-				// audio/wav — the one format the recorder always emits.
 				channel.MediaAudio: {
 					MaxBytes: MaxAudioBytes,
 					MIMETypes: []string{
@@ -66,14 +40,9 @@ func Descriptor() *channel.Descriptor {
 						"audio/webm", "audio/m4a", "audio/x-m4a", "audio/3gpp",
 					},
 				},
-				// A nil MIME list means any type, which is correct here: the
-				// document send path accepts anything WhatsApp accepts.
 				channel.MediaDocument: {MaxBytes: MaxDocumentBytes},
 			},
 
-			// WhatsApp's own split, not ours: three buttons is a different
-			// message type from a ten-row list, and list rows are the only
-			// option slot in the system that carries a description line.
 			Interactive: channel.InteractiveLimits{
 				MaxOptionsButtons:          MaxButtonOptions,
 				MaxOptionsList:             MaxListOptions,

@@ -11,20 +11,6 @@ import (
 	dept_domain "vozko/domain/workspace/workspace_department"
 )
 
-// builderResourceResolver resolves human resource names to workspace-scoped ids
-// for the AI Workflow Builder. It depends on narrow per-kind interfaces (which
-// the concrete repositories satisfy) rather than the full repository contracts,
-// keeping the dependency surface small and the resolver trivially testable.
-//
-// SECURITY: every kind that carries a workspace id re-asserts it per row, so a
-// resolved match can never belong to another workspace even if an underlying
-// repository over-returns. Kinds that cannot be cleanly workspace-scoped with
-// the available repositories (templates, media, mcp collections, business
-// phones, knowledge bases) deliberately return no matches rather than risk
-// cross-tenant disclosure. One deliberate exception: members are workspace-scoped
-// attendants (re-asserted per row) needed so the AI can fill the assign
-// target member id, without them the copilot can't wire a "assign to attendant".
-
 type modelLister interface {
 	GetAvaibleModels(ctx context.Context) ([]string, error)
 }
@@ -41,9 +27,6 @@ type workflowLister interface {
 	FindByWorkspaceID(workspaceID string) ([]*workflow.Workflow, error)
 }
 type memberLister interface {
-	// ListMembers returns the workspace's assignable attendants as id/name
-	// matches, where id is the member's UserID (the value target_user_id wants).
-	// The adapter MUST scope to and re-assert workspaceID per row.
 	ListMembers(ctx context.Context, workspaceID, query string, limit int) ([]ResourceMatch, error)
 }
 
@@ -69,11 +52,6 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 		limit = 5
 	}
 	q := strings.ToLower(strings.TrimSpace(query))
-	// Treat wildcard-style queries as "list everything". The model frequently
-	// passes "*" (or "%") to mean "show me all"; with plain substring matching
-	// that would reduce to ZERO results (no name contains a literal "*"), which
-	// reads to the AI as "this workspace has no voices/departments/…". Empty →
-	// already lists all, so normalise the wildcards to empty here.
 	if q == "*" || q == "%" {
 		q = ""
 	}
@@ -183,9 +161,6 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 		return out, nil
 
 	case "members":
-		// Workspace attendants for transfer/assign nodes, id is the member's
-		// UserID (the value target_user_id expects). The adapter scopes to and
-		// re-asserts the workspace per row, so this leaks no foreign tenant.
 		if r.deps.Members == nil {
 			return nil, nil
 		}
@@ -206,7 +181,6 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 		return out, nil
 
 	default:
-		// Not cleanly workspace-scoped with the available repos → no matches.
 		return nil, nil
 	}
 }

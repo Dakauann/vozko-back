@@ -11,22 +11,14 @@ import (
 	"vozko/domain/tools"
 )
 
-// ToolNameSendOptions is channel-neutral on purpose. The name reaches the model
-// verbatim, and a tool called "send_whatsapp_button_message" offered inside a
-// Telegram conversation reads as belonging elsewhere. Saved bindings under the
-// old name still resolve through CanonicalToolName.
 const ToolNameSendOptions = "send_options"
 
 type sendWhatsappButtonMessageTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
-	// adapters routes the prompt on every channel that is not WhatsApp.
-	// Optional: unset keeps the tool WhatsApp-only, as it was.
-	adapters conversation.AdapterRegistry
+	adapters              conversation.AdapterRegistry
 }
 
-// SetAdapters wires the channel registry so the tool can present options
-// anywhere the channel supports them.
 func (uc *sendWhatsappButtonMessageTool) SetAdapters(r conversation.AdapterRegistry) {
 	uc.adapters = r
 }
@@ -191,8 +183,6 @@ func (uc *sendWhatsappButtonMessageTool) Execute(ctx context.Context, data map[s
 }
 
 func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, config map[string]interface{}, data map[string]interface{}) (tools.ExecutionResult, error) {
-	// Non-WhatsApp channels are addressed by conversation and resolved before a
-	// phone number is looked for, there is none to find.
 	adapter, ec, viaAdapter := resolveToolAdapter(ctx, uc.adapters, config)
 
 	var whatsappClient conversation.WhatsAppClient
@@ -295,10 +285,6 @@ func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, c
 	if viaAdapter {
 		options := make([]conversation.InteractiveOption, 0, len(buttons))
 		for _, b := range buttons {
-			// Only reply buttons cross channels. copy_code is a WhatsApp
-			// affordance with no equivalent elsewhere, and silently turning one
-			// into a plain button would hand the contact something that looks
-			// tappable and copies nothing.
 			if b.Type != "" && b.Type != "reply" {
 				continue
 			}

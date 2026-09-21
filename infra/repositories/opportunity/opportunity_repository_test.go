@@ -15,7 +15,6 @@ import (
 	"vozko/domain/opportunity"
 )
 
-// oppColumns is the full opportunities row projection the repository reads.
 var oppColumns = []string{
 	"id", "workspace_id", "lead_id", "pipeline_id", "stage_id", "owner_id", "carteira_id",
 	"title", "value_cents", "currency", "status", "lost_reason_id", "source", "close_date",
@@ -28,9 +27,6 @@ func stageFilter(stageID string) crmfilter.Filter {
 	}}}}
 }
 
-// TestSearchByFilter_StageAndValueSort proves the filter-driven read aliases the
-// table "o", scopes to the workspace, compiles the stage predicate into the
-// WHERE, counts total matches, and sorts by value_cents when SortField=value.
 func TestSearchByFilter_StageAndValueSort(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -72,8 +68,6 @@ func TestSearchByFilter_StageAndValueSort(t *testing.T) {
 	}
 }
 
-// TestSearchByFilter_EmptyShortCircuits proves a zero count returns no rows
-// without issuing the page SELECT.
 func TestSearchByFilter_EmptyShortCircuits(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -97,8 +91,6 @@ func TestSearchByFilter_EmptyShortCircuits(t *testing.T) {
 	}
 }
 
-// TestSearchByFilter_WorkspaceRequired guards the money/tenant boundary: no
-// workspace id -> no query.
 func TestSearchByFilter_WorkspaceRequired(t *testing.T) {
 	db, _, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -109,8 +101,6 @@ func TestSearchByFilter_WorkspaceRequired(t *testing.T) {
 	}
 }
 
-// TestSumValueByFilter proves the monetary aggregate sums value_cents over all
-// matches (COALESCE to 0), scoped to the workspace and the compiled filter.
 func TestSumValueByFilter(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -159,8 +149,6 @@ func sampleCustomFields() map[string]any {
 	}
 }
 
-// TestCustomFieldsMarshalRoundTrip proves the custom_fields map survives the
-// jsonb marshal/unmarshal used by the repository, in both directions.
 func TestCustomFieldsMarshalRoundTrip(t *testing.T) {
 	want := sampleCustomFields()
 
@@ -176,7 +164,6 @@ func TestCustomFieldsMarshalRoundTrip(t *testing.T) {
 		t.Fatalf("custom_fields round-trip mismatch:\n got = %#v\nwant = %#v", got, want)
 	}
 
-	// Empty map marshals to a nil (SQL NULL) column, not "{}".
 	if raw, _ := marshalCustomFields(nil); raw != nil {
 		t.Fatalf("empty custom_fields should marshal to nil, got %#v", raw)
 	}
@@ -185,8 +172,6 @@ func TestCustomFieldsMarshalRoundTrip(t *testing.T) {
 	}
 }
 
-// TestGetByID_CustomFieldsAndStatus exercises the read path end-to-end: a jsonb
-// custom_fields column and a won status round-trip into the domain entity.
 func TestGetByID_CustomFieldsAndStatus(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -232,7 +217,6 @@ func TestGetByID_CustomFieldsAndStatus(t *testing.T) {
 	}
 }
 
-// TestGetByID_NotFound maps the GORM record-not-found to the package ErrNotFound.
 func TestGetByID_NotFound(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -246,8 +230,6 @@ func TestGetByID_NotFound(t *testing.T) {
 	}
 }
 
-// TestUpdate_StatusTransition proves a status transition (open -> won) issues an
-// UPDATE and reports success when a row is affected.
 func TestUpdate_StatusTransition(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -277,7 +259,6 @@ func TestUpdate_StatusTransition(t *testing.T) {
 	}
 }
 
-// TestUpdate_NotFound returns ErrNotFound when no row matches.
 func TestUpdate_NotFound(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()

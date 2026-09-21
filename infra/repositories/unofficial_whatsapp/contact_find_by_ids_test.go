@@ -7,15 +7,6 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
-// The ids FindByIDs receives are whatever rode the inbox's lead slot, and that
-// is not one kind of id: a contact that has resolved to a CRM lead is addressed
-// by its LEAD id, while a group or a contact whose first message has not linked
-// yet is addressed by its own.
-//
-// Matching only on `id` is what made the two impossible to have at once. Point
-// the lead slot at the real lead so a rename can reach it, and every linked row
-// loses its avatar, its handle and its group flag, because this query stops
-// finding the contact behind it.
 func TestFindByIDs_MatchesTheLeadIDAsWellAsTheContactID(t *testing.T) {
 	db, mock, sqlDB := newLookupDB(t)
 	defer sqlDB.Close()
@@ -39,8 +30,6 @@ func TestFindByIDs_MatchesTheLeadIDAsWellAsTheContactID(t *testing.T) {
 	}
 }
 
-// Still one query. The whole point of this method is that hydrating a page of
-// the inbox costs a single round trip, not one per conversation.
 func TestFindByIDs_EmptyInputAsksNothing(t *testing.T) {
 	db, mock, sqlDB := newLookupDB(t)
 	defer sqlDB.Close()

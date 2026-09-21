@@ -13,10 +13,6 @@ import (
 	ia "vozko/domain/inbox_assignment"
 )
 
-// racyRepo is a round-robin pointer with a real mutex and no atomicity between
-// read and write — exactly what the database offers. It also lets a test wedge
-// the interleaving open: `pause` blocks inside the read so a second caller can
-// overtake the first.
 type racyRepo struct {
 	*statefulRepo
 
@@ -24,8 +20,6 @@ type racyRepo struct {
 	reads  int
 	writes int
 
-	// beforeSwap runs between the read and the swap, so a test can make the
-	// interleaving deterministic instead of hoping the scheduler produces it.
 	beforeSwap func(read int)
 	swapErr    error
 }
@@ -84,12 +78,6 @@ func (r *racyRepo) FindByEntry(wsID, entryID, entryType string) (*ia.InboxAssign
 	return r.assignments[assignmentKey(wsID, entryID, entryType)], nil
 }
 
-// The defect this replaces: two inbound messages arriving together both read
-// the same pointer and both drew the same agent, skipping somebody entirely.
-//
-// The interleaving is forced rather than raced, so the test cannot pass by
-// luck: the first caller is held between its read and its swap until the second
-// caller has read the same pointer.
 func TestRoundRobin_ConcurrentAssignmentsDoNotDrawTheSameAgent(t *testing.T) {
 	repo := newRacyRepo()
 
@@ -99,7 +87,6 @@ func TestRoundRobin_ConcurrentAssignmentsDoNotDrawTheSameAgent(t *testing.T) {
 
 	repo.beforeSwap = func(read int) {
 		if read == 1 {
-			// Hold the first caller open until the second has read the pointer.
 			close(firstHasRead)
 			<-secondHasRead
 			return
@@ -113,7 +100,6 @@ func TestRoundRobin_ConcurrentAssignmentsDoNotDrawTheSameAgent(t *testing.T) {
 		&stubRoster{members: []string{"ana", "bob"}},
 		&stubLastSeen{seen: map[string]time.Time{"ana": hoursAgo(1), "bob": hoursAgo(2)}},
 		lastSeenConfig(48), "")
-	// Swap in the racy repo behind the same service.
 	svc.repo = repo
 
 	var wg sync.WaitGroup
@@ -121,8 +107,6 @@ func TestRoundRobin_ConcurrentAssignmentsDoNotDrawTheSameAgent(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		// Start only once the first caller is parked between its read and its
-		// swap, so the interleaving is forced rather than hoped for.
 		<-firstHasRead
 		owners[1] = svc.EnsureAssignment("entry-2", "whatsapp", "phone-1")
 	}()
@@ -139,8 +123,6 @@ func TestRoundRobin_ConcurrentAssignmentsDoNotDrawTheSameAgent(t *testing.T) {
 	assert.Greater(t, repo.reads, 2, "the loser must have re-read the pointer that won")
 }
 
-// A failed pointer WRITE has always been non-fatal: the rotation loses a step,
-// the conversation still gets an owner. Only a failed READ aborts.
 func TestRoundRobin_SwapErrorStillAssigns(t *testing.T) {
 	repo := newRacyRepo()
 	repo.swapErr = errors.New("pointer write failed")
@@ -154,12 +136,8 @@ func TestRoundRobin_SwapErrorStillAssigns(t *testing.T) {
 	assert.Equal(t, "ana", svc.EnsureAssignment("entry-1", "whatsapp", "phone-1"))
 }
 
-// Contention that never resolves must still produce an owner. An unfair
-// assignment beats a conversation nobody owns.
 func TestRoundRobin_UnresolvedContentionStillAssigns(t *testing.T) {
 	repo := newRacyRepo()
-	// Every swap loses: an interloper moves the pointer to a NEW value between
-	// each read and its swap, so no attempt can ever match what it read.
 	repo.beforeSwap = func(read int) {
 		repo.mu.Lock()
 		repo.rrStates[rrKey("ws-1", "phone-1", "")] = &ia.RoundRobinState{

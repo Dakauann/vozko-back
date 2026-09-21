@@ -11,15 +11,12 @@ import (
 	"vozko/infra/meta"
 )
 
-// maxCommentsPerPage is Graph's documented ceiling: "Returns a maximum of 50
-// comments per query".
 const maxCommentsPerPage = 50
 
 type commentService struct {
 	client *meta.Client
 }
 
-// NewCommentService builds the comment moderation client.
 func NewCommentService(cfg GraphConfig) (igdomain.CommentService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
@@ -33,12 +30,6 @@ func NewCommentService(cfg GraphConfig) (igdomain.CommentService, error) {
 	return &commentService{client: client}, nil
 }
 
-// rawComment mirrors the IG Comment node.
-//
-// `From` is the public commenter and is what the CRM keys on. `User` is
-// populated ONLY when our own app user authored the comment, which is how we
-// know whether deletion is even possible: DELETE requires the comment creator's
-// token, so we can delete our replies but must hide anyone else's.
 type rawComment struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
@@ -95,11 +86,6 @@ type commentListResponse struct {
 	Paging paging        `json:"paging"`
 }
 
-// ListComments returns top-level comments with their replies expanded.
-//
-// The edge returns only top-level comments unless `replies` is field-expanded,
-// is reverse-chronological, and cannot be filtered by timestamp, which is why
-// incremental sync comes from webhooks rather than polling.
 func (s *commentService) ListComments(ctx context.Context, token, igMediaID string, limit int, after string) (*igdomain.Page[*igdomain.RemoteComment], error) {
 	if limit <= 0 || limit > maxCommentsPerPage {
 		limit = maxCommentsPerPage
@@ -205,8 +191,6 @@ func (s *commentService) CreateComment(ctx context.Context, token, igMediaID, me
 	return out.ID, nil
 }
 
-// SetHidden hides or unhides a comment. This is the moderation action for
-// someone else's comment and requires the media owner's token.
 func (s *commentService) SetHidden(ctx context.Context, token, igCommentID string, hidden bool) error {
 	form := url.Values{}
 	form.Set("hide", fmt.Sprint(hidden))
@@ -219,9 +203,6 @@ func (s *commentService) SetHidden(ctx context.Context, token, igCommentID strin
 	}, nil)
 }
 
-// Delete removes a comment. Graph requires a token from the COMMENT CREATOR, so
-// in practice this succeeds only for replies we authored; the usecase checks
-// IsOurs before calling.
 func (s *commentService) Delete(ctx context.Context, token, igCommentID string) error {
 	return s.client.Do(ctx, meta.Request{
 		Method: http.MethodDelete,

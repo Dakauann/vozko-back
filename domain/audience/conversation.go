@@ -8,27 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The conversation taxonomy: what the engine records about a whole
-// conversation, as opposed to a single comment.
-//
-// This is the classification vocabulary the legacy conversation-analysis
-// engine owned (domain/analysis). It moved here rather than being copied,
-// because the two engines are becoming one and a second copy of a taxonomy is
-// how the previous one drifted: the quality weights were once written as
-// 35/25/25/15 in one prompt and 40/30/20/10 in another, for the same score.
-// domain/analysis now aliases these names so its callers keep compiling until
-// that package is deleted.
-//
-// A comment and a conversation are different subjects and get different
-// labels. A comment has a stance and a toxicity; it has no agent to rate and
-// no objective to reach. A conversation has both and has no stance, because
-// there is no third party for the author to be positioned against. What the
-// two share (sentiment, the ordinal-then-compute discipline, the rubric
-// renderers) is already shared in domain/shared.
-
-// ---- Interest ----
-
-// Interest is how much the customer wants the conversation's objective.
 type Interest string
 
 const (
@@ -49,9 +28,6 @@ func InterestValues() []string {
 	return []string{string(InterestInterested), string(InterestNotInterested), string(InterestUndecided)}
 }
 
-// ---- Disposition ----
-
-// Disposition is where the interaction currently stands against the objective.
 type Disposition string
 
 const (
@@ -78,9 +54,6 @@ func DispositionValues() []string {
 	}
 }
 
-// ---- Qualification ----
-
-// Qualification is how likely the customer is to reach the objective.
 type Qualification string
 
 const (
@@ -101,9 +74,6 @@ func QualificationValues() []string {
 	return []string{string(QualificationHotLead), string(QualificationWarmLead), string(QualificationColdLead)}
 }
 
-// ---- Next action ----
-
-// NextAction is the recommended move to advance toward the objective.
 type NextAction string
 
 const (
@@ -130,16 +100,6 @@ func NextActionValues() []string {
 	}
 }
 
-// ---- Classification fields ----
-//
-// Descriptions are OBJECTIVE-RELATIVE: they say "the conversation's objective"
-// rather than hardcoding sales semantics, so one rubric serves any niche
-// (sales, scheduling, support, collections). The objective itself reaches the
-// model through the agent instructions and the campaign context in the prompt.
-
-// ConversationClassificationFields is the taxonomy the model classifies a whole
-// conversation on. Named apart from ClassificationFields, which is the comment
-// taxonomy in the same package; the two are different subjects.
 func ConversationClassificationFields() []shared.ClassificationField {
 	return []shared.ClassificationField{
 		{
@@ -199,22 +159,10 @@ func ConversationClassificationFields() []shared.ClassificationField {
 	}
 }
 
-// ConversationRubricPrompt renders the conversation classification criteria,
-// the same content the response schema exposes per field.
 func ConversationRubricPrompt() string {
 	return shared.RenderClassificationRubric(ConversationClassificationFields())
 }
 
-// ---- Attendance quality ----
-//
-// The 0-100 score is NOT emitted by the model; see shared.WeightedScore for
-// why. The model rates the four dimensions below on a coarse ordinal scale and
-// the number is computed deterministically from these weights. This is the
-// same discipline the comment severity score uses, with a different set of
-// dimensions.
-
-// Quality dimension keys, referenced by the response schema, the parser and the
-// assessment.
 const (
 	QualityKeyGoalProgress       = "goal_progress"
 	QualityKeyCustomerEngagement = "customer_engagement"
@@ -222,8 +170,6 @@ const (
 	QualityKeyProfessionalism    = "professionalism"
 )
 
-// ConversationQualityDimensions are the weighted dimensions behind the
-// attendance-quality score.
 func ConversationQualityDimensions() []shared.QualityDimension {
 	return []shared.QualityDimension{
 		{
@@ -249,7 +195,6 @@ func ConversationQualityDimensions() []shared.QualityDimension {
 	}
 }
 
-// ConversationQuality holds the model's per-dimension ordinal ratings.
 type ConversationQuality struct {
 	GoalProgress       shared.QualityLevel
 	CustomerEngagement shared.QualityLevel
@@ -257,8 +202,6 @@ type ConversationQuality struct {
 	Professionalism    shared.QualityLevel
 }
 
-// NewConversationQuality builds an assessment from a map keyed by the dimension
-// keys, so callers never hardcode the field mapping.
 func NewConversationQuality(levels map[string]shared.QualityLevel) ConversationQuality {
 	return ConversationQuality{
 		GoalProgress:       levels[QualityKeyGoalProgress],
@@ -282,9 +225,6 @@ func (a ConversationQuality) levelFor(key string) shared.QualityLevel {
 	return shared.QualityLevelNone
 }
 
-// Valid reports whether every dimension carries a level the rubric knows. A
-// conversation the model rated partially is a failed classification, not a
-// score computed from zero values.
 func (a ConversationQuality) Valid() bool {
 	for _, d := range ConversationQualityDimensions() {
 		if !a.levelFor(d.Key).Valid() {
@@ -294,15 +234,10 @@ func (a ConversationQuality) Valid() bool {
 	return true
 }
 
-// Score computes the 0-100 attendance quality from the ordinal ratings and the
-// dimension weights. Always within [0,100].
 func (a ConversationQuality) Score() int {
 	return shared.WeightedScore(ConversationQualityDimensions(), a.levelFor)
 }
 
-// ConversationQualityRubricPrompt renders the attendance-quality scoring
-// instructions, so every prompt scores on the same weighted dimensions instead
-// of divergent inline copies.
 func ConversationQualityRubricPrompt() string {
 	var b strings.Builder
 	b.WriteString("QUALIDADE DO ATENDIMENTO, avalie cada dimensão abaixo com um nível ordinal. A nota final de 0 a 100 é CALCULADA AUTOMATICAMENTE a partir desses níveis e dos pesos, NÃO informe um número diretamente.\n\n")
@@ -312,14 +247,6 @@ func ConversationQualityRubricPrompt() string {
 	b.WriteString("- A avaliação é do ATENDENTE, não do cliente: um cliente difícil bem conduzido pode ter agent_conduct \"high\".\n")
 	b.WriteString("- Conversa curta e monossilábica, sem perguntas do cliente → customer_engagement e goal_progress no máximo \"low\".\n")
 	b.WriteString("- Atendente que não faz perguntas estratégicas ou responde de forma genérica (copy-paste) → agent_conduct no máximo \"low\".\n")
-	// What "none" means, said out loud.
-	//
-	// Every conversation analysed before these four lines scored EXACTLY 0, and
-	// the weights only allow that when all four dimensions come back "none". The
-	// scale offered "none" as its floor and never said what it asserted, so on a
-	// thin conversation the model marked everything absent, including an agent
-	// that had replied clearly throughout. Zero for every poor conversation
-	// cannot tell a badly handled one from one that never happened.
 	b.WriteString("- \"none\" é uma AFIRMAÇÃO sobre a dimensão, não sobre o tamanho da conversa: use apenas quando a dimensão foi observada e está ausente. Conversa curta, sem objetivo declarado ou sem desfecho NÃO é motivo para \"none\".\n")
 	b.WriteString("- Se o atendente respondeu ao longo da conversa, agent_conduct é no mínimo \"low\"; \"none\" só quando ele não respondeu.\n")
 	b.WriteString("- Se as mensagens do atendente são compreensíveis e com tom adequado, professionalism é no mínimo \"low\"; \"none\" só diante de erro grave de comunicação, grosseria ou mensagem ininteligível.\n")
@@ -327,16 +254,6 @@ func ConversationQualityRubricPrompt() string {
 	return b.String()
 }
 
-// ---- The conversation wire format ----
-//
-// The same batch envelope as comments, a different set of properties. Building
-// it from the rubric above (rather than restating the enums here) is what makes
-// the schema, the prompt and the domain incapable of disagreeing about what a
-// valid label is.
-
-// ConversationBatchResponseSchema is the strict JSON schema for a batch of
-// conversations: every property required, nothing extra allowed, so an
-// out-of-set label is refused by the provider before it reaches Validate.
 func ConversationBatchResponseSchema() map[string]any {
 	props := map[string]any{
 		FieldRef: map[string]any{
@@ -375,8 +292,6 @@ func ConversationBatchResponseSchema() map[string]any {
 			"enum":        shared.QualityLevelValues(),
 		}
 	}
-	// Sorted so the schema, and with it the provider's prompt-cache key, is
-	// deterministic across calls.
 	required := make([]string, 0, len(props))
 	for key := range props {
 		required = append(required, key)
@@ -402,9 +317,6 @@ func ConversationBatchResponseSchema() map[string]any {
 	}
 }
 
-// BatchResponseSchemaFor picks the schema for the subject kind. The engine
-// calls this rather than either builder, so a container of conversations can
-// never be sent the comment taxonomy.
 func BatchResponseSchemaFor(kind SubjectKind, topics TopicSet) map[string]any {
 	if kind == SubjectKindConversation {
 		return ConversationBatchResponseSchema()
@@ -412,8 +324,6 @@ func BatchResponseSchemaFor(kind SubjectKind, topics TopicSet) map[string]any {
 	return BatchResponseSchema(topics)
 }
 
-// ConversationClassification converts the raw answer to the typed value. Not
-// validated; call ValidateConversation.
 func (r BatchResult) ConversationClassification() Classification {
 	return Classification{
 		Sentiment:       shared.Sentiment(strings.TrimSpace(r.Sentiment)),
@@ -433,8 +343,6 @@ func (r BatchResult) ConversationClassification() Classification {
 	}
 }
 
-// ClassificationFor decodes according to the subject kind, so one batch
-// decoder serves both taxonomies.
 func (r BatchResult) ClassificationFor(kind SubjectKind) Classification {
 	if kind == SubjectKindConversation {
 		return r.ConversationClassification()
@@ -442,8 +350,6 @@ func (r BatchResult) ClassificationFor(kind SubjectKind) Classification {
 	return r.Classification()
 }
 
-// ConversationSubjectPrompt is the instruction block for a batch of
-// conversations, the counterpart of RubricPrompt.
 func ConversationSubjectPrompt() string {
 	var b strings.Builder
 	b.WriteString("Você recebe CONVERSAS entre uma empresa e seus clientes, numeradas. ")
@@ -452,11 +358,6 @@ func ConversationSubjectPrompt() string {
 	b.WriteString("\".\n\n")
 	b.WriteString(ConversationRubricPrompt())
 	b.WriteString("\n")
-	// Asked for as a LABEL rather than a description, because these are counted
-	// across a workspace: "clareamento dental" repeats and can be ranked, while
-	// "o cliente quer saber sobre clareamento" is unique to one conversation
-	// and would be a bar of one. The cap is re-applied on the way in either
-	// way; this is what makes the model's own answer usable.
 	fmt.Fprintf(&b, "%s: produto, serviço ou assunto concreto em que o cliente demonstrou interesse, em no máximo %d palavras. Um rótulo curto, não uma frase, e sempre o mesmo rótulo para o mesmo assunto. Vazio se nenhum ficou claro.\n\n", FieldProductInterest, MaxSubjectWords)
 	fmt.Fprintf(&b, "%s: 2 a 4 frases sobre o que aconteceu e onde a conversa parou. Descreva o que foi dito; não invente fatos, valores, prazos ou combinados que não aparecem na conversa.\n\n", FieldSummary)
 	fmt.Fprintf(&b, "%s: idioma em BCP-47 (pt, es, en…), melhor esforço.\n\n", FieldLanguage)

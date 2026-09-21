@@ -23,31 +23,19 @@ import (
 const (
 	defaultTimeout    = 30 * time.Second
 	defaultMaxRetries = 3
-	maxResponseBytes  = 16 << 20 // JSON responses
+	maxResponseBytes  = 16 << 20
 	maxMediaBytes     = 100 << 20
 )
 
-// Config configures a Graph client.
 type Config struct {
-	// Host is the API host WITHOUT scheme, e.g. "graph.instagram.com".
-	Host string
-	// APIVersion is pinned explicitly, e.g. "v25.0". Never call unversioned:
-	// each version has a published sunset date.
+	Host       string
 	APIVersion string
-	// AppSecret enables appsecret_proof, which Meta recommends for server-side
-	// calls so a leaked token cannot be replayed without the secret.
-	AppSecret string
-	// MaxRetries bounds transient-failure retries. Zero uses the default.
+	AppSecret  string
 	MaxRetries int
-	// Timeout per attempt. Zero uses the default.
-	Timeout time.Duration
-	// HTTPClient allows tests to inject a transport.
+	Timeout    time.Duration
 	HTTPClient *http.Client
 }
 
-// Usage is Meta's rate-limit telemetry, parsed from the response headers. Meta
-// does not document these headers for Instagram messaging, so all fields are
-// best-effort and may be absent.
 type Usage struct {
 	CallCount      int
 	TotalCPUTime   int
@@ -55,7 +43,6 @@ type Usage struct {
 	EstimatedBlock int
 }
 
-// Client is a Graph API client.
 type Client struct {
 	cfg     Config
 	http    *http.Client
@@ -65,7 +52,6 @@ type Client struct {
 	lastUsage Usage
 }
 
-// NewClient builds a Graph client. Host and APIVersion are required.
 func NewClient(cfg Config) (*Client, error) {
 	host := strings.TrimSpace(strings.TrimSuffix(cfg.Host, "/"))
 	if host == "" {
@@ -92,39 +78,23 @@ func NewClient(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// BaseURL returns the versioned base URL, for building edge paths.
 func (c *Client) BaseURL() string { return c.baseURL }
 
-// LastUsage returns the most recently observed rate-limit telemetry.
 func (c *Client) LastUsage() Usage {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.lastUsage
 }
 
-// Request describes one Graph call.
 type Request struct {
 	Method string
-	// Path is the edge path relative to the versioned base, e.g. "/me/messages"
-	// or "/17841.../media".
-	Path string
-	// Token is the access token. Sent as a bearer header rather than a query
-	// param so it does not leak into logs or proxy access records.
-	Token string
-	// Query holds additional query parameters.
-	Query url.Values
-	// Body is marshalled as JSON when non-nil.
-	Body any
-	// Form, when set, is sent as application/x-www-form-urlencoded instead of
-	// JSON. Some Graph edges only accept form encoding.
-	Form url.Values
+	Path   string
+	Token  string
+	Query  url.Values
+	Body   any
+	Form   url.Values
 }
 
-// Do performs a Graph call and decodes a successful JSON body into out.
-//
-// Transient failures are retried with exponential backoff plus jitter, bounded
-// by MaxRetries and by the context deadline. Non-retryable errors return
-// immediately as a *Error so callers can branch on code/subcode.
 func (c *Client) Do(ctx context.Context, req Request, out any) error {
 	var lastErr error
 
@@ -144,7 +114,6 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 		}
 		lastErr = err
 
-		// Never retry a context failure or a non-retryable API error.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -168,8 +137,6 @@ func (c *Client) attempt(ctx context.Context, req Request, out any) error {
 			query.Add(k, v)
 		}
 	}
-	// appsecret_proof binds the call to our app secret so a stolen token alone
-	// is not enough to use the API.
 	if c.cfg.AppSecret != "" && req.Token != "" {
 		query.Set("appsecret_proof", AppSecretProof(req.Token, c.cfg.AppSecret))
 	}
@@ -227,13 +194,10 @@ func (c *Client) attempt(ctx context.Context, req Request, out any) error {
 		time.Since(started).Round(time.Millisecond), len(raw))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Meta's error body carries code/subcode/fbtrace_id, which is the only way
-		// to tell a closed messaging window from a dead token from a rate limit.
 		log.Printf("[meta] %s %s failed, body: %s", req.Method, req.Path, truncate(raw, 1024))
 		return decodeError(resp.StatusCode, raw)
 	}
 
-	// Meta sometimes returns an error envelope with a 200 status.
 	if looksLikeError(raw) {
 		if apiErr := decodeError(resp.StatusCode, raw); apiErr != nil {
 			return apiErr
@@ -249,9 +213,6 @@ func (c *Client) attempt(ctx context.Context, req Request, out any) error {
 	return nil
 }
 
-// FetchBytes retrieves a raw asset (a CDN media URL). It deliberately bypasses
-// the Graph base URL and token: media URLs are already signed, and they expire,
-// which is why they are proxied on demand instead of stored.
 func (c *Client) FetchBytes(ctx context.Context, rawURL string) ([]byte, string, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -306,8 +267,6 @@ func (c *Client) recordUsage(h http.Header) {
 	c.mu.Unlock()
 }
 
-// AppSecretProof computes the HMAC-SHA256 of the access token keyed with the app
-// secret, hex encoded.
 func AppSecretProof(token, appSecret string) string {
 	mac := hmac.New(sha256.New, []byte(appSecret))
 	mac.Write([]byte(token))
@@ -333,8 +292,6 @@ func looksLikeError(raw []byte) bool {
 		bytes.Contains(trimmed[:min(len(trimmed), 64)], []byte(`"error"`))
 }
 
-// backoff returns an exponentially increasing delay with full jitter, so a fleet
-// of consumers hitting the same rate limit does not retry in lockstep.
 func backoff(attempt int) time.Duration {
 	base := time.Duration(math.Pow(2, float64(attempt))) * 250 * time.Millisecond
 	if base > 8*time.Second {

@@ -15,13 +15,6 @@ import (
 	"vozko/usecases/agentturn"
 )
 
-// Before the assembler was adopted, this service sent the agent's raw prompt and
-// nothing else: no tools, no knowledge base, no channel identity, while the
-// WhatsApp pipeline had all three. An agent configured with a knowledge base in
-// the UI silently ignored it on Instagram and Telegram.
-//
-// These pin what the model actually receives.
-
 type assemblerTestRAG struct{ results []rag.QueryResult }
 
 func (f assemblerTestRAG) Query(context.Context, rag.QueryInput) (*rag.QueryOutput, error) {
@@ -93,9 +86,6 @@ func TestTelegramTurnCarriesToolsSeededWithTheConversation(t *testing.T) {
 		t.Fatalf("tools = %+v, want the agent's tool", in.Tools)
 	}
 
-	// The seeds are what tell a conversation-scoped tool WHICH conversation it
-	// is acting on. Missing them, finish_conversation either fails or resolves
-	// nothing and reports success.
 	cfg := in.ToolConfigs["finish_conversation"]
 	if cfg["__entry_id"] != "conv-1" {
 		t.Errorf("__entry_id = %v, want the entry being answered", cfg["__entry_id"])
@@ -108,9 +98,6 @@ func TestTelegramTurnCarriesToolsSeededWithTheConversation(t *testing.T) {
 	}
 }
 
-// Tool EXECUTION belongs to the ai.Service. If the mode is not set, a tool the
-// model calls is returned to us unexecuted and the customer gets a reply that
-// describes an action nobody performed.
 func TestTelegramTurnLetsTheAIServiceExecuteTools(t *testing.T) {
 	s := newAssembledService(t)
 	req := telegramReplyRequest()
@@ -136,8 +123,6 @@ func TestTelegramTurnIsGroundedInTheKnowledgeBase(t *testing.T) {
 	}
 }
 
-// The preamble must say "messaging", not "whatsapp": told it is on WhatsApp, an
-// agent in a Telegram chat offers to "send that to your WhatsApp".
 func TestTelegramTurnDeclaresTheMessagingChannel(t *testing.T) {
 	s := newAssembledService(t)
 	req := telegramReplyRequest()
@@ -152,8 +137,6 @@ func TestTelegramTurnDeclaresTheMessagingChannel(t *testing.T) {
 	}
 }
 
-// History already ends with the message being answered. Passing it again as
-// UserMessage would duplicate the customer's last line.
 func TestTelegramTurnDoesNotDuplicateTheLastMessage(t *testing.T) {
 	s := newAssembledService(t)
 	req := telegramReplyRequest()
@@ -173,9 +156,8 @@ func TestTelegramTurnDoesNotDuplicateTheLastMessage(t *testing.T) {
 	}
 }
 
-// An unwired container must still answer, exactly as it did before adoption.
 func TestWithoutAnAssemblerTheServiceFallsBackToAPlainPrompt(t *testing.T) {
-	s := &ChannelAIReplyService{} // no assembler
+	s := &ChannelAIReplyService{}
 	req := telegramReplyRequest()
 
 	in := s.generateInput(context.Background(), req, agentWithTools(), nil, req.Text)
@@ -191,8 +173,6 @@ func TestWithoutAnAssemblerTheServiceFallsBackToAPlainPrompt(t *testing.T) {
 	}
 }
 
-// Instagram takes the identical path, the point of the shared recipe is that
-// no channel gets a different answer.
 func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 	s := newAssembledService(t)
 	req := telegramReplyRequest()
@@ -210,13 +190,6 @@ func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 		t.Error("Instagram must be grounded too")
 	}
 }
-
-// --- lead memory parity ---
-//
-// The memory block must reach EVERY channel through the same recipe. WhatsApp
-// has its own turn assembly; this pins the channel-agnostic path (Telegram,
-// Instagram, unofficial WhatsApp) so a lead-linked conversation carries the
-// block and the tool seeds, and an unlinked one degrades to no block.
 
 type assemblerTestMemories struct{ items []leadmemory.MemoryView }
 
@@ -259,7 +232,6 @@ func TestChannelTurnWithLeadCarriesMemoryBlockAndSeeds(t *testing.T) {
 	if cfg["__lead_id"] != "lead-1" {
 		t.Errorf("__lead_id = %v, want the bridged lead", cfg["__lead_id"])
 	}
-	// Attribution seed: a memory the agent writes must say WHICH agent.
 	if cfg["__agent_id"] != "agent-1" {
 		t.Errorf("__agent_id = %v", cfg["__agent_id"])
 	}
@@ -267,7 +239,7 @@ func TestChannelTurnWithLeadCarriesMemoryBlockAndSeeds(t *testing.T) {
 
 func TestChannelTurnWithoutLeadHasNoMemoryBlock(t *testing.T) {
 	s := newAssembledServiceWithMemories(t)
-	req := telegramReplyRequest() // LeadID nil: not bridged yet
+	req := telegramReplyRequest()
 
 	in := s.generateInput(context.Background(), req, agentWithTools(),
 		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)

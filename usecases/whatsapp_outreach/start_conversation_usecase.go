@@ -24,49 +24,18 @@ import (
 	"vozko/domain/workspace_template_access"
 )
 
-// SpamPolicyReader is the workspace's own cooldown setting.
-//
-// Narrow port rather than the whole workspace-config repository: this use case
-// needs one integer, and depending on the entire config surface would make it
-// impossible to test without one.
 type SpamPolicyReader interface {
 	SpamProtectionDays(ctx context.Context, workspaceID string) (int, error)
 }
 
-// WindowReader answers whether a free reply is already possible.
-//
-// One method rather than the whole message-window repository: this use case asks
-// a single question, and depending on the rest of that surface would make it
-// impossible to substitute — and would invite some later edit to RECORD a window
-// here, which must never happen (Meta opens the window on the customer's reply,
-// not on ours).
 type WindowReader interface {
 	IsWindowOpen(leadID, businessPhoneID string) (bool, error)
 }
 
-// RateLimiter bounds how fast one workspace may start paid conversations.
-//
-// It was introduced to tell an operator from a script: cold outbound at operator
-// pace is a handful an hour, a script driving the same endpoint is thousands, and
-// the permission system cannot separate them because both are the same operator
-// with the same rights.
-//
-// That reasoning no longer holds on its own. A LEGITIMATE script is now a client
-// of this endpoint — a system asking for a verification code to be delivered —
-// and it is supposed to run at a pace no human matches. Pace has stopped being
-// evidence of abuse, so the ceiling is opt-in: set Deps.HourlySendCap to turn it
-// on, and leave it unset for no request ceiling at all.
-//
-// What still bounds a runaway is the money: every send is priced and debited
-// before it leaves, and a workspace with no balance sends nothing. That is the
-// real guard, and unlike a request count it cannot be wrong about what an hour
-// of legitimate traffic looks like.
 type RateLimiter interface {
 	Allow(ctx context.Context, workspaceID string, limit int, window time.Duration) (bool, error)
 }
 
-// Deps is everything reaching a stranger touches. Long, because the guard list
-// is the feature: each entry is one way this send could be wrong.
 type Deps struct {
 	Phones        businessphone.Repository
 	PhoneGrants   workspace_phone_access.Repository
@@ -83,10 +52,6 @@ type Deps struct {
 	History       conversation.MessageHistoryManager
 	Sender        template.BilledTemplateSendUseCase
 	Limiter       RateLimiter
-	// HourlySendCap is how many paid conversations one workspace may start in an
-	// hour. ZERO OR LESS DISABLES IT, which is the default: see RateLimiter for
-	// why a request count is the wrong ceiling here and the balance is the right
-	// one.
 	HourlySendCap int
 	Now           func() time.Time
 }
@@ -95,12 +60,6 @@ type startConversationUseCase struct {
 	deps Deps
 }
 
-// NewStartConversationUseCase refuses to build an orchestrator that cannot
-// enforce its own guards.
-//
-// The sender is checked hardest: without it there is nothing to send with, and a
-// nil-tolerant version of this constructor would produce a use case that creates
-// conversations nobody ever receives a message in.
 func NewStartConversationUseCase(deps Deps) (wo.StartOfficialConversationUseCase, error) {
 	var missing []string
 	if deps.Phones == nil {
@@ -127,26 +86,9 @@ func NewStartConversationUseCase(deps Deps) (wo.StartOfficialConversationUseCase
 	if deps.Now == nil {
 		deps.Now = func() time.Time { return time.Now().UTC() }
 	}
-	// No default cap. An unset value means "no request ceiling", not "60", because
-	// a number chosen for operator pace silently becomes an outage the moment a
-	// legitimate system sends faster than a person clicks — and the failure it
-	// produces (429 on a verification code) looks nothing like a rate limit to the
-	// customer who cannot log in.
 	return &startConversationUseCase{deps: deps}, nil
 }
 
-// Execute reaches a number that never wrote to us.
-//
-// Read the order as a single claim: NOTHING below the money line can refuse the
-// send. Every check that can say no — permission, ownership, tenancy, blocked
-// contact, an already-open window, the workspace's own spam cooldown, pace — is
-// asked first, because a refusal after the debit is a charge followed by a
-// refund, and the operator experiences that as "it failed and took my money".
-//
-// On ErrWindowAlreadyOpen the result is still returned, populated with the entry
-// the operator should be taken to. That is deliberate: the answer to "you are
-// already talking to this person" is to open the conversation, not to show an
-// error and leave them where they were.
 func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConversationInput) (*wo.StartedConversation, error) {
 	if strings.TrimSpace(in.WorkspaceID) == "" {
 		return nil, template.ErrWorkspaceRequired
@@ -155,16 +97,10 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, template.ErrIdempotencyKeyRequired
 	}
 
-	// The server's own normalisation, before any lookup and long before any
-	// charge. A number that does not survive this can never match a lead or an
-	// entry, so accepting it would create a charge against a contact that cannot
-	// be found again.
 	number := lead.NormalizeNumber(in.PhoneNumber)
 	if number == "" {
 		return nil, wo.ErrInvalidPhone
 	}
-
-	// ---- who may send, from what, to whom ---------------------------------
 
 	phone, err := uc.deps.Phones.FindByID(in.BusinessPhoneID)
 	if err != nil || phone == nil {
@@ -175,8 +111,6 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, err
 	}
 	if !allowed {
-		// Not-found flavoured on purpose: a "forbidden" here would confirm that a
-		// given phone id exists in some other workspace.
 		return nil, wo.ErrBusinessPhoneNotFound
 	}
 	if !phone.IsVerified() {
@@ -193,14 +127,9 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 			return nil, accessErr
 		}
 		if !granted {
-			// The same rule the template LIST already applies. Enforcing it only on
-			// the list would mean anyone who learned an id could spend money on a
-			// template their workspace was never given.
 			return nil, wo.ErrTemplateForbidden
 		}
 	}
-
-	// ---- the container, and the department that owns it --------------------
 
 	campaign, _, err := uc.deps.EnsureOrganic.Execute(in.WorkspaceID, phone.ID, phone.DisplayPhoneNumber)
 	if err != nil || campaign == nil {
@@ -210,8 +139,6 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, wo.ErrDepartmentForbidden
 	}
 
-	// ---- the contact -------------------------------------------------------
-
 	leadRecord, _, err := uc.deps.Leads.FindOrCreate(in.WorkspaceID, number, lead.LeadUpdate{Name: strings.TrimSpace(in.Name)})
 	if err != nil {
 		return nil, err
@@ -220,35 +147,11 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, wo.ErrLeadBlocked
 	}
 
-	// Reuse the conversation this number already has on this number, exactly as
-	// the inbound webhook would. Skipping this is how you get two threads with
-	// the same human, one of which nobody is watching.
 	entry, entryExisted := uc.findExistingEntry(number, phone.ID)
 
-	// ---- the free alternative ---------------------------------------------
-	//
-	// An open window is NOT a reason Meta would refuse this send. A template may be
-	// delivered at any time; it is a FREE-FORM message that needs an open window.
-	// So this check has never been about what is possible, only about what is worth
-	// paying for: inside the 24h window the ordinary composer says the same thing
-	// for nothing, and charging for a template instead spends money on something
-	// already available.
-	//
-	// That argument holds for every category except one. An AUTHENTICATION template
-	// carries a one-time code, and there is no version of "reply from the composer
-	// instead" that delivers it: the code is generated by another system, it is
-	// valid for minutes, and nobody is watching the thread to paste it in. Refusing
-	// one because a window happens to be open does not avoid a charge, it stops a
-	// customer logging in.
-	//
-	// Decided from the TEMPLATE rather than from anything the caller sends, because
-	// it is a billing rule and a caller must not be able to choose which billing
-	// rules apply to it. The category is already loaded above and is exactly the
-	// fact that matters.
 	if uc.deps.Windows != nil && !tmpl.IsAuthentication() {
 		open, windowErr := uc.deps.Windows.IsWindowOpen(leadRecord.ID, phone.ID)
 		if windowErr != nil {
-			// Fail closed. An unreadable window is not permission to charge.
 			return nil, fmt.Errorf("whatsapp outreach: could not read the messaging window: %w", windowErr)
 		}
 		if open {
@@ -271,21 +174,16 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, err
 	}
 
-	// ---- the entry, then the money ----------------------------------------
-
 	if entry == nil {
 		entry = &wce.WhatsAppCampaignEntry{
 			ID:         uuid.New().String(),
 			CampaignID: campaign.ID,
 			LeadID:     leadRecord.ID,
-			// PENDING, not SENT: SENT is counted as a billed dispatch in the campaign
-			// rollups, and nothing has been dispatched yet.
-			Status:    wce.SendStatusPending,
-			Variables: in.BodyParams,
+			Status:     wce.SendStatusPending,
+			Variables:  in.BodyParams,
 		}
 		if createErr := uc.deps.Entries.Create(entry); createErr != nil {
 			if errors.Is(createErr, wce.ErrEntryDuplicate) {
-				// Lost a race against another operator opening the same conversation.
 				if existing, findErr := uc.deps.Entries.FindByCampaignAndLead(campaign.ID, leadRecord.ID); findErr == nil && existing != nil {
 					entry, entryExisted = existing, true
 				} else {
@@ -303,25 +201,16 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		IdempotencyKey:  in.IdempotencyKey,
 		BusinessPhoneID: phone.ID,
 		TemplateID:      tmpl.ID,
-		// The addressing form, which is not the same as the stored form: Meta wants
-		// the 9th digit that Brazilian mobile numbers may or may not carry.
-		ToNumber:     lead.NormalizeWhatsAppNumber(number),
-		BodyParams:   in.BodyParams,
-		HeaderParams: in.HeaderParams,
-		CampaignID:   campaign.ID,
-		EntryID:      entry.ID,
+		ToNumber:        lead.NormalizeWhatsAppNumber(number),
+		BodyParams:      in.BodyParams,
+		HeaderParams:    in.HeaderParams,
+		CampaignID:      campaign.ID,
+		EntryID:         entry.ID,
 	})
 	if sendErr != nil {
 		uc.markEntryFailed(entry.ID, sendResult, sendErr)
 		return nil, sendErr
 	}
-
-	// ---- everything after here is bookkeeping ------------------------------
-	//
-	// The template has been delivered and paid for. From this point NOTHING may
-	// return an error: a caller that believes the send failed retries it, and a
-	// retry of a delivered message is a second message and a second charge. Every
-	// failure below is logged and reported as a flag on a successful result.
 
 	result := &wo.StartedConversation{
 		EntryID:             entry.ID,
@@ -334,8 +223,6 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		ChargedMicros:       sendResult.ChargedMicros,
 	}
 	if sendResult.Replayed {
-		// Nothing was sent and nothing was spent, so nothing should be written
-		// either — the original send already did all of it.
 		result.Recorded = true
 		return result, nil
 	}
@@ -347,8 +234,6 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 	result.Recorded = uc.recordMessage(ctx, entry, tmpl, in, leadRecord, sendResult)
 
 	if uc.deps.CampaignSends != nil {
-		// The same record the campaign pipeline writes, so the next send — from
-		// either path — sees this one and honours the cooldown.
 		if err := uc.deps.CampaignSends.Record(leadRecord.ID, phone.ID, campaign.ID); err != nil {
 			log.Printf("[whatsapp-outreach] could not record the send against lead %s: %v", leadRecord.ID, err)
 		}
@@ -365,13 +250,6 @@ func (uc *startConversationUseCase) findExistingEntry(number, phoneID string) (*
 	return existing, true
 }
 
-// departmentAllows mirrors the rule the rest of the CRM applies: a restricted
-// operator sees their departments' work, and a container with NO department
-// belongs to everyone.
-//
-// The permissive default is deliberate and load-bearing here — organic
-// containers are created without a department, so a fail-closed reading would
-// refuse every departmentally-scoped operator on every number.
 func (uc *startConversationUseCase) departmentAllows(in wo.StartConversationInput, campaign *wc.Campaign) bool {
 	if in.IsAdmin || len(in.DepartmentIDs) == 0 {
 		return true
@@ -406,15 +284,11 @@ func (uc *startConversationUseCase) refuseIfSpam(ctx context.Context, workspaceI
 }
 
 func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspaceID string) error {
-	// No limiter, or no cap, means no request ceiling. The balance is what bounds
-	// a runaway, and it is authoritative in a way a count per hour is not.
 	if uc.deps.Limiter == nil || uc.deps.HourlySendCap <= 0 {
 		return nil
 	}
 	ok, err := uc.deps.Limiter.Allow(ctx, workspaceID, uc.deps.HourlySendCap, time.Hour)
 	if err != nil {
-		// A limiter we cannot reach must not become a reason to refuse legitimate
-		// work: the guard below it is the balance, which is authoritative.
 		log.Printf("[whatsapp-outreach] rate limiter unavailable for workspace %s: %v", workspaceID, err)
 		return nil
 	}
@@ -427,8 +301,6 @@ func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspa
 func (uc *startConversationUseCase) markEntryFailed(entryID string, result *template.BilledSendResult, sendErr error) {
 	code, message := 0, sendErr.Error()
 	if result != nil && result.Outcome == template.OutcomeUnknown {
-		// Not a failure we can assert. Leave the entry pending so the reconcile
-		// sweep, not this line, decides what happened.
 		return
 	}
 	if len(message) > 500 {
@@ -439,8 +311,6 @@ func (uc *startConversationUseCase) markEntryFailed(entryID string, result *temp
 	}
 }
 
-// storeTemplateInfo puts the rendered template on the entry, the source the CRM
-// panel reads.
 func (uc *startConversationUseCase) storeTemplateInfo(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string) {
 	meta := entry.Metadata
 	if meta == nil {
@@ -452,11 +322,6 @@ func (uc *startConversationUseCase) storeTemplateInfo(entry *wce.WhatsAppCampaig
 	}
 }
 
-// recordMessage writes the template into the thread.
-//
-// This is what makes the conversation exist for the operator: the inbox lists
-// entries whose last_message_at is set, and only writing a message sets it. An
-// entry without one is a conversation that was paid for and cannot be found.
 func (uc *startConversationUseCase) recordMessage(
 	ctx context.Context,
 	entry *wce.WhatsAppCampaignEntry,
@@ -483,13 +348,11 @@ func (uc *startConversationUseCase) recordMessage(
 		Channel:     conversation.MessageChannelWhatsApp,
 		MessageType: conversation.MessageTypeTemplate,
 		MessageID:   sendResult.MessageID,
-		// The operator, not the system. A paid message with no author is a charge
-		// nobody can be asked about.
-		From:      in.UserID,
-		To:        leadRecord.Number,
-		Text:      bodyText,
-		Timestamp: uc.deps.Now(),
-		Metadata:  json.RawMessage(metaBytes),
+		From:        in.UserID,
+		To:          leadRecord.Number,
+		Text:        bodyText,
+		Timestamp:   uc.deps.Now(),
+		Metadata:    json.RawMessage(metaBytes),
 	}
 	if err := uc.deps.History.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
 		log.Printf("[whatsapp-outreach] template delivered but not recorded on entry %s: %v", entry.ID, err)

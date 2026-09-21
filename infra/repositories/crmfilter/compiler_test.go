@@ -11,9 +11,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// Golden SQL fragments produced by ConversationDescriptor (alias "ae"). Keeping
-// them as named constants documents the exact shape the compiler must emit so it
-// can later replace the inline builders in message_repository.go.
 const (
 	stageInSQL    = "ae.entry_id IN (SELECT entry_id FROM entry_stages WHERE stage_id = ANY(?) AND deleted_at IS NULL)"
 	stageEmptySQL = "ae.entry_id NOT IN (SELECT entry_id FROM entry_stages WHERE deleted_at IS NULL)"
@@ -75,8 +72,6 @@ func TestCompile_GoldenSQL(t *testing.T) {
 			wantArgs: []interface{}{pq.Array([]string{"u1"})},
 		},
 		{
-			// "Sem responsável": the table's unassigned filter must compile to a
-			// NOT EXISTS over inbox_assignments with no value args.
 			name:     "owner is_empty (unassigned)",
 			filter:   crmfilter.Filter{Groups: []crmfilter.Group{group(crmfilter.Or, pred(crmfilter.FieldOwner, crmfilter.OpIsEmpty))}},
 			wantSQL:  "(" + ownerEmptySQL + ")",
@@ -113,8 +108,6 @@ func TestCompile_GoldenSQL(t *testing.T) {
 			wantArgs: nil,
 		},
 		{
-			// stage=s1 AND (channel=whatsapp OR channel=instagram):
-			// two top-level groups combined with AND, the second an OR group.
 			name: "AND of groups with an OR group",
 			filter: crmfilter.Filter{Groups: []crmfilter.Group{
 				group(crmfilter.And, pred(crmfilter.FieldStage, crmfilter.OpIn, "s1")),
@@ -141,7 +134,6 @@ func TestCompile_GoldenSQL(t *testing.T) {
 			if gotSQL != tt.wantSQL {
 				t.Errorf("SQL mismatch\n got: %s\nwant: %s", gotSQL, tt.wantSQL)
 			}
-			// Placeholder style: GORM "?" positional, never "$N".
 			if strings.Contains(gotSQL, "$1") || strings.Contains(gotSQL, "$2") {
 				t.Errorf("expected '?' placeholders, found '$N' style: %s", gotSQL)
 			}
@@ -157,8 +149,6 @@ func TestCompile_GoldenSQL(t *testing.T) {
 }
 
 func TestCompile_WorkspaceScopedMembership(t *testing.T) {
-	// With WorkspaceID set, entry_stages / entry_labels membership subqueries
-	// carry the tenant boundary; the workspace id binds AFTER the id-set array.
 	desc := NewConversationDescriptor()
 	desc.WorkspaceID = "ws-1"
 
@@ -205,7 +195,6 @@ func TestCompile_WorkspaceScopedMembership(t *testing.T) {
 
 func TestCompile_UnsupportedFieldOnConversation(t *testing.T) {
 	desc := NewConversationDescriptor()
-	// value BETWEEN validates in the domain but is not a conversation field.
 	f := crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.Or, pred(crmfilter.FieldValue, crmfilter.OpBetween, "100", "500")),
 	}}
@@ -216,8 +205,6 @@ func TestCompile_UnsupportedFieldOnConversation(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedField) {
 		t.Errorf("expected ErrUnsupportedField, got %v", err)
 	}
-	// label / source / campaign are now supported on conversations (Phase 1);
-	// only the opportunity-only / not-yet-modeled fields remain unsupported.
 	for _, field := range []crmfilter.Field{crmfilter.FieldCloseDate, crmfilter.FieldLostReason, crmfilter.FieldCustom, crmfilter.FieldPipeline, crmfilter.FieldCarteira, crmfilter.FieldValue} {
 		if _, e := desc.Field(field); !errors.Is(e, ErrUnsupportedField) {
 			t.Errorf("field %q: expected ErrUnsupportedField, got %v", field, e)
@@ -238,7 +225,6 @@ func TestCompile_EmptyFilter(t *testing.T) {
 		t.Errorf("expected no args, got %#v", args)
 	}
 
-	// A filter with only empty groups is also empty.
 	sql, _, err = Compile(crmfilter.Filter{Groups: []crmfilter.Group{{}}}, desc, 1)
 	if err != nil || sql != "" {
 		t.Errorf("expected empty result for empty groups, got sql=%q err=%v", sql, err)
@@ -247,7 +233,6 @@ func TestCompile_EmptyFilter(t *testing.T) {
 
 func TestCompile_InvalidFilterRejected(t *testing.T) {
 	desc := NewConversationDescriptor()
-	// between requires exactly two values.
 	f := crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.Or, pred(crmfilter.FieldValue, crmfilter.OpBetween, "100")),
 	}}
@@ -259,7 +244,6 @@ func TestCompile_InvalidFilterRejected(t *testing.T) {
 func TestCompile_BoolAndText(t *testing.T) {
 	desc := NewConversationDescriptor()
 
-	// unread is_true -> count(...) > 0
 	sql, args, err := Compile(crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.Or, pred(crmfilter.FieldUnread, crmfilter.OpIsTrue)),
 	}}, desc, 1)
@@ -273,7 +257,6 @@ func TestCompile_BoolAndText(t *testing.T) {
 		t.Errorf("unread is_true should have no args, got %#v", args)
 	}
 
-	// window_open is_false -> entry_id NOT IN (...)
 	sql, _, err = Compile(crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.Or, pred(crmfilter.FieldWindowOpen, crmfilter.OpIsFalse)),
 	}}, desc, 1)
@@ -284,7 +267,6 @@ func TestCompile_BoolAndText(t *testing.T) {
 		t.Errorf("window_open is_false SQL unexpected: %s", sql)
 	}
 
-	// query contains -> lead name/number/message template, 3 same-pattern args.
 	sql, args, err = Compile(crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.Or, pred(crmfilter.FieldQuery, crmfilter.OpContains, "acme")),
 	}}, desc, 1)

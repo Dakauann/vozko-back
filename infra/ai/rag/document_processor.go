@@ -22,7 +22,6 @@ const (
 
 	defaultChunkOverlap = 100
 
-	// maxChunkRunes hard-caps every chunk so it always fits the embedding model's context.
 	maxChunkRunes = 2000
 )
 
@@ -150,10 +149,6 @@ func (p *documentProcessor) resolveContent(doc *rag.Document) (string, error) {
 	return ResolveDocumentContent(p.textExtractor, doc)
 }
 
-// ResolveDocumentContent turns a stored document into extractable text: base64-encoded
-// uploads are decoded and run through the extractor; PDF/DOCX stored raw are extracted
-// (falling back to raw on failure); anything else is returned as-is. Exported so the
-// re-index tool ingests documents through the exact same path as the live processor.
 func ResolveDocumentContent(extractor rag.TextExtractor, doc *rag.Document) (string, error) {
 	content := doc.Content
 
@@ -198,8 +193,6 @@ func (p *documentProcessor) fail(ctx context.Context, docID string, format strin
 	return fmt.Errorf("%s", errMsg)
 }
 
-// ChunkDocument is the shared entry point for the processor and tooling: it selects the
-// chunking strategy by file type and normalizes the result (UTF-8, size cap, reindex).
 func ChunkDocument(chunker rag.TextChunker, content, name string) []rag.TextChunk {
 	var raw []rag.TextChunk
 	if isTabular(name) {
@@ -223,7 +216,6 @@ func isTabular(name string) bool {
 	}
 }
 
-// splitRecords turns the extractor's blank-line-separated records into one chunk each.
 func splitRecords(content string) []rag.TextChunk {
 	parts := strings.Split(content, "\n\n")
 	chunks := make([]rag.TextChunk, 0, len(parts))
@@ -243,8 +235,6 @@ func splitRecords(content string) []rag.TextChunk {
 	return chunks
 }
 
-// normalizeChunks guarantees every chunk is valid UTF-8 and within maxChunkRunes
-// (splitting oversized ones on whitespace) and reassigns contiguous indexes.
 func normalizeChunks(chunks []rag.TextChunk) []rag.TextChunk {
 	out := make([]rag.TextChunk, 0, len(chunks))
 	for _, c := range chunks {
@@ -265,8 +255,6 @@ func normalizeChunks(chunks []rag.TextChunk) []rag.TextChunk {
 	return out
 }
 
-// splitToMaxRunes splits s into pieces of at most maxRunes runes, preferring the last
-// whitespace before the limit so words are not cut in half.
 func splitToMaxRunes(s string, maxRunes int) []string {
 	runes := []rune(s)
 	if len(runes) <= maxRunes {

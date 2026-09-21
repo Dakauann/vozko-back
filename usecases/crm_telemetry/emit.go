@@ -13,8 +13,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Emitter is the single facade hot paths use for timeline + ops telemetry.
-// All methods are best-effort (never return product-failing errors).
 type Emitter struct {
 	pub crm_telemetry.Publisher
 }
@@ -25,12 +23,6 @@ func NewEmitter(pub crm_telemetry.Publisher) *Emitter {
 
 func (e *Emitter) enabled() bool { return e != nil && e.pub != nil }
 
-// ConversationEvent publishes a timeline event (queue only). This is the single
-// choke point every timeline event flows through, so it is where a malformed
-// event is dropped: an empty/non-UUID workspace_id or entry_id can never be
-// persisted (uuid NOT NULL columns), and publishing it would poison the consumer
-// (one such event looped forever, flooding the DB and logs). We drop it here so
-// it never reaches the queue.
 func (e *Emitter) ConversationEvent(ev *ce.ConversationEvent) {
 	if !e.enabled() || ev == nil {
 		return
@@ -46,12 +38,10 @@ func (e *Emitter) ConversationEvent(ev *ce.ConversationEvent) {
 	_ = e.pub.Publish(crm_telemetry.KindConversationEvent, ev)
 }
 
-// Transfer publishes a transfer lifecycle timeline event.
 func (e *Emitter) Transfer(workspaceID, entryID, entryType string, eventType ce.EventType, actorKind actor.Kind, actorID, transferID, callID, detailTarget, note string) {
 	if !e.enabled() || workspaceID == "" {
 		return
 	}
-	// entry may be empty for pure call transfers, still record under call correlation.
 	if entryID == "" {
 		entryID = callID
 	}
@@ -81,7 +71,6 @@ func (e *Emitter) Transfer(workspaceID, entryID, entryType string, eventType ce.
 	e.ConversationEvent(b.Build())
 }
 
-// AnalysisCreated records analysis_created on the timeline.
 func (e *Emitter) AnalysisCreated(workspaceID, entryID, entryType, analysisID, disposition string, quality int) {
 	if !e.enabled() {
 		return
@@ -101,7 +90,6 @@ func (e *Emitter) AnalysisCreated(workspaceID, entryID, entryType, analysisID, d
 		Build())
 }
 
-// AIToggle records ai_enabled / ai_disabled.
 func (e *Emitter) AIToggle(workspaceID, entryID, entryType, actorUserID string, enabled bool) {
 	if !e.enabled() {
 		return
@@ -117,7 +105,6 @@ func (e *Emitter) AIToggle(workspaceID, entryID, entryType, actorUserID string, 
 		Build())
 }
 
-// Presence publishes a presence transition.
 func (e *Emitter) Presence(workspaceID, userID, state, source string) {
 	if !e.enabled() {
 		return
@@ -131,7 +118,6 @@ func (e *Emitter) Presence(workspaceID, userID, state, source string) {
 	})
 }
 
-// AISession publishes an AI attendance op.
 func (e *Emitter) AISession(p crm_telemetry.AISessionPayload) {
 	if !e.enabled() {
 		return
@@ -156,7 +142,6 @@ func (e *Emitter) AISessionEndContainedChat(workspaceID, entryID, entryType, rea
 	})
 }
 
-// CallLinked records call_linked when a CDR is associated with an entry.
 func (e *Emitter) CallLinked(workspaceID, entryID, entryType, callID, direction, callType string) {
 	if !e.enabled() {
 		return
@@ -173,9 +158,6 @@ func (e *Emitter) CallLinked(workspaceID, entryID, entryType, callID, direction,
 		Build())
 }
 
-// channelFor names the channel an event belongs to. It listed voice and support
-// and defaulted everything else to "whatsapp", so Instagram and Telegram events
-// were filed under WhatsApp in every channel-grouped report.
 func channelFor(entryType string) string {
 	return shared.EntryType(entryType).EventChannel()
 }

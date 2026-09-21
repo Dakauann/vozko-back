@@ -17,7 +17,6 @@ import (
 	tguc "vozko/usecases/telegram"
 )
 
-// Handler serves the Telegram account and deep-link endpoints.
 type Handler struct {
 	connect    *tguc.ConnectAccountUseCase
 	reregister *tguc.ReregisterWebhookUseCase
@@ -31,7 +30,6 @@ type Handler struct {
 	deleteLink *tguc.DeleteDeepLinkUseCase
 }
 
-// HandlerDeps groups the usecases.
 type HandlerDeps struct {
 	Connect    *tguc.ConnectAccountUseCase
 	Reregister *tguc.ReregisterWebhookUseCase
@@ -59,16 +57,11 @@ func NewHandler(d HandlerDeps) *Handler {
 	}
 }
 
-// ---------------------------------------------------------------- accounts
-
 type connectRequest struct {
-	// BotToken is the string BotFather hands the operator. It is accepted once,
-	// encrypted at rest and never returned by any endpoint.
 	BotToken     string  `json:"botToken"`
 	DepartmentID *string `json:"departmentId,omitempty"`
 }
 
-// ConnectAccount attaches a bot to the caller's workspace.
 func (h *Handler) ConnectAccount(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
@@ -94,7 +87,6 @@ func (h *Handler) ConnectAccount(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusCreated, toAccountDTO(account))
 }
 
-// ListAccounts returns the workspace's bots.
 func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
@@ -128,11 +120,6 @@ func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toAccountDTO(account))
 	}
 
-	// WritePaginated, not WriteSuccess: every paginated list in this API answers
-	// {"data": [...], "meta": {...}}, and the browser client reads exactly that
-	// shape. A bespoke {"items": ...} envelope parses without error and yields an
-	// empty list, the account is created, the request is 200, and the table is
-	// simply blank.
 	response.WritePaginated(w, http.StatusOK, items, response.PaginationMeta{
 		Page:       result.Page,
 		PageSize:   result.PageSize,
@@ -141,7 +128,6 @@ func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetAccount returns one bot.
 func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	account, err := h.get.Execute(r.Context(), workspaceID, mux.Vars(r)["id"])
@@ -164,7 +150,6 @@ type updateAccountRequest struct {
 	EnableAutoMemory     *bool   `json:"enableAutoMemory"`
 }
 
-// UpdateAccount edits a bot's automation configuration.
 func (h *Handler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 
@@ -192,11 +177,6 @@ func (h *Handler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toAccountDTO(account))
 }
 
-// ReregisterWebhook re-points Telegram at us.
-//
-// This is the recovery action for the channel's worst failure: undelivered
-// updates are discarded after 24 hours and cannot be recovered, so the fix has to
-// be one button rather than a support ticket.
 func (h *Handler) ReregisterWebhook(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	account, err := h.reregister.Execute(r.Context(), workspaceID, mux.Vars(r)["id"])
@@ -207,7 +187,6 @@ func (h *Handler) ReregisterWebhook(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toAccountDTO(account))
 }
 
-// DisconnectAccount removes a bot.
 func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if err := h.disconnect.Execute(r.Context(), workspaceID, mux.Vars(r)["id"]); err != nil {
@@ -217,20 +196,15 @@ func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }
 
-// ---------------------------------------------------------------- deep links
-
 type createDeepLinkRequest struct {
 	Label        string  `json:"label"`
 	LeadID       *string `json:"leadId,omitempty"`
 	CampaignID   *string `json:"campaignId,omitempty"`
 	AgentID      *string `json:"agentId,omitempty"`
 	DepartmentID *string `json:"departmentId,omitempty"`
-	// TTLHours bounds the link's life. Zero means it never expires, which is
-	// right for a printed QR code and wrong for one-off outreach.
-	TTLHours int `json:"ttlHours,omitempty"`
+	TTLHours     int     `json:"ttlHours,omitempty"`
 }
 
-// CreateDeepLink mints an attributed t.me link.
 func (h *Handler) CreateDeepLink(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 
@@ -257,7 +231,6 @@ func (h *Handler) CreateDeepLink(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusCreated, result)
 }
 
-// ListDeepLinks lists an account's links.
 func (h *Handler) ListDeepLinks(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 
@@ -276,7 +249,6 @@ func (h *Handler) ListDeepLinks(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]any{"items": links})
 }
 
-// DeleteDeepLink removes a link.
 func (h *Handler) DeleteDeepLink(w http.ResponseWriter, r *http.Request) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	vars := mux.Vars(r)
@@ -287,13 +259,6 @@ func (h *Handler) DeleteDeepLink(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ---------------------------------------------------------------- mapping
-
-// accountDTO is the API shape of a connected bot.
-//
-// It carries no credential of any kind: neither the bot token nor the webhook
-// secret is ever serialized, so an over-broad RBAC grant cannot leak the ability
-// to impersonate the bot.
 type accountDTO struct {
 	ID           string  `json:"id"`
 	WorkspaceID  string  `json:"workspaceId"`
@@ -333,12 +298,10 @@ type accountDTO struct {
 
 func toAccountDTO(a *tgdomain.Account) accountDTO {
 	return accountDTO{
-		ID:           a.ID,
-		WorkspaceID:  a.WorkspaceID,
-		DepartmentID: a.DepartmentID,
-		Mode:         string(a.Mode),
-		// Rendered as a string: a Telegram id can exceed 2^53 and would lose
-		// precision in a JavaScript number.
+		ID:                   a.ID,
+		WorkspaceID:          a.WorkspaceID,
+		DepartmentID:         a.DepartmentID,
+		Mode:                 string(a.Mode),
 		BotUserID:            strconv.FormatInt(a.BotUserID, 10),
 		BotUsername:          a.BotUsername,
 		BotName:              a.BotName,
@@ -366,11 +329,6 @@ func toAccountDTO(a *tgdomain.Account) accountDTO {
 	}
 }
 
-// writeDomainError maps a domain error onto an HTTP status.
-//
-// The mapping is explicit so a caller can distinguish "you pasted a bad token"
-// (fixable by them) from "this bot belongs to someone else" (not), instead of
-// receiving one opaque 500.
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, tgdomain.ErrAccountNotFound),

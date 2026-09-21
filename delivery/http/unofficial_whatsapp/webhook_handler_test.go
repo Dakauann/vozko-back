@@ -12,15 +12,9 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// This provider authenticates NOTHING: it does not sign the body, and its
-// webhook config accepts only a URL, so we cannot ask it to echo a header. Every
-// test here pins one of the layers standing in for that missing signature.
-
 type stubInstances struct {
 	instance *uw.Instance
-	// lookups records the digests the handler resolved by, so a test can prove
-	// the raw token never reaches the database.
-	lookups []string
+	lookups  []string
 }
 
 func (s *stubInstances) FindByDeliveryTokenHash(_ context.Context, hash string) (*uw.Instance, error) {
@@ -87,8 +81,6 @@ func TestWebhookAcceptsAValidDelivery(t *testing.T) {
 	}
 }
 
-// An unknown token answers 401, never 404: distinguishing "malformed" from
-// "unknown" tells a scanner which tokens exist.
 func TestWebhookRejectsAnUnknownToken(t *testing.T) {
 	router, _, publisher, _ := webhookFixture(t)
 
@@ -101,8 +93,6 @@ func TestWebhookRejectsAnUnknownToken(t *testing.T) {
 	}
 }
 
-// The token is resolved through its DIGEST, so a dumped instances table yields
-// no working URLs.
 func TestWebhookResolvesByDigestNotByToken(t *testing.T) {
 	router, instances, _, token := webhookFixture(t)
 
@@ -119,8 +109,6 @@ func TestWebhookResolvesByDigestNotByToken(t *testing.T) {
 	}
 }
 
-// The second factor. Without it the URL alone would be enough to inject events
-// into any tenant's inbox.
 func TestWebhookRejectsAMismatchedInstanceID(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 
@@ -133,9 +121,6 @@ func TestWebhookRejectsAMismatchedInstanceID(t *testing.T) {
 	}
 }
 
-// A body with no instance id still processes: the field is a cross-check, not a
-// requirement, and rejecting deliveries that omit it would break the channel if
-// the vendor changed its envelope.
 func TestWebhookToleratesAMissingInstanceID(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 
@@ -145,9 +130,6 @@ func TestWebhookToleratesAMissingInstanceID(t *testing.T) {
 	}
 }
 
-// A malformed body is ACKed so the provider stops retrying, and logged so the
-// shape can be investigated — this vendor's payloads are undocumented, so an
-// unexpected shape is information rather than an attack.
 func TestWebhookAcksAnUndecodableBody(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 
@@ -160,9 +142,6 @@ func TestWebhookAcksAnUndecodableBody(t *testing.T) {
 	}
 }
 
-// A publish failure must answer non-2xx so the provider redelivers. This
-// provider has NO replay endpoint, so acknowledging an event we failed to
-// enqueue loses it permanently.
 func TestWebhookAsksForRedeliveryWhenPublishFails(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 	publisher.fail = true
@@ -173,8 +152,6 @@ func TestWebhookAsksForRedeliveryWhenPublishFails(t *testing.T) {
 	}
 }
 
-// A history replay must not share the lane a live customer's message uses: a
-// seven-day backfill would queue in front of someone waiting for an answer.
 func TestWebhookRoutesHistoryToItsOwnLane(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 
@@ -184,8 +161,6 @@ func TestWebhookRoutesHistoryToItsOwnLane(t *testing.T) {
 	}
 }
 
-// An event kind the vendor adds lands on the catch-all rather than being
-// refused, so it is logged instead of silently lost.
 func TestWebhookRoutesUnknownEventsToTheCatchAll(t *testing.T) {
 	router, _, publisher, token := webhookFixture(t)
 
@@ -202,15 +177,11 @@ func TestWebhookRejectsNonPost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	// The router itself refuses the method; either answer is correct, as long as
-	// it is not a success.
 	if rec.Code == http.StatusOK {
 		t.Error("a GET must not be treated as a delivery")
 	}
 }
 
-// A nil handler means the channel is disabled: registering a route whose method
-// would nil-panic on the first request is worse than having no route.
 func TestRegisterPublicRoutesNilHandler(t *testing.T) {
 	router := mux.NewRouter()
 	RegisterPublicRoutes(router, nil)

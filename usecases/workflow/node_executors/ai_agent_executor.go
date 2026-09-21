@@ -20,7 +20,6 @@ import (
 	rag_usecase "vozko/usecases/rag"
 )
 
-// WorkflowAIAttendance records AI-as-attendant metrics from workflow AI nodes (queue only).
 type WorkflowAIAttendance interface {
 	RecordAIReply(in aa.StartInput, messageID string)
 }
@@ -56,14 +55,12 @@ func NewAIAgentExecutor(aiSvc ai.Service, agentRepo agent.Repository, msgRepo co
 	}
 }
 
-// SetAIAttendance wires session metrics for WhatsApp workflow AI nodes.
 func (e *aiAgentExecutor) SetAIAttendance(svc WorkflowAIAttendance) {
 	if e != nil {
 		e.aiAttendance = svc
 	}
 }
 
-// SetAIAttendanceOnExecutor sets attendance on a registered executor if supported.
 func SetAIAttendanceOnExecutor(exec workflow.NodeExecutor, svc WorkflowAIAttendance) {
 	if setter, ok := exec.(interface{ SetAIAttendance(WorkflowAIAttendance) }); ok {
 		setter.SetAIAttendance(svc)
@@ -83,7 +80,6 @@ func (e *aiAgentExecutor) recordWorkflowAIAttendance(ctx *workflow.NodeContext, 
 	if entryType == "" {
 		entryType = string(shared.EntryTypeWhatsApp)
 	}
-	// Prompt-mode nodes have no saved agent: use workflow id as stable actor.
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" && ctx.Run.WorkflowID != "" {
 		agentID = ctx.Run.WorkflowID
@@ -141,9 +137,6 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 			"mcp_collection_ids": []interface{}{},
 			"custom_tools":       []interface{}{},
 		},
-		// Base handles ship in the catalog so they render instantly. The full set
-		// (these + one route per custom tool) is config-dependent, DynamicHandles
-		// tells the frontend to resolve it via the backend (AIAgentToolOutputs).
 		Outputs: []workflow.HandleDefinition{
 			{ID: "default", Label: "Resposta (texto)"},
 			{ID: "erro", Label: "Erro", Optional: true},
@@ -350,16 +343,6 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 			inject := toolName != "" && sourceAI == ctx.Node.ID
 
-			// Never inject a stale tool result when the run just resumed from a
-			// node that was waiting on the contact. The contact's reply is the new
-			// input; replaying the previous tool's output as a USER message makes
-			// the model read its own last action as a fresh request and call the
-			// same tool again, a menu that reappears forever no matter which
-			// button is tapped.
-			//
-			// ParksForReply, not IsWait: the interactive prompt parks exactly like
-			// a wait node but is excluded from IsWait, and this guard originally
-			// missed it.
 			if inject {
 				if prevID := ctx.State.GetString("_prev_node_id"); prevID != "" {
 					if prevNode := ctx.Graph.FindNode(prevID); prevNode != nil {
@@ -493,9 +476,6 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	// The product-wide AI floor, fail-closed. The number comes from the domain;
-	// the error-edge routing below is this executor's own and has no other
-	// caller, which is why the check is inline rather than delegated.
 	if e.cachedBalanceChecker != nil {
 		bal, err := e.cachedBalanceChecker.GetBalance(ctx.Workflow.WorkspaceID)
 		if err != nil {
@@ -622,7 +602,6 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		result["messages"] = iface
 	}
 
-	// Track AI-as-attendant whenever the node produced a reply (even if tool-routed).
 	if responseText != "" || len(output.ToolCalls) > 0 {
 		e.recordWorkflowAIAttendance(ctx, agentID, model, "")
 	}
@@ -662,10 +641,6 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	// Segmented delivery on every OTHER channel. Without this the reply is
-	// generated and billed and then silently dropped: the WhatsApp block above
-	// requires isWhatsApp, and the default block below requires !isSegmented, so
-	// a segmented agent on Telegram or Instagram matched neither.
 	if isSegmented && !isWhatsApp && len(segmentedMessages) > 0 && len(output.ToolCalls) == 0 {
 		log.Printf("%s segmented %s delivery: %d messages", logPrefix, ctx.Run.EntryType, len(segmentedMessages))
 		delivered, sendErr := e.sender.SendSegments(context.Background(), ctx.Run, segmentedMessages, nil)
@@ -680,15 +655,11 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	// Default (non-segmented) delivery goes through the channel sender, so the
-	// agent node answers on every adapter-backed channel, not only WhatsApp.
 	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
 		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
 		if sendErr != nil {
 			log.Printf("%s default delivery failed: %v", logPrefix, sendErr)
 		} else if sent == nil {
-			// The channel declined (a closed outbound window is the usual cause).
-			// The response is still recorded by the node; it simply was not sent.
 			log.Printf("%s default delivery withheld by channel %q", logPrefix, ctx.Run.EntryType)
 		} else {
 			result["delivered"] = true
@@ -761,9 +732,6 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	}
 
 	log.Printf("%s completed: response=%d chars saved to var=%q", logPrefix, len(responseText), responseVar)
-	// Route the text response through the "default" handle. Empty (legacy graphs
-	// with an unlabeled continuation edge) falls back to the engine's first-edge
-	// behavior, so older workflows keep working.
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 	return &workflow.NodeResult{
 		NextNodeID: resolveEdgeByLabelStrict(edges, "default"),
@@ -920,11 +888,6 @@ func buildCustomToolDefs(cts []customToolConfig) []tools.Definition {
 	return defs
 }
 
-// AIAgentToolOutputs is the single backend authority for an AI-agent node's
-// output handles. It ALWAYS declares the response and error paths, plus one route
-// per custom tool, so every ai_agent node (with or without tools) has the same,
-// backend-defined handle set. The frontend renders this verbatim; it never
-// recomputes handles or their optional flags.
 func AIAgentToolOutputs(config map[string]interface{}) []workflow.HandleDefinition {
 	cts := parseCustomToolsConfig(config)
 	outputs := make([]workflow.HandleDefinition, 0, len(cts)+2)
@@ -937,11 +900,6 @@ func AIAgentToolOutputs(config map[string]interface{}) []workflow.HandleDefiniti
 			Label: ct.Name,
 		})
 	}
-	// The response path is REQUIRED: whenever the model answers with text instead
-	// of calling a tool (it always may, including in segmented mode), the flow
-	// leaves through "default". Forcing it to be connected stops a text reply from
-	// silently dead-ending, the builder must wire it (e.g. to wait_for_reply to
-	// continue the conversation, or to end).
 	outputs = append(outputs, workflow.HandleDefinition{
 		ID:    "default",
 		Label: "Resposta (texto)",
@@ -1087,8 +1045,6 @@ func mergeShortSegments(segments []string, minLen int) []string {
 	return out
 }
 
-// resolveTypingClient is WhatsApp-only: the typing indicator is addressed by a
-// wamid, which no other channel has.
 func (e *aiAgentExecutor) resolveTypingClient(ctx *workflow.NodeContext) (conversation.WhatsAppClient, string, error) {
 	if e.waSender == nil || ctx.Run == nil {
 		return nil, "", nil

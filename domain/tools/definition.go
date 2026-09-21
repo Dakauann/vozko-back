@@ -27,9 +27,7 @@ type ToolVisibility string
 type ToolCategory string
 
 const (
-	VisibilityMessaging ToolVisibility = "messaging"
-	// VisibilityPostConversation marks tools the agent may only use once a
-	// conversation has ended (analysis / staging wrap-up).
+	VisibilityMessaging        ToolVisibility = "messaging"
 	VisibilityPostConversation ToolVisibility = "post_conversation"
 )
 

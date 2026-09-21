@@ -12,15 +12,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// The send path runs in a detached goroutine. On 2026-08-04 a nil dereference inside
-// SendMediaMessage escaped it and, with no recover in place, took the whole process
-// down — every WebSocket, plus HTTP, webhooks and the campaign consumers. These pin
-// the containment: a failing send must cost the sender an error, never the process.
-//
-// What the send DOES (resolving the operator, signing, routing text vs media) moved
-// to conversation.OperatorSendUseCase and is covered by its own tests. What is left
-// here is the transport's contract: authorize, delegate, report.
-
 type panicSendTestUseCase struct {
 	panicWith any
 	err       error
@@ -40,8 +31,6 @@ func (s panicSendTestUseCase) Execute(_ context.Context, in conversation.Operato
 	return &conversation.Message{ID: "m1"}, nil
 }
 
-// newSendHub wires a hub with one registered connection, so BroadcastMessageError has
-// somewhere to deliver.
 func newSendHub(t *testing.T, operatorSend conversation.OperatorSendUseCase) (*ConversationHub, *WSConnection) {
 	t.Helper()
 
@@ -68,8 +57,6 @@ func awaitSendPayload(t *testing.T, conn *WSConnection) WSOutgoingMessage {
 	}
 }
 
-// TestHandleSend_PanicInSenderIsContained is the amplifier. Without the recover the
-// test binary itself dies here, which is exactly what production did.
 func TestHandleSend_PanicInSenderIsContained(t *testing.T) {
 	hub, conn := newSendHub(t, panicSendTestUseCase{panicWith: "boom: simulated nil dereference"})
 
@@ -95,8 +82,6 @@ func TestHandleSend_PanicInSenderIsContained(t *testing.T) {
 	require.Equal(t, "req-1", errPayload.RequestID)
 }
 
-// A send failure is reported to the sender with its own code, not confused with a
-// panic and not silently dropped.
 func TestHandleSend_UseCaseErrorIsReported(t *testing.T) {
 	hub, conn := newSendHub(t, panicSendTestUseCase{err: errors.New("window closed")})
 
@@ -120,8 +105,6 @@ func TestHandleSend_UseCaseErrorIsReported(t *testing.T) {
 	require.Equal(t, "send_failed", errPayload.Code)
 }
 
-// The frame's fields must reach the use case intact. The media pair in particular
-// is only meaningful together, which is why the transport sets both or neither.
 func TestHandleSend_TranslatesTheFrameFaithfully(t *testing.T) {
 	calls := make(chan conversation.OperatorSendInput, 1)
 	hub, conn := newSendHub(t, panicSendTestUseCase{calls: calls})
@@ -158,8 +141,6 @@ func TestHandleSend_TranslatesTheFrameFaithfully(t *testing.T) {
 	}
 }
 
-// A button frame is the same use case with the interactive payload attached, so
-// the post-send side effects cannot diverge between the two send shapes.
 func TestHandleSendButton_GoesThroughTheSameUseCase(t *testing.T) {
 	calls := make(chan conversation.OperatorSendInput, 1)
 	hub, conn := newSendHub(t, panicSendTestUseCase{calls: calls})

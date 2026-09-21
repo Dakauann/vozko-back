@@ -1,17 +1,3 @@
-// Command ragreindex re-ingests already-stored RAG documents through the current
-// extraction + chunking + embedding pipeline and atomically replaces their chunks.
-// Use it after an ingestion change (e.g. structure-aware table chunking) to fix
-// existing documents without re-uploading. It shares the exact code path the live
-// document processor uses (ResolveDocumentContent + ChunkDocument).
-//
-//	# reindex specific documents
-//	go run ./cmd/ragreindex -docs id1,id2
-//	# reindex every spreadsheet, or a whole KB, or every failed document
-//	go run ./cmd/ragreindex -ext xlsx
-//	go run ./cmd/ragreindex -kb <kb-id>
-//	go run ./cmd/ragreindex -status failed
-//	# preview only (no writes)
-//	go run ./cmd/ragreindex -ext xlsx -dry
 package main
 
 import (
@@ -51,7 +37,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
-	// Silence per-statement SQL logging; bulk chunk inserts would flood the output.
 	db = db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Error)})
 
 	q := db.Model(&schema.RAGDocument{})

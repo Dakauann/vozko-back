@@ -30,8 +30,6 @@ func (stubMediaLeadRepo) FindByID(workspaceID, id string) (*lead_domain.Lead, er
 	return &lead_domain.Lead{ID: id, WorkspaceID: workspaceID, Number: "5511999999999"}, nil
 }
 
-// mediaSendClient records which send path the sender actually took, so the
-// transcoded voice note and the link fallback can be told apart.
 type mediaSendClient struct {
 	conversation.WhatsAppClient
 
@@ -116,8 +114,6 @@ func newMediaSender(client conversation.WhatsAppClient, history conversation.Mes
 	}}
 }
 
-// stubConvertAudio swaps the ffmpeg call out, so both branches run on a host
-// that does not have ffmpeg installed.
 func stubConvertAudio(t *testing.T, fn func([]byte) ([]byte, error)) {
 	t.Helper()
 	original := convertAudioFn
@@ -125,10 +121,6 @@ func stubConvertAudio(t *testing.T, fn func([]byte) ([]byte, error)) {
 	t.Cleanup(func() { convertAudioFn = original })
 }
 
-// Regression cover: the workflow audio node used to hand WhatsApp the stored
-// CDN link. Graph accepts it and then never delivers, because a Cloud API voice
-// note must be OGG/Opus and a stored .ogg is usually Vorbis. The run reported a
-// successful send for a message the customer never received.
 func TestSendMediaTranscodesAudioIntoAVoiceNote(t *testing.T) {
 	server := mediaServer(t, "audio/ogg", []byte("raw-vorbis"))
 	stubConvertAudio(t, func(in []byte) ([]byte, error) {
@@ -157,8 +149,6 @@ func TestSendMediaTranscodesAudioIntoAVoiceNote(t *testing.T) {
 	}
 }
 
-// A host with no ffmpeg must degrade to the old link send rather than fail the
-// node outright: an undelivered message is bad, a broken workflow is worse.
 func TestSendMediaFallsBackToTheLinkWhenTranscodeFails(t *testing.T) {
 	server := mediaServer(t, "audio/ogg", []byte("raw-vorbis"))
 	stubConvertAudio(t, func([]byte) ([]byte, error) {
@@ -184,9 +174,6 @@ func TestSendMediaFallsBackToTheLinkWhenTranscodeFails(t *testing.T) {
 	}
 }
 
-// Regression cover: a captionless attachment produced a history record with no
-// text and no MediaID, which Message.Validate rejects for having no content —
-// so a file the customer had already received was recorded as a failed send.
 func TestSendMediaBridgesACaptionlessAttachmentIntoConversationMedia(t *testing.T) {
 	server := mediaServer(t, "image/png", []byte("png-bytes"))
 	mediaRepo := &recordingConversationMedia{}
@@ -223,15 +210,11 @@ func TestSendMediaBridgesACaptionlessAttachmentIntoConversationMedia(t *testing.
 	if record.MediaType != conversation.MediaTypeImage || record.MediaURL != mediaURL {
 		t.Fatalf("unexpected media fields on the record: %+v", record)
 	}
-	// The MediaID is the whole point: with an empty caption it is the only
-	// content Message.Validate will accept.
 	if record.Text != "" || record.MediaID == "" {
 		t.Fatalf("captionless record has no content: %+v", record)
 	}
 }
 
-// The message is already delivered by the time the bridge runs, so a repository
-// failure must cost the thumbnail and nothing else.
 func TestSendMediaSurvivesAConversationMediaFailure(t *testing.T) {
 	server := mediaServer(t, "image/png", []byte("png-bytes"))
 	mediaRepo := &recordingConversationMedia{err: errors.New("insert failed")}

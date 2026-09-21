@@ -37,12 +37,6 @@ func startFixture(t *testing.T, mutate func(*uw.Instance)) (
 	return uc, messaging, contacts, conversations
 }
 
-// The number is verified against WhatsApp BEFORE anything is written.
-//
-// This is the flow's most valuable step: messaging numbers that are not on
-// WhatsApp is one of the strongest ban signals there is, and an operator pasting
-// from a spreadsheet cannot know. Refusing costs one provider call; sending
-// costs the number.
 func TestStartConversationRefusesANumberNotOnWhatsApp(t *testing.T) {
 	uc, messaging, contacts, conversations := startFixture(t, nil)
 	messaging.CheckNumbersFn = func(context.Context, uw.InstanceRef, []string) ([]uw.NumberCheck, error) {
@@ -55,8 +49,6 @@ func TestStartConversationRefusesANumberNotOnWhatsApp(t *testing.T) {
 	if !errors.Is(err, ErrNotOnWhatsApp) {
 		t.Fatalf("err = %v, want ErrNotOnWhatsApp", err)
 	}
-	// Nothing may be persisted for a number we refused to reach, or the inbox
-	// fills with conversations that can never receive a message.
 	if len(contacts.created) != 0 {
 		t.Errorf("%d contact(s) written for an unreachable number", len(contacts.created))
 	}
@@ -65,11 +57,6 @@ func TestStartConversationRefusesANumberNotOnWhatsApp(t *testing.T) {
 	}
 }
 
-// The AUTHORITATIVE JID comes from the check, never from string concatenation.
-//
-// An account that has been migrated answers on a different JID than
-// "<phone>@s.whatsapp.net", and addressing the constructed one silently opens a
-// conversation with nobody.
 func TestStartConversationUsesTheProvidersJID(t *testing.T) {
 	uc, messaging, _, conversations := startFixture(t, nil)
 	messaging.CheckNumbersFn = func(context.Context, uw.InstanceRef, []string) ([]uw.NumberCheck, error) {
@@ -91,14 +78,11 @@ func TestStartConversationUsesTheProvidersJID(t *testing.T) {
 	if got := conversations.created[0].ChatID; got != "5511000000000@s.whatsapp.net" {
 		t.Errorf("chat id = %q, want the JID the provider reported", got)
 	}
-	// The typed number is normalised, so a pasted "+55 (11) …" resolves to the
-	// same contact an inbound message would.
 	if started.PhoneNumber != "5511999999999" {
 		t.Errorf("phone = %q, want it normalised", started.PhoneNumber)
 	}
 }
 
-// A number that already has a conversation must reopen it, never duplicate it.
 func TestStartConversationReopensAnExistingChat(t *testing.T) {
 	uc, _, _, _ := startFixture(t, nil)
 	in := StartConversationInput{
@@ -126,7 +110,6 @@ func TestStartConversationReopensAnExistingChat(t *testing.T) {
 	}
 }
 
-// A mistyped number is rejected before it costs a provider call.
 func TestStartConversationRejectsAnUnusableNumber(t *testing.T) {
 	uc, messaging, _, _ := startFixture(t, nil)
 	called := false
@@ -147,8 +130,6 @@ func TestStartConversationRejectsAnUnusableNumber(t *testing.T) {
 	}
 }
 
-// A disconnected number cannot start anything, and the refusal must name the
-// reason rather than failing at the first send.
 func TestStartConversationRefusesAnInstanceThatCannotSend(t *testing.T) {
 	uc, _, _, _ := startFixture(t, func(i *uw.Instance) {
 		i.Status = uw.StatusDisconnected
@@ -161,8 +142,6 @@ func TestStartConversationRefusesAnInstanceThatCannotSend(t *testing.T) {
 	}
 }
 
-// The workspace on the request must own the instance. The route's permission
-// gate proves the caller may send from SOME instance, not from this one.
 func TestStartConversationRefusesAnotherWorkspacesInstance(t *testing.T) {
 	uc, _, _, conversations := startFixture(t, nil)
 

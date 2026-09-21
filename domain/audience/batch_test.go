@@ -16,9 +16,6 @@ func TestBatchOutcome_Valid(t *testing.T) {
 	}
 }
 
-// The receipt is what the customer sees for the period: "12.480 comentários
-// analisados este mês". Billing the tokens is the AI adapter's job; these
-// totals only have to account for the work honestly (§9.4).
 func TestBatchTotals_Add(t *testing.T) {
 	var tot BatchTotals
 	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400})
@@ -29,13 +26,8 @@ func TestBatchTotals_Add(t *testing.T) {
 	}
 }
 
-// The author pass (§5) buys tokens from the same budget as the comment pass,
-// and a customer asking what they are paying for is owed the split. The
-// per-kind parts must always add back up to the whole.
 func TestBatchTotals_SplitsByKind(t *testing.T) {
 	var tot BatchTotals
-	// An untagged row is the comment pass: that is what every row written
-	// before the author pass existed is.
 	tot.Add(Batch{ItemCount: 20, PromptTokens: 1000, CompletionTokens: 400})
 	tot.Add(Batch{Kind: BatchKindComment, ItemCount: 5, PromptTokens: 300, CompletionTokens: 90})
 	tot.Add(Batch{Kind: BatchKindAuthorRole, ItemCount: 40, PromptTokens: 2000, CompletionTokens: 60})
@@ -57,10 +49,6 @@ func TestBatchTotals_SplitsByKind(t *testing.T) {
 	}
 }
 
-// ---- Backfill ----
-
-// Backfill is operator-initiated, estimated first, resumable and cancellable
-// (§10). Its status machine is the small part of that which is pure.
 func TestBackfillStatus_CanTransitionTo(t *testing.T) {
 	allowed := map[BackfillStatus][]BackfillStatus{
 		BackfillPending:  {BackfillRunning, BackfillCanceled},
@@ -98,8 +86,6 @@ func TestBackfill_Progress(t *testing.T) {
 	}
 }
 
-// A backfill that stops mid-page keeps its cursor, so a restart continues
-// rather than starting over (and re-paying for) the whole edge.
 func TestBackfill_Advance(t *testing.T) {
 	b := Backfill{Status: BackfillRunning}
 	b.Advance("cursor-2", 25, 20, now)

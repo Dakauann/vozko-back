@@ -63,14 +63,10 @@ func (r *ownerPhoneReader) ListWorkspaceIDsWithSuspendedDialog360() ([]string, e
 }
 
 func (r *ownerPhoneReader) FindConnectedDialog360ByOwner(workspaceID string) ([]businessphone.OwnerPhone, error) {
-	// Newest first: when entitlement drops, the most recently added numbers are
-	// the ones suspended (the older numbers the customer relies on are kept).
 	return r.findByStatus(workspaceID, businessphone.StatusConnected, "created_at desc")
 }
 
 func (r *ownerPhoneReader) FindSuspendedDialog360ByOwner(workspaceID string) ([]businessphone.OwnerPhone, error) {
-	// Oldest first: when capacity returns, reactivate the longest-suspended
-	// numbers first.
 	return r.findByStatus(workspaceID, businessphone.StatusSuspended, "updated_at asc")
 }
 
@@ -82,14 +78,7 @@ func (r *ownerPhoneReader) ListDialog360ChannelRefs() ([]businessphone.Dialog360
 		Dialog360ClientID  string
 		Status             string
 	}
-	// Same WABA join as findByStatus to carry the client-scoped cancel id. Only
-	// phones that actually hold a channel id can be billing at the vendor, so the
-	// empty-channel rows are filtered out. Every status is returned: the reconcile
-	// needs to know which channels the platform still considers active (CONNECTED) versus
-	// already suspended.
 	err := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
-		// COALESCE the nullable uuid owner to '' so an ownerless channel scans cleanly
-		// into WorkspaceID (and the vendor reconciler can detect "no owner").
 		Select("whatsapp_business_phone_numbers.id AS id, COALESCE(whatsapp_business_phone_numbers.owner_workspace_id::text, '') AS owner_workspace_id, whatsapp_business_phone_numbers.dialog360_channel_id AS dialog360_channel_id, whatsapp_business_phone_numbers.status AS status, w.dialog360_client_id AS dialog360_client_id").
 		Joins("LEFT JOIN whatsapp_business_accounts w ON w.meta_waba_id = whatsapp_business_phone_numbers.waba_id").
 		Where("whatsapp_business_phone_numbers.provider = ? AND whatsapp_business_phone_numbers.dialog360_channel_id <> ''",
@@ -118,10 +107,6 @@ func (r *ownerPhoneReader) findByStatus(workspaceID string, status businessphone
 		Dialog360ChannelID string
 		Dialog360ClientID  string
 	}
-	// The 360dialog cancel/reactivate endpoints are client scoped, so we join the
-	// owning WABA (keyed by the phone's waba_id) to carry its dialog360_client_id.
-	// LEFT JOIN so a phone with a missing WABA row still returns (client id empty,
-	// handled by the caller) rather than vanishing from the entitlement count.
 	err := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
 		Select("whatsapp_business_phone_numbers.id AS id, whatsapp_business_phone_numbers.dialog360_channel_id AS dialog360_channel_id, w.dialog360_client_id AS dialog360_client_id").
 		Joins("LEFT JOIN whatsapp_business_accounts w ON w.meta_waba_id = whatsapp_business_phone_numbers.waba_id").

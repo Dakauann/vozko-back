@@ -28,7 +28,6 @@ type capturedRequest struct {
 	body           []byte
 }
 
-// newRecordingServer answers every request with status/body and records the last one.
 func newRecordingServer(t *testing.T, status int, body string) (*httptest.Server, *capturedRequest) {
 	t.Helper()
 	captured := &capturedRequest{}
@@ -93,8 +92,6 @@ func TestCreatePayment_SendsExpectedRequest(t *testing.T) {
 	if captured.authorization != "Bearer TEST-token" {
 		t.Fatalf("bad Authorization header: %q", captured.authorization)
 	}
-	// A meaningful caller key is hashed into the UUID form Mercado Pago documents,
-	// deterministically, so a retry of the same logical charge repeats the same header.
 	if captured.idempotencyKey != NormalizeIdempotencyKey("idem-key-1") {
 		t.Fatalf("idempotency key not derived from the caller key, got %q", captured.idempotencyKey)
 	}
@@ -109,8 +106,6 @@ func TestCreatePayment_SendsExpectedRequest(t *testing.T) {
 	if err := json.Unmarshal(captured.body, &sent); err != nil {
 		t.Fatalf("request body is not valid JSON: %v", err)
 	}
-	// The notification URL must be attached even when the caller omits it: without it
-	// Mercado Pago omits the data.id query parameter the signature is built over.
 	if sent.NotificationURL != "https://vozko.test/webhooks/mercadopago" {
 		t.Fatalf("notification_url not defaulted, got %q", sent.NotificationURL)
 	}
@@ -286,7 +281,6 @@ func TestRefundPayment_FullRefundSendsNoAmount(t *testing.T) {
 	if captured.path != "/v1/payments/1234567890/refunds" || captured.method != http.MethodPost {
 		t.Fatalf("unexpected request: %s %s", captured.method, captured.path)
 	}
-	// A full refund must send an empty object; {"amount":0} is rejected by the API.
 	if strings.Contains(string(captured.body), "amount") {
 		t.Fatalf("full refund must not send an amount, body was %s", captured.body)
 	}
@@ -405,7 +399,6 @@ func TestFormatExpiration(t *testing.T) {
 		t.Fatalf("zero time must render empty, got %q", got)
 	}
 
-	// Mercado Pago requires milliseconds and an explicit offset.
 	within := now.Add(48 * time.Hour)
 	got := FormatExpiration(within, now, true)
 	if got != "2026-09-02T12:00:00.000+00:00" {
@@ -415,7 +408,6 @@ func TestFormatExpiration(t *testing.T) {
 		t.Fatalf("output does not round-trip: %v", err)
 	}
 
-	// Below the 30-minute floor: clamped up rather than sent and rejected.
 	tooSoon := FormatExpiration(now.Add(time.Minute), now, true)
 	parsed, err := time.Parse(ExpirationLayout, tooSoon)
 	if err != nil {
@@ -425,14 +417,12 @@ func TestFormatExpiration(t *testing.T) {
 		t.Fatalf("expected clamp to the 30-minute floor, got %v", parsed)
 	}
 
-	// Above the 30-day ceiling: clamped down.
 	tooLate := FormatExpiration(now.AddDate(0, 6, 0), now, true)
 	parsedLate, _ := time.Parse(ExpirationLayout, tooLate)
 	if !parsedLate.Equal(now.Add(MaxPixExpiry)) {
 		t.Fatalf("expected clamp to the 30-day ceiling, got %v", parsedLate)
 	}
 
-	// Without clamping the caller's value is preserved verbatim.
 	unclamped := FormatExpiration(now.Add(time.Minute), now, false)
 	parsedUnclamped, _ := time.Parse(ExpirationLayout, unclamped)
 	if !parsedUnclamped.Equal(now.Add(time.Minute)) {
@@ -501,8 +491,6 @@ func TestFormatPaymentID(t *testing.T) {
 }
 
 func TestNormalizeIdempotencyKey(t *testing.T) {
-	// A meaningful key becomes a deterministic UUID: the same logical charge always
-	// produces the same header, which is what makes a retry safe to repeat.
 	first := NormalizeIdempotencyKey("inv:1a2b3c")
 	second := NormalizeIdempotencyKey("inv:1a2b3c")
 	if first != second {
@@ -512,18 +500,15 @@ func TestNormalizeIdempotencyKey(t *testing.T) {
 		t.Fatalf("derived key is not a UUID: %q", first)
 	}
 
-	// Different logical operations must not collide.
 	if NormalizeIdempotencyKey("inv:aaa") == NormalizeIdempotencyKey("inv:bbb") {
 		t.Fatal("distinct keys collided")
 	}
 
-	// An existing UUID passes through untouched.
 	existing := "6b3f2a1c-9d4e-4f8a-b7c2-1e5d0a3f6b91"
 	if got := NormalizeIdempotencyKey(existing); got != existing {
 		t.Fatalf("a UUID key must pass through, got %q", got)
 	}
 
-	// Nothing to be idempotent about: a fresh random key each time.
 	a, b := NormalizeIdempotencyKey(""), NormalizeIdempotencyKey("   ")
 	if a == b {
 		t.Fatal("empty keys must produce distinct random UUIDs")

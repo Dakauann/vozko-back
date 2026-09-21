@@ -59,9 +59,6 @@ func TestScheduleStoresAndEnqueues(t *testing.T) {
 	if result.AlreadyExisted {
 		t.Error("a fresh schedule was reported as a replay")
 	}
-	// The expiry it was measured against is stored for forensics, and the
-	// window travels back so the caller can render the outcome without asking
-	// again.
 	if result.Message.WindowExpiresAtAtCreation == nil {
 		t.Error("the window expiry was not recorded")
 	}
@@ -73,8 +70,6 @@ func TestScheduleStoresAndEnqueues(t *testing.T) {
 	}
 }
 
-// The queue is an optimisation, not the delivery guarantee: the row is durable
-// before the enqueue, so a broker outage costs latency and never the message.
 func TestScheduleSucceedsWhenTheQueueIsDown(t *testing.T) {
 	f := newScheduleFixture(t)
 	f.wake.err = errors.New("broker unreachable")
@@ -91,8 +86,6 @@ func TestScheduleSucceedsWhenTheQueueIsDown(t *testing.T) {
 	}
 }
 
-// A double-click, a retried timeout, a replayed request: all must produce ONE
-// message to the customer.
 func TestScheduleIsIdempotentPerKey(t *testing.T) {
 	f := newScheduleFixture(t)
 
@@ -119,8 +112,6 @@ func TestScheduleIsIdempotentPerKey(t *testing.T) {
 	}
 }
 
-// Without a key the endpoint is honestly non-idempotent. Two keyless creates
-// are two distinct intentions.
 func TestScheduleWithoutAKeyCreatesEachTime(t *testing.T) {
 	f := newScheduleFixture(t)
 
@@ -148,13 +139,11 @@ func TestScheduleRefusesAClosedWindow(t *testing.T) {
 	}
 }
 
-// The refusal has to name the boundary, or the operator's next attempt is a
-// guess.
 func TestScheduleRefusesPastTheWindowAndReportsTheBoundary(t *testing.T) {
 	f := newScheduleFixture(t)
 
 	in := scheduleInput()
-	in.ScheduledAt = fixedNow.Add(8 * time.Hour) // window closes at +6h
+	in.ScheduledAt = fixedNow.Add(8 * time.Hour)
 
 	result, err := f.uc.Execute(context.Background(), in)
 	if !errors.Is(err, sm.ErrScheduledAtPastWindow) {
@@ -176,8 +165,6 @@ func TestScheduleRefusesTooSoon(t *testing.T) {
 	}
 }
 
-// A channel with no clock — Telegram in bot mode, a healthy linked device — is
-// bounded only by the horizon, and must not be told it has a window.
 func TestScheduleOnAClocklessChannelIsBoundedByTheHorizon(t *testing.T) {
 	f := newScheduleFixture(t)
 	f.windows.set(true, nil)
@@ -213,8 +200,6 @@ func TestScheduleValidatesContent(t *testing.T) {
 	}
 }
 
-// Media alone is a message. The rule must match the live send path's, or the
-// two disagree about what an empty message is.
 func TestScheduleAcceptsMediaWithoutText(t *testing.T) {
 	f := newScheduleFixture(t)
 

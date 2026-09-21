@@ -12,8 +12,8 @@ import (
 
 func dueAccount(id string) *igdomain.Account {
 	now := time.Now().UTC()
-	expires := now.Add(10 * 24 * time.Hour) // inside the 20-day refresh lead
-	refreshed := now.Add(-48 * time.Hour)   // past the 24h floor
+	expires := now.Add(10 * 24 * time.Hour)
+	refreshed := now.Add(-48 * time.Hour)
 	return &igdomain.Account{
 		ID:               id,
 		WorkspaceID:      "ws-1",
@@ -46,9 +46,6 @@ func TestRefreshTokens_RefreshesDueAccounts(t *testing.T) {
 	}
 }
 
-// TestRefreshTokens_SkipsTokensYoungerThan24h: Instagram rejects a refresh on a
-// token younger than 24 hours, so attempting one wastes a call and logs a
-// misleading error.
 func TestRefreshTokens_SkipsTokensYoungerThan24h(t *testing.T) {
 	account := dueAccount("fresh")
 	justRefreshed := time.Now().UTC().Add(-time.Hour)
@@ -69,8 +66,6 @@ func TestRefreshTokens_SkipsTokensYoungerThan24h(t *testing.T) {
 	}
 }
 
-// TestRefreshTokens_DeadTokenMarksReconnectRequired: a rejected token cannot be
-// recovered by retrying, so the account is flagged and the UI can prompt a reconnect.
 func TestRefreshTokens_DeadTokenMarksReconnectRequired(t *testing.T) {
 	accounts := &fakeAccountRepo{
 		ListDueFn: func(context.Context, time.Time, int) ([]*igdomain.Account, error) {
@@ -94,8 +89,6 @@ func TestRefreshTokens_DeadTokenMarksReconnectRequired(t *testing.T) {
 	}
 }
 
-// TestRefreshTokens_TransientFailureIsRetriedLater: a transient error must NOT mark
-// the account expired, that would send a working tenant to a reconnect screen.
 func TestRefreshTokens_TransientFailureIsRetriedLater(t *testing.T) {
 	accounts := &fakeAccountRepo{
 		ListDueFn: func(context.Context, time.Time, int) ([]*igdomain.Account, error) {
@@ -116,8 +109,6 @@ func TestRefreshTokens_TransientFailureIsRetriedLater(t *testing.T) {
 	}
 }
 
-// TestRefreshTokens_OneTenantFailureDoesNotAbortTheRest is the per-tenant isolation
-// property: a single revoked token must not starve every other account's refresh.
 func TestRefreshTokens_OneTenantFailureDoesNotAbortTheRest(t *testing.T) {
 	accounts := &fakeAccountRepo{
 		ListDueFn: func(context.Context, time.Time, int) ([]*igdomain.Account, error) {
@@ -170,8 +161,6 @@ func TestRefreshTokens_PropagatesRepositoryFailure(t *testing.T) {
 	}
 }
 
-// TestAccountStatus_TransitionGuard covers the lifecycle guard the WhatsApp phone
-// entity lacks entirely (there, every mutation is a bare field assignment).
 func TestAccountStatus_TransitionGuard(t *testing.T) {
 	cases := []struct {
 		from, to igdomain.Status
@@ -182,7 +171,6 @@ func TestAccountStatus_TransitionGuard(t *testing.T) {
 		{igdomain.StatusTokenExpired, igdomain.StatusConnected, true},
 		{igdomain.StatusRevoked, igdomain.StatusConnected, true},
 		{igdomain.StatusConnected, igdomain.StatusConnected, true},
-		// A pending account has no token yet, so it cannot expire one.
 		{igdomain.StatusPending, igdomain.StatusTokenExpired, false},
 		{igdomain.StatusRevoked, igdomain.StatusSuspended, false},
 		{igdomain.StatusConnected, igdomain.Status("NONSENSE"), false},
@@ -195,8 +183,6 @@ func TestAccountStatus_TransitionGuard(t *testing.T) {
 	}
 }
 
-// TestAccount_TokenNeedsRefresh exercises both boundaries at once: the expiry lead
-// and the 24h floor.
 func TestAccount_TokenNeedsRefresh(t *testing.T) {
 	now := time.Now().UTC()
 	lead := 20 * 24 * time.Hour

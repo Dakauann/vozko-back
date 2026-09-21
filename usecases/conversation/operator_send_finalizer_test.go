@@ -10,10 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// These pin the five side effects a delivered operator reply owes its
-// conversation. They used to live on the WebSocket hub, where nothing tested
-// them and no other send surface ran them at all.
-
 type recordedTransition struct {
 	entryID, entryType string
 	msgType            conversation.MessageType
@@ -149,8 +145,6 @@ func TestFinalizeOperatorSendRunsEveryStep(t *testing.T) {
 	if ev.EventType != ce.EventReplied {
 		t.Errorf("event type = %q, want %q", ev.EventType, ce.EventReplied)
 	}
-	// The channel used to come from a switch that defaulted to "whatsapp", so an
-	// operator's Telegram reply was filed as a WhatsApp event.
 	if ev.Channel != string(shared.EntryTypeTelegram) {
 		t.Errorf("event channel = %q, want %q", ev.Channel, shared.EntryTypeTelegram)
 	}
@@ -166,8 +160,6 @@ func TestFinalizeOperatorSendRunsEveryStep(t *testing.T) {
 	}
 }
 
-// The caller's workspace hint is the connection's workspace, which is wrong for
-// a platform admin working across workspaces. The resolver wins when it answers.
 func TestFinalizeOperatorSendFallsBackToTheHintWhenResolutionFails(t *testing.T) {
 	f := newFinalizerFixture(t)
 	f.resolver.workspaceID = ""
@@ -184,14 +176,11 @@ func TestFinalizeOperatorSendFallsBackToTheHintWhenResolutionFails(t *testing.T)
 	if len(f.events.events) != 1 || f.events.events[0].WorkspaceID != "ws-hint" {
 		t.Errorf("event workspace = %+v, want the caller's hint", f.events.events)
 	}
-	// No campaign resolvable means no stage, and that must not stop the rest.
 	if len(f.stages.assigned) != 0 {
 		t.Errorf("stage assigned despite an unresolvable campaign: %+v", f.stages.assigned)
 	}
 }
 
-// A conversation must never lose a delivered message because a side effect
-// failed. Every step degrades to a log line.
 func TestFinalizeOperatorSendSurvivesAFailingStep(t *testing.T) {
 	f := newFinalizerFixture(t)
 	f.status.err = errors.New("status store down")
@@ -209,9 +198,6 @@ func TestFinalizeOperatorSendSurvivesAFailingStep(t *testing.T) {
 	}
 }
 
-// A missing dependency stops the boot. The alternative — nil-checking each step
-// at call time — is what let a channel silently lose its board cards and its
-// timeline for months.
 func TestNewOperatorSendFinalizerRefusesMissingDependencies(t *testing.T) {
 	full := func() (conversation.ConversationStatusUpdater, conversation.CampaignWorkspaceResolver, ce.Logger, AISessionEnder, conversation.InitialStageAssigner) {
 		return &fakeStatusUpdater{}, &fakeWorkspaceResolver{}, &fakeEventLogger{}, &fakeAISessionEnder{}, &fakeInitialStageAssigner{}

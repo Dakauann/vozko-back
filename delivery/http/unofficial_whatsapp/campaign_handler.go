@@ -19,11 +19,6 @@ import (
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
 
-// CampaignHandler serves the unofficial WhatsApp campaign endpoints.
-//
-// Decode, enforce the workspace and the department scope, delegate, map errors.
-// Every rule about what is allowed lives below this layer, so the cron and a
-// workflow get the same answers an HTTP client does.
 type CampaignHandler struct {
 	create    uwc.CreateCampaignUseCase
 	update    uwc.UpdateCampaignUseCase
@@ -45,7 +40,6 @@ type CampaignHandler struct {
 	departments DepartmentScopeResolver
 }
 
-// CampaignHandlerDeps groups the usecases.
 type CampaignHandlerDeps struct {
 	Create      uwc.CreateCampaignUseCase
 	Update      uwc.UpdateCampaignUseCase
@@ -76,8 +70,6 @@ func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
 	}
 }
 
-// campaignScope resolves the caller's department scope, mirroring the instance
-// handler's helper so both surfaces answer access the same way.
 func (h *CampaignHandler) campaignScope(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, bool) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
@@ -105,15 +97,11 @@ func (h *CampaignHandler) campaignScope(w http.ResponseWriter, r *http.Request) 
 	}, true
 }
 
-// ---------------------------------------------------------------- read
-
 func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaceID, _, ok := h.campaignScope(w, r)
 	if !ok {
 		return
 	}
-	// A caller scoped to no department sees nothing, which the shared helper
-	// answers for every channel rather than each one re-deriving it.
 	if httpx.ShouldReturnEmptyDepartmentList(r) {
 		response.WritePaginated(w, http.StatusOK, []campaignDTO{}, response.PaginationMeta{})
 		return
@@ -152,8 +140,6 @@ func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// campaignSortFields is an allowlist. A sort key is caller-supplied and
-// interpolating one into ORDER BY is an injection.
 var campaignSortFields = map[string]string{
 	"name":      "name",
 	"status":    "status",
@@ -161,9 +147,6 @@ var campaignSortFields = map[string]string{
 	"updatedAt": "updatedAt",
 }
 
-// ListArchived is the archived view. A separate endpoint rather than a query
-// flag so the two have distinct permissions and distinct URLs to link to,
-// matching the official channel.
 func (h *CampaignHandler) ListArchived(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Set("archived", "true")
@@ -245,8 +228,6 @@ func (h *CampaignHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---------------------------------------------------------------- write
-
 func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID, scope, ok := h.campaignScope(w, r)
 	if !ok {
@@ -259,14 +240,6 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	draft := payload.toDomain(workspaceID)
-	// Pre-settled results are a PLATFORM privilege, and a different question
-	// from the one the route already answered: that gate asks who may launch a
-	// campaign, this asks who may create one that claims to have already run.
-	// A workspace owner passes the first and not the second.
-	//
-	// Dropped rather than refused, the same bargain the lead import makes with
-	// its scripted seeding: a caller who cannot use the control has simply asked
-	// for an ordinary campaign, and they get one.
 	if claims := middleware.GetClaims(r); claims == nil || claims.Role != string(user.RoleAdmin) {
 		draft.SeedOutcome = nil
 	}
@@ -321,8 +294,6 @@ func (h *CampaignHandler) AssignDepartment(w http.ResponseWriter, r *http.Reques
 	response.WriteSuccess(w, http.StatusOK, campaignToDTO(updated))
 }
 
-// Archive and Unarchive flip the flag through the update use case, so archiving
-// goes through the same validation and the same persistence as any other edit.
 func (h *CampaignHandler) Archive(w http.ResponseWriter, r *http.Request) { h.setArchived(w, r, true) }
 func (h *CampaignHandler) Unarchive(w http.ResponseWriter, r *http.Request) {
 	h.setArchived(w, r, false)
@@ -350,8 +321,6 @@ func (h *CampaignHandler) setArchived(w http.ResponseWriter, r *http.Request, ar
 	}
 	response.WriteSuccess(w, http.StatusOK, campaignToDTO(updated))
 }
-
-// ---------------------------------------------------------------- lifecycle
 
 func (h *CampaignHandler) Start(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, campaign.ActionStart)
@@ -385,8 +354,6 @@ func (h *CampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Numbers []campaignTargetDTO `json:"numbers"`
 	}
-	// An empty body is a valid quick send: it means "dispatch what is already
-	// pending", which is what the detail screen's Send button does.
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 
 	numbers := make([]uwc.EntryInput, 0, len(payload.Numbers))
@@ -407,7 +374,6 @@ func (h *CampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
-// Validate runs the optional up-front list clean.
 func (h *CampaignHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := h.campaignScope(w, r); !ok {
 		return
@@ -419,8 +385,6 @@ func (h *CampaignHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	}
 	response.WriteSuccess(w, http.StatusOK, out)
 }
-
-// ---------------------------------------------------------------- reset / clear
 
 func (h *CampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := h.campaignScope(w, r); !ok {
@@ -487,8 +451,6 @@ func (h *CampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *http.Req
 	}
 	response.WriteSuccess(w, http.StatusOK, out)
 }
-
-// ---------------------------------------------------------------- entries
 
 func (h *CampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := h.campaignScope(w, r); !ok {
@@ -561,13 +523,6 @@ func (h *CampaignHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
-// ---------------------------------------------------------------- errors
-
-// writeCampaignError maps domain refusals onto status codes.
-//
-// One table so every endpoint answers the same refusal the same way. The
-// lifecycle errors come from the SHARED kernel, which is why "already running"
-// reads identically on both channels.
 func writeCampaignError(w http.ResponseWriter, err error) {
 	var unusable *uwc.InstanceUnusableError
 	switch {
@@ -575,8 +530,6 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 
 	case errors.Is(err, uw.ErrInstanceOutsideDepartment), errors.Is(err, uw.ErrInstanceNotFound):
-		// Deliberately indistinguishable from "no such number": whether a number
-		// exists in a department you are not in is itself information.
 		response.WriteError(w, http.StatusNotFound, "number not found", nil)
 
 	case errors.Is(err, campaign.ErrAlreadyRunning),
@@ -594,8 +547,6 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 	case errors.As(err, &unusable),
 		errors.Is(err, uw.ErrRestrictedByWA),
 		errors.Is(err, uw.ErrInstanceNotConnected):
-		// 422: the request is well formed, the number is simply not in a state
-		// that can run a campaign. The message carries the remedy.
 		response.WriteError(w, http.StatusUnprocessableEntity, err.Error(), nil)
 
 	case errors.Is(err, uwc.ErrCampaignNameRequired),

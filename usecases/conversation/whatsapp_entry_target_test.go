@@ -53,16 +53,11 @@ func TestWhatsAppEntryTarget_ResolvesTheWholeSendTarget(t *testing.T) {
 		phoneID != "phone-1" || workspaceID != "ws-1" {
 		t.Fatalf("got %q %q %q %q", leadID, number, phoneID, workspaceID)
 	}
-	// The lead is read in the CAMPAIGN's workspace. Reading it in any other
-	// would either miss it or, worse, find a different workspace's lead.
 	if leads.askedWS != "ws-1" || leads.askedLead != "lead-1" {
 		t.Errorf("looked up lead %q in workspace %q", leads.askedLead, leads.askedWS)
 	}
 }
 
-// A missing campaign is fatal even though the entry itself resolved: the
-// campaign is where both the workspace and the number to send FROM live, so
-// there is nowhere to send from and no workspace to attribute it to.
 func TestWhatsAppEntryTarget_MissingCampaignIsATypedError(t *testing.T) {
 	for name, entries := range map[string]*targetEntryRepo{
 		"nil campaign": {

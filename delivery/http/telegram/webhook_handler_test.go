@@ -97,8 +97,6 @@ func TestWebhookAcceptsValidUpdate(t *testing.T) {
 		t.Errorf("topic = %q, want the message topic", publisher.published[0].Topic)
 	}
 
-	// The account id must travel with the payload: the update itself carries no
-	// bot identity, so it cannot be re-derived downstream.
 	var queued tguc.QueuedUpdate
 	if err := json.Unmarshal(publisher.published[0].Payload, &queued); err != nil {
 		t.Fatalf("queued payload does not decode: %v", err)
@@ -111,8 +109,6 @@ func TestWebhookAcceptsValidUpdate(t *testing.T) {
 	}
 }
 
-// The secret token is the ONLY authenticity control this endpoint has: Telegram
-// does not sign the body. Every way of getting it wrong must be refused.
 func TestWebhookRejectsBadSecret(t *testing.T) {
 	cases := map[string]string{
 		"wrong secret":   "not-the-secret",
@@ -137,8 +133,6 @@ func TestWebhookRejectsBadSecret(t *testing.T) {
 	}
 }
 
-// An account row with no secret can only mean it predates registration or was
-// tampered with. Accepting unverified input is never the safer default.
 func TestWebhookRejectsAccountWithoutSecret(t *testing.T) {
 	account := activeAccount()
 	account.WebhookSecret = ""
@@ -149,7 +143,6 @@ func TestWebhookRejectsAccountWithoutSecret(t *testing.T) {
 	}
 }
 
-// 401 rather than 404 on purpose: a 404 tells a scanner which account ids exist.
 func TestWebhookAnswers401ForUnknownAccount(t *testing.T) {
 	accounts := &stubAccounts{err: tgdomain.ErrAccountNotFound}
 	rec := serve(t, accounts, &stubPublisher{}, "acct-missing", "whatever", validUpdate)
@@ -170,9 +163,6 @@ func TestWebhookAnswers401WithoutAccountID(t *testing.T) {
 	}
 }
 
-// A webhook-failing account is exactly the one whose next delivery matters most.
-// Refusing it would turn a recoverable health blip into permanent message loss
-// once Telegram's 24h retention expires.
 func TestWebhookAcceptsWebhookFailingAccount(t *testing.T) {
 	account := activeAccount()
 	account.Status = tgdomain.StatusWebhookFailing
@@ -188,10 +178,6 @@ func TestWebhookAcceptsWebhookFailingAccount(t *testing.T) {
 	}
 }
 
-// A publish failure must NOT be acked. Telegram discards undelivered updates
-// after 24 hours and has no history API, so acknowledging something we failed to
-// enqueue loses it permanently; a 500 makes Telegram redeliver, which the
-// update_id dedup makes safe.
 func TestWebhookAnswers500WhenPublishFails(t *testing.T) {
 	publisher := &stubPublisher{err: errors.New("broker down")}
 	rec := serve(t, &stubAccounts{account: activeAccount()}, publisher, "acct-1", "s3cr3t-token", validUpdate)
@@ -201,8 +187,6 @@ func TestWebhookAnswers500WhenPublishFails(t *testing.T) {
 	}
 }
 
-// A malformed body will never parse, so it is acked to stop Telegram retrying
-// forever, but it must never be published.
 func TestWebhookAcksUndecodableBody(t *testing.T) {
 	publisher := &stubPublisher{}
 	rec := serve(t, &stubAccounts{account: activeAccount()}, publisher, "acct-1", "s3cr3t-token", "not json")
@@ -223,14 +207,11 @@ func TestWebhookRejectsNonPost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.Handle(rec, req)
 
-	// Unlike Meta, Telegram has no GET handshake, there is nothing to verify.
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rec.Code)
 	}
 }
 
-// The Bot API adds update kinds several times a year. An unrecognised one must
-// still be published, to the account topic, so it is logged rather than lost.
 func TestTopicRouting(t *testing.T) {
 	cases := map[string]struct {
 		body string
@@ -264,8 +245,6 @@ func TestTopicRouting(t *testing.T) {
 	}
 }
 
-// The body is read only AFTER the tenant and secret are resolved, so an
-// unauthenticated caller cannot make us buffer a megabyte.
 func TestWebhookResolvesAccountBeforeReadingBody(t *testing.T) {
 	accounts := &stubAccounts{err: tgdomain.ErrAccountNotFound}
 	rec := serve(t, accounts, &stubPublisher{}, "acct-1", "s3cr3t-token", validUpdate)

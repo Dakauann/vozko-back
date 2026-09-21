@@ -58,7 +58,6 @@ func TestGetSummaryBuildsBilledMetricsAndPassesFilter(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	// Without charge aggregator: billed from entry status = 37.
 	if got, want := m.Dispatches, int64(37); got != want {
 		t.Errorf("Dispatches = %d, want %d", got, want)
 	}
@@ -93,14 +92,12 @@ func TestGetSummaryPrefersLedgerCharges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	// Ledger overrides entry-status dispatches (entry would have been 2).
 	if got, want := m.Dispatches, int64(99); got != want {
 		t.Errorf("Dispatches from ledger = %d, want %d", got, want)
 	}
 	if m.ByCategory == nil || m.ByCategory.Marketing != 70 || m.ByCategory.Utility != 25 {
 		t.Errorf("ByCategory from ledger unexpected: %+v", m.ByCategory)
 	}
-	// Delivery funnel still entry-based.
 	if got, want := m.Read, int64(1); got != want {
 		t.Errorf("Read should stay entry-based, got %d", got)
 	}

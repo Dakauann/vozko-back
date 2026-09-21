@@ -39,9 +39,6 @@ func (uc *setMemberPermissionsUseCase) Execute(actorID, workspaceID, memberUserI
 		return nil, workspace.ErrCannotChangeOwnerRole
 	}
 
-	// Retired resources are dropped, not rejected: see
-	// workspace.DropRetiredResources. The editor resubmits whatever it loaded,
-	// so a role saved before a feature was removed would otherwise be stuck.
 	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
 		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
 			"set member permissions in workspace "+workspaceID, len(input.Permissions)-len(kept), dropped)

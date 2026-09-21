@@ -75,12 +75,6 @@ type CallDimensionTotals struct {
 	ProfitMicros  int64 `json:"profitMicros"`
 }
 
-// CallDimensionBreakdown splits a call's money by what was actually billed.
-//
-// Telephony is the only cost dimension a call has. It previously also carried
-// STT, TTS and LLM — a voice-AI cost model the product does not have, backed by
-// database columns that never existed, which made every call analytics query
-// fail outright. AI runs on messaging channels; it never runs on a call.
 type CallDimensionBreakdown struct {
 	Telephony CallDimensionTotals `json:"telephony"`
 	Total     CallDimensionTotals `json:"total"`

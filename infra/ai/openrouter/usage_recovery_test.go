@@ -11,8 +11,6 @@ import (
 	"vozko/domain/ai"
 )
 
-// stubFetcher is an in-memory generationUsageFetcher so the recovery path can be
-// driven without a real HTTP endpoint.
 type stubFetcher struct {
 	pt, ct     int
 	costMicros int64
@@ -27,9 +25,6 @@ func (f *stubFetcher) FetchUsage(_ context.Context, id string) (int, int, int64,
 	return f.pt, f.ct, f.costMicros, f.ok
 }
 
-// hangingSSEServer flushes the given chunks then holds the connection open until
-// stop() is called, so a test can let the client receive some tokens and then
-// cancel the request mid-stream, exactly like a timeout/abort in production.
 func hangingSSEServer(chunks []string) (*httptest.Server, func()) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -47,9 +42,6 @@ func hangingSSEServer(chunks []string) (*httptest.Server, func()) {
 	return srv, func() { close(release) }
 }
 
-// When a stream is cut before the inline usage chunk arrives, the turn must still
-// be billed by recovering the real usage from the generation endpoint (by the id
-// the stream carried). This is the core revenue-leak fix.
 func TestGenerateStream_CutStream_RecoversUsageAndBills(t *testing.T) {
 	srv, release := hangingSSEServer([]string{
 		`{"id":"gen-cut-1","choices":[{"index":0,"delta":{"content":"pensando"}}]}`,
@@ -72,7 +64,6 @@ func TestGenerateStream_CutStream_RecoversUsageAndBills(t *testing.T) {
 		t.Fatalf("GenerateStream: %v", err)
 	}
 
-	// Read until we've seen the first token, then cancel mid-stream.
 	gotToken := false
 	go func() {
 		for ev := range ch {
@@ -83,7 +74,6 @@ func TestGenerateStream_CutStream_RecoversUsageAndBills(t *testing.T) {
 		}
 	}()
 
-	// Give the goroutine time to drain + the billing recovery to run.
 	deadline := time.After(2 * time.Second)
 	for {
 		if len(pub.events()) > 0 {
@@ -115,8 +105,6 @@ func TestGenerateStream_CutStream_RecoversUsageAndBills(t *testing.T) {
 	}
 }
 
-// EOF without a usage chunk (provider just never sent usage) is recovered too,
-// the generation completed, so /generation has the counts.
 func TestGenerateStream_EOFNoUsage_RecoversAndBills(t *testing.T) {
 	srv := sseServer([]string{
 		`{"id":"gen-eof-1","choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -147,8 +135,6 @@ func TestGenerateStream_EOFNoUsage_RecoversAndBills(t *testing.T) {
 	}
 }
 
-// Recovery that fails (endpoint error / not found) must NOT bill, better to leak
-// than to charge a fabricated amount.
 func TestGenerateStream_RecoveryFails_DoesNotBill(t *testing.T) {
 	srv := sseServer([]string{
 		`{"id":"gen-x","choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -171,7 +157,6 @@ func TestGenerateStream_RecoveryFails_DoesNotBill(t *testing.T) {
 	}
 }
 
-// A recovery that returns zero tokens must NOT bill (zero-completion safety).
 func TestGenerateStream_RecoveryZeroTokens_DoesNotBill(t *testing.T) {
 	srv := sseServer([]string{
 		`{"id":"gen-z","choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -194,8 +179,6 @@ func TestGenerateStream_RecoveryZeroTokens_DoesNotBill(t *testing.T) {
 	}
 }
 
-// Without a fetcher wired, behaviour is unchanged: a no-usage stream isn't billed
-// (the legacy leak is preserved, not regressed) and nothing is fabricated.
 func TestGenerateStream_NoFetcher_NoRecovery(t *testing.T) {
 	srv := sseServer([]string{
 		`{"id":"gen-n","choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -204,7 +187,7 @@ func TestGenerateStream_NoFetcher_NoRecovery(t *testing.T) {
 	defer srv.Close()
 
 	pub := &capturingPub{}
-	svc := newTestService(srv.URL, pub) // no usageFetcher
+	svc := newTestService(srv.URL, pub)
 
 	ch, _ := svc.GenerateStream(context.Background(), ai.GenerateInput{
 		Model:       "z-ai/glm-5.2",
@@ -217,8 +200,6 @@ func TestGenerateStream_NoFetcher_NoRecovery(t *testing.T) {
 	}
 }
 
-// Inline usage still wins: when the final usage chunk DOES arrive, we bill from it
-// and never call the recovery fetcher.
 func TestGenerateStream_InlineUsage_SkipsRecovery(t *testing.T) {
 	srv := sseServer([]string{
 		`{"id":"gen-i","choices":[{"index":0,"delta":{"content":"oi"}}]}`,
@@ -248,8 +229,6 @@ func TestGenerateStream_InlineUsage_SkipsRecovery(t *testing.T) {
 	}
 }
 
-// ---- httpGenerationFetcher direct tests ----------------------------------
-
 func TestHTTPGenerationFetcher_Success(t *testing.T) {
 	var gotPath, gotID, gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -265,8 +244,6 @@ func TestHTTPGenerationFetcher_Success(t *testing.T) {
 	if !ok || pt != 1200 || ct != 1000 {
 		t.Fatalf("FetchUsage = %d/%d ok=%v, want 1200/1000 true", pt, ct, ok)
 	}
-	// total_cost absent from this payload: the caller must fall back to the
-	// token estimate, not bill zero.
 	if costMicros != 0 {
 		t.Fatalf("costMicros = %d, want 0 when the payload carries no total_cost", costMicros)
 	}

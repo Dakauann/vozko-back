@@ -386,7 +386,6 @@ func TestAIBilling_RetryExhaustion(t *testing.T) {
 	}
 	ack2.mu.Unlock()
 
-	// A permanently dropped event is lost revenue, it must increment the metric.
 	if got := metrics.count("permanent_drop"); got != 1 {
 		t.Errorf("expected 1 permanent_drop skip metric, got %d", got)
 	}
@@ -417,11 +416,6 @@ func TestAIBilling_CostCalculation(t *testing.T) {
 	}
 }
 
-// End-to-end money proof for a reasoning-heavy turn: OpenRouter folds reasoning
-// tokens into completion_tokens, so the published event carries the FULL completion
-// count (1000, of which 700 were thinking). The debit must charge for all 1000,
-// i.e. the user pays for the thinking. (If reasoning were dropped, completion would
-// be 300 and the charge would be ~432 µ instead of 936 µ.)
 func TestAIBilling_ChargesFullCompletionIncludingReasoning(t *testing.T) {
 	balanceRepo := newMockBalanceRepo(1_000_000)
 	pricer := newAITestPricer()
@@ -430,8 +424,6 @@ func TestAIBilling_ChargesFullCompletionIncludingReasoning(t *testing.T) {
 	consumer := NewConsumeAIBillingUseCase(sub, balanceRepo, pricer, nil)
 	_ = consumer.Start()
 
-	// prompt=1200, completion=1000 (incl. 700 reasoning), exactly what the adapter
-	// publishes for a thinking model (see openrouter billing_stream_test.go).
 	event := makeEvent("req-reasoning", "ws-1", "gpt-4o-mini", 1200, 1000)
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
@@ -443,16 +435,14 @@ func TestAIBilling_ChargesFullCompletionIncludingReasoning(t *testing.T) {
 		t.Fatalf("expected 1 debit, got %d", len(balanceRepo.debits))
 	}
 
-	// gpt-4o-mini: 150_000 µ/M input, 600_000 µ/M output (mockLLMFetcher), +20% markup.
-	inputCost := 1200.0 / 1_000_000 * 150_000  // 180
-	outputCost := 1000.0 / 1_000_000 * 600_000 // 600, the full completion, reasoning included
+	inputCost := 1200.0 / 1_000_000 * 150_000
+	outputCost := 1000.0 / 1_000_000 * 600_000
 	expectedMicros := int64(math.Ceil((inputCost + outputCost) * 1.20))
 
 	if balanceRepo.debits[0].amount != expectedMicros {
 		t.Fatalf("debit = %d µ, want %d µ (full completion incl. reasoning)", balanceRepo.debits[0].amount, expectedMicros)
 	}
 
-	// Sanity: dropping the 700 reasoning tokens would charge meaningfully less.
 	reasoningDroppedMicros := int64(math.Ceil((inputCost + 300.0/1_000_000*600_000) * 1.20))
 	if balanceRepo.debits[0].amount <= reasoningDroppedMicros {
 		t.Fatalf("charge %d µ did not include reasoning (drop-reasoning would be %d µ)", balanceRepo.debits[0].amount, reasoningDroppedMicros)
@@ -716,8 +706,6 @@ func TestAIBilling_UnknownModel_ZeroPrice(t *testing.T) {
 	if len(balanceRepo.debits) != 0 {
 		t.Errorf("expected 0 debits for zero-price model, got %d", len(balanceRepo.debits))
 	}
-	// The skip must be observable, an unpriced model billing $0 is a revenue leak
-	// that has to surface on a metric, not vanish silently.
 	if got := metrics.count("zero_price"); got != 1 {
 		t.Errorf("expected 1 zero_price skip metric, got %d", got)
 	}

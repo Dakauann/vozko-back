@@ -35,8 +35,6 @@ func NewChangePasswordUseCase(
 	}
 }
 
-// WithNotifier enables the "password changed" confirmation email. Returns the use
-// case for chaining at wiring time.
 func (uc *changePasswordUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *changePasswordUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL

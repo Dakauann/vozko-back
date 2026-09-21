@@ -8,9 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Hand-written fakes with function fields, matching the repository's dominant test
-// style. Each defaults to a benign value so a test only sets what it exercises.
-
 type fakeAccountRepo struct {
 	FindByIDFn               func(ctx context.Context, id string) (*igdomain.Account, error)
 	FindByIGUserIDFn         func(ctx context.Context, igUserID string) (*igdomain.Account, error)
@@ -211,9 +208,6 @@ func (f *fakeConversationRepo) SetStatus(context.Context, string, string, string
 	return nil
 }
 
-// sentMessage records one outbound Send API call so a test can assert WHICH
-// account and token were used, the property that keeps multi-account replies
-// correct.
 type sentMessage struct {
 	IGUserID  string
 	Token     string
@@ -429,7 +423,6 @@ func (f *fakeCommentService) Delete(ctx context.Context, token, igCommentID stri
 	return nil
 }
 
-// connectedAccount is a ready-to-send account with every relevant scope granted.
 func connectedAccount() *igdomain.Account {
 	return &igdomain.Account{
 		ID:          "acct-1",

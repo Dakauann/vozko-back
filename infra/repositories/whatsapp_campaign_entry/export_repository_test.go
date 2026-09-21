@@ -14,10 +14,6 @@ import (
 	"vozko/domain/export"
 )
 
-// capturedQueries records every SQL statement the repository issues, so tests
-// can assert on the shape of the query rather than only on its results. The
-// predicates below are tenancy and cost controls; a result-only test would pass
-// just as happily if they were dropped.
 type capturedQueries struct{ sql []string }
 
 func (c *capturedQueries) matcher() sqlmock.QueryMatcher {
@@ -93,9 +89,6 @@ func collect(t *testing.T, repo export.ChannelEntryLister, scope export.Scope) [
 	return out
 }
 
-// Tenancy is enforced in this query and nowhere else. The handler checks the
-// workspace for the per-campaign route, but the workspace-wide route has no id
-// to check — so if the predicate is not here, an export reads every tenant.
 func TestExportQueryScopesToTheWorkspace(t *testing.T) {
 	db, mock, captured, sqlDB := newExportMockDB(t)
 	defer sqlDB.Close()
@@ -154,7 +147,6 @@ func TestExportQueryAppliesEveryScopeFilter(t *testing.T) {
 	}
 }
 
-// An empty scope must not silently mean "every workspace".
 func TestExportWithoutWorkspaceQueriesNothing(t *testing.T) {
 	db, _, captured, sqlDB := newExportMockDB(t)
 	defer sqlDB.Close()
@@ -170,16 +162,10 @@ func TestExportWithoutWorkspaceQueriesNothing(t *testing.T) {
 	}
 }
 
-// Paging is keyset, not OFFSET: each page carries the last row's ordering tuple
-// so the database resumes on the index instead of re-reading and re-sorting
-// everything before it. With OFFSET, page N costs N pages of work, which is
-// what turns a large export into a slow query for every other tenant sharing
-// the pool.
 func TestExportPagesWithAKeysetCursor(t *testing.T) {
 	db, mock, captured, sqlDB := newExportMockDB(t)
 	defer sqlDB.Close()
 
-	// A full page forces a second round trip; a short page ends the walk.
 	mock.ExpectQuery(".").WillReturnRows(exportRows(exportPageSize, "camp-1"))
 	mock.ExpectQuery(".").WillReturnRows(exportRows(3, "camp-2"))
 
@@ -204,8 +190,6 @@ func TestExportPagesWithAKeysetCursor(t *testing.T) {
 		t.Errorf("second page is missing the keyset predicate:\n%s", second)
 	}
 
-	// The ordering has to be the index's leading edge, or every page pays for a
-	// sort of the whole filtered set.
 	if !strings.Contains(first, "ORDER BY e.campaign_id, e.status, e.created_at, e.id") {
 		t.Errorf("unexpected ordering:\n%s", first)
 	}

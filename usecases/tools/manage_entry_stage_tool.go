@@ -17,11 +17,7 @@ import (
 const ManageEntryStageToolName = "manage_entry_stage"
 
 type manageEntryStageTool struct {
-	stageRepo stage.Repository
-	// assignStage is the same use case the HTTP handler and the CRM's bulk action
-	// go through, so the AI's moves are validated identically. The repository stays
-	// for the READS this tool does (resolving the target stage by name, reading the
-	// current one); only the write was routed.
+	stageRepo       stage.Repository
 	assignStage     stage.AssignEntryStageUseCase
 	conversationHub conversation.EventBroadcaster
 }
@@ -71,17 +67,6 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 	}
 }
 
-// DefinitionWithContext fills the target-stage enum from the pipeline this
-// conversation belongs to.
-//
-// The campaign is an OPTIONAL refinement, not a requirement: it selects a
-// campaign's own funnel when one exists, and ListByCampaign already falls back
-// to the workspace's default conversation pipeline when it does not. Requiring
-// it here meant every channel without campaigns, Telegram, Instagram, got an
-// EMPTY enum while the prompt instructed the model to "use SOMENTE etapas
-// listadas no enum". The agent could not classify a lead at all, and nothing
-// reported an error: Execute already had the same fallback, so the tool would
-// have worked if only it had been offered a stage to pick.
 func (t *manageEntryStageTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
 	base := t.Definition()
 	if ctx.WorkspaceID == "" {
@@ -145,9 +130,6 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 		campaignType = entryType
 	}
 
-	// The board already renders cards for every taggable channel, so the guard
-	// must use the same predicate the stage and label domains validate against,
-	// otherwise the agent cannot move a card the UI happily shows.
 	if !shared.EntryType(entryType).SupportsCRMTagging() {
 		return tools.ExecutionResult{
 			Result:  fmt.Sprintf("Tipo de entrada inválido: %s", entryType),
@@ -188,13 +170,6 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 	}
 }
 
-// moveActor attributes the stage move to the agent that made it: the seeded
-// __agent_id first, the context agent as fallback, the system actor as the
-// honest last resort. Mirrors manageLeadMemoryTool.writeActor.
-//
-// It exists because the timeline event now comes from the use case, which is
-// the only place all three writers (operator, bulk, AI) pass through — and a
-// use case can only name the actor its caller gives it.
 func (t *manageEntryStageTool) moveActor(ctx context.Context, config map[string]interface{}) string {
 	agentID, _ := config["__agent_id"].(string)
 	if agentID == "" {
@@ -296,19 +271,11 @@ func (t *manageEntryStageTool) handleMove(workspaceID, campaignID, campaignType,
 		}, nil
 	}
 
-	// Through the use case, not the repository. The AI moves leads between stages
-	// exactly like an operator does, so it has to pass the same funnel-coherence
-	// rule; calling AssignStage directly made this the one writer no rule could
-	// reach. The use case is an upsert, so the explicit RemoveEntryStage that used
-	// to precede it is gone — it was deleting the row AssignStage deletes anyway.
 	if _, err := t.assignStage.Execute(workspaceID, stage.AssignEntryStageInput{
 		StageID:   targetTag.ID,
 		EntryID:   entryID,
 		EntryType: entryType,
-		// The use case writes the timeline event, so the agent has to name
-		// itself here or the move is filed under the system actor and the
-		// history cannot say the AI moved the lead.
-		ActorID: actorID,
+		ActorID:   actorID,
 	}); err != nil {
 		log.Printf("[ManageEntryTag] Error assigning tag: %v", err)
 		return tools.ExecutionResult{

@@ -44,18 +44,11 @@ func (b *InboundOfferBroker) del(offerID string) {
 }
 
 func (b *InboundOfferBroker) Accept(_ context.Context, input callsession.AcceptInboundCallInput) error {
-	// Accept must come from the exact session the offer was routed to: the call is
-	// bridged onto that session, so a stale/foreign session cannot accept it.
 	return b.resolve(input.OfferID, input.WorkspaceID, input.UserID, input.SessionID, true,
 		InboundOfferResponse{Accepted: true})
 }
 
 func (b *InboundOfferBroker) Decline(_ context.Context, input callsession.DeclineInboundCallInput) error {
-	// Decline matches at USER level, the session id is NOT required. A call session that
-	// dropped and reconnected gets a fresh session id, but the user rejecting the
-	// ring must still cancel it. Requiring an exact session match here left the ring
-	// reservation stuck until the offer TTL (~30s), blocking new outbound dials with
-	// "you already have an active call".
 	return b.resolve(input.OfferID, input.WorkspaceID, input.UserID, input.SessionID, false,
 		InboundOfferResponse{Accepted: false, Reason: input.Reason})
 }

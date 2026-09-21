@@ -2777,8 +2777,6 @@ func TestSubscribeWorkspace_MonthlyBillingCycleAlignsToAnchor(t *testing.T) {
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	// Monthly subscriptions co-term to the global billing anchor (the 23rd, in São Paulo time),
-	// not a rolling +1 month from signup.
 	expectedEnd := billing.PlanFirstAnchor(fixedNow.In(billing.LocationBRT()), billing.DefaultDueDay, billing.DefaultPlanFirstAnchorFloorDays)
 	if !details.Subscription.CurrentPeriodEnd.Equal(expectedEnd) {
 		t.Fatalf("expected anchored period end %v, got %v", expectedEnd, details.Subscription.CurrentPeriodEnd)
@@ -2807,7 +2805,6 @@ func TestSubscribeWorkspace_InvalidBillingCycleDefaultsToMonthly(t *testing.T) {
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	// An invalid cycle defaults to monthly, which anchors to the global billing day.
 	expectedEnd := billing.PlanFirstAnchor(fixedNow.In(billing.LocationBRT()), billing.DefaultDueDay, billing.DefaultPlanFirstAnchorFloorDays)
 	if !details.Subscription.CurrentPeriodEnd.Equal(expectedEnd) {
 		t.Fatalf("expected anchored monthly period end %v, got %v", expectedEnd, details.Subscription.CurrentPeriodEnd)

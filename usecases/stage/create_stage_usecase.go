@@ -27,11 +27,6 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 		return nil, stage.ErrTagDescRequired
 	}
 
-	// A stage belongs to ONE funnel, so uniqueness and position are computed within
-	// that funnel — never across the workspace. pipelineID names it explicitly (the
-	// CRM sends the funnel the operator is looking at); without one the repository
-	// attaches the stage to the workspace default, which is the legacy behaviour and
-	// the reason a custom funnel could not be given a new column from the CRM.
 	pipelineID := strings.TrimSpace(input.PipelineID)
 	existing, err := uc.listSiblings(workspaceID, pipelineID, input)
 	if err != nil {
@@ -65,10 +60,6 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 	return uc.repo.FindByID(t.ID)
 }
 
-// listSiblings returns the stages the new one must be unique and ordered against:
-// the named funnel's, or — with no funnel named — whatever the legacy campaign
-// resolution lands on. Scoping this per funnel is what lets two funnels each have
-// their own "fechado" without colliding.
 func (uc *CreateStageUseCase) listSiblings(
 	workspaceID, pipelineID string,
 	input stage.CreateStageInput,

@@ -45,8 +45,6 @@ func conversationFor(chatID int64) *tgdomain.Conversation {
 	}
 }
 
-// newAdapter wires the adapter with fakes and returns the pieces a test asserts
-// against.
 func newAdapter(
 	account *tgdomain.Account,
 	conv *tgdomain.Conversation,
@@ -80,15 +78,11 @@ func entryContext(conv *tgdomain.Conversation, lastInbound *time.Time) *conversa
 	}
 }
 
-// Bot mode has NO messaging window. Applying Instagram's 24h clock here would
-// disable the composer on every conversation older than a day, for no reason the
-// platform imposes.
 func TestWindowStateBotModeHasNoClock(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1", TGUserID: 5041234567}
 	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, contact)
 
-	// An inbound from a week ago must still leave the window window.Open.
 	old := time.Now().UTC().Add(-7 * 24 * time.Hour)
 	window, err := adapter.WindowState(context.Background(), entryContext(conv, &old))
 	if err != nil {
@@ -97,14 +91,11 @@ func TestWindowStateBotModeHasNoClock(t *testing.T) {
 	if !window.Open {
 		t.Error("bot mode has no window; a week-old conversation is still repliable")
 	}
-	// A nil expiry is what tells the UI "this is not a clock".
 	if window.ExpiresAt != nil {
 		t.Errorf("expiry = %v, want nil, there is no moment at which bot mode reopens", window.ExpiresAt)
 	}
 }
 
-// The real outbound gate in bot mode is reachability: the customer blocking the
-// bot. It never reopens on its own, so the UI copy has to differ from a window.
 func TestWindowStateBotModeClosesWhenBlocked(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1", TGUserID: 5041234567, Blocked: true}
@@ -122,8 +113,6 @@ func TestWindowStateBotModeClosesWhenBlocked(t *testing.T) {
 	}
 }
 
-// Business mode reintroduces Instagram's exact 24h rule, because can_reply is
-// defined as "private chats that had incoming messages in the last 24 hours".
 func TestWindowStateBusinessModeUsesTheClock(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1", TGUserID: 5041234567}
@@ -144,8 +133,6 @@ func TestWindowStateBusinessModeUsesTheClock(t *testing.T) {
 	}
 }
 
-// A revoked right is not a clock either: the UI must say "permission revoked",
-// which it can only do if no expiry is reported.
 func TestWindowStateBusinessModeWithoutCanReply(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -164,14 +151,11 @@ func TestWindowStateBusinessModeWithoutCanReply(t *testing.T) {
 	}
 }
 
-// Telegram counts CHARACTERS. A byte limit would reject an emoji-heavy message
-// Telegram accepts.
 func TestSendTextEnforcesRuneLimit(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
 	adapter, _, _, _, api, _ := newAdapter(botAccount(), conv, contact)
 
-	// Exactly at the limit, in 4-byte runes: ~16KB of bytes, 4096 characters.
 	atLimit := strings.Repeat("😀", tgdomain.MaxTextRunes)
 	if _, err := adapter.SendText(context.Background(), entryContext(conv, nil),
 		conversation.SendTextRequest{Body: atLimit}); err != nil {
@@ -189,8 +173,6 @@ func TestSendTextEnforcesRuneLimit(t *testing.T) {
 	}
 }
 
-// HTML is the parse mode, and interpolated customer text must be escaped or a
-// stray "<" fails the whole send.
 func TestSendTextEscapesHTML(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -213,9 +195,6 @@ func TestSendTextEscapesHTML(t *testing.T) {
 	}
 }
 
-// The provider id is known synchronously, Telegram answers a send with the full
-// Message, so there is no echo webhook to reconcile against. It must pair the
-// chat id with the message id, because message_id is unique only inside a chat.
 func TestSendTextReturnsCompositeProviderID(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -236,8 +215,6 @@ func TestSendTextReturnsCompositeProviderID(t *testing.T) {
 	}
 }
 
-// A reply must quote by message id, which is the half of the composite the
-// provider actually understands.
 func TestSendTextReplyUsesMessageIDOnly(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -255,10 +232,6 @@ func TestSendTextReplyUsesMessageIDOnly(t *testing.T) {
 	}
 }
 
-// Business mode must send on behalf of the connection the conversation ARRIVED
-// through, not whatever the account currently holds: an account can be
-// reconnected, and answering on the wrong connection would surface the reply
-// under a different identity.
 func TestSendTextCarriesBusinessConnection(t *testing.T) {
 	conv := conversationFor(5041234567)
 	convConnection := "conversation-connection"
@@ -278,7 +251,6 @@ func TestSendTextCarriesBusinessConnection(t *testing.T) {
 	}
 }
 
-// Bot mode must NOT carry a connection id, or Telegram rejects the send.
 func TestSendTextOmitsBusinessConnectionInBotMode(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -293,8 +265,6 @@ func TestSendTextOmitsBusinessConnectionInBotMode(t *testing.T) {
 	}
 }
 
-// A blocked contact must fail with the window-closed sentinel so the composer
-// explains itself rather than surfacing a raw provider error.
 func TestSendTextRefusesWhenBlocked(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1", Blocked: true}
@@ -310,8 +280,6 @@ func TestSendTextRefusesWhenBlocked(t *testing.T) {
 	}
 }
 
-// 401 means the token was revoked in BotFather. Marking the account is what
-// turns "messages silently stopped" into a visible Reconnect prompt.
 func TestSendTextMarksAccountOnRevokedToken(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -332,8 +300,6 @@ func TestSendTextMarksAccountOnRevokedToken(t *testing.T) {
 	}
 }
 
-// 403 means the customer blocked the bot. Flagging the contact is what disables
-// the composer instead of letting every subsequent send fail identically.
 func TestSendTextFlagsContactOnForbidden(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -353,8 +319,6 @@ func TestSendTextFlagsContactOnForbidden(t *testing.T) {
 	}
 }
 
-// A group that became a supergroup has a NEW chat id. Rewriting both rows is what
-// keeps the conversation reachable; not doing it kills it silently.
 func TestSendTextRewritesMigratedChatID(t *testing.T) {
 	conv := conversationFor(-1001111)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -377,8 +341,6 @@ func TestSendTextRewritesMigratedChatID(t *testing.T) {
 	}
 }
 
-// A cached file_id has NO size limit and costs no upload. Preferring it is what
-// makes a repeated boleto image free.
 func TestSendMediaPrefersCachedFileID(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -386,7 +348,6 @@ func TestSendMediaPrefersCachedFileID(t *testing.T) {
 
 	const url = "https://cdn.example.com/boleto.jpg"
 
-	// First send uploads by URL and caches the id Telegram assigned.
 	if _, err := adapter.SendMedia(context.Background(), entryContext(conv, nil),
 		conversation.SendMediaRequest{Kind: "image", URL: url, MIMEType: "image/jpeg"}); err != nil {
 		t.Fatalf("SendMedia: %v", err)
@@ -398,7 +359,6 @@ func TestSendMediaPrefersCachedFileID(t *testing.T) {
 		t.Errorf("file id cache puts = %v, want the id Telegram returned", files.Puts)
 	}
 
-	// Second send reuses the cached id and sends no URL at all.
 	if _, err := adapter.SendMedia(context.Background(), entryContext(conv, nil),
 		conversation.SendMediaRequest{Kind: "image", URL: url, MIMEType: "image/jpeg"}); err != nil {
 		t.Fatalf("SendMedia (second): %v", err)
@@ -412,8 +372,6 @@ func TestSendMediaPrefersCachedFileID(t *testing.T) {
 	}
 }
 
-// sendVoice renders an in-chat waveform but requires audio/ogg; anything else
-// "will be sent as files". The MIME decides the method, not the caller.
 func TestSendMediaPicksVoiceForOgg(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -436,7 +394,6 @@ func TestSendMediaPicksVoiceForOgg(t *testing.T) {
 	}
 }
 
-// Documents accept any type on Telegram, unlike Instagram's PDF-only rule.
 func TestSendMediaAcceptsAnyDocumentType(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -450,8 +407,6 @@ func TestSendMediaAcceptsAnyDocumentType(t *testing.T) {
 	}
 }
 
-// MarkSeen is business-mode only. Returning "unsupported" rather than silently
-// doing nothing is what stops a caller believing a read receipt was sent.
 func TestMarkSeenIsBusinessOnly(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -469,9 +424,6 @@ func TestMarkSeenIsBusinessOnly(t *testing.T) {
 	}
 }
 
-// Unsend is bounded by Telegram's own 48-hour rule. Enforcing it here names the
-// reason instead of surfacing an opaque Bad Request to an operator undoing a
-// mistake.
 func TestRetractRefusesBeyond48Hours(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -496,7 +448,6 @@ func TestRetractRefusesBeyond48Hours(t *testing.T) {
 	}
 }
 
-// The adapter must implement editing, which is the capability only Telegram has.
 func TestAdapterImplementsEditing(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
@@ -512,9 +463,6 @@ func TestAdapterImplementsEditing(t *testing.T) {
 	}
 }
 
-// A reply must leave from the SAME bot the message arrived on. With several bots
-// in one workspace, the token bound to the call is the only thing that keeps
-// them apart.
 func TestSendUsesTheOwningAccountsToken(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}

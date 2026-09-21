@@ -8,14 +8,10 @@ import (
 	workspace_domain "vozko/domain/workspace"
 )
 
-// RateLimiter is the subset of the rate-limit middleware the public receiver
-// needs, so this package does not depend on the concrete middleware type.
 type RateLimiter interface {
 	Validate(next http.Handler) http.Handler
 }
 
-// RegisterRoutes wires the workspace-scoped webhook config lifecycle under the
-// protected (authenticated + workspace) router.
 func RegisterRoutes(
 	protected *mux.Router,
 	h *Handler,
@@ -29,8 +25,6 @@ func RegisterRoutes(
 	protected.HandleFunc("/workflows/{id}/webhook", ac(res, workspace_domain.ActionUpdate, h.DeleteWorkflowWebhook)).Methods(http.MethodDelete)
 }
 
-// RegisterPublicRoutes wires the public webhook receiver, rate limited, on the
-// root router.
 func RegisterPublicRoutes(public *mux.Router, h *Handler, rl RateLimiter) {
 	public.Handle("/webhooks/workflow/{token}", rl.Validate(http.HandlerFunc(h.HandleWebhookTrigger))).Methods(http.MethodPost)
 }

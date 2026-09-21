@@ -6,8 +6,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// --- fake repository (only the methods these paths touch) --------------------
-
 type coherenceRepo struct {
 	stage.Repository
 
@@ -88,10 +86,7 @@ func whatsappInput(stageID string) stage.AssignEntryStageInput {
 	return stage.AssignEntryStageInput{StageID: stageID, EntryID: "e1", EntryType: "whatsapp"}
 }
 
-// --- the coherence rule ------------------------------------------------------
-
 func TestAssignEntryStage_FirstPlacementIsUnconstrained(t *testing.T) {
-	// A lead with no stage is on no funnel yet, so nothing can contradict.
 	repo := newCoherenceRepo()
 	repo.stages["s-b"] = &stage.Stage{ID: "s-b", WorkspaceID: "ws", PipelineID: "pipe-b"}
 
@@ -120,8 +115,6 @@ func TestAssignEntryStage_SameFunnelIsAllowed(t *testing.T) {
 }
 
 func TestAssignEntryStage_CrossFunnelIsObservedNotBlocked(t *testing.T) {
-	// Ships in observe mode: the read paths still hand out the wrong funnel's
-	// stages, so rejecting here would break the UI instead of fixing it.
 	repo := newCoherenceRepo()
 	repo.stages["s-a"] = &stage.Stage{ID: "s-a", WorkspaceID: "ws", PipelineID: "pipe-a"}
 	repo.stages["s-b"] = &stage.Stage{ID: "s-b", WorkspaceID: "ws", PipelineID: "pipe-b"}
@@ -148,8 +141,6 @@ func TestAssignEntryStage_CrossFunnelIsObservedNotBlocked(t *testing.T) {
 }
 
 func TestAssignEntryStage_LegacyStagesWithoutAPipelineNeverTrip(t *testing.T) {
-	// Rows predating the pipeline migration carry no pipeline; treating "" as its
-	// own funnel would flag every one of them.
 	repo := newCoherenceRepo()
 	repo.stages["s-old"] = &stage.Stage{ID: "s-old", WorkspaceID: "ws"}
 	repo.stages["s-new"] = &stage.Stage{ID: "s-new", WorkspaceID: "ws", PipelineID: "pipe-a"}
@@ -162,8 +153,6 @@ func TestAssignEntryStage_LegacyStagesWithoutAPipelineNeverTrip(t *testing.T) {
 }
 
 func TestAssignEntryStage_StillRejectsAnotherWorkspacesStage(t *testing.T) {
-	// The coherence check is an integrity rule, not an authorization one; the
-	// existing workspace gate has to keep firing first.
 	repo := newCoherenceRepo()
 	repo.stages["s-x"] = &stage.Stage{ID: "s-x", WorkspaceID: "other-ws", PipelineID: "pipe-x"}
 
@@ -175,8 +164,6 @@ func TestAssignEntryStage_StillRejectsAnotherWorkspacesStage(t *testing.T) {
 		t.Fatal("a cross-workspace stage must never be written")
 	}
 }
-
-// --- listing one funnel ------------------------------------------------------
 
 func TestListStages_PipelineIDWinsOverTheCampaignFallback(t *testing.T) {
 	repo := newCoherenceRepo()
@@ -215,8 +202,6 @@ func TestListStages_FallsBackToCampaignWhenNoPipelineGiven(t *testing.T) {
 	}
 }
 
-// --- a group materializes its funnel ----------------------------------------
-
 func TestEnsurePipelineForGroup_CreatesTheFunnelAndItsStages(t *testing.T) {
 	repo := newCoherenceRepo()
 	groups := &coherenceGroupRepo{groups: map[string]*stage.StageGroup{
@@ -253,8 +238,6 @@ func TestEnsurePipelineForGroup_CreatesTheFunnelAndItsStages(t *testing.T) {
 }
 
 func TestEnsurePipelineForGroup_IsIdempotent(t *testing.T) {
-	// Both doors call this — group creation and campaign attach — in either order.
-	// "Same group, same funnel" is what keeps them from forking duplicates.
 	repo := newCoherenceRepo()
 	groups := &coherenceGroupRepo{groups: map[string]*stage.StageGroup{
 		"g1": {ID: "g1", WorkspaceID: "ws", Name: "Pós-venda",

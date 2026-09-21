@@ -6,12 +6,6 @@ import (
 	"time"
 )
 
-// Alerts were written for Instagram comments and the vocabulary said so: every
-// metric read a comment field, so a workspace that only runs conversations had
-// an alert screen it could configure and nothing it could ever watch. These
-// cases pin the second half of that vocabulary and the guards that keep it from
-// costing money on a loop.
-
 func TestAlertMetricsAreScopedToTheSubjectTheyCanMeasure(t *testing.T) {
 	comment := AlertMetricsFor(SubjectKindComment)
 	conversation := AlertMetricsFor(SubjectKindConversation)
@@ -19,9 +13,6 @@ func TestAlertMetricsAreScopedToTheSubjectTheyCanMeasure(t *testing.T) {
 	if len(comment) == 0 || len(conversation) == 0 {
 		t.Fatalf("both subjects need metrics: comment=%d conversation=%d", len(comment), len(conversation))
 	}
-	// The two lists must not overlap. A metric that reads a comment's severity
-	// cannot be armed on a conversation, and a picker offering it would produce
-	// a rule that silently never fires.
 	for _, c := range comment {
 		for _, v := range conversation {
 			if c == v {
@@ -29,8 +20,6 @@ func TestAlertMetricsAreScopedToTheSubjectTheyCanMeasure(t *testing.T) {
 			}
 		}
 	}
-	// And together they are the whole set, so a metric added to the type but to
-	// neither list is unreachable from any picker.
 	if len(comment)+len(conversation) != len(AllAlertMetrics()) {
 		t.Errorf("the per-subject lists (%d + %d) do not cover AllAlertMetrics (%d)",
 			len(comment), len(conversation), len(AllAlertMetrics()))
@@ -43,8 +32,6 @@ func TestAlertMetricsAreScopedToTheSubjectTheyCanMeasure(t *testing.T) {
 }
 
 func TestAttendanceQualityAlarmsOnTheWayDown(t *testing.T) {
-	// "Avise quando o atendimento cair abaixo de 70" is the whole point of this
-	// metric, so it has to share the direction acceptance_score already had.
 	if !AlertMetricAttendanceQuality.TriggersWhenBelow() {
 		t.Error("attendance quality must alarm when it FALLS")
 	}
@@ -60,11 +47,6 @@ func TestAttendanceQualityAlarmsOnTheWayDown(t *testing.T) {
 	}
 }
 
-// The minimum-message guard: "uma conversa com pelo menos X mensagens".
-//
-// A two-message conversation scores badly because it barely happened, not
-// because it was handled badly. Without a floor, the first alert an operator
-// ever receives is about a customer who said "oi" and left.
 func TestAlertRuleAcceptsOnlyConversationsLongEnoughToJudge(t *testing.T) {
 	r := AlertRule{Metric: AlertMetricAttendanceQuality, Threshold: 70, MinMessages: 10}
 
@@ -77,16 +59,12 @@ func TestAlertRuleAcceptsOnlyConversationsLongEnoughToJudge(t *testing.T) {
 	if !r.Accepts(long) {
 		t.Error("a 25-message conversation was refused by a 10-message floor")
 	}
-	// Exactly at the floor counts: "pelo menos X" includes X.
 	if !r.Accepts(&Analysis{SubjectKind: SubjectKindConversation, MessageCount: 10}) {
 		t.Error("a conversation exactly at the floor was refused")
 	}
-	// No floor configured accepts anything, which is what every existing rule
-	// does and must keep doing.
 	if !(AlertRule{Metric: AlertMetricAttendanceQuality}).Accepts(short) {
 		t.Error("a rule with no floor refused a short conversation")
 	}
-	// A windowed rule has no single row to measure, so the guard cannot apply.
 	if !(AlertRule{Metric: AlertMetricEscalationCount, MinMessages: 50}).Accepts(nil) {
 		t.Error("a windowed rule was blocked by a per-conversation guard")
 	}
@@ -117,8 +95,6 @@ func TestAlertRuleValidatesTheConversationFields(t *testing.T) {
 	})
 
 	t.Run("a message floor on a windowed rule is refused", func(t *testing.T) {
-		// Not silently zeroed: the operator asked for something the metric
-		// cannot honour, and clearing it would leave them believing it applied.
 		bad := base()
 		bad.Metric = AlertMetricEscalationCount
 		bad.Threshold = 3
@@ -140,8 +116,6 @@ func TestAlertRuleValidatesTheConversationFields(t *testing.T) {
 	})
 }
 
-// The message a human reads has to name what happened in that subject's own
-// words, or the alert is a number with no sentence around it.
 func TestAlertHeadlineSpeaksAboutConversations(t *testing.T) {
 	for _, m := range AlertMetricsFor(SubjectKindConversation) {
 		rule := AlertRule{Name: "Regra", Metric: m, Threshold: 70, WindowMinutes: 60}
@@ -153,8 +127,6 @@ func TestAlertHeadlineSpeaksAboutConversations(t *testing.T) {
 	}
 }
 
-// The first line the recipient reads has to name the right thing. It said
-// "Alerta de comentários" for every rule, including the ones watching WhatsApp.
 func TestAlertMessageNamesTheSubjectItIsAbout(t *testing.T) {
 	conv := NewAlert(
 		AlertRule{Name: "Atendimento fraco", Metric: AlertMetricAttendanceQuality, Threshold: 70},
@@ -175,22 +147,11 @@ func TestAlertMessageNamesTheSubjectItIsAbout(t *testing.T) {
 	}
 }
 
-// "none" has to mean something the model can check, or it becomes the answer to
-// everything.
-//
-// Every conversation analysed before this scored EXACTLY 0, which the weights
-// only allow when all four dimensions come back "none". The rubric offered
-// "none" as the floor of each scale and never said what it meant, so on a thin
-// conversation the model marked all four absent, including an agent that had
-// replied clearly throughout. A score of zero for every poor conversation
-// cannot tell a badly handled one from an empty one.
 func TestQualityRubricSaysWhenNoneIsTheWrongAnswer(t *testing.T) {
 	prompt := ConversationQualityRubricPrompt()
 
 	for _, must := range []string{
-		// "none" is a judgement about the dimension, not about the conversation's length.
 		"observada",
-		// The two the model was getting wrong outright.
 		"professionalism",
 		"agent_conduct",
 	} {
@@ -199,7 +160,6 @@ func TestQualityRubricSaysWhenNoneIsTheWrongAnswer(t *testing.T) {
 		}
 	}
 
-	// And no telephony left in a rubric for a product with no voice channel.
 	for _, gone := range []string{"ligação", "transferida", "chamada"} {
 		if strings.Contains(prompt, gone) {
 			t.Errorf("the conversation rubric still carries voice-call guidance: %q", gone)
@@ -207,13 +167,6 @@ func TestQualityRubricSaysWhenNoneIsTheWrongAnswer(t *testing.T) {
 	}
 }
 
-// One rule, every conversation channel.
-//
-// A rule is keyed on (source, account), so watching four channels meant four
-// rules, each with its own cooldown and its own daily cap. One incident across
-// two channels then sent two messages, and raising a threshold meant editing
-// four rules and missing one. An empty source is the wildcard: it watches every
-// channel whose conversations this workspace analyses.
 func TestAlertRuleCanWatchEveryConversationChannel(t *testing.T) {
 	wildcard := AlertRule{
 		WorkspaceID: "ws-1", AccountID: "ws-1", Name: "Atendimento fraco",
@@ -234,10 +187,6 @@ func TestAlertRuleCanWatchEveryConversationChannel(t *testing.T) {
 		t.Error("a rule naming a channel was reported as the wildcard")
 	}
 
-	// A source-less COMMENT rule stays legal, because the product has always
-	// accepted one and it is harmless: comments exist only on Instagram, so it
-	// matches Instagram batches and nothing else. What keeps a comment rule off
-	// a conversation batch is the subject-kind filter, not this field.
 	comment := wildcard
 	comment.Metric = AlertMetricCommentSeverity
 	comment.Threshold = 80

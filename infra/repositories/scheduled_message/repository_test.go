@@ -14,11 +14,6 @@ import (
 	sm "vozko/domain/scheduled_message"
 )
 
-// These pin the SQL, because the SQL is the guarantee. A claim that is not a
-// single conditional UPDATE — a read followed by a write, say — lets two
-// dispatchers both observe `pending` and both deliver, and no amount of
-// application-level care above it can fix that.
-
 func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
@@ -41,9 +36,6 @@ func TestClaimForDispatchIsOneGuardedUpdate(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
-	// One statement, and it carries the status guard. If this ever becomes a
-	// SELECT followed by an UPDATE, the second expectation below goes unmet and
-	// this test fails — which is the point.
 	mock.ExpectQuery(regexp.QuoteMeta(`UPDATE scheduled_messages`)).
 		WithArgs(string(sm.StatusSending), claimedAt, claimedAt, "sched-1", string(sm.StatusPending)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "status", "entry_type"}).
@@ -61,8 +53,6 @@ func TestClaimForDispatchIsOneGuardedUpdate(t *testing.T) {
 	}
 }
 
-// Losing the claim is the NORMAL outcome for every dispatcher but one. It must
-// read as "not ours", never as an error the caller might retry.
 func TestClaimForDispatchLosingTheRaceIsNotAnError(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -79,9 +69,6 @@ func TestClaimForDispatchLosingTheRaceIsNotAnError(t *testing.T) {
 	}
 }
 
-// Two replicas sweeping at the same instant must take disjoint batches. SKIP
-// LOCKED is what makes that true; without it the second waits on the first and
-// then finds everything claimed.
 func TestClaimDueBatchSkipsLockedRows(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -104,8 +91,6 @@ func TestClaimDueBatchSkipsLockedRows(t *testing.T) {
 	}
 }
 
-// Cancel races a dispatch. Both are guarded on `pending`, so the database picks
-// a winner and the loser is told plainly rather than silently doing nothing.
 func TestCancelIsGuardedOnPending(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -147,8 +132,6 @@ func TestMarkSentSucceedsForAClaimedRow(t *testing.T) {
 	}
 }
 
-// MarkFailed accepts a row in either pre-dispatch state, so a message that
-// fails before it is ever claimed can still be retired.
 func TestMarkFailedAcceptsBothPreDispatchStates(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -162,8 +145,6 @@ func TestMarkFailedAcceptsBothPreDispatchStates(t *testing.T) {
 	}
 }
 
-// An undelivered message is not litter. Retention only ever removes rows that
-// already reached a terminal state.
 func TestPurgeNeverTouchesPendingRows(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -184,8 +165,6 @@ func TestPurgeNeverTouchesPendingRows(t *testing.T) {
 	}
 }
 
-// An idempotency lookup is scoped to the workspace, or one tenant's key could
-// return another tenant's message.
 func TestFindByIdempotencyKeyIsWorkspaceScoped(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -206,8 +185,6 @@ func TestFindByIdempotencyKeyIsWorkspaceScoped(t *testing.T) {
 	}
 }
 
-// An empty key is not a wildcard. Without this guard, every create without a
-// key would match the first row that also has none.
 func TestFindByIdempotencyKeyRejectsAnEmptyKeyWithoutQuerying(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()

@@ -9,13 +9,6 @@ import (
 	"strings"
 	"time"
 
-	// The timezone database is embedded rather than taken from the host.
-	//
-	// A workspace picks its own IANA zone, so LoadLocation has to work for any
-	// of them — on a scratch container with no /usr/share/zoneinfo, and on the
-	// Windows boxes this is developed on. Without this import the feature fails
-	// exactly where it is least visible: a workspace saves "America/Sao_Paulo",
-	// the load fails, and the schedule silently degrades to always-open.
 	_ "time/tzdata"
 )
 
@@ -25,9 +18,6 @@ var (
 	ErrBadTime         = errors.New("working hours: time must be HH:MM")
 )
 
-// wireWeekdays maps the JSON keys to Go weekdays. Short lowercase names rather
-// than integers: a stored policy is read by people debugging a distribution
-// complaint, and {"mon": ...} says what {"1": ...} does not.
 var wireWeekdays = map[string]time.Weekday{
 	"sun": time.Sunday,
 	"mon": time.Monday,
@@ -38,38 +28,18 @@ var wireWeekdays = map[string]time.Weekday{
 	"sat": time.Saturday,
 }
 
-// wireOrder is the canonical key order for rendering, so a stored document does
-// not reshuffle between writes and diff cleanly in the database.
 var wireOrder = [7]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
 
-// Window is one open period on the wire, as two wall-clock times.
-//
-// End is exclusive. An End at or before Start runs past midnight into the next
-// day — 22:00→02:00 is a night shift, and expressing it that way keeps it one
-// row in the UI instead of two halves an admin has to remember to edit
-// together. "24:00" is accepted as end-of-day, so a full day is 00:00→24:00.
 type Window struct {
 	Start string `json:"start" example:"09:00"`
 	End   string `json:"end" example:"18:00"`
 }
 
-// Spec is the stored, JSON-shaped working-hours policy.
-//
-// It is deliberately separate from Schedule. Spec is what an admin edits, what
-// the API accepts and what sits in a JSONB column: strings, forgiving, easy to
-// read in a database console. Schedule is the compiled form the sweep asks
-// questions of. Keeping them apart means the evaluation logic never has to
-// parse anything, and the wire format can change without touching it.
-//
-// A nil *Spec means "no working hours configured", which compiles to a nil
-// *Schedule and is always open.
 type Spec struct {
 	Timezone string              `json:"timezone" example:"America/Sao_Paulo"`
 	Days     map[string][]Window `json:"days"`
 }
 
-// Validate reports whether the spec is storable. It is the API boundary's
-// check; Compile repeats the parts it depends on rather than trusting a caller.
 func (s *Spec) Validate() error {
 	if s == nil {
 		return nil
@@ -88,7 +58,6 @@ func (s *Spec) Validate() error {
 	return sched.Validate()
 }
 
-// Compile turns the stored spec into the form the roulette evaluates.
 func (s *Spec) Compile() (*Schedule, error) {
 	if s == nil {
 		return nil, nil
@@ -104,8 +73,6 @@ func (s *Spec) Compile() (*Schedule, error) {
 	return New(loc, days), nil
 }
 
-// Normalized returns a copy with canonical key order and zero-padded times, so
-// what is stored and echoed back is stable regardless of how it was typed.
 func (s *Spec) Normalized() *Spec {
 	if s == nil {
 		return nil
@@ -166,7 +133,6 @@ func (s *Spec) compileDays() (map[time.Weekday][]Interval, error) {
 	return out, nil
 }
 
-// interval converts a wire window to minutes from local midnight.
 func (w Window) interval() (Interval, error) {
 	start, err := parseHHMM(w.Start)
 	if err != nil {
@@ -177,24 +143,17 @@ func (w Window) interval() (Interval, error) {
 		return Interval{}, err
 	}
 	if start >= MinutesPerDay {
-		// 24:00 is end-of-day only; as a start it names no minute of the day.
 		return Interval{}, fmt.Errorf("%w: start %q", ErrIntervalOutOfRange, w.Start)
 	}
 	if end == start {
-		// Ambiguous between "closed" and "open for a full 24 hours". An admin
-		// who means the second writes 00:00-24:00.
 		return Interval{}, fmt.Errorf("%w: %q-%q", ErrIntervalEmpty, w.Start, w.End)
 	}
 	if end < start {
-		// Past midnight: expressed on the wire as a smaller end, stored as
-		// minutes beyond the day so the whole shift stays one interval.
 		end += MinutesPerDay
 	}
 	return Interval{StartMin: start, EndMin: end}, nil
 }
 
-// parseHHMM accepts H:MM and HH:MM, plus the single special case 24:00 for
-// end-of-day so a full day can be written 00:00-24:00.
 func parseHHMM(v string) (int, error) {
 	raw := strings.TrimSpace(v)
 	parts := strings.Split(raw, ":")
@@ -225,13 +184,6 @@ func formatHHMM(minutes int) string {
 	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
 }
 
-// DecodeSpec parses a stored jsonb document.
-//
-// A NULL or blank column is "no working hours configured" and yields nil with
-// no error, which the rest of the system reads as always open. A document that
-// is present but unparseable returns an error, so the caller decides what to do
-// with it rather than having the choice made here — the repositories log it and
-// fall back to always open, which is the behaviour that predates the feature.
 func DecodeSpec(raw *string) (*Spec, error) {
 	if raw == nil {
 		return nil, nil
@@ -247,9 +199,6 @@ func DecodeSpec(raw *string) (*Spec, error) {
 	return &spec, nil
 }
 
-// policyErrors is every way a submitted schedule can be refused. Listed once so
-// the two HTTP handlers that classify these cannot drift apart on which of them
-// counts as the caller's mistake.
 var policyErrors = []error{
 	ErrUnknownTimezone,
 	ErrUnknownWeekday,
@@ -261,12 +210,6 @@ var policyErrors = []error{
 	ErrNoLocation,
 }
 
-// IsPolicyError reports whether an error is a rejected schedule rather than
-// something that broke.
-//
-// Working hours are refused, never clamped — a window an admin cannot see is a
-// window nobody can debug — so these have to reach the client as a 400 naming
-// the rule, not as a blanket 500.
 func IsPolicyError(err error) bool {
 	for _, sentinel := range policyErrors {
 		if errors.Is(err, sentinel) {
@@ -276,18 +219,6 @@ func IsPolicyError(err error) bool {
 	return false
 }
 
-// DecodePatch interprets one member of a JSON update body.
-//
-// A working-hours field has three states and a pointer can only carry two.
-// Absent means leave the schedule alone; an explicit null means remove it and
-// go back to operating around the clock; a document means replace it. Those are
-// different instructions, and the only place they are still distinguishable is
-// the raw body — by the time it has been decoded into a struct, absent and null
-// look identical.
-//
-// A body that is not a JSON object returns no patch and no error: the caller's
-// own decode of the same body is what reports a malformed request, and
-// reporting it twice with different wording helps nobody.
 func DecodePatch(body []byte, field string) (spec *Spec, clear bool, err error) {
 	if len(body) == 0 {
 		return nil, false, nil
@@ -310,11 +241,6 @@ func DecodePatch(body []byte, field string) (spec *Spec, clear bool, err error) 
 	return &parsed, false, nil
 }
 
-// EncodeSpec renders a spec for storage, normalized so repeated writes of the
-// same policy produce the same document. A nil spec encodes to a NULL column,
-// never to the JSON text "null" — the two look alike in a console and behave
-// alike here, but only one of them lets the partial-index and IS NULL checks
-// mean what they say.
 func EncodeSpec(s *Spec) (*string, error) {
 	if s == nil {
 		return nil, nil

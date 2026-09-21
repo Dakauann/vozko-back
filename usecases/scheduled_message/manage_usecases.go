@@ -9,10 +9,6 @@ import (
 	sm "vozko/domain/scheduled_message"
 )
 
-// cancelUseCase and rescheduleUseCase share a fixture because they share a
-// precondition: both only ever act on a message that is still pending, and both
-// let the database decide the outcome when they race a dispatch.
-
 type cancelUseCase struct {
 	repo sm.Repository
 }
@@ -24,13 +20,6 @@ func NewCancelUseCase(repo sm.Repository) (sm.CancelUseCase, error) {
 	return &cancelUseCase{repo: repo}, nil
 }
 
-// Execute cancels a pending message.
-//
-// The workspace check is an authorization boundary, not a filter: without it a
-// member of one tenant could cancel another tenant's message by id.
-//
-// Cancelling something already sent returns ErrNotPending rather than
-// succeeding quietly. The operator needs to know the customer has it.
 func (uc *cancelUseCase) Execute(_ context.Context, workspaceID, id string) error {
 	message, err := uc.load(workspaceID, id)
 	if err != nil {
@@ -72,12 +61,6 @@ func NewRescheduleUseCase(
 	return &rescheduleUseCase{repo: repo, windows: windowSvc, wake: wake}, nil
 }
 
-// Execute moves a pending message to a new time.
-//
-// The new time is validated against the window as it is NOW, not as it was when
-// the message was created. The window can only have grown, so this is never
-// stricter than the original check — but it is the honest one, and it is what
-// lets an operator push a message further out after the customer writes again.
 func (uc *rescheduleUseCase) Execute(_ context.Context, in sm.RescheduleInput) (*sm.ScheduleResult, error) {
 	message, err := loadOwned(uc.repo, in.WorkspaceID, in.ID)
 	if err != nil {
@@ -99,9 +82,6 @@ func (uc *rescheduleUseCase) Execute(_ context.Context, in sm.RescheduleInput) (
 	message.ScheduledAt = at
 	message.WindowExpiresAtAtCreation = window.ExpiresAt
 
-	// A second fire signal for the same id is harmless: the claim admits one
-	// caller, so the stale signal from the original time simply finds the row
-	// already gone or not yet due.
 	if err := uc.wake.ScheduleFire(message.ID, at); err != nil {
 		log.Printf("[scheduled_message] could not re-enqueue %s: %v; the sweep will deliver it", message.ID, err)
 	}
@@ -125,12 +105,6 @@ func NewListUseCase(repo sm.Repository, windows sm.WindowReader, clock sm.Clock)
 	return &listUseCase{repo: repo, windows: windowSvc}, nil
 }
 
-// ForEntry returns the conversation's scheduled messages together with its live
-// window.
-//
-// The window rides along because the composer needs it to decide whether to
-// offer scheduling at all, and asking for it separately would mean two requests
-// that can disagree by the width of the round trip.
 func (uc *listUseCase) ForEntry(_ context.Context, entryID, entryType string, statuses []sm.Status) (*sm.ListForEntryResult, error) {
 	messages, err := uc.repo.ListByEntry(entryID, entryType, statuses)
 	if err != nil {
@@ -146,10 +120,6 @@ func (uc *listUseCase) ForWorkspace(_ context.Context, workspaceID string, q sm.
 	return uc.repo.ListByWorkspace(workspaceID, q)
 }
 
-// loadOwned reads a message and refuses it if it belongs to another workspace.
-//
-// ErrNotFound rather than a distinct "forbidden": telling a caller that an id
-// they cannot see exists is itself a leak.
 func loadOwned(repo sm.Repository, workspaceID, id string) (*sm.ScheduledMessage, error) {
 	message, err := repo.FindByID(strings.TrimSpace(id))
 	if err != nil {

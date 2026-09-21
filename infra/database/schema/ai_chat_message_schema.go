@@ -7,10 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AIChatMessage is a single turn in an AIChatThread. Role is one of
-// user|assistant|system|tool. ToolCalls holds the serialized tool calls/results
-// for an assistant turn (JSONB). Token counts are stored for display/audit only,
-// actual billing flows through the ai.billing.completed event keyed by RequestID.
 type AIChatMessage struct {
 	ID               string         `gorm:"primaryKey;type:text"`
 	ThreadID         string         `gorm:"type:uuid;not null;index:idx_chat_msg_thread_created,priority:1"`

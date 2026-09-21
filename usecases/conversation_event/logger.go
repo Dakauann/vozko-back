@@ -9,18 +9,14 @@ import (
 	"vozko/domain/crm_telemetry"
 )
 
-// logger publishes timeline events to the CRM telemetry queue (no DB on hot path).
-// Consumer persists conversation_events.
 type logger struct {
 	pub crm_telemetry.Publisher
 }
 
-// NewLogger returns a queue-backed event logger. pub may be nil (no-op).
 func NewLogger(pub crm_telemetry.Publisher) ce.Logger {
 	return &logger{pub: pub}
 }
 
-// NewDirectLogger writes synchronously to the repository (consumer path only).
 func NewDirectLogger(repo ce.Repository) ce.Logger {
 	return &directLogger{repo: repo}
 }

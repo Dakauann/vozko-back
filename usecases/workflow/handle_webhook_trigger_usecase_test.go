@@ -273,8 +273,6 @@ func TestWebhookTrigger_AlreadyRunning(t *testing.T) {
 
 func TestWebhookTrigger_IndependentFromOtherTrigger(t *testing.T) {
 	h := newWebhookHarness()
-	// An active run for the SAME entry but started by a DIFFERENT trigger
-	// (message_received) must not block the webhook trigger's own run.
 	h.runRepo.runs["msg-run"] = &workflow.WorkflowRun{
 		ID: "msg-run", WorkflowID: "wf1", EntryID: "entry1", TriggerNodeID: "tmr",
 		Status: workflow.RunStatusRunning,

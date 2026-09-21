@@ -6,8 +6,6 @@ import (
 	calls_usecase "vozko/usecases/calls"
 )
 
-// sipDefaultSampleRate is the narrowband rate every SIP trunk leg runs at; the
-// browser uplink is resampled down to it before hitting the RTP path.
 const sipDefaultSampleRate = 8000
 
 var allowedInboundSampleRates = map[int]struct{}{

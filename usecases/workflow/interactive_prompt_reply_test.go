@@ -7,8 +7,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// askGraph builds a workflow with a single interactive prompt node "ask" wired to
-// the given edges, plus a run parked at "ask".
 func askGraph(edges []workflow.Edge) (*workflow.WorkflowRun, *workflow.Workflow) {
 	nodes := []workflow.Node{
 		{ID: "ask", Type: workflow.NodeTypeActionSendInteractive},
@@ -69,7 +67,6 @@ func TestAdvanceOnReply_Interactive_NoMatchFallback(t *testing.T) {
 }
 
 func TestAdvanceOnReply_Interactive_LegacyDefaultEdge(t *testing.T) {
-	// A pre-branching send_whatsapp_button node: a single unlabeled edge.
 	run, w := askGraph([]workflow.Edge{
 		{Source: "ask", Target: "a", Label: ""},
 	})
@@ -84,8 +81,6 @@ func TestAdvanceOnReply_Interactive_LegacyDefaultEdge(t *testing.T) {
 }
 
 func TestAdvanceOnReply_Interactive_UnhandledLeavesRunParked(t *testing.T) {
-	// Only specific option edges, no no_match, no default: a stray reply is
-	// unhandled and the run must NOT advance (caller leaves it parked).
 	run, w := askGraph([]workflow.Edge{
 		{Source: "ask", Target: "a", Label: "sim"},
 		{Source: "ask", Target: "b", Label: "nao"},
@@ -101,7 +96,6 @@ func TestAdvanceOnReply_Interactive_UnhandledLeavesRunParked(t *testing.T) {
 }
 
 func TestAdvanceOnReply_WaitForReply_StillRoutesReplied(t *testing.T) {
-	// Regression: the shared function must still route a plain wait_for_reply node.
 	nodes := []workflow.Node{
 		{ID: "wait", Type: workflow.NodeTypeWaitForReply},
 		{ID: "next", Type: workflow.NodeTypeEnd},

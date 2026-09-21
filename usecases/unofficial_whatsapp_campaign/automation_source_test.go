@@ -63,8 +63,6 @@ func TestAnalysisResolverUsesCampaignFlagsInsteadOfInstance(t *testing.T) {
 	}
 }
 
-// Two campaigns targeting the same person on the same instance: the reply
-// belongs to the one they actually received last.
 func TestAutomationSourceLatestSendWins(t *testing.T) {
 	older := time.Now().Add(-2 * time.Hour)
 	newer := time.Now()
@@ -72,8 +70,6 @@ func TestAutomationSourceLatestSendWins(t *testing.T) {
 	entries := newFakeEntryRepo()
 	entries.put(&uwc.Entry{ID: "e-old", CampaignID: "camp-old", ConversationID: "conv-1", SentAt: &older})
 	entries.put(&uwc.Entry{ID: "e-new", CampaignID: "camp-new", ConversationID: "conv-1", SentAt: &newer})
-	// A third campaign queued the same person but never sent. It cannot own a
-	// reply to a message it never delivered.
 	entries.put(&uwc.Entry{ID: "e-unsent", CampaignID: "camp-unsent", ConversationID: "conv-1"})
 
 	campaigns := newFakeCampaignRepo()
@@ -90,8 +86,6 @@ func TestAutomationSourceLatestSendWins(t *testing.T) {
 	}
 }
 
-// An organic conversation is not a campaign conversation, and must be reported
-// as such rather than guessed at: the instance configures it.
 func TestAutomationSourceReportsOrganicConversations(t *testing.T) {
 	src := NewAutomationSource(newFakeEntryRepo(), newFakeCampaignRepo())
 	if _, ok := src.AutomationForConversation("conv-unknown"); ok {
@@ -102,9 +96,6 @@ func TestAutomationSourceReportsOrganicConversations(t *testing.T) {
 	}
 }
 
-// A campaign row that has gone missing under a live entry must not be guessed
-// at either. Reporting "not a campaign" restores the instance's behaviour,
-// which is the conservative reading of an unknown.
 func TestAutomationSourceFallsBackWhenTheCampaignIsGone(t *testing.T) {
 	entries := newFakeEntryRepo()
 	sent := time.Now()
@@ -116,7 +107,6 @@ func TestAutomationSourceFallsBackWhenTheCampaignIsGone(t *testing.T) {
 	}
 }
 
-// Campaigns not wired at all.
 func TestAutomationSourceNilIsInert(t *testing.T) {
 	var src *AutomationSource
 	if _, ok := src.AutomationForConversation("conv-1"); ok {

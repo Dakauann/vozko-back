@@ -31,7 +31,6 @@ func TestBuildContextGuards(t *testing.T) {
 		t.Fatalf("no memories should render nothing, got %q", got)
 	}
 
-	// A memory outage degrades the prompt; it must never error or panic.
 	repo.failWith = leadmemory.ErrNotFound
 	if got := BuildContext(ctx, list, ContextInput{WorkspaceID: "ws-1", LeadID: "lead-1"}); got != "" {
 		t.Fatalf("repo failure should render nothing, got %q", got)
@@ -60,19 +59,17 @@ func TestFormatMemoryContextShape(t *testing.T) {
 		}
 	}
 
-	// Commitments render before preferences: the agent honors combinados first.
 	if strings.Index(out, "## Combinados") > strings.Index(out, "## Preferências") {
 		t.Fatalf("group order wrong:\n%s", out)
 	}
 
-	// Without the tool bound, the block must not tell the agent to call it.
 	if strings.Contains(FormatMemoryContext(items, 2, false), "manage_lead_memory") {
 		t.Fatal("tool line rendered for an agent without the tool")
 	}
 }
 
 func TestFormatMemoryContextAnnouncesTruncation(t *testing.T) {
-	long := strings.Repeat("um fato bem comprido sobre o lead ", 10) // ~340 chars per memory
+	long := strings.Repeat("um fato bem comprido sobre o lead ", 10)
 	var items []leadmemory.MemoryView
 	for i := 0; i < 30; i++ {
 		items = append(items, view(
@@ -84,8 +81,6 @@ func TestFormatMemoryContextAnnouncesTruncation(t *testing.T) {
 	if len(out) > leadmemory.MaxPromptChars+1000 {
 		t.Fatalf("block ignored the char budget: %d chars", len(out))
 	}
-	// The model is told what it cannot see. Silent truncation would make it
-	// confidently unaware.
 	if !strings.Contains(out, "memórias mais antigas omitidas") || !strings.Contains(out, "43 no total") {
 		t.Fatalf("truncation not announced:\n%s", out[len(out)-300:])
 	}

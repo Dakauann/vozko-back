@@ -35,9 +35,6 @@ func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 	return nil
 }
 
-// postJSONCookieMode posts as the browser SPA does: with the X-Auth-Mode: cookie
-// header that opts into cookie-based token delivery. Without this header the API
-// keeps the default JSON/Bearer contract (see the API-mode tests).
 func postJSONCookieMode(handler http.HandlerFunc, path string, body interface{}) *httptest.ResponseRecorder {
 	data, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(data))
@@ -201,7 +198,6 @@ func TestRefreshToken_FromCookie(t *testing.T) {
 		t.Fatalf("expected 200, got %d; body: %s", rr.Code, rr.Body.String())
 	}
 
-	// In cookie mode the rotated tokens ride cookies, not the JSON body.
 	var resp map[string]interface{}
 	json.NewDecoder(rr.Body).Decode(&resp)
 	if _, present := resp["accessToken"]; present {
@@ -321,9 +317,6 @@ func TestRegister_SetsCookies(t *testing.T) {
 	}
 }
 
-// API mode (no X-Auth-Mode header): tokens in the JSON body and, crucially, NO
-// cookies set even though the cookie domain is configured. This is the contract
-// third-party API and mobile clients rely on.
 func TestLogin_APIMode_ReturnsJSONTokensAndNoCookies(t *testing.T) {
 	h := newTestHandlerWithCookies()
 	rr := postJSON(h.Login, "/auth/login", map[string]string{
@@ -349,8 +342,6 @@ func TestLogin_APIMode_ReturnsJSONTokensAndNoCookies(t *testing.T) {
 	}
 }
 
-// Cookie mode: tokens are delivered ONLY as cookies and never appear in the JSON
-// body, so they never reach JavaScript.
 func TestLogin_CookieMode_OmitsTokensFromBody(t *testing.T) {
 	h := newTestHandlerWithCookies()
 	rr := postJSONCookieMode(h.Login, "/auth/login", map[string]string{
@@ -367,7 +358,6 @@ func TestLogin_CookieMode_OmitsTokensFromBody(t *testing.T) {
 	if _, present := resp["refreshToken"]; present {
 		t.Errorf("cookie mode must omit refreshToken from body, got %v", resp["refreshToken"])
 	}
-	// User fields still returned so the SPA can paint immediately.
 	if resp["userId"] != "user-1" {
 		t.Errorf("cookie mode should still return userId, got %v", resp["userId"])
 	}

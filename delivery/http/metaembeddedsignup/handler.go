@@ -37,10 +37,6 @@ type MetaEmbeddedSignupHandler struct {
 
 	templateWebhook template.HandleTemplateWebhookUseCase
 
-	// Native Meta (Cloud API) onboarding path. Used when dialog360OnboardingEnabled
-	// is false: the callback exchanges the Embedded Signup code for a Graph token,
-	// registers the number directly on Meta and persists a ProviderMeta phone.
-	// Wired via WithMeta; the 360dialog fields above are left untouched.
 	dialog360OnboardingEnabled   bool
 	appSecret                    string
 	httpClient                   *http.Client
@@ -84,11 +80,6 @@ func NewMetaEmbeddedSignupHandler(cfg MetaEmbeddedSignupConfig) *MetaEmbeddedSig
 	}
 }
 
-// WithMeta wires the native Meta (Cloud API) onboarding path and the toggle that
-// selects it. onboardingVia360dialog mirrors ENABLE_360DIALOG_ONBOARDING: when
-// false (the default) the callback runs the native Meta flow (code -> Graph token
-// -> register -> persist a ProviderMeta phone); when true it defers to the
-// existing 360dialog handover wired by WithDialog360, which stays untouched.
 func (h *MetaEmbeddedSignupHandler) WithMeta(
 	appSecret string,
 	onboardUC businessphone.OnboardEmbeddedSignupUseCase,
@@ -109,9 +100,6 @@ func (h *MetaEmbeddedSignupHandler) WithMeta(
 
 func (h *MetaEmbeddedSignupHandler) embeddedSignupExtras() string {
 	setup := "{}"
-	// solutionID is a 360dialog Multi-Partner-Solution concept. It must only be
-	// injected on the 360dialog onboarding path; on the native Meta (Tech Provider)
-	// path it corrupts the flow, so setup stays empty there.
 	if h.dialog360OnboardingEnabled && h.solutionID != "" && h.esFeatureType == "" {
 		setup = fmt.Sprintf("{ solutionID: '%s' }", h.solutionID)
 	}
@@ -122,14 +110,9 @@ func (h *MetaEmbeddedSignupHandler) embeddedSignupExtras() string {
 	return fmt.Sprintf("{ setup: %s, sessionInfoVersion: '3', %s }", setup, flow)
 }
 
-// OnboardingConfigResponse tells the dashboard which onboarding path the server
-// is running and whether that path consumes a workspace phone-capacity slot. The
-// capacity gate reads it so it never blocks a slot-free (native Meta) onboarding,
-// and always gates the slot-billed 360dialog one, keeping the UI in lockstep with
-// ENABLE_360DIALOG_ONBOARDING instead of hardcoding an assumption.
 type OnboardingConfigResponse struct {
-	Provider     string `json:"provider"`     // "meta" | "dialog360"
-	RequiresSlot bool   `json:"requiresSlot"` // true only for the 360dialog path
+	Provider     string `json:"provider"`
+	RequiresSlot bool   `json:"requiresSlot"`
 }
 
 // @Summary		Configuração de onboarding do WhatsApp
@@ -717,8 +700,6 @@ func (h *MetaEmbeddedSignupHandler) HandleEmbeddedSignupCallback(w http.Response
 		return
 	}
 
-	// Native Meta (Cloud API) onboarding is the default path. Only when
-	// ENABLE_360DIALOG_ONBOARDING is set do we hand the number to 360dialog below.
 	if !h.dialog360OnboardingEnabled {
 		h.handleMetaOnboarding(w, r, req, ownerWorkspaceID, ownerAssignedBy)
 		return
@@ -783,9 +764,6 @@ func (h *MetaEmbeddedSignupHandler) handleDialog360Provision(w http.ResponseWrit
 	})
 }
 
-// handleMetaOnboarding runs the native Meta (Cloud API) onboarding for a number
-// that completed Embedded Signup. It exchanges the code for a Graph token (or uses
-// a directly supplied access_token), then registers and persists the number.
 func (h *MetaEmbeddedSignupHandler) handleMetaOnboarding(w http.ResponseWriter, r *http.Request, req EmbeddedSignupCallbackRequest, ownerWorkspaceID, ownerAssignedBy string) {
 	_ = r
 	code := req.Code

@@ -11,16 +11,6 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// The demotion repair decides which funnel a production workspace keeps, and no
-// sqlmock test can check that: the whole question is which row a window function
-// elects over real data. So this runs the actual statement against a real
-// Postgres, over fixtures shaped like the five workspaces that were broken.
-//
-// Everything happens inside a transaction that is always rolled back, so the
-// development database is untouched.
-//
-// Opt-in: set VOZKO_TEST_DB=1 and the DB_* variables the application reads.
-
 func repairTx(t *testing.T) *gorm.DB {
 	t.Helper()
 	if os.Getenv("VOZKO_TEST_DB") != "1" {
@@ -46,20 +36,12 @@ func repairTx(t *testing.T) *gorm.DB {
 		}
 	})
 
-	// The repair exists for databases that predate the constraint, so the
-	// fixtures below have to be able to write the broken state the constraint
-	// forbids. Dropping it INSIDE the transaction is safe: DDL is transactional
-	// in Postgres, so the rollback puts it back. Skipping this would make these
-	// tests pass only on a database where the migration has never run, which is
-	// exactly the database they are least useful on.
 	if err := tx.Exec(`DROP INDEX IF EXISTS ux_pipelines_default_per_object`).Error; err != nil {
 		t.Fatalf("drop constraint for fixture: %v", err)
 	}
 	return tx
 }
 
-// seedFunnel inserts one funnel plus `staged` conversations sitting on a stage
-// of it, which is the signal the repair ranks by.
 func seedFunnel(t *testing.T, tx *gorm.DB, workspaceID, name string, isDefault bool, ageDays, staged int) string {
 	t.Helper()
 	pipelineID := uuid.New().String()
@@ -112,10 +94,6 @@ func defaultCount(t *testing.T, tx *gorm.DB, workspaceID string) int64 {
 	return n
 }
 
-// The UniFecaf shape, which is the one that prompted this work: an older funnel
-// the operators renamed "NÃO USAR" holding a little history, and the funnel they
-// actually work in holding more. The busy one has to win, or the CRM keeps
-// resolving the dead funnel and the stage filter keeps returning nothing.
 func TestDemoteDuplicateDefaults_BusiestFunnelSurvives(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -142,9 +120,6 @@ func TestDemoteDuplicateDefaults_BusiestFunnelSurvives(t *testing.T) {
 	}
 }
 
-// Age decides only when usage cannot. Two funnels with identical history must
-// still produce a deterministic winner, or the repair elects a different funnel
-// on every boot and the workspace's default flaps.
 func TestDemoteDuplicateDefaults_TieBreaksOnAge(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -160,7 +135,6 @@ func TestDemoteDuplicateDefaults_TieBreaksOnAge(t *testing.T) {
 			isDefaultNow(t, tx, older), isDefaultNow(t, tx, newer))
 	}
 
-	// Idempotent: running again must not hand the flag to the other funnel.
 	if err := demoteDuplicateDefaultPipelines(tx); err != nil {
 		t.Fatalf("second repair: %v", err)
 	}
@@ -169,9 +143,6 @@ func TestDemoteDuplicateDefaults_TieBreaksOnAge(t *testing.T) {
 	}
 }
 
-// The Anhanguera shape: a workspace legitimately has one default conversation
-// funnel AND one default sales funnel. Collapsing across object kinds would
-// leave the opportunity board with no default at all.
 func TestDemoteDuplicateDefaults_KeepsOneDefaultPerObjectKind(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -198,8 +169,6 @@ func TestDemoteDuplicateDefaults_KeepsOneDefaultPerObjectKind(t *testing.T) {
 	}
 }
 
-// This runs on every boot, forever. On a database that never had the defect it
-// must touch nothing at all.
 func TestDemoteDuplicateDefaults_HealthyWorkspaceIsUntouched(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -213,15 +182,11 @@ func TestDemoteDuplicateDefaults_HealthyWorkspaceIsUntouched(t *testing.T) {
 	if !isDefaultNow(t, tx, only) {
 		t.Error("the sole default was demoted")
 	}
-	// Busier, but never default. The repair ranks only among rows that already
-	// hold the flag; it must never PROMOTE anything.
 	if isDefaultNow(t, tx, other) {
 		t.Error("the repair promoted a funnel that was not default")
 	}
 }
 
-// A soft-deleted funnel is not a default anybody can reach, and counting it
-// would demote a live one in its favour.
 func TestDemoteDuplicateDefaults_IgnoresDeletedFunnels(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -240,8 +205,6 @@ func TestDemoteDuplicateDefaults_IgnoresDeletedFunnels(t *testing.T) {
 	}
 }
 
-// The constraint is the real guarantee, and it can only be built once the rows
-// stop breaking it. This pins the ordering RunMigrations relies on.
 func TestDefaultPipelineIndexBuildsAfterTheRepair(t *testing.T) {
 	tx := repairTx(t)
 	ws := uuid.New().String()
@@ -256,8 +219,6 @@ func TestDefaultPipelineIndexBuildsAfterTheRepair(t *testing.T) {
 	if err := tx.Exec(create).Error; err == nil {
 		t.Fatal("the index should not build while duplicate defaults exist")
 	}
-	// Postgres aborts the transaction on that failure, so the ordering claim is
-	// verified in a fresh one below rather than by continuing here.
 	tx.Rollback()
 
 	tx2 := repairTx(t)

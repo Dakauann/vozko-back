@@ -31,15 +31,6 @@ func newAttentionDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	return db, mock, sqlDB
 }
 
-// The rescue's correctness gate. Two signals, and the shape of each one is what
-// decides whether an agent's conversation is taken away from them:
-//
-//   - read_by = the ASSIGNED agent. A supervisor skimming the inbox is not the
-//     owner attending it, so "read by anyone" would silently suppress rescues
-//     the customer is still waiting on.
-//   - any OUTBOUND message. Somebody answered, so the customer is not waiting.
-//
-// The soft-delete guard is asserted too: a deleted message is not attention.
 func TestAttendedSince_QueryShape(t *testing.T) {
 	db, mock, sqlDB := newAttentionDB(t)
 	defer sqlDB.Close()
@@ -87,9 +78,6 @@ func TestAttendedSince_ReportsWhetherAnyRowMatched(t *testing.T) {
 	}
 }
 
-// A malformed ask must not reach the database, and must not report the
-// conversation as attended — reporting true would suppress a rescue the
-// customer is waiting on.
 func TestAttendedSince_MissingEntrySkipsTheQuery(t *testing.T) {
 	db, mock, sqlDB := newAttentionDB(t)
 	defer sqlDB.Close()

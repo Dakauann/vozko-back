@@ -12,8 +12,6 @@ import (
 	opportunity_usecase "vozko/usecases/opportunity"
 )
 
-// --- in-memory fakes implementing the domain ports the usecase needs ---
-
 type fakeOppRepo struct {
 	store map[string]*opportunity.Opportunity
 }
@@ -52,8 +50,6 @@ func (r *fakeOppRepo) ListByPipelineScoped(workspaceID, pipelineID string, _ []s
 	return r.ListByPipeline(workspaceID, pipelineID)
 }
 
-// SearchByFilter / SumValueByFilter back the deal board/list; the io tests don't
-// exercise the compiled predicate, so a minimal workspace-scoped version suffices.
 func (r *fakeOppRepo) SearchByFilter(input opportunity.SearchByFilterInput) ([]*opportunity.Opportunity, int64, error) {
 	var out []*opportunity.Opportunity
 	for _, o := range r.store {
@@ -98,16 +94,12 @@ func newFields() *fakeFieldRepo {
 	}}
 }
 
-// newIO builds the io Service backed by a real opportunity usecase (with fakes),
-// so tests exercise the true creation + validation path.
 func newIO() (*Service, *fakeOppRepo) {
 	oppRepo := newFakeOppRepo()
 	fields := newFields()
 	oppSvc := opportunity_usecase.NewService(oppRepo, nil, fields)
 	return NewService(oppSvc, fields), oppRepo
 }
-
-// --- parseMajorToCents ---
 
 func TestParseMajorToCents(t *testing.T) {
 	cases := []struct {
@@ -121,11 +113,11 @@ func TestParseMajorToCents(t *testing.T) {
 		{"", 0, false},
 		{"19.99", 1999, false},
 		{"19.9", 1990, false},
-		{"19.999", 2000, false}, // rounds half-up
+		{"19.999", 2000, false},
 		{"-12.34", -1234, false},
-		{"1,234.56", 123456, false}, // US thousands
-		{"1.234,56", 123456, false}, // BR thousands
-		{"1234,5", 123450, false},   // comma decimal
+		{"1,234.56", 123456, false},
+		{"1.234,56", 123456, false},
+		{"1234,5", 123450, false},
 		{"abc", 0, true},
 		{"12.3x", 0, true},
 	}
@@ -147,11 +139,8 @@ func TestParseMajorToCents(t *testing.T) {
 	}
 }
 
-// --- Export format ---
-
 func TestExport_Format(t *testing.T) {
 	io, repo := newIO()
-	// Seed one opportunity through the usecase so custom fields are typed correctly.
 	svc := opportunity_usecase.NewService(repo, nil, newFields())
 	if _, err := svc.Create("ws1", opportunity_usecase.CreateInput{
 		PipelineID:   "pipe1",
@@ -228,17 +217,15 @@ func TestExport_RequiresPipeline(t *testing.T) {
 	}
 }
 
-// --- Import: valid + invalid rows ---
-
 func TestImport_ValidAndInvalid(t *testing.T) {
 	io, repo := newIO()
 
 	csvData := strings.Join([]string{
 		"title,value,currency,stage_id,pipeline_id,status",
-		"Good Deal,4900.00,BRL,stage1,pipe1,open",   // valid -> created (row 2)
-		"No Stage,100.00,BRL,,pipe1,open",           // missing stage -> ErrStageRequired (row 3)
-		",,BRL,stage1,pipe1,open",                   // no title and no lead -> ErrTitleOrLead (row 4)
-		"Bad Value,not-money,BRL,stage1,pipe1,open", // unparseable value (row 5)
+		"Good Deal,4900.00,BRL,stage1,pipe1,open",
+		"No Stage,100.00,BRL,,pipe1,open",
+		",,BRL,stage1,pipe1,open",
+		"Bad Value,not-money,BRL,stage1,pipe1,open",
 	}, "\n")
 
 	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{})
@@ -257,14 +244,12 @@ func TestImport_ValidAndInvalid(t *testing.T) {
 	if len(report.Errors) != 3 {
 		t.Fatalf("errors = %d, want 3: %+v", len(report.Errors), report.Errors)
 	}
-	// Every rejected row must be reported with its 1-based line number.
 	wantRows := map[int]bool{3: true, 4: true, 5: true}
 	for _, e := range report.Errors {
 		if !wantRows[e.Row] {
 			t.Errorf("unexpected error row %d (%s)", e.Row, e.Message)
 		}
 	}
-	// The one valid row must be persisted.
 	if len(repo.store) != 1 {
 		t.Fatalf("expected 1 persisted opportunity, got %d", len(repo.store))
 	}
@@ -275,17 +260,15 @@ func TestImport_ValidAndInvalid(t *testing.T) {
 	}
 }
 
-// --- Import: custom fields typed + rejected ---
-
 func TestImport_CustomFields(t *testing.T) {
 	io, repo := newIO()
 
 	csvData := strings.Join([]string{
 		"title,stage_id,pipeline_id,custom_field:segmento,custom_field:score",
-		"Typed,stage1,pipe1,enterprise,87",        // valid select + number
-		"BadOption,stage1,pipe1,startup,10",       // segmento not in options (row 3)
-		"BadNumber,stage1,pipe1,smb,not-a-number", // score not a number (row 4)
-		"Unknown,stage1,pipe1,,",                  // no custom fields -> valid (row 5)
+		"Typed,stage1,pipe1,enterprise,87",
+		"BadOption,stage1,pipe1,startup,10",
+		"BadNumber,stage1,pipe1,smb,not-a-number",
+		"Unknown,stage1,pipe1,,",
 	}, "\n")
 
 	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{})
@@ -299,7 +282,6 @@ func TestImport_CustomFields(t *testing.T) {
 		t.Fatalf("skipped = %d, want 2", report.Skipped)
 	}
 
-	// The typed row must carry a string select and a float64 number.
 	var typed *opportunity.Opportunity
 	for _, o := range repo.store {
 		if o.Title == "Typed" {
@@ -317,15 +299,13 @@ func TestImport_CustomFields(t *testing.T) {
 	}
 }
 
-// --- Import: dry run mutates nothing ---
-
 func TestImport_DryRun(t *testing.T) {
 	io, repo := newIO()
 
 	csvData := strings.Join([]string{
 		"title,stage_id,pipeline_id",
-		"Would Create,stage1,pipe1", // valid
-		"No Stage,,pipe1",           // invalid
+		"Would Create,stage1,pipe1",
+		"No Stage,,pipe1",
 	}, "\n")
 
 	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{DryRun: true})
@@ -340,10 +320,7 @@ func TestImport_DryRun(t *testing.T) {
 	}
 }
 
-// --- Import: default pipeline fallback + round-trip with export ---
-
 func TestImport_RoundTripWithDefaultPipeline(t *testing.T) {
-	// Seed and export from one workspace.
 	src, srcRepo := newIO()
 	seed := opportunity_usecase.NewService(srcRepo, nil, newFields())
 	for i, title := range []string{"A", "B"} {
@@ -362,8 +339,6 @@ func TestImport_RoundTripWithDefaultPipeline(t *testing.T) {
 		t.Fatalf("Export: %v", err)
 	}
 
-	// Re-import into a fresh workspace. The export omits pipeline_id, so a default
-	// must be supplied.
 	dst, dstRepo := newIO()
 	report, err := dst.Import("ws2", bytes.NewReader(buf.Bytes()), ImportOptions{DefaultPipelineID: "pipe1"})
 	if err != nil {
@@ -384,8 +359,6 @@ func TestImport_RoundTripWithDefaultPipeline(t *testing.T) {
 		}
 	}
 }
-
-// --- Import: over-cap is reported, never silently truncated ---
 
 func TestImport_OverCap(t *testing.T) {
 	io, repo := newIO()
@@ -414,8 +387,6 @@ func TestImport_OverCap(t *testing.T) {
 		t.Fatalf("persisted = %d, want cap %d", len(repo.store), MaxImportRows)
 	}
 }
-
-// --- Import: empty input yields an empty report, not an error ---
 
 func TestImport_Empty(t *testing.T) {
 	io, _ := newIO()

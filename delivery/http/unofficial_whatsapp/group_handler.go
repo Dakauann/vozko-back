@@ -13,14 +13,6 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// GroupHandler serves the group panel.
-//
-// Separate from Handler because the two have different blast radii: the instance
-// endpoints manage OUR side of a connection, while these act inside the
-// customer's own WhatsApp groups — renaming them, evicting members, leaving. The
-// routes are scoped accordingly (see RegisterGroupRoutes), and keeping the two
-// handlers apart makes that split visible rather than a matter of remembering
-// which method got which guard.
 type GroupHandler struct {
 	groups *uwuc.GroupUseCases
 }
@@ -29,26 +21,15 @@ func NewGroupHandler(groups *uwuc.GroupUseCases) *GroupHandler {
 	return &GroupHandler{groups: groups}
 }
 
-// ---------------------------------------------------------------- DTOs
-
 type groupParticipantDTO struct {
-	JID         string `json:"jid"`
-	PhoneNumber string `json:"phoneNumber,omitempty"`
-	Name        string `json:"name"`
-	Role        string `json:"role"`
-	IsAdmin     bool   `json:"isAdmin"`
-	// ContactID is present only for members we already know from a direct chat,
-	// so the roster can offer "open the conversation" for them and nothing for
-	// the rest. Absent is the normal case in a large group.
-	ContactID *string `json:"contactId,omitempty"`
+	JID         string  `json:"jid"`
+	PhoneNumber string  `json:"phoneNumber,omitempty"`
+	Name        string  `json:"name"`
+	Role        string  `json:"role"`
+	IsAdmin     bool    `json:"isAdmin"`
+	ContactID   *string `json:"contactId,omitempty"`
 }
 
-// groupDTO is the wire shape of a group.
-//
-// InviteLink is deliberately absent: it is a credential — anyone holding it can
-// join the customer's group — and it is served by its own endpoint so it appears
-// when an operator asks for it rather than in every list payload, browser cache
-// and screenshot.
 type groupDTO struct {
 	ID          string `json:"id"`
 	JID         string `json:"jid"`
@@ -63,9 +44,6 @@ type groupDTO struct {
 	Ephemeral          bool `json:"ephemeral"`
 	IsCommunity        bool `json:"isCommunity"`
 
-	// WeAreAdmin drives every admin control in the panel, and CanPost drives the
-	// composer. Both are derived here rather than in the browser so the UI and
-	// the send path cannot disagree about whether a reply is possible.
 	WeAreAdmin bool `json:"weAreAdmin"`
 	CanPost    bool `json:"canPost"`
 
@@ -111,9 +89,6 @@ func toGroupDTO(g *uw.Group) groupDTO {
 	return dto
 }
 
-// ---------------------------------------------------------------- reads
-
-// ListGroups returns the groups a connected number belongs to.
 func (h *GroupHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	workspaceID, ok := requireWorkspace(w, r)
 	if !ok {
@@ -133,12 +108,6 @@ func (h *GroupHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
-// GetGroup returns one group with its roster.
-//
-// `?refresh=true` forces a re-read past both caches. It is a separate opt-in
-// rather than the default because every refresh is a provider call on the
-// customer's number, and a panel that re-read on every render would spend that
-// budget on a screen whose content changes weekly.
 func (h *GroupHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	tgt, ok := h.resolveTarget(w, r)
 	if !ok {
@@ -154,10 +123,6 @@ func (h *GroupHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toGroupDTO(group))
 }
 
-// GetInviteLink returns the group's join link.
-//
-// Admin-only and never cached. The link is a standing credential: anyone who
-// receives it can join the customer's group without approval.
 func (h *GroupHandler) GetInviteLink(w http.ResponseWriter, r *http.Request) {
 	tgt, ok := h.resolveTarget(w, r)
 	if !ok {
@@ -172,29 +137,15 @@ func (h *GroupHandler) GetInviteLink(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"inviteLink": link})
 }
 
-// ---------------------------------------------------------------- mutations
-
 type updateGroupRequest struct {
 	Subject     *string `json:"subject,omitempty"`
 	Description *string `json:"description,omitempty"`
-	// ImageURL sets the picture; an explicit empty string removes it. A pointer
-	// so "not submitted" and "remove it" stay distinguishable.
-	ImageURL *string `json:"imageUrl,omitempty"`
+	ImageURL    *string `json:"imageUrl,omitempty"`
 
 	AdminsOnlyMessages *bool `json:"adminsOnlyMessages,omitempty"`
 	AdminsOnlyEdit     *bool `json:"adminsOnlyEdit,omitempty"`
 }
 
-// UpdateGroup applies whichever fields were submitted.
-//
-// Every field is a pointer and absent means "leave it alone". A form that posted
-// its whole state would otherwise re-open an announce-only group every time
-// somebody corrected a typo in its name.
-//
-// Each change is applied in turn and the first failure returns, so a partially
-// applied edit is reported as a failure rather than as a success that quietly
-// did half the work. The response carries a fresh read, so the panel renders
-// what WhatsApp actually holds rather than what was typed.
 func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	tgt, ok := h.resolveTarget(w, r)
 	if !ok {
@@ -252,8 +203,6 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if group == nil {
-		// Nothing was submitted. A read is the honest answer: the caller gets the
-		// current state rather than a 400 for a request that asked for no change.
 		group, err = h.groups.Get(ctx, workspaceID, instanceID, groupJID, false)
 		if err != nil {
 			writeDomainError(w, err)
@@ -264,22 +213,14 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 type participantsRequest struct {
-	Action string `json:"action"`
-	// Participants are phone numbers or JIDs; the adapter normalizes them.
+	Action       string   `json:"action"`
 	Participants []string `json:"participants"`
 }
 
-// UpdateParticipants adds, promotes, demotes or approves members.
-//
-// The destructive verbs — remove and reject — are NOT reachable here. They are
-// routed separately under ActionDelete, because evicting a customer from a group
-// is a different privilege from inviting one, and an attendant who may do the
-// second should not thereby be able to do the first.
 func (h *GroupHandler) UpdateParticipants(w http.ResponseWriter, r *http.Request) {
 	h.participants(w, r, false)
 }
 
-// RemoveParticipants evicts members or rejects their join requests.
 func (h *GroupHandler) RemoveParticipants(w http.ResponseWriter, r *http.Request) {
 	h.participants(w, r, true)
 }
@@ -301,10 +242,6 @@ func (h *GroupHandler) participants(w http.ResponseWriter, r *http.Request, dest
 		response.WriteError(w, http.StatusBadRequest, uw.ErrInvalidGroupAction.Error(), nil)
 		return
 	}
-	// The route decides which class of verb it accepts, and the body cannot
-	// widen it. Without this check the additive route would happily perform a
-	// removal for anyone holding only ActionUpdate — the permission split above
-	// would be advisory.
 	if action.Destructive() != destructive {
 		response.WriteError(w, http.StatusBadRequest,
 			"that participant action is not allowed on this endpoint", nil)
@@ -325,11 +262,6 @@ func (h *GroupHandler) participants(w http.ResponseWriter, r *http.Request, dest
 	response.WriteSuccess(w, http.StatusOK, toGroupDTO(group))
 }
 
-// LeaveGroup exits the group.
-//
-// The conversation is deliberately left in place. The transcript is history, and
-// leaving a group does not mean the messages stopped having been exchanged — an
-// operator still needs to read what was said.
 func (h *GroupHandler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	tgt, ok := h.resolveTarget(w, r)
 	if !ok {
@@ -343,8 +275,6 @@ func (h *GroupHandler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]bool{"left": true})
 }
 
-// requireWorkspace is the guard every endpoint here shares. Written once because
-// a group endpoint that forgot it would act on another tenant's WhatsApp.
 func requireWorkspace(w http.ResponseWriter, r *http.Request) (string, bool) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
@@ -354,26 +284,12 @@ func requireWorkspace(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return workspaceID, true
 }
 
-// target is the (instance, group) pair an endpoint acts on.
 type target struct {
 	workspaceID string
 	instanceID  string
 	groupJID    string
 }
 
-// resolveTarget accepts either route shape and yields the same pair.
-//
-// Two shapes exist because two callers ask different questions with different
-// ids in hand:
-//
-//   - /instances/{id}/groups/{groupJid} — the instance settings screen, which
-//     knows the number and is browsing the groups it belongs to;
-//   - /conversations/{entryId}/group — the CRM, which knows only the
-//     conversation an operator has open.
-//
-// The alternative was leaking a channel-specific `group_jid` into InboxEntry,
-// the channel-neutral shape every list in the CRM renders. One extra lookup here
-// is much cheaper than that.
 func (h *GroupHandler) resolveTarget(w http.ResponseWriter, r *http.Request) (target, bool) {
 	workspaceID, ok := requireWorkspace(w, r)
 	if !ok {

@@ -60,9 +60,6 @@ func (r *stubUserRepo) GetUserRole(string) (string, error)        { return "", n
 func (r *stubUserRepo) GetTokenVersion(string) (int, error)       { return 0, nil }
 func (r *stubUserRepo) IncrementTokenVersion(string) (int, error) { return 0, nil }
 
-// stubGateway stands in for whichever provider is wired. It defaults to the Asaas
-// capability set (splits supported) so existing expectations are unchanged; tests that
-// care about a split-less provider set splitSupported to false.
 type stubGateway struct {
 	createCalls        int
 	provider           payment.Provider
@@ -242,10 +239,6 @@ func (r *errStubUserRepo) FindByID(string) (*user.User, error) {
 	return nil, r.findErr
 }
 
-// errStubGateway shapes its response from the requested method, the way a real adapter
-// does: a boleto charge carries a slip URL and no PIX payload, and a PIX charge whose
-// QR-code lookup failed comes back with the PIX fields empty (adapters treat that as
-// non-fatal, since the charge itself exists and is payable through its hosted URL).
 type errStubGateway struct {
 	stubGateway
 	createErr error
@@ -354,7 +347,7 @@ func TestCreateInvoice_MissingCustomerDocument(t *testing.T) {
 	asaasStub := newStubGateway()
 	uc := NewCreateInvoiceUseCase(
 		&stubInvoiceRepo{},
-		&stubUserRepo{user: &user.User{ID: "user-1", Username: "NoDoc"}}, // no CPF/CNPJ on file
+		&stubUserRepo{user: &user.User{ID: "user-1", Username: "NoDoc"}},
 		nil,
 		asaasStub,
 		&stubPricingRepo{},

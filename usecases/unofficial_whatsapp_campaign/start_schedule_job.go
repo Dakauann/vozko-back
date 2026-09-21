@@ -12,7 +12,6 @@ import (
 
 const scheduleStartBatchSize = 200
 
-// scheduleStartJob starts campaigns whose scheduled time has arrived.
 type scheduleStartJob struct {
 	campaigns uwc.Repository
 	dispatch  uwc.DispatchCampaignUseCase
@@ -42,13 +41,9 @@ func (j *scheduleStartJob) StartScheduledCampaigns() error {
 		if err == nil {
 			continue
 		}
-		// Already running is a no-op: another replica won the tick.
 		if errors.Is(err, campaign.ErrAlreadyRunning) {
 			continue
 		}
-		// One campaign that cannot start — a disconnected number, a live
-		// restriction — must not stop the rest of the batch. The reason is
-		// already recorded on the campaign by the dispatch gate.
 		log.Printf("[unofficial-whatsapp-campaign] scheduled start failed for %s: %v", camp.ID, err)
 	}
 	return nil

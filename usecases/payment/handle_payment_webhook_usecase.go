@@ -65,16 +65,12 @@ func NewHandlePaymentWebhookUseCase(
 
 var _ payment.HandlePaymentWebhookUseCase = (*handlePaymentWebhookUseCase)(nil)
 
-// WithNotifier enables the "wallet top-up confirmed" email. Returns the use case
-// for chaining at wiring time.
 func (uc *handlePaymentWebhookUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *handlePaymentWebhookUseCase {
 	uc.notifier = n
 	uc.dashboardURL = dashboardURL
 	return uc
 }
 
-// WithMonthlyBilling enables extending plan and addon subscription periods when a unified
-// MONTHLY_BILLING invoice is confirmed paid. Returns the use case for chaining at wiring time.
 func (uc *handlePaymentWebhookUseCase) WithMonthlyBilling(confirmer billing.ConfirmMonthlyBillingUseCase) *handlePaymentWebhookUseCase {
 	uc.confirmMonthlyBilling = confirmer
 	return uc
@@ -319,8 +315,6 @@ func (uc *handlePaymentWebhookUseCase) handleInvoicePayment(event *payment.Webho
 	}
 }
 
-// monthlyBillingCreditableUSD is the saldo portion of a unified monthly invoice (the plan part).
-// It falls back to the full AmountUSD for invoices created before CreditableUSD existed.
 func monthlyBillingCreditableUSD(inv *invoice.Invoice) int64 {
 	if inv.CreditableUSD > 0 {
 		return inv.CreditableUSD
@@ -336,10 +330,9 @@ func (uc *handlePaymentWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *i
 			return fmt.Errorf("failed to mark monthly invoice paid: %w", err)
 		}
 		if !transitioned {
-			return nil // already processed; the MarkPaid transition is the idempotency guard
+			return nil
 		}
 
-		// Credit only the plan portion to saldo; the channel-license repasse never becomes saldo.
 		if creditable := monthlyBillingCreditableUSD(inv); creditable > 0 {
 			refID := inv.ID
 			if _, creditErr := uc.creditBalance.Execute(balance.CreditBalanceInput{
@@ -355,7 +348,6 @@ func (uc *handlePaymentWebhookUseCase) handleMonthlyBillingInvoicePayment(inv *i
 			}
 		}
 
-		// Advance the plan and active addon periods to the next anchor.
 		if uc.confirmMonthlyBilling != nil {
 			if err := uc.confirmMonthlyBilling.Execute(inv.WorkspaceID); err != nil {
 				log.Printf("[invoice-webhook] WARNING: monthly invoice %s paid + credited but subscription extension failed for workspace %s: %v", inv.ID, inv.WorkspaceID, err)

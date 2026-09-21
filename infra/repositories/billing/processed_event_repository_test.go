@@ -53,7 +53,6 @@ func TestMarkProcessed_Duplicate(t *testing.T) {
 	defer sqlDB.Close()
 	repo := NewProcessedEventRepository(db)
 
-	// ON CONFLICT DO NOTHING inserts zero rows for a redelivery.
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "processed_webhook_events"`)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 

@@ -9,21 +9,10 @@ import (
 	"vozko/domain/shared"
 )
 
-// A provider message id is unique per conversation, not per platform. When both
-// ends of a thread are accounts we host — one tenant messaging another — the same
-// mid lives on two entries, and an edit, delete, reaction or read receipt that
-// matched channel-wide could land on the OTHER tenant's copy.
-//
-// The lookup therefore prefers this account's own conversation, and falls back
-// to the channel-wide match only when no contact resolves from the event, which
-// is what happens when the BUSINESS itself raised it (unsending its own
-// message). Both halves matter: scoping without the fallback would silently stop
-// tombstoning business-unsent messages.
-
 type scopedLookupMessages struct {
 	conversation.MessageRepository
 
-	entryScoped []string // entry ids the scoped lookup was called with
+	entryScoped []string
 	channelWide int
 
 	found *conversation.Message
@@ -79,14 +68,11 @@ func TestMessageLookupPrefersThisAccountsConversation(t *testing.T) {
 	if len(msgs.entryScoped) != 1 || msgs.entryScoped[0] != "conv-mine" {
 		t.Errorf("must query this account's entry, got %v", msgs.entryScoped)
 	}
-	// The channel-wide query is what could reach another tenant's row.
 	if msgs.channelWide != 0 {
 		t.Errorf("channel-wide lookup must not run when the entry is known, ran %d time(s)", msgs.channelWide)
 	}
 }
 
-// An event the business raised names the business as sender, so no contact
-// resolves. Before scoping, these worked; they must keep working.
 func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -96,7 +82,7 @@ func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 	}{
 		{
 			name:     "sender is the business, so no contact row",
-			contacts: &fakeContactRepo{}, // FindByIGSID → ErrContactNotFound
+			contacts: &fakeContactRepo{},
 			convs:    &fakeConversationRepo{},
 			event:    &igdomain.Event{ContactIGSID: "business-igsid"},
 		},
@@ -107,7 +93,7 @@ func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 					return &igdomain.Contact{ID: "contact-1", IGSID: igsid}, nil
 				},
 			},
-			convs: &fakeConversationRepo{}, // FindByContact → ErrConversationNotFound
+			convs: &fakeConversationRepo{},
 			event: &igdomain.Event{ContactIGSID: "igsid-1"},
 		},
 		{
@@ -139,9 +125,6 @@ func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 	}
 }
 
-// findConversation must not create anything: an edit or a delete names a message
-// that must already exist, and resolving it must not leave an empty conversation
-// behind for a thread we never held.
 func TestFindConversationNeverCreates(t *testing.T) {
 	contacts := &fakeContactRepo{}
 	convs := &fakeConversationRepo{

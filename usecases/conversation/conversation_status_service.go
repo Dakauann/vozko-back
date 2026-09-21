@@ -11,50 +11,26 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// AISessionEnder ends open AI attendance sessions (queue publish on hot path).
 type AISessionEnder interface {
 	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
 }
 
-// ConversationStatusStore is the per-channel read/write port for conversation
-// status. Declared here rather than importing each channel's domain, so the
-// service stays channel-agnostic and testable with a plain fake.
 type ConversationStatusStore interface {
-	// Status reads the current status, or "" when the entry has none.
 	Status(ctx context.Context, entryID string) (string, error)
-	// SetStatus writes the status and its close provenance. A nil closedAt with
-	// empty source/reason clears the provenance, which is how a reopen is
-	// expressed.
 	SetStatus(ctx context.Context, entryID, status, closeSource, closeReason string, closedAt *time.Time) error
 }
 
 type ConversationStatusService struct {
-	whatsappRepo wce.Repository
-	// stores carries the same conversation-status contract as the WhatsApp entry
-	// repository, keyed by entry type. Registering one never displaces another,
-	// and a channel that is switched off simply has no entry.
-	//
-	// WhatsApp deliberately keeps its own branch below: its write goes through a
-	// distinct struct, and lifting it would mean changing a working revenue path
-	// for no behavioural gain. That is the strangler order documented in
-	// domain/channel/channel.go.
-	stores map[shared.EntryType]ConversationStatusStore
-	// counters supply the per-status counts shown in the inbox header, keyed by
-	// entry type. Separate from stores because a channel can carry status without
-	// being able to count it cheaply.
-	counters map[shared.EntryType]ConversationStatusCounter
-	events   conv_event.Logger
-	// resolveWorkspace is optional; when set, status_changed events are logged with workspace scope.
+	whatsappRepo     wce.Repository
+	stores           map[shared.EntryType]ConversationStatusStore
+	counters         map[shared.EntryType]ConversationStatusCounter
+	events           conv_event.Logger
 	resolveWorkspace func(entryID, entryType string) string
-	// aiSessions ends open AI sessions when a conversation is marked finished (contained).
-	aiSessions AISessionEnder
+	aiSessions       AISessionEnder
 }
 
-// ConversationStatusCounter returns per-status conversation counts, scoped to a
-// container (accountID) when given, else to the whole workspace.
 type ConversationStatusCounter func(ctx context.Context, workspaceID, accountID string) (map[string]int64, error)
 
-// SetConversationCounter registers a channel's status counter.
 func (s *ConversationStatusService) SetConversationCounter(entryType shared.EntryType, counter ConversationStatusCounter) {
 	if s == nil || counter == nil || entryType == "" {
 		return
@@ -65,7 +41,6 @@ func (s *ConversationStatusService) SetConversationCounter(entryType shared.Entr
 	s.counters[entryType] = counter
 }
 
-// SetConversationStatusStore registers a channel's status store.
 func (s *ConversationStatusService) SetConversationStatusStore(entryType shared.EntryType, store ConversationStatusStore) {
 	if s == nil || store == nil || entryType == "" {
 		return
@@ -119,8 +94,6 @@ func (s *ConversationStatusService) GetConversationStatus(entryID, entryType str
 	return ""
 }
 
-// SetConversationStatus applies a status change. When target is finished without
-// going through Finish, stamps human/manual (WS path convenience).
 func (s *ConversationStatusService) SetConversationStatus(entryID, entryType string, status conversation.ConversationStatus) error {
 	if status == conversation.ConversationStatusFinished {
 		return s.Finish(entryID, entryType, conversation.FinishOptions{
@@ -131,7 +104,6 @@ func (s *ConversationStatusService) SetConversationStatus(entryID, entryType str
 	return s.applyStatus(entryID, entryType, status, false, "", "", false)
 }
 
-// Finish is the single choke point for moving to finished with provenance.
 func (s *ConversationStatusService) Finish(entryID, entryType string, opts conversation.FinishOptions) error {
 	source := opts.Source
 	reason := opts.Reason
@@ -143,7 +115,6 @@ func (s *ConversationStatusService) Finish(entryID, entryType string, opts conve
 		case conversation.CloseSourceAI:
 			reason = conversation.CloseReasonAIResolved
 		case conversation.CloseSourceSystem:
-			// Default system path is customer idle; max_age must pass reason explicitly.
 			reason = conversation.CloseReasonCustomerIdle
 		default:
 			reason = conversation.CloseReasonManual
@@ -163,8 +134,6 @@ func (s *ConversationStatusService) applyStatus(
 	return s.applyStatusActor(entryID, entryType, status, setClose, source, reason, clearClose, "")
 }
 
-// applyStatusActor is applyStatus plus the acting user/agent id, threaded through
-// to the timeline event so human closes are attributable.
 func (s *ConversationStatusService) applyStatusActor(
 	entryID, entryType string,
 	status conversation.ConversationStatus,
@@ -175,7 +144,6 @@ func (s *ConversationStatusService) applyStatusActor(
 	actorID string,
 ) error {
 	from := s.GetConversationStatus(entryID, entryType)
-	// Idempotent finish: already finished with same status, no-op side effects.
 	if from == status && status == conversation.ConversationStatusFinished && !clearClose {
 		return nil
 	}
@@ -209,15 +177,12 @@ func (s *ConversationStatusService) applyStatusActor(
 			closeSource = string(source)
 			closeReason = string(reason)
 		}
-		// clearClose reopens the conversation, so the close provenance is wiped
-		// rather than left pointing at a stale closure.
 		err = store.SetStatus(context.Background(), entryID, string(status), closeSource, closeReason, closedAt)
 	}
 	if err != nil {
 		return err
 	}
 	if string(from) != string(status) {
-		// One workspace resolve for both event + AI session end (avoids N×2 on batch finish).
 		wsID := ""
 		if s.resolveWorkspace != nil {
 			wsID = s.resolveWorkspace(entryID, entryType)
@@ -255,9 +220,6 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	if to == string(conversation.ConversationStatusNew) && from == string(conversation.ConversationStatusFinished) {
 		evType = conv_event.EventReopened
 	}
-	// The entry type IS the channel here, every value in the messaging set maps
-	// 1:1 onto a MessageChannel. It was hardcoded to "whatsapp", which labelled
-	// every Instagram close as a WhatsApp event on the timeline.
 	channel := entryType
 	details := map[string]string{"from": from, "to": to}
 	if to == string(conversation.ConversationStatusFinished) && source.Valid() {
@@ -267,16 +229,10 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	builder := conv_event.New(wsID, entryID, entryType, evType).
 		WithChannel(channel).
 		WithDetails(details)
-	// Attribute the event to whoever actually acted. Previously both branches of
-	// this condition called WithActorSystem(), so every close - including agent
-	// clicks - was logged as actor_kind=system with no actor_id, making "who
-	// finalized this?" unanswerable on the timeline.
 	switch {
 	case source == conversation.CloseSourceHuman && actorID != "":
 		builder = builder.WithActorHuman(actorID)
 	case source == conversation.CloseSourceAI:
-		// Kind matters even when the agent id is unknown, so the timeline's AI
-		// filter catches it. FormatAI("") is empty-safe.
 		builder = builder.WithActorAI(actorID)
 	default:
 		builder = builder.WithActorSystem()
@@ -284,16 +240,6 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	s.events.Log(builder.Build())
 }
 
-// TransitionOnMessage moves a conversation's status when a message lands.
-//
-// It takes the direction because the message TYPE cannot answer the question it
-// is asked here. An owner who replies on their own WhatsApp app sends a message
-// whose content type is an ordinary text one, and reading that as "the customer
-// wrote" left the conversation sitting in NEW after it had been answered — so
-// the queue kept nagging about a conversation somebody had already handled.
-//
-// An unstated direction falls back to the old type-based reading, which is what
-// rows written before the column carry.
 func (s *ConversationStatusService) TransitionOnMessage(
 	entryID, entryType string,
 	msgType conversation.MessageType,
@@ -309,7 +255,6 @@ func (s *ConversationStatusService) TransitionOnMessage(
 	if inbound {
 		switch current {
 		case "", conversation.ConversationStatusFinished:
-			// Reopen: finished → new and clear close provenance on the entry.
 			return s.applyStatus(entryID, entryType, conversation.ConversationStatusNew, false, "", "", true)
 		}
 		return nil
@@ -324,14 +269,6 @@ func (s *ConversationStatusService) TransitionOnMessage(
 	return nil
 }
 
-// answersTheCustomer reports whether an outbound message is somebody actually
-// replying, as opposed to the machinery talking to itself.
-//
-// Tool calls, tool results and system notices are outbound but are not an
-// answer: marking a conversation handled because a workflow logged a step would
-// hide it from the queue while the customer still waits. The content types are
-// here because an owner replying from their own phone sends a plain text or a
-// photo, and that is as real an answer as one typed in the CRM.
 func answersTheCustomer(msgType conversation.MessageType) bool {
 	switch msgType {
 	case conversation.MessageTypeOperator,
@@ -356,10 +293,6 @@ func (s *ConversationStatusService) GetStatusCounts(workspaceID, campaignID, ent
 		}
 	}
 
-	// An empty entryType means "every channel". The counts are what the inbox
-	// header shows above the list, so a channel missing from here reads as "there
-	// is no work on this channel" while its conversations sit in the list below,
-	// which is exactly what happened to Instagram.
 	includeWhatsApp := entryType == "" || entryType == string(shared.EntryTypeWhatsApp)
 
 	if includeWhatsApp {
@@ -382,12 +315,8 @@ func (s *ConversationStatusService) GetStatusCounts(workspaceID, campaignID, ent
 		if entryType != "" && entryType != string(channelType) {
 			continue
 		}
-		// campaignID is the container id for channels with no campaign concept:
-		// the account row. Passing it through unchanged is what makes a
-		// per-account inbox count the right conversations.
 		channelCounts, err := count(context.Background(), workspaceID, campaignID)
 		if err != nil {
-			// One channel's failure must not blank the whole header.
 			log.Printf("[ConversationStatus] %s status counts failed: %v", channelType, err)
 			continue
 		}

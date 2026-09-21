@@ -38,9 +38,6 @@ type RabbitMQQueuePub struct {
 	channel *amqp.Channel
 	release func()
 
-	// declaredTopics is the DELAY topology already declared on this channel;
-	// boundTopics is the plain topic queue and its binding. Two caches because
-	// the two are declared by different paths and either can be needed alone.
 	declaredTopics map[string]struct{}
 	boundTopics    map[string]struct{}
 }
@@ -107,9 +104,6 @@ func (q *RabbitMQQueuePub) invalidateChannelLocked() {
 		q.release = nil
 	}
 
-	// Both caches describe topology on the channel being dropped. A reconnection
-	// may reach a broker that has never seen these queues, so keeping either
-	// across an invalidation is how a publisher silently stops declaring.
 	if len(q.declaredTopics) > 0 {
 		q.declaredTopics = make(map[string]struct{})
 	}
@@ -164,7 +158,6 @@ func (q *RabbitMQQueuePub) ensureDelayTopologyLocked(topic string) error {
 		}
 	}
 
-	// The real queue and its binding, shared with the plain publish path.
 	if err := q.ensureRoutableLocked(topic); err != nil {
 		return err
 	}
@@ -195,9 +188,6 @@ func (q *RabbitMQQueuePub) ensureDelayTopologyLocked(topic string) error {
 	return nil
 }
 
-// isPreconditionFailed reports whether err is RabbitMQ's 406 PRECONDITION_FAILED,
-// which is what a redeclare with different arguments than the existing durable
-// queue returns (and it closes the channel).
 func isPreconditionFailed(err error) bool {
 	var amqpErr *amqp.Error
 	if errors.As(err, &amqpErr) {
@@ -206,15 +196,6 @@ func isPreconditionFailed(err error) bool {
 	return false
 }
 
-// declareDelayQueue declares the per-topic delay queue that holds messages until
-// their TTL expires and dead-letters them onto the real topic.
-//
-// The queue is durable and its x-dead-letter-exchange is baked in at creation, so
-// a queue created against a PREVIOUS exchange name can never be redeclared, the
-// broker answers 406 and the consumer refuses to start, silently stranding every
-// delayed message. When that happens, drop the stale queue and recreate it with
-// the current arguments. Its contents are only un-elapsed timers, and they are
-// already unreachable: the alternative is a consumer that never boots at all.
 func declareDelayQueue(ch *amqp.Channel, reconnect func() (*amqp.Channel, error), delayTopic string, args amqp.Table) (*amqp.Channel, error) {
 	if _, err := ch.QueueDeclare(delayTopic, true, false, false, false, args); err == nil {
 		return ch, nil
@@ -222,7 +203,6 @@ func declareDelayQueue(ch *amqp.Channel, reconnect func() (*amqp.Channel, error)
 		return ch, err
 	}
 
-	// The failed declare closed the channel; get a fresh one to repair with.
 	fresh, err := reconnect()
 	if err != nil {
 		return ch, fmt.Errorf("reopen channel to rebuild %s: %w", delayTopic, err)
@@ -240,21 +220,6 @@ func declareDelayQueue(ch *amqp.Channel, reconnect func() (*amqp.Channel, error)
 	return fresh, nil
 }
 
-// ensureRoutableLocked declares the topic's queue and binds it to the exchange.
-//
-// Without it a publish can succeed into nothing. The exchange is direct, so a
-// message whose routing key matches no binding is DISCARDED, and publisher
-// confirms ack it while it is discarded: a confirm answers "the exchange took
-// it", never "a queue holds it". A publisher that ran before its consumer
-// subscribed, or whose consumer failed to start at all, was therefore told
-// every message was delivered while every one of them was dropped, with no
-// error anywhere to say so.
-//
-// Declaring here is what makes "published" mean "durably queued": the messages
-// wait in the queue and are delivered whenever a consumer does appear. It is
-// the same declaration the subscriber makes, so the two agree and redeclaring
-// is idempotent, and the topic is remembered so this costs one round trip per
-// topic per channel rather than one per message.
 func (q *RabbitMQQueuePub) ensureRoutableLocked(topic string) error {
 	if q.boundTopics == nil {
 		q.boundTopics = make(map[string]struct{})
@@ -352,12 +317,6 @@ func NewRabbitMQQueueSub(
 	}
 }
 
-// prefetchByTopic overrides the default per-channel prefetch (QoS) for specific
-// high-throughput topics. webhook.whatsapp.message is processed by a concurrent
-// worker pool (ordering is guarded by a per-sender lock in the consumer), so it
-// needs prefetch well above 1 to keep that pool fed; with prefetch=1 the whole
-// pipeline serializes behind one slow AI reply. All other topics keep prefetch=1,
-// which preserves their existing one-at-a-time semantics.
 var prefetchByTopic = map[string]int{
 	"webhook.whatsapp.message": 20,
 }
@@ -419,7 +378,6 @@ func (q *RabbitMQQueueSub) setupChannel(topic string) (*amqp.Channel, error) {
 		"x-dead-letter-routing-key": topic,
 	}
 	ch, err = declareDelayQueue(ch, func() (*amqp.Channel, error) {
-		// The 406 closed the channel; take a fresh one and hand the old slot back.
 		newCh, newRelease, openErr := q.pool.OpenChannel()
 		if openErr != nil {
 			return nil, openErr
@@ -433,7 +391,6 @@ func (q *RabbitMQQueueSub) setupChannel(topic string) (*amqp.Channel, error) {
 		release()
 		return nil, fmt.Errorf("failed to declare delay queue: %w", err)
 	}
-	// Re-assert prefetch: the repair path above may have swapped in a new channel.
 	if err := ch.Qos(channelPrefetch(topic), 0, false); err != nil {
 		_ = ch.Close()
 		release()

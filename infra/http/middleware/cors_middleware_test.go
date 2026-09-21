@@ -35,22 +35,14 @@ func TestCORS_TrustedOrigin_Preflight(t *testing.T) {
 	}
 }
 
-// A custom header the client sends but the preflight does not allow is the
-// worst failure shape in the stack: the request never leaves the browser, so
-// there is no server log, no status code and no handler to debug — just
-// "Failed to fetch" and zero bytes transferred. Idempotency-Key shipped missing
-// from this list and cost exactly that.
-//
-// Every entry here is a header some client actually sends. Removing one breaks
-// a feature silently; this test is the only thing that says so out loud.
 func TestCORS_PreflightAllowsEveryHeaderTheClientSends(t *testing.T) {
 	required := []string{
 		"Authorization",
 		"Content-Type",
-		"X-Workspace-ID",  // workspace scoping, every request
-		"X-Department-ID", // department scoping
-		"X-Auth-Mode",     // cookie-mode refresh
-		"Idempotency-Key", // scheduled-message create
+		"X-Workspace-ID",
+		"X-Department-ID",
+		"X-Auth-Mode",
+		"Idempotency-Key",
 	}
 
 	cors := NewCORSMiddleware([]string{"http://localhost:3000"})

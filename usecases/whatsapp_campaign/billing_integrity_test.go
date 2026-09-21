@@ -13,21 +13,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-// The billing path of the Cloud API campaign consumer, asserted exhaustively.
-//
-// This is the highest-volume paid surface in the product: one campaign can debit
-// a workspace a hundred and fifty thousand times, so every refusal has to be
-// proven not to charge, every charge has to be proven to happen once, and every
-// reservation has to be proven to be released. A leak here is silent — the money
-// is simply gone, or simply never taken — and neither shows up as an error.
-//
-// The cases below are the complete decision tree of handle(): each pre-debit
-// refusal, each debit failure mode, each post-send outcome, and the invariants
-// that must hold across all of them.
-
-// ledger records every movement with the reference it was made under, which is
-// what lets these tests assert attribution and not merely counts. The existing
-// mockConsumeWhatsappTemplate records only categories.
 type ledger struct {
 	mu      sync.Mutex
 	debits  []string
@@ -75,7 +60,6 @@ func (l *ledger) snapshot() (debits, refunds []string) {
 	return append([]string(nil), l.debits...), append([]string(nil), l.refunds...)
 }
 
-// billingRig is a harness whose ledger is observable.
 type billingRig struct {
 	*testHarness
 	ledger  *ledger
@@ -117,7 +101,6 @@ func (r *billingRig) deliver() *mockAck {
 	return r.queueSub.deliver(r.topic, makePayload(r.campID, r.entryID, "5584999990001"))
 }
 
-// inflight reads the reservation counter the reserver writes through.
 func (r *billingRig) inflight(t *testing.T) int64 {
 	t.Helper()
 	raw, _ := r.shared.GetString("balance:inflight:ws-1")
@@ -141,13 +124,6 @@ func (r *billingRig) entryStatus() wce.SendStatus {
 	return r.entryRepo.entries[r.entryID].Status
 }
 
-// ---------------------------------------------------------------- no charge
-
-// Every pre-debit refusal, proven not to move money.
-//
-// These are the cheap ones to get wrong: each is an early return, and an early
-// return placed after the debit instead of before it charges for a message that
-// never left.
 func TestBilling_NoChargeOnAnyPreDebitRefusal(t *testing.T) {
 	cases := map[string]struct {
 		arrange    func(*billingRig)
@@ -202,15 +178,11 @@ func TestBilling_NoChargeOnAnyPreDebitRefusal(t *testing.T) {
 			arrange:  func(r *billingRig) { r.ledger.costErr = errors.New("pricing service down") },
 			wantNack: true,
 		},
-		// The zero-price guard. A zero slipping through here is a whole campaign
-		// delivered free, at bulk volume, with nothing logged.
 		"price is zero": {
 			arrange:    func(r *billingRig) { r.ledger.zeroCost = true },
 			wantAck:    true,
 			wantStatus: wce.SendStatusFailed,
 		},
-		// Fail CLOSED: a missing reserver is a wiring fault, and sending without
-		// one means sending without a spend ceiling.
 		"reserver not wired": {
 			arrange:  func(r *billingRig) { r.consumer.InflightReserver = nil },
 			wantNack: true,
@@ -248,7 +220,6 @@ func TestBilling_NoChargeOnAnyPreDebitRefusal(t *testing.T) {
 			if c.wantStatus != "" && r.entryStatus() != c.wantStatus {
 				t.Errorf("entry status = %q, want %q", r.entryStatus(), c.wantStatus)
 			}
-			// Nothing reserved means nothing to leak.
 			if got := r.inflight(t); got != 0 {
 				t.Errorf("left %d micros reserved after a refusal", got)
 			}
@@ -256,11 +227,8 @@ func TestBilling_NoChargeOnAnyPreDebitRefusal(t *testing.T) {
 	}
 }
 
-// Out of budget holds the entry PENDING and takes no money. Marking it failed
-// would make a resumed campaign skip somebody who was never contacted.
 func TestBilling_NoChargeWhenTheReservationIsRefused(t *testing.T) {
 	r := newBillingRig(t)
-	// A budget below one message's cost cannot admit the reservation.
 	r.cachedBalanceChecker.balanceMicros = 100
 	r.ledger.cost = 500
 
@@ -281,9 +249,6 @@ func TestBilling_NoChargeWhenTheReservationIsRefused(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- debit stage
-
-// Every way the debit itself can fail, and what each must do with the money.
 func TestBilling_DebitFailureModes(t *testing.T) {
 	cases := map[string]struct {
 		err        error
@@ -291,8 +256,6 @@ func TestBilling_DebitFailureModes(t *testing.T) {
 		wantNack   bool
 		wantStatus wce.SendStatus
 	}{
-		// Deferred, not failed: the workspace can top up and the entry is still
-		// owed a message.
 		"insufficient balance": {
 			err: balance.ErrInsufficientBalance, wantAck: true,
 			wantStatus: wce.SendStatusPending,
@@ -301,7 +264,6 @@ func TestBilling_DebitFailureModes(t *testing.T) {
 			err: balance.ErrBalanceNotFound, wantAck: true,
 			wantStatus: wce.SendStatusPending,
 		},
-		// Terminal: no amount of retrying makes an expired subscription send.
 		"subscription expired mid-campaign": {
 			err: workspace_plan.ErrSubscriptionNotCurrent, wantAck: true,
 			wantStatus: wce.SendStatusFailed,
@@ -314,7 +276,6 @@ func TestBilling_DebitFailureModes(t *testing.T) {
 			err: balance.ErrPriceUnavailable, wantAck: true,
 			wantStatus: wce.SendStatusFailed,
 		},
-		// Unknown: retry rather than guess.
 		"ledger unavailable": {
 			err: errors.New("ledger down"), wantNack: true,
 			wantStatus: wce.SendStatusPending,
@@ -332,8 +293,6 @@ func TestBilling_DebitFailureModes(t *testing.T) {
 			if len(debits) != 0 {
 				t.Errorf("recorded a debit despite the failure: %v", debits)
 			}
-			// Nothing was taken, so nothing may be given back. A refund without a
-			// charge is money leaving the platform for free.
 			if len(refunds) != 0 {
 				t.Errorf("refunded %v for a debit that never happened", refunds)
 			}
@@ -351,15 +310,8 @@ func TestBilling_DebitFailureModes(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- refunds
-
-// A send that never reached the customer must be refunded, under the SAME
-// reference the debit used — otherwise the credit cannot be paired with the
-// charge it reverses and both sit in the ledger looking unrelated.
 func TestBilling_FailedSendIsRefundedUnderTheSameReference(t *testing.T) {
 	r := newBillingRig(t)
-	// No client for the campaign's business phone: a config error, which is a
-	// send that never reached Meta.
 	r.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{}
 
 	r.deliver()
@@ -379,8 +331,6 @@ func TestBilling_FailedSendIsRefundedUnderTheSameReference(t *testing.T) {
 	}
 }
 
-// A delivered message is NOT refunded. Refunding here would credit a message the
-// customer has already received.
 func TestBilling_SuccessfulSendIsNotRefunded(t *testing.T) {
 	r := newBillingRig(t)
 
@@ -398,13 +348,6 @@ func TestBilling_SuccessfulSendIsNotRefunded(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- attribution
-
-// The debit is keyed on the ENTRY, not the campaign.
-//
-// A shared campaign reference cannot tell two charges for one recipient apart
-// from two recipients charged once each, which makes a redelivery
-// indistinguishable from a legitimate second send.
 func TestBilling_ChargesAreKeyedPerRecipient(t *testing.T) {
 	r := newBillingRig(t)
 	r.entryRepo.entries["entry-2"] = &wce.WhatsAppCampaignEntry{ID: "entry-2", LeadID: "lead-2", Status: wce.SendStatusPending}
@@ -426,8 +369,6 @@ func TestBilling_ChargesAreKeyedPerRecipient(t *testing.T) {
 	}
 }
 
-// One delivery, one charge. Not a redelivery test — this pins that the ordinary
-// path cannot double-charge by falling through two branches.
 func TestBilling_OneDeliveryChargesOnce(t *testing.T) {
 	r := newBillingRig(t)
 
@@ -438,13 +379,6 @@ func TestBilling_OneDeliveryChargesOnce(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- reservations
-
-// The reservation is released on EVERY path past Reserve.
-//
-// A reservation that is taken and not released permanently shrinks the
-// workspace's spend headroom: sends start being refused for lack of budget the
-// workspace actually has, and nothing in the ledger explains why.
 func TestBilling_ReservationIsAlwaysReleased(t *testing.T) {
 	cases := map[string]func(*billingRig){
 		"successful send":     func(r *billingRig) {},
@@ -468,8 +402,6 @@ func TestBilling_ReservationIsAlwaysReleased(t *testing.T) {
 	}
 }
 
-// Many messages in sequence must leave the counter at zero: a per-message leak
-// only becomes visible at volume, which is exactly when a campaign runs.
 func TestBilling_ReservationsDoNotAccumulateAcrossManySends(t *testing.T) {
 	r := newBillingRig(t)
 	for i := 0; i < 25; i++ {
@@ -486,15 +418,8 @@ func TestBilling_ReservationsDoNotAccumulateAcrossManySends(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- holds
-
-// A paused campaign must not charge. The message is requeued, and a requeue that
-// charged would bill the workspace once per pause cycle.
 func TestBilling_PausedCampaignNeverCharges(t *testing.T) {
 	r := newBillingRig(t)
-	// Captured BEFORE pausing: pause detaches the consumer, so this is the
-	// in-flight message the paused flag exists to stop — the case a detached
-	// consumer cannot cover.
 	handler := r.queueSub.handlers[r.topic]
 	if err := r.consumer.PauseCampaignConsumer(r.campID); err != nil {
 		t.Fatal(err)
@@ -514,8 +439,6 @@ func TestBilling_PausedCampaignNeverCharges(t *testing.T) {
 	}
 }
 
-// A stopped campaign must not charge either. Stop deletes the queue, but a
-// message already read is no longer in it.
 func TestBilling_StoppedCampaignNeverCharges(t *testing.T) {
 	r := newBillingRig(t)
 	handler := r.queueSub.handlers[r.topic]
@@ -534,8 +457,6 @@ func TestBilling_StoppedCampaignNeverCharges(t *testing.T) {
 	}
 }
 
-// A message that cannot be decoded identifies no entry, so it can never be
-// charged for.
 func TestBilling_UndecodableMessageNeverCharges(t *testing.T) {
 	r := newBillingRig(t)
 
@@ -545,19 +466,12 @@ func TestBilling_UndecodableMessageNeverCharges(t *testing.T) {
 	if debits, _ := r.ledger.snapshot(); len(debits) != 0 {
 		t.Fatalf("charged %v for an undecodable message", debits)
 	}
-	// Nacked WITHOUT requeue: a message that cannot decode never will, and
-	// requeuing it spins forever.
 	if !ack.nacked.Load() || ack.requeue.Load() {
 		t.Errorf("nacked=%v requeue=%v, want nacked without requeue",
 			ack.nacked.Load(), ack.requeue.Load())
 	}
 }
 
-// ---------------------------------------------------------------- fail-closed
-
-// erroringReserver models the reservation store being unreachable, as distinct
-// from it refusing: an error is "we do not know how much is in flight", and
-// sending on an unknown is sending without a ceiling.
 type erroringReserver struct{ released int }
 
 func (r *erroringReserver) Reserve(string, int64, int64) (bool, error) {
@@ -570,11 +484,6 @@ func (r *erroringReserver) Release(string, int64) error {
 func (r *erroringReserver) RefreshTTL(string, time.Duration) error { return nil }
 func (r *erroringReserver) GetInflight(string) (int64, error)      { return 0, nil }
 
-// A reservation store that ERRORS must block the send, not fall through.
-//
-// Distinct from a refused reservation: refused means "no budget, come back
-// later", while an error means we cannot tell — and guessing "there is room"
-// spends money against a ceiling nobody can see.
 func TestBilling_ReserveErrorFailsClosed(t *testing.T) {
 	r := newBillingRig(t)
 	reserver := &erroringReserver{}
@@ -588,8 +497,6 @@ func TestBilling_ReserveErrorFailsClosed(t *testing.T) {
 	if !ack.nacked.Load() {
 		t.Error("an unreadable reservation store did not block the send")
 	}
-	// Nothing was reserved, so nothing may be released: releasing an unmade
-	// reservation inflates the workspace's apparent headroom.
 	if reserver.released != 0 {
 		t.Errorf("released %d reservations that were never taken", reserver.released)
 	}
@@ -598,7 +505,6 @@ func TestBilling_ReserveErrorFailsClosed(t *testing.T) {
 	}
 }
 
-// refusingRefundLedger takes money and then cannot give it back.
 type refusingRefundLedger struct {
 	ledger
 	refundErr error
@@ -611,12 +517,6 @@ func (l *refusingRefundLedger) Refund(ws string, reference string, cat string) e
 	return l.refundErr
 }
 
-// A refund that FAILS must not be reported as a refund.
-//
-// This is the sharpest money-loss shape in the whole path: the customer was
-// charged, the message never reached them, and the credit did not happen. It has
-// to be loud, and the send must still be acked — retrying would charge again for
-// a message that already failed.
 func TestBilling_FailedRefundIsNotSilentlySwallowed(t *testing.T) {
 	r := newBillingRig(t)
 	failing := &refusingRefundLedger{
@@ -624,7 +524,6 @@ func TestBilling_FailedRefundIsNotSilentlySwallowed(t *testing.T) {
 		refundErr: errors.New("ledger write failed"),
 	}
 	r.consumer.ConsumeWhatsappTemplate = failing
-	// A send that never reaches Meta, so a refund is owed.
 	r.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{}
 
 	ack := r.deliver()
@@ -633,16 +532,12 @@ func TestBilling_FailedRefundIsNotSilentlySwallowed(t *testing.T) {
 	if len(debits) != 1 {
 		t.Fatalf("debits = %v, want exactly one", debits)
 	}
-	// The attempt is recorded even though it failed, so the pairing is
-	// reconstructable from the ledger the platform does control.
 	if len(refunds) != 1 {
 		t.Fatalf("the refund was not even attempted: %v", refunds)
 	}
 	if refunds[0] != debits[0] {
 		t.Fatalf("the attempted refund %q does not pair with the debit %q", refunds[0], debits[0])
 	}
-	// Acked regardless: a redelivery would charge a second time for a message
-	// that already failed to send.
 	if !ack.acked.Load() {
 		t.Error("a failed refund left the message unacked, so it will be redelivered and charged again")
 	}
@@ -651,14 +546,6 @@ func TestBilling_FailedRefundIsNotSilentlySwallowed(t *testing.T) {
 	}
 }
 
-// The one branch these tests deliberately do not reach.
-//
-// handle() falls back to a generic "not ready" message when
-// GetUsabilityMessage() returns empty — but that method only returns empty when
-// the usability status is Ready, and a ready template never enters the branch.
-// It is unreachable defensive code inherited from before the refactor, left in
-// place rather than removed because deleting code from the billing path to chase
-// a coverage number is the wrong trade.
 func TestBilling_UnreachableTemplateMessageFallbackIsDocumented(t *testing.T) {
 	notApproved := &template.Template{
 		ID: "x", Name: "t", Status: template.TemplateStatusRejected,

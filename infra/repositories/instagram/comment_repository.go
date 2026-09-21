@@ -16,7 +16,6 @@ type commentRepository struct {
 	db *gorm.DB
 }
 
-// NewCommentRepository builds the Instagram comment repository.
 func NewCommentRepository(db *gorm.DB) igdomain.CommentRepository {
 	return &commentRepository{db: db}
 }
@@ -46,10 +45,6 @@ func (r *commentRepository) UpsertMany(ctx context.Context, items []*igdomain.Co
 	if len(records) == 0 {
 		return nil
 	}
-	// PostgreSQL cannot apply an ON CONFLICT DO UPDATE twice to the same
-	// existing row in one statement. Graph pages can contain the same comment
-	// more than once when threaded data overlaps, so collapse the batch by the
-	// conflict key before issuing the bulk upsert.
 	records = dedupeCommentRecords(records)
 	return r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
@@ -68,7 +63,6 @@ func dedupeCommentRecords(records []*schema.InstagramComment) []*schema.Instagra
 	for _, record := range records {
 		position, exists := positions[record.IGCommentID]
 		if exists {
-			// Keep the last copy, which is the most recently observed state.
 			unique[position] = record
 			continue
 		}
@@ -116,10 +110,6 @@ func (r *commentRepository) Delete(ctx context.Context, igAccountID, igCommentID
 	return nil
 }
 
-// ListByMedia returns the locally mirrored comments for a post.
-//
-// Ordering is newest-first to match Graph's reverse-chronological edge, so the UI
-// shows the same order whether a page came from the mirror or from a live fetch.
 func (r *commentRepository) ListByMedia(ctx context.Context, input igdomain.ListCommentsInput) (*shared.PaginatedResult[*igdomain.Comment], error) {
 	pagination := shared.NormalizePagination(input.Options.Pagination)
 

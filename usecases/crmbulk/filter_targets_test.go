@@ -8,8 +8,6 @@ import (
 	"vozko/domain/crmfilter"
 )
 
-// --- resolver mock -----------------------------------------------------------
-
 type mockTargetResolver struct {
 	calls   []TargetQuery
 	refs    []EntryRef
@@ -41,8 +39,6 @@ func withResolver(r TargetResolver, sa *mockStageAssigner, bc *mockBroadcaster) 
 	svc.SetTargetResolver(r)
 	return svc
 }
-
-// --- expansion ---------------------------------------------------------------
 
 func TestBulkApply_FilterExpandsToTargetsAndFansOut(t *testing.T) {
 	res := &mockTargetResolver{refs: targets("e1", "e2", "e3"), matched: 3}
@@ -85,8 +81,6 @@ func TestBulkApply_FilterForwardsActorScopeToResolver(t *testing.T) {
 		t.Fatalf("expected one resolve call, got %d", len(res.calls))
 	}
 	got := res.calls[0]
-	// The scope must reach the read verbatim: a dropped department id would let a
-	// bulk touch rows the operator's own table would never have shown them.
 	if got.WorkspaceID != "ws-9" || got.ActorID != "actor-7" || !got.IsAdmin ||
 		got.SelectedDepartmentID != "dept-3" {
 		t.Errorf("actor scope not forwarded to the resolver: %+v", got)
@@ -98,8 +92,6 @@ func TestBulkApply_FilterForwardsActorScopeToResolver(t *testing.T) {
 		t.Errorf("filter not forwarded intact: %+v", got.Filter)
 	}
 }
-
-// --- precedence and the empty-vs-absent distinction --------------------------
 
 func TestBulkApply_ExplicitTargetsWinOverFilter(t *testing.T) {
 	res := &mockTargetResolver{refs: targets("x1", "x2", "x3"), matched: 3}
@@ -120,8 +112,6 @@ func TestBulkApply_ExplicitTargetsWinOverFilter(t *testing.T) {
 }
 
 func TestBulkApply_EmptyFilterIsStillATargetingRequest(t *testing.T) {
-	// An empty filter legitimately means "the whole scoped workspace". It must
-	// reach the resolver, not be mistaken for "no filter given".
 	res := &mockTargetResolver{refs: targets("e1", "e2"), matched: 2}
 	svc := withResolver(res, &mockStageAssigner{}, &mockBroadcaster{})
 
@@ -137,8 +127,6 @@ func TestBulkApply_EmptyFilterIsStillATargetingRequest(t *testing.T) {
 		t.Fatalf("expected 2 succeeded, got %+v", out)
 	}
 }
-
-// --- truncation --------------------------------------------------------------
 
 func TestBulkApply_ReportsTruncationWhenTheCapBinds(t *testing.T) {
 	res := &mockTargetResolver{refs: targets("e1", "e2"), matched: 5300}
@@ -174,10 +162,7 @@ func TestBulkApply_NoTruncationWhenEverythingFits(t *testing.T) {
 	}
 }
 
-// --- gates and failure modes -------------------------------------------------
-
 func TestBulkApply_RBACGateRunsBeforeAnyResolve(t *testing.T) {
-	// Denied actors must not cause a read of the set they cannot change.
 	res := &mockTargetResolver{refs: targets("e1"), matched: 1}
 	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{},
 		&mockEntryAssigner{}, &mockAuthorizer{}, &mockBroadcaster{})
@@ -197,7 +182,6 @@ func TestBulkApply_RBACGateRunsBeforeAnyResolve(t *testing.T) {
 }
 
 func TestBulkApply_PerEntryScopeStillAppliesToResolvedTargets(t *testing.T) {
-	// Expansion is not a bypass: CanAccessEntry still vets every resolved row.
 	res := &mockTargetResolver{refs: targets("e1", "e2"), matched: 2}
 	authz := allowAll()
 	authz.denyEntry = map[string]bool{"e2": true}
@@ -256,8 +240,6 @@ func TestBulkApply_FilterWithoutAResolverFailsClosed(t *testing.T) {
 }
 
 func TestBulkApply_NoFilterDoesNotReachTheResolver(t *testing.T) {
-	// The no-target no-op (pinned by TestBulkApply_NoTargets_IsNoOp) must survive
-	// the addition of filter targeting: absent a filter, nothing is resolved.
 	res := &mockTargetResolver{refs: targets("e1"), matched: 1}
 	svc := withResolver(res, &mockStageAssigner{}, &mockBroadcaster{})
 

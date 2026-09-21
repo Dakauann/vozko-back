@@ -50,20 +50,14 @@ type RequestCallPermissionInput struct {
 	BodyText  string
 }
 
-// CallPermissionStatus is a lightweight, read-only view of a lead's WhatsApp
-// call-permission state for a conversation. It lets the UI enable or disable the
-// "call via WhatsApp" action before a call is attempted. CanCall is true only
-// when a permission is granted and still within its validity window.
 type CallPermissionStatus struct {
-	Status    string     `json:"status"` // "none" | "pending" | "granted" | "rejected" | "expired"
+	Status    string     `json:"status"`
 	CanCall   bool       `json:"can_call"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 type RequestCallPermissionUseCase interface {
 	RequestCallPermission(input RequestCallPermissionInput) (*Message, error)
-	// CallPermissionStatus reports whether the conversation's lead currently
-	// allows WhatsApp calls. A missing or lapsed permission yields CanCall=false.
 	CallPermissionStatus(entryID, entryType string) (CallPermissionStatus, error)
 }
 
@@ -84,8 +78,6 @@ type GetConversationMediaUseCase interface {
 	Execute(mediaID string) (*ConversationMedia, error)
 }
 
-// SearchMessagesByEntryUseCase runs a full-text/message search within one
-// conversation entry, returning the page of matches and the total count.
 type SearchMessagesByEntryUseCase interface {
 	Execute(input SearchMessagesByEntryInput) ([]*Message, int64, error)
 }

@@ -20,29 +20,15 @@ import (
 )
 
 type Config struct {
-	BaseURL       string
-	PhoneNumberID string
-	WABAId        string
-	AccessToken   string
-	AppID         string
-	HTTPClient    *http.Client
-	// AuthHeaderName and AuthValuePrefix parameterize the credential header so
-	// the same client serves both providers. Empty defaults to the Meta scheme
-	// ("Authorization: Bearer <token>"). For 360dialog set AuthHeaderName to
-	// "D360-API-KEY" and AuthValuePrefix to "" with AccessToken set to the
-	// per channel API key.
-	AuthHeaderName  string
-	AuthValuePrefix string
-	// OmitPhoneNumberInPath drops the phone-number-id segment from the send/media
-	// paths. Meta uses "{base}/{phone_number_id}/messages"; 360dialog identifies
-	// the channel by the API key, so its path is "{base}/messages". Set true for
-	// 360dialog channels.
-	OmitPhoneNumberInPath bool
-	// TemplatesChannelScoped switches template management to 360dialog's
-	// channel-scoped API. Meta uses the WABA-scoped Graph path
-	// "{base}/{waba_id}/message_templates"; 360dialog scopes by the API key and
-	// uses "{base}/v1/configs/templates" (no waba id, name-keyed delete, and a
-	// "waba_templates" list envelope). Set true for 360dialog channels.
+	BaseURL                string
+	PhoneNumberID          string
+	WABAId                 string
+	AccessToken            string
+	AppID                  string
+	HTTPClient             *http.Client
+	AuthHeaderName         string
+	AuthValuePrefix        string
+	OmitPhoneNumberInPath  bool
 	TemplatesChannelScoped bool
 }
 
@@ -59,8 +45,6 @@ type Client struct {
 	templatesChannelScoped bool
 }
 
-// messagesEndpointFor builds the send endpoint, omitting the phone-number-id for
-// providers (360dialog) that scope the channel by the API key instead.
 func (c *Client) messagesEndpointFor(phoneNumberID string) string {
 	if c.omitPhoneNumberInPath {
 		return c.baseURL + "/messages"
@@ -77,9 +61,6 @@ func (c *Client) mediaEndpoint() string {
 	return fmt.Sprintf("%s/%s/media", c.baseURL, c.phoneNumberID)
 }
 
-// templatesCollectionEndpoint builds the create/list template endpoint. 360dialog
-// scopes templates by the API key ("{base}/v1/configs/templates"); Meta scopes by
-// the WABA in the Graph path ("{base}/{waba_id}/message_templates").
 func (c *Client) templatesCollectionEndpoint() string {
 	if c.templatesChannelScoped {
 		return c.baseURL + "/v1/configs/templates"
@@ -87,10 +68,6 @@ func (c *Client) templatesCollectionEndpoint() string {
 	return fmt.Sprintf("%s/%s/message_templates", c.baseURL, c.wabaID)
 }
 
-// setAuth applies the provider appropriate credential header to a request. It
-// is used by every Cloud API call so Meta and 360dialog channels share the same
-// request builders (360dialog wraps the Meta Cloud API, so only the credential
-// header and base URL differ).
 func (c *Client) setAuth(req *http.Request) {
 	name := c.authHeaderName
 	if name == "" {
@@ -438,34 +415,10 @@ func (c *Client) SendAudioBytes(ctx context.Context, to string, audioData []byte
 	return c.SendVoiceMessage(ctx, to, mediaID, contextMessageID)
 }
 
-// isDialog360 reports whether this client talks to 360dialog (which wraps the
-// Meta Cloud API) rather than Meta directly. 360dialog channels authenticate
-// with the D360-API-KEY header; Meta uses "Authorization: Bearer".
 func (c *Client) isDialog360() bool { return c.authHeaderName == "D360-API-KEY" }
 
-// TemplateHeaderMediaWantsURL implements conversation.WhatsAppTemplateMediaClient.
-// 360dialog's channel-scoped template endpoint ("/v1/configs/templates") expects
-// the public media URL verbatim in example.header_handle and fetches it itself;
-// Meta's Graph endpoint expects a Resumable-Upload handle instead. templatesChannelScoped
-// is exactly the 360dialog case, so it is the correct predicate.
 func (c *Client) TemplateHeaderMediaWantsURL() bool { return c.templatesChannelScoped }
 
-// mediaDownloadURL adapts the media URL returned by GET /{media-id} for the
-// actual byte download.
-//
-// GET /{media-id} returns a `url` on Meta's lookaside CDN (https://lookaside.fbsbx.com/...).
-// For Meta that URL is downloaded as-is with the Meta bearer and works. For
-// 360dialog it does NOT: the lookaside host only accepts a Meta bearer, which a
-// 360dialog channel does not have, so downloading it with the D360-API-KEY 401s.
-// Per 360dialog's docs the bytes must instead be pulled from the 360dialog host,
-// keeping the path + query string intact, authenticated with the D360-API-KEY:
-//
-//	https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=...&ext=...&hash=...
-//	-> https://waba-v2.360dialog.io/whatsapp_business/attachments/?mid=...&ext=...&hash=...
-//
-// So for 360dialog we swap the returned URL's scheme+host for our (360dialog)
-// base host; for Meta the URL is returned unchanged. (The JSON `url` is already
-// backslash-unescaped by encoding/json, so no extra stripping is needed.)
 func (c *Client) mediaDownloadURL(mediaURL string) string {
 	if !c.isDialog360() {
 		return mediaURL
@@ -1409,9 +1362,6 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 		})
 	}
 
-	// Button components come last, after body, which is the order Meta's own
-	// examples use. Each one is its own component: Meta keys them by index, not
-	// by position in this list, so several buttons never collapse into one.
 	for _, btn := range input.Buttons {
 		param := templateParameter{Type: "text", Text: btn.Text}
 		if btn.SubType == conversation.TemplateButtonSubTypeCopyCode {
@@ -1470,15 +1420,6 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 
 	var decoded sendTextMessageResponse
 	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		// Meta ACCEPTED this send — the status was 2xx — and we could not read the
-		// answer. Returning a bare error here made this indistinguishable from a
-		// request that never arrived, so every caller refunded a message that had
-		// already been delivered: we pay Meta and collect nothing.
-		//
-		// The output is returned alongside the error so the caller can see the 2xx
-		// for itself, and the error is typed so it can be told apart from a
-		// transport failure. Callers must not refund and must not resend; the
-		// delivery-status webhook reconciles the attempt.
 		return &conversation.SendTextMessageOutput{
 			RequestPayload:  body,
 			ResponsePayload: respBody,
@@ -1649,13 +1590,10 @@ func (c *Client) ListTemplates(ctx context.Context, input conversation.ListTempl
 	}, nil
 }
 
-// listTemplatesDialog360 lists templates via 360dialog's channel-scoped endpoint
-// (GET {base}/v1/configs/templates), which returns a "waba_templates" array with
-// offset/limit paging instead of Meta's cursor-based "data" envelope.
 func (c *Client) listTemplatesDialog360(ctx context.Context, input conversation.ListTemplatesInput) (*conversation.ListTemplatesOutput, error) {
 	limit := input.Limit
 	if limit <= 0 {
-		limit = 1000 // 360dialog default page size
+		limit = 1000
 	}
 	offset := 0
 	if a := strings.TrimSpace(input.After); a != "" {
@@ -1716,8 +1654,6 @@ func (c *Client) GetTemplate(ctx context.Context, templateID string) (*conversat
 	}
 
 	if c.templatesChannelScoped {
-		// 360dialog exposes no Graph-style by-id GET; templates are name-keyed, so
-		// resolve by listing and matching the id/name.
 		listed, err := c.listTemplatesDialog360(ctx, conversation.ListTemplatesInput{})
 		if err != nil {
 			return nil, err
@@ -1766,7 +1702,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	if err := input.Validate(); err != nil {
 		return nil, err
 	}
-	// 360dialog scopes templates by the API key, so it needs no WABA id; Meta does.
 	if c == nil || c.accessToken == "" || (!c.templatesChannelScoped && c.wabaID == "") {
 		return nil, conversation.ErrWhatsAppWABAIDRequired
 	}
@@ -1786,10 +1721,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 		Category: category,
 	}
 
-	// 360dialog's channel-scoped template endpoint rejects Meta's top-level
-	// parameter_format with 400 "Unknown field.", it wraps an older Meta template
-	// API version that has no such field (it infers the format from the {{...}}
-	// placeholders). Only Meta Cloud API accepts it.
 	if input.ParameterFormat != "" && !c.templatesChannelScoped {
 		payload.ParameterFormat = input.ParameterFormat
 	}
@@ -1797,12 +1728,8 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	for _, comp := range input.Components {
 		compType := strings.ToUpper(comp.Type)
 		apiComp := createTemplateComponent{
-			Type: compType,
-			Text: comp.Text,
-			// Authentication templates carry no copy of their own: Meta renders
-			// the security line and the expiry line itself, per language, from
-			// these two. Both are pointers so an unset field is omitted rather
-			// than sent as false/0, which Meta reads as an instruction.
+			Type:                      compType,
+			Text:                      comp.Text,
 			AddSecurityRecommendation: comp.AddSecurityRecommendation,
 			CodeExpirationMinutes:     comp.CodeExpirationMinutes,
 		}
@@ -1889,10 +1816,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	log.Printf("[whatsapp-template] Meta response for %q: status=%d body=%s", input.Name, resp.StatusCode, string(respBody))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Structured, not the raw body. The full body is already on the line
-		// above for whoever is reading logs; what travels up the stack is an
-		// error the HTTP layer can classify and whose UserMessage is Meta's own
-		// localised sentence rather than a JSON dump in a toast.
 		return nil, newTemplateAPIError("create template", resp.StatusCode, respBody)
 	}
 
@@ -1901,7 +1824,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 		return nil, err
 	}
 
-	// 360dialog's create response has no numeric id; key the template by name.
 	id := decoded.ID
 	if id == "" {
 		id = decoded.Name
@@ -1915,10 +1837,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 		rejectedReason = ""
 	}
 	if decoded.Status == "REJECTED" {
-		// Meta's create response usually omits rejected_reason; fetch it via a
-		// follow-up GET so callers (and the user) see the real cause
-		// (e.g. INVALID_FORMAT) instead of a guess. 360dialog already returns the
-		// reason inline (and exposes no Graph-style by-id GET), so skip the fetch.
 		if rejectedReason == "" && !c.templatesChannelScoped {
 			rejectedReason = c.fetchTemplateRejectedReason(ctx, decoded.ID)
 		}
@@ -1933,9 +1851,6 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 	}, nil
 }
 
-// fetchTemplateRejectedReason does a best-effort GET of a just-created template
-// to read Meta's rejected_reason, which the POST create response omits. Returns
-// "" on any error or when Meta reports no reason.
 func (c *Client) fetchTemplateRejectedReason(ctx context.Context, templateID string) string {
 	if templateID == "" {
 		return ""
@@ -2007,9 +1922,6 @@ func (c *Client) UpdateTemplate(ctx context.Context, templateID string, input co
 
 	endpoint := fmt.Sprintf("%s/%s", c.baseURL, templateID)
 	if c.templatesChannelScoped {
-		// 360dialog edits the name-keyed resource. The exact method is not in the
-		// public docs; POST mirrors the Meta edit and fails visibly if 360 expects
-		// PATCH/PUT (template edits are rare). Confirm against a live channel.
 		endpoint = fmt.Sprintf("%s/v1/configs/templates/%s", c.baseURL, url.PathEscape(templateID))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -2047,7 +1959,6 @@ func (c *Client) DeleteTemplate(ctx context.Context, input conversation.DeleteTe
 
 	var endpoint string
 	if c.templatesChannelScoped {
-		// 360dialog deletes by template name in the path.
 		endpoint = fmt.Sprintf("%s/v1/configs/templates/%s", c.baseURL, url.PathEscape(input.Name))
 	} else {
 		endpoint = fmt.Sprintf("%s/%s/message_templates?name=%s", c.baseURL, c.wabaID, input.Name)
@@ -2084,9 +1995,6 @@ func (c *Client) UploadMediaForTemplate(ctx context.Context, input conversation.
 	if c == nil || c.accessToken == "" {
 		return "", fmt.Errorf("whatsapp client not properly configured for template media upload (missing credential)")
 	}
-	// Only Meta's Resumable Upload API is app-scoped ("{base}/{app_id}/uploads").
-	// 360dialog proxies the same API scoped by the channel API key, so it needs
-	// no App ID.
 	if !c.isDialog360() && c.appID == "" {
 		return "", fmt.Errorf("whatsapp client not properly configured for template media upload (requires App ID)")
 	}
@@ -2196,11 +2104,6 @@ func (c *Client) inferMimeTypeFromFileName(fileName string) string {
 	}
 }
 
-// createUploadSession opens a Resumable Upload API session and returns its id.
-// Meta scopes the endpoint by app id ("{base}/{app_id}/uploads"); 360dialog
-// proxies the same API scoped by the channel API key ("{base}/uploads", no
-// app-id segment and no file_name param, per docs.360dialog.com "Resumable
-// Upload API", the documented source of template header_handle assets).
 func (c *Client) createUploadSession(ctx context.Context, fileName string, fileLength int64, fileType string) (string, error) {
 	params := url.Values{}
 	params.Set("file_length", strconv.FormatInt(fileLength, 10))
@@ -2256,9 +2159,6 @@ func (c *Client) uploadFileToSession(ctx context.Context, sessionID string, data
 	if err != nil {
 		return "", err
 	}
-	// Meta's session upload wants "Authorization: OAuth <token>" (not Bearer);
-	// 360dialog authenticates it with the channel D360-API-KEY header like every
-	// other call.
 	if c.isDialog360() {
 		c.setAuth(req)
 	} else {
@@ -2313,10 +2213,7 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 				Text:        b.Text,
 				URL:         b.URL,
 				PhoneNumber: b.PhoneNumber,
-				// Without this the button reads back as a bare "OTP" with no
-				// kind, and the next send cannot tell a code button from
-				// anything else in the BUTTONS component.
-				OTPType: b.OTPType,
+				OTPType:     b.OTPType,
 			})
 		}
 
@@ -2342,7 +2239,6 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 	}
 	id := t.ID
 	if id == "" {
-		// 360dialog templates have no numeric id; key them by name.
 		id = t.Name
 	}
 	return conversation.Template{
@@ -2357,15 +2253,11 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 }
 
 type sendTemplateMessageRequest struct {
-	MessagingProduct string          `json:"messaging_product"`
-	To               string          `json:"to"`
-	Type             string          `json:"type"`
-	Template         templatePayload `json:"template"`
-	// BizOpaqueCallbackData rides along untouched and comes back on every
-	// delivery-status webhook for this message. It is how a status event finds
-	// the send attempt that paid for it. Same mechanism already used for call
-	// signalling in calls_signaling.go.
-	BizOpaqueCallbackData string `json:"biz_opaque_callback_data,omitempty"`
+	MessagingProduct      string          `json:"messaging_product"`
+	To                    string          `json:"to"`
+	Type                  string          `json:"type"`
+	Template              templatePayload `json:"template"`
+	BizOpaqueCallbackData string          `json:"biz_opaque_callback_data,omitempty"`
 }
 
 type templatePayload struct {
@@ -2379,14 +2271,7 @@ type templateLanguage struct {
 }
 
 type templateComponentPayload struct {
-	Type string `json:"type"`
-	// SubType and Index apply only to a "button" component. Meta addresses a
-	// button by its position inside the template's BUTTONS component, and the
-	// sub-type says what kind of parameter it takes.
-	//
-	// Index is a string because that is the form Meta's own authentication
-	// examples use. Graph coerces a number just as happily; matching the
-	// documented shape is the cheaper of the two guesses.
+	Type       string              `json:"type"`
 	SubType    string              `json:"sub_type,omitempty"`
 	Index      string              `json:"index,omitempty"`
 	Parameters []templateParameter `json:"parameters,omitempty"`
@@ -2399,10 +2284,7 @@ type templateParameter struct {
 	Image         *templateMediaParam    `json:"image,omitempty"`
 	Video         *templateMediaParam    `json:"video,omitempty"`
 	Document      *templateDocumentParam `json:"document,omitempty"`
-	// CouponCode carries a marketing template's copy-code button value. An
-	// authentication OTP button uses Text instead: same button to a reader,
-	// different parameter on the wire.
-	CouponCode string `json:"coupon_code,omitempty"`
+	CouponCode    string                 `json:"coupon_code,omitempty"`
 }
 
 type templateMediaParam struct {
@@ -2427,9 +2309,6 @@ type listTemplatesResponse struct {
 	} `json:"paging"`
 }
 
-// dialog360ListTemplatesResponse is 360dialog's channel-scoped list envelope: the
-// templates live under "waba_templates" with offset/limit/total fields (no Meta
-// "data"/cursor paging).
 type dialog360ListTemplatesResponse struct {
 	WabaTemplates []templateResponse `json:"waba_templates"`
 	Total         int                `json:"total"`
@@ -2488,16 +2367,13 @@ type createTemplateRequest struct {
 }
 
 type createTemplateComponent struct {
-	Type    string                 `json:"type"`
-	Text    string                 `json:"text,omitempty"`
-	Format  string                 `json:"format,omitempty"`
-	Buttons []createTemplateButton `json:"buttons,omitempty"`
-	Example *createTemplateExample `json:"example,omitempty"`
-	// Authentication only. Pointers so an unset field is omitted: Meta reads a
-	// present `false` as "no security line", which is a different instruction
-	// from "this is not an authentication template".
-	AddSecurityRecommendation *bool `json:"add_security_recommendation,omitempty"`
-	CodeExpirationMinutes     *int  `json:"code_expiration_minutes,omitempty"`
+	Type                      string                 `json:"type"`
+	Text                      string                 `json:"text,omitempty"`
+	Format                    string                 `json:"format,omitempty"`
+	Buttons                   []createTemplateButton `json:"buttons,omitempty"`
+	Example                   *createTemplateExample `json:"example,omitempty"`
+	AddSecurityRecommendation *bool                  `json:"add_security_recommendation,omitempty"`
+	CodeExpirationMinutes     *int                   `json:"code_expiration_minutes,omitempty"`
 }
 
 type createTemplateButton struct {
@@ -2506,9 +2382,7 @@ type createTemplateButton struct {
 	URL         string   `json:"url,omitempty"`
 	PhoneNumber string   `json:"phone_number,omitempty"`
 	Example     []string `json:"example,omitempty"`
-	// OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button, which is
-	// how an authentication template declares its code button.
-	OTPType string `json:"otp_type,omitempty"`
+	OTPType     string   `json:"otp_type,omitempty"`
 }
 
 type createTemplateExample struct {
@@ -2525,10 +2399,8 @@ type createNamedParamExample struct {
 }
 
 type createTemplateResponse struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	// Name and Namespace are 360dialog's identifiers; its create response carries
-	// no numeric id, so callers fall back to the name to key the template.
+	ID             string `json:"id"`
+	Status         string `json:"status"`
 	Name           string `json:"name"`
 	Namespace      string `json:"namespace"`
 	Category       string `json:"category"`

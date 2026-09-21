@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-// The whole point of the reason is that "closed" alone is not actionable, and
-// that a time attached to a window means opposite things depending on Open.
-// These pin both, because getting either wrong ships copy that lies to an
-// operator — which is exactly what happened before the reason existed.
-
 func TestOpenWindowCarriesADeadline(t *testing.T) {
 	at := time.Date(2026, 8, 12, 18, 0, 0, 0, time.UTC)
 
@@ -25,9 +20,6 @@ func TestOpenWindowCarriesADeadline(t *testing.T) {
 	}
 }
 
-// A channel with no clock — Telegram in bot mode, a healthy linked device —
-// is open with no time at all. Inventing one would make the UI render a
-// countdown that means nothing.
 func TestOpenWindowWithoutAClock(t *testing.T) {
 	window := OpenWindow(nil)
 	if !window.Open || window.ExpiresAt != nil {
@@ -53,17 +45,12 @@ func TestClosedWindowAlwaysNamesAReason(t *testing.T) {
 		if window.Reason != reason {
 			t.Errorf("reason = %q, want %q", window.Reason, reason)
 		}
-		// These closures have no time attached: nothing counts down to them
-		// reopening, so a time here would be read as a countdown that never
-		// arrives.
 		if window.ExpiresAt != nil {
 			t.Errorf("%q must not carry a time: only a restriction counts down", reason)
 		}
 	}
 }
 
-// The one closed state that DOES carry a time, and it means the opposite of an
-// open window's: blocked UNTIL then, not allowed until then.
 func TestClosedWindowUntilCarriesACountdown(t *testing.T) {
 	until := time.Date(2026, 8, 12, 20, 0, 0, 0, time.UTC)
 
@@ -79,9 +66,6 @@ func TestClosedWindowUntilCarriesACountdown(t *testing.T) {
 	}
 }
 
-// Reading a closed window's time as a deadline inverts it exactly. This is the
-// distinction every consumer has to respect, so it is stated as a test rather
-// than only as a comment.
 func TestATimeMeansOppositeThingsOpenVersusClosed(t *testing.T) {
 	at := time.Date(2026, 8, 12, 20, 0, 0, 0, time.UTC)
 

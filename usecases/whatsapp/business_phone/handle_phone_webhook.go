@@ -24,15 +24,12 @@ func NewHandlePhoneWebhook(repo businessphone.Repository, wabaRepo waba.Reposito
 	return &handlePhoneWebhook{repo: repo, wabaRepo: wabaRepo}
 }
 
-// WithNotifier enables channel-health alert emails. Returns the use case for chaining.
 func (h *handlePhoneWebhook) WithNotifier(n notification.Notifier, dashboardURL string) *handlePhoneWebhook {
 	h.notifier = n
 	h.dashboardURL = dashboardURL
 	return h
 }
 
-// notifyPhoneAlert emails the number's owner about a channel-health event, deduped
-// per (phone, newState) so a redelivered webhook never double-sends.
 func (h *handlePhoneWebhook) notifyPhoneAlert(phone *businessphone.WhatsAppBusinessPhoneNumber, state, subject, template string, extra map[string]interface{}) {
 	if h.notifier == nil || phone == nil || phone.OwnerWorkspaceID == "" {
 		return

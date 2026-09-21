@@ -7,7 +7,6 @@ import (
 	"vozko/domain/pipeline"
 )
 
-// guardRepo is the pipeline store the delete guard reads its facts from.
 type guardRepo struct {
 	pipeline.Repository
 
@@ -36,7 +35,6 @@ func (r *guardRepo) Delete(workspaceID, id string) error {
 	return nil
 }
 
-// fakeOccupancy stands in for the cross-aggregate adapter.
 type fakeOccupancy struct {
 	usage    pipeline.Usage
 	usageErr error
@@ -62,8 +60,6 @@ func conv(id string) *pipeline.Pipeline {
 	return &pipeline.Pipeline{ID: id, WorkspaceID: "ws", Name: id, ObjectType: pipeline.ObjectConversation}
 }
 
-// An empty, non-default funnel is the ordinary case: no destination needed, and
-// the columns still get removed so nothing is orphaned behind the funnel.
 func TestDeleteEmptyFunnelRemovesItsColumns(t *testing.T) {
 	repo := newGuardRepo(conv("a"))
 	occ := &fakeOccupancy{}
@@ -80,7 +76,6 @@ func TestDeleteEmptyFunnelRemovesItsColumns(t *testing.T) {
 	}
 }
 
-// Something must receive a conversation that names no funnel.
 func TestDeleteRefusesTheDefaultFunnel(t *testing.T) {
 	def := conv("a")
 	def.IsDefault = true
@@ -96,8 +91,6 @@ func TestDeleteRefusesTheDefaultFunnel(t *testing.T) {
 	}
 }
 
-// A campaign, channel or deal still routing here blocks the delete outright:
-// repointing a running campaign is the operator's call, never an inferred cascade.
 func TestDeleteRefusesABoundFunnel(t *testing.T) {
 	for name, usage := range map[string]pipeline.Usage{
 		"campaign":    {Campaigns: 1},
@@ -121,7 +114,6 @@ func TestDeleteRefusesABoundFunnel(t *testing.T) {
 	}
 }
 
-// Conversations are never dropped with the funnel.
 func TestDeleteRequiresADestinationWhenItHoldsConversations(t *testing.T) {
 	repo := newGuardRepo(conv("a"))
 	occ := &fakeOccupancy{usage: pipeline.Usage{Entries: 12}}
@@ -142,15 +134,12 @@ func TestDeleteRejectsAnImpossibleDestination(t *testing.T) {
 	occ := &fakeOccupancy{usage: pipeline.Usage{Entries: 3}}
 	uc := NewDeletePipelineUseCase(repo, occ)
 
-	// Itself.
 	if err := uc.Execute("ws", "a", pipeline.DeletePipelineInput{MoveEntriesTo: "a"}); !errors.Is(err, pipeline.ErrDeleteDestinationInvalid) {
 		t.Fatalf("self as destination: want ErrDeleteDestinationInvalid, got %v", err)
 	}
-	// A funnel organizing another object kind.
 	if err := uc.Execute("ws", "a", pipeline.DeletePipelineInput{MoveEntriesTo: "s"}); !errors.Is(err, pipeline.ErrDeleteDestinationInvalid) {
 		t.Fatalf("cross-kind destination: want ErrDeleteDestinationInvalid, got %v", err)
 	}
-	// A funnel that is not there.
 	if err := uc.Execute("ws", "a", pipeline.DeletePipelineInput{MoveEntriesTo: "ghost"}); !errors.Is(err, pipeline.ErrNotFound) {
 		t.Fatalf("missing destination: want ErrNotFound, got %v", err)
 	}
@@ -159,8 +148,6 @@ func TestDeleteRejectsAnImpossibleDestination(t *testing.T) {
 	}
 }
 
-// The happy path with occupants: conversations move first, and only then does
-// the funnel go.
 func TestDeleteMovesConversationsBeforeRemovingTheFunnel(t *testing.T) {
 	repo := newGuardRepo(conv("a"), conv("b"))
 	occ := &fakeOccupancy{usage: pipeline.Usage{Entries: 40}}
@@ -177,8 +164,6 @@ func TestDeleteMovesConversationsBeforeRemovingTheFunnel(t *testing.T) {
 	}
 }
 
-// A failed move must not be followed by the delete: the conversations would be
-// left on stages that are about to disappear.
 func TestDeleteStopsWhenTheMoveFails(t *testing.T) {
 	repo := newGuardRepo(conv("a"), conv("b"))
 	occ := &fakeOccupancy{usage: pipeline.Usage{Entries: 4}, vacateErr: errors.New("boom")}
@@ -192,7 +177,6 @@ func TestDeleteStopsWhenTheMoveFails(t *testing.T) {
 	}
 }
 
-// A funnel that is not there is a 404, not a silent success.
 func TestDeleteMissingFunnelIsNotFound(t *testing.T) {
 	repo := newGuardRepo()
 	uc := NewDeletePipelineUseCase(repo, &fakeOccupancy{})
@@ -202,8 +186,6 @@ func TestDeleteMissingFunnelIsNotFound(t *testing.T) {
 	}
 }
 
-// Usage is read straight through, so the dialog and the guard cannot disagree
-// about what the funnel holds.
 func TestGetUsageReadsTheSameSourceTheGuardDoes(t *testing.T) {
 	repo := newGuardRepo(conv("a"))
 	occ := &fakeOccupancy{usage: pipeline.Usage{Entries: 7, Campaigns: 2}}

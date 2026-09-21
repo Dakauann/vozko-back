@@ -33,18 +33,12 @@ func TestParameterCountIsTheHighestPlaceholder(t *testing.T) {
 	}
 }
 
-// The maximum across variants, not per-variant: the importer collects one set of
-// columns for the whole campaign, so a recipient needs enough values for
-// whichever variant they are assigned.
 func TestParameterCountSpansVariants(t *testing.T) {
 	if got := textSpec("oi {{1}}", "ola {{1}} do {{2}}").ParameterCount(); got != 2 {
 		t.Fatalf("ParameterCount = %d, want 2", got)
 	}
 }
 
-// Variants must use the SAME placeholders, not merely the same number of them.
-// One variant reading {{1}} and another {{2}} would send a raw "{{2}}" to
-// everyone assigned the second.
 func TestVariantsMustUseTheSamePlaceholders(t *testing.T) {
 	if err := textSpec("oi {{1}}", "ola {{2}}").Validate(); !errors.Is(err, ErrMessageVariantMismatch) {
 		t.Fatalf("err = %v, want ErrMessageVariantMismatch", err)
@@ -84,8 +78,6 @@ func TestMediaKindsNeedAnAttachment(t *testing.T) {
 	}
 }
 
-// An image or a document may legitimately carry no caption. Requiring one would
-// refuse a perfectly ordinary campaign.
 func TestMediaMayHaveNoCaption(t *testing.T) {
 	spec := MessageSpec{Kind: KindImage, MediaID: "media-1"}
 	spec.Normalize()
@@ -94,9 +86,6 @@ func TestMediaMayHaveNoCaption(t *testing.T) {
 	}
 }
 
-// A campaign audio is a voice note, not an audio attachment: a file from a
-// business number reads as a broadcast, which is what we are trying not to
-// look like.
 func TestAudioMapsToVoiceNote(t *testing.T) {
 	if got := KindAudio.MediaKind(); got != uw.MediaVoice {
 		t.Fatalf("KindAudio.MediaKind() = %q, want %q", got, uw.MediaVoice)
@@ -125,8 +114,6 @@ func TestMenuLimitsComeFromTheChannel(t *testing.T) {
 	}
 }
 
-// Workflows branch on the option id, never the label. An option without one is
-// a branch nothing can ever match.
 func TestMenuOptionsNeedIDs(t *testing.T) {
 	spec := MessageSpec{
 		Kind: KindMenu, Style: uw.InteractiveStyleButtons, Bodies: []string{"escolha"},
@@ -137,8 +124,6 @@ func TestMenuOptionsNeedIDs(t *testing.T) {
 	}
 }
 
-// A list rendered as a menu the contact has to open is a prompt most people
-// never answer, so an unspecified style defaults to buttons.
 func TestMenuDefaultsToButtons(t *testing.T) {
 	spec := MessageSpec{Kind: KindMenu}
 	spec.Normalize()
@@ -155,9 +140,6 @@ func TestRenderSubstitutesPositionally(t *testing.T) {
 	}
 }
 
-// A placeholder with no value is left as written rather than blanked, so a
-// misconfigured campaign is visibly wrong instead of quietly sending a sentence
-// with a hole in it.
 func TestRenderLeavesUnmatchedPlaceholders(t *testing.T) {
 	got := textSpec("oi {{1}} e {{2}}").Render(0, []string{"Ana"})
 	if want := "oi Ana e {{2}}"; got != want {
@@ -165,12 +147,7 @@ func TestRenderLeavesUnmatchedPlaceholders(t *testing.T) {
 	}
 }
 
-// THE ordering test. Render runs in the domain and the sender then neutralises
-// what is left, because the provider substitutes {{...}} from ITS OWN lead store
-// — so a brace surviving to the wire leaks another tenant's data into a
-// customer's chat.
 func TestRenderThenSanitizeLeavesNoLiveBraces(t *testing.T) {
-	// An operator typing a literal brace, and an agent emitting a stray one.
 	spec := textSpec("Olá {{1}}, use o cupom {{promo}} hoje")
 	rendered := spec.Render(0, []string{"Ana"})
 	if !strings.Contains(rendered, "{{promo}}") {
@@ -182,8 +159,6 @@ func TestRenderThenSanitizeLeavesNoLiveBraces(t *testing.T) {
 	}
 }
 
-// Deterministic in the entry id: a resumed or partially-retried campaign must
-// never send one person two different messages.
 func TestVariantForIsStablePerEntry(t *testing.T) {
 	spec := textSpec("a", "b", "c")
 	first := spec.VariantFor("entry-42")

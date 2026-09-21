@@ -34,12 +34,6 @@ func (uc *consumeFireUseCase) Start() error {
 	return uc.sub.Subscribe(sm.TopicFire, uc.handle)
 }
 
-// handle dispatches one fire signal.
-//
-// Every path acks. A redelivery cannot produce a second message — the claim
-// admits one caller — but it also cannot achieve anything the first attempt did
-// not, because a failed dispatch is recorded as failed and shown to the
-// operator rather than left for the queue to retry. Nacking would only spin.
 func (uc *consumeFireUseCase) handle(payload []byte, ack messaging.MessageAck) {
 	defer func() {
 		if err := ack.Ack(); err != nil {

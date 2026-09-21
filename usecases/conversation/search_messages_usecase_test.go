@@ -20,8 +20,6 @@ func (s *searchMessagesRepoStub) SearchMessagesByEntry(input conversation.Search
 	return s.msgs, s.total, s.err
 }
 
-// The usecase must forward the exact input and return the repo's results
-// verbatim, identical to the handler's previous direct repo call.
 func TestSearchMessagesUseCaseDelegatesToRepo(t *testing.T) {
 	repo := &searchMessagesRepoStub{
 		msgs:  []*conversation.Message{{ID: "m1"}},

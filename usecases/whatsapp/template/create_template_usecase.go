@@ -15,9 +15,6 @@ import (
 type createTemplateUseCase struct {
 	clientFactory template.WhatsAppClientFactory
 	templateRepo  template.Repository
-	// headerMediaUC mints and links the WhatsApp media id for a media-header
-	// template (URL -> /media upload -> id). Reused from the PATCH /header-media
-	// endpoint so create doesn't duplicate the download/upload logic.
 	headerMediaUC template.SetTemplateHeaderMediaUseCase
 }
 
@@ -57,11 +54,9 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 	domainComponents := make([]template.TemplateComponent, 0, len(input.Components))
 	for _, c := range input.Components {
 		comp := template.TemplateComponent{
-			Type:   strings.ToUpper(c.Type),
-			Format: c.Format,
-			Text:   c.Text,
-			// Authentication only: Meta writes the security and expiry lines
-			// itself from these two.
+			Type:                      strings.ToUpper(c.Type),
+			Format:                    c.Format,
+			Text:                      c.Text,
 			AddSecurityRecommendation: c.AddSecurityRecommendation,
 			CodeExpirationMinutes:     c.CodeExpirationMinutes,
 		}
@@ -105,10 +100,6 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		return nil, err
 	}
 
-	// The rules that need the category, which ValidateComponents does not take.
-	// Both directions matter: a code button on a marketing template would be
-	// priced as marketing and rejected by Meta, and an authentication template
-	// with no code button has nothing for the recipient to do with the code.
 	if err := template.ValidateAuthenticationTemplate(input.Category, domainComponents); err != nil {
 		return nil, err
 	}
@@ -142,19 +133,8 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		return nil, err
 	}
 
-	// Meta's Cloud API requires the top-level parameter_format to be present and
-	// to match the placeholder style in the body. Named placeholders ({{order}})
-	// sent without parameter_format=NAMED are rejected with INVALID_FORMAT. The
-	// body is the source of truth, so we infer the format from the actual
-	// components here instead of trusting the (historically empty) client value.
 	effectiveFormat := (&template.Template{Components: domainComponents}).GetEffectiveParameterFormat()
 
-	// parameter_format describes how the BUSINESS wrote its placeholders, and an
-	// authentication template has none to describe: Meta writes that body itself
-	// and substitutes the one code. Meta's authentication documentation never
-	// mentions the field, and this package already carries a scar from sending a
-	// provider a field it did not expect (see the 360dialog note above). Omitted
-	// rather than sent as a meaningless "POSITIONAL".
 	metaParameterFormat := effectiveFormat.ToMetaAPIFormat()
 	if input.Category == template.TemplateCategoryAuthentication {
 		metaParameterFormat = ""
@@ -171,12 +151,6 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		return nil, err
 	}
 
-	// 360dialog's channel-scoped create endpoint returns the status lowercased
-	// ("pending"/"approved"/"rejected"), whereas Meta returns it uppercased and the
-	// domain (IsApproved/CanSend) compares against the uppercase TemplateStatus
-	// constants. Without normalising, a 360dialog template is persisted as
-	// "pending" and never satisfies IsApproved, so it can never be sent even after
-	// Meta approves it. Mirror the sync path, which already uppercases.
 	status := template.TemplateStatus(strings.ToUpper(strings.TrimSpace(apiOutput.Status)))
 
 	if status == template.TemplateStatusRejected {
@@ -200,14 +174,6 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		log.Printf("[template-create] WARNING: failed to persist template %s locally: %v", name, err)
 	}
 
-	// Standardize sending on a WhatsApp media id. Every campaign/workflow/tool send
-	// path attaches the header media by id (header_handle is only the create-time
-	// example), so a media-header template needs its id minted up front, otherwise
-	// the first send goes out without its required header and is rejected. Reuse the
-	// PATCH /header-media use case (download URL -> /media upload -> id, linked to the
-	// template) instead of duplicating that logic here. Best-effort: the template
-	// already exists at the provider and is persisted with the URL, so a failure is
-	// logged and left to be retried via PATCH rather than failing the whole create.
 	if hasMediaHeader && headerMediaURLProvided && uc.headerMediaUC != nil {
 		if err := uc.headerMediaUC.Execute(template.SetTemplateHeaderMediaInput{
 			TemplateID:     tmpl.ID,
@@ -227,12 +193,6 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 }
 
 func (uc *createTemplateUseCase) processHeaderMediaURLs(client conversation.WhatsAppClient, components []conversation.TemplateComponent) error {
-	// 360dialog's channel-scoped template endpoint wants the public media URL
-	// verbatim in header_handle and fetches it itself; uploading the URL to a
-	// Resumable-Upload handle first and sending that handle makes it reject the
-	// payload with 400 "it should be valid url address". So for those channels we
-	// leave the URL in place instead of uploading. Meta (no capability / false)
-	// still needs the upload-to-handle step below.
 	if mc, ok := client.(conversation.WhatsAppTemplateMediaClient); ok && mc.TemplateHeaderMediaWantsURL() {
 		return nil
 	}

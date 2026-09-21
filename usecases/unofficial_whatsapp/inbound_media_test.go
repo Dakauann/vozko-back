@@ -13,12 +13,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// fakeConvMedia stands in for the conversation_media store.
-//
-// Create deliberately does NOT invent an id for a row that arrived without one,
-// because the real repository does not either: it maps the domain value onto a
-// schema struct and the database hook mints the id onto THAT copy. A fake that
-// helpfully filled the field in would hide the exact bug these tests cover.
 type fakeConvMedia struct {
 	mu   sync.Mutex
 	rows []*conversation.ConversationMedia
@@ -62,7 +56,6 @@ func (f *fakeConvMedia) all() []*conversation.ConversationMedia {
 	return append([]*conversation.ConversationMedia(nil), f.rows...)
 }
 
-// mediaHarness wires the ports an inbound attachment actually touches.
 type mediaHarness struct {
 	uc      *HandleWebhookUseCase
 	storage *fakeStorage
@@ -127,14 +120,6 @@ func mediaMessage(messageType, mimeType, fileName string) map[string]any {
 	}
 }
 
-// An inbound attachment must reach the message row that renders it.
-//
-// This is the bug that made every photo, voice note and document invisible in
-// the CRM on this channel. The bytes were fetched and uploaded correctly and the
-// conversation_media row was written — but the id was read back off a struct the
-// repository never wrote to, so MediaID arrived empty, the history manager
-// dropped MediaType with it, and the operator got a bare "[imagem]" placeholder
-// next to an orphaned object in storage.
 func TestInboundAttachmentLinksMediaToMessage(t *testing.T) {
 	h := newMediaHarness(t)
 
@@ -163,22 +148,16 @@ func TestInboundAttachmentLinksMediaToMessage(t *testing.T) {
 	if rows[0].ID == "" {
 		t.Fatal("the stored row carries no id, so nothing can ever reference it")
 	}
-	// The id on the message and the id on the row must be the SAME id. A row
-	// that exists under a different id is exactly as invisible as no row.
 	if rows[0].ID != rec.MediaID {
 		t.Errorf("message points at media %q but the row was stored as %q", rec.MediaID, rows[0].ID)
 	}
 	if rows[0].EntryType != shared.EntryTypeUnofficialWhatsApp {
 		t.Errorf("EntryType = %q, want %q", rows[0].EntryType, shared.EntryTypeUnofficialWhatsApp)
 	}
-	// GetMedia refuses any row whose entry does not match the URL it was asked
-	// under, so a mismatch here is a 403 on every attachment in the thread.
 	if rows[0].EntryID != rec.EntryID {
 		t.Errorf("media EntryID = %q, message EntryID = %q; the media endpoint would reject this", rows[0].EntryID, rec.EntryID)
 	}
 
-	// The avatar fetch uploads too, so this looks for the attachment rather than
-	// counting objects.
 	var attachmentKey string
 	for _, key := range h.storage.keys() {
 		if strings.HasPrefix(key, "conversations/unofficial_whatsapp/") {
@@ -196,11 +175,6 @@ func TestInboundAttachmentLinksMediaToMessage(t *testing.T) {
 	}
 }
 
-// Every attachment kind the channel normalizes has to survive the same trip.
-//
-// Audio is called out separately in the symptom report and takes a different
-// message type (MessageTypeAudio, the speech-to-text route) than the rest, so a
-// regression could easily land on one kind and not the others.
 func TestEveryAttachmentKindCarriesItsMedia(t *testing.T) {
 	cases := []struct {
 		messageType string
@@ -235,14 +209,8 @@ func TestEveryAttachmentKindCarriesItsMedia(t *testing.T) {
 	}
 }
 
-// A failed download must still produce a visible message.
-//
-// storeAttachment degrades on purpose, and the placeholder is the only thing
-// standing between a fetch failure and a turn that vanishes from the transcript.
 func TestFailedAttachmentDownloadStillRecordsAPlaceholder(t *testing.T) {
 	h := newMediaHarness(t)
-	// No ConvMedia and no storage: the closest stand-in for a download that
-	// yields nothing usable.
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-1",
 		Status: uw.StatusConnected, PhoneNumber: "5599999999999",

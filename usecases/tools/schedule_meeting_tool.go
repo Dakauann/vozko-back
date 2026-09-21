@@ -347,9 +347,6 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 		"calendar_email":  conn.Email,
 	}
 
-	// Tell the AI about contacts that couldn't be invited (no valid e-mail, e.g. a
-	// phone number) so it informs the user the link was shared in the chat rather
-	// than claiming an invite was sent.
 	if len(skippedAttendees) > 0 {
 		resultMap["skipped_attendees"] = strings.Join(skippedAttendees, ", ")
 		resultMap["note"] = fmt.Sprintf(
@@ -365,11 +362,6 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 	}, nil
 }
 
-// parseToolAttendees parses the attendees param into valid Google Calendar
-// attendees. Non-email entries (e.g. a WhatsApp lead's phone number the AI passes
-// through) are returned in `skipped` instead of aborting the whole meeting, so
-// the meeting is still created and the caller can tell the AI which contacts
-// weren't invited (and to share the link in the conversation instead).
 func parseToolAttendees(raw interface{}) (attendees []calendar.Attendee, skipped []string) {
 	if raw == nil {
 		return nil, nil

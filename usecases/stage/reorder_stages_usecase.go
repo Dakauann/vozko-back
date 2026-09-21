@@ -23,9 +23,6 @@ func (uc *ReorderStagesUseCase) Execute(workspaceID string, input stage.ReorderS
 	return uc.list(workspaceID, input)
 }
 
-// list returns the funnel that was just reordered. Reading it back through the
-// campaign resolution would answer with the DEFAULT funnel, so a reorder on any
-// other funnel appeared to snap back in the UI.
 func (uc *ReorderStagesUseCase) list(
 	workspaceID string,
 	input stage.ReorderStagesInput,

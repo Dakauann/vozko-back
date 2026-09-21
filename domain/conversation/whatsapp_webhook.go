@@ -190,18 +190,14 @@ type WhatsAppListReply struct {
 }
 
 type WhatsAppStatus struct {
-	ID           string                `json:"id"`
-	Status       string                `json:"status"`
-	Timestamp    string                `json:"timestamp"`
-	RecipientID  string                `json:"recipient_id"`
-	Conversation *WhatsAppConversation `json:"conversation,omitempty"`
-	Pricing      *WhatsAppPricing      `json:"pricing,omitempty"`
-	Errors       []WhatsAppError       `json:"errors,omitempty"`
-	// BizOpaqueCallbackData is whatever we attached when sending. For paid
-	// template sends it is our send-attempt id, which is how a status event finds
-	// the charge that paid for it without our having to have stored the
-	// provider's message id first.
-	BizOpaqueCallbackData string `json:"biz_opaque_callback_data,omitempty"`
+	ID                    string                `json:"id"`
+	Status                string                `json:"status"`
+	Timestamp             string                `json:"timestamp"`
+	RecipientID           string                `json:"recipient_id"`
+	Conversation          *WhatsAppConversation `json:"conversation,omitempty"`
+	Pricing               *WhatsAppPricing      `json:"pricing,omitempty"`
+	Errors                []WhatsAppError       `json:"errors,omitempty"`
+	BizOpaqueCallbackData string                `json:"biz_opaque_callback_data,omitempty"`
 }
 
 type WhatsAppConversation struct {

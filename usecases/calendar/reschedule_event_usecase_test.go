@@ -10,9 +10,6 @@ import (
 	"vozko/domain/calendar"
 )
 
-// stubUpdateUC captures the UpdateEventInput the reschedule use case delegates, so the
-// tests can assert the computed times and the conflict flag without exercising the real
-// provider/persistence path.
 type stubUpdateUC struct {
 	captured calendar.UpdateEventInput
 	result   *calendar.CalendarEvent
@@ -137,9 +134,6 @@ func TestReschedule_ValidationErrors(t *testing.T) {
 	}
 }
 
-// The conflict guard lives in the update use case (the reschedule engine) and is
-// exercised via CheckConflict; these verify a busy new slot is refused and a free one
-// (with the event's own slot correctly excluded) proceeds.
 func TestUpdateEvent_CheckConflictBlocksOccupiedSlot(t *testing.T) {
 	id := uuid.NewString()
 	start := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)

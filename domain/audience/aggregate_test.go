@@ -9,8 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// ---- Counters / Stats ----
-
 func TestCounters_StanceMix(t *testing.T) {
 	c := Counters{StanceSupporter: 1, StanceNeutral: 2, StanceCritic: 3, StanceHostile: 4}
 	if got := c.StanceMix(); got != (StanceMix{1, 2, 3, 4}) {
@@ -18,8 +16,6 @@ func TestCounters_StanceMix(t *testing.T) {
 	}
 }
 
-// The repository fills the counters; Finalize derives the score so a chart
-// and the number above it are the same arithmetic.
 func TestStats_Finalize(t *testing.T) {
 	s := Stats{Counters: Counters{Analyzed: 30, StanceSupporter: 30}}
 	s.Finalize()
@@ -36,8 +32,6 @@ func TestStats_Finalize(t *testing.T) {
 	}
 }
 
-// Rollups carry the same counters and the same derived score; a trend
-// point cannot disagree with the live number for the same slice.
 func TestRollup_Finalize(t *testing.T) {
 	r := Rollup{Counters: Counters{Analyzed: 30, StanceHostile: 30, SeverityHighCount: 30}}
 	r.Finalize()
@@ -57,10 +51,8 @@ func TestRollupScope_Valid(t *testing.T) {
 	}
 }
 
-// Buckets are calendar days in UTC. Every stored instant is UTC; a local
-// bucket would shift a day's comments by the server's offset.
 func TestBucketDate(t *testing.T) {
-	in := time.Date(2026, 9, 2, 23, 59, 59, 0, time.FixedZone("BRT", -3*3600)) // 02:59:59 UTC on the 3rd
+	in := time.Date(2026, 9, 2, 23, 59, 59, 0, time.FixedZone("BRT", -3*3600))
 	got := BucketDate(in)
 	want := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
@@ -70,8 +62,6 @@ func TestBucketDate(t *testing.T) {
 		t.Fatal("bucket must be UTC")
 	}
 }
-
-// ---- Authors ----
 
 func TestAuthorStats_Derive(t *testing.T) {
 	a := AuthorStats{Counters: Counters{StanceHostile: 3, SeverityHighCount: 3}}
@@ -96,8 +86,6 @@ func TestModerationState_Valid(t *testing.T) {
 		t.Error("unknown state should be invalid")
 	}
 }
-
-// ---- Filters ----
 
 func TestListInput_Validate(t *testing.T) {
 	ok := ListInput{WorkspaceID: "ws-1"}
@@ -172,8 +160,6 @@ func TestAuthorsInput_Validate(t *testing.T) {
 	}
 }
 
-// ---- Settings ----
-
 func TestSettings_NormalizeAndValidate(t *testing.T) {
 	s := Settings{WorkspaceID: "ws-1", Source: SourceInstagram, AccountID: "acc-1"}
 	s.Normalize()
@@ -192,13 +178,11 @@ func TestSettings_NormalizeAndValidate(t *testing.T) {
 	if err := s.Validate(); err != nil {
 		t.Fatalf("normalised settings should validate: %v", err)
 	}
-	// Disabled by default: ship off, nothing runs, nothing is billed (§16).
 	if s.Enabled {
 		t.Error("settings must default to disabled")
 	}
 }
 
-// Default settings for a fresh account come seeded from the vertical.
 func TestNewSettings_SeedsTopics(t *testing.T) {
 	s := NewSettings("ws-1", ref().Source, ref().AccountID, VerticalGov)
 	if !s.Topics.Has("saude") {
@@ -231,11 +215,6 @@ func TestSettings_Validate(t *testing.T) {
 func intp(v int) *int              { return &v }
 func timep(v time.Time) *time.Time { return &v }
 
-// ---- Container overrides ----
-
-// A post override carries only what it changes; everything else is the
-// account's. Enabled, model, topics, threshold and instructions can each be
-// overridden independently, and an empty override changes nothing.
 func TestSettings_WithOverride(t *testing.T) {
 	base := NewSettings("ws-1", SourceInstagram, "acc-1", VerticalGov)
 	base.Enabled = true
@@ -263,19 +242,15 @@ func TestSettings_WithOverride(t *testing.T) {
 	if got.Model != "m-post" || got.ActionPolicy.SeverityThreshold != 80 {
 		t.Errorf("model/threshold not overridden: %+v", got)
 	}
-	// Post instructions do not replace the account's; both reach the model.
 	if got.Instructions != "conta de prefeitura\n\npost sobre o asfalto da rua A" {
 		t.Errorf("instructions = %q", got.Instructions)
 	}
-	// The override's topics are normalised and still carry other.
 	if !got.Topics.Has("asfalto") || !got.Topics.Has(TopicKeyOther) || len(got.Topics) != 2 {
 		t.Errorf("topics = %+v", got.Topics)
 	}
-	// The base was not mutated.
 	if !base.Enabled || base.Topics.Has("asfalto") && len(base.Topics) == 2 {
 		t.Error("WithOverride must not mutate the receiver")
 	}
-	// Whitespace-only instructions inherit rather than blank the account's.
 	blank := "   "
 	if got := base.WithOverride(&ContainerOverride{Instructions: &blank}); got.Instructions != "conta de prefeitura" {
 		t.Errorf("blank instructions override = %q", got.Instructions)

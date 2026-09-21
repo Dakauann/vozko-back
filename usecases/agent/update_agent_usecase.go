@@ -48,8 +48,6 @@ func (uc *updateAgentUseCase) Execute(ctx context.Context, agentID string, in ag
 		return nil, agent.ErrAgentNotFound
 	}
 
-	// Snapshot the tools before the merge: a partial update that omits InternalTools
-	// keeps the existing ones (the merge no-ops), and they are the resolve fallback.
 	existingTools := make([]agent.ToolBinding, len(current.InternalTools))
 	copy(existingTools, current.InternalTools)
 
@@ -64,10 +62,6 @@ func (uc *updateAgentUseCase) Execute(ctx context.Context, agentID string, in ag
 		return nil, err
 	}
 
-	// Validated against the MERGED agent, not the input: an update that omits
-	// these keeps whatever was already attached, and re-checking the effective
-	// set is what makes the guard hold even if something foreign slipped in
-	// before this check existed.
 	if err := validateKnowledgeBaseOwnership(ctx, uc.knowledgeBaseRepo, current.WorkspaceID, current.KnowledgeBaseIDs); err != nil {
 		return nil, err
 	}

@@ -576,8 +576,6 @@ func TestSecureCompare(t *testing.T) {
 	}
 }
 
-// --- 360dialog inbound messaging webhook ---
-
 const dialog360MessageBody = `{"entry":[{"changes":[{"field":"messages","value":{"messaging_product":"whatsapp","metadata":{"phone_number_id":"123"},"messages":[{"from":"5511999998888","id":"wamid.X","type":"text","text":{"body":"oi"}}]}}]}]}`
 
 func newDialog360Handler(pub *mockPublishWebhook, secret string) *WebhookHandler {
@@ -638,7 +636,7 @@ func TestDialog360MessageWebhook_AcceptsHeaderSecret(t *testing.T) {
 
 func TestDialog360MessageWebhook_UnsetSecretRejects(t *testing.T) {
 	pub := &mockPublishWebhook{}
-	h := newDialog360Handler(pub, "") // secret unset -> fail closed
+	h := newDialog360Handler(pub, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/360dialog/messages", strings.NewReader(dialog360MessageBody))
 	rec := httptest.NewRecorder()

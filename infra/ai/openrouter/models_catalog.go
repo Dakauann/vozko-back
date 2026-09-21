@@ -14,36 +14,13 @@ import (
 )
 
 const (
-	modelsFetchTimeout = 10 * time.Second
-	// modelCatalogTTL caps how often we hit OpenRouter's /models endpoint for the
-	// display catalog. The list changes rarely, so serving it live on every
-	// /agents/options call only hammered OpenRouter for no benefit.
-	modelCatalogTTL = 30 * time.Minute
-	// defaultModelSort orders the catalog by OpenRouter's own popularity ranking so
-	// the most-used models surface first in the picker. The go-openrouter client's
-	// ListModels can't pass this (it sends no query params), which is why we fetch
-	// /models directly here.
-	defaultModelSort = "most-popular"
-	// catalogOutputModalities restricts the catalog to text-generating (chat) models
-	// via OpenRouter's documented output_modalities filter, dropping image-gen,
-	// embeddings, audio/TTS, and rerankers that don't belong in an LLM picker. This
-	// is an official server-side filter, see
-	// https://openrouter.ai/docs/api/api-reference/models/get-models
-	catalogOutputModalities = "text"
-	// catalogSupportedParameters restricts the catalog to tool-capable models via
-	// OpenRouter's documented supported_parameters filter. Every selectable model
-	// slot on the platform (voice/WhatsApp agents, the simulator, analysis, workflow
-	// AI-agent nodes, and the AI workflow builder) calls the model with function
-	// calling, so a model without tool support can't work as an agent here.
+	modelsFetchTimeout         = 10 * time.Second
+	modelCatalogTTL            = 30 * time.Minute
+	defaultModelSort           = "most-popular"
+	catalogOutputModalities    = "text"
 	catalogSupportedParameters = "tools"
 )
 
-// modelCatalogFetcher loads the priced model catalog directly from OpenRouter's
-// GET /models endpoint. It exists because the go-openrouter client's ListModels
-// sends no query params, so it can't request server-side sorting (?sort=...) and
-// drops fields we surface in the picker UI (created, context_length). Results are
-// cached for modelCatalogTTL. Optional on the Service: when nil the caller falls
-// back to the unsorted library path.
 type modelCatalogFetcher struct {
 	apiKey  string
 	baseURL string
@@ -52,7 +29,7 @@ type modelCatalogFetcher struct {
 	mu       sync.Mutex
 	cache    []ai.ModelInfo
 	cachedAt time.Time
-	now      func() time.Time // injectable for tests
+	now      func() time.Time
 }
 
 func newModelCatalogFetcher(apiKey, baseURL string) *modelCatalogFetcher {
@@ -68,9 +45,6 @@ func newModelCatalogFetcher(apiKey, baseURL string) *modelCatalogFetcher {
 	}
 }
 
-// openRouterModel is the subset of the /models response we care about. OpenRouter
-// reports context_length both at the top level and under top_provider; we read the
-// top level first and fall back to the provider value.
 type openRouterModel struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -85,10 +59,6 @@ type openRouterModel struct {
 	} `json:"top_provider"`
 }
 
-// FetchModelsWithPricing returns the catalog in OpenRouter's most-popular order,
-// enriched with pricing (scaled to micros per million tokens), creation time, and
-// context length. ok is false on any error so the caller can fall back to the
-// library path.
 func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, bool) {
 	if f == nil || f.apiKey == "" {
 		return nil, false
@@ -102,7 +72,6 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 	}
 	f.mu.Unlock()
 
-	// Official OpenRouter /models query params only, no client-side filtering.
 	params := url.Values{}
 	params.Set("sort", defaultModelSort)
 	params.Set("output_modalities", catalogOutputModalities)

@@ -9,8 +9,6 @@ import (
 	"vozko/domain/workspace"
 )
 
-// Narrow readers so the resolver depends only on what it needs (and is easy to
-// fake in tests); the concrete repositories satisfy them implicitly.
 type workspaceOwnerReader interface {
 	GetWorkspaceByID(id string) (*workspace.Workspace, error)
 }
@@ -67,7 +65,6 @@ func (n *notifier) Notify(req notification.Notification) error {
 		email = strings.TrimSpace(resolved)
 	}
 	if email == "" {
-		// No recipient (e.g. unassigned workspace): nothing to send, not an error.
 		return nil
 	}
 
@@ -78,13 +75,13 @@ func (n *notifier) Notify(req notification.Notification) error {
 			return err
 		}
 		if !first {
-			return nil // already notified for this logical event
+			return nil
 		}
 	}
 
 	if err := n.publisher.Publish(email, req.Subject, req.Template, req.Placeholders); err != nil {
 		if req.DedupKey != "" && n.dedup != nil {
-			_ = n.dedup.Clear(req.DedupKey) // release the guard so a retry can re-send
+			_ = n.dedup.Clear(req.DedupKey)
 		}
 		return err
 	}

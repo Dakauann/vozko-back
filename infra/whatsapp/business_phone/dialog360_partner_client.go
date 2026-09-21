@@ -14,14 +14,6 @@ import (
 	businessphone "vozko/domain/whatsapp/business_phone"
 )
 
-// Dialog360PartnerClient implements businessphone.Dialog360PartnerService against
-// the 360dialog Partner API (hub.360dialog.io/api/v2) using the partner level
-// x-api-key header.
-//
-// Endpoint shapes are taken from the 360dialog Partner API docs. A few response
-// field names (marked below) were not fully sampled in the docs and must be
-// confirmed against a real partner account; they are decoded leniently so a
-// mismatch surfaces as a clear error rather than a silent zero value.
 type Dialog360PartnerClient struct {
 	baseURL    string
 	partnerID  string
@@ -31,9 +23,6 @@ type Dialog360PartnerClient struct {
 	throttle   *dialog360Throttle
 }
 
-// WithRateLimit throttles every partner API call through a Redis-backed limiter so we
-// stay within 360dialog's 5 requests / 30s partner-management limit and stop hitting
-// 429s. shared may be nil (no throttling, e.g. in tests).
 func (c *Dialog360PartnerClient) WithRateLimit(shared cache.SharedState) *Dialog360PartnerClient {
 	if shared != nil {
 		c.throttle = newDialog360Throttle(shared, 5, 30*time.Second, 40*time.Second)
@@ -75,8 +64,6 @@ func (c *Dialog360PartnerClient) do(method, path string, body any, out any) erro
 		reqBody = bytes.NewReader(raw)
 	}
 
-	// Respect 360dialog's 5/30s partner-management limit: wait for a slot instead of
-	// firing and getting 429'd. No-op when no limiter is configured.
 	c.throttle.Acquire()
 
 	url := c.baseURL + path
@@ -122,8 +109,6 @@ func (c *Dialog360PartnerClient) CreateClient(name, email string) (string, error
 		reqBody["email"] = email
 	}
 	var out struct {
-		// The docs describe a created client object; the id field carries the
-		// client_id. Confirm the exact key against a live response.
 		ClientID string `json:"client_id"`
 		ID       string `json:"id"`
 	}
@@ -139,18 +124,13 @@ func (c *Dialog360PartnerClient) CreateClient(name, email string) (string, error
 	return "", fmt.Errorf("360dialog partner client: account_sharing/clients returned no client id")
 }
 
-// FindClientByEmail pages through the partner's clients and returns the id of the
-// one whose contact email matches (case-insensitive), or "" if none. The endpoint
-// exposes no reliable server-side email filter, so we page (limit 200) and match
-// client-side; the caller only reaches here once per WABA before the id is persisted,
-// so the paging cost is a one-time onboarding step, not a per-request hot path.
 func (c *Dialog360PartnerClient) FindClientByEmail(email string) (string, error) {
 	target := strings.ToLower(strings.TrimSpace(email))
 	if target == "" {
 		return "", nil
 	}
 	const pageSize = 200
-	const maxPages = 50 // 10k clients; log and stop rather than page forever.
+	const maxPages = 50
 	for page := 0; page < maxPages; page++ {
 		var out struct {
 			Clients []struct {
@@ -192,7 +172,6 @@ func (c *Dialog360PartnerClient) RegisterNumber(input businessphone.RegisterNumb
 	return c.do(http.MethodPost, c.partnerPath("/account_sharing/numbers"), reqBody, nil)
 }
 
-// dialog360ChannelDTO decodes one channel from the partner /channels listing.
 type dialog360ChannelDTO struct {
 	ID          string `json:"id"`
 	WABAAccount struct {
@@ -238,12 +217,9 @@ type dialog360ChannelPage struct {
 	Total    int                   `json:"total"`
 }
 
-// ListChannels returns EVERY channel on the partner account, paging through the
-// listing (the endpoint caps a page, so a large partner spans several). Used by the
-// reconcile, which needs the full fleet; it must not silently see only page one.
 func (c *Dialog360PartnerClient) ListChannels() ([]businessphone.Dialog360Channel, error) {
 	const pageSize = 200
-	const maxPages = 100 // 20k channels; log-and-stop rather than page forever.
+	const maxPages = 100
 	var channels []businessphone.Dialog360Channel
 	for page := 0; page < maxPages; page++ {
 		var out dialog360ChannelPage
@@ -261,9 +237,6 @@ func (c *Dialog360PartnerClient) ListChannels() ([]businessphone.Dialog360Channe
 	return channels, nil
 }
 
-// GetChannel fetches a single channel by id. 360dialog supports filtering the
-// listing by id, so this is an O(1) call, the finalize path uses it instead of
-// paging the whole fleet on every onboarding. Returns nil if the channel is absent.
 func (c *Dialog360PartnerClient) GetChannel(channelID string) (*businessphone.Dialog360Channel, error) {
 	if strings.TrimSpace(channelID) == "" {
 		return nil, nil
@@ -298,8 +271,6 @@ func (c *Dialog360PartnerClient) GenerateAPIKey(channelID string) (*businessphon
 }
 
 func (c *Dialog360PartnerClient) GetPartnerBalance() (*businessphone.Dialog360Balance, error) {
-	// The Partner API returns an array of per currency balances, for example
-	// [{"currency":"usd","total":0.0}]. We surface the first entry.
 	var out []struct {
 		Currency string  `json:"currency"`
 		Total    float64 `json:"total"`

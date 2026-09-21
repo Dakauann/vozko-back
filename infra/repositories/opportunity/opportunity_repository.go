@@ -1,9 +1,3 @@
-// Package opportunity_repository is the GORM implementation of the domain
-// opportunity.Repository (deal lifecycle) and opportunity.LinkRepository
-// (deal <-> conversation links). Schema rows live in infra/database/schema and
-// are hand-mapped here; the constructor returns the domain interface. Filtered
-// board/list reads are served by the shared crmfilter compiler
-// (OpportunityDescriptor), not by this port.
 package opportunity_repository
 
 import (
@@ -21,16 +15,12 @@ import (
 	crmfiltersql "vozko/infra/repositories/crmfilter"
 )
 
-// ErrNotFound is returned when an opportunity row does not exist (or is not
-// visible in the given workspace). The domain opportunity package defines no
-// not-found sentinel, so it lives here; the HTTP handler maps it to 404.
 var ErrNotFound = errors.New("opportunity: not found")
 
 type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository returns the domain opportunity.Repository backed by GORM.
 func NewRepository(db *gorm.DB) opportunity.Repository {
 	return &repository{db: db}
 }
@@ -122,10 +112,6 @@ func (r *repository) ListByPipeline(workspaceID, pipelineID string) ([]*opportun
 	return out, nil
 }
 
-// ListByPipelineScoped is ListByPipeline with the same owner-department scope the
-// board/list apply, so user-facing reads over a whole pipeline (the flat GET and the
-// CSV export) cannot leak deals across departments. Pass restrict=false for
-// admins/owners (workspace-wide).
 func (r *repository) ListByPipelineScoped(workspaceID, pipelineID string, departmentIDs []string, restrict bool, assigneeOverrideUserID string) ([]*opportunity.Opportunity, error) {
 	q := r.db.Table("opportunities "+oppAlias).
 		Where(oppAlias+".deleted_at IS NULL").
@@ -147,16 +133,8 @@ func (r *repository) ListByPipelineScoped(workspaceID, pipelineID string, depart
 	return out, nil
 }
 
-// oppAlias is the table alias the crmfilter OpportunityDescriptor emits its
-// column expressions against (e.g. "o.stage_id = ANY(?)"), so every filtered
-// query below aliases the opportunities table as "o".
 const oppAlias = "o"
 
-// filteredQuery builds the shared, workspace-scoped, soft-delete-aware base query
-// with the compiled crmfilter WHERE appended. The table is aliased "o" so the
-// OpportunityDescriptor's "o.<col>" expressions resolve. Soft deletes are excluded
-// manually because .Table() (unlike .Model()) does not auto-apply the deleted_at
-// scope.
 func (r *repository) filteredQuery(input opportunity.SearchByFilterInput) (*gorm.DB, error) {
 	wsID := strings.TrimSpace(input.WorkspaceID)
 	if wsID == "" {
@@ -176,18 +154,10 @@ func (r *repository) filteredQuery(input opportunity.SearchByFilterInput) (*gorm
 	return q, nil
 }
 
-// applyDepartmentScope restricts the deal board/list to a department-scoped user:
-// a deal is visible when the requesting user OWNS it, OR the deal's owner belongs to
-// one of the user's departments. Mirrors the conversation departmentScopeClause
-// (owner ~ assignee). Fail-closed: a restricted user with neither an owner-override
-// nor departments sees nothing. Unassigned deals (owner NULL) are invisible to
-// restricted users by design, admins/owners (RestrictDepartments=false) see all.
 func applyDepartmentScope(q *gorm.DB, input opportunity.SearchByFilterInput) *gorm.DB {
 	return applyDepartmentScopeRaw(q, input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
 }
 
-// applyDepartmentScopeRaw is the alias-"o" scope clause, shared by the filtered
-// board/list queries and the whole-pipeline reads (flat list + CSV export).
 func applyDepartmentScopeRaw(q *gorm.DB, departmentIDs []string, restrict bool, assigneeOverride string) *gorm.DB {
 	if !restrict {
 		return q
@@ -205,13 +175,11 @@ func applyDepartmentScopeRaw(q *gorm.DB, departmentIDs []string, restrict bool, 
 		args = append(args, pq.Array(departmentIDs))
 	}
 	if len(conds) == 0 {
-		return q.Where("1 = 0") // fail-closed
+		return q.Where("1 = 0")
 	}
 	return q.Where("("+strings.Join(conds, " OR ")+")", args...)
 }
 
-// orderClause maps the SearchByFilterInput sort onto an ORDER BY over the "o"
-// alias, with a stable "o.id" tiebreaker so pagination is deterministic.
 func orderClause(sortField, sortOrder string) string {
 	dir := "DESC"
 	if strings.EqualFold(strings.TrimSpace(sortOrder), "asc") {
@@ -221,15 +189,12 @@ func orderClause(sortField, sortOrder string) string {
 	case "value":
 		return fmt.Sprintf("%s.value_cents %s, %s.id ASC", oppAlias, dir, oppAlias)
 	case "close_date":
-		// close_date is nullable; keep dated deals grouped ahead of undated ones.
 		return fmt.Sprintf("%s.close_date %s NULLS LAST, %s.id ASC", oppAlias, dir, oppAlias)
-	default: // "created", "created_at", ""
+	default:
 		return fmt.Sprintf("%s.created_at %s, %s.id ASC", oppAlias, dir, oppAlias)
 	}
 }
 
-// SearchByFilter returns a page of opportunities matching the compiled filter
-// (workspace-scoped, newest-first by default) plus the total match count.
 func (r *repository) SearchByFilter(input opportunity.SearchByFilterInput) ([]*opportunity.Opportunity, int64, error) {
 	q, err := r.filteredQuery(input)
 	if err != nil {
@@ -277,9 +242,6 @@ func (r *repository) SearchByFilter(input opportunity.SearchByFilterInput) ([]*o
 	return out, total, nil
 }
 
-// SumValueByFilter returns COALESCE(SUM(value_cents), 0) across all matching
-// rows. MONEY GUARDRAIL: value_cents is the customer's own BRL sales figure and
-// never touches the USD ledger.
 func (r *repository) SumValueByFilter(input opportunity.SearchByFilterInput) (int64, error) {
 	q, err := r.filteredQuery(input)
 	if err != nil {
@@ -342,8 +304,6 @@ func mapToDomain(row *schema.Opportunity) (*opportunity.Opportunity, error) {
 	}, nil
 }
 
-// nullableUUID returns nil for an empty id so an Update writes SQL NULL instead
-// of an empty string into a nullable uuid column (which Postgres would reject).
 func nullableUUID(s string) interface{} {
 	if s == "" {
 		return nil

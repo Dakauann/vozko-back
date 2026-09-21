@@ -103,9 +103,6 @@ func (uc *syncTemplatesUseCase) Execute(input template.SyncTemplatesInput) ([]*t
 	return synced, nil
 }
 
-// convertComponents defers to the domain, which owns the field-for-field
-// mapping in both directions so a new component field cannot reach one
-// direction and silently default in the other.
 func convertComponents(apiComponents []conversation.TemplateComponent) []template.TemplateComponent {
 	return template.FromClientComponents(apiComponents)
 }

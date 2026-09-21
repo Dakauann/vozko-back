@@ -8,8 +8,6 @@ import (
 	"vozko/domain/opportunity"
 )
 
-// --- in-memory fakes implementing the domain ports ---
-
 var errFakeNotFound = errors.New("fake: not found")
 
 type fakeOppRepo struct {
@@ -61,10 +59,6 @@ func (r *fakeOppRepo) ListByPipelineScoped(workspaceID, pipelineID string, _ []s
 	return r.ListByPipeline(workspaceID, pipelineID)
 }
 
-// SearchByFilter / SumValueByFilter back the deal board and list. The fake keeps a
-// minimal workspace-scoped in-memory version (it ignores the compiled predicate,
-// which is exercised at the repository/compiler layer) so the usecase satisfies
-// the extended opportunity.Repository port here.
 func (r *fakeOppRepo) SearchByFilter(input opportunity.SearchByFilterInput) ([]*opportunity.Opportunity, int64, error) {
 	var out []*opportunity.Opportunity
 	for _, o := range r.store {
@@ -123,7 +117,7 @@ func TestCreate_CustomFieldValidation(t *testing.T) {
 	cases := []struct {
 		name    string
 		mutate  func(*CreateInput)
-		wantErr error // nil = success
+		wantErr error
 	}{
 		{"valid", func(in *CreateInput) {}, nil},
 		{"unknown key", func(in *CreateInput) { in.CustomFields["foo"] = "bar" }, ErrUnknownCustomField},
@@ -162,7 +156,6 @@ func TestCreate_SeedsOwnerFromConversationAssignee(t *testing.T) {
 		t.Fatalf("owner should be seeded from assignee, got %q", o.OwnerID)
 	}
 
-	// An explicit owner wins over the assignee seed.
 	in2 := baseCreate()
 	in2.OwnerID = "owner-1"
 	in2.ConversationAssigneeID = "agent-42"
@@ -184,13 +177,11 @@ func TestMoveStage_LostReasonEnforced(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// Moving to lost WITHOUT a reason is rejected by the entity rule.
 	_, err = svc.MoveStage("ws1", created.ID, MoveStageInput{StageID: "stage-lost", Status: opportunity.StatusLost})
 	if !errors.Is(err, opportunity.ErrLostReasonMissing) {
 		t.Fatalf("expected ErrLostReasonMissing, got %v", err)
 	}
 
-	// Moving to lost WITH a reason succeeds and stamps a close date.
 	moved, err := svc.MoveStage("ws1", created.ID, MoveStageInput{
 		StageID: "stage-lost", Status: opportunity.StatusLost, LostReasonID: "reason-price",
 	})

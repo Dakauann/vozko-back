@@ -10,30 +10,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// CheckInstanceHealthUseCase is the BACKSTOP for session state, and the only
-// source of truth for everything a webhook structurally cannot report.
-//
-// The provider does push session changes: `connection` is a subscribed event
-// documented as "alterações no estado da conexão", so a dropped phone or a
-// removed linked device arrives in seconds through the normal pipeline, not
-// here. Polling for that would be a duplicate.
-//
-// What no event can ever tell us — and what this job exists for:
-//
-//   - Our webhook is no longer registered on the host. A tenant or an operator
-//     with console access can unhook it, and an event announcing that could
-//     only arrive through the thing that was unhooked.
-//   - The host cannot reach our ingest at all. Same circularity.
-//   - WhatsApp is restricting the number. There is no event for it in the
-//     provider's catalogue; it is a diagnostics endpoint and a send-time error
-//     code, and it is the last warning before a ban.
-//   - Deliveries were attempted and failed. The host keeps a short in-memory
-//     log and offers no replay, so reading it is the only forensic window
-//     there is.
-//
-// Session state is still reconciled here, deliberately, because the backstop
-// has to cover the case where the webhook path itself is broken — but at a
-// relaxed cadence, and skipping any instance the webhook already spoke for.
 type CheckInstanceHealthUseCase struct {
 	instances uw.InstanceRepository
 	servers   uw.ServerRepository
@@ -41,13 +17,8 @@ type CheckInstanceHealthUseCase struct {
 	sync      sessionSync
 
 	webhookBaseURL string
-	// staleAfter is how long an instance may go without an authoritative signal
-	// before the backstop re-confirms it. Signals include the `connection`
-	// webhook, not only a poll: the handler stamps the same clock through the
-	// shared sessionSync, so an instance that just reported is skipped here.
-	staleAfter time.Duration
-	// batchLimit bounds one run so a large tenant cannot starve the others.
-	batchLimit int
+	staleAfter     time.Duration
+	batchLimit     int
 }
 
 func NewCheckInstanceHealthUseCase(
@@ -67,11 +38,6 @@ func NewCheckInstanceHealthUseCase(
 	}
 }
 
-// Execute re-confirms session state for instances the webhook has not spoken
-// for recently. One cheap call per instance, and usually zero instances.
-//
-// One tenant's failure never aborts the loop: stopping at the first error would
-// let one broken instance blind us to every other.
 func (uc *CheckInstanceHealthUseCase) Execute(ctx context.Context) error {
 	cutoff := time.Now().UTC().Add(-uc.staleAfter)
 	instances, err := uc.instances.ListForHealthCheck(ctx, cutoff, uc.batchLimit)
@@ -84,14 +50,6 @@ func (uc *CheckInstanceHealthUseCase) Execute(ctx context.Context) error {
 	})
 }
 
-// VerifyIntegrity runs the probes no event can replace.
-//
-// Separate from Execute, and on a slower schedule, because these are three
-// extra host calls per instance and none of them is urgent in the way a dropped
-// session is: a webhook that fell off is discovered within the hour, and a
-// WhatsApp restriction changes on the scale of hours to days. Folding them into
-// the session backstop would triple its cost for no gain — the reason they were
-// split once the `connection` event was accounted for.
 func (uc *CheckInstanceHealthUseCase) VerifyIntegrity(ctx context.Context) error {
 	instances, err := uc.instances.ListConnected(ctx, uc.batchLimit)
 	if err != nil {
@@ -106,9 +64,6 @@ func (uc *CheckInstanceHealthUseCase) VerifyIntegrity(ctx context.Context) error
 	})
 }
 
-// forEach resolves each instance's host and applies fn, tolerating per-instance
-// failures. Shared by both sweeps so the cancellation, host caching and
-// isolation rules cannot drift between them.
 func (uc *CheckInstanceHealthUseCase) forEach(
 	ctx context.Context,
 	instances []*uw.Instance,
@@ -130,7 +85,6 @@ func (uc *CheckInstanceHealthUseCase) forEach(
 	return nil
 }
 
-// reconcileSession asks the host what state this instance is really in.
 func (uc *CheckInstanceHealthUseCase) reconcileSession(ctx context.Context, server *uw.Server, instance *uw.Instance) {
 	session, err := uc.provider.Status(ctx, uw.RefFor(server, instance))
 	if err != nil {
@@ -142,13 +96,9 @@ func (uc *CheckInstanceHealthUseCase) reconcileSession(ctx context.Context, serv
 	}
 }
 
-// handleProbeFailure records what a failed status call means.
 func (uc *CheckInstanceHealthUseCase) handleProbeFailure(ctx context.Context, instance *uw.Instance, err error) {
 	provErr, ok := uw.AsProviderError(err)
 	if !ok || !provErr.NeedsReconnect() {
-		// A transient host failure is not evidence about the session. Recording
-		// DISCONNECTED here would close every composer on the channel each time
-		// the host had a bad minute.
 		log.Printf("[unofficial-whatsapp] instance %s: status probe failed: %v", instance.ID, err)
 		return
 	}
@@ -161,15 +111,6 @@ func (uc *CheckInstanceHealthUseCase) handleProbeFailure(ctx context.Context, in
 	}
 }
 
-// verifyWebhook confirms the host is still pointed at us.
-//
-// This is the probe with no event equivalent, by construction: a notification
-// that our webhook had been removed could only be delivered through the webhook
-// that was removed. The symptom is identical to "nobody messaged today", so it
-// is checked rather than waited for.
-//
-// Re-registering automatically is safe — the call is an upsert — and the
-// alternative is an inbox that stays quiet until someone thinks to look.
 func (uc *CheckInstanceHealthUseCase) verifyWebhook(ctx context.Context, ref uw.InstanceRef, instance *uw.Instance) {
 	subs, err := uc.provider.GetWebhooks(ctx, ref)
 	if err != nil {
@@ -183,17 +124,6 @@ func (uc *CheckInstanceHealthUseCase) verifyWebhook(ctx context.Context, ref uw.
 		if !sub.Enabled || sub.URL != expected {
 			continue
 		}
-		// The URL matching is not enough, and assuming it was cost a real bug.
-		//
-		// This used to return here on a URL match alone, so an instance
-		// registered before an event was ADDED to the subscription never
-		// received that event — the host was pointed at us, the check was
-		// satisfied, and the new event type stayed unsubscribed forever. That is
-		// what kept `groups` from arriving on already-connected numbers: a
-		// group's picture changed, no invalidation was ever delivered, and the
-		// CRM went on showing the old one until somebody pressed refresh.
-		//
-		// Re-registering is an upsert and therefore safe to repeat.
 		if missing := missingEvents(sub.Events, uw.SubscribedEvents()); len(missing) > 0 {
 			reason = fmt.Sprintf("not subscribed to %v", missing)
 			break
@@ -218,12 +148,6 @@ func (uc *CheckInstanceHealthUseCase) verifyWebhook(ctx context.Context, ref uw.
 	}
 }
 
-// drainDeliveryErrors reads the host's in-memory delivery failures.
-//
-// Read-only, and it logs rather than acts, because there is nothing to act on:
-// the provider offers no replay endpoint, so a delivery that failed past its
-// retries is gone. Surfacing it is the difference between knowing we lost
-// messages and hearing it from the customer.
 func (uc *CheckInstanceHealthUseCase) drainDeliveryErrors(ctx context.Context, ref uw.InstanceRef, instance *uw.Instance) {
 	failures, err := uc.provider.WebhookErrors(ctx, ref)
 	if err != nil || len(failures) == 0 {
@@ -236,18 +160,9 @@ func (uc *CheckInstanceHealthUseCase) drainDeliveryErrors(ctx context.Context, r
 	}
 }
 
-// refreshLimits caches WhatsApp's own restriction state.
-//
-// The other probe with no event equivalent: the provider's catalogue has
-// nothing for it, so a number sliding toward a ban is invisible unless asked
-// about. It is the earliest warning available: a number under a reachout
-// timelock that keeps sending is a number about to be disabled, and every send
-// path reads the cached result.
 func (uc *CheckInstanceHealthUseCase) refreshLimits(ctx context.Context, ref uw.InstanceRef, instance *uw.Instance) {
 	restriction, err := uc.provider.MessagingLimits(ctx, ref)
 	if err != nil {
-		// Not every host exposes this, and a missing diagnosis must not read as
-		// a restriction — that would block sending on a healthy number.
 		return
 	}
 	if err := uc.instances.UpdateRestriction(ctx, instance.ID, *restriction); err != nil {
@@ -263,8 +178,6 @@ func (uc *CheckInstanceHealthUseCase) refreshLimits(ctx context.Context, ref uw.
 	}
 }
 
-// serverCache avoids re-reading the same host once per instance on it.
-// A workspace commonly has several numbers on one host.
 type serverCache struct {
 	repo   uw.ServerRepository
 	loaded map[string]*uw.Server
@@ -286,12 +199,6 @@ func (c *serverCache) get(ctx context.Context, id string) (*uw.Server, error) {
 	return server, nil
 }
 
-// missingEvents reports which of `want` the host is not currently sending.
-//
-// Case-insensitive, because the provider is not consistent about the casing of
-// its own event names — the envelope decoder already works around the same
-// thing. A false "missing" here would re-register the webhook on every health
-// run, which is harmless but noisy enough to hide a real one.
 func missingEvents(have, want []string) []string {
 	subscribed := make(map[string]struct{}, len(have))
 	for _, e := range have {

@@ -15,21 +15,10 @@ type exportRepository struct {
 	db *gorm.DB
 }
 
-// NewExportRepository builds the Telegram export source.
-//
-// It exists because export was structurally campaign-keyed: it demanded a
-// CampaignID that a channel without campaigns cannot supply, and rejected every
-// entry type but WhatsApp. A channel that customers can hold real conversations
-// on but cannot get their data out of is not finished.
 func NewExportRepository(db *gorm.DB) export.ChannelEntryLister {
 	return &exportRepository{db: db}
 }
 
-// ListForExport lists one account's conversations, or the whole workspace when
-// no account is named.
-//
-// Telegram has no send statuses and no campaign period, so the corresponding
-// Scope fields are not applicable here and are ignored rather than faked.
 func (r *exportRepository) ListForExport(
 	ctx context.Context,
 	scope export.Scope,
@@ -63,8 +52,6 @@ func (r *exportRepository) ListForExport(
 			tgcont.phone_number,
 			tgcont.tg_user_id`).
 		Joins("JOIN telegram_contacts tgcont ON tgcont.id = tgc.contact_id AND tgcont.deleted_at IS NULL").
-		// Tenancy is enforced here, not by the caller: an operator must not be
-		// able to export another workspace's account by guessing its id.
 		Where("tgc.workspace_id = ?", workspaceID).
 		Where("tgc.deleted_at IS NULL")
 
@@ -83,9 +70,6 @@ func (r *exportRepository) ListForExport(
 			name = rw.Username
 		}
 
-		// The identity slot prefers a consented phone (the only thing that links
-		// a Telegram contact to the rest of the CRM), then the handle, then the
-		// numeric id, so the column is never blank.
 		identity := ""
 		if rw.PhoneNumber != nil {
 			identity = strings.TrimSpace(*rw.PhoneNumber)

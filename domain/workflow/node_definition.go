@@ -35,65 +35,32 @@ type OutputKeyDefinition struct {
 }
 
 type NodeDefinition struct {
-	Type        NodeType     `json:"type"`
-	Category    NodeCategory `json:"category"`
-	Scopes      []NodeScope  `json:"scopes,omitempty"`
-	Label       string       `json:"label"`
-	Description string       `json:"description"`
-	Icon        string       `json:"icon"`
-	// Outputs are the node's BASE/static output handles, those that don't depend
-	// on config. They ship in the catalog so the frontend renders them instantly.
-	Outputs []HandleDefinition `json:"outputs,omitempty"`
-	// DynamicHandles marks a node whose full handle set depends on its config
-	// (e.g. ai_agent tool routes, text_match cases). The frontend learns which
-	// node types are dynamic FROM THIS FLAG (not a hardcoded list) and, for those,
-	// asks the backend (POST /workflows/resolve-handles) for the resolved set.
+	Type           NodeType               `json:"type"`
+	Category       NodeCategory           `json:"category"`
+	Scopes         []NodeScope            `json:"scopes,omitempty"`
+	Label          string                 `json:"label"`
+	Description    string                 `json:"description"`
+	Icon           string                 `json:"icon"`
+	Outputs        []HandleDefinition     `json:"outputs,omitempty"`
 	DynamicHandles bool                   `json:"dynamicHandles,omitempty"`
 	OutputKeys     []OutputKeyDefinition  `json:"outputKeys,omitempty"`
 	DefaultConfig  map[string]interface{} `json:"defaultConfig"`
 	ConfigSchema   []ConfigField          `json:"configSchema"`
-	// Guidance is authored by each executor (or builtin) and travels with the
-	// node in the catalog so the AI Workflow Builder always sees how each node
-	// works and behaves. Required, every node must describe itself.
-	Guidance NodeGuidance `json:"guidance"`
+	Guidance       NodeGuidance           `json:"guidance"`
 
-	// ChannelLimits reports, per channel, what this node will actually render.
-	//
-	// Only the interactive prompt sets it today. It exists because the option
-	// list an author writes is ONE list rendered by several channels with
-	// different caps: three buttons on WhatsApp, thirteen on Instagram, no
-	// practical limit on Telegram. Without this the editor cannot tell the
-	// author that options four through thirteen will silently not appear on
-	// WhatsApp, and the first anyone learns of it is a customer who never saw
-	// the option.
 	ChannelLimits map[string]ChannelInteractiveLimits `json:"channelLimits,omitempty"`
 }
 
-// ChannelInteractiveLimits is the JSON shape of one channel's option limits.
-//
-// It mirrors channel.InteractiveLimits rather than reusing it so the domain's
-// internal type is free to change without altering an API the frontend parses.
 type ChannelInteractiveLimits struct {
-	MaxOptionsButtons int `json:"maxOptionsButtons"`
-	MaxOptionsList    int `json:"maxOptionsList"`
-	// MaxLabelRunes is 0 when the channel documents no label limit.
-	MaxLabelRunes int `json:"maxLabelRunes"`
-	// MaxPayloadBytes bounds the option id. Bytes, not characters.
-	MaxPayloadBytes int `json:"maxPayloadBytes"`
-	// SupportsDescriptions is false for every channel except WhatsApp lists.
+	MaxOptionsButtons    int  `json:"maxOptionsButtons"`
+	MaxOptionsList       int  `json:"maxOptionsList"`
+	MaxLabelRunes        int  `json:"maxLabelRunes"`
+	MaxPayloadBytes      int  `json:"maxPayloadBytes"`
 	SupportsDescriptions bool `json:"supportsDescriptions"`
 }
 
-// NodeGuidance is per-node usage guidance for the AI Workflow Builder, authored
-// alongside each node's Definition(). It describes WHEN to use the node and any
-// non-obvious runtime BEHAVIOR. It deliberately does NOT list output handles,
-// output keys, or config fields, those are dynamic/structured data exposed by
-// Outputs, OutputKeys, and ConfigSchema, which the builder already sees.
 type NodeGuidance struct {
-	When string `json:"when"`
-	// Behavior describes non-obvious runtime behavior only (e.g. "the node sends
-	// the message itself in segmented mode"). Empty when there is nothing the
-	// structured fields don't already convey.
+	When     string   `json:"when"`
 	Behavior string   `json:"behavior,omitempty"`
 	Examples []string `json:"examples,omitempty"`
 }

@@ -55,7 +55,6 @@ func NormalizeSplitProvider(raw string) (SplitProvider, error) {
 	}
 }
 
-// TODO: remove from there, this is wrong as this is in the domain, and domain should not have validation logic
 func ValidateSplit(split *PaymentSplit) error {
 	if split.Name == "" {
 		return ErrPaymentSplitNameRequired

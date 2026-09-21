@@ -117,9 +117,6 @@ func (c *Container) initServer() {
 		})
 		handler = metricsMW.Record(handler)
 	}
-	// CORS is outermost so it answers OPTIONS preflight before CSRF; CSRF then
-	// guards cookie-authenticated state-changing requests (Bearer/API clients are
-	// exempt, so the open API is unaffected).
 	c.server = httpServerImpl.NewHTTPServer(cors.Handler(csrf.Handler(handler)))
 }
 
@@ -130,11 +127,6 @@ func (c *Container) initMetricsServer() {
 	c.metricsHTTP = newMetricsServer(c.cfg.MetricsListenAddr, c.services.metrics.Handler())
 }
 
-// whatsAppOutreachHandler returns the official-channel cold-outbound handler.
-//
-// Nil when the container could not build it, which registers no routes at all.
-// That is the correct failure for this feature: every route it owns spends the
-// workspace's balance, so absent is safer than present-and-half-wired.
 func whatsAppOutreachHandler(c *Container) *whatsappoutreachhttp.Handler {
 	if c.handlers == nil {
 		return nil

@@ -11,22 +11,10 @@ import (
 	"vozko/domain/attendance"
 )
 
-// GetOverview builds the ops dashboard for a workspace under OverviewFilter.
-// Definitions are frozen in domain/attendance/overview.go.
-//
-// Scale strategy (tens/hundreds of thousands of conversations):
-//  1. Materialise scoped entries once (temp table + PK index).
-//  2. Materialise per-entry message aggregates ONCE (single join to conversation_messages).
-//     Wait / handle / messaging / member response / dept times all read that table.
-//     Previously each widget re-joined messages (5× full scans on 60k+ entries).
-//  3. Activity-in-period legs drive FROM messages in the date range (semi-join),
-//     not EXISTS over every historical entry outside the window.
 func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewFilter) (*attendance.Overview, error) {
 	out := &attendance.Overview{
-		Filter: filter,
-		Hourly: make([]attendance.HourlyPoint, 24),
-		// Built empty up front so an early return still serialises funnels as []
-		// rather than null, which the panel would render as a broken chart.
+		Filter:      filter,
+		Hourly:      make([]attendance.HourlyPoint, 24),
 		Stages:      attendance.BuildStageDistribution(nil, 0, 0),
 		Definitions: attendance.DefaultDefinitions(),
 		KPIs: attendance.OverviewKPIs{
@@ -47,25 +35,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 	tmpMsg := "tmp_att_msg_" + suffix
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// JIT is a straight loss on this query and must be off before it runs.
-		//
-		// The scoped-entries body is a UNION across every channel, so its plan
-		// carries hundreds of expressions and its estimated cost clears
-		// jit_above_cost, jit_inline_above_cost and jit_optimize_above_cost
-		// (100k/500k/500k) — PostgreSQL therefore compiles it with inlining AND
-		// optimisation, the two expensive phases. Measured on the largest
-		// workspace over 90 days: 6.92s total, of which 5.15s was compilation
-		// (inline 0.33s, optimise 2.95s, emit 1.84s). The same query with JIT
-		// off ran in 2.42s.
-		//
-		// Nothing here is CPU-bound expression evaluation, which is the only
-		// shape JIT pays for; the work is index seeks and aggregation over rows
-		// already being fetched. So the compilation can never be recovered, and
-		// it is paid AGAIN on every run because each call inlines its own
-		// literals and cannot reuse a cached plan.
-		//
-		// LOCAL, not SET: the connection returns to the pool with JIT untouched
-		// for everything else.
 		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
 			return err
 		}
@@ -73,15 +42,11 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		if err := tx.Exec(createSQL, args...).Error; err != nil {
 			return err
 		}
-		// Nested-loop joins from messages need a real key on the temp table.
 		if err := tx.Exec("CREATE INDEX " + tmp + "_pk ON " + tmp + " (entry_id, entry_type)").Error; err != nil {
 			return err
 		}
 		_ = tx.Exec("ANALYZE " + tmp).Error
 
-		// One pass over conversation_messages for this scope. All timing widgets use it.
-		// Extra scope columns (is_new_contact, hour_bucket, close_source) enable
-		// engaged-only KPIs without re-joining the entry temp table.
 		msgSQL := `
 			CREATE TEMP TABLE ` + tmpMsg + ` ON COMMIT DROP AS
 			SELECT
@@ -142,8 +107,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		base := "WITH scoped_entries AS (SELECT * FROM " + tmp + ") "
 		var noArgs []interface{}
 
-		// Primary attendance KPIs: ENGAGED only (total_msgs > 0).
-		// Shells (0 messages) are reported as shell_backlog / total_scoped.
 		type statusRow struct {
 			Engaged        int64
 			ShellBacklog   int64
@@ -175,9 +138,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		out.KPIs.Ongoing = sr.Ongoing
 		out.KPIs.Pending = sr.Pending
 
-		// Acquisition, counted on the CRM object rather than on conversations.
-		// Runs in the same transaction so the tile cannot report a period the
-		// entry KPIs beside it did not see.
 		newLeads, err := overviewNewLeadsTX(tx, workspaceID, filter)
 		if err != nil {
 			return err
@@ -203,7 +163,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		}
 		out.KPIs.AvgHandleMins = handleMins
 
-		// Hourly volume: engaged only (shell bulk-creates no longer dominate the chart).
 		hourlySQL := `
 			SELECT hour_bucket AS hour, COUNT(*)::bigint AS count
 			FROM ` + tmpMsg + `
@@ -236,10 +195,6 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		}
 		out.ByMember = memberRows
 
-		// Where the scoped conversations are sitting, by funnel. One more read of
-		// the same temp table, and the scoped totals it needs for "unstaged" are
-		// the ones the KPI pass above already counted, so the panel cannot report
-		// a universe the tiles beside it did not see.
 		tallies, err := overviewStageTalliesTX(tx, workspaceID, tmpMsg)
 		if err != nil {
 			return err
@@ -254,22 +209,11 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 	return out, nil
 }
 
-// overviewEntryCTE returns a WITH scoped_entries AS (...) prefix and its args.
 func overviewEntryCTE(workspaceID string, f attendance.OverviewFilter) (string, []interface{}) {
 	body, args := overviewEntrySelect(workspaceID, f)
 	return `WITH scoped_entries AS (` + body + `) `, args
 }
 
-// overviewEntrySelect is the UNION body for scoped entries (no WITH wrapper).
-// Columns: entry_id, entry_type, status_bucket, is_new_contact, hour_bucket,
-// department_id, assigned_user_id, created_at, close_source
-//
-// Performance:
-//   - Drive FROM campaigns filtered by workspace_id first.
-//   - Created-in-range: indexable on entry.created_at.
-//   - Activity-in-range (not created in range): drive FROM conversation_messages
-//     with the period on cm.created_at (idx_cm_type_created_active /
-//     idx_cm_entry_del_created), then join entries. Avoids EXISTS per historical row.
 func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (string, []interface{}) {
 	var from, to *time.Time
 	if f.DateFrom != nil {
@@ -316,12 +260,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		return "(" + strings.Join(ors, " OR ") + ")", a
 	}
 
-	// filterCampaignDeptMember narrows a channel branch by container, department
-	// and assignee.
-	//
-	// "Campaign" means the channel's container: a WhatsApp campaign, or the
-	// account row for channels with none. The CampaignType guard keeps a
-	// voice-scoped filter from silently matching a messaging channel's ids.
 	filterCampaignDeptMember := func(src channelSource) (string, []interface{}) {
 		extra := ""
 		var a []interface{}
@@ -330,8 +268,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				extra += " AND " + src.ContainerIDColumn + " = ?"
 				a = append(a, f.CampaignID)
 			} else {
-				// The filter names a different channel's container, so this branch
-				// must match nothing rather than everything.
 				extra += " AND FALSE"
 			}
 		}
@@ -346,8 +282,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		return extra, a
 	}
 
-	// appendCreated selects conversations CREATED in the window: the "new
-	// contacts" half.
 	appendCreated := func(src channelSource, whereExtra string, whereArgs []interface{}) {
 		sql := `
 			SELECT ` + src.projection("TRUE") + `
@@ -364,9 +298,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		args = append(args, a...)
 	}
 
-	// appendActivity selects conversations created BEFORE the window that were
-	// messaged inside it, work an agent did on an older conversation, which
-	// would otherwise vanish from the period's numbers.
 	appendActivity := func(src channelSource, fcd string, fca []interface{}) {
 		if from == nil && to == nil {
 			return
@@ -428,23 +359,6 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 	return strings.Join(parts, " UNION ALL "), args
 }
 
-// overviewNewLeadsTX counts CRM contacts (leads) created in the period.
-//
-// This is the one KPI on the strip that does not read the entry temp tables,
-// and it must not: a lead exists before any conversation does, so counting
-// acquisition through entries would report zero for every contact imported from
-// a spreadsheet or pushed by an integration and not yet messaged. Those are
-// precisely the contacts this number exists to make visible.
-//
-// Scope is the workspace and the DATE RANGE, nothing else. The filter's
-// department, member, channel and campaign narrow CONVERSATIONS; a lead carries
-// none of those attributes until it has an entry, so honouring them here would
-// silently zero out every imported contact the moment an operator touched a
-// filter, producing a number that contradicts the tiles beside it. The UI states the
-// scope beside the tile rather than leaving it to be inferred.
-//
-// Bounds match createdInRange in overviewEntrySelect exactly (>= from, <= to),
-// so this tile and the entry-scoped ones read the same period.
 func overviewNewLeadsTX(tx *gorm.DB, workspaceID string, f attendance.OverviewFilter) (int64, error) {
 	q := tx.Table("leads").
 		Where("workspace_id = ?", workspaceID).
@@ -503,7 +417,6 @@ func overviewAvgHandleMinsTX(tx *gorm.DB, msgTmp string) (*float64, error) {
 }
 
 func overviewByDepartmentTX(tx *gorm.DB, msgTmp string) ([]attendance.DepartmentRow, error) {
-	// Engaged only: shells inflate pending and hide real department workload.
 	sql := `
 		SELECT
 			m.department_id,
@@ -542,7 +455,6 @@ func overviewByDepartmentTX(tx *gorm.DB, msgTmp string) ([]attendance.Department
 		return nil, err
 	}
 
-	// Wait/handle from pre-aggregated message table (engaged rows only for wait samples).
 	waitSQL := `
 		SELECT department_id,
 			AVG(EXTRACT(EPOCH FROM (first_agent_at - first_inbound_at)))
@@ -596,7 +508,6 @@ func overviewByDepartmentTX(tx *gorm.DB, msgTmp string) ([]attendance.Department
 }
 
 func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendance.OverviewFilter) ([]attendance.MemberRow, error) {
-	// Engaged assigned entries only, shells without messages are not agent workload.
 	sql := `
 		SELECT
 			m.assigned_user_id AS actor_id,
@@ -640,7 +551,6 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 		return nil, err
 	}
 
-	// Assignee first-response from pre-aggregated message table (engaged).
 	respSQL := `
 		SELECT assigned_user_id AS actor_id,
 			AVG(EXTRACT(EPOCH FROM (first_assignee_op_at - first_inbound_at))) AS avg_secs
@@ -737,10 +647,6 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 			aiSQL += " AND s.campaign_id = ?"
 			aiArgs = append(aiArgs, strings.TrimSpace(filter.CampaignID))
 		}
-		// The AI-session channel column holds the entry type, so any messaging
-		// channel filters correctly. It used to match only the literal "whatsapp",
-		// which meant filtering the page to Instagram silently returned WhatsApp's AI
-		// numbers alongside it.
 		if ch := strings.TrimSpace(filter.Channel); ch != "" {
 			aiSQL += " AND s.channel = ?"
 			aiArgs = append(aiArgs, ch)

@@ -30,16 +30,11 @@ func TestInlineKeyboardPutsOneButtonPerRow(t *testing.T) {
 	if len(dropped) != 0 {
 		t.Errorf("dropped = %v, want none", dropped)
 	}
-	// The callback payload IS the option id, which is what makes the reply
-	// route to the option's own branch.
 	if rows[0][0].CallbackData != "sim" || rows[0][0].Text != "Sim" {
 		t.Errorf("button = %+v, want id as callback_data and title as text", rows[0][0])
 	}
 }
 
-// callback_data is documented as "1-64 bytes". A truncated payload comes back
-// as an id that matches no branch, which reads as the customer answering
-// something unexpected, so the option is dropped instead.
 func TestInlineKeyboardDropsAnOptionWhosePayloadOverflows(t *testing.T) {
 	long := strings.Repeat("a", tgdomain.MaxCallbackDataBytes+1)
 	rows, dropped := inlineKeyboardFor(opts("ok", "Certo", long, "Longo"))
@@ -55,9 +50,7 @@ func TestInlineKeyboardDropsAnOptionWhosePayloadOverflows(t *testing.T) {
 	}
 }
 
-// Bytes, not characters: an id of accented text overflows sooner than it looks.
 func TestInlineKeyboardMeasuresThePayloadInBytes(t *testing.T) {
-	// 40 characters, 80 bytes, under 64 by rune count, over it by byte count.
 	id := strings.Repeat("ç", 40)
 	rows, dropped := inlineKeyboardFor(opts(id, "Acentuado"))
 
@@ -101,8 +94,6 @@ func TestInlineKeyboardStopsAtTheConfiguredCap(t *testing.T) {
 	}
 }
 
-// Telegram has no header or footer slot. Discarding the author's words would be
-// silent data loss, so they are folded into the body.
 func TestComposeInteractiveBodyKeepsHeaderAndFooter(t *testing.T) {
 	body := composeInteractiveBody(conversation.SendInteractiveRequest{
 		Header: "Atendimento",
@@ -123,8 +114,6 @@ func TestComposeInteractiveBodyOmitsEmptyParts(t *testing.T) {
 	}
 }
 
-// The descriptor is the single source of truth for the numbers the editor shows
-// and the adapter enforces.
 func TestInteractiveLimitsComeFromTheDescriptor(t *testing.T) {
 	caps := tgdomain.Descriptor().Capabilities
 	a := &channelAdapter{caps: caps}

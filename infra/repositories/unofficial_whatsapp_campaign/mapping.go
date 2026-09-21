@@ -8,12 +8,6 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// Translation between the domain and the row.
-//
-// The message spec round-trips through jsonb rather than being spread over
-// columns: it is a closed value the domain validates as a whole, and columns
-// would mean a migration every time a message kind gains a field.
-
 func ptr(s string) *string {
 	if s == "" {
 		return nil

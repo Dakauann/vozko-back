@@ -14,17 +14,8 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// defaultConversationPipelineName is the workspace-global conversation pipeline
-// that the stage promotion decouples the board from a campaign onto.
 const defaultConversationPipelineName = "Atendimento"
 
-// workspaceEntryIDSubqueries yields one workspace's entry ids per channel, for
-// narrowing stage counts to a single channel.
-//
-// Each subquery takes the workspace id as its single bind parameter. A channel
-// missing from here cannot be narrowed, which is treated as an explicit empty
-// result rather than as "no filter", the previous behaviour, where asking for
-// Instagram's stage counts silently returned every channel's.
 var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 	shared.EntryTypeWhatsApp: `SELECT wce.id FROM whatsapp_campaign_entries wce
 		JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id
@@ -48,11 +39,6 @@ func NewRepository(db *gorm.DB) stage.Repository {
 	return &repository{db: db}
 }
 
-// ensureDefaultConversationPipeline returns the id of the workspace's default
-// conversation pipeline, creating it and its canonical DefaultStages if either
-// is absent. It is idempotent and cheap to call on every board read: once the
-// pipeline has stages it only runs two indexed lookups, so every workspace
-// converges on the same canonical model here.
 func (r *repository) ensureDefaultConversationPipeline(workspaceID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -110,12 +96,8 @@ func (r *repository) ensureDefaultConversationPipeline(workspaceID string) (stri
 	return pipe.ID, nil
 }
 
-// defaultOpportunityPipelineName is the workspace-global sales pipeline ("Funil de
-// Vendas") that opportunities default onto when the caller doesn't pin a pipeline.
 const defaultOpportunityPipelineName = "Vendas"
 
-// defaultOpportunityStages seeds a sensible sales funnel. "ganho"/"perdido" carry
-// the won/lost flags so the board and reporting treat them as terminal outcomes.
 var defaultOpportunityStages = []struct {
 	Name        string
 	Description string
@@ -133,10 +115,6 @@ var defaultOpportunityStages = []struct {
 	{Name: "perdido", Description: "Oportunidade perdida.", Color: "#ef4444", Position: 6, IsLost: true},
 }
 
-// EnsureDefaultOpportunityPipeline returns the id of the workspace's default sales
-// pipeline, creating it and its canonical stages if either is absent. Idempotent
-// and cheap on the hot path once seeded (two indexed lookups), mirroring the
-// conversation pipeline self-heal so the opportunity board works out of the box.
 func (r *repository) EnsureDefaultOpportunityPipeline(workspaceID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -195,9 +173,6 @@ func (r *repository) EnsureDefaultOpportunityPipeline(workspaceID string) (strin
 	return pipe.ID, nil
 }
 
-// ListByPipeline returns the stages of one pipeline (workspace-scoped), ordered
-// for board rendering. Used by the opportunity board to scope columns to a single
-// pipeline instead of the whole workspace's stage set.
 func (r *repository) ListByPipeline(workspaceID, pipelineID string) ([]*stage.Stage, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	pipelineID = strings.TrimSpace(pipelineID)
@@ -217,11 +192,6 @@ func (r *repository) ListByPipeline(workspaceID, pipelineID string) ([]*stage.St
 }
 
 func (r *repository) Create(t *stage.Stage) error {
-	// A conversation stage created with neither a pipeline nor a campaign is a
-	// workspace-global canonical column (the board is now decoupled from the
-	// campaign): attach it to the default conversation pipeline so it renders on
-	// the board. Rows that set PipelineID (the migration, ensure) or CampaignID
-	// (stage-group cloning) explicitly are left exactly as given.
 	if strings.TrimSpace(t.PipelineID) == "" && strings.TrimSpace(t.CampaignID) == "" {
 		pid, err := r.ensureDefaultConversationPipeline(t.WorkspaceID)
 		if err != nil {
@@ -329,12 +299,6 @@ func (r *repository) ListDistinctByWorkspace(workspaceID string) ([]*stage.Stage
 	return result, nil
 }
 
-// resolveConversationPipeline returns the pipeline the given campaign's
-// conversations live on: the campaign's own pipeline_id when set, otherwise the
-// workspace's default conversation pipeline (created/seeded on demand). An empty
-// campaignID (the workspace-global board) always resolves to the default. This is
-// what makes stage listing, the AI classifier enum and initial-stage assignment
-// per-campaign again, each campaign can carry a distinct funnel.
 func (r *repository) resolveConversationPipeline(workspaceID, campaignID, campaignType string) (string, error) {
 	if strings.TrimSpace(campaignID) != "" {
 		if pid := r.campaignPipelineID(campaignID, campaignType); pid != "" {
@@ -344,8 +308,6 @@ func (r *repository) resolveConversationPipeline(workspaceID, campaignID, campai
 	return r.ensureDefaultConversationPipeline(workspaceID)
 }
 
-// campaignPipelineID reads a campaign's assigned pipeline_id, returning "" when
-// unset or on any lookup error so the caller falls back to the default pipeline.
 func (r *repository) campaignPipelineID(campaignID, campaignType string) string {
 	_ = campaignType
 	for _, table := range []string{"whatsapp_campaigns"} {
@@ -363,10 +325,6 @@ func (r *repository) campaignPipelineID(campaignID, campaignType string) string 
 	return ""
 }
 
-// CreateConversationPipeline creates a NEW (non-default) conversation pipeline for
-// a campaign's own funnel and returns its id. Stages are then created into it with
-// PipelineID set (not campaign_id), so the campaign gets a distinct pipeline-scoped
-// funnel instead of orphan clones.
 func (r *repository) CreateConversationPipeline(workspaceID, name, stageGroupID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -395,9 +353,6 @@ func (r *repository) CreateConversationPipeline(workspaceID, name, stageGroupID 
 	return pipe.ID, nil
 }
 
-// FindConversationPipelineByGroup returns the id of the workspace's conversation
-// pipeline stamped from stageGroupID (so a second campaign using the same group
-// reuses it), or "" when none exists yet.
 func (r *repository) FindConversationPipelineByGroup(workspaceID, stageGroupID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	stageGroupID = strings.TrimSpace(stageGroupID)
@@ -418,9 +373,6 @@ func (r *repository) FindConversationPipelineByGroup(workspaceID, stageGroupID s
 	return pipe.ID, nil
 }
 
-// SetCampaignPipeline points a WhatsApp campaign at a pipeline so its board / AI
-// classifier / initial stage resolve through that funnel. A no-op when either id
-// is empty.
 func (r *repository) SetCampaignPipeline(campaignID, campaignType, pipelineID string) error {
 	_ = campaignType
 	if strings.TrimSpace(campaignID) == "" || strings.TrimSpace(pipelineID) == "" {
@@ -449,10 +401,6 @@ func (r *repository) ListByCampaign(workspaceID, campaignID, campaignType string
 	return result, nil
 }
 
-// ListByCampaignIDs maps each campaign id to the stages of its RESOLVED pipeline
-// (its own funnel, or the workspace default), so the inbox per-conversation stage
-// dropdown matches the board and the AI classifier. Pipeline stage lists are cached
-// so N campaigns sharing one pipeline hit the DB once.
 func (r *repository) ListByCampaignIDs(workspaceID string, campaignIDs []string) (map[string][]*stage.Stage, error) {
 	result := make(map[string][]*stage.Stage, len(campaignIDs))
 	if len(campaignIDs) == 0 {
@@ -483,9 +431,6 @@ func (r *repository) ListByCampaignIDs(workspaceID string, campaignIDs []string)
 	return result, nil
 }
 
-// NameExistsInCampaign checks stage-name uniqueness within the campaign's RESOLVED
-// pipeline (its own funnel or the workspace default), not the retired campaign_id
-// model, so uniqueness matches the pipeline the stage actually lives on.
 func (r *repository) NameExistsInCampaign(workspaceID, campaignID, campaignType, name string, excludeID *string) (bool, error) {
 	pipelineID, err := r.resolveConversationPipeline(workspaceID, campaignID, campaignType)
 	if err != nil {
@@ -502,9 +447,6 @@ func (r *repository) NameExistsInCampaign(workspaceID, campaignID, campaignType,
 	return count > 0, nil
 }
 
-// SetInitialStage clears the previous initial stage within the campaign's RESOLVED
-// pipeline (not the retired campaign_id scope) and marks the new one, so exactly
-// one initial stage exists per pipeline.
 func (r *repository) SetInitialStage(workspaceID, campaignID, campaignType, StageID string) error {
 	pipelineID, err := r.resolveConversationPipeline(workspaceID, campaignID, campaignType)
 	if err != nil {
@@ -528,8 +470,6 @@ func (r *repository) ClearInitialStage(workspaceID string) error {
 
 func (r *repository) GetInitialStage(workspaceID string) (*stage.Stage, error) {
 	var dbStage schema.Stage
-	// Prefer a canonical (pipeline) initial stage over a surviving old
-	// per-campaign one, which the promotion keeps around with is_initial intact.
 	if err := r.db.Where("workspace_id = ? AND is_initial = ?", workspaceID, true).
 		Order("(CASE WHEN pipeline_id IS NULL THEN 1 ELSE 0 END) ASC, position ASC, created_at ASC").
 		First(&dbStage).Error; err != nil {
@@ -541,11 +481,6 @@ func (r *repository) GetInitialStage(workspaceID string) (*stage.Stage, error) {
 	return mapTagToDomain(&dbStage), nil
 }
 
-// GetInitialStageForCampaign resolves the initial stage of the workspace's
-// canonical conversation pipeline (falling back to its first stage by position).
-// The board is decoupled from the campaign, so the campaignID/campaignType
-// arguments are retained only for interface compatibility. This keeps
-// auto-assign placing new entries on a canonical stage that the board renders.
 func (r *repository) GetInitialStageForCampaign(workspaceID, campaignID, campaignType string) (*stage.Stage, error) {
 	pipelineID, err := r.resolveConversationPipeline(workspaceID, campaignID, campaignType)
 	if err != nil {
@@ -665,12 +600,6 @@ func (r *repository) GetEntriesByStage(StageID, workspaceID string) ([]*stage.En
 	return result, nil
 }
 
-// EnsureDefaultStagesForCampaign ensures the workspace's default conversation
-// pipeline and its canonical, workspace-global stages exist. Stages are no
-// longer cloned per campaign; the campaignID and
-// campaignType arguments are retained only for backward compatibility with the
-// Repository interface and its existing callers. It is a thin wrapper over
-// ensureDefaultConversationPipeline so the name keeps working everywhere.
 func (r *repository) EnsureDefaultStagesForCampaign(workspaceID, campaignID, campaignType string) error {
 	_, err := r.ensureDefaultConversationPipeline(workspaceID)
 	return err
@@ -742,9 +671,6 @@ func (r *repository) ReorderStages(workspaceID string, tagIDs []string) error {
 		return nil
 	}
 
-	// Inline the position as an integer LITERAL (it's a controlled loop index, no
-	// injection risk). Binding it as a param makes Postgres infer the CASE as text
-	// and reject assigning it to the bigint `position` column (SQLSTATE 42804).
 	caseSQL := "CASE id "
 	args := make([]interface{}, 0, len(tagIDs))
 	for i, StageID := range tagIDs {
@@ -788,8 +714,6 @@ func mapTagToDomain(dbStage *schema.Stage) *stage.Stage {
 	}
 }
 
-// nullableUUID returns nil for an empty id so an Update writes SQL NULL instead
-// of an empty string into a nullable uuid column (which Postgres would reject).
 func nullableUUID(s string) interface{} {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -820,7 +744,6 @@ func (r *repository) GetStageCountsForCampaign(workspaceID, campaignID, entryTyp
 		return nil, nil
 	}
 
-	// Only WhatsApp campaign entries carry stages today.
 	const entryTable = "whatsapp_campaign_entries"
 	_ = entryType
 
@@ -864,16 +787,10 @@ func (r *repository) GetStageCountsForWorkspace(workspaceID, entryType string) (
 
 	args := []interface{}{workspaceID}
 
-	// Narrow to one channel's entries when asked. An unrecognised type used to
-	// apply NO filter at all, so asking for one channel's stage counts silently
-	// returned every channel's, an over-count that looks like real data.
 	var entryTypeFilter string
 	if entryType != "" {
 		subquery, ok := workspaceEntryIDSubqueries[shared.EntryType(entryType)]
 		if !ok {
-			// A channel with no entry table to scope by (voice) cannot be
-			// narrowed; returning nothing is the honest answer, since the
-			// alternative is silently counting other channels.
 			return map[string]int64{}, nil
 		}
 		entryTypeFilter = "AND et.entry_id IN (" + subquery + ")"

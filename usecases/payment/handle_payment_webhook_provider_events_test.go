@@ -9,14 +9,6 @@ import (
 	"vozko/domain/payment"
 )
 
-// The events in this file exist only because Mercado Pago reports states Asaas has no
-// event for. They travel through the SAME handler as every Asaas event, so what is
-// verified here is that the shared handler treats them correctly rather than ignoring
-// them into a silent no-op.
-
-// TestHandleWebhook_Chargeback_DebitsLikeARefund: money already credited to saldo is
-// being pulled back by the card network. Failing to debit would leave the workspace
-// spending balance the business no longer holds.
 func TestHandleWebhook_Chargeback_DebitsLikeARefund(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"1234567890": {
@@ -74,8 +66,6 @@ func TestHandleWebhook_Chargeback_Subscription(t *testing.T) {
 }
 
 func TestHandleWebhook_Chargeback_MonthlyBilling_ReversesOnlyCreditablePortion(t *testing.T) {
-	// A unified monthly invoice credits only its plan portion; a chargeback must
-	// reverse exactly that, never the channel-license repasse that never became saldo.
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"1": {
 			ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeMonthlyBilling,
@@ -100,8 +90,6 @@ func TestHandleWebhook_Chargeback_MonthlyBilling_ReversesOnlyCreditablePortion(t
 	}
 }
 
-// TestHandleWebhook_Rejected_CancelsInvoice: a rejected charge is terminal and can
-// never be paid, so leaving the invoice PENDING would keep dunning a dead charge.
 func TestHandleWebhook_Rejected_CancelsInvoice(t *testing.T) {
 	for _, purpose := range []invoice.Purpose{invoice.PurposeTopUp, invoice.PurposeSubscription, invoice.PurposeMonthlyBilling} {
 		t.Run(string(purpose), func(t *testing.T) {
@@ -123,9 +111,6 @@ func TestHandleWebhook_Rejected_CancelsInvoice(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_InAnalysis_MovesNothing: a payment under provider review must not
-// credit anything. This is the test that would catch a mapping mistake crediting saldo
-// before the money is actually ours.
 func TestHandleWebhook_InAnalysis_MovesNothing(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"1": {ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeTopUp, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPending},
@@ -154,8 +139,6 @@ func TestHandleWebhook_InAnalysis_MovesNothing(t *testing.T) {
 	}
 }
 
-// TestMapWebhookEventToStatuses_ProviderEvents covers the order/payment side of the
-// same three events, which is the path a marketplace order takes.
 func TestMapWebhookEventToStatuses_ProviderEvents(t *testing.T) {
 	cases := []struct {
 		event      string
@@ -174,7 +157,6 @@ func TestMapWebhookEventToStatuses_ProviderEvents(t *testing.T) {
 			wantOrder: ptrOrderStatus(order.StatusCancelled),
 		},
 		{
-			// Informational: nothing must move.
 			event:      payment.EventPaymentInAnalysis,
 			nilAllowed: true,
 		},
@@ -199,9 +181,6 @@ func TestMapWebhookEventToStatuses_ProviderEvents(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_ProviderAgnostic proves the point of the whole refactor: an event
-// carrying Mercado Pago's numeric charge id and provider label is handled identically
-// to the Asaas equivalent.
 func TestHandleWebhook_ProviderAgnostic(t *testing.T) {
 	newRepo := func() *webhookInvoiceRepo {
 		return &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
@@ -236,8 +215,6 @@ func TestHandleWebhook_ProviderAgnostic(t *testing.T) {
 	}
 }
 
-// TestHandleWebhook_EventNamesAreNormalizedToUpper guards the entry point: a provider
-// adapter emitting a lowercase name must not silently fall through to a no-op.
 func TestHandleWebhook_EventNamesAreNormalizedToUpper(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"1": {ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeTopUp, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPending, AmountBRL: 30, ExchangeRate: 6},

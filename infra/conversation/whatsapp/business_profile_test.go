@@ -11,9 +11,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// TestBusinessProfile_Dialog360_ChannelScoped verifies the 360dialog path: channel-scoped
-// endpoint /whatsapp_business_profile, D360-API-KEY, and the {"data":[{...}]} response
-// shape validated live against waba-v2.360dialog.io.
 func TestBusinessProfile_Dialog360_ChannelScoped(t *testing.T) {
 	var gotPath, gotAuth, gotBody, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +59,6 @@ func TestBusinessProfile_Dialog360_ChannelScoped(t *testing.T) {
 	}
 }
 
-// The Meta path scopes by phone number id.
 func TestBusinessProfile_Meta_PhoneScoped(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

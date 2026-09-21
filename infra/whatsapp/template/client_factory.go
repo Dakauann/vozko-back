@@ -20,9 +20,6 @@ type clientFactory struct {
 	metaAppID        string
 }
 
-// NewWhatsAppClientFactory builds per-phone clients. metaAppID is the shared
-// Meta app id (WHATSAPP_APP_ID) that scopes the Resumable Upload API for
-// template header media on Meta-hosted phones; 360dialog phones don't need it.
 func NewWhatsAppClientFactory(phoneRepo businessphone.Repository, httpClient *http.Client, dialog360BaseURL string, metaAppID string) conversation.WhatsAppClientFactory {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -38,27 +35,19 @@ func NewWhatsAppClientFactory(phoneRepo businessphone.Repository, httpClient *ht
 	}
 }
 
-// buildClient resolves the provider for a phone and constructs the matching
-// client. 360dialog wraps the Meta Cloud API, so both providers use the same
-// client body and differ only in base URL and credential header.
 func (f *clientFactory) buildClient(phone *businessphone.WhatsAppBusinessPhoneNumber) (conversation.WhatsAppClient, error) {
 	if phone.Provider.IsDialog360() {
 		if phone.Dialog360APIKey == "" {
 			return nil, errors.New("360dialog channel has no API key; finish onboarding before sending")
 		}
 		return whatsapp_client.NewClient(whatsapp_client.Config{
-			BaseURL:         f.dialog360BaseURL,
-			PhoneNumberID:   phone.MetaPhoneNumberID,
-			WABAId:          phone.WABAId,
-			AccessToken:     phone.Dialog360APIKey,
-			AuthHeaderName:  "D360-API-KEY",
-			AuthValuePrefix: "",
-			// 360dialog scopes the channel by the API key; the send path is
-			// "{base}/messages" with no phone-number-id segment (confirmed against
-			// the 360dialog sandbox, which 404s on the Meta-style path).
-			OmitPhoneNumberInPath: true,
-			// Template management is channel-scoped too ("{base}/v1/configs/templates"),
-			// not Meta's WABA-scoped Graph path.
+			BaseURL:                f.dialog360BaseURL,
+			PhoneNumberID:          phone.MetaPhoneNumberID,
+			WABAId:                 phone.WABAId,
+			AccessToken:            phone.Dialog360APIKey,
+			AuthHeaderName:         "D360-API-KEY",
+			AuthValuePrefix:        "",
+			OmitPhoneNumberInPath:  true,
 			TemplatesChannelScoped: true,
 			HTTPClient:             f.httpClient,
 		}), nil

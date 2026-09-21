@@ -9,13 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The state a conversation spends most of its time in.
-//
-// A reply stamps the conversation; the engine only takes it once it has been
-// quiet for a few minutes. Between those two moments the analysis queue has no
-// row, so without this read the CRM shows nothing and a conversation that IS
-// about to be analysed looks exactly like one that never will be.
-
 type stubScheduleState struct {
 	cache.SharedState
 	fields map[string]string
@@ -38,7 +31,6 @@ func TestAwaitingAnalysisReportsStampedConversations(t *testing.T) {
 	reader := NewAnalysisScheduleReader(&stubScheduleState{fields: map[string]string{
 		"entry-1": stampedAt(shared.EntryTypeUnofficialWhatsApp, now),
 		"entry-3": stampedAt(shared.EntryTypeUnofficialWhatsApp, now),
-		// A conversation on a different page entirely.
 		"entry-9": stampedAt(shared.EntryTypeUnofficialWhatsApp, now),
 	}})
 
@@ -53,14 +45,11 @@ func TestAwaitingAnalysisReportsStampedConversations(t *testing.T) {
 	if got["entry-2"] {
 		t.Error("an unstamped conversation was reported as awaiting analysis")
 	}
-	// Absent, not false, and never a conversation the caller did not ask about.
 	if len(got) != 2 {
 		t.Errorf("map holds %d entries, want only the two asked for that are stamped", len(got))
 	}
 }
 
-// The stamp names its channel. A page of Telegram rows must not light up
-// because an id happens to appear under another channel's stamp.
 func TestAwaitingAnalysisIgnoresAnotherChannelsStamp(t *testing.T) {
 	reader := NewAnalysisScheduleReader(&stubScheduleState{fields: map[string]string{
 		"entry-1": stampedAt(shared.EntryTypeUnofficialWhatsApp, time.Now()),
@@ -75,8 +64,6 @@ func TestAwaitingAnalysisIgnoresAnotherChannelsStamp(t *testing.T) {
 	}
 }
 
-// This decorates a row. An inbox that refused to render because a cache was
-// briefly down would be a far worse outcome than a missing chip.
 func TestAwaitingAnalysisDegradesWhenTheCacheIsDown(t *testing.T) {
 	reader := NewAnalysisScheduleReader(&stubScheduleState{err: errors.New("redis down")})
 
@@ -89,8 +76,6 @@ func TestAwaitingAnalysisDegradesWhenTheCacheIsDown(t *testing.T) {
 	}
 }
 
-// Garbage in the hash is skipped rather than reported as a stamp: the key is
-// shared state, and a value this code did not write means nothing here.
 func TestAwaitingAnalysisSkipsUndecodableValues(t *testing.T) {
 	reader := NewAnalysisScheduleReader(&stubScheduleState{fields: map[string]string{
 		"entry-1": "not-a-stamp",
@@ -106,7 +91,6 @@ func TestAwaitingAnalysisSkipsUndecodableValues(t *testing.T) {
 	}
 }
 
-// No reader, no page, no state: all normal, none of them an error.
 func TestAwaitingAnalysisHandlesEmptyInput(t *testing.T) {
 	reader := NewAnalysisScheduleReader(&stubScheduleState{fields: map[string]string{}})
 	if got, err := reader.AwaitingAnalysis(nil, "whatsapp"); err != nil || len(got) != 0 {

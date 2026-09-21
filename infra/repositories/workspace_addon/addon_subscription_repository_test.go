@@ -29,9 +29,6 @@ func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	return db, mock, sqlDB
 }
 
-// TestListReactivatableByWorkspace_FilterAndMapping pins the revival query's filter (active OR
-// sweep-expired-but-not-customer-cancelled-and-recent) and that an expired row maps back to the domain.
-// The filter is the load-bearing part: it must never revive a customer-cancelled or earlier-cycle addon.
 func TestListReactivatableByWorkspace_FilterAndMapping(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -40,8 +37,6 @@ func TestListReactivatableByWorkspace_FilterAndMapping(t *testing.T) {
 	since := time.Date(2026, 2, 23, 0, 0, 0, 0, time.UTC)
 	periodEnd := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC)
 
-	// The distinctive fragments of the revival filter must be present: the active branch, and the
-	// swept branch gated on cancelled_at IS NULL and current_period_end >=.
 	mock.ExpectQuery(`SELECT \* FROM "workspace_addon_subscriptions".*cancelled_at IS NULL.*current_period_end >=`).
 		WithArgs(
 			"ws-1",

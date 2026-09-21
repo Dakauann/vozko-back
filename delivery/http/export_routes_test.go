@@ -13,14 +13,6 @@ func newGetRequest(t *testing.T, path string) *nethttp.Request {
 	return httptest.NewRequest(nethttp.MethodGet, path, nil)
 }
 
-// TestExportRoutesRegistered pins every CSV export path to the router.
-//
-// These handlers were built, wired into the container and threaded into the
-// router struct — and then never registered, so every export in the product
-// answered 404 for as long as the feature had existed. The frontend reads a 404
-// from this path as "nothing to export", so operators were told their campaigns
-// were empty instead of being told the endpoint was missing. Nothing failed;
-// there was simply no test that asked whether the route existed.
 func TestExportRoutesRegistered(t *testing.T) {
 	r := &router{mux: mux.NewRouter()}
 	r.setupRoutes()
@@ -50,10 +42,6 @@ func TestExportRoutesRegistered(t *testing.T) {
 	}
 }
 
-// TestWorkspaceExportRouteDoesNotShadowCampaignRoute guards the one collision
-// this path shape could have: /whatsapp/campaigns/entries/export sits where a
-// campaign id would, so a router that matched it against /{id}/entries would
-// send workspace exports to the single-campaign handler with the id "entries".
 func TestWorkspaceExportRouteDoesNotShadowCampaignRoute(t *testing.T) {
 	r := &router{mux: mux.NewRouter()}
 	r.setupRoutes()

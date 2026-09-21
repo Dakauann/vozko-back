@@ -18,7 +18,6 @@ type instanceRepository struct {
 	db *gorm.DB
 }
 
-// NewInstanceRepository builds the connected-number repository.
 func NewInstanceRepository(db *gorm.DB) uw.InstanceRepository {
 	return &instanceRepository{db: db}
 }
@@ -37,12 +36,6 @@ func (r *instanceRepository) Create(ctx context.Context, i *uw.Instance) error {
 	return nil
 }
 
-// Update writes the operator-editable configuration.
-//
-// It deliberately does NOT write status, session identity or restriction state:
-// those are owned by UpdateStatus / UpdateSession / UpdateRestriction, which the
-// health cron drives. A config save that also carried a stale status would
-// resurrect a disconnected instance every time someone renamed it.
 func (r *instanceRepository) Update(ctx context.Context, i *uw.Instance) error {
 	record := toInstanceSchema(i)
 	update := map[string]any{
@@ -95,12 +88,6 @@ func (r *instanceRepository) UpdateStatus(ctx context.Context, id string, status
 	return nil
 }
 
-// UpdateSession records what one status poll learned.
-//
-// Identity fields are written only when the poll actually carried them: a
-// disconnected instance answers with an empty JID and profile, and blanking the
-// stored identity would leave the operator looking at a nameless row with no way
-// to tell which number just dropped.
 func (r *instanceRepository) UpdateSession(ctx context.Context, id string, in uw.SessionUpdate) error {
 	update := map[string]any{"last_polled_at": in.PolledAt}
 
@@ -115,8 +102,6 @@ func (r *instanceRepository) UpdateSession(ctx context.Context, id string, in uw
 	setIfPresent(update, "profile_pic_url", in.ProfilePicURL)
 	setIfPresent(update, "platform", in.Platform)
 	if in.JID != "" {
-		// Only trustworthy alongside a live identity; a logged-out poll reports
-		// false for every account, business or not.
 		update["is_business_acct"] = in.IsBusinessAcct
 	}
 	if in.ConnectedAt != nil {
@@ -132,7 +117,6 @@ func (r *instanceRepository) UpdateSession(ctx context.Context, id string, in uw
 		Updates(update)
 	if result.Error != nil {
 		if isUniqueViolation(result.Error) {
-			// The JID index fired: this number is already connected elsewhere.
 			return uw.ErrNumberAlreadyLinked
 		}
 		return result.Error
@@ -170,12 +154,6 @@ func (r *instanceRepository) SetWebhookRegistered(ctx context.Context, id string
 		UpdateColumn("webhook_set_at", at).Error
 }
 
-// RotateDeliveryToken replaces the webhook credential.
-//
-// Both columns move in one statement: the digest is what the endpoint resolves
-// by and the encrypted copy is what the UI re-displays, so writing them
-// separately would leave a window where the URL shown to an operator is not the
-// URL that works.
 func (r *instanceRepository) RotateDeliveryToken(ctx context.Context, id, token, tokenHash string) error {
 	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppInstance{}).
 		Where("id = ?", id).
@@ -196,11 +174,6 @@ func (r *instanceRepository) FindByID(ctx context.Context, id string) (*uw.Insta
 	return r.first(ctx, r.db.WithContext(ctx).Where("id = ?", id))
 }
 
-// FindByDeliveryTokenHash resolves the tenant for an inbound webhook.
-//
-// Every non-deleted instance is eligible regardless of status: one that just
-// dropped is precisely the one whose next event matters, and filtering by
-// CONNECTED here would discard the disconnection notice itself.
 func (r *instanceRepository) FindByDeliveryTokenHash(ctx context.Context, tokenHash string) (*uw.Instance, error) {
 	if strings.TrimSpace(tokenHash) == "" {
 		return nil, uw.ErrInstanceNotFound
@@ -224,9 +197,6 @@ func (r *instanceRepository) ListByWorkspace(
 	ctx context.Context,
 	input uw.ListInstancesInput,
 ) (*shared.PaginatedResult[*uw.Instance], error) {
-	// A restricted caller in no department matches nothing, and saying so here
-	// avoids building an IN () — a syntax error in some dialects and a silent
-	// match-ALL in others. Failing closed is the whole point.
 	if input.Scope.BlocksEverything() {
 		return shared.NewPaginatedResult([]*uw.Instance{}, input.Options.Pagination, 0), nil
 	}
@@ -234,11 +204,6 @@ func (r *instanceRepository) ListByWorkspace(
 	query := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppInstance{}).
 		Where("workspace_id = ?", input.WorkspaceID)
 
-	// Department scope, matching the conversation machinery's own SQL: a
-	// restricted operator sees numbers in their departments and nothing else.
-	// A number with NO department is excluded, exactly as `= ANY(...)` excludes
-	// a NULL in the inbox union — a number whose conversations they cannot read
-	// has no business appearing in their list.
 	if input.Scope.Restrict {
 		query = query.Where("department_id IN ?", input.Scope.DepartmentIDs)
 	}
@@ -277,11 +242,6 @@ func (r *instanceRepository) ListByServer(ctx context.Context, serverID string) 
 	return instancesToDomain(records), nil
 }
 
-// ListForHealthCheck returns instances not polled since `before`, oldest first.
-//
-// Terminal statuses are excluded: a banned number cannot recover, and polling it
-// forever would spend the cron's budget on the one instance guaranteed not to
-// change.
 func (r *instanceRepository) ListForHealthCheck(ctx context.Context, before time.Time, limit int) ([]*uw.Instance, error) {
 	if limit <= 0 {
 		limit = 100
@@ -302,12 +262,6 @@ func (r *instanceRepository) ListForHealthCheck(ctx context.Context, before time
 	return instancesToDomain(records), nil
 }
 
-// ListConnected returns every live instance, oldest-contacted first.
-//
-// Unlike ListForHealthCheck this ignores when the instance was last heard from:
-// the integrity sweep asks whether our webhook is still registered and whether
-// WhatsApp is restricting the number, and no inbound event reports either, so a
-// chatty instance needs the sweep exactly as much as a quiet one.
 func (r *instanceRepository) ListConnected(ctx context.Context, limit int) ([]*uw.Instance, error) {
 	if limit <= 0 {
 		limit = 500
@@ -363,19 +317,12 @@ func instancesToDomain(records []schema.UnofficialWhatsAppInstance) []*uw.Instan
 	return out
 }
 
-// setIfPresent writes a column only when the poll supplied a value, so an
-// incomplete answer never blanks what we already knew.
 func setIfPresent(update map[string]any, column, value string) {
 	if strings.TrimSpace(value) != "" {
 		update[column] = value
 	}
 }
 
-// CountByWorkspace counts the instances a workspace occupies.
-//
-// Every non-deleted row, regardless of session state: the entitlement measures
-// slots held, and a disconnected instance still holds one on the host until it
-// is removed. Soft-deleted rows are excluded by GORM's own scope.
 func (r *instanceRepository) CountByWorkspace(ctx context.Context, workspaceID string) (int, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppInstance{}).

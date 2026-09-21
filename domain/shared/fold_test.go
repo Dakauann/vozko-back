@@ -2,10 +2,6 @@ package shared
 
 import "testing"
 
-// FoldForMatch is what makes "promoção", "PROMOCAO" and "Promocao" one keyword
-// for the Instagram rule engine, and "Saúde Pública" and "saude publica" one
-// topic for comment analysis. Both consumers rely on the exact same folding,
-// which is why it lives here and not in either of them.
 func TestFoldForMatch(t *testing.T) {
 	cases := []struct {
 		name string
@@ -34,7 +30,6 @@ func TestFoldForMatch(t *testing.T) {
 	}
 }
 
-// The two spellings a Brazilian audience uses interchangeably must collapse.
 func TestFoldForMatch_CollapsesSpellings(t *testing.T) {
 	pairs := [][2]string{
 		{"Saúde Pública", "saude publica"},

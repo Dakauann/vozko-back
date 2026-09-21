@@ -11,8 +11,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// recordingHistory captures what the webhook path persisted, so a test can
-// assert who a message was attributed to.
 type recordingHistory struct {
 	mu         sync.Mutex
 	records    []conversation.MessageHistoryRecord
@@ -27,7 +25,6 @@ func (h *recordingHistory) Record(_ context.Context, d conversation.MessageHisto
 	return nil
 }
 
-// directionOf returns the direction recorded alongside record i.
 func (h *recordingHistory) directionOf(i int) conversation.MessageHistoryDirection {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -43,8 +40,6 @@ func (h *recordingHistory) all() []conversation.MessageHistoryRecord {
 	return append([]conversation.MessageHistoryRecord(nil), h.records...)
 }
 
-// groupHarness assembles the webhook usecase with every port a group message
-// touches.
 type groupHarness struct {
 	uc        *HandleWebhookUseCase
 	instance  *uw.Instance
@@ -92,7 +87,6 @@ func newGroupHarness(t *testing.T, handleGroups bool) *groupHarness {
 	return h
 }
 
-// deliver feeds one provider message through the whole ingest path.
 func (h *groupHarness) deliver(t *testing.T, msg map[string]any) {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
@@ -125,13 +119,6 @@ func groupMessage(from, text string) map[string]any {
 	}
 }
 
-// ONE group is ONE conversation, however many members write in it.
-//
-// This is the bug that made groups unusable in production. Conversations were
-// keyed by (instance, contact) and a group message's contact was resolved from
-// its SENDER, so every member who spoke created another conversation for the
-// same chat — each labelled with that member's name and number, with the lookup
-// that resolves a chat for delivery receipts picking one of them arbitrarily.
 func TestOneGroupIsOneConversation(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
@@ -151,7 +138,6 @@ func TestOneGroupIsOneConversation(t *testing.T) {
 		t.Errorf("chat id = %q, want the group jid", conv.ChatID)
 	}
 
-	// The subject is the GROUP, not whoever spoke first.
 	subject, err := h.contacts.FindByID(context.Background(), conv.ContactID)
 	if err != nil {
 		t.Fatalf("resolving the conversation subject: %v", err)
@@ -168,11 +154,6 @@ func TestOneGroupIsOneConversation(t *testing.T) {
 	}
 }
 
-// Each message names the MEMBER who wrote it, not the group.
-//
-// The conversation's subject is the group, so labelling bubbles with the subject
-// would attribute the whole thread to itself and make a group transcript
-// unreadable — every line from "Time Comercial".
 func TestGroupMessagesAreAttributedToTheirAuthor(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
@@ -194,11 +175,6 @@ func TestGroupMessagesAreAttributedToTheirAuthor(t *testing.T) {
 	}
 }
 
-// A group runs no automation unless its instance opted in — and the decision is
-// the INSTANCE's, which is the whole point.
-//
-// The gate used to live on the event, where it ran before HandleGroups was ever
-// read and made that setting unreachable: turning it on changed nothing.
 func TestGroupAttendanceFollowsTheInstanceSetting(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -223,7 +199,6 @@ func TestGroupAttendanceFollowsTheInstanceSetting(t *testing.T) {
 	}
 }
 
-// A private chat is never affected by the group gate.
 func TestPrivateChatsAreAlwaysInScope(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 	assigned := &recordingAssignments{}
@@ -247,7 +222,6 @@ func TestPrivateChatsAreAlwaysInScope(t *testing.T) {
 	}
 }
 
-// recordingAssignments counts round-robin assignments.
 type recordingAssignments struct {
 	mu sync.Mutex
 	n  int

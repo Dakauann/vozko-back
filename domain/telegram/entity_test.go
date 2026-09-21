@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// The status lifecycle has a guard from day one, unlike the WhatsApp phone entity
-// whose ten states are set by bare assignment. A transition that should be
-// impossible must stay impossible.
 func TestStatusTransitions(t *testing.T) {
 	allowed := map[Status][]Status{
 		StatusPending:        {StatusActive, StatusRevoked, StatusTokenInvalid},
@@ -22,7 +19,7 @@ func TestStatusTransitions(t *testing.T) {
 	}
 
 	for from, wants := range allowed {
-		permitted := map[Status]bool{from: true} // self-transition is always fine
+		permitted := map[Status]bool{from: true}
 		for _, w := range wants {
 			permitted[w] = true
 		}
@@ -39,8 +36,6 @@ func TestStatusTransitions(t *testing.T) {
 	}
 }
 
-// CanSend is the single gate every outbound path consults, so its edge cases are
-// the ones that decide whether an operator can reply at all.
 func TestAccountCanSend(t *testing.T) {
 	base := func() *Account {
 		return &Account{
@@ -61,8 +56,6 @@ func TestAccountCanSend(t *testing.T) {
 		t.Error("an account with no token cannot send")
 	}
 
-	// A webhook failure is INBOUND-only. Blocking outbound too would stop an
-	// operator replying to messages that already arrived, for no reason.
 	failing := base()
 	failing.Status = StatusWebhookFailing
 	if !failing.CanSend() {
@@ -75,8 +68,6 @@ func TestAccountCanSend(t *testing.T) {
 		t.Error("a revoked token cannot send")
 	}
 
-	// Business mode adds two conditions the owner controls and can revoke at any
-	// moment, so both are re-checked rather than assumed from onboarding.
 	business := base()
 	business.Mode = ModeBusiness
 	business.BusinessEnabled = true
@@ -97,8 +88,6 @@ func TestAccountCanSend(t *testing.T) {
 	}
 }
 
-// Rights must never be nil-dereferenced: the owner can disconnect between our
-// read and our send.
 func TestRightsIsNilSafe(t *testing.T) {
 	var a Account
 	if a.Rights().CanReply {
@@ -106,7 +95,6 @@ func TestRightsIsNilSafe(t *testing.T) {
 	}
 }
 
-// The webhook alarm is the channel's data-loss detector, not a cosmetic flag.
 func TestWebhookUnhealthy(t *testing.T) {
 	clean := &Account{WebhookPendingCount: 0}
 	if clean.WebhookUnhealthy(20) {
@@ -118,8 +106,6 @@ func TestWebhookUnhealthy(t *testing.T) {
 		t.Error("a backlog at or above the threshold is unhealthy")
 	}
 
-	// An error message is unhealthy regardless of the backlog: Telegram reporting
-	// a delivery error means it is failing right now.
 	erroring := &Account{WebhookLastError: "connection refused"}
 	if !erroring.WebhookUnhealthy(20) {
 		t.Error("a reported delivery error is unhealthy even with no backlog")
@@ -160,8 +146,6 @@ func TestNormalizeStripsAtPrefix(t *testing.T) {
 	}
 }
 
-// The contact label is what an operator sees in the inbox. It must never be
-// blank, because a nameless row is unusable.
 func TestContactDisplayNameAndHandle(t *testing.T) {
 	full := &Contact{FirstName: "Marina", LastName: "Alves", Username: "marina", TGUserID: 42}
 	if full.DisplayName() != "Marina Alves" {
@@ -176,8 +160,6 @@ func TestContactDisplayNameAndHandle(t *testing.T) {
 		t.Errorf("DisplayName = %q, want the handle", handleOnly.DisplayName())
 	}
 
-	// Telegram never volunteers a phone number, so a contact can genuinely have
-	// neither name nor handle.
 	bare := &Contact{TGUserID: 42}
 	if bare.DisplayName() != "42" {
 		t.Errorf("DisplayName = %q, want the id as a last resort", bare.DisplayName())
@@ -193,8 +175,6 @@ func TestContactDisplayNameAndHandle(t *testing.T) {
 	}
 }
 
-// The business-mode window is Instagram's exact rule, and getting it wrong would
-// either block valid replies or let us send outside what Telegram permits.
 func TestBusinessWindowOpen(t *testing.T) {
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 
@@ -214,7 +194,6 @@ func TestBusinessWindowOpen(t *testing.T) {
 		t.Error("a 25-hour-old inbound closes the window")
 	}
 
-	// No inbound at all: a bot cannot open a conversation.
 	empty := &Conversation{}
 	if open, expires := empty.BusinessWindowOpen(now); open || expires != nil {
 		t.Error("with no inbound the window is closed and has no expiry")
@@ -254,8 +233,6 @@ func TestDeepLinkURLAndExpiry(t *testing.T) {
 	}
 }
 
-// Telegram's own webhook rules fail SILENTLY when broken, a wrong scheme or
-// port simply never delivers, so they are checked at boot.
 func TestValidateWebhookBaseURL(t *testing.T) {
 	valid := []string{
 		"https://api.example.com",
@@ -292,9 +269,6 @@ func TestWebhookURLFor(t *testing.T) {
 	}
 }
 
-// The secret token is the ONLY authenticity control this channel has, Telegram
-// does not sign the body, so it must be unguessable and within Telegram's
-// documented alphabet.
 func TestGenerateWebhookSecret(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 50; i++ {
@@ -330,8 +304,6 @@ func TestGenerateDeepLinkTokenIsAcceptable(t *testing.T) {
 	}
 }
 
-// Telegram answers a flood wait with an exact retry_after. Honouring it is what
-// makes retry correct rather than guessed.
 func TestAPIErrorClassification(t *testing.T) {
 	flood := &APIError{Code: 429, RetryAfter: 7}
 	if !flood.Retryable() {
@@ -346,14 +318,11 @@ func TestAPIErrorClassification(t *testing.T) {
 		t.Error("5xx is retryable")
 	}
 
-	// 401 is the only way a Telegram token dies: it was revoked in BotFather.
 	dead := &APIError{Code: 401, Description: "Unauthorized"}
 	if !dead.NeedsReconnect() || dead.Retryable() {
 		t.Error("401 needs a reconnect and must not be retried")
 	}
 
-	// Telegram spells several distinct situations as 403; all mean the same thing
-	// for the CRM, and none is retryable.
 	for _, desc := range []string{
 		"Forbidden: bot was blocked by the user",
 		"Forbidden: user is deactivated",
@@ -369,7 +338,6 @@ func TestAPIErrorClassification(t *testing.T) {
 		}
 	}
 
-	// A migrated group has a NEW chat id; ignoring it kills the conversation.
 	migrated := &APIError{Code: 400, MigrateToChatID: -1001234567890}
 	if !migrated.Migrated() {
 		t.Error("migrate_to_chat_id must be surfaced")
@@ -381,8 +349,6 @@ func TestAPIErrorClassification(t *testing.T) {
 	}
 }
 
-// Capabilities measures text the way each provider documents it. Conflating the
-// two truncates emoji-heavy text on one channel and over-accepts on the other.
 func TestDescriptorUsesRuneLimit(t *testing.T) {
 	caps := Descriptor().Capabilities
 
@@ -393,8 +359,6 @@ func TestDescriptorUsesRuneLimit(t *testing.T) {
 		t.Error("Telegram counts characters, not bytes; setting both would double-bound the text")
 	}
 
-	// 4096 multibyte emoji are 4096 CHARACTERS but far more than 4096 bytes. A
-	// byte-based limit would reject a message Telegram accepts.
 	emoji := strings.Repeat("😀", MaxTextRunes)
 	if caps.TextTooLong(emoji) {
 		t.Error("exactly 4096 characters must be accepted regardless of byte length")
@@ -404,9 +368,6 @@ func TestDescriptorUsesRuneLimit(t *testing.T) {
 	}
 }
 
-// A window on the descriptor would disable the composer for every bot-mode
-// conversation older than a day. The window is per-ACCOUNT and lives in the
-// adapter.
 func TestDescriptorDeclaresNoWindow(t *testing.T) {
 	caps := Descriptor().Capabilities
 	if caps.OutboundWindow != 0 {
@@ -420,9 +381,6 @@ func TestDescriptorDeclaresNoWindow(t *testing.T) {
 	}
 }
 
-// sendDocument accepts any type, unlike Instagram's PDF-only attachment. An
-// empty MIME list must mean "accept anything", or every document would be
-// rejected.
 func TestDocumentLimitAcceptsAnyType(t *testing.T) {
 	limit := Descriptor().Capabilities.MediaLimits["document"]
 	for _, mime := range []string{"application/pdf", "application/zip", "text/csv", ""} {
@@ -432,9 +390,6 @@ func TestDocumentLimitAcceptsAnyType(t *testing.T) {
 	}
 }
 
-// message_reaction requires the bot to be "an administrator in the chat", which
-// does not exist in a private chat. Subscribing would imply an inbound-reaction
-// feature the platform may never deliver.
 func TestAllowedUpdatesOmitsMessageReaction(t *testing.T) {
 	for _, u := range AllowedUpdates() {
 		if u == "message_reaction" || u == "message_reaction_count" {

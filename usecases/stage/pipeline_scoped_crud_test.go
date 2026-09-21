@@ -6,8 +6,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// scopedRepo records which read a use case chose, so the tests can assert that a
-// named funnel is honoured instead of the campaign fallback.
 type scopedRepo struct {
 	stage.Repository
 
@@ -54,8 +52,6 @@ func (r *scopedRepo) FindByID(id string) (*stage.Stage, error) {
 	return nil, nil
 }
 
-// --- creating a stage on a named funnel --------------------------------------
-
 func TestCreateStage_LandsOnTheNamedFunnel(t *testing.T) {
 	repo := newScopedRepo()
 	repo.byPipeline["pipe-b"] = []*stage.Stage{
@@ -84,8 +80,6 @@ func TestCreateStage_LandsOnTheNamedFunnel(t *testing.T) {
 }
 
 func TestCreateStage_NameCollidesOnlyWithinItsOwnFunnel(t *testing.T) {
-	// Two funnels may each have a "fechado"; that is the entire point of funnels
-	// being separate. Uniqueness is per funnel, never per workspace.
 	repo := newScopedRepo()
 	repo.byPipeline["pipe-a"] = []*stage.Stage{{ID: "s1", Name: "fechado", PipelineID: "pipe-a"}}
 	repo.byPipeline["pipe-b"] = []*stage.Stage{{ID: "s2", Name: "triagem", PipelineID: "pipe-b"}}
@@ -122,8 +116,6 @@ func TestCreateStage_WithoutAFunnelKeepsTheLegacyPath(t *testing.T) {
 	}
 }
 
-// --- reordering reads back the funnel it reordered ---------------------------
-
 func TestReorderStages_ReadsBackTheNamedFunnel(t *testing.T) {
 	repo := newScopedRepo()
 	repo.byPipeline["pipe-b"] = []*stage.Stage{{ID: "s2"}, {ID: "s1"}}
@@ -138,8 +130,6 @@ func TestReorderStages_ReadsBackTheNamedFunnel(t *testing.T) {
 	if len(repo.reordered) != 2 {
 		t.Fatal("the reorder must reach the repository")
 	}
-	// Reading back through the campaign resolution would answer with the DEFAULT
-	// funnel, so a reorder on any other funnel appeared to snap back.
 	if repo.listedPipeline != "pipe-b" || repo.listedCampaign {
 		t.Error("the reordered funnel must be the one read back")
 	}

@@ -36,13 +36,6 @@ func NewAnalyticsHandler(
 	}
 }
 
-// GetMetaServiceMessageCost reports, per workspace, how many service messages were sent
-// against how many billable campaign sends were bought.
-//
-// The period is optional here, unlike every other report on this handler,
-// because the useful default is the current billing month and the usecase knows
-// how to build one. Sending no dates is therefore a request for "this month",
-// not a malformed request.
 func (h *AnalyticsHandler) GetMetaServiceMessageCost(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -80,8 +73,6 @@ func (h *AnalyticsHandler) GetMetaServiceMessageCost(w http.ResponseWriter, r *h
 	response.WriteSuccess(w, http.StatusOK, report)
 }
 
-// parseSortDirection reads the direction, defaulting to descending. The usecase
-// applies the same default, so this only spares it an ambiguous value.
 func parseSortDirection(raw string) shared.SortDirection {
 	if strings.EqualFold(strings.TrimSpace(raw), string(shared.SortAsc)) {
 		return shared.SortAsc
@@ -89,11 +80,6 @@ func parseSortDirection(raw string) shared.SortDirection {
 	return shared.SortDesc
 }
 
-// parseOptionalDateRange accepts a fully absent range, and otherwise validates
-// exactly as parseDateRange does. Half a range is still an error: it almost
-// always means the caller meant to send both and lost one, and silently
-// substituting a month boundary for the missing half would answer a question
-// nobody asked.
 func parseOptionalDateRange(w http.ResponseWriter, rawStart, rawEnd string) (start, end time.Time, ok bool) {
 	if strings.TrimSpace(rawStart) == "" && strings.TrimSpace(rawEnd) == "" {
 		return time.Time{}, time.Time{}, true

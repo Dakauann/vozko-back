@@ -7,18 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Scheduling joins the parity discipline in domain/shared/channel_parity_test.go,
-// for the same reason those guards exist: every feature that ever asked
-// `entryType == "whatsapp"` silently lost a channel, and nothing reported it.
-//
-// This feature is channel-agnostic by construction — it reads the window through
-// the port every channel already answers and sends through the use case the live
-// composer uses — so these are cheap to keep true. They are here to make it
-// LOUD if that ever stops being the case.
-
-// Any conversation an operator can open, they can schedule into. There is no
-// per-channel branch anywhere in the feature, so a channel that is viewable but
-// not schedulable would mean someone added one.
 func TestEveryViewableChannelCanBeScheduledTo(t *testing.T) {
 	for _, entryType := range shared.ConversationViewableEntryTypes() {
 		m := &ScheduledMessage{
@@ -38,9 +26,6 @@ func TestEveryViewableChannelCanBeScheduledTo(t *testing.T) {
 	}
 }
 
-// The window rule must produce an answer for every channel, not just the ones
-// with a 24-hour clock. A channel whose window state fell through to "no bound"
-// would either refuse every schedule or accept an unbounded one.
 func TestTheWindowRuleAnswersForEveryChannelShape(t *testing.T) {
 	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	expires := now.Add(6 * time.Hour)

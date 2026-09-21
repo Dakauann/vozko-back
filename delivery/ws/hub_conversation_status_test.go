@@ -61,8 +61,6 @@ func (m *mockStatusUpdater) GetStatusCounts(workspaceID, campaignID, entryType s
 type statusTestHistoryProvider struct {
 	entries map[string]*conversation.InboxEntry
 
-	// resolveCalls counts fallback resolutions so a test can assert that a
-	// producer-supplied name skips the lookup entirely.
 	resolveCalls int
 	resolvedName string
 }

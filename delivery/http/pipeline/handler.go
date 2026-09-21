@@ -202,9 +202,6 @@ func (h *PipelineHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	wsID := middleware.GetWorkspaceID(r)
 
-	// The destination rides as a query parameter rather than a body: DELETE with
-	// a body is unevenly supported by proxies and client libraries, and this is
-	// one optional id, not a document.
 	input := pipelinedomain.DeletePipelineInput{
 		MoveEntriesTo: strings.TrimSpace(r.URL.Query().Get("moveEntriesTo")),
 	}
@@ -254,9 +251,6 @@ func (h *PipelineHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, pipelinedomain.ErrUnauthorized):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
-	// The delete guard. 409 rather than 400: nothing about the request is
-	// malformed, the funnel's current state is what refuses it, and the client
-	// fixes it by unlinking or by naming a destination and retrying.
 	case errors.Is(err, pipelinedomain.ErrDeleteDefault),
 		errors.Is(err, pipelinedomain.ErrDeleteBound),
 		errors.Is(err, pipelinedomain.ErrDeleteNeedsDestination),

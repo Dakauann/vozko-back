@@ -13,9 +13,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// fakeLister replays a fixed set of rows, and records the scope it was handed
-// so tests can assert the usecase pushes filtering down instead of doing it in
-// memory. It also counts walks, which is how the two-pass design is pinned.
 type fakeLister struct {
 	entries []export.ChannelEntry
 	scopes  []export.Scope
@@ -30,8 +27,6 @@ func (f *fakeLister) ListForExport(ctx context.Context, scope export.Scope, emit
 		return f.err
 	}
 	for _, e := range f.entries {
-		// A real lister filters status in SQL; this one honours the same
-		// contract so the fixtures behave like the database does.
 		if len(scope.Statuses) > 0 && !containsFold(scope.Statuses, e.Status) {
 			continue
 		}
@@ -123,10 +118,6 @@ func whatsappFilter(scope export.Scope) export.ExportFilter {
 	return export.ExportFilter{Scope: scope, EntryType: export.EntryTypeWhatsApp}
 }
 
-// The card: pull the leads that were sent, delivered and read, in one file,
-// across every campaign. The statuses have to reach the lister so the database
-// does the narrowing — filtering 22k rows down to 6.6k in Go would drag the
-// whole workspace through the process on every export.
 func TestExportPushesStatusFilterIntoTheScope(t *testing.T) {
 	lister := &fakeLister{entries: []export.ChannelEntry{
 		{EntryID: "e-1", Number: "5511900000001", Status: "SENT"},
@@ -144,7 +135,7 @@ func TestExportPushesStatusFilterIntoTheScope(t *testing.T) {
 	if count != 3 {
 		t.Errorf("wrote %d rows, want 3", count)
 	}
-	if len(records) != 4 { // header + 3
+	if len(records) != 4 {
 		t.Fatalf("csv has %d lines, want 4", len(records))
 	}
 	for _, scope := range lister.scopes {
@@ -164,9 +155,6 @@ func TestExportWithoutStatusesReturnsEverything(t *testing.T) {
 	}
 }
 
-// A file spanning campaigns has to say which campaign each row came from, or a
-// row cannot be traced back to what produced it. A single-campaign file already
-// knows, and the extra column would only be noise.
 func TestCampaignColumnAppearsOnlyWhenTheScopeSpansCampaigns(t *testing.T) {
 	entries := []export.ChannelEntry{{
 		EntryID: "e-1", Number: "5511900000001", Name: "Ana",
@@ -200,10 +188,6 @@ func TestCampaignColumnAppearsOnlyWhenTheScopeSpansCampaigns(t *testing.T) {
 	})
 }
 
-// Nothing at all is written when nothing matches — not even a header. A file
-// with only a header is not "no results", it is an empty spreadsheet the
-// operator has to open to find that out, and the caller can no longer answer
-// with a status code once a byte is on the wire.
 func TestExportWritesNothingWhenNothingMatches(t *testing.T) {
 	lister := &fakeLister{entries: whatsappEntries(3)}
 	uc, _ := newUseCase(t, lister)
@@ -223,8 +207,6 @@ func TestExportWritesNothingWhenNothingMatches(t *testing.T) {
 	}
 }
 
-// Over the cap the export refuses rather than truncating: a file that silently
-// stops at 50k looks complete and gets acted on as if it were.
 func TestExportRefusesScopesOverTheRowCap(t *testing.T) {
 	lister := &fakeLister{entries: whatsappEntries(maxExportRows + 1)}
 	uc, _ := newUseCase(t, lister)
@@ -242,8 +224,6 @@ func TestExportRefusesScopesOverTheRowCap(t *testing.T) {
 	}
 }
 
-// Memory has to stay flat as the scope grows, which means enrichment reads a
-// bounded window of ids at a time rather than one IN clause holding every row.
 func TestEnrichmentReadsInBoundedBatches(t *testing.T) {
 	const rows = enrichBatchSize*2 + 25
 	lister := &fakeLister{entries: whatsappEntries(rows)}
@@ -279,9 +259,6 @@ func TestExportWalksTwiceAndOnlyTwice(t *testing.T) {
 	}
 }
 
-// Template variables are per-campaign, so the header is as wide as the widest
-// row and narrower rows are padded rather than short — a ragged CSV does not
-// parse.
 func TestVariableColumnsArePaddedToTheWidestRow(t *testing.T) {
 	lister := &fakeLister{entries: []export.ChannelEntry{
 		{EntryID: "e-1", Number: "5511900000001", Status: "READ", Variables: []string{"a"}},
@@ -302,10 +279,6 @@ func TestVariableColumnsArePaddedToTheWidestRow(t *testing.T) {
 	}
 }
 
-// Every free-text cell in this file is written by someone outside the system —
-// contact names, campaign names, uploaded metadata, AI summaries. Excel and
-// Sheets execute a cell that starts with =, +, - or @, so a lead named
-// "=cmd|'/c calc'!A1" would run on the machine of whoever opens the export.
 func TestFormulaInjectionIsNeutralisedInTextCells(t *testing.T) {
 	lister := &fakeLister{entries: []export.ChannelEntry{{
 		EntryID:       "e-1",
@@ -326,9 +299,6 @@ func TestFormulaInjectionIsNeutralisedInTextCells(t *testing.T) {
 		t.Errorf("name cell = %q, want it prefixed out of formula position", got)
 	}
 
-	// The number column is the one operators paste into phone systems. It is already
-	// reduced to digits and a leading +, which cannot carry a payload, so it
-	// must come through untouched.
 	if got := row[1]; got != "+5511900000001" {
 		t.Errorf("number cell = %q, want the raw number", got)
 	}
@@ -353,9 +323,6 @@ func TestNewlinesInTextDoNotBreakTheRecord(t *testing.T) {
 	}
 }
 
-// The status re-check is deliberate belt-and-braces: the port cannot force a
-// lister to honour Scope.Statuses, and an export that quietly includes statuses
-// the operator excluded is worse than one that costs a comparison per row.
 func TestStatusIsReCheckedEvenIfAListerIgnoresTheScope(t *testing.T) {
 	leaky := &leakyLister{entries: []export.ChannelEntry{
 		{EntryID: "e-1", Number: "5511900000001", Status: "READ"},

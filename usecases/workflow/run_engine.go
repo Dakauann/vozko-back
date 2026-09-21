@@ -13,10 +13,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// errNodePanic wraps a panic recovered while executing a node. It is terminal:
-// a panic is a programming error (e.g. a nil dependency), not a transient
-// failure, so the run fails fast instead of retrying, and, crucially, it never
-// escapes to crash the HTTP serving goroutine.
 var errNodePanic = errors.New("node executor panicked")
 
 type NodeExecutorRegistry struct {
@@ -42,13 +38,6 @@ func (r *NodeExecutorRegistry) RegisterDefinition(def workflow.NodeDefinition) {
 	r.definitions[def.Type] = workflow.NormalizeNodeDefinition(def)
 }
 
-// Get resolves the executor for a node type, mapping retired wire values
-// forward.
-//
-// Graph decoding already normalizes, so this is belt-and-braces for any path
-// that builds a Node in Go without going through JSON (tests, fixtures, the
-// simulator). A missing executor stops a run dead, so it is worth the one
-// method call.
 func (r *NodeExecutorRegistry) Get(nodeType workflow.NodeType) (workflow.NodeExecutor, bool) {
 	ex, ok := r.executors[nodeType.Canonical()]
 	return ex, ok
@@ -63,13 +52,11 @@ func (r *NodeExecutorRegistry) Catalog() []workflow.NodeDefinition {
 }
 
 type RunEngine struct {
-	runRepo       workflow.WorkflowRunRepository
-	logRepo       workflow.WorkflowRunLogRepository
-	registry      *NodeExecutorRegistry
-	wakeScheduler workflow.WakeScheduler
-	runLocker     workflow.RunLocker
-	// automationGate is consulted when a PARKED run resumes. Optional: nil
-	// keeps the pre-existing behaviour, which is to resume unconditionally.
+	runRepo        workflow.WorkflowRunRepository
+	logRepo        workflow.WorkflowRunLogRepository
+	registry       *NodeExecutorRegistry
+	wakeScheduler  workflow.WakeScheduler
+	runLocker      workflow.RunLocker
 	automationGate workflow.AutomationGate
 }
 
@@ -99,11 +86,6 @@ func (e *RunEngine) SetAutomationGate(gate workflow.AutomationGate) {
 	e.automationGate = gate
 }
 
-// automationOff reports that a parked run must not continue.
-//
-// Nil gate or an affirmative answer both mean "carry on": the guard exists to
-// stop a run the operator has silenced, never to stop one because the check
-// itself was unavailable.
 func (e *RunEngine) automationOff(entryID, entryType string) bool {
 	if e == nil || e.automationGate == nil || entryID == "" {
 		return false
@@ -168,22 +150,14 @@ func loopBodyNodes(g *workflow.Graph) map[string]bool {
 
 const maxAgentCycleRevisits = 50
 
-// agentCycleNodes returns the nodes that sit on a cycle running through an
-// AI-agent node, the agent "hub" plus the tool/action nodes it routes to that
-// route back to it. An AI agent legitimately revisits its hub once per tool call
-// within a single uninterrupted pass (agent → http → agent → http → …), which is
-// forward progress, not an infinite loop. These nodes get a relaxed per-node
-// revisit limit, like explicit loop bodies, so multi-tool turns aren't flagged as
-// loops. A node is on such a cycle iff it is both reachable from the agent
-// (downstream) and able to reach the agent (upstream).
 func agentCycleNodes(g *workflow.Graph) map[string]bool {
 	relaxed := make(map[string]bool)
 	for _, n := range g.Nodes {
 		if n.Type != workflow.NodeTypeActionAIAgent {
 			continue
 		}
-		forward := reachableNodes(g, n.ID, true)   // downstream of the agent
-		backward := reachableNodes(g, n.ID, false) // can reach the agent
+		forward := reachableNodes(g, n.ID, true)
+		backward := reachableNodes(g, n.ID, false)
 		for id := range forward {
 			if backward[id] {
 				relaxed[id] = true
@@ -194,8 +168,6 @@ func agentCycleNodes(g *workflow.Graph) map[string]bool {
 	return relaxed
 }
 
-// reachableNodes does a BFS from start. forward=true follows outgoing edges
-// (downstream); forward=false follows incoming edges (upstream). start is included.
 func reachableNodes(g *workflow.Graph, start string, forward bool) map[string]bool {
 	visited := map[string]bool{start: true}
 	queue := []string{start}
@@ -232,10 +204,6 @@ func (e *RunEngine) ExecuteWithRuntime(run *workflow.WorkflowRun, w *workflow.Wo
 func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, runtime interface{}) error {
 	executionCount := 0
 
-	// durableSteps is the lifetime node-execution count, loaded from persisted
-	// run state so it SURVIVES waits (executionCount/nodeVisitCounts below are
-	// per-pass and reset on every re-entry). This is the backstop that catches a
-	// loop cycling through a wait node, see MaxDurableExecutionsPerRun.
 	durableSteps := run.State.GetInt(workflow.StateKeyDurableSteps)
 
 	nodeVisitCounts := make(map[string]int)
@@ -257,9 +225,6 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 			return e.runRepo.Update(run)
 		}
 
-		// Durable lifetime circuit breaker: counts every node visit and persists
-		// across waits, so a cycle through a wait node (which resets the per-pass
-		// counters above) still trips a hard stop instead of running forever.
 		durableSteps++
 		run.State.Set(workflow.StateKeyDurableSteps, durableSteps)
 		if durableSteps > workflow.MaxDurableExecutionsPerRun {
@@ -274,9 +239,6 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 		if node.Type == workflow.NodeTypeActionLoop || insideLoop[node.ID] {
 			revisitLimit = workflow.MaxExecutionsPerRun
 		} else if agentCycle[node.ID] {
-			// AI-agent hub (and the tool nodes it routes to), revisited once per
-			// tool call in a single pass, which is progress, not a loop. Allow many
-			// tool cycles but still cap to catch a genuinely stuck agent.
 			revisitLimit = maxAgentCycleRevisits
 		}
 		if nodeVisitCounts[node.ID] > revisitLimit {
@@ -341,7 +303,6 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				return e.runRepo.Update(run)
 			}
 			if errors.Is(err, errNodePanic) {
-				// Terminal: don't retry a panic, and never let it crash the server.
 				log.Printf("[workflow] engine: run=%s node=%s PANICKED, failing run: %v", run.ID, node.ID, err)
 				run.SetError(err.Error())
 				e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
@@ -426,12 +387,6 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 	}
 }
 
-// safeExecute runs a node executor with a panic barrier. A misconfigured or
-// buggy executor (e.g. a nil dependency, as happens for repo-backed nodes in the
-// simulation registry) must never propagate a panic up through the HTTP handler
-// and kill the serving goroutine, it is converted into a terminal node error.
-// It also defends against an executor returning (nil, nil), which would nil-deref
-// downstream.
 func (e *RunEngine) safeExecute(executor workflow.NodeExecutor, ctx *workflow.NodeContext) (result *workflow.NodeResult, err error) {
 	defer func() {
 		if r := recover(); r != nil {

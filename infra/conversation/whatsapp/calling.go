@@ -13,11 +13,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// callingSettingsEndpoint builds the WhatsApp Business Calling settings endpoint.
-// 360dialog exposes a channel-scoped shortcut ("{base}/calling/settings", authed by the
-// D360-API-KEY), verified live against waba-v2.360dialog.io, which returns the Meta
-// Cloud API shape {"calling":{"status":...}}. Meta scopes it by phone number id
-// ("{base}/{phone_number_id}/settings").
 func (c *Client) callingSettingsEndpoint() string {
 	if c.omitPhoneNumberInPath {
 		return c.baseURL + "/calling/settings"
@@ -27,19 +22,17 @@ func (c *Client) callingSettingsEndpoint() string {
 
 type callingSettingsResponse struct {
 	Calling struct {
-		Status string `json:"status"` // ENABLED | DISABLED | NOT_SET
+		Status string `json:"status"`
 	} `json:"calling"`
 }
 
 type callingSettingsRequest struct {
 	MessagingProduct string `json:"messaging_product"`
 	Calling          struct {
-		Status string `json:"status"` // ENABLED | DISABLED
+		Status string `json:"status"`
 	} `json:"calling"`
 }
 
-// GetCallingStatus reports whether calling is ENABLED for the channel. NOT_SET/DISABLED
-// both read as false.
 func (c *Client) GetCallingStatus(ctx context.Context) (bool, error) {
 	if c == nil || c.accessToken == "" {
 		return false, conversation.ErrWhatsAppClientDisabled
@@ -72,8 +65,6 @@ func (c *Client) GetCallingStatus(ctx context.Context) (bool, error) {
 	return strings.EqualFold(decoded.Calling.Status, "ENABLED"), nil
 }
 
-// SetCallingStatus enables or disables calling for the channel. The body follows the
-// Meta Cloud API shape, which 360dialog's waba-v2 endpoint mirrors.
 func (c *Client) SetCallingStatus(ctx context.Context, enabled bool) error {
 	if c == nil || c.accessToken == "" {
 		return conversation.ErrWhatsAppClientDisabled

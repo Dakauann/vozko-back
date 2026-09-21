@@ -6,16 +6,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// One inbound message must advance a conversation once.
-//
-// A menu flow parks at wait_for_reply. The tap resumes it, and the resume runs
-// the engine synchronously, so a branch that reaches an end node leaves the run
-// COMPLETED before the trigger loop looks for it. FindActiveByEntryAndTrigger
-// then finds no active run, the "already resumed" guard never fires, and the
-// SAME tap starts a fresh run from the workflow's entry node, which re-sends the
-// menu. On Telegram that looked exactly like the bot re-showing the menu the
-// instant an option was chosen, as if the contact had typed again after
-// clicking.
 func TestEvaluateDoesNotStartASecondRunForAMessageThatResumedAWaitingRun(t *testing.T) {
 	const workflowID, entryID, workspaceID = "wf-1", "entry-1", "ws-1"
 
@@ -31,8 +21,6 @@ func TestEvaluateDoesNotStartASecondRunForAMessageThatResumedAWaitingRun(t *test
 		},
 	}
 
-	// The run the tap woke: parked at the menu and, by the time the loop below
-	// runs, already finished. That is what the repository reports.
 	waiting := &workflow.WorkflowRun{
 		ID:            "run-woken",
 		WorkflowID:    workflowID,
@@ -68,10 +56,6 @@ func TestEvaluateDoesNotStartASecondRunForAMessageThatResumedAWaitingRun(t *test
 	}
 }
 
-// The suppression is scoped to the one workflow that took the message. A run
-// parked by a DIFFERENT workflow must not stop this one from starting, otherwise
-// a stale parked run on the entry would silently mute the account's real
-// workflow for as long as it sat there.
 func TestEvaluateStillStartsOtherWorkflowsWhenAnotherOnesRunWasResumed(t *testing.T) {
 	const entryID, workspaceID = "entry-1", "ws-1"
 
@@ -85,7 +69,6 @@ func TestEvaluateStillStartsOtherWorkflowsWhenAnotherOnesRunWasResumed(t *testin
 	stale := &workflow.Workflow{ID: "wf-stale", WorkspaceID: workspaceID, Graph: menu}
 	linked := &workflow.Workflow{ID: "wf-linked", WorkspaceID: workspaceID, Graph: menu}
 
-	// A leftover parked run belonging to a workflow this account is NOT linked to.
 	waiting := &workflow.WorkflowRun{
 		ID:            "run-stale",
 		WorkflowID:    stale.ID,
@@ -126,8 +109,6 @@ func TestEvaluateStillStartsOtherWorkflowsWhenAnotherOnesRunWasResumed(t *testin
 	}
 }
 
-// --- stubs: only the methods Evaluate reaches need real behaviour ---
-
 type stubWorkflowRepo struct {
 	workflow.WorkflowRepository
 	byID   map[string]*workflow.Workflow
@@ -151,7 +132,6 @@ func (r *recordingRunRepo) FindWaitingReplyByEntry(string) (*workflow.WorkflowRu
 	return r.waitingReply, nil
 }
 
-// nil: the woken run completed during the resume, so it is no longer active.
 func (r *recordingRunRepo) FindActiveByEntryAndTrigger(string, string, string) (*workflow.WorkflowRun, error) {
 	return nil, nil
 }

@@ -53,12 +53,6 @@ type mediaLookup interface {
 	GetMediaByID(mediaID string) (*media_domain.Media, error)
 }
 
-// SenderDeps carries everything the workflow send nodes need.
-//
-// Most fields are WhatsApp's (client factory, business phones, templates, the
-// lead window) because WhatsApp keeps a dedicated sender; Adapters serves every
-// other channel through the shared registry. The struct is named for its role,
-// sending, rather than for the channel that needs the most from it.
 type SenderDeps struct {
 	ClientFactory           conversation.WhatsAppClientFactory
 	LeadRepo                leadLookup
@@ -77,8 +71,6 @@ type SenderDeps struct {
 
 	ConversationMediaRepo conversation.ConversationMediaRepository
 
-	// Adapters is the channel registry used for every non-WhatsApp channel.
-	// Optional: without it, only WhatsApp can be sent to.
 	Adapters conversation.AdapterRegistry
 }
 
@@ -367,14 +359,6 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 
 	waMediaID, sniffedType, uploadErr := s.downloadAndUpload(ctx, client, mediaURL, mediaType)
 	if uploadErr != nil {
-		// The extension lied, and the link fallback cannot save it.
-		//
-		// detectMediaType reads the URL, so an MP3 a user named ".mpeg" routes
-		// as a document. Meta then refuses the upload ("Received file of type
-		// 'video/mpeg'") and refuses the link for the same reason — the contact
-		// gets an undelivered bubble and the file looks fine everywhere else.
-		// The bytes say audio, and for audio the answer is a transcode, which is
-		// the one path that produces something Meta accepts.
 		if mediaType != "audio" && strings.HasPrefix(sniffedType, "audio/") {
 			log.Printf("[workflow][whatsapp_sender] %s is named %q but its bytes are %s, re-routing as audio",
 				mediaURL, path.Ext(mediaURL), sniffedType)
@@ -382,12 +366,6 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 		}
 	}
 	if uploadErr != nil {
-		// A missing object is reported, not worked around. The link fallback
-		// exists for media WhatsApp can fetch when we cannot; it cannot conjure
-		// a file that does not exist, so falling back on a 404 sent WhatsApp a
-		// URL that 404s for it too — the contact received nothing while the node
-		// reported sent=true and the flow carried on as if the photo had
-		// arrived. Failing here is what lets a workflow branch on it.
 		if errors.Is(uploadErr, errMediaNotFound) {
 			log.Printf("[workflow][whatsapp_sender] media does not exist at %s, not sending: %v", mediaURL, uploadErr)
 			return nil, usedBusinessPhoneID, fmt.Errorf("send media: %w", uploadErr)
@@ -419,14 +397,6 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 		}
 		output, err = client.SendVideoMessage(ctx, input)
 	case "audio":
-		// Transcode and upload, exactly as the operator's own audio send does.
-		//
-		// Sending the CDN link instead is accepted by the Graph API and then
-		// silently never delivered: Cloud API voice notes must be OGG/Opus, and a
-		// stored .ogg is usually Vorbis. The workflow reported success, the
-		// customer got nothing, and the same file sent by hand from the inbox
-		// arrived — because that path transcodes first. The link remains the
-		// fallback so a host without ffmpeg degrades instead of going silent.
 		output, err = s.sendAudioAsVoiceNote(ctx, client, target.leadNumber, mediaURL)
 	default:
 		input := conversation.SendDocumentMessageInput{
@@ -448,10 +418,6 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
-		// See bridgeConversationMedia: the node names a media-library row, but
-		// the transcript resolves against conversation_media. Without the bridge
-		// an attachment with no caption had no content for Message.Validate, and
-		// a delivered file was reported as a failed send.
 		mediaID, mediaKind := bridgeConversationMedia(
 			s.deps.ConversationMediaRepo, run.EntryID, shared.EntryTypeWhatsApp, mediaURL, mediaType)
 
@@ -518,9 +484,6 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 
 	bodyParamNames, headerParamNames := tmpl.GetBodyAndHeaderParameterNames()
 
-	// The two branches this replaced were identical: named and positional both
-	// resolved the value by parameter name and interpolated it. The distinction
-	// lives in BuildSendInput, which sets the format flag from the template.
 	params := make([]string, len(bodyParamNames))
 	for i, name := range bodyParamNames {
 		params[i] = workflow.Interpolate(paramValues[name], state, nil)
@@ -542,8 +505,6 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 	if err != nil {
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: %w", err)
 	}
-	// Language defaulting stays here: the node may run against a template row
-	// stored without one, and BuildSendInput copies what the template has.
 	if strings.TrimSpace(apiInput.Language) == "" {
 		apiInput.Language = language
 	}
@@ -557,10 +518,6 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: template billing category unavailable: %w", err)
 	}
 	billingRefID := fmt.Sprintf("wf:%s:%s", run.ID, run.CurrentNodeID)
-	// Fail CLOSED on a missing billing dependency. This used to be
-	// `if s.deps.ConsumeWhatsappTemplate != nil`, which meant a mis-wired
-	// container silently sent paid templates for free — the failure mode nobody
-	// notices until the invoice arrives.
 	if s.deps.ConsumeWhatsappTemplate == nil {
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: billing dependency not configured, refusing to send a paid template")
 	}
@@ -570,7 +527,6 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 
 	output, err := client.SendTemplateMessage(ctx, apiInput)
 	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
-		// Accepted by Meta, unreadable to us. Never refund, never resend.
 		log.Printf("[workflow][whatsapp_sender] send outcome unknown for run=%s (Meta accepted), keeping the charge: %v", run.ID, err)
 		err = nil
 	}
@@ -704,14 +660,6 @@ func (s *whatsappSender) resolveTemplateClientForPhone(businessPhoneID, template
 
 const maxMediaDownloadBytes = 25 * 1024 * 1024
 
-// downloadMedia fetches the attachment bytes, bounded by maxMediaDownloadBytes.
-//
-// Split out of downloadAndUpload because audio needs the bytes WITHOUT the
-// upload that follows: it is transcoded first, and the client's SendAudioBytes
-// then does its own upload as a voice note.
-// errMediaNotFound marks a media URL the origin says does not exist. Callers
-// use it to tell "we could not fetch this" from "there is nothing to fetch":
-// only the first is worth retrying through WhatsApp's own fetcher.
 var errMediaNotFound = errors.New("media not found at origin")
 
 func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
@@ -728,10 +676,6 @@ func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// 404/410 are distinguished from every other failure because they are
-		// the provider agreeing with us: the object is not there. Any other
-		// status can still be worth handing to WhatsApp, which fetches from its
-		// own network and may succeed where we did not.
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
 			return nil, "", fmt.Errorf("%w (status %d)", errMediaNotFound, resp.StatusCode)
 		}
@@ -748,10 +692,6 @@ func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]
 	return data, resp.Header.Get("Content-Type"), nil
 }
 
-// downloadAndUpload also reports what the BYTES actually are, which is the only
-// honest answer when the name and the stored Content-Type disagree with the
-// file. It is returned even on failure, because that is precisely when the
-// caller needs it to re-route.
 func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversation.WhatsAppClient, mediaURL, mediaType string) (string, string, error) {
 	if mediaType == "audio" {
 		return "", "", fmt.Errorf("audio upload-first not supported")
@@ -762,9 +702,6 @@ func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversat
 		return "", "", err
 	}
 
-	// Sniffed from the content, never from the header or the extension: an
-	// operator's MP3 saved as ".mpeg" is served by our own CDN as video/mpeg,
-	// and both of those are wrong about the same file.
 	sniffed := http.DetectContentType(data)
 
 	if mimeType == "" || mimeType == "application/octet-stream" {
@@ -801,9 +738,6 @@ func detectMediaType(mediaURL string) string {
 	}
 }
 
-// mediaFilename is the basename an attachment is sent and stored under, with any
-// query string dropped. The upload and the document send each derived this
-// separately and disagreed whenever the query itself contained a slash.
 func mediaFilename(mediaURL string) string {
 	name := path.Base(strings.SplitN(mediaURL, "?", 2)[0])
 	if name == "" || name == "." || name == "/" {
@@ -944,11 +878,6 @@ func (s *whatsappSender) BuildMessagingToolConfig(run *workflow.WorkflowRun) map
 	}
 }
 
-// sendAudioAsVoiceNote delivers audio the way the Cloud API actually accepts it.
-//
-// convertAudioFn is indirected for tests: transcoding shells out to ffmpeg, and
-// a unit test must be able to exercise both the happy path and the fallback on a
-// machine that does not have it.
 var convertAudioFn = media_infra.ConvertToOGGOpus
 
 func (s *whatsappSender) sendAudioAsVoiceNote(

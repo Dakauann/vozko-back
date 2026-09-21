@@ -14,10 +14,6 @@ func tally(funnelID, funnelName, stageID, stageName string, pos int, engaged, sh
 	}
 }
 
-// The whole reason this block is grouped: two funnels in one workspace can each
-// own a stage called "Agendamento", and five production workspaces really do
-// carry more than one conversation funnel. Flattening by name would report a
-// number belonging to neither funnel.
 func TestBuildStageDistribution_SameStageNameInTwoFunnelsStaysSeparate(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "FUNIL UNIFECAF", "s1", "Agendamento", 1, 300, 0),
@@ -32,15 +28,11 @@ func TestBuildStageDistribution_SameStageNameInTwoFunnelsStaysSeparate(t *testin
 			t.Fatalf("funnel %q should own exactly its own stage, got %d", f.FunnelName, len(f.Stages))
 		}
 	}
-	// Busiest funnel first: the panel's first row must be where the work is.
 	if out.Funnels[0].FunnelName != "FUNIL UNIFECAF" {
 		t.Fatalf("expected the busiest funnel first, got %q", out.Funnels[0].FunnelName)
 	}
 }
 
-// Inside a funnel the order is the funnel's own, not a ranking. A pipeline read
-// out of order stops being a pipeline, and "where do they stop moving" is only
-// answerable when the stages are in path order.
 func TestBuildStageDistribution_StagesKeepFunnelOrderNotVolumeOrder(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "Vendas", "s3", "Matrícula", 3, 10, 0),
@@ -60,9 +52,6 @@ func TestBuildStageDistribution_StagesKeepFunnelOrderNotVolumeOrder(t *testing.T
 	}
 }
 
-// A stage with no pipeline is a real row in this product (campaign-scoped stages
-// predate funnels). It gets one bucket, and that bucket sorts last no matter how
-// big it is, because it is not a funnel and must not head the panel.
 func TestBuildStageDistribution_UnfunneledStagesBucketLast(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("", "", "s9", "Solto A", 1, 900, 0),
@@ -82,9 +71,6 @@ func TestBuildStageDistribution_UnfunneledStagesBucketLast(t *testing.T) {
 	}
 }
 
-// Shells are shown, never summed into the headline. A 3.000-contact import
-// parked in "Recebido" would otherwise dwarf every other stage on the chart and
-// contradict the engaged-only KPI strip above the panel.
 func TestBuildStageDistribution_ShellsStayOutOfTheHeadline(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "Vendas", "s1", "Recebido", 1, 100, 3000),
@@ -106,9 +92,6 @@ func TestBuildStageDistribution_ShellsStayOutOfTheHeadline(t *testing.T) {
 	}
 }
 
-// Conversations carrying no stage row at all are a total, not a fake stage. They
-// are the difference between what the period scoped and what the funnels hold,
-// and a manager reading "612 in Inscrição" needs to know 400 are nowhere.
 func TestBuildStageDistribution_UnstagedIsScopedMinusStaged(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "Vendas", "s1", "Inscrição", 1, 600, 20),
@@ -122,9 +105,6 @@ func TestBuildStageDistribution_UnstagedIsScopedMinusStaged(t *testing.T) {
 	}
 }
 
-// Never negative. If a stage row somehow outnumbers the scope it was counted in
-// (a stage assigned between the two reads), the honest answer is zero unstaged,
-// not a negative count rendered on a chart.
 func TestBuildStageDistribution_UnstagedNeverNegative(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "Vendas", "s1", "Inscrição", 1, 600, 0),
@@ -135,9 +115,6 @@ func TestBuildStageDistribution_UnstagedNeverNegative(t *testing.T) {
 	}
 }
 
-// Percentages answer two different questions and both are on screen: share of
-// this funnel (where inside the path) and share of everything staged (which
-// funnel owns the workspace's volume).
 func TestBuildStageDistribution_BothSharesComputed(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		tally("f1", "A", "s1", "Um", 1, 75, 0),
@@ -157,8 +134,6 @@ func TestBuildStageDistribution_BothSharesComputed(t *testing.T) {
 	}
 }
 
-// A funnel holding zero engaged conversations must not divide by zero, and its
-// stage shares are 0, not NaN, which serialises as null and breaks the chart.
 func TestBuildStageDistribution_EmptyFunnelDoesNotDivideByZero(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		{FunnelID: "f1", FunnelName: "A", StageID: "s1", StageName: "Um", Shell: 4},
@@ -170,8 +145,6 @@ func TestBuildStageDistribution_EmptyFunnelDoesNotDivideByZero(t *testing.T) {
 	}
 }
 
-// Nothing staged in the period is not an error and not an empty chart with a
-// zero axis: the block reports itself unavailable so the UI can say why.
 func TestBuildStageDistribution_NoTalliesIsUnavailable(t *testing.T) {
 	out := BuildStageDistribution(nil, 120, 3)
 
@@ -186,8 +159,6 @@ func TestBuildStageDistribution_NoTalliesIsUnavailable(t *testing.T) {
 	}
 }
 
-// Stuck rolls up. The funnel header carries the sum of its stages so a manager
-// scanning collapsed funnels sees which one is holding stalled work.
 func TestBuildStageDistribution_StuckRollsUpToFunnelAndBlock(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		{FunnelID: "f1", FunnelName: "A", StageID: "s1", StageName: "Um", Engaged: 10, Stuck: 3},
@@ -203,8 +174,6 @@ func TestBuildStageDistribution_StuckRollsUpToFunnelAndBlock(t *testing.T) {
 	}
 }
 
-// The stage's own rot_days wins; the CRM's 7-day default only fills the gap. A
-// conversation must not read "parada" on the kanban and fresh here.
 func TestEffectiveStuckDays(t *testing.T) {
 	three := 3
 	zero := 0
@@ -226,8 +195,6 @@ func TestEffectiveStuckDays(t *testing.T) {
 	}
 }
 
-// The threshold that produced the stuck count travels with the row, so the UI
-// can name it instead of leaving the reader to guess what "stuck" measured.
 func TestBuildStageDistribution_StuckThresholdTravelsWithTheRow(t *testing.T) {
 	twelve := 12
 	out := BuildStageDistribution([]StageTally{
@@ -246,8 +213,6 @@ func TestBuildStageDistribution_StuckThresholdTravelsWithTheRow(t *testing.T) {
 	}
 }
 
-// Won and lost stages are the funnel's outcomes, and the panel colours them as
-// outcomes rather than as more volume. The flags have to survive the shaping.
 func TestBuildStageDistribution_OutcomeFlagsSurvive(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		{FunnelID: "f1", FunnelName: "A", StageID: "s1", StageName: "Ganho", IsWon: true, Engaged: 3},
@@ -259,9 +224,6 @@ func TestBuildStageDistribution_OutcomeFlagsSurvive(t *testing.T) {
 	}
 }
 
-// Two stages at the same position is ordinary after a drag-reorder that half
-// applied. Name breaks the tie so the panel is stable between refreshes rather
-// than shuffling rows on every load.
 func TestBuildStageDistribution_TiedPositionsBreakOnName(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		{FunnelID: "f1", FunnelName: "A", StageID: "s2", StageName: "Beta", Position: 1, Engaged: 1},
@@ -273,9 +235,6 @@ func TestBuildStageDistribution_TiedPositionsBreakOnName(t *testing.T) {
 	}
 }
 
-// Dwell is a measurement, not a count: a stage holding only finished work has no
-// open conversation to measure, and null is the honest answer. Zero would read
-// as "everyone here arrived today".
 func TestBuildStageDistribution_DwellStaysNullWhenNothingIsOpen(t *testing.T) {
 	out := BuildStageDistribution([]StageTally{
 		{FunnelID: "f1", FunnelName: "A", StageID: "s1", StageName: "Fechado", Engaged: 40, Finished: 40},

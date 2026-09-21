@@ -98,9 +98,6 @@ func (uc *adminRegisterUseCase) Execute(input auth.CredentialsInput) (*auth.Toke
 		return nil, err
 	}
 
-	// Provision the user's default workspace, same as the self-service register
-	// flow. Without this, admin-created accounts have no workspace at all, which
-	// leaves them unable to load the app or see/accept pending invites.
 	if uc.ensureDefaultWs != nil {
 		if _, wsErr := uc.ensureDefaultWs.Execute(u.ID, u.Email, strings.TrimSpace(input.ReferralCode)); wsErr != nil {
 			log.Printf("[admin-register] failed to ensure default workspace for user %s: %v", u.ID, wsErr)

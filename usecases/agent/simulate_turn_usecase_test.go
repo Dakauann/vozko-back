@@ -16,8 +16,6 @@ import (
 	tools_usecase "vozko/usecases/tools"
 )
 
-// --- fakes ---
-
 type simAgentRepo struct{ agent *agent.Agent }
 
 func (r simAgentRepo) Create(*agent.Agent) error                  { return nil }
@@ -107,8 +105,6 @@ func newSimUC(t *testing.T, repo agent.Repository, aiSvc ai.Service, memories le
 	return uc
 }
 
-// --- tests ---
-
 func TestSimulateGuards(t *testing.T) {
 	aiSvc := &simAI{output: simOutput()}
 	uc := newSimUC(t, simAgentRepo{agent: simAgent()}, aiSvc, nil)
@@ -119,7 +115,6 @@ func TestSimulateGuards(t *testing.T) {
 		t.Fatalf("blank message = %v", err)
 	}
 
-	// A foreign workspace's agent behaves like a missing one.
 	if _, err := uc.Execute(context.Background(), agent.SimulateTurnInput{
 		WorkspaceID: "ws-OTHER", AgentID: "agent-1", Message: "oi",
 	}); !errors.Is(err, agent.ErrAgentNotFound) {
@@ -148,7 +143,7 @@ func TestSimulateAssemblesTheProductionTurn(t *testing.T) {
 		History: []agent.SimulationMessage{
 			{Role: agent.SimulationRoleUser, Content: "oi"},
 			{Role: agent.SimulationRoleAssistant, Content: "olá!"},
-			{Role: agent.SimulationRoleUser, Content: "  "}, // dropped
+			{Role: agent.SimulationRoleUser, Content: "  "},
 		},
 	})
 	if err != nil {
@@ -156,25 +151,21 @@ func TestSimulateAssemblesTheProductionTurn(t *testing.T) {
 	}
 
 	in := aiSvc.lastInput
-	// The prompt is the production recipe: agent prompt + identity + memories.
 	if !strings.Contains(in.SystemPrompt, "Você é a Bia.") {
 		t.Fatalf("agent prompt missing: %q", in.SystemPrompt)
 	}
 	if !strings.Contains(in.SystemPrompt, "Prefere boleto.") {
 		t.Fatalf("lead memories missing: %q", in.SystemPrompt)
 	}
-	// History + the new line as the final user turn.
 	if len(in.Messages) != 3 || in.Messages[2].Content != "quanto custa?" || in.Messages[2].Role != ai.RoleUser {
 		t.Fatalf("messages = %+v", in.Messages)
 	}
-	// Sandboxed execution still runs the real loop.
 	if in.ToolExecutionMode != ai.ToolExecutionModeAuto {
 		t.Fatalf("execution mode = %q", in.ToolExecutionMode)
 	}
 	if in.WorkspaceID != "ws-1" || !in.SegmentedResponse || in.Model != "test/model" {
 		t.Fatalf("input knobs = %+v", in)
 	}
-	// Seeds: attribution + the honest simulation flag + the chosen lead.
 	cfg := in.ToolConfigs["manage_lead_memory"]
 	if cfg["__agent_id"] != "agent-1" || cfg["__simulation"] != true || cfg["__lead_id"] != "lead-1" {
 		t.Fatalf("seeds = %+v", cfg)
@@ -183,7 +174,6 @@ func TestSimulateAssemblesTheProductionTurn(t *testing.T) {
 		t.Fatal("a simulated turn must not fabricate an entry id")
 	}
 
-	// Output mapping: segmented bubbles, tool calls with canned results, debug.
 	if len(out.Replies) != 2 || out.Replies[0] != "Oi!" {
 		t.Fatalf("replies = %+v", out.Replies)
 	}
@@ -244,8 +234,8 @@ func TestSimulateInjectsSessionMemories(t *testing.T) {
 		Message:     "voltei!",
 		SessionMemories: []agent.SessionMemory{
 			{ID: "sim-mem-01", Content: "Gosta de gatos.", Category: "personal"},
-			{ID: "!!bad id!!", Content: "Prefere boleto.", Category: "vibes"}, // sanitized: synthetic id + Other
-			{Content: "   "}, // dropped
+			{ID: "!!bad id!!", Content: "Prefere boleto.", Category: "vibes"},
+			{Content: "   "},
 		},
 	})
 	if err != nil {
@@ -253,28 +243,20 @@ func TestSimulateInjectsSessionMemories(t *testing.T) {
 	}
 
 	sp := aiSvc.lastInput.SystemPrompt
-	// The block is rendered by the same renderer real memories use, so the
-	// READ half of the loop is debuggable even though nothing persisted.
 	if !strings.Contains(sp, "Gosta de gatos.") || !strings.Contains(sp, "Prefere boleto.") {
 		t.Fatalf("session memories missing from prompt:\n%s", sp)
 	}
-	// Stable client id renders as the short prefix the tool can target.
 	if !strings.Contains(sp, "[sim-mem-") {
 		t.Fatalf("stable session id not rendered:\n%s", sp)
 	}
 	if !out.Debug.MemoryInjected {
 		t.Fatal("MemoryInjected flag must reflect the session block")
 	}
-	// The agent has manage_lead_memory bound, so the how-to-write line renders.
 	if !strings.Contains(sp, "manage_lead_memory") {
 		t.Fatalf("tool guidance missing for bound agent:\n%s", sp)
 	}
 }
 
-// The tool-execution chain reads the agent and the dedup tracker off the
-// context, so a simulated turn that omits them silently diverges from
-// production: default RAG settings instead of the agent's, no MCP workspace,
-// no in-turn dedup.
 func TestSimulateInstallsTheProductionRequestContext(t *testing.T) {
 	aiSvc := &simAI{output: simOutput()}
 	uc := newSimUC(t, simAgentRepo{agent: simAgent()}, aiSvc, nil)
@@ -294,8 +276,6 @@ func TestSimulateInstallsTheProductionRequestContext(t *testing.T) {
 	}
 }
 
-// The rail must not present a real knowledge-base result and a canned one the
-// same way: they look identical in the reply and mean opposite things.
 func TestSimulateLabelsRealAndStubbedToolCalls(t *testing.T) {
 	aiSvc := &simAI{output: &ai.GenerateOutput{
 		Messages: []string{"pronto"},

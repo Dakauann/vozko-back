@@ -9,11 +9,6 @@ import (
 	"vozko/domain/messaging"
 )
 
-// Dispatcher fans a campaign's pending entries onto its queue.
-//
-// The other half of the plumbing, split from Runner because the two have
-// different lifetimes and different callers: a dispatch happens once when an
-// operator presses Start, while a runner lives for as long as the process does.
 type Dispatcher struct {
 	pub    messaging.MessageQueuePub
 	shared cache.SharedState
@@ -24,13 +19,6 @@ func NewDispatcher(pub messaging.MessageQueuePub, sharedState cache.SharedState,
 	return &Dispatcher{pub: pub, shared: sharedState, ns: ns}
 }
 
-// Enqueue publishes one message per entry and arms the completion counter.
-//
-// The counter is set AFTER publishing, and that order is deliberate: setting it
-// first and then failing to publish leaves a campaign that can never reach zero
-// and therefore never completes. Publishing first means a crash mid-way leaves
-// the counter unset, which SeedCounterIfMissing rebuilds from the database on
-// the next subscribe.
 func (d *Dispatcher) Enqueue(campaignID string, messages []Message) error {
 	if len(messages) == 0 {
 		return nil

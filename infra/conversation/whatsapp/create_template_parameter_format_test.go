@@ -11,10 +11,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// TestCreateTemplate_ParameterFormatOnlyForMeta is the regression test for the 360dialog
-// 400 "parameter_format: Unknown field.". 360dialog's channel-scoped template endpoint
-// wraps an older Meta template API that has no top-level parameter_format, so it must be
-// omitted for 360dialog and sent only to Meta Cloud API.
 func TestCreateTemplate_ParameterFormatOnlyForMeta(t *testing.T) {
 	var body []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +28,6 @@ func TestCreateTemplate_ParameterFormatOnlyForMeta(t *testing.T) {
 		Components:      []conversation.TemplateComponent{{Type: "BODY", Text: "Bem vindo"}},
 	}
 
-	// 360dialog (channel-scoped) → parameter_format MUST be absent.
 	d360 := NewClient(Config{
 		BaseURL: srv.URL, AccessToken: "chankey", AuthHeaderName: "D360-API-KEY",
 		TemplatesChannelScoped: true,
@@ -44,8 +39,6 @@ func TestCreateTemplate_ParameterFormatOnlyForMeta(t *testing.T) {
 		t.Fatalf("360dialog request must NOT include parameter_format (it 400s); body: %s", body)
 	}
 
-	// Meta (WABA-scoped) → parameter_format MUST be present (Meta rejects named
-	// placeholders without it).
 	meta := NewClient(Config{BaseURL: srv.URL, AccessToken: "tok", WABAId: "waba1"})
 	if _, err := meta.CreateTemplate(context.Background(), input); err != nil {
 		t.Fatalf("Meta CreateTemplate: %v", err)

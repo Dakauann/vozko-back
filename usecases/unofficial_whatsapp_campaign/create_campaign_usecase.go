@@ -48,9 +48,6 @@ func (uc *createCampaignUseCase) Execute(
 		return nil, uwc.ErrCampaignNameRequired
 	}
 
-	// Whether the CALLER specified pacing has to be read before Normalize, which
-	// fills in the channel defaults. Reading it afterwards can never see an
-	// unset value, so the number's own range would never be copied.
 	pacingUnset := in.SendDelayMinMS <= 0 && in.SendDelayMaxMS <= 0
 
 	in.Normalize()
@@ -62,9 +59,6 @@ func (uc *createCampaignUseCase) Execute(
 	if err != nil {
 		return nil, err
 	}
-	// Ownership is checked here as well as by the route's permission gate: the
-	// gate proves the caller may run campaigns SOMEWHERE in their workspace, not
-	// from this particular number.
 	if err := uwuc.EnsureVisible(instance, in.WorkspaceID, scope); err != nil {
 		return nil, err
 	}
@@ -80,9 +74,6 @@ func (uc *createCampaignUseCase) Execute(
 		in.DepartmentID = departmentID
 	}
 
-	// Pacing defaults are COPIED from the number, then re-clamped by Normalize.
-	// Copying rather than referencing is what stops a later widening of the
-	// number's range from silently speeding up a blast already in flight.
 	if pacingUnset {
 		in.SendDelayMinMS, in.SendDelayMaxMS = instance.SendDelayRange()
 		in.Normalize()
@@ -106,11 +97,6 @@ func (uc *createCampaignUseCase) Execute(
 	return uc.hydrate(ctx, in.ID)
 }
 
-// materializeTargets turns the imported list into lead-backed entries.
-//
-// The lead bridge is the SAME FindOrCreateMany the official campaign uses, which
-// is what makes these contacts reachable by exports, boletos and every other
-// lead-keyed tool in the CRM rather than living in a silo.
 func (uc *createCampaignUseCase) materializeTargets(
 	ctx context.Context,
 	in *uwc.Campaign,
@@ -126,9 +112,6 @@ func (uc *createCampaignUseCase) materializeTargets(
 		return err
 	}
 
-	// A seeded demonstration campaign is born carrying its results. The mix is
-	// asked for one status per entry rather than consulted per row, so the
-	// shares it promises are exact over the list it is actually given.
 	seeded := in.SeedOutcome.Statuses(len(in.Targets))
 	now := time.Now().UTC()
 
@@ -139,9 +122,6 @@ func (uc *createCampaignUseCase) materializeTargets(
 		if !found || l == nil {
 			continue
 		}
-		// The (campaign, lead) index refuses duplicates anyway; skipping here
-		// keeps the reported count honest rather than claiming rows the database
-		// silently dropped.
 		if _, dup := seen[l.ID]; dup {
 			continue
 		}
@@ -158,13 +138,8 @@ func (uc *createCampaignUseCase) materializeTargets(
 			Variables:   t.Variables,
 			Metadata:    t.Metadata,
 		}
-		// Indexed by the ROW WE KEPT, not by the target we read: duplicates are
-		// skipped above, and indexing by the loop would leave the tail of a list
-		// with duplicates in it unsettled.
 		if seeded != nil {
 			entry.Status = seeded[len(entries)]
-			// A settled entry that left the building is stamped, because the
-			// entries table and the export both read sentAt to answer "when".
 			if entry.Status != campaign.SendStatusPending {
 				entry.SentAt = &now
 			}
@@ -182,12 +157,6 @@ func (uc *createCampaignUseCase) materializeTargets(
 	return nil
 }
 
-// markSpamEntries pre-marks the recipients the workspace's own cooldown will
-// refuse.
-//
-// Done at import rather than only at send time so an operator sees the real
-// reachable count BEFORE they start — a campaign that silently sends to 400 of
-// its 1.000 numbers is one nobody can plan around.
 func (uc *createCampaignUseCase) markSpamEntries(
 	ctx context.Context,
 	entries []uwc.Entry,
@@ -222,10 +191,6 @@ func (uc *createCampaignUseCase) hydrate(ctx context.Context, campaignID string)
 	return saved, nil
 }
 
-// ensureInstanceCanCampaign refuses a number a campaign could only fail on.
-//
-// A banned number is terminal: no scan recovers it, so offering to campaign from
-// one is offering something that can only produce 150.000 failures.
 func ensureInstanceCanCampaign(instance *uw.Instance) error {
 	switch instance.Status {
 	case uw.StatusBanned:
@@ -238,11 +203,6 @@ func ensureInstanceCanCampaign(instance *uw.Instance) error {
 	return nil
 }
 
-// enrichInstance attaches the number's label and live session state.
-//
-// List enrichment, not stored on the campaign — the same idiom as TemplateName
-// on the official channel. The screen needs to show which number a campaign
-// belongs to and whether it can send, without a request per row.
 func enrichInstance(ctx context.Context, gateway InstanceGateway, campaigns ...*uwc.Campaign) {
 	if gateway == nil {
 		return

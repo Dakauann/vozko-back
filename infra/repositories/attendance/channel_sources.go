@@ -6,50 +6,22 @@ import (
 	"vozko/domain/shared"
 )
 
-// The attendance overview reads conversations straight from each channel's own
-// tables, because it needs facts the shared message table does not carry: the
-// conversation status, the owning department, and when the conversation was
-// created rather than when it was last messaged.
-//
-// That read was written for WhatsApp and only WhatsApp. Its channel-mix panel
-// counted `entry_type = 'whatsapp'` and therefore always reported 100% WhatsApp,
-// and its entry CTE had exactly one branch, so an Instagram or Telegram
-// conversation was invisible in every operational metric on the page. An agent
-// who spent a day on Instagram looked idle.
-//
-// A channel is declared ONCE below and both halves of the CTE are generated from
-// it. These are trusted, code-authored constants; every VALUE is still bound.
-
-// channelSource declares how one channel's conversations are read for the
-// attendance overview.
 type channelSource struct {
 	EntryType shared.EntryType
 
-	// EntryTable and ContainerTable carry their aliases, e.g.
-	// "whatsapp_campaign_entries wce".
 	EntryTable     string
 	EntryAlias     string
 	ContainerTable string
 	ContainerAlias string
-	// ContainerJoin is the ON condition tying the entry to its container.
-	ContainerJoin string
+	ContainerJoin  string
 
-	// StatusColumn is the conversation-status column. Empty means the channel has
-	// no status, and every row buckets as pending.
-	StatusColumn string
-	// CloseSourceColumn records who closed the conversation. Empty projects ''.
+	StatusColumn      string
 	CloseSourceColumn string
-	// DepartmentColumn scopes to a department, on the container.
-	DepartmentColumn string
-	// ContainerIDColumn is what a container filter ("this campaign", "this
-	// account") compares against.
+	DepartmentColumn  string
 	ContainerIDColumn string
-	// WorkspaceColumn is where the tenant lives. WhatsApp carries it on the
-	// campaign; the newer channels carry it on the conversation row itself.
-	WorkspaceColumn string
+	WorkspaceColumn   string
 }
 
-// channelSources is the registry. To add a channel: append its declaration.
 var channelSources = []channelSource{
 	{
 		EntryType:      shared.EntryTypeWhatsApp,
@@ -66,8 +38,6 @@ var channelSources = []channelSource{
 		WorkspaceColumn:   "wc.workspace_id",
 	},
 	{
-		// The Instagram account is the container: it carries the department, and
-		// a "campaign" filter on this channel means an account filter.
 		EntryType:      shared.EntryTypeInstagram,
 		EntryTable:     "instagram_conversations igc",
 		EntryAlias:     "igc",
@@ -96,8 +66,6 @@ var channelSources = []channelSource{
 		WorkspaceColumn:   "tgc.workspace_id",
 	},
 	{
-		// The instance is the container: it carries the department, and a
-		// "campaign" filter on this channel means an instance filter.
 		EntryType:      shared.EntryTypeUnofficialWhatsApp,
 		EntryTable:     "unofficial_whatsapp_conversations uwc",
 		EntryAlias:     "uwc",
@@ -113,11 +81,6 @@ var channelSources = []channelSource{
 	},
 }
 
-// selectedChannelSources returns the channels a filter reads.
-//
-// An empty filter means every channel, which is the whole point: the overview
-// is a workspace-wide view, and silently limiting it to one channel is how the
-// page came to lie.
 func selectedChannelSources(channel string) []channelSource {
 	channel = strings.TrimSpace(channel)
 	if channel == "" {
@@ -128,13 +91,9 @@ func selectedChannelSources(channel string) []channelSource {
 			return []channelSource{src}
 		}
 	}
-	// A named channel with no source (voice) reads nothing here rather than
-	// falling back to everything, which would silently answer a different
-	// question than the one asked.
 	return nil
 }
 
-// statusBucket renders the CASE that buckets a conversation status.
 func (s channelSource) statusBucket() string {
 	if s.StatusColumn == "" {
 		return "'pending'::text"
@@ -153,9 +112,6 @@ func (s channelSource) closeSource() string {
 	return "COALESCE(" + s.CloseSourceColumn + ", '')"
 }
 
-// projection is the column list both halves of the CTE emit. It must be
-// identical across channels or the UNION ALL is rejected by Postgres and the
-// whole overview breaks, including for WhatsApp-only tenants.
 func (s channelSource) projection(isNewContact string) string {
 	return s.EntryAlias + `.id AS entry_id, '` + string(s.EntryType) + `'::text AS entry_type,
 				` + s.statusBucket() + ` AS status_bucket,
@@ -167,7 +123,6 @@ func (s channelSource) projection(isNewContact string) string {
 				` + s.closeSource() + ` AS close_source`
 }
 
-// groupByColumns lists the non-aggregated columns of the activity half.
 func (s channelSource) groupByColumns() string {
 	cols := []string{
 		s.EntryAlias + ".id",

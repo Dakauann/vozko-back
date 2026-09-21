@@ -10,13 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// fakeRepo is an in-memory Repository that enforces the SAME conditional-write
-// contract the SQL does.
-//
-// The mutex is not decoration: ClaimForDispatch must be atomic here for exactly
-// the reason it must be one UPDATE in Postgres. A fake that read and then wrote
-// would let the concurrency test pass against an implementation that cannot
-// hold the guarantee in production.
 type fakeRepo struct {
 	mu       sync.Mutex
 	messages map[string]*sm.ScheduledMessage
@@ -118,8 +111,6 @@ func (r *fakeRepo) ListByWorkspace(workspaceID string, _ sm.ListQuery) ([]*sm.Sc
 	return out, int64(len(out)), nil
 }
 
-// ClaimForDispatch is the fake's most important method: one atomic
-// check-and-set, exactly like the SQL it stands in for.
 func (r *fakeRepo) ClaimForDispatch(id string, now time.Time) (*sm.ScheduledMessage, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -234,7 +225,6 @@ func (r *fakeRepo) PurgeTerminalBefore(cutoff time.Time) (int64, error) {
 	return removed, nil
 }
 
-// fakeWindows answers the one question every path asks.
 type fakeWindows struct {
 	mu        sync.Mutex
 	open      bool
@@ -287,8 +277,6 @@ func (w *fakeWake) count() int {
 	return len(w.fires)
 }
 
-// fakeSend counts deliveries. The count is the whole point of the concurrency
-// test, so it is mutex-guarded rather than a plain int.
 type fakeSend struct {
 	mu    sync.Mutex
 	calls []conversation.OperatorSendInput
@@ -340,8 +328,6 @@ func (b *fakeBroadcaster) BroadcastMessageStatus(string, string, string, convers
 }
 func (b *fakeBroadcaster) BroadcastAnalysisUpdate(string, string, interface{}) {}
 
-// fixedClock keeps the window arithmetic deterministic; this feature is
-// entirely about time, and a test that slept would be both slow and flaky.
 type fixedClock struct {
 	mu  sync.Mutex
 	now time.Time

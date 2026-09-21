@@ -82,8 +82,6 @@ func (h *harness) run(campID, entryID string) campaignqueue.Result {
 	})
 }
 
-// ---------------------------------------------------------------- happy path
-
 func TestSuccessfulSendRecordsEverythingItOwes(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -95,15 +93,12 @@ func TestSuccessfulSendRecordsEverythingItOwes(t *testing.T) {
 	if h.sender.count() != 1 {
 		t.Fatalf("sends = %d, want 1", h.sender.count())
 	}
-	// Variables rendered before the send, never after.
 	if body := h.sender.last().Text; body != "bom dia Ana" {
 		t.Errorf("body = %q, want the rendered text", body)
 	}
 	if got := h.entries.get(entryID).Status; got != campaign.SendStatusSent {
 		t.Errorf("status = %q, want SENT", got)
 	}
-	// Assignment at SEND time is what makes a campaign a set of owned
-	// conversations rather than a fire-and-forget log.
 	if len(h.assigner.calls) != 1 {
 		t.Errorf("assignments = %d, want 1", len(h.assigner.calls))
 	}
@@ -116,14 +111,11 @@ func TestSuccessfulSendRecordsEverythingItOwes(t *testing.T) {
 	if len(h.workflows.fired) != 1 {
 		t.Errorf("workflow triggers = %d, want 1", len(h.workflows.fired))
 	}
-	// The entry has to link to a real conversation, or the campaign row is not
-	// clickable through to a transcript.
 	if conv := h.entries.get(entryID).ConversationID; conv == "" {
 		t.Error("entry has no conversation id")
 	}
 }
 
-// The workflow trigger is gated on the campaign switch.
 func TestWorkflowTriggerRespectsTheCampaignSwitch(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -137,10 +129,6 @@ func TestWorkflowTriggerRespectsTheCampaignSwitch(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- idempotency
-
-// At-least-once delivery means the same message can arrive twice. The second
-// must be a no-op, not a second message to a customer.
 func TestRedeliveryDoesNotSendTwice(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -156,11 +144,6 @@ func TestRedeliveryDoesNotSendTwice(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- ban safety
-
-// A dead session pauses every campaign on the number and leaves the entry
-// PENDING: the message was never sent, and failing it would make a resumed
-// campaign skip someone who was never contacted.
 func TestDeadSessionPausesAndKeepsTheEntryPending(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -196,7 +179,6 @@ func TestWhatsAppRestrictionPauses(t *testing.T) {
 	}
 }
 
-// A number that is not on WhatsApp is a LIST-QUALITY fact, never a failure.
 func TestNumberNotOnWhatsAppIsSkippedNotFailed(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -214,7 +196,6 @@ func TestNumberNotOnWhatsAppIsSkippedNotFailed(t *testing.T) {
 	}
 }
 
-// A dead number must not burn the day's allowance.
 func TestSkippedNumberReturnsItsBudget(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -243,8 +224,6 @@ func TestSpamWindowSkips(t *testing.T) {
 	}
 }
 
-// Out of daily budget defers the work; it is not a failure and the entry stays
-// pending so the next window picks it up.
 func TestDailyCapDefersRatherThanFails(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -252,7 +231,6 @@ func TestDailyCapDefersRatherThanFails(t *testing.T) {
 	c.DailyCap = 1
 	h.campaigns.put(c)
 
-	// Burn the single slot.
 	NewSendBudget(h.shared).TryConsumeDaily("inst-1", 1)
 
 	got := h.run(campID, entryID)
@@ -264,13 +242,12 @@ func TestDailyCapDefersRatherThanFails(t *testing.T) {
 	}
 }
 
-// The warmup ramp actually gates a send, not just a display value.
 func TestWarmupCapGatesSends(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
 	start := time.Now().UTC()
 	h.gateway.instance.WarmupStartedAt = &start
-	h.gateway.instance.DailySendCap = 2100 // day 1 ramps to 100
+	h.gateway.instance.DailySendCap = 2100
 
 	budget := NewSendBudget(h.shared)
 	for i := 0; i < 100; i++ {
@@ -281,8 +258,6 @@ func TestWarmupCapGatesSends(t *testing.T) {
 		t.Fatalf("outcome = %v, want RetryLater once the warmup cap is spent", got.Outcome)
 	}
 }
-
-// ---------------------------------------------------------------- number check caching
 
 func TestAFreshCheckIsNotRepeated(t *testing.T) {
 	h := newHarness(t)
@@ -316,14 +291,10 @@ func TestAStaleCheckIsRefreshed(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- failures
-
 func TestMissingEntryIsDroppedNotRequeued(t *testing.T) {
 	h := newHarness(t)
 	campID, _ := h.seed(t)
 
-	// Requeuing a deleted entry would spin forever and the campaign would never
-	// complete.
 	if got := h.run(campID, "gone"); got.Outcome != campaignqueue.OutcomeDrop {
 		t.Fatalf("outcome = %v, want Drop", got.Outcome)
 	}
@@ -368,7 +339,6 @@ func TestConversationResolutionFailureFailsTheEntry(t *testing.T) {
 	}
 }
 
-// A number that was removed is not a reason to retry forever.
 func TestMissingInstanceFailsTheEntry(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -379,10 +349,6 @@ func TestMissingInstanceFailsTheEntry(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- variants
-
-// Deterministic per entry, so a resumed campaign never sends one person two
-// different messages.
 func TestVariantIsStableAcrossRetries(t *testing.T) {
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
@@ -393,7 +359,6 @@ func TestVariantIsStableAcrossRetries(t *testing.T) {
 	h.run(campID, entryID)
 	first := h.sender.last().Text
 
-	// Reset and run again; the same entry must receive the same variant.
 	e := h.entries.get(entryID)
 	e.Status = campaign.SendStatusPending
 	h.entries.put(e)

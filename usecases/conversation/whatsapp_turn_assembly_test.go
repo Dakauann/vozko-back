@@ -15,14 +15,6 @@ import (
 	"vozko/usecases/agentturn"
 )
 
-// WhatsApp's three agent turns, text, media and audio, each carried their own
-// copy of the same assembly: interpolate the prompt, stamp seven seeds onto every
-// tool, build the identity preamble from the resolved names, ground in the
-// knowledge base. Three copies meant a fix landed in one and not the others.
-//
-// They now share the recipe. These pin what WhatsApp actually sends, because the
-// migration cannot be verified against a live number.
-
 type waTurnRAG struct{ results []rag.QueryResult }
 
 func (f waTurnRAG) Query(context.Context, rag.QueryInput) (*rag.QueryOutput, error) {
@@ -82,8 +74,6 @@ func waTurn() whatsAppTurn {
 	}
 }
 
-// All seven seeds. A tool that loses any one of them acts on the wrong
-// conversation, replies to the wrong number, or bills the wrong workspace.
 func TestWhatsAppTurnStampsEverySeedOntoEveryTool(t *testing.T) {
 	in := waTurnUseCase().assembleWhatsAppTurn(context.Background(), waTurn())
 
@@ -106,14 +96,11 @@ func TestWhatsAppTurnStampsEverySeedOntoEveryTool(t *testing.T) {
 		}
 	}
 
-	// The tool's own configured value must survive alongside the seeds.
 	if cfg["pipeline_id"] != "pipe-1" {
 		t.Errorf("the resolved tool config was lost: %+v", cfg)
 	}
 }
 
-// Stamping must not write back into agentCtx.tools, which is resolved once per
-// message and reused across the text, media and audio turns.
 func TestWhatsAppTurnDoesNotMutateTheResolvedToolSet(t *testing.T) {
 	turn := waTurn()
 	original := turn.agentCtx.tools[0].Config
@@ -134,15 +121,11 @@ func TestWhatsAppTurnKeepsTheIdentityPreambleAndAgentPrompt(t *testing.T) {
 	if !strings.Contains(in.SystemPrompt, "Você é a Bia.") {
 		t.Errorf("the agent prompt is missing: %q", in.SystemPrompt)
 	}
-	// Ordering: preamble before the agent's own prompt, as it always was.
 	if strings.Index(in.SystemPrompt, "CANAL: WHATSAPP") > strings.Index(in.SystemPrompt, "Você é a Bia.") {
 		t.Error("the preamble must precede the agent prompt")
 	}
 }
 
-// The preamble's tool instruction is gated on the turn actually carrying tools.
-// Previously WhatsApp set AvailableTools by hand; the assembler now derives it,
-// so this pins that the derivation still sees the pre-resolved set.
 func TestWhatsAppTurnTellsTheModelItHasTools(t *testing.T) {
 	in := waTurnUseCase().assembleWhatsAppTurn(context.Background(), waTurn())
 
@@ -162,7 +145,6 @@ func TestWhatsAppTurnIsGroundedInTheKnowledgeBase(t *testing.T) {
 	if !strings.Contains(in.SystemPrompt, "Entregamos no Nordeste") {
 		t.Errorf("the knowledge base was not injected: %q", in.SystemPrompt)
 	}
-	// Grounding lands after the agent prompt, as it did inline.
 	if strings.Index(in.SystemPrompt, "Você é a Bia.") > strings.Index(in.SystemPrompt, "Entregamos no Nordeste") {
 		t.Error("grounding must follow the agent prompt")
 	}
@@ -177,7 +159,6 @@ func TestWhatsAppTurnCarriesTheGenerationKnobs(t *testing.T) {
 	if in.Temperature != 0.2 {
 		t.Errorf("Temperature = %v", in.Temperature)
 	}
-	// The text turn is segmented; media and audio are not.
 	if !in.SegmentedResponse {
 		t.Error("SegmentedResponse lost")
 	}
@@ -189,9 +170,6 @@ func TestWhatsAppTurnCarriesTheGenerationKnobs(t *testing.T) {
 	}
 }
 
-// The media turn prefers the campaign phone and falls back to the one the
-// message arrived on; audio does the same. Both are expressed as the caller
-// choosing BusinessPhoneID, so the seed simply reflects it.
 func TestWhatsAppTurnUsesTheCallersBusinessPhone(t *testing.T) {
 	turn := waTurn()
 	turn.BusinessPhoneID = "fallback-phone"
@@ -203,7 +181,6 @@ func TestWhatsAppTurnUsesTheCallersBusinessPhone(t *testing.T) {
 	}
 }
 
-// A conversation with no campaign must not invent one.
 func TestWhatsAppTurnOmitsCampaignSeedsWithoutACampaign(t *testing.T) {
 	turn := waTurn()
 	turn.agentCtx.wcCampaign = nil
@@ -214,15 +191,11 @@ func TestWhatsAppTurnOmitsCampaignSeedsWithoutACampaign(t *testing.T) {
 	if _, present := cfg["__campaign_id"]; present {
 		t.Errorf("a campaign seed appeared without a campaign: %+v", cfg)
 	}
-	// The conversation-scoped seeds still must be there.
 	if cfg["__entry_id"] != "entry-1" {
 		t.Errorf("__entry_id lost: %+v", cfg)
 	}
 }
 
-// Vars come from different sources per turn (WhatsApp context metadata for text
-// and audio, the campaign entry's for media), so interpolation is driven by the
-// caller and must be applied.
 func TestWhatsAppTurnInterpolatesTheAgentPrompt(t *testing.T) {
 	turn := waTurn()
 	turn.agentCtx.agent.MessagingPrompt = "Você atende {{cidade}}."
@@ -235,8 +208,6 @@ func TestWhatsAppTurnInterpolatesTheAgentPrompt(t *testing.T) {
 	}
 }
 
-// A turn with no agent must still produce a usable request rather than panic,
-// the caller decides separately whether to skip the reply.
 func TestWhatsAppTurnSurvivesWithoutAnAgent(t *testing.T) {
 	turn := waTurn()
 	turn.agentCtx = nil

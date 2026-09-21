@@ -2,17 +2,6 @@ package workspace_pricing
 
 import "testing"
 
-// Deriving LLM cost from tokens × a price table reproduces an invoice the
-// provider already computed, and can only drift from it: OpenRouter also
-// charges reasoning tokens, cache writes, image and audio tokens, web search
-// and per-request fees, discounts cache reads, and reprices a model the moment
-// an upstream does. usage.cost carries all of that. These pin that the reported
-// figure wins, and — the part that must never break — that its absence changes
-// nothing about the old behaviour.
-
-// stubPricingRepo is a Repository with nothing configured, so the LLM path
-// falls through to the fetcher and the markup to its default. It lived in
-// audience_pricing_test.go until the audience surcharge was retired.
 type stubPricingRepo struct{ Repository }
 
 func (stubPricingRepo) ListDefaultPricingItems() ([]PricingItem, error) { return nil, nil }
@@ -23,16 +12,11 @@ func (s stubLLMFetcher) FetchLLMPriceMicros(string) (int64, int64, error) {
 	return s.in, s.out, nil
 }
 
-// newPricer builds a pricer with NO configured LLM item, so the per-token path
-// falls through to the fetcher and the markup to its 20% default — the shape
-// production actually runs in.
 func newPricer(f LLMPriceFetcher) Pricer {
 	return NewPricer(stubPricingRepo{}, WithLLMPriceFetcher(f))
 }
 
 func TestProviderCostWinsOverTheTokenEstimate(t *testing.T) {
-	// The estimate would be 1M × $1.00 = 1_000_000µ. The provider says the call
-	// really cost 1_600_000µ — the deepseek-v4-pro repricing, in miniature.
 	p := newPricer(stubLLMFetcher{in: 1_000_000, out: 1_000_000})
 
 	got, err := p.PriceLLM("ws-1", "deepseek/deepseek-v4-pro", 1_000_000, 0, 1_600_000)
@@ -50,7 +34,6 @@ func TestProviderCostWinsOverTheTokenEstimate(t *testing.T) {
 	}
 }
 
-// The margin must be taken on what we PAY, not on what we guessed we paid.
 func TestMarkupAppliesToTheProviderCost(t *testing.T) {
 	p := newPricer(stubLLMFetcher{in: 10, out: 10})
 
@@ -63,8 +46,6 @@ func TestMarkupAppliesToTheProviderCost(t *testing.T) {
 	}
 }
 
-// A zero cost is "not reported", never "free". Events already in the queue when
-// this ships carry no cost field, and they must price exactly as before.
 func TestAbsentProviderCostFallsBackToTokens(t *testing.T) {
 	p := newPricer(stubLLMFetcher{in: 1_000_000, out: 2_000_000})
 
@@ -72,7 +53,6 @@ func TestAbsentProviderCostFallsBackToTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PriceLLM: %v", err)
 	}
-	// 1M in @ $1/M + 0.5M out @ $2/M = 2_000_000µ
 	if got.CostMicros != 2_000_000 {
 		t.Errorf("CostMicros = %d, want the token estimate 2000000", got.CostMicros)
 	}
@@ -81,9 +61,6 @@ func TestAbsentProviderCostFallsBackToTokens(t *testing.T) {
 	}
 }
 
-// A cut stream can report a cost with no usable token counts. Refusing to bill
-// it because the tokens are zero is exactly the leak the recovery path exists
-// to close.
 func TestCostAloneIsStillBillable(t *testing.T) {
 	p := newPricer(stubLLMFetcher{in: 1_000_000, out: 1_000_000})
 
@@ -96,7 +73,6 @@ func TestCostAloneIsStillBillable(t *testing.T) {
 	}
 }
 
-// Nothing at all is still nothing: no tokens and no cost must not fabricate a charge.
 func TestEmptyEventPricesNothing(t *testing.T) {
 	p := newPricer(stubLLMFetcher{in: 1_000_000, out: 1_000_000})
 

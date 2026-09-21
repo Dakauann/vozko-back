@@ -2,25 +2,10 @@ package audience
 
 import "time"
 
-// Debounce keyed on the post, not the comment (§6.2). A post taking 5,000
-// comments in ten minutes produces ONE hint, not 5,000.
-//
-// The hint is a timing HINT and nothing more. The invariant (§2.2): the
-// database says what is pending; Redis says when to look. Losing every hint
-// costs at most one backstop interval of latency and never a comment, which
-// is why the read-modify-write in Stamp needs no lock.
-
-// DebouncePolicy is the three triggers, any of which flushes a container.
 type DebouncePolicy struct {
-	// IdleAfter: the conversation under the post settled. The ordinary case.
-	IdleAfter time.Duration
-	// MaxPending: do not sit on a fifth of a batch-hour of work.
+	IdleAfter  time.Duration
 	MaxPending int
-	// MaxAge: the viral guard. A pure inactivity debounce never fires on a
-	// post that keeps receiving comments, which is precisely the post the
-	// customer is watching. Without this ceiling the feature is silent
-	// exactly when it matters.
-	MaxAge time.Duration
+	MaxAge     time.Duration
 }
 
 func DefaultDebouncePolicy() DebouncePolicy {
@@ -40,7 +25,6 @@ func (p *DebouncePolicy) Normalize() {
 	}
 }
 
-// Hint is what ingest knows about a container's recent activity.
 type Hint struct {
 	Ref         ContainerRef
 	WorkspaceID string
@@ -49,9 +33,6 @@ type Hint struct {
 	Count       int
 }
 
-// Stamp records one more comment. FirstSeen sticks, LastSeen only advances
-// (clock skew between replicas must not make a busy post look idle), the
-// count grows.
 func (h Hint) Stamp(ref ContainerRef, workspaceID string, now time.Time) Hint {
 	h.Ref = ref
 	h.WorkspaceID = workspaceID
@@ -65,13 +46,7 @@ func (h Hint) Stamp(ref ContainerRef, workspaceID string, now time.Time) Hint {
 	return h
 }
 
-// Due reports whether the container should flush now. A hint with zero
-// timestamps is due: flushing early costs a smaller batch, wedging costs
-// the feature.
 func (h Hint) Due(now time.Time, p DebouncePolicy) bool {
-	// Conversations have already waited for inactivity before being enqueued.
-	// Only comments need a second settling window; conversations can share the
-	// next 30-second batch without paying another two minutes of latency.
 	if h.Ref.Normalized().Kind == SubjectKindConversation {
 		return true
 	}

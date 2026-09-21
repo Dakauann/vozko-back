@@ -17,8 +17,6 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// ── fakes ───────────────────────────────────────────────────────────────────
-
 type stubRescueConfig struct {
 	policies    []wsc.RoulettePolicy
 	policiesErr error
@@ -78,19 +76,14 @@ func (s *stubStatus) GetConversationStatus(string, string) conversation.Conversa
 	return s.status
 }
 
-// rescueFixture wires a whole rescue path over the stateful repo, so the
-// assertions are about who owns the conversation afterwards rather than about
-// which method was called.
 type rescueFixture struct {
-	job     *RescueJob
-	repo    *statefulRepo
-	cfg     *stubRescueConfig
-	history *stubRescueHistory
-	att     *stubAttention
-	status  *stubStatus
-	svc     *AssignmentService
-	// svcLastSeen is the presence reader behind svc, so a test can count how
-	// often one tick asks for it.
+	job         *RescueJob
+	repo        *statefulRepo
+	cfg         *stubRescueConfig
+	history     *stubRescueHistory
+	att         *stubAttention
+	status      *stubStatus
+	svc         *AssignmentService
 	svcLastSeen *stubLastSeen
 }
 
@@ -161,8 +154,6 @@ func (f *rescueFixture) seedAssignment(entryID, owner string) {
 	}
 }
 
-// ── the happy path ──────────────────────────────────────────────────────────
-
 func TestRescue_MovesAnUnattendedConversationToTheNextInTheRing(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob", "cid"},
@@ -174,7 +165,6 @@ func TestRescue_MovesAnUnattendedConversationToTheNextInTheRing(t *testing.T) {
 	assert.Equal(t, "cid", f.ownerOf("entry-1"))
 }
 
-// E55: a rescue repairs one conversation; it is not a turn of the wheel.
 func TestRescue_NeverTouchesTheRoundRobinPointer(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob", "cid"},
@@ -191,8 +181,6 @@ func TestRescue_NeverTouchesTheRoundRobinPointer(t *testing.T) {
 		"the pointer must be untouched, or the next inbound conversation skips an agent who did nothing wrong")
 }
 
-// The sweep must go through the choke point, not write the repo directly, so
-// the ownership history and timeline stay consistent with a manual reassign.
 func TestRescue_GoesThroughTheAssignmentChokePoint(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob"},
@@ -211,8 +199,6 @@ func TestRescue_GoesThroughTheAssignmentChokePoint(t *testing.T) {
 	assert.Equal(t, "bob", history.appended[0].PreviousActorID)
 	assert.Equal(t, 1, history.closed, "the previous ownership interval must be closed")
 }
-
-// ── every reason not to rescue ──────────────────────────────────────────────
 
 func TestRescue_SkipReasons(t *testing.T) {
 	cases := []struct {
@@ -286,7 +272,6 @@ func TestRescue_SkipReasons(t *testing.T) {
 	}
 }
 
-// E45: a ring of one has nobody to hand it to; the sweep must not thrash.
 func TestRescue_RingOfOneIsLeftAlone(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"bob"},
@@ -298,8 +283,6 @@ func TestRescue_RingOfOneIsLeftAlone(t *testing.T) {
 	assert.Equal(t, "bob", f.ownerOf("entry-1"))
 }
 
-// E47: nobody eligible at all — leaving the owner beats unassigning into a
-// workspace where nobody could pick it up either.
 func TestRescue_EmptyRingLeavesTheOwner(t *testing.T) {
 	f := newRescueFixture(t, nil, nil, openInterval("entry-1", "bob", minutesAgo(20)))
 	f.seedAssignment("entry-1", "bob")
@@ -308,14 +291,13 @@ func TestRescue_EmptyRingLeavesTheOwner(t *testing.T) {
 	assert.Equal(t, "bob", f.ownerOf("entry-1"))
 }
 
-// E46: the ring has been walked; unassign so anyone can pick it up.
 func TestRescue_ExhaustionUnassigns(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob", "cid"},
 		map[string]time.Time{"ana": hoursAgo(1), "bob": hoursAgo(2), "cid": hoursAgo(3)},
 		openInterval("entry-1", "bob", minutesAgo(20)))
 	f.seedAssignment("entry-1", "bob")
-	f.history.hops = 3 // a full lap of a three-member ring
+	f.history.hops = 3
 
 	events := &recordingEvents{}
 	f.svc.SetEventLogger(events)
@@ -334,8 +316,6 @@ func TestRescue_ExhaustionUnassigns(t *testing.T) {
 	assert.NotContains(t, details, "to_user_id", "an unassignment has no new owner to name")
 }
 
-// The hop cap is min(ring, MaxRescueHops): a large ring must not get one
-// conversation shown to everybody.
 func TestRescue_HopCapIsBoundedByMaxRescueHops(t *testing.T) {
 	ring := make([]string, 0, 10)
 	seen := map[string]time.Time{}
@@ -353,10 +333,6 @@ func TestRescue_HopCapIsBoundedByMaxRescueHops(t *testing.T) {
 	assert.Equal(t, "", f.ownerOf("entry-1"), "MaxRescueHops must cap a ring larger than it")
 }
 
-// ── the sweep itself ────────────────────────────────────────────────────────
-
-// E51/E56: a workspace on the default mode costs one indexed read and nothing
-// else — the candidate query must not even run.
 func TestRescue_NoEligibleWorkspacesDoesNothing(t *testing.T) {
 	f := newRescueFixture(t, []string{"ana"}, map[string]time.Time{"ana": hoursAgo(1)})
 	f.cfg.policies = nil
@@ -365,10 +341,6 @@ func TestRescue_NoEligibleWorkspacesDoesNothing(t *testing.T) {
 	assert.Nil(t, f.history.listArgs.workspaceIDs, "the candidate query must not run when nothing is eligible")
 }
 
-// The candidate query must ask for the roulette's hand-outs AND the sweep's own
-// hops. Asking only for hand-outs is what stranded a conversation on the second
-// agent forever: the first hop rewrites the open interval to trigger=rescue, and
-// a query pinned to inbound_rr can never see it again.
 func TestRescue_QueriesHandoutsAndItsOwnHops(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob"},
@@ -390,8 +362,6 @@ func TestRescue_QueriesHandoutsAndItsOwnHops(t *testing.T) {
 	assert.Equal(t, DefaultRescueBatch, f.history.listArgs.limit)
 }
 
-// Workspaces with different deadlines share one query bounded by the shortest,
-// then each candidate is re-checked against its own.
 func TestRescue_PerWorkspaceDeadlines(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob"},
@@ -421,12 +391,11 @@ func TestRescue_ReadErrorsAreNotFatal(t *testing.T) {
 	require.NoError(t, f2.job.Execute(context.Background()))
 }
 
-// One bad conversation must not stop the rest of the batch.
 func TestRescue_ContinuesPastASkippedEntry(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob", "cid"},
 		map[string]time.Time{"ana": hoursAgo(1), "bob": hoursAgo(2), "cid": hoursAgo(3)},
-		openInterval("entry-fresh", "bob", minutesAgo(2)), // below the deadline
+		openInterval("entry-fresh", "bob", minutesAgo(2)),
 		openInterval("entry-stale", "bob", minutesAgo(30)),
 	)
 	f.seedAssignment("entry-fresh", "bob")
@@ -438,7 +407,6 @@ func TestRescue_ContinuesPastASkippedEntry(t *testing.T) {
 	assert.Equal(t, "cid", f.ownerOf("entry-stale"))
 }
 
-// E50: the kill switch.
 func TestRescue_DisabledByEnv(t *testing.T) {
 	t.Setenv("ASSIGNMENT_RESCUE_DISABLED", "1")
 
@@ -447,7 +415,6 @@ func TestRescue_DisabledByEnv(t *testing.T) {
 		map[string]time.Time{"ana": hoursAgo(1), "bob": hoursAgo(2)},
 		openInterval("entry-1", "bob", minutesAgo(20)))
 	f.seedAssignment("entry-1", "bob")
-	// Rebuild so the constructor reads the env var set above.
 	f.job = NewRescueJob(f.cfg, f.history, f.att, f.status, f.svc)
 	f.job.SetClock(func() time.Time { return testNow })
 
@@ -455,8 +422,6 @@ func TestRescue_DisabledByEnv(t *testing.T) {
 	assert.Equal(t, "bob", f.ownerOf("entry-1"))
 	assert.Equal(t, 0, f.att.calls, "a disabled sweep must not even look")
 }
-
-// ── recording fakes ─────────────────────────────────────────────────────────
 
 type recordingHistory struct {
 	appended []*ia.AssignmentHistory
@@ -491,12 +456,6 @@ type recordingEvents struct {
 
 func (e *recordingEvents) Log(event *ce.ConversationEvent) { e.logged = append(e.logged, event) }
 
-// A full batch in one workspace must resolve that workspace's config and ring
-// ONCE, not once per conversation.
-//
-// The shape this guards against: 200 stalled conversations meant 200 identical
-// config reads and 200 identical presence queries, each an IN over the whole
-// roster. Neither answer can change inside a tick that takes seconds.
 func TestRescue_ResolvesWorkspaceStateOncePerTick(t *testing.T) {
 	const stalled = 50
 
@@ -516,7 +475,6 @@ func TestRescue_ResolvesWorkspaceStateOncePerTick(t *testing.T) {
 	seen := f.svcLastSeen
 	require.NoError(t, f.job.Execute(context.Background()))
 
-	// Everything moved, so the tick really did the work.
 	for i := 0; i < stalled; i++ {
 		assert.Equal(t, "cid", f.ownerOf(fmt.Sprintf("entry-%d", i)))
 	}
@@ -527,8 +485,6 @@ func TestRescue_ResolvesWorkspaceStateOncePerTick(t *testing.T) {
 		"one (workspace, department) ring must cost one presence query per tick")
 }
 
-// Distinct workspaces and departments still each get their own answer — the
-// memo must be keyed, not global.
 func TestRescue_MemoIsScopedPerWorkspaceAndDepartment(t *testing.T) {
 	f := newRescueFixture(t,
 		[]string{"ana", "bob", "cid"},

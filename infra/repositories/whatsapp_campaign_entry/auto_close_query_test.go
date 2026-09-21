@@ -5,11 +5,7 @@ import (
 	"testing"
 )
 
-// Documents the auto-close eligibility SQL shape so refactors keep the
-// single-JOIN, no N+1 contract. Real EXPLAIN ANALYZE is run in ops after
-// migrate (partial index idx_wce_autoclose_agent + ANALYZE on backfill).
 func TestAutoCloseEligibilitySQLShape(t *testing.T) {
-	// Mirror of ListEligibleForAutoClose, keep in sync with repository method.
 	sql := `
 		SELECT e.id AS entry_id,
 		       c.workspace_id AS workspace_id,
@@ -29,10 +25,8 @@ func TestAutoCloseEligibilitySQLShape(t *testing.T) {
 		ORDER BY e.last_agent_message_at ASC
 		LIMIT ?
 	`
-	// No correlated subqueries / per-row config fetches.
 	lower := strings.ToLower(sql)
 	if strings.Contains(lower, "select exists") || strings.Count(lower, "select") > 1 {
-		// One top-level SELECT only (JOIN is fine).
 		if strings.Count(lower, "select ") != 1 {
 			t.Fatalf("expected single SELECT (no N+1 subselects), got: %s", sql)
 		}

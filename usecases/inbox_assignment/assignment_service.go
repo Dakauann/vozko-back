@@ -21,18 +21,13 @@ type WorkspaceConfigProvider interface {
 
 type AssignmentService struct {
 	repo              ia.Repository
-	history           ia.HistoryRepository // optional; prefer telemetry pub for hot path
+	history           ia.HistoryRepository
 	telemetry         crm_telemetry.Publisher
 	events            ce.Logger
 	eligibleUsers     conversation.EligibleUserProvider
 	workspaceResolver conversation.CampaignWorkspaceResolver
 	workspaceConfig   WorkspaceConfigProvider
-	// candidates builds the roulette ring. Always non-nil: the constructor
-	// gives it the connected-user provider, which is enough to serve the
-	// default (online) mode, and SetRoster/SetPresence upgrade the same
-	// instance to also serve last_seen. One implementation, no second copy of
-	// the online path to drift.
-	candidates *CandidateResolver
+	candidates        *CandidateResolver
 }
 
 func NewAssignmentService(
@@ -50,22 +45,12 @@ func NewAssignmentService(
 	}
 }
 
-// SetRoster enables the last_seen mode's membership-based pool. Without it a
-// workspace configured for last_seen degrades to the online pool with a logged
-// reason rather than stopping distribution.
 func (s *AssignmentService) SetRoster(roster ia.RosterProvider) { s.candidates.SetRoster(roster) }
 
-// SetPresence enables the last_seen mode's presence reader.
 func (s *AssignmentService) SetPresence(seen ia.LastSeenReader) { s.candidates.SetPresence(seen) }
 
-// Candidates exposes the resolver so the rescue sweep can rebuild the same ring
-// this service assigns from — the alternative, a second resolver built from the
-// same parts, is exactly the drift this seam exists to prevent.
 func (s *AssignmentService) Candidates() *CandidateResolver { return s.candidates }
 
-// workspaceConfigFor reads the workspace policy once per assignment. A missing
-// provider or a failed read yields nil, and every consumer of the result treats
-// nil as "the defaults", which are the historical behaviour.
 func (s *AssignmentService) workspaceConfigFor(workspaceID string) *wsc.WorkspaceConfig {
 	if s.workspaceConfig == nil {
 		return nil
@@ -77,14 +62,10 @@ func (s *AssignmentService) workspaceConfigFor(workspaceID string) *wsc.Workspac
 	return cfg
 }
 
-// SetHistory enables direct ownership interval recording (tests / consumer only).
-// Prefer SetTelemetry for production hot paths.
 func (s *AssignmentService) SetHistory(h ia.HistoryRepository) { s.history = h }
 
-// SetTelemetry enqueues assignment_history (and relies on events logger for timeline).
 func (s *AssignmentService) SetTelemetry(p crm_telemetry.Publisher) { s.telemetry = p }
 
-// SetEventLogger enables timeline events for assignment mutations (should be queue-backed).
 func (s *AssignmentService) SetEventLogger(l ce.Logger) { s.events = l }
 
 func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID string) string {
@@ -186,8 +167,6 @@ func (s *AssignmentService) Reassign(entryID, entryType, businessPhoneID, worksp
 	return s.AssignManual(entryID, entryType, businessPhoneID, workspaceID, userID, userID, ia.TriggerManual)
 }
 
-// AssignManual is the single choke point for manual / open / bulk assignment.
-// assignedBy is the actor who caused the assignment (user id or system).
 func (s *AssignmentService) AssignManual(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger string) error {
 	prev := ""
 	if existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType); err == nil && existing != nil {
@@ -235,8 +214,6 @@ func (s *AssignmentService) AssignManual(entryID, entryType, businessPhoneID, wo
 	return nil
 }
 
-// AssignOnOpen claims an unassigned entry for the user who opened it.
-// Returns true if assignment was written.
 func (s *AssignmentService) AssignOnOpen(entryID, entryType, businessPhoneID, workspaceID, userID string) (bool, error) {
 	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
 	if err != nil {
@@ -251,15 +228,6 @@ func (s *AssignmentService) AssignOnOpen(entryID, entryType, businessPhoneID, wo
 	return true, nil
 }
 
-// UnassignSystem drops ownership and records it.
-//
-// It exists for the one case where keeping an owner is worse than having none:
-// the rescue sweep has walked the whole ring and nobody took the conversation.
-// Unassigned means "visible to the whole department", so the conversation stops
-// being one away agent's private backlog and someone can pick it up.
-//
-// reason is stamped on the timeline event so the customer-facing history says
-// why ownership disappeared, rather than showing an unexplained gap.
 func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reason string) error {
 	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
 	if err != nil {
@@ -281,8 +249,6 @@ func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reas
 		}
 	}
 
-	// An empty AssignedUserID is what tells the history writer to close the
-	// open interval without opening a new one — see the consumer.
 	s.recordHistoryAndEvent(recordInput{
 		WorkspaceID:       workspaceID,
 		EntryID:           entryID,
@@ -320,11 +286,8 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 		actorKind = string(actor.KindAI)
 	}
 
-	// Prefer queue (production). Direct history is only for unit tests without Rabbit.
 	if s.telemetry != nil {
 		histID := ""
-		// Stable id for idempotent redelivery of the same assignment action.
-		// uuid per mutation is correct (each assign is a new interval).
 		_ = histID
 		_ = s.telemetry.Publish(crm_telemetry.KindAssignmentHistory, crm_telemetry.AssignmentHistoryPayload{
 			WorkspaceID:       in.WorkspaceID,
@@ -343,9 +306,6 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 		if err := s.history.CloseOpen(in.WorkspaceID, in.EntryID, in.EntryType, now); err != nil {
 			log.Printf("[InboxAssignment] history CloseOpen: %v", err)
 		}
-		// Unassignment closes the interval and opens nothing — an owner-less
-		// open interval would read as "still assigned" in every report. Mirrors
-		// the same guard in the telemetry consumer.
 		if in.AssignedUserID == "" {
 			return
 		}
@@ -389,31 +349,12 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 	}
 }
 
-// channelForEntryType named the channel an assignment event belongs to. It
-// listed voice and support and defaulted everything else to "whatsapp", so an
-// Instagram or Telegram assignment was filed under WhatsApp on the timeline.
-// EventChannel keeps the same fallback for an unrecognised type.
 func channelForEntryType(entryType string) string {
 	return shared.EntryType(entryType).EventChannel()
 }
 
-// maxRoundRobinAttempts bounds the compare-and-swap retry. Three is generous:
-// contention here is two webhooks landing in the same millisecond, and each
-// retry re-reads a pointer that has just been written.
 const maxRoundRobinAttempts = 3
 
-// claimNextInRing picks the next owner and claims the round-robin pointer in
-// the same breath.
-//
-// The pointer now advances BEFORE the assignment row is written, which is the
-// deliberate half of this trade: if the assignment write then fails, one
-// position of the rotation is skipped. Skipping a turn costs one agent one
-// conversation's worth of fairness; the alternative — the unguarded
-// read-modify-write this replaces — handed two simultaneous conversations to
-// the same agent and skipped somebody entirely.
-//
-// When the retries are spent it assigns anyway against the last pointer it
-// read. A slightly unfair assignment is better than a conversation nobody owns.
 func (s *AssignmentService) claimNextInRing(workspaceID, businessPhoneID, departmentID string, pool Pool) (string, int, error) {
 	var (
 		userID string
@@ -442,9 +383,6 @@ func (s *AssignmentService) claimNextInRing(workspaceID, businessPhoneID, depart
 			LastAssignedUserID: userID,
 		}, lastAssigned)
 		if err != nil {
-			// A failed pointer WRITE has always been non-fatal: the rotation
-			// loses a step, the conversation still gets an owner. Only a failed
-			// READ aborts, because without the pointer there is no pick to make.
 			log.Printf("[InboxAssignment] error saving round-robin state: %v", err)
 			return userID, idx, nil
 		}

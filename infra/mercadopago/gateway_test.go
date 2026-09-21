@@ -10,7 +10,6 @@ import (
 	"vozko/domain/payment"
 )
 
-// fakeClient records what the gateway asked for and returns scripted responses.
 type fakeClient struct {
 	createReq      CreatePaymentRequest
 	createIdemKey  string
@@ -90,8 +89,6 @@ func TestGateway_ProviderAndCapabilities(t *testing.T) {
 		t.Fatalf("provider: got %q", g.Provider())
 	}
 	caps := g.Capabilities()
-	// Split is genuinely unavailable: Mercado Pago's marketplace split needs each
-	// receiver OAuth-onboarded and charges through the seller's own token.
 	if caps.Split {
 		t.Fatal("Mercado Pago must not advertise split support")
 	}
@@ -141,7 +138,6 @@ func TestGateway_CreatePixCharge(t *testing.T) {
 	if f.createIdemKey != "inv:abc" {
 		t.Fatalf("idempotency key not forwarded: %q", f.createIdemKey)
 	}
-	// The document must be sent stripped of punctuation, and typed by its length.
 	if f.createReq.Payer.Identification == nil ||
 		f.createReq.Payer.Identification.Number != "11144477735" ||
 		f.createReq.Payer.Identification.Type != IdentificationCPF {
@@ -160,7 +156,6 @@ func TestGateway_CreatePixCharge(t *testing.T) {
 	if charge.Provider != payment.ProviderMercadoPago {
 		t.Fatalf("provider: got %q", charge.Provider)
 	}
-	// The PIX payload arrives inline; no second call is made (Asaas needs one).
 	if charge.PixCopyPaste == "" || charge.PixQRCodeBase64 == "" {
 		t.Fatalf("PIX payload not mapped: %+v", charge)
 	}
@@ -179,8 +174,6 @@ func TestGateway_CreateChargeClampsPixExpiry(t *testing.T) {
 	f := &fakeClient{}
 	g := newTestGateway(f)
 
-	// A due date one minute out is below Mercado Pago's 30-minute PIX floor and would
-	// be rejected; the adapter clamps rather than failing the charge.
 	if _, err := g.CreateCharge(context.Background(), payment.ChargeRequest{
 		Method:   payment.MethodPix,
 		Amount:   10,
@@ -280,8 +273,6 @@ func TestGateway_BoletoRequiresAddress(t *testing.T) {
 	}
 }
 
-// TestGateway_RejectsSplit is the money-safety test: an unsplit charge would deposit
-// someone else's commission into the platform account, so it must fail loudly.
 func TestGateway_RejectsSplit(t *testing.T) {
 	f := &fakeClient{}
 	g := newTestGateway(f)
@@ -313,7 +304,6 @@ func TestGateway_CreateChargeValidation(t *testing.T) {
 		t.Fatalf("expected ErrCustomerDocumentRequired, got %v", err)
 	}
 
-	// Punctuation-only documents reduce to no digits and must be caught too.
 	junkDoc := validCustomer()
 	junkDoc.Document = "..-/"
 	if _, err := g.CreateCharge(context.Background(), payment.ChargeRequest{
@@ -418,7 +408,6 @@ func TestGateway_RefundCharge(t *testing.T) {
 		t.Fatalf("refund args: %q %v", f.refundID, f.refundAmount)
 	}
 
-	// Zero means a full refund and must be passed through as such.
 	if err := g.RefundCharge(context.Background(), "1234567890", 0, ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -467,8 +456,6 @@ func TestGateway_NilClientIsSafe(t *testing.T) {
 }
 
 func TestGateway_ToChargePrefersTicketURLOverBoletoURL(t *testing.T) {
-	// A PIX charge that also carries an external_resource_url must present the hosted
-	// PIX page as its customer-facing link.
 	f := &fakeClient{getResponse: &Payment{
 		ID: 1, Status: StatusPending, PaymentMethodID: PaymentMethodPix,
 		TransactionDetails: TransactionDetails{ExternalResourceURL: "https://mp.test/slip"},
@@ -510,7 +497,6 @@ func TestGateway_SandboxPayerEmailOverride(t *testing.T) {
 	if f.createReq.Payer.Email != "test_user_4138@testuser.com" {
 		t.Fatalf("payer email not overridden: %q", f.createReq.Payer.Email)
 	}
-	// Only the email is substituted; the real customer's identity still bills correctly.
 	if f.createReq.Payer.Identification.Number != "11144477735" {
 		t.Fatalf("the override must not touch the document: %+v", f.createReq.Payer.Identification)
 	}
@@ -533,9 +519,6 @@ func TestGateway_SandboxPayerEmailAbsentLeavesRealEmail(t *testing.T) {
 	}
 }
 
-// TestGateway_SandboxOverrideDoesNotMaskMissingEmail: an empty customer email is a real
-// data problem and must still surface, rather than being papered over by the sandbox
-// payer and shipping to production undetected.
 func TestGateway_SandboxOverrideDoesNotMaskMissingEmail(t *testing.T) {
 	g := NewGateway(&fakeClient{}, WithSandboxPayerEmail("test_user_4138@testuser.com"))
 
@@ -549,9 +532,6 @@ func TestGateway_SandboxOverrideDoesNotMaskMissingEmail(t *testing.T) {
 	}
 }
 
-// TestGateway_SandboxPayerStatusOverride: Mercado Pago reads a status keyword from
-// payer.first_name and forces the payment into that state. It is the only way to drive
-// a sandbox PIX charge to completion, since test QR codes are not payable by real apps.
 func TestGateway_SandboxPayerStatusOverride(t *testing.T) {
 	f := &fakeClient{}
 	g := NewGateway(f,
@@ -567,8 +547,6 @@ func TestGateway_SandboxPayerStatusOverride(t *testing.T) {
 	if f.createReq.Payer.FirstName != "APRO" {
 		t.Fatalf("status keyword not sent as first_name: %q", f.createReq.Payer.FirstName)
 	}
-	// Only the first name carries the keyword; everything else still identifies the
-	// real customer, so the charge remains correct in every other respect.
 	if f.createReq.Payer.LastName != "da Silva" {
 		t.Fatalf("last name must be untouched, got %q", f.createReq.Payer.LastName)
 	}

@@ -237,13 +237,9 @@ func TestExpireSubscriptions_SmallBatchSize(t *testing.T) {
 	}
 }
 
-// TestExpireSubscriptions_DunningGrace: the production constructor must expire only subscriptions
-// overdue BEYOND the dunning grace, so a monthly sub unpaid at its anchor keeps serving through the
-// dunning window (the day-27 sweep owns the cancellation). The cutoff passed to the repo is now minus
-// the grace, never now itself.
 func TestExpireSubscriptions_DunningGrace(t *testing.T) {
 	repo := &countingExpireRepo{returns: []expireReturn{{n: 0, err: nil}}}
-	fixedNow := time.Date(2026, 2, 24, 12, 0, 0, 0, time.UTC) // the day after the anchor, mid-dunning
+	fixedNow := time.Date(2026, 2, 24, 12, 0, 0, 0, time.UTC)
 	uc := NewExpireSubscriptionsUseCase(repo, nil).(*expireSubscriptionsUseCase)
 	uc.now = func() time.Time { return fixedNow }
 
@@ -257,7 +253,6 @@ func TestExpireSubscriptions_DunningGrace(t *testing.T) {
 	if !repo.calls[0].at.Equal(want) {
 		t.Fatalf("ExpireOverdue cutoff = %s, want now minus the dunning grace %s (mid-dunning subs must NOT be expired)", repo.calls[0].at, want)
 	}
-	// A sub whose period ended on the anchor (the 23rd) must still be inside the grace, so not yet expired.
 	anchorEnd := time.Date(2026, 2, 23, 12, 0, 0, 0, time.UTC)
 	if !anchorEnd.After(repo.calls[0].at) {
 		t.Fatalf("a sub ending on the anchor (%s) must be after the cutoff (%s), i.e. still protected by dunning", anchorEnd, repo.calls[0].at)
@@ -291,7 +286,6 @@ func (r *recordingReducer) OnEntitlementIncreased(string, workspace_addon.Entitl
 }
 
 func TestExpireSubscriptions_SuspendsWhatsAppForEachExpiredWorkspace(t *testing.T) {
-	// wsA appears twice (e.g. an active + a cancelled row); it must reconcile once.
 	repo := &countingExpireRepo{returns: []expireReturn{{wsIDs: []string{"wsA", "wsB", "wsA"}}}}
 	reducer := &recordingReducer{}
 	uc := &expireSubscriptionsUseCase{

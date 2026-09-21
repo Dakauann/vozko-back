@@ -146,12 +146,6 @@ func (h *AIChatHandler) DeleteThread(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// StreamMessage handles POST /chat/threads/{id}/messages as Server-Sent Events.
-// Auth + plan/balance gating happen BEFORE the stream headers (via the aichat
-// Precheck) so failures return real HTTP status codes; once streaming starts the
-// copilot drives the agentic turn and each engine event is relayed as an SSE frame
-// ({type, payload}). Thinking is streamed live (reasoning_delta); the final reply
-// is persisted to the thread by the copilot Service.
 func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
@@ -172,7 +166,6 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Gate before any stream bytes so 402/403/404 surface as normal HTTP errors.
 	thread, err := h.svc.Precheck(workspaceID, claims.UserID, threadID)
 	if err != nil {
 		h.writeError(w, err)
@@ -189,8 +182,6 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ApproveAction runs a previously-proposed mutation after the user confirms it,
-// streaming the result. POST /chat/threads/{id}/actions/{actionId}/approve.
 func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
@@ -214,7 +205,6 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// RejectAction discards a proposed mutation. POST /chat/threads/{id}/actions/{actionId}/reject.
 func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
@@ -238,10 +228,6 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Context {
-	// Department scope mirrors the rest of the app: departmentFilterIDs returns nil
-	// for owners/admins (all departments) or the member's allowed department IDs for
-	// a restricted member, so the copilot can only see/touch what the user can. The
-	// RBAC gate (CheckAccess) looks the workspace role up itself.
 	return copilot_domain.Context{
 		WorkspaceID: workspaceID,
 		UserID:      userID,
@@ -249,13 +235,11 @@ func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Cont
 	}
 }
 
-// startChatSSE writes the SSE headers and returns an emit that relays each copilot
-// engine event as a `data: {"type":<type>,"payload":<payload>}` frame.
 func startChatSSE(w http.ResponseWriter, flusher http.Flusher) func(string, interface{}) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering (nginx)
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	return func(eventType string, payload interface{}) {

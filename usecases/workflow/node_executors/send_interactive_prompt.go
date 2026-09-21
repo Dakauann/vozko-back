@@ -12,8 +12,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// Special output handles of the interactive prompt node. Per-option handles use
-// the option's own ID; these three are the fixed catch-alls.
 const (
 	interactiveHandleNoMatch    = "no_match"
 	interactiveHandleNoReply    = "no_reply"
@@ -22,14 +20,6 @@ const (
 
 const interactiveDefaultTimeoutSeconds = 300
 
-// interactivePromptExecutor asks the contact to pick one option and branches on
-// the answer.
-//
-// It is channel-neutral. WhatsApp keeps its dedicated sender because its two
-// interactive message types carry headers, footers, list sections and row
-// descriptions that no other channel has. Every other channel goes through the
-// InteractiveAdapter capability, which each channel implements with its own
-// native mechanism: Telegram an inline keyboard, Instagram quick replies.
 type interactivePromptExecutor struct {
 	sender  *whatsappSender
 	channel *channelSender
@@ -106,8 +96,6 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 	}
 }
 
-// listRowConfig / listSectionConfig mirror the `sections` config JSON authored in
-// the frontend. Row ID is the stable routing key (never interpolated).
 type listRowConfig struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
@@ -151,18 +139,6 @@ func parseListSectionsConfig(config map[string]interface{}) []listSectionConfig 
 	return sections
 }
 
-// AskInteractiveOutputs resolves the dynamic output handles of the interactive
-// prompt node: one handle per option (id == option id, so runtime routing keys
-// off the WhatsApp reply id) plus the three optional catch-alls. It is the twin
-// of TextMatchOutputs and is registered in builderHandleResolver so the builder
-// lint, activation, and /workflows/resolve-handles all agree.
-//
-// Each per-option handle is REQUIRED: a tapped button/list row must route
-// somewhere, so an unconnected option fails activation (and shows the required
-// marker on the canvas). The three catch-alls (no_match / no_reply / send_failed)
-// are optional. A pre-existing fire-and-forget send_whatsapp_button node (single
-// default edge) keeps RUNNING via the legacy wiring bridge (isInteractiveWiring /
-// resolveInteractiveReplyEdge), but must wire its options to re-activate.
 func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefinition {
 	outputs := make([]workflow.HandleDefinition, 0, 6)
 	seen := make(map[string]struct{})
@@ -201,11 +177,6 @@ func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefin
 	return outputs
 }
 
-// isInteractiveWiring reports whether the node is wired to branch on the reply:
-// at least one outgoing edge targets an option handle or a catch-all. This is
-// what distinguishes the interactive (send + park + branch) mode from the legacy
-// fire-and-forget send. It never depends on a hidden flag, behavior follows the
-// wiring the author drew.
 func isInteractiveWiring(edges []workflow.Edge, config map[string]interface{}) bool {
 	branchLabels := make(map[string]struct{})
 	for _, h := range AskInteractiveOutputs(config) {
@@ -230,10 +201,6 @@ func interactiveTimeoutSeconds(config map[string]interface{}) float64 {
 }
 
 func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
-	// Presenting choices is an optional channel capability, so the guard asks
-	// whether THIS channel can do it rather than naming one channel. A channel
-	// that cannot is skipped loudly: sending the body without the options would
-	// leave the contact reading a question with nothing to tap.
 	if !e.channel.SupportsInteractive(ctx.Run) {
 		return skipUnsupportedNode(ctx, "action_send_interactive"), nil
 	}
@@ -250,9 +217,6 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	messageID, sendErr := e.send(ctx, body, footer)
 	if sendErr != nil {
 		log.Printf("[workflow][node:%s][run:%s] interactive send error: %v", ctx.Node.ID, ctx.Run.ID, sendErr)
-		// Prefer an explicit send_failed branch; otherwise surface the error so
-		// the engine's retry/backoff applies (we do NOT park on a failed send,
-		// the contact never received anything to reply to).
 		if target := resolveEdgeByLabelStrict(edges, interactiveHandleSendFailed); target != "" {
 			return &workflow.NodeResult{
 				NextNodeID: target,
@@ -265,14 +229,9 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	output := map[string]interface{}{"body": body, "message_id": messageID, "sent": true}
 
 	if !interactive {
-		// Legacy fire-and-forget: send and continue down the single default edge.
 		return &workflow.NodeResult{Output: output}, nil
 	}
 
-	// Interactive: park until the contact replies. The reply resumes via
-	// AdvanceOnReply (routes by selected_option_id); a timeout resumes via
-	// resumeRunFromCurrent (routes to no_reply). Reuses WaitReasonReply so the
-	// existing entry-based reply router picks this run up unchanged.
 	timeout := interactiveTimeoutSeconds(ctx.Node.Config)
 	wakeAt := time.Now().UTC().Add(time.Duration(timeout * float64(time.Second))).UnixMilli()
 	return &workflow.NodeResult{
@@ -284,15 +243,7 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	}, nil
 }
 
-// send dispatches the buttons or list message and returns the sent message id.
-// A nil sender (simulation / unconfigured) is a no-op success so branching can
-// still be exercised. It keeps NO state on the executor, executors are shared
-// singletons across concurrent runs.
 func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer string) (string, error) {
-	// WhatsApp keeps its own path: headers, footers, list sections and per-row
-	// descriptions are all WhatsApp-only shapes, and flattening them into the
-	// channel-neutral option list would lose them on the one channel that
-	// renders them.
 	if shared.EntryType(ctx.Run.EntryType) == shared.EntryTypeWhatsApp {
 		if e.sender == nil {
 			log.Printf("[workflow][node:%s][run:%s] interactive: no WhatsApp sender configured, skipping actual send",
@@ -308,11 +259,6 @@ func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer
 	return e.sendViaAdapter(ctx, body, footer)
 }
 
-// sendViaAdapter renders the prompt with the channel's own native mechanism.
-//
-// The full option list is handed over and the ADAPTER applies its own channel's
-// limits. Truncating here instead would need this node to know every channel's
-// rules, which is exactly the coupling the capability exists to avoid.
 func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, body, footer string) (string, error) {
 	options := interactiveOptionsOf(ctx.Node.Config, ctx.State)
 	if len(options) == 0 {
@@ -330,23 +276,11 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 		return "", err
 	}
 	if sent == nil {
-		// A deliberate decline, most often a closed outbound window. The caller
-		// treats an empty id with no error as "nothing was sent" and takes the
-		// send_failed branch, which is correct: the contact has nothing to tap.
 		return "", nil
 	}
 	return sent.ProviderMessageID, nil
 }
 
-// interactiveOptionsOf flattens either config shape into one ordered option
-// list, preserving the order the author wrote.
-//
-// Titles are interpolated because they are shown to the contact; ids never are,
-// because they are the routing keys the reply must match byte-for-byte.
-//
-// List row DESCRIPTIONS are dropped here. Only WhatsApp has a slot for them,
-// which is what Capabilities.SupportsOptionDescriptions tells the editor, so
-// the author is warned rather than surprised.
 func interactiveOptionsOf(config map[string]interface{}, state *workflow.RunState) []conversation.InteractiveOption {
 	var out []conversation.InteractiveOption
 
@@ -382,7 +316,6 @@ func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body,
 	if len(buttons) == 0 {
 		return "", workflow.ErrNodeConfigMissing
 	}
-	// Interpolate user-facing titles; keep ids literal (they are routing keys).
 	for i := range buttons {
 		buttons[i].Title = workflow.Interpolate(buttons[i].Title, ctx.State, nil)
 	}
@@ -411,7 +344,7 @@ func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, fo
 		rows := make([]conversation.ListRow, 0, len(sc.Rows))
 		for _, r := range sc.Rows {
 			rows = append(rows, conversation.ListRow{
-				ID:          r.ID, // literal routing key
+				ID:          r.ID,
 				Title:       workflow.Interpolate(r.Title, ctx.State, nil),
 				Description: workflow.Interpolate(r.Description, ctx.State, nil),
 			})
@@ -466,12 +399,6 @@ func stringConfig(config map[string]interface{}, key string) string {
 	return v
 }
 
-// channelLimits reports what each connected channel will render, for the
-// editor's per-option warnings.
-//
-// Read from the live adapter registry, not a hardcoded table: the numbers here
-// and the numbers each adapter enforces at send time are the same values, so
-// the editor cannot promise something the send would drop.
 func (e *interactivePromptExecutor) channelLimits() map[string]workflow.ChannelInteractiveLimits {
 	support := e.channel.InteractiveSupport()
 	if len(support) == 0 {

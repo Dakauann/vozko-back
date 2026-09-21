@@ -96,16 +96,6 @@ func dateTruncUnit(granularity analytics_domain.Granularity) string {
 	}
 }
 
-// truncBucket truncates a timestamptz column to unit in the system's business
-// timezone (config.BrazilianTimezone, the single source of truth) and returns the
-// bucket start as the true instant of that local boundary (Brazil midnight for a day),
-// so a client formatting it in local time lands on the correct day.
-//
-// The DB session runs in UTC, so a plain DATE_TRUNC('day', ts) would bucket by UTC
-// calendar day and, because Brazil is UTC-3, shift every point in a daily series one
-// day at the boundary (a UTC-midnight bucket renders as the previous day locally).
-//
-// column is a trusted literal (never user input); tz is an IANA name Postgres resolves.
 func truncBucket(unit, column string) string {
 	tz := config.BrazilianTimezone.String()
 	return fmt.Sprintf("(DATE_TRUNC('%s', %s AT TIME ZONE '%s') AT TIME ZONE '%s')", unit, column, tz, tz)
@@ -301,13 +291,6 @@ type callAgentRow struct {
 	callTotalsRow
 }
 
-// callSelectCols sums what call_billing_records actually stores.
-//
-// It used to sum stt_/tts_/llm_ columns as well. Those columns do not exist —
-// the table carries telephony and total only — so EVERY call analytics query
-// failed with `column "stt_revenue_micros" does not exist`. They were the
-// residue of a voice-AI cost model the product does not have: AI runs on
-// messaging channels, never on a call.
 const callSelectCols = `COALESCE(SUM(telephony_revenue_micros), 0) as telephony_revenue_micros,
 	COALESCE(SUM(telephony_cost_micros), 0) as telephony_cost_micros,
 	COALESCE(SUM(telephony_profit_micros), 0) as telephony_profit_micros,

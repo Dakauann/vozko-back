@@ -2,18 +2,6 @@ package conversation
 
 import "testing"
 
-// Direction is a fact about a message that its TYPE cannot carry.
-//
-// The provider's own schema is explicit about this: its `messageType` is the
-// "tipo de conteúdo da mensagem" and its `fromMe` flag is what says who sent it.
-// Reading direction off the content type worked only for channels that agreed to
-// lose the content type in exchange — Telegram and Instagram store every
-// outbound message as `operator` whatever it contained. Unofficial WhatsApp
-// keeps the honest type, so an owner replying on their own phone was stored as
-// an ordinary text and read back as the CUSTOMER talking.
-
-// The bug, stated at the level it actually lives: an outbound message whose
-// content is a plain text must stay outbound.
 func TestStatedDirectionSurvivesAnInboundLookingType(t *testing.T) {
 	msg := &Message{
 		MessageType: MessageTypeUserMessage,
@@ -24,7 +12,6 @@ func TestStatedDirectionSurvivesAnInboundLookingType(t *testing.T) {
 	}
 }
 
-// The mirror: a stated INBOUND is not overridden by an outbound-looking type.
 func TestStatedDirectionWinsBothWays(t *testing.T) {
 	msg := &Message{
 		MessageType: MessageTypeOperator,
@@ -35,9 +22,6 @@ func TestStatedDirectionWinsBothWays(t *testing.T) {
 	}
 }
 
-// With nothing stated, the old inference stands — unchanged, so the callers that
-// never passed a direction (the direct messageRepo.Create paths) behave exactly
-// as they did.
 func TestUnstatedDirectionFallsBackToTheType(t *testing.T) {
 	cases := map[MessageType]MessageHistoryDirection{
 		MessageTypeUserMessage:  MessageDirectionInbound,
@@ -62,8 +46,6 @@ func TestUnstatedDirectionFallsBackToTheType(t *testing.T) {
 	}
 }
 
-// A row must never reach the database with no direction at all: an unstated one
-// would push every reader back to the inference this column exists to delete.
 func TestResolvedDirectionIsNeverEmpty(t *testing.T) {
 	for _, msg := range []*Message{
 		{},
@@ -77,7 +59,6 @@ func TestResolvedDirectionIsNeverEmpty(t *testing.T) {
 	}
 }
 
-// A nil message resolves to nothing rather than panicking or claiming a side.
 func TestResolvedDirectionOnNil(t *testing.T) {
 	var msg *Message
 	if got := msg.ResolvedDirection(); got != MessageDirectionUnknown {
@@ -85,14 +66,12 @@ func TestResolvedDirectionOnNil(t *testing.T) {
 	}
 }
 
-// The empty direction means "not stated", never "neither" and never a side.
-// Readers branch on Valid, so a value that lied here would silently flip rows.
 func TestDirectionValidity(t *testing.T) {
 	cases := map[MessageHistoryDirection]bool{
 		MessageDirectionInbound:  true,
 		MessageDirectionOutbound: true,
 		MessageDirectionUnknown:  false,
-		"inbound":                false, // case matters; the column stores upper
+		"inbound":                false,
 		"OUT":                    false,
 	}
 	for direction, want := range cases {

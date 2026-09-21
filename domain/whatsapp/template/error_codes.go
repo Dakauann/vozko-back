@@ -5,23 +5,6 @@ import (
 	"sort"
 )
 
-// Error codes are the stable, machine-readable identity of a template failure.
-//
-// They exist because the message is not a UI string. Every sentinel in this
-// package spells its reason in English, written for whoever is reading a log,
-// and the product is used in Portuguese — so a template rejected for a body
-// variable in the wrong place told a Brazilian operator "body text cannot start
-// with a variable - add text before it". The client cannot translate that: the
-// prose is not a key, and matching on it would break the first time somebody
-// improves the wording.
-//
-// A code is a key. The UI looks it up, renders the sentence in the operator's
-// language, and falls back to the server's message when it meets a code it does
-// not know yet — so a new backend error degrades to English rather than to
-// nothing.
-//
-// The values are part of the API contract. Renaming one is a breaking change in
-// the same way renaming a JSON field is; add a new code instead.
 const (
 	CodeUnknown = "template_unknown_error"
 
@@ -70,9 +53,6 @@ const (
 	CodeInvalidButtonType    = "template_invalid_button_type"
 	CodeInvalidCategory      = "template_invalid_category"
 
-	// AUTHENTICATION templates. Their own group because the failures are about
-	// a category rather than a component: an operator meets these while building
-	// a one-time code template and nowhere else.
 	CodeOTPTypeRequired                 = "template_otp_type_required"
 	CodeInvalidOTPType                  = "template_invalid_otp_type"
 	CodeMultipleOTPButtons              = "template_multiple_otp_buttons"
@@ -84,13 +64,8 @@ const (
 	CodeAuthenticationBodyNotEditable   = "template_authentication_body_not_editable"
 	CodeAuthenticationFooterNotEditable = "template_authentication_footer_not_editable"
 	CodeAuthenticationCodeTooLong       = "template_authentication_code_too_long"
-	// CodeAuthenticationCodeRequired is a SEND failure, not a create one: the
-	// template is fine and the call left the code out. It is here beside its
-	// siblings because an operator reads it as one of the authentication rules.
-	CodeAuthenticationCodeRequired = "template_authentication_code_required"
+	CodeAuthenticationCodeRequired      = "template_authentication_code_required"
 
-	// The SEND path. Same contract, different failures: these reach the UI from
-	// the send button rather than the create form, and were equally unlocalised.
 	CodeSendWorkspaceRequired    = "template_send_workspace_required"
 	CodeSendIdempotencyRequired  = "template_send_idempotency_required"
 	CodeSendInProgress           = "template_send_in_progress"
@@ -100,20 +75,10 @@ const (
 	CodeSendBillingNotConfigured = "template_send_billing_not_configured"
 	CodeSendAttemptConflict      = "template_send_attempt_conflict"
 
-	// CodeProviderRejected is a rejection by WhatsApp itself rather than by our
-	// validation. The accompanying message is Meta's own error_user_msg, which
-	// Meta already localises — so the UI shows it verbatim instead of trying to
-	// translate a sentence it did not write.
-	CodeProviderRejected = "template_provider_rejected"
-	// CodeProviderUnavailable is a transport or 5xx failure reaching Meta. It is
-	// the one class worth retrying, and the only one that is genuinely our
-	// problem rather than the operator's.
+	CodeProviderRejected    = "template_provider_rejected"
 	CodeProviderUnavailable = "template_provider_unavailable"
 )
 
-// errorCodes maps every sentinel to its code. Kept as one table rather than a
-// switch so the coverage test can walk it, and so adding a sentinel without a
-// code is a visible omission in one place instead of a silent fallthrough.
 var errorCodes = map[error]string{
 	ErrTemplateNotFound:            CodeNotFound,
 	ErrTemplateAlreadyExists:       CodeAlreadyExists,
@@ -183,11 +148,6 @@ var errorCodes = map[error]string{
 	ErrSendAttemptConflict:    CodeSendAttemptConflict,
 }
 
-// ErrorCode returns the stable code for an error, walking the wrap chain.
-//
-// An unrecognised error yields CodeUnknown rather than an empty string: the UI
-// branches on the code, and "" would be an invisible third state alongside
-// "known" and "unknown".
 func ErrorCode(err error) string {
 	if err == nil {
 		return ""
@@ -200,11 +160,6 @@ func ErrorCode(err error) string {
 	return CodeUnknown
 }
 
-// IsValidationError reports whether an error is the caller's to fix.
-//
-// It is derived from the code table rather than from a second hand-maintained
-// list — the previous handler kept its own slice of ~25 sentinels, which is a
-// list that silently falls out of date every time an error is added.
 func IsValidationError(err error) bool {
 	if err == nil {
 		return false
@@ -217,11 +172,6 @@ func IsValidationError(err error) bool {
 	return false
 }
 
-// KnownErrorCodes returns every code this build can emit, sorted.
-//
-// The UI's translation table is checked against this in a test, so a code
-// without a translation is caught here rather than by an operator meeting a raw
-// English sentence in production.
 func KnownErrorCodes() []string {
 	codes := make([]string, 0, len(errorCodes)+3)
 	seen := map[string]bool{}
@@ -241,25 +191,12 @@ func KnownErrorCodes() []string {
 	return codes
 }
 
-// ProviderError is a failure that came from WhatsApp itself rather than from
-// our validation.
-//
-// Declared as an interface HERE, in the domain, so the HTTP layer can classify
-// a provider rejection without importing the WhatsApp client. The concrete type
-// lives in infra/conversation/whatsapp; delivery only ever sees this shape,
-// which is the direction dependencies are supposed to run.
 type ProviderError interface {
 	error
-	// UserMessage is the provider's own end-user sentence, already localised by
-	// them. Empty when the provider sent nothing usable.
 	UserMessage() string
-	// ProviderUnavailable separates "the provider is down or throttling us",
-	// which is ours to retry, from "the provider refused this template", which
-	// is the operator's to fix.
 	ProviderUnavailable() bool
 }
 
-// AsProviderError extracts a ProviderError from an error chain.
 func AsProviderError(err error) (ProviderError, bool) {
 	var pe ProviderError
 	if errors.As(err, &pe) {

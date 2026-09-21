@@ -797,8 +797,6 @@ func toCamelCase(s string) string {
 }
 
 func (h *AgentHandler) ListOptions(w http.ResponseWriter, r *http.Request) {
-	// Models are loaded dynamically from the AI service below; this map starts
-	// empty and is populated per-provider from the live, priced catalog.
 	modelsByProvider := map[agent.AgentProvider]agentProviderModels{}
 	var messagingModels []string
 	var modelsWithPricing []ai.ModelInfo
@@ -883,9 +881,6 @@ func (h *AgentHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_PHONE_NOT_FOUND", "Business phone not found", map[string]string{"businessPhoneId": "business phone not found"})
 	case errors.Is(err, agent.ErrAgentBusinessPhoneNoAccess):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_PHONE_NO_ACCESS", "Phone does not belong to this workspace", map[string]string{"businessPhoneId": "phone does not belong to this workspace"})
-	// Not-found and foreign are reported identically, matching the use case:
-	// distinguishing them would confirm the existence of another workspace's
-	// knowledge base or MCP collection to anyone probing ids.
 	case errors.Is(err, agent.ErrAgentKnowledgeBaseNoAccess):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_KNOWLEDGE_BASE_NO_ACCESS", "Knowledge base not found in this workspace", map[string]string{"knowledgeBaseIds": "not found in this workspace"})
 	case errors.Is(err, agent.ErrAgentMCPCollectionNoAccess):

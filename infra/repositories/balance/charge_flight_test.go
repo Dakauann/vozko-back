@@ -9,17 +9,8 @@ import (
 	"vozko/domain/balance"
 )
 
-// The charge aggregation is the query that took the platform down on
-// 2026-09-08: seconds of work over two multi-gigabyte tables, with nothing
-// stopping a second caller from starting its own copy while the first was
-// still running. Nine accumulated, each pinning a core, and the database
-// stopped answering anything else — /auth/login included.
-//
-// These tests pin the two properties that keep that from repeating: identical
-// concurrent questions share ONE execution, and different questions do not.
-
 type flightInner struct {
-	balance.Repository // unimplemented methods panic; the tests never reach them
+	balance.Repository
 
 	calls   int32
 	release chan struct{}
@@ -44,7 +35,7 @@ func TestConcurrentIdenticalChargeQueriesRunOnce(t *testing.T) {
 		DepartmentIDs: []string{"d1", "d2"},
 	}
 
-	const callers = 9 // the number that actually piled up in production
+	const callers = 9
 	var wg sync.WaitGroup
 	results := make([]*balance.WhatsAppChargeStats, callers)
 	for i := 0; i < callers; i++ {
@@ -60,8 +51,6 @@ func TestConcurrentIdenticalChargeQueriesRunOnce(t *testing.T) {
 		}(i)
 	}
 
-	// Hold the first execution open until everyone has had time to arrive, so
-	// the test measures coalescing rather than a lucky sequential ordering.
 	waitFor(t, func() bool { return atomic.LoadInt32(&inner.calls) >= 1 })
 	time.Sleep(50 * time.Millisecond)
 	if got := atomic.LoadInt32(&inner.calls); got != 1 {
@@ -82,8 +71,6 @@ func TestConcurrentIdenticalChargeQueriesRunOnce(t *testing.T) {
 	}
 }
 
-// Each caller must own its value. They joined one execution, so handing back
-// the same pointer would let one caller's write be seen by the others.
 func TestEachCallerGetsItsOwnCopy(t *testing.T) {
 	inner := &flightInner{}
 	repo := &CachedBalanceRepository{inner: inner}
@@ -106,8 +93,6 @@ func TestEachCallerGetsItsOwnCopy(t *testing.T) {
 	}
 }
 
-// Coalescing must never merge two DIFFERENT questions, which would answer one
-// workspace's report with another's numbers.
 func TestDifferentQuestionsDoNotShareAFlight(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -142,9 +127,6 @@ func TestDifferentQuestionsDoNotShareAFlight(t *testing.T) {
 	}
 }
 
-// The same departments in a different order are the same question. Without
-// sorting they would key differently and each order would pay for its own
-// query — which is the pile-up this exists to prevent.
 func TestDepartmentOrderDoesNotSplitTheFlight(t *testing.T) {
 	a := balance.WhatsAppChargeFilter{WorkspaceID: "ws-1", DepartmentIDs: []string{"d1", "d2", "d3"}}
 	b := balance.WhatsAppChargeFilter{WorkspaceID: "ws-1", DepartmentIDs: []string{"d3", "d1", "d2"}}
@@ -153,8 +135,6 @@ func TestDepartmentOrderDoesNotSplitTheFlight(t *testing.T) {
 		t.Errorf("same departments in another order keyed differently:\n  %q\n  %q",
 			chargeFlightKey(a), chargeFlightKey(b))
 	}
-	// The caller's slice must survive: sorting it in place would reorder a
-	// filter the caller still holds.
 	if a.DepartmentIDs[0] != "d1" || b.DepartmentIDs[0] != "d3" {
 		t.Error("chargeFlightKey reordered the caller's slice")
 	}

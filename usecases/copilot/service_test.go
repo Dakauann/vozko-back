@@ -14,8 +14,6 @@ import (
 	"vozko/usecases/agentloop"
 )
 
-// ---- fake session persistence (aichat repos) -----------------------------
-
 type fakeThreads struct {
 	thread  *aichat.Thread
 	touched bool
@@ -36,7 +34,7 @@ type fakeMessages struct {
 	list         []*aichat.Message
 	createErr    error
 	listErr      error
-	listErrAfter int // when listErr is set, error only after this many successful calls
+	listErrAfter int
 	listCalls    int
 }
 
@@ -56,7 +54,6 @@ func (f *fakeMessages) ListByThread(in aichat.ListMessagesInput) ([]*aichat.Mess
 }
 func (f *fakeMessages) DeleteByThread(string) error { return nil }
 
-// failStore is a PendingActionStore whose Save/Get fail, to cover error paths.
 type failStore struct{ saveErr, getErr error }
 
 func (s *failStore) Save(string, copilot.PendingAction) error { return s.saveErr }
@@ -79,8 +76,6 @@ func (f *fakeMessages) last() *aichat.Message {
 	}
 	return f.created[len(f.created)-1]
 }
-
-// ---- Stream --------------------------------------------------------------
 
 func TestService_Stream_ReadThenReply(t *testing.T) {
 	th := &fakeThreads{thread: testThread()}
@@ -172,7 +167,6 @@ func TestService_Stream_NoModelOutput(t *testing.T) {
 	if err := svc.Stream(context.Background(), th.thread, "oi", ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("stream: %v", err)
 	}
-	// Only the user turn is persisted when the model produced no reply.
 	if len(ms.created) != 1 || ms.created[0].Role != aichat.RoleUser {
 		t.Fatalf("expected only the user message persisted, got %+v", ms.created)
 	}
@@ -185,14 +179,11 @@ func TestService_Stream_Empty(t *testing.T) {
 	}
 }
 
-// ---- Approve / Reject ----------------------------------------------------
-
 func TestService_Approve(t *testing.T) {
 	th := &fakeThreads{thread: testThread()}
 	ms := &fakeMessages{}
 	store := NewInMemoryPendingStore()
 	wt := &fakeTool{name: "create_agent", meta: writeMeta}
-	// After executing the mutation, Approve re-enters the loop; the model confirms.
 	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Pronto! Criei o agente Bot."}}
 	svc := newService(prov, th, ms, store, wt)
 	_ = store.Save("t1", copilot.PendingAction{ID: "act-1", ToolName: "create_agent", Args: map[string]interface{}{"name": "Bot"}})
@@ -270,8 +261,6 @@ func TestService_Reject_NotFound(t *testing.T) {
 		t.Fatalf("expected ErrActionNotFound, got %v", err)
 	}
 }
-
-// ---- helpers -------------------------------------------------------------
 
 func TestService_BuildHistorySkipsToolTurns(t *testing.T) {
 	ms := &fakeMessages{list: []*aichat.Message{
@@ -356,9 +345,9 @@ func TestTurnRecorder(t *testing.T) {
 	rec := &turnRecorder{emit: func(tp string, _ interface{}) { seen = append(seen, tp) }}
 	rec.emitFn("reasoning_delta", map[string]string{"text": "hmm "})
 	rec.emitFn("reasoning_delta", map[string]interface{}{"text": "more"})
-	rec.emitFn("reasoning_delta", 123) // unrecognized payload → ignored, still forwarded
+	rec.emitFn("reasoning_delta", 123)
 	rec.emitFn("tool", map[string]interface{}{"name": "list_models", "summary": "ok", "ok": true})
-	rec.emitFn("assistant_delta", map[string]string{"text": "hi"}) // forwarded, not recorded
+	rec.emitFn("assistant_delta", map[string]string{"text": "hi"})
 	if len(seen) != 5 {
 		t.Fatalf("every event must pass through, got %v", seen)
 	}

@@ -15,7 +15,6 @@ import (
 	tguc "vozko/usecases/telegram"
 )
 
-// listAccountsRepo is the minimum AccountRepository the list endpoint touches.
 type listAccountsRepo struct {
 	tgdomain.AccountRepository
 	items []*tgdomain.Account
@@ -30,13 +29,6 @@ func withWorkspace(req *http.Request, workspaceID string) *http.Request {
 		req.Context(), middleware.WorkspaceIDContextKey, workspaceID))
 }
 
-// The list endpoint must answer the SAME envelope every other paginated list in
-// this API answers: {"data": [...], "meta": {...}}.
-//
-// It originally returned a bespoke {"items": [...], "page": ...}. That parses
-// without error in the browser client, which reads response.data.data, so the
-// account was created, the request was 200, and the table was simply blank with
-// nothing anywhere saying why.
 func TestListAccountsUsesTheStandardPaginatedEnvelope(t *testing.T) {
 	account := &tgdomain.Account{
 		ID: "acct-1", WorkspaceID: "ws-1", Mode: tgdomain.ModeBot,
@@ -79,15 +71,11 @@ func TestListAccountsUsesTheStandardPaginatedEnvelope(t *testing.T) {
 	if body.Data[0].BotUsername != "vozkotest_bot" {
 		t.Errorf("botUsername = %q", body.Data[0].BotUsername)
 	}
-	// Rendered as a string: a Telegram id exceeds 2^53 and would lose precision
-	// as a JSON number.
 	if body.Data[0].BotUserID != "8608280305" {
 		t.Errorf("botUserId = %q, want a decimal string", body.Data[0].BotUserID)
 	}
 }
 
-// No credential may ever appear in a response. An over-broad RBAC grant must not
-// leak the ability to impersonate the bot.
 func TestListAccountsNeverSerializesCredentials(t *testing.T) {
 	account := &tgdomain.Account{
 		ID: "acct-1", WorkspaceID: "ws-1", Mode: tgdomain.ModeBot, BotUserID: 1,

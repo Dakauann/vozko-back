@@ -11,11 +11,9 @@ type AttendantStats struct {
 	RespondedCount      int64   `json:"responded_count"`
 	ResponseRate        float64 `json:"response_rate"`
 	AvgResponseTimeMins float64 `json:"avg_response_time_mins"`
-	// ActorKind is always "human" for workspace members; AI stats use AIAgentStats.
-	ActorKind string `json:"actor_kind,omitempty"`
+	ActorKind           string  `json:"actor_kind,omitempty"`
 }
 
-// AIAgentStats is attendance metrics for an AI agent treated as an attendant.
 type AIAgentStats struct {
 	AgentID         string  `json:"agent_id"`
 	Sessions        int64   `json:"sessions"`
@@ -27,8 +25,6 @@ type AIAgentStats struct {
 	AvgAIMessages   float64 `json:"avg_ai_messages"`
 }
 
-// FRTStats is first-response time computed from assignment_history ownership start
-// to first agent-side message (operator or ai_response).
 type FRTStats struct {
 	AvgFRTMins    float64 `json:"avg_frt_mins"`
 	MedianFRTMins float64 `json:"median_frt_mins"`

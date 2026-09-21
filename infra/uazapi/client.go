@@ -1,21 +1,3 @@
-// Package uazapi is the uazapi transport for the unofficial WhatsApp channel.
-//
-// It is deliberately the only place in the codebase that knows this vendor
-// exists. Everything above it works with domain/unofficial_whatsapp's
-// contracts, which is what makes a second provider — Evolution API, WPPConnect,
-// a self-hosted Baileys — another implementation of the same port rather than a
-// second entry type and a second pass over every CRM registry.
-//
-// Two vendor facts shape this file:
-//
-//  1. Credentials are plain headers with no expiry: `admintoken` is host-wide,
-//     `token` is per instance. Both are passed per call rather than held as
-//     client state, because a workspace can connect several numbers across
-//     several hosts.
-//  2. Failures are not uniform. The host's own errors and WhatsApp's forwarded
-//     refusals arrive through the same HTTP status, and only the body tells
-//     them apart. Conflating them is how a WhatsApp warning gets retried into a
-//     ban, so decodeError below is the load-bearing function here.
 package uazapi
 
 import (
@@ -32,36 +14,23 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// requestTimeout bounds a single call. Generous because instance provisioning
-// and connect are slow on the host, but finite: a hung call holds a slot in the
-// caller's rate budget for its whole duration.
 const requestTimeout = 45 * time.Second
 
-// maxResponseBytes caps what we will read from the host. A media download can be
-// large, but an unbounded read of a remote body is an availability bug waiting
-// for a bad day.
 const maxResponseBytes = 64 << 20
 
-// Header names. Vendor-specific, hence private to this package.
 const (
 	headerInstanceToken = "token"
 	headerAdminToken    = "admintoken"
 )
 
-// Config configures the client.
 type Config struct {
 	HTTPClient *http.Client
 }
 
-// Client implements the provider ports in domain/unofficial_whatsapp.
-//
-// It holds no base URL and no credential: both travel with each call, in the
-// ServerRef or InstanceRef the domain defines.
 type Client struct {
 	http *http.Client
 }
 
-// NewClient builds the provider client.
 func NewClient(cfg Config) *Client {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
@@ -70,16 +39,8 @@ func NewClient(cfg Config) *Client {
 	return &Client{http: httpClient}
 }
 
-// Compile-time proof that the client satisfies the whole provider surface. If a
-// port method is added, this fails here rather than at wiring time.
 var _ uw.ProviderAPI = (*Client)(nil)
 
-// ---------------------------------------------------------------- transport
-
-// call issues one request and decodes the response body into out.
-//
-// baseURL and credential are explicit for the reason in the package comment.
-// A nil body sends no payload; a nil out discards the response.
 func (c *Client) call(
 	ctx context.Context,
 	baseURL, credHeader, credential, method, path string,
@@ -140,13 +101,6 @@ func (c *Client) adminCall(ctx context.Context, server uw.ServerRef, method, pat
 	return c.call(ctx, server.BaseURL, headerAdminToken, server.AdminToken, method, path, body, out)
 }
 
-// ---------------------------------------------------------------- errors
-
-// errorBody is the union of every failure shape the host emits.
-//
-// The vendor answers a plain host error with `{error}` and a forwarded WhatsApp
-// refusal with a much richer object. Decoding both here, rather than at each
-// call site, is what lets ProviderError.IsRestriction be trustworthy.
 type errorBody struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
@@ -181,12 +135,6 @@ type timelock struct {
 	EnforcementType string `json:"enforcement_type"`
 }
 
-// decodeError turns a non-2xx response into a structured domain error.
-//
-// A body that does not parse still yields a ProviderError with the status, so a
-// caller can always classify: returning a bare "unexpected response" would make
-// a 401 indistinguishable from a 503 and break both the reconnect and the
-// capacity paths.
 func decodeError(status int, raw []byte) error {
 	provErr := &uw.ProviderError{HTTPStatus: status}
 
@@ -211,9 +159,6 @@ func decodeError(status int, raw []byte) error {
 	return provErr
 }
 
-// restrictionFromDetails builds the cached restriction state from an error body.
-// Returns nil when WhatsApp reported no limit, so a plain host failure does not
-// masquerade as one and pause a broadcast for the wrong reason.
 func restrictionFromDetails(body errorBody) *uw.Restriction {
 	capping, lock := body.Details.NewChatMessageCapping, body.Details.ReachoutTimelock
 	if capping == nil && lock == nil {
@@ -249,13 +194,8 @@ func restrictionFromDetails(body errorBody) *uw.Restriction {
 	return r
 }
 
-// ---------------------------------------------------------------- lifecycle
-
 type createInstanceRequest struct {
-	Name string `json:"name"`
-	// The host's admin-only metadata slots: readable by the instance owner but
-	// writable only with the admin token. They are the trace that lets an
-	// orphaned instance on a host be matched back to a tenant.
+	Name         string `json:"name"`
 	AdminField01 string `json:"adminField01,omitempty"`
 	AdminField02 string `json:"adminField02,omitempty"`
 }
@@ -266,20 +206,16 @@ type createInstanceResponse struct {
 	Name     string       `json:"name"`
 }
 
-// instanceBody is the host's instance object, narrowed to what we persist.
-// Everything omitted here is either the host's own chatbot config (which we
-// switch off, see DisableBuiltInChatbot) or fields with no CRM meaning.
 type instanceBody struct {
-	ID            string `json:"id"`
-	Token         string `json:"token"`
-	Status        string `json:"status"`
-	Name          string `json:"name"`
-	PairCode      string `json:"paircode"`
-	QRCode        string `json:"qrcode"`
-	ProfileName   string `json:"profileName"`
-	ProfilePicURL string `json:"profilePicUrl"`
-	IsBusiness    bool   `json:"isBusiness"`
-	// The vendor spells this field "plataform".
+	ID                   string `json:"id"`
+	Token                string `json:"token"`
+	Status               string `json:"status"`
+	Name                 string `json:"name"`
+	PairCode             string `json:"paircode"`
+	QRCode               string `json:"qrcode"`
+	ProfileName          string `json:"profileName"`
+	ProfilePicURL        string `json:"profilePicUrl"`
+	IsBusiness           bool   `json:"isBusiness"`
 	Platform             string `json:"plataform"`
 	Owner                string `json:"owner"`
 	LastDisconnect       string `json:"lastDisconnect"`
@@ -303,9 +239,6 @@ func (c *Client) CreateInstance(
 		return nil, err
 	}
 
-	// The host returns the token at the top level and the id inside the
-	// instance object; tolerate either placement rather than assuming one, since
-	// a missing token silently produces an instance we can never address again.
 	token := firstNonEmpty(resp.Token, resp.Instance.Token)
 	if token == "" || resp.Instance.ID == "" {
 		return nil, &uw.ProviderError{
@@ -339,10 +272,6 @@ func (c *Client) ListInstances(ctx context.Context, server uw.ServerRef) ([]uw.R
 }
 
 type connectRequest struct {
-	// Phone present ⇒ pairing code; absent ⇒ QR code. That is the whole mode
-	// switch on the wire, which is why ConnectInput.Mode exists in the domain:
-	// an empty phone in pairing mode would silently fall back to a QR the
-	// customer is not looking at.
 	Phone      string `json:"phone,omitempty"`
 	SystemName string `json:"systemName,omitempty"`
 }
@@ -359,9 +288,6 @@ type sessionResponse struct {
 	} `json:"status"`
 }
 
-// session normalizes the two response shapes the host uses: /instance/connect
-// answers with the flags at the top level, /instance/status nests them under
-// "status".
 func (r sessionResponse) session() *uw.Session {
 	connected, loggedIn, jid := r.Connected, r.LoggedIn, r.JID
 	if r.Status != nil {
@@ -420,8 +346,6 @@ func (c *Client) DeleteInstance(ctx context.Context, ref uw.InstanceRef) error {
 	return c.instanceCall(ctx, ref, http.MethodDelete, "/instance", nil, nil)
 }
 
-// ---------------------------------------------------------------- webhooks
-
 type webhookBody struct {
 	ID                  string   `json:"id,omitempty"`
 	Enabled             bool     `json:"enabled"`
@@ -433,19 +357,11 @@ type webhookBody struct {
 }
 
 func (c *Client) SetWebhook(ctx context.Context, ref uw.InstanceRef, sub uw.WebhookSubscription) error {
-	// No id and no action: the host's documented "simple mode", which manages a
-	// single webhook per instance and upserts it. Passing an id would make this
-	// call depend on state we would then have to store and keep in step.
 	body := webhookBody{
-		Enabled: sub.Enabled,
-		URL:     sub.URL,
-		Events:  sub.Events,
-		// Never nil: the host treats a missing array differently from an empty
-		// one, and we mean "exclude nothing" explicitly.
-		ExcludeMessages: nonNil(sub.ExcludeMessages),
-		// Both false deliberately: the event kind is read from the body, which
-		// has to be parsed anyway, and a second source of truth for it in the
-		// URL is one that can drift.
+		Enabled:             sub.Enabled,
+		URL:                 sub.URL,
+		Events:              sub.Events,
+		ExcludeMessages:     nonNil(sub.ExcludeMessages),
 		AddURLEvents:        false,
 		AddURLTypesMessages: false,
 	}
@@ -500,8 +416,6 @@ func (c *Client) WebhookErrors(ctx context.Context, ref uw.InstanceRef) ([]uw.We
 	return out, nil
 }
 
-// ---------------------------------------------------------------- diagnostics
-
 type limitsResponse struct {
 	CanSendNewMessages  *bool  `json:"can_send_new_messages"`
 	ErrorKey            string `json:"error_key"`
@@ -535,35 +449,19 @@ func (c *Client) MessagingLimits(ctx context.Context, ref uw.InstanceRef) (*uw.R
 		if until := parseTime(lock.Until); until != nil {
 			r.Until = until
 		}
-		// An active timelock is a refusal even when the top-level flag is
-		// missing, and a missing flag must never read as permission.
 		blocked := false
 		r.CanSendNewChats = &blocked
 	}
 	return r, nil
 }
 
-// DisableBuiltInChatbot switches off the host's own AI answering.
-//
-// This is not hygiene. The host ships a chatbot with its own model key on the
-// instance row; left on, it answers the same customer our agent is answering,
-// and neither knows about the other. Asserted at provisioning and re-asserted by
-// the health cron, because a tenant with console access can turn it back on.
 func (c *Client) DisableBuiltInChatbot(ctx context.Context, ref uw.InstanceRef) error {
-	// The endpoint that carries the chatbot flag is the instance-row update, and
-	// it VALIDATES `name` as non-empty even though the name is not what we came
-	// to change — omitting it fails the whole call with "Name cannot be empty"
-	// and leaves the host's chatbot running. So the current name is read first
-	// and sent back unchanged: this must not become an accidental rename.
 	var current sessionResponse
 	if err := c.instanceCall(ctx, ref, http.MethodGet, "/instance/status", nil, &current); err != nil {
 		return err
 	}
 	name := strings.TrimSpace(current.Instance.Name)
 	if name == "" {
-		// Renaming to a placeholder would be worse than not disabling the bot:
-		// the name is what the operator identifies the number by on the host's
-		// own console. Fail instead, and let the caller log it.
 		return &uw.ProviderError{
 			HTTPStatus: http.StatusBadGateway,
 			Message:    "instance has no name to preserve; refusing to rename it while disabling the chatbot",
@@ -573,8 +471,6 @@ func (c *Client) DisableBuiltInChatbot(ctx context.Context, ref uw.InstanceRef) 
 	body := map[string]any{"name": name, "chatbot_enabled": false}
 	return c.instanceCall(ctx, ref, http.MethodPost, "/instance/updateInstanceName", body, nil)
 }
-
-// ---------------------------------------------------------------- helpers
 
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
@@ -599,10 +495,6 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// parseTime accepts the timestamp shapes the host mixes: RFC3339 with and
-// without fractional seconds. An unparseable value yields nil rather than the
-// zero time, because a zero timestamp downstream reads as "January 1st year 1"
-// in the UI.
 func parseTime(raw string) *time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -617,9 +509,6 @@ func parseTime(raw string) *time.Time {
 	return nil
 }
 
-// jidString extracts a JID from a field the host types loosely: it is null when
-// logged out, a string when connected, and occasionally an object carrying the
-// parts separately.
 func jidString(value any) string {
 	switch v := value.(type) {
 	case nil:
@@ -645,11 +534,6 @@ func jidString(value any) string {
 	return ""
 }
 
-// decodeBase64Payload decodes a media payload, tolerating a data: URI prefix.
-//
-// The vendor is inconsistent about whether it returns a bare base64 string or a
-// full data URI, and feeding the latter to a bare decoder fails on the first
-// colon — which would look like "all media is corrupt".
 func decodeBase64Payload(payload string) ([]byte, error) {
 	payload = strings.TrimSpace(payload)
 	if payload == "" {

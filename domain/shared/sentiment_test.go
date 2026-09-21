@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// positive/neutral/negative is stored by every channel's analysis. The values
-// are pinned because they are persisted, filtered on in SQL and translated by
-// the UI: a rename here is a migration, not a refactor.
 func TestSentiment_Valid(t *testing.T) {
 	for _, s := range []Sentiment{SentimentPositive, SentimentNeutral, SentimentNegative} {
 		if !s.Valid() {

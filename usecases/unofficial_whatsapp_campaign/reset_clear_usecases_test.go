@@ -28,8 +28,6 @@ func seedForReset(status campaign.Status) (*fakeCampaignRepo, *fakeEntryRepo) {
 	return campaigns, newFakeEntryRepo()
 }
 
-// The code is the only thing between a misclick and returning a whole campaign
-// to pending, so a wrong one is refused and the right one works exactly once.
 func TestResetRequiresTheIssuedCode(t *testing.T) {
 	campaigns, entries := seedForReset(campaign.StatusStopped)
 	uc := NewResetCampaignUseCase(campaigns, entries)
@@ -54,7 +52,6 @@ func TestResetRequiresTheIssuedCode(t *testing.T) {
 		t.Fatalf("the issued code was refused: %v", err)
 	}
 
-	// The code is consumed, so a replayed confirmation cannot reset twice.
 	if _, err := uc.ConfirmReset(uwc.ResetCampaignInput{
 		CampaignID: "camp-1", ResetCode: prepared.ResetCode,
 	}); !errors.Is(err, uwc.ErrCampaignResetCodeInvalid) {
@@ -62,8 +59,6 @@ func TestResetRequiresTheIssuedCode(t *testing.T) {
 	}
 }
 
-// Resetting a live campaign would return entries to pending underneath a
-// consumer still sending them, producing duplicates.
 func TestResetRefusedWhileRunning(t *testing.T) {
 	campaigns, entries := seedForReset(campaign.StatusRunning)
 	uc := NewResetCampaignUseCase(campaigns, entries)
@@ -78,7 +73,6 @@ func TestResetRefusedWhileRunning(t *testing.T) {
 	}
 }
 
-// A reset campaign is STOPPED, not left completed: it has work to do again.
 func TestResetReturnsTheCampaignToStopped(t *testing.T) {
 	campaigns, entries := seedForReset(campaign.StatusCompleted)
 	uc := NewResetCampaignUseCase(campaigns, entries)
@@ -125,9 +119,6 @@ func TestClearHistoryRefusedWhileRunning(t *testing.T) {
 	}
 }
 
-// One conversation that cannot be wiped must not abort the rest: a partially
-// cleared campaign is recoverable by running it again, while stopping halfway
-// leaves the operator unable to tell what was removed.
 func TestClearHistoryContinuesPastAFailure(t *testing.T) {
 	campaigns, entries := seedForReset(campaign.StatusStopped)
 	wiper := &fakeWiper{err: errBoom}

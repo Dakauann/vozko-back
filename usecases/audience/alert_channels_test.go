@@ -33,9 +33,6 @@ func armedRule() ca.AlertRule {
 	}
 }
 
-// The production case: no connected number, rule armed anyway. The save is
-// refused here rather than at the first firing, which is where the operator
-// used to find out.
 func TestCreate_RefusesAnArmedRuleWithNoSender(t *testing.T) {
 	rules := &fakeAlertRules{}
 	dir := &stubDirectory{statuses: []ca.AlertChannelStatus{
@@ -70,9 +67,6 @@ func TestCreate_AllowsAnArmedRuleWithAConnectedSender(t *testing.T) {
 	}
 }
 
-// Enabling an existing rule is the other door into the same lie, and it used
-// to be wide open: the rule was already saved, so flipping the switch never
-// re-asked whether it could send.
 func TestUpdate_RefusesEnablingARuleWhoseChannelWentAway(t *testing.T) {
 	existing := armedRule()
 	existing.ID = "rule-1"
@@ -93,9 +87,6 @@ func TestUpdate_RefusesEnablingARuleWhoseChannelWentAway(t *testing.T) {
 	}
 }
 
-// Turning a rule OFF must always work, whatever the channel is doing. Refusing
-// it would trap an operator with an alert they cannot disable, which is a
-// worse bug than the one being fixed.
 func TestUpdate_DisablingIsAlwaysAllowed(t *testing.T) {
 	existing := armedRule()
 	existing.ID = "rule-1"
@@ -115,8 +106,6 @@ func TestUpdate_DisablingIsAlwaysAllowed(t *testing.T) {
 	}
 }
 
-// No directory wired means the deployment cannot answer. Saving keeps working
-// exactly as before rather than every rule in the product becoming unsaveable.
 func TestCreate_WithoutADirectoryBehavesAsBefore(t *testing.T) {
 	rules := &fakeAlertRules{}
 	uc := NewManageAlertRulesUseCase(rules, fixedClock{time.Now()})
@@ -129,9 +118,6 @@ func TestCreate_WithoutADirectoryBehavesAsBefore(t *testing.T) {
 	}
 }
 
-// A directory that errors is an outage in the thing being asked, not a verdict
-// on the rule. Blocking every save because the instance table was briefly
-// unreachable trades a silent bug for a loud one.
 func TestCreate_ADirectoryOutageDoesNotBlockTheSave(t *testing.T) {
 	rules := &fakeAlertRules{}
 	dir := &stubDirectory{err: errors.New("db is down")}
@@ -145,8 +131,6 @@ func TestCreate_ADirectoryOutageDoesNotBlockTheSave(t *testing.T) {
 	}
 }
 
-// The picker reads the same source the validator does, so what the form offers
-// and what the save accepts cannot drift apart. That drift IS the bug.
 func TestChannelsUseCase_ReportsWhatTheValidatorWillEnforce(t *testing.T) {
 	dir := &stubDirectory{statuses: []ca.AlertChannelStatus{
 		{Channel: ca.AlertChannelOfficial, Available: true, Senders: []ca.AlertSender{{ID: "p1"}}},
@@ -166,9 +150,6 @@ func TestChannelsUseCase_ReportsWhatTheValidatorWillEnforce(t *testing.T) {
 	}
 }
 
-// Without a directory the picker falls back to the full vocabulary rather than
-// offering nothing, which would make the panel unusable in a deployment that
-// never wired one.
 func TestChannelsUseCase_WithoutADirectoryReportsEverythingAvailable(t *testing.T) {
 	uc := NewGetAlertChannelsUseCase(nil)
 

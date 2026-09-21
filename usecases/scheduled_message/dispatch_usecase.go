@@ -19,15 +19,6 @@ type dispatchUseCase struct {
 	clock       sm.Clock
 }
 
-// NewDispatchUseCase wires the delivery path.
-//
-// The sender is conversation.OperatorSendUseCase — the same object the live
-// composer uses — and that is the single most important decision in this
-// feature. A scheduled message is an operator's message delivered later, so it
-// must take the identical path: the same window re-check, the same signature
-// format, the same media routing, the same status transition and timeline
-// event. Any channel that can be replied to can be scheduled to, for free and
-// forever, because there is no second send implementation to keep in step.
 func NewDispatchUseCase(
 	repo sm.Repository,
 	windows sm.WindowReader,
@@ -62,27 +53,18 @@ func NewDispatchUseCase(
 	}, nil
 }
 
-// Execute delivers one scheduled message, at most once.
-//
-// Safe to call any number of times for the same id, from any number of
-// replicas: the claim below is a single conditional write, so exactly one
-// caller proceeds and every other returns having done nothing. That is what
-// lets the delayed queue be at-least-once and the sweep overlap it without
-// either producing a duplicate message to the customer.
 func (uc *dispatchUseCase) Execute(ctx context.Context, id string) error {
 	message, err := uc.repo.ClaimForDispatch(id, uc.clock.Now())
 	if err != nil {
 		return err
 	}
 	if message == nil {
-		// Cancelled, already sent, or claimed by another replica. All expected.
 		return nil
 	}
 
 	return uc.deliver(ctx, message)
 }
 
-// DispatchClaimed delivers a message the caller has already claimed.
 func (uc *dispatchUseCase) DispatchClaimed(ctx context.Context, message *sm.ScheduledMessage) error {
 	if message == nil {
 		return nil
@@ -90,16 +72,9 @@ func (uc *dispatchUseCase) DispatchClaimed(ctx context.Context, message *sm.Sche
 	return uc.deliver(ctx, message)
 }
 
-// deliver sends an already-claimed message.
 func (uc *dispatchUseCase) deliver(ctx context.Context, message *sm.ScheduledMessage) error {
 	entryType := string(message.EntryType)
 
-	// The window is re-read rather than trusted from creation time. It cannot
-	// have shrunk — every expiry this system reports only moves forward — but a
-	// conversation can stop being replyable for reasons that are not a clock:
-	// the contact blocks the bot, a linked device dies, a reply right is
-	// revoked. Checking here buys a precise reason; the send path checks again
-	// on its own, so this is a diagnosis, not the guard.
 	if !uc.windows.IsOpen(message.EntryID, entryType) {
 		return uc.fail(message, sm.ReasonWindowClosed, "the messaging window was closed at delivery time")
 	}
@@ -119,18 +94,12 @@ func (uc *dispatchUseCase) deliver(ctx context.Context, message *sm.ScheduledMes
 		return uc.fail(message, classify(err), err.Error())
 	}
 
-	// Written immediately, with nothing between it and the send that could
-	// fail: this is the write that bounds the one window in which a crash could
-	// leave a delivered message looking undelivered.
 	if err := uc.repo.MarkSent(message.ID, sent.ID, uc.clock.Now()); err != nil {
 		log.Printf("[scheduled_message] %s was DELIVERED as %s but could not be marked sent: %v",
 			message.ID, sent.ID, err)
 		return err
 	}
 
-	// Best-effort: the message is with the customer, so a broadcast failure must
-	// not turn a delivered message into a failed one. The send use case has
-	// already applied the conversation's own side effects.
 	uc.broadcaster.BroadcastNewMessage(message.EntryID, entryType, sent)
 	return nil
 }
@@ -142,16 +111,9 @@ func (uc *dispatchUseCase) fail(message *sm.ScheduledMessage, reason sm.FailureR
 	if err := uc.repo.MarkFailed(message.ID, reason, detail); err != nil {
 		return err
 	}
-	// The failure is recorded and visible to the operator, so it is not the
-	// caller's problem to retry: a queue consumer must ack, not redeliver.
 	return nil
 }
 
-// classify turns a send error into the reason the operator will read.
-//
-// A provider error is deliberately NOT retried. We cannot tell a refused send
-// from one that reached the customer before the connection dropped, and an
-// unwanted duplicate is unrecoverable while a visible failure costs one click.
 func classify(err error) sm.FailureReason {
 	switch {
 	case errors.Is(err, conversation.ErrWindowClosed),

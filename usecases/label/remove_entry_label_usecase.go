@@ -11,11 +11,6 @@ type removeEntryLabelUseCase struct {
 	events ce.Logger
 }
 
-// NewRemoveEntryLabelUseCase wires the label removal.
-//
-// events may be nil (unit tests). Held by the USE CASE rather than the HTTP
-// handler that used to hold it, so the CRM's bulk "remove label" records the
-// change on every conversation it touches.
 func NewRemoveEntryLabelUseCase(repo label.Repository, events ce.Logger) label.RemoveEntryLabelUseCase {
 	return &removeEntryLabelUseCase{repo: repo, events: events}
 }

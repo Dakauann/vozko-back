@@ -7,17 +7,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Every registered channel must project its conversation status.
-//
-// The inbox reads this fact off the row for all of them. It used to be resolved
-// only from the official WhatsApp entry repository, so every other channel's
-// row was built with the zero value and the inbox rendered "Nova" over a
-// conversation the database had as ongoing: replying appeared to move the
-// conversation backwards.
-//
-// Structural rather than a list of channels on purpose. A channel added to the
-// registry without a status column fails here instead of shipping the same bug
-// a fourth time.
 func TestEveryChannelProjectsItsConversationStatus(t *testing.T) {
 	for _, entryType := range []shared.EntryType{
 		shared.EntryTypeWhatsApp,
@@ -44,8 +33,6 @@ func TestEveryChannelProjectsItsConversationStatus(t *testing.T) {
 	}
 }
 
-// A channel that genuinely has no status (support) must still produce a
-// well-formed projection rather than invalid SQL with a hole in it.
 func TestAChannelWithoutStatusStillProjectsTheColumn(t *testing.T) {
 	q := channelQuery{}
 	if got := q.statusColumnOrEmpty(); got != "''::text" {

@@ -55,13 +55,6 @@ func departmentScopeClause(deptColumn, entryIDColumn string, departmentIDs []str
 	return fmt.Sprintf(" AND %s = ANY(?::uuid[])", deptColumn), []interface{}{pq.Array(departmentIDs)}
 }
 
-// assignedSelfClause restricts an entry family to conversations the given user
-// owns OR that are unassigned (the shared pool). It is the board/list equivalent
-// of the inbox's self-scope (see SearchInboxEntries' AssignedUserID clause): a
-// member who lacks conversations:view_others must never see entries assigned to
-// OTHER members. Empty userID or column yields no clause (admins/owners/members
-// who can view others). The identical predicate to the inbox guarantees the
-// table, kanban, and inbox all show the same set for the same user.
 func assignedSelfClause(entryIDColumn, assignedUserID string) (string, []interface{}) {
 	if assignedUserID == "" || entryIDColumn == "" {
 		return "", nil
@@ -78,11 +71,7 @@ func NewRepository(db *gorm.DB) conversation.MessageRepository {
 	return &repository{db: db}
 }
 
-// entryTableForLastMessage maps a message entry_type to the entry table carrying
-// the denormalized last_message_at. Unknown types have no entry row to touch.
 func entryTableForLastMessage(entryType string) string {
-	// Support has no channelQuery declaration (it carries no container and is
-	// never entry-scoped), so it stays spelled out here.
 	if entryType == string(conversation.MessageChannelSupport) {
 		return "support_entries"
 	}
@@ -92,27 +81,16 @@ func entryTableForLastMessage(entryType string) string {
 	return ""
 }
 
-// touchEntryLastMessageAt moves the entry's denormalized last_message_at forward to
-// at. Monotonic, it never moves backwards, so retries and out-of-order writes are
-// safe. Best effort: the message itself is already durable, so a failure here must
-// not fail the write; the value self-heals on the next message, and the backfill
-// migration re-seeds anything that drifts.
-//
-// When msgType is known it also advances last_customer_message_at or
-// last_agent_message_at in the same UPDATE (one round-trip, no N+1).
 func (r *repository) touchEntryLastMessageAt(entryID, entryType string, at time.Time) {
 	r.touchEntryMessageClocks(entryID, entryType, "", at)
 }
 
-// touchEntryMessageClocks updates last_message_at and, when msgType is set, the
-// customer/agent idle-close clocks. Support entries only have last_message_at.
 func (r *repository) touchEntryMessageClocks(entryID, entryType string, msgType conversation.MessageType, at time.Time) {
 	table := entryTableForLastMessage(entryType)
 	if table == "" || entryID == "" || at.IsZero() {
 		return
 	}
 
-	// support_entries: only last_message_at (no auto-close clocks).
 	if table == "support_entries" {
 		if err := r.db.Exec(fmt.Sprintf(`
 			UPDATE %s SET last_message_at = ?
@@ -132,7 +110,6 @@ func (r *repository) touchEntryMessageClocks(entryID, entryType string, msgType 
 		}
 	}
 
-	// Single UPDATE for all clocks that apply. Monotonic on each column.
 	sql := fmt.Sprintf(`UPDATE %s SET last_message_at = CASE
 			WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END`, table)
 	args := []interface{}{at, at}
@@ -154,10 +131,6 @@ func (r *repository) touchEntryMessageClocks(entryID, entryType string, msgType 
 	}
 }
 
-// recomputeEntryLastMessageAt re-derives last_message_at from the surviving
-// messages. Needed when messages are removed, where the stored value must be able
-// to recede, or become NULL, which correctly drops the entry out of the inbox
-// again (mirroring the inner-join semantics the old JOIN LATERAL had).
 func (r *repository) recomputeEntryLastMessageAt(entryID, entryType string) {
 	table := entryTableForLastMessage(entryType)
 	if table == "" || entryID == "" {
@@ -181,7 +154,6 @@ func (r *repository) Create(message *conversation.Message) error {
 	if err := r.db.Create(dbMessage).Error; err != nil {
 		return err
 	}
-	// Keep denormalized clocks current (inbox order + idle auto-close eligibility).
 	r.touchEntryMessageClocks(
 		dbMessage.EntryID,
 		dbMessage.EntryType,
@@ -243,8 +215,6 @@ func (r *repository) Update(messageID string, message *conversation.Message) err
 }
 
 func (r *repository) Delete(messageID string) error {
-	// Read the owning entry before the delete: afterwards the row is soft-deleted
-	// and the entry it belonged to can no longer be resolved from it.
 	var owner schema.ConversationMessage
 	hasOwner := r.db.Select("entry_id", "entry_type").
 		Where("id = ?", messageID).First(&owner).Error == nil
@@ -256,8 +226,6 @@ func (r *repository) Delete(messageID string) error {
 	if result.RowsAffected == 0 {
 		return conversation.ErrMessageNotFound
 	}
-	// This may have removed the newest message, so last_message_at has to be
-	// re-derived (it can recede, or go NULL if that was the only message).
 	if hasOwner {
 		r.recomputeEntryLastMessageAt(owner.EntryID, owner.EntryType)
 	}
@@ -424,8 +392,6 @@ func (r *repository) DeleteByEntry(entryID string, entryType shared.EntryType) e
 		Delete(&schema.ConversationMessage{}).Error; err != nil {
 		return err
 	}
-	// Every message of this entry is gone, so last_message_at must go NULL, which
-	// drops the entry out of the inbox, exactly as the old LATERAL did.
 	r.recomputeEntryLastMessageAt(entryID, string(entryType))
 	return nil
 }
@@ -482,14 +448,11 @@ func mapDomainToSchema(message *conversation.Message) *schema.ConversationMessag
 	}
 
 	return &schema.ConversationMessage{
-		ID:          message.ID,
-		EntryID:     message.EntryID,
-		EntryType:   string(message.EntryType),
-		Channel:     string(message.Channel),
-		MessageType: string(message.MessageType),
-		// Resolved, never copied raw: a row written with no direction at all
-		// would force every reader back to the inference this column exists to
-		// remove. The direct Create paths state none, so they derive here.
+		ID:                message.ID,
+		EntryID:           message.EntryID,
+		EntryType:         string(message.EntryType),
+		Channel:           string(message.Channel),
+		MessageType:       string(message.MessageType),
 		Direction:         string(message.ResolvedDirection()),
 		FromParticipant:   message.From,
 		ToParticipant:     message.To,
@@ -558,12 +521,6 @@ func (r *repository) GetEntriesWithMessages(campaignID string, entryIDs []string
 	return r.getEntriesWithMessages(campaignID, conversation.ContainerKindAccount, entryIDs, entryType, page, pageSize, assignedUserID)
 }
 
-// GetEntriesWithMessagesForContainer is the same read, narrowed to a specific
-// container kind.
-//
-// A second method rather than a seventh positional parameter on a signature that
-// already carries two bare ints: every existing caller wants the primary
-// container, and only the campaign-scoped CRM view wants the other.
 func (r *repository) GetEntriesWithMessagesForContainer(campaignID string, containerKind conversation.ContainerKind, entryIDs []string, entryType shared.EntryType, page, pageSize int, assignedUserID string) ([]conversation.EntryWithLastMessage, int64, error) {
 	return r.getEntriesWithMessages(campaignID, containerKind, entryIDs, entryType, page, pageSize, assignedUserID)
 }
@@ -613,16 +570,11 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 	campaignIDField := ch.ContainerIDField
 	campaignNameField := ch.ContainerNameField
 	aiFields := ch.AutomationFields
-	// The per-conversation override rides with the container's AI config so the
-	// list gets it in the same pass; NULL means "inherit".
 	if ch.AutomationColumn != "" {
 		aiFields += ", " + ch.AutomationColumn + " AS automation_enabled"
 	} else {
 		aiFields += ", NULL::boolean AS automation_enabled"
 	}
-	// The conversation status rides the same projection, for the same reason:
-	// the inbox row has to carry it on every channel, and asking per entry
-	// would be one query per row.
 	if ch.StatusColumn != "" {
 		aiFields += ", " + ch.StatusColumn + " AS conversation_status"
 	} else {
@@ -798,9 +750,6 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	leadJoin := ch.ContactJoin
 
 	if useCampaignFilter {
-		// Which container "CampaignID" means is the caller's choice. For most
-		// channels there is only one; the unofficial WhatsApp channel has both a
-		// number and a campaign, and they scope to different departments.
 		var departmentArgs []interface{}
 		campaignFilter, departmentArgs = ch.filterForKind(input.ContainerKind,
 			func(column, entryCol string) (string, []interface{}) {
@@ -851,8 +800,6 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 		cteArgs = append(cteArgs, input.AssignedUserID)
 	}
 
-	// User-facing "filter by responsible" (strict, unlike the permission scope above):
-	// exactly this owner, or the no-responsible pool. ANDs with every other scope.
 	if input.ResponsibleUnassigned {
 		cteConditions = append(cteConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id)")
 	} else if input.ResponsibleUserID != "" {
@@ -875,9 +822,6 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	whereConditions := []string{}
 	whereArgs := []interface{}{}
 
-	// The default (empty) filter is the "active" view: everything EXCEPT
-	// finalized. A concrete status filters to exactly that status. IS DISTINCT
-	// FROM keeps entries that have no status yet (never finalized) visible.
 	{
 		statusCol := ch.StatusColumn
 		if statusCol != "" {
@@ -968,10 +912,6 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 		whereArgs = append(whereArgs, et)
 	}
 
-	// A channel with no window declares no subquery. Skipping the filter is the
-	// only correct behaviour there: interpolating an empty subquery produced
-	// `entry_id IN ()`, a syntax error, and treating it as "no rows" would hide
-	// every conversation on a channel that can always be replied to.
 	if input.WindowOpen != nil && ch.WindowSubquery != "" {
 		if *input.WindowOpen {
 			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id IN (%s)", ch.WindowSubquery))
@@ -1154,15 +1094,10 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	var entryParts []string
 	var entryArgs []interface{}
 
-	// Every channel's conversations come from the shared channel registry
-	// (entry_sources.go), so a new channel appears here, and on the CRM board,
-	// by registering a descriptor, with no query edits.
 	entryCTESQL, entryCTEArgs := buildEntryUnion(entrySourceScope{
-		EntryType:            input.EntryType,
-		WhatsAppCampaignType: input.WhatsAppCampaignType,
-		ConversationStatus:   string(input.ConversationStatus),
-		// The inbox list hides finished conversations unless one is asked for by
-		// name. The board deliberately does not, see entrySourceScope.
+		EntryType:              input.EntryType,
+		WhatsAppCampaignType:   input.WhatsAppCampaignType,
+		ConversationStatus:     string(input.ConversationStatus),
 		ExcludeFinished:        true,
 		DepartmentIDs:          input.DepartmentIDs,
 		RestrictDepartments:    input.RestrictDepartments,
@@ -1240,8 +1175,6 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 		whereArgs = append(whereArgs, input.AssignedUserID)
 	}
 
-	// User-facing "filter by responsible" (strict): exactly this owner, or the
-	// no-responsible pool. ANDs with the permission scope + department scope above.
 	if input.ResponsibleUnassigned {
 		whereConditions = append(whereConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id)")
 	} else if input.ResponsibleUserID != "" {
@@ -1276,9 +1209,6 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	}
 
 	if input.DateFrom != nil {
-		// Qualify with the all_entries alias: lm_created_at is a column of that CTE
-		// (projected from the entry's stored last_message_at), so ae.lm_created_at is
-		// addressable here. An unqualified SELECT-list alias would crash with 42703.
 		whereConditions = append(whereConditions, "ae.lm_created_at >= ?")
 		whereArgs = append(whereArgs, *input.DateFrom)
 	}
@@ -1296,12 +1226,6 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	if input.Query != "" {
 		leadsJoin = "LEFT JOIN leads l ON l.id = ae.lead_id AND l.deleted_at IS NULL"
 	}
-	// Last activity comes from the entry's stored last_message_at (projected as
-	// lm_created_at by each CTE branch, which also filters out entries that have no
-	// messages). This replaces a JOIN LATERAL that ran once per entry and forced
-	// every entry in the workspace to be materialized, and the multi-GB entries
-	// table sequentially scanned, before pagination. Semantics are unchanged: the
-	// LATERAL was an inner join, so entries without messages were already excluded.
 	baseCTE := fmt.Sprintf(`
 		WITH all_entries AS (%s),
 		entries_with_msg AS (
@@ -1363,9 +1287,6 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 		return nil, totalCount, nil
 	}
 
-	// Hydration is per channel because each needs its own joins. The set of
-	// channels comes from the registry, so a new one is never silently dropped
-	// between matching and hydration.
 	refs := make([]entryRef, 0, len(matchedIDs))
 	for _, m := range matchedIDs {
 		refs = append(refs, entryRef{ID: m.EntryID, Type: shared.EntryType(m.EntryType)})
@@ -1390,42 +1311,23 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	return allEntries, totalCount, nil
 }
 
-// SearchEntriesByFilter is the additive, workspace-global read path for the
-// decoupled CRM board and list view. It reuses the CTE + department-scope +
-// pagination/sort shape of searchEntriesByWorkspace, but builds its WHERE from a
-// reusable crmfilter.Filter compiled by the infra FilterCompiler instead of the
-// hand-written per-field predicates, and reads the last-message timestamp from the
-// entry's stored last_message_at rather than a per-entry JOIN LATERAL.
-// searchEntriesByWorkspace is intentionally left untouched (it still serves the
-// legacy inbox path).
 func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error) {
 	wsID := input.WorkspaceID
 	if wsID == "" {
 		return nil, 0, fmt.Errorf("SearchEntriesByFilter: workspace id is required")
 	}
 
-	// Compile the reusable filter first so an invalid filter fails fast (and so
-	// we can plan the leads join only when a full-text query predicate is used).
 	desc := crmfiltersql.NewConversationDescriptor()
 	desc.WorkspaceID = wsID
-	// Last activity now comes from the entry's stored last_message_at, projected by
-	// the all_entries CTE, so it is addressable both in WHERE and ORDER BY here.
 	desc.LastActivityExpr = "ae.lm_created_at"
 	whereSQL, whereArgs, err := crmfiltersql.Compile(input.Filter, desc, 1)
 	if err != nil {
 		return nil, 0, fmt.Errorf("SearchEntriesByFilter: %w", err)
 	}
 
-	// All three entry families, workspace-scoped, each surfacing the columns the
-	// compiler reads on the outer row: conversation_status, campaign_id,
-	// created_at, updated_at (plus entry_type used as the conversation "source").
 	var entryParts []string
 	var entryArgs []interface{}
 
-	// Same channel registry the inbox list reads, projected into the board's
-	// wider column shape. Registering a channel makes it available to the board,
-	// and therefore to stages, labels and every compiled filter, all of which key
-	// on (entry_id, entry_type) rather than on a channel table.
 	boardCTESQL, boardCTEArgs := buildEntryUnion(entrySourceScope{
 		DepartmentIDs:          input.DepartmentIDs,
 		RestrictDepartments:    input.RestrictDepartments,
@@ -1444,20 +1346,8 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 		whereClause = "WHERE " + whereSQL
 	}
 
-	// Always join the lead row so the board card can render a title (lead name /
-	// number) and so a full-text query predicate (which references l.name /
-	// l.number) resolves. Mirrors the searchEntriesByWorkspace leads join
-	// exactly (same table/alias, LEFT JOIN, COALESCE null handling).
 	leadsJoin := "LEFT JOIN leads l ON l.id = ae.lead_id AND l.deleted_at IS NULL"
 
-	// The last message timestamp is read from the entry's stored last_message_at
-	// (projected as lm_created_at by each CTE branch, which also filters out entries
-	// that have none). This replaces a JOIN LATERAL over conversation_messages that
-	// ran once per entry: it forced every entry in the workspace to be materialized,
-	// and the multi-GB entries table sequentially scanned, before pagination,
-	// costing seconds on large workspaces. Semantics are unchanged: the LATERAL was
-	// an inner join, so entries without messages were already excluded, exactly as
-	// the IS NOT NULL filter does now.
 	baseCTE := fmt.Sprintf(`
 		WITH all_entries AS (%s),
 		entries_with_msg AS (
@@ -1525,8 +1415,6 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 		return nil, totalCount, nil
 	}
 
-	// Hydrate per entry type (reusing GetEntriesWithMessages), then restore the
-	// DB result order so the requested sort is preserved across the type split.
 	order := make(map[string]int, len(matchedIDs))
 	type leadIdentity struct{ name, number string }
 	leadByEntry := make(map[string]leadIdentity, len(matchedIDs))
@@ -1545,9 +1433,6 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 		}
 	}
 
-	// GetEntriesWithMessages hydrates everything except the lead name/number
-	// (it never selected them); restore them from the filtered board query so
-	// the board card can render a title.
 	for i := range allEntries {
 		if lead, ok := leadByEntry[allEntries[i].EntryID]; ok {
 			allEntries[i].LeadName = lead.name
@@ -1588,17 +1473,11 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WorkflowID      string `gorm:"column:workflow_id"`
 		AgentEnabled    bool   `gorm:"column:agent_responses_enabled"`
 		WorkflowEnabled bool   `gorm:"column:workflow_enabled"`
-		// The per-conversation override. A pointer because nil ("inherit") is a
-		// distinct state from an explicit false, and this query never selected
-		// it at all, so every entry_update broadcast reported automation as
-		// enabled, and pausing a conversation only appeared after a reload.
-		AutomationOn *bool  `gorm:"column:automation_enabled"`
-		ConvStatus   string `gorm:"column:conversation_status"`
+		AutomationOn    *bool  `gorm:"column:automation_enabled"`
+		ConvStatus      string `gorm:"column:conversation_status"`
 	}
 	var info entryInfo
 
-	// Channels that carry no container (support) simply have no declaration, and
-	// the header stays empty exactly as it did before.
 	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
 		r.db.Raw(ch.entryInfoSQL(), entryID).Scan(&info)
 	}
@@ -1687,11 +1566,6 @@ func (r *repository) CountByEntry(entryID string, entryType shared.EntryType) (i
 	return count, nil
 }
 
-// CountInboundByEntry counts only the contact's own messages.
-//
-// The inbound message types are listed here rather than filtered in Go because
-// the caller wants a count, not the rows: loading a page to count it is what
-// produced the windowed-count bug this replaces.
 func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryType) (int64, error) {
 	var count int64
 	err := r.db.Raw(`
@@ -1706,8 +1580,6 @@ func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryT
 	return count, nil
 }
 
-// inboundMessageTypes mirrors MessageType.IsInbound for SQL. Derived from the
-// domain predicate so the two cannot drift.
 func inboundMessageTypes() []string {
 	all := []conversation.MessageType{
 		conversation.MessageTypeUserMessage, conversation.MessageTypeAudio,
@@ -1789,9 +1661,6 @@ func (r *repository) GetByWhatsAppMessageID(wamid string) (*conversation.Message
 	return mapSchemaToDomain(&dbMessage), nil
 }
 
-// GetByExternalMessageID finds the message an edit/delete/reaction/read event
-// refers to. Channel-wide because those events name an id without a
-// conversation; see the domain interface.
 func (r *repository) GetByExternalMessageID(entryType shared.EntryType, externalID string) (*conversation.Message, error) {
 	var dbMessage schema.ConversationMessage
 	if err := r.db.
@@ -1805,9 +1674,6 @@ func (r *repository) GetByExternalMessageID(entryType shared.EntryType, external
 	return mapSchemaToDomain(&dbMessage), nil
 }
 
-// GetByEntryAndExternalMessageID is the dedup lookup, matching the partial
-// unique index ux_cm_entry_external_msgid. See the domain interface for why the
-// entry belongs in the key.
 func (r *repository) GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error) {
 	var dbMessage schema.ConversationMessage
 	if err := r.db.
@@ -1825,18 +1691,6 @@ func (r *repository) UpdateDeliveryStatus(wamid string, status conversation.Deli
 	return r.UpdateDeliveryStatusWithReason(wamid, status, 0, "")
 }
 
-// UpdateDeliveryStatusWithReason records WHY a message failed, alongside the fact
-// that it did.
-//
-// The reason is merged into the existing metadata rather than given its own
-// columns: the thread already reads metadata for template rendering, so this
-// needs no migration, and a failure reason is exactly the kind of
-// channel-specific detail that column would have to keep growing to hold.
-//
-// It matters because "failed" on its own is unactionable. The provider's codes
-// separate things an operator can fix (a number not on WhatsApp) from things
-// only an admin can (a billing hold on the business account), and without the
-// code every failure looks like the same shrug.
 func (r *repository) UpdateDeliveryStatusWithReason(
 	wamid string,
 	status conversation.DeliveryStatus,
@@ -1850,18 +1704,6 @@ func (r *repository) UpdateDeliveryStatusWithReason(
 	})
 }
 
-// UpdateDeliveryReceipt is the single update path behind all three status
-// writers. It also records Meta's pricing verdict when the webhook carried one.
-//
-// Pricing gets columns rather than a metadata merge, unlike the failure reason
-// above. The difference is who reads it: a failure reason is read one thread at
-// a time, while the pricing columns are aggregated across millions of rows by
-// the service message exposure report, and a jsonb extraction cannot be indexed
-// usefully for that.
-//
-// A receipt with no pricing writes no pricing. Meta sends several status events
-// per message and only some carry the pricing object, so writing unconditionally
-// would blank out on "read" what we learned on "sent".
 func (r *repository) UpdateDeliveryReceipt(wamid string, receipt conversation.DeliveryReceipt) error {
 	status := receipt.Status
 	errorCode := receipt.ErrorCode
@@ -1890,8 +1732,6 @@ func (r *repository) UpdateDeliveryReceipt(wamid string, receipt conversation.De
 		if len(errorMessage) > 500 {
 			errorMessage = errorMessage[:500]
 		}
-		// jsonb_strip_nulls keeps the merge from writing explicit nulls, and
-		// COALESCE covers rows whose metadata is NULL rather than '{}'.
 		payload, err := json.Marshal(map[string]interface{}{
 			"delivery_error": map[string]interface{}{
 				"code":    errorCode,
@@ -1904,13 +1744,6 @@ func (r *repository) UpdateDeliveryReceipt(wamid string, receipt conversation.De
 		}
 	}
 
-	// Either id column, because only official WhatsApp writes whatsapp_message_id.
-	// Every channel added since — Instagram, Telegram, unofficial WhatsApp — puts
-	// its provider id in external_message_id, so matching the WhatsApp column
-	// alone silently updated NOTHING for them: zero rows affected is not an
-	// error, so the receipt was accepted, classified, and dropped, and the ticks
-	// stayed on "sent" forever. Both columns are indexed, so this plans as a
-	// BitmapOr over the two rather than a scan.
 	result := r.db.Model(&schema.ConversationMessage{}).
 		Where("whatsapp_message_id = ? OR external_message_id = ?", wamid, wamid).
 		Updates(updates)

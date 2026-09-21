@@ -10,14 +10,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// Integration tests for the alert claim, opt-in behind VOZKO_TEST_DB=1 like the
-// rest of this package.
-//
-// These exist because the claim is the ONLY thing standing between "a rule
-// fired" and "a real person got the same WhatsApp message four times". sqlmock
-// cannot verify it: the property is about what Postgres does when several
-// connections run the same UPDATE at once.
-
 func seedAlertRule(t *testing.T, repo ca.AlertRuleRepository, ws string, mutate func(*ca.AlertRule)) *ca.AlertRule {
 	t.Helper()
 	rule := &ca.AlertRule{
@@ -44,8 +36,6 @@ func seedAlertRule(t *testing.T, repo ca.AlertRuleRepository, ws string, mutate 
 	return rule
 }
 
-// THE test. Several replicas evaluate the same batch, all decide the rule
-// should fire, and exactly one is allowed to send.
 func TestIntegration_AlertClaimIsExclusive(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -97,8 +87,6 @@ func TestIntegration_AlertClaimIsExclusive(t *testing.T) {
 	}
 }
 
-// The cooldown is enforced by the claim itself, against the row's own setting,
-// so a second firing inside it is refused even if the caller asks.
 func TestIntegration_AlertClaimHonoursTheCooldown(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -110,15 +98,12 @@ func TestIntegration_AlertClaimHonoursTheCooldown(t *testing.T) {
 		t.Fatalf("first claim: %v %v", claimed, err)
 	}
 
-	// One minute later: still quiet.
 	if claimed, err := repo.ClaimFire(context.Background(), ws, rule.ID, now.Add(time.Minute)); err != nil || claimed {
 		t.Fatalf("inside the cooldown: claimed=%v err=%v", claimed, err)
 	}
-	// Twenty-nine minutes later: still quiet.
 	if claimed, err := repo.ClaimFire(context.Background(), ws, rule.ID, now.Add(29*time.Minute)); err != nil || claimed {
 		t.Fatalf("still inside the cooldown: claimed=%v err=%v", claimed, err)
 	}
-	// Past it: fires again.
 	if claimed, err := repo.ClaimFire(context.Background(), ws, rule.ID, now.Add(31*time.Minute)); err != nil || !claimed {
 		t.Fatalf("past the cooldown: claimed=%v err=%v", claimed, err)
 	}
@@ -129,8 +114,6 @@ func TestIntegration_AlertClaimHonoursTheCooldown(t *testing.T) {
 	}
 }
 
-// The daily cap is the backstop for a condition that persists, and it has to
-// roll over rather than silence the rule forever.
 func TestIntegration_AlertClaimHonoursTheDailyCap(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -150,13 +133,11 @@ func TestIntegration_AlertClaimHonoursTheDailyCap(t *testing.T) {
 		}
 	}
 
-	// The fourth is refused even though the cooldown has passed.
 	fourth := base.Add(3 * step)
 	if claimed, err := repo.ClaimFire(context.Background(), ws, rule.ID, fourth); err != nil || claimed {
 		t.Fatalf("over the daily cap: claimed=%v err=%v", claimed, err)
 	}
 
-	// Tomorrow the tally resets.
 	tomorrow := base.Add(24 * time.Hour)
 	if claimed, err := repo.ClaimFire(context.Background(), ws, rule.ID, tomorrow); err != nil || !claimed {
 		t.Fatalf("new day: claimed=%v err=%v", claimed, err)
@@ -167,7 +148,6 @@ func TestIntegration_AlertClaimHonoursTheDailyCap(t *testing.T) {
 	}
 }
 
-// A rule switched off between being listed and being claimed does not fire.
 func TestIntegration_AlertClaimRefusesADisabledRule(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -179,7 +159,6 @@ func TestIntegration_AlertClaimRefusesADisabledRule(t *testing.T) {
 	}
 }
 
-// Another workspace cannot claim, read, edit or delete this rule.
 func TestIntegration_AlertRuleIsWorkspaceScoped(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -210,8 +189,6 @@ func TestIntegration_AlertRuleIsWorkspaceScoped(t *testing.T) {
 	}
 }
 
-// Saving a rule must not reset its cooldown. An operator toggling a setting
-// mid-incident would otherwise let the alert fire again immediately.
 func TestIntegration_UpdatingARuleDoesNotResetItsCooldown(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -246,7 +223,6 @@ func TestIntegration_UpdatingARuleDoesNotResetItsCooldown(t *testing.T) {
 	}
 }
 
-// ListArmed is the engine's hot read: only enabled rules, only this account.
 func TestIntegration_ListArmedReturnsOnlyLiveRules(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -280,7 +256,6 @@ func TestIntegration_ListArmedReturnsOnlyLiveRules(t *testing.T) {
 	}
 }
 
-// A failure is recorded for the operator without releasing the claim.
 func TestIntegration_RecordFailureKeepsTheClaim(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -305,7 +280,6 @@ func TestIntegration_RecordFailureKeepsTheClaim(t *testing.T) {
 	}
 }
 
-// An oversized error message must not blow the column.
 func TestIntegration_RecordFailureBoundsTheMessage(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -318,8 +292,6 @@ func TestIntegration_RecordFailureBoundsTheMessage(t *testing.T) {
 	}
 }
 
-// The optional ids are uuid columns; leaving them blank must store NULL rather
-// than be refused as an invalid uuid.
 func TestIntegration_AlertRuleStoresBlankOptionalIDs(t *testing.T) {
 	db := integrationDB(t)
 	repo := NewAlertRuleRepository(db)
@@ -334,7 +306,6 @@ func TestIntegration_AlertRuleStoresBlankOptionalIDs(t *testing.T) {
 	if stored.InstanceID != "" || stored.BusinessPhoneID != "" || stored.TemplateID != "" {
 		t.Fatalf("blank ids came back as %+v", stored)
 	}
-	// And an update that clears them is equally fine.
 	stored.InstanceID = ""
 	if err := repo.Update(ctx, stored); err != nil {
 		t.Fatalf("update with blank ids: %v", err)

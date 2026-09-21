@@ -8,14 +8,6 @@ import (
 	tgdomain "vozko/domain/telegram"
 )
 
-// Deep links are Telegram's answer to having no cold outbound.
-//
-// A bot cannot message a customer first. But a t.me link in an e-mail, an SMS, a
-// boleto PDF or a QR code opens an ALREADY ATTRIBUTED conversation on the
-// customer's first tap, which for a collections product is a stronger flow than
-// a template blast, because the customer initiated it.
-
-// CreateDeepLinkInput describes a link to mint.
 type CreateDeepLinkInput struct {
 	WorkspaceID  string
 	AccountID    string
@@ -24,12 +16,9 @@ type CreateDeepLinkInput struct {
 	CampaignID   *string
 	AgentID      *string
 	DepartmentID *string
-	// TTL bounds the link's life. Zero means it never expires, which is correct
-	// for a printed QR code and wrong for a one-off outreach.
-	TTL time.Duration
+	TTL          time.Duration
 }
 
-// CreateDeepLinkUseCase mints an attributed t.me link.
 type CreateDeepLinkUseCase struct {
 	accounts  tgdomain.AccountRepository
 	deepLinks tgdomain.DeepLinkRepository
@@ -42,7 +31,6 @@ func NewCreateDeepLinkUseCase(
 	return &CreateDeepLinkUseCase{accounts: accounts, deepLinks: deepLinks}
 }
 
-// DeepLinkResult is a minted link plus the URL to share.
 type DeepLinkResult struct {
 	Link *tgdomain.DeepLink `json:"link"`
 	URL  string             `json:"url"`
@@ -57,17 +45,11 @@ func (uc *CreateDeepLinkUseCase) Execute(ctx context.Context, in CreateDeepLinkI
 		return nil, tgdomain.ErrAccountNotFound
 	}
 
-	// The token is random rather than derived from the attribution. A guessable
-	// token would let anyone claim another customer's campaign attribution, and
-	// 64 characters is nowhere near enough to carry real ids anyway.
 	token, err := tgdomain.GenerateDeepLinkToken()
 	if err != nil {
 		return nil, err
 	}
 	if !tgdomain.ValidDeepLinkToken(token) {
-		// Defensive: a token outside Telegram's alphabet produces a link that
-		// silently opens an ordinary chat with no payload, which is the hardest
-		// kind of bug to notice.
 		return nil, tgdomain.ErrDeepLinkNotFound
 	}
 
@@ -92,7 +74,6 @@ func (uc *CreateDeepLinkUseCase) Execute(ctx context.Context, in CreateDeepLinkI
 	return &DeepLinkResult{Link: link, URL: link.URL(account.BotUsername)}, nil
 }
 
-// ListDeepLinksUseCase lists an account's links with their share URLs.
 type ListDeepLinksUseCase struct {
 	accounts  tgdomain.AccountRepository
 	deepLinks tgdomain.DeepLinkRepository
@@ -125,7 +106,6 @@ func (uc *ListDeepLinksUseCase) Execute(ctx context.Context, workspaceID, accoun
 	return out, nil
 }
 
-// DeleteDeepLinkUseCase removes a link.
 type DeleteDeepLinkUseCase struct {
 	accounts  tgdomain.AccountRepository
 	deepLinks tgdomain.DeepLinkRepository

@@ -12,8 +12,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// --- in-memory fakes implementing the crmboard ports ---
-
 type fakeSearcher struct {
 	entries []conversation.EntryWithLastMessage
 	total   int64
@@ -26,16 +24,14 @@ func (f *fakeSearcher) SearchEntriesByFilter(in conversation.SearchByFilterInput
 	if f.err != nil {
 		return nil, 0, f.err
 	}
-	// Return a fresh copy per call, exactly like the real repo, so hydrating one
-	// column's entries never aliases another column's slice.
 	out := make([]conversation.EntryWithLastMessage, len(f.entries))
 	copy(out, f.entries)
 	return out, f.total, nil
 }
 
 type fakeStages struct {
-	stages     []*stage.Stage            // the workspace default (ListByCampaign)
-	byPipeline map[string][]*stage.Stage // a specific pipeline's stages (ListByPipeline)
+	stages     []*stage.Stage
+	byPipeline map[string][]*stage.Stage
 }
 
 func (f *fakeStages) ListByCampaign(workspaceID, campaignID, campaignType string) ([]*stage.Stage, error) {
@@ -56,8 +52,8 @@ func (f *fakeLabels) Execute(workspaceID string) ([]*label.Label, error) { retur
 type fakeAuthorizer struct {
 	scope      conversation.DepartmentAccessScope
 	allowed    bool
-	owner      bool // IsWorkspaceOwnerOrAdmin
-	viewOthers bool // holds conversations:view_others
+	owner      bool
+	viewOthers bool
 }
 
 func (f *fakeAuthorizer) GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool) {
@@ -108,19 +104,15 @@ func allBoardEntries(b *Board) []conversation.EntryWithLastMessage {
 	return out
 }
 
-// Regression: selecting a NON-default pipeline must render THAT pipeline's stages,
-// never fall back to the default's. A stage-group campaign gets its own pipeline;
-// before the fix, pipelineStages filtered the default's stages by the new id (which
-// never matched) and silently rendered the whole default board ("shows all").
 func TestGetBoard_NonDefaultPipeline_RendersOwnStages_NotDefault(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{
-		stages: []*stage.Stage{ // the workspace DEFAULT pipeline
+		stages: []*stage.Stage{
 			{ID: "d1", Name: "recebido", PipelineID: "default"},
 			{ID: "d2", Name: "em atendimento", PipelineID: "default"},
 			{ID: "d3", Name: "finalizado", PipelineID: "default"},
 		},
-		byPipeline: map[string][]*stage.Stage{ // the campaign's OWN funnel
+		byPipeline: map[string][]*stage.Stage{
 			"pipe-new": {
 				{ID: "n1", Name: "prospectando", PipelineID: "pipe-new"},
 				{ID: "n2", Name: "interessado", PipelineID: "pipe-new"},
@@ -143,7 +135,6 @@ func TestGetBoard_NonDefaultPipeline_RendersOwnStages_NotDefault(t *testing.T) {
 	}
 }
 
-// The default (empty pipeline id) still resolves via ListByCampaign.
 func TestGetBoard_NoPipelineSelected_UsesDefault(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{
@@ -161,9 +152,6 @@ func TestGetBoard_NoPipelineSelected_UsesDefault(t *testing.T) {
 	}
 }
 
-// filterHasStageScope reports whether f contains an IN predicate on the stage field
-// whose values are EXACTLY the given pipeline stage ids (the whole-board scope), not a
-// single-stage column predicate.
 func filterHasStageScope(f crmfilter.Filter, stageIDs []string) bool {
 	for _, g := range f.Groups {
 		for _, p := range g.Predicates {
@@ -192,11 +180,6 @@ func filterHasStageScope(f crmfilter.Filter, stageIDs []string) bool {
 	return false
 }
 
-// Industry standard (HubSpot Board mode, Salesforce Kanban-over-list, Pipedrive/Kommo):
-// a board is scoped to ONE pipeline, and switching the swimlane axis re-groups that same
-// scoped set, it never widens to the whole workspace. On the LABEL axis (columns are
-// workspace-global) the board must therefore inject a "stage IN <pipeline stages>" scope
-// into every column search, else the funnel is ignored and all conversations leak in.
 func TestGetBoard_LabelAxis_ScopedToSelectedPipeline(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{byPipeline: map[string][]*stage.Stage{
@@ -218,12 +201,9 @@ func TestGetBoard_LabelAxis_ScopedToSelectedPipeline(t *testing.T) {
 	}
 }
 
-// "Todos os funis": an empty PipelineID on a global axis (owner/label) must NOT scope,
-// the user is deliberately viewing every responsável/etiqueta across all pipelines
-// (HubSpot's "All Pipelines"). No stage predicate may be injected.
 func TestGetBoard_LabelAxis_AllFunnels_NotScoped(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
-	stages := &fakeStages{stages: []*stage.Stage{{ID: "d1"}, {ID: "d2"}}} // the workspace default
+	stages := &fakeStages{stages: []*stage.Stage{{ID: "d1"}, {ID: "d2"}}}
 	labels := &fakeLabels{labels: []*label.Label{{ID: "l1", Name: "VIP"}}}
 	svc := NewService(searcher, stages, labels, &fakeAuthorizer{allowed: true}, &fakeAssignments{})
 
@@ -241,7 +221,6 @@ func TestGetBoard_LabelAxis_AllFunnels_NotScoped(t *testing.T) {
 	}
 }
 
-// Same rule on the OWNER axis (including the trailing "unassigned" swimlane).
 func TestGetBoard_OwnerAxis_ScopedToSelectedPipeline(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{byPipeline: map[string][]*stage.Stage{
@@ -262,8 +241,6 @@ func TestGetBoard_OwnerAxis_ScopedToSelectedPipeline(t *testing.T) {
 	}
 }
 
-// The stage axis must NOT get the redundant all-stages scope: each column already narrows
-// to a SINGLE stage, so a whole-board "stage IN <all>" predicate would be dead weight.
 func TestGetBoard_StageAxis_NotDoubleScoped(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{byPipeline: map[string][]*stage.Stage{
@@ -371,23 +348,13 @@ func TestGetEntries_HydratesOwner(t *testing.T) {
 	}
 }
 
-// --- Scoping / authorization: the board & list must apply the SAME self-scope as
-// the inbox. Regression for the leak where a plain member (diovanna, Sao Miguel)
-// saw every member's entries on the table and kanban while her inbox scoped
-// correctly. A member sees only their own (or unassigned) entries unless they are
-// admin, workspace owner, or hold conversations:view_others. ---
-
-// lastCall returns the most recent SearchByFilterInput the searcher received.
 func lastCall(f *fakeSearcher) conversation.SearchByFilterInput {
 	return f.calls[len(f.calls)-1]
 }
 
-// THE BUG: a plain member who is NOT department-restricted (restrict=false, so the
-// department clause is empty) must still be pinned to their own entries. Before the
-// fix, AssignedUserID was never set and the flat list showed everyone.
 func TestGetEntries_PlainMember_NotDepartmentRestricted_ScopedToSelf(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
-	auth := &fakeAuthorizer{allowed: true} // restrict=false, owner=false, viewOthers=false
+	auth := &fakeAuthorizer{allowed: true}
 	svc := NewService(searcher, &fakeStages{}, &fakeLabels{}, auth, &fakeAssignments{})
 
 	if _, _, err := svc.GetEntries(EntriesInput{WorkspaceID: "ws1", UserID: "diovanna"}); err != nil {
@@ -398,7 +365,6 @@ func TestGetEntries_PlainMember_NotDepartmentRestricted_ScopedToSelf(t *testing.
 	}
 }
 
-// Every board column query must carry the same self-scope, not just the flat list.
 func TestGetBoard_PlainMember_EveryColumnScopedToSelf(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	stages := &fakeStages{stages: []*stage.Stage{{ID: "s1", Name: "novo"}, {ID: "s2", Name: "fechado"}}}
@@ -418,8 +384,6 @@ func TestGetBoard_PlainMember_EveryColumnScopedToSelf(t *testing.T) {
 	}
 }
 
-// Department-restricted plain member: self-scope AND the department widener both
-// apply, exactly like the inbox (own conversations stay visible out-of-department).
 func TestGetEntries_DepartmentRestrictedMember_ScopedToSelfAndOverride(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	auth := &fakeAuthorizer{allowed: true, scope: conversation.DepartmentAccessScope{Restrict: true, DepartmentIDs: []string{"dept-1"}}}
@@ -440,7 +404,6 @@ func TestGetEntries_DepartmentRestrictedMember_ScopedToSelfAndOverride(t *testin
 	}
 }
 
-// Admin sees everyone: no self-scope.
 func TestGetEntries_Admin_SeesAll(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	svc := NewService(searcher, &fakeStages{}, &fakeLabels{}, &fakeAuthorizer{allowed: true}, &fakeAssignments{})
@@ -452,7 +415,6 @@ func TestGetEntries_Admin_SeesAll(t *testing.T) {
 	}
 }
 
-// Workspace owner sees everyone: no self-scope.
 func TestGetEntries_WorkspaceOwner_SeesAll(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	svc := NewService(searcher, &fakeStages{}, &fakeLabels{}, &fakeAuthorizer{allowed: true, owner: true}, &fakeAssignments{})
@@ -464,7 +426,6 @@ func TestGetEntries_WorkspaceOwner_SeesAll(t *testing.T) {
 	}
 }
 
-// A member holding conversations:view_others sees everyone: no self-scope.
 func TestGetEntries_ViewOthersPermission_SeesAll(t *testing.T) {
 	searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
 	svc := NewService(searcher, &fakeStages{}, &fakeLabels{}, &fakeAuthorizer{allowed: true, viewOthers: true}, &fakeAssignments{})

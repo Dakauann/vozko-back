@@ -69,9 +69,6 @@ func (r *repositoryImpl) ListDepartmentsByIDs(ids []string) ([]workspace_departm
 }
 
 func (r *repositoryImpl) UpdateDepartment(dept *workspace_department.Department) error {
-	// Written through a map rather than a struct so a nil schedule reaches the
-	// column as NULL. Updates() on a struct skips zero values, which would make
-	// "clear these working hours" a silent no-op.
 	encoded, err := working_hours.EncodeSpec(dept.WorkingHours)
 	if err != nil {
 		return err
@@ -195,9 +192,6 @@ func (r *repositoryImpl) IsMember(departmentID, memberID string) (bool, error) {
 	return count > 0, nil
 }
 
-// mapWithMemberCounts maps department rows to domain objects and fills in each
-// department's live member count with a single grouped query, so listings don't
-// report "no members" for departments that actually have members.
 func (r *repositoryImpl) mapWithMemberCounts(rows []schema.WorkspaceDepartment) ([]workspace_department.Department, error) {
 	result := make([]workspace_department.Department, len(rows))
 	ids := make([]string, len(rows))
@@ -216,8 +210,6 @@ func (r *repositoryImpl) mapWithMemberCounts(rows []schema.WorkspaceDepartment) 
 	return result, nil
 }
 
-// memberCounts returns the number of members per department for the given
-// department IDs, keyed by department ID.
 func (r *repositoryImpl) memberCounts(departmentIDs []string) (map[string]int, error) {
 	counts := make(map[string]int, len(departmentIDs))
 	if len(departmentIDs) == 0 {
@@ -253,14 +245,6 @@ func mapDepartment(row schema.WorkspaceDepartment) *workspace_department.Departm
 	}
 }
 
-// ListWorkingHours reads every department override for these workspaces in one
-// query.
-//
-// The rescue sweep calls this once per tick, before its candidate query, and
-// uses the answer twice: to skip workspaces where nothing can be due, and as
-// the department schedule map for the rest of the tick. Fetching per stalled
-// conversation instead would put a lookup on the one path that is already the
-// most query-hungry in the feature.
 func (r *repositoryImpl) ListWorkingHours(workspaceIDs []string) ([]workspace_department.DepartmentSchedule, error) {
 	if len(workspaceIDs) == 0 {
 		return nil, nil
@@ -277,8 +261,6 @@ func (r *repositoryImpl) ListWorkingHours(workspaceIDs []string) ([]workspace_de
 	for _, row := range rows {
 		spec := decodeWorkingHours(row.ID, row.WorkingHours)
 		if spec == nil {
-			// Unreadable, already logged. Absent means "inherits the
-			// workspace", which is the safe reading.
 			continue
 		}
 		out = append(out, workspace_department.DepartmentSchedule{
@@ -290,9 +272,6 @@ func (r *repositoryImpl) ListWorkingHours(workspaceIDs []string) ([]workspace_de
 	return out, nil
 }
 
-// decodeWorkingHours mirrors the workspace-config repository: an unreadable
-// document costs the department its override rather than breaking the read, and
-// says so in the log.
 func decodeWorkingHours(departmentID string, raw *string) *working_hours.Spec {
 	spec, err := working_hours.DecodeSpec(raw)
 	if err != nil {

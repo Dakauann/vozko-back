@@ -352,8 +352,6 @@ func (m *mockMetaAPIService) UnblockUser(phoneNumberID string, userNumber string
 }
 
 func (m *mockMetaAPIService) UnsubscribeApp(wabaID string, accessToken string) error {
-	// Recorded, not just counted: releasing one number must never unsubscribe a
-	// WABA that other numbers still use, so tests assert WHICH account was hit.
 	m.unsubscribedWABAs = append(m.unsubscribedWABAs, wabaID)
 	return m.unsubscribeErr
 }

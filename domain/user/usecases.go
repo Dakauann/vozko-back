@@ -11,10 +11,6 @@ type UpdateUserUseCase interface {
 }
 
 type DeleteUserUseCase interface {
-	// Execute deletes the authenticated user's own account after verifying their
-	// current password. It removes the user's memberships, transfers ownership of
-	// any owned workspaces to a remaining member, revokes the user's sessions, and
-	// hard-deletes the user record and personal data.
 	Execute(userID, currentPassword string) error
 }
 

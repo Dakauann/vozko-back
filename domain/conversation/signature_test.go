@@ -6,10 +6,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The signature format is a contract with the customer's screen, not an
-// implementation detail: Instagram shows asterisks literally, so the WhatsApp
-// form would leak markup into a DM. These pin both forms so a future refactor
-// cannot quietly swap them.
 func TestSignOutboundPerChannelFormat(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -31,9 +27,6 @@ func TestSignOutboundPerChannelFormat(t *testing.T) {
 	}
 }
 
-// The hub resolves the operator with resolve-and-continue: a failed lookup
-// leaves the username empty and must cost the signature, not produce a message
-// that opens with a stray "*:".
 func TestSignOutboundWithoutUsernameLeavesTextAlone(t *testing.T) {
 	for _, username := range []string{"", "   "} {
 		if got := SignOutbound(shared.EntryTypeWhatsApp, username, "oi"); got != "oi" {

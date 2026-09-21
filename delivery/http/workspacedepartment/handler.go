@@ -14,8 +14,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// maxDepartmentBodyBytes bounds the buffered update body, matching the
-// workspace-config handler. A weekly schedule is a few hundred bytes.
 const maxDepartmentBodyBytes = 64 << 10
 
 type WorkspaceDepartmentHandler struct {
@@ -154,10 +152,6 @@ func (h *WorkspaceDepartmentHandler) List(w http.ResponseWriter, r *http.Request
 func (h *WorkspaceDepartmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 
-	// Buffered so the body can be read twice: "workingHours": null (clear this
-	// department's own hours, inherit the workspace's) and an absent
-	// workingHours (leave them alone) are opposite instructions that a decoded
-	// struct cannot tell apart. See working_hours.DecodePatch.
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxDepartmentBodyBytes))
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Could not read request body", nil)
@@ -315,10 +309,6 @@ func writeDepartmentError(w http.ResponseWriter, err error) {
 // @Security		BearerAuth
 // @Router			/departments/scope [get]
 func (h *WorkspaceDepartmentHandler) MyScope(w http.ResponseWriter, r *http.Request) {
-	// The middleware already resolved this for the request; reporting it costs
-	// no query. It was computed on every request and then thrown away, which
-	// is why the screens could never tell "nothing here" apart from "none of
-	// it is yours".
 	response.WriteSuccess(w, http.StatusOK,
 		workspacedepartmentdomain.ScopeFor(middleware.GetDepartmentFilter(r)))
 }

@@ -76,8 +76,6 @@ func TestValidate_PresenceOperatorsNeedNoValue(t *testing.T) {
 }
 
 func TestValidate_CustomFieldSkipsStaticTyping(t *testing.T) {
-	// A custom field's kind is resolved by the compiler, so "abc" for what may
-	// be a numeric custom field must not fail domain validation.
 	f := filterOf(Predicate{Field: FieldCustom, Key: "score", Operator: OpGreaterEq, Values: []string{"abc"}})
 	if err := f.Validate(); err != nil {
 		t.Fatalf("custom field should skip static typing, got %v", err)

@@ -10,8 +10,6 @@ import (
 	domain "vozko/domain/cache"
 )
 
-// fakeShared embeds the SharedState interface (nil) and overrides only the three
-// methods the throttle uses; any other call would panic, which never happens here.
 type fakeShared struct {
 	domain.SharedState
 	mu sync.Mutex

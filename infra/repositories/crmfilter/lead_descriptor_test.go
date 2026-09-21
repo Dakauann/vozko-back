@@ -8,10 +8,6 @@ import (
 	"vozko/domain/crmfilter"
 )
 
-// The lead object's whole point is that filters, facet counts and sorting all
-// compile from one definition. These tests pin the SQL each field emits, so a
-// change to a subquery is a change someone had to mean.
-
 func leadDesc() LeadDescriptor { return NewLeadDescriptor() }
 
 func compileLead(t *testing.T, desc LeadDescriptor, preds ...crmfilter.Predicate) (string, []interface{}) {
@@ -24,9 +20,6 @@ func compileLead(t *testing.T, desc LeadDescriptor, preds ...crmfilter.Predicate
 	return sql, args
 }
 
-// A lead's name column is NOT NULL with an empty default. Without NULLIF,
-// "leads with no name" would match nothing at all — the filter would look like
-// it worked and quietly answer the wrong question.
 func TestLeadNameEmptinessUsesNullif(t *testing.T) {
 	sql, args := compileLead(t, leadDesc(), pred(crmfilter.FieldName, crmfilter.OpIsEmpty))
 	if want := "(NULLIF(leads.name, '') IS NULL)"; sql != want {
@@ -42,9 +35,6 @@ func TestLeadNameEmptinessUsesNullif(t *testing.T) {
 	}
 }
 
-// The free-text box searches the person AND what we remember about them.
-// Operators look leads up by half-remembered facts as often as by name, and
-// three placeholders must all bind the same pattern.
 func TestLeadQuerySearchesNameNumberAndMemories(t *testing.T) {
 	sql, args := compileLead(t, leadDesc(), pred(crmfilter.FieldQuery, crmfilter.OpContains, "boleto"))
 
@@ -63,9 +53,6 @@ func TestLeadQuerySearchesNameNumberAndMemories(t *testing.T) {
 	}
 }
 
-// is_set / is_empty on the memory category is how "leads we know something
-// about" and "leads we know nothing about" are expressed. Both must reduce to
-// a membership test with no bound id set.
 func TestLeadMemoryPresence(t *testing.T) {
 	sql, args := compileLead(t, leadDesc(), pred(crmfilter.FieldMemoryCategory, crmfilter.OpIsSet))
 	want := "(leads.id IN (SELECT lm_c.lead_id FROM lead_memories lm_c WHERE lm_c.deleted_at IS NULL))"
@@ -82,8 +69,6 @@ func TestLeadMemoryPresence(t *testing.T) {
 	}
 }
 
-// Soft-deleted memories must never satisfy a memory filter, on any operator:
-// a deleted fact is a fact the operator chose to forget.
 func TestLeadMemoryPredicatesExcludeDeleted(t *testing.T) {
 	cases := []struct {
 		name string
@@ -101,7 +86,6 @@ func TestLeadMemoryPredicatesExcludeDeleted(t *testing.T) {
 			}
 		})
 	}
-	// The counted expressions the list projects and sorts by must agree.
 	if !strings.Contains(leadDesc().MemoryCountExpr(), "deleted_at IS NULL") {
 		t.Error("MemoryCountExpr counts soft-deleted memories")
 	}
@@ -110,10 +94,6 @@ func TestLeadMemoryPredicatesExcludeDeleted(t *testing.T) {
 	}
 }
 
-// Stages and labels hang off an ENTRY, never a lead, and entries exist on four
-// channels. A lead tagged from a Telegram chat must be reachable by its own
-// stage filter, which is why the join goes through the union and not straight
-// to whatsapp_campaign_entries.
 func TestLeadStageResolvesEntriesOnEveryChannel(t *testing.T) {
 	sql, _ := compileLead(t, leadDesc(), pred(crmfilter.FieldStage, crmfilter.OpIn, "stage-1"))
 
@@ -132,9 +112,6 @@ func TestLeadStageResolvesEntriesOnEveryChannel(t *testing.T) {
 	}
 }
 
-// The workspace boundary on the tag membership subqueries is not decoration:
-// stage ids are workspace-scoped, and an unscoped subquery would let a guessed
-// id from another tenant select rows here.
 func TestLeadTagMembershipCarriesWorkspaceScope(t *testing.T) {
 	desc := LeadDescriptor{Alias: "leads", WorkspaceID: "ws-1"}
 
@@ -149,9 +126,6 @@ func TestLeadTagMembershipCarriesWorkspaceScope(t *testing.T) {
 	}
 }
 
-// Every branch of the channel union filters out NULL lead ids. Without that,
-// "leads NOT on Instagram" (a NOT IN over a subquery containing a NULL) returns
-// the empty set — SQL's most reliable silent-wrong-answer.
 func TestLeadChannelUnionExcludesNullLeadIDs(t *testing.T) {
 	source := LeadChannelsSource()
 	for _, table := range []string{"unofficial_whatsapp_contacts", "telegram_contacts", "instagram_contacts"} {
@@ -173,10 +147,6 @@ func TestLeadChannelUnionExcludesNullLeadIDs(t *testing.T) {
 	}
 }
 
-// Last activity is the default sort of the list. It has to consider every
-// channel, and both WhatsApp clocks: last_message_at is real conversation
-// activity, updated_at also moves on delivery receipts, and the previous
-// implementation ranked on updated_at alone.
 func TestLeadLastActivitySpansEveryChannel(t *testing.T) {
 	expr := leadDesc().LastActivityExpr()
 
@@ -197,8 +167,6 @@ func TestLeadLastActivitySpansEveryChannel(t *testing.T) {
 	}
 }
 
-// A window that closed is not a window with a past expiry date; the boolean and
-// the timestamp must come from the same anchor.
 func TestLeadWindowExpressions(t *testing.T) {
 	d := leadDesc()
 	if !strings.Contains(d.WindowOpenExpr(), "NOW() - INTERVAL '24 hours'") {
@@ -214,9 +182,6 @@ func TestLeadWindowExpressions(t *testing.T) {
 	}
 }
 
-// A lead has no owner, no pipeline and no deal value. Reporting those as
-// unsupported is what keeps a saved conversation view from silently matching
-// every lead when it is opened against the wrong object.
 func TestLeadRejectsFieldsThatAreNotItsOwn(t *testing.T) {
 	for _, field := range []crmfilter.Field{
 		crmfilter.FieldOwner,
@@ -235,9 +200,6 @@ func TestLeadRejectsFieldsThatAreNotItsOwn(t *testing.T) {
 	}
 }
 
-// Every field the lead descriptor claims to support must also be a registered
-// domain field, or a filter the UI can build would be rejected by validation
-// before the descriptor ever sees it.
 func TestLeadSupportedFieldsAreRegisteredInTheDomain(t *testing.T) {
 	supported := []crmfilter.Field{
 		crmfilter.FieldName, crmfilter.FieldNumber, crmfilter.FieldAge, crmfilter.FieldBlocked,
@@ -259,8 +221,6 @@ func TestLeadSupportedFieldsAreRegisteredInTheDomain(t *testing.T) {
 	}
 }
 
-// Groups combine with AND, predicates within a group with OR. The lead list
-// leans on this for "stage=Proposta AND (memória=deal OR memória=objeção)".
 func TestLeadFilterGroupsCombine(t *testing.T) {
 	f := crmfilter.Filter{Groups: []crmfilter.Group{
 		{Predicates: []crmfilter.Predicate{pred(crmfilter.FieldBlocked, crmfilter.OpIsFalse)}},
@@ -281,12 +241,6 @@ func TestLeadFilterGroupsCombine(t *testing.T) {
 	}
 }
 
-// The facet strip asks "does this lead have any campaign entry / any memory",
-// which is a presence question, not a counting one. Answered with COUNT(*) > 0
-// it walks every child row of every lead in the workspace before comparing
-// against zero; answered with EXISTS it stops at the first row. Same result,
-// and the facet query runs it once per lead with no LIMIT above it, so the
-// difference is the whole cost of the tile strip on a large tenant.
 func TestHasCampaignExprStopsAtFirstRow(t *testing.T) {
 	expr := leadDesc().HasCampaignExpr()
 
@@ -296,8 +250,6 @@ func TestHasCampaignExprStopsAtFirstRow(t *testing.T) {
 	if strings.Contains(expr, "COUNT(") {
 		t.Errorf("HasCampaignExpr() counts rows to answer a presence question: %q", expr)
 	}
-	// Soft-deleted entries are not reach, so presence must respect the same
-	// guard the count does.
 	if !strings.Contains(expr, "deleted_at IS NULL") {
 		t.Errorf("HasCampaignExpr() ignores soft deletes: %q", expr)
 	}
@@ -323,9 +275,6 @@ func TestHasMemoryExprStopsAtFirstRow(t *testing.T) {
 	}
 }
 
-// The presence and counting forms must agree about WHICH rows count, or the
-// "com campanha" facet and the campaign_count column would disagree on the
-// same lead.
 func TestPresenceAndCountExprsShareTheirScope(t *testing.T) {
 	d := leadDesc()
 

@@ -138,8 +138,6 @@ func (s *presenceSession) count() int {
 }
 func (s *presenceSession) Shutdown(context.Context, string) error { return nil }
 
-// A burst of presence changes must be debounced into ONE async push, and it must NOT
-// block the caller (the transfer hot path calls OnPresenceChanged inline).
 func TestCallSessionWS_OnPresenceChanged_CoalescesAsync(t *testing.T) {
 	sess := &presenceSession{id: "s-a", userID: "user-a", workspaceID: "ws-1"}
 	reg := &stubSessionRegistry{
@@ -174,7 +172,7 @@ func TestCallSessionWS_OnPresenceChanged_FiltersByListMembersPerm(t *testing.T) 
 	sessB := &presenceSession{id: "s-b", userID: "user-b", workspaceID: "ws-1", busy: true}
 
 	reg := &stubSessionRegistry{
-		listBrowser: []callsession_domain.CallSession{sessA, sessB}, // who receives the push
+		listBrowser: []callsession_domain.CallSession{sessA, sessB},
 		listPresence: []callsession_domain.MemberPresence{
 			{UserID: "user-a", HasBrowser: true},
 			{UserID: "user-b", Busy: true, HasBrowser: true},
@@ -183,7 +181,7 @@ func TestCallSessionWS_OnPresenceChanged_FiltersByListMembersPerm(t *testing.T) 
 	h := NewCallSessionWSHandler(nil, nil, nil, auth, log.Default(), noopWSMetricsRecorder{}).
 		WithRegistries(reg, stubCallRegistry{})
 
-	h.broadcastPresence("ws-1") // the synchronous build+fan-out (OnPresenceChanged just debounces it)
+	h.broadcastPresence("ws-1")
 
 	if len(sessA.notified) != 1 {
 		t.Fatalf("user-a: expected 1 notify, got %d", len(sessA.notified))

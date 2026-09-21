@@ -17,8 +17,6 @@ type publishedMessage struct {
 
 type fakeQueuePub struct {
 	published []publishedMessage
-	// failAfter makes Publish fail once this many messages have gone out, so a
-	// test can assert what a partial publish reports.
 	failAfter int
 	err       error
 }
@@ -40,8 +38,6 @@ func (f *fakeQueuePub) ValidateConnection() error { return nil }
 func targets(n int) []uw.SeedTarget {
 	out := make([]uw.SeedTarget, 0, n)
 	for i := 0; i < n; i++ {
-		// Distinct numbers, or Normalize deduplicates them down to one and the
-		// batching is never exercised.
 		out = append(out, uw.SeedTarget{Number: "55119" + pad(i)})
 	}
 	return out
@@ -52,7 +48,6 @@ func pad(i int) string {
 	for _, d := range []int{100000, 10000, 1000, 100, 10, 1} {
 		s += string(rune('0' + (i/d)%10))
 	}
-	// Eight digits total with the 55119 prefix trimmed to fit minSeedPhoneDigits.
 	return s + "00"
 }
 
@@ -91,9 +86,6 @@ func TestSeedInboxPublisherSplitsAcrossBatches(t *testing.T) {
 	}
 }
 
-// A request whose every row is unaddressable is not an error. Those rows were
-// already reported to the operator by the import's own rejection list, and
-// failing here would report them twice under a name that means something else.
 func TestSeedInboxPublisherAcceptsARequestThatNormalizesToNothing(t *testing.T) {
 	pub := &fakeQueuePub{}
 	queued, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
@@ -111,8 +103,6 @@ func TestSeedInboxPublisherAcceptsARequestThatNormalizesToNothing(t *testing.T) 
 	}
 }
 
-// A broker that fails midway has already accepted some batches, and those WILL
-// seed. Reporting zero would understate what is about to appear in the inbox.
 func TestSeedInboxPublisherReportsWhatItManagedToQueue(t *testing.T) {
 	pub := &fakeQueuePub{failAfter: 1, err: errors.New("broker down")}
 	queued, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
@@ -127,8 +117,6 @@ func TestSeedInboxPublisherReportsWhatItManagedToQueue(t *testing.T) {
 	}
 }
 
-// Seeding is opt-in and the publisher is optional in the container, so a nil
-// queue must be a no-op rather than a panic in the import path.
 func TestSeedInboxPublisherWithoutAQueueIsANoOp(t *testing.T) {
 	queued, err := NewSeedInboxPublisher(nil).Publish(uw.SeedRequest{
 		WorkspaceID: "ws-1",
@@ -181,8 +169,6 @@ func TestConsumeSeedInboxAcksASeededBatch(t *testing.T) {
 	}
 }
 
-// Redelivery cannot conjure a connected number, so spinning on it forever only
-// costs the broker. Dropped, loudly.
 func TestConsumeSeedInboxDropsWhatARetryCannotFix(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, _, _ := newSeedUseCase(t,
@@ -215,12 +201,6 @@ func TestConsumeSeedInboxDropsAnUnreadablePayload(t *testing.T) {
 	}
 }
 
-// ---- scripted batches ----
-
-// The publisher reports two numbers because the import response has to say two
-// things: how many conversations will open, and how many of those will carry a
-// written thread. One number cannot say "all 500 conversations were queued, and
-// 200 of them will have a script".
 func TestSeedInboxPublisherReportsTheScriptedCountSeparately(t *testing.T) {
 	pub := &fakeQueuePub{}
 	all := targets(uw.MaxScriptedTargets + 60)
@@ -236,7 +216,6 @@ func TestSeedInboxPublisherReportsTheScriptedCountSeparately(t *testing.T) {
 	if queued.Targets != len(all) {
 		t.Errorf("queued targets = %d, want %d; nothing is dropped", queued.Targets, len(all))
 	}
-	// The cap, reported as the truth rather than as the ask.
 	if queued.Scripted != uw.MaxScriptedTargets {
 		t.Errorf("queued scripted = %d, want the %d cap", queued.Scripted, uw.MaxScriptedTargets)
 	}
@@ -261,7 +240,6 @@ func TestSeedInboxPublisherReportsTheScriptedCountSeparately(t *testing.T) {
 	}
 }
 
-// A publish that asked for no script reports zero, never nothing.
 func TestSeedInboxPublisherReportsZeroScriptedWithoutAScript(t *testing.T) {
 	pub := &fakeQueuePub{}
 	queued, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
@@ -276,8 +254,6 @@ func TestSeedInboxPublisherReportsZeroScriptedWithoutAScript(t *testing.T) {
 	}
 }
 
-// A malformed script is refused before anything is queued. The handler catches
-// it first; this is the second line, for a caller that did not go through it.
 func TestSeedInboxPublisherRefusesAMalformedScript(t *testing.T) {
 	pub := &fakeQueuePub{}
 	_, err := NewSeedInboxPublisher(pub).Publish(uw.SeedRequest{
@@ -293,10 +269,6 @@ func TestSeedInboxPublisherRefusesAMalformedScript(t *testing.T) {
 	}
 }
 
-// The consumer's context is what stands between a hung provider and a queue
-// consumer that never drains again. It is applied only for a scripted batch:
-// a plain batch is database work, and bounding that would only introduce a way
-// for a slow import to fail.
 func TestConsumeSeedInboxBoundsAScriptedBatch(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -319,8 +291,6 @@ func TestConsumeSeedInboxBoundsAScriptedBatch(t *testing.T) {
 	}
 }
 
-// The script has to survive the queue, or a scripted batch arrives as a plain
-// one and the operator's money buys nothing.
 func TestSeedRequestScriptRoundTripsThroughJSON(t *testing.T) {
 	original := uw.SeedRequest{
 		WorkspaceID: "ws-1",

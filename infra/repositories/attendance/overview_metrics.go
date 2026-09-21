@@ -9,22 +9,15 @@ import (
 	"vozko/domain/attendance"
 )
 
-// overviewFillExtendedTX enriches Overview with FRT, AI, channel mix, messaging,
-// unassigned backlog, and reopen rates. Queue and occupancy are filled by the
-// use case from dedicated ports (clean separation).
-//
-// msgTmp is the pre-aggregated per-entry message table (one scan of
-// conversation_messages for the whole overview request).
 func overviewFillExtendedTX(
 	tx *gorm.DB,
 	workspaceID string,
-	_ string, // base (scoped CTE) retained for call-site stability; KPIs use msgTmp
+	_ string,
 	_ []interface{},
 	msgTmp string,
 	filter attendance.OverviewFilter,
 	out *attendance.Overview,
 ) error {
-	// Unassigned backlog: ENGAGED only (shells are not live-queue work).
 	type scopeAgg struct {
 		Unassigned int64
 	}
@@ -42,13 +35,6 @@ func overviewFillExtendedTX(
 	}
 	out.KPIs.UnassignedBacklog = sa.Unassigned
 
-	// Channel mix: GROUPED by entry_type rather than counting one hardcoded
-	// channel.
-	//
-	// It previously counted only `entry_type = 'whatsapp'` and therefore always
-	// reported 100% WhatsApp, which is worse than reporting nothing, because a
-	// manager reading it concludes the other channels carry no work. Grouping
-	// means every channel that exists shows up, including ones added later.
 	type channelRow struct {
 		EntryType string `gorm:"column:entry_type"`
 		Count     int64  `gorm:"column:cnt"`
@@ -79,8 +65,6 @@ func overviewFillExtendedTX(
 		}
 	}
 
-	// Messaging KPIs: primary averages over engaged; dual denom over all scoped.
-	// Templates are part of outbound AND exposed separately for ops / billing view.
 	msgSQL := `
 		SELECT
 			AVG(total_msgs::float) FILTER (WHERE total_msgs > 0) AS avg_total,
@@ -133,15 +117,12 @@ func overviewFillExtendedTX(
 		out.Messaging.AvgMessagesAllScoped = &v
 	}
 
-	// FRT / AI / reopen use their own tables (not scoped_entries CTE), still on same tx.
 	sf := attendance.StatsFilter{
 		DateFrom:     filter.DateFrom,
 		DateTo:       filter.DateTo,
 		CampaignID:   filter.CampaignID,
 		CampaignType: filter.CampaignType,
 	}
-	// GetFRTStats uses r.db; call via raw on tx for consistency when possible.
-	// Reuse package-level FRT through a lightweight reimplementation on tx.
 	frt, err := overviewFRTStatsTX(tx, workspaceID, sf)
 	if err != nil {
 		return err
@@ -192,10 +173,6 @@ func overviewFillExtendedTX(
 		aiSQL += " AND campaign_id = ?"
 		aiArgs = append(aiArgs, strings.TrimSpace(filter.CampaignID))
 	}
-	// The AI-session channel column holds the entry type, so any messaging
-	// channel filters correctly. It used to match only the literal "whatsapp",
-	// which meant filtering the page to Instagram silently returned WhatsApp's AI
-	// numbers alongside it.
 	if ch := strings.TrimSpace(filter.Channel); ch != "" {
 		aiSQL += " AND channel = ?"
 		aiArgs = append(aiArgs, ch)
@@ -251,7 +228,6 @@ func overviewFillExtendedTX(
 	if err := tx.Raw(reopenSQL, reArgs...).Scan(&rr).Error; err != nil {
 		out.Reopen = attendance.OverviewReopen{Available: false}
 	} else {
-		// Rate denominator = engaged finished (same as KPIs.Finished), not event telemetry.
 		finKPI := out.KPIs.Finished
 		out.Reopen = attendance.OverviewReopen{
 			ReopenedCount:      rr.Reopened,
@@ -265,9 +241,6 @@ func overviewFillExtendedTX(
 		}
 	}
 
-	// Finished by close_source on the same ENGAGED set as KPIs.Finished.
-	// human = explicit human OR empty (legacy hand close after backfill still human).
-	// system = idle auto-close; ai = finish tool. Not queue abandon.
 	closeSQL := `
 		SELECT
 			COUNT(*) FILTER (
@@ -282,7 +255,6 @@ func overviewFillExtendedTX(
 				WHERE total_msgs > 0 AND status_bucket = 'finished' AND close_source = 'system'
 			) AS system_cnt
 		FROM ` + msgTmp
-	// Explicit gorm tags: bare names like "system" / "ai" map unreliably.
 	type closeRow struct {
 		Human  int64 `gorm:"column:human_cnt"`
 		AI     int64 `gorm:"column:ai_cnt"`
@@ -314,7 +286,6 @@ func overviewFillExtendedTX(
 }
 
 func overviewFRTStatsTX(tx *gorm.DB, workspaceID string, filter attendance.StatsFilter) (*attendance.FRTStats, error) {
-	// LATERAL first outbound only: O(assignments) index seeks, not all messages per entry.
 	query := `
 		SELECT actor_kind, frt_secs FROM (
 			SELECT ah.actor_kind,

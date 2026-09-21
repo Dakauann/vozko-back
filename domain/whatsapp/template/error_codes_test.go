@@ -19,16 +19,12 @@ func TestErrorCode_MapsSentinelsToStableCodes(t *testing.T) {
 	assert.Equal(t, CodeInvalidCategory, ErrorCode(ErrInvalidCategory))
 }
 
-// The usecase wraps sentinels with context before returning them; the code has
-// to survive that or every real failure degrades to the unknown code.
 func TestErrorCode_WalksTheWrapChain(t *testing.T) {
 	wrapped := fmt.Errorf("validating components: %w", ErrBodyTextTooLong)
 	assert.Equal(t, CodeBodyTextTooLong, ErrorCode(wrapped))
 	assert.True(t, IsValidationError(wrapped))
 }
 
-// An unrecognised error gets CodeUnknown, never "". The UI branches on the code,
-// so an empty string would be an invisible third state.
 func TestErrorCode_UnknownErrorIsNamedNotEmpty(t *testing.T) {
 	assert.Equal(t, CodeUnknown, ErrorCode(errors.New("database is down")))
 	assert.Equal(t, "", ErrorCode(nil), "no error means no code")
@@ -53,15 +49,6 @@ func TestKnownErrorCodes_AreUniqueAndNonEmpty(t *testing.T) {
 	}
 }
 
-// THE guard.
-//
-// Every exported Err* sentinel in this package must have a code. Without this,
-// adding an error is a two-step change where the second step is invisible: the
-// error ships, ErrorCode falls through to CodeUnknown, and the operator meets
-// the raw English string this whole mechanism exists to avoid.
-//
-// It reads the package's own source rather than a hand-kept list, because a
-// hand-kept list is the thing that goes stale.
 func TestEverySentinelHasACode(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
@@ -101,8 +88,6 @@ func TestEverySentinelHasACode(t *testing.T) {
 		"these sentinels have no entry in errorCodes, so they reach the UI as raw English: %v", missing)
 }
 
-// isErrorsNewCall keeps the scan to `errors.New(...)` sentinels, so an Err-named
-// type or function does not read as a missing code.
 func isErrorsNewCall(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok {
@@ -116,8 +101,6 @@ func isErrorsNewCall(expr ast.Expr) bool {
 	return ok && pkg.Name == "errors" && sel.Sel.Name == "New"
 }
 
-// codedSentinelNames is the errorCodes table keyed by identifier, built once so
-// the AST scan can ask "is this name covered" without reflection on values.
 var codedSentinelNames = map[string]bool{
 	"ErrTemplateNotFound": true, "ErrTemplateAlreadyExists": true,
 	"ErrExternalIDRequired": true, "ErrTemplateCategoryUnavailable": true,
@@ -150,7 +133,6 @@ var codedSentinelNames = map[string]bool{
 	"ErrAuthenticationFooterNotEditable": true, "ErrAuthenticationCodeTooLong": true,
 }
 
-// The name table above must not drift from the real map either.
 func TestCodedSentinelNamesMatchesTheTable(t *testing.T) {
 	assert.Len(t, codedSentinelNames, len(errorCodes),
 		"the AST guard's name list and errorCodes disagree on how many sentinels are coded")

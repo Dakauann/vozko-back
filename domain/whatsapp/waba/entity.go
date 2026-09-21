@@ -41,8 +41,6 @@ func NewWhatsAppBusinessAccount(metaWABAId, name string) (*WhatsAppBusinessAccou
 		return nil, ErrMetaWABAIDRequired
 	}
 	return &WhatsAppBusinessAccount{
-		// Provider mirrors businessphone.ProviderMeta. Historical accounts and
-		// any created without an explicit provider default to Meta.
 		Provider:   "meta",
 		MetaWABAId: metaWABAId,
 		Name:       strings.TrimSpace(name),

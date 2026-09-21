@@ -8,14 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Pagination is only trustworthy if the order is total. These tests pin the two
-// properties that make it so.
-
-// Rows tied on the sort key — every lead imported in the same second, every
-// lead with zero campaigns — come back in whatever order the planner feels
-// like unless a unique column breaks the tie. Without it the same lead shows up
-// on page 2 and page 3 while another appears on neither, and nobody reports it
-// as a bug because each page looks fine on its own.
 func TestOrderByAlwaysEndsWithAUniqueTiebreaker(t *testing.T) {
 	cases := [][]shared.Sort{
 		nil,
@@ -33,9 +25,6 @@ func TestOrderByAlwaysEndsWithAUniqueTiebreaker(t *testing.T) {
 	}
 }
 
-// Postgres sorts NULLs FIRST on DESC. "Most recent activity first" would
-// therefore open on the leads that have never done anything — the exact
-// opposite of the question.
 func TestOrderByPutsMissingValuesLast(t *testing.T) {
 	got := orderBy([]shared.Sort{{Field: string(lead.SortLastActivityAt), Direction: shared.SortDesc}})
 	if !strings.Contains(got, "last_activity_at DESC NULLS LAST") {
@@ -49,9 +38,6 @@ func TestOrderByDefaultsToNewestFirst(t *testing.T) {
 	}
 }
 
-// An unknown key must fall back to the default rather than reach SQL. This is
-// the layer boundary doing its job: the HTTP edge never names a column, so a
-// hand-edited ?sort= cannot inject one.
 func TestOrderByIgnoresUnknownAndDuplicateKeys(t *testing.T) {
 	got := orderBy([]shared.Sort{
 		{Field: "leads.id; DROP TABLE leads", Direction: shared.SortAsc},
@@ -72,8 +58,6 @@ func TestOrderByIgnoresUnknownAndDuplicateKeys(t *testing.T) {
 	}
 }
 
-// Every key the domain declares must resolve to SQL, or a sort the HTTP layer
-// happily accepts is silently dropped by the repository.
 func TestEverySortKeyResolvesToAnExpression(t *testing.T) {
 	exprs := sortExpressions()
 	for _, key := range lead.AllSortKeys() {
@@ -86,9 +70,6 @@ func TestEverySortKeyResolvesToAnExpression(t *testing.T) {
 	}
 }
 
-// The tenant boundary and the soft-delete guard are stated explicitly because
-// raw SQL bypasses GORM's scopes. Losing either is a cross-workspace leak or a
-// list of deleted people.
 func TestCompiledQueryScopesWorkspaceAndSoftDeletes(t *testing.T) {
 	q, err := newNilRepo().compile(lead.ListLeadsInput{WorkspaceID: "ws-1"})
 	if err != nil {

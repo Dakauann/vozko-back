@@ -19,11 +19,6 @@ type entryRepository struct{ db *gorm.DB }
 
 func NewEntryRepository(db *gorm.DB) uwc.EntryRepository { return &entryRepository{db: db} }
 
-// CreateMany inserts a batch, skipping numbers the campaign already holds.
-//
-// ON CONFLICT DO NOTHING on (campaign_id, lead_id) rather than a pre-read: the
-// pre-read races with a concurrent import, and the index is the only place the
-// "never blast the same person twice" rule can actually be enforced.
 func (r *entryRepository) CreateMany(entries []uwc.Entry) ([]uwc.Entry, error) {
 	if len(entries) == 0 {
 		return nil, nil
@@ -33,7 +28,6 @@ func (r *entryRepository) CreateMany(entries []uwc.Entry) ([]uwc.Entry, error) {
 		rows = append(rows, entryToRow(e))
 	}
 
-	// Batched: a 150.000-row single INSERT exceeds Postgres' parameter limit.
 	if err := r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "campaign_id"}, {Name: "lead_id"}},
 		DoNothing: true,
@@ -59,8 +53,6 @@ func (r *entryRepository) FindByID(entryID string) (*uwc.Entry, error) {
 	return entryToDomain(&row), nil
 }
 
-// FindByProviderMessageID is the delivery-status hook: a webhook carries the
-// provider's message id and nothing else that identifies a campaign.
 func (r *entryRepository) FindByProviderMessageID(providerMessageID string) (*uwc.Entry, error) {
 	id := strings.TrimSpace(providerMessageID)
 	if id == "" {
@@ -82,8 +74,6 @@ func (r *entryRepository) FindLatestByConversationID(conversationID string) (*uw
 		return nil, uwc.ErrEntryNotFound
 	}
 	var row schema.UnofficialWhatsAppCampaignEntry
-	// sent_at DESC NULLS LAST, then updated_at: an entry that never sent cannot
-	// be the message being replied to, so it may only win when nothing sent.
 	err := r.db.
 		Where("conversation_id = ?", id).
 		Order("sent_at DESC NULLS LAST, updated_at DESC").
@@ -168,17 +158,11 @@ func (r *entryRepository) List(input uwc.ListEntriesInput) (*shared.PaginatedRes
 		})
 	}
 
-	// The conversation-side columns are joined in one extra query rather than a
-	// LATERAL per row: an entries page is fifty rows and the alternative fans one
-	// render into fifty subqueries against the conversation table.
 	r.hydrateConversations(items)
 
 	return shared.NewPaginatedResult(items, pagination, total), nil
 }
 
-// hydrateConversations fills in the fields that live on the conversation rather
-// than on the entry — which is where they belong, and why the entry does not
-// carry a second copy of them.
 func (r *entryRepository) hydrateConversations(items []*uwc.EntryWithLead) {
 	ids := make([]string, 0, len(items))
 	for _, it := range items {
@@ -252,11 +236,6 @@ func (r *entryRepository) CountByStatus(campaignID string) (*campaign.Counts, er
 	return &campaign.Counts{}, nil
 }
 
-// CountByStatusForCampaigns aggregates many campaigns in ONE query.
-//
-// This exists so a list page does not become an N+1 of CountByStatus as a
-// workspace accumulates campaigns — the same reason and the same shape as the
-// official channel's.
 func (r *entryRepository) CountByStatusForCampaigns(campaignIDs []string) (map[string]*campaign.Counts, error) {
 	out := map[string]*campaign.Counts{}
 	if len(campaignIDs) == 0 {
@@ -288,11 +267,6 @@ func (r *entryRepository) CountByStatusForCampaigns(campaignIDs []string) (map[s
 	return out, nil
 }
 
-// addStatusCount is the one place a status becomes a tally field.
-//
-// A switch rather than reflection so a status added to the domain without a
-// bucket here is a compile-time-visible omission at a single site, not a silent
-// zero on every metrics tile.
 func addStatusCount(c *campaign.Counts, status campaign.SendStatus, n int64) {
 	c.Total += n
 	switch status {
@@ -327,11 +301,6 @@ func (r *entryRepository) UpdateStatus(entryID string, status campaign.SendStatu
 		Where("id = ?", entryID).Updates(updates).Error
 }
 
-// UpdateStatusByProviderMessageID advances an entry from a delivery webhook.
-//
-// Guarded so a late DELIVERED cannot overwrite a READ: WhatsApp's callbacks are
-// not ordered, and a status that walks backwards makes the entries table
-// disagree with the transcript an operator is looking at.
 func (r *entryRepository) UpdateStatusByProviderMessageID(providerMessageID string, status campaign.SendStatus) error {
 	rank := deliveryRank(status)
 	if rank == 0 {
@@ -346,8 +315,6 @@ func (r *entryRepository) UpdateStatusByProviderMessageID(providerMessageID stri
 			ranked = append(ranked, string(s))
 		}
 	}
-	// Also allow advancing from PENDING, for the case where the echo webhook
-	// beats our own write of SENT.
 	ranked = append(ranked, string(campaign.SendStatusPending))
 
 	return r.db.Model(&schema.UnofficialWhatsAppCampaignEntry{}).
@@ -358,8 +325,6 @@ func (r *entryRepository) UpdateStatusByProviderMessageID(providerMessageID stri
 		}).Error
 }
 
-// deliveryRank orders the delivery lifecycle. Anything outside it returns 0,
-// meaning "not a delivery advance" — a FAILED or a skip is written directly.
 func deliveryRank(s campaign.SendStatus) int {
 	switch s {
 	case campaign.SendStatusSent:
@@ -381,8 +346,6 @@ func (r *entryRepository) RecordCheck(entryID, jid string, at time.Time, onWhats
 	if onWhatsApp {
 		updates["jid"] = jid
 	} else {
-		// A number that is not registered gets no JID: leaving a stale one would
-		// let a later send address an identity that does not exist.
 		updates["jid"] = ""
 		updates["status"] = string(campaign.SendStatusSkippedNotOnWhatsApp)
 	}
@@ -407,17 +370,6 @@ func (r *entryRepository) RecordSend(entryID string, in uwc.RecordSendInput) err
 		}).Error
 }
 
-// ResetAllStatuses returns every entry to PENDING.
-//
-// The send-side columns are cleared with it: leaving a provider_message_id
-// behind would let a stale delivery webhook advance an entry belonging to a run
-// that no longer exists, and the unique index would refuse the next send's write.
-// UpdateEntryDetails edits one row by primary key.
-//
-// A unique-violation here means the campaign already holds that lead, which is
-// the (campaign_id, lead_id) index doing its job — the same person twice in one
-// campaign is the commonest ban complaint there is — so it is reported as a
-// duplicate rather than as a database error.
 func (r *entryRepository) UpdateEntryDetails(entryID string, in uwc.UpdateEntryDetails) error {
 	meta := schema.LeadMetadata{}
 	for k, v := range in.Metadata {
@@ -442,7 +394,6 @@ func (r *entryRepository) UpdateEntryDetails(entryID string, in uwc.UpdateEntryD
 	return err
 }
 
-// uniqueViolation is Postgres' SQLSTATE for a unique constraint breach.
 const uniqueViolation = "23505"
 
 func (r *entryRepository) ResetAllStatuses(campaignID string) (int64, error) {

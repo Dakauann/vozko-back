@@ -42,11 +42,6 @@ func stageTallyRows() *sqlmock.Rows {
 	})
 }
 
-// The whole point of this read: it must ride the temp table the overview has
-// already built, not re-derive the scoped conversation set. Driving FROM
-// tmp_att_msg means the entry_stages lookup rides
-// idx_et_entry_type_ws (entry_id, entry_type, workspace_id) instead of scanning
-// every stage assignment the workspace owns.
 func TestOverviewStageTallies_DrivesFromTheMessageTempTable(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
@@ -63,13 +58,7 @@ func TestOverviewStageTallies_DrivesFromTheMessageTempTable(t *testing.T) {
 	}
 }
 
-// Never re-read conversation_messages. Every timing widget on this page already
-// reads the pre-aggregated table for exactly this reason; a stage panel that
-// re-joined the message table would add a full scan to a page that spent real
-// work removing five of them.
 func TestOverviewStageTallies_DoesNotTouchConversationMessages(t *testing.T) {
-	// Captured rather than pattern-matched: RE2 has no negative lookahead, and
-	// "this table must not appear" is the assertion that matters here.
 	var captured string
 	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(
 		sqlmock.QueryMatcherFunc(func(expectedSQL, actualSQL string) error {
@@ -107,14 +96,11 @@ func TestOverviewStageTallies_DoesNotTouchConversationMessages(t *testing.T) {
 	}
 }
 
-// AssignStage soft-deletes the previous row and inserts a new one, so a
-// conversation can carry more than one live-looking assignment. Without the
-// DISTINCT ON it would be counted once per row, in more than one stage at once.
 func TestOverviewStageTallies_PicksOneLiveStagePerConversation(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
 
-	mock.ExpectQuery(`DISTINCT ON \(es\.entry_id, es\.entry_type\)[\s\S]*` +
+	mock.ExpectQuery(`DISTINCT ON \(es\.entry_id, es\.entry_type\)[\s\S]*`+
 		`ORDER BY es\.entry_id, es\.entry_type, es\.created_at DESC`).
 		WithArgs("ws-1", attendance.DefaultStageStuckDays).
 		WillReturnRows(stageTallyRows())
@@ -127,9 +113,6 @@ func TestOverviewStageTallies_PicksOneLiveStagePerConversation(t *testing.T) {
 	}
 }
 
-// Soft-deleted assignments and soft-deleted stages are both live rows in this
-// schema. Counting either would report conversations in stages the workspace
-// deleted, which is how a "ghost stage" appears on a dashboard.
 func TestOverviewStageTallies_ExcludesSoftDeletedAssignmentsAndStages(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
@@ -146,8 +129,6 @@ func TestOverviewStageTallies_ExcludesSoftDeletedAssignmentsAndStages(t *testing
 	}
 }
 
-// A stage with no pipeline is a real row (campaign-scoped stages predate
-// funnels). An inner join would silently drop it and understate the workspace.
 func TestOverviewStageTallies_KeepsStagesWithNoPipeline(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
@@ -164,8 +145,6 @@ func TestOverviewStageTallies_KeepsStagesWithNoPipeline(t *testing.T) {
 	}
 }
 
-// The stuck threshold is per stage and comes from the row, with the product
-// default bound as a parameter rather than written into the SQL text.
 func TestOverviewStageTallies_BindsTheDefaultStuckThreshold(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
@@ -182,8 +161,6 @@ func TestOverviewStageTallies_BindsTheDefaultStuckThreshold(t *testing.T) {
 	}
 }
 
-// Rows come back flat and are handed to the domain untouched; the repository
-// does SQL, the shaping lives in domain/attendance.
 func TestOverviewStageTallies_MapsRowsToDomainTallies(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()
@@ -225,9 +202,6 @@ func TestOverviewStageTallies_MapsRowsToDomainTallies(t *testing.T) {
 	}
 }
 
-// A stage that defines no rot_days and holds no open work must survive the scan
-// as nils, not as zeros. Zero dwell would read as "everyone arrived today" and
-// a zero threshold would mark the whole stage stuck.
 func TestOverviewStageTallies_NullDwellAndThresholdStayNil(t *testing.T) {
 	db, mock, sqlDB := newStageDB(t)
 	defer sqlDB.Close()

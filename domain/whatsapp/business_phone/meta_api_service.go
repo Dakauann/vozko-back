@@ -54,9 +54,6 @@ type MetaAPIService interface {
 
 	SubscribeWebhooks(wabaID string, accessToken string) error
 
-	// BlockUser / UnblockUser manage the phone number's blocklist via the Meta
-	// Cloud API. Blocking stops Meta from forwarding that user's messages to the
-	// webhook; userNumber is the contact's WhatsApp number (E.164 digits).
 	BlockUser(phoneNumberID string, userNumber string, accessToken string) error
 	UnblockUser(phoneNumberID string, userNumber string, accessToken string) error
 }

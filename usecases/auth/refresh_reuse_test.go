@@ -10,9 +10,6 @@ import (
 	"vozko/domain/user"
 )
 
-// seqTokenIssuer hands out a distinct refresh token and access JTI on every call
-// so a test can tell one rotation apart from the next (the shared testTokenIssuer
-// returns fixed values, which would make two rotations indistinguishable).
 type seqTokenIssuer struct {
 	refreshN int
 	jtiN     int
@@ -37,7 +34,6 @@ func (t *seqTokenIssuer) HashRefreshToken(raw string) string { return "hashed-" 
 
 func timePtr(tm time.Time) *time.Time { return &tm }
 
-// newRefreshFixture sets up a user with one live session holding the token "orig".
 func newRefreshFixture() (*testUserRepo, *testSessionRepo, *seqTokenIssuer, *testSharedState) {
 	userRepo := newTestUserRepo()
 	userRepo.byID["u1"] = &user.User{ID: "u1", Email: "u@t.com", Role: user.RoleUser}
@@ -57,8 +53,6 @@ func newRefreshFixture() (*testUserRepo, *testSessionRepo, *seqTokenIssuer, *tes
 	return userRepo, sessionRepo, issuer, newTestSharedState()
 }
 
-// A normal rotation must record where it rotated from, which is the data reuse and
-// grace handling depend on.
 func TestRefresh_RotationRecordsPreviousHash(t *testing.T) {
 	userRepo, sessionRepo, issuer, shared := newRefreshFixture()
 	uc := NewRefreshTokenUseCase(userRepo, issuer, sessionRepo, shared)
@@ -79,13 +73,9 @@ func TestRefresh_RotationRecordsPreviousHash(t *testing.T) {
 	}
 }
 
-// The core P0.3 fix: replaying a spent refresh token after the grace window is
-// treated as theft. Every session for the user is revoked and their live access
-// JTIs are blacklisted so a stolen token can't survive to its JWT expiry.
 func TestRefresh_ReuseOutsideGraceRevokesFamily(t *testing.T) {
 	userRepo, sessionRepo, issuer, shared := newRefreshFixture()
 
-	// A second live device for the same user: it must be torn down too.
 	other := &auth.Session{
 		ID:               "sess2",
 		UserID:           "u1",
@@ -101,7 +91,6 @@ func TestRefresh_ReuseOutsideGraceRevokesFamily(t *testing.T) {
 	if _, err := uc.Execute("orig", "", ""); err != nil {
 		t.Fatalf("first rotation failed: %v", err)
 	}
-	// Push the rotation into the past so the replay is unambiguously outside grace.
 	sessionRepo.sessions["sess1"].RotatedAt = timePtr(time.Now().Add(-2 * refreshGraceWindow))
 
 	_, err := uc.Execute("orig", "", "")
@@ -122,8 +111,6 @@ func TestRefresh_ReuseOutsideGraceRevokesFamily(t *testing.T) {
 	}
 }
 
-// An honest client whose refresh response was lost retries with the same token.
-// Inside the grace window that must re-rotate cleanly, not nuke the account.
 func TestRefresh_ReuseInsideGraceReRotates(t *testing.T) {
 	userRepo, sessionRepo, issuer, shared := newRefreshFixture()
 	uc := NewRefreshTokenUseCase(userRepo, issuer, sessionRepo, shared)
@@ -131,7 +118,6 @@ func TestRefresh_ReuseInsideGraceReRotates(t *testing.T) {
 	if _, err := uc.Execute("orig", "", ""); err != nil {
 		t.Fatalf("first rotation failed: %v", err)
 	}
-	// rotated_at is 'now' from the rotation above, so the replay is within grace.
 	pair, err := uc.Execute("orig", "", "")
 	if err != nil {
 		t.Fatalf("expected honest retry to succeed, got: %v", err)
@@ -144,7 +130,6 @@ func TestRefresh_ReuseInsideGraceReRotates(t *testing.T) {
 	}
 }
 
-// A token that matches neither a live session nor any previous hash is just bogus.
 func TestRefresh_UnknownTokenIsInvalid(t *testing.T) {
 	userRepo, sessionRepo, issuer, shared := newRefreshFixture()
 	uc := NewRefreshTokenUseCase(userRepo, issuer, sessionRepo, shared)
@@ -155,7 +140,6 @@ func TestRefresh_UnknownTokenIsInvalid(t *testing.T) {
 	}
 }
 
-// Reuse detection must still revoke the family even if the Redis layer is absent.
 func TestRefresh_ReuseWithoutSharedStillRevokes(t *testing.T) {
 	userRepo, sessionRepo, issuer, _ := newRefreshFixture()
 	uc := NewRefreshTokenUseCase(userRepo, issuer, sessionRepo, nil)

@@ -12,7 +12,6 @@ type boardService struct {
 	capacity telephony.CapacityReader
 }
 
-// NewBoardService builds live board sync + get use cases.
 func NewBoardService(store telephony.BoardStore, capacity telephony.CapacityReader) *boardService {
 	return &boardService{store: store, capacity: capacity}
 }
@@ -25,7 +24,6 @@ func (s *boardService) Execute(workspaceID string) (*telephony.BoardSnapshot, er
 			Humans:      []telephony.HumanSeat{},
 		}, nil
 	}
-	// Refresh capacity from slot manager when available (best-effort).
 	if s.capacity != nil && workspaceID != "" {
 		used, max, err := s.capacity.Snapshot(workspaceID)
 		if err == nil {
@@ -35,7 +33,6 @@ func (s *boardService) Execute(workspaceID string) (*telephony.BoardSnapshot, er
 	return s.store.Get(workspaceID)
 }
 
-// SyncHumansFromPresence rebuilds human seats and capacity after a call session presence change.
 func (s *boardService) SyncHumansFromPresence(workspaceID string, seats []telephony.HumanSeat, used, max int64) (*telephony.BoardSnapshot, error) {
 	if s == nil || s.store == nil {
 		return nil, nil
@@ -61,7 +58,6 @@ func (s *boardService) SyncHumansFromPresence(workspaceID string, seats []teleph
 	return s.store.Get(ws)
 }
 
-// Ensure interfaces.
 var (
 	_ telephony.GetBoardUseCase = (*boardService)(nil)
 	_ telephony.BoardSync       = (*boardService)(nil)

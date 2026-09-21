@@ -41,19 +41,10 @@ type activateWorkflowUseCase struct {
 	modelLookup ModelLookup
 }
 
-// knowledgeBaseLookup is the slice of the RAG knowledge-base repository the
-// activation validator needs: resolve a set of IDs so an ai_agent
-// node can't be activated pointing at knowledge bases from another workspace (or
-// that no longer exist).
 type knowledgeBaseLookup interface {
 	FindByIDs(ctx context.Context, ids []string) ([]*rag_domain.KnowledgeBase, error)
 }
 
-// ModelLookup reports whether a single model id is one the AI provider offers, so
-// a workflow pointed at a non-existent model is rejected at activation instead of
-// failing at run time. It is expected to be backed by a TTL cache (see
-// openrouter.ModelValidator) so validation is a cheap membership check on the few
-// models actually used, not a per-call fetch of the whole catalog.
 type ModelLookup interface {
 	IsValidModel(ctx context.Context, modelID string) (bool, error)
 }
@@ -175,26 +166,16 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 		if uc.modelLookup != nil {
 			validators = append(validators, &modelValidator{lookup: uc.modelLookup})
 		}
-		// NOTE: tts_model validity is a PURE rule (workflow.ValidatePublicTTSModel
-		// in PureGraphRules), so it runs in the builder lint AND activation, the AI
-		// sees an invalid tts_model while building, not only here.
 		validators = append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
 		if err := workflow.ValidateNodeConfigs(&w.Graph, catalog, validators...); err != nil {
 			return nil, err
 		}
 	}
 
-	// The SAME pure blocking rules the builder lint enforces, from the one shared
-	// registry, so "the builder said valid" and "activation accepts it" can never
-	// disagree on a pure rule. Repo-backed VALIDITY (does the id exist?) is the
-	// only thing layered above, via the ConfigValidators run earlier.
 	if err := workflow.RunPureGraphRules(&w.Graph); err != nil {
 		return nil, err
 	}
 
-	// Required DYNAMIC output edges (e.g. an AI-agent's response/"default" path),
-	// the SAME rule the builder lint runs, enforced here so the backend is the
-	// source of truth: a workflow with an unhandled response path cannot activate.
 	if err := workflow.ValidateRequiredDynamicOutputs(&w.Graph, builderHandleResolver); err != nil {
 		return nil, err
 	}
@@ -250,11 +231,6 @@ func collectExecuteModeLeafNodes(g *workflow.Graph) map[string]bool {
 	}
 	return leafNodes
 }
-
-// The graph-configuration rules below now live in domain/workflow
-// (config_rules.go) so the activation path and the AI Workflow Builder lint
-// share a single implementation. These thin wrappers preserve the existing
-// call sites (Execute + the activation tests) while delegating to the domain.
 
 func validateSegmentedSendConflict(g *workflow.Graph) error {
 	return workflow.ValidateSegmentedSendConflict(g)
@@ -316,11 +292,6 @@ func (v *agentValidator) Validate(n *workflow.Node) error {
 		return nil
 	}
 
-	// Conditional required-field PRESENCE per source mode, prompt-mode
-	// model/instructions AND agent-mode agent_id, is a PURE rule, enforced by
-	// BOTH the builder lint and activation via workflow.ValidateAIAgentSourceConfig
-	// (in PureGraphRules). The repo-backed validator only needs to check AGENT-mode
-	// id VALIDITY here, the one thing the pure lint can't do (it needs the DB).
 	source, _ := n.Config["source"].(string)
 	if source != "prompt" {
 		if agentID, _ := n.Config["agent_id"].(string); strings.TrimSpace(agentID) != "" {
@@ -424,10 +395,6 @@ func extractStringSlice(raw any) []string {
 	return nil
 }
 
-// modelValidator rejects ai_agent / voip_ai_agent nodes whose inline `model`
-// points at a model the provider doesn't offer. Mirrors the other resource-id
-// validators (department, label, agent…); the valid set is the provider's model
-// catalog, checked one id at a time through a TTL-cached lookup.
 type modelValidator struct {
 	lookup ModelLookup
 }
@@ -436,7 +403,6 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	if n.Type != workflow.NodeTypeActionAIAgent {
 		return nil
 	}
-	// In agent mode the model comes from the selected agent, not this field.
 	if source, _ := n.Config["source"].(string); strings.TrimSpace(source) == "agent" {
 		return nil
 	}
@@ -447,7 +413,7 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	}
 	valid, err := v.lookup.IsValidModel(context.Background(), model)
 	if err != nil {
-		return nil // catalog unavailable → don't block activation
+		return nil
 	}
 	if !valid {
 		return fmt.Errorf("%w: node %q model %q", workflow.ErrNodeInvalidModelID, n.ID, model)
@@ -525,8 +491,6 @@ type memberValidator struct {
 }
 
 func (v *memberValidator) Validate(n *workflow.Node) error {
-	// memberKey is the config field naming a workspace member for each node type
-	// that targets one. assign_member uses member_id.
 	if n.Type != workflow.NodeTypeActionAssignMember {
 		return nil
 	}
@@ -534,8 +498,6 @@ func (v *memberValidator) Validate(n *workflow.Node) error {
 
 	memberID, _ := n.Config[memberKey].(string)
 	memberID = strings.TrimSpace(memberID)
-	// Empty is left to the required-field check; an interpolated value
-	// ({{state.target_user_id}}) is only known at runtime, so skip it here.
 	if memberID == "" || strings.Contains(memberID, "{{") {
 		return nil
 	}

@@ -13,7 +13,6 @@ type repository struct {
 	db *gorm.DB
 }
 
-// New returns a telephony overview repository backed by the calls CDR table.
 func New(db *gorm.DB) telephony.Repository {
 	return &repository{db: db}
 }
@@ -40,7 +39,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 
 	where, args := buildCallWhere(workspaceID, filter)
 
-	// ── KPI counts ─────────────────────────────────────────────────────
 	type kpiRow struct {
 		Total      int64
 		Answered   int64
@@ -102,7 +100,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 		out.KPIs.ServiceLevelPct = &sl
 	}
 
-	// ── Time averages ──────────────────────────────────────────────────
 	type timeRow struct {
 		AvgRingSecs   *float64
 		AvgTalkSecs   *float64
@@ -125,14 +122,12 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 	out.KPIs.AvgRingMins = secsToMins(tr.AvgRingSecs)
 	out.KPIs.AvgTalkMins = secsToMins(tr.AvgTalkSecs)
 	out.KPIs.AvgHandleMins = secsToMins(tr.AvgHandleSecs)
-	// AHT approx: prefer duration_sec (includes ring+talk); talk alone if no duration.
 	if out.KPIs.AvgHandleMins != nil {
 		out.KPIs.AvgAHTMins = out.KPIs.AvgHandleMins
 	} else {
 		out.KPIs.AvgAHTMins = out.KPIs.AvgTalkMins
 	}
 
-	// ── Transfers (conversation_events) ────────────────────────────────
 	var transferCount int64
 	txSQL := `
 		SELECT COUNT(*) FROM conversation_events
@@ -151,7 +146,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 	_ = r.db.Raw(txSQL, txArgs...).Scan(&transferCount).Error
 	out.KPIs.Transfers = transferCount
 
-	// ── Hourly starts ──────────────────────────────────────────────────
 	type hourRow struct {
 		Hour  int
 		Count int64
@@ -172,7 +166,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 		}
 	}
 
-	// ── By type ────────────────────────────────────────────────────────
 	type typeRow struct {
 		Type  string
 		Count int64
@@ -199,7 +192,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 		})
 	}
 
-	// ── By direction ───────────────────────────────────────────────────
 	out.ByDirection = make([]telephony.DirectionSlice, 0, 2)
 	if kr.Inbound > 0 {
 		pct := float64(0)
@@ -220,7 +212,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 		})
 	}
 
-	// ── Dispositions (status + end_reason) ──────────────────────────────
 	type dispRow struct {
 		Code  string
 		Count int64
@@ -257,7 +248,6 @@ func (r *repository) GetOverview(workspaceID string, filter telephony.OverviewFi
 		}
 	}
 
-	// ── By human member ────────────────────────────────────────────────
 	memberSQL := `
 		SELECT
 			TRIM(agent_id::text) AS user_id,

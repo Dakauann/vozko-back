@@ -2,74 +2,60 @@ package telephony
 
 import "time"
 
-// DefaultServiceLevelSeconds is the industry-classic 80/20 threshold (20 seconds).
 const DefaultServiceLevelSeconds = 20
 
-// OverviewFilter scopes the call session dashboard.
 type OverviewFilter struct {
-	DateFrom  *time.Time `json:"date_from,omitempty"`
-	DateTo    *time.Time `json:"date_to,omitempty"`
-	Direction string     `json:"direction,omitempty"` // inbound | outbound | ""
-	CallType  string     `json:"call_type,omitempty"` // crm | trunk_inbound | trunk_outbound | ""
-	AgentID   string     `json:"agent_id,omitempty"`  // call session member uuid on CDR
-	MemberID  string     `json:"member_id,omitempty"` // human call session user (same column as agent_id on CRM)
-	// ServiceLevelSeconds overrides DefaultServiceLevelSeconds when > 0.
-	ServiceLevelSeconds int `json:"service_level_seconds,omitempty"`
+	DateFrom            *time.Time `json:"date_from,omitempty"`
+	DateTo              *time.Time `json:"date_to,omitempty"`
+	Direction           string     `json:"direction,omitempty"`
+	CallType            string     `json:"call_type,omitempty"`
+	AgentID             string     `json:"agent_id,omitempty"`
+	MemberID            string     `json:"member_id,omitempty"`
+	ServiceLevelSeconds int        `json:"service_level_seconds,omitempty"`
 }
 
-// OverviewKPIs is the primary VoIP strip (industry names mapped to PT-friendly UI).
 type OverviewKPIs struct {
-	TotalCalls    int64    `json:"total_calls"`
-	Answered      int64    `json:"answered"`
-	Failed        int64    `json:"failed"`
-	Abandoned     int64    `json:"abandoned"`
-	ConnectRate   *float64 `json:"connect_rate"` // answered/total * 100
-	Inbound       int64    `json:"inbound"`
-	Outbound      int64    `json:"outbound"`
-	AvgRingMins   *float64 `json:"avg_ring_mins"`   // started → answered
-	AvgTalkMins   *float64 `json:"avg_talk_mins"`   // answered → ended
-	AvgHandleMins *float64 `json:"avg_handle_mins"` // duration_sec avg on answered
-	// AvgAHTMins is industry AHT approximation: talk + hold + acw when columns set;
-	// falls back to duration_sec / talk when hold/acw unavailable.
-	AvgAHTMins    *float64 `json:"avg_aht_mins"`
-	AvgHoldMins   *float64 `json:"avg_hold_mins"`
-	AvgACWMins    *float64 `json:"avg_acw_mins"`
-	HumanCRMCalls int64    `json:"human_crm_calls"`
-	TrunkInbound  int64    `json:"trunk_inbound"`
-	TrunkOutbound int64    `json:"trunk_outbound"`
-	// Service level (industry 80/20): answered within threshold / offered answered attempts.
+	TotalCalls          int64    `json:"total_calls"`
+	Answered            int64    `json:"answered"`
+	Failed              int64    `json:"failed"`
+	Abandoned           int64    `json:"abandoned"`
+	ConnectRate         *float64 `json:"connect_rate"`
+	Inbound             int64    `json:"inbound"`
+	Outbound            int64    `json:"outbound"`
+	AvgRingMins         *float64 `json:"avg_ring_mins"`
+	AvgTalkMins         *float64 `json:"avg_talk_mins"`
+	AvgHandleMins       *float64 `json:"avg_handle_mins"`
+	AvgAHTMins          *float64 `json:"avg_aht_mins"`
+	AvgHoldMins         *float64 `json:"avg_hold_mins"`
+	AvgACWMins          *float64 `json:"avg_acw_mins"`
+	HumanCRMCalls       int64    `json:"human_crm_calls"`
+	TrunkInbound        int64    `json:"trunk_inbound"`
+	TrunkOutbound       int64    `json:"trunk_outbound"`
 	ServiceLevelPct     *float64 `json:"service_level_pct"`
 	ServiceLevelSeconds int      `json:"service_level_seconds"`
 	AnsweredWithinSL    int64    `json:"answered_within_sl"`
-	// CDR abandon rate among total attempts.
-	CDRAbandonRate *float64 `json:"cdr_abandon_rate"`
-	// Short hangups (<6s after answer), early customer drop signal.
-	ShortAbandons int64 `json:"short_abandons"`
-	// Transfers completed (conversation_events) in range.
-	Transfers int64 `json:"transfers"`
+	CDRAbandonRate      *float64 `json:"cdr_abandon_rate"`
+	ShortAbandons       int64    `json:"short_abandons"`
+	Transfers           int64    `json:"transfers"`
 }
 
-// HourlyPoint is call starts per hour of day.
 type HourlyPoint struct {
 	Hour  int   `json:"hour"`
 	Count int64 `json:"count"`
 }
 
-// TypeSlice is volume by CDR type.
 type TypeSlice struct {
 	Type  string  `json:"type"`
 	Count int64   `json:"count"`
 	Pct   float64 `json:"pct"`
 }
 
-// DirectionSlice is inbound vs outbound share.
 type DirectionSlice struct {
 	Direction string  `json:"direction"`
 	Count     int64   `json:"count"`
 	Pct       float64 `json:"pct"`
 }
 
-// DispositionSlice is outcome stack (status + end_reason).
 type DispositionSlice struct {
 	Code  string  `json:"code"`
 	Label string  `json:"label,omitempty"`
@@ -77,24 +63,21 @@ type DispositionSlice struct {
 	Pct   float64 `json:"pct"`
 }
 
-// QueueBlock is ACD queue KPIs.
 type QueueBlock struct {
-	Enqueued    int64    `json:"enqueued"`
-	Connected   int64    `json:"connected"`
-	Abandoned   int64    `json:"abandoned"`
-	Overflow    int64    `json:"overflow"`
-	QueueFull   int64    `json:"queue_full"`
-	Cancelled   int64    `json:"cancelled"`
-	AvgASAMins  *float64 `json:"avg_asa_mins"`
-	MaxWaitMins *float64 `json:"max_wait_mins"`
-	// ServiceLevelPct: connected with waited_ms <= threshold / connected * 100.
+	Enqueued            int64    `json:"enqueued"`
+	Connected           int64    `json:"connected"`
+	Abandoned           int64    `json:"abandoned"`
+	Overflow            int64    `json:"overflow"`
+	QueueFull           int64    `json:"queue_full"`
+	Cancelled           int64    `json:"cancelled"`
+	AvgASAMins          *float64 `json:"avg_asa_mins"`
+	MaxWaitMins         *float64 `json:"max_wait_mins"`
 	ServiceLevelPct     *float64 `json:"service_level_pct"`
 	ServiceLevelSeconds int      `json:"service_level_seconds"`
 	AbandonRate         float64  `json:"abandon_rate"`
 	Available           bool     `json:"available"`
 }
 
-// OccupancyBlock is historical presence occupancy / idle.
 type OccupancyBlock struct {
 	AvgOccupancyPct  *float64 `json:"avg_occupancy_pct"`
 	TeamOccupancyPct *float64 `json:"team_occupancy_pct"`
@@ -103,7 +86,6 @@ type OccupancyBlock struct {
 	Available        bool     `json:"available"`
 }
 
-// LiveBlock is point-in-time call session presence.
 type LiveBlock struct {
 	Online      int64       `json:"online"`
 	InCall      int64       `json:"in_call"`
@@ -115,14 +97,12 @@ type LiveBlock struct {
 	AsOf        time.Time   `json:"as_of"`
 }
 
-// LiveAgent is one online call session contact.
 type LiveAgent struct {
 	UserID     string `json:"user_id"`
 	Busy       bool   `json:"busy"`
 	HasBrowser bool   `json:"has_browser"`
 }
 
-// MemberRow is per human agent VoIP performance (CDR agent_id = user id on CRM/trunk).
 type MemberRow struct {
 	UserID        string   `json:"user_id"`
 	TotalCalls    int64    `json:"total_calls"`
@@ -133,14 +113,12 @@ type MemberRow struct {
 	AvgTalkMins   *float64 `json:"avg_talk_mins"`
 	AvgRingMins   *float64 `json:"avg_ring_mins"`
 	AvgHandleMins *float64 `json:"avg_handle_mins"`
-	// WithinSL: answered with ring <= service level seconds.
-	WithinSL     int64    `json:"within_sl"`
-	ServiceLevel *float64 `json:"service_level_pct,omitempty"`
-	OccupancyPct *float64 `json:"occupancy_pct,omitempty"`
-	IdlePct      *float64 `json:"idle_pct,omitempty"`
+	WithinSL      int64    `json:"within_sl"`
+	ServiceLevel  *float64 `json:"service_level_pct,omitempty"`
+	OccupancyPct  *float64 `json:"occupancy_pct,omitempty"`
+	IdlePct       *float64 `json:"idle_pct,omitempty"`
 }
 
-// MetricDefinitions documents contracts for clients.
 type MetricDefinitions struct {
 	ConnectRate  string `json:"connect_rate"`
 	RingTime     string `json:"ring_time"`
@@ -156,7 +134,6 @@ type MetricDefinitions struct {
 	Gaps         string `json:"gaps"`
 }
 
-// Overview is the call session dashboard payload.
 type Overview struct {
 	Filter       OverviewFilter     `json:"filter"`
 	KPIs         OverviewKPIs       `json:"kpis"`
@@ -168,13 +145,10 @@ type Overview struct {
 	Occupancy    OccupancyBlock     `json:"occupancy"`
 	Live         LiveBlock          `json:"live"`
 	ByMember     []MemberRow        `json:"by_member"`
-	// SLAAvailable is true when Service Level is computed from CDR ring times
-	// (industry metric available). Formal multi-policy SLA product remains separate.
-	SLAAvailable bool              `json:"sla_available"`
-	Definitions  MetricDefinitions `json:"definitions"`
+	SLAAvailable bool               `json:"sla_available"`
+	Definitions  MetricDefinitions  `json:"definitions"`
 }
 
-// DefaultDefinitions freezes product contracts.
 func DefaultDefinitions() MetricDefinitions {
 	return MetricDefinitions{
 		ConnectRate:  "answered calls / total attempts in range * 100",
@@ -192,12 +166,10 @@ func DefaultDefinitions() MetricDefinitions {
 	}
 }
 
-// Repository is the CDR aggregation port for telephony overview.
 type Repository interface {
 	GetOverview(workspaceID string, filter OverviewFilter) (*Overview, error)
 }
 
-// GetOverviewUseCase is the single entry for the VoIP dashboard.
 type GetOverviewUseCase interface {
 	Execute(workspaceID string, filter OverviewFilter) (*Overview, error)
 }

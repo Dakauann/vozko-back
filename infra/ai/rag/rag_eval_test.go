@@ -15,29 +15,14 @@ import (
 	ragdomain "vozko/domain/rag"
 )
 
-// This is an end-to-end retrieval-quality harness for the RAG ingestion pipeline. It
-// runs the REAL extractor + chunker + embedding model over a corpus of files and
-// measures retrieval metrics (hit@k, MRR) against a manifest of expected answers, so a
-// change to extraction/chunking can be proven to help or hurt before shipping.
-//
-// It is skipped unless RAG_EVAL=1 (it needs a running Ollama with bge-m3). Drive it with:
-//
-//	RAG_EVAL=1 RAG_EVAL_DIR=<corpus dir> OLLAMA_URL=http://localhost:11434 \
-//	  go test ./infra/ai/rag/ -run TestRAGRetrievalEval -v -timeout 30m
-//
-// The corpus dir must contain manifest.json:
-//
-//	[{"file":"cursos.xlsx","min_hit3":0.9,"queries":[
-//	    {"q":"quanto ganha administração","all":["ADMINISTRAÇÃO","4,020.29"]}]}]
-
 type evalQuery struct {
 	Q   string   `json:"q"`
-	All []string `json:"all"` // a top-k chunk must contain all of these (case-insensitive) to be a hit
+	All []string `json:"all"`
 }
 
 type evalFile struct {
 	File    string      `json:"file"`
-	MinHit3 float64     `json:"min_hit3"` // assertion threshold for hit@3 (0 = no assert)
+	MinHit3 float64     `json:"min_hit3"`
 	MinMRR  float64     `json:"min_mrr"`
 	Queries []evalQuery `json:"queries"`
 }
@@ -140,10 +125,6 @@ func TestRAGRetrievalEval(t *testing.T) {
 		gTotal, ratio(gHit1, gTotal), ratio(gHit3, gTotal), ratio(gHit5, gTotal), gMRR/float64(max1(gTotal)))
 }
 
-// TestRAGIngestInvariants proves the ingestion-hardening fixes on the real documents
-// that previously failed: every chunk is valid UTF-8 (no stray 0xa7 reaching Postgres)
-// and small enough that the embedder never rejects it with "input length exceeds the
-// context length". It embeds every chunk to confirm end to end.
 func TestRAGIngestInvariants(t *testing.T) {
 	if os.Getenv("RAG_EVAL") != "1" {
 		t.Skip("set RAG_EVAL=1 (needs Ollama + bge-m3) to run ingestion invariants")
@@ -157,7 +138,6 @@ func TestRAGIngestInvariants(t *testing.T) {
 		ollama = "http://localhost:11434"
 	}
 
-	// Files that failed in production: 0xa7 UTF-8 byte, and a chunk over the embed limit.
 	files := []string{"failed_terapias.pdf", "failed_engenharia.pdf", "guia_percurso_admin.pdf"}
 	if extra := os.Getenv("RAG_INGEST_FILES"); extra != "" {
 		files = strings.Split(extra, ",")
@@ -194,7 +174,6 @@ func TestRAGIngestInvariants(t *testing.T) {
 					maxRunes = n
 				}
 			}
-			// Embed every chunk: this is the exact step that used to 400.
 			_ = embedAll(ctx, t, embedder, chunkTexts(chunks))
 			t.Logf("%-32s chunks=%d maxRunes=%d, all valid UTF-8, all embedded OK", f, len(chunks), maxRunes)
 		})
@@ -260,8 +239,6 @@ func topKByCosine(q []float32, docs [][]float32, k int) []int {
 	return out
 }
 
-// firstHitRank returns the 1-based rank of the first chunk (in retrieval order) whose
-// content contains every expected substring, or 0 if none of the top-k match.
 func firstHitRank(order []int, chunks []ragdomain.TextChunk, all []string) int {
 	for rank, idx := range order {
 		if containsAll(chunks[idx].Content, all) {

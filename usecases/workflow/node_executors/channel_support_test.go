@@ -11,14 +11,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// SenderDeps.Adapters was never populated by the container, so every
-// channel-neutral send resolved no adapter. That does not fail loudly: a nil
-// registry looks exactly like "this channel has no send path", so text, media
-// and interactive nodes all SKIPPED on Instagram and Telegram while the run
-// reported itself completed.
-//
-// These pin the support checks to the registry, in both directions.
-
 type supportAdapter struct{ entryType shared.EntryType }
 
 func (a supportAdapter) EntryType() shared.EntryType { return a.entryType }
@@ -35,7 +27,6 @@ func (a supportAdapter) SendMedia(context.Context, *conversation.EntryContext, c
 	return &conversation.SendOutcome{}, nil
 }
 
-// interactiveSupportAdapter also presents choices.
 type interactiveSupportAdapter struct{ supportAdapter }
 
 func (a interactiveSupportAdapter) SendInteractive(context.Context, *conversation.EntryContext, conversation.SendInteractiveRequest) (*conversation.SendOutcome, error) {
@@ -50,7 +41,7 @@ func telegramRun() *workflow.WorkflowRun {
 }
 
 func TestInteractiveIsUnsupportedWithoutAnAdapterRegistry(t *testing.T) {
-	s := newChannelSender(SenderDeps{}) // exactly what the container used to pass
+	s := newChannelSender(SenderDeps{})
 
 	if s.SupportsInteractive(telegramRun()) {
 		t.Error("no registry must not report support")
@@ -60,7 +51,6 @@ func TestInteractiveIsUnsupportedWithoutAnAdapterRegistry(t *testing.T) {
 	}
 }
 
-// The fix: with the registry wired, Telegram presents choices.
 func TestInteractiveIsSupportedOnceTheRegistryIsWired(t *testing.T) {
 	s := newChannelSender(SenderDeps{
 		Adapters: conversation.NewAdapterRegistry(
@@ -76,8 +66,6 @@ func TestInteractiveIsSupportedOnceTheRegistryIsWired(t *testing.T) {
 	}
 }
 
-// A registry built AFTER the sender was constructed must still be seen. This is
-// the container's real shape: channels register during startup, one at a time.
 func TestASenderHoldingTheLiveRegistrySeesLaterChannels(t *testing.T) {
 	live := conversation.NewLiveAdapterRegistry()
 	s := newChannelSender(SenderDeps{Adapters: live})
@@ -93,9 +81,6 @@ func TestASenderHoldingTheLiveRegistrySeesLaterChannels(t *testing.T) {
 	}
 }
 
-// A channel with a send path but NO interactive capability must report exactly
-// that, sending the prompt body without its options would leave the contact
-// reading a question with nothing to tap.
 func TestAChannelWithoutTheCapabilityIsNotInteractive(t *testing.T) {
 	s := newChannelSender(SenderDeps{
 		Adapters: conversation.NewAdapterRegistry(
@@ -111,8 +96,6 @@ func TestAChannelWithoutTheCapabilityIsNotInteractive(t *testing.T) {
 	}
 }
 
-// The editor's per-channel limits come from the same registry, so an unwired
-// container would also show the author no limits at all.
 func TestInteractiveSupportReportsLimitsFromTheRegistry(t *testing.T) {
 	s := newChannelSender(SenderDeps{
 		Adapters: conversation.NewAdapterRegistry(
@@ -130,7 +113,6 @@ func TestInteractiveSupportReportsLimitsFromTheRegistry(t *testing.T) {
 	}
 }
 
-// presenceSupportAdapter also reports typing.
 type presenceSupportAdapter struct {
 	supportAdapter
 	typingCalls int
@@ -149,14 +131,10 @@ func (a *presenceSupportAdapter) SendText(_ context.Context, _ *conversation.Ent
 	return &conversation.SendOutcome{ProviderMessageID: "m"}, nil
 }
 
-// Segmented mode was WhatsApp-only, and the default single-send path was gated
-// on NOT being segmented, so a segmented agent on any other channel generated
-// a reply, billed for it, and sent nothing.
 func TestSegmentsAreDeliveredOnAnAdapterBackedChannel(t *testing.T) {
 	adapter := &presenceSupportAdapter{supportAdapter: supportAdapter{entryType: shared.EntryTypeTelegram}}
 	s := newChannelSender(SenderDeps{Adapters: conversation.NewAdapterRegistry(adapter)})
 
-	// A no-op pause keeps the test fast without changing the send sequence.
 	delivered, err := s.SendSegments(context.Background(), telegramRun(),
 		[]string{"Olá", "Como posso ajudar?"}, func(time.Duration) {})
 	if err != nil {
@@ -168,13 +146,11 @@ func TestSegmentsAreDeliveredOnAnAdapterBackedChannel(t *testing.T) {
 	if len(adapter.sent) != 2 || adapter.sent[0] != "Olá" {
 		t.Errorf("sent = %v, want both segments in order", adapter.sent)
 	}
-	// Typing before each segment is what makes the pacing read as composed.
 	if adapter.typingCalls != 2 {
 		t.Errorf("typing calls = %d, want one per segment", adapter.typingCalls)
 	}
 }
 
-// A channel with no typing indicator still gets the segments.
 func TestSegmentsDeliverWithoutAPresenceCapability(t *testing.T) {
 	s := newChannelSender(SenderDeps{
 		Adapters: conversation.NewAdapterRegistry(supportAdapter{entryType: shared.EntryTypeTelegram}),

@@ -38,7 +38,6 @@ func TestSeedConversationPipeline_DefaultsWhenNoSourceGiven(t *testing.T) {
 	if len(repo.created) != len(stage_domain.DefaultStages) {
 		t.Fatalf("expected the product defaults, got %d stages", len(repo.created))
 	}
-	// Read from the domain, not restated here: a change there must reach new funnels.
 	if repo.created[0].Name != stage_domain.DefaultStages[0].Name {
 		t.Errorf("first column should be %q, got %q",
 			stage_domain.DefaultStages[0].Name, repo.created[0].Name)
@@ -87,8 +86,6 @@ func TestSeedConversationPipeline_CopiesAnExistingFunnel(t *testing.T) {
 }
 
 func TestSeedConversationPipeline_FallsBackWhenTheSourceIsEmpty(t *testing.T) {
-	// Duplicating an empty funnel would produce another empty one, and the caller
-	// asked for a working funnel.
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{"pipe-src": {}}}
 	seeder := pipelineStageSeeder{stages: repo}
 
@@ -130,8 +127,6 @@ func TestSeedConversationPipeline_RequiresWorkspaceAndPipeline(t *testing.T) {
 	}
 }
 
-// The composer's own columns are the funnel. Nothing merges a template into
-// them, and nothing reorders them: the operator drew the board they wanted.
 func TestSeedConversationPipeline_DrawnStagesWin(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{
 		"pipe-source": {
@@ -146,8 +141,6 @@ func TestSeedConversationPipeline_DrawnStagesWin(t *testing.T) {
 		{Name: "Fechado"},
 	}
 
-	// A copy source is passed too, and must lose: a named list is the more
-	// specific intent.
 	if err := seeder.SeedConversationPipeline("ws", "pipe-new", "pipe-source", drawn); err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +167,6 @@ func TestSeedConversationPipeline_DrawnStagesWin(t *testing.T) {
 	}
 }
 
-// A list editor produces an empty trailing row whenever someone adds one and
-// changes their mind. Losing the funnel over it would be the worse outcome.
 func TestSeedConversationPipeline_BlankDrawnRowsAreDropped(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
 	seeder := pipelineStageSeeder{stages: repo}
@@ -193,8 +184,6 @@ func TestSeedConversationPipeline_BlankDrawnRowsAreDropped(t *testing.T) {
 	}
 }
 
-// All-blank is indistinguishable from "sent nothing", and a funnel with no
-// columns is not a funnel — so it falls back rather than shipping an empty board.
 func TestSeedConversationPipeline_AllBlankDrawnFallsBackToDefaults(t *testing.T) {
 	repo := &seederRepo{byPipeline: map[string][]*stage_domain.Stage{}}
 	seeder := pipelineStageSeeder{stages: repo}

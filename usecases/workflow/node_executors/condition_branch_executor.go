@@ -35,18 +35,9 @@ func toFloat64(v interface{}) (float64, bool) {
 	}
 }
 
-// resolveOperand turns a condition/filter "variable" config field into the value to
-// compare. The field is a plain-text template, like every other config field: a
-// {{...}} reference is interpolated to its value (e.g. {{node.n2.count}} → "1"). When
-// the field contains no {{...}}, it is treated as a bare reference name and resolved
-// against state (legacy form, e.g. "interested" or "node.n2.count"). An unresolved
-// reference (by either path) yields nil, so empty/null operators behave as before.
-// Shared by the condition and filter executors.
 func resolveOperand(variable string, state *workflow.RunState) interface{} {
 	if strings.Contains(variable, "{{") {
 		interp := workflow.Interpolate(variable, state, nil)
-		// Interpolate leaves an unresolved reference as its literal "{{...}}" token;
-		// treat that as absent (nil) rather than comparing against the raw braces.
 		if strings.Contains(interp, "{{") {
 			return nil
 		}
@@ -272,12 +263,6 @@ func (e *conditionBranchExecutor) Execute(ctx *workflow.NodeContext) (*workflow.
 		expected = workflow.Interpolate(expStr, ctx.State, nil)
 	}
 
-	// The "variable" field is a plain-text template like every other config field
-	// (and like the "value" field just above): use {{...}} to reference state,
-	// e.g. {{node.n2.count}}, and it interpolates to that value before evaluating.
-	// When no {{...}} is present we keep the legacy behavior of resolving a bare
-	// reference name (e.g. "interested" or "node.n2.count"), so existing conditions
-	// don't break; a literal that matches no variable stays as-is.
 	actual := resolveOperand(variable, ctx.State)
 	matched := EvaluateCondition(actual, operator, expected)
 

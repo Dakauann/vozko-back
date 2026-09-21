@@ -17,8 +17,6 @@ const (
 	DefaultWorkTimeStart = "08:00"
 	DefaultWorkTimeEnd   = "20:00"
 
-	// DefaultMaxConcurrentCalls is the platform-wide ceiling on simultaneous
-	// outbound/inbound telephony legs when no explicit value is configured.
 	DefaultMaxConcurrentCalls = 30
 
 	DefaultAffiliateCommissionPct = 0.05

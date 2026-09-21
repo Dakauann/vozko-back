@@ -13,7 +13,6 @@ func scriptWith(attachment *SeedAttachment) *SeedScript {
 	}
 }
 
-// Every kind this channel knows is attachable; "no attachment" is not a kind.
 func TestSeedAttachmentAcceptsEveryMediaKind(t *testing.T) {
 	for _, kind := range []MediaKind{
 		MediaImage, MediaVideo, MediaAudio, MediaVoice, MediaDocument, MediaSticker,
@@ -37,7 +36,6 @@ func TestSeedAttachmentAcceptsEveryMediaKind(t *testing.T) {
 	}
 }
 
-// A picker opened and closed again should still seed the text that was written.
 func TestSeedAttachmentWithNoFileIsDropped(t *testing.T) {
 	script := scriptWith(&SeedAttachment{MediaID: "   ", Kind: MediaImage})
 	script.Normalize()
@@ -59,8 +57,6 @@ func TestSeedAttachmentNormalizesTheKind(t *testing.T) {
 	}
 }
 
-// The attachment adds to the opening; it does not replace it. Without a body
-// there is no caption, no variant to pick and nothing for the model to answer.
 func TestSeedAttachmentStillNeedsABody(t *testing.T) {
 	script := &SeedScript{MaxMessages: 4, Attachment: &SeedAttachment{MediaID: "m-1", Kind: MediaImage}}
 	script.Normalize()
@@ -70,8 +66,6 @@ func TestSeedAttachmentStillNeedsABody(t *testing.T) {
 	}
 }
 
-// The script travels inside the request, so the request's own validation has to
-// carry the attachment's rules with it.
 func TestSeedRequestCarriesAttachmentValidation(t *testing.T) {
 	req := SeedRequest{
 		WorkspaceID: "ws-1",

@@ -12,20 +12,6 @@ import (
 
 var ErrInvalidUpdate = errors.New("telegram: invalid update payload")
 
-// ---------------------------------------------------------------- raw payload
-//
-// Only the fields we act on are modelled. The Bot API grows several new update
-// kinds and message fields per release (10.0 → 10.2 added three update kinds in
-// three months), so everything else is deliberately ignored rather than
-// enumerated, and an unrecognised update is logged, never dropped silently.
-
-// Update is one webhook POST body. "At most one of the optional fields can be
-// present in any given update."
-//
-// Note what is NOT here: any identification of the bot. Unlike Meta, whose
-// entry[].id routes to a tenant, a Telegram update says nothing about which bot
-// it is for. Tenancy therefore comes from the request URL (bot mode) or from
-// business_connection_id (business mode), never from the body.
 type Update struct {
 	UpdateID int64 `json:"update_id"`
 
@@ -41,11 +27,6 @@ type Update struct {
 	MyChatMember  *ChatMemberUpdated `json:"my_chat_member,omitempty"`
 }
 
-// User is the Bot API User object.
-//
-// ID is int64 because Telegram ids have "at most 52 significant bits", a 32-bit
-// round trip silently corrupts them, which is the single most common Telegram
-// integration bug.
 type User struct {
 	ID           int64  `json:"id"`
 	IsBot        bool   `json:"is_bot"`
@@ -65,44 +46,26 @@ type Chat struct {
 	LastName  string `json:"last_name,omitempty"`
 }
 
-// Message is the Bot API Message object, narrowed to what the CRM records.
 type Message struct {
-	// MessageID is "Unique message identifier INSIDE THIS CHAT", it is not
-	// globally unique, so every persisted provider id pairs it with the chat id.
 	MessageID int64 `json:"message_id"`
 	From      *User `json:"from,omitempty"`
 	Chat      Chat  `json:"chat"`
 	Date      int64 `json:"date"`
 	EditDate  int64 `json:"edit_date,omitempty"`
 
-	// BusinessConnectionID is set on messages belonging to a connected business
-	// account, and is how such a message is routed to a tenant.
 	BusinessConnectionID string `json:"business_connection_id,omitempty"`
-	// SenderBusinessBot is present only on outgoing messages the bot sent on the
-	// business account's behalf, one half of the direction test.
-	SenderBusinessBot *User `json:"sender_business_bot,omitempty"`
-	// IsFromOffline marks an automatic away or greeting message, which must not
-	// be treated as an operator's reply.
-	IsFromOffline bool `json:"is_from_offline,omitempty"`
+	SenderBusinessBot    *User  `json:"sender_business_bot,omitempty"`
+	IsFromOffline        bool   `json:"is_from_offline,omitempty"`
 
 	Text     string          `json:"text,omitempty"`
 	Caption  string          `json:"caption,omitempty"`
 	Entities []MessageEntity `json:"entities,omitempty"`
 
-	// ReplyMarkup is the inline keyboard attached to this message. On a
-	// callback_query it is what maps the received payload back to the LABEL the
-	// contact actually tapped, the payload is an internal id, and showing it in
-	// the transcript (or handing it to an AI agent as the customer's words) is
-	// wrong and actively misleading.
 	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 
 	ReplyToMessage *Message `json:"reply_to_message,omitempty"`
-	// MediaGroupID ties the parts of an album together. Telegram delivers each
-	// part as a SEPARATE update, so an album is several messages that share this
-	// id, never one message with several attachments.
-	MediaGroupID string `json:"media_group_id,omitempty"`
+	MediaGroupID   string   `json:"media_group_id,omitempty"`
 
-	// Photo is an array of sizes for one image, smallest first.
 	Photo     []PhotoSize `json:"photo,omitempty"`
 	Video     *FileMeta   `json:"video,omitempty"`
 	Audio     *FileMeta   `json:"audio,omitempty"`
@@ -130,11 +93,6 @@ type PhotoSize struct {
 	FileSize     int64  `json:"file_size,omitempty"`
 }
 
-// FileMeta covers video/audio/voice/document/animation/video_note, which share a
-// shape.
-//
-// MIMEType and FileName are captured HERE rather than at download time because
-// getFile "may not preserve the original file name and MIME type".
 type FileMeta struct {
 	FileID       string `json:"file_id"`
 	FileUniqueID string `json:"file_unique_id"`
@@ -153,15 +111,11 @@ type Sticker struct {
 	FileSize     int64  `json:"file_size,omitempty"`
 }
 
-// Contact_ is the Bot API Contact object. The trailing underscore avoids
-// colliding with our own domain Contact; this one is a wire type.
 type Contact_ struct {
 	PhoneNumber string `json:"phone_number"`
 	FirstName   string `json:"first_name"`
 	LastName    string `json:"last_name,omitempty"`
-	// UserID is present only when the contact is a Telegram user. It is what
-	// proves the sharer shared their OWN number rather than a third party's.
-	UserID int64 `json:"user_id,omitempty"`
+	UserID      int64  `json:"user_id,omitempty"`
 }
 
 type Location struct {
@@ -184,7 +138,6 @@ type BusinessMessagesDeleted struct {
 	MessageIDs           []int64 `json:"message_ids"`
 }
 
-// InlineKeyboardMarkup is the button grid attached to a message.
 type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard,omitempty"`
 }
@@ -194,10 +147,6 @@ type InlineKeyboardButton struct {
 	CallbackData string `json:"callback_data,omitempty"`
 }
 
-// LabelFor resolves the visible label of the button carrying this payload.
-//
-// Returns "" when the keyboard is absent or has no such button, the caller
-// falls back to the payload, which is worse but never empty.
 func (m *InlineKeyboardMarkup) LabelFor(data string) string {
 	if m == nil || data == "" {
 		return ""
@@ -232,12 +181,6 @@ type ChatMember struct {
 	User   User   `json:"user"`
 }
 
-// DecodeUpdate parses one webhook body.
-//
-// Telegram posts a single JSON object per request, no batching, no array
-// wrapper, no multi-tenant fan-in. That is a genuine simplification over Meta,
-// and the decoder stays strict rather than inventing tolerance the wire does not
-// need.
 func DecodeUpdate(body []byte) (*Update, error) {
 	var u Update
 	if err := json.Unmarshal(body, &u); err != nil {
@@ -249,16 +192,10 @@ func DecodeUpdate(body []byte) (*Update, error) {
 	return &u, nil
 }
 
-// ---------------------------------------------------------------- normalized
-
-// EventKind classifies an update after normalization, so consumers switch on an
-// explicit kind instead of re-sniffing raw JSON.
 type EventKind string
 
 const (
-	EventInboundMessage EventKind = "inbound_message"
-	// EventOutboundMessage is a message the business account sent, either by us
-	// through the bot, or by the owner from their own phone. Business mode only.
+	EventInboundMessage     EventKind = "inbound_message"
 	EventOutboundMessage    EventKind = "outbound_message"
 	EventEditedMessage      EventKind = "edited_message"
 	EventDeletedMessages    EventKind = "deleted_messages"
@@ -270,7 +207,6 @@ const (
 	EventUnknown            EventKind = "unknown"
 )
 
-// Attachment is one normalized inbound file.
 type Attachment struct {
 	Kind     MediaKind
 	FileID   string
@@ -278,73 +214,47 @@ type Attachment struct {
 	MIMEType string
 	Size     int64
 	Duration int
-	// TooLarge is set when Telegram already told us the file exceeds the bot
-	// download ceiling, so the handler can render a placeholder WITHOUT calling
-	// getFile, a call that can only fail.
 	TooLarge bool
-	// Emoji carries a sticker's emoji, which is the only renderable thing about
-	// a sticker we cannot download.
-	Emoji string
+	Emoji    string
 }
 
-// Event is a normalized update. One raw update yields at most one event, except
-// deleted_business_messages, which carries a list.
 type Event struct {
-	Kind EventKind
-	// UpdateID is the natural idempotency key: Telegram assigns exactly one per
-	// event, unlike a Meta `mid` which recurs across five event kinds.
-	UpdateID int64
-	// IdempotencyKey is scoped by account because update_id is per bot.
+	Kind           EventKind
+	UpdateID       int64
 	IdempotencyKey string
 
 	Timestamp time.Time
 
-	// BusinessConnectionID routes business-mode events to a tenant.
 	BusinessConnectionID string
 
 	ChatID   int64
 	ChatType string
-	// Contact identity, taken straight from the update so a first message yields
-	// a named contact with no extra API call.
-	From *User
+	From     *User
 
-	MessageID int64
-	Text      string
-	// ReplyToMessageID is the quoted message, when there is one.
+	MessageID        int64
+	Text             string
 	ReplyToMessageID int64
 	MediaGroupID     string
 	Attachments      []Attachment
 
-	// StartPayload is the deep-link token from "/start <payload>".
 	StartPayload string
-	// IsCommand marks a message whose text begins with a bot command.
-	IsCommand bool
+	IsCommand    bool
 
-	// SharedContact is a consented phone share.
 	SharedContact *Contact_
 	Location      *Location
 
-	// CallbackQueryID must be answered or the client's button spins forever.
 	CallbackQueryID string
 	CallbackData    string
 
-	// DeletedMessageIDs is populated for EventDeletedMessages.
 	DeletedMessageIDs []int64
 
-	// Connection is populated for EventBusinessConnection.
 	Connection *BusinessConnection
 
-	// IsAutomatic marks an away/greeting message the account sent by itself.
 	IsAutomatic bool
 
-	// Raw carries an unrecognised update verbatim so it is logged, not lost.
 	Raw json.RawMessage
 }
 
-// NormalizeUpdate converts one raw update into a normalized event.
-//
-// accountID scopes the idempotency key, because update_id is unique per bot and
-// two workspaces' bots will collide on it otherwise.
 func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 	if u == nil {
 		return nil
@@ -362,8 +272,6 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 	case u.Message != nil:
 		ev := base(EventInboundMessage, "message")
 		fillFromMessage(ev, u.Message)
-		// A shared contact is a distinct CRM action, it links the conversation to
-		// a lead, so it is classified rather than buried in the message body.
 		if u.Message.Contact != nil {
 			ev.Kind = EventContactShared
 			ev.SharedContact = u.Message.Contact
@@ -377,12 +285,6 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 
 	case u.BusinessMessage != nil:
 		msg := u.BusinessMessage
-		// Direction is NOT implied by the update kind here: business_message
-		// carries both the customer's messages and the account owner's own
-		// replies. sender_business_bot is present only on messages the bot sent,
-		// and the owner's own messages arrive with from.id == the business user.
-		// The caller compares against the connection's user id; this only
-		// classifies what the payload can prove on its own.
 		kind := EventInboundMessage
 		if msg.SenderBusinessBot != nil {
 			kind = EventOutboundMessage
@@ -432,9 +334,6 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 			ev.MessageID = cq.Message.MessageID
 			ev.BusinessConnectionID = cq.Message.BusinessConnectionID
 			ev.Timestamp = unixToTime(cq.Message.Date)
-			// Text is what a HUMAN, or an AI agent reading the transcript, sees
-			// as the contact's message, so it must be the button's label. The
-			// payload stays in CallbackData, which is what routing keys on.
 			ev.Text = cq.Message.ReplyMarkup.LabelFor(cq.Data)
 		}
 		if ev.Text == "" {
@@ -448,9 +347,6 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 
 	case u.MyChatMember != nil:
 		m := u.MyChatMember
-		// For private chats this update "is received only when the bot is blocked
-		// or unblocked by the user", which is precisely the outbound gate in bot
-		// mode.
 		kind := EventUnknown
 		if m.NewChatMember != nil {
 			switch m.NewChatMember.Status {
@@ -477,7 +373,6 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 	return ev
 }
 
-// fillFromMessage projects the shared message fields onto an event.
 func fillFromMessage(ev *Event, msg *Message) {
 	ev.ChatID = msg.Chat.ID
 	ev.ChatType = msg.Chat.Type
@@ -487,7 +382,6 @@ func fillFromMessage(ev *Event, msg *Message) {
 	ev.IsAutomatic = msg.IsFromOffline
 	ev.From = msg.From
 
-	// An edit carries edit_date; using it keeps the CRM's ordering honest.
 	ts := msg.Date
 	if msg.EditDate > 0 {
 		ts = msg.EditDate
@@ -511,12 +405,6 @@ func fillFromMessage(ev *Event, msg *Message) {
 	ev.Attachments = attachmentsOf(msg)
 }
 
-// parseStart extracts a deep-link payload from "/start <payload>".
-//
-// Telegram delivers the payload as ordinary message text, so this is the only
-// place attribution can be recovered. The command is matched on the entity
-// rather than on a string prefix, so a message that merely mentions "/start" is
-// not mistaken for one.
 func parseStart(msg *Message) (isCommand bool, payload string) {
 	if msg == nil || msg.Text == "" {
 		return false, ""
@@ -531,7 +419,6 @@ func parseStart(msg *Message) (isCommand bool, payload string) {
 			end = len(msg.Text)
 		}
 		command := msg.Text[e.Offset:end]
-		// In groups the command arrives as "/start@thebot".
 		if at := strings.IndexByte(command, '@'); at >= 0 {
 			command = command[:at]
 		}
@@ -547,17 +434,11 @@ func parseStart(msg *Message) (isCommand bool, payload string) {
 	return false, ""
 }
 
-// attachmentsOf normalizes a message's media.
-//
-// A Telegram message carries at most ONE attachment, albums arrive as separate
-// updates sharing a media_group_id, so this returns a slice only for symmetry
-// with channels that do batch, and to keep the handler's loop identical.
 func attachmentsOf(msg *Message) []Attachment {
 	tooLarge := func(size int64) bool { return size > MaxDownloadBytes }
 
 	switch {
 	case len(msg.Photo) > 0:
-		// Sizes are ordered smallest first; the last is the original.
 		best := msg.Photo[len(msg.Photo)-1]
 		return []Attachment{{
 			Kind:     MediaPhoto,
@@ -581,8 +462,6 @@ func attachmentsOf(msg *Message) []Attachment {
 		return []Attachment{fileAttachment(MediaDocument, msg.Document, "application/octet-stream")}
 
 	case msg.Sticker != nil:
-		// A sticker is a real message with no useful body. It is recorded so the
-		// transcript is not silently missing a turn.
 		return []Attachment{{
 			Kind:     MediaDocument,
 			FileID:   msg.Sticker.FileID,
@@ -611,43 +490,21 @@ func fileAttachment(kind MediaKind, f *FileMeta, fallbackMIME string) Attachment
 	}
 }
 
-// SortByUpdateID orders a batch of events.
-//
-// "This identifier ... allows you to ignore repeated updates or to restore the
-// correct update sequence, SHOULD THEY GET OUT OF ORDER." Arrival order is
-// therefore not the transcript order, and ordering here is what keeps a
-// conversation readable under concurrent delivery.
 func SortByUpdateID(events []*Event) {
 	sort.SliceStable(events, func(i, j int) bool { return events[i].UpdateID < events[j].UpdateID })
 }
 
-// ProviderMessageID renders the durable id stored as
-// conversation_messages.external_message_id.
-//
-// message_id is unique only INSIDE a chat, and the chat id of a private chat is
-// just the contact's own user id, so the (chat, message) pair is NOT unique
-// across bots: the same person's first message to two different bots is
-// "<their user id>:1" both times. The unique index on
-// (entry_type, external_message_id) is global, so without the bot id the second
-// bot's message is read as a replay of the first bot's and silently dropped -
-// the contact writes and nothing reaches the inbox. Prefixing the bot's own id
-// is what makes that index reject genuine replays only.
 func ProviderMessageID(botUserID, chatID, messageID int64) string {
 	return strconv.FormatInt(botUserID, 10) + ":" +
 		strconv.FormatInt(chatID, 10) + ":" +
 		strconv.FormatInt(messageID, 10)
 }
 
-// ParseProviderMessageID is ProviderMessageID's inverse, for the edit and delete
-// paths that need the pair back.
-//
-// Rows written before the bot id was prefixed are still in the table and still
-// editable, so the two-field form is accepted as well.
 func ParseProviderMessageID(id string) (chatID, messageID int64, ok bool) {
 	parts := strings.Split(id, ":")
 	switch len(parts) {
-	case 2: // legacy "<chat>:<message>"
-	case 3: // current "<bot>:<chat>:<message>"
+	case 2:
+	case 3:
 		parts = parts[1:]
 	default:
 		return 0, 0, false

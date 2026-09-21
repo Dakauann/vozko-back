@@ -8,13 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The inbox's view of a conversation's analysis.
-//
-// This replaces a service that looped a query per entry from the websocket
-// path; LatestByEntries answers the whole page in one. The workspace is not
-// available at this seam, so the scope is the entry ids themselves, which the
-// caller has already resolved inside the session's workspace.
-
 type conversationAnalysisProvider struct {
 	reader ca.ConversationReader
 }

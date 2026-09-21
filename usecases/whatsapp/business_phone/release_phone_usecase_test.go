@@ -174,10 +174,6 @@ func TestRelease_EmptyPhoneID(t *testing.T) {
 	}
 }
 
-// A failed/unsynced number has no Meta access token and no display number. It MUST
-// still be removable: the Meta Cloud API steps are skipped, and confirmation falls
-// back to the WABA id. (Regression: previously this returned ErrInvalidAccessToken
-// and the row was undeletable.)
 func TestRelease_NoAccessToken_StillRemovesLocally(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -186,7 +182,7 @@ func TestRelease_NoAccessToken_StillRemovesLocally(t *testing.T) {
 	repo.phoneNumbers["p1"] = &businessphone.WhatsAppBusinessPhoneNumber{
 		ID:     "p1",
 		WABAId: "1333315365537148",
-		Status: businessphone.StatusOnboardingFailed, // never connected, no token, no number
+		Status: businessphone.StatusOnboardingFailed,
 	}
 
 	uc := NewReleasePhoneUseCase(repo, wabaRepo, metaAPI, nil)
@@ -194,7 +190,7 @@ func TestRelease_NoAccessToken_StillRemovesLocally(t *testing.T) {
 	result, err := uc.Execute(businessphone.ReleasePhoneInput{
 		PhoneID:            "p1",
 		AccessToken:        "",
-		ConfirmPhoneNumber: "1333315365537148", // confirm by WABA id (only identifier shown)
+		ConfirmPhoneNumber: "1333315365537148",
 	})
 	if err != nil {
 		t.Fatalf("release without a Meta token must still remove the local record, got: %v", err)
@@ -207,8 +203,6 @@ func TestRelease_NoAccessToken_StillRemovesLocally(t *testing.T) {
 	}
 }
 
-// The WABA-id confirmation must still reject a wrong value, so the fallback doesn't
-// weaken the guard on this irreversible action.
 func TestRelease_NumberlessRow_RejectsWrongConfirmation(t *testing.T) {
 	repo := newMockRepo()
 	uc := NewReleasePhoneUseCase(repo, newMockWABARepo(), newMockMetaAPI(), nil)
@@ -223,9 +217,6 @@ func TestRelease_NumberlessRow_RejectsWrongConfirmation(t *testing.T) {
 	}
 }
 
-// A dialog360 number has no Meta token, so its billing lives at the 360dialog partner.
-// Releasing it MUST cancel the partner channel (client-scoped) or 360dialog bills it
-// forever. Regression for the real leak: LePrDkCH stayed "live/Ready" after a delete.
 func TestRelease_Dialog360_CancelsPartnerChannel(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -257,14 +248,12 @@ func TestRelease_Dialog360_CancelsPartnerChannel(t *testing.T) {
 	}
 }
 
-// If the partner cancel fails AND the channel is still live, the release MUST abort and
-// keep the local row, deleting it would orphan a paying channel with nothing to retry.
 func TestRelease_Dialog360_CancelFails_AbortsAndKeepsRow(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
 	partner := &fakePartnerSvc{
 		cancelErr:     errors.New("360dialog 503"),
-		getChannelRes: &businessphone.Dialog360Channel{ID: "chLive", HubStatus: "live"}, // still live
+		getChannelRes: &businessphone.Dialog360Channel{ID: "chLive", HubStatus: "live"},
 	}
 
 	repo.phoneNumbers["p1"] = &businessphone.WhatsAppBusinessPhoneNumber{
@@ -287,14 +276,12 @@ func TestRelease_Dialog360_CancelFails_AbortsAndKeepsRow(t *testing.T) {
 	}
 }
 
-// Idempotency: if the cancel errors but the channel is already gone/cancelled at
-// 360dialog, the release proceeds (e.g. cancelled by hand, or a retried release).
 func TestRelease_Dialog360_AlreadyGone_ProceedsToDelete(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
 	partner := &fakePartnerSvc{
 		cancelErr:     errors.New("already cancelled"),
-		getChannelRes: nil, // GetChannel -> not found -> treat as gone
+		getChannelRes: nil,
 	}
 
 	repo.phoneNumbers["p1"] = &businessphone.WhatsAppBusinessPhoneNumber{
@@ -390,9 +377,6 @@ func TestRelease_WABANotOrphaned_KeepsIt(t *testing.T) {
 		t.Error("expected WABACleanedUp=true (cleanup was attempted)")
 	}
 
-	// The half this test used to leave uncovered. Keeping the WABA RECORD while
-	// dropping its webhook SUBSCRIPTION is the shape the outage took: the record
-	// survived, and every sibling number went silent anyway.
 	if len(metaAPI.unsubscribedWABAs) != 0 {
 		t.Errorf("must not unsubscribe a WABA still serving phones, got %v", metaAPI.unsubscribedWABAs)
 	}
@@ -401,10 +385,6 @@ func TestRelease_WABANotOrphaned_KeepsIt(t *testing.T) {
 	}
 }
 
-// Releasing one number of a shared account must leave the others receiving. This is
-// the franchise layout (one WABA, many units) and the exact shape of the incident:
-// removing a replaced number cut delivery receipts and inbound messages for two
-// unrelated numbers that were never touched.
 func TestRelease_SharedWABA_SiblingsKeepReceiving(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -429,8 +409,6 @@ func TestRelease_SharedWABA_SiblingsKeepReceiving(t *testing.T) {
 		t.Errorf("siblings must keep receiving, but unsubscribed %v", metaAPI.unsubscribedWABAs)
 	}
 
-	// The released number is still fully torn down: that is what the operator
-	// asked for, and none of it depends on the WABA-wide unsubscribe.
 	if !result.Deregistered {
 		t.Error("released number must be deregistered from the Cloud API")
 	}
@@ -447,8 +425,6 @@ func TestRelease_SharedWABA_SiblingsKeepReceiving(t *testing.T) {
 	}
 }
 
-// The last number leaving is the one case where dropping the subscription is right:
-// nothing is left on the account to receive.
 func TestRelease_LastPhoneOfWABA_Unsubscribes(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
@@ -475,9 +451,6 @@ func TestRelease_LastPhoneOfWABA_Unsubscribes(t *testing.T) {
 	}
 }
 
-// An unreadable count must fail CLOSED on the destructive step. Guessing "probably
-// empty" and unsubscribing would silence numbers we simply could not see, and Meta
-// does not replay the webhooks missed in between.
 func TestRelease_UnknownPhoneCount_KeepsSubscription(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()

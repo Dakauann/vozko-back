@@ -89,8 +89,6 @@ func replyFixture(t *testing.T, mode ca.ReplyMode) (*fakeRepo, *fakeSettingsStor
 	}}
 }
 
-// An account left at its defaults drafts nothing. The check is here rather
-// than in the handler, so a second caller cannot skip it.
 func TestSuggestRefusesWhenTheAccountRepliesOff(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeOff)
 	drafter := &fakeDrafter{text: "claro, chama no direct!"}
@@ -105,7 +103,6 @@ func TestSuggestRefusesWhenTheAccountRepliesOff(t *testing.T) {
 	}
 }
 
-// The draft carries the account's own context, not a second prompt stack.
 func TestSuggestPassesTheAccountsContext(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeSuggest)
 	for _, s := range settings.settings {
@@ -129,8 +126,6 @@ func TestSuggestPassesTheAccountsContext(t *testing.T) {
 	if drafter.seen.Caption != "promoção de setembro" {
 		t.Fatalf("the post's caption must reach the draft: %q", drafter.seen.Caption)
 	}
-	// Read back from the channel, which owns the words; the engine stores an
-	// excerpt only.
 	if drafter.seen.Comment != "onde eu compro?" {
 		t.Fatalf("comment = %q", drafter.seen.Comment)
 	}
@@ -139,7 +134,6 @@ func TestSuggestPassesTheAccountsContext(t *testing.T) {
 	}
 }
 
-// Drafting is not posting. Nothing in the suggest path may reach a channel.
 func TestSuggestNeverPosts(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeAuto)
 	replier := &fakeReplier{}
@@ -178,8 +172,6 @@ func TestPostPublishesTheOperatorsText(t *testing.T) {
 	}
 }
 
-// The same bound a draft gets: an operator cannot publish something longer
-// than the domain would ever have drafted.
 func TestPostBoundsTheText(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeSuggest)
 	replier := &fakeReplier{}
@@ -216,8 +208,6 @@ func TestPostRefusesAnEmptyText(t *testing.T) {
 	}
 }
 
-// A channel with no replier configured refuses, rather than reporting success
-// for a reply that was never published.
 func TestPostRefusesWithoutAReplier(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeSuggest)
 	_, post := NewReplyUseCases(ReplyDeps{Repo: repo, Settings: settings})
@@ -228,7 +218,6 @@ func TestPostRefusesWithoutAReplier(t *testing.T) {
 	}
 }
 
-// A comment of another workspace is not answerable from here.
 func TestReplyIsWorkspaceScoped(t *testing.T) {
 	repo, settings := replyFixture(t, ca.ReplyModeSuggest)
 	replier := &fakeReplier{}
@@ -248,8 +237,6 @@ func TestReplyIsWorkspaceScoped(t *testing.T) {
 	}
 }
 
-// An account nobody configured has the disabled defaults, so a missing
-// settings row means "does not reply" rather than "replies with defaults".
 func TestReplyTreatsAnUnconfiguredAccountAsOff(t *testing.T) {
 	repo, _ := replyFixture(t, ca.ReplyModeSuggest)
 	empty := &fakeSettingsStore{settings: map[string]*ca.Settings{}}

@@ -29,7 +29,6 @@ func TestCreateInvoice_IdempotentReturnsExistingWithoutSecondCharge(t *testing.T
 		t.Fatalf("first emit should charge Asaas exactly once, got %d", gw.createCalls)
 	}
 
-	// Re-run with the same key (an emit retry): must return the existing invoice and NOT charge again.
 	second, err := uc.Execute(in)
 	if err != nil {
 		t.Fatalf("second Execute: %v", err)

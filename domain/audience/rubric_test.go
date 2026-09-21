@@ -9,9 +9,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// Mirrors domain/analysis/rubric_test.go: every field's Values() must be a
-// valid persisted enum, so the schema, the prompt and the database can never
-// disagree about what a label is.
 func TestClassificationFields_ValuesMatchDomainEnums(t *testing.T) {
 	valid := map[string]func(string) bool{
 		FieldSentiment: func(v string) bool { return shared.Sentiment(v).Valid() },
@@ -38,9 +35,6 @@ func TestClassificationFields_ValuesMatchDomainEnums(t *testing.T) {
 	}
 }
 
-// And the reverse: every enum value is describable to the model. An enum
-// constant with no rubric entry is one the model can never produce, so a
-// count mismatch is a missing criterion.
 func TestClassificationFields_CoverEveryEnumValue(t *testing.T) {
 	byKey := map[string][]string{}
 	for _, f := range ClassificationFields() {
@@ -75,15 +69,9 @@ func sampleTopics() TopicSet {
 	return TopicSet{{Key: "saude", Label: "Saúde"}, {Key: "asfalto", Label: "Asfalto"}, OtherTopic()}
 }
 
-// The response schema is generated from the rubric and the container's topic
-// set: enum arrays are the rubric's Values(), the topic enum is the set's
-// keys, every property is required and nothing extra is allowed. It is what
-// makes ResponseFormatJSONSchema{Strict} reject an out-of-set label at the
-// provider, before it ever reaches Validate.
 func TestBatchResponseSchema(t *testing.T) {
 	schema := BatchResponseSchema(sampleTopics())
 
-	// Must be a plain JSON document (the AI port carries map[string]any).
 	if _, err := json.Marshal(schema); err != nil {
 		t.Fatalf("schema is not JSON-serialisable: %v", err)
 	}
@@ -134,7 +122,6 @@ func TestBatchResponseSchema(t *testing.T) {
 		t.Errorf("language must be a string, got %v", p)
 	}
 
-	// Strict mode requires every property to be listed as required.
 	required, _ := item["required"].([]string)
 	for key := range itemProps {
 		found := false
@@ -152,8 +139,6 @@ func TestBatchResponseSchema(t *testing.T) {
 	}
 }
 
-// The schema's field keys are the JSON keys BatchResult decodes; pin the
-// pairing so a rename on one side cannot silently orphan the other.
 func TestBatchResponseSchema_KeysMatchResultDecoding(t *testing.T) {
 	payload := `{"results":[{"ref":1,"sentiment":"negative","stance":"critic","intent":"complaint",
 		"topic_key":"saude","is_spam":false,"language":"pt",
@@ -175,7 +160,6 @@ func TestBatchResponseSchema_KeysMatchResultDecoding(t *testing.T) {
 	if err := c.Validate(sampleTopics()); err != nil {
 		t.Fatalf("known-good payload rejected: %v", err)
 	}
-	// And an out-of-set label is rejected on the way in.
 	r.Stance = "hater"
 	bad := r.Classification()
 	if err := bad.Validate(sampleTopics()); err == nil {
@@ -183,8 +167,6 @@ func TestBatchResponseSchema_KeysMatchResultDecoding(t *testing.T) {
 	}
 }
 
-// The prompt is rendered from the same rubric; a criterion edited in one
-// place shows up in the prompt without any second copy to update.
 func TestRubricPrompt_RendersFromFields(t *testing.T) {
 	p := RubricPrompt(sampleTopics())
 	for _, f := range ClassificationFields() {
@@ -205,7 +187,6 @@ func TestRubricPrompt_RendersFromFields(t *testing.T) {
 		}
 	}
 	if contains(p, "0-100") || contains(p, "0 a 100") {
-		// The model must never be asked for the number.
 		t.Error("prompt must not ask the model for a numeric severity")
 	}
 }

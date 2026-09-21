@@ -11,14 +11,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// Only official WhatsApp writes whatsapp_message_id. Instagram, Telegram and
-// unofficial WhatsApp all put their provider id in external_message_id, so a
-// receipt matched against the WhatsApp column alone hit zero rows — and zero
-// rows affected is not an error, so the update reported success while the ticks
-// stayed on "sent" forever. Production showed it plainly: of the unofficial
-// WhatsApp messages sent in a week, every single one carrying a status carried
-// "sent", never "delivered" and never "read".
-
 func newStatusDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
@@ -44,15 +36,12 @@ func TestUpdateDeliveryStatusMatchesEitherIDColumn(t *testing.T) {
 	db, mock, sqlDB := newStatusDB(t)
 	defer sqlDB.Close()
 
-	const providerID = "3EB027B8F1853217E3B8BB" // an unofficial WhatsApp id
+	const providerID = "3EB027B8F1853217E3B8BB"
 
-	// Both columns must appear in the predicate, and the id must be bound to
-	// each of them: a channel that never fills whatsapp_message_id is otherwise
-	// unreachable.
 	mock.ExpectExec(`UPDATE .*conversation_messages.*whatsapp_message_id = .* OR .*external_message_id = `).
 		WithArgs(
-			sqlmock.AnyArg(), // delivery_status
-			sqlmock.AnyArg(), // updated_at
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
 			providerID,
 			providerID,
 		).
@@ -66,8 +55,6 @@ func TestUpdateDeliveryStatusMatchesEitherIDColumn(t *testing.T) {
 	}
 }
 
-// The official WhatsApp path is the one that already worked; widening the
-// predicate must not stop it matching its own column.
 func TestUpdateDeliveryStatusStillMatchesTheWhatsAppColumn(t *testing.T) {
 	db, mock, sqlDB := newStatusDB(t)
 	defer sqlDB.Close()
@@ -86,8 +73,6 @@ func TestUpdateDeliveryStatusStillMatchesTheWhatsAppColumn(t *testing.T) {
 	}
 }
 
-// A failure reason rides along on the same predicate, so the widening has to
-// cover that call too rather than only the plain status update.
 func TestUpdateDeliveryStatusWithReasonUsesTheSamePredicate(t *testing.T) {
 	db, mock, sqlDB := newStatusDB(t)
 	defer sqlDB.Close()

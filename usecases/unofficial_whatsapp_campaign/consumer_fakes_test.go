@@ -16,8 +16,6 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// ---------------------------------------------------------------- repositories
-
 type fakeCampaignRepo struct {
 	mu        sync.Mutex
 	campaigns map[string]*uwc.Campaign
@@ -123,9 +121,6 @@ func (f *fakeCampaignRepo) reason(id string) string {
 	return f.reasons[id]
 }
 
-// The codes are STORED, not swallowed: the whole point of the confirmation flow
-// is that the issued code is the only one that works, and a fake that drops it
-// would let a broken implementation pass.
 func (f *fakeCampaignRepo) UpdateResetCode(id, code string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -187,8 +182,6 @@ func (f *fakeEntryRepo) FindByID(id string) (*uwc.Entry, error) {
 	return nil, uwc.ErrEntryNotFound
 }
 
-// FindLatestByConversationID mirrors the repository's ordering: most recently
-// SENT wins, and an entry that never sent can only win when nothing sent.
 func (f *fakeEntryRepo) FindLatestByConversationID(conversationID string) (*uwc.Entry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -336,8 +329,6 @@ func (f *fakeEntryRepo) UpdateEntryDetails(entryID string, in uwc.UpdateEntryDet
 	if !ok {
 		return uwc.ErrEntryNotFound
 	}
-	// Mirrors the (campaign_id, lead_id) index: the same person twice in one
-	// campaign is the commonest ban complaint there is.
 	for id, other := range f.entries {
 		if id != entryID && other.CampaignID == e.CampaignID && other.LeadID == in.LeadID {
 			return uwc.ErrEntryDuplicate
@@ -348,7 +339,6 @@ func (f *fakeEntryRepo) UpdateEntryDetails(entryID string, in uwc.UpdateEntryDet
 	return nil
 }
 
-// A real upsert: a fake that drops writes would let a broken update pass.
 func (f *fakeEntryRepo) UpsertEntries(campaignID string, entries []uwc.Entry) error {
 	for i := range entries {
 		e := entries[i]
@@ -358,8 +348,6 @@ func (f *fakeEntryRepo) UpsertEntries(campaignID string, entries []uwc.Entry) er
 	return nil
 }
 func (f *fakeEntryRepo) ConversationIDsForCampaign(string) ([]string, error) { return nil, nil }
-
-// ---------------------------------------------------------------- gateway
 
 type fakeGateway struct {
 	instance    *uw.Instance
@@ -416,8 +404,6 @@ func (f *fakeGateway) Resolve(_ context.Context, instance *uw.Instance, in uwuc.
 		Contact:      &uw.Contact{ID: "contact-" + in.PhoneNumber, PhoneNumber: in.PhoneNumber},
 	}, nil
 }
-
-// ---------------------------------------------------------------- collaborators
 
 type fakeSender struct {
 	mu   sync.Mutex
@@ -493,8 +479,6 @@ func (f *fakePauser) Execute(_ context.Context, instanceID, reason string) (int,
 	f.reasons = append(f.reasons, reason)
 	return 1, nil
 }
-
-// ---------------------------------------------------------------- queue doubles
 
 type noopQueueSub struct{}
 

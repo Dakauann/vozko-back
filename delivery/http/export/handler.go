@@ -24,23 +24,10 @@ import (
 )
 
 const (
-	// maxConcurrentExports bounds how many exports this instance runs at once.
-	//
-	// An export is the heaviest read in the product: it walks a workspace's
-	// entire campaign history twice and holds a database connection for each
-	// page. The pool is 10 wide and shared with every interactive request on the
-	// instance, so without a ceiling one tenant pulling a year of disparos makes
-	// the inbox slow for everyone else. Three leaves the pool room to serve the
-	// people who are not exporting.
 	maxConcurrentExports = 3
 
-	// exportQueueWait is how long a request waits for a slot before giving up.
-	// Long enough that a double-click or two colleagues exporting at once just
-	// queue; short enough that nobody stares at a dead tab.
 	exportQueueWait = 15 * time.Second
 
-	// exportTimeout is the ceiling on one export. It bounds how long a slot and
-	// its connections can be held by a query that has stopped making progress.
 	exportTimeout = 5 * time.Minute
 )
 
@@ -48,8 +35,6 @@ type ExportHandler struct {
 	exportUC exportdomain.ExportEntriesUseCase
 	getWCUC  whatsappcampaign_usecase.GetCampaignUseCase
 
-	// slots is the concurrency guard. Buffered to maxConcurrentExports; a send
-	// acquires, a receive releases.
 	slots chan struct{}
 }
 
@@ -104,9 +89,6 @@ func (h *ExportHandler) ExportWhatsAppEntries(w http.ResponseWriter, r *http.Req
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
 		return
 	}
-	// A campaign the caller's department scope excludes is not theirs to export,
-	// even though it is their workspace's. Same rule the campaign list applies,
-	// from the same function — an export must not reach what the list hides.
 	if !httpx.CanAccessDepartment(r, camp.DepartmentID) {
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
 		return
@@ -152,15 +134,11 @@ func (h *ExportHandler) ExportWhatsAppWorkspaceEntries(w http.ResponseWriter, r 
 		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
 		return
 	}
-	// Department-scoped to nothing means visible-to-nothing, which is not the
-	// same as an unscoped caller seeing everything. Same rule the summary uses.
 	if httpx.ShouldReturnEmptyDepartmentList(r) {
 		response.WriteError(w, http.StatusNotFound, "No entries to export", nil)
 		return
 	}
 
-	// No container id: every campaign the scope allows. Tenancy and department
-	// scope are carried on the Scope itself and enforced in SQL.
 	filter, errs := h.parseExportFilter(r, "", exportdomain.EntryTypeWhatsApp)
 	if errs != nil {
 		response.WriteValidationError(w, errs)
@@ -169,25 +147,14 @@ func (h *ExportHandler) ExportWhatsAppWorkspaceEntries(w http.ResponseWriter, r 
 	h.writeCSVExport(w, r, filter, "whatsapp-leads")
 }
 
-// ExportInstagramEntries exports one Instagram account's conversations.
-//
-// The account id fills the container slot: it is the channel's container, which
-// is the same question a campaign filter asks on WhatsApp.
 func (h *ExportHandler) ExportInstagramEntries(w http.ResponseWriter, r *http.Request) {
 	h.exportChannelEntries(w, r, exportdomain.EntryTypeInstagram, "instagram-account")
 }
 
-// ExportTelegramEntries exports one Telegram bot's conversations.
 func (h *ExportHandler) ExportTelegramEntries(w http.ResponseWriter, r *http.Request) {
 	h.exportChannelEntries(w, r, exportdomain.EntryTypeTelegram, "telegram-account")
 }
 
-// ExportUnofficialWhatsAppCampaignEntries exports one campaign's conversations.
-//
-// The path id is a CAMPAIGN, not the channel's primary container, which is why
-// the container type is pinned here rather than read from the query: an export
-// route that let the caller choose which container its path id meant would
-// happily export a whole NUMBER when asked for one campaign.
 func (h *ExportHandler) ExportUnofficialWhatsAppCampaignEntries(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Set("type", "campaign")
@@ -208,8 +175,6 @@ func (h *ExportHandler) exportChannelEntries(
 		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
 		return
 	}
-	// The account's own tenancy is enforced by the lister's workspace filter, so
-	// a caller cannot export another workspace's account by guessing its id.
 	filter, errs := h.parseExportFilter(r, accountID, entryType)
 	if errs != nil {
 		response.WriteValidationError(w, errs)
@@ -230,11 +195,6 @@ func (h *ExportHandler) parseExportFilter(
 		return exportdomain.ExportFilter{}, map[string]string{"status": err.Error()}
 	}
 
-	// Both spellings of the stage filter. It was declared as StageID while every
-	// caller in the product sends stageId — the camelCase spelling every other
-	// filter here uses — so the stage filter has never once applied to an
-	// export. Reading both fixes it without breaking a client that learned the
-	// old name from the Swagger docs.
 	stageID := strings.TrimSpace(values.Get("stageId"))
 	if stageID == "" {
 		stageID = strings.TrimSpace(values.Get("StageID"))
@@ -245,8 +205,6 @@ func (h *ExportHandler) parseExportFilter(
 			WorkspaceID:   middleware.GetWorkspaceID(r),
 			ContainerID:   containerID,
 			ContainerType: strings.TrimSpace(values.Get("type")),
-			// The caller's own department scope, never a value they send. An
-			// export must not be a way to read past it.
 			DepartmentIDs: httpx.DepartmentFilterIDs(r),
 			Statuses:      statuses,
 			CreatedFrom:   httpx.ParseDateBound(values.Get("from"), false),
@@ -280,14 +238,6 @@ func (h *ExportHandler) parseExportFilter(
 	return filter, nil
 }
 
-// parseStatuses reads the status filter, which accepts both a repeated
-// parameter and a comma-separated list so callers can spell it either way.
-//
-// WhatsApp values are validated against the domain's closed set and an unknown
-// one is rejected rather than ignored: silently dropping a misspelt status
-// would widen the export to everything, and the operator would have no way to
-// tell that the file they got is not the file they asked for. Other channels
-// carry free-form conversation statuses, so there is no set to check against.
 func parseStatuses(values url.Values, entryType exportdomain.EntryType) ([]string, error) {
 	raw := values["status"]
 	if len(raw) == 0 {
@@ -302,9 +252,6 @@ func parseStatuses(values url.Values, entryType exportdomain.EntryType) ([]strin
 			if part == "" {
 				continue
 			}
-			// Channels with a send-status vocabulary validate against their OWN
-			// set. A status one channel cannot produce is a typo, not a filter
-			// that silently matches nothing.
 			switch entryType {
 			case exportdomain.EntryTypeWhatsApp:
 				part = strings.ToUpper(part)
@@ -350,10 +297,6 @@ func (h *ExportHandler) writeCSVExport(
 
 	count, err := h.exportUC.Export(ctx, filter, sink)
 	if err != nil {
-		// Once bytes are on the wire the status code is already 200 and there is
-		// no honest way to say "this failed". Abort the connection so the client
-		// sees a broken transfer instead of a file that looks complete and is
-		// silently short.
 		if sink.started {
 			log.Printf("[export] aborting partial CSV after %d rows: %v", count, err)
 			panic(http.ErrAbortHandler)
@@ -377,7 +320,6 @@ func (h *ExportHandler) writeExportError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusGatewayTimeout,
 			"The export took too long. Narrow the period and try again.", nil)
 	case errors.Is(err, context.Canceled):
-		// The caller went away; there is nobody left to answer.
 		return
 	default:
 		log.Printf("[export] failed: %v", err)
@@ -385,8 +327,6 @@ func (h *ExportHandler) writeExportError(w http.ResponseWriter, err error) {
 	}
 }
 
-// acquireSlot takes one of the export slots, waiting briefly rather than
-// refusing a caller who merely arrived at the same moment as someone else.
 func (h *ExportHandler) acquireSlot(ctx context.Context) (func(), bool) {
 	timer := time.NewTimer(exportQueueWait)
 	defer timer.Stop()
@@ -401,12 +341,6 @@ func (h *ExportHandler) acquireSlot(ctx context.Context) (func(), bool) {
 	}
 }
 
-// csvResponse defers the HTTP response headers until the export produces its
-// first byte.
-//
-// That is what lets writeCSVExport answer 404 for an empty result and 413 for
-// an oversized one: both are decided inside Export, after a handler that
-// committed its headers up front would already have promised a 200 and a file.
 type csvResponse struct {
 	w        http.ResponseWriter
 	filename string
@@ -419,29 +353,21 @@ func (c *csvResponse) Write(p []byte) (int, error) {
 		c.w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		c.w.Header().Set("Content-Disposition",
 			fmt.Sprintf("attachment; filename=%q", sanitizeFilenamePart(c.filename)))
-		// The response is attacker-influenced text; keep browsers from guessing
-		// a renderable type for it.
 		c.w.Header().Set("X-Content-Type-Options", "nosniff")
 		c.w.Header().Set("Cache-Control", "no-store")
 		c.w.WriteHeader(http.StatusOK)
-		// BOM, so Excel opens accented Portuguese correctly instead of mojibake.
 		if _, err := c.w.Write([]byte("\xEF\xBB\xBF")); err != nil {
 			return 0, err
 		}
 	}
 
 	n, err := c.w.Write(p)
-	// Push each buffered chunk to the client as it is produced, so a large
-	// export downloads progressively instead of appearing to hang.
 	if flusher, ok := c.w.(http.Flusher); ok {
 		flusher.Flush()
 	}
 	return n, err
 }
 
-// sanitizeFilenamePart strips anything that could break out of the
-// Content-Disposition header. Part of the name comes from a URL path segment,
-// so quotes, CR and LF would otherwise be caller-controlled header bytes.
 func sanitizeFilenamePart(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch {

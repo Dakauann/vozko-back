@@ -10,7 +10,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// stubWorkflowRepoForStart returns one active workflow with a trigger node.
 type stubWorkflowRepoForStart struct{ wf *workflow.Workflow }
 
 func (s *stubWorkflowRepoForStart) Create(*workflow.Workflow) error { return nil }
@@ -29,7 +28,6 @@ func (s *stubWorkflowRepoForStart) FindActiveByTrigger(string, workflow.TriggerT
 	return nil, nil
 }
 
-// captureRunRepo keeps whatever run the usecase created.
 type captureRunRepo struct{ created *workflow.WorkflowRun }
 
 func (c *captureRunRepo) Create(run *workflow.WorkflowRun) error { c.created = run; return nil }
@@ -73,8 +71,6 @@ func startRunFixture(t *testing.T) (workflow.StartRunUseCase, *captureRunRepo) {
 	return NewStartRunUseCase(&stubWorkflowRepoForStart{wf: wf}, runs), runs
 }
 
-// The channel is available to every workflow as {{channel}} without the author
-// declaring anything.
 func TestStartRun_SeedsTheChannelVariableFromTheEntryType(t *testing.T) {
 	uc, runs := startRunFixture(t)
 
@@ -90,10 +86,6 @@ func TestStartRun_SeedsTheChannelVariableFromTheEntryType(t *testing.T) {
 	assert.Equal(t, "instagram", runs.created.State.GetString(workflow.VarChannel))
 }
 
-// A caller cannot start a run that lies about its channel. Seeding after the
-// caller's variables is what makes {{channel}} trustworthy — otherwise every
-// interpolation of it would be wrong and the failure would surface as a
-// customer receiving the wrong kind of message.
 func TestStartRun_CallerVariablesCannotSpoofTheChannel(t *testing.T) {
 	uc, runs := startRunFixture(t)
 
@@ -116,8 +108,6 @@ func TestStartRun_CallerVariablesCannotSpoofTheChannel(t *testing.T) {
 		"unrelated caller variables are untouched")
 }
 
-// The seeded variable and the branch node must agree, or a flow that prints
-// {{channel}} and a flow that branches on it would disagree about the same run.
 func TestStartRun_SeededVariableAgreesWithChannelOf(t *testing.T) {
 	uc, runs := startRunFixture(t)
 

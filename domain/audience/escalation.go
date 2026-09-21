@@ -6,23 +6,8 @@ import (
 	"time"
 )
 
-// Forwarding a comment to someone who needs to see it (§3).
-//
-// "alguém comentou mal, encaminhar a mensagem e o @ de quem comentou."
-//
-// The formatting lives here, in the domain, for the reason every other derived
-// value does: a message assembled at three call sites is three messages, and
-// the one a customer forwards to their own boss must not depend on which button
-// they pressed. The value object holds only what we ALREADY store; it fetches
-// nothing and decides nothing about who receives it.
-
-// MaxEscalationNote bounds the operator's own words. The note is the only part
-// of the message a person types, so it is the only part that can be used to
-// make the message say something we did not write; bounded and placed last, it
-// cannot push our own text out of view.
 const MaxEscalationNote = 500
 
-// Escalation is one comment, formatted for a human somewhere else.
 type Escalation struct {
 	WorkspaceID string
 	Source      Source
@@ -34,20 +19,15 @@ type Escalation struct {
 	ContainerID string
 	Permalink   string
 
-	Excerpt  string
-	Stance   Stance
-	Severity int
-	// Measured is false for a comment that was never classified. It can still
-	// be forwarded (often that is exactly why), but the message must not print
-	// an unmeasured severity as if it were a zero score.
+	Excerpt    string
+	Stance     Stance
+	Severity   int
 	Measured   bool
 	OccurredAt time.Time
 
 	Note string
 }
 
-// NewEscalation builds the value object from a stored row plus the two things
-// that are not on it: the post's public link, and the operator's note.
 func NewEscalation(c *Analysis, permalink, note string) Escalation {
 	note = strings.TrimSpace(note)
 	if len(note) > MaxEscalationNote {
@@ -83,9 +63,6 @@ func (e Escalation) Validate() error {
 	return nil
 }
 
-// Author is the handle when we have one, and the channel's id when we do not.
-// A recipient who cannot tell WHO they are being warned about has been sent
-// nothing useful.
 func (e Escalation) Author() string {
 	if e.AuthorHandle != "" {
 		return "@" + e.AuthorHandle
@@ -93,8 +70,6 @@ func (e Escalation) Author() string {
 	return e.AuthorExternalID
 }
 
-// Where names the post: its public link when we have one, its channel id
-// otherwise, so the line is never empty.
 func (e Escalation) Where() string {
 	if e.Permalink != "" {
 		return e.Permalink
@@ -102,11 +77,6 @@ func (e Escalation) Where() string {
 	return e.ContainerID
 }
 
-// Message is the text the recipient reads.
-//
-// The forwarded comment is quoted rather than run into our own sentences, so a
-// comment that itself looks like an instruction reads as somebody's words and
-// not as ours.
 func (e Escalation) Message() string {
 	var b strings.Builder
 	b.WriteString("Comentário sinalizado")

@@ -20,25 +20,14 @@ type WebhookHandler struct {
 	publishWebhook      webhook.PublishWebhookUseCase
 	expectedToken       string
 	whatsappVerifyToken string
-	// whatsappAppSecrets is the set of app secrets accepted for inbound WhatsApp webhook
-	// signature verification. Empty disables verification (unchanged legacy behavior);
-	// multiple entries let one endpoint verify webhooks signed by more than one app while
-	// numbers span apps (e.g. an app migration).
-	whatsappAppSecrets []string
+	whatsappAppSecrets  []string
 
-	// dialog360WebhookSecret authenticates the inbound messaging webhook for
-	// 360dialog-hosted channels. 360dialog does not sign with Meta's
-	// X-Hub-Signature-256; instead we register the webhook URL ourselves with a
-	// shared secret it echoes back (query param or header).
 	dialog360WebhookSecret string
 	callWebhook            conversation.WhatsAppCallWebhookHandler
 
 	permissionWebhook conversation.WhatsAppCallPermissionWebhookHandler
 }
 
-// SetDialog360WebhookSecret configures the shared secret used to authenticate
-// inbound 360dialog messaging webhooks. Empty leaves the check disabled (a
-// startup warning is logged at wiring time).
 func (h *WebhookHandler) SetDialog360WebhookSecret(secret string) {
 	h.dialog360WebhookSecret = secret
 }
@@ -51,10 +40,6 @@ func (h *WebhookHandler) SetCallWebhookHandler(handler conversation.WhatsAppCall
 	h.callWebhook = handler
 }
 
-// NewWebhookHandler builds the webhook handler. whatsappAppSecrets is variadic and
-// normalized (trimmed, de-duplicated, empties dropped) so existing single-secret call
-// sites, including NewWebhookHandler(..., ""), keep their exact behavior. Pass more than
-// one secret to verify inbound webhooks signed by any of several apps (e.g. an app migration).
 func NewWebhookHandler(
 	publishWebhook webhook.PublishWebhookUseCase,
 	expectedToken string,
@@ -182,17 +167,10 @@ func (h *WebhookHandler) handleWhatsAppEvent(w http.ResponseWriter, r *http.Requ
 	h.routeWhatsAppEnvelope(w, body)
 }
 
-// HandleDialog360MessageWebhook receives the inbound messaging webhook for
-// 360dialog-hosted channels. 360dialog forwards the verbatim Meta Cloud-API
-// envelope (same entry[].changes[].field shape, same metadata.phone_number_id),
-// so once authenticated it flows through the exact same routing and consumer
-// pipeline as Meta-direct numbers; the consumers resolve the local phone by
-// MetaPhoneNumberID, which 360dialog rows also carry.
 func (h *WebhookHandler) HandleDialog360MessageWebhook(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[360dialog-webhook] received %s request from %s\n", r.Method, r.RemoteAddr)
 	switch r.Method {
 	case http.MethodGet:
-		// 360dialog does not run Meta's hub.challenge handshake; answer any probe.
 		if challenge := r.URL.Query().Get("hub.challenge"); challenge != "" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(challenge))
@@ -201,7 +179,6 @@ func (h *WebhookHandler) HandleDialog360MessageWebhook(w http.ResponseWriter, r 
 		w.WriteHeader(http.StatusOK)
 		return
 	case http.MethodPost:
-		// fall through
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -222,11 +199,6 @@ func (h *WebhookHandler) HandleDialog360MessageWebhook(w http.ResponseWriter, r 
 	h.routeWhatsAppEnvelope(w, body)
 }
 
-// authenticateDialog360 validates the shared secret 360dialog echoes back in the
-// webhook URL we registered (query param), or an explicit header. Always
-// fail-closed: an unconfigured secret rejects every request rather than opening
-// the endpoint, so a missing/rotated secret can never silently accept forged
-// inbound traffic. D360_WEBHOOK_SECRET is required at boot (mustGetEnvTrimmed).
 func (h *WebhookHandler) authenticateDialog360(r *http.Request) bool {
 	if h.dialog360WebhookSecret == "" {
 		log.Printf("[360dialog-webhook] rejected: D360_WEBHOOK_SECRET not configured (fail-closed)")
@@ -241,10 +213,6 @@ func (h *WebhookHandler) authenticateDialog360(r *http.Request) bool {
 	return false
 }
 
-// routeWhatsAppEnvelope is the provider-agnostic core: it inspects the Meta
-// webhook envelope field, dispatches synchronous handlers (calls / call
-// permission), and enqueues the event on the matching internal topic. Shared by
-// the Meta-direct and 360dialog inbound endpoints.
 func (h *WebhookHandler) routeWhatsAppEnvelope(w http.ResponseWriter, body []byte) {
 	field := extractWebhookField(body)
 
@@ -312,7 +280,6 @@ func verifyHubSignature(appSecret string, body []byte, sigHeader string) bool {
 	return webhookauth.VerifyPrefixedHMAC(appSecret, body, sigHeader)
 }
 
-// normalizeAppSecrets trims, drops empties, and de-duplicates while preserving order.
 func normalizeAppSecrets(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
@@ -330,10 +297,6 @@ func normalizeAppSecrets(in []string) []string {
 	return out
 }
 
-// verifyHubSignatureAny returns true if the payload signature matches ANY configured app
-// secret. Meta signs each webhook with the secret of the app the WABA is subscribed to, so
-// accepting multiple secrets lets one endpoint serve numbers spread across more than one
-// app (e.g. during an app migration).
 func verifyHubSignatureAny(appSecrets []string, body []byte, sigHeader string) bool {
 	for _, secret := range appSecrets {
 		if verifyHubSignature(secret, body, sigHeader) {

@@ -9,11 +9,6 @@ import (
 	"strings"
 )
 
-// validatePortLayout refuses to start when the port plan is unsafe. A media plane must
-// be deterministic, so a misconfiguration is FATAL, not a warning: the WhatsApp media
-// UDP mux binds one fixed port, and a port inside the OS ephemeral range would be
-// stolen by an outbound socket and blackhole call media under load. Runs at the very
-// top of container.New, before anything binds.
 func (c *Container) validatePortLayout() {
 	eLo, eHi := osEphemeralRange()
 	in := portLayoutInputs{
@@ -35,12 +30,9 @@ type portLayoutInputs struct {
 	ephLo, ephHi int
 }
 
-// checkPortLayout returns human-readable descriptions of every unsafe condition in the
-// port plan (empty = safe). Pure, so it is unit-tested; validatePortLayout turns any
-// result into a fatal refuse-to-start.
 func checkPortLayout(in portLayoutInputs) []string {
 	if in.mux <= 0 {
-		return nil // media not configured (dev/CI); nothing to validate
+		return nil
 	}
 	var v []string
 	if in.mux >= in.ephLo && in.mux <= in.ephHi {
@@ -49,10 +41,6 @@ func checkPortLayout(in portLayoutInputs) []string {
 	return v
 }
 
-// osEphemeralRange returns the OS local/ephemeral port range so the media mux can be
-// kept clear of it. Linux: read the kernel setting; elsewhere (Windows/dev) fall back
-// to the platform default dynamic range, so the homolog validates against its own
-// reality and a Linux box against the kernel's.
 func osEphemeralRange() (lo, hi int) {
 	if runtime.GOOS == "linux" {
 		if data, err := os.ReadFile("/proc/sys/net/ipv4/ip_local_port_range"); err == nil {
@@ -60,13 +48,11 @@ func osEphemeralRange() (lo, hi int) {
 				return l, h
 			}
 		}
-		return 32768, 60999 // Linux kernel default when /proc is unreadable
+		return 32768, 60999
 	}
-	return 49152, 65535 // Windows / other dynamic default (IANA range)
+	return 49152, 65535
 }
 
-// parseEphemeralRange parses the two whitespace-separated ints in
-// /proc/sys/net/ipv4/ip_local_port_range (e.g. "32768\t60999\n").
 func parseEphemeralRange(content string) (lo, hi int, ok bool) {
 	f := strings.Fields(strings.TrimSpace(content))
 	if len(f) != 2 {

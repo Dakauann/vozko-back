@@ -46,9 +46,6 @@ func (x *CallSessionInboundExecutor) AttachInboundCRMCall(ctx context.Context, i
 	if input.Call == nil {
 		return errors.New("inbound executor: call is nil")
 	}
-	// At accept time the target holds this offer's own ring reservation; only a
-	// genuine attached call (ActiveCallID != "") blocks the attach. Attach below
-	// consumes the reservation atomically.
 	if target.ActiveCallID() != "" {
 		return callsession_domain.ErrSessionBusy
 	}

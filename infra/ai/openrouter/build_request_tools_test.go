@@ -8,8 +8,6 @@ import (
 	"vozko/domain/tools"
 )
 
-// injectFakeToolService returns a non-empty default registry so we can assert
-// whether buildRequest falls back to it.
 type injectFakeToolService struct{}
 
 func (injectFakeToolService) Definitions() []tools.Definition {
@@ -26,13 +24,8 @@ func (injectFakeToolService) ExecuteWithConfig(context.Context, string, map[stri
 }
 func (injectFakeToolService) Handler(string) (tools.Handler, bool) { return nil, false }
 
-// Regression: a caller that disables tool execution (ToolExecutionModeNone) and
-// passes no tools, e.g. a workflow AI-agent node in prompt mode, must NOT have
-// the full default registry injected. Injecting it made the model emit tool calls
-// it could never run, suppressing its text reply (the "keeps typing, won't
-// respond" bug). A normal Auto-mode call with no tools still gets the defaults.
 func TestBuildRequest_NoDefaultToolsWhenExecutionDisabled(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, injectFakeToolService{}, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, injectFakeToolService{})
 
 	reqNone := s.buildRequest(ai.GenerateInput{
 		Model:             "test/model",
@@ -53,7 +46,7 @@ func TestBuildRequest_NoDefaultToolsWhenExecutionDisabled(t *testing.T) {
 }
 
 func TestBuildRequest_ResponseFormatJSONObject(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, nil, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, nil)
 	req := s.buildRequest(ai.GenerateInput{
 		Model: "openai/gpt-4o-mini",
 		Messages: []ai.Message{
@@ -68,7 +61,7 @@ func TestBuildRequest_ResponseFormatJSONObject(t *testing.T) {
 }
 
 func TestBuildRequest_ResponseFormatJSONSchema(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, nil, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, nil)
 	req := s.buildRequest(ai.GenerateInput{
 		Model: "openai/gpt-4o-mini",
 		Messages: []ai.Message{
@@ -97,4 +90,13 @@ func TestBuildRequest_ResponseFormatJSONSchema(t *testing.T) {
 	if !req.ResponseFormat.JSONSchema.Strict {
 		t.Fatal("expected strict")
 	}
+}
+
+func mustService(t *testing.T, cfg Config, toolSvc tools.Service) *Service {
+	t.Helper()
+	s, err := NewService(cfg, toolSvc, noopBillingPub{})
+	if err != nil {
+		t.Fatalf("NewService() = %v", err)
+	}
+	return s
 }

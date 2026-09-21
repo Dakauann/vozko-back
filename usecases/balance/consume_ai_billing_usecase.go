@@ -11,8 +11,6 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
-// BillingMetrics surfaces revenue-leak signals (events that did not debit) so they
-// can be alerted on instead of staying silent. Optional, nil disables metrics.
 type BillingMetrics interface {
 	IncBillingSkipped(reason string)
 }
@@ -111,9 +109,6 @@ func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error 
 	}
 
 	if result.PriceMicros <= 0 {
-		// Usage existed (zero-token events are dropped earlier) but priced at $0,
-		// the model is missing from the price table and the live fetcher too. That
-		// is free AI for the customer: make it loud instead of a silent return.
 		c.markSkipped("zero_price")
 		log.Printf("CRITICAL: [ai-billing] priced at $0, NOT billing (ws=%s, model=%s, tokens=%d+%d, req=%s), model likely unpriced; REVENUE LEAK",
 			event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.RequestID)

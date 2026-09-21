@@ -17,62 +17,31 @@ import (
 )
 
 const (
-	// DefaultRescueBatch caps how many stalled conversations one tick moves.
-	// Oldest first, so a saturated batch always makes progress on whoever has
-	// been waiting longest rather than re-picking an arbitrary page.
 	DefaultRescueBatch = 200
 
-	// MaxRescueHops bounds how far one conversation may walk the ring before
-	// the sweep gives up and unassigns it. The effective cap is
-	// min(len(ring), MaxRescueHops): a ring of three is exhausted after three
-	// hops, and a ring of forty does not get forty chances to annoy forty
-	// people about one conversation.
 	MaxRescueHops = 5
 
-	// TriggerRescueExhausted is the reason stamped on the unassignment when the
-	// ring has been walked and nobody took the conversation.
 	TriggerRescueExhausted = "rescue_exhausted"
 )
 
-// rescueConfigReader is the workspace-config slice the sweep needs: the
-// filtered policy list that drives it, and the full config for the one or two
-// workspaces that actually have work.
 type rescueConfigReader interface {
 	ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePolicy, error)
 	GetByWorkspaceID(ctx context.Context, workspaceID string) (*wsc.WorkspaceConfig, error)
 }
 
-// rescueHistoryReader is the ownership-interval slice the sweep needs.
 type rescueHistoryReader interface {
 	ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*ia.AssignmentHistory, error)
 	CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error)
 }
 
-// rescueStatusReader tells the sweep to leave finished conversations alone.
 type rescueStatusReader interface {
 	GetConversationStatus(entryID, entryType string) conversation.ConversationStatus
 }
 
-// rescueDepartmentScheduleReader supplies the department-level working-hours
-// overrides for a tick, in one read.
-//
-// Optional: when it is not wired, every department inherits its workspace's
-// schedule, which is also what happens when no department has an override.
 type rescueDepartmentScheduleReader interface {
 	ListWorkingHours(workspaceIDs []string) ([]wd.DepartmentSchedule, error)
 }
 
-// RescueJob moves a conversation on when the agent it was handed to never
-// opened it.
-//
-// It exists because the last_seen mode can hand a conversation to somebody who
-// is not looking at the screen. Without it, "distribute to whoever was online
-// recently" would sometimes mean "park this customer in an away agent's
-// backlog", which is worse than the online-only behaviour it replaces.
-//
-// Everything it does goes through AssignmentService, the same choke point a
-// manual reassignment uses, so the history interval, the telemetry and the
-// timeline event cannot diverge from any other ownership change.
 type RescueJob struct {
 	cfg         rescueConfigReader
 	history     rescueHistoryReader
@@ -85,8 +54,6 @@ type RescueJob struct {
 	now         func() time.Time
 }
 
-// SetDepartmentSchedules enables department-level working hours. Without it
-// every department inherits its workspace's schedule.
 func (j *RescueJob) SetDepartmentSchedules(r rescueDepartmentScheduleReader) {
 	if j != nil {
 		j.departments = r
@@ -126,15 +93,12 @@ func NewRescueJob(
 	}
 }
 
-// SetClock is for tests. Production uses time.Now.
 func (j *RescueJob) SetClock(now func() time.Time) {
 	if now != nil {
 		j.now = now
 	}
 }
 
-// Execute runs one sweep. It never returns an error for a single failed entry:
-// one bad conversation must not stop the rest of the batch.
 func (j *RescueJob) Execute(ctx context.Context) error {
 	if j == nil || j.disabled || j.cfg == nil || j.history == nil || j.assign == nil {
 		return nil
@@ -146,21 +110,11 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 		return nil
 	}
 	if len(policies) == 0 {
-		// The cost for every workspace on the default mode: one indexed read,
-		// then nothing.
 		return nil
 	}
 
 	now := j.now().UTC()
 
-	// Working hours are resolved before the candidate query, not per candidate,
-	// and that ordering is the point rather than an optimisation.
-	//
-	// The batch is capped and ordered oldest-first. A closed workspace sitting
-	// on hundreds of stalled conversations would fill every batch with rows
-	// that cannot be due yet and starve conversations that ARE due in
-	// workspaces that are open. Dropping those workspaces from the query is
-	// what stops one shut office from blocking every other one.
 	schedules := j.resolveSchedules(policies)
 
 	byWorkspace := make(map[string]wsc.RoulettePolicy, len(policies))
@@ -184,8 +138,6 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 	if len(workspaceIDs) == 0 {
 		return nil
 	}
-	// One query for every eligible workspace, bounded by the shortest deadline
-	// among them; each candidate is then re-checked against its own.
 	open, err := j.history.ListOpenOlderThan(workspaceIDs, ia.RescueCandidateTriggers, now.Add(-minAfter), j.batch)
 	if err != nil {
 		log.Printf("[assignment_rescue] candidate list error: %v", err)
@@ -198,15 +150,6 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 		log.Printf("[assignment_rescue] batch full at %d; the remainder is picked up next tick", j.batch)
 	}
 
-	// One tick resolves each workspace's config and each (workspace, department)
-	// ring ONCE, however many stalled conversations it holds.
-	//
-	// Without this, a workspace with a full batch of 200 stalled conversations
-	// ran 200 identical config reads and 200 identical presence queries — the
-	// presence one an IN over up to 500 user ids. Neither answer can change
-	// within a tick that takes seconds, and the roster underneath is already
-	// cached for a minute, so resolving per candidate bought nothing and cost
-	// the database everything.
 	tick := &rescueTick{
 		now:       now,
 		configs:   make(map[string]*wsc.WorkspaceConfig, len(policies)),
@@ -232,17 +175,11 @@ func (j *RescueJob) Execute(ctx context.Context) error {
 	return nil
 }
 
-// rescueTick memoizes the two answers that are per-workspace rather than
-// per-conversation, for the lifetime of a single sweep.
 type rescueTick struct {
-	now     time.Time
-	configs map[string]*wsc.WorkspaceConfig
-	pools   map[string]Pool
-	// schedules is every working-hours answer this tick needs, compiled once
-	// before the candidate query ran.
+	now       time.Time
+	configs   map[string]*wsc.WorkspaceConfig
+	pools     map[string]Pool
 	schedules *tickSchedules
-	// configErr remembers a failed read so a broken workspace is not retried
-	// once per candidate.
 	configErr map[string]bool
 }
 
@@ -275,8 +212,6 @@ func (t *rescueTick) pool(r *CandidateResolver, workspaceID, departmentID string
 	return p
 }
 
-// errTickConfigAlreadyFailed is logged once per workspace per tick rather than
-// once per conversation.
 var errTickConfigAlreadyFailed = errors.New("workspace config already failed this tick")
 
 type rescueOutcome int
@@ -292,29 +227,13 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 	if h == nil || h.EntryID == "" || h.AssignedActorID == "" {
 		return outcomeSkipped
 	}
-	// The deadline is measured in OPEN time, not wall time.
-	//
-	// A conversation handed out at 17:55 with a fifteen-minute deadline has
-	// spent five minutes when the office closes at 18:00. It must not be taken
-	// away at 18:10 — the next agent went home too — and it must not arrive at
-	// 09:00 already fifteen hours overdue. Counting only the minutes the scope
-	// was open gives the owner the same fifteen working minutes they would have
-	// had at midday, and moves the conversation at 09:10.
-	//
-	// A workspace with no schedule has an always-open one, where this is
-	// exactly now.Sub(h.StartedAt) — the historical behaviour, unchanged.
 	schedule := tick.schedules.forEntry(h.WorkspaceID, h.DepartmentID)
 	if schedule.Elapsed(h.StartedAt, now) <= policy.RescueAfter {
 		return outcomeSkipped
 	}
-	// The scope can be closed even when the workspace passed the pre-filter:
-	// the filter keeps a workspace whose department is open, and this
-	// conversation may belong to a different, closed one. Moving it now would
-	// hand it to somebody who is not working either.
 	if !schedule.IsOpen(now) {
 		return outcomeSkipped
 	}
-	// An AI owner is not a roulette hand-out and has its own hand-off path.
 	if actor.IsAI(h.AssignedActorID) {
 		return outcomeSkipped
 	}
@@ -339,20 +258,13 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 		}
 		return outcomeSkipped
 	}
-	// The admin may have switched the mode off between the policy list and
-	// here. Re-checking costs one cached read and avoids moving a conversation
-	// under a policy that no longer applies.
 	if !cfg.RouletteRescueActive() {
 		return outcomeSkipped
 	}
 
 	skipAdmins := cfg.SkipAdminAssignment
-	// The same resolver the assignment used, so the rescue can never walk a
-	// different ring than the one the conversation came from.
 	pool := tick.pool(j.assign.Candidates(), h.WorkspaceID, h.DepartmentID, skipAdmins, cfg)
 	if len(pool.Ring) == 0 {
-		// Nobody to hand it to. Leaving the current owner beats unassigning
-		// into a workspace where nobody is eligible anyway.
 		log.Printf("[assignment_rescue] entry %s (%s) has no eligible ring; leaving it with %s", h.EntryID, h.EntryType, h.AssignedActorID)
 		return outcomeSkipped
 	}
@@ -383,12 +295,6 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 		return outcomeSkipped
 	}
 
-	// AssignManual, not a direct repo write: it closes the ownership interval,
-	// opens the next one, publishes telemetry and writes the timeline event.
-	// The round-robin pointer is deliberately NOT advanced — a rescue repairs
-	// one conversation, it is not a turn of the wheel, and moving the pointer
-	// would make the next inbound conversation skip an agent who did nothing
-	// wrong.
 	if err := j.assign.AssignManual(h.EntryID, h.EntryType, h.BusinessPhoneID, h.WorkspaceID, next, actor.SystemID, ia.TriggerRescue); err != nil {
 		log.Printf("[assignment_rescue] reassign failed for %s (%s): %v", h.EntryID, h.EntryType, err)
 		return outcomeSkipped

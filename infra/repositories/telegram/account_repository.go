@@ -20,7 +20,6 @@ type accountRepository struct {
 	db *gorm.DB
 }
 
-// NewAccountRepository builds the Telegram account repository.
 func NewAccountRepository(db *gorm.DB) tgdomain.AccountRepository {
 	return &accountRepository{db: db}
 }
@@ -71,8 +70,6 @@ func (r *accountRepository) Update(ctx context.Context, a *tgdomain.Account) err
 		"status":                  record.Status,
 		"status_reason":           record.StatusReason,
 	}
-	// Credentials are written only when supplied: a config-only update must not
-	// blank a live token, which would silently take the channel offline.
 	if a.BotToken != "" {
 		update["bot_token"] = record.BotToken
 	}
@@ -156,12 +153,6 @@ func (r *accountRepository) FindByID(ctx context.Context, id string) (*tgdomain.
 	return toAccountDomain(&record), nil
 }
 
-// FindByIDForWebhook resolves the tenant for an inbound request.
-//
-// It deliberately does not filter on status: a WEBHOOK_FAILING account is
-// exactly the one whose next delivery matters most, and refusing it would turn a
-// recoverable health blip into permanent message loss once Telegram's 24h
-// retention expires.
 func (r *accountRepository) FindByIDForWebhook(ctx context.Context, id string) (*tgdomain.Account, error) {
 	return r.FindByID(ctx, id)
 }
@@ -177,8 +168,6 @@ func (r *accountRepository) FindByBotUserID(ctx context.Context, botUserID int64
 	return toAccountDomain(&record), nil
 }
 
-// FindByBotUserIDUnscoped includes soft-deleted rows so reconnecting a bot that
-// was removed restores it rather than colliding with the unique index.
 func (r *accountRepository) FindByBotUserIDUnscoped(ctx context.Context, botUserID int64) (*tgdomain.Account, error) {
 	var record schema.TelegramAccount
 	if err := r.db.WithContext(ctx).Unscoped().First(&record, "bot_user_id = ?", botUserID).Error; err != nil {
@@ -190,8 +179,6 @@ func (r *accountRepository) FindByBotUserIDUnscoped(ctx context.Context, botUser
 	return toAccountDomain(&record), nil
 }
 
-// FindByBusinessConnectionID is the ONLY way a business-mode webhook finds its
-// tenant: the update carries no bot identity, only the connection id.
 func (r *accountRepository) FindByBusinessConnectionID(ctx context.Context, connectionID string) (*tgdomain.Account, error) {
 	if strings.TrimSpace(connectionID) == "" {
 		return nil, tgdomain.ErrAccountNotFound
@@ -248,8 +235,6 @@ func (r *accountRepository) ListByWorkspace(ctx context.Context, input tgdomain.
 	return shared.NewPaginatedResult(items, pagination, total), nil
 }
 
-// ListForHealthCheck returns accounts whose webhook has not been probed
-// recently, oldest first so the cron makes progress under a cap.
 func (r *accountRepository) ListForHealthCheck(ctx context.Context, before time.Time, limit int) ([]*tgdomain.Account, error) {
 	if limit <= 0 {
 		limit = 100
@@ -281,8 +266,6 @@ func (r *accountRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------- mapping
-
 func toAccountSchema(a *tgdomain.Account) (*schema.TelegramAccount, error) {
 	record := &schema.TelegramAccount{
 		ID:                   a.ID,
@@ -308,8 +291,6 @@ func toAccountSchema(a *tgdomain.Account) (*schema.TelegramAccount, error) {
 		Status:               string(a.Status),
 		StatusReason:         a.StatusReason,
 	}
-	// Credentials are only ever written when present, so a partial update cannot
-	// blank a live token by omitting it.
 	if a.BotToken != "" {
 		record.BotToken = piigorm.NewEncrypted(a.BotToken)
 	}
@@ -376,8 +357,6 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// isUniqueViolation recognises a Postgres unique-index conflict without
-// depending on the driver's concrete error type.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false

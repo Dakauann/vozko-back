@@ -100,19 +100,12 @@ func NewHTTPRequestExecutor() workflow.NodeExecutor {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	// Fallback transport for servers/WAFs that are intolerant of Go's TLS 1.3
-	// ClientHello and silently drop the handshake (e.g. ssl.datanext.com.br).
-	// Capped at TLS 1.2, which those servers accept.
 	tls12 := base.Clone()
 	tls12.TLSClientConfig = &tls.Config{MaxVersion: tls.VersionTLS12}
 
 	return &httpRequestExecutor{transport: base, transportTLS12: tls12}
 }
 
-// isTLSHandshakeError reports whether err looks like a TLS-negotiation failure
-// worth retrying with a lower TLS max version. Targets the TLS-1.3-intolerance
-// signatures: a stalled handshake (timeout) or an immediate handshake/version
-// alert. Retrying once is cheap and harmless for unrelated TLS errors.
 func isTLSHandshakeError(err error) bool {
 	if err == nil {
 		return false
@@ -254,8 +247,6 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		authToken = workflow.Interpolate(authToken, ctx.State, nil)
 	}
 
-	// makeReq builds a fresh request (with a fresh body reader) so it can be
-	// replayed on the TLS 1.2 fallback attempt below.
 	makeReq := func() (*http.Request, error) {
 		var body io.Reader
 		if bodyStr != "" {
@@ -274,9 +265,6 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		switch authType {
 		case "bearer":
 			if authToken != "" {
-				// Tolerate an operator pasting the token WITH a leading "Bearer ",
-				// we always emit exactly one prefix. A duplicated "Bearer Bearer
-				// <token>" is rejected by the target API with 401.
 				token := strings.TrimSpace(authToken)
 				if len(token) >= 7 && strings.EqualFold(token[:7], "bearer ") {
 					token = strings.TrimSpace(token[7:])
@@ -325,9 +313,6 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	}
 
 	resp, err := (&http.Client{Timeout: timeout, Transport: e.transport}).Do(req)
-	// Some legacy servers/WAFs are intolerant of Go's TLS 1.3 ClientHello and
-	// drop the handshake (surfaces as "net/http: TLS handshake timeout"). Retry
-	// once capped at TLS 1.2 so those endpoints (e.g. ssl.datanext.com.br) work.
 	if err != nil && isTLSHandshakeError(err) {
 		log.Printf("[http_request] node %s: TLS handshake failed (%v), retrying capped at TLS 1.2", ctx.Node.ID, err)
 		if req2, mkErr := makeReq(); mkErr == nil {
@@ -367,16 +352,10 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		log.Printf("[http_request] node %s: response body: %s", ctx.Node.ID, string(respBody))
 	}
 
-	// Parse into interface{} (not map only) so ARRAY bodies, e.g. a REST list
-	// endpoint returning `[{"token":"..."}]`, are captured as a navigable
-	// []interface{} instead of being dropped to a raw string. A raw string cannot
-	// be indexed by {{var[0].field}}, which silently produced empty auth headers.
 	var jsonResp interface{}
 	if err := json.Unmarshal(respBody, &jsonResp); err == nil {
 		output["json"] = jsonResp
 
-		// Flatten only object bodies onto the output for {{last.<key>}} access;
-		// arrays and scalars have no top-level keys to flatten.
 		if obj, isObj := jsonResp.(map[string]interface{}); isObj {
 			reserved := map[string]bool{"status_code": true, "body": true, "success": true, "json": true, "error": true}
 			for k, v := range obj {
@@ -388,20 +367,12 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	}
 
 	if captureVar, ok := ctx.Node.Config["capture_variable"].(string); ok && captureVar != "" {
-		// Capture the parsed value (object OR array) so it stays navigable; fall
-		// back to the raw string only when the body is not valid JSON.
 		if jsonResp != nil {
 			ctx.State.Set(captureVar, jsonResp)
 		} else {
 			ctx.State.Set(captureVar, string(respBody))
 		}
 
-		// Expose the HTTP envelope under a companion key so a downstream condition
-		// can branch on {{captureVar.status_code}} / {{captureVar.success}} even
-		// though the captured value itself is the bare response body, which, for
-		// an array (e.g. a token list) or an object without a status_code field,
-		// has nowhere to carry it. The resolver consults this only as a fallback,
-		// so a real body field of the same name always wins.
 		ctx.State.Set("_httpmeta_"+captureVar, map[string]interface{}{
 			"status_code": resp.StatusCode,
 			"success":     resp.StatusCode < 400,

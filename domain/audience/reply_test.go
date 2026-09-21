@@ -8,9 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The guarantee the plan puts in bold: auto-reply posts in public, in the
-// customer's voice, to someone a machine classified. It ships OFF, and an
-// account nobody has configured must never post anything.
 func TestReplyPolicyShipsOff(t *testing.T) {
 	s := NewSettings("ws-1", SourceInstagram, "acc-1", VerticalServices)
 	if s.ReplyPolicy.Mode != ReplyModeOff {
@@ -36,8 +33,6 @@ func analysedComment(intent Intent, severity int) *Analysis {
 	}
 }
 
-// suggest drafts but never posts. It is the mode the product actually ships
-// with enabled, so the distinction has to hold exactly.
 func TestReplyPolicySuggestDraftsButNeverPosts(t *testing.T) {
 	p := ReplyPolicy{Mode: ReplyModeSuggest}
 	p.Normalize()
@@ -49,9 +44,6 @@ func TestReplyPolicySuggestDraftsButNeverPosts(t *testing.T) {
 	}
 }
 
-// The gate the plan specifies: intent AND severity. The intent list is a
-// closed allow-list rather than "anything but a complaint", because the
-// failure mode is a public screenshot and the safe default is silence.
 func TestReplyPolicyAutoGate(t *testing.T) {
 	p := ReplyPolicy{Mode: ReplyModeAuto}
 	p.Normalize()
@@ -77,8 +69,6 @@ func TestReplyPolicyAutoGate(t *testing.T) {
 	}
 }
 
-// Signals that override the intent entirely. Each of these means a human has
-// either been asked for or is clearly needed.
 func TestReplyPolicyAutoRefusesOnOverridingSignals(t *testing.T) {
 	p := ReplyPolicy{Mode: ReplyModeAuto}
 	p.Normalize()
@@ -118,8 +108,6 @@ func TestReplyPolicyAutoRefusesOnOverridingSignals(t *testing.T) {
 	})
 }
 
-// A ceiling of zero would mean "auto-reply to nothing", which reads as broken
-// rather than safe; Normalize fills the default instead.
 func TestReplyPolicyNormalize(t *testing.T) {
 	p := ReplyPolicy{Mode: "AUTO"}
 	p.Normalize()
@@ -136,16 +124,12 @@ func TestReplyPolicyNormalize(t *testing.T) {
 		t.Fatalf("an unrecognised mode must fall back to off, got %q", unknown.Mode)
 	}
 
-	// The ceiling can never exceed the point at which a comment is "high
-	// severity": above that the engine itself considers the comment serious.
 	tooHigh := ReplyPolicy{Mode: ReplyModeAuto, MaxAutoSeverity: 99}
 	tooHigh.Normalize()
 	if tooHigh.MaxAutoSeverity > HighSeverityThreshold {
 		t.Fatalf("ceiling = %d, must not exceed the high-severity threshold", tooHigh.MaxAutoSeverity)
 	}
 }
-
-// ---- the draft ----
 
 func TestReplySuggestionTrimsAndBounds(t *testing.T) {
 	long := strings.Repeat("a", MaxReplyLength+200)

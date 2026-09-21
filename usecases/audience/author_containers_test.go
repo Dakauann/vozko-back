@@ -10,10 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The scope of the query comes from the AUTHOR ROW, never from the caller.
-// A caller passes an author id and a page; if the scope came from the request
-// instead, one workspace's author id plus another workspace's account would
-// read someone else's posts.
 func TestListAuthorContainersScopesFromTheAuthorRow(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{
 		ID: "a-1", WorkspaceID: "ws-1", Source: ca.SourceInstagram,
@@ -48,8 +44,6 @@ func TestListAuthorContainersScopesFromTheAuthorRow(t *testing.T) {
 	}
 }
 
-// An author id belonging to another workspace is not found, not empty: an
-// empty page would read as "this person has commented on nothing".
 func TestListAuthorContainersRefusesAnotherWorkspacesAuthor(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1", AuthorExternalID: "ig-99"}}}
 	repo := newFakeRepo()
@@ -64,9 +58,6 @@ func TestListAuthorContainersRefusesAnotherWorkspacesAuthor(t *testing.T) {
 	}
 }
 
-// An author row with no external id cannot be queried by external id, and the
-// use case must say so rather than asking the repository for every post ever
-// commented on by nobody.
 func TestListAuthorContainersRefusesAnAuthorWithoutAnExternalID(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1", AuthorExternalID: ""}}}
 	repo := newFakeRepo()
@@ -81,8 +72,6 @@ func TestListAuthorContainersRefusesAnAuthorWithoutAnExternalID(t *testing.T) {
 	}
 }
 
-// The page reaches the repository normalised: a caller who sends no pagination
-// must not turn into an unbounded read.
 func TestListAuthorContainersNormalisesThePage(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1", AuthorExternalID: "ig-99"}}}
 	repo := newFakeRepo()
@@ -101,8 +90,6 @@ func TestListAuthorContainersNormalisesThePage(t *testing.T) {
 	}
 }
 
-// The window travels with the request: "em quais posts esta pessoa comentou
-// este mês" is the same read with a narrower predicate, not a second endpoint.
 func TestListAuthorContainersPassesTheWindowThrough(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1", AuthorExternalID: "ig-99"}}}
 	repo := newFakeRepo()
@@ -124,7 +111,6 @@ func TestListAuthorContainersPassesTheWindowThrough(t *testing.T) {
 	}
 }
 
-// An inverted window is refused before the repository is asked for anything.
 func TestListAuthorContainersRefusesAnInvertedWindow(t *testing.T) {
 	authors := &fakeAuthors{rows: []*ca.AuthorStats{{ID: "a-1", WorkspaceID: "ws-1", AuthorExternalID: "ig-99"}}}
 	repo := newFakeRepo()

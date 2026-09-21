@@ -92,19 +92,13 @@ type DeletePhoneNumberUseCase interface {
 	Execute(id string) error
 }
 
-// UnassignOwnerUseCase detaches a phone from its owning workspace, returning it
-// to the unassigned pool. It is fully reversible (the number can be re-assigned)
-// and does not touch the Meta registration or connection state.
 type UnassignOwnerUseCase interface {
 	Execute(phoneID string) error
 }
 
 type ReleasePhoneInput struct {
-	PhoneID     string
-	AccessToken string
-	// ConfirmPhoneNumber, when non-empty, must match the phone's display number.
-	// This is the server-side guard for the typed-confirmation UX on the
-	// irreversible removal, the backend is the source of truth, not the client.
+	PhoneID            string
+	AccessToken        string
 	ConfirmPhoneNumber string
 }
 
@@ -123,13 +117,7 @@ type ReleasePhoneUseCase interface {
 	Execute(input ReleasePhoneInput) (*ReleasePhoneResult, error)
 }
 
-// OnboardEmbeddedSignupInput carries the result of a completed Meta Embedded
-// Signup. On the native Meta path the number is registered directly on the Cloud
-// API and the Graph access token is persisted on the phone; the Dialog360* fields
-// are populated only when the same use case is driven by the 360dialog path.
 type OnboardEmbeddedSignupInput struct {
-	// Provider selects the BSP this number is onboarded through. Empty defaults
-	// to ProviderMeta so the existing Meta Embedded Signup callers are unchanged.
 	Provider                   Provider
 	PhoneNumberID              string
 	WABAId                     string
@@ -143,10 +131,9 @@ type OnboardEmbeddedSignupInput struct {
 	OwnershipType              string
 	MessagingLimitTier         string
 	IsCoexistence              bool
-	// Dialog360* are populated only on the 360dialog onboarding path.
-	Dialog360ChannelID string
-	Dialog360APIKey    string
-	Dialog360ClientID  string
+	Dialog360ChannelID         string
+	Dialog360APIKey            string
+	Dialog360ClientID          string
 }
 
 type OnboardEmbeddedSignupResult struct {

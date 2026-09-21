@@ -23,19 +23,13 @@ type DailyCostRow struct {
 	MessageCount int
 }
 
-// LowBalanceRow is a funded wallet running low, returned by the low-balance monitor.
 type LowBalanceRow struct {
 	WorkspaceID  string
 	AmountMicros int64
 	Currency     string
 }
 
-// LowBalanceLister is the narrow port the low-balance monitor depends on. It is
-// implemented by the balance repository (real + cached) but deliberately kept off
-// the broad Repository interface so the many existing test fakes need not change.
 type LowBalanceLister interface {
-	// ListWorkspacesBelowBalance returns funded wallets at or below thresholdMicros.
-	// Only amount > 0 is returned, so never-funded and empty wallets are not warned.
 	ListWorkspacesBelowBalance(thresholdMicros int64) ([]LowBalanceRow, error)
 }
 

@@ -38,8 +38,6 @@ func escalatableComment(t *testing.T, repo *fakeRepo, ws string) *ca.Analysis {
 	return a
 }
 
-// The happy path: the recipient gets the comment, the author and the post, and
-// the use case hands back what was sent so the caller can show it.
 func TestEscalateSendsTheFormattedComment(t *testing.T) {
 	repo := newFakeRepo()
 	escalatableComment(t, repo, "ws-1")
@@ -69,8 +67,6 @@ func TestEscalateSendsTheFormattedComment(t *testing.T) {
 	}
 }
 
-// A comment id from another workspace must not be forwardable: the scope is
-// the repository's, and the use case passes the SESSION's workspace to it.
 func TestEscalateRefusesAnotherWorkspacesComment(t *testing.T) {
 	repo := newFakeRepo()
 	escalatableComment(t, repo, "ws-1")
@@ -105,8 +101,6 @@ func TestEscalateRequiresARecipient(t *testing.T) {
 	}
 }
 
-// A workspace with no channel bound gets a refusal it can act on, not a
-// success that silently delivered nothing.
 func TestEscalateWithoutASenderRefuses(t *testing.T) {
 	repo := newFakeRepo()
 	escalatableComment(t, repo, "ws-1")
@@ -120,8 +114,6 @@ func TestEscalateWithoutASenderRefuses(t *testing.T) {
 	}
 }
 
-// A send that fails is an error the operator sees. Reporting success for a
-// message that never arrived is the one outcome nobody can recover from.
 func TestEscalateSurfacesASendFailure(t *testing.T) {
 	repo := newFakeRepo()
 	escalatableComment(t, repo, "ws-1")
@@ -135,8 +127,6 @@ func TestEscalateSurfacesASendFailure(t *testing.T) {
 	}
 }
 
-// The permalink is a nicety. A channel adapter that errors must not cost the
-// customer the escalation.
 func TestEscalateSurvivesAnAdapterThatCannotAnswer(t *testing.T) {
 	repo := newFakeRepo()
 	escalatableComment(t, repo, "ws-1")

@@ -37,17 +37,8 @@ const (
 
 	whatsAppRetryCounterTTL = 10 * time.Minute
 
-	// senderInFlightTTL bounds the per-sender in-flight lock. It must exceed the
-	// handler context timeout (2m below) so the lock is never released while a
-	// message is still processing; it only acts as a crash-safety net so a sender
-	// is never blocked forever if the process dies before the defer releases it.
 	senderInFlightTTL = 3 * time.Minute
 
-	// maxConcurrentHandlers caps how many messages are processed at once. This is
-	// the real concurrency limit now that the RabbitMQ prefetch for this topic is
-	// raised above 1 (see channelPrefetch in infra/messaging/rabbit-mq.go).
-	// Different senders run in parallel up to this bound; same-sender messages are
-	// serialized by the per-sender lock in handle().
 	maxConcurrentHandlers = 20
 )
 
@@ -123,20 +114,6 @@ func (uc *consumeWhatsAppMessageWebhookUseCase) handle(raw []byte, ack messaging
 		}
 	}
 
-	// In-flight serialization lock. The wamid dedup above only prevents
-	// re-processing the SAME message; it does NOT stop two DIFFERENT events for the
-	// same entity running concurrently once the consumer prefetch is > 1. We
-	// serialize per entity here so unrelated work parallelizes while related work
-	// is handled one at a time:
-	//   - inbound messages serialize per SENDER → preserves order, prevents
-	//     double/duplicate AI replies for one conversation.
-	//   - status webhooks serialize per STATUS EVENT (wamid+status) → "failed"
-	//     status webhooks are deliberately NOT deduped (they trigger refunds and a
-	//     message can legitimately fail more than once), so without this lock a
-	//     duplicate failed webhook for the same message could refund concurrently
-	//     and double-refund. Serializing them makes the handler's refund guard run
-	//     exactly as it does today under prefetch=1.
-	// Different senders / different status events still run fully in parallel.
 	sender := extractSenderPhone(&payload)
 	serialKey := sender
 	if serialKey == "" {
@@ -147,15 +124,9 @@ func (uc *consumeWhatsAppMessageWebhookUseCase) handle(raw []byte, ack messaging
 		inflightKey = "inflight:wa:" + serialKey
 		acquired, lockErr := uc.sharedState.SetNX(inflightKey, "1", senderInFlightTTL)
 		if lockErr != nil {
-			// Fail open: a Redis hiccup must not block delivery. Worst case is the
-			// previous behavior (this event may run alongside another for the same
-			// entity); balance row-locks keep money safe regardless.
 			log.Printf("[webhook-consumer] in-flight lock error for %s: %v, proceeding without lock", serialKey, lockErr)
 			inflightKey = ""
 		} else if !acquired {
-			// Another event for this entity is already processing. Release our wamid
-			// processing key so the requeued copy can re-acquire it, then requeue
-			// this message with a short delay to keep ordering.
 			if trackedDedupKey != "" {
 				if releaseErr := uc.dedup.Release(trackedDedupKey); releaseErr != nil {
 					log.Printf("[webhook-consumer] failed to release dedupe key on in-flight requeue for %s: %v", serialKey, releaseErr)
@@ -184,9 +155,6 @@ func (uc *consumeWhatsAppMessageWebhookUseCase) handle(raw []byte, ack messaging
 
 	uc.semaphore <- struct{}{}
 	go func() {
-		// Release the in-flight lock on every exit (success, error, or panic) so the
-		// next event for this entity can proceed. Registered first → runs last,
-		// after panic recovery below.
 		defer func() {
 			if inflightKey != "" {
 				if err := uc.sharedState.Del(inflightKey); err != nil {

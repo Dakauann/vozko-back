@@ -15,8 +15,6 @@ import (
 	wo "vozko/domain/whatsapp_outreach"
 )
 
-// ---------------------------------------------------------------- test doubles
-
 type fakePhones struct {
 	businessphone.Repository
 	phone *businessphone.WhatsAppBusinessPhoneNumber
@@ -113,8 +111,6 @@ func (f *fakeHistory) Record(_ context.Context, _ conversation.MessageHistoryDir
 	return nil
 }
 
-// ---------------------------------------------------------------- harness
-
 type h struct {
 	uc      wo.StartOfficialConversationUseCase
 	entries *fakeEntries
@@ -144,7 +140,7 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 		Leads:         &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999"}},
 		Entries:       entries,
 		EnsureOrganic: &fakeOrganic{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Type: wc.CampaignTypeOrganic}},
-		Windows:       nil, // set per test through mutate; nil means "not consulted"
+		Windows:       nil,
 		History:       history,
 		Sender:        sender,
 	}
@@ -170,10 +166,6 @@ func input() wo.StartConversationInput {
 	}
 }
 
-// ---------------------------------------------------------------- tests
-
-// The happy path has to produce a conversation the operator can actually find:
-// an entry AND a message, because the inbox lists entries by last_message_at.
 func TestStartConversation_CreatesEntryAndMessageTogether(t *testing.T) {
 	uc := newUC(t)
 
@@ -198,8 +190,6 @@ func TestStartConversation_CreatesEntryAndMessageTogether(t *testing.T) {
 	}
 }
 
-// F-18. A charge nobody can be attributed to is a support ticket nobody can
-// answer.
 func TestStartConversation_MessageCarriesTheOperator(t *testing.T) {
 	uc := newUC(t)
 	if _, err := uc.uc.Execute(context.Background(), input()); err != nil {
@@ -210,8 +200,6 @@ func TestStartConversation_MessageCarriesTheOperator(t *testing.T) {
 	}
 }
 
-// F-15. The send is delivered and paid for. Reporting a bookkeeping failure as a
-// failed send invites a retry, and a retry is a second charge.
 func TestStartConversation_PersistFailureStillReportsSuccess(t *testing.T) {
 	uc := newUC(t, func(d *Deps) {
 		d.History = &fakeHistory{err: errors.New("database is on fire")}
@@ -229,7 +217,6 @@ func TestStartConversation_PersistFailureStillReportsSuccess(t *testing.T) {
 	}
 }
 
-// F-17. Inside the 24h window the composer sends the same message for nothing.
 func TestStartConversation_OpenWindow_RefusesAndPointsAtTheConversation(t *testing.T) {
 	existing := &wce.WhatsAppCampaignEntry{ID: "entry-9", CampaignID: "camp-1", LeadID: "lead-1"}
 	uc := newUC(t, func(d *Deps) {
@@ -249,7 +236,6 @@ func TestStartConversation_OpenWindow_RefusesAndPointsAtTheConversation(t *testi
 	}
 }
 
-// An unreadable window is not permission to charge.
 func TestStartConversation_WindowReadFails_FailsClosed(t *testing.T) {
 	uc := newUC(t, func(d *Deps) {
 		d.Windows = &fakeWindows{err: errors.New("redis down")}
@@ -263,8 +249,6 @@ func TestStartConversation_WindowReadFails_FailsClosed(t *testing.T) {
 	}
 }
 
-// F-19. A number that cannot be normalised can never be found again, so a charge
-// against it is unattributable.
 func TestStartConversation_UnnormalisableNumber_RefusedBeforeAnything(t *testing.T) {
 	uc := newUC(t)
 	in := input()
@@ -278,8 +262,6 @@ func TestStartConversation_UnnormalisableNumber_RefusedBeforeAnything(t *testing
 	}
 }
 
-// F-07. Not-found flavoured, so phone ids in other workspaces are not
-// enumerable.
 func TestStartConversation_ForeignPhone_RefusedAsNotFound(t *testing.T) {
 	uc := newUC(t, func(d *Deps) {
 		d.Phones = &fakePhones{phone: &businessphone.WhatsAppBusinessPhoneNumber{
@@ -295,8 +277,6 @@ func TestStartConversation_ForeignPhone_RefusedAsNotFound(t *testing.T) {
 	}
 }
 
-// A blocked contact is blocked on every channel, including the one that costs
-// money.
 func TestStartConversation_BlockedLead_Refused(t *testing.T) {
 	uc := newUC(t, func(d *Deps) {
 		d.Leads = &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999", Blocked: true}}
@@ -310,8 +290,6 @@ func TestStartConversation_BlockedLead_Refused(t *testing.T) {
 	}
 }
 
-// Reuse the thread this person already has, or the CRM ends up with two
-// conversations for one human and nobody watching the second.
 func TestStartConversation_ExistingConversation_IsReused(t *testing.T) {
 	existing := &wce.WhatsAppCampaignEntry{ID: "entry-7", CampaignID: "camp-1", LeadID: "lead-1"}
 	uc := newUC(t, func(d *Deps) { d.Entries = &fakeEntries{existing: existing} })
@@ -325,7 +303,6 @@ func TestStartConversation_ExistingConversation_IsReused(t *testing.T) {
 	}
 }
 
-// A replay spent nothing and sent nothing, so it must write nothing either.
 func TestStartConversation_Replay_WritesNothingTwice(t *testing.T) {
 	uc := newUC(t, func(d *Deps) {})
 	uc.sender.result = &template.BilledSendResult{
@@ -344,8 +321,6 @@ func TestStartConversation_Replay_WritesNothingTwice(t *testing.T) {
 	}
 }
 
-// The addressing form and the stored form are not the same, and mixing them up
-// either fails to reach the person or fails to find them afterwards.
 func TestStartConversation_SendsAddressingFormKeepsStoredForm(t *testing.T) {
 	uc := newUC(t)
 	if _, err := uc.uc.Execute(context.Background(), input()); err != nil {
@@ -362,7 +337,6 @@ func TestStartConversation_SendsAddressingFormKeepsStoredForm(t *testing.T) {
 	}
 }
 
-// A failed send leaves an audit trail rather than a silent gap.
 func TestStartConversation_SendRejected_MarksEntryFailed(t *testing.T) {
 	uc := newUC(t)
 	uc.sender.result = &template.BilledSendResult{AttemptID: "att-1", Outcome: template.OutcomeRejected}
@@ -376,7 +350,6 @@ func TestStartConversation_SendRejected_MarksEntryFailed(t *testing.T) {
 	}
 }
 
-// An unknown outcome is not a failure we may assert: the reconcile sweep decides.
 func TestStartConversation_UnknownOutcome_LeavesEntryPending(t *testing.T) {
 	uc := newUC(t)
 	uc.sender.result = &template.BilledSendResult{AttemptID: "att-1", Outcome: template.OutcomeUnknown}
@@ -403,8 +376,6 @@ func TestNewStartConversationUseCase_RefusesWithoutSender(t *testing.T) {
 	}
 }
 
-// A guard against the window ever being recorded on send: doing so would unlock
-// the free-text composer for messages Meta rejects.
 type windowRow = struct{}
 
 var _ = time.Now

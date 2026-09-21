@@ -11,18 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The author pass over the AI port (§5).
-//
-// Strict JSON here, unlike the reply drafter: this answer is a LABEL from a
-// closed set plus an ordinal confidence, and both have to be machine-checkable
-// before they are shown next to a real person's name. Anything the model
-// returns outside the taxonomy is discarded by ParseAuthorRole, which is why
-// the schema constrains the enum rather than trusting the prompt.
-//
-// The prompt's posture is the same restraint the domain encodes: the default
-// answer is "unknown", the comments are labelled as third-party data rather
-// than instructions, and the model is told outright not to guess from tone.
-
 const roleSchemaName = "comment_author_role"
 
 type aiRoleInferrer struct {
@@ -75,10 +63,8 @@ func (r *aiRoleInferrer) InferRole(ctx context.Context, req ca.RoleInferRequest)
 		Model:            model,
 		PromptTokens:     out.Usage.PromptTokens,
 		CompletionTokens: out.Usage.CompletionTokens,
-		// The default survives every failure below: an answer we cannot read is
-		// "we do not know", never a guess.
-		Role:       ca.RoleUnknown,
-		Confidence: string(shared.QualityLevelNone),
+		Role:             ca.RoleUnknown,
+		Confidence:       string(shared.QualityLevelNone),
 	}
 	if out.FinishReason == "length" {
 		return result, nil
@@ -129,8 +115,6 @@ func buildRoleUserMessage(comments []string) string {
 	return b.String()
 }
 
-// roleResponseSchema constrains the answer to the taxonomy at the provider,
-// so an invented label is rejected before it reaches us rather than after.
 func roleResponseSchema() map[string]any {
 	roles := ca.AllAuthorRoles()
 	enum := make([]string, 0, len(roles))

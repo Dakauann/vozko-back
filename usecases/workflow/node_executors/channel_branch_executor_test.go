@@ -10,8 +10,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// channelGraph builds a graph whose single branch node has one outgoing edge
-// per label given, in order.
 func channelGraph(labels ...string) *workflow.Graph {
 	edges := make([]workflow.Edge, 0, len(labels))
 	for i, label := range labels {
@@ -52,8 +50,6 @@ func executeChannelBranch(t *testing.T, run *workflow.WorkflowRun, graph *workfl
 	return res
 }
 
-// ── routing ─────────────────────────────────────────────────────────────────
-
 func TestChannelBranch_RoutesToTheMatchingChannelEdge(t *testing.T) {
 	graph := channelGraph("whatsapp", "instagram", "default")
 	res := executeChannelBranch(t, runOnChannel("instagram"), graph)
@@ -63,9 +59,6 @@ func TestChannelBranch_RoutesToTheMatchingChannelEdge(t *testing.T) {
 	assert.Equal(t, "instagram", res.Output["channel"])
 }
 
-// The two WhatsApp transports are separate handles. They differ in what they can
-// actually send — no template, no messaging window on the unofficial one — so
-// collapsing them would send a template down a path that cannot deliver it.
 func TestChannelBranch_SeparatesTheTwoWhatsAppTransports(t *testing.T) {
 	graph := channelGraph("whatsapp", "unofficial_whatsapp", "default")
 
@@ -86,9 +79,6 @@ func TestChannelBranch_FallsBackToDefault(t *testing.T) {
 		"matched=false is what distinguishes 'handles telegram' from 'tolerates telegram'")
 }
 
-// A branch with no default and no matching edge ends the run, exactly as any
-// other node with no outgoing edge does. Inventing a target here would send the
-// conversation somewhere the author never drew.
 func TestChannelBranch_NoMatchAndNoDefaultEndsTheRun(t *testing.T) {
 	graph := channelGraph("whatsapp")
 	res := executeChannelBranch(t, runOnChannel("telegram"), graph)
@@ -98,7 +88,6 @@ func TestChannelBranch_NoMatchAndNoDefaultEndsTheRun(t *testing.T) {
 }
 
 func TestChannelBranch_DefaultOrderDoesNotShadowAnExactMatch(t *testing.T) {
-	// Default drawn FIRST: the exact channel must still win.
 	graph := channelGraph("default", "telegram")
 	res := executeChannelBranch(t, runOnChannel("telegram"), graph)
 
@@ -118,8 +107,6 @@ func TestChannelBranch_LabelMatchingIsCaseAndSpaceTolerant(t *testing.T) {
 	assert.Equal(t, "t1", res.NextNodeID, "a hand-edited label must still route")
 }
 
-// An empty channel must not match an empty label — that would route every
-// channel-less run into whichever edge happened to have a blank label.
 func TestChannelBranch_EmptyChannelTakesTheDefault(t *testing.T) {
 	graph := &workflow.Graph{
 		Nodes: []workflow.Node{{ID: "branch", Type: workflow.NodeTypeConditionChannel}},
@@ -134,9 +121,6 @@ func TestChannelBranch_EmptyChannelTakesTheDefault(t *testing.T) {
 	assert.Equal(t, false, res.Output["matched"])
 }
 
-// The node reads the RUN, not the state variable. An author who overwrites
-// {{channel}} with set_variable changes what interpolates, not where the
-// conversation goes.
 func TestChannelBranch_IgnoresAnOverwrittenChannelVariable(t *testing.T) {
 	graph := channelGraph("whatsapp", "telegram", "default")
 	run := runOnChannel("whatsapp")
@@ -155,8 +139,6 @@ func TestChannelBranch_IgnoresAnOverwrittenChannelVariable(t *testing.T) {
 		"routing follows the run, not a variable an author can shadow")
 }
 
-// ── definition ──────────────────────────────────────────────────────────────
-
 func TestChannelBranch_DeclaresAHandlePerChannelPlusDefault(t *testing.T) {
 	def := NewChannelBranchExecutor().Definition()
 
@@ -169,8 +151,6 @@ func TestChannelBranch_DeclaresAHandlePerChannelPlusDefault(t *testing.T) {
 	assert.Equal(t, workflow.ChannelBranchDefault, last.ID, "the default is always last")
 }
 
-// The node has no settings: the channel is a fact about the run, so a config
-// field here would be one whose only correct value the runtime already knows.
 func TestChannelBranch_HasNoConfiguration(t *testing.T) {
 	def := NewChannelBranchExecutor().Definition()
 	assert.Empty(t, def.ConfigSchema)
@@ -184,12 +164,6 @@ func TestChannelBranch_IsAValidConditionNodeType(t *testing.T) {
 		"the editor renders branch handles only for condition nodes")
 }
 
-// Every channel the platform can actually run a workflow on must have a handle,
-// and NOTHING else may. A handle for a channel a run can never be on is worse
-// than a missing one: the author draws an edge from it and gets a path that
-// silently never fires.
-//
-// EntryType.Valid() IS the messaging-channel test, which is why voice fails it.
 func TestChannelBranch_OffersOnlyReachableChannels(t *testing.T) {
 	for _, entryType := range []shared.EntryType{
 		shared.EntryTypeWhatsApp,

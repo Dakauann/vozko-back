@@ -23,8 +23,6 @@ func newEntryHarness(t *testing.T, status campaign.Status, bodies ...string) (*e
 	return newEntryManagement(campaigns, entries, newFakeLeadRepo()), entries
 }
 
-// Invalid and duplicate rows are REPORTED, never silently dropped: an operator
-// told "added 500" when 80 were malformed has no way to find the 80.
 func TestAddEntriesReportsWhatItRejected(t *testing.T) {
 	uc, _ := newEntryHarness(t, campaign.StatusStopped)
 
@@ -32,8 +30,8 @@ func TestAddEntriesReportsWhatItRejected(t *testing.T) {
 		CampaignID: "camp-1",
 		Numbers: []uwc.EntryInput{
 			{Number: "5584999990001"},
-			{Number: "+55 84 99999-0001"}, // the same person, written differently
-			{Number: "123"},               // too short to be a number
+			{Number: "+55 84 99999-0001"},
+			{Number: "123"},
 			{Number: "5584999990002"},
 		},
 	}, false)
@@ -51,7 +49,6 @@ func TestAddEntriesReportsWhatItRejected(t *testing.T) {
 	}
 }
 
-// A row without enough values would send a raw {{2}} to a customer.
 func TestAddEntriesRejectsRowsMissingVariables(t *testing.T) {
 	uc, _ := newEntryHarness(t, campaign.StatusStopped, "oi {{1}} de {{2}}")
 
@@ -70,8 +67,6 @@ func TestAddEntriesRejectsRowsMissingVariables(t *testing.T) {
 	}
 }
 
-// Adding to a live campaign without dispatching leaves rows PENDING forever,
-// because the fan-out already happened and completion is counted per message.
 func TestAddEntriesRefusedOnARunningCampaign(t *testing.T) {
 	uc, _ := newEntryHarness(t, campaign.StatusRunning)
 
@@ -84,8 +79,6 @@ func TestAddEntriesRefusedOnARunningCampaign(t *testing.T) {
 	}
 }
 
-// Quick send is the one caller that adds AND enqueues in the same breath, so it
-// is the one caller for which adding to a live campaign is coherent.
 func TestQuickSendMayAddToARunningCampaign(t *testing.T) {
 	uc, _ := newEntryHarness(t, campaign.StatusRunning)
 
@@ -101,8 +94,6 @@ func TestQuickSendMayAddToARunningCampaign(t *testing.T) {
 	}
 }
 
-// A campaign id in the path that does not match the entry's must not let a
-// caller delete another campaign's row by guessing an id.
 func TestDeleteEntryChecksTheCampaignOwnsIt(t *testing.T) {
 	uc, entries := newEntryHarness(t, campaign.StatusStopped)
 	entries.put(&uwc.Entry{ID: "entry-1", CampaignID: "other-campaign", LeadID: "lead-1"})
@@ -113,8 +104,6 @@ func TestDeleteEntryChecksTheCampaignOwnsIt(t *testing.T) {
 	}
 }
 
-// A changed number is a different person, so the lead has to move with it —
-// otherwise the entry points at the previous lead's history.
 func TestUpdateEntryRebindsTheLeadWhenTheNumberChanges(t *testing.T) {
 	uc, entries := newEntryHarness(t, campaign.StatusStopped)
 	entries.put(&uwc.Entry{

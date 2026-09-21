@@ -28,15 +28,11 @@ func TestSeededOutcomeStatusesSplitsTheList(t *testing.T) {
 	if counts[SendStatusFailed] != 10 {
 		t.Fatalf("failed = %d, want 10", counts[SendStatusFailed])
 	}
-	// The remainder is PENDING rather than anything else: those entries have not
-	// been sent to, which is exactly what PENDING means.
 	if counts[SendStatusPending] != 60 {
 		t.Fatalf("pending = %d, want 60", counts[SendStatusPending])
 	}
 }
 
-// The counts a campaign card renders have to come out of Metrics the same way
-// a real blast's would, or the feature shows a campaign nobody could have run.
 func TestSeededOutcomeFeedsMetrics(t *testing.T) {
 	counts := &Counts{Total: 100}
 	for _, status := range (&SeededOutcome{SentPercent: 30, FailedPercent: 10}).Statuses(100) {
@@ -51,8 +47,6 @@ func TestSeededOutcomeFeedsMetrics(t *testing.T) {
 	}
 
 	metrics := NewMetrics(counts)
-	// Dispatches is subtractive: total minus everything never transmitted. A
-	// read entry was transmitted; a failed one was not.
 	if metrics.Dispatches != 30 {
 		t.Fatalf("dispatches = %d, want 30", metrics.Dispatches)
 	}
@@ -64,8 +58,6 @@ func TestSeededOutcomeFeedsMetrics(t *testing.T) {
 	}
 }
 
-// Bunching the settled buckets at the head of the list would make the entries
-// table, which reads in creation order, look like a failed import.
 func TestSeededOutcomeSpreadsRatherThanBunches(t *testing.T) {
 	got := (&SeededOutcome{SentPercent: 50}).Statuses(100)
 	if got[0] == got[1] && got[1] == got[2] && got[2] == got[3] &&
@@ -73,8 +65,6 @@ func TestSeededOutcomeSpreadsRatherThanBunches(t *testing.T) {
 		t.Fatalf("first six entries are all %q: the mix is bunched, not spread", got[0])
 	}
 
-	// Same request, same list: a test that pins counts must not be flaky, and an
-	// operator re-creating a campaign should get the campaign they saw.
 	again := (&SeededOutcome{SentPercent: 50}).Statuses(100)
 	for i := range got {
 		if got[i] != again[i] {
@@ -102,8 +92,6 @@ func TestSeededOutcomeRefusesMoreThanTheWholeList(t *testing.T) {
 		t.Fatalf("Validate = %v, want ErrSeededOutcomeOverflow", err)
 	}
 
-	// Out of range on its own is clamped, not refused: the nearest legal value
-	// is obvious, and it should not cost the operator their campaign.
 	clamped := &SeededOutcome{SentPercent: 140, FailedPercent: -5}
 	clamped.Normalize()
 	if clamped.SentPercent != 100 || clamped.FailedPercent != 0 {
@@ -111,10 +99,6 @@ func TestSeededOutcomeRefusesMoreThanTheWholeList(t *testing.T) {
 	}
 }
 
-// The bug this pins: 40% and 60% of three targets floored to one and one, and
-// left the third PENDING. Shares that add up to 100 must settle the whole list,
-// at every size — a leftover PENDING row is a live target a later Start would
-// really send to.
 func TestSeededOutcomeLeavesNothingPendingWhenSharesFillTheList(t *testing.T) {
 	for total := 1; total <= 200; total++ {
 		for _, split := range [][2]int{{40, 60}, {50, 50}, {1, 99}, {100, 0}, {0, 100}, {33, 67}} {
@@ -134,20 +118,15 @@ func TestSeededOutcomeLeavesNothingPendingWhenSharesFillTheList(t *testing.T) {
 	}
 }
 
-// The exact campaign that surfaced it.
 func TestSeededOutcomeSplitsThreeTargetsFortySixty(t *testing.T) {
 	counts := tally((&SeededOutcome{SentPercent: 40, FailedPercent: 60}).Statuses(3))
 
-	// 1.2 and 1.8 in exact terms, so the extra entry belongs to the larger
-	// share rather than to neither.
 	if counts[SendStatusSent] != 1 || counts[SendStatusFailed] != 2 {
 		t.Fatalf("split = %d sent / %d failed, want 1 / 2",
 			counts[SendStatusSent], counts[SendStatusFailed])
 	}
 }
 
-// Rounding may move an entry between buckets; it may never invent or lose one,
-// and a partial mix still leaves the rest PENDING.
 func TestSeededOutcomeNeverOverfillsTheList(t *testing.T) {
 	for total := 1; total <= 60; total++ {
 		for sent := 0; sent <= 100; sent += 7 {

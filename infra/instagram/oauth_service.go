@@ -14,36 +14,16 @@ import (
 	igdomain "vozko/domain/instagram"
 )
 
-// Business Login for Instagram spans three fixed hosts.
-//
-// These are constants rather than configuration on purpose: they are determined
-// by the login path (Instagram Login, not Facebook Login), not by the deployment.
-// Making them env-tunable would add a silent-breakage footgun, point one at the
-// wrong host and the whole flow fails in a way that looks like a Meta outage,
-// while the only real need for substitution is tests, which inject an HTTPClient
-// instead.
 const (
 	AuthorizeHost = "www.instagram.com"
 	TokenHost     = "api.instagram.com"
 	GraphHost     = "graph.instagram.com"
 )
 
-// OAuthConfig configures Business Login for Instagram.
 type OAuthConfig struct {
-	AppID     string
-	AppSecret string
-	// RedirectURI must match a URI registered in the App Dashboard EXACTLY.
-	//
-	// It is deliberately NOT caller-supplied. In OAuth the redirect URI is the
-	// security boundary: if a request could name its own, anyone able to reach the
-	// start endpoint could have the authorization code, and therefore the
-	// account's token, delivered to a host they control. Callers instead choose
-	// where they land AFTER the callback, via the `returnPath` carried inside the
-	// signed state and validated as a relative path.
-	RedirectURI string
-	// GraphVersion is the one genuinely deployment-owned value here: Meta sunsets
-	// versions on published dates, so it must be bumpable (and roll-back-able)
-	// without a code change.
+	AppID        string
+	AppSecret    string
+	RedirectURI  string
 	GraphVersion string
 
 	HTTPClient *http.Client
@@ -54,7 +34,6 @@ type oauthService struct {
 	http *http.Client
 }
 
-// NewOAuthService builds the Instagram OAuth service.
 func NewOAuthService(cfg OAuthConfig) igdomain.OAuthService {
 	if cfg.GraphVersion == "" {
 		cfg.GraphVersion = DefaultGraphVersion
@@ -66,12 +45,6 @@ func NewOAuthService(cfg OAuthConfig) igdomain.OAuthService {
 	return &oauthService{cfg: cfg, http: client}
 }
 
-// BuildAuthorizeURL builds the URL the user is redirected to.
-//
-// Note that scope is COMMA-separated here; the Facebook dialog accepts either
-// form but the Instagram authorize endpoint does not. enable_fb_login defaults
-// to true upstream, so it is set explicitly to keep onboarding on the pure
-// Instagram-credentials path.
 func (s *oauthService) BuildAuthorizeURL(state string) string {
 	q := url.Values{}
 	q.Set("client_id", s.cfg.AppID)
@@ -84,20 +57,12 @@ func (s *oauthService) BuildAuthorizeURL(state string) string {
 
 	authorizeURL := "https://" + AuthorizeHost + "/oauth/authorize?" + q.Encode()
 
-	// The redirect_uri and scope list are logged because "Invalid redirect_uri" is
-	// the most common onboarding failure and is always a byte-level mismatch against
-	// the App Dashboard allowlist. Neither value is a secret.
 	log.Printf("[instagram-oauth] authorize url built (client_id=%s redirect_uri=%q scopes=%s)",
 		s.cfg.AppID, s.cfg.RedirectURI, q.Get("scope"))
 
 	return authorizeURL
 }
 
-// shortLivedResponse is the code-exchange response.
-//
-// It is ARRAY-WRAPPED ({"data":[{...}]}) unlike every other token response in
-// the flow. Decoding it as a flat object yields a zero-valued token with no
-// error, which is why the shape is asserted explicitly below.
 type shortLivedResponse struct {
 	Data []struct {
 		AccessToken string         `json:"access_token"`
@@ -105,8 +70,6 @@ type shortLivedResponse struct {
 		Permissions permissionList `json:"permissions"`
 	} `json:"data"`
 
-	// Flat fallback: accepted because the docs are inconsistent across pages,
-	// and a silent zero token is far worse than tolerating both shapes.
 	AccessToken string         `json:"access_token"`
 	UserID      graphID        `json:"user_id"`
 	Permissions permissionList `json:"permissions"`
@@ -140,15 +103,12 @@ func (s *oauthService) ExchangeCode(ctx context.Context, code string) (*igdomain
 
 	return &igdomain.TokenGrant{
 		AccessToken: token,
-		// The short-lived token is valid for one hour; the response does not
-		// carry expires_in.
 		ExpiresIn:   time.Hour,
 		UserID:      userID.String(),
 		Permissions: perms,
 	}, nil
 }
 
-// longLivedResponse is returned by both the long-lived exchange and the refresh.
 type longLivedResponse struct {
 	AccessToken string         `json:"access_token"`
 	TokenType   string         `json:"token_type"`
@@ -176,11 +136,6 @@ func (s *oauthService) ExchangeForLongLived(ctx context.Context, shortLivedToken
 	}, nil
 }
 
-// RefreshToken extends a long-lived token.
-//
-// Deliberately does NOT send client_secret, unlike the long-lived exchange,
-// this endpoint does not take it. Instagram also rejects a refresh on a token
-// younger than 24 hours, which the caller enforces before calling.
 func (s *oauthService) RefreshToken(ctx context.Context, longLivedToken string) (*igdomain.TokenGrant, error) {
 	q := url.Values{}
 	q.Set("grant_type", "ig_refresh_token")
@@ -200,12 +155,6 @@ func (s *oauthService) RefreshToken(ctx context.Context, longLivedToken string) 
 	}, nil
 }
 
-// profileResponse is GET /me.
-//
-// UserID and ID are BOTH returned and they are DIFFERENT values: user_id is the
-// Instagram professional account ID used in endpoint paths, while id is
-// app-scoped and is not usable as <IG_ID>. Confusing them is the single most
-// common Instagram Login mistake, so only UserID is propagated.
 type profileResponse struct {
 	UserID            graphID `json:"user_id"`
 	ID                graphID `json:"id"`
@@ -247,8 +196,6 @@ func (s *oauthService) GetProfile(ctx context.Context, token string) (*igdomain.
 	}, nil
 }
 
-// ---------------------------------------------------------------- transport
-
 func (s *oauthService) get(ctx context.Context, endpoint string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -287,8 +234,6 @@ func (s *oauthService) do(req *http.Request, out any) error {
 		time.Since(started).Round(time.Millisecond), len(raw))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Log the upstream body verbatim. Token responses only reach here on
-		// FAILURE, so this carries Meta's error detail and no credential.
 		log.Printf("[instagram-oauth] %s %s failed, body: %s",
 			req.Method, req.URL.Host+req.URL.Path, truncateBody(raw))
 		return parseOAuthError(resp.StatusCode, raw)
@@ -302,8 +247,6 @@ func (s *oauthService) do(req *http.Request, out any) error {
 	return nil
 }
 
-// oauthError covers both Graph's {"error":{...}} envelope and the flat
-// {"error_type","error_message"} form the Instagram OAuth hosts use.
 type oauthError struct {
 	Error struct {
 		Message   string `json:"message"`
@@ -335,7 +278,6 @@ func parseOAuthError(status int, raw []byte) error {
 	return fmt.Errorf("instagram oauth: http=%d: %s", status, body)
 }
 
-// truncateBody bounds an upstream error body for logging.
 func truncateBody(raw []byte) string {
 	const limit = 1024
 	if len(raw) <= limit {

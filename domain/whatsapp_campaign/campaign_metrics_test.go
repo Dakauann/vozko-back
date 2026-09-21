@@ -30,7 +30,7 @@ func TestNewCampaignMetricsDispatchesAndRates(t *testing.T) {
 
 	m := NewCampaignMetrics(counts)
 
-	if got, want := m.Dispatches, int64(70); got != want { // SENT + DELIVERED + READ
+	if got, want := m.Dispatches, int64(70); got != want {
 		t.Errorf("Dispatches = %d, want %d", got, want)
 	}
 	if got, want := m.Processed, int64(90); got != want {
@@ -39,10 +39,9 @@ func TestNewCampaignMetricsDispatchesAndRates(t *testing.T) {
 	if got, want := m.NotEligiblePossibleSpam, int64(8); got != want {
 		t.Errorf("NotEligiblePossibleSpam = %d, want %d", got, want)
 	}
-	if got, want := m.CompletionRate, 90.0; got != want { // 90 / 100 * 100
+	if got, want := m.CompletionRate, 90.0; got != want {
 		t.Errorf("CompletionRate = %v, want %v", got, want)
 	}
-	// SuccessRate = dispatches / processed * 100 = 70 / 90 * 100 = 77.78
 	if m.SuccessRate < 77.7 || m.SuccessRate > 77.8 {
 		t.Errorf("SuccessRate = %v, want ~77.78", m.SuccessRate)
 	}

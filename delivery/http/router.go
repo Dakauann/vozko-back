@@ -10,6 +10,7 @@ import (
 	affiliatehttp "vozko/delivery/http/affiliate"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
+	audiencehttp "vozko/delivery/http/audience"
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
 	buildersessionhttp "vozko/delivery/http/buildersession"
@@ -17,7 +18,6 @@ import (
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	cephttp "vozko/delivery/http/cep"
-	audiencehttp "vozko/delivery/http/audience"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
@@ -77,21 +77,20 @@ import (
 const enableRequestLogging = true
 
 type router struct {
-	mux             *mux.Router
-	productHandler  *handlers.ProductHandler
-	propertyHandler *handlers.PropertyHandler
-	categoryHandler *handlers.CategoryHandler
-	agentHandler    *handlers.AgentHandler
-	aiChatHandler   *handlers.AIChatHandler
-	authHandler     *authhttp.AuthHandler
-	userHandler     *userhttp.UserHandler
-	mediasHandler   *mediashttp.MediasHandler
-	cartHandler     *handlers.CartHandler
-	addressHandler  *handlers.AddressHandler
-	orderHandler    *handlers.OrderHandler
-	cepHandler      *cephttp.CEPHandler
-	webhookHandler  *handlers.WebhookHandler
-	// mercadoPagoWebhookHandler is nil unless Mercado Pago is the active provider.
+	mux                            *mux.Router
+	productHandler                 *handlers.ProductHandler
+	propertyHandler                *handlers.PropertyHandler
+	categoryHandler                *handlers.CategoryHandler
+	agentHandler                   *handlers.AgentHandler
+	aiChatHandler                  *handlers.AIChatHandler
+	authHandler                    *authhttp.AuthHandler
+	userHandler                    *userhttp.UserHandler
+	mediasHandler                  *mediashttp.MediasHandler
+	cartHandler                    *handlers.CartHandler
+	addressHandler                 *handlers.AddressHandler
+	orderHandler                   *handlers.OrderHandler
+	cepHandler                     *cephttp.CEPHandler
+	webhookHandler                 *handlers.WebhookHandler
 	mercadoPagoWebhookHandler      *mercadopagohttp.WebhookHandler
 	readMeHandler                  *readmehttp.Handler
 	paymentSplitHandler            *paymentsplithttp.PaymentSplitHandler
@@ -149,38 +148,34 @@ type router struct {
 	resetPasswordRateLimiter       *middleware.RateLimiterMiddleware
 	phoneVerificationRateLimiter   *middleware.RateLimiterMiddleware
 	metaEmbeddedSignupHandler      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler
-	// Instagram handlers are nil when the channel is disabled, so both route
-	// registrations are guarded.
-	instagramHandler        *instagramhttp.Handler
-	instagramWebhookHandler *instagramhttp.WebhookHandler
-	// audienceHandler is nil when the feature is not wired; nil means
-	// no routes, like the channels.
-	audienceHandler      *audiencehttp.Handler
-	telegramHandler             *telegramhttp.Handler
-	telegramWebhookHandler      *telegramhttp.WebhookHandler
-	unofficialWhatsAppHandler   *unofficialwahttp.Handler
-	whatsappOutreachHandler     *whatsappoutreachhttp.Handler
-	unofficialWhatsAppGroups    *unofficialwahttp.GroupHandler
-	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler
-	unofficialWhatsAppWebhook   *unofficialwahttp.WebhookHandler
-	workspaceHandler            *workspacehttp.WorkspaceHandler
-	workspacePricingHandler     *workspacepricinghttp.WorkspacePricingHandler
-	workspaceConfigHandler      *workspaceconfighttp.WorkspaceConfigHandler
-	workspacePlanHandler        *handlers.WorkspacePlanHandler
-	workspaceAddonHandler       *workspaceaddonhttp.WorkspaceAddonHandler
-	supportInboxHandler         *supportinboxhttp.SupportInboxHandler
-	issueHandler                *issuehttp.IssueHandler
-	workflowHandler             *handlers.WorkflowHandler
-	workflowWebhookHandler      *workflowwebhookhttp.Handler
-	wsWorkflowSimulatorHandler  *wsdelivery.WSWorkflowSimulatorHandler
-	wsWorkflowAIBuilderHandler  *wsdelivery.WSWorkflowAIBuilderHandler
-	builderSessionHandler       *buildersessionhttp.BuilderSessionHandler
-	calendarHandler             *calendarhttp.CalendarHandler
-	workspaceDepartmentHandler  *workspacedepartmenthttp.WorkspaceDepartmentHandler
-	affiliateHandler            *affiliatehttp.AffiliateHandler
-	agentMCP                    *handlers.AgentMCPBundle
-	workspaceMiddleware         *middleware.WorkspaceMiddleware
-	departmentMiddleware        *middleware.DepartmentMiddleware
+	instagramHandler               *instagramhttp.Handler
+	instagramWebhookHandler        *instagramhttp.WebhookHandler
+	audienceHandler                *audiencehttp.Handler
+	telegramHandler                *telegramhttp.Handler
+	telegramWebhookHandler         *telegramhttp.WebhookHandler
+	unofficialWhatsAppHandler      *unofficialwahttp.Handler
+	whatsappOutreachHandler        *whatsappoutreachhttp.Handler
+	unofficialWhatsAppGroups       *unofficialwahttp.GroupHandler
+	unofficialWhatsAppCampaigns    *unofficialwahttp.CampaignHandler
+	unofficialWhatsAppWebhook      *unofficialwahttp.WebhookHandler
+	workspaceHandler               *workspacehttp.WorkspaceHandler
+	workspacePricingHandler        *workspacepricinghttp.WorkspacePricingHandler
+	workspaceConfigHandler         *workspaceconfighttp.WorkspaceConfigHandler
+	workspacePlanHandler           *handlers.WorkspacePlanHandler
+	workspaceAddonHandler          *workspaceaddonhttp.WorkspaceAddonHandler
+	supportInboxHandler            *supportinboxhttp.SupportInboxHandler
+	issueHandler                   *issuehttp.IssueHandler
+	workflowHandler                *handlers.WorkflowHandler
+	workflowWebhookHandler         *workflowwebhookhttp.Handler
+	wsWorkflowSimulatorHandler     *wsdelivery.WSWorkflowSimulatorHandler
+	wsWorkflowAIBuilderHandler     *wsdelivery.WSWorkflowAIBuilderHandler
+	builderSessionHandler          *buildersessionhttp.BuilderSessionHandler
+	calendarHandler                *calendarhttp.CalendarHandler
+	workspaceDepartmentHandler     *workspacedepartmenthttp.WorkspaceDepartmentHandler
+	affiliateHandler               *affiliatehttp.AffiliateHandler
+	agentMCP                       *handlers.AgentMCPBundle
+	workspaceMiddleware            *middleware.WorkspaceMiddleware
+	departmentMiddleware           *middleware.DepartmentMiddleware
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -283,7 +278,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 ) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
-		audienceHandler:         audienceHandler,
+		audienceHandler:                audienceHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
 		telegramHandler:                telegramHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
@@ -376,9 +371,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		emailVerificationRateLimiter: middleware.NewRateLimiterMiddleware(rateLimiterFactory("email_ver", 3, 3600*time.Second)).Named("email_ver").WithMetrics(rateLimitMetrics),
 		mediaUploadRateLimiter:       middleware.NewRateLimiterMiddleware(rateLimiterFactory("media_upload", 10, 1*time.Second)).Named("media_upload").WithMetrics(rateLimitMetrics),
 		registerRateLimiter:          middleware.NewRateLimiterMiddleware(rateLimiterFactory("register", 20, 3600*time.Second)).Named("register").WithMetrics(rateLimitMetrics),
-		// Coarse per-IP backstop, generous so a shared office/NAT does not collide;
-		// the precise brute-force defence is the per-account failed-login throttle in
-		// the credentials login use case.
 		loginRateLimiter:             middleware.NewRateLimiterMiddleware(rateLimiterFactory("login", 100, 60*time.Second)).Named("login").WithMetrics(rateLimitMetrics),
 		resetPasswordRateLimiter:     middleware.NewRateLimiterMiddleware(rateLimiterFactory("reset_pw", 3, 3600*time.Second)).Named("reset_pw").WithMetrics(rateLimitMetrics),
 		phoneVerificationRateLimiter: middleware.NewRateLimiterMiddleware(rateLimiterFactory("phone_ver", 5, 86400*time.Second)).Named("phone_ver").WithMetrics(rateLimitMetrics),
@@ -587,8 +579,6 @@ func (r *router) setupWhatsAppOnboardRoute() {
 	}).Methods(http.MethodGet)
 }
 
-// setupAudienceRoutes registers the comment-analysis API. A nil
-// handler means the feature is not wired, in which case no routes exist.
 func (r *router) setupAudienceRoutes(protected *mux.Router) {
 	if r.audienceHandler == nil {
 		return
@@ -596,8 +586,6 @@ func (r *router) setupAudienceRoutes(protected *mux.Router) {
 	audiencehttp.RegisterProtectedRoutes(protected, r.audienceHandler, r.ac)
 }
 
-// setupInstagramRoutes registers the Instagram channel. A nil handler means the
-// channel is disabled, in which case no routes exist at all.
 func (r *router) setupInstagramRoutes(protected *mux.Router) {
 	if r.instagramHandler == nil {
 		return
@@ -605,8 +593,6 @@ func (r *router) setupInstagramRoutes(protected *mux.Router) {
 	instagramhttp.RegisterProtectedRoutes(protected, r.instagramHandler, r.ac)
 }
 
-// setupTelegramRoutes registers the Telegram channel. A nil handler means the
-// channel is disabled, in which case no routes exist at all.
 func (r *router) setupTelegramRoutes(protected *mux.Router) {
 	if r.telegramHandler == nil {
 		return
@@ -614,26 +600,15 @@ func (r *router) setupTelegramRoutes(protected *mux.Router) {
 	telegramhttp.RegisterProtectedRoutes(protected, r.telegramHandler, r.ac)
 }
 
-// setupUnofficialWhatsAppRoutes registers the linked-device WhatsApp channel. A
-// nil handler means the channel is disabled, in which case no routes exist.
 func (r *router) setupUnofficialWhatsAppRoutes(protected *mux.Router) {
 	if r.unofficialWhatsAppHandler == nil {
 		return
 	}
 	unofficialwahttp.RegisterProtectedRoutes(protected, r.unofficialWhatsAppHandler, r.ac)
-	// Registered separately because the group endpoints carry their own RBAC
-	// split — reading a roster, editing a group, and evicting someone from it
-	// are three different privileges. See RegisterGroupRoutes.
 	unofficialwahttp.RegisterGroupRoutes(protected, r.unofficialWhatsAppGroups, r.ac)
-	// Campaigns are a separate RBAC resource: connecting a number and blasting
-	// from it are different privileges. See RegisterCampaignRoutes.
 	unofficialwahttp.RegisterCampaignRoutes(protected, r.unofficialWhatsAppCampaigns, r.ac)
 }
 
-// setupWhatsAppOutreachRoutes registers cold outbound on the official channel:
-// sending a paid template to a number that never wrote to us. A nil handler
-// means the feature is not wired, in which case no routes exist — which is the
-// right failure, since every route here spends the workspace's balance.
 func (r *router) setupWhatsAppOutreachRoutes(protected *mux.Router) {
 	whatsappoutreachhttp.RegisterProtectedRoutes(protected, r.whatsappOutreachHandler, r.ac)
 }
@@ -661,26 +636,13 @@ func (r *router) setupPublicCategoryRoutes() {
 
 func (r *router) setupWebhookRoutes() {
 	r.mux.HandleFunc("/webhooks/asaas", r.webhookHandler.HandleAsaasWebhook).Methods(http.MethodPost)
-	// Mercado Pago's inbound payment webhook. Registered only when Mercado Pago is the
-	// active provider (the handler is nil otherwise), and authenticated by the
-	// x-signature HMAC rather than a shared header token.
 	mercadopagohttp.RegisterPublicRoutes(r.mux, r.mercadoPagoWebhookHandler)
 	readmehttp.RegisterPublicRoutes(r.mux, r.readMeHandler)
 	r.mux.HandleFunc("/webhooks/whatsapp", r.webhookHandler.HandleWhatsAppWebhook).Methods(http.MethodGet, http.MethodPost)
 	metaembeddedsignuphttp.RegisterPublicRoutes(r.mux, r.metaEmbeddedSignupHandler)
-	// The OAuth callback is public because Instagram redirects the browser to it
-	// directly, and the webhook is public because Meta calls it. Both are
-	// authenticated by other means: a signed single-use state, and the
-	// X-Hub-Signature-256 HMAC.
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
-	// Telegram calls its webhook directly. There is no body signature to verify,
-	// the endpoint is authenticated by the per-account secret token Telegram
-	// echoes in X-Telegram-Bot-Api-Secret-Token, and the path carries our own
-	// account uuid because an Update object identifies no bot.
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
-	// 360dialog inbound messaging webhook (messages, statuses, template + coexistence
-	// events). Reuses the Meta envelope pipeline; authenticated by shared secret.
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)
 	workflowwebhookhttp.RegisterPublicRoutes(r.mux, r.workflowWebhookHandler, r.workflowWebhookRateLimiter)
 }
@@ -859,7 +821,6 @@ func (r *router) setupUserInvoiceRoutes(protected *mux.Router) {
 }
 
 func (r *router) setupWorkspaceSubscriptionRoutes(protected *mux.Router) {
-	// Subscription = "Planos e Faturamento": contract→plans:create, cancel→plans:delete.
 	pl := workspace_domain.ResourcePlans
 	protected.HandleFunc("/workspaces/{workspaceId}/subscription", r.ac(pl, workspace_domain.ActionCreate, r.workspacePlanHandler.CreateSubscriptionInvoice)).Methods(http.MethodPost)
 	protected.HandleFunc("/workspaces/{workspaceId}/subscription/cancel", r.ac(pl, workspace_domain.ActionDelete, r.workspacePlanHandler.Cancel)).Methods(http.MethodPost)
@@ -945,12 +906,6 @@ func (r *router) setupShortLinkRoutes(protected *mux.Router) {
 	shortlinkhttp.RegisterRoutes(protected, r.shortLinkHandler, r.ac)
 }
 
-// setupExportRoutes mounts the CSV export endpoints.
-//
-// These were built, wired into the container and threaded into this struct, but
-// never registered, so every export in the product answered 404 — and the
-// frontend reads a 404 from this path as "nothing to export", which told
-// operators their campaigns were empty. Covered by TestExportRoutesRegistered.
 func (r *router) setupExportRoutes(protected *mux.Router) {
 	exporthttp.RegisterRoutes(protected, r.exportHandler, r.ac)
 }
@@ -1106,9 +1061,6 @@ func (r *router) setupWorkflowRoutes(protected *mux.Router) {
 		protected.HandleFunc("/ws/workflows/{id}/simulate", r.ac(wf, workspace_domain.ActionUpdate, r.wsWorkflowSimulatorHandler.HandleSimulate))
 	}
 	if r.wsWorkflowAIBuilderHandler != nil {
-		// Edit an existing workflow (ActionUpdate) and build a new one from
-		// scratch (ActionCreate). Drafts only, persistence stays on the normal
-		// create/update HTTP path.
 		protected.HandleFunc("/ws/workflows/{id}/ai-builder", r.ac(wf, workspace_domain.ActionUpdate, r.wsWorkflowAIBuilderHandler.HandleSession))
 		protected.HandleFunc("/ws/workflows/ai-builder", r.ac(wf, workspace_domain.ActionCreate, r.wsWorkflowAIBuilderHandler.HandleSession))
 	}

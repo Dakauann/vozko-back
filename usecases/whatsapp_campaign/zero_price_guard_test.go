@@ -9,16 +9,6 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// An unpriced workspace used to send at BULK volume for free.
-//
-// The pricer answers a missing item with a zero price and no error, and the
-// consumer only checked the error. It reserved nothing, "debited" nothing —
-// Execute returned (nil, nil), which reads as success — and sent anyway. Meta
-// bills per delivered message, so the platform paid for up to a whole campaign
-// and collected nothing, with no log line and no alert.
-//
-// The guard now lives in the billing use case, so all four senders inherit it;
-// this pins the consumer's half: refuse, fail the entry, and do not spin.
 func TestConsumer_ZeroPrice_RefusesToSendUnbilled(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}
@@ -48,8 +38,6 @@ func TestConsumer_ZeroPrice_RefusesToSendUnbilled(t *testing.T) {
 	}
 }
 
-// The refusal is a configuration fault, not a transient one. Requeuing it would
-// spin the entry against the broker forever.
 func TestConsumer_ZeroPrice_DoesNotRequeueForever(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}
@@ -76,13 +64,10 @@ func TestConsumer_ZeroPrice_DoesNotRequeueForever(t *testing.T) {
 	}
 }
 
-// Defence in depth: even if the pricer stops erroring and simply answers zero,
-// the consumer must not send. A campaign is up to 150k messages, and every one
-// of them would be billed by Meta and charged to nobody.
 func TestConsumer_ZeroCostWithoutError_StillRefusesToSend(t *testing.T) {
 	h := newTestHarness()
 	h.consumer.WhatsAppClientFactory = &mockWhatsAppClientFactory{client: h.waClient, returnReal: true}
-	h.consumeTempl.zeroCost = true // returns (0, nil), the old fail-open shape
+	h.consumeTempl.zeroCost = true
 
 	campID := "camp-zero-cost-no-error"
 	topic := makeTopic(campID)

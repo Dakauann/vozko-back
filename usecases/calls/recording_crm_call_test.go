@@ -72,7 +72,7 @@ func (noopPub) PublishWithDelay(topic string, message []byte, delay time.Duratio
 }
 func (noopPub) ValidateConnection() error { return nil }
 
-func silentFrame() []byte { return make([]byte, 320) } // 160 samples PCM16 = 20ms @ 8kHz
+func silentFrame() []byte { return make([]byte, 320) }
 
 func toneFrame(v int16) []byte {
 	b := make([]byte, 320)
@@ -99,7 +99,6 @@ func TestRecordingCRMCall_RecordsBothDirectionsAndUploads(t *testing.T) {
 
 	out := rec.AudioStream()
 
-	// Remote (caller) audio in, agent (bot) audio out, a few hundred ms each.
 	go func() {
 		for i := 0; i < 25; i++ {
 			inner.audioIn <- toneFrame(1000)

@@ -2,10 +2,6 @@ package audience
 
 import "testing"
 
-// The acceptance score is the deck's "SCORE 97": pure, deterministic, never
-// model-produced, and it has to survive a small sample. A number a customer
-// will put in a slide must not read 100 off three comments.
-
 func TestStanceMix_Weighted(t *testing.T) {
 	cases := []struct {
 		name string
@@ -18,7 +14,6 @@ func TestStanceMix_Weighted(t *testing.T) {
 		{"all critics", StanceMix{Critic: 4}, -0.5},
 		{"all neutral", StanceMix{Neutral: 7}, 0},
 		{"balanced supporter/hostile", StanceMix{Supporter: 5, Hostile: 5}, 0},
-		// (2×1 + 1×0 + 1×−0.5 + 0) / 4 = 0.375
 		{"mixed", StanceMix{Supporter: 2, Neutral: 1, Critic: 1}, 0.375},
 	}
 	for _, tc := range cases {
@@ -46,7 +41,6 @@ func TestStanceMix_Add(t *testing.T) {
 	}
 }
 
-// THE test: three positive comments must not read 100.
 func TestAcceptanceScore_SmallSampleIsDamped(t *testing.T) {
 	got := AcceptanceScore(StanceMix{Supporter: 3}, 0)
 	if got >= 100 {
@@ -55,7 +49,6 @@ func TestAcceptanceScore_SmallSampleIsDamped(t *testing.T) {
 	if got <= 50 {
 		t.Fatalf("3 supporters scored %d; damping must not erase the signal", got)
 	}
-	// 50 + (100 − 50) × 3/30 = 55
 	if got != 55 {
 		t.Fatalf("3 supporters = %d, want 55", got)
 	}
@@ -76,7 +69,6 @@ func TestAcceptanceScore_Extremes(t *testing.T) {
 	}
 }
 
-// More hostiles, lower score: strictly, at every step.
 func TestAcceptanceScore_HostileShareIsMonotonic(t *testing.T) {
 	const n = 100
 	prev := 101
@@ -89,7 +81,6 @@ func TestAcceptanceScore_HostileShareIsMonotonic(t *testing.T) {
 	}
 }
 
-// More high-severity comments, lower score, with the stance mix held fixed.
 func TestAcceptanceScore_SeverityShareIsMonotonic(t *testing.T) {
 	const n = 100
 	mix := StanceMix{Supporter: 50, Neutral: 50}
@@ -122,11 +113,6 @@ func TestAcceptanceScore_AlwaysInRange(t *testing.T) {
 	}
 }
 
-// ---- Author standing ----
-
-// One bad comment does not make someone a hater. Below MinCommentsForHostile
-// the worst an author can be labelled is critic. In a politically charged
-// setting a product that says otherwise will be wrong about real people.
 func TestDerivedStance_NeedsThreeCommentsForHostile(t *testing.T) {
 	if MinCommentsForHostile != 3 {
 		t.Fatalf("MinCommentsForHostile = %d; this test is named for 3", MinCommentsForHostile)
@@ -150,15 +136,13 @@ func TestDerivedStance(t *testing.T) {
 	}{
 		{"no history is neutral", StanceMix{}, StanceNeutral},
 		{"supporter", StanceMix{Supporter: 3}, StanceSupporter},
-		{"mostly supporter", StanceMix{Supporter: 3, Critic: 1}, StanceSupporter}, // 0.625
+		{"mostly supporter", StanceMix{Supporter: 3, Critic: 1}, StanceSupporter},
 		{"neutral", StanceMix{Neutral: 5}, StanceNeutral},
 		{"balanced is neutral", StanceMix{Supporter: 2, Hostile: 2}, StanceNeutral},
 		{"critic", StanceMix{Critic: 4}, StanceCritic},
-		// −0.83 over three comments, but only TWO of them hostile: the minimum
-		// counts hostile comments, not comments.
 		{"critic leaning hostile under minimum", StanceMix{Hostile: 2, Critic: 1}, StanceCritic},
-		{"hostile with a neutral", StanceMix{Hostile: 3, Neutral: 1}, StanceHostile},   // −0.75
-		{"hostile diluted by critics", StanceMix{Hostile: 2, Critic: 2}, StanceCritic}, // −0.75, but only 2 hostile
+		{"hostile with a neutral", StanceMix{Hostile: 3, Neutral: 1}, StanceHostile},
+		{"hostile diluted by critics", StanceMix{Hostile: 2, Critic: 2}, StanceCritic},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,8 +153,6 @@ func TestDerivedStance(t *testing.T) {
 	}
 }
 
-// Flagging is stricter than the stance: hostile AND a pattern of high
-// severity. The table the brief asks for names people; the bar is high.
 func TestIsFlagged(t *testing.T) {
 	if IsFlagged(StanceHostile, FlagHighSeverityCount) != true {
 		t.Error("hostile with enough high-severity comments must be flagged")

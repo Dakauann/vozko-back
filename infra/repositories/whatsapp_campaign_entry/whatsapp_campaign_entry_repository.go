@@ -328,12 +328,6 @@ func (r *repository) CountByStatus(campaignID string) (*wce.StatusCounts, error)
 	return counts, nil
 }
 
-// CountByStatusForCampaigns aggregates per-status entry counts for many
-// campaigns in a single GROUP BY query (keyed by campaign ID), so list
-// endpoints avoid an N+1 of CountByStatus. Soft-deleted rows are excluded by
-// GORM automatically; the partial index idx_wce_campaign_status_del
-// (campaign_id, status) WHERE deleted_at IS NULL serves this as an index-only
-// scan. Campaigns with no entries are absent from the map.
 func (r *repository) CountByStatusForCampaigns(campaignIDs []string) (map[string]*wce.StatusCounts, error) {
 	ids := dedupeNonEmpty(campaignIDs)
 	out := make(map[string]*wce.StatusCounts, len(ids))
@@ -367,11 +361,6 @@ func (r *repository) CountByStatusForCampaigns(campaignIDs []string) (map[string
 	return out, nil
 }
 
-// CountByStatusForWorkspace rolls entry status counts up to the workspace level
-// for every campaign matching the filter, in one JOIN+GROUP BY query. Campaigns
-// are filtered by creation date (inclusive, nil = unbounded), type and
-// department; soft-deleted campaigns and entries are excluded. The per-campaign
-// idx_wce_campaign_status_del partial index serves the entry aggregation.
 func (r *repository) CountByStatusForWorkspace(f wce.WorkspaceSummaryFilter) (*wce.StatusCounts, error) {
 	counts := &wce.StatusCounts{}
 	if strings.TrimSpace(f.WorkspaceID) == "" {
@@ -413,10 +402,6 @@ func (r *repository) CountByStatusForWorkspace(f wce.WorkspaceSummaryFilter) (*w
 	return counts, nil
 }
 
-// CountDispatchesByCategoryForWorkspace counts billed sends (not PENDING,
-// FAILED, or spam-skip) grouped by the campaign's WhatsApp template category.
-// Same campaign filter as CountByStatusForWorkspace. Categories come from the
-// live whatsapp_templates row (not stored on the campaign).
 func (r *repository) CountDispatchesByCategoryForWorkspace(f wce.WorkspaceSummaryFilter) (map[string]int64, error) {
 	out := make(map[string]int64)
 	if strings.TrimSpace(f.WorkspaceID) == "" {
@@ -429,7 +414,6 @@ func (r *repository) CountDispatchesByCategoryForWorkspace(f wce.WorkspaceSummar
 		Where("c.workspace_id = ?", f.WorkspaceID).
 		Where("c.deleted_at IS NULL").
 		Where("e.deleted_at IS NULL").
-		// Billed statuses only, same subtractive set as StatusCounts.Dispatches.
 		Where("e.status NOT IN ?", wce.StatusStrings(wce.NonDispatchStatuses()))
 
 	if t := strings.TrimSpace(f.Type); t != "" {
@@ -465,10 +449,6 @@ func (r *repository) CountDispatchesByCategoryForWorkspace(f wce.WorkspaceSummar
 	return out, nil
 }
 
-// addWAStatusCount folds a single (status, count) pair into a StatusCounts,
-// updating both the matching status bucket and the running total. Centralising
-// the status->field mapping keeps CountByStatus and CountByStatusForCampaigns
-// in lockstep.
 func addWAStatusCount(counts *wce.StatusCounts, status string, n int64) {
 	switch wce.SendStatus(status) {
 	case wce.SendStatusPending:
@@ -487,8 +467,6 @@ func addWAStatusCount(counts *wce.StatusCounts, status string, n int64) {
 	counts.Total += n
 }
 
-// dedupeNonEmpty trims, drops blanks and de-duplicates campaign IDs so the
-// IN clause stays tight and stable regardless of caller input.
 func dedupeNonEmpty(ids []string) []string {
 	if len(ids) == 0 {
 		return nil
@@ -1332,9 +1310,6 @@ func (r *repository) UpdateConversationStatus(entryID string, write wce.Conversa
 	return nil
 }
 
-// ListEligibleForAutoClose: one JOIN, partial-index friendly filters, hard limit.
-// Eligibility: open status, workspace auto_close on, last word was agent/AI,
-// silence past workspace idle hours. No per-row config lookup (no N+1).
 func (r *repository) ListEligibleForAutoClose(limit int) ([]wce.AutoCloseCandidate, error) {
 	if limit <= 0 {
 		limit = 200
@@ -1349,10 +1324,6 @@ func (r *repository) ListEligibleForAutoClose(limit int) ([]wce.AutoCloseCandida
 		LastAgentMessageAt time.Time `gorm:"column:last_agent_message_at"`
 	}
 	var rows []row
-	// Per-workspace hours cannot be an Index Cond alone (value from JOIN).
-	// Add a constant min-window bound (1h) so the planner can range-scan
-	// idx_*_autoclose_agent and stop after LIMIT instead of walking all open rows.
-	// Exact per-workspace filter remains in the JOIN Filter.
 	err := r.db.Raw(`
 		SELECT e.id AS entry_id,
 		       c.workspace_id AS workspace_id,
@@ -1387,8 +1358,6 @@ func (r *repository) ListEligibleForAutoClose(limit int) ([]wce.AutoCloseCandida
 	return out, nil
 }
 
-// ListEligibleForMaxAge: absolute inactivity on last_message_at (any side).
-// Workspace auto_close_max_age_enabled (default true). Reason max_age, not customer_idle.
 func (r *repository) ListEligibleForMaxAge(limit int) ([]wce.AutoCloseCandidate, error) {
 	if limit <= 0 {
 		limit = 200
@@ -1402,7 +1371,6 @@ func (r *repository) ListEligibleForMaxAge(limit int) ([]wce.AutoCloseCandidate,
 		LastAgentMessageAt time.Time `gorm:"column:last_message_at"`
 	}
 	var rows []row
-	// Constant 24h min bound matches MinAutoCloseMaxAgeAfterHours for index range.
 	err := r.db.Raw(`
 		SELECT e.id AS entry_id,
 		       c.workspace_id AS workspace_id,

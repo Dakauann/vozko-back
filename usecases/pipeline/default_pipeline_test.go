@@ -7,19 +7,6 @@ import (
 	"vozko/domain/pipeline"
 )
 
-// "Exactly one default funnel per workspace and object kind" is the invariant
-// nothing used to hold, and its absence cost five production workspaces their
-// stage filter: every funnel a user marked as default stayed default, the old
-// one was never demoted, and a default funnel cannot be deleted. Workspaces
-// ended up with four undeletable funnels, one of them renamed "NÃO USAR" and
-// still the one the CRM resolved.
-//
-// The tests below pin both halves: promoting demotes, and the last default
-// cannot be cleared.
-
-// defaultRepo records how the invariant was enforced. PromoteDefault is a
-// single repository call on purpose: demote-then-promote as two writes leaves
-// the workspace with zero defaults if the process dies between them.
 type defaultRepo struct {
 	pipeline.Repository
 
@@ -120,8 +107,6 @@ func convPipe(id string, isDefault bool) *pipeline.Pipeline {
 
 func boolPtr(b bool) *bool { return &b }
 
-// The bug, in one test: marking a second funnel as default must leave exactly
-// one default behind, not two.
 func TestPromotingADefaultDemotesThePreviousOne(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true), convPipe("new", false))
 	uc := NewUpdatePipelineUseCase(repo)
@@ -137,8 +122,6 @@ func TestPromotingADefaultDemotesThePreviousOne(t *testing.T) {
 		t.Fatalf("defaults after promotion = %v, want exactly [new]", got)
 	}
 
-	// Enforced by ONE repository call, not by a read-modify-write per funnel.
-	// Two writes can be interrupted; this one cannot.
 	if len(repo.promoted) != 1 {
 		t.Fatalf("PromoteDefault called %d times, want 1", len(repo.promoted))
 	}
@@ -147,9 +130,6 @@ func TestPromotingADefaultDemotesThePreviousOne(t *testing.T) {
 	}
 }
 
-// The demotion is scoped to the object kind. A workspace legitimately has one
-// default conversation funnel AND one default sales funnel; promoting a
-// conversation funnel must not leave the opportunity board with none.
 func TestPromotingDoesNotDemoteTheOtherObjectKind(t *testing.T) {
 	sales := &pipeline.Pipeline{
 		ID: "sales", WorkspaceID: "ws", Name: "Vendas",
@@ -169,10 +149,6 @@ func TestPromotingDoesNotDemoteTheOtherObjectKind(t *testing.T) {
 	}
 }
 
-// Clearing the last default is refused. Leaving a workspace with none is not a
-// neutral state: ensureDefaultConversationPipeline would mint a fresh funnel on
-// the next stage read, which is another undeletable funnel and the start of the
-// same mess.
 func TestClearingTheLastDefaultIsRefused(t *testing.T) {
 	repo := newDefaultRepo(convPipe("only", true), convPipe("other", false))
 	uc := NewUpdatePipelineUseCase(repo)
@@ -188,8 +164,6 @@ func TestClearingTheLastDefaultIsRefused(t *testing.T) {
 	}
 }
 
-// Clearing the flag on a funnel that is NOT the default is a no-op rather than
-// an error: the caller asked for a state that already holds.
 func TestClearingTheFlagOnANonDefaultIsFine(t *testing.T) {
 	repo := newDefaultRepo(convPipe("theDefault", true), convPipe("other", false))
 	uc := NewUpdatePipelineUseCase(repo)
@@ -204,8 +178,6 @@ func TestClearingTheFlagOnANonDefaultIsFine(t *testing.T) {
 	}
 }
 
-// An update that says nothing about the flag must not touch it, or every rename
-// would silently re-promote whatever it was called on.
 func TestRenamingDoesNotTouchTheDefaultFlag(t *testing.T) {
 	repo := newDefaultRepo(convPipe("a", true), convPipe("b", false))
 	uc := NewUpdatePipelineUseCase(repo)
@@ -222,9 +194,6 @@ func TestRenamingDoesNotTouchTheDefaultFlag(t *testing.T) {
 	}
 }
 
-// Creating a funnel as default has to demote too. The create path passed the
-// flag straight through, so "create and make it the default" produced the same
-// duplicate-default state the update path did.
 func TestCreatingADefaultDemotesThePreviousOne(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true))
 	uc := NewCreatePipelineUseCase(repo)
@@ -245,8 +214,6 @@ func TestCreatingADefaultDemotesThePreviousOne(t *testing.T) {
 	}
 }
 
-// The ordinary creation, which is the overwhelming majority: a funnel that does
-// not ask to be default must not disturb the one that is.
 func TestCreatingANonDefaultLeavesTheDefaultAlone(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true))
 	uc := NewCreatePipelineUseCase(repo)
@@ -264,9 +231,6 @@ func TestCreatingANonDefaultLeavesTheDefaultAlone(t *testing.T) {
 	}
 }
 
-// The very first funnel of a workspace asks to be default and there is nothing
-// to demote. It must still end up default rather than falling through the
-// promotion path unset.
 func TestFirstFunnelBecomesTheDefault(t *testing.T) {
 	repo := newDefaultRepo()
 	uc := NewCreatePipelineUseCase(repo)

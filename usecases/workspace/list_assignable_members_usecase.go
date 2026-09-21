@@ -7,10 +7,6 @@ import (
 	"vozko/domain/workspace"
 )
 
-// listAssignableMembersUseCase returns the paginated, searchable set of members
-// the caller is allowed to assign a conversation to. The visibility policy is
-// delegated to MemberVisibilityUseCase so the repository only performs data
-// access (it receives a resolved scope, never a policy decision).
 type listAssignableMembersUseCase struct {
 	repo       workspace.Repository
 	visibility workspace.MemberVisibilityUseCase
@@ -43,7 +39,6 @@ func (uc *listAssignableMembersUseCase) Execute(userID, workspaceID string, isPl
 		memberIDs = append(memberIDs, m.ID)
 	}
 
-	// A scoped caller only ever sees department labels within their own access.
 	var restrictDepts []string
 	if scope.Restrict {
 		restrictDepts = scope.DepartmentIDs

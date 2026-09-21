@@ -11,7 +11,6 @@ import (
 	ce "vozko/domain/conversation_event"
 )
 
-// SessionService manages AI attendant sessions without affecting product UX.
 type SessionService struct {
 	repo   aa.Repository
 	events ce.Logger
@@ -21,7 +20,6 @@ func NewSessionService(repo aa.Repository, events ce.Logger) *SessionService {
 	return &SessionService{repo: repo, events: events}
 }
 
-// EnsureOpen returns an existing open session or starts a new one.
 func (s *SessionService) EnsureOpen(in aa.StartInput) *aa.Session {
 	if s == nil || s.repo == nil {
 		return nil
@@ -74,7 +72,6 @@ func (s *SessionService) EnsureOpen(in aa.StartInput) *aa.Session {
 	return sess
 }
 
-// RecordAIReply increments AI message count and ensures a session exists.
 func (s *SessionService) RecordAIReply(in aa.StartInput, messageID string) {
 	sess := s.EnsureOpen(in)
 	if sess == nil {
@@ -99,23 +96,18 @@ func (s *SessionService) RecordAIReply(in aa.StartInput, messageID string) {
 	}
 }
 
-// EndOpen ends the open session for an entry (idempotent if none).
-// outcome may be a domain Outcome string or raw string for hub adapters.
 func (s *SessionService) EndOpen(workspaceID, entryID, entryType string, outcome aa.Outcome, reason, handoffUserID string) {
 	s.endOpen(workspaceID, entryID, entryType, "", outcome, reason, handoffUserID)
 }
 
-// EndOpenWithCallID is EndOpen with optional call_id fallback (voice handoff / complete).
 func (s *SessionService) EndOpenWithCallID(workspaceID, entryID, entryType, callID string, outcome aa.Outcome, reason, handoffUserID string) {
 	s.endOpen(workspaceID, entryID, entryType, callID, outcome, reason, handoffUserID)
 }
 
-// EndOpenRaw accepts string outcome for delivery-layer adapters without importing domain outcomes.
 func (s *SessionService) EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string) {
 	s.endOpen(workspaceID, entryID, entryType, "", aa.Outcome(outcome), reason, handoffUserID)
 }
 
-// EndOpenRawWithCall ends open session by entry or call_id.
 func (s *SessionService) EndOpenRawWithCall(workspaceID, entryID, entryType, callID, outcome, reason, handoffUserID string) {
 	s.endOpen(workspaceID, entryID, entryType, callID, aa.Outcome(outcome), reason, handoffUserID)
 }
@@ -138,7 +130,6 @@ func (s *SessionService) endOpen(workspaceID, entryID, entryType, callID string,
 			return
 		}
 	}
-	// Handoff / complete often only has call_id while session was opened on campaign entry.
 	if sess == nil && callID != "" {
 		sess, err = s.repo.FindOpenByCallID(workspaceID, callID)
 		if err != nil {
@@ -146,7 +137,6 @@ func (s *SessionService) endOpen(workspaceID, entryID, entryType, callID string,
 			return
 		}
 	}
-	// Last resort: treat entryID as call_id (emit fallback entry=callID).
 	if sess == nil && entryID != "" && entryID != callID {
 		sess, err = s.repo.FindOpenByCallID(workspaceID, entryID)
 		if err != nil || sess == nil {
@@ -188,7 +178,6 @@ func (s *SessionService) endOpen(workspaceID, entryID, entryType, callID string,
 	}
 }
 
-// TouchInbound increments inbound count on open session.
 func (s *SessionService) TouchInbound(workspaceID, entryID, entryType string) {
 	if s == nil || s.repo == nil {
 		return

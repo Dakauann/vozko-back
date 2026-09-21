@@ -8,13 +8,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// A channel that declares a campaign container must declare its department
-// columns too.
-//
-// Getting this wrong is a SCOPING HOLE, not a broken query: a campaign's
-// department lives on the campaign row while a conversation's lives on its
-// instance, so falling back to the wrong column would show one department's
-// campaign conversations to another.
 func TestCampaignContainerDeclaresItsDepartmentColumns(t *testing.T) {
 	for _, q := range channelQueries {
 		if q.CampaignCTE == "" {
@@ -32,8 +25,6 @@ func TestCampaignContainerDeclaresItsDepartmentColumns(t *testing.T) {
 	}
 }
 
-// Every declared fragment must take exactly the bind parameters and verbs the
-// renderers supply, or the query fails at runtime on a path only campaigns hit.
 func TestCampaignFragmentsHaveOnePlaceholderAndOneVerb(t *testing.T) {
 	for _, q := range channelQueries {
 		if q.CampaignCTE == "" {
@@ -53,11 +44,6 @@ func TestCampaignFragmentsHaveOnePlaceholderAndOneVerb(t *testing.T) {
 	}
 }
 
-// A channel with no campaign container falls back to its primary one.
-//
-// That is exactly right for the Cloud API, where the campaign IS the container:
-// "scope to this campaign" and "scope to this container" are the same query, and
-// a channel that has not opted in must not silently start matching nothing.
 func TestChannelsWithoutACampaignContainerFallBack(t *testing.T) {
 	wa, ok := channelQueryFor(shared.EntryTypeWhatsApp)
 	if !ok {
@@ -74,9 +60,6 @@ func TestChannelsWithoutACampaignContainerFallBack(t *testing.T) {
 	}
 }
 
-// The unofficial channel DOES have two distinct containers, and they must not
-// resolve to the same query: a conversation belongs to a number forever, while a
-// campaign is one run across many of them.
 func TestUnofficialChannelHasTwoDistinctContainers(t *testing.T) {
 	uw, ok := channelQueryFor(shared.EntryTypeUnofficialWhatsApp)
 	if !ok {
@@ -94,15 +77,11 @@ func TestUnofficialChannelHasTwoDistinctContainers(t *testing.T) {
 	if !strings.Contains(byCampaign, "unofficial_whatsapp_campaign_entries") {
 		t.Fatalf("the campaign CTE does not reach through campaign entries: %s", byCampaign)
 	}
-	// The entry POINTS AT a conversation; two campaigns can legitimately have
-	// reached the same chat, so the ids have to be de-duplicated.
 	if !strings.Contains(byCampaign, "DISTINCT") {
 		t.Fatalf("the campaign CTE can return the same conversation twice: %s", byCampaign)
 	}
 }
 
-// An unknown kind must fall back to the primary container rather than matching
-// nothing, so a stale client cannot produce an empty inbox.
 func TestUnknownContainerKindFallsBack(t *testing.T) {
 	uw, _ := channelQueryFor(shared.EntryTypeUnofficialWhatsApp)
 	if uw.usesCampaignContainer(conversation.ContainerKind("something-else")) {
@@ -113,7 +92,6 @@ func TestUnknownContainerKindFallsBack(t *testing.T) {
 	}
 }
 
-// The department clause has to be built from the SELECTED kind's columns.
 func TestFilterForKindUsesTheMatchingDepartmentColumns(t *testing.T) {
 	uw, _ := channelQueryFor(shared.EntryTypeUnofficialWhatsApp)
 
@@ -138,14 +116,6 @@ func TestFilterForKindUsesTheMatchingDepartmentColumns(t *testing.T) {
 	}
 }
 
-// conversation_messages.entry_id is a uuid, so a container filter that projects
-// its ids as text makes Postgres compare uuid to text and raise 42883 — every
-// container-scoped inbox request on that channel fails.
-//
-// Three of the four channels shipped with that cast and stayed broken because
-// the only channel operators routinely scope by, WhatsApp, was the one written
-// without it. A shape test cannot catch this and neither can the compiler, so it
-// is asserted on the SQL text: the id feeding `entry_id IN (…)` must not be cast.
 func TestContainerFiltersDoNotCastEntryIDsToText(t *testing.T) {
 	for _, q := range channelQueries {
 		for name, sql := range map[string]string{
@@ -157,14 +127,11 @@ func TestContainerFiltersDoNotCastEntryIDsToText(t *testing.T) {
 			if sql == "" {
 				continue
 			}
-			// The projected entry id is the first column of the subquery's SELECT.
-			// Any ::text on it is the bug.
 			for _, line := range strings.Split(sql, "\n") {
 				trimmed := strings.TrimSpace(line)
 				if !strings.HasPrefix(strings.ToUpper(trimmed), "SELECT") {
 					continue
 				}
-				// Only the projection matters, not a WHERE further down the line.
 				projection := trimmed
 				if idx := strings.Index(strings.ToUpper(trimmed), " FROM "); idx > 0 {
 					projection = trimmed[:idx]

@@ -18,7 +18,6 @@ type boardStore struct {
 	shared cache.SharedState
 }
 
-// NewBoardStore returns a Redis-backed live board store.
 func NewBoardStore(shared cache.SharedState) telephony.BoardStore {
 	return &boardStore{shared: shared}
 }
@@ -54,7 +53,6 @@ func (s *boardStore) SaveHumans(workspaceID string, seats []telephony.HumanSeat)
 		return nil
 	}
 	key := humansKey(workspaceID)
-	// Replace set: delete key then rewrite (small N for workspace agents).
 	_ = s.shared.Del(key)
 	for _, seat := range seats {
 		if seat.UserID == "" {
@@ -148,7 +146,6 @@ func (s *boardStore) Get(workspaceID string) (*telephony.BoardSnapshot, error) {
 		}
 	}
 	sort.Slice(out.Humans, func(i, j int) bool {
-		// busy first, then name
 		pi, pj := seatPrio(out.Humans[i].State), seatPrio(out.Humans[j].State)
 		if pi != pj {
 			return pi < pj

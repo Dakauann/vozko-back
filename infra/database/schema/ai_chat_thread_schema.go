@@ -7,9 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AIChatThread is a user-owned conversation in the in-app AI chat. Threads are
-// scoped to a workspace (for billing/access control) and to the user who created
-// them. The list index supports "most recent threads for this user/workspace".
 type AIChatThread struct {
 	ID            string         `gorm:"primaryKey;type:text"`
 	WorkspaceID   string         `gorm:"type:uuid;not null;index:idx_chat_thread_ws_user,priority:1"`

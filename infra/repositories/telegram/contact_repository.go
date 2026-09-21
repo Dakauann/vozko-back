@@ -17,16 +17,10 @@ type contactRepository struct {
 	db *gorm.DB
 }
 
-// NewContactRepository builds the Telegram contact repository.
 func NewContactRepository(db *gorm.DB) tgdomain.ContactRepository {
 	return &contactRepository{db: db}
 }
 
-// FindOrCreate resolves a contact by (account, telegram user id).
-//
-// The profile fields the update already carried are written on creation, so a
-// first message yields a named contact with no extra API call, Telegram puts
-// first_name, username and language_code straight in the payload, unlike Meta.
 func (r *contactRepository) FindOrCreate(ctx context.Context, in tgdomain.FindOrCreateContactInput) (*tgdomain.Contact, error) {
 	existing, err := r.FindByTGUserID(ctx, in.AccountID, in.TGUserID)
 	if err == nil {
@@ -42,8 +36,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in tgdomain.FindOr
 	}
 	chatID := in.TGChatID
 	if chatID == 0 {
-		// For a private chat the chat id equals the user id; falling back keeps
-		// the row usable even if a payload omitted it.
 		chatID = in.TGUserID
 	}
 
@@ -63,11 +55,6 @@ func (r *contactRepository) FindOrCreate(ctx context.Context, in tgdomain.FindOr
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "account_id"}, {Name: "tg_user_id"}},
-			// The unique index is PARTIAL (WHERE deleted_at IS NULL): a
-			// soft-deleted row must not block re-creating the contact. Postgres
-			// will not infer a partial index as the conflict arbiter unless the
-			// predicate is repeated here, a bare ON CONFLICT (cols) fails with
-			// 42P10.
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}},
 			},
@@ -90,8 +77,6 @@ func (r *contactRepository) FindByID(ctx context.Context, id string) (*tgdomain.
 	return toContactDomain(&record), nil
 }
 
-// FindByIDs batch-loads one page of senders. The inbox hydrates a whole page
-// with this single query; a per-row lookup would make the inbox N+1.
 func (r *contactRepository) FindByIDs(ctx context.Context, ids []string) ([]*tgdomain.Contact, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -123,9 +108,6 @@ func (r *contactRepository) UpdateProfile(ctx context.Context, id string, p tgdo
 	update := map[string]any{
 		"profile_fetched_at": p.FetchedAt,
 	}
-	// Only non-empty values overwrite. Telegram omits a field the user cleared
-	// rather than sending it empty, so blind assignment would erase a known name
-	// the moment a later payload happened not to carry it.
 	if v := strings.TrimPrefix(strings.TrimSpace(p.Username), "@"); v != "" {
 		update["username"] = v
 	}
@@ -157,9 +139,6 @@ func (r *contactRepository) UpdateProfile(ctx context.Context, id string, p tgdo
 	return nil
 }
 
-// SetBlocked records a block/unblock from my_chat_member. In bot mode this is
-// the outbound gate: there is no messaging window, only "can we still reach
-// them".
 func (r *contactRepository) SetBlocked(ctx context.Context, id string, blocked bool, at time.Time) error {
 	update := map[string]any{"blocked": blocked}
 	if blocked {
@@ -183,8 +162,6 @@ func (r *contactRepository) SetPhone(ctx context.Context, id, phone string, lead
 		"phone_number":    phone,
 		"phone_shared_at": at,
 	}
-	// The lead link is only ever set, never cleared: a later share that fails to
-	// match must not unlink a contact an operator already merged.
 	if leadID != nil && *leadID != "" {
 		update["lead_id"] = *leadID
 	}
@@ -199,9 +176,6 @@ func (r *contactRepository) SetPhone(ctx context.Context, id, phone string, lead
 	return nil
 }
 
-// UpdateChatID rewrites the chat id after a group→supergroup migration, which
-// Telegram announces as ResponseParameters.migrate_to_chat_id on the failed
-// send. Without this the conversation is unreachable from then on.
 func (r *contactRepository) UpdateChatID(ctx context.Context, id string, chatID int64) error {
 	result := r.db.WithContext(ctx).Model(&schema.TelegramContact{}).
 		Where("id = ?", id).Update("tg_chat_id", chatID)

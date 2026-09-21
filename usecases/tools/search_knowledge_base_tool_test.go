@@ -48,7 +48,6 @@ func TestSearchKnowledgeBaseTool_Success(t *testing.T) {
 	require.Equal(t, "ag-1", st.lastInput.AgentID)
 	require.Equal(t, "preço do plano anual", st.lastInput.Query)
 	require.True(t, st.lastInput.IncludeMetadata)
-	// Defaults from RAGConfig.WithDefaults when no context agent is present.
 	require.Equal(t, 5, st.lastInput.TopK)
 	require.InDelta(t, 0.3, st.lastInput.MinScore, 0.001)
 	text, ok := out.Result.(string)

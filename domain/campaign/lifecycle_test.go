@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// The full state machine as a table. It is the whole contract of this package,
-// so it is asserted exhaustively rather than sampled: every (status, action)
-// pair appears exactly once below, and a pair added to ResolveTransition without
-// a row here fails TestEveryPairIsCovered.
 func TestResolveTransition(t *testing.T) {
 	cases := []struct {
 		from    Status
@@ -29,8 +25,6 @@ func TestResolveTransition(t *testing.T) {
 		{StatusStopped, ActionPause, "", false, ErrNotRunning},
 		{StatusStopped, ActionStop, "", false, ErrAlreadyStopped},
 
-		// Re-running a finished campaign after a reset is normal. Refusing it
-		// would make reset a dead end.
 		{StatusCompleted, ActionStart, StatusRunning, true, nil},
 		{StatusCompleted, ActionPause, "", false, ErrNotRunning},
 		{StatusCompleted, ActionStop, StatusStopped, false, nil},
@@ -74,8 +68,6 @@ func TestEveryPairIsCovered(t *testing.T) {
 	}
 }
 
-// Only START may enqueue work. A PAUSE or STOP that fanned out entries would
-// queue the very messages the operator just asked to hold.
 func TestOnlyStartFansOutWork(t *testing.T) {
 	for _, s := range []Status{StatusRunning, StatusPaused, StatusStopped, StatusCompleted} {
 		for _, a := range []Action{ActionPause, ActionStop} {
@@ -99,7 +91,6 @@ func TestUnknownStatusIsRefused(t *testing.T) {
 	}
 }
 
-// An empty status must not be readable as permission to send.
 func TestEmptyStatusNormalizesToStopped(t *testing.T) {
 	if got := NormalizeStatus(""); got != StatusStopped {
 		t.Fatalf("NormalizeStatus(%q) = %q, want STOPPED", "", got)
@@ -109,9 +100,6 @@ func TestEmptyStatusNormalizesToStopped(t *testing.T) {
 	}
 }
 
-// A lost compare-and-swap has to report the same refusal the operator would
-// have seen had we read the winning status first, or one click reports two
-// different things depending on timing.
 func TestSwapFailureMatchesTheRefusal(t *testing.T) {
 	cases := map[Action]error{
 		ActionStart: ErrAlreadyRunning,

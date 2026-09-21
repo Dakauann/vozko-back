@@ -9,18 +9,10 @@ import (
 	"vozko/infra/meta"
 )
 
-// refreshLead is how far ahead of expiry we refresh.
-//
-// Long-lived Instagram tokens last 60 days, a refresh is rejected on a token
-// younger than 24 hours, and a token left unused for 60 days dies permanently
-// with no recovery except full re-auth. Refreshing 20 days out gives ample room
-// for repeated failures before a tenant is actually locked out.
 const refreshLead = 20 * 24 * time.Hour
 
-// refreshBatchSize bounds one cron pass.
 const refreshBatchSize = 50
 
-// RefreshTokensUseCase keeps long-lived tokens alive.
 type RefreshTokensUseCase struct {
 	accounts igdomain.AccountRepository
 	oauth    igdomain.OAuthService
@@ -33,10 +25,6 @@ func NewRefreshTokensUseCase(
 	return &RefreshTokensUseCase{accounts: accounts, oauth: oauth}
 }
 
-// Execute refreshes every account due for it.
-//
-// One tenant's failure never aborts the pass: each account is handled
-// independently so a single revoked token cannot starve everyone else's refresh.
 func (uc *RefreshTokensUseCase) Execute(ctx context.Context) error {
 	now := time.Now().UTC()
 	cutoff := now.Add(refreshLead)
@@ -57,8 +45,6 @@ func (uc *RefreshTokensUseCase) Execute(ctx context.Context) error {
 }
 
 func (uc *RefreshTokensUseCase) refreshOne(ctx context.Context, account *igdomain.Account, now time.Time) {
-	// Re-check the 24h floor in the domain as well as in SQL, so a caller that
-	// hands us an arbitrary account cannot trip an upstream rejection.
 	if !account.TokenNeedsRefresh(now, refreshLead) {
 		return
 	}
@@ -69,8 +55,6 @@ func (uc *RefreshTokensUseCase) refreshOne(ctx context.Context, account *igdomai
 
 	grant, err := uc.oauth.RefreshToken(ctx, account.AccessToken)
 	if err != nil {
-		// A dead token cannot be recovered by retrying: the tenant has to
-		// reconnect, so mark it and surface the state in the UI.
 		if meta.IsReauthRequired(err) {
 			uc.markExpired(ctx, account, "token rejected by Instagram; reconnect required")
 			return
@@ -98,14 +82,11 @@ func (uc *RefreshTokensUseCase) markExpired(ctx context.Context, account *igdoma
 	log.Printf("[instagram] account=%s marked TOKEN_EXPIRED: %s", account.IGUserID, reason)
 }
 
-// PurgeProcessedEventsUseCase trims the durable webhook dedup table.
 type PurgeProcessedEventsUseCase struct {
 	events    igdomain.ProcessedEventRepository
 	retention time.Duration
 }
 
-// NewPurgeProcessedEventsUseCase builds the purge job. Retention only needs to
-// outlive Meta's redelivery horizon.
 func NewPurgeProcessedEventsUseCase(
 	events igdomain.ProcessedEventRepository,
 	retention time.Duration,

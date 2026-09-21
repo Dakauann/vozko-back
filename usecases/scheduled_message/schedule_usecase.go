@@ -19,12 +19,6 @@ type scheduleUseCase struct {
 	clock   sm.Clock
 }
 
-// NewScheduleUseCase wires the create path.
-//
-// Every dependency is required. The wake scheduler in particular looks optional
-// — the sweep would still deliver everything — but accepting a nil one here
-// would silently degrade every schedule to up-to-a-minute-late, which is a
-// product regression nobody would notice until a customer did.
 func NewScheduleUseCase(
 	repo sm.Repository,
 	windows sm.WindowReader,
@@ -76,8 +70,6 @@ func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.
 
 	window, err := uc.windows.Validate(message.EntryID, string(message.EntryType), message.ScheduledAt)
 	if err != nil {
-		// The window travels back with the refusal so the caller can tell the
-		// operator which boundary they hit rather than just that they missed.
 		return &sm.ScheduleResult{Window: window}, err
 	}
 	message.WindowExpiresAtAtCreation = window.ExpiresAt
@@ -90,11 +82,6 @@ func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.
 	return &sm.ScheduleResult{Message: message, Window: window}, nil
 }
 
-// replay returns the message an identical earlier request created.
-//
-// This is what makes a retried POST — a double-click, a timeout the client
-// retried, a proxy replaying a request — produce one scheduled message instead
-// of two identical ones arriving at the customer a moment apart.
 func (uc *scheduleUseCase) replay(in sm.ScheduleInput) (*sm.ScheduleResult, error) {
 	key := strings.TrimSpace(in.IdempotencyKey)
 	if key == "" {
@@ -116,9 +103,6 @@ func (uc *scheduleUseCase) replay(in sm.ScheduleInput) (*sm.ScheduleResult, erro
 	}, nil
 }
 
-// enqueue asks for a timely delivery. Best-effort by design: the row is already
-// durable and pending, so a broker that is down costs latency (the sweep picks
-// it up within a minute) and never the message.
 func (uc *scheduleUseCase) enqueue(m *sm.ScheduledMessage) {
 	if err := uc.wake.ScheduleFire(m.ID, m.ScheduledAt); err != nil {
 		log.Printf("[scheduled_message] could not enqueue %s for %s: %v; the sweep will deliver it",

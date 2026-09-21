@@ -40,8 +40,6 @@ func good() Classification {
 	}
 }
 
-// ---- Source / ContainerRef ----
-
 func TestSource_Valid(t *testing.T) {
 	if !SourceInstagram.Valid() {
 		t.Error("instagram should be a valid source")
@@ -53,8 +51,6 @@ func TestSource_Valid(t *testing.T) {
 	}
 }
 
-// The key is the Redis debounce field, the per-container lock name and the
-// backstop's grouping key, so its format is pinned and it must round-trip.
 func TestContainerRef_KeyRoundTrip(t *testing.T) {
 	r := ref()
 	if got := r.Key(); got != "instagram:acc-1:media-1" {
@@ -64,16 +60,11 @@ func TestContainerRef_KeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseContainerKey: %v", err)
 	}
-	// Parsing resolves the implicit kind, so the round trip is compared against
-	// the normalised ref. The key format itself is unchanged, which is what the
-	// assertion above pins: the debounce entries already in Redis still parse.
 	if want := r.withDefaults(); back != want {
 		t.Fatalf("round trip = %+v, want %+v", back, want)
 	}
 }
 
-// A conversation container is keyed with its kind in front, so a post id and a
-// campaign id can never land on the same lock.
 func TestContainerRef_ConversationKeyRoundTrip(t *testing.T) {
 	r := ContainerRef{
 		Kind: SubjectKindConversation, Source: SourceWhatsApp,
@@ -90,20 +81,16 @@ func TestContainerRef_ConversationKeyRoundTrip(t *testing.T) {
 		t.Fatalf("round trip = %+v, want %+v", back, r)
 	}
 
-	// The two kinds on the same ids must not collide.
 	comment := ContainerRef{Kind: SubjectKindComment, Source: SourceWhatsApp, AccountID: "acc-1", ContainerID: "camp-1"}
 	if comment.Key() == r.Key() {
 		t.Error("comment and conversation containers share a key")
 	}
 }
 
-// A kind only parses where that subject exists on that channel: Telegram has no
-// posts, so a Telegram comment key is not a thing however analysable Telegram
-// is as a conversation.
 func TestParseContainerKey_RejectsKindChannelMismatch(t *testing.T) {
 	for _, k := range []string{
-		"telegram:acc:post",              // comment on a channel with no posts
-		"conversation:support:acc:entry", // support is never analysed
+		"telegram:acc:post",
+		"conversation:support:acc:entry",
 	} {
 		if _, err := ParseContainerKey(k); err == nil {
 			t.Errorf("ParseContainerKey(%q) should fail", k)
@@ -144,8 +131,6 @@ func TestContainerRef_Validate(t *testing.T) {
 	}
 }
 
-// ---- Status machine ----
-
 func TestStatus_Valid(t *testing.T) {
 	for _, s := range []Status{StatusPending, StatusInFlight, StatusAnalyzed, StatusFailed, StatusSkipped} {
 		if !s.Valid() {
@@ -157,9 +142,6 @@ func TestStatus_Valid(t *testing.T) {
 	}
 }
 
-// The transitions are the concurrency contract of §8: a row leaves pending
-// exactly once per attempt, comes back only through a reconcile/reset or a
-// manual retry, and never leaves analyzed.
 func TestStatus_CanTransitionTo(t *testing.T) {
 	allowed := map[Status][]Status{
 		StatusPending:  {StatusInFlight, StatusFailed, StatusSkipped},
@@ -189,13 +171,10 @@ func TestStatus_IsTerminal(t *testing.T) {
 	if !StatusAnalyzed.IsTerminal() || !StatusSkipped.IsTerminal() {
 		t.Error("analyzed and skipped are terminal")
 	}
-	// failed is NOT terminal: the retry endpoint re-queues it.
 	if StatusPending.IsTerminal() || StatusInFlight.IsTerminal() || StatusFailed.IsTerminal() {
 		t.Error("pending, in_flight and failed are not terminal")
 	}
 }
-
-// ---- Enums ----
 
 func TestStance_Valid(t *testing.T) {
 	for _, s := range []Stance{StanceSupporter, StanceNeutral, StanceCritic, StanceHostile} {
@@ -219,8 +198,6 @@ func TestIntent_Valid(t *testing.T) {
 		t.Error("unknown intent should be invalid")
 	}
 }
-
-// ---- NewPending ----
 
 func TestNewPending(t *testing.T) {
 	a, err := NewPending(newInput("Que lindo esse asfalto novo!"))
@@ -247,8 +224,6 @@ func TestNewPending(t *testing.T) {
 	}
 }
 
-// Rollups bucket by when the comment was POSTED. A backfilled comment from
-// March must land on March's day, not on the day it was ingested.
 func TestNewPending_KeepsOccurredAt(t *testing.T) {
 	in := newInput("oi")
 	posted := now.Add(-90 * 24 * time.Hour)
@@ -265,10 +240,8 @@ func TestNewPending_KeepsOccurredAt(t *testing.T) {
 	}
 }
 
-// Comment bodies are never copied (§5.1). The excerpt is what the dashboard
-// row shows, capped in RUNES so a cut never lands mid-character in pt-BR.
 func TestNewPending_ExcerptIsRuneCapped(t *testing.T) {
-	long := strings.Repeat("ção", 100) // 300 runes, 500 bytes
+	long := strings.Repeat("ção", 100)
 	a, err := NewPending(newInput(long))
 	if err != nil {
 		t.Fatal(err)
@@ -284,9 +257,6 @@ func TestNewPending_ExcerptIsRuneCapped(t *testing.T) {
 	}
 }
 
-// A blank comment (emoji stripped by the channel, or empty text) has nothing
-// to classify. It is recorded so the totals stay honest, but never sent to
-// the model.
 func TestNewPending_BlankTextIsSkipped(t *testing.T) {
 	a, err := NewPending(newInput("   \n "))
 	if err != nil {
@@ -316,8 +286,6 @@ func TestNewPending_Validation(t *testing.T) {
 		})
 	}
 }
-
-// ---- Classification / Apply ----
 
 func TestClassification_Validate(t *testing.T) {
 	topics := DefaultTopicsFor(VerticalGov)
@@ -349,9 +317,6 @@ func TestClassification_Validate(t *testing.T) {
 	}
 }
 
-// Topic keys arrive from the model exactly as the schema enum spelled them,
-// but a rubric edit or a lenient provider can hand back the label instead.
-// Folding on validate is what keeps "Saúde Pública" from forking the topic.
 func TestClassification_ValidateFoldsTopic(t *testing.T) {
 	topics := TopicSet{{Key: "saude-publica", Label: "Saúde Pública"}, OtherTopic()}
 	c := good()
@@ -364,8 +329,6 @@ func TestClassification_ValidateFoldsTopic(t *testing.T) {
 	}
 }
 
-// Severity is COMPUTED from the three ordinal dimensions with the rubric
-// weights (toxicity 45, personal attack 35, legal risk 20), never model-set.
 func TestClassification_Severity(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -377,7 +340,6 @@ func TestClassification_Severity(t *testing.T) {
 		{"toxicity high only", shared.QualityLevelHigh, shared.QualityLevelNone, shared.QualityLevelNone, 45},
 		{"attack high only", shared.QualityLevelNone, shared.QualityLevelHigh, shared.QualityLevelNone, 35},
 		{"legal high only", shared.QualityLevelNone, shared.QualityLevelNone, shared.QualityLevelHigh, 20},
-		// 0.45*0.66 + 0.35*0.33 + 0.20*1.0 = 0.6125 -> 61
 		{"mixed", shared.QualityLevelMedium, shared.QualityLevelLow, shared.QualityLevelHigh, 61},
 		{"garbage rates as none", "extreme", shared.QualityLevelHigh, shared.QualityLevelNone, 35},
 	}
@@ -391,9 +353,6 @@ func TestClassification_Severity(t *testing.T) {
 	}
 }
 
-// RequiresAction fires on severity OR on an intent that deserves a reply. A
-// pure-severity trigger would miss "onde compro?", a sales lead sitting
-// unanswered under a post.
 func TestRequiresAction(t *testing.T) {
 	policy := ActionPolicy{SeverityThreshold: 60}
 	cases := []struct {
@@ -452,7 +411,7 @@ func TestAnalysis_Apply(t *testing.T) {
 	if a.Status != StatusAnalyzed {
 		t.Errorf("status = %q", a.Status)
 	}
-	if a.Severity != 80 { // 0.45 + 0.35
+	if a.Severity != 80 {
 		t.Errorf("severity = %d, want 80", a.Severity)
 	}
 	if !a.RequiresAction {
@@ -469,8 +428,6 @@ func TestAnalysis_Apply(t *testing.T) {
 	}
 }
 
-// Apply is only legal from in_flight: a result for a row that was never
-// claimed is a result for a row another replica owns.
 func TestAnalysis_ApplyRequiresInFlight(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	err := a.Apply(good(), ActionPolicy{}, Provenance{}, now)
@@ -478,8 +435,6 @@ func TestAnalysis_ApplyRequiresInFlight(t *testing.T) {
 		t.Fatalf("expected ErrStatusTransition, got %v", err)
 	}
 }
-
-// ---- Claim / Release / Fail / Retry ----
 
 func TestAnalysis_ClaimIncrementsAttempts(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
@@ -494,9 +449,6 @@ func TestAnalysis_ClaimIncrementsAttempts(t *testing.T) {
 	}
 }
 
-// Release is the reconcile path: a missing ref goes back to pending and is
-// retried, until MaxAttempts turns it into a visible failure: never a
-// silent drop and never an infinite loop.
 func TestAnalysis_ReleaseUntilMaxAttempts(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	for i := 1; i < MaxAttempts; i++ {
@@ -531,8 +483,6 @@ func TestAnalysis_Fail(t *testing.T) {
 	}
 }
 
-// The retry endpoint resets attempts so the row gets a full set of tries
-// again; the operator asked for it explicitly.
 func TestAnalysis_Retry(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
@@ -548,9 +498,6 @@ func TestAnalysis_Retry(t *testing.T) {
 	}
 }
 
-// A provider outage is not the comment's fault. Unclaim hands the row back
-// WITHOUT the attempt, so three ticks of outage do not turn every pending
-// comment into a failure.
 func TestAnalysis_UnclaimGivesTheAttemptBack(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)
@@ -558,15 +505,12 @@ func TestAnalysis_UnclaimGivesTheAttemptBack(t *testing.T) {
 	if a.Status != StatusPending || a.Attempts != 0 {
 		t.Fatalf("after unclaim: %+v", a)
 	}
-	// Only an in_flight row can be unclaimed; anything else is a no-op.
 	a.Unclaim(now)
 	if a.Status != StatusPending || a.Attempts != 0 {
 		t.Fatalf("unclaim on pending must be a no-op: %+v", a)
 	}
 }
 
-// A comment whose text is gone by flush time (deleted on the channel after
-// ingest) has nothing to classify. It is skipped, visibly, not failed.
 func TestAnalysis_MarkSkipped(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	if err := a.MarkSkipped(ReasonTextUnavailable, now); err != nil {
@@ -580,8 +524,6 @@ func TestAnalysis_MarkSkipped(t *testing.T) {
 	}
 }
 
-// A deleted comment's analysis is tombstoned, not removed: it leaves the feed
-// and the live stats but stays in the rollups that already counted it.
 func TestAnalysis_SoftDelete(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	a.SoftDelete(now)
@@ -595,9 +537,6 @@ func TestAnalysis_SoftDelete(t *testing.T) {
 	}
 }
 
-// A crash between claim and apply leaves a row in_flight forever unless the
-// backstop resets it. Attempts were already counted at claim, so a crash loop
-// still terminates.
 func TestAnalysis_ResetStale(t *testing.T) {
 	a, _ := NewPending(newInput("oi"))
 	_ = a.Claim(now)

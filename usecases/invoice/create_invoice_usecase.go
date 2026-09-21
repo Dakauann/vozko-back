@@ -22,14 +22,9 @@ import (
 )
 
 type createInvoiceUseCase struct {
-	invoiceRepo invoice.Repository
-	userRepo    user.UserRepository
-	// addressRepo supplies the payer address a boleto charge needs on providers that
-	// require one. Nil-safe: a PIX charge never consults it.
-	addressRepo address.AddressRepository
-	// gateway is the provider-agnostic payment port. This use case deliberately knows
-	// nothing about which provider is wired: swapping Asaas for Mercado Pago changes
-	// only what is injected here.
+	invoiceRepo         invoice.Repository
+	userRepo            user.UserRepository
+	addressRepo         address.AddressRepository
 	gateway             payment.Gateway
 	exchangeRateRepo    workspace_pricing.Repository
 	currentSubscription workspace_plan.EnsureCurrentWorkspaceSubscriptionUseCase
@@ -81,9 +76,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		}
 	}
 
-	// Idempotency: if an invoice already exists for this key, return it without charging the
-	// provider again.
-	// This makes a monthly-emit re-run safe (no double charge).
 	if key := strings.TrimSpace(input.IdempotencyKey); key != "" {
 		existing, err := uc.invoiceRepo.GetByIdempotencyKey(key)
 		if err != nil {
@@ -103,10 +95,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 
 	amountUSD := int64(math.Round(input.AmountBRL / exchangeRate * 1_000_000))
 
-	// CreditableUSD is the saldo to credit on payment. TOP_UP and SUBSCRIPTION credit the full
-	// amount. MONTHLY_BILLING credits only the plan portion (CreditableBRL), so the channel-license
-	// repasse never becomes saldo. It is converted at the SAME exchange rate as the total and is
-	// clamped to [0, amountUSD] so a caller error can never credit more than was charged.
 	creditableUSD := amountUSD
 	if purpose == invoice.PurposeMonthlyBilling {
 		planUSD := int64(math.Round(input.CreditableBRL / exchangeRate * 1_000_000))
@@ -152,10 +140,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	if cpf == "" {
 		cpf = strings.TrimSpace(u.CNPJ)
 	}
-	// Every supported provider needs a document to create a charge in Brazil, and each
-	// fails badly without one: Asaas would issue a wildcard customer search that
-	// resolves to an unrelated document-less customer, and Mercado Pago rejects the
-	// payment outright. Reject here so the caller gets a clear, actionable error.
 	if cpf == "" {
 		return nil, invoice.ErrCustomerDocumentRequired
 	}
@@ -168,9 +152,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	method := payment.NormalizeMethod(billingType)
 
 	billingAddress := uc.billingAddress(method, input.UserID)
-	// Reject a boleto the provider is certain to refuse, before spending a round trip
-	// on it. Surfacing this as a domain error is what lets the API answer 422 with the
-	// missing fields named, instead of the opaque 500 a provider rejection produces.
 	if method == payment.MethodBoleto && uc.gateway.Capabilities().BoletoRequiresAddress && !billingAddress.Complete() {
 		log.Printf("[invoice] boleto rejected for user %s: address incomplete (missing %v)",
 			input.UserID, payment.MissingAddressFields(billingAddress))
@@ -187,21 +168,14 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 			Name:     customerName,
 			Email:    strings.TrimSpace(u.Email),
 			Document: cpf,
-			// Attached only for boleto: PIX needs no address on any provider.
-			Address: billingAddress,
+			Address:  billingAddress,
 		},
-		// The invoice id is a natural idempotency key: a retried create for the same
-		// invoice must never produce a second charge.
 		IdempotencyKey: externalRef,
 	}
 
 	uc.attributeReferralIfNew(input.WorkspaceID, input.UserID, input.ReferralCode)
 
 	if split := uc.buildAffiliateSplit(input.WorkspaceID); split != nil {
-		// A provider that cannot split must not receive one, or it would reject the
-		// charge and block the customer's payment entirely. The commission is still
-		// recorded in our own affiliate ledger when the invoice is paid; only the
-		// automatic payout leg is lost, which is a payout problem, not a billing one.
 		if uc.gateway.Capabilities().Split {
 			chargeReq.Splits = []payment.SplitRecipient{*split}
 		} else {
@@ -337,12 +311,6 @@ func (uc *createInvoiceUseCase) attributeReferralIfNew(workspaceID, userID, rawC
 	}
 }
 
-// billingAddress resolves the payer address a boleto charge needs, preferring the
-// user's default address and otherwise taking the first one on file.
-//
-// A nil return is not an error here: the gateway decides whether it can issue the
-// charge without one, and its rejection names exactly what is missing. Making this
-// fatal would break boleto on providers that do not need an address at all.
 func (uc *createInvoiceUseCase) billingAddress(method payment.Method, userID string) *payment.GatewayAddress {
 	if method != payment.MethodBoleto || uc.addressRepo == nil || strings.TrimSpace(userID) == "" {
 		return nil

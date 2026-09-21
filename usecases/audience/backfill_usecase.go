@@ -15,18 +15,10 @@ import (
 	"vozko/domain/shared"
 )
 
-// Backfill (plan §10): operator-initiated, estimated and confirmed first,
-// rate-limit aware, resumable, and it only ENQUEUES. One classifier, one
-// budgeter, one billing path.
-
 const (
-	// hourlyCallBudget is half of Instagram's 200 calls/user/hour Business
-	// Use Case limit, leaving the other half for the live product.
 	hourlyCallBudget = 100
 	backfillCallKey  = "comment_analysis:backfill:calls:"
 
-	// pagesPerTick bounds one job tick so a whole-account backfill never
-	// holds the runner for an hour.
 	pagesPerTick = 40
 
 	containerPageSize = 100
@@ -38,7 +30,6 @@ var (
 	ErrBackfillNotCancelable = errors.New("comment analysis: this backfill can no longer be cancelled")
 )
 
-// BackfillDeps is what the backfill use cases and job share.
 type BackfillDeps struct {
 	Backfills ca.BackfillRepository
 	Settings  ca.SettingsRepository
@@ -51,7 +42,6 @@ type BackfillDeps struct {
 
 type backfillUseCases struct{ BackfillDeps }
 
-// NewBackfillUseCases builds estimate/start/get/cancel over one set of deps.
 func NewBackfillUseCases(deps BackfillDeps) (ca.EstimateBackfillUseCase, ca.StartBackfillUseCase, ca.GetBackfillUseCase, ca.CancelBackfillUseCase) {
 	if deps.Clock == nil {
 		deps.Clock = shared.SystemClock{}
@@ -78,7 +68,6 @@ func (uc *backfillUseCases) verify(ctx context.Context, workspaceID string, sour
 	return nil
 }
 
-// estimate sums the local projection's comment counts: no provider calls.
 func (uc *backfillUseCases) estimate(ctx context.Context, workspaceID string, source ca.Source, accountID, containerID string) (*ca.BackfillEstimate, error) {
 	adapter, ok := uc.Adapters[source]
 	if !ok {
@@ -125,8 +114,6 @@ func (s startBackfill) Execute(ctx context.Context, in ca.StartBackfillInput) (*
 	}
 	settings, err := s.Settings.Find(ctx, in.Source, in.AccountID)
 	if err != nil || !settings.Enabled {
-		// Backfilling into a disabled account would enqueue rows the engine
-		// then skips; refuse up front.
 		return nil, fmt.Errorf("%w: analysis is not enabled for this account", ca.ErrInvalidFilter)
 	}
 	if existing, err := s.Backfills.FindActive(ctx, in.Source, in.AccountID, in.ContainerID); err == nil && existing != nil {
@@ -134,8 +121,6 @@ func (s startBackfill) Execute(ctx context.Context, in ca.StartBackfillInput) (*
 	} else if err != nil && !errors.Is(err, ca.ErrNotFound) {
 		return nil, err
 	}
-	// The operator confirmed a number; silently running against a bigger
-	// one is a support incident, not a feature.
 	est, err := s.estimate(ctx, in.WorkspaceID, in.Source, in.AccountID, in.ContainerID)
 	if err != nil {
 		return nil, err
@@ -184,11 +169,6 @@ func (c cancelBackfill) Execute(ctx context.Context, workspaceID, id string) (*c
 	return b, nil
 }
 
-// ---- the job (1m) ----
-
-// BackfillJob drains one pending backfill per tick, a bounded number of
-// pages at a time, under the per-account hourly call budget. Everything it
-// fetches goes through the same Ingestor the webhook uses.
 type BackfillJob struct{ *backfillUseCases }
 
 func NewBackfillJob(deps BackfillDeps) *BackfillJob {
@@ -217,7 +197,6 @@ func (j *BackfillJob) Execute(ctx context.Context) error {
 		return err
 	}
 
-	// The cursor encodes "which container, which page" so a restart continues.
 	containerIdx, pageCursor := decodeCursor(b.Cursor)
 	pages := 0
 	for containerIdx < len(containers) && pages < pagesPerTick {
@@ -226,7 +205,6 @@ func (j *BackfillJob) Execute(ctx context.Context) error {
 		}
 		allowed, err := j.allowCall(b.AccountID, now)
 		if err != nil || !allowed {
-			// Budget for this hour is spent: park it, keep the cursor.
 			b.Cursor = encodeCursor(containerIdx, pageCursor)
 			_ = b.Pause(now)
 			return j.Backfills.Save(ctx, b)
@@ -263,7 +241,6 @@ func (j *BackfillJob) Execute(ctx context.Context) error {
 	if containerIdx >= len(containers) {
 		_ = b.Finish(ca.BackfillDone, "", now)
 	} else {
-		// More to do next tick.
 		_ = b.Pause(now)
 	}
 	return j.Backfills.Save(ctx, b)
@@ -299,7 +276,6 @@ func (j *BackfillJob) allowCall(accountID string, now time.Time) (bool, error) {
 	return ok, nil
 }
 
-// The cursor is "{containerIndex}|{providerCursor}".
 func encodeCursor(idx int, page string) string {
 	return fmt.Sprintf("%d|%s", idx, page)
 }

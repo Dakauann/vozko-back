@@ -10,37 +10,20 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-// EntryOwnerResolver is a narrow port for resolving the tenant and department of
-// one channel's conversation. Declared here so this resolver depends on no
-// channel package.
-//
-// Channels that carry workspace_id on the conversation row itself implement it
-// directly; WhatsApp is the exception, walking entry → campaign → workspace,
-// which is why it keeps its own branch below.
 type EntryOwnerResolver interface {
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
-// EntryCampaignResolver is the optional half of EntryOwnerResolver, implemented
-// only by channels whose conversations can belong to a campaign. Instagram and
-// Telegram have none and do not implement it, which is why this is a separate
-// interface rather than a third method.
 type EntryCampaignResolver interface {
 	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
-// instagramEntryResolver is the previous name of EntryOwnerResolver.
-//
-// Deprecated: use EntryOwnerResolver.
 type instagramEntryResolver = EntryOwnerResolver
 
 type campaignWorkspaceResolver struct {
 	wcCampaignRepo wc_domain.Repository
 	waEntryRepo    wce.Repository
-	// entryResolvers is keyed by entry type so registering one channel never
-	// displaces another. It replaces a single Instagram-shaped field, which a
-	// second channel would have had to either overwrite or duplicate.
 	entryResolvers map[shared.EntryType]EntryOwnerResolver
 }
 
@@ -55,8 +38,6 @@ func NewCampaignWorkspaceResolver(
 	}
 }
 
-// SetEntryOwnerResolver registers a channel's tenant lookup. Optional so the
-// resolver still constructs when a channel is disabled.
 func (r *campaignWorkspaceResolver) SetEntryOwnerResolver(entryType shared.EntryType, repo EntryOwnerResolver) {
 	if r == nil || repo == nil || entryType == "" {
 		return
@@ -67,9 +48,6 @@ func (r *campaignWorkspaceResolver) SetEntryOwnerResolver(entryType shared.Entry
 	r.entryResolvers[entryType] = repo
 }
 
-// SetInstagramEntryResolver registers the Instagram lookup.
-//
-// Deprecated: use SetEntryOwnerResolver(shared.EntryTypeInstagram, repo).
 func (r *campaignWorkspaceResolver) SetInstagramEntryResolver(repo EntryOwnerResolver) {
 	r.SetEntryOwnerResolver(shared.EntryTypeInstagram, repo)
 }
@@ -101,8 +79,6 @@ func (r *campaignWorkspaceResolver) GetCampaignDepartmentID(campaignID, campaign
 		}
 		return c.DepartmentID, nil
 	}
-	// Channels with no campaign concept have no campaign-level department; the
-	// department lives on the account and is read through GetEntryDepartmentID.
 	if shared.EntryType(campaignType).IsKnown() {
 		return "", nil
 	}
@@ -110,9 +86,6 @@ func (r *campaignWorkspaceResolver) GetCampaignDepartmentID(campaignID, campaign
 }
 
 func (r *campaignWorkspaceResolver) GetEntryWorkspaceID(entryID, entryType string) (string, error) {
-	// Channels that carry workspace_id on the conversation row need no campaign
-	// walk, the indirection exists only because a WhatsApp entry does not know
-	// its own tenant.
 	if resolver, ok := r.resolverFor(entryType); ok {
 		return resolver.WorkspaceIDForEntry(context.Background(), entryID)
 	}
@@ -138,8 +111,6 @@ func (r *campaignWorkspaceResolver) GetEntryDepartmentID(entryID, entryType stri
 	if resolver, ok := r.resolverFor(entryType); ok {
 		return resolver.DepartmentIDForEntry(context.Background(), entryID)
 	}
-	// A known channel with no registered resolver (support, or a channel whose
-	// bundle is switched off) simply has no department scope.
 	if shared.EntryType(entryType).IsKnown() {
 		return "", nil
 	}
@@ -154,20 +125,11 @@ func (r *campaignWorkspaceResolver) GetEntryCampaignID(entryID, entryType string
 		}
 		return info.CampaignID, nil
 	}
-	// A channel whose conversations CAN belong to a campaign answers for itself.
-	//
-	// The Cloud API entry is the campaign row, so the lookup above reads a
-	// column. Every other channel's entry only POINTS AT a conversation, so the
-	// campaign has to be walked backwards from it — and until that walk existed
-	// this returned "" for them, which silently disabled funnel placement
-	// (ensureInitialTag) and campaign attribution on the live CRM.
 	if resolver, ok := r.resolverFor(entryType); ok {
 		if withCampaign, ok := resolver.(EntryCampaignResolver); ok {
 			return withCampaign.CampaignIDForEntry(context.Background(), entryID)
 		}
 	}
-	// Channels with no campaign concept return empty; callers that need the
-	// container use the account id instead.
 	if shared.EntryType(entryType).IsKnown() {
 		return "", nil
 	}

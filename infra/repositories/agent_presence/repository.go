@@ -46,8 +46,6 @@ func (r *repository) Transition(workspaceID, userID string, state ap.State, sour
 }
 
 func (r *repository) Occupancy(workspaceID string, from, to *time.Time) ([]ap.OccupancyRow, error) {
-	// Approximate: sum duration of intervals overlapping the window, by state.
-	// Uses LEAST/GREATEST for clip; ended_at null treated as now.
 	now := time.Now().UTC()
 	windowStart := time.Time{}
 	windowEnd := now
@@ -63,7 +61,6 @@ func (r *repository) Occupancy(workspaceID string, from, to *time.Time) ([]ap.Oc
 		State  string
 		MS     int64
 	}
-	// Postgres: epoch ms of clipped interval length.
 	sql := `
 		SELECT user_id, state,
 			GREATEST(0, EXTRACT(EPOCH FROM (
@@ -90,7 +87,6 @@ func (r *repository) Occupancy(workspaceID string, from, to *time.Time) ([]ap.Oc
 			o.OnlineMS += rw.MS
 		case ap.StateOnCall:
 			o.OnCallMS += rw.MS
-			// on_call time also counts as available for occupancy denominator
 			o.OnlineMS += rw.MS
 		}
 	}
@@ -104,15 +100,6 @@ func (r *repository) Occupancy(workspaceID string, from, to *time.Time) ([]ap.Oc
 	return out, nil
 }
 
-// LastSeen implements the presence read the roulette's last_seen mode needs.
-//
-// COALESCE(ended_at, started_at) — not NOW() — is the load-bearing detail. An
-// open interval means one of two things: the user is connected right now, in
-// which case the caller's live connected-set overlay already reports them as
-// online and this value is never consulted; or a replica died without
-// unregistering, in which case the row will stay open forever and reading it as
-// "present now" would pin a departed user to the head of the ring for good.
-// started_at is the last moment we can prove they were there.
 func (r *repository) LastSeen(workspaceID string, userIDs []string) (map[string]time.Time, error) {
 	out := make(map[string]time.Time, len(userIDs))
 	if workspaceID == "" || len(userIDs) == 0 {
@@ -124,8 +111,6 @@ func (r *repository) LastSeen(workspaceID string, userIDs []string) (map[string]
 		LastSeen time.Time `gorm:"column:last_seen"`
 	}
 	var rows []row
-	// The state filter is a no-op today (offline never creates a row) and is
-	// spelled out so a future state cannot silently start counting as presence.
 	err := r.db.Model(&schema.AgentPresenceInterval{}).
 		Select("user_id, MAX(COALESCE(ended_at, started_at)) AS last_seen").
 		Where("workspace_id = ? AND user_id IN ? AND state IN ?",

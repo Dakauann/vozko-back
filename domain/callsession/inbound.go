@@ -50,9 +50,6 @@ type InboundCRMCallExecutor interface {
 	AttachInboundCRMCall(ctx context.Context, input AttachInboundCRMCallInput) error
 }
 
-// InboundOfferResponder resolves an inbound call offer that is currently ringing
-// an agent: the agent's browser answers or rejects it. Implemented by the
-// inbound offer broker; declared here so delivery depends only on the port.
 type InboundOfferResponder interface {
 	Accept(ctx context.Context, input AcceptInboundCallInput) error
 	Decline(ctx context.Context, input DeclineInboundCallInput) error

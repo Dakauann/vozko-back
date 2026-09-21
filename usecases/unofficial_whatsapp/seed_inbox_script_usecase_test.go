@@ -16,20 +16,11 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-// ---- fakes ----
-
-// fakeScripter stands in for the model. It records what it was asked so the
-// ORDER of the phases is testable: no subject may reach it that has not already
-// been resolved and found empty.
 type fakeScripter struct {
-	mu       sync.Mutex
-	requests []uw.ScriptRequest
-	err      error
-	// reply, when set, builds the answer for one request. Nil answers every
-	// subject with a two-turn thread.
-	reply func(uw.ScriptRequest) *uw.ScriptResult
-	// deadline records whether the caller bounded the context, which is the
-	// guard that stops a hung provider holding a consumer forever.
+	mu          sync.Mutex
+	requests    []uw.ScriptRequest
+	err         error
+	reply       func(uw.ScriptRequest) *uw.ScriptResult
 	sawDeadline bool
 }
 
@@ -76,7 +67,6 @@ func (f *fakeScripter) calls() int {
 	return len(f.requests)
 }
 
-// fakeBalance is the workspace's balance, and only that.
 type fakeBalance struct {
 	micros int64
 	err    error
@@ -90,8 +80,6 @@ func (f *fakeBalance) InvalidateDebounced(string)                       {}
 type fixedClock struct{ at time.Time }
 
 func (c fixedClock) Now() time.Time { return c.at }
-
-// ---- harness ----
 
 func newScriptedSeedUseCase(
 	t *testing.T,
@@ -126,10 +114,6 @@ func scriptedRequest(script *uw.SeedScript, numbers ...string) uw.SeedRequest {
 	return uw.SeedRequest{WorkspaceID: "ws-1", Targets: targets, Script: script}
 }
 
-// ---- the tests ----
-
-// The shape of a seeded thread, end to end. Four messages, alternating, ours
-// first, the newest recent, and the last one unread because it is the lead's.
 func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, conversations := newScriptedSeedUseCase(t, writer, &fakeScripter{}, &fakeBalance{micros: 5_000_000})
@@ -143,7 +127,6 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 	}
 
 	writes := writer.writes()
-	// MaxMessages is 4: the operator's opening plus three replies.
 	if len(writes) != 4 {
 		t.Fatalf("wrote %d messages, want 4", len(writes))
 	}
@@ -164,16 +147,12 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 		}
 	}
 
-	// Ours first, and it is the operator's own text with the name rendered.
 	if !strings.Contains(writes[0].Text, "Marina") {
 		t.Errorf("the opening is %q, want the operator's message with the name", writes[0].Text)
 	}
 	if writes[0].Direction != conversation.MessageDirectionOutbound {
 		t.Errorf("the opening is %q, want OUTBOUND", writes[0].Direction)
 	}
-	// The channel names its content honestly, so direction is STATED rather
-	// than derived: derived from the type, an operator's own reply would land
-	// on the customer's side of the thread.
 	wantDirections := []conversation.MessageHistoryDirection{
 		conversation.MessageDirectionOutbound,
 		conversation.MessageDirectionInbound,
@@ -185,8 +164,6 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 			t.Errorf("message %d direction = %q, want %q", i, writes[i].Direction, want)
 		}
 	}
-	// The lead's messages must be a genuinely inbound TYPE, or the inbox will
-	// never count them and the conversation reads as one nobody replied to.
 	if !writes[1].MessageType.IsInbound() {
 		t.Errorf("the lead's message type %q is not inbound", writes[1].MessageType)
 	}
@@ -194,8 +171,6 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 		t.Errorf("our message type %q counts as inbound", writes[0].MessageType)
 	}
 
-	// Chronological, spaced, and ending at now. A thread whose newest message
-	// is hours old sinks in an inbox sorted by last_message_at.
 	for i := 1; i < len(writes); i++ {
 		if !writes[i].CreatedAt.After(writes[i-1].CreatedAt) {
 			t.Errorf("message %d is not after message %d", i, i-1)
@@ -210,7 +185,6 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 			uc.clock.Now().Sub(newest))
 	}
 
-	// Findable and deletable later without guessing from the text.
 	var meta map[string]any
 	if err := json.Unmarshal(writes[0].Metadata, &meta); err != nil {
 		t.Fatalf("metadata is not JSON: %v (%s)", err, writes[0].Metadata)
@@ -223,9 +197,6 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 	}
 }
 
-// A scripted thread ending on the lead's turn is a genuinely unanswered
-// message. Showing it as answered would be the lie, and this is capped at two
-// hundred rather than a hundred thousand, so the badge is affordable.
 func TestSeedInboxLeavesOnlyTheTrailingInboundMessageUnread(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, _ := newScriptedSeedUseCase(t, writer, &fakeScripter{}, &fakeBalance{micros: 5_000_000})
@@ -249,7 +220,6 @@ func TestSeedInboxLeavesOnlyTheTrailingInboundMessageUnread(t *testing.T) {
 	}
 }
 
-// A thread that ends on OUR turn has nothing unanswered in it.
 func TestSeedInboxMarksEverythingReadWhenTheThreadEndsOnOurTurn(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{reply: func(req uw.ScriptRequest) *uw.ScriptResult {
@@ -274,9 +244,6 @@ func TestSeedInboxMarksEverythingReadWhenTheThreadEndsOnOurTurn(t *testing.T) {
 	}
 }
 
-// Rule 1, and the most expensive one to get wrong: the history guard runs
-// BEFORE the model does. Scripting a thread for a conversation that turns out
-// to be live is money spent on output that gets thrown away.
 func TestSeedInboxNeverScriptsAConversationThatHasHistory(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -297,7 +264,6 @@ func TestSeedInboxNeverScriptsAConversationThatHasHistory(t *testing.T) {
 	if out.AlreadyActive != 1 || out.Seeded != 1 {
 		t.Fatalf("outcome = %+v, want 1 already active and 1 seeded", out)
 	}
-	// Only the empty one was ever sent to the model.
 	if got := scripter.subjectCount(); got != 1 {
 		t.Fatalf("the model was asked about %d subjects, want only the 1 empty conversation", got)
 	}
@@ -308,8 +274,6 @@ func TestSeedInboxNeverScriptsAConversationThatHasHistory(t *testing.T) {
 	}
 }
 
-// Rule 3. The model refusing, timing out or returning nothing usable must land
-// on a plain empty chat, never on a failed import.
 func TestSeedInboxFallsBackToThePlaceholderWhenTheModelFails(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{err: errors.New("upstream 503")}
@@ -326,19 +290,16 @@ func TestSeedInboxFallsBackToThePlaceholderWhenTheModelFails(t *testing.T) {
 	if len(writes) != 1 {
 		t.Fatalf("wrote %d messages, want the 1 placeholder", len(writes))
 	}
-	// The placeholder, unchanged: system, empty, read.
 	if writes[0].MessageType != conversation.MessageTypeSystem || writes[0].Text != "" || !writes[0].Read {
 		t.Fatalf("the fallback is %+v, want today's placeholder", writes[0])
 	}
 }
 
-// A model that returns nothing usable is the same as a model that failed.
 func TestSeedInboxFallsBackWhenTheModelReturnsNoUsableTurns(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{reply: func(req uw.ScriptRequest) *uw.ScriptResult {
 		threads := make([]uw.ScriptedThread, 0, len(req.Subjects))
 		for _, s := range req.Subjects {
-			// Every line is ours, so alternation accepts none of them.
 			threads = append(threads, uw.ScriptedThread{Ref: s.Ref, Turns: []uw.ScriptTurn{
 				{FromLead: false, Text: "nossa mensagem de novo"},
 			}})
@@ -359,8 +320,6 @@ func TestSeedInboxFallsBackWhenTheModelReturnsNoUsableTurns(t *testing.T) {
 	}
 }
 
-// A thread the model returned for a ref nobody asked about is ignored, and the
-// target it was meant for still gets a chat.
 func TestSeedInboxIgnoresUnknownRefs(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{reply: func(uw.ScriptRequest) *uw.ScriptResult {
@@ -379,8 +338,6 @@ func TestSeedInboxIgnoresUnknownRefs(t *testing.T) {
 	}
 }
 
-// The balance floor refuses BEFORE the call, not after it. A guard that runs
-// afterwards has already spent the money it exists to protect.
 func TestSeedInboxRefusesToScriptBelowTheBalanceFloor(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -401,8 +358,6 @@ func TestSeedInboxRefusesToScriptBelowTheBalanceFloor(t *testing.T) {
 	}
 }
 
-// A balance that cannot be READ is treated as too low. The alternative is
-// spending money we cannot prove the customer has every time Redis blinks.
 func TestSeedInboxRefusesToScriptWhenTheBalanceCannotBeRead(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -417,9 +372,6 @@ func TestSeedInboxRefusesToScriptWhenTheBalanceCannotBeRead(t *testing.T) {
 	}
 }
 
-// The balance is read ONCE per batch, not once per target. Twenty-five reads
-// for twenty-five targets is twenty-four calls to Redis that cannot change the
-// answer.
 func TestSeedInboxChecksTheBalanceOncePerBatch(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	counting := &countingBalance{fakeBalance: fakeBalance{micros: 5_000_000}}
@@ -436,9 +388,6 @@ func TestSeedInboxChecksTheBalanceOncePerBatch(t *testing.T) {
 	}
 }
 
-// A row with no name under a body using {{1}} is seeded PLAIN and counted.
-// "Oi , tudo bem?" is worse than an empty chat, and the count is what lets the
-// operator see it happened.
 func TestSeedInboxSkipsScriptingARowWithNoNameWhenTheBodyUsesIt(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -464,13 +413,11 @@ func TestSeedInboxSkipsScriptingARowWithNoNameWhenTheBodyUsesIt(t *testing.T) {
 	if out.Seeded != 2 {
 		t.Errorf("Seeded = %d, want 2; nothing is dropped", out.Seeded)
 	}
-	// The unnamed one never reached the model, so it cost nothing.
 	if got := scripter.subjectCount(); got != 1 {
 		t.Fatalf("the model was asked about %d subjects, want 1", got)
 	}
 }
 
-// A body that does NOT use the name has no reason to skip an unnamed row.
 func TestSeedInboxScriptsAnUnnamedRowWhenTheBodyDoesNotUseTheName(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -489,14 +436,11 @@ func TestSeedInboxScriptsAnUnnamedRowWhenTheBodyDoesNotUseTheName(t *testing.T) 
 	}
 }
 
-// Rule 5's enforcement reaches the database: what AcceptTurns returns is what
-// gets written, not what the model sent.
 func TestSeedInboxWritesOnlyWhatAcceptTurnsAllows(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{reply: func(req uw.ScriptRequest) *uw.ScriptResult {
 		threads := make([]uw.ScriptedThread, 0, len(req.Subjects))
 		for _, s := range req.Subjects {
-			// Ten turns, doubled up, blanks in the middle. The cap is 4.
 			threads = append(threads, uw.ScriptedThread{Ref: s.Ref, Turns: []uw.ScriptTurn{
 				{FromLead: true, Text: "1"},
 				{FromLead: true, Text: "quebra a alternancia"},
@@ -528,15 +472,12 @@ func TestSeedInboxWritesOnlyWhatAcceptTurnsAllows(t *testing.T) {
 	}
 }
 
-// The subjects are chunked so one failure costs five targets their script, not
-// the whole batch.
 func TestSeedInboxChunksSubjectsAndSurvivesOneFailedChunk(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	var chunk int
 	scripter := &fakeScripter{reply: func(req uw.ScriptRequest) *uw.ScriptResult {
 		chunk++
 		if chunk == 1 {
-			// An answer with no threads at all: the first five fall back.
 			return &uw.ScriptResult{}
 		}
 		threads := make([]uw.ScriptedThread, 0, len(req.Subjects))
@@ -570,8 +511,6 @@ func TestSeedInboxChunksSubjectsAndSurvivesOneFailedChunk(t *testing.T) {
 	}
 }
 
-// The subjects carry the operator's OWN opening, rendered, so the model writes
-// a reply to the text that will actually be above it.
 func TestSeedInboxSendsTheRenderedOpeningToTheModel(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -602,8 +541,6 @@ func TestSeedInboxSendsTheRenderedOpeningToTheModel(t *testing.T) {
 	}
 }
 
-// Rule 4. A re-import finds the same conversations with a non-zero message
-// count, scripts nothing, and spends nothing.
 func TestSeedInboxScriptingIsIdempotent(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -630,8 +567,6 @@ func TestSeedInboxScriptingIsIdempotent(t *testing.T) {
 	}
 }
 
-// A deployment with no AI service, or an import that did not ask for a script,
-// behaves exactly as it did before this feature existed.
 func TestSeedInboxWithoutAScripterBehavesExactlyAsBefore(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, _ := newScriptedSeedUseCase(t, writer, nil, &fakeBalance{micros: 5_000_000})
@@ -666,8 +601,6 @@ func TestSeedInboxWithoutAScriptNeverCallsTheModel(t *testing.T) {
 	}
 }
 
-// The consumer passes a background context, which is fine for database writes
-// and not fine for a provider. The bound is applied where the call happens.
 func TestSeedInboxBoundsTheModelCall(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	scripter := &fakeScripter{}
@@ -683,8 +616,6 @@ func TestSeedInboxBoundsTheModelCall(t *testing.T) {
 	}
 }
 
-// One target failing to write must not cost the rest of the batch their chats,
-// the same stance every other per-target failure here takes.
 func TestSeedInboxKeepsGoingWhenOneScriptedWriteFails(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	writer.failOnText = "Oi Marina, tudo bem? Vi que voce se interessou no curso."
@@ -699,8 +630,6 @@ func TestSeedInboxKeepsGoingWhenOneScriptedWriteFails(t *testing.T) {
 	}
 }
 
-// ---- helpers ----
-
 type countingBalance struct {
 	fakeBalance
 	reads int
@@ -711,8 +640,6 @@ func (c *countingBalance) GetBalance(id string) (int64, error) {
 	return c.fakeBalance.GetBalance(id)
 }
 
-// distinctNumbers builds addressable, non-colliding Brazilian numbers so a
-// batch exercises real chunking rather than deduplication.
 func distinctNumbers(n int) []string {
 	out := make([]string, 0, n)
 	for i := 0; i < n; i++ {
@@ -721,9 +648,6 @@ func distinctNumbers(n int) []string {
 	return out
 }
 
-// balanceCheckerOrNil keeps a nil fake from becoming a non-nil interface, which
-// is the difference between "no balance tracking on this deployment" and "a
-// balance checker that panics".
 func balanceCheckerOrNil(b *fakeBalance) balance.CachedBalanceChecker {
 	if b == nil {
 		return nil
@@ -731,9 +655,6 @@ func balanceCheckerOrNil(b *fakeBalance) balance.CachedBalanceChecker {
 	return b
 }
 
-// Every conversation in a batch ending on the same second is the single most
-// obvious tell that an inbox was generated rather than worked. The stagger is
-// derived from the number, so it breaks the tie without breaking idempotency.
 func TestSeedInboxStaggersWhereThreadsEndButStaysDeterministic(t *testing.T) {
 	writer := newFakePlaceholderWriter()
 	uc, _ := newScriptedSeedUseCase(t, writer, &fakeScripter{}, &fakeBalance{micros: 5_000_000})
@@ -743,7 +664,6 @@ func TestSeedInboxStaggersWhereThreadsEndButStaysDeterministic(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// The last message of each thread, by conversation.
 	newest := map[string]time.Time{}
 	for _, msg := range writer.writes() {
 		if at, seen := newest[msg.EntryID]; !seen || msg.CreatedAt.After(at) {
@@ -761,9 +681,6 @@ func TestSeedInboxStaggersWhereThreadsEndButStaysDeterministic(t *testing.T) {
 		t.Fatalf("%d conversations all end on the same instant", len(newest))
 	}
 
-	// Deterministic: the same number always yields the same instants, which is
-	// what makes a re-import produce an identical thread rather than a second,
-	// differently-spaced one.
 	const number = "5511999999999"
 	first := threadTimestamps(number, 4, time.Unix(1_700_000_000, 0).UTC())
 	second := threadTimestamps(number, 4, time.Unix(1_700_000_000, 0).UTC())
@@ -772,7 +689,6 @@ func TestSeedInboxStaggersWhereThreadsEndButStaysDeterministic(t *testing.T) {
 			t.Fatalf("timestamp %d differs between runs: %v then %v", i, first[i], second[i])
 		}
 	}
-	// And still in order, with real gaps between turns.
 	for i := 1; i < len(first); i++ {
 		gap := first[i].Sub(first[i-1])
 		if gap < 90*time.Second || gap > 240*time.Second {

@@ -1,6 +1,5 @@
 package customfield
 
-// Repository is the persistence port for custom field definitions.
 type Repository interface {
 	Create(d *Definition) error
 	Update(d *Definition) error

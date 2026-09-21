@@ -16,12 +16,7 @@ import (
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
 
-// unofficialWhatsAppBundle groups everything the channel needs, so it can be
-// wired (or skipped) as one unit instead of threading a dozen fields through the
-// container's god-structs. Same self-contained shape as the other two channels.
 type unofficialWhatsAppBundle struct {
-	// Enabled is false when the channel is switched off or misconfigured. Every
-	// consumer checks it before using the bundle.
 	Enabled bool
 
 	Servers       uw.ServerRepository
@@ -30,30 +25,13 @@ type unofficialWhatsAppBundle struct {
 	Conversations uw.ConversationRepository
 	Groups        uw.GroupRepository
 
-	Provider uw.ProviderAPI
-	// Messaging is the send/media surface. Satisfied by the same client as
-	// Provider, but held separately so the halves stay independently
-	// substitutable — the health cron has no business sending.
+	Provider  uw.ProviderAPI
 	Messaging uw.MessagingAPI
-	// GroupAPI is the group management surface, held separately for the same
-	// reason and a sharper one: these calls evict people from the customer's own
-	// WhatsApp groups, and nothing that only needs to send should be able to
-	// reach them.
-	GroupAPI uw.GroupAPI
-	// Assets downloads provider-hosted profile pictures so they can be re-hosted
-	// on our storage instead of linked.
-	Assets uw.RemoteAssetFetcher
+	GroupAPI  uw.GroupAPI
+	Assets    uw.RemoteAssetFetcher
 
-	// StartConv is kept on the bundle so other features can OPEN a conversation
-	// with a number and then send through the ordinary composer, rather than
-	// growing a second send path. The comment-analysis alerts do exactly that.
-	// It deliberately does not send on its own.
 	StartConv *uwuc.StartConversationUseCase
 
-	// Entitlements answers how many numbers this workspace may connect.
-	//
-	// The concrete type, not the interface, because its source is attached in the
-	// runtime pass and the boot log asserts that it was.
 	Entitlements *uwuc.InstanceEntitlementReader
 
 	ProcessedEvts uw.ProcessedEventRepository
@@ -68,20 +46,10 @@ type unofficialWhatsAppBundle struct {
 	ProvisionInstances *uwuc.ProvisionInstanceUseCase
 	PurgeEvents        *uwuc.PurgeProcessedEventsUseCase
 
-	// SeedInboxPublisher is what a lead import calls to open conversations for
-	// the numbers it just imported. Held on the bundle because the lead handler
-	// must not reach into this channel's internals to find it.
 	SeedInboxPublisher *uwuc.SeedInboxPublisher
 	ConsumeSeedInbox   *uwuc.ConsumeSeedInboxUseCase
 }
 
-// initUnofficialWhatsApp builds the channel.
-//
-// The webhook base URL is required and validated here rather than at first use.
-// That matters more than usual: the provider does not sign webhook bodies, so
-// the delivery token in that URL is the channel's only authenticity control, and
-// a base URL that is http, or carries a path, produces silence rather than an
-// error.
 func (c *Container) initUnofficialWhatsApp() {
 	bundle := &unofficialWhatsAppBundle{}
 	c.unofficialWhatsApp = bundle
@@ -102,26 +70,10 @@ func (c *Container) initUnofficialWhatsApp() {
 	bundle.Groups = uwrepo.NewGroupRepository(c.db)
 	bundle.ProcessedEvts = uwrepo.NewProcessedEventRepository(c.db)
 
-	// Built once and held, so the alert dispatcher can open a conversation
-	// through the SAME use case the handler exposes.
-	//
-	// AFTER the repositories above, and that order is the whole point: this was
-	// constructed from bundle.Instances and its neighbours while they were still
-	// nil, so the use case captured four nil interfaces and every send through it
-	// panicked on the first repository call. Nothing reported it, because the
-	// only caller is an alert, and an alert that panics looks like an alert that
-	// was never configured.
 	bundle.StartConv = uwuc.NewStartConversationUseCase(
 		bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
 		bundle.Messaging, uwrepo.NewLeadLinker(c.repositories.lead))
 
-	// The number allowance: a per-workspace grant a platform administrator sets,
-	// plus whatever addons the workspace bought.
-	//
-	// Created here so the provisioning use case and the HTTP handler can hold it,
-	// but its SOURCE is attached in the runtime pass — this function runs before
-	// initUseCases, so the billing stack does not exist yet. Until then the
-	// reader answers zero, which refuses provisioning rather than permitting it.
 	bundle.Entitlements = uwuc.NewInstanceEntitlementReader(bundle.Instances)
 
 	c.seedUnofficialWhatsAppServer(bundle)
@@ -141,20 +93,9 @@ func (c *Container) initUnofficialWhatsApp() {
 		Remove:      uwuc.NewDeleteInstanceUseCase(bundle.Instances, bundle.Servers, provider),
 		StartConv:   bundle.StartConv,
 		Allowance:   uwuc.NewGetAllowanceUseCase(bundle.Entitlements),
-		// Department scope comes from the platform's conversation authorizer,
-		// which already owns membership, role and the conversations:read
-		// permission for every channel. Deriving it here would be a second
-		// implementation of an access rule, and the two would diverge.
-		//
-		// A nil resolver means UNRESTRICTED — it fails OPEN — which is why the
-		// capability is asserted at boot rather than left to be discovered as
-		// one department reading another's numbers.
 		Departments: c.services.conversationAuthImpl,
 	})
 
-	// The group panel. Wired here rather than in the runtime pass because it
-	// depends on nothing from the conversation stack: a group's roster and admin
-	// rules are the provider's state, not the CRM's.
 	bundle.GroupHandler = uwhttp.NewGroupHandler(uwuc.NewGroupUseCases(uwuc.GroupUseCaseDeps{
 		Instances:     bundle.Instances,
 		Servers:       bundle.Servers,
@@ -167,8 +108,6 @@ func (c *Container) initUnofficialWhatsApp() {
 		FileStorage:   c.services.fileStorage,
 	}))
 
-	// Built with a nil publisher: the queue only exists once the usecases are
-	// assembled, so the handler is rebuilt with both halves in the runtime pass.
 	bundle.WebhookHandler = uwhttp.NewWebhookHandler(bundle.Instances, nil)
 
 	bundle.CheckHealth = uwuc.NewCheckInstanceHealthUseCase(
@@ -180,20 +119,10 @@ func (c *Container) initUnofficialWhatsApp() {
 	bundle.Enabled = true
 	log.Printf("[unofficial-whatsapp] channel enabled (webhook base=%s)",
 		c.cfg.UnofficialWhatsAppWebhookBaseURL)
-	// Printed because a mismatch between this and what the provider was told is
-	// the failure mode that produces silence rather than an error. The token
-	// itself is never logged: it is the credential.
 	log.Printf("[unofficial-whatsapp] webhook URL pattern: %s%s/{deliveryToken}",
 		c.cfg.UnofficialWhatsAppWebhookBaseURL, uw.WebhookPathPrefix)
 }
 
-// seedUnofficialWhatsAppServer registers the configured platform host.
-//
-// The settings are required by config, so there is no absent-configuration
-// branch here: boot has already failed with the missing variable's name by the
-// time this runs. That is the same contract the other channels hold, and it
-// trades a deployment that starts and then fails at the first customer's
-// connect click for one that never starts.
 func (c *Container) seedUnofficialWhatsAppServer(bundle *unofficialWhatsAppBundle) {
 	server, err := uwuc.NewEnsurePlatformServerUseCase(bundle.Servers).
 		Execute(context.Background(), uwuc.PlatformServerInput{
@@ -206,20 +135,11 @@ func (c *Container) seedUnofficialWhatsAppServer(bundle *unofficialWhatsAppBundl
 		log.Fatalf("[unofficial-whatsapp] could not register the platform host: %v", err)
 	}
 	if server.Capacity <= 0 {
-		// Zero capacity means "unknown" and is treated as full, so placement
-		// would refuse every connect. Said out loud because the symptom is a
-		// connect button that always answers "no capacity".
 		log.Printf("[unofficial-whatsapp] host %s has no capacity configured "+
 			"(UNOFFICIAL_WHATSAPP_MAX_SESSIONS); no number can be connected to it", server.BaseURL)
 	}
 }
 
-// initUnofficialWhatsAppRuntime wires the parts that depend on the conversation
-// stack.
-//
-// Split from initUnofficialWhatsApp because the shared history manager is a
-// local inside initUseCases rather than a container field, so it is passed in
-// rather than reached for.
 func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.MessageHistoryManager) {
 	bundle := c.unofficialWhatsApp
 	if bundle == nil || !bundle.Enabled {
@@ -229,22 +149,10 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		log.Fatalf("[unofficial-whatsapp] runtime wiring ran before useCases were built")
 	}
 
-	// The entitlement source, now that the billing use cases exist.
-	//
-	// Without this the reader answers zero for every workspace and nobody can
-	// connect a number, however many a platform administrator granted them. It
-	// fails closed rather than open, which is the right direction, but it is
-	// still broken — hence the capability line below.
 	bundle.Entitlements.SetSource(c.useCases.getWorkspaceEntitlements)
 
-	// Rebuilt now that the publisher exists. Without this the ingest endpoint
-	// would accept events and drop them, which looks exactly like a channel
-	// nobody is messaging.
 	bundle.WebhookHandler = uwhttp.NewWebhookHandler(bundle.Instances, c.useCases.publishWebhook)
 
-	// The dispatcher reuses the SHARED history manager, so this channel gets the
-	// same persistence, dedup and websocket fan-out as every other rather than a
-	// parallel implementation.
 	handler := uwuc.NewHandleWebhookUseCase(uwuc.HandleWebhookDeps{
 		Instances:     bundle.Instances,
 		Servers:       bundle.Servers,
@@ -266,31 +174,16 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Analysis:      conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
 	})
 
-	// The campaign delivery hook, attached HERE rather than in the campaign
-	// wiring because this is where the dispatcher exists: campaigns are built
-	// earlier in the pass, the conversation stack later. A typed call rather
-	// than a type assertion, so a signature change is a compile error instead of
-	// a hook that silently stops firing.
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		handler.SetCampaignDeliverySink(
 			uwcuc.NewDeliverySink(c.unofficialWhatsAppCampaigns.Entries))
 
-		// Which campaign answers a reply, attached for the same reason and at
-		// the same seam. Without it the channel gates inbound automation on the
-		// INSTANCE, so a campaign with no agent and no workflow inherits
-		// whatever the number happens to have enabled and replies by itself.
 		handler.SetCampaignAutomationSource(
 			uwcuc.NewAutomationSource(
 				c.unofficialWhatsAppCampaigns.Entries,
 				c.unofficialWhatsAppCampaigns.Campaigns))
 	}
 
-	// Inbox seeding, so a lead import can open an empty conversation per number.
-	//
-	// Wired here rather than beside the campaign consumer because it reuses the
-	// SAME contact, lead and conversation resolution the dispatcher above does:
-	// a second path from a number to a conversation would duplicate every
-	// contact it touched the moment that person replied.
 	bundle.SeedInboxPublisher = uwuc.NewSeedInboxPublisher(c.services.uwSeedQueuePub)
 	bundle.ConsumeSeedInbox = uwuc.NewConsumeSeedInboxUseCase(
 		c.services.uwSeedQueueSub,
@@ -300,64 +193,27 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 			bundle.Conversations,
 			uwrepo.NewLeadLinker(c.repositories.lead),
 			c.repositories.conversation,
-			// Scripting, and the balance it spends. Both optional and both
-			// nil-safe: without an AI service the scripter is nil and seeding
-			// writes the blank placeholders it always did, and without a
-			// balance checker the floor allows rather than blocking every AI
-			// feature on a deployment that does not track balances.
 			uwuc.NewConversationScripter(c.services.ai, c.cfg.OpenRouterDefaultModel),
 			c.services.cachedBalanceChecker,
-			// Attachments on the opening message. The workspace media library
-			// holds the file an administrator picked in the import dialog; the
-			// conversation media repository is where each seeded chat gets its
-			// own row pointing at it, which is what the chat serves the file
-			// through.
 		).WithAttachments(c.repositories.media, c.repositories.conversationMedia),
 	)
 	if err := bundle.ConsumeSeedInbox.Start(); err != nil {
 		log.Printf("[unofficial-whatsapp] inbox seed consumer failed to start: %v", err)
 	}
 
-	// Every optional capability, named at boot.
-	//
-	// All of these are guarded with `!= nil` at the call site, so a missing one
-	// degrades silently: no AI reply, no workflow trigger, no assignment. That is
-	// the right runtime behaviour and the wrong thing to discover from a customer,
-	// and it has already cost this channel twice — once with the conversation
-	// authorizer, once with the AI service. One line at boot makes the difference
-	// between "wired" and "silently inert" readable.
 	logChannelCapabilities("unofficial-whatsapp", map[string]bool{
-		"ai-reply":    c.services.channelAIReply != nil,
-		"workflows":   c.useCases.triggerEvaluator != nil,
-		"assignment":  c.services.assignmentService != nil,
-		"broadcaster": c.services.conversationHub != nil,
-		"campaigns":   c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled,
-		"media":       c.services.fileStorage != nil,
-		// Named for the same reason as the rest: without storage or a fetcher
-		// the channel still works, it just renders initials where every other
-		// channel renders a face, and that is not something to learn from a
-		// customer.
-		"avatars": c.services.fileStorage != nil && bundle.Assets != nil,
-		"groups":  bundle.Groups != nil && bundle.GroupAPI != nil,
-		// Named because its absence is invisible from the import side: the
-		// import succeeds, reports zero queued, and the operator is left
-		// wondering why their inbox did not fill.
-		"inbox-seeding": c.services.uwSeedQueuePub != nil && c.services.uwSeedQueueSub != nil,
-		// Named for the same reason as inbox-seeding, one step further in:
-		// without an AI service the checkbox still exists, the import still
-		// succeeds and every conversation still opens, blank. A system admin
-		// who ticked "semear conversas de exemplo" and got two hundred empty
-		// chats has no way to tell that from a model that refused.
+		"ai-reply":             c.services.channelAIReply != nil,
+		"workflows":            c.useCases.triggerEvaluator != nil,
+		"assignment":           c.services.assignmentService != nil,
+		"broadcaster":          c.services.conversationHub != nil,
+		"campaigns":            c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled,
+		"media":                c.services.fileStorage != nil,
+		"avatars":              c.services.fileStorage != nil && bundle.Assets != nil,
+		"groups":               bundle.Groups != nil && bundle.GroupAPI != nil,
+		"inbox-seeding":        c.services.uwSeedQueuePub != nil && c.services.uwSeedQueueSub != nil,
 		"inbox-seed-scripting": c.services.ai != nil,
-		// Named because its absence does not degrade — it OPENS. An unwired
-		// entitlement reader means provisioning is not gated at all, and slots on
-		// hosts we pay for get handed out with nothing recording that they were
-		// never authorised.
-		"entitlement-gate": bundle.Entitlements.HasSource(),
-		// Absence does not degrade here, it OPENS: without the resolver every
-		// caller is treated as unrestricted and a number dedicated to one
-		// department is visible to the whole workspace.
-		"department-scope": c.services.conversationAuthImpl != nil,
+		"entitlement-gate":     bundle.Entitlements.HasSource(),
+		"department-scope":     c.services.conversationAuthImpl != nil,
 	})
 
 	bundle.Consume = uwuc.NewConsumeWebhookUseCase(
@@ -369,13 +225,6 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 	)
 }
 
-// wireUnofficialWhatsAppConversationStack registers the channel with the shared
-// conversation services.
-//
-// Each of these is a per-channel lookup the conversation stack keys on
-// (entry_id, entry_type) and cannot resolve generically. Registering them here,
-// rather than adding a `case` inside each of those files, is what keeps the
-// channel additive.
 func (c *Container) wireUnofficialWhatsAppConversationStack() {
 	bundle := c.unofficialWhatsApp
 	if bundle == nil || !bundle.Enabled {
@@ -389,23 +238,12 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 		bundle.Conversations,
 		bundle.Messaging,
 	)
-	// Audio is re-encoded to ogg/opus on the way out: WhatsApp voice notes are
-	// opus and the CRM recorder emits WAV, so without this every voice note is
-	// refused as an unaccepted MIME type.
 	if setter, ok := adapter.(interface{ SetVoiceTranscoder(uw.VoiceTranscoder) }); ok {
 		setter.SetVoiceTranscoder(uazapi.NewVoiceTranscoder())
 	}
 
-	// registerChannelAdapter, never SetChannelAdapters: adapters accumulate, and
-	// replacing the registry would silently disable Instagram's and Telegram's
-	// send paths — a failure that reads downstream as "those channels cannot
-	// send" rather than as a wiring bug.
 	c.registerChannelAdapter(adapter)
 
-	// The per-conversation automation override, read and write. Without the
-	// reader the header reports automation as running even after an operator
-	// paused it; without the writer the toggle has no setter and the service
-	// refuses it by name.
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetAutomationReader(shared.EntryType, func(context.Context, string) (*bool, error))
 	}); ok {
@@ -419,8 +257,6 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 				return conv.AutomationEnabled, nil
 			})
 	} else {
-		// Never silently: a missing reader is indistinguishable from
-		// "automation is on" at the UI, which is the exact bug this fixes.
 		log.Printf("[unofficial-whatsapp] history provider exposes no SetAutomationReader; " +
 			"the automation toggle will read as always-on")
 	}
@@ -435,14 +271,6 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 		)
 	}
 
-	// The websocket authorizer's ownership check. Without it, opening a
-	// conversation on this channel is refused for every operator, because the
-	// authorizer has no reader for the entry type and fails closed.
-	//
-	// The KEYED setter, never a per-channel one: the Instagram- and
-	// Telegram-shaped setters still exist as deprecated aliases onto the same
-	// map, and a third channel reaching for that shape is how the map ends up
-	// with one hand-written accessor per channel again.
 	if c.services.conversationAuthImpl != nil {
 		c.services.conversationAuthImpl.SetEntryAccessRepo(
 			shared.EntryTypeUnofficialWhatsApp, bundle.Conversations)
@@ -463,10 +291,6 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 	if setter, ok := c.services.campaignWorkspaceResolver.(interface {
 		SetEntryOwnerResolver(shared.EntryType, conversation_usecase.EntryOwnerResolver)
 	}); ok {
-		// Campaign attribution reaches the resolver through an OPTIONAL interface,
-		// so a repository that stopped implementing it would degrade silently:
-		// funnel placement and campaign attribution would just go quiet again.
-		// Asserted here, at the registration seam, to make that a compile error.
 		var _ conversation_usecase.EntryCampaignResolver = bundle.Conversations
 		setter.SetEntryOwnerResolver(shared.EntryTypeUnofficialWhatsApp, bundle.Conversations)
 	}
@@ -479,38 +303,22 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 	}
 }
 
-// unofficialWhatsAppContactIdentity adapts the channel's repositories onto the
-// conversation usecase's sender-identity port.
-//
-// Registered even though this channel's contacts ARE leads, unlike Instagram's
-// and Telegram's: a contact is only linked to a lead once one resolves, and
-// between the first inbound message and that resolution the inbox would
-// otherwise render a bare JID where a name belongs.
 func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) conversation_usecase.ContactIdentityLookup {
 	contacts, conversations := bundle.Contacts, bundle.Conversations
 
 	display := func(c *uw.Contact) conversation_usecase.ContactDisplay {
-		// The CRM lead this contact resolved to, so the reader can prefer a name
-		// a person typed over the one the handset advertises. Empty for a group
-		// and for a contact whose first message has not been bridged yet.
 		leadID := ""
 		if c.LeadID != nil {
 			leadID = *c.LeadID
 		}
 		return conversation_usecase.ContactDisplay{
-			ContactID: c.ID,
-			LeadID:    leadID,
-			// Message rows carry the JID as the sender, so that is what the
-			// hydration compares against when deciding whether a label is a raw
-			// provider id leaking into the UI.
+			ContactID:  c.ID,
+			LeadID:     leadID,
 			Ref:        c.JID,
 			Handle:     c.Handle(),
 			Name:       c.DisplayName(),
 			PictureURL: c.PictureURL,
-			// The one channel that has groups, so far. Carried on the identity
-			// lookup rather than through the inbox SQL registry, so declaring it
-			// costs this adapter one line and the other channels nothing.
-			IsGroup: c.IsGroup,
+			IsGroup:    c.IsGroup,
 		}
 	}
 
@@ -527,11 +335,6 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 				}
 				d := display(contact)
 				out[contact.ID] = d
-				// Keyed under BOTH ids, because the caller asked using whatever
-				// rode the lead slot and does not know which one it got: the CRM
-				// lead for a resolved contact, the contact id for a group or one
-				// that has not resolved yet. Keying only by contact id would
-				// leave every linked row unhydrated.
 				if d.LeadID != "" {
 					out[d.LeadID] = d
 				}
@@ -554,10 +357,6 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 			if err != nil {
 				return nil, err
 			}
-			// Only a group has authors distinct from its subject. Checked here
-			// rather than by the reader, because "what is a group" is this
-			// channel's own knowledge — and the reader already skips any author
-			// that IS the subject, so a one-to-one thread never gets this far.
 			if !conv.IsGroup {
 				return nil, nil
 			}
@@ -570,8 +369,6 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 				if contact == nil {
 					continue
 				}
-				// Keyed by the same Handle the message row stored, so the
-				// reader's map hit needs no second normalisation pass.
 				out[contact.Handle()] = display(contact)
 			}
 			return out, nil
@@ -579,8 +376,6 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 	}
 }
 
-// unofficialWhatsAppHandler returns the channel's HTTP handler, or nil when the
-// channel is disabled; the router treats nil as "register no routes".
 func unofficialWhatsAppHandler(c *Container) *uwhttp.Handler {
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return nil
@@ -588,8 +383,6 @@ func unofficialWhatsAppHandler(c *Container) *uwhttp.Handler {
 	return c.unofficialWhatsApp.Handler
 }
 
-// unofficialWhatsAppGroupHandler returns the group panel's handler, or nil when
-// the channel is disabled.
 func unofficialWhatsAppGroupHandler(c *Container) *uwhttp.GroupHandler {
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return nil
@@ -597,8 +390,6 @@ func unofficialWhatsAppGroupHandler(c *Container) *uwhttp.GroupHandler {
 	return c.unofficialWhatsApp.GroupHandler
 }
 
-// unofficialWhatsAppWebhookHandler returns the public ingest handler, or nil
-// when the channel is disabled.
 func unofficialWhatsAppWebhookHandler(c *Container) *uwhttp.WebhookHandler {
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
 		return nil

@@ -7,11 +7,6 @@ import (
 	ca "vozko/domain/audience"
 )
 
-// The budget screen has to answer two questions, and the second one is the
-// reason the first is worth showing: what the ceiling is, and whether it is
-// currently costing anything. A ceiling nobody is bumping into is trivia.
-
-// fakeWorkspaceLimits is the workspace's own analysis settings, in memory.
 type fakeWorkspaceLimits struct {
 	byWorkspace map[string]ca.WorkspaceSettings
 }
@@ -29,8 +24,6 @@ func (f *fakeWorkspaceLimits) Save(_ context.Context, workspaceID string, settin
 	return nil
 }
 
-// accountCap stands for a workspace configured before the workspace-level
-// ceiling existed: its number lives on a channel account and nowhere else.
 func usageHarness(t *testing.T, accountCap int) (ca.UsageUseCase, *fakeRepo, *fakeWorkspaceLimits, *fakeSettings) {
 	t.Helper()
 	repo := newFakeRepo()
@@ -47,7 +40,6 @@ func TestUsage_ReportsTheBacklogBehindTheCeiling(t *testing.T) {
 	ctx := context.Background()
 
 	repo.seedWaiting("ws-1", 12)
-	// Another workspace's queue is not this workspace's problem.
 	repo.seedWaiting("ws-2", 40)
 
 	u, err := uc.Execute(ctx, "ws-1")
@@ -65,8 +57,6 @@ func TestUsage_ReportsTheBacklogBehindTheCeiling(t *testing.T) {
 	}
 }
 
-// A backlog bigger than the room left is the state the operator needs to see,
-// because it is the only one where raising the limit changes anything.
 func TestUsage_MarksTheCeilingAsTheConstraintWhenWorkIsStackingUp(t *testing.T) {
 	uc, repo, _, _ := usageHarness(t, 10)
 	ctx := context.Background()
@@ -85,9 +75,6 @@ func TestUsage_MarksTheCeilingAsTheConstraintWhenWorkIsStackingUp(t *testing.T) 
 	}
 }
 
-// A backlog read that fails must not take the whole panel down with it. The
-// ceiling and the spend are still worth showing, and a missing backlog degrades
-// to "nothing known to be waiting" rather than to an error page.
 func TestUsage_SurvivesABacklogReadFailure(t *testing.T) {
 	uc, repo, _, _ := usageHarness(t, 100)
 	repo.failCountWaiting = true
@@ -104,9 +91,6 @@ func TestUsage_SurvivesABacklogReadFailure(t *testing.T) {
 	}
 }
 
-// The ceiling an operator sets has to be the ceiling the dashboard reports, and
-// it has to beat whatever a channel account was carrying: the workspace screen
-// is the control, so a stale account number must not quietly win.
 func TestUsage_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
 	uc, _, limits, _ := usageHarness(t, 20000)
 	ctx := context.Background()
@@ -131,9 +115,6 @@ func TestUsage_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
 	}
 }
 
-// A workspace that analyses only conversations has no channel account at all.
-// It was the case the old per-account ceiling could not express, so it ran under
-// a number nobody could see or change.
 func TestUsage_ReportsACeilingWithoutAnyChannelAccount(t *testing.T) {
 	limits := newFakeWorkspaceLimits()
 	uc := NewUsageUseCase(NewUsageLimiter(newFakeState()), limits, newFakeSettings(), newFakeRepo(), fixedClock{now})

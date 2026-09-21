@@ -8,13 +8,6 @@ import (
 	"time"
 )
 
-// ModelValidator answers "is this an exact model id the provider offers?" against
-// a TTL-cached snapshot of the catalog, the same caching discipline as
-// LLMPriceFetcher (refresh when stale, fall back to a stale snapshot on error).
-//
-// Callers validate only the handful of model ids actually used (a cheap map
-// lookup), instead of each caller fetching and holding the whole ~300-model
-// catalog. The catalog is fetched at most once per TTL window, process-wide.
 type ModelValidator struct {
 	svc      *Service
 	cacheTTL time.Duration
@@ -28,9 +21,6 @@ func NewModelValidator(svc *Service, ttl time.Duration) *ModelValidator {
 	return &ModelValidator{svc: svc, cacheTTL: ttl, ids: make(map[string]struct{})}
 }
 
-// IsValidModel reports whether id is an exact model id the provider offers. It
-// returns an error only when the catalog has never been loaded and a refresh
-// fails, callers should treat that as "unknown" and NOT block on it.
 func (v *ModelValidator) IsValidModel(ctx context.Context, id string) (bool, error) {
 	v.mu.RLock()
 	stale := time.Since(v.fetchedAt) > v.cacheTTL || len(v.ids) == 0

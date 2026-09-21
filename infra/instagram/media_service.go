@@ -16,20 +16,14 @@ type mediaService struct {
 	client *meta.Client
 }
 
-// DefaultGraphVersion is the Instagram Graph version used when the deployment
-// does not pin one. Meta publishes a sunset date per version, so this is the one
-// value worth being able to change without a code deploy.
 const DefaultGraphVersion = "v25.0"
 
-// GraphConfig configures a Graph-backed Instagram client. The host is fixed (see
-// GraphHost); only the version is deployment-owned.
 type GraphConfig struct {
 	GraphVersion string
 	AppSecret    string
 	HTTPClient   *http.Client
 }
 
-// NewMediaService builds the posts client.
 func NewMediaService(cfg GraphConfig) (igdomain.MediaService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
@@ -43,11 +37,6 @@ func NewMediaService(cfg GraphConfig) (igdomain.MediaService, error) {
 	return &mediaService{client: client}, nil
 }
 
-// paging is Graph's cursor envelope.
-//
-// HasNext is derived ONLY from the presence of paging.next: a page holding fewer
-// items than the requested limit does not mean the end, because privacy rules
-// filter items out of a page after the limit is applied.
 type paging struct {
 	Cursors struct {
 		Before string `json:"before"`
@@ -57,12 +46,6 @@ type paging struct {
 	Previous string `json:"previous"`
 }
 
-// rawMedia mirrors the IG Media node.
-//
-// Every optional field is a pointer or checked for emptiness because Graph OMITS
-// fields rather than nulling them: media_url is absent on copyrighted content,
-// thumbnail_url on non-VIDEO media, permalink on carousel children, and
-// caption/comments_count/is_comment_enabled on album children.
 type rawMedia struct {
 	ID               string `json:"id"`
 	Caption          string `json:"caption"`
@@ -118,8 +101,6 @@ type mediaListResponse struct {
 
 func (s *mediaService) ListMedia(ctx context.Context, igUserID, token string, limit int, after string) (*igdomain.Page[*igdomain.RemoteMedia], error) {
 	q := url.Values{}
-	// The edge returns bare {id} objects unless fields are requested, plus a
-	// nested children expansion so a carousel renders without an N+1.
 	q.Set("fields", strings.Join(igdomain.MediaFields(), ",")+
 		",children{id,media_type,media_product_type,media_url,thumbnail_url,permalink}")
 	if limit > 0 {
@@ -180,13 +161,10 @@ type containerResponse struct {
 	ID string `json:"id"`
 }
 
-// CreateContainer starts a publish. Container processing is asynchronous, so the
-// caller must poll GetContainerStatus before publishing.
 func (s *mediaService) CreateContainer(ctx context.Context, igUserID, token string, in igdomain.CreateMediaInput) (string, error) {
 	form := url.Values{}
 	switch {
 	case strings.TrimSpace(in.ImageURL) != "":
-		// JPEG is the only supported image format for publishing.
 		form.Set("image_url", in.ImageURL)
 	case strings.TrimSpace(in.VideoURL) != "":
 		form.Set("video_url", in.VideoURL)
@@ -260,8 +238,6 @@ func (s *mediaService) PublishContainer(ctx context.Context, igUserID, token, co
 	return out.ID, nil
 }
 
-// SetCommentEnabled is the only supported update on a published post. There is
-// no endpoint to edit a caption.
 func (s *mediaService) SetCommentEnabled(ctx context.Context, token, igMediaID string, enabled bool) error {
 	form := url.Values{}
 	form.Set("comment_enabled", fmt.Sprint(enabled))
@@ -274,13 +250,10 @@ func (s *mediaService) SetCommentEnabled(ctx context.Context, token, igMediaID s
 	}, nil)
 }
 
-// FetchMediaBytes streams a CDN asset for the proxy. The URL is already signed,
-// so no token is attached.
 func (s *mediaService) FetchMediaBytes(ctx context.Context, rawURL string) ([]byte, string, error) {
 	return s.client.FetchBytes(ctx, rawURL)
 }
 
-// parseGraphTime parses Graph's ISO-8601-with-offset timestamps.
 func parseGraphTime(v string) *time.Time {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -299,7 +272,6 @@ func parseGraphTime(v string) *time.Time {
 	return nil
 }
 
-// graphVersionOr applies the default when a version was not pinned.
 func graphVersionOr(v string) string {
 	if strings.TrimSpace(v) == "" {
 		return DefaultGraphVersion

@@ -54,7 +54,6 @@ func TestValidateValue(t *testing.T) {
 		t.Fatalf("text got number should fail: %v", err)
 	}
 
-	// Numbers arrive from JSON as float64, and strings should also parse.
 	if err := def(TypeNumber).ValidateValue(float64(10)); err != nil {
 		t.Fatalf("number float64 should pass: %v", err)
 	}

@@ -57,9 +57,6 @@ type inboundUserResolver interface {
 	ResolveUsernames(userIDs []string) map[string]string
 }
 
-// inboundWorkspaceConfig reads the workspace's SkipAdminAssignment setting so
-// roulette routing can exclude owners/admins when the workspace disabled it,
-// matching inbox and SIP call roulette behaviour. Optional.
 type inboundWorkspaceConfig interface {
 	GetByWorkspaceID(ctx context.Context, workspaceID string) (*wsc.WorkspaceConfig, error)
 }
@@ -91,25 +88,21 @@ type WhatsAppInboundCallUseCase struct {
 }
 
 type WhatsAppInboundConfig struct {
-	Signaling   conversation_domain.WhatsAppCallSignaling
-	Registry    conversation_domain.WhatsAppCallRegistry
-	Phones      inboundBusinessPhoneResolver
-	Entries     inboundEntryResolver
-	Assignment  inboundAssignmentReader
-	Assigner    inboundAssignmentWriter
-	Departments inboundDepartmentResolver
-	Eligible    inboundEligibleUsers
-	Sessions    callsession.CallSessionRegistry
-	Admission   callsession.CallAdmissionCoordinator
-	Broker      *callsession_usecase.InboundOfferBroker
-	Executor    callsession.InboundCRMCallExecutor
-	// Messages + Hub record the call lifecycle (received/answered/missed/ended)
-	// into the conversation thread and push it live. Optional.
-	Messages conversation_domain.MessageRepository
-	Hub      conversation_domain.EventBroadcaster
-	Users    inboundUserResolver
-	// WorkspaceConfig is optional; when set, roulette routing honours the
-	// workspace SkipAdminAssignment flag (admins excluded when enabled).
+	Signaling       conversation_domain.WhatsAppCallSignaling
+	Registry        conversation_domain.WhatsAppCallRegistry
+	Phones          inboundBusinessPhoneResolver
+	Entries         inboundEntryResolver
+	Assignment      inboundAssignmentReader
+	Assigner        inboundAssignmentWriter
+	Departments     inboundDepartmentResolver
+	Eligible        inboundEligibleUsers
+	Sessions        callsession.CallSessionRegistry
+	Admission       callsession.CallAdmissionCoordinator
+	Broker          *callsession_usecase.InboundOfferBroker
+	Executor        callsession.InboundCRMCallExecutor
+	Messages        conversation_domain.MessageRepository
+	Hub             conversation_domain.EventBroadcaster
+	Users           inboundUserResolver
 	WorkspaceConfig inboundWorkspaceConfig
 	PublicIP        string
 	StunServers     []string
@@ -248,11 +241,6 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		return
 	}
 
-	// The agent accepted with its ring reservation still held (ringCandidate keeps
-	// it on accept). Hold it across the blocking AcceptCall round-trip and the
-	// attach below so no concurrent flow can grab the agent in that window; release
-	// on any failure in between. AttachInboundCRMCall consumes the reservation on
-	// success (reserved->active), after which the deferred release is a no-op.
 	reservationActive := true
 	defer func() {
 		if reservationActive {
@@ -292,8 +280,6 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		_ = call.Hangup()
 		return
 	}
-	// Attach consumed the reservation (reserved->active); disarm the deferred
-	// release so the now-attached call is left untouched.
 	reservationActive = false
 	leaseReleased = true
 	closeMedia = false
@@ -311,8 +297,6 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		fmt.Sprintf("📞 Chamada encerrada. Duração %s.", formatCallDuration(time.Since(answeredAt))))
 }
 
-// usernameOf resolves a user id to a display name, falling back to a neutral
-// label so a missed-call message never leaks an internal UUID.
 func (uc *WhatsAppInboundCallUseCase) usernameOf(userID string) string {
 	if uc.users != nil {
 		if name := strings.TrimSpace(uc.users.ResolveUsernames([]string{userID})[userID]); name != "" {
@@ -326,7 +310,7 @@ type ringOutcome struct {
 	session          callsession.CallSession
 	offerID          string
 	terminated       bool
-	declinedByUserID string // last agent who explicitly declined (none accepted)
+	declinedByUserID string
 }
 
 func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentID, assignedUserID string) ([]callsession.CallSession, bool) {
@@ -342,9 +326,6 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 		return nil, false
 	}
 
-	// Honour the workspace SkipAdminAssignment flag so unassigned inbound calls
-	// don't ring owners/admins when the workspace opted out, matching inbox and
-	// SIP call roulette. Defaults to including admins when unset or on error.
 	skipAdmins := false
 	if uc.wsConfig != nil {
 		if cfg, err := uc.wsConfig.GetByWorkspaceID(context.Background(), workspaceID); err == nil && cfg != nil {
@@ -375,12 +356,6 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 			candidates = append(candidates, s)
 		}
 	}
-	// Diagnostic for "no agent available": when candidates is 0, the field that
-	// is empty tells you the cause,
-	//   eligible=[]         → a roulette-permission / SkipAdminAssignment / inbox
-	//                         (/ws/conversations) presence problem (no one qualifies);
-	//   callSessionAvailable=[]  → nobody is connected to a call session (/ws/call-session);
-	//   both non-empty, 0   → the online call session user is not in the eligible (roulette) set.
 	uc.log.Printf("[WAInbound] resolveCandidates: department=%q skipAdmins=%t eligible=%v callSessionAvailable=%v → %d candidate(s)",
 		departmentID, skipAdmins, eligible, callSessionUserIDs, len(candidates))
 	return candidates, true
@@ -430,44 +405,27 @@ func (uc *WhatsAppInboundCallUseCase) ringSequentially(
 
 		switch uc.ringCandidate(ctx, cand, offer, signals, ring, onReserved) {
 		case candAccepted:
-			// The candidate accepted with its ring reservation still held; handle()
-			// consumes it via Attach on success or releases it on a post-accept
-			// failure. Do not release here.
 			return &ringOutcome{session: cand, offerID: offerID}
 		case candTerminated:
 			return &ringOutcome{terminated: true}
 		case candDeclined:
 			lastDeclinedBy = cand.UserID()
 		case candTimedOut, candUnavailable:
-			// Ring window elapsed or the agent was grabbed concurrently / unreachable;
-			// the reservation (if any) was already released, move to the next agent.
 		}
 	}
 	return &ringOutcome{declinedByUserID: lastDeclinedBy}
 }
 
-// candidateOutcome is the result of ringing a single agent.
 type candidateOutcome int
 
 const (
-	// candUnavailable: the agent could not be reserved (busy/grabbed concurrently)
-	// or the ring failed to deliver. Try the next candidate.
 	candUnavailable candidateOutcome = iota
 	candAccepted
 	candDeclined
 	candTimedOut
-	// candTerminated: the caller hung up or the context was cancelled mid-ring.
 	candTerminated
 )
 
-// ringCandidate reserves one agent for the offer, rings them, and waits up to
-// `ring` for an accept/decline. The reservation excludes the agent from every
-// other routing flow's availability pool while their phone is ringing. A deferred
-// release runs on every outcome EXCEPT accept, so decline, timeout, caller
-// hangup, a failed notify, and even a panic all free the agent immediately,
-// while an accepted agent stays reserved until handle() attaches the call (which
-// consumes the reservation atomically). onReserved runs once the reservation is
-// secured and before the ring is sent (used to record the roulette assignment).
 func (uc *WhatsAppInboundCallUseCase) ringCandidate(
 	ctx context.Context,
 	cand callsession.CallSession,

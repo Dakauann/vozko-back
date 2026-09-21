@@ -8,13 +8,6 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-// The campaign wire shapes.
-//
-// Deliberately parallel to the official campaign's payload so one frontend
-// component renders both, with three differences that ARE the product
-// difference: a message spec where the official carries a templateId, pacing and
-// cap fields the Cloud API has no use for, and nothing anywhere about money.
-
 type messageSpecDTO struct {
 	Kind   string   `json:"kind"`
 	Bodies []string `json:"bodies"`
@@ -68,8 +61,6 @@ func messageSpecToDTO(m uwc.MessageSpec) messageSpecDTO {
 	}
 }
 
-// campaignTargetDTO is one imported row, shaped exactly like the official
-// campaign's phone-number payload so the CSV importer transfers unchanged.
 type campaignTargetDTO struct {
 	Number    string                 `json:"number"`
 	Name      string                 `json:"name,omitempty"`
@@ -101,11 +92,6 @@ type campaignPayload struct {
 	Archived       bool                `json:"archived"`
 	Targets        []campaignTargetDTO `json:"targets,omitempty"`
 
-	// SeedOutcome is the administrator-only demonstration control: create this
-	// campaign already carrying results. It is accepted on the way IN and never
-	// returned, because it is an instruction rather than a property of the
-	// campaign — what became of it is readable from the metrics, like any other
-	// campaign's.
 	SeedOutcome *seedOutcomeDTO `json:"seedOutcome,omitempty"`
 }
 
@@ -160,7 +146,6 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 	return c
 }
 
-// campaignDTO is what every campaign endpoint returns.
 type campaignDTO struct {
 	ID           string  `json:"id"`
 	WorkspaceID  string  `json:"workspaceId"`
@@ -170,9 +155,6 @@ type campaignDTO struct {
 	Name    string         `json:"name"`
 	Message messageSpecDTO `json:"message"`
 
-	// The number's identity and live state, resolved server-side so the screen
-	// can disable Start without a second request — and so the UI cannot disagree
-	// with the send path about whether this number may send.
 	InstanceLabel       string `json:"instanceLabel,omitempty"`
 	InstanceStatus      string `json:"instanceStatus,omitempty"`
 	InstanceSessionLive bool   `json:"instanceSessionLive"`
@@ -192,10 +174,7 @@ type campaignDTO struct {
 	SendDelayMaxMS int `json:"sendDelayMaxMs"`
 	DailyCap       int `json:"dailyCap"`
 
-	Status string `json:"status"`
-	// StatusReason explains a pause the SYSTEM applied. Surfaced because an
-	// automatic pause and a manual one look identical without it, and an
-	// operator who cannot tell them apart restarts straight into the restriction.
+	Status       string `json:"status"`
 	StatusReason string `json:"statusReason,omitempty"`
 
 	ScheduledStart *time.Time `json:"scheduledStart,omitempty"`
@@ -250,7 +229,6 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 	return dto
 }
 
-// campaignEntryDTO is one row of the entries table.
 type campaignEntryDTO struct {
 	ID         string `json:"id"`
 	CampaignID string `json:"campaignId"`
@@ -258,14 +236,10 @@ type campaignEntryDTO struct {
 	Number     string `json:"number"`
 	Name       string `json:"name,omitempty"`
 
-	// ConversationID is what makes the row clickable through to a transcript.
-	// Empty until the campaign has actually reached this person.
 	ConversationID string `json:"conversationId,omitempty"`
 
-	Status string `json:"status"`
-	// VariantIndex answers "which message did this person get" for a campaign
-	// running rotations.
-	VariantIndex int `json:"variantIndex"`
+	Status       string `json:"status"`
+	VariantIndex int    `json:"variantIndex"`
 
 	ErrorCode    int    `json:"errorCode,omitempty"`
 	ErrorMessage string `json:"errorMessage,omitempty"`

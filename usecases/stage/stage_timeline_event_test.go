@@ -8,13 +8,6 @@ import (
 	"vozko/domain/stage"
 )
 
-// The stage move's timeline event belongs to the USE CASE.
-//
-// It used to be written by the stage HTTP handler, which meant the two other
-// writers that reach this use case directly — the CRM's bulk "move to stage"
-// and the AI's manage_entry_stage tool — changed the board and left the
-// conversation's history blank. These cases pin it where every writer passes.
-
 type recordingLogger struct{ events []*ce.ConversationEvent }
 
 func (l *recordingLogger) Log(e *ce.ConversationEvent) { l.events = append(l.events, e) }
@@ -28,8 +21,6 @@ func (l *recordingLogger) ofType(t ce.EventType) *ce.ConversationEvent {
 	return nil
 }
 
-// RemoveStage completes the shared fake for the removal path; the coherence
-// tests only ever exercised assignment.
 func (r *coherenceRepo) RemoveStage(stageID, entryID, entryType, workspaceID string) error {
 	r.entryStage = nil
 	return nil
@@ -68,13 +59,10 @@ func TestAssignEntryStage_RecordsTheMoveOnTheTimeline(t *testing.T) {
 	if ev.ActorID != "user-1" || ev.ActorKind != actor.KindHuman {
 		t.Fatalf("actor = %s/%s, want user-1/human", ev.ActorKind, ev.ActorID)
 	}
-	// The channel used to default to "whatsapp" for every non-voice type.
 	if ev.Channel != "unofficial_whatsapp" {
 		t.Fatalf("Channel = %q, want unofficial_whatsapp", ev.Channel)
 	}
 
-	// Names, not just ids: the row rendered as a bare "Stage changed" while the
-	// details held nothing but uuids.
 	d := ev.DetailsMap()
 	if d["stage_name"] != "em atendimento" || d["from_stage_name"] != "recebido" {
 		t.Fatalf("details = %v, want the move named both ways", d)
@@ -84,7 +72,6 @@ func TestAssignEntryStage_RecordsTheMoveOnTheTimeline(t *testing.T) {
 	}
 }
 
-// tag_added rides along for consumers that predate the stage rename.
 func TestAssignEntryStage_AlsoRecordsTagAdded(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
 	log := &recordingLogger{}
@@ -100,8 +87,6 @@ func TestAssignEntryStage_AlsoRecordsTagAdded(t *testing.T) {
 	}
 }
 
-// The AI moves leads too; the timeline has to say so rather than filing it
-// under a human or the system.
 func TestAssignEntryStage_AttributesAnAIMoveToTheAgent(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "interessado"})
 	log := &recordingLogger{}
@@ -120,7 +105,6 @@ func TestAssignEntryStage_AttributesAnAIMoveToTheAgent(t *testing.T) {
 	}
 }
 
-// An unattributed call is the platform acting, not a human with an empty id.
 func TestAssignEntryStage_FallsBackToTheSystemActor(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
 	log := &recordingLogger{}
@@ -138,7 +122,6 @@ func TestAssignEntryStage_FallsBackToTheSystemActor(t *testing.T) {
 	}
 }
 
-// A first placement has no previous stage to name, and must not invent one.
 func TestAssignEntryStage_OmitsTheFromSideOnFirstPlacement(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
 	log := &recordingLogger{}
@@ -156,7 +139,6 @@ func TestAssignEntryStage_OmitsTheFromSideOnFirstPlacement(t *testing.T) {
 	}
 }
 
-// A nil logger is the unit-test wiring; it must not panic a real move.
 func TestAssignEntryStage_SurvivesWithoutALogger(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
 	uc := NewAssignEntryStageUseCase(repo, nil)
@@ -187,7 +169,6 @@ func TestRemoveEntryStage_RecordsTheRemoval(t *testing.T) {
 	}
 }
 
-// A rejected move must leave no trace: the entry did not change stage.
 func TestAssignEntryStage_RecordsNothingWhenTheMoveIsRejected(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "other-ws", Name: "novo"})
 	log := &recordingLogger{}

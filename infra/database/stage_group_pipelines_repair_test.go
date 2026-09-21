@@ -10,11 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// The backfill is the only part of the funnel work that reaches the database with
-// hand-written SQL, and it runs at boot on every deployment. These pin the queries
-// and, more importantly, the ORDER and the no-op cases: a repair that is not a
-// no-op on a healthy database is a repair that corrupts one.
-
 func newRepairDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
@@ -73,16 +68,12 @@ func TestMaterializeStageGroupPipelines_CreatesTheFunnelAndItsStages(t *testing.
 	if err := materializeStageGroupPipelines(db); err != nil {
 		t.Fatalf("repair failed: %v", err)
 	}
-	// The ordering matters: read the orphans, read their items, find the next
-	// position, then insert. sqlmock enforces it in order by default.
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 
 func TestMaterializeStageGroupPipelines_SkipsAnEmptyGroup(t *testing.T) {
-	// An empty group would produce a funnel with no columns — a board nobody can
-	// add to. Leaving it alone is the correct outcome, not creating one.
 	db, mock, sqlDB := newRepairDB(t)
 	defer sqlDB.Close()
 
@@ -95,16 +86,12 @@ func TestMaterializeStageGroupPipelines_SkipsAnEmptyGroup(t *testing.T) {
 	if err := materializeStageGroupPipelines(db); err != nil {
 		t.Fatalf("repair failed: %v", err)
 	}
-	// No INSERT was expected; sqlmock fails the test if one is issued.
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 
 func TestMaterializeStageGroupPipelines_MissingTablesDoNotAbortBoot(t *testing.T) {
-	// A deployment that never used stage groups has nothing to repair. This runs
-	// inside the migration transaction, so returning an error here would stop the
-	// server from starting.
 	db, mock, sqlDB := newRepairDB(t)
 	defer sqlDB.Close()
 
@@ -117,7 +104,6 @@ func TestMaterializeStageGroupPipelines_MissingTablesDoNotAbortBoot(t *testing.T
 }
 
 func TestMaterializeStageGroupPipelines_IsRegisteredInTheRepairList(t *testing.T) {
-	// Easy to write and never wire up; the repair only runs because it is listed.
 	db, mock, sqlDB := newRepairDB(t)
 	defer sqlDB.Close()
 	_ = db

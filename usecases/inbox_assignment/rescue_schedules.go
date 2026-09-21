@@ -8,28 +8,12 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-// tickSchedules holds every working-hours answer one sweep needs, compiled once.
-//
-// Two reads back it: the policy list the sweep already runs (which carries each
-// workspace's schedule), and one query for the department overrides across all
-// eligible workspaces. Nothing here is fetched per conversation — a tick with a
-// full batch of 200 stalled conversations resolves exactly the same schedules as
-// a tick with one.
 type tickSchedules struct {
-	workspaces  map[string]*wh.Schedule
-	departments map[string]*wh.Schedule
-	// workspaceOfDepartment lets a department override count towards its own
-	// workspace when deciding whether that workspace can have work right now.
+	workspaces             map[string]*wh.Schedule
+	departments            map[string]*wh.Schedule
 	departmentsOfWorkspace map[string][]string
 }
 
-// resolveSchedules compiles the workspace policies and reads the department
-// overrides for this tick.
-//
-// A schedule that fails to compile is dropped, not treated as closed. Always
-// open is the behaviour that predates working hours, so a bad policy costs a
-// workspace its schedule rather than freezing every deadline inside it — the
-// same posture the candidate resolver takes when presence reads fail.
 func (j *RescueJob) resolveSchedules(policies []wsc.RoulettePolicy) *tickSchedules {
 	s := &tickSchedules{
 		workspaces:             make(map[string]*wh.Schedule, len(policies)),
@@ -71,8 +55,6 @@ func (j *RescueJob) resolveSchedules(policies []wsc.RoulettePolicy) *tickSchedul
 	return s
 }
 
-// forEntry is the schedule that governs one conversation: the department's own
-// hours when it has them, otherwise the workspace's.
 func (s *tickSchedules) forEntry(workspaceID, departmentID string) *wh.Schedule {
 	if s == nil {
 		return nil
@@ -84,13 +66,6 @@ func (s *tickSchedules) forEntry(workspaceID, departmentID string) *wh.Schedule 
 	return wh.Resolve(s.workspaces[workspaceID], dept)
 }
 
-// workspaceCanHaveWorkNow reports whether anything inside this workspace could
-// be due right now.
-//
-// A workspace whose own hours are closed still qualifies when one of its
-// departments keeps its own, currently-open schedule — the support desk working
-// a Saturday inside a Mon-Fri company. Getting this wrong in the other
-// direction would silently stop rescuing for that desk.
 func (s *tickSchedules) workspaceCanHaveWorkNow(workspaceID string, now time.Time) bool {
 	if s == nil {
 		return true
@@ -106,8 +81,6 @@ func (s *tickSchedules) workspaceCanHaveWorkNow(workspaceID string, now time.Tim
 	return false
 }
 
-// reopenHint names when the next closed workspace opens again, so a quiet night
-// in the log reads as "waiting until 09:00" instead of as a job that stopped.
 func (s *tickSchedules) reopenHint(policies []wsc.RoulettePolicy, now time.Time) string {
 	if s == nil {
 		return ""

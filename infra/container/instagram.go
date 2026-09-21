@@ -15,16 +15,7 @@ import (
 	iguc "vozko/usecases/instagram"
 )
 
-// instagramBundle groups everything the Instagram channel needs, so the channel
-// can be wired (or skipped) as one unit instead of threading a dozen fields
-// through the container's god-structs.
-//
-// It follows the same self-contained-bundle shape as agent_mcp.go: build it in one
-// place, hand the pieces to the router and the job runner, and keep the rest of
-// the container unaware of the channel's internals.
 type instagramBundle struct {
-	// Enabled is false when the channel is switched off or misconfigured. Every
-	// consumer checks it before using the bundle.
 	Enabled bool
 
 	Accounts        igdomain.AccountRepository
@@ -38,13 +29,8 @@ type instagramBundle struct {
 	CommentRuleEval *iguc.EvaluateCommentRulesUseCase
 	PrivateReplyUC  *iguc.SendPrivateReplyUseCase
 	ManageRules     *iguc.ManageCommentRulesUseCase
-	// ModerateComment is kept so the comment-analysis engine can attach its
-	// tombstone hook after both are built.
 	ModerateComment *iguc.ModerateCommentUseCase
-	// ReplyComment is kept for the same reason: the comment-analysis engine
-	// publishes its drafted replies through THIS use case, with its scope check
-	// and its local mirror write, rather than calling the Graph edge again.
-	ReplyComment *iguc.ReplyToCommentUseCase
+	ReplyComment    *iguc.ReplyToCommentUseCase
 
 	OAuth        igdomain.OAuthService
 	Messaging    igdomain.MessagingService
@@ -59,27 +45,13 @@ type instagramBundle struct {
 	RefreshTokens *iguc.RefreshTokensUseCase
 	PurgeEvents   *iguc.PurgeProcessedEventsUseCase
 
-	// WebhookSecrets is the accepted signing-secret list. The Instagram API setup
-	// has its own app secret, and the docs do not say unambiguously which one
-	// signs Instagram webhooks, so both are accepted rather than guessed.
 	WebhookSecrets []string
 }
 
-// initInstagram builds the Instagram channel.
-//
-// The configuration is required (LoadConfig fails fast without it), so a client
-// that cannot be constructed is a genuine boot failure rather than a reason to
-// silently serve 404s on every Instagram route.
 func (c *Container) initInstagram() {
 	bundle := &instagramBundle{}
 	c.instagram = bundle
 
-	// Validate the redirect URI against the path this build actually serves.
-	//
-	// The path is a code constant (igdomain.OAuthCallbackPath) shared with the
-	// router, so a deployment can only get the HOST wrong, and that failure now
-	// surfaces at boot with a precise message rather than as an opaque
-	// "Invalid redirect_uri" from Instagram halfway through onboarding.
 	if err := igdomain.ValidateRedirectURI(c.cfg.InstagramRedirectURI); err != nil {
 		log.Fatalf("[instagram] %v", err)
 	}
@@ -102,10 +74,8 @@ func (c *Container) initInstagram() {
 		log.Fatalf("[instagram] subscription client: %v", err)
 	}
 	messagingSvc, err := iginfra.NewMessagingService(iginfra.MessagingConfig{
-		GraphVersion: c.cfg.InstagramGraphVersion,
-		AppSecret:    c.cfg.InstagramAppSecret,
-		// The shared Redis-backed limiter keeps the per-account send quotas
-		// (100/s text, 10/s media, 2/s conversations) honest across replicas.
+		GraphVersion:       c.cfg.InstagramGraphVersion,
+		AppSecret:          c.cfg.InstagramAppSecret,
 		RateLimiterFactory: c.redisProvider.RateLimiterFactory(),
 	})
 	if err != nil {
@@ -132,9 +102,6 @@ func (c *Container) initInstagram() {
 	bundle.ProcessedEvent = instagram_repository.NewProcessedEventRepository(c.db)
 	bundle.CommentRules = instagram_repository.NewCommentRuleRepository(c.db)
 
-	// Instagram webhooks are signed with the Instagram app secret, but the docs
-	// only say "your app's App Secret". Accepting both removes the ambiguity
-	// without betting on either.
 	bundle.WebhookSecrets = append([]string{c.cfg.InstagramAppSecret}, c.cfg.MetaAppSecret)
 	bundle.WebhookSecrets = append(bundle.WebhookSecrets, c.cfg.MetaAppSecretsExtra...)
 
@@ -148,8 +115,6 @@ func (c *Container) initInstagram() {
 		"/dashboard/instagram-accounts",
 	)
 
-	// Built once and shared: the HTTP handler exposes them as operator actions,
-	// and the comment-rule evaluator performs the same operations automatically.
 	replyComment := iguc.NewReplyToCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
 	moderateComment := iguc.NewModerateCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
 	privateReply := iguc.NewSendPrivateReplyUseCase(
@@ -191,40 +156,19 @@ func (c *Container) initInstagram() {
 	bundle.Enabled = true
 	log.Printf("[instagram] channel enabled (graph=%s/%s)", iginfra.GraphHost, iginfra.DefaultGraphVersion)
 
-	// Print the redirect URI exactly as it will be sent to Instagram.
-	//
-	// "Invalid redirect_uri" is the most common onboarding failure and it is always
-	// a byte-level mismatch against the list registered in the App Dashboard under
-	//   Instagram > API setup with Instagram login > 3. Set up Instagram business
-	//   login > Set up > Redirect URL
-	// (NOT the Facebook Login for Business OAuth list, which belongs to WhatsApp
-	// Embedded Signup and has no effect here). Meta also warns that the dashboard
-	// may silently append a trailing slash to a saved URI, so the two strings can
-	// differ by one invisible character. Logging it makes that diffable instead of
-	// guesswork.
 	log.Printf("[instagram] redirect_uri sent to Instagram: %q (must match the dashboard byte-for-byte, including any trailing slash)",
 		c.cfg.InstagramRedirectURI)
 }
 
-// initInstagramRuntime wires the parts that depend on the conversation stack.
-//
-// The history manager is a local inside initUseCases rather than a container
-// field, so it is passed in instead of reached for.
 func (c *Container) initInstagramRuntime(history conversation_domain.MessageHistoryManager) {
 	bundle := c.instagram
 	if bundle == nil || !bundle.Enabled {
 		return
 	}
 
-	// A private reply opens a conversation; recording it in the transcript is what
-	// makes that conversation appear in the inbox, since the inbox lists
-	// conversations by their last message.
 	if bundle.PrivateReplyUC != nil {
 		bundle.PrivateReplyUC.SetHistoryManager(history)
 	}
-	// Guard the wiring order explicitly: this half depends on the useCases struct
-	// literal having been assigned, and a nil here used to panic at boot rather
-	// than saying what was wrong.
 	if c.useCases == nil {
 		log.Fatalf("[instagram] runtime wiring ran before useCases were built")
 	}
@@ -235,9 +179,6 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		c.cfg.InstagramWebhookVerifyToken,
 	)
 
-	// The webhook dispatcher reuses the SHARED history manager, so Instagram gets
-	// the same persistence, dedup and websocket fan-out as every other channel
-	// rather than a parallel implementation.
 	handler := iguc.NewHandleWebhookUseCase(iguc.HandleWebhookDeps{
 		Accounts:      bundle.Accounts,
 		Contacts:      bundle.Contacts,
@@ -268,15 +209,6 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 	)
 }
 
-// wireInstagramConversationStack registers the Instagram channel with the shared
-// conversation services.
-//
-// Each of these is a per-channel lookup that the conversation stack keys on
-// (entry_id, entry_type) and therefore cannot resolve generically: the send
-// adapter, the WS authorizer's ownership check, the workspace/department resolver,
-// and the conversation-status writer. Registering them here, rather than adding
-// another `case "instagram"` inside each of those files, is what keeps the
-// channel additive.
 func (c *Container) wireInstagramConversationStack() {
 	bundle := c.instagram
 	if bundle == nil || !bundle.Enabled {
@@ -292,11 +224,6 @@ func (c *Container) wireInstagramConversationStack() {
 
 	c.registerChannelAdapter(adapter)
 
-	// Instagram had the same gap as Telegram: no campaign, so the campaign-scoped
-	// toggle could never reach it.
-	// The matching READER. GetEntryInfo returned a hard true for every
-	// adapter-backed channel, so the header reported automation as running even
-	// after it had been paused.
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetAutomationReader(shared.EntryType, func(context.Context, string) (*bool, error))
 	}); ok {
@@ -309,8 +236,6 @@ func (c *Container) wireInstagramConversationStack() {
 			return conv.AutomationEnabled, nil
 		})
 	} else {
-		// Never silently. A missing reader is indistinguishable from "automation
-		// is on" at the UI, which is the exact bug this registration fixes.
 		log.Printf("[instagram] history provider exposes no SetAutomationReader; the toggle will read as always-on")
 	}
 
@@ -337,27 +262,13 @@ func (c *Container) wireInstagramConversationStack() {
 		c.services.conversationStatusService.SetConversationCounter(
 			shared.EntryTypeInstagram, bundle.Conversations.CountByStatus)
 	}
-	// The parameter is spelled as the NAMED type on purpose.
-	//
-	// This previously asserted a method taking an inline `interface{ ... }`
-	// literal with the same two methods. A defined type is never identical to a
-	// type literal, so the signatures did not match, the assertion was always
-	// false, and Instagram's tenant lookup was never registered. Every inbound
-	// message then failed to resolve its workspace: no inbox assignment, no
-	// initial tag, and no agent reply. Telegram's equivalent used the named type
-	// and worked, which is what made this look Instagram-specific.
 	if setter, ok := c.services.campaignWorkspaceResolver.(interface {
 		SetEntryOwnerResolver(shared.EntryType, conversation_usecase.EntryOwnerResolver)
 	}); ok {
 		setter.SetEntryOwnerResolver(shared.EntryTypeInstagram, bundle.Conversations)
 	} else {
-		// Never silently: without this the channel looks connected and simply
-		// never answers.
 		log.Printf("[instagram] workspace resolver exposes no SetEntryOwnerResolver; inbound messages will not resolve a workspace")
 	}
-	// The history provider is held as the domain interface, so the optional
-	// identity port is attached by assertion, the same pattern the resolver
-	// above uses.
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetContactIdentityLookup(shared.EntryType, conversation_usecase.ContactIdentityLookup)
 	}); ok {
@@ -365,9 +276,6 @@ func (c *Container) wireInstagramConversationStack() {
 	}
 }
 
-// instagramContactIdentity adapts the Instagram repositories onto the
-// conversation usecase's sender-identity port, so the CRM can label an Instagram
-// DM without the conversation package importing the Instagram domain.
 func instagramContactIdentity(bundle *instagramBundle) conversation_usecase.ContactIdentityLookup {
 	contacts, conversations := bundle.Contacts, bundle.Conversations
 
@@ -410,8 +318,6 @@ func instagramContactIdentity(bundle *instagramBundle) conversation_usecase.Cont
 	}
 }
 
-// instagramHandler returns the channel's HTTP handler, or nil when the channel is
-// disabled, the router treats nil as "register no routes".
 func instagramHandler(c *Container) *instagramhttp.Handler {
 	if c.instagram == nil || !c.instagram.Enabled {
 		return nil
@@ -419,7 +325,6 @@ func instagramHandler(c *Container) *instagramhttp.Handler {
 	return c.instagram.Handler
 }
 
-// instagramWebhookHandler returns the webhook handler, or nil when disabled.
 func instagramWebhookHandler(c *Container) *instagramhttp.WebhookHandler {
 	if c.instagram == nil || !c.instagram.Enabled {
 		return nil

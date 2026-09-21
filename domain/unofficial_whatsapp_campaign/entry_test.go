@@ -7,8 +7,6 @@ import (
 	"vozko/domain/campaign"
 )
 
-// The channel's vocabulary is the official one plus the skip bucket, and the
-// skip bucket must be a NON-dispatch: nothing was transmitted.
 func TestStatusSetIncludesTheSkipBucketAsNonDispatch(t *testing.T) {
 	set := StatusSet()
 	if !set.Valid(campaign.SendStatusSkippedNotOnWhatsApp) {
@@ -21,9 +19,6 @@ func TestStatusSetIncludesTheSkipBucketAsNonDispatch(t *testing.T) {
 	}
 }
 
-// SKIPPED_NOT_ON_WHATSAPP is a list-quality fact, not a delivery failure.
-// Folding it into Failed would make a 30%-dead purchased list look like a broken
-// integration and hide the real failures underneath it.
 func TestSkippedIsNotCountedAsFailed(t *testing.T) {
 	counts := &campaign.Counts{Total: 10, Sent: 7, SkippedNotOnWhatsApp: 3}
 	m := campaign.NewMetrics(counts)
@@ -60,9 +55,6 @@ func TestEntryNormalizeAndValidate(t *testing.T) {
 	}
 }
 
-// A never-checked number is never sent to; a stale answer is re-checked, because
-// registration changes and a campaign resumed weeks later would otherwise skip
-// people who are now reachable.
 func TestNeedsNumberCheck(t *testing.T) {
 	now := time.Now().UTC()
 	fresh := now.Add(-time.Hour)
@@ -85,8 +77,6 @@ func TestNeedsNumberCheck(t *testing.T) {
 	}
 }
 
-// An unknown status must not be silently accepted as pending on the way IN —
-// Normalize repairs it, but Validate is what a repository writes behind.
 func TestUnknownStatusIsRepairedNotAccepted(t *testing.T) {
 	e := &Entry{CampaignID: "c", LeadID: "l", Status: campaign.SendStatus("WAT")}
 	if ValidStatus(e.Status) {

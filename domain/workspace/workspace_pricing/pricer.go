@@ -42,6 +42,8 @@ type Pricer interface {
 	PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error)
 
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)
+
+	PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error)
 }
 
 type pricer struct {
@@ -133,18 +135,6 @@ func (p *pricer) InvalidateResolvedCache(workspaceID string) {
 	p.resolvedCache.Delete(workspaceID)
 }
 
-// PriceLLM prices one completion.
-//
-// providerCostMicros is what the provider itself billed. When it is present it
-// IS the cost, and the token math below is not consulted at all: the provider's
-// figure already carries reasoning tokens, cache reads and writes, image and
-// audio tokens, web search, per-request fees and any repricing an upstream did
-// today — none of which a per-token table can see. Recomputing it can only
-// drift away from the invoice we actually pay.
-//
-// Zero means the provider did not report one (a different provider, or an event
-// published before this field existed), and the token estimate stands in. It is
-// never read as "free": a zero here changes nothing about the old path.
 func (p *pricer) PriceLLM(workspaceID string, model string, promptTokens, completionTokens int, providerCostMicros int64) (PriceResult, error) {
 	if promptTokens <= 0 && completionTokens <= 0 && providerCostMicros <= 0 {
 		return PriceResult{}, nil
@@ -232,15 +222,19 @@ func (p *pricer) PriceTelephonyChannel(workspaceID string, durationSeconds float
 }
 
 func (p *pricer) PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error) {
-	resolved, err := p.ResolveForWorkspace(workspaceID)
-	if err != nil {
-		return PriceResult{}, err
-	}
 	service, err := NormalizeWhatsAppTemplateService(templateCategory)
 	if err != nil {
 		return PriceResult{}, err
 	}
-	item := findResolvedItem(resolved, CategoryWhatsApp, service, "per_message")
+	return p.PriceWhatsAppCategory(workspaceID, service)
+}
+
+func (p *pricer) PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error) {
+	resolved, err := p.ResolveForWorkspace(workspaceID)
+	if err != nil {
+		return PriceResult{}, err
+	}
+	item := findResolvedItem(resolved, CategoryWhatsApp, metaCategory, "per_message")
 	if item == nil || item.PriceMicros <= 0 {
 		return PriceResult{}, nil
 	}

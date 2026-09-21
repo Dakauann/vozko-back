@@ -34,7 +34,7 @@ func newRenameDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 }
 
 func TestRename_GuardsBeforeTouchingTheDatabase(t *testing.T) {
-	r := newNilRepo() // a nil *gorm.DB: reaching the query at all would panic
+	r := newNilRepo()
 
 	if err := r.Rename("", "id", "Ana"); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Errorf("empty workspace = %v, want ErrLeadWorkspaceRequired", err)
@@ -47,10 +47,6 @@ func TestRename_GuardsBeforeTouchingTheDatabase(t *testing.T) {
 	}
 }
 
-// The scoping assertion. An UPDATE keyed on id alone would let anyone who
-// guessed a uuid rename a lead inside another workspace, and no amount of
-// handler-level checking would catch it, because the handler already believes
-// the repository is scoped.
 func TestRename_UpdateIsScopedByWorkspaceNotJustID(t *testing.T) {
 	db, mock, sqlDB := newRenameDB(t)
 	defer sqlDB.Close()
@@ -67,8 +63,6 @@ func TestRename_UpdateIsScopedByWorkspaceNotJustID(t *testing.T) {
 	}
 }
 
-// The name reaching the column is the NORMALIZED one, so what the operator
-// sees after a reload is what was stored, not what they typed.
 func TestRename_WritesTheNormalizedName(t *testing.T) {
 	db, mock, sqlDB := newRenameDB(t)
 	defer sqlDB.Close()
@@ -85,8 +79,6 @@ func TestRename_WritesTheNormalizedName(t *testing.T) {
 	}
 }
 
-// Clearing is a real write of "", not a skipped one. This is the case Merge
-// cannot express, and the reason Rename exists as its own port method.
 func TestRename_ClearingWritesAnEmptyName(t *testing.T) {
 	db, mock, sqlDB := newRenameDB(t)
 	defer sqlDB.Close()
@@ -103,9 +95,6 @@ func TestRename_ClearingWritesAnEmptyName(t *testing.T) {
 	}
 }
 
-// Zero rows means the id does not exist IN THIS WORKSPACE. Reporting success
-// would tell an operator their rename landed when nothing changed, and would
-// also confirm to a prober that some other workspace's id is real.
 func TestRename_NoRowsIsNotFound(t *testing.T) {
 	db, mock, sqlDB := newRenameDB(t)
 	defer sqlDB.Close()

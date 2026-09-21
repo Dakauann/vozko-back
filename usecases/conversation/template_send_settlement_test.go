@@ -12,14 +12,6 @@ import (
 	whatsapp_template "vozko/domain/whatsapp/template"
 )
 
-// The delivery-status webhook is where a paid send is finally settled, and it
-// had no tests. Two failures lived here undetected: attempts were never promoted
-// to `sent` (so the hourly sweep refunded delivered messages), and the refund
-// path was gated behind a message-id lookup that an accepted-without-an-id send
-// can never satisfy.
-
-// ---------------------------------------------------------------- doubles
-
 type settlementAttempts struct {
 	mu       sync.Mutex
 	byID     map[string]*whatsapp_template.SendAttempt
@@ -191,12 +183,6 @@ func chargedAttempt(id string) whatsapp_template.SendAttempt {
 	}
 }
 
-// ---------------------------------------------------------------- promotion
-
-// FINDING 2. Without this promotion an attempt left `unknown` by a transport
-// timeout is refunded by the sweep an hour later — but Meta bills on DELIVERY,
-// so the platform pays for a message the customer received and credits them for
-// it too. This is the common flaky-network case, not a rare crash.
 func TestSettlement_SuccessStatus_PromotesToSentSoTheSweepSkipsIt(t *testing.T) {
 	for _, status := range []string{"sent", "delivered", "read"} {
 		t.Run(status, func(t *testing.T) {
@@ -237,7 +223,6 @@ func TestSettlement_PromotesAnUnknownAttempt(t *testing.T) {
 	}
 }
 
-// An already-settled attempt must not be disturbed by a later status.
 func TestSettlement_AlreadyRefunded_IsNotPromoted(t *testing.T) {
 	attempts := newSettlementAttempts()
 	refunded := chargedAttempt("att-1")
@@ -255,15 +240,9 @@ func TestSettlement_AlreadyRefunded_IsNotPromoted(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- refunds
-
-// FINDING 7. A send Meta accepted without returning a message id stores no
-// wamid, so resolving by wamid cannot work — which is exactly why the
-// correlation id exists. Gating settlement behind the message-id lookup made
-// that fallback unreachable and left the charge standing forever.
 func TestSettlement_FailedStatus_RefundsViaCorrelationIDWithNoWamidStored(t *testing.T) {
 	attempts := newSettlementAttempts()
-	attempts.add(chargedAttempt("att-1"), "") // deliberately NO wamid
+	attempts.add(chargedAttempt("att-1"), "")
 	billing := &settlementBilling{}
 	uc := newSettlementUC(attempts, billing, &settlementLedger{refs: map[string]bool{}})
 
@@ -283,7 +262,6 @@ func TestSettlement_FailedStatus_RefundsViaCorrelationIDWithNoWamidStored(t *tes
 	}
 }
 
-// The wamid remains a valid fallback for older sends that carry no correlation id.
 func TestSettlement_FailedStatus_FallsBackToTheMessageID(t *testing.T) {
 	attempts := newSettlementAttempts()
 	attempts.add(chargedAttempt("att-1"), "wamid.1")
@@ -300,9 +278,6 @@ func TestSettlement_FailedStatus_FallsBackToTheMessageID(t *testing.T) {
 	}
 }
 
-// FINDING 3, on this path: a failed status for a send Meta had ACCEPTED must
-// still refund. "Accepted" and "delivered" are different facts, and Meta bills
-// on the second.
 func TestSettlement_FailedStatusForASentAttempt_IsRefunded(t *testing.T) {
 	attempts := newSettlementAttempts()
 	sent := chargedAttempt("att-1")
@@ -327,7 +302,6 @@ func TestSettlement_FailedStatusForASentAttempt_IsRefunded(t *testing.T) {
 	}
 }
 
-// Meta retries webhooks. A second failed status must not credit twice.
 func TestSettlement_FailedStatusTwice_RefundsOnce(t *testing.T) {
 	attempts := newSettlementAttempts()
 	attempts.add(chargedAttempt("att-1"), "wamid.1")
@@ -345,8 +319,6 @@ func TestSettlement_FailedStatusTwice_RefundsOnce(t *testing.T) {
 	}
 }
 
-// The charge was taken under one category; the credit must match it, whatever
-// Meta now says the template is.
 func TestSettlement_RefundsUnderTheStoredCategoryNotMetasPricing(t *testing.T) {
 	attempts := newSettlementAttempts()
 	stored := chargedAttempt("att-1")
@@ -368,7 +340,6 @@ func TestSettlement_RefundsUnderTheStoredCategoryNotMetasPricing(t *testing.T) {
 	}
 }
 
-// A failed refund must not be recorded as done.
 func TestSettlement_RefundFailure_LeavesTheAttemptUnsettled(t *testing.T) {
 	attempts := newSettlementAttempts()
 	attempts.add(chargedAttempt("att-1"), "wamid.1")
@@ -385,7 +356,6 @@ func TestSettlement_RefundFailure_LeavesTheAttemptUnsettled(t *testing.T) {
 	}
 }
 
-// A status about somebody else's message must not touch our ledger.
 func TestSettlement_UnknownAttempt_DoesNothing(t *testing.T) {
 	attempts := newSettlementAttempts()
 	billing := &settlementBilling{}
@@ -401,7 +371,6 @@ func TestSettlement_UnknownAttempt_DoesNothing(t *testing.T) {
 	}
 }
 
-// Without the repository wired the path must be inert, not panic.
 func TestSettlement_WithoutAttemptsRepository_IsInert(t *testing.T) {
 	uc := &handleWhatsAppMessageUseCase{}
 	uc.settleTemplateSendAttempt(

@@ -8,23 +8,12 @@ import (
 	"vozko/infra/database/schema"
 )
 
-// summaryRepository rolls entry statuses up to the workspace level.
-//
-// Separate from EntryRepository, mirroring the official channel, so adding the
-// summary does not force every repository double in the test suite to grow a
-// method it will never use.
 type summaryRepository struct{ db *gorm.DB }
 
 func NewSummaryRepository(db *gorm.DB) uwc.SummaryAggregator {
 	return &summaryRepository{db: db}
 }
 
-// CountByStatusForWorkspace aggregates in ONE query across every campaign the
-// filter selects.
-//
-// The date range bounds the CAMPAIGN's creation, not the entry's, so the tiles
-// and the export answer the same question — the same contract the official
-// summary carries.
 func (r *summaryRepository) CountByStatusForWorkspace(filter uwc.WorkspaceSummaryFilter) (*campaign.Counts, error) {
 	type row struct {
 		Status string

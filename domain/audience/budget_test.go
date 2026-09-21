@@ -10,10 +10,6 @@ import (
 	"vozko/domain/shared"
 )
 
-// The budgeter is pure arithmetic and it is the answer to "respects the AI's
-// max tokens per call and per cycle". Every bound below closes a batch, and
-// every bound is tested in isolation by making the others impossibly loose.
-
 func loose() Budget {
 	return Budget{
 		MaxBatchItems:        HardMaxBatchItems,
@@ -50,7 +46,6 @@ func TestDefaultBudget_IsValid(t *testing.T) {
 	if err := b.Validate(); err != nil {
 		t.Fatalf("default budget must validate: %v", err)
 	}
-	// The plan's numbers, pinned: a change here is a product decision.
 	if b.MaxBatchItems != 20 || b.MaxInputTokens != 12_000 || b.MaxOutputTokens != 4_000 ||
 		b.PerItemOutputTokens != 64 || b.MaxCommentRunes != 600 || b.ReserveTokens != 512 ||
 		b.SafetyFactor != 1.35 || b.MaxTokensPerCycle != 120_000 || b.MaxBatchesPerCycle != 12 {
@@ -69,8 +64,6 @@ func TestBudget_NormalizeFillsDefaultsAndClamps(t *testing.T) {
 	if b.MaxBatchItems != HardMaxBatchItems {
 		t.Fatalf("MaxBatchItems must be clamped to %d, got %d", HardMaxBatchItems, b.MaxBatchItems)
 	}
-	// A safety factor below 1 would under-estimate, the one direction the
-	// budgeter must never lean.
 	b = Budget{SafetyFactor: 0.5}
 	b.Normalize()
 	if b.SafetyFactor < 1 {
@@ -97,16 +90,12 @@ func TestBudget_Validate(t *testing.T) {
 	}
 }
 
-// §7.1: the hard cap handed to the provider is item count × per-item output
-// plus the reserve, so a runaway generation costs a bounded amount.
 func TestBudget_MaxTokensForBatch(t *testing.T) {
 	b := DefaultBudget()
 	if got := b.MaxTokensForBatch(20); got != 20*64+512 {
 		t.Fatalf("MaxTokensForBatch(20) = %d", got)
 	}
 }
-
-// ---- Bound 1: item count ----
 
 func TestPlanBatches_ClosesOnItemCount(t *testing.T) {
 	b := loose()
@@ -129,12 +118,8 @@ func TestPlanBatches_ClosesOnItemCount(t *testing.T) {
 	}
 }
 
-// ---- Bound 2: input tokens ----
-
 func TestPlanBatches_ClosesOnInputTokens(t *testing.T) {
 	b := loose()
-	// 40-byte comments are 10 tokens each. With a 100-token system prompt and
-	// a 150-token ceiling, exactly 5 fit: 100 + 5×10 = 150; a 6th would be 160.
 	b.MaxInputTokens = 150
 	text := strings.Repeat("a", 40)
 	plans, rem := PlanBatches(items(12, text), 100, b, SubjectKindComment)
@@ -154,15 +139,12 @@ func TestPlanBatches_ClosesOnInputTokens(t *testing.T) {
 	}
 }
 
-// The safety factor and the reserve both count against the ceiling: the
-// estimate handed to the ceiling is ceil((sys + Σ items) × factor) + reserve.
 func TestPlanBatches_InputBoundIncludesSafetyAndReserve(t *testing.T) {
 	b := loose()
 	b.SafetyFactor = 1.35
 	b.ReserveTokens = 50
 	b.MaxInputTokens = 300
-	text := strings.Repeat("a", 40) // 10 tokens
-	// ceil((100 + n×10) × 1.35) + 50 ≤ 300  →  (100 + 10n) × 1.35 ≤ 250 → 10n ≤ 85.2 → n ≤ 8
+	text := strings.Repeat("a", 40)
 	plans, _ := PlanBatches(items(20, text), 100, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 8 {
 		t.Fatalf("first batch has %d items, want 8", n)
@@ -173,26 +155,20 @@ func TestPlanBatches_InputBoundIncludesSafetyAndReserve(t *testing.T) {
 	}
 }
 
-// The item's own JSON envelope costs tokens too; PerItemInputOverhead is
-// charged per item so a batch of 40 one-word comments is not estimated as
-// 40 tokens.
 func TestPlanBatches_ChargesPerItemOverhead(t *testing.T) {
 	b := loose()
 	b.PerItemInputOverhead = 8
 	b.MaxInputTokens = 100
-	// 100 sys? No: sys 0, each item 1 token + 8 overhead = 9. 11 fit (99).
 	plans, _ := PlanBatches(items(30, "a"), 0, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 11 {
 		t.Fatalf("first batch has %d items, want 11", n)
 	}
 }
 
-// ---- Bound 3: output tokens ----
-
 func TestPlanBatches_ClosesOnOutputTokens(t *testing.T) {
 	b := loose()
 	b.PerItemOutputTokens = 64
-	b.MaxOutputTokens = 64*6 + 10 // six fit, a seventh does not
+	b.MaxOutputTokens = 64*6 + 10
 	plans, _ := PlanBatches(items(20, "oi"), 100, b, SubjectKindComment)
 	if n := len(plans[0].Items); n != 6 {
 		t.Fatalf("first batch has %d items, want 6", n)
@@ -202,15 +178,10 @@ func TestPlanBatches_ClosesOnOutputTokens(t *testing.T) {
 	}
 }
 
-// ---- Never empty, never infinite ----
-
-// A single item that alone exceeds MaxInputTokens still gets a one-item
-// batch. Refusing it would leave it pending forever: an infinite loop across
-// ticks instead of within one.
 func TestPlanBatches_OversizedItemStillYieldsOneItemBatch(t *testing.T) {
 	b := loose()
 	b.MaxInputTokens = 50
-	huge := strings.Repeat("a", 4000) // 1000 tokens
+	huge := strings.Repeat("a", 4000)
 	plans, rem := PlanBatches([]Item{{ID: "big", Text: huge}, {ID: "small", Text: "oi"}}, 10, b, SubjectKindComment)
 	if len(rem.Unplanned) != 0 {
 		t.Fatalf("nothing should be deferred: %+v", rem)
@@ -230,14 +201,10 @@ func TestPlanBatches_EmptyInput(t *testing.T) {
 	}
 }
 
-// ---- Truncation ----
-
-// Comments are cut at MaxCommentRunes (RUNES, so a cut never lands inside a
-// multi-byte character) and the cut is recorded on the item.
 func TestPlanBatches_TruncatesAtRuneBoundary(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 10
-	text := strings.Repeat("ção", 10) // 30 runes, 50 bytes
+	text := strings.Repeat("ção", 10)
 	plans, _ := PlanBatches(items(1, text), 0, b, SubjectKindComment)
 	it := plans[0].Items[0]
 	if n := len([]rune(it.Text)); n != 10 {
@@ -246,8 +213,6 @@ func TestPlanBatches_TruncatesAtRuneBoundary(t *testing.T) {
 	if !it.Truncated {
 		t.Fatal("cut must be recorded")
 	}
-	// Every rune must still be a valid character: a byte cut would leave a
-	// replacement char at the end.
 	if strings.ContainsRune(it.Text, '�') {
 		t.Fatal("truncation split a character")
 	}
@@ -257,8 +222,6 @@ func TestPlanBatches_TruncatesAtRuneBoundary(t *testing.T) {
 	}
 }
 
-// Token estimation runs on the TRUNCATED text: the model never sees the
-// tail, so the tail must not count against the batch.
 func TestPlanBatches_EstimatesTruncatedText(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 40
@@ -269,11 +232,6 @@ func TestPlanBatches_EstimatesTruncatedText(t *testing.T) {
 	}
 }
 
-// ---- Refs ----
-
-// Refs are batch-local, 1..N, in item order. The model returns the ref, not
-// the text, and the use case reconciles by it, so it must be dense and
-// deterministic.
 func TestPlanBatches_RefsAreDenseAndBatchLocal(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 3
@@ -290,17 +248,10 @@ func TestPlanBatches_RefsAreDenseAndBatchLocal(t *testing.T) {
 	}
 }
 
-// ---- Cycle ceiling ----
-
-// The per-cycle ceiling DEFERS rather than drops: unplanned items are handed
-// back so the caller leaves them pending for the next tick. This is the
-// literal reading of "respects the max tokens per cycle".
 func TestPlanBatches_CycleTokenCeilingDefers(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 5
 	b.PerItemOutputTokens = 10
-	// Each 5-item batch: input 0 + 5×1 = 5, output 5×10 = 50 → 55 tokens.
-	// Ceiling 120 → two batches (110); a third (165) would cross.
 	b.MaxTokensPerCycle = 120
 	plans, rem := PlanBatches(items(17, "a"), 0, b, SubjectKindComment)
 	if len(plans) != 2 {
@@ -333,14 +284,10 @@ func TestPlanBatches_CycleBatchCeilingDefers(t *testing.T) {
 	}
 }
 
-// A partial batch at the very end that would cross the ceiling is deferred
-// whole, not trimmed: the next tick has a fresh ceiling and will take it.
 func TestPlanBatches_CycleCeilingChecksWholeBatch(t *testing.T) {
 	b := loose()
 	b.MaxBatchItems = 5
 	b.PerItemOutputTokens = 10
-	// The full batch (55) fits. The 3-item tail (33) would cross at 88, even
-	// though two of its items (22) would squeeze in: it is deferred whole.
 	b.MaxTokensPerCycle = 80
 	plans, rem := PlanBatches(items(8, "a"), 0, b, SubjectKindComment)
 	if len(plans) != 1 || len(plans[0].Items) != 5 {
@@ -351,8 +298,6 @@ func TestPlanBatches_CycleCeilingChecksWholeBatch(t *testing.T) {
 	}
 }
 
-// The flush job plans several containers in one tick against ONE workspace
-// ceiling. WithCycleAllowance narrows the ceiling to what is left.
 func TestBudget_WithCycleAllowance(t *testing.T) {
 	b := loose()
 	b.MaxTokensPerCycle = 1000
@@ -365,7 +310,6 @@ func TestBudget_WithCycleAllowance(t *testing.T) {
 	if got := b.WithCycleAllowance(-1).MaxTokensPerCycle; got != 0 {
 		t.Fatalf("negative allowance is zero: %d", got)
 	}
-	// Zero allowance plans nothing and defers everything.
 	plans, rem := PlanBatches(items(3, "a"), 0, b.WithCycleAllowance(0), SubjectKindComment)
 	if len(plans) != 0 || len(rem.Unplanned) != 3 || rem.Reason != RemainderCycleTokens {
 		t.Fatalf("zero allowance: %+v %+v", plans, rem)
@@ -376,20 +320,18 @@ func TestBatchPlan_EstimatedTotalTokens(t *testing.T) {
 	b := loose()
 	b.PerItemOutputTokens = 10
 	b.ReserveTokens = 5
-	plans, _ := PlanBatches(items(2, strings.Repeat("a", 40)), 100, b, SubjectKindComment) // 2×10 + 100 = 120 in
+	plans, _ := PlanBatches(items(2, strings.Repeat("a", 40)), 100, b, SubjectKindComment)
 	p := plans[0]
-	if p.EstimatedInputTokens() != 125 { // ×1.0 + reserve 5
+	if p.EstimatedInputTokens() != 125 {
 		t.Errorf("input = %d", p.EstimatedInputTokens())
 	}
-	if p.MaxOutputTokens() != 25 { // 2×10 + 5
+	if p.MaxOutputTokens() != 25 {
 		t.Errorf("output = %d", p.MaxOutputTokens())
 	}
 	if p.EstimatedTotalTokens() != 150 {
 		t.Errorf("total = %d", p.EstimatedTotalTokens())
 	}
 }
-
-// ---- Split (the FinishReason=="length" path, §7.2) ----
 
 func TestBatchPlan_Split(t *testing.T) {
 	b := loose()
@@ -401,7 +343,6 @@ func TestBatchPlan_Split(t *testing.T) {
 	if len(halves[0].Items) != 4 || len(halves[1].Items) != 3 {
 		t.Fatalf("expected 4+3, got %d+%d", len(halves[0].Items), len(halves[1].Items))
 	}
-	// Refs are renumbered per half: the model sees a fresh 1..N.
 	for _, h := range halves {
 		for i, it := range h.Items {
 			if it.Ref != i+1 {
@@ -433,20 +374,13 @@ func TestBatchPlan_IDs(t *testing.T) {
 	}
 }
 
-// A conversation is not a comment, and the text cap has to know the difference.
-//
-// MaxCommentRunes is 600, which is generous for an Instagram comment and
-// destroys a transcript. Every conversation analysed before this was judged on
-// its first 600 characters: the greetings at the top, with the whole exchange
-// cut away. The model then correctly reported no progress, no engagement and no
-// answer, and the attendance score came out 0 every single time.
 func TestPlanBatchesGivesAConversationATranscriptSizedCap(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 600
 	b.MaxTranscriptRunes = 20_000
 	b.Normalize()
 
-	transcript := strings.Repeat("User: preciso de um orcamento para 200 unidades\n", 60) // ~2800 runes
+	transcript := strings.Repeat("User: preciso de um orcamento para 200 unidades\n", 60)
 	if len([]rune(transcript)) <= b.MaxCommentRunes {
 		t.Fatalf("the fixture must be longer than the comment cap, got %d runes", len([]rune(transcript)))
 	}
@@ -464,8 +398,6 @@ func TestPlanBatchesGivesAConversationATranscriptSizedCap(t *testing.T) {
 	}
 }
 
-// Comments keep the cap they had. The fix must not quietly let a comment carry
-// twenty thousand runes into a batch of twenty.
 func TestPlanBatchesStillCapsCommentsAtTheCommentLimit(t *testing.T) {
 	b := loose()
 	b.MaxCommentRunes = 600
@@ -486,9 +418,6 @@ func TestPlanBatchesStillCapsCommentsAtTheCommentLimit(t *testing.T) {
 	}
 }
 
-// A transcript longer than even the transcript cap is still cut, and still says
-// so: the flag is what lets a reader tell a thin verdict from a thin
-// conversation.
 func TestPlanBatchesStillTruncatesAnEnormousTranscript(t *testing.T) {
 	b := loose()
 	b.MaxTranscriptRunes = 1_000
@@ -504,13 +433,6 @@ func TestPlanBatchesStillTruncatesAnEnormousTranscript(t *testing.T) {
 	}
 }
 
-// The transcript cap and the input ceiling have to be chosen together.
-//
-// A single item that cannot fit in one call is a row that can never be
-// classified: the planner defers it, the next tick defers it again, and it sits
-// pending forever while looking like a queue that is merely slow. Raising
-// MaxTranscriptRunes without checking this is exactly how that happens, so the
-// relationship is pinned here rather than left to arithmetic nobody redoes.
 func TestATranscriptAtTheCapStillFitsInOneCall(t *testing.T) {
 	b := DefaultBudget()
 	b.Normalize()

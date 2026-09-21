@@ -94,12 +94,6 @@ func ValidateGraph(g *Graph, wfType WorkflowType, skipOutgoingCheck ...map[strin
 		}
 	}
 
-	// At least one trigger must actually feed the flow. A trigger whose only (or
-	// zero) outgoing edges go to decoration nodes is a dangling entry point, the
-	// workflow can never start from it. The AI commonly drops a trigger node and
-	// forgets to wire it; the generic per-node "no outgoing" rule below also
-	// rejects a wholly-unwired single trigger, but this fires first with a precise,
-	// trigger-specific error the builder can act on directly.
 	triggerConnected := false
 	for _, triggerNode := range triggers {
 		for _, target := range outgoing[triggerNode.ID] {
@@ -121,8 +115,6 @@ func ValidateGraph(g *Graph, wfType WorkflowType, skipOutgoingCheck ...map[strin
 			continue
 		}
 		if !n.Type.IsTrigger() && len(incoming[id]) == 0 {
-			// Quote the id (like the config/edge errors) so the lint can lift it
-			// into LintIssue.NodeID and the editor can offer "Ver no fluxo".
 			return fmt.Errorf("%w: %q", ErrGraphNodeNoIncoming, id)
 		}
 		if !n.Type.IsEnd() && !exempt[id] && len(outgoing[id]) == 0 {
@@ -167,8 +159,6 @@ func ValidateGraph(g *Graph, wfType WorkflowType, skipOutgoingCheck ...map[strin
 	return nil
 }
 
-// TODO: make it validate passed agent id on ai agent nodes, validate template id, etcetc
-
 type ConfigValidator interface {
 	Validate(n *Node) error
 }
@@ -192,10 +182,6 @@ func ValidateNodeConfigs(g *Graph, catalog []NodeDefinition, validators ...Confi
 					return fmt.Errorf("%w: node %q (%s) field %q", ErrNodeMissingRequiredField, n.ID, n.Type, field.Key)
 				}
 			}
-			// Numeric range bounds (range/number fields declare Min/Max): a value
-			// that's present and statically numeric must fall within [Min, Max].
-			// PURE + schema-driven, so the builder lint AND activation reject an
-			// out-of-range value, the AI sees it instead of failing at run time.
 			if field.Min != nil || field.Max != nil {
 				if raw, exists := n.Config[field.Key]; exists {
 					if num, ok := numericConfigValue(raw); ok {
@@ -219,10 +205,6 @@ func ValidateNodeConfigs(g *Graph, catalog []NodeDefinition, validators ...Confi
 	return nil
 }
 
-// numericConfigValue coerces a config value to a float64 when it is statically
-// numeric (a JSON number, a Go numeric, or a numeric string). It returns ok=false
-// for empty/non-numeric/interpolated ("{{…}}") values, which can't be range-checked
-// statically and are left to run time.
 func numericConfigValue(v interface{}) (float64, bool) {
 	switch n := v.(type) {
 	case float64:

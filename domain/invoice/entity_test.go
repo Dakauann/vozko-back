@@ -11,7 +11,6 @@ func TestPurpose_Valid(t *testing.T) {
 	if Purpose("BOGUS").Valid() {
 		t.Error("BOGUS should be invalid")
 	}
-	// Validity is checked after normalization (case + whitespace).
 	if !Purpose("  monthly_billing ").Valid() {
 		t.Error("normalized monthly_billing should be valid")
 	}

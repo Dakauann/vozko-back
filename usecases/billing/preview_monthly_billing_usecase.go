@@ -11,22 +11,19 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
-// WorkspaceBillingPreview is one workspace's projected first unified charge, computed read-only.
 type WorkspaceBillingPreview struct {
 	WorkspaceID      string
 	CurrentPeriodEnd time.Time
-	BillingAnchor    time.Time // the anchor (due date) the workspace would be billed for
+	BillingAnchor    time.Time
 	PlanBRLCents     int64
 	AddonCount       int
 	TotalBRL         float64
 	CreditableBRL    float64
 }
 
-// BillingPreviewReport is the dry-run of the next emit cycle: exactly what each active workspace would
-// be charged, with no invoices created and no writes. It is the pre-cutover "what will happen" preview.
 type BillingPreviewReport struct {
 	Rows        []WorkspaceBillingPreview
-	SkippedZero int // active subscriptions with nothing billable (free plan, no addons)
+	SkippedZero int
 	TotalBRL    float64
 }
 
@@ -40,8 +37,6 @@ type previewMonthlyBillingUseCase struct {
 	now       clockFn
 }
 
-// NewPreviewMonthlyBillingUseCase builds the read-only cutover dry-run. It takes the same reads as the
-// emitter minus the invoice writer, so the preview is guaranteed to match what emit will actually do.
 func NewPreviewMonthlyBillingUseCase(
 	subs workspace_plan.SubscriptionRepository,
 	plans workspace_plan.PlanReader,
@@ -59,9 +54,6 @@ func NewPreviewMonthlyBillingUseCase(
 	}
 }
 
-// Execute computes, read-only, the unified charge the next emit cycle would raise for every active
-// workspace. It mirrors the emit use case (same due window, same MonthlyChargeBRL), but creates nothing
-// and writes nothing, so it is safe to run any time as the pre-cutover preview or an ongoing sanity check.
 func (uc *previewMonthlyBillingUseCase) Execute() (BillingPreviewReport, error) {
 	now := uc.now().In(billing.LocationBRT())
 	windowEnd := billing.NextAnchor(now, uc.dueDay)
@@ -91,8 +83,6 @@ func (uc *previewMonthlyBillingUseCase) Execute() (BillingPreviewReport, error) 
 			for _, a := range addons {
 				addonUSD = append(addonUSD, a.UnitPriceMicros*int64(a.Quantity))
 			}
-			// Cycle-aware, exactly as the emitter charges: annual subscriptions preview the full-year
-			// plan price, not a single month, so the dry-run total equals what emit will raise.
 			planBRLCents := sub.BillingCycle.TotalPriceBRLCents(plan.BasePriceBRLCents)
 			totalBRL, creditableBRL := billing.MonthlyChargeBRL(planBRLCents, addonUSD, rate)
 			if totalBRL <= 0 {
@@ -117,7 +107,6 @@ func (uc *previewMonthlyBillingUseCase) Execute() (BillingPreviewReport, error) 
 	return report, nil
 }
 
-// exchangeRate mirrors the emitter's rate fetch: one read, fall back to the default on error.
 func (uc *previewMonthlyBillingUseCase) exchangeRate() float64 {
 	items, err := uc.pricing.ListDefaultPricingItems()
 	if err != nil {
@@ -126,7 +115,6 @@ func (uc *previewMonthlyBillingUseCase) exchangeRate() float64 {
 	return workspace_pricing.USDToBRLRate(items)
 }
 
-// Format renders the report as a human-readable table for the cutover dry-run log.
 func (r BillingPreviewReport) Format() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "MONTHLY BILLING DRY-RUN: %d workspace(s) would be billed, %d skipped (nothing billable), total R$ %.2f\n",

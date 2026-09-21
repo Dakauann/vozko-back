@@ -16,9 +16,6 @@ import (
 
 const ManageLeadMemoryToolName = "manage_lead_memory"
 
-// memoryWriteCooldown debounces identical writes within one turn: a looping
-// model re-issuing the same call gets a friendly "already done" instead of a
-// second side effect.
 const memoryWriteCooldown = time.Minute
 
 type manageLeadMemoryTool struct {
@@ -27,9 +24,6 @@ type manageLeadMemoryTool struct {
 	del    leadmemory.DeleteUseCase
 }
 
-// NewManageLeadMemoryToolUseCase exposes the lead-memory write model to agents.
-// It is a thin adapter: every invariant (caps, dedup, attribution, events)
-// lives in the use cases, shared with the operator HTTP surface.
 func NewManageLeadMemoryToolUseCase(
 	create leadmemory.CreateUseCase,
 	update leadmemory.UpdateUseCase,
@@ -101,8 +95,6 @@ func (t *manageLeadMemoryTool) Execute(ctx context.Context, params map[string]in
 }
 
 func (t *manageLeadMemoryTool) ExecuteWithConfig(ctx context.Context, config, params map[string]interface{}) (tools.ExecutionResult, error) {
-	// Identity comes exclusively from the seeded config, never from params,
-	// which the model controls.
 	workspaceID, _ := config["__workspace_id"].(string)
 	leadID, _ := config["__lead_id"].(string)
 	agentID, _ := config["__agent_id"].(string)
@@ -131,8 +123,6 @@ func (t *manageLeadMemoryTool) ExecuteWithConfig(ctx context.Context, config, pa
 		sourceEntryID, sourceEntryType = &entryID, &entryType
 	}
 
-	// In-turn idempotence: identical action+target within the cooldown is
-	// answered without touching storage.
 	dedupKey := action + "|" + leadID + "|" + leadmemory.NormalizeContent(content) + "|" + strings.ToLower(memoryRef)
 	if tracker, ok := agentctx.ToolExecutionTrackerFromContext(ctx); ok {
 		if !tracker.CanExecute(ManageLeadMemoryToolName, dedupKey, memoryWriteCooldown) {
@@ -227,8 +217,6 @@ func (t *manageLeadMemoryTool) handleForget(ctx context.Context, workspaceID, le
 	}, nil
 }
 
-// writeActor attributes the write to the agent: the seeded __agent_id first,
-// the context agent as fallback, the system actor as the honest last resort.
 func (t *manageLeadMemoryTool) writeActor(ctx context.Context, agentID string) leadmemory.WriteActor {
 	if agentID == "" {
 		if ctxAgent, ok := agentctx.AgentFromContext(ctx); ok {
@@ -241,8 +229,6 @@ func (t *manageLeadMemoryTool) writeActor(ctx context.Context, agentID string) l
 	return leadmemory.WriteActor{Kind: actor.KindAI, ID: actor.FormatAI(agentID)}
 }
 
-// mapError turns domain sentinels into guidance the model can act on. These
-// are tool results, not Go errors: the model is expected to recover.
 func (t *manageLeadMemoryTool) mapError(err error) tools.ExecutionResult {
 	switch {
 	case errors.Is(err, leadmemory.ErrLimitReached):

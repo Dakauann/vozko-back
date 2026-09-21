@@ -23,8 +23,6 @@ func authCreateInput(comps ...template.TemplateComponent) template.CreateTemplat
 	return in
 }
 
-// The shape Meta documents: a body carrying a flag instead of text, a footer
-// carrying a number instead of text, and one OTP button.
 func TestCreateTemplate_AuthenticationReachesTheProvider(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -67,8 +65,6 @@ func TestCreateTemplate_AuthenticationReachesTheProvider(t *testing.T) {
 	}
 }
 
-// The template is persisted with the button intact, or the next send has
-// nothing to find.
 func TestCreateTemplate_AuthenticationPersistsTheOTPType(t *testing.T) {
 	client := &createMockWAClient{}
 	repo := &sendMockTemplateRepo{}
@@ -94,7 +90,6 @@ func TestCreateTemplate_AuthenticationPersistsTheOTPType(t *testing.T) {
 	}
 }
 
-// Both halves of the category rule, refused before the provider is called.
 func TestCreateTemplate_RefusesAnOTPButtonOnAMarketingTemplate(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -147,7 +142,6 @@ func TestCreateTemplate_RefusesAnOutOfRangeExpiry(t *testing.T) {
 	}
 }
 
-// An ordinary template is unaffected by the new category rule.
 func TestCreateTemplate_UtilityWithNoOTPButtonStillCreates(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -162,10 +156,6 @@ func TestCreateTemplate_UtilityWithNoOTPButtonStillCreates(t *testing.T) {
 	}
 }
 
-// parameter_format describes placeholders the business wrote. An authentication
-// template has none: Meta writes that body. Sending a meaningless "POSITIONAL"
-// on a category whose docs never mention the field is exactly the kind of extra
-// field that has already cost this package one provider rejection.
 func TestCreateTemplate_AuthenticationOmitsParameterFormat(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -185,7 +175,6 @@ func TestCreateTemplate_AuthenticationOmitsParameterFormat(t *testing.T) {
 	}
 }
 
-// The other categories keep it: Meta rejects named placeholders sent without it.
 func TestCreateTemplate_UtilityStillSendsParameterFormat(t *testing.T) {
 	client := &createMockWAClient{}
 	uc := newCreateUC(client)
@@ -198,9 +187,6 @@ func TestCreateTemplate_UtilityStillSendsParameterFormat(t *testing.T) {
 	}
 }
 
-// One-tap and zero-tap need an Android app's package name and signature hash,
-// which nothing here collects. Refused with our own sentence rather than sent
-// for Meta to reject.
 func TestCreateTemplate_RefusesOTPTypesThatNeedAnApp(t *testing.T) {
 	for _, otpType := range []template.OTPType{template.OTPTypeOneTap, template.OTPTypeZeroTap} {
 		client := &createMockWAClient{}

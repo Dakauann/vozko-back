@@ -84,10 +84,6 @@ func (r *CachedBusinessPhoneRepository) writeCached(p *businessphone.WhatsAppBus
 	}
 }
 
-// cachedPhoneDTO mirrors the phone for Redis. The Dialog360APIKey is cached the
-// same way the Meta AccessToken already is (the factory needs the credential to
-// build a client on a cache hit). It is encrypted at rest in Postgres via
-// piigorm.EncryptedString; the short lived 60s Redis copy mirrors AccessToken.
 type cachedPhoneDTO struct {
 	ID                         string                        `json:"id"`
 	Provider                   businessphone.Provider        `json:"provider,omitempty"`

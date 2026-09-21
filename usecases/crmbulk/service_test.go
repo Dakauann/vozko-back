@@ -10,11 +10,9 @@ import (
 	"vozko/domain/stage"
 )
 
-// --- mutation-port mocks -----------------------------------------------------
-
 type mockStageAssigner struct {
 	calls   []stage.AssignEntryStageInput
-	failIDs map[string]error // entryID -> error
+	failIDs map[string]error
 }
 
 func (m *mockStageAssigner) Execute(workspaceID string, input stage.AssignEntryStageInput) (*stage.EntryStage, error) {
@@ -70,13 +68,11 @@ func (m *mockEntryAssigner) Reassign(entryID, entryType, businessPhoneID, worksp
 	return nil
 }
 
-// --- authorizer + broadcaster mocks ------------------------------------------
-
 type mockAuthorizer struct {
-	allowPerm  map[string]bool // "resource:action" -> allowed
-	denyEntry  map[string]bool // entryID -> true means CanAccessEntry returns false
-	permCalls  []string        // resources:actions checked
-	entryCalls []string        // entryIDs checked
+	allowPerm  map[string]bool
+	denyEntry  map[string]bool
+	permCalls  []string
+	entryCalls []string
 }
 
 func (m *mockAuthorizer) HasWorkspacePermission(userID, workspaceID, resource, action string, isSystemAdmin bool) bool {
@@ -95,8 +91,6 @@ func (m *mockAuthorizer) CanAccessEntry(userID, workspaceID, entryID, entryType 
 	return !m.denyEntry[entryID]
 }
 
-// allowAll grants every action permission and every entry, the baseline a
-// legitimate, in-scope actor sees; individual tests tighten it.
 func allowAll() *mockAuthorizer {
 	return &mockAuthorizer{allowPerm: map[string]bool{
 		"stages:assign":        true,
@@ -106,7 +100,7 @@ func allowAll() *mockAuthorizer {
 }
 
 type mockBroadcaster struct {
-	stage, label, entry []string // entryIDs broadcast per channel
+	stage, label, entry []string
 }
 
 func (m *mockBroadcaster) BroadcastStageUpdate(workspaceID, entryID, entryType string) {
@@ -126,8 +120,6 @@ func targets(ids ...string) []EntryRef {
 	}
 	return out
 }
-
-// --- happy paths (fan-out + correct broadcast) -------------------------------
 
 func TestBulkApply_MoveStage_FansOutAndBroadcastsStage(t *testing.T) {
 	sa := &mockStageAssigner{}
@@ -197,11 +189,7 @@ func TestBulkApply_Labels_RouteAndBroadcast(t *testing.T) {
 	}
 }
 
-// --- RBAC: per-action permission is enforced ---------------------------------
-
 func TestBulkApply_RBAC_DeniedAction_TouchesNothing(t *testing.T) {
-	// Actor holds labels:assign but NOT stages:assign, a move_stage bulk must be a
-	// hard 403 and never reach the stage port, mirroring the single-entry route.
 	authz := &mockAuthorizer{allowPerm: map[string]bool{"labels:assign": true}}
 	sa, bc := &mockStageAssigner{}, &mockBroadcaster{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, authz, bc)
@@ -240,12 +228,7 @@ func TestActionPermission_MapsEachActionToItsResource(t *testing.T) {
 	}
 }
 
-// --- ownership: cross-workspace + department scope ---------------------------
-
 func TestBulkApply_ScopeGate_RejectsOutOfScopeEntries(t *testing.T) {
-	// e2 is out of scope (another workspace OR outside the actor's department),
-	// CanAccessEntry returns false. It must fail with ErrForbiddenEntry, never be
-	// mutated or broadcast, while the in-scope e1/e3 still succeed.
 	authz := allowAll()
 	authz.denyEntry = map[string]bool{"e2": true}
 	sa, bc := &mockStageAssigner{}, &mockBroadcaster{}
@@ -274,8 +257,6 @@ func TestBulkApply_ScopeGate_RejectsOutOfScopeEntries(t *testing.T) {
 }
 
 func TestBulkApply_Admin_BypassesPermissionAndScope(t *testing.T) {
-	// Admin: no explicit permission grant, and every entry marked out-of-scope, yet
-	// isAdmin short-circuits both gates (matches the real authorizer).
 	authz := &mockAuthorizer{denyEntry: map[string]bool{"e1": true, "e2": true}}
 	sa := &mockStageAssigner{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, authz, &mockBroadcaster{})
@@ -292,8 +273,6 @@ func TestBulkApply_Admin_BypassesPermissionAndScope(t *testing.T) {
 		t.Errorf("admin bulk should mutate all targets, got %d", len(sa.calls))
 	}
 }
-
-// --- failure handling + fail-safe --------------------------------------------
 
 func TestBulkApply_MutationFailure_NoBroadcastForThatTarget(t *testing.T) {
 	boom := errors.New("stage not found")
@@ -338,7 +317,6 @@ func TestBulkApply_UnknownAction_IsForbiddenAndTouchesNothing(t *testing.T) {
 }
 
 func TestBulkApply_NilAuthorizer_FailsClosed(t *testing.T) {
-	// Defense in depth: without an authorizer the service must deny, never mutate.
 	sa := &mockStageAssigner{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, nil, &mockBroadcaster{})
 
@@ -359,8 +337,6 @@ func TestBulkApply_NoTargets_IsNoOp(t *testing.T) {
 	}
 }
 
-// applyOne is only reached for a known action (BulkApply gates the rest), but its
-// default is a fail-safe if ever called directly, exercise it to lock the contract.
 func TestApplyOne_UnknownAction_FailSafe(t *testing.T) {
 	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), nil)
 	err := svc.applyOne(context.Background(), BulkInput{Action: "bogus"}, EntryRef{EntryID: "e1", EntryType: "whatsapp"})
@@ -380,14 +356,6 @@ func TestBulkApply_NilBroadcaster_StillSucceeds(t *testing.T) {
 	}
 }
 
-// Every mutation must carry the actor down to the use case.
-//
-// The timeline event is written by the use case, which is the only layer all
-// three writers (the HTTP handler, this fan-out, the AI tool) pass through. A
-// bulk action that forgot to pass ActorID would still mutate and still
-// broadcast, and would record a change nobody performed — the quieter version
-// of the bug where the event lived in the HTTP handler and bulk wrote none at
-// all.
 func TestBulkApply_PassesTheActorToEveryUseCase(t *testing.T) {
 	const actorID = "user-42"
 

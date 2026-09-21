@@ -7,16 +7,8 @@ import (
 	"vozko/domain/stage"
 )
 
-// ErrWorkspaceRequired refuses a funnel listing with no tenant. Answering it
-// would mean reading every workspace's funnels.
 var ErrWorkspaceRequired = errors.New("stage: workspace is required")
 
-// Funnel is the little this listing needs to know about a conversation funnel.
-//
-// Declared here rather than imported from domain/pipeline, following the same
-// rule pipelineStageSeeder already establishes in the composition root: stages
-// and funnels are separate aggregates, the use case names the narrow port it
-// needs, and the composition root is the only place that knows both.
 type Funnel struct {
 	ID        string
 	Name      string
@@ -24,26 +16,10 @@ type Funnel struct {
 	Position  int
 }
 
-// FunnelLister returns a workspace's conversation funnels, in the order the
-// funnels page shows them.
 type FunnelLister interface {
 	ListConversationFunnels(workspaceID string) ([]Funnel, error)
 }
 
-// ListFunnelStagesUseCase returns every conversation stage in a workspace,
-// grouped under the funnel it belongs to.
-//
-// It exists because the inbox filter could only ever offer ONE funnel's stages.
-// ListStagesUseCase resolves a single funnel (the campaign's, or the workspace
-// default), which is right for "what can this conversation be moved to" and
-// wrong for "what can I filter the whole inbox by": a workspace with four
-// funnels had three of them unreachable, and an agent filtering by a stage of
-// the resolved funnel got an empty list while the conversations sat one funnel
-// over. In production that was 17% of all staged conversations.
-//
-// Grouped on the server rather than in the browser so the funnel names and the
-// stages come from one consistent read. Two separate fetches can disagree, and
-// a stage rendered under the wrong funnel heading is worse than no heading.
 type ListFunnelStagesUseCase struct {
 	stages  stage.Repository
 	funnels FunnelLister
@@ -83,9 +59,7 @@ func (uc *ListFunnelStagesUseCase) Execute(workspaceID string) ([]stage.FunnelSt
 			PipelineName: f.Name,
 			IsDefault:    f.IsDefault,
 			Position:     f.Position,
-			// Never nil: a funnel with no columns yet must serialize as [] so a
-			// client can render an empty group rather than crash on null.
-			Stages: []*stage.Stage{},
+			Stages:       []*stage.Stage{},
 		}
 		if stages, ok := byPipeline[f.ID]; ok {
 			group.Stages = sortedByPosition(stages)
@@ -93,30 +67,9 @@ func (uc *ListFunnelStagesUseCase) Execute(workspaceID string) ([]stage.FunnelSt
 		out = append(out, group)
 	}
 
-	// A stage belonging to no conversation funnel is deliberately NOT listed.
-	//
-	// It used to ride a trailing "Sem funil" group, on the reasoning that such a
-	// stage still filters. Production refutes that and the numbers are not
-	// close: 24.158 of 27.845 live stages carry no pipeline_id, they are the
-	// per-campaign clones the pipeline migration left behind, and the number of
-	// conversations sitting on ANY of them is zero — against 316.518 on real
-	// funnel stages. Listing them put 728 rows in one workspace's stage filter
-	// and 2.120 in another's, mostly the same four names over and over, which is
-	// precisely the unusable dropdown this read exists to replace.
-	//
-	// The same omission correctly drops a stage on an OPPORTUNITY funnel, which
-	// this listing never sees among its conversation funnels: a deal stage
-	// cannot hold a conversation, so offering it as a conversation filter would
-	// only ever match nothing.
-	//
-	// A workspace whose stages all lack a funnel therefore yields no groups, and
-	// the client falls back to its flat list.
 	return out, nil
 }
 
-// sortedByPosition orders a funnel's columns the way the board draws them, with
-// name as the tiebreak so the order is stable rather than whatever the map
-// iteration produced.
 func sortedByPosition(stages []*stage.Stage) []*stage.Stage {
 	out := append([]*stage.Stage(nil), stages...)
 	for i := 1; i < len(out); i++ {

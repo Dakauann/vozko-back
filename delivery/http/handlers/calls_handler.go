@@ -139,9 +139,6 @@ func (h *CallsHandler) List(w http.ResponseWriter, r *http.Request) {
 		items[i] = callDetailResponse{callResponse: toCallResponse(c)}
 	}
 
-	// Enrich each row with its billing summary (cost breakdown + recording URL)
-	// in a single batch query so the unified Calls view shows cost and recording
-	// inline without an N+1 fan-out from the client.
 	if h.billingQuery != nil && len(items) > 0 {
 		callIDs := make([]string, 0, len(items))
 		for i := range items {

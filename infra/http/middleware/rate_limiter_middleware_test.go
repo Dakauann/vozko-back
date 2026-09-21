@@ -250,9 +250,6 @@ func TestRateLimiter_SkipPathPrefix_DoesNotAffectOtherPaths(t *testing.T) {
 	}
 }
 
-// fakeRateLimitMetrics captures IncRateLimited calls so we can assert the
-// observability fires with the right labels (this is what powers the Grafana
-// dashboard and pinpoints the offending office IP).
 type fakeRateLimitMetrics struct {
 	limiters []string
 	ips      []string
@@ -275,7 +272,7 @@ func TestRateLimiter_Rejection_RecordsMetricWithLimiterIPAndReason(t *testing.T)
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/conversations/whatsapp/abc/call-permission", nil)
-	req.Header.Set("X-Real-IP", "179.191.107.18") // the shared office NAT
+	req.Header.Set("X-Real-IP", "179.191.107.18")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -338,7 +335,6 @@ func TestRateLimiter_SkippedPath_RecordsNothing(t *testing.T) {
 	}
 }
 
-// countingLimiter enforces a real per-key budget so we can prove per-user isolation.
 type countingLimiter struct {
 	max    int
 	counts map[string]int
@@ -356,8 +352,6 @@ func (c *countingLimiter) Allow(key string) (bool, time.Duration, error) {
 	return true, 0, nil
 }
 
-// identify returns a fixed user id for a given "X-Test-User" header (stand-in for a
-// verified token), and false when the header is absent (anonymous).
 func testUserIdentity(r *http.Request) (string, bool) {
 	if u := r.Header.Get("X-Test-User"); u != "" {
 		return u, true
@@ -382,20 +376,16 @@ func fireN(handler http.Handler, n int, hdr map[string]string) (ok, blocked int)
 	return
 }
 
-// TestRateLimiter_PerUser_IndependentBudgetsSameIP is the core proof for the fix:
-// many users behind ONE shared IP each get their own budget instead of colliding.
 func TestRateLimiter_PerUser_IndependentBudgetsSameIP(t *testing.T) {
-	lim := newCountingLimiter(5) // 5 requests per key
+	lim := newCountingLimiter(5)
 	mw := NewRateLimiterMiddleware(lim).Named("global").WithUserIdentity(testUserIdentity)
 	handler := mw.Validate(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	sameIP := "179.191.107.18" // the shared office NAT
+	sameIP := "179.191.107.18"
 
-	// Alice spends her whole budget from the shared IP.
 	okA, blockedA := fireN(handler, 8, map[string]string{"X-Real-IP": sameIP, "X-Test-User": "alice"})
-	// Bob, same IP, must be completely unaffected by Alice exhausting hers.
 	okB, blockedB := fireN(handler, 5, map[string]string{"X-Real-IP": sameIP, "X-Test-User": "bob"})
 
 	if okA != 5 || blockedA != 3 {
@@ -406,8 +396,6 @@ func TestRateLimiter_PerUser_IndependentBudgetsSameIP(t *testing.T) {
 	}
 }
 
-// TestRateLimiter_Anonymous_FallsBackToPerIP proves anonymous traffic from one IP
-// still shares a single per-IP budget (DoS protection preserved).
 func TestRateLimiter_Anonymous_FallsBackToPerIP(t *testing.T) {
 	lim := newCountingLimiter(5)
 	mw := NewRateLimiterMiddleware(lim).Named("global").WithUserIdentity(testUserIdentity)
@@ -415,15 +403,12 @@ func TestRateLimiter_Anonymous_FallsBackToPerIP(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// No X-Test-User → anonymous → keyed by IP; 8 requests from one IP → 3 blocked.
 	ok, blocked := fireN(handler, 8, map[string]string{"X-Real-IP": "203.0.113.1"})
 	if ok != 5 || blocked != 3 {
 		t.Fatalf("anonymous same-IP flood must share one budget: expected 5 ok + 3 blocked, got %d/%d", ok, blocked)
 	}
 }
 
-// TestRateLimiter_PerUser_SameUserAcrossIPsSharesBudget confirms a user is tracked
-// by identity even when their IP changes (multiple devices / roaming).
 func TestRateLimiter_PerUser_SameUserAcrossIPsSharesBudget(t *testing.T) {
 	lim := newCountingLimiter(5)
 	mw := NewRateLimiterMiddleware(lim).Named("global").WithUserIdentity(testUserIdentity)

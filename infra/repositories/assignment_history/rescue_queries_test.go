@@ -33,9 +33,6 @@ func newHistoryDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
 	return db, mock, sqlDB
 }
 
-// The sweep's candidate query. Oldest first, so a saturated batch always makes
-// progress on whoever has been waiting longest rather than re-picking the same
-// arbitrary page every tick.
 func TestListOpenOlderThan_QueryShape(t *testing.T) {
 	db, mock, sqlDB := newHistoryDB(t)
 	defer sqlDB.Close()
@@ -54,8 +51,6 @@ func TestListOpenOlderThan_QueryShape(t *testing.T) {
 	}
 }
 
-// No eligible workspaces means no query at all — the sweep ticks every minute
-// and most deployments have nobody in the last_seen mode.
 func TestListOpenOlderThan_NoWorkspacesSkipsTheQuery(t *testing.T) {
 	db, mock, sqlDB := newHistoryDB(t)
 	defer sqlDB.Close()
@@ -72,11 +67,6 @@ func TestListOpenOlderThan_NoWorkspacesSkipsTheQuery(t *testing.T) {
 	}
 }
 
-// One query, not two. The sweep calls this once per stalled conversation, so a
-// second round-trip here is a per-candidate cost on the hungriest path.
-//
-// The quoting is load-bearing and asserted deliberately: TRIGGER is a reserved
-// word in SQL, and this pins that GORM emits it quoted.
 func TestCountRescuesSinceHandout_IsASingleQuery(t *testing.T) {
 	db, mock, sqlDB := newHistoryDB(t)
 	defer sqlDB.Close()
@@ -94,9 +84,6 @@ func TestCountRescuesSinceHandout_IsASingleQuery(t *testing.T) {
 	}
 }
 
-// The chain is bounded by the roulette hand-out that opened it: rescues from a
-// previous chain must not count against this one, or a long-lived conversation
-// would exhaust its ring on the first stall.
 func TestCountRescuesSinceHandout_StopsAtTheHandout(t *testing.T) {
 	cases := map[string]struct {
 		newestFirst []string

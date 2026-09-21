@@ -1,9 +1,3 @@
-// Package lead_memory_usecase orchestrates the per-lead memory.
-//
-// Every writer, the AI tool and the operator HTTP handlers alike, goes through these
-// use cases, so caps, dedup, attribution, and timeline events cannot diverge
-// between actors. That single-write-model property is the feature's core
-// invariant; do not add a second write path around it.
 package lead_memory_usecase
 
 import (
@@ -26,8 +20,6 @@ type createUseCase struct {
 	events leadmemory.TimelineLogger
 }
 
-// NewCreateUseCase builds the create path. events is optional (best-effort
-// telemetry); repo is not.
 func NewCreateUseCase(repo leadmemory.Repository, events leadmemory.TimelineLogger) (leadmemory.CreateUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("lead memory create use case: missing repository")
@@ -35,10 +27,6 @@ func NewCreateUseCase(repo leadmemory.Repository, events leadmemory.TimelineLogg
 	return &createUseCase{repo: repo, events: events}, nil
 }
 
-// Execute remembers one fact. A create whose normalized content already exists
-// for the lead is idempotent success: the existing memory comes back with
-// Deduplicated set, nothing is written, no event is emitted. That is what lets
-// a looping model or a double-submitting client hammer this safely.
 func (uc *createUseCase) Execute(_ context.Context, in leadmemory.CreateInput) (*leadmemory.CreateResult, error) {
 	m := &leadmemory.LeadMemory{
 		WorkspaceID:     in.WorkspaceID,
@@ -72,8 +60,6 @@ func (uc *createUseCase) Execute(_ context.Context, in leadmemory.CreateInput) (
 
 	if err := uc.repo.Create(m); err != nil {
 		if errors.Is(err, leadmemory.ErrDuplicate) {
-			// Lost a race with an identical write. The unique index decided;
-			// re-read the winner and report it as the deduplicated result.
 			if existing, ferr := uc.repo.FindByNormalizedContent(m.WorkspaceID, m.LeadID, norm); ferr == nil {
 				return &leadmemory.CreateResult{Memory: existing, Deduplicated: true}, nil
 			}
@@ -97,9 +83,6 @@ func NewUpdateUseCase(repo leadmemory.Repository, events leadmemory.TimelineLogg
 	return &updateUseCase{repo: repo, events: events}, nil
 }
 
-// Execute edits content and/or category. The actor columns become the last
-// writer: an operator correcting an AI memory owns the correction, and the
-// original authorship stays on the created timeline event.
 func (uc *updateUseCase) Execute(_ context.Context, in leadmemory.UpdateInput) (*leadmemory.LeadMemory, error) {
 	m, err := resolveRef(uc.repo, in.WorkspaceID, in.LeadID, in.MemoryRef)
 	if err != nil {
@@ -108,7 +91,6 @@ func (uc *updateUseCase) Execute(_ context.Context, in leadmemory.UpdateInput) (
 
 	content := strings.TrimSpace(in.Content)
 	if content == "" && in.Category == "" {
-		// Nothing to change: idempotent no-op, no event.
 		return m, nil
 	}
 	if content != "" {
@@ -168,9 +150,6 @@ type listUseCase struct {
 	users  leadmemory.UserNameFinder
 }
 
-// NewListUseCase builds the read path. agents and users are optional: without
-// them the listing still works and ActorLabel stays empty (the UI falls back
-// to the actor kind).
 func NewListUseCase(repo leadmemory.Repository, agents leadmemory.AgentNameFinder, users leadmemory.UserNameFinder) (leadmemory.ListUseCase, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("lead memory list use case: missing repository")
@@ -199,9 +178,6 @@ func (uc *listUseCase) Execute(_ context.Context, in leadmemory.ListInput) (*lea
 	return &leadmemory.ListResult{Items: views, Total: total}, nil
 }
 
-// resolveActorLabels maps actor ids to display names, best-effort: one batch
-// query per kind, failures logged and swallowed. A missing label is a
-// cosmetic degradation, never a reason to hide memories.
 func (uc *listUseCase) resolveActorLabels(items []*leadmemory.LeadMemory) map[string]string {
 	agentIDs := map[string]bool{}
 	userIDs := map[string]bool{}
@@ -240,10 +216,6 @@ func (uc *listUseCase) resolveActorLabels(items []*leadmemory.LeadMemory) map[st
 	return labels
 }
 
-// resolveRef turns a memory reference, full UUID or the ≥8-char prefix the
-// prompt block shows, into the owned row. A full id from another lead still
-// resolves only when LeadID matches: the AI tool must never reach another
-// lead's memory by guessing ids, and for the tool LeadID is always set.
 func resolveRef(repo leadmemory.Repository, workspaceID, leadID, ref string) (*leadmemory.LeadMemory, error) {
 	ref = strings.TrimSpace(ref)
 	switch {
@@ -263,9 +235,6 @@ func resolveRef(repo leadmemory.Repository, workspaceID, leadID, ref string) (*l
 	}
 }
 
-// logTimelineEvent records the mutation on the conversation timeline when the
-// write happened inside a conversation. Lead-page edits carry no entry and
-// stay off the timeline; the row itself is their record.
 func logTimelineEvent(events leadmemory.TimelineLogger, eventType ce.EventType, m *leadmemory.LeadMemory) {
 	if events == nil || m.SourceEntryID == nil || m.SourceEntryType == nil {
 		return

@@ -54,12 +54,6 @@ func (l *Label) Validate() error {
 	return nil
 }
 
-// ValidateEntryType gates which conversations can be staged and labelled.
-//
-// The set lives in domain/shared so this and the label/stage counterpart cannot
-// drift apart, and so adding a channel does not mean hunting for hardcoded
-// entry-type lists. Instagram was rejected here while its cards already rendered
-// on the board.
 func ValidateEntryType(entryType string) error {
 	if !shared.EntryType(entryType).SupportsCRMTagging() {
 		return ErrInvalidEntryType

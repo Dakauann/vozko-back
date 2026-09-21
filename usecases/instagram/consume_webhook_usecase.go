@@ -13,25 +13,16 @@ import (
 	webhook_usecase "vozko/usecases/webhook"
 )
 
-// Per-topic concurrency. Messages get the widest lane because DM latency is what
-// an operator actually feels; comment moderation is not latency critical.
 const (
 	messageConcurrency = 20
 	commentConcurrency = 10
 	accountConcurrency = 5
 )
 
-// ConsumeWebhookUseCase subscribes the Instagram topics.
-//
-// Every topic carries the same unit of work, one entry envelope for one account,
-// so all three share the generic ConsumerRunner and differ only in
-// concurrency. Splitting entries at ingest is what makes this safe: a poison
-// event for one tenant cannot block another's.
 type ConsumeWebhookUseCase struct {
 	runners []interface{ Start() error }
 }
 
-// NewConsumeWebhookUseCase wires the three Instagram consumers.
 func NewConsumeWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
 	queuePub messaging.MessageQueuePub,
@@ -74,14 +65,6 @@ func (uc *ConsumeWebhookUseCase) Start() error {
 	return nil
 }
 
-// dedupKeyForEntry derives the idempotency key for a whole entry.
-//
-// A single mid legitimately recurs across event kinds, the original message, its
-// deletion tombstone, an edit, a read receipt and react/unreact all carry the
-// same mid, so the key is composite per event. For a multi-event entry the first
-// event's key represents the batch; the per-message read-before-insert in the
-// history manager and the unique index on (entry_type, external_message_id)
-// catch anything the batch key misses.
 func dedupKeyForEntry(env *igdomain.EntryEnvelope) string {
 	events := igdomain.NormalizeEntry(env)
 	if len(events) == 0 {
@@ -90,20 +73,12 @@ func dedupKeyForEntry(env *igdomain.EntryEnvelope) string {
 	return events[0].IdempotencyKey
 }
 
-// classifyWebhookFailure decides retry vs drop vs dead-letter.
-//
-// The important case is per-tenant isolation: an account whose token has been
-// revoked will fail forever, so retrying only burns the queue. Those are dropped
-// (the account is already marked for reconnection), leaving retries for genuine
-// transient faults.
 func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 	switch {
 	case err == nil:
 		return webhook_usecase.DispositionDrop
 
 	case errors.Is(err, ErrUnknownAccount):
-		// A stale subscription for an account we no longer serve. Retrying can
-		// never make it appear.
 		return webhook_usecase.DispositionDrop
 
 	case errors.Is(err, igdomain.ErrAccountNotFound),
@@ -114,8 +89,6 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 	if apiErr, ok := meta.AsError(err); ok {
 		switch {
 		case apiErr.NeedsReauth():
-			// The tenant must reconnect; the adapter has already flagged the
-			// account. Retrying would stall this account's queue lane.
 			log.Printf("[instagram-webhook] dropping event: account needs reconnection (code=%d)", apiErr.Code)
 			return webhook_usecase.DispositionDrop
 		case apiErr.Retryable():
@@ -127,8 +100,6 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 	return webhook_usecase.DispositionRetry
 }
 
-// durableAdapter adapts the Instagram processed-event repository onto the generic
-// runner's dedup port.
 type durableAdapter struct {
 	repo igdomain.ProcessedEventRepository
 }

@@ -180,9 +180,6 @@ func (r *repository) FindByID(agentID string) (*agent.Agent, error) {
 	return result, nil
 }
 
-// FindByIDs batch-loads only the display fields (id, name, avatar, active) for the
-// given agents in a single query. It deliberately skips the KB/MCP link sub-queries
-// that FindByID runs, so inbox enrichment stays O(1 query) per page.
 func (r *repository) FindByIDs(agentIDs []string) ([]*agent.Agent, error) {
 	if len(agentIDs) == 0 {
 		return nil, nil

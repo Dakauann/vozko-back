@@ -16,8 +16,6 @@ import (
 	"vozko/infra/http/middleware"
 )
 
-// idempotencyHeader lets a client retry a create without producing a second
-// message to the customer. See the create handler.
 const idempotencyHeader = "Idempotency-Key"
 
 type ScheduledMessageHandler struct {
@@ -28,11 +26,6 @@ type ScheduledMessageHandler struct {
 	authorizer   conversationdomain.ConversationAuthorizer
 }
 
-// NewScheduledMessageHandler wires the HTTP surface.
-//
-// The authorizer is required and used on every entry-scoped route: the
-// permission middleware answers "may this role schedule messages", which is not
-// the same question as "may this user see THIS conversation".
 func NewScheduledMessageHandler(
 	scheduleUC sm.ScheduleUseCase,
 	rescheduleUC sm.RescheduleUseCase,
@@ -148,8 +141,6 @@ func (h *ScheduledMessageHandler) Create(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// A replayed idempotency key created nothing, so it answers 200. Reporting
-	// 201 would tell a retrying client it had just made a second message.
 	status := http.StatusCreated
 	if result.AlreadyExisted {
 		status = http.StatusOK
@@ -260,12 +251,6 @@ func (h *ScheduledMessageHandler) ListWorkspace(w http.ResponseWriter, r *http.R
 	})
 }
 
-// authorizedEntry validates the entry pair and the caller's access to it.
-//
-// The route's permission gate answers "may this ROLE schedule messages"; this
-// answers "may this USER see this conversation". Both are needed: department
-// scoping means a member with the permission can still be outside a given
-// conversation.
 func (h *ScheduledMessageHandler) authorizedEntry(w http.ResponseWriter, r *http.Request) (entryType, entryID string, ok bool) {
 	vars := mux.Vars(r)
 	entryType, entryID = vars["entryType"], vars["entryId"]
@@ -291,12 +276,6 @@ func (h *ScheduledMessageHandler) authorizedEntry(w http.ResponseWriter, r *http
 	return entryType, entryID, true
 }
 
-// writeDomainError maps a domain error onto a status and a machine-readable
-// code.
-//
-// The window travels with the two refusals that are ABOUT the window, because a
-// refusal that does not name the boundary makes the operator's next attempt a
-// guess.
 func (h *ScheduledMessageHandler) writeDomainError(w http.ResponseWriter, err error, window sm.WindowState) {
 	switch {
 	case errors.Is(err, sm.ErrWindowClosed):

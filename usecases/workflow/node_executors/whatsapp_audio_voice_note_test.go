@@ -10,7 +10,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// audioClient records which of the two audio paths the sender chose.
 type audioClient struct {
 	conversation.WhatsAppClient
 	sentBytes []byte
@@ -29,12 +28,6 @@ func (c *audioClient) SendAudioMessage(_ context.Context, in conversation.SendAu
 	return &conversation.SendTextMessageOutput{MessageID: "wamid.link"}, nil
 }
 
-// A workflow's audio must be transcoded and uploaded, not handed over as a link.
-//
-// The Graph API accepts a link and then never delivers it: Cloud API voice notes
-// must be OGG/Opus, and a stored .ogg is usually Vorbis. The workflow reported
-// success while the customer received nothing, and the identical file sent by
-// hand from the inbox arrived — because that path transcodes first.
 func TestWorkflowAudioIsTranscodedAndUploaded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("raw-vorbis-bytes"))
@@ -66,8 +59,6 @@ func TestWorkflowAudioIsTranscodedAndUploaded(t *testing.T) {
 	}
 }
 
-// Transcoding shells out to ffmpeg. A host without it must degrade to the old
-// link behaviour rather than dropping the message entirely.
 func TestWorkflowAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("raw"))
@@ -93,7 +84,6 @@ func TestWorkflowAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 	}
 }
 
-// An unreachable URL is the other way the transcode path cannot run.
 func TestWorkflowAudioFallsBackToLinkWhenDownloadFails(t *testing.T) {
 	client := &audioClient{}
 	s := &whatsappSender{}
