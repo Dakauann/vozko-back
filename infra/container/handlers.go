@@ -535,6 +535,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getCallAnalytics,
 			c.useCases.getAdminOverview,
 			c.useCases.getPlanContractions,
+			c.useCases.getMetaServiceMessageCost,
 		),
 		supportInbox: supportinboxhttp.NewSupportInboxHandler(
 			c.useCases.createSupportInbox,

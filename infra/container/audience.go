@@ -240,8 +240,8 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 	bundle.Rollup.SetRoleInference(cauc.NewRoleInferenceJob(cauc.RoleInferenceDeps{
 		Authors: authors, Repo: repo, Settings: settings, Adapters: adapters,
 		Inferrer: cauc.NewRoleInferrer(c.services.ai, c.cfg.OpenRouterDefaultModel),
-		Batches: batches,
-		Balance: c.services.cachedBalanceChecker, Clock: clock,
+		Batches:  batches,
+		Balance:  c.services.cachedBalanceChecker, Clock: clock,
 	}))
 	bundle.Purge = cauc.NewPurgeJob(repo, audienceRetention, clock)
 

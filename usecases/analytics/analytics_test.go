@@ -39,6 +39,10 @@ func (m *mockAnalyticsRepo) GetPlanContractions(input analytics_domain.PlanContr
 	return nil, nil
 }
 
+func (m *mockAnalyticsRepo) GetMetaServiceMessageCost(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
+	return nil, nil
+}
+
 func TestGetProfitReportUseCase_Execute_Success(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 31, 23, 59, 59, 0, time.UTC)
@@ -345,5 +349,9 @@ func (m *mockAnalyticsOverviewRepo) GetAdminOverview(input analytics_domain.Admi
 }
 
 func (m *mockAnalyticsOverviewRepo) GetPlanContractions(input analytics_domain.PlanContractionsInput) (*analytics_domain.PlanContractionsReport, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsOverviewRepo) GetMetaServiceMessageCost(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
 	return nil, nil
 }

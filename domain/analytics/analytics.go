@@ -134,6 +134,7 @@ type Repository interface {
 	GetCallAnalytics(input CallAnalyticsInput) (*CallAnalyticsReport, error)
 	GetAdminOverview(input AdminOverviewInput) (*AdminOverview, error)
 	GetPlanContractions(input PlanContractionsInput) (*PlanContractionsReport, error)
+	GetMetaServiceMessageCost(input MetaServiceMessageCostInput) (*MetaServiceMessageCostReport, error)
 }
 
 type GetProfitReportUseCase interface {

@@ -1352,8 +1352,13 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 					// is the operator's to fix, a billing hold on the business account
 					// is not, and the code is the only thing that tells them apart.
 					failureCode, failureMessage := formatWhatsAppStatusError(status)
-					if err := uc.messageRepo.UpdateDeliveryStatusWithReason(
-						status.ID, deliveryStatus, failureCode, failureMessage,
+					// Meta's pricing verdict rides the same receipt. It used to be
+					// read once to pick a refund category and then dropped, which
+					// left the platform unable to answer what its own messaging
+					// costs: our inference from the message log cannot see a
+					// delivery inside the 72 hour free entry point, and Meta can.
+					if err := uc.messageRepo.UpdateDeliveryReceipt(
+						status.ID, buildDeliveryReceipt(status, deliveryStatus, failureCode, failureMessage),
 					); err != nil {
 						log.Printf("[whatsapp-status] Failed to update delivery status for wamid %s: %v", status.ID, err)
 						statusErrors = append(statusErrors, fmt.Errorf("update delivery status for wamid %s: %w", status.ID, err))
@@ -1371,6 +1376,7 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 					log.Printf("[whatsapp-status] Conversation: id=%s, origin_type=%s",
 						status.Conversation.ID, status.Conversation.Origin.Type)
 				}
+
 			}
 		}
 	}
@@ -1703,6 +1709,40 @@ func (uc *handleWhatsAppMessageUseCase) retryFailedWhatsAppCampaignRefund(worksp
 		}
 	}
 	return lastErr
+}
+
+// buildDeliveryReceipt gathers everything one status event says about a message
+// into the single value the repository persists in one update.
+//
+// The pricing and the conversation origin are optional on the wire: Meta sends
+// several status events per message and only some carry them. A receipt that
+// did not carry them says so, and the repository leaves whatever an earlier
+// event recorded alone rather than blanking it.
+func buildDeliveryReceipt(
+	status conversation.WhatsAppStatus,
+	deliveryStatus conversation.DeliveryStatus,
+	failureCode int,
+	failureMessage string,
+) conversation.DeliveryReceipt {
+	receipt := conversation.DeliveryReceipt{
+		Status:       deliveryStatus,
+		ErrorCode:    failureCode,
+		ErrorMessage: failureMessage,
+	}
+
+	if status.Pricing != nil {
+		receipt.Pricing = conversation.MetaPricing{
+			Category: status.Pricing.Category,
+			Billable: status.Pricing.Billable,
+			Model:    status.Pricing.PricingModel,
+		}
+	}
+
+	if status.Conversation != nil {
+		receipt.ConversationOrigin = status.Conversation.Origin.Type
+	}
+
+	return receipt
 }
 
 func resolveWhatsAppRefundCategory(status conversation.WhatsAppStatus, entry *wce.WhatsAppCampaignEntry) (string, error) {

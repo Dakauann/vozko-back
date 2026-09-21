@@ -580,7 +580,6 @@ type useCases struct {
 	updateWorkspaceConfig      workspace_config_domain.UpdateWorkspaceConfigUseCase
 	updateWorkspaceConfigOwner workspace_config_domain.UpdateWorkspaceConfigOwnerUseCase
 
-
 	createShop shop.CreateShopUseCase
 	updateShop shop.UpdateShopUseCase
 	deleteShop shop.DeleteShopUseCase
@@ -861,10 +860,11 @@ type useCases struct {
 	billingQuery       call_billing_domain.QueryUseCase
 	callRecordingQuery call_recordings.QueryUseCase
 
-	getProfitReport     analytics_domain.GetProfitReportUseCase
-	getCallAnalytics    analytics_domain.GetCallAnalyticsUseCase
-	getAdminOverview    analytics_domain.GetAdminOverviewUseCase
-	getPlanContractions analytics_domain.GetPlanContractionsUseCase
+	getProfitReport           analytics_domain.GetProfitReportUseCase
+	getCallAnalytics          analytics_domain.GetCallAnalyticsUseCase
+	getAdminOverview          analytics_domain.GetAdminOverviewUseCase
+	getPlanContractions       analytics_domain.GetPlanContractionsUseCase
+	getMetaServiceMessageCost analytics_domain.GetMetaServiceMessageCostUseCase
 
 	createSupportInbox      si_domain.CreateInboxUseCase
 	updateSupportInbox      si_domain.UpdateInboxUseCase

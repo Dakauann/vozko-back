@@ -7,19 +7,33 @@ import (
 
 	"gorm.io/gorm"
 
+	"vozko/domain/balance"
 	ia "vozko/domain/inbox_assignment"
 )
 
-// sqlStringLiteralList renders values as a comma-separated SQL literal list.
+// SQLStringLiteral renders one value as a SQL literal, for the same reason
+// SQLStringLiteralList exists: an index predicate cannot take bind parameters,
+// so a partial index built from a domain constant has to inline it.
+func SQLStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+// SQLStringLiteralList renders values as a comma-separated SQL literal list.
 //
 // An index predicate cannot take bind parameters, so a partial index built from
 // domain constants has to inline them. The inputs are compile-time constants,
 // never request data; the quote doubling is belt-and-braces so this cannot
 // become an injection point if someone later feeds it something dynamic.
-func sqlStringLiteralList(values []string) string {
+//
+// It is exported because a QUERY that wants to be served by such an index has
+// to inline exactly the same constants. Postgres will only use a partial index
+// when it can prove the query's predicate implies the index's, and it cannot
+// prove that about a bind parameter under a generic plan. Two renderings of the
+// same list would eventually disagree, so there is one.
+func SQLStringLiteralList(values []string) string {
 	quoted := make([]string, len(values))
 	for i, v := range values {
-		quoted[i] = "'" + strings.ReplaceAll(v, "'", "''") + "'"
+		quoted[i] = SQLStringLiteral(v)
 	}
 	return strings.Join(quoted, ", ")
 }
@@ -54,6 +68,43 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_cm_wamid_partial
 				ON conversation_messages (whatsapp_message_id)
 				WHERE whatsapp_message_id IS NOT NULL AND whatsapp_message_id != '' AND deleted_at IS NULL`,
+		},
+		{
+			// Superseded by idx_cm_meta_service_cost, whose predicate also
+			// excludes coexistence echoes. Left behind it would never be chosen
+			// and would still cost a write on every message insert.
+			name: "idx_cm_service_exposure (superseded by idx_cm_meta_service_cost)",
+			sql:  `DROP INDEX IF EXISTS idx_cm_service_exposure`,
+		},
+		{
+			// Serves the Meta service message cost report, which counts what
+			// Meta starts charging us for on 1 October 2026.
+			//
+			// Without it the report is a full scan of conversation_messages:
+			// measured on production at 1.645 ms for a 30-day window, discarding
+			// 928.573 rows per worker to keep 106.378. The predicate keeps about
+			// a tenth of the table, which is the whole difference.
+			//
+			// delivery_status is a payload column, NOT part of the predicate, on
+			// purpose. It mutates on every status webhook (sent, then delivered,
+			// then read), so a predicate keyed on it would move rows in and out
+			// of the index on the hottest write path we have. As payload it still
+			// filters without a heap fetch, and entry_id feeds the join to the
+			// campaign entry from the index alone.
+			//
+			// The predicate is built by the same function the reporting query
+			// uses, so the index cannot describe a different set of rows than
+			// the query it exists to serve. See service_message_predicate.go.
+			//
+			// Renamed from idx_cm_service_exposure, which is dropped just above
+			// because its predicate no longer matches: it did not exclude
+			// coexistence echoes, so it would never be chosen for the corrected
+			// query and would sit on the table costing writes for nothing.
+			name: "idx_cm_meta_service_cost",
+			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_cm_meta_service_cost
+				ON conversation_messages (created_at)
+				INCLUDE (entry_id, delivery_status)
+				WHERE %s`, ServiceMessageIndexPredicateSQL("")),
 		},
 
 		{
@@ -214,7 +265,7 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_ah_rescue_candidates
 				ON assignment_history (workspace_id, started_at)
 				WHERE ended_at IS NULL AND "trigger" IN (%s)`,
-				sqlStringLiteralList(ia.RescueCandidateTriggers)),
+				SQLStringLiteralList(ia.RescueCandidateTriggers)),
 		},
 		// Classic attendance: assignments by workspace + created_at / assignee.
 		{
@@ -268,6 +319,23 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			sql: `CREATE INDEX IF NOT EXISTS idx_bt_reporting
 				ON balance_transactions (created_at)
 				INCLUDE (workspace_id, service_type, type, is_refund, amount, cost_micros, profit_micros, exchange_rate_micros)`,
+		},
+		{
+			// Serves the ledger half of the Meta service message exposure
+			// report: net billable campaign sends for EVERY workspace over a
+			// period.
+			//
+			// idx_bt_ws_svc_created_charges cannot do this job. It leads on
+			// workspace_id, and this query deliberately has no workspace filter,
+			// so the planner falls back to idx_bt_reporting and pays 153.204 heap
+			// fetches (measured on production). Leading on created_at inside the
+			// same partial set makes it an index-only range scan.
+			name: "idx_bt_campaign_created_ws",
+			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_bt_campaign_created_ws
+				ON balance_transactions (created_at)
+				INCLUDE (workspace_id, type, is_refund)
+				WHERE service_type = %s`,
+				SQLStringLiteral(string(balance.ServiceWhatsAppCampaign))),
 		},
 		{
 			// Serves workspace WhatsApp campaign "Envios" rollup (ledger-backed):

@@ -505,6 +505,7 @@ func mapDomainToSchema(message *conversation.Message) *schema.ConversationMessag
 		ExternalMessageID: message.ExternalMessageID,
 		ReplyToMessageID:  message.ReplyToMessageID,
 		DeliveryStatus:    string(message.DeliveryStatus),
+		SentVia:           string(message.SentVia),
 		Metadata:          message.Metadata,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
@@ -537,6 +538,7 @@ func mapSchemaToDomain(message *schema.ConversationMessage) *conversation.Messag
 		ExternalMessageID: message.ExternalMessageID,
 		ReplyToMessageID:  message.ReplyToMessageID,
 		DeliveryStatus:    conversation.DeliveryStatus(message.DeliveryStatus),
+		SentVia:           conversation.MessageTransport(message.SentVia),
 		Metadata:          message.Metadata,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
@@ -1841,9 +1843,47 @@ func (r *repository) UpdateDeliveryStatusWithReason(
 	errorCode int,
 	errorMessage string,
 ) error {
+	return r.UpdateDeliveryReceipt(wamid, conversation.DeliveryReceipt{
+		Status:       status,
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMessage,
+	})
+}
+
+// UpdateDeliveryReceipt is the single update path behind all three status
+// writers. It also records Meta's pricing verdict when the webhook carried one.
+//
+// Pricing gets columns rather than a metadata merge, unlike the failure reason
+// above. The difference is who reads it: a failure reason is read one thread at
+// a time, while the pricing columns are aggregated across millions of rows by
+// the service message exposure report, and a jsonb extraction cannot be indexed
+// usefully for that.
+//
+// A receipt with no pricing writes no pricing. Meta sends several status events
+// per message and only some carry the pricing object, so writing unconditionally
+// would blank out on "read" what we learned on "sent".
+func (r *repository) UpdateDeliveryReceipt(wamid string, receipt conversation.DeliveryReceipt) error {
+	status := receipt.Status
+	errorCode := receipt.ErrorCode
+	errorMessage := receipt.ErrorMessage
+
 	updates := map[string]interface{}{
 		"delivery_status": string(status),
 		"updated_at":      time.Now().UTC(),
+	}
+
+	if receipt.HasPricing() {
+		if category := receipt.Pricing.NormalizedCategory(); category != "" {
+			updates["meta_pricing_category"] = category
+			billable := receipt.Pricing.Billable
+			updates["meta_pricing_billable"] = &billable
+			if model := strings.TrimSpace(receipt.Pricing.Model); model != "" {
+				updates["meta_pricing_model"] = model
+			}
+		}
+		if origin := receipt.NormalizedOrigin(); origin != "" {
+			updates["meta_conversation_origin"] = origin
+		}
 	}
 
 	if errorCode != 0 || strings.TrimSpace(errorMessage) != "" {

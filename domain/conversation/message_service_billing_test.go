@@ -113,18 +113,10 @@ func TestServiceMessageTypesAgreesWithThePredicate(t *testing.T) {
 	}
 
 	// Every type the predicate accepts must appear in the list, or the report
-	// undercounts exactly the messages the index was told to skip.
-	all := []MessageType{
-		MessageTypeUserMessage, MessageTypeAIResponse, MessageTypeToolCall,
-		MessageTypeToolResult, MessageTypeAudio, MessageTypeSystem,
-		MessageTypeMedia, MessageTypeOperator, MessageTypeTemplate,
-		MessageTypeCallPermissionRequest, MessageTypeCallPermissionGranted,
-		MessageTypeCallPermissionRejected, MessageTypeCallReceived,
-		MessageTypeCallAnswered, MessageTypeCallMissed, MessageTypeCallEnded,
-		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypeReaction,
-		MessageTypeUnsupported, MessageTypePostShare,
-	}
-	for _, mt := range all {
+	// undercounts exactly the messages the index was told to skip. Driven from
+	// the registry, which message_type_registry_test.go proves is complete, so a
+	// type added later cannot slip past by not being written out here.
+	for _, mt := range AllMessageTypes() {
 		if mt.IsMetaServiceBillable() && !listed[mt] {
 			t.Errorf("%q is billable but missing from ServiceMessageTypes()", mt)
 		}

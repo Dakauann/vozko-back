@@ -26,10 +26,19 @@ const (
 	ServiceVoiceCampaign    ServiceType = "voice_campaign"
 	ServiceVoiceCall        ServiceType = "voice_call"
 	ServiceWhatsAppCampaign ServiceType = "whatsapp_campaign"
-	// ServiceWhatsAppConversation bills outbound conversations/session messages on
-	// 360dialog provider numbers, where the platform funds the cost via the partner credit
-	// line (unlike Meta-direct numbers, where Meta charges the customer). Inbound is
-	// never billed.
+	// ServiceWhatsAppConversation is RESERVED and has no producer. Nothing in the
+	// tree writes a transaction with it, so the ledger cannot answer any question
+	// about session message volume. Anyone reporting on service messages has to
+	// count conversation_messages instead; see
+	// domain/analytics/service_message_exposure.go and the rule in
+	// conversation.MessageType.IsMetaServiceBillable.
+	//
+	// It was named for outbound session messages on 360dialog numbers, funded by
+	// the platform through the partner credit line. The clause that used to sit
+	// here claiming Meta charges the customer directly on Meta-direct numbers was
+	// wrong and is deliberately removed: we fund those too, which is what makes
+	// Meta's 1 October 2026 service message charge our cost and not the
+	// customer's. Inbound is never billed by anyone.
 	ServiceWhatsAppConversation ServiceType = "whatsapp_conversation"
 	ServiceAI                   ServiceType = "ai"
 	ServiceManualAdjustment     ServiceType = "manual_adjustment"

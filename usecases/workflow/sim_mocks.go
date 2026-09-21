@@ -533,6 +533,10 @@ func (r *simMessageRepo) UpdateDeliveryStatus(_ string, _ conversation.DeliveryS
 func (r *simMessageRepo) UpdateDeliveryStatusWithReason(_ string, _ conversation.DeliveryStatus, _ int, _ string) error {
 	return nil
 }
+
+func (r *simMessageRepo) UpdateDeliveryReceipt(_ string, _ conversation.DeliveryReceipt) error {
+	return nil
+}
 func (r *simMessageRepo) ClearAll() error { return nil }
 
 type simRunRepo struct {

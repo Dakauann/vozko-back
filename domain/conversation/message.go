@@ -32,6 +32,37 @@ func (c MessageChannel) Valid() bool {
 	return false
 }
 
+// MessageTransport is HOW an outbound message left the building, which the
+// channel cannot say on a coexistence number.
+//
+// Coexistence puts the WhatsApp Business app and the Cloud API on the same
+// number. When the owner replies from the app on their phone, Meta echoes that
+// message to our webhook and we store it exactly like one of our own: same
+// channel, same entry type, same operator message type. Nothing distinguished
+// the two.
+//
+// That distinction is money. Meta's rule is that messages sent from the
+// WhatsApp Business app stay free and only messages sent through the API are
+// billed, so counting an echo as a billable service message invents a cost that
+// does not exist.
+type MessageTransport string
+
+const (
+	// MessageTransportAPI is a message we sent through the Cloud API. It is the
+	// empty string so every row written before this existed, and every channel
+	// that has no second transport, reads as what it is.
+	MessageTransportAPI MessageTransport = ""
+	// MessageTransportBusinessApp is an echo of a message the business sent
+	// from the WhatsApp Business app on a coexistence number. Free at Meta.
+	MessageTransportBusinessApp MessageTransport = "business_app"
+)
+
+// IsMetaBillable reports whether Meta charges for a message that left over this
+// transport. Only the API is billed.
+func (t MessageTransport) IsMetaBillable() bool {
+	return t != MessageTransportBusinessApp
+}
+
 type MessageType string
 
 const (
@@ -120,6 +151,105 @@ func (t MessageType) Valid() bool {
 	return false
 }
 
+// IsMetaServiceBillable reports whether a message of this type, sent outbound on
+// the official WhatsApp channel, is one Meta charges us for as a SERVICE
+// message from 1 October 2026.
+//
+// Meta's definition is "any non-template message that is not powered by Meta
+// Business Agent", whether a person or a third-party AI produced it. Translated
+// into our types that is an agent typing, our AI replying, and an agent
+// attaching a file.
+//
+// What this deliberately excludes, because each one is stored OUTBOUND and
+// would otherwise be counted as money we owe:
+//   - tool_call / tool_result: AI internals that never left the building.
+//   - the call lifecycle and permission markers: a phone log, not a message.
+//   - template: already billed to the customer as a campaign send, and priced
+//     by Meta on the template rate card rather than the service rate.
+//   - the inbound-only types: Meta never charges for what arrives.
+//
+// Type alone is not the whole rule. A billable service message must also be
+// outbound, on the official channel, and delivered; see IsMetaBillable for the
+// delivery half.
+func (t MessageType) IsMetaServiceBillable() bool {
+	switch t {
+	case MessageTypeOperator, MessageTypeAIResponse, MessageTypeMedia, MessageTypeAudio:
+		return true
+	}
+	return false
+}
+
+// AllMessageTypes is every message type this package declares.
+//
+// It exists so that adding a type cannot silently change what we bill. The
+// service message rule is an allowlist, so a new type it has not been told
+// about is excluded by default, and excluding a billable type under-reports
+// what Meta charges us with nothing failing anywhere.
+//
+// message_type_registry_test.go parses this file and fails if a declared
+// MessageType constant is missing from this list, so the omission is caught at
+// the moment the constant is added rather than at the next invoice.
+//
+// A sticker is deliberately not here: stickers are a MediaType carried by
+// MessageTypeOperator or MessageTypeMedia, not a type of their own.
+func AllMessageTypes() []MessageType {
+	return []MessageType{
+		MessageTypeUserMessage,
+		MessageTypeAIResponse,
+		MessageTypeToolCall,
+		MessageTypeToolResult,
+		MessageTypeAudio,
+		MessageTypeSystem,
+		MessageTypeMedia,
+		MessageTypeOperator,
+		MessageTypeTemplate,
+		MessageTypeCallPermissionRequest,
+		MessageTypeCallPermissionGranted,
+		MessageTypeCallPermissionRejected,
+		MessageTypeCallReceived,
+		MessageTypeCallAnswered,
+		MessageTypeCallMissed,
+		MessageTypeCallEnded,
+		MessageTypeStoryReply,
+		MessageTypeStoryMention,
+		MessageTypeReaction,
+		MessageTypeUnsupported,
+		MessageTypePostShare,
+	}
+}
+
+// ServiceMessageTypes is the single list behind every consumer of the service
+// message rule: the reporting SQL, and the partial index that serves it.
+//
+// media and audio appear here and in InboundMessageTypes because they are the
+// only genuinely two-way types: a customer sends a voice note, an agent attaches
+// a receipt. Direction, not type, separates those two, which is why the
+// reporting query filters on both.
+//
+// Adding a type here changes the partial index predicate, so it needs a
+// migration to rebuild idx_cm_service_exposure, not only a deploy.
+func ServiceMessageTypes() []MessageType {
+	return []MessageType{
+		MessageTypeOperator,
+		MessageTypeAIResponse,
+		MessageTypeMedia,
+		MessageTypeAudio,
+	}
+}
+
+// ServiceMessageTypeStrings renders ServiceMessageTypes for SQL, exactly as
+// InboundMessageTypeStrings does for the unread rule. Both the IN list in the
+// reporting query and the partial index predicate are built from this, so the
+// index cannot drift away from the query it was created to serve.
+func ServiceMessageTypeStrings() []string {
+	types := ServiceMessageTypes()
+	result := make([]string, len(types))
+	for i, t := range types {
+		result[i] = string(t)
+	}
+	return result
+}
+
 type MediaType string
 
 const (
@@ -147,6 +277,44 @@ const (
 	DeliveryStatusRead      DeliveryStatus = "read"
 	DeliveryStatusFailed    DeliveryStatus = "failed"
 )
+
+// IsMetaBillable reports whether a message in this delivery state is one Meta
+// charges for. Meta bills on delivery: "sent" already means it accepted the
+// message, so all three forward states count.
+//
+// Failed does not, and neither does the empty status. Empty is what our own
+// internal rows carry (tool_call, tool_result, the call markers) and also what
+// rows written before the column existed carry. In both cases nothing says Meta
+// ever saw the message, and the safe reading of "not stated" is not to pay for
+// it.
+func (s DeliveryStatus) IsMetaBillable() bool {
+	switch s {
+	case DeliveryStatusSent, DeliveryStatusDelivered, DeliveryStatusRead:
+		return true
+	}
+	return false
+}
+
+// BillableDeliveryStatuses is the delivery half of the service message rule,
+// kept beside ServiceMessageTypes so the reporting query builds both of its IN
+// lists from the domain rather than from string literals in SQL.
+func BillableDeliveryStatuses() []DeliveryStatus {
+	return []DeliveryStatus{
+		DeliveryStatusSent,
+		DeliveryStatusDelivered,
+		DeliveryStatusRead,
+	}
+}
+
+// BillableDeliveryStatusStrings renders BillableDeliveryStatuses for SQL.
+func BillableDeliveryStatusStrings() []string {
+	statuses := BillableDeliveryStatuses()
+	result := make([]string, len(statuses))
+	for i, s := range statuses {
+		result[i] = string(s)
+	}
+	return result
+}
 
 type Message struct {
 	ID          string           `json:"id"`
@@ -185,7 +353,11 @@ type Message struct {
 	DeliveryStatus DeliveryStatus  `json:"deliveryStatus,omitempty" bson:"deliveryStatus,omitempty"`
 	SenderName     string          `json:"senderName,omitempty"`
 	SenderAvatar   string          `json:"senderAvatar,omitempty"`
-	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	// SentVia is how an outbound message left the building. Empty means the
+	// Cloud API, which is every row written before coexistence echoes were
+	// distinguishable and every channel that has only one transport.
+	SentVia  MessageTransport `json:"sentVia,omitempty"`
+	Metadata json.RawMessage  `json:"metadata,omitempty"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	UpdatedAt      time.Time       `json:"updatedAt"`
 }

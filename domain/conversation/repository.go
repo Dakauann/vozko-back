@@ -269,6 +269,14 @@ type MessageRepository interface {
 	// UpdateDeliveryStatusWithReason also records the provider's explanation, so
 	// the thread can say why rather than only that.
 	UpdateDeliveryStatusWithReason(wamid string, status DeliveryStatus, errorCode int, errorMessage string) error
+	// UpdateDeliveryReceipt records everything one status webhook says about a
+	// message: the status, the failure reason, and Meta's own pricing verdict.
+	//
+	// The other two are kept because forty-odd callers pass only a status, and
+	// both now delegate here so there is one update path rather than three. One
+	// path also means one write per receipt, which matters on what is the
+	// busiest webhook the platform handles.
+	UpdateDeliveryReceipt(wamid string, receipt DeliveryReceipt) error
 
 	ClearAll() error
 }

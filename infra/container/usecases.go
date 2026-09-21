@@ -140,7 +140,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	searchCEPUC := cep_usecase.NewSearchCEPUseCase(c.repositories.cep, http.DefaultClient)
 
-
 	openrouterCfg := openrouter_service.Config{
 		APIKey:       c.cfg.OpenRouterAPIKey,
 		DefaultModel: c.cfg.OpenRouterDefaultModel,
@@ -374,7 +373,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	insuranceProviders := c.services.insuranceProviders
 	describeRequirementsUC := insurance_usecase.NewDescribeRequirementsUseCase(insuranceProviders)
-
 
 	publishEmailUC := notification_usecase.NewPublishEmailUseCase(c.services.notificationsQueuePub)
 	// Request-path senders use a queued EmailService so registration/login/invite
@@ -756,7 +754,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		updateWorkspaceConfig:      workspace_config_usecase.NewUpdateWorkspaceConfigUseCase(c.repositories.workspaceConfig),
 		updateWorkspaceConfigOwner: workspace_config_usecase.NewUpdateWorkspaceConfigOwnerUseCase(c.repositories.workspaceConfig, c.repositories.workspace),
 
-
 		createShop: shop_usecase.NewCreateShopUseCase(c.repositories.shop, c.repositories.media),
 		updateShop: shop_usecase.NewUpdateShopUseCase(c.repositories.shop, c.repositories.media),
 		deleteShop: shop_usecase.NewDeleteShopUseCase(c.repositories.shop),
@@ -813,10 +810,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		billingQuery:       calls_query_usecase.NewBillingQueryUseCase(c.repositories.callBilling),
 		callRecordingQuery: calls_query_usecase.NewRecordingQueryUseCase(c.repositories.callRecording),
 
-		getProfitReport:     analytics_usecase.NewGetProfitReportUseCase(c.repositories.analytics),
-		getCallAnalytics:    analytics_usecase.NewGetCallAnalyticsUseCase(c.repositories.analytics),
-		getAdminOverview:    analytics_usecase.NewGetAdminOverviewUseCase(c.repositories.analytics),
-		getPlanContractions: analytics_usecase.NewGetPlanContractionsUseCase(c.repositories.analytics),
+		getProfitReport:           analytics_usecase.NewGetProfitReportUseCase(c.repositories.analytics),
+		getCallAnalytics:          analytics_usecase.NewGetCallAnalyticsUseCase(c.repositories.analytics),
+		getAdminOverview:          analytics_usecase.NewGetAdminOverviewUseCase(c.repositories.analytics),
+		getPlanContractions:       analytics_usecase.NewGetPlanContractionsUseCase(c.repositories.analytics),
+		getMetaServiceMessageCost: analytics_usecase.NewGetMetaServiceMessageCostUseCase(c.repositories.analytics),
 
 		grantTemplateAccess:  workspace_template_access_usecase.NewGrantAccessUseCase(c.repositories.workspaceTemplateAccess),
 		revokeTemplateAccess: workspace_template_access_usecase.NewRevokeAccessUseCase(c.repositories.workspaceTemplateAccess),

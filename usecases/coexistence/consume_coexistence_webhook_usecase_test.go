@@ -263,6 +263,9 @@ func (r *mockMessageRepo) UpdateDeliveryStatus(string, conversation.DeliveryStat
 func (r *mockMessageRepo) UpdateDeliveryStatusWithReason(string, conversation.DeliveryStatus, int, string) error {
 	return nil
 }
+func (r *mockMessageRepo) UpdateDeliveryReceipt(string, conversation.DeliveryReceipt) error {
+	return nil
+}
 func (r *mockMessageRepo) ClearAll() error { return nil }
 
 type mockLeadRepo struct {
