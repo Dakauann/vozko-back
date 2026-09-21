@@ -2,9 +2,11 @@ package openrouter
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 	"vozko/domain/ai"
 
 	"github.com/joho/godotenv"
@@ -20,10 +22,16 @@ func TestAiCompletetion(t *testing.T) {
 		t.Skip("OPENROUTER_API_KEY not set, skipping test")
 	}
 
-	aiService := NewService(Config{
+	// A billing publisher is required now: an adapter that cannot bill spends
+	// the provider money and collects nothing. This live test does not assert
+	// on billing, so it gets a no-op publisher.
+	aiService, err := NewService(Config{
 		APIKey:       apiKey,
 		DefaultModel: "x-ai/grok-4.1-fast",
-	}, nil, nil)
+	}, nil, noopBillingPub{})
+	if err != nil {
+		t.Fatalf("NewService() = %v", err)
+	}
 
 	ctx := context.Background()
 	response, err := aiService.Generate(ctx, ai.GenerateInput{
@@ -51,4 +59,28 @@ Exemplo ERRADO: ["Oi, sou seu professor de IA e é um prazer te conhecer..."]`,
 		t.Logf("  [%d]: %s", i, msg)
 	}
 
+}
+
+// noopBillingPub is the publisher this adapter now requires, for tests that do
+// not assert on billing.
+type noopBillingPub struct{}
+
+func (noopBillingPub) Publish(string, []byte) error { return nil }
+func (noopBillingPub) PublishWithDelay(string, []byte, time.Duration) error {
+	return nil
+}
+func (noopBillingPub) ValidateConnection() error { return nil }
+
+// The adapter refuses to exist without one.
+//
+// publishBillingEvent used to return silently when it was nil: every completion
+// still cost money at the provider and none of it was ever billed to a
+// workspace, with no error and no log line.
+func TestNewServiceRequiresABillingPublisher(t *testing.T) {
+	if _, err := NewService(Config{APIKey: "k"}, nil, nil); !errors.Is(err, ai.ErrBillingNotConfigured) {
+		t.Fatalf("NewService() = %v, want ai.ErrBillingNotConfigured", err)
+	}
+	if _, err := NewService(Config{APIKey: "k"}, nil, noopBillingPub{}); err != nil {
+		t.Fatalf("a service with a publisher failed to build: %v", err)
+	}
 }

@@ -42,6 +42,10 @@ type Pricer interface {
 	PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error)
 
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)
+
+	// PriceWhatsAppCategory prices by Meta's own pricing category, which is what
+	// the status webhook stamps on a delivered message.
+	PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error)
 }
 
 type pricer struct {
@@ -232,15 +236,30 @@ func (p *pricer) PriceTelephonyChannel(workspaceID string, durationSeconds float
 }
 
 func (p *pricer) PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error) {
-	resolved, err := p.ResolveForWorkspace(workspaceID)
-	if err != nil {
-		return PriceResult{}, err
-	}
 	service, err := NormalizeWhatsAppTemplateService(templateCategory)
 	if err != nil {
 		return PriceResult{}, err
 	}
-	item := findResolvedItem(resolved, CategoryWhatsApp, service, "per_message")
+	return p.PriceWhatsAppCategory(workspaceID, service)
+}
+
+// PriceWhatsAppCategory prices one WhatsApp message by Meta's own pricing
+// category, which is exactly the key the catalog is built on.
+//
+// PriceWhatsApp is this with a template category translated first. They are one
+// method rather than two because the resolution, the per_message metric and the
+// zero-price rule are the same question whatever kind of message is being
+// priced, and a second copy would be the place they drift apart.
+//
+// A zero price is returned as a zero PriceResult with no error, which every
+// caller must read as "not priced" rather than "free to send": see
+// ConsumeWhatsappTemplateUseCase, which turns it into ErrPriceUnavailable.
+func (p *pricer) PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error) {
+	resolved, err := p.ResolveForWorkspace(workspaceID)
+	if err != nil {
+		return PriceResult{}, err
+	}
+	item := findResolvedItem(resolved, CategoryWhatsApp, metaCategory, "per_message")
 	if item == nil || item.PriceMicros <= 0 {
 		return PriceResult{}, nil
 	}

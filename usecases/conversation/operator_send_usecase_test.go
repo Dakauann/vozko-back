@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/user"
@@ -74,6 +75,7 @@ func (f *opRecordingFinalizer) FinalizeOperatorSend(_ context.Context, in conver
 
 type operatorSendFixture struct {
 	sender    *opRecordingSender
+	billing   *opStubBilling
 	finalizer *opRecordingFinalizer
 	uc        conversation.OperatorSendUseCase
 }
@@ -82,9 +84,10 @@ func newOperatorSendFixture(t *testing.T, u *user.User, userErr error) *operator
 	t.Helper()
 	f := &operatorSendFixture{
 		sender:    &opRecordingSender{},
+		billing:   &opStubBilling{},
 		finalizer: &opRecordingFinalizer{},
 	}
-	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer)
+	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer, f.billing)
 	if err != nil {
 		t.Fatalf("NewOperatorSendUseCase: %v", err)
 	}
@@ -277,13 +280,91 @@ func TestOperatorSendValidatesItsInput(t *testing.T) {
 // A missing dependency must stop the boot, not silently cost every reply its
 // side effects.
 func TestNewOperatorSendUseCaseRefusesMissingDependencies(t *testing.T) {
-	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}); err == nil {
+	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
 		t.Error("a nil message sender was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
 		t.Error("a nil user repository was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil, &opStubBilling{}); err == nil {
 		t.Error("a nil finalizer was accepted")
+	}
+}
+
+// opStubBilling stands in for the Meta service message billing. Its zero value
+// allows, which is the unpriced plan every existing test assumes.
+type opStubBilling struct {
+	allowErr error
+	calls    int
+}
+
+func (s *opStubBilling) AllowSend(string) error {
+	s.calls++
+	return s.allowErr
+}
+func (s *opStubBilling) ShouldCharge(conversation.DeliveryReceipt) bool { return false }
+func (s *opStubBilling) ChargeDelivered(string, conversation.DeliveryReceipt, string) error {
+	return nil
+}
+
+// A plan that prices service messages and a workspace that cannot pay: the
+// reply is refused BEFORE it is sent, because after sending there is nothing to
+// refuse. Meta charges on delivery and the message is already gone.
+func TestOperatorSendRefusesWhatTheWorkspaceCannotPayFor(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+	f.billing.allowErr = balance.ErrInsufficientBalance
+
+	_, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:     "e-1",
+		EntryType:   string(shared.EntryTypeWhatsApp),
+		WorkspaceID: "ws-1",
+		Text:        "olá",
+	})
+
+	if !errors.Is(err, balance.ErrInsufficientBalance) {
+		t.Fatalf("Execute() = %v, want ErrInsufficientBalance", err)
+	}
+	if len(f.sender.texts) != 0 {
+		t.Error("the message was sent anyway; the gate has to run before the send")
+	}
+}
+
+// The unpriced plan, which is every plan today: the gate is asked and says
+// nothing, and the reply goes out at any balance.
+func TestOperatorSendProceedsWhenServiceMessagesAreFree(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+
+	if _, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:     "e-1",
+		EntryType:   string(shared.EntryTypeWhatsApp),
+		WorkspaceID: "ws-1",
+		Text:        "olá",
+	}); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if f.billing.calls != 1 {
+		t.Errorf("the billing was asked %d times, want 1", f.billing.calls)
+	}
+	if len(f.sender.texts) != 1 {
+		t.Errorf("the message was sent %d times, want 1", len(f.sender.texts))
+	}
+}
+
+// Without a workspace there is nothing to charge and nothing to check. Refusing
+// an operator's reply because a hint was missing would be a worse failure than
+// not charging for it.
+func TestOperatorSendSkipsTheGateWithoutAWorkspace(t *testing.T) {
+	f := newOperatorSendFixture(t, &user.User{ID: "user-1", Username: "Ana"}, nil)
+	f.billing.allowErr = balance.ErrInsufficientBalance
+
+	if _, err := f.uc.Execute(context.Background(), conversation.OperatorSendInput{
+		EntryID:   "e-1",
+		EntryType: string(shared.EntryTypeWhatsApp),
+		Text:      "olá",
+	}); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if f.billing.calls != 0 {
+		t.Errorf("the billing was asked %d times with no workspace, want 0", f.billing.calls)
 	}
 }

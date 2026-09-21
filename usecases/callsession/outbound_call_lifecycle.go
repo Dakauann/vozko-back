@@ -3,6 +3,7 @@ package callsession_usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -62,13 +63,26 @@ func (r *OutboundCallLifecycleRunner) SetCDRAnswered(uc cdr.MarkCallAnsweredUseC
 	}
 }
 
+// NewOutboundCallLifecycleRunner builds the runner.
+//
+// It REFUSES without a billing publisher. publishBilling is the only thing that
+// turns a completed call into a charge, and a nil publisher there was a silent
+// early return: the call connected, the minutes were spent at the carrier, and
+// the workspace was never billed for any of it. Nothing failed and nothing was
+// logged. A boot failure is the cheaper way to find that out.
+//
+// The logger stays optional because a missing logger costs a log line, not
+// revenue.
 func NewOutboundCallLifecycleRunner(
 	admission callsession.CallAdmissionCoordinator,
 	cachedBalanceChecker balance.CachedBalanceChecker,
 	inflightReserver balance.InflightReserver,
 	billingPub messaging.MessageQueuePub,
 	logger *log.Logger,
-) *OutboundCallLifecycleRunner {
+) (*OutboundCallLifecycleRunner, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: outbound call lifecycle", callsession.ErrBillingNotConfigured)
+	}
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -80,7 +94,7 @@ func NewOutboundCallLifecycleRunner(
 		balanceGuardInterval: balanceGuardDefaultInterval,
 		logger:               logger,
 		nowFn:                time.Now,
-	}
+	}, nil
 }
 
 func (r *OutboundCallLifecycleRunner) SetBalanceGuardInterval(d time.Duration) {

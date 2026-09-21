@@ -15,6 +15,7 @@ import (
 	template_infra "vozko/infra/whatsapp/template"
 
 	balance_usecase "vozko/usecases/balance"
+	"vozko/usecases/whatsapp/servicemessage"
 	workspace_plan_usecase "vozko/usecases/workspace_plan"
 )
 
@@ -42,6 +43,25 @@ func New() *Container {
 	planPricingAdapter := workspace_plan_usecase.NewPlanPricingAdapter(c.repositories.workspaceSubscription, c.repositories.workspacePlan)
 	whatsappPricer := workspace_pricing.NewPricer(c.repositories.workspacePricing, workspace_pricing.WithPlanPricingProvider(planPricingAdapter))
 	consumeWhatsappTemplateUC := balance_usecase.NewConsumeWhatsappTemplateUseCase(c.repositories.balance, whatsappPricer, activeSubscriptionUC)
+
+	// Built here rather than in initUseCases because the operator send path is
+	// wired by wireConversationHub, which runs first and needs it. One checker,
+	// shared: a second instance would keep a second cache of the same balances.
+	c.services.cachedBalanceChecker = balance_usecase.NewCachedBalanceChecker(
+		c.repositories.balance, c.redisProvider.SharedState(), 10*time.Second)
+
+	serviceMessageBilling, err := servicemessage.NewBilling(servicemessage.Deps{
+		Pricer:         whatsappPricer,
+		Ledger:         c.repositories.balance,
+		BalanceChecker: c.services.cachedBalanceChecker,
+	})
+	if err != nil {
+		// Without it every free-form reply on an official number goes out with
+		// Meta's fee charged to nobody.
+		log.Fatalf("Failed to build the WhatsApp service message billing: %v", err)
+	}
+
+	c.services.serviceMessageBilling = serviceMessageBilling
 
 	c.wireConversationHub(consumeWhatsappTemplateUC)
 	c.initCallSessionRegistries()

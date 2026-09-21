@@ -34,8 +34,10 @@ func (f *fakeAIService) Generate(_ context.Context, in ai.GenerateInput) (*ai.Ge
 func (f *fakeAIService) GenerateStream(context.Context, ai.GenerateInput) (<-chan ai.StreamEvent, error) {
 	return nil, errors.New("not implemented")
 }
-func (f *fakeAIService) GetAvaibleModels(context.Context) ([]string, error)           { return nil, nil }
-func (f *fakeAIService) GetModelsWithPricing(context.Context) ([]ai.ModelInfo, error) { return nil, nil }
+func (f *fakeAIService) GetAvaibleModels(context.Context) ([]string, error) { return nil, nil }
+func (f *fakeAIService) GetModelsWithPricing(context.Context) ([]ai.ModelInfo, error) {
+	return nil, nil
+}
 
 func (f *fakeAIService) lastInput(t *testing.T) ai.GenerateInput {
 	t.Helper()

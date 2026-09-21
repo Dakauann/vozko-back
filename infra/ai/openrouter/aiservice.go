@@ -42,7 +42,20 @@ type Config struct {
 	XTitle       string
 }
 
-func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub) *Service {
+// NewService builds the OpenRouter adapter.
+//
+// It REFUSES to build without a billing publisher. Every completion this
+// service returns has already cost money at the provider, and publishBillingEvent
+// is the only thing that turns that into a charge. A nil publisher there used
+// to be a silent early return: the model call still happened, the tokens were
+// still paid for upstream, and nothing was ever billed to the workspace. No
+// error, no log line, no failing test. Boot is the right place for that to
+// fail, because it is the last moment anyone is watching.
+func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub) (*Service, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: openrouter ai service", ai.ErrBillingNotConfigured)
+	}
+
 	var opts []openrouter.Option
 	if cfg.HTTPReferer != "" {
 		opts = append(opts, openrouter.WithHTTPReferer(cfg.HTTPReferer))
@@ -60,7 +73,7 @@ func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQ
 		billingPub:        billingPub,
 		usageFetcher:      newHTTPGenerationFetcher(cfg.APIKey, openRouterDefaultBaseURL),
 		catalogFetcher:    newModelCatalogFetcher(cfg.APIKey, openRouterDefaultBaseURL),
-	}
+	}, nil
 }
 
 func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<-chan ai.StreamEvent, error) {

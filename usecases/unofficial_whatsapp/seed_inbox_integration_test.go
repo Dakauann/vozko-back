@@ -347,7 +347,6 @@ func entryState(t *testing.T, tx *gorm.DB, conversationID string) entrySnapshot 
 	return snap
 }
 
-
 // ---- scripted seeding ----
 
 // inboxPreview reproduces the hydration LATERAL the inbox list uses to pick the

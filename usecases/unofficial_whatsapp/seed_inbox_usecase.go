@@ -386,7 +386,7 @@ func (uc *SeedInboxUseCase) scriptPending(
 	// The balance floor, read ONCE per batch. Twenty-five reads for
 	// twenty-five targets is twenty-four calls that cannot change the answer,
 	// and the floor is about the workspace, not the target.
-	if !balance_usecase.NewAIFloorGuard(uc.balance, "inbox seed scripting").Allow(in.WorkspaceID) {
+	if !balance_usecase.NewSpendGuard(uc.balance, "inbox seed scripting").Allow(in.WorkspaceID) {
 		out.ScriptFailed += len(eligible)
 		return
 	}

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"vozko/domain/conversation"
 )
 
 type ServiceCategory string
@@ -26,6 +28,15 @@ const (
 	WhatsAppServiceUtility        = "utility"
 	WhatsAppServiceMarketing      = "marketing"
 	WhatsAppServiceAuthentication = "authentication"
+	// WhatsAppServiceServiceMessage is the free-form reply an agent or the AI
+	// sends inside the 24 hour window, which Meta starts charging for on
+	// 1 October 2026. Unlike the three above it is not a template.
+	//
+	// The value is Meta's own pricing category, reused rather than respelled,
+	// because it is what the status webhook stamps on the message and what the
+	// cost report counts by. Two spellings would mean the line an admin prices
+	// and the messages it prices could never be joined.
+	WhatsAppServiceServiceMessage = conversation.MetaPricingCategoryService
 )
 
 const (
@@ -91,6 +102,20 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceUtility, Metric: "per_message", CostMicros: 6_800, PriceMicros: 16_667, Currency: "USD"},
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceMarketing, Metric: "per_message", CostMicros: 62_500, PriceMicros: 66_667, Currency: "USD"},
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceAuthentication, Metric: "per_message", CostMicros: 6_800, PriceMicros: 16_667, Currency: "USD"},
+
+	// Service messages, billable at Meta from 1 October 2026.
+	//
+	// Seeded UNPRICED on purpose, and nothing charges it yet. Meta prices
+	// service messages per recipient market and that rate card is not ours to
+	// guess, so putting a number here would show an operator a figure we
+	// invented. Zero reads as "nobody has priced this", which is true, and the
+	// plan estimate rail already skips rows with no price rather than dividing
+	// by zero.
+	//
+	// What this line does buy today is a place for the price to go: it appears
+	// in the admin plan editor and in the pricing table, so the rate can be set
+	// the day Meta publishes it without a deploy.
+	{Category: CategoryWhatsApp, Service: WhatsAppServiceServiceMessage, Metric: "per_message", CostMicros: 0, PriceMicros: 0, Currency: "USD"},
 
 	// WhatsApp calls: cost $0.01080/min, price $0.013333/min (≈ R$0.08/min at the
 	// 6.0 USD→BRL default rate). The only telephony row; the retired sip_trunk row

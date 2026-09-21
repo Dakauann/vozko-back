@@ -24,7 +24,6 @@ import (
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	wsc "vozko/domain/workspace_config"
 	"vozko/usecases/campaignqueue"
-
 )
 
 const messageSendDelay = 15 * time.Millisecond

@@ -95,3 +95,29 @@ func (r DeliveryReceipt) NormalizedOrigin() string {
 func (r DeliveryReceipt) IsFreeEntryPoint() bool {
 	return r.NormalizedOrigin() == MetaOriginFreeEntryPoint
 }
+
+// ServiceMessageBilling is how this package asks whether a free-form reply may
+// be sent, and reports one Meta has confirmed it billed.
+//
+// Declared here, where it is consumed, so neither domain has to import the
+// other: it speaks only in this package's own types and plain strings. The
+// implementation lives in usecases/whatsapp/servicemessage, which is where the
+// knowledge of Meta's rate card belongs.
+type ServiceMessageBilling interface {
+	// AllowSend refuses a reply the workspace cannot pay for. A plan that
+	// prices service messages at zero never refuses, whatever the balance.
+	AllowSend(workspaceID string) error
+
+	// ShouldCharge reports whether this receipt is one we would charge for,
+	// WITHOUT touching the database.
+	//
+	// It exists so the status webhook can skip resolving a workspace for the
+	// overwhelming majority of status events, which are templates, failures or
+	// messages Meta did not bill. Resolving costs three reads and the webhook
+	// is the busiest path the platform has.
+	ShouldCharge(receipt DeliveryReceipt) bool
+
+	// ChargeDelivered books one service message Meta has confirmed it billed.
+	// Idempotent on the provider message id, because Meta retries.
+	ChargeDelivered(workspaceID string, receipt DeliveryReceipt, providerMessageID string) error
+}

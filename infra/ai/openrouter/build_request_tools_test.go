@@ -32,7 +32,7 @@ func (injectFakeToolService) Handler(string) (tools.Handler, bool) { return nil,
 // it could never run, suppressing its text reply (the "keeps typing, won't
 // respond" bug). A normal Auto-mode call with no tools still gets the defaults.
 func TestBuildRequest_NoDefaultToolsWhenExecutionDisabled(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, injectFakeToolService{}, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, injectFakeToolService{})
 
 	reqNone := s.buildRequest(ai.GenerateInput{
 		Model:             "test/model",
@@ -53,7 +53,7 @@ func TestBuildRequest_NoDefaultToolsWhenExecutionDisabled(t *testing.T) {
 }
 
 func TestBuildRequest_ResponseFormatJSONObject(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, nil, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, nil)
 	req := s.buildRequest(ai.GenerateInput{
 		Model: "openai/gpt-4o-mini",
 		Messages: []ai.Message{
@@ -68,7 +68,7 @@ func TestBuildRequest_ResponseFormatJSONObject(t *testing.T) {
 }
 
 func TestBuildRequest_ResponseFormatJSONSchema(t *testing.T) {
-	s := NewService(Config{DefaultModel: "test/model"}, nil, nil)
+	s := mustService(t, Config{DefaultModel: "test/model"}, nil)
 	req := s.buildRequest(ai.GenerateInput{
 		Model: "openai/gpt-4o-mini",
 		Messages: []ai.Message{
@@ -97,4 +97,16 @@ func TestBuildRequest_ResponseFormatJSONSchema(t *testing.T) {
 	if !req.ResponseFormat.JSONSchema.Strict {
 		t.Fatal("expected strict")
 	}
+}
+
+// mustService builds the adapter for tests that are not about billing. It
+// supplies the publisher the constructor now requires rather than letting each
+// test pass nil, which is no longer allowed and never should have been.
+func mustService(t *testing.T, cfg Config, toolSvc tools.Service) *Service {
+	t.Helper()
+	s, err := NewService(cfg, toolSvc, noopBillingPub{})
+	if err != nil {
+		t.Fatalf("NewService() = %v", err)
+	}
+	return s
 }

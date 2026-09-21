@@ -350,16 +350,16 @@ type Message struct {
 
 	ReplyToMessageID *string `json:"replyToMessageId,omitempty" bson:"replyToMessageId,omitempty"`
 
-	DeliveryStatus DeliveryStatus  `json:"deliveryStatus,omitempty" bson:"deliveryStatus,omitempty"`
-	SenderName     string          `json:"senderName,omitempty"`
-	SenderAvatar   string          `json:"senderAvatar,omitempty"`
+	DeliveryStatus DeliveryStatus `json:"deliveryStatus,omitempty" bson:"deliveryStatus,omitempty"`
+	SenderName     string         `json:"senderName,omitempty"`
+	SenderAvatar   string         `json:"senderAvatar,omitempty"`
 	// SentVia is how an outbound message left the building. Empty means the
 	// Cloud API, which is every row written before coexistence echoes were
 	// distinguishable and every channel that has only one transport.
-	SentVia  MessageTransport `json:"sentVia,omitempty"`
-	Metadata json.RawMessage  `json:"metadata,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
+	SentVia   MessageTransport `json:"sentVia,omitempty"`
+	Metadata  json.RawMessage  `json:"metadata,omitempty"`
+	CreatedAt time.Time        `json:"createdAt"`
+	UpdatedAt time.Time        `json:"updatedAt"`
 }
 
 // ResolvedDirection is the direction to persist for this message.

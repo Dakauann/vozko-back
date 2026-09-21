@@ -540,7 +540,6 @@ func (f *fakeScheduler) Clear(_ context.Context, ref ca.ContainerRef) error {
 	return nil
 }
 
-
 // ---- balance ----
 
 type fakeBalance struct{ micros int64 }

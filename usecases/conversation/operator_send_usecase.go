@@ -23,6 +23,7 @@ type operatorSendUseCase struct {
 	sender    conversation.MessageSender
 	users     user.UserRepository
 	finalizer conversation.OperatorSendFinalizer
+	billing   conversation.ServiceMessageBilling
 }
 
 // NewOperatorSendUseCase wires the use case.
@@ -35,6 +36,7 @@ func NewOperatorSendUseCase(
 	sender conversation.MessageSender,
 	users user.UserRepository,
 	finalizer conversation.OperatorSendFinalizer,
+	billing conversation.ServiceMessageBilling,
 ) (conversation.OperatorSendUseCase, error) {
 	missing := []string{}
 	if sender == nil {
@@ -46,11 +48,18 @@ func NewOperatorSendUseCase(
 	if finalizer == nil {
 		missing = append(missing, "operator send finalizer")
 	}
+	if billing == nil {
+		// Every operator reply on an official WhatsApp number is a message Meta
+		// charges for from 1 October 2026. Without this the send goes out and
+		// the fee is nobody's, which is the failure the whole billing pass
+		// exists to stop.
+		missing = append(missing, "service message billing")
+	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("operator send use case: missing %s", strings.Join(missing, ", "))
 	}
 
-	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer}, nil
+	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer, billing: billing}, nil
 }
 
 func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.OperatorSendInput) (*conversation.Message, error) {
@@ -66,6 +75,21 @@ func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.Oper
 	}
 	if in.Text == "" && in.MediaID == "" && in.Buttons == nil {
 		return nil, conversation.ErrMessageContentRequired
+	}
+
+	// Refuse before sending, because after sending there is nothing to refuse:
+	// Meta charges on delivery and the message is gone. A plan that prices
+	// service messages at zero never reaches the balance, so this is invisible
+	// to everyone who is not paying per message.
+	//
+	// Skipped when the caller could not name a workspace. Every caller does
+	// today (the live composer, the scheduled dispatcher, the audience
+	// senders), and refusing an operator's reply because a hint was missing
+	// would be a worse failure than not charging for it.
+	if in.WorkspaceID != "" {
+		if err := uc.billing.AllowSend(in.WorkspaceID); err != nil {
+			return nil, err
+		}
 	}
 
 	message, err := uc.send(in)

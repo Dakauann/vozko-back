@@ -28,17 +28,17 @@ import (
 
 // AlertFreshness aside, this is the one number the whole engine agrees on.
 //
-// A thin wrapper over balance_usecase.AIFloorGuard rather than a second
+// A thin wrapper over balance_usecase.SpendGuard rather than a second
 // implementation of it: the decision (is this workspace above the floor, and is
 // an unreadable balance a refusal) is product-wide, while the ca.ErrBalanceBelowFloor
 // return is this engine's own vocabulary. The wrapper is the translation, and
 // nothing else.
 type balanceGuard struct {
-	inner balance_usecase.AIFloorGuard
+	inner balance_usecase.SpendGuard
 }
 
 func newBalanceGuard(checker balance.CachedBalanceChecker, label string) balanceGuard {
-	return balanceGuard{inner: balance_usecase.NewAIFloorGuard(checker, label)}
+	return balanceGuard{inner: balance_usecase.NewSpendGuard(checker, label)}
 }
 
 // Allow reports whether this workspace may spend on a model call right now.

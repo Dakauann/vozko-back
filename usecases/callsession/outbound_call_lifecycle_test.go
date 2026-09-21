@@ -184,7 +184,13 @@ func newRunner(
 	checker *fakeBalanceChecker,
 	pub *fakeBillingPub,
 ) *OutboundCallLifecycleRunner {
-	return NewOutboundCallLifecycleRunner(admission, checker, reserver, pub, quietLogger())
+	// A billing publisher is now required at construction, which is the point:
+	// a runner that cannot bill would have completed calls for free.
+	runner, err := NewOutboundCallLifecycleRunner(admission, checker, reserver, pub, quietLogger())
+	if err != nil {
+		panic(err)
+	}
+	return runner
 }
 
 func TestLifecycleRun_PublishesBillingOnNaturalHangup(t *testing.T) {
@@ -509,30 +515,6 @@ func TestLifecycleRun_ReserveErrorsFailClosedAfter3(t *testing.T) {
 	}
 }
 
-func TestLifecycleRun_NoBillingPubIsNoOp(t *testing.T) {
-	call := newFakeCall("call-nopub")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	checker := &fakeBalanceChecker{balance: 1_000_000}
-	runner := NewOutboundCallLifecycleRunner(admission, checker, reserver, nil, quietLogger())
-
-	endedCh := make(chan struct{})
-	go runner.Run(context.Background(), OutboundCallLifecycleInput{
-		Call:        call,
-		WorkspaceID: "ws-1",
-		StartedAt:   time.Now().Add(-5 * time.Second),
-		Admission:   &callsession.CallAdmissionLease{WorkspaceID: "ws-1"},
-		OnEnded:     func(string, time.Duration) { close(endedCh) },
-	})
-
-	_ = call.Hangup()
-	<-endedCh
-
-	if atomic.LoadInt32(&admission.releaseCalls) != 1 {
-		t.Fatalf("admission releaseCalls = %d, want 1", admission.releaseCalls)
-	}
-}
-
 func TestLifecycleRun_ZeroDurationSkipsBilling(t *testing.T) {
 	call := newFakeCall("call-zero")
 	admission := &fakeAdmission{}
@@ -592,7 +574,7 @@ func TestLifecycleRun_ContextCancelEndsCallAndReleases(t *testing.T) {
 }
 
 func TestLifecycleRun_NilCallIsNoop(t *testing.T) {
-	runner := NewOutboundCallLifecycleRunner(nil, nil, nil, nil, quietLogger())
+	runner := newRunner(nil, nil, nil, &fakeBillingPub{})
 
 	done := make(chan struct{})
 	go func() {
@@ -802,5 +784,21 @@ func TestLifecycleRun_PanicInOnStatusStillReleasesAndPublishes(t *testing.T) {
 	}
 	if pub.Count() != 1 {
 		t.Fatalf("billing publishes = %d after panic, want 1", pub.Count())
+	}
+}
+
+// The runner refuses to exist without a billing publisher.
+//
+// publishBilling used to return silently when it was nil: the call connected,
+// the minutes were spent at the carrier, and the workspace was billed for none
+// of it, with no error and no log line. Boot is where that should fail.
+func TestNewOutboundCallLifecycleRunnerRequiresABillingPublisher(t *testing.T) {
+	_, err := NewOutboundCallLifecycleRunner(nil, nil, nil, nil, quietLogger())
+	if !errors.Is(err, callsession.ErrBillingNotConfigured) {
+		t.Fatalf("NewOutboundCallLifecycleRunner() = %v, want ErrBillingNotConfigured", err)
+	}
+
+	if _, err := NewOutboundCallLifecycleRunner(nil, nil, nil, &fakeBillingPub{}, quietLogger()); err != nil {
+		t.Fatalf("a runner with a publisher failed to build: %v", err)
 	}
 }

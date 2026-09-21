@@ -325,6 +325,7 @@ func (c *Container) initConversationSenders() {
 		messageSender,
 		c.repositories.user,
 		c.services.operatorSendFinalizer,
+		c.services.serviceMessageBilling,
 	)
 	if err != nil {
 		log.Fatalf("[container] %v", err)

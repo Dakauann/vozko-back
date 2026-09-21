@@ -432,6 +432,9 @@ type services struct {
 	recordingQueueSub    messaging.MessageQueueSub
 	googleCalendar       calendar_domain.GoogleOAuthService
 	cachedBalanceChecker balance_domain.CachedBalanceChecker
+	// serviceMessageBilling gates and charges Meta service messages. Built in
+	// container.go because the operator send path needs it before initUseCases.
+	serviceMessageBilling conversation_domain.ServiceMessageBilling
 
 	callSessions                callsession_domain.CallSessionRegistry
 	calls                       callsession_domain.CallRegistry

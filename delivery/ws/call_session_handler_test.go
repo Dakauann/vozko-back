@@ -183,7 +183,12 @@ func newCallSessionTestHarness(t *testing.T, call *fakeCallSessionCRMCall) *call
 	t.Helper()
 
 	adm := &recordingAdmission{}
-	lifecycle := callsession_usecase.NewOutboundCallLifecycleRunner(adm, nil, nil, nil, log.Default())
+	// A billing publisher is required at construction now; this test is about
+	// admission release, not billing, so it gets a no-op one.
+	lifecycle, err := callsession_usecase.NewOutboundCallLifecycleRunner(adm, nil, nil, noopBillingPub{}, log.Default())
+	if err != nil {
+		t.Fatalf("lifecycle: %v", err)
+	}
 
 	lease := &callsession_domain.CallAdmissionLease{
 		WorkspaceID:  "ws-test",
@@ -461,3 +466,11 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) bool {
 
 var _ = strings.TrimSpace
 var _ = fmt.Sprintf
+
+// noopBillingPub satisfies the publisher the lifecycle now requires, for tests
+// that are not about billing.
+type noopBillingPub struct{}
+
+func (noopBillingPub) Publish(string, []byte) error                         { return nil }
+func (noopBillingPub) PublishWithDelay(string, []byte, time.Duration) error { return nil }
+func (noopBillingPub) ValidateConnection() error                            { return nil }

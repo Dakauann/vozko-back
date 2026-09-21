@@ -157,4 +157,3 @@ func TestClassifier_ProviderErrorHasNoResult(t *testing.T) {
 		t.Fatalf("provider error: res=%+v err=%v", res, err)
 	}
 }
-

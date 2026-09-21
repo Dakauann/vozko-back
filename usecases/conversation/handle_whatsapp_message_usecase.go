@@ -37,6 +37,7 @@ import (
 	"vozko/infra/whisper"
 	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
+	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	shared_usecase "vozko/usecases/shared"
 	tools_usecase "vozko/usecases/tools"
@@ -73,14 +74,19 @@ type handleWhatsAppMessageUseCase struct {
 	triggerEvaluator      workflow_domain.TriggerEvaluator
 	// turnAssembler is the shared agent-turn recipe. Optional: unset falls back
 	// to a locally constructed one so a partially-wired container still works.
-	turnAssembler           *agentturn.Assembler
-	stageRepo               stage.Repository
-	textExtractor           media.TextExtractor
-	sharedState             cache.SharedState
-	ragService              rag.RAGService
-	cachedBalanceChecker    balance.CachedBalanceChecker
+	turnAssembler        *agentturn.Assembler
+	stageRepo            stage.Repository
+	textExtractor        media.TextExtractor
+	sharedState          cache.SharedState
+	ragService           rag.RAGService
+	cachedBalanceChecker balance.CachedBalanceChecker
+	// spendGuard is the product-wide balance decision, not a local copy of it.
+	spendGuard              balance_usecase.SpendGuard
 	llmPriceFetcher         workspace_pricing.LLMPriceFetcher
 	consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
+	// serviceMessageBilling charges the Meta fee for a delivered free-form
+	// reply, and gates one before it is sent.
+	serviceMessageBilling conversation.ServiceMessageBilling
 	// templateSendAttempts and ledger let a delivery-status webhook settle a
 	// SINGLE-TARGET send. Attached after construction rather than added to an
 	// already-vast constructor, and optional: without them the campaign path
@@ -320,51 +326,69 @@ func isFirstInboundMessage(history []*conversation.Message) bool {
 	return true
 }
 
+// canAffordAI is the floor check plus this path's own model estimate.
+//
+// The floor half used to be written out here: a nil check, a balance read, a
+// fail-closed on error and a comparison against MinAIFloorMicros, all of which
+// balance_usecase.SpendGuard already decides for every other paid path in the
+// product. That copy is gone. What is left is the only part that is genuinely
+// this path's: an estimate of what THIS model call will cost, which the floor
+// alone cannot express.
 func (uc *handleWhatsAppMessageUseCase) canAffordAI(workspaceID, model string) bool {
+	if !uc.spendGuard.Allow(workspaceID) {
+		return false
+	}
+
+	if uc.llmPriceFetcher == nil || model == "" {
+		return true
+	}
+	inputMicros, outputMicros, fetchErr := uc.llmPriceFetcher.FetchLLMPriceMicros(model)
+	if fetchErr != nil {
+		log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v, relying on balance floor only", model, fetchErr)
+		return true
+	}
+	return uc.spendGuard.CanAfford(workspaceID, estimatedAICallMicros(inputMicros, outputMicros))
+}
+
+// canAffordAIReply is the gate before the AI answers a customer, which costs
+// twice: the model call, and Meta's fee for the free-form message that carries
+// the answer.
+//
+// Separate from canAffordAI because not every AI call sends anything. The
+// campaign tools call runs stage automation and produces no message, so it owes
+// Meta nothing and is gated on the model cost alone.
+func (uc *handleWhatsAppMessageUseCase) canAffordAIReply(workspaceID, model string) bool {
+	if !uc.canAffordAI(workspaceID, model) {
+		return false
+	}
+	if uc.serviceMessageBilling == nil {
+		return true
+	}
+	if err := uc.serviceMessageBilling.AllowSend(workspaceID); err != nil {
+		log.Printf("[whatsapp-usecase] workspace %s cannot pay for a service message, skipping AI reply: %v", workspaceID, err)
+		return false
+	}
+	return true
+}
+
+// estimatedAICallMicros is a deliberately pessimistic guess at one completion:
+// a large prompt, a full reply, doubled. It exists so a workspace that is above
+// the floor but cannot cover one expensive call is stopped before the call
+// rather than after it, and a zero means there was nothing to estimate from.
+func estimatedAICallMicros(inputMicros, outputMicros int64) int64 {
 	const (
 		estimatedInputTokens  int64 = 4000
 		estimatedOutputTokens int64 = 1000
-
-		safetyMultiplier int64 = 2
+		safetyMultiplier      int64 = 2
 	)
-
-	if uc.cachedBalanceChecker == nil {
-		log.Printf("CRITICAL: cachedBalanceChecker is nil, blocking AI response for workspace %s (fail-closed)", workspaceID)
-		return false
+	if inputMicros <= 0 && outputMicros <= 0 {
+		return 0
 	}
-	bal, err := uc.cachedBalanceChecker.GetBalance(workspaceID)
-	if err != nil {
-		log.Printf("[whatsapp-usecase] balance check error for workspace %s: %v, blocking AI response (fail-closed)", workspaceID, err)
-		return false
+	estimated := (inputMicros*estimatedInputTokens + outputMicros*estimatedOutputTokens) * safetyMultiplier / 1_000_000
+	if estimated < 1 {
+		estimated = 1
 	}
-	if bal <= 0 {
-		log.Printf("[whatsapp-usecase] workspace %s has no balance (%d micros), blocking AI response", workspaceID, bal)
-		return false
-	}
-
-	if bal < balance.MinAIFloorMicros {
-		log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI response", workspaceID, bal, balance.MinAIFloorMicros)
-		return false
-	}
-
-	if uc.llmPriceFetcher != nil && model != "" {
-		inputMicros, outputMicros, fetchErr := uc.llmPriceFetcher.FetchLLMPriceMicros(model)
-		if fetchErr != nil {
-			log.Printf("[whatsapp-usecase] price fetch failed for model %s: %v, relying on balance floor only", model, fetchErr)
-		} else if inputMicros > 0 || outputMicros > 0 {
-
-			estimatedCost := (inputMicros*estimatedInputTokens + outputMicros*estimatedOutputTokens) * safetyMultiplier / 1_000_000
-			if estimatedCost < 1 {
-				estimatedCost = 1
-			}
-			if bal < estimatedCost {
-				log.Printf("[whatsapp-usecase] workspace %s balance (%d micros) below estimated AI cost (%d micros, model=%s), blocking", workspaceID, bal, estimatedCost, model)
-				return false
-			}
-		}
-	}
-
-	return true
+	return estimated
 }
 
 type ResolvedTool struct {
@@ -504,7 +528,22 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase) conversation.HandleWhatsAppMessageUseCase {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling) (conversation.HandleWhatsAppMessageUseCase, error) {
+	// Only the two that decide money are required. This constructor takes
+	// twenty-three collaborators and most of them cost a feature when absent;
+	// these two cost a refund that never happens, which means keeping money a
+	// customer paid for a message that failed to send. refundFailedWhatsAppCampaignEntry
+	// used to return nil when either was missing, silently.
+	if consumeWhatsappTemplate == nil {
+		return nil, fmt.Errorf("%w: whatsapp template billing", conversation.ErrRefundNotConfigured)
+	}
+	if wcCampaignRepo == nil {
+		return nil, fmt.Errorf("%w: whatsapp campaign repository", conversation.ErrRefundNotConfigured)
+	}
+	if serviceMessageBilling == nil {
+		return nil, fmt.Errorf("%w: whatsapp service message billing", conversation.ErrRefundNotConfigured)
+	}
+
 	return &handleWhatsAppMessageUseCase{
 		aiService:               aiService,
 		leadRepo:                leadRepo,
@@ -527,9 +566,11 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 		sharedState:             sharedState,
 		ragService:              ragService,
 		cachedBalanceChecker:    cachedBalanceChecker,
+		spendGuard:              balance_usecase.NewRequiredSpendGuard(cachedBalanceChecker, "whatsapp ai reply"),
 		llmPriceFetcher:         llmPriceFetcher,
 		consumeWhatsappTemplate: consumeWhatsappTemplate,
-	}
+		serviceMessageBilling:   serviceMessageBilling,
+	}, nil
 }
 
 func (uc *handleWhatsAppMessageUseCase) resolveWhatsAppClient(campaignBusinessPhoneID, receivedBusinessPhoneID string) (conversation.WhatsAppClient, error) {
@@ -793,7 +834,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		messagingModel = agentCtx.agent.MessagingModel
 	}
 
-	if !uc.canAffordAI(agentCtx.getWorkspaceID(), messagingModel) {
+	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), messagingModel) {
 		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 		return nil
 	}
@@ -1357,12 +1398,16 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 					// left the platform unable to answer what its own messaging
 					// costs: our inference from the message log cannot see a
 					// delivery inside the 72 hour free entry point, and Meta can.
-					if err := uc.messageRepo.UpdateDeliveryReceipt(
-						status.ID, buildDeliveryReceipt(status, deliveryStatus, failureCode, failureMessage),
-					); err != nil {
+					receipt := buildDeliveryReceipt(status, deliveryStatus, failureCode, failureMessage)
+					if err := uc.messageRepo.UpdateDeliveryReceipt(status.ID, receipt); err != nil {
 						log.Printf("[whatsapp-status] Failed to update delivery status for wamid %s: %v", status.ID, err)
 						statusErrors = append(statusErrors, fmt.Errorf("update delivery status for wamid %s: %w", status.ID, err))
 					}
+
+					// Meta charges on delivery, so this is the moment the money
+					// is real. The same receipt that was just persisted decides
+					// it, which is why nothing here re-derives billability.
+					uc.chargeServiceMessage(status, receipt)
 
 					if uc.hub != nil {
 						msg, err := uc.messageRepo.GetByWhatsAppMessageID(status.ID)
@@ -1532,6 +1577,64 @@ func (uc *handleWhatsAppMessageUseCase) resolveSendAttempt(
 // forever, and the hourly sweep refunds it at the TTL. Meta bills on DELIVERY,
 // so that is the platform paying for a message the customer received and then
 // crediting them for it — the common flaky-network case, not a rare crash.
+// chargeServiceMessage books the Meta fee for one delivered free-form reply.
+//
+// Best effort by contract, like every other settlement in this loop: the
+// message is already with the customer and Meta has already charged us, so a
+// failure here costs a ledger row, not the money. Propagating it would make the
+// webhook retry a delivery that succeeded.
+func (uc *handleWhatsAppMessageUseCase) chargeServiceMessage(
+	status conversation.WhatsAppStatus,
+	receipt conversation.DeliveryReceipt,
+) {
+	if uc.serviceMessageBilling == nil {
+		return
+	}
+	// Ask the cheap question first. Resolving the workspace costs three reads,
+	// and the overwhelming majority of status events are templates, failures or
+	// deliveries Meta did not bill, none of which reach the ledger.
+	if !uc.serviceMessageBilling.ShouldCharge(receipt) {
+		return
+	}
+
+	messageID := strings.TrimSpace(status.ID)
+	workspaceID := uc.resolveWorkspaceForProviderMessage(messageID)
+	if workspaceID == "" {
+		log.Printf("[whatsapp-status] service message %s is billable but its workspace could not be resolved; not charged", messageID)
+		return
+	}
+
+	if err := uc.serviceMessageBilling.ChargeDelivered(workspaceID, receipt, messageID); err != nil {
+		log.Printf("[whatsapp-status] could not charge service message %s for workspace %s: %v", messageID, workspaceID, err)
+	}
+}
+
+// resolveWorkspaceForProviderMessage walks one delivered message back to the
+// workspace that owes for it.
+//
+// Official WhatsApp conversations always hang off a campaign (organic ones
+// included), and only the campaign carries the workspace, so the walk is
+// message to entry to campaign. Any missing link returns empty rather than
+// guessing: charging the wrong workspace is worse than not charging.
+func (uc *handleWhatsAppMessageUseCase) resolveWorkspaceForProviderMessage(messageID string) string {
+	if messageID == "" || uc.messageRepo == nil || uc.wcEntryRepo == nil || uc.wcCampaignRepo == nil {
+		return ""
+	}
+	message, err := uc.messageRepo.GetByWhatsAppMessageID(messageID)
+	if err != nil || message == nil || message.EntryID == "" {
+		return ""
+	}
+	entry, err := uc.wcEntryRepo.FindByID(message.EntryID)
+	if err != nil || entry == nil || entry.CampaignID == "" {
+		return ""
+	}
+	campaign, err := uc.wcCampaignRepo.FindByID(entry.CampaignID)
+	if err != nil || campaign == nil {
+		return ""
+	}
+	return campaign.WorkspaceID
+}
+
 func (uc *handleWhatsAppMessageUseCase) settleTemplateSendAttempt(
 	status conversation.WhatsAppStatus,
 	deliveryStatus conversation.DeliveryStatus,
@@ -2475,7 +2578,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 			if agentCtx.agent != nil {
 				mediaModel = agentCtx.agent.MessagingModel
 			}
-			if !uc.canAffordAI(agentCtx.getWorkspaceID(), mediaModel) {
+			if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), mediaModel) {
 				log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 			} else if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, userMessage); dec.Block {
 				log.Printf("[whatsapp-media] loop suspected for entry=%s reason=%s count=%d, skipping AI response", entryID, dec.Reason, dec.Count)
@@ -2965,7 +3068,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		audioMessagingModel = agentCtx.agent.MessagingModel
 	}
 
-	if !uc.canAffordAI(agentCtx.getWorkspaceID(), audioMessagingModel) {
+	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), audioMessagingModel) {
 		log.Printf("[whatsapp-audio] audio transcribed and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
 		return nil
 	}

@@ -34,6 +34,18 @@ type quickSendUseCase struct {
 	shared            cache.SharedState
 }
 
+// NewQuickSendUseCase wires quick send.
+//
+// It REFUSES without a message consumer. ensureConsumer used to return nil when
+// it was missing, so quick send would enqueue a campaign's messages and never
+// subscribe anything to dispatch them: the campaign reported as started, the
+// queue filled, and nothing was ever sent. Unlike the billing cases this one
+// costs delivery rather than money, but it fails the same way, which is
+// silently.
+//
+// shared is left optional deliberately: without it quick send loses its
+// distributed lock, which costs a duplicate enqueue rather than a lost campaign,
+// and a test exercises exactly that.
 func NewQuickSendUseCase(
 	campaignRepo wc.Repository,
 	entryRepo wce.Repository,
@@ -41,7 +53,10 @@ func NewQuickSendUseCase(
 	messageQueuePub messaging.MessageQueuePub,
 	messageConsumerUC wc.MessageConsumerUseCase,
 	shared cache.SharedState,
-) wc.QuickSendUseCase {
+) (wc.QuickSendUseCase, error) {
+	if messageConsumerUC == nil {
+		return nil, fmt.Errorf("quick send use case: message consumer is required")
+	}
 	return &quickSendUseCase{
 		campaignRepo:      campaignRepo,
 		entryRepo:         entryRepo,
@@ -49,7 +64,7 @@ func NewQuickSendUseCase(
 		messageQueuePub:   messageQueuePub,
 		messageConsumerUC: messageConsumerUC,
 		shared:            shared,
-	}
+	}, nil
 }
 
 func quickSendLockKey(campaignID string) string {

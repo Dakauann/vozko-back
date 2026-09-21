@@ -29,7 +29,16 @@ type Service struct {
 	billingPub        messaging.MessageQueuePub
 }
 
-func NewService(client Client, defaultModel string, toolSvc tools.Service, billingPub messaging.MessageQueuePub) *Service {
+// NewService builds the OpenAI adapter.
+//
+// Refuses without a billing publisher, for the same reason the OpenRouter
+// adapter does: publishBillingEvent is the only thing that turns a completion
+// into a charge, and a nil publisher made it an early return that spent the
+// provider's money and billed nobody. See ai.ErrBillingNotConfigured.
+func NewService(client Client, defaultModel string, toolSvc tools.Service, billingPub messaging.MessageQueuePub) (*Service, error) {
+	if billingPub == nil {
+		return nil, fmt.Errorf("%w: openai ai service", ai.ErrBillingNotConfigured)
+	}
 	return &Service{
 		client:            client,
 		defaultModel:      strings.TrimSpace(defaultModel),
@@ -37,7 +46,7 @@ func NewService(client Client, defaultModel string, toolSvc tools.Service, billi
 		defaultTemp:       0.2,
 		maxToolIterations: ai.DefaultMaxToolIterations,
 		billingPub:        billingPub,
-	}
+	}, nil
 }
 
 func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<-chan ai.StreamEvent, error) {

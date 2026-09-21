@@ -15,12 +15,16 @@ var (
 	ErrEntryNotFound                = errors.New("call session entry not found")
 	ErrNoPhoneForEntry              = errors.New("call session entry has no phone number")
 	ErrAdmissionDependenciesMissing = errors.New("call session admission dependencies missing")
-	ErrTelephonyPricingUnavailable  = errors.New("call session telephony pricing unavailable")
-	ErrBalanceCheckFailed           = errors.New("call session balance check failed")
-	ErrReservationFailed            = errors.New("call session inflight reservation failed")
-	ErrInsufficientBalance          = errors.New("call session insufficient balance")
-	ErrNoCallSlotsAvailable         = errors.New("call session no call slots available")
-	ErrControlForbidden             = errors.New("call session control forbidden")
+	// ErrBillingNotConfigured is the call lifecycle refusing to exist without
+	// the publisher that turns a completed call into a charge. Minutes spent at
+	// the carrier and never billed cannot be recovered afterwards.
+	ErrBillingNotConfigured        = errors.New("call session billing publisher is required")
+	ErrTelephonyPricingUnavailable = errors.New("call session telephony pricing unavailable")
+	ErrBalanceCheckFailed          = errors.New("call session balance check failed")
+	ErrReservationFailed           = errors.New("call session inflight reservation failed")
+	ErrInsufficientBalance         = errors.New("call session insufficient balance")
+	ErrNoCallSlotsAvailable        = errors.New("call session no call slots available")
+	ErrControlForbidden            = errors.New("call session control forbidden")
 	// ErrSessionBusy: the target session already has a genuinely attached call, so
 	// it cannot take another one.
 	ErrSessionBusy                  = errors.New("call session already has an active call")

@@ -73,17 +73,17 @@ type InboxEntry struct {
 	// WindowClosedReason names WHY sending is blocked, so the composer can say
 	// something true instead of inferring it from the absence of an expiry.
 	// Empty when the window is open. See WindowClosedReason.
-	WindowClosedReason string            `json:"window_closed_reason,omitempty"`
-	BusinessPhoneID    string            `json:"business_phone_id,omitempty"`
-	AssignedUserID     string            `json:"assigned_user_id,omitempty"`
-	AssignedUsername   string            `json:"assigned_username,omitempty"`
-	AutomationEnabled  bool              `json:"automation_enabled"`
-	Stage              *InboxEntryStage  `json:"stage,omitempty"`
-	Labels             []InboxEntryLabel `json:"labels,omitempty"`
-	AvailableStages    []InboxEntryStage `json:"available_stages,omitempty"`
-	MatchedMessages    []MatchedMessage  `json:"matched_messages,omitempty"`
-	TotalMatches       int               `json:"total_matches,omitempty"`
-	LatestAnalysis     *audience.Analysis      `json:"latest_analysis,omitempty"`
+	WindowClosedReason string             `json:"window_closed_reason,omitempty"`
+	BusinessPhoneID    string             `json:"business_phone_id,omitempty"`
+	AssignedUserID     string             `json:"assigned_user_id,omitempty"`
+	AssignedUsername   string             `json:"assigned_username,omitempty"`
+	AutomationEnabled  bool               `json:"automation_enabled"`
+	Stage              *InboxEntryStage   `json:"stage,omitempty"`
+	Labels             []InboxEntryLabel  `json:"labels,omitempty"`
+	AvailableStages    []InboxEntryStage  `json:"available_stages,omitempty"`
+	MatchedMessages    []MatchedMessage   `json:"matched_messages,omitempty"`
+	TotalMatches       int                `json:"total_matches,omitempty"`
+	LatestAnalysis     *audience.Analysis `json:"latest_analysis,omitempty"`
 	// AnalysisPhase says where an upcoming analysis has got to. Independent of
 	// LatestAnalysis, which keeps showing the previous revision's verdict while
 	// the next one is computed, and carried on the entry rather than only on

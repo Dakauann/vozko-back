@@ -203,7 +203,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.services.toolRegistry = tools_usecase.NewCompositeToolService(c.services.toolRegistry, c.mcpRegistry, c.mcpCollection)
 	}
 
-	c.services.ai = openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
+	aiService, err := openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
+	if err != nil {
+		// Boot is the last moment anybody is watching. An AI adapter that
+		// cannot bill spends the provider money and collects nothing, one
+		// completion at a time, silently.
+		log.Fatalf("Failed to build the AI service: %v", err)
+	}
+	c.services.ai = aiService
 	log.Printf("AI provider: OpenRouter (model: %s)", c.cfg.OpenRouterDefaultModel)
 
 	// Before ANY channel runtime below: each one captures channelAIReply by
@@ -229,7 +236,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	// model makes is intercepted and answered with a canned result. This
 	// second service instance IS the sandbox boundary: never hand the
 	// simulator c.services.ai.
-	simulationAI := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	simulationAI, err := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	if err != nil {
+		log.Fatalf("Failed to build the simulation AI service: %v", err)
+	}
 	simulateAgentUC, err := agent_usecase.NewSimulateTurnUseCase(c.repositories.agent, turnAssembler, simulationAI)
 	if err != nil {
 		log.Fatalf("[container] agent simulator: %v", err)
@@ -316,17 +326,21 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.whatsappTemplate,
 	)
 
-	cachedBalanceChecker := balance_usecase.NewCachedBalanceChecker(
-		c.repositories.balance, c.redisProvider.SharedState(), 10*time.Second)
+	// Built in container.go, before the conversation hub, which needs it.
+	cachedBalanceChecker := c.services.cachedBalanceChecker
 	inflightReserver := balance_usecase.NewInflightReserver(c.redisProvider.SharedState())
-	c.services.cachedBalanceChecker = cachedBalanceChecker
 
 	checkBalanceUC := balance_usecase.NewCheckBalanceUseCase(c.repositories.balance)
 
 	messageHistoryManager := conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub)
 	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), c.repositories.workspaceConfig, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
-	quickSendWCCampaignUC := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
+	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
+	if err != nil {
+		// A quick send with nothing to dispatch its queue reports success and
+		// sends nothing.
+		log.Fatalf("Failed to build the WhatsApp campaign quick send: %v", err)
+	}
 
 	var whisperURLs []string
 	if envURLs := whisper.GetURLsFromEnv(whisper.EnvWhisperURLs); len(envURLs) > 0 {
@@ -453,13 +467,19 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	)
 	c.services.endOutboundCall = callsession_usecase.NewEndOutboundCallUseCase(callAdmissionCoordinator)
 
-	c.services.callLifecycle = callsession_usecase.NewOutboundCallLifecycleRunner(
+	callLifecycle, err := callsession_usecase.NewOutboundCallLifecycleRunner(
 		callAdmissionCoordinator,
 		cachedBalanceChecker,
 		inflightReserver,
 		c.services.billingQueuePub,
 		log.Default(),
 	)
+	if err != nil {
+		// Without a billing publisher every completed call is free. Failing at
+		// boot is the only moment that is cheap to notice.
+		log.Fatalf("Failed to build the outbound call lifecycle: %v", err)
+	}
+	c.services.callLifecycle = callLifecycle
 
 	// Temporary raw CDR until board-aware use cases are assigned below;
 	// re-wired after c.useCases.startCall is constructed.
@@ -526,13 +546,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
 		media_infra.NewXLSXParser(),
 		media_infra.NewPlainTextParser(),
-	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC)
+	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC, c.services.serviceMessageBilling)
+	if err != nil {
+		// Without these a failed template send is never refunded, so the
+		// customer keeps paying for a message that never arrived.
+		log.Fatalf("Failed to build the WhatsApp message handler: %v", err)
+	}
 
 	// Let the status webhook settle single-target sends. Without this a failed
 	// delivery for a dialog send would fall through to the campaign refund, which
