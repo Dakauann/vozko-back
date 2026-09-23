@@ -336,11 +336,6 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	if c.services.messageMarker != nil {
 		c.services.messageMarker.SetChannelAdapters(registry)
 	}
-	if setter, ok := c.useCases.sendConversationMessage.(interface {
-		SetChannelSender(conversation_domain.AdapterRegistry, conversation_usecase.ChannelMessageSender)
-	}); ok && c.services.messageSender != nil {
-		setter.SetChannelSender(registry, c.services.messageSender)
-	}
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetChannelAdapters(conversation_domain.AdapterRegistry)
 	}); ok {

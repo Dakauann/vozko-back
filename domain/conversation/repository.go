@@ -100,6 +100,8 @@ type SearchByFilterInput struct {
 
 	AssignedUserID string
 
+	WhatsAppCampaignType string
+
 	Filter crmfilter.Filter
 
 	SortField string

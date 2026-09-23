@@ -29,20 +29,6 @@ type ConsumeWhatsAppMessageWebhookUseCase interface {
 	Start() error
 }
 
-type SendMessageInput struct {
-	EntryID          string
-	EntryType        string
-	Text             string
-	MediaID          *string
-	MediaType        *MediaType
-	SenderID         string
-	ReplyToMessageID string
-}
-
-type SendConversationMessageUseCase interface {
-	Execute(input SendMessageInput) (*Message, error)
-}
-
 type RequestCallPermissionInput struct {
 	EntryID   string
 	EntryType string
@@ -76,8 +62,4 @@ type UploadConversationMediaUseCase interface {
 
 type GetConversationMediaUseCase interface {
 	Execute(mediaID string) (*ConversationMedia, error)
-}
-
-type SearchMessagesByEntryUseCase interface {
-	Execute(input SearchMessagesByEntryInput) ([]*Message, int64, error)
 }

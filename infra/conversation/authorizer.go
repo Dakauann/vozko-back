@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	"vozko/domain/inbox_assignment"
 	"vozko/domain/shared"
 	"vozko/domain/workspace"
 	workspace_department "vozko/domain/workspace/workspace_department"
@@ -35,7 +36,7 @@ type departmentMembershipRepository interface {
 }
 
 type assignmentLookupRepository interface {
-	IsAssignedToUser(workspaceID, entryID, entryType, userID string) (bool, error)
+	FindByEntry(workspaceID, entryID, entryType string) (*inbox_assignment.InboxAssignment, error)
 }
 
 type Authorizer struct {
@@ -90,6 +91,14 @@ func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType stri
 		return false
 	}
 
+	assignment, resolved := a.entryAssignment(workspaceID, entryID, entryType)
+	if !resolved {
+		return false
+	}
+	if !assignment.VisibleTo(userID) && !a.canViewOthers(userID, workspaceID) {
+		return false
+	}
+
 	cacheKey := userID + ":" + workspaceID
 	if a.checkCache(cacheKey, entryID) {
 		return true
@@ -127,18 +136,27 @@ func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType stri
 		}
 	}
 
-	if a.assignmentRepo != nil {
-		assigned, err := a.assignmentRepo.IsAssignedToUser(workspaceID, entryID, entryType, userID)
-		if err != nil {
-			log.Printf("[Authorizer] error checking direct assignment for user %s entry %s: %v", userID, entryID, err)
-			return false
-		}
-		if assigned {
-			a.setCache(cacheKey, entryID)
-			return true
-		}
+	if assignment.AssignedTo(userID) {
+		a.setCache(cacheKey, entryID)
+		return true
 	}
 	return false
+}
+
+func (a *Authorizer) entryAssignment(workspaceID, entryID, entryType string) (*inbox_assignment.InboxAssignment, bool) {
+	if a.assignmentRepo == nil {
+		return nil, true
+	}
+	assignment, err := a.assignmentRepo.FindByEntry(workspaceID, entryID, entryType)
+	if err != nil {
+		log.Printf("[Authorizer] error resolving assignment for entry %s (%s): %v", entryID, entryType, err)
+		return nil, false
+	}
+	return assignment, true
+}
+
+func (a *Authorizer) canViewOthers(userID, workspaceID string) bool {
+	return a.HasWorkspacePermission(userID, workspaceID, string(workspace.ResourceConversations), string(workspace.ActionViewOthers), false)
 }
 
 func (a *Authorizer) CanAccessCampaign(userID, workspaceID, campaignID, campaignType string, isAdmin bool) bool {

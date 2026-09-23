@@ -383,3 +383,26 @@ func TestEveryBoardChannelCanCarryStagesAndLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestCampaignKindReachesBothReadPaths(t *testing.T) {
+	for name, project := range map[string]func(entrySource, entrySourceScope, string) (string, []interface{}){
+		"inbox": entrySource.inboxSelect,
+		"board": entrySource.boardSelect,
+	} {
+		sql, args := buildEntryUnion(
+			entrySourceScope{WhatsAppCampaignType: "organic"}, "ws-1", project)
+
+		if !strings.Contains(sql, "wc.type = ?") {
+			t.Errorf("%s: campaign kind must reach the join:\n%s", name, sql)
+		}
+		for _, other := range []string{"instagram_conversations", "telegram_conversations", "unofficial_whatsapp_conversations"} {
+			if strings.Contains(sql, other) {
+				t.Errorf("%s: a whatsapp campaign kind must not select %s:\n%s", name, other, sql)
+			}
+		}
+		if len(args) < 2 || args[1] != "organic" {
+			t.Errorf("%s: campaign kind must be bound, got args %v", name, args)
+		}
+		assertPlaceholdersMatchArgs(t, sql, args)
+	}
+}

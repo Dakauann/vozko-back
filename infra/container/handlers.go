@@ -309,11 +309,8 @@ func (c *Container) initHandlers() {
 		),
 		conversation: func() *conversationhttp.ConversationHandler {
 			h := conversationhttp.NewConversationHandler(
-				c.useCases.sendConversationMessage,
 				c.useCases.uploadConversationMedia,
 				c.useCases.getConversationMedia,
-				c.services.inboxService,
-				c.useCases.searchMessagesByEntry,
 				c.useCases.listConversationEvents,
 			)
 			if c.services.conversationAutomation != nil {

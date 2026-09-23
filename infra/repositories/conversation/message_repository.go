@@ -1329,6 +1329,7 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	var entryArgs []interface{}
 
 	boardCTESQL, boardCTEArgs := buildEntryUnion(entrySourceScope{
+		WhatsAppCampaignType:   input.WhatsAppCampaignType,
 		DepartmentIDs:          input.DepartmentIDs,
 		RestrictDepartments:    input.RestrictDepartments,
 		AssigneeOverrideUserID: input.AssigneeOverrideUserID,

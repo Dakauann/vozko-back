@@ -741,21 +741,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listPhoneAccess:          workspace_phone_access_usecase.NewListPhoneAccessUseCase(c.repositories.workspacePhoneAccess),
 		checkPhoneAccess:         workspace_phone_access_usecase.NewCheckAccessUseCase(c.repositories.workspacePhoneAccess),
 
-		sendConversationMessage: conversation_usecase.NewSendConversationMessageUseCase(
-			c.repositories.conversation,
-			c.repositories.lead,
-			c.repositories.wcEntry,
-			c.services.whatsappClientFactory,
-			c.services.conversationHub,
-			c.repositories.wcCampaign,
-			c.services.ai,
-			c.services.toolRegistry,
-			c.repositories.stage,
-			c.redisProvider.SharedState(),
-		),
 		uploadConversationMedia: conversation_usecase.NewUploadConversationMediaUseCase(c.repositories.conversationMedia, c.services.fileStorage),
 		getConversationMedia:    conversation_usecase.NewGetConversationMediaUseCase(c.repositories.conversationMedia),
-		searchMessagesByEntry:   conversation_usecase.NewSearchMessagesByEntryUseCase(c.repositories.conversation),
 		listConversationEvents:  ce_usecase.NewListEventsUseCase(c.repositories.conversationEvent, c.repositories.user, c.repositories.agent, c.repositories.stage, c.repositories.label),
 
 		createStage:          stage_usecase.NewCreateStageUseCase(c.repositories.stage),

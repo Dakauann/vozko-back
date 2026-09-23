@@ -268,7 +268,7 @@ func TestHandleSetConversationStatus_NonAdminCanSetOngoing(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.statusUpdater = statusMock
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
@@ -296,7 +296,7 @@ func TestHandleSetConversationStatus_NonAdminCanSetFinished(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.statusUpdater = statusMock
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
@@ -394,9 +394,8 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 	}
 	statusMock := newMockStatusUpdater()
 
-	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
+	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.statusUpdater = statusMock
-	hub.broadcast = make(chan *broadcastMessage, 10)
 
 	conn := &WSConnection{
 		ID: "conn-1", UserID: "user-1", WorkspaceID: "ws-1",
@@ -404,6 +403,7 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 	}
 	hub.connections[conn.ID] = conn
 	hub.userConnections[conn.UserID] = map[string]bool{conn.ID: true}
+	subscribeToEntry(hub, "entry-1", "whatsapp", conn)
 
 	payload, _ := json.Marshal(SetConversationStatusPayload{
 		EntryID:   "entry-1",
@@ -413,14 +413,19 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 
 	hub.handleSetConversationStatus(conn, payload)
 
-	require.Len(t, hub.broadcast, 1)
-	bm := <-hub.broadcast
-	require.Equal(t, "entry-1", bm.entryID)
-	require.Equal(t, "whatsapp", bm.entryType)
+	require.Len(t, hub.broadcast, 0, "the hub loop must not enqueue onto the channel it drains")
 
-	require.Equal(t, WSEventConversationStatusUpdate, bm.event.Type)
+	var msg WSOutgoingMessage
+	select {
+	case raw := <-conn.Send:
+		require.NoError(t, json.Unmarshal(raw, &msg))
+	case <-time.After(2 * time.Second):
+		t.Fatal("subscriber did not receive the conversation status update")
+	}
 
-	payloadBytes, _ := json.Marshal(bm.event.Payload)
+	require.Equal(t, WSEventConversationStatusUpdate, msg.Type)
+
+	payloadBytes, _ := json.Marshal(msg.Payload)
 	var statusPayload ConversationStatusUpdatePayload
 	require.NoError(t, json.Unmarshal(payloadBytes, &statusPayload))
 	require.Equal(t, "entry-1", statusPayload.EntryID)

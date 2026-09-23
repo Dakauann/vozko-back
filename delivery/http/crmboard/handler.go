@@ -8,6 +8,7 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/crmfilter"
 	"vozko/domain/savedview"
+	wc "vozko/domain/whatsapp_campaign"
 	"vozko/infra/http/middleware"
 	crmboard_usecase "vozko/usecases/crmboard"
 )
@@ -18,6 +19,14 @@ type CRMBoardHandler struct {
 
 func NewCRMBoardHandler(service *crmboard_usecase.Service) *CRMBoardHandler {
 	return &CRMBoardHandler{service: service}
+}
+
+func whatsAppCampaignTypeParam(raw string) string {
+	t := wc.CampaignType(strings.TrimSpace(raw))
+	if !t.IsValid() {
+		return ""
+	}
+	return string(t)
 }
 
 // @Summary		Quadro do CRM
@@ -68,6 +77,7 @@ func (h *CRMBoardHandler) Board(w http.ResponseWriter, r *http.Request) {
 		GroupBy:              savedview.GroupBy(strings.TrimSpace(q.Get("groupBy"))),
 		Filter:               filter,
 		Owners:               owners,
+		WhatsAppCampaignType: whatsAppCampaignTypeParam(q.Get("whatsappCampaignType")),
 		SortField:            strings.TrimSpace(q.Get("sortField")),
 		SortOrder:            strings.TrimSpace(q.Get("sortOrder")),
 		Page:                 page,
@@ -117,6 +127,7 @@ func (h *CRMBoardHandler) Entries(w http.ResponseWriter, r *http.Request) {
 		IsAdmin:              claims.Role == "admin",
 		SelectedDepartmentID: selectedDepartmentID(r),
 		Filter:               filter,
+		WhatsAppCampaignType: whatsAppCampaignTypeParam(q.Get("whatsappCampaignType")),
 		SortField:            strings.TrimSpace(q.Get("sortField")),
 		SortOrder:            strings.TrimSpace(q.Get("sortOrder")),
 		Page:                 page,

@@ -14,10 +14,11 @@ func RegisterUserRoutes(
 	ac func(workspace_domain.Resource, workspace_domain.Action, http.HandlerFunc) http.HandlerFunc,
 ) {
 	pl := workspace_domain.ResourcePlans
+	bl := workspace_domain.ResourceBalance
 	invoiceRoutes := protected.PathPrefix("/user/invoices").Subrouter()
 	invoiceRoutes.HandleFunc("", ac(pl, workspace_domain.ActionCreate, h.Create)).Methods(http.MethodPost)
-	invoiceRoutes.HandleFunc("", ac(pl, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
-	invoiceRoutes.HandleFunc("/{id}", ac(pl, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
+	invoiceRoutes.HandleFunc("", ac(bl, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
+	invoiceRoutes.HandleFunc("/{id}", ac(bl, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
 }
 
 func RegisterAdminRoutes(adminRoutes *mux.Router, h *InvoiceHandler) {

@@ -76,10 +76,11 @@ type BoardInput struct {
 	IsAdmin              bool
 	SelectedDepartmentID string
 
-	PipelineID string
-	GroupBy    savedview.GroupBy
-	Filter     crmfilter.Filter
-	Owners     []Owner
+	PipelineID           string
+	GroupBy              savedview.GroupBy
+	Filter               crmfilter.Filter
+	Owners               []Owner
+	WhatsAppCampaignType string
 
 	SortField string
 	SortOrder string
@@ -93,11 +94,12 @@ type EntriesInput struct {
 	IsAdmin              bool
 	SelectedDepartmentID string
 
-	Filter    crmfilter.Filter
-	SortField string
-	SortOrder string
-	Page      int
-	PageSize  int
+	Filter               crmfilter.Filter
+	WhatsAppCampaignType string
+	SortField            string
+	SortOrder            string
+	Page                 int
+	PageSize             int
 }
 
 func (s *Service) GetBoard(in BoardInput) (*Board, error) {
@@ -108,6 +110,7 @@ func (s *Service) GetBoard(in BoardInput) (*Board, error) {
 
 	base := conversation.SearchByFilterInput{
 		WorkspaceID:            in.WorkspaceID,
+		WhatsAppCampaignType:   in.WhatsAppCampaignType,
 		DepartmentIDs:          deptIDs,
 		RestrictDepartments:    restrict,
 		AssigneeOverrideUserID: assigneeOverride,
@@ -220,6 +223,7 @@ func (s *Service) GetEntries(in EntriesInput) ([]conversation.EntryWithLastMessa
 	}
 	entries, total, err := s.searcher.SearchEntriesByFilter(conversation.SearchByFilterInput{
 		WorkspaceID:            in.WorkspaceID,
+		WhatsAppCampaignType:   in.WhatsAppCampaignType,
 		DepartmentIDs:          deptIDs,
 		RestrictDepartments:    restrict,
 		AssigneeOverrideUserID: assigneeOverride,

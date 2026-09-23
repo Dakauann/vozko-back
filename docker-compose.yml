@@ -214,6 +214,10 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     container_name: vozko-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}

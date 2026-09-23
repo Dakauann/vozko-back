@@ -15,11 +15,6 @@ func RegisterProtectedRoutes(
 ) {
 	cv := workspace_domain.ResourceConversations
 
-	protected.HandleFunc("/conversations/inbox/search", ac(cv, workspace_domain.ActionRead, h.SearchInbox)).Methods(http.MethodGet)
-
-	protected.HandleFunc("/conversations/{entryType}/{entryId}/messages/search", ac(cv, workspace_domain.ActionRead, h.SearchMessages)).Methods(http.MethodGet)
-
-	protected.HandleFunc("/conversations/{entryType}/{entryId}/messages", ac(cv, workspace_domain.ActionUpdate, h.SendMessage)).Methods(http.MethodPost)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/call-permission-request", ac(cv, workspace_domain.ActionCall, h.RequestCallPermission)).Methods(http.MethodPost)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/call-permission", ac(cv, workspace_domain.ActionRead, h.GetCallPermission)).Methods(http.MethodGet)
 
@@ -29,6 +24,5 @@ func RegisterProtectedRoutes(
 
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/events", ac(cv, workspace_domain.ActionRead, h.ListConversationEvents)).Methods(http.MethodGet)
 
-	protected.HandleFunc("/conversations/{entryType}/{entryId}/reopen-window", ac(cv, workspace_domain.ActionUpdate, h.ReopenWindow)).Methods(http.MethodPost)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/automation", ac(cv, workspace_domain.ActionUpdate, h.SetAutomation)).Methods(http.MethodPatch)
 }

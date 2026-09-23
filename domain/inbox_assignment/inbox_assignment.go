@@ -20,6 +20,14 @@ type InboxAssignment struct {
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
+func (a *InboxAssignment) AssignedTo(userID string) bool {
+	return a != nil && a.AssignedUserID != "" && a.AssignedUserID == userID
+}
+
+func (a *InboxAssignment) VisibleTo(userID string) bool {
+	return a == nil || a.AssignedUserID == "" || a.AssignedTo(userID)
+}
+
 type RoundRobinState struct {
 	ID                 string    `json:"id"`
 	WorkspaceID        string    `json:"workspaceId"`

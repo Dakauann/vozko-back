@@ -471,8 +471,8 @@ func (h *ConversationHub) BroadcastUnreadCount(entryID, entryType string, count 
 	}
 }
 
-func (h *ConversationHub) BroadcastTyping(entryID, entryType, fromUserID string, isTyping bool) {
-	h.broadcast <- &broadcastMessage{
+func typingBroadcast(entryID, entryType, fromUserID string, isTyping bool) *broadcastMessage {
+	return &broadcastMessage{
 		entryID:       entryID,
 		entryType:     entryType,
 		excludeUserID: fromUserID,
@@ -486,6 +486,10 @@ func (h *ConversationHub) BroadcastTyping(entryID, entryType, fromUserID string,
 			},
 		},
 	}
+}
+
+func (h *ConversationHub) BroadcastTyping(entryID, entryType, fromUserID string, isTyping bool) {
+	h.broadcast <- typingBroadcast(entryID, entryType, fromUserID, isTyping)
 }
 
 func (h *ConversationHub) BroadcastStageUpdate(workspaceID, entryID, entryType string) {
@@ -2266,7 +2270,7 @@ func (h *ConversationHub) handleTyping(conn *WSConnection, payload json.RawMessa
 		isTyping = *p.IsTyping
 	}
 
-	h.BroadcastTyping(p.EntryID, p.EntryType, conn.UserID, isTyping)
+	h.handleBroadcast(typingBroadcast(p.EntryID, p.EntryType, conn.UserID, isTyping))
 
 	if !isTyping || h.messageMarker == nil {
 		return
@@ -2614,6 +2618,17 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 	}
 }
 
+func conversationStatusBroadcast(entryID, entryType string, payload ConversationStatusUpdatePayload) *broadcastMessage {
+	return &broadcastMessage{
+		entryID:   entryID,
+		entryType: entryType,
+		event: &WSOutgoingMessage{
+			Type:    WSEventConversationStatusUpdate,
+			Payload: payload,
+		},
+	}
+}
+
 func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payload json.RawMessage) {
 	var p SetConversationStatusPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -2716,14 +2731,7 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 		statusPayload.ClosedAt = &now
 	}
 
-	h.broadcast <- &broadcastMessage{
-		entryID:   p.EntryID,
-		entryType: p.EntryType,
-		event: &WSOutgoingMessage{
-			Type:    WSEventConversationStatusUpdate,
-			Payload: statusPayload,
-		},
-	}
+	h.handleBroadcast(conversationStatusBroadcast(p.EntryID, p.EntryType, statusPayload))
 
 	go h.BroadcastEntryUpdate(p.EntryID, p.EntryType, nil)
 }

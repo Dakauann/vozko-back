@@ -436,3 +436,40 @@ func TestGetEntries_ViewOthersPermission_SeesAll(t *testing.T) {
 		t.Fatalf("view_others member must not be self-scoped: AssignedUserID = %q, want empty", got)
 	}
 }
+
+func TestWhatsAppCampaignTypeReachesTheSearcher(t *testing.T) {
+	t.Run("entries", func(t *testing.T) {
+		searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
+		svc := NewService(searcher, &fakeStages{}, &fakeLabels{}, &fakeAuthorizer{allowed: true}, &fakeAssignments{})
+
+		if _, _, err := svc.GetEntries(EntriesInput{WorkspaceID: "ws1", WhatsAppCampaignType: "organic"}); err != nil {
+			t.Fatalf("GetEntries: %v", err)
+		}
+		if got := lastCall(searcher).WhatsAppCampaignType; got != "organic" {
+			t.Fatalf("WhatsAppCampaignType = %q, want %q (LEAK: active campaigns show under the receptive filter)", got, "organic")
+		}
+	})
+
+	t.Run("board", func(t *testing.T) {
+		searcher := &fakeSearcher{entries: sampleEntries(), total: 2}
+		stages := &fakeStages{byPipeline: map[string][]*stage.Stage{"p1": {{ID: "s1", Name: "Novo", PipelineID: "p1"}}}}
+		svc := NewService(searcher, stages, &fakeLabels{}, &fakeAuthorizer{allowed: true}, &fakeAssignments{})
+
+		if _, err := svc.GetBoard(BoardInput{
+			WorkspaceID:          "ws1",
+			PipelineID:           "p1",
+			GroupBy:              savedview.GroupByStage,
+			WhatsAppCampaignType: "organic",
+		}); err != nil {
+			t.Fatalf("GetBoard: %v", err)
+		}
+		if len(searcher.calls) == 0 {
+			t.Fatal("board never reached the searcher")
+		}
+		for i, call := range searcher.calls {
+			if call.WhatsAppCampaignType != "organic" {
+				t.Fatalf("call %d: WhatsAppCampaignType = %q, want %q (LEAK: active campaigns show under the receptive filter)", i, call.WhatsAppCampaignType, "organic")
+			}
+		}
+	})
+}

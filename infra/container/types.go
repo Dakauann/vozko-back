@@ -621,10 +621,8 @@ type useCases struct {
 	listPhoneAccess          workspace_phone_access_domain.ListPhoneAccessUseCase
 	checkPhoneAccess         workspace_phone_access_domain.CheckAccessUseCase
 
-	sendConversationMessage conversation_domain.SendConversationMessageUseCase
 	uploadConversationMedia conversation_domain.UploadConversationMediaUseCase
 	getConversationMedia    conversation_domain.GetConversationMediaUseCase
-	searchMessagesByEntry   conversation_domain.SearchMessagesByEntryUseCase
 	listConversationEvents  ce_domain.ListEventsUseCase
 
 	createStage          stage_domain.CreateStageUseCase

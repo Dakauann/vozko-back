@@ -194,7 +194,7 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Excluir atalhos de mensagem"},
 	},
 	ResourceBalance: {
-		{ActionName: ActionRead, Description: "Visualizar saldo e créditos da conta"},
+		{ActionName: ActionRead, Description: "Visualizar saldo, créditos e faturas da conta"},
 	},
 	ResourceConversations: {
 		{ActionName: ActionCreate, Description: "Iniciar novas conversas com contatos"},
