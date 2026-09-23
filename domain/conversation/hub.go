@@ -195,9 +195,10 @@ type InitialStageAssigner interface {
 }
 
 type FinishOptions struct {
-	Source  CloseSource
-	Reason  CloseReason
-	ActorID string
+	Source      CloseSource
+	Reason      CloseReason
+	ActorID     string
+	OutcomeCode string
 }
 
 type ConversationStatusUpdater interface {

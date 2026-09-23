@@ -16,7 +16,10 @@ var (
 	ErrUnknownTimezone = errors.New("working hours: unknown timezone")
 	ErrUnknownWeekday  = errors.New("working hours: unknown weekday")
 	ErrBadTime         = errors.New("working hours: time must be HH:MM")
+	ErrBadHoliday      = errors.New("working hours: holiday must be YYYY-MM-DD")
 )
+
+const holidayLayout = "2006-01-02"
 
 var wireWeekdays = map[string]time.Weekday{
 	"sun": time.Sunday,
@@ -38,6 +41,7 @@ type Window struct {
 type Spec struct {
 	Timezone string              `json:"timezone" example:"America/Sao_Paulo"`
 	Days     map[string][]Window `json:"days"`
+	Holidays []string            `json:"holidays,omitempty"`
 }
 
 func (s *Spec) Validate() error {
@@ -49,6 +53,9 @@ func (s *Spec) Validate() error {
 	}
 	_, err := s.compileDays()
 	if err != nil {
+		return err
+	}
+	if _, err := s.compileHolidays(); err != nil {
 		return err
 	}
 	sched, err := s.Compile()
@@ -70,7 +77,34 @@ func (s *Spec) Compile() (*Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	return New(loc, days), nil
+	holidays, err := s.compileHolidays()
+	if err != nil {
+		return nil, err
+	}
+	return NewWithHolidays(loc, days, holidays), nil
+}
+
+func (s *Spec) compileHolidays() ([]time.Time, error) {
+	if len(s.Holidays) == 0 {
+		return nil, nil
+	}
+	loc, err := s.location()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]time.Time, 0, len(s.Holidays))
+	for _, raw := range s.Holidays {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		parsed, err := time.ParseInLocation(holidayLayout, trimmed, loc)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %q", ErrBadHoliday, raw)
+		}
+		out = append(out, parsed)
+	}
+	return out, nil
 }
 
 func (s *Spec) Normalized() *Spec {
@@ -96,6 +130,31 @@ func (s *Spec) Normalized() *Spec {
 		sort.SliceStable(norm, func(i, j int) bool { return norm[i].Start < norm[j].Start })
 		out.Days[key] = norm
 	}
+	out.Holidays = normalizeHolidays(s.Holidays)
+	return out
+}
+
+func normalizeHolidays(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -208,6 +267,8 @@ var policyErrors = []error{
 	ErrIntervalOutOfRange,
 	ErrNoOpenTime,
 	ErrNoLocation,
+	ErrBadHoliday,
+	ErrRangeTooWide,
 }
 
 func IsPolicyError(err error) bool {

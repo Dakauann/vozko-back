@@ -1,0 +1,271 @@
+package attendance_usecase
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"vozko/domain/attendance"
+	at "vozko/domain/attendance_target"
+	"vozko/domain/conversation"
+	wh "vozko/domain/working_hours"
+	dept "vozko/domain/workspace/workspace_department"
+	wsc "vozko/domain/workspace_config"
+)
+
+type stubOverviewRepo struct {
+	attendance.Repository
+	overview *attendance.Overview
+	trend    attendance.TrendResult
+	revenue  []attendance.RevenueTally
+	trendErr error
+	revErr   error
+}
+
+func (r *stubOverviewRepo) GetOverview(string, attendance.OverviewFilter) (*attendance.Overview, error) {
+	if r.overview == nil {
+		return emptyOverview(), nil
+	}
+	copied := *r.overview
+	return &copied, nil
+}
+
+func (r *stubOverviewRepo) GetTrend(string, attendance.OverviewFilter, int, *time.Location) (attendance.TrendResult, error) {
+	return r.trend, r.trendErr
+}
+
+func (r *stubOverviewRepo) GetRevenue(string, time.Time, time.Time) ([]attendance.RevenueTally, int64, error) {
+	return r.revenue, 0, r.revErr
+}
+
+func (r *stubOverviewRepo) GetRevenueByMonth(string, time.Time, time.Time, *time.Location) ([]attendance.RevenueMonthRow, error) {
+	return nil, r.revErr
+}
+
+type stubConfigReader struct {
+	config *wsc.WorkspaceConfig
+	err    error
+}
+
+func (s stubConfigReader) GetByWorkspaceID(context.Context, string) (*wsc.WorkspaceConfig, error) {
+	return s.config, s.err
+}
+
+type stubDepartmentSchedules struct {
+	rows []dept.DepartmentSchedule
+	err  error
+}
+
+func (s stubDepartmentSchedules) ListWorkingHours([]string) ([]dept.DepartmentSchedule, error) {
+	return s.rows, s.err
+}
+
+type stubTargetRepo struct {
+	targets []at.Target
+	err     error
+}
+
+func (s *stubTargetRepo) GetByID(string, string) (*at.Target, error) { return nil, at.ErrNotFound }
+
+func (s *stubTargetRepo) ListForPeriod(string, time.Time) ([]at.Target, error) {
+	return s.targets, s.err
+}
+
+func (s *stubTargetRepo) ListRange(string, time.Time, time.Time) ([]at.Target, error) {
+	return s.targets, s.err
+}
+
+func (s *stubTargetRepo) Upsert(target at.Target) (*at.Target, error) { return &target, s.err }
+
+func (s *stubTargetRepo) Delete(string, string) error { return s.err }
+
+func businessConfig() *wsc.WorkspaceConfig {
+	return &wsc.WorkspaceConfig{
+		WorkspaceID: "ws1",
+		WorkingHours: &wh.Spec{
+			Timezone: "America/Sao_Paulo",
+			Days: map[string][]wh.Window{
+				"mon": {{Start: "09:00", End: "18:00"}},
+				"tue": {{Start: "09:00", End: "18:00"}},
+				"wed": {{Start: "09:00", End: "18:00"}},
+				"thu": {{Start: "09:00", End: "18:00"}},
+				"fri": {{Start: "09:00", End: "18:00"}},
+			},
+		},
+	}
+}
+
+func newTestUseCase(
+	repo attendance.Repository,
+	config *wsc.WorkspaceConfig,
+	configErr error,
+	targets *stubTargetRepo,
+) *getOverviewUseCase {
+	uc := &getOverviewUseCase{repo: repo, now: func() time.Time {
+		return time.Date(2026, 9, 28, 15, 36, 0, 0, time.UTC)
+	}}
+	resolver := NewScheduleResolver(stubConfigReader{config: config, err: configErr}, stubDepartmentSchedules{})
+	var service *TargetsService
+	if targets != nil {
+		service = NewTargetsService(targets, resolver)
+	}
+	uc.SetExecutiveDeps(resolver, service)
+	return uc
+}
+
+func TestExecuteBuildsPeriodAndProjections(t *testing.T) {
+	repo := &stubOverviewRepo{overview: &attendance.Overview{
+		KPIs:        attendance.OverviewKPIs{Finished: 1538, Engaged: 2000},
+		Definitions: attendance.DefaultDefinitions(),
+	}}
+	targets := &stubTargetRepo{targets: []at.Target{
+		{Scope: at.ScopeWorkspace, MetricKey: attendance.MetricFinished, Value: 1786},
+	}}
+	uc := newTestUseCase(repo, businessConfig(), nil, targets)
+
+	out, err := uc.Execute("ws1", attendance.OverviewFilter{})
+	if err != nil {
+		t.Fatalf("Execute() err = %v, want nil", err)
+	}
+	if !out.Period.Available {
+		t.Fatalf("Execute() Period.Available = false, want true; reason %q", out.Period.Reason)
+	}
+	if out.Period.OpenDaysTotal != 22 {
+		t.Fatalf("Execute() OpenDaysTotal = %d, want 22", out.Period.OpenDaysTotal)
+	}
+
+	var finished *attendance.MetricProjection
+	for i := range out.Projections {
+		if out.Projections[i].MetricKey == attendance.MetricFinished {
+			finished = &out.Projections[i]
+		}
+	}
+	if finished == nil {
+		t.Fatalf("Execute() produced no projection for %q", attendance.MetricFinished)
+	}
+	if finished.Target == nil || *finished.Target != 1786 {
+		t.Fatalf("Execute() finished target = %v, want 1786", finished.Target)
+	}
+	if finished.Projected == nil {
+		t.Fatalf("Execute() finished projection = nil, want a run rate")
+	}
+	if out.Standing.TargetsSet != 1 {
+		t.Fatalf("Execute() Standing.TargetsSet = %d, want 1", out.Standing.TargetsSet)
+	}
+}
+
+func TestExecutePropagatesATargetReadFailure(t *testing.T) {
+	repo := &stubOverviewRepo{}
+	readErr := errors.New("targets table is unreachable")
+	uc := newTestUseCase(repo, businessConfig(), nil, &stubTargetRepo{err: readErr})
+
+	_, err := uc.Execute("ws1", attendance.OverviewFilter{})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("Execute() err = %v, want the target read error rather than a silent no-target overview", err)
+	}
+}
+
+func TestExecutePropagatesAConfigReadFailure(t *testing.T) {
+	repo := &stubOverviewRepo{}
+	readErr := errors.New("config table is unreachable")
+	uc := newTestUseCase(repo, nil, readErr, &stubTargetRepo{})
+
+	_, err := uc.Execute("ws1", attendance.OverviewFilter{})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("Execute() err = %v, want the config read error", err)
+	}
+}
+
+func TestExecuteWithoutAScheduleLeavesTheProjectionUnavailable(t *testing.T) {
+	repo := &stubOverviewRepo{overview: &attendance.Overview{
+		KPIs:        attendance.OverviewKPIs{Finished: 1538},
+		Definitions: attendance.DefaultDefinitions(),
+	}}
+	uc := newTestUseCase(repo, &wsc.WorkspaceConfig{WorkspaceID: "ws1"}, nil, &stubTargetRepo{})
+
+	out, err := uc.Execute("ws1", attendance.OverviewFilter{})
+	if err != nil {
+		t.Fatalf("Execute() err = %v, want nil", err)
+	}
+	if out.Period.Available {
+		t.Fatalf("Execute() Period.Available = true with no schedule, want false")
+	}
+	if out.Period.Reason != attendance.ReasonNoSchedule {
+		t.Fatalf("Execute() Period.Reason = %q, want %q", out.Period.Reason, attendance.ReasonNoSchedule)
+	}
+	for _, projection := range out.Projections {
+		if projection.Projected != nil {
+			t.Fatalf("Execute() projected %q without a schedule", projection.MetricKey)
+		}
+	}
+}
+
+func TestExecuteMarksRevenueUnavailableUnderADepartmentFilter(t *testing.T) {
+	repo := &stubOverviewRepo{}
+	uc := newTestUseCase(repo, businessConfig(), nil, &stubTargetRepo{})
+
+	out, err := uc.Execute("ws1", attendance.OverviewFilter{DepartmentID: "dept1"})
+	if err != nil {
+		t.Fatalf("Execute() err = %v, want nil", err)
+	}
+	if out.Revenue.Available {
+		t.Fatalf("Execute() Revenue.Available = true under a department filter, want false")
+	}
+	if out.Revenue.Reason != attendance.ReasonRevenueNotDepartmentScoped {
+		t.Fatalf("Execute() Revenue.Reason = %q, want %q", out.Revenue.Reason, attendance.ReasonRevenueNotDepartmentScoped)
+	}
+}
+
+func TestExecutePropagatesARevenueReadFailure(t *testing.T) {
+	readErr := errors.New("opportunities table is unreachable")
+	repo := &stubOverviewRepo{revErr: readErr}
+	uc := newTestUseCase(repo, businessConfig(), nil, &stubTargetRepo{})
+
+	_, err := uc.Execute("ws1", attendance.OverviewFilter{})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("Execute() err = %v, want the revenue read error", err)
+	}
+}
+
+func TestExecuteCarriesTheQualityPolicyIntoTheFilter(t *testing.T) {
+	enabled := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	config := businessConfig()
+	capture := &conversation.OutcomeCapture{
+		Enabled:          true,
+		EnabledAt:        &enabled,
+		DurableThreshold: 30,
+		Outcomes:         []conversation.Outcome{{Code: "sale", Label: "Venda", IsDurable: true}},
+	}
+	capture.Normalize()
+	config.OutcomeCapture = capture
+
+	uc := newTestUseCase(&stubOverviewRepo{}, config, nil, &stubTargetRepo{})
+	policy := uc.qualityPolicy(config, "")
+
+	if !policy.Enabled || !policy.Measurable() {
+		t.Fatalf("qualityPolicy() = %+v, want an enabled measurable policy", policy)
+	}
+	if len(policy.DurableCodes) != 1 || policy.DurableCodes[0] != "sale" {
+		t.Fatalf("qualityPolicy() DurableCodes = %v, want [sale]", policy.DurableCodes)
+	}
+}
+
+func TestQualityPolicyOffOutsideTheScopedDepartments(t *testing.T) {
+	enabled := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	config := businessConfig()
+	config.OutcomeCapture = &conversation.OutcomeCapture{
+		Enabled:       true,
+		EnabledAt:     &enabled,
+		DepartmentIDs: []string{"dept1"},
+		Outcomes:      []conversation.Outcome{{Code: "sale", Label: "Venda", IsDurable: true}},
+	}
+
+	uc := newTestUseCase(&stubOverviewRepo{}, config, nil, &stubTargetRepo{})
+	if uc.qualityPolicy(config, "dept2").Enabled {
+		t.Fatalf("qualityPolicy() enabled for a department outside the policy scope")
+	}
+	if !uc.qualityPolicy(config, "dept1").Enabled {
+		t.Fatalf("qualityPolicy() disabled for a department inside the policy scope")
+	}
+}

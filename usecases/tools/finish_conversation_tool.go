@@ -49,6 +49,12 @@ Após finalizar, se o cliente mandar mensagem de novo a conversa reabre automati
 				DisplayName:        "Motivo",
 				DisplayDescription: "Por que a conversa foi finalizada",
 			},
+			"outcome_code": {
+				Type:               "string",
+				Description:        "Código do desfecho do atendimento, quando o workspace exigir um. Use exatamente um dos códigos configurados.",
+				DisplayName:        "Desfecho",
+				DisplayDescription: "Desfecho registrado no encerramento",
+			},
 		},
 		Required:   []string{},
 		Visibility: []tools.ToolVisibility{tools.VisibilityMessaging, tools.VisibilityPostConversation},
@@ -79,9 +85,11 @@ func (t *finishConversationTool) ExecuteWithConfig(ctx context.Context, config m
 		}, nil
 	}
 
+	outcomeCode, _ := params["outcome_code"].(string)
 	if err := t.status.Finish(entryID, entryType, conversation.FinishOptions{
-		Source: conversation.CloseSourceAI,
-		Reason: conversation.CloseReasonAIResolved,
+		Source:      conversation.CloseSourceAI,
+		Reason:      conversation.CloseReasonAIResolved,
+		OutcomeCode: strings.TrimSpace(outcomeCode),
 	}); err != nil {
 		log.Printf("[FinishConversation] entry=%s type=%s err=%v", entryID, entryType, err)
 		return tools.ExecutionResult{

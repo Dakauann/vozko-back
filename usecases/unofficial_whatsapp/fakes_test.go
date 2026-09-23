@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"vozko/domain/conversation"
 
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
@@ -886,7 +887,7 @@ func (f *fakeConversationRepo) ListEntryIDsByWorkspace(context.Context, string) 
 }
 func (f *fakeConversationRepo) RecordInbound(context.Context, string, time.Time) error  { return nil }
 func (f *fakeConversationRepo) RecordOutbound(context.Context, string, time.Time) error { return nil }
-func (f *fakeConversationRepo) SetStatus(context.Context, string, string, string, string, *time.Time) error {
+func (f *fakeConversationRepo) SetStatus(context.Context, string, conversation.StatusWrite) error {
 	return nil
 }
 func (f *fakeConversationRepo) SetAutomationEnabled(context.Context, string, *bool) error { return nil }

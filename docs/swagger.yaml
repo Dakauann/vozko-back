@@ -199,8 +199,6 @@ definitions:
   attendance.AttendantStats:
     properties:
       actor_kind:
-        description: ActorKind is always "human" for workspace members; AI stats use
-          AIAgentStats.
         type: string
       assigned_count:
         type: integer
@@ -219,10 +217,34 @@ definitions:
       username:
         type: string
     type: object
+  attendance.BacklogXray:
+    properties:
+      age:
+        $ref: '#/definitions/attendance.XrayDimension'
+      assignee:
+        $ref: '#/definitions/attendance.XrayDimension'
+      available:
+        type: boolean
+      origin:
+        $ref: '#/definitions/attendance.XrayDimension'
+      reachability:
+        items:
+          $ref: '#/definitions/attendance.Reachability'
+        type: array
+      reason:
+        type: string
+      record_completeness:
+        $ref: '#/definitions/attendance.RecordCompleteness'
+      returning:
+        $ref: '#/definitions/attendance.XrayDimension'
+      tenure:
+        $ref: '#/definitions/attendance.XrayDimension'
+      total:
+        type: integer
+    type: object
   attendance.ChannelSlice:
     properties:
       channel:
-        description: whatsapp | voice
         type: string
       count:
         type: integer
@@ -244,9 +266,6 @@ definitions:
       finished_ai:
         type: integer
       finished_human:
-        description: |-
-          Finished split by close_source (same rules as OverviewFinishedBySource).
-          Gamification: intentional (human+ai) vs silence (system), not queue abandon.
         type: integer
       finished_system:
         type: integer
@@ -279,13 +298,28 @@ definitions:
       hour:
         type: integer
     type: object
+  attendance.MemberClass:
+    enum:
+    - elite
+    - solid
+    - below
+    - critical
+    - insufficient_data
+    type: string
+    x-enum-varnames:
+    - ClassElite
+    - ClassSolid
+    - ClassBelow
+    - ClassCritical
+    - ClassInsufficientData
   attendance.MemberRow:
     properties:
       actor_id:
         type: string
       actor_kind:
-        description: human | ai
         type: string
+      avg_messages:
+        type: number
       avg_response_mins:
         type: number
       display_name:
@@ -295,32 +329,31 @@ definitions:
       finished_ai:
         type: integer
       finished_human:
-        description: How assigned finished chats were closed (for fair ranking vs
-          silence auto-close).
         type: integer
       finished_system:
         type: integer
+      inbound_messages:
+        type: integer
       open:
-        description: ongoing
         type: integer
       pending:
-        description: new/empty
         type: integer
       presence:
-        description: online | offline | on_call | unknown
         type: string
       rating:
-        description: null until CSAT
         type: number
       resolution_pct:
         type: number
       resolved:
-        description: finished (all close sources)
+        type: integer
+      total_messages:
         type: integer
     type: object
   attendance.MetricDefinitions:
     properties:
       ai:
+        type: string
+      backlog_xray:
         type: string
       channel_mix:
         type: string
@@ -340,7 +373,13 @@ definitions:
         type: string
       occupancy:
         type: string
+      period:
+        type: string
       period_scope:
+        type: string
+      projection:
+        type: string
+      quality:
         type: string
       queue:
         type: string
@@ -348,23 +387,95 @@ definitions:
         type: string
       resolution:
         type: string
+      revenue:
+        type: string
+      rework:
+        type: string
       shell:
         type: string
       sla:
         type: string
       stages:
         type: string
+      standing:
+        type: string
       status_mapping:
+        type: string
+      team_ranking:
+        type: string
+      trend:
         type: string
       unassigned:
         type: string
       wait_time:
         type: string
     type: object
+  attendance.MetricDirection:
+    enum:
+    - higher
+    - lower
+    type: string
+    x-enum-varnames:
+    - DirectionHigherIsBetter
+    - DirectionLowerIsBetter
+  attendance.MetricKind:
+    enum:
+    - count
+    - percent
+    - minutes
+    - money
+    type: string
+    x-enum-varnames:
+    - MetricKindCount
+    - MetricKindPercent
+    - MetricKindMinutes
+    - MetricKindMoney
+  attendance.MetricProjection:
+    properties:
+      actual:
+        type: number
+      attain_pct:
+        type: number
+      available:
+        type: boolean
+      cumulative:
+        type: boolean
+      direction:
+        $ref: '#/definitions/attendance.MetricDirection'
+      kind:
+        $ref: '#/definitions/attendance.MetricKind'
+      metric_key:
+        type: string
+      per_open_day:
+        type: number
+      projected:
+        type: number
+      reason:
+        type: string
+      target:
+        type: number
+      verdict:
+        $ref: '#/definitions/attendance.Verdict'
+    type: object
+  attendance.MetricSpec:
+    properties:
+      cumulative:
+        type: boolean
+      direction:
+        $ref: '#/definitions/attendance.MetricDirection'
+      key:
+        type: string
+      kind:
+        $ref: '#/definitions/attendance.MetricKind'
+      targetable:
+        type: boolean
+    type: object
   attendance.Overview:
     properties:
       ai:
         $ref: '#/definitions/attendance.OverviewAI'
+      backlog_xray:
+        $ref: '#/definitions/attendance.BacklogXray'
       by_department:
         items:
           $ref: '#/definitions/attendance.DepartmentRow'
@@ -382,14 +493,11 @@ definitions:
       filter:
         $ref: '#/definitions/attendance.OverviewFilter'
       finished_by_source:
-        allOf:
-        - $ref: '#/definitions/attendance.OverviewFinishedBySource'
-        description: FinishedBySource splits KPIs.Finished by close_source for monthly
-          review.
+        $ref: '#/definitions/attendance.OverviewFinishedBySource'
       frt:
-        allOf:
-        - $ref: '#/definitions/attendance.OverviewFRT'
-        description: Extended operational blocks
+        $ref: '#/definitions/attendance.OverviewFRT'
+      generated_at:
+        type: string
       hourly:
         items:
           $ref: '#/definitions/attendance.HourlyPoint'
@@ -402,25 +510,38 @@ definitions:
         $ref: '#/definitions/attendance.OverviewMessaging'
       occupancy:
         $ref: '#/definitions/attendance.OverviewOccupancy'
+      period:
+        $ref: '#/definitions/attendance.Period'
+      projections:
+        items:
+          $ref: '#/definitions/attendance.MetricProjection'
+        type: array
+      quality:
+        $ref: '#/definitions/attendance.Quality'
       queue:
         $ref: '#/definitions/attendance.OverviewQueue'
       reopen:
         $ref: '#/definitions/attendance.OverviewReopen'
+      revenue:
+        $ref: '#/definitions/attendance.Revenue'
+      rework:
+        $ref: '#/definitions/attendance.OverviewRework'
       stages:
-        allOf:
-        - $ref: '#/definitions/attendance.OverviewStages'
-        description: |-
-          Stages is where the scoped conversations are sitting, grouped by the
-          funnel that owns each stage. See stage_distribution.go.
+        $ref: '#/definitions/attendance.OverviewStages'
+      standing:
+        $ref: '#/definitions/attendance.Standing'
       status_distribution:
         $ref: '#/definitions/attendance.StatusDistribution'
+      team_ranking:
+        $ref: '#/definitions/attendance.TeamRanking'
+      trend:
+        $ref: '#/definitions/attendance.Trend'
     type: object
   attendance.OverviewAI:
     properties:
       abandoned:
         type: integer
       available:
-        description: true when any session in range
         type: boolean
       avg_ai_messages:
         type: number
@@ -444,7 +565,6 @@ definitions:
       ai_samples:
         type: integer
       available:
-        description: true when sample_count > 0
         type: boolean
       avg_mins:
         type: number
@@ -462,10 +582,8 @@ definitions:
       campaign_id:
         type: string
       campaign_type:
-        description: whatsapp | voice | ""
         type: string
       channel:
-        description: whatsapp | voice | support | ""
         type: string
       date_from:
         type: string
@@ -476,97 +594,66 @@ definitions:
       include_ai:
         type: boolean
       member_id:
-        description: human user id
         type: string
+      rank_metric:
+        type: string
+      trend_buckets:
+        type: integer
     type: object
   attendance.OverviewFinishedBySource:
     properties:
       ai:
-        description: AI finish tool
         type: integer
       ai_pct:
         type: number
       available:
-        description: true when total > 0
         type: boolean
       human:
-        description: intentional human (or legacy empty)
         type: integer
       human_pct:
         type: number
       system:
-        description: idle auto-close
         type: integer
       system_pct:
         type: number
       total:
-        description: human+ai+system (= finished when fully classified)
         type: integer
     type: object
   attendance.OverviewKPIs:
     properties:
       avg_frt_mins:
-        description: AvgFRTMins is assignment-aware first response (null when no samples).
         type: number
       avg_handle_mins:
-        description: null when no samples
         type: number
       avg_rating:
-        description: always null until CSAT
         type: number
       avg_wait_mins:
         type: number
       csat_available:
         type: boolean
       engaged:
-        description: 'Engaged: scoped entries with at least one non-deleted message.'
         type: integer
       entries_created:
-        description: 'EntriesCreated: entries created in range (is_new_contact), including
-          shells.'
         type: integer
       finished:
-        description: engaged only
         type: integer
       frt_sla_percent:
-        description: SLA placeholders (null until SLA policies exist)
         type: number
       new_leads:
-        description: |-
-          NewLeads: CRM contacts (leads) created in the range.
-
-          The one KPI on this strip that is NOT entry-scoped, and deliberately so.
-          A lead exists before any conversation does. It may be imported from a
-          spreadsheet, created by an API integration, or loaded for a campaign that
-          has not gone out yet, so counting acquisition through conversation entries
-          reports zero for
-          every contact the workspace has gained but not yet messaged, which is the
-          population this number exists to show.
-
-          It therefore answers to the DATE RANGE ONLY. Department, member, channel
-          and campaign narrow CONVERSATIONS, and a lead carries none of those
-          attributes until it has an entry; applying them would silently drop every
-          imported contact the moment an operator touched a filter. The tile states
-          this beside the number rather than leaving the reader to infer it.
         type: integer
       ongoing:
-        description: engaged only
         type: integer
       pending:
-        description: engaged only
         type: integer
       resolution_sla_percent:
         type: number
       shell_backlog:
-        description: 'ShellBacklog: scoped entries with zero messages (campaign shells).'
         type: integer
       sla_available:
         type: boolean
       total_scoped:
-        description: 'TotalScoped: engaged + shell (raw period universe).'
         type: integer
       unassigned_backlog:
-        description: 'UnassignedBacklog: engaged, no inbox assignee, not finished.'
         type: integer
     type: object
   attendance.OverviewLive:
@@ -580,20 +667,14 @@ definitions:
       busy_rate_pct:
         type: number
       free:
-        description: Free is online and not busy (available to take a call).
         type: integer
       has_data:
-        description: HasData is true when the call session registry was queried successfully.
         type: boolean
       idle_rate_pct:
-        description: 'IdleRatePct among online agents: free/online * 100 (ociosidade
-          ao vivo).'
         type: number
       in_call:
-        description: busy (on a call or ringing)
         type: integer
       online:
-        description: connected to a call session
         type: integer
     type: object
   attendance.OverviewLiveAgent:
@@ -612,24 +693,16 @@ definitions:
       avg_inbound:
         type: number
       avg_messages_all_scoped:
-        description: 'Dual denominator: average including shells (zeros). Null when
-          no scoped rows.'
         type: number
       avg_messages_per_conversation:
-        description: Primary averages are over ENGAGED entries only (total_msgs >
-          0).
         type: number
       avg_outbound:
         type: number
       avg_template:
-        description: |-
-          Template messages (WhatsApp HSM / session openers). Counted separately so
-          ops can see billed-style template volume, not only free-form operator chat.
         type: number
       conversations_with_messages:
         type: integer
       conversations_with_template:
-        description: Conversations that received at least one template message.
         type: integer
       template_messages:
         type: integer
@@ -641,33 +714,25 @@ definitions:
       available:
         type: boolean
       avg_occupancy_pct:
-        description: mean of per-agent occupancy
         type: number
       on_call_ms:
         type: integer
       online_ms:
         type: integer
       team_idle_pct:
-        description: 'TeamIdlePct is ociosidade histórica: 100 - TeamOccupancyPct
-          (when available).'
         type: number
       team_occupancy_pct:
-        description: 'TeamOccupancyPct: OnCallMS / OnlineMS (online already includes
-          on_call in source)'
         type: number
     type: object
   attendance.OverviewQueue:
     properties:
       abandon_rate:
-        description: percent
         type: number
       abandoned:
         type: integer
       available:
-        description: true when enqueued > 0
         type: boolean
       avg_asa_mins:
-        description: ASA in minutes
         type: number
       cancelled:
         type: integer
@@ -685,23 +750,42 @@ definitions:
       available:
         type: boolean
       finished_count:
-        description: FinishedCount is engaged finished (same universe as KPIs.Finished)
-          for rate.
         type: integer
       finished_event_count:
-        description: FinishedEventCount is event_type=finished telemetry (may include
-          out-of-scope shells).
         type: integer
       reopen_rate:
-        description: reopened/finished_count * 100 when finished_count > 0
         type: number
       reopened_count:
         type: integer
     type: object
+  attendance.OverviewRework:
+    properties:
+      adjacent:
+        items:
+          $ref: '#/definitions/attendance.ReworkRow'
+        type: array
+      available:
+        type: boolean
+      cost_available:
+        type: boolean
+      cost_reason:
+        type: string
+      currency:
+        type: string
+      reason:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/attendance.ReworkRow'
+        type: array
+      team:
+        $ref: '#/definitions/attendance.ReworkRow'
+      unassigned:
+        $ref: '#/definitions/attendance.ReworkRow'
+    type: object
   attendance.OverviewStages:
     properties:
       available:
-        description: true when anything in scope is staged
         type: boolean
       funnels:
         items:
@@ -714,12 +798,174 @@ definitions:
       stuck:
         type: integer
       unstaged_engaged:
-        description: |-
-          Unstaged is scoped minus staged: conversations carrying no stage at all.
-          Reported as a total rather than as a fake stage row.
         type: integer
       unstaged_shell:
         type: integer
+    type: object
+  attendance.Period:
+    properties:
+      available:
+        type: boolean
+      elapsed_pct:
+        type: number
+      end:
+        type: string
+      open_days_done:
+        type: integer
+      open_days_left:
+        type: integer
+      open_days_total:
+        type: integer
+      open_minutes:
+        type: integer
+      reason:
+        type: string
+      start:
+        type: string
+      timezone:
+        type: string
+    type: object
+  attendance.Quality:
+    properties:
+      adjacent:
+        items:
+          $ref: '#/definitions/attendance.QualityRow'
+        type: array
+      available:
+        type: boolean
+      enabled_at:
+        type: string
+      not_captured:
+        type: integer
+      reason:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/attendance.QualityRow'
+        type: array
+      team:
+        $ref: '#/definitions/attendance.QualityRow'
+      threshold:
+        type: number
+    type: object
+  attendance.QualityRow:
+    properties:
+      actor_id:
+        type: string
+      actor_kind:
+        type: string
+      captured:
+        type: integer
+      closes:
+        type: integer
+      display_name:
+        type: string
+      durable:
+        type: integer
+      durable_pct:
+        type: number
+      verdict:
+        $ref: '#/definitions/attendance.Verdict'
+    type: object
+  attendance.RankedMember:
+    properties:
+      actor_id:
+        type: string
+      actor_kind:
+        type: string
+      avg_messages:
+        type: number
+      avg_response_mins:
+        type: number
+      avg_ticket_cents:
+        type: number
+      class:
+        $ref: '#/definitions/attendance.MemberClass'
+      currency:
+        type: string
+      display_name:
+        type: string
+      email:
+        type: string
+      finished_ai:
+        type: integer
+      finished_human:
+        type: integer
+      finished_system:
+        type: integer
+      inbound_messages:
+        type: integer
+      online_ms:
+        type: integer
+      open:
+        type: integer
+      pct_of_team_avg:
+        type: number
+      pending:
+        type: integer
+      per_online_hour:
+        type: number
+      per_open_day:
+        type: number
+      presence:
+        type: string
+      rank_metric_value:
+        type: number
+      rating:
+        type: number
+      resolution_pct:
+        type: number
+      resolved:
+        type: integer
+      revenue_cents:
+        type: integer
+      total_messages:
+        type: integer
+      won_count:
+        type: integer
+    type: object
+  attendance.Reachability:
+    properties:
+      available:
+        type: boolean
+      channel:
+        type: string
+      closed_pct:
+        type: number
+      measured:
+        type: integer
+      reason:
+        type: string
+      window_closed:
+        type: integer
+      window_open:
+        type: integer
+    type: object
+  attendance.RecordCompleteness:
+    properties:
+      available:
+        type: boolean
+      avg_fill_pct:
+        type: number
+      fields:
+        items:
+          $ref: '#/definitions/attendance.RecordField'
+        type: array
+      fully_filled:
+        type: integer
+      measured:
+        type: integer
+      reason:
+        type: string
+    type: object
+  attendance.RecordField:
+    properties:
+      filled:
+        type: integer
+      key:
+        type: string
+      pct:
+        type: number
     type: object
   attendance.ResponseTimeBucket:
     properties:
@@ -737,13 +983,83 @@ definitions:
       total:
         type: integer
     type: object
+  attendance.Revenue:
+    properties:
+      available:
+        type: boolean
+      by_owner:
+        items:
+          $ref: '#/definitions/attendance.RevenueOwnerRow'
+        type: array
+      currencies:
+        items:
+          $ref: '#/definitions/attendance.RevenueByCurrency'
+        type: array
+      mixed_currencies:
+        type: boolean
+      reason:
+        type: string
+      unattributed:
+        type: integer
+      unowned_count:
+        type: integer
+    type: object
+  attendance.RevenueByCurrency:
+    properties:
+      avg_ticket_cents:
+        type: number
+      currency:
+        type: string
+      delta_pct:
+        type: number
+      per_open_day_cents:
+        type: number
+      prev_closed_cents:
+        type: integer
+      projected_cents:
+        type: integer
+      value_cents:
+        type: integer
+      won_count:
+        type: integer
+    type: object
+  attendance.RevenueOwnerRow:
+    properties:
+      avg_ticket_cents:
+        type: number
+      currency:
+        type: string
+      owner_id:
+        type: string
+      value_cents:
+        type: integer
+      won_count:
+        type: integer
+    type: object
+  attendance.ReworkRow:
+    properties:
+      actor_id:
+        type: string
+      actor_kind:
+        type: string
+      cost_micros:
+        type: integer
+      display_name:
+        type: string
+      finished:
+        type: integer
+      reopen_rate:
+        type: number
+      reopened:
+        type: integer
+      templates:
+        type: integer
+    type: object
   attendance.StageFunnelGroup:
     properties:
       engaged:
         type: integer
       funnel_id:
-        description: FunnelID is empty for the single no-funnel bucket, which always
-          sorts last.
         type: string
       funnel_name:
         type: string
@@ -765,19 +1081,10 @@ definitions:
   attendance.StageRow:
     properties:
       avg_days_in_stage:
-        description: |-
-          AvgDaysInStage and OldestDaysInStage measure OPEN engaged conversations
-          against now, not against the period end. Null when nothing here is open,
-          because 0 would read as "everyone arrived today".
         type: number
       color:
-        description: Color is the stage's own kanban colour when the workspace picked
-          one.
         type: string
       engaged:
-        description: |-
-          Engaged is THE number: conversations with at least one message, the same
-          universe as the KPI strip and every other panel on the page.
         type: integer
       finished:
         type: integer
@@ -790,9 +1097,6 @@ definitions:
       ongoing:
         type: integer
       pct_of_funnel:
-        description: |-
-          PctOfFunnel answers "where inside this path do they stop", PctOfStaged
-          answers "which funnel owns the workspace's volume". Both over Engaged.
         type: number
       pct_of_staged:
         type: number
@@ -801,25 +1105,37 @@ definitions:
       position:
         type: integer
       rot_days_set:
-        description: |-
-          RotDaysSet distinguishes a threshold the workspace chose from the product
-          default, so the UI can name which one produced the count.
         type: boolean
       shell:
-        description: |-
-          Shell is campaign/import rows parked here that were never messaged. Shown
-          beside Engaged, never added to it.
         type: integer
       stage_id:
         type: string
       stage_name:
         type: string
       stuck:
-        description: Stuck is open engaged conversations sitting longer than StuckAfterDays.
         type: integer
       stuck_after_days:
         type: integer
       total:
+        type: integer
+    type: object
+  attendance.Standing:
+    properties:
+      at_risk:
+        type: integer
+      available:
+        type: boolean
+      cluster:
+        type: string
+      off_track:
+        type: integer
+      on_track:
+        type: integer
+      on_track_pct:
+        type: number
+      reason:
+        type: string
+      targets_set:
         type: integer
     type: object
   attendance.StatusDistribution:
@@ -833,6 +1149,147 @@ definitions:
       total:
         type: integer
     type: object
+  attendance.TargetRequest:
+    properties:
+      currency:
+        example: BRL
+        type: string
+      metricKey:
+        example: finished
+        type: string
+      period:
+        example: 2026-09
+        type: string
+      scope:
+        example: workspace
+        type: string
+      scopeId:
+        type: string
+      value:
+        example: 1786
+        type: number
+    type: object
+  attendance.TeamRanking:
+    properties:
+      adjacent:
+        items:
+          $ref: '#/definitions/attendance.RankedMember'
+        type: array
+      adjacent_totals:
+        $ref: '#/definitions/attendance.TeamTotals'
+      available:
+        type: boolean
+      members:
+        items:
+          $ref: '#/definitions/attendance.RankedMember'
+        type: array
+      min_sample:
+        type: integer
+      rank_metric_key:
+        type: string
+      reason:
+        type: string
+      team_average:
+        type: number
+      totals:
+        $ref: '#/definitions/attendance.TeamTotals'
+    type: object
+  attendance.TeamTotals:
+    properties:
+      avg_ticket_cents:
+        type: number
+      currency:
+        type: string
+      members:
+        type: integer
+      online_ms:
+        type: integer
+      open:
+        type: integer
+      pending:
+        type: integer
+      per_online_hour:
+        type: number
+      per_open_day:
+        type: number
+      rank_metric_value:
+        type: number
+      resolved:
+        type: integer
+      revenue_cents:
+        type: integer
+      won_count:
+        type: integer
+    type: object
+  attendance.Trend:
+    properties:
+      available:
+        type: boolean
+      reason:
+        type: string
+      series:
+        items:
+          $ref: '#/definitions/attendance.TrendSeries'
+        type: array
+      unbucketed:
+        type: integer
+    type: object
+  attendance.TrendPoint:
+    properties:
+      bucket:
+        type: string
+      partial:
+        type: boolean
+      projected:
+        type: boolean
+      value:
+        type: number
+    type: object
+  attendance.TrendSeries:
+    properties:
+      available:
+        type: boolean
+      best_bucket:
+        type: string
+      best_value:
+        type: number
+      delta_pct:
+        type: number
+      direction:
+        $ref: '#/definitions/attendance.MetricDirection'
+      kind:
+        $ref: '#/definitions/attendance.MetricKind'
+      metric_key:
+        type: string
+      points:
+        items:
+          $ref: '#/definitions/attendance.TrendPoint'
+        type: array
+      prev_closed:
+        type: number
+      reason:
+        type: string
+      window_from:
+        type: string
+      window_to:
+        type: string
+    type: object
+  attendance.Verdict:
+    enum:
+    - on_track
+    - at_risk
+    - off_track
+    - no_target
+    - not_projected
+    - insufficient_data
+    type: string
+    x-enum-varnames:
+    - VerdictOnTrack
+    - VerdictAtRisk
+    - VerdictOffTrack
+    - VerdictNoTarget
+    - VerdictNotProjected
+    - VerdictInsufficientData
   attendance.WindowBucket:
     properties:
       count:
@@ -849,6 +1306,69 @@ definitions:
       total_open:
         type: integer
     type: object
+  attendance.XrayBucket:
+    properties:
+      count:
+        type: integer
+      key:
+        type: string
+      label:
+        type: string
+      pct:
+        type: number
+    type: object
+  attendance.XrayDimension:
+    properties:
+      available:
+        type: boolean
+      buckets:
+        items:
+          $ref: '#/definitions/attendance.XrayBucket'
+        type: array
+      dimension:
+        type: string
+      measured:
+        type: integer
+      reason:
+        type: string
+      unknown:
+        type: integer
+    type: object
+  attendance_target.Scope:
+    enum:
+    - workspace
+    - department
+    - member
+    type: string
+    x-enum-varnames:
+    - ScopeWorkspace
+    - ScopeDepartment
+    - ScopeMember
+  attendance_target.Target:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      currency:
+        type: string
+      id:
+        type: string
+      metricKey:
+        type: string
+      periodStart:
+        type: string
+      scope:
+        $ref: '#/definitions/attendance_target.Scope'
+      scopeId:
+        type: string
+      updatedAt:
+        type: string
+      value:
+        type: number
+      workspaceId:
+        type: string
+    type: object
   audience.AlertChannel:
     enum:
     - official
@@ -864,10 +1384,6 @@ definitions:
       channel:
         type: string
       reason:
-        description: |-
-          Reason is a stable key the client translates: "no_sender",
-          "not_enabled". A greyed control with no explanation sends people to
-          support instead of to the connect screen.
         type: string
       senders:
         items:
@@ -895,11 +1411,6 @@ definitions:
       minWindowMinutes:
         type: integer
       templateParamCount:
-        description: |-
-          TemplateParamCount is how many facts an alert can supply. NOT a
-          requirement on the template: one that declares fewer gets the first few,
-          one that declares more has the rest padded, and one with no variables is
-          perfectly fine.
         type: integer
     type: object
   audience.AlertMetric:
@@ -925,15 +1436,8 @@ definitions:
       metric:
         type: string
       subjectKind:
-        description: |-
-          SubjectKind is what the metric reads, "comment" or "conversation". The
-          picker filters on it so a rule cannot be armed against a subject its
-          channel never produces, which saves cleanly and then never fires.
         type: string
       supportsMinMessages:
-        description: |-
-          SupportsMinMessages says whether a conversation-length floor applies.
-          Only a per-conversation metric has one row to measure.
         type: boolean
       triggersWhenBelow:
         type: boolean
@@ -945,15 +1449,8 @@ definitions:
       accountId:
         type: string
       brief:
-        description: |-
-          Brief asks the model to add its reading of what happened and how to
-          respond. Off by default: it is one AI call per firing, bounded by the
-          cooldown and the daily cap but still billed.
         type: boolean
       businessPhoneId:
-        description: |-
-          BusinessPhoneID and TemplateID are required for the official channel:
-          which number it leaves from and which approved template it sends.
         type: string
       channel:
         $ref: '#/definitions/audience.AlertChannel'
@@ -962,11 +1459,6 @@ definitions:
       createdAt:
         type: string
       createdByUserId:
-        description: |-
-          CreatedByUserID is who configured the rule, and therefore who its
-          messages are attributed to. An automated paid send with no author is a
-          support ticket nobody can answer, so the person who armed the alert owns
-          what it says.
         type: string
       enabled:
         type: boolean
@@ -977,33 +1469,16 @@ definitions:
       id:
         type: string
       instanceId:
-        description: |-
-          InstanceID names the connected number for the unofficial channel. Empty
-          means "whichever one this workspace has", resolved at send time.
         type: string
       lastError:
         type: string
       lastFiredAt:
-        description: |-
-          The firing history, kept on the rule rather than in a second table: it is
-          what the cooldown and the cap are checked against, and it is also the
-          answer to "por que não disparou".
         type: string
       maxPerDay:
         type: integer
       metric:
         $ref: '#/definitions/audience.AlertMetric'
       minMessages:
-        description: |-
-          MinMessages is how long a conversation must be before it is worth
-          judging. Zero means no floor, which is what every rule written before
-          this existed has.
-
-          A two-message conversation scores badly because it barely happened, not
-          because it was handled badly, so without a floor the first alert an
-          operator ever receives is about a customer who said "oi" and left. Only
-          meaningful for a per-conversation metric; Validate refuses it elsewhere
-          rather than storing a setting that does nothing.
         type: integer
       name:
         type: string
@@ -1018,9 +1493,6 @@ definitions:
       updatedAt:
         type: string
       windowMinutes:
-        description: |-
-          WindowMinutes is the span a windowed metric is counted over. Ignored for
-          a per-comment metric.
         type: integer
       workspaceId:
         type: string
@@ -1030,16 +1502,11 @@ definitions:
       id:
         type: string
       label:
-        description: Label is what the operator recognises, never an internal id.
         type: string
     type: object
   audience.AlertVocabularyResponse:
     properties:
       channelStatus:
-        description: |-
-          ChannelStatus narrows Channels to what this workspace can actually do.
-          Empty when the deployment has no directory wired, in which case the
-          client falls back to Channels exactly as it did before.
         items:
           $ref: '#/definitions/audience.AlertChannelStatusResponse'
         type: array
@@ -1048,11 +1515,6 @@ definitions:
           type: string
         type: array
       facts:
-        description: |-
-          Facts is what an alert can put into a template's variables, in the order
-          a POSITIONAL template is filled. Sent so the settings screen can tell an
-          operator what their template will actually receive, and so a NAMED
-          template can be written with variables we recognise.
         items:
           type: string
         type: array
@@ -1072,9 +1534,6 @@ definitions:
       attempts:
         type: integer
       attendanceQuality:
-        description: |-
-          AttendanceQuality is 0-100, COMPUTED from the conversation quality
-          rubric's ordinal levels. Never model-set, exactly as Severity is not.
         type: integer
       authorExternalId:
         type: string
@@ -1087,11 +1546,6 @@ definitions:
       createdAt:
         type: string
       deletedAt:
-        description: |-
-          DeletedAt is set when the source comment was deleted (§6.4). The row
-          leaves the feed and the live stats but stays in historical rollups: the
-          rollup for last Tuesday must not change because someone deleted a
-          comment today.
         type: string
       disposition:
         $ref: '#/definitions/audience.Disposition'
@@ -1104,16 +1558,7 @@ definitions:
       intent:
         $ref: '#/definitions/audience.Intent'
       interest:
-        allOf:
-        - $ref: '#/definitions/audience.Interest'
-        description: |-
-          ---- Conversation labels ----
-
-          Set only when SubjectKind is conversation, and zero for every comment
-          row. They are the taxonomy the legacy conversation engine owned; see
-          conversation.go. Kept flat rather than behind a pointer struct because
-          they are filtered and aggregated in SQL, and a nested value would have to
-          be unpacked in every query.
+        $ref: '#/definitions/audience.Interest'
       isSpam:
         type: boolean
       language:
@@ -1127,40 +1572,24 @@ definitions:
       nextAction:
         $ref: '#/definitions/audience.NextAction'
       occurredAt:
-        description: |-
-          OccurredAt is when the comment was POSTED on the channel; CreatedAt
-          is when it reached us. Rollups bucket by the former, so a backfilled
-          comment lands on its own day.
         type: string
       parentCommentId:
         type: string
       personalAttack:
         $ref: '#/definitions/shared.QualityLevel'
       productInterest:
-        description: |-
-          ProductInterest is what the conversation was about, in the model's own
-          words, and ProductInterestKey is the same thing canonicalised. The pair
-          exists because one of them is for reading and the other for counting;
-          see subject_key.go. Only the key is ever grouped on.
         type: string
       productInterestKey:
         type: string
       qualification:
         $ref: '#/definitions/audience.Qualification'
       requiresAction:
-        description: RequiresAction is DERIVED from severity and intent; see ActionPolicy.
         type: boolean
       revision:
-        description: |-
-          Revision identifies an immutable conversation transcript. Comments use
-          the empty revision and retain their original idempotency contract.
         type: string
       sentiment:
-        allOf:
-        - $ref: '#/definitions/shared.Sentiment'
-        description: Model output, all constrained by the rubric.
+        $ref: '#/definitions/shared.Sentiment'
       severity:
-        description: Severity is 0-100, COMPUTED. Never model-set.
         type: integer
       source:
         type: string
@@ -1169,33 +1598,16 @@ definitions:
       status:
         $ref: '#/definitions/audience.Status'
       subjectId:
-        description: |-
-          SubjectID identifies the subject on its channel: the comment id for
-          a comment, the conversation's entry id for a conversation.
         type: string
       subjectKind:
-        allOf:
-        - $ref: '#/definitions/audience.SubjectKind'
-        description: |-
-          SubjectKind says what this row is about. Empty reads as a comment, so
-          every row written before conversations existed keeps its meaning without
-          a backfill.
+        $ref: '#/definitions/audience.SubjectKind'
       summary:
-        description: |-
-          Summary is the model's prose. It is the one free-text field the engine
-          stores and the only one carrying unredacted customer content, which is
-          why retention applies to it like everything else here.
         type: string
       topicKey:
         type: string
       toxicity:
-        allOf:
-        - $ref: '#/definitions/shared.QualityLevel'
-        description: 'Severity dimensions: rated ordinally by the model, scored here.'
+        $ref: '#/definitions/shared.QualityLevel'
       truncated:
-        description: |-
-          Truncated records that the text was cut before it reached the model or
-          the excerpt, so a classification of a partial comment is never silent.
         type: boolean
       updatedAt:
         type: string
@@ -1286,17 +1698,9 @@ definitions:
       moderationState:
         type: string
       reputation:
-        description: |-
-          Reputation is the signed ledger the ranking sorts on: negative means the
-          author has cost more than they gave. Sent alongside the raw counters so
-          the client shows the score without re-deriving (and re-inventing) it.
         type: integer
       role:
-        allOf:
-        - $ref: '#/definitions/audience.AuthorRoleInference'
-        description: |-
-          Role is the §5 inference, sent WITH its evidence: a client that received
-          only a label would have no way to present it as the inference it is.
+        $ref: '#/definitions/audience.AuthorRoleInference'
       roleDisplayable:
         type: boolean
       source:
@@ -1329,22 +1733,10 @@ definitions:
   audience.AuthorRoleInference:
     properties:
       basedOnComments:
-        description: |-
-          BasedOnComments is the corpus size the inference read. Shown to the
-          customer, because "politician, from 3 comments" and "politician, from 90"
-          are different claims and the UI must not present them as one.
         type: integer
       confidence:
-        allOf:
-        - $ref: '#/definitions/shared.QualityLevel'
-        description: |-
-          Confidence is the model's own, on the shared ordinal rubric. Ordinal
-          rather than a percentage for the reason the rubric header gives: a model
-          asked for 0-100 returns a number nobody can defend.
+        $ref: '#/definitions/shared.QualityLevel'
       rationale:
-        description: |-
-          Rationale is one short sentence in the model's words, so an operator can
-          see WHY and disagree. Never used for anything but display.
         type: string
       role:
         $ref: '#/definitions/audience.AuthorRole'
@@ -1392,10 +1784,6 @@ definitions:
       byKind:
         additionalProperties:
           $ref: '#/definitions/audience.BatchTotals'
-        description: |-
-          ByKind splits the same period by pass, so the dashboard can show what
-          the author inference cost separately from the comment classification.
-          Always present for every kind, zeroed when a pass did not run.
         type: object
       completionTokens:
         type: integer
@@ -1433,7 +1821,6 @@ definitions:
       intent:
         type: string
       interest:
-        description: Conversation subjects only.
         type: string
       isSpam:
         type: boolean
@@ -1472,10 +1859,6 @@ definitions:
       subjectId:
         type: string
       subjectKind:
-        description: |-
-          SubjectKind tells a client which half of this shape is populated: a
-          comment carries stance and severity, a conversation carries disposition
-          and attendance quality, and neither carries the other.
         type: string
       summary:
         type: string
@@ -1517,25 +1900,12 @@ definitions:
       analyzed:
         type: integer
       attendanceQualityAvg:
-        description: |-
-          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
-          carry no such score, and including their zeros would drag the average of
-          a mixed slice toward nothing.
         type: number
       attendanceQualityMax:
         type: integer
       attendanceQualityMin:
         type: integer
       commentCount:
-        description: |-
-          ---- Conversation subjects ----
-
-          Everything the legacy conversation-analysis stats block reported, in the
-          same aggregate as the comment counters rather than a second endpoint with
-          its own shape. A filtered slice can now contain both kinds, so the two
-          subject counts say how much of the slice each block describes: without
-          them a reader cannot tell an all-comment slice from one where every
-          conversation happened to be unlabelled.
         type: integer
       conversationAnalyzed:
         type: integer
@@ -1614,7 +1984,6 @@ definitions:
       severityAvg:
         type: number
       severityHighCount:
-        description: ≥ HighSeverityThreshold
         type: integer
       severityMax:
         type: integer
@@ -1725,9 +2094,6 @@ definitions:
   audience.ReplyPolicy:
     properties:
       maxAutoSeverity:
-        description: |-
-          MaxAutoSeverity is the ceiling for automatic replies. Above it a human
-          answers, whatever the intent says.
         type: integer
       mode:
         $ref: '#/definitions/audience.ReplyMode'
@@ -1735,9 +2101,6 @@ definitions:
   audience.ReplySuggestion:
     properties:
       auto:
-        description: |-
-          Auto marks a draft the pipeline produced and posted without a human, so
-          the feed can say which replies nobody read first.
         type: boolean
       commentId:
         type: string
@@ -1782,10 +2145,6 @@ definitions:
       byKind:
         additionalProperties:
           $ref: '#/definitions/audience.BatchTotals'
-        description: |-
-          ByKind splits the same period by pass, so the dashboard can show what
-          the author inference cost separately from the comment classification.
-          Always present for every kind, zeroed when a pass did not run.
         type: object
       completionTokens:
         type: integer
@@ -1813,25 +2172,12 @@ definitions:
       analyzed:
         type: integer
       attendanceQualityAvg:
-        description: |-
-          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
-          carry no such score, and including their zeros would drag the average of
-          a mixed slice toward nothing.
         type: number
       attendanceQualityMax:
         type: integer
       attendanceQualityMin:
         type: integer
       commentCount:
-        description: |-
-          ---- Conversation subjects ----
-
-          Everything the legacy conversation-analysis stats block reported, in the
-          same aggregate as the comment counters rather than a second endpoint with
-          its own shape. A filtered slice can now contain both kinds, so the two
-          subject counts say how much of the slice each block describes: without
-          them a reader cannot tell an all-comment slice from one where every
-          conversation happened to be unlabelled.
         type: integer
       conversationAnalyzed:
         type: integer
@@ -1910,7 +2256,6 @@ definitions:
       severityAvg:
         type: number
       severityHighCount:
-        description: ≥ HighSeverityThreshold
         type: integer
       severityMax:
         type: integer
@@ -1927,10 +2272,6 @@ definitions:
       stanceSupporter:
         type: integer
       subjects:
-        description: |-
-          Subjects is what the conversations were about, ranked. Always an array,
-          never null: a client that has to distinguish "no subjects" from "this
-          field is missing" would branch on it everywhere.
         items:
           $ref: '#/definitions/audience.SubjectCount'
         type: array
@@ -1960,14 +2301,8 @@ definitions:
       count:
         type: integer
       key:
-        description: |-
-          Key is what the rows were grouped on. It is the identity, so a chart
-          keys its marks on this and not on the label.
         type: string
       label:
-        description: |-
-          Label is a real example of how the subject was written, so the chart
-          shows "Plano Família" rather than the stripped "plano familia".
         type: string
     type: object
   audience.SubjectKind:
@@ -2016,28 +2351,14 @@ definitions:
       analyzed:
         type: integer
       attendanceQualityAvg:
-        description: |-
-          AttendanceQuality is averaged over ANALYSED CONVERSATIONS only. Comments
-          carry no such score, and including their zeros would drag the average of
-          a mixed slice toward nothing.
         type: number
       attendanceQualityMax:
         type: integer
       attendanceQualityMin:
         type: integer
       bucketDate:
-        description: YYYY-MM-DD, UTC
         type: string
       commentCount:
-        description: |-
-          ---- Conversation subjects ----
-
-          Everything the legacy conversation-analysis stats block reported, in the
-          same aggregate as the comment counters rather than a second endpoint with
-          its own shape. A filtered slice can now contain both kinds, so the two
-          subject counts say how much of the slice each block describes: without
-          them a reader cannot tell an all-comment slice from one where every
-          conversation happened to be unlabelled.
         type: integer
       conversationAnalyzed:
         type: integer
@@ -2116,7 +2437,6 @@ definitions:
       severityAvg:
         type: number
       severityHighCount:
-        description: ≥ HighSeverityThreshold
         type: integer
       severityMax:
         type: integer
@@ -2145,28 +2465,12 @@ definitions:
   audience.Usage:
     properties:
       limit:
-        description: |-
-          Limit is the ceiling in force. Zero means unlimited, which is what a
-          workspace with no configured cap and no default would get.
         type: integer
       oldestAt:
-        description: |-
-          OldestAt is when the earliest still-counted analysis was claimed, so a
-          screen can say when room next frees up rather than naming a reset that
-          no longer exists. Zero when nothing is counted.
         type: string
       used:
-        description: Used is how many analyses were claimed inside the window.
         type: integer
       waiting:
-        description: |-
-          Waiting is how much is queued and not yet classified.
-
-          Without it the budget reads as a number with no consequence, and an
-          operator who sets the ceiling too low sees only that the dashboard has
-          stopped moving. Work is never thrown away when the budget runs out: the
-          rows stay pending and the next pass picks them up. What a low ceiling
-          actually costs is delay, so the delay is what gets shown.
         type: integer
     type: object
   audience.WorkspaceSettingsResponse:
@@ -2176,13 +2480,6 @@ definitions:
       debounceMinutes:
         type: integer
       effectiveDailyCap:
-        description: |-
-          The values actually IN FORCE, which is what a screen shows in the box.
-
-          Both are resolved HERE rather than by the client: the ceiling falls back
-          through the workspace, then the channel accounts, then the product
-          default, and a browser reproducing that chain would be a second copy of
-          ResolveDailyCap free to disagree with the engine's.
         type: integer
       effectiveDebounceMinutes:
         type: integer
@@ -2204,10 +2501,6 @@ definitions:
       number:
         type: string
       windowOpen:
-        description: |-
-          WindowOpen says whether a free-form message can reach them right now.
-          Shown rather than enforced: the channels differ, and the send path is
-          the authority on its own rules.
         type: boolean
     type: object
   auth.AuthTokenResponse:
@@ -2656,9 +2949,6 @@ definitions:
       nameStatus:
         $ref: '#/definitions/businessphone.NameStatus'
       onboardingError:
-        description: |-
-          OnboardingError carries the reason a 360dialog provisioning handover failed,
-          surfaced to the UI alongside StatusOnboardingFailed. Empty when healthy.
         type: string
       ownerAssignedAt:
         type: string
@@ -3139,7 +3429,6 @@ definitions:
       current_node_type:
         type: string
       kind:
-        description: '"agent" | "workflow"'
         type: string
       run_status:
         type: string
@@ -3173,7 +3462,6 @@ definitions:
       expires_at:
         type: string
       status:
-        description: '"none" | "pending" | "granted" | "rejected" | "expired"'
         type: string
     type: object
   conversation.CloseReason:
@@ -3238,30 +3526,12 @@ definitions:
   conversation.EntryWithLastMessage:
     properties:
       agentID:
-        description: |-
-          Campaign AI configuration, read from the already-joined campaign row so the
-          inbox can show which AI (agent or workflow) attends the conversation. These are
-          the raw config values; the effective handler + live run are resolved in the use
-          case enrichment.
         type: string
       agentResponsesEnabled:
         type: boolean
       assignedUserID:
-        description: |-
-          AssignedUserID is the entry's current inbox owner (from inbox_assignment),
-          hydrated by the CRM board read model so the list/board cards can show a
-          responsável. Empty when unassigned. Not populated by the legacy inbox paths.
         type: string
       automationEnabled:
-        description: |-
-          AutomationEnabled is the PER-CONVERSATION override an operator flips when
-          taking over, distinct from the container's AgentResponsesEnabled above.
-
-          nil means no override, so the conversation inherits the container switch.
-          It is read from SQL for every channel: it used to be looked up only for
-          WhatsApp, and every other channel silently reported "enabled" no matter
-          what was stored, so pausing a Telegram or Instagram conversation wrote
-          correctly and then read back as still running.
         type: boolean
       businessPhoneID:
         type: string
@@ -3270,20 +3540,6 @@ definitions:
       campaignName:
         type: string
       conversationStatus:
-        description: |-
-          ConversationStatus is new / ongoing / finished, read from SQL for every
-          channel for exactly the reason above.
-
-          It used to be looked up only through the WhatsApp entry repository, so on
-          every other channel the inbox row was built with no status at all and
-          rendered as "Nova" over a conversation the database had as ongoing. An
-          operator would reply, the row would rebuild, and the conversation
-          appeared to move backwards.
-
-          Carried on the row rather than fetched per entry: the status column is
-          already projected by the channel union that produces these rows, so this
-          costs nothing, and a per-entry lookup would be one query per row of the
-          inbox.
         type: string
       entryID:
         type: string
@@ -3324,20 +3580,9 @@ definitions:
   conversation.InboxEntry:
     properties:
       ai_handler:
-        allOf:
-        - $ref: '#/definitions/conversation.AIHandler'
-        description: |-
-          AIHandler names the AI attending the conversation (direct agent or workflow) and
-          the live workflow-run state. Nil when no AI is configured on the campaign. The
-          per-conversation on/off state remains AutomationEnabled above.
+        $ref: '#/definitions/conversation.AIHandler'
       analysis_phase:
-        allOf:
-        - $ref: '#/definitions/conversation.AnalysisPhase'
-        description: |-
-          AnalysisPhase says where an upcoming analysis has got to. Independent of
-          LatestAnalysis, which keeps showing the previous revision's verdict while
-          the next one is computed, and carried on the entry rather than only on
-          the socket so a page reload still shows it.
+        $ref: '#/definitions/conversation.AnalysisPhase'
       assigned_user_id:
         type: string
       assigned_username:
@@ -3359,10 +3604,7 @@ definitions:
       close_reason:
         $ref: '#/definitions/conversation.CloseReason'
       close_source:
-        allOf:
-        - $ref: '#/definitions/conversation.CloseSource'
-        description: Close provenance when status is finished (omitted when open /
-          cleared on reopen).
+        $ref: '#/definitions/conversation.CloseSource'
       closed_at:
         type: string
       conversation_status:
@@ -3376,15 +3618,6 @@ definitions:
           type: string
         type: array
       is_group:
-        description: |-
-          IsGroup marks a conversation whose other side is a group chat rather than
-          a person.
-
-          The UI needs this for more than a badge. A group has no number to dial, no
-          lead to open and no single person to attribute the thread to, so the row's
-          affordances have to be suppressed rather than relabelled — and until this
-          existed a group was indistinguishable from a contact in every list the CRM
-          renders.
         type: boolean
       labels:
         items:
@@ -3424,10 +3657,6 @@ definitions:
       unread_count:
         type: integer
       window_closed_reason:
-        description: |-
-          WindowClosedReason names WHY sending is blocked, so the composer can say
-          something true instead of inferring it from the absence of an expiry.
-          Empty when the window is open. See WindowClosedReason.
         type: string
       window_expires_at:
         type: string
@@ -3626,6 +3855,36 @@ definitions:
     - MessageTypeReaction
     - MessageTypeUnsupported
     - MessageTypePostShare
+  conversation.Outcome:
+    properties:
+      code:
+        type: string
+      isDurable:
+        type: boolean
+      label:
+        type: string
+      position:
+        type: integer
+    type: object
+  conversation.OutcomeCapture:
+    properties:
+      departmentIds:
+        items:
+          type: string
+        type: array
+      durableThreshold:
+        type: number
+      enabled:
+        type: boolean
+      enabledAt:
+        type: string
+      outcomes:
+        items:
+          $ref: '#/definitions/conversation.Outcome'
+        type: array
+      requireOnFinish:
+        type: boolean
+    type: object
   conversation.ReopenWindowRequest:
     properties:
       parameters:
@@ -3681,17 +3940,6 @@ definitions:
       actor_kind:
         $ref: '#/definitions/actor.Kind'
       actor_name:
-        description: |-
-          ActorName, FromName and ToName are display names resolved when the
-          timeline is READ. They are never persisted: the repository's toSchema
-          ignores them, so no migration and no new column.
-
-          Stored events only ever carried ids — a `replied` event knows the
-          sender's uuid, an `assigned` event knows from_user_id/to_user_id — so the
-          timeline could say "a human replied" and "somebody was assigned" but
-          never who, or to whom. Resolving on read rather than at emit time keeps
-          the send/assign hot paths free of a user lookup, follows a rename, and,
-          the reason it is worth doing at all, fills in every event already stored.
         type: string
       channel:
         type: string
@@ -3814,19 +4062,12 @@ definitions:
         example: move_stage
         type: string
       filter:
-        allOf:
-        - $ref: '#/definitions/crmfilter.Filter'
-        description: |-
-          client sends back verbatim the filter it rendered the table with. Used only
-          when targets is empty; the server re-runs it under the caller's own scope
-          rather than trusting a client-supplied id list.
+        $ref: '#/definitions/crmfilter.Filter'
       targets:
         items:
           $ref: '#/definitions/crmbulk.BulkTargetRequest'
         type: array
       value:
-        description: Filter is the same crmfilter.Filter shape GET /crm/entries takes,
-          so the
         example: stage_a1b2c3
         type: string
     type: object
@@ -3849,11 +4090,6 @@ definitions:
         example: false
         type: boolean
       matched:
-        description: |-
-          Matched and Truncated are set only for a filter-addressed bulk: how many
-          entries the filter selected, and whether the server's per-request cap stopped
-          short of all of them. Present so the UI can report "2000 de 5300" instead of
-          a bare count the operator cannot interpret.
         example: 340
         type: integer
       succeeded:
@@ -3997,7 +4233,6 @@ definitions:
       field:
         $ref: '#/definitions/crmfilter.Field'
       key:
-        description: only for FieldCustom
         type: string
       operator:
         $ref: '#/definitions/crmfilter.Operator'
@@ -4036,12 +4271,10 @@ definitions:
       id:
         type: string
       key:
-        description: stable machine key, unique per (workspace, object)
         type: string
       label:
         type: string
       objectType:
-        description: '"opportunity" | "conversation" | "lead"'
         type: string
       options:
         items:
@@ -4097,8 +4330,6 @@ definitions:
         example: quanto custa o plano?
         type: string
       role:
-        description: 'Role: "user" (o operador, no papel do lead) | "assistant" (o
-          agente).'
         example: user
         type: string
     type: object
@@ -4109,19 +4340,12 @@ definitions:
           $ref: '#/definitions/handlers.SimulateAgentHistoryMessage'
         type: array
       lead_id:
-        description: |-
-          LeadID opcional: simula a conversa como se fosse com este lead: as
-          memórias reais dele são injetadas (somente leitura).
         example: 5f1c…
         type: string
       message:
         example: quero saber os preços
         type: string
       session_memories:
-        description: |-
-          SessionMemories: fatos que o agente "memorizou" nesta simulação (as
-          chamadas de manage_lead_memory são interceptadas e nada persiste; o
-          cliente as reapresenta aqui para que o agente as veja no próximo turno).
         items:
           $ref: '#/definitions/handlers.SimulateAgentSessionMemory'
         type: array
@@ -4160,10 +4384,6 @@ definitions:
       result:
         type: string
       stubbed:
-        description: |-
-          Stubbed: false quando a ferramenta rodou de verdade (busca na base de
-          conhecimento, GET configurado) e o resultado é real; true quando foi
-          interceptada e o resultado é simulado.
         type: boolean
     type: object
   handlers.SimulationDebugResponse:
@@ -4198,9 +4418,6 @@ definitions:
       canPublish:
         type: boolean
       canSendMessages:
-        description: |-
-          Capability flags are derived server-side so the UI never has to reason
-          about scope strings.
         type: boolean
       createdAt:
         type: string
@@ -4233,14 +4450,10 @@ definitions:
       messagingCheckedAt:
         type: string
       messagingHealthy:
-        description: |-
-          MessagingHealthy is false when the Instagram-app "Allow Access to
-          Messages" toggle is off, a state in which DMs and webhooks fail silently.
         type: boolean
       name:
         type: string
       needsReconnect:
-        description: NeedsReconnect tells the UI to show a Reconnect call to action.
         type: boolean
       pipelineId:
         type: string
@@ -4266,8 +4479,6 @@ definitions:
   instagram.CommentResponse:
     properties:
       canDelete:
-        description: CanDelete mirrors IsOurs so the UI does not have to know the
-          rule.
         type: boolean
       fromIgsid:
         type: string
@@ -4278,10 +4489,6 @@ definitions:
       id:
         type: string
       isOurs:
-        description: |-
-          IsOurs marks a comment we authored. It is also the only case in which
-          deletion is possible, because Instagram requires the comment creator's
-          token to delete.
         type: boolean
       likeCount:
         type: integer
@@ -4312,9 +4519,6 @@ definitions:
       commentsCount:
         type: integer
       hasAsset:
-        description: |-
-          HasAsset is false when Instagram omitted media_url, which happens for
-          copyrighted content.
         type: boolean
       id:
         type: string
@@ -4722,9 +4926,6 @@ definitions:
   lead.ImportLeadsRequest:
     properties:
       onExisting:
-        description: |-
-          OnExisting is "fill_empty" (default) or "skip". Never an overwrite:
-          see lead.ExistingPolicy.
         example: fill_empty
         type: string
       rows:
@@ -4732,67 +4933,29 @@ definitions:
           $ref: '#/definitions/lead.ImportLeadRow'
         type: array
       seedInbox:
-        description: |-
-          SeedInbox opens an empty unofficial WhatsApp conversation for every
-          imported number, so the leads are answerable from the inbox without
-          anyone having to message first.
-
-          Opt-in, and false by default. It creates a conversation per row on the
-          workspace's oldest connected number, which is a real change to what the
-          inbox contains; a list imported only to be exported later should not get
-          one. Seeding never sends anything.
         type: boolean
     type: object
   lead.ImportLeadsResponse:
     properties:
       blocked:
-        description: |-
-          Blocked: how many of the matched are blocked, and so unreachable by a
-          campaign built on this list.
         type: integer
       created:
-        description: 'Created: leads that did not exist in this workspace before.'
         type: integer
       duplicate:
-        description: 'Duplicate: rows repeating a number that appeared earlier in
-          the SAME file.'
         type: integer
       inboxSeedError:
-        description: |-
-          InboxSeedError explains why seeding could not even be queued, when the
-          leads themselves imported fine. A separate field rather than a failed
-          response: the import succeeded, and telling the operator otherwise would
-          have them run it again.
         type: string
       inboxSeedQueued:
-        description: |-
-          InboxSeedQueued is how many numbers were handed to the inbox seeding job,
-          when the request asked for it.
-
-          Queued, not seeded: the work runs in the background, so this is a promise
-          about what was accepted and not a report of what now exists. The UI has to
-          word it that way, or an operator refreshes the inbox, sees nothing yet and
-          reads a lie.
         type: integer
       invalid:
-        description: 'Invalid: rows whose number is not a reachable phone number.'
         type: integer
       matched:
-        description: 'Matched: rows whose number the workspace already knew.'
         type: integer
       rejected:
-        description: |-
-          Rejected lists the rows that did not make it, capped at
-          MaxReportedRejections. Rejections are reported, never silently dropped:
-          an operator told "480 importados" out of 500 with no list of the other 20
-          has a file they cannot repair.
         items:
           $ref: '#/definitions/lead.ImportRejection'
         type: array
       rejectedTruncated:
-        description: |-
-          RejectedTruncated says the list above was cut, so the UI can say "+N"
-          rather than implying it showed everything.
         type: integer
     type: object
   lead.ImportRejection:
@@ -4804,9 +4967,6 @@ definitions:
         example: "11987"
         type: string
       reason:
-        description: |-
-          Reason is "invalid" (not a reachable number) or "duplicate" (repeated
-          earlier in the same file).
         example: invalid
         type: string
     type: object
@@ -4892,9 +5052,6 @@ definitions:
         additionalProperties:
           format: int64
           type: integer
-        description: |-
-          Keyed breakdowns. Each counts DISTINCT leads, never rows: a lead with
-          four `deal` memories is one lead under "deal".
         type: object
       named:
         type: integer
@@ -4932,10 +5089,6 @@ definitions:
       lastMemoryAt:
         type: string
       memories:
-        description: |-
-          Memories are on the row, not one click away: the count is what makes
-          "we know 6 things about this person" visible while scanning, and it is
-          the same number the memory filters segment on.
         type: integer
       name:
         type: string
@@ -4964,8 +5117,6 @@ definitions:
   leadmemory.CreateLeadMemoryRequest:
     properties:
       category:
-        description: 'Category: personal | preference | deal | objection | commitment
-          | event | other'
         example: preference
         type: string
       content:
@@ -4980,12 +5131,6 @@ definitions:
   leadmemory.LeadMemoryListResponse:
     properties:
       leadLinked:
-        description: |-
-          LeadLinked reports whether the id in the path resolved to a CRM lead.
-          False means this conversation has no lead behind it (an Instagram or
-          Telegram contact, or a WhatsApp contact whose bridge has not landed
-          yet), so the list is empty and a write would be refused. It lets the
-          panel distinguish "no memories yet" from "memories do not apply here".
         type: boolean
       memories:
         items:
@@ -4999,10 +5144,6 @@ definitions:
       actorId:
         type: string
       actorKind:
-        description: |-
-          ActorKind + ActorID say who wrote the current version: "ai" with
-          "ai:{agentId}", "human" with a user id, or "system". ActorLabel is the
-          resolved display name, best-effort: empty means "render the kind".
         type: string
       actorLabel:
         type: string
@@ -5191,10 +5332,8 @@ definitions:
   metaembeddedsignup.OnboardingConfigResponse:
     properties:
       provider:
-        description: '"meta" | "dialog360"'
         type: string
       requiresSlot:
-        description: true only for the 360dialog path
         type: boolean
     type: object
   oppboard_usecase.Board:
@@ -5219,20 +5358,12 @@ definitions:
       isLost:
         type: boolean
       isWon:
-        description: |-
-          IsWon/IsLost mark terminal stage columns so the board can style them and the
-          client can send the right status (won / lost + reason) on a move into them.
-          Only populated on the stage axis.
         type: boolean
       name:
         type: string
       total:
-        description: Total is the count of opportunities in the column across all
-          matches.
         type: integer
       valueTotal:
-        description: ValueTotal is SUM(value_cents) across all matches (customer BRL
-          cents).
         type: integer
     type: object
   opportunity.ConversationLink:
@@ -5240,7 +5371,6 @@ definitions:
       entryId:
         type: string
       entryType:
-        description: voice | whatsapp | support
         type: string
       opportunityId:
         type: string
@@ -5313,7 +5443,6 @@ definitions:
   opportunity.Opportunity:
     properties:
       carteiraId:
-        description: optional owner group / portfolio
         type: string
       closeDate:
         type: string
@@ -5331,7 +5460,6 @@ definitions:
       lostReasonId:
         type: string
       ownerId:
-        description: deal owner; seeded from the conversation assignee, then independent
         type: string
       pipelineId:
         type: string
@@ -5415,21 +5543,11 @@ definitions:
       total:
         type: integer
       truncated:
-        description: |-
-          Truncated is true when the file held more than MaxImportRows data rows; the
-          rows beyond the cap were NOT processed.
         type: boolean
     type: object
   pipeline.CreatePipelineRequest:
     properties:
       copyStagesFromPipelineId:
-        description: |-
-          CopyStagesFromPipelineID duplicates another funnel's columns. Ignored when
-          Stages is present.
-
-          It was missing from this struct until now, which is why every funnel came
-          out with the product defaults no matter which source the client named: the
-          field decoded into nothing and the use case saw an empty string.
         example: pipe_a1b2c3
         type: string
       departmentId:
@@ -5448,9 +5566,6 @@ definitions:
         example: 0
         type: integer
       stages:
-        description: |-
-          Stages are the columns the operator drew, in board order. The first is
-          where arriving conversations land.
         items:
           $ref: '#/definitions/pipeline.StageSeedRequest'
         type: array
@@ -5516,18 +5631,12 @@ definitions:
   pipeline.Usage:
     properties:
       campaigns:
-        description: Campaigns counts WhatsApp campaigns, official and unofficial,
-          routing here.
         type: integer
       channels:
-        description: Channels counts connected accounts and numbers routing here.
         type: integer
       entries:
-        description: Entries counts conversations currently sitting on this funnel's
-          stages.
         type: integer
       opportunities:
-        description: Opportunities counts deals on this funnel (sales funnels only).
         type: integer
     type: object
   queue_event.Stats:
@@ -5543,7 +5652,6 @@ definitions:
       connected:
         type: integer
       connected_within_sl:
-        description: 'ConnectedWithinSL: connected events with waited_ms <= ServiceLevelSeconds*1000.'
         type: integer
       enqueued:
         type: integer
@@ -5556,6 +5664,128 @@ definitions:
       service_level_pct:
         type: number
     type: object
+  report.CreateReportRequest:
+    properties:
+      format:
+        example: csv
+        type: string
+      kind:
+        example: attendance_overview
+        type: string
+      locale:
+        example: pt
+        type: string
+      params:
+        type: object
+    type: object
+  report.FailureCode:
+    enum:
+    - unknown_kind
+    - unsupported_format
+    - too_many_rows
+    - render_failed
+    - upload_failed
+    - renderer_not_configured
+    - source_unavailable
+    - cancelled
+    - workspace_required
+    - empty_result
+    type: string
+    x-enum-varnames:
+    - FailureUnknownKind
+    - FailureUnsupported
+    - FailureTooManyRows
+    - FailureRenderFailed
+    - FailureUploadFailed
+    - FailureNoRenderer
+    - FailureSourceFailed
+    - FailureCancelled
+    - FailureWorkspaceEmpty
+    - FailureEmptyResult
+  report.Format:
+    enum:
+    - csv
+    - xlsx
+    - pdf
+    type: string
+    x-enum-varnames:
+    - FormatCSV
+    - FormatXLSX
+    - FormatPDF
+  report.Job:
+    properties:
+      createdAt:
+        type: string
+      expiresAt:
+        type: string
+      failureCode:
+        $ref: '#/definitions/report.FailureCode'
+      filename:
+        type: string
+      finishedAt:
+        type: string
+      format:
+        $ref: '#/definitions/report.Format'
+      id:
+        type: string
+      kind:
+        $ref: '#/definitions/report.Kind'
+      locale:
+        type: string
+      params:
+        type: object
+      progress:
+        type: integer
+      requestedBy:
+        type: string
+      rowCount:
+        type: integer
+      sizeBytes:
+        type: integer
+      startedAt:
+        type: string
+      status:
+        $ref: '#/definitions/report.Status'
+      updatedAt:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  report.Kind:
+    enum:
+    - attendance_overview
+    - conversation_entries
+    - balance_transactions
+    - opportunities
+    type: string
+    x-enum-varnames:
+    - KindAttendanceOverview
+    - KindConversationEntries
+    - KindBalanceTransactions
+    - KindOpportunities
+  report.KindDescriptor:
+    properties:
+      formats:
+        items:
+          $ref: '#/definitions/report.Format'
+        type: array
+      kind:
+        $ref: '#/definitions/report.Kind'
+    type: object
+  report.Status:
+    enum:
+    - queued
+    - running
+    - done
+    - failed
+    - expired
+    type: string
+    x-enum-varnames:
+    - StatusQueued
+    - StatusRunning
+    - StatusDone
+    - StatusFailed
+    - StatusExpired
   response.ErrorResponse:
     properties:
       code:
@@ -5599,16 +5829,6 @@ definitions:
     - custom
     - none
     type: string
-    x-enum-comments:
-      GroupByCustom: uses GroupByKey to name a single-select custom field
-      GroupByNone: list-only view, no columns
-    x-enum-descriptions:
-    - ""
-    - ""
-    - ""
-    - ""
-    - uses GroupByKey to name a single-select custom field
-    - list-only view, no columns
     x-enum-varnames:
     - GroupByStage
     - GroupByLabel
@@ -5735,11 +5955,6 @@ definitions:
         example: msg_a1b2c3
         type: string
       scheduled_at:
-        description: |-
-          ScheduledAt is RFC3339 WITH the client's offset. The browser sends its
-          real timezone and the server stores UTC, so an operator in Manaus and one
-          in São Paulo picking "14:30" get two different instants, which is what
-          they both mean.
         example: "2026-08-13T14:30:00-03:00"
         type: string
       signed:
@@ -5778,10 +5993,6 @@ definitions:
       failureDetail:
         type: string
       failureReason:
-        description: |-
-          FailureReason is the machine-readable reason a message never arrived. The
-          UI must render dispatch_interrupted differently from the rest: it means
-          delivery could not be CONFIRMED, not that it definitely failed.
         type: string
       id:
         type: string
@@ -6060,9 +6271,6 @@ definitions:
         example: Em atendimento
         type: string
       pipelineId:
-        description: |-
-          PipelineID is the funnel the new stage joins. Omit it and the stage lands on
-          the workspace default funnel.
         example: pl_a1b2c3
         type: string
     type: object
@@ -6406,9 +6614,6 @@ definitions:
       example:
         type: string
       otpType:
-        description: |-
-          OTPType is COPY_CODE, ONE_TAP or ZERO_TAP on a type OTP button. See
-          authentication.go for why it is a field of its own rather than a Type.
         type: string
       phoneNumber:
         type: string
@@ -6432,12 +6637,6 @@ definitions:
   template.TemplateComponent:
     properties:
       addSecurityRecommendation:
-        description: |-
-          AddSecurityRecommendation and CodeExpirationMinutes are how an
-          authentication template's BODY and FOOTER are written: Meta owns the copy
-          and renders it per language, so the business sets a flag and a number
-          instead of text. Pointers because "not set" and "set to false/zero" are
-          different instructions to Meta. Nil on every other category.
         type: boolean
       buttons:
         items:
@@ -6594,9 +6793,6 @@ definitions:
   user.UpdateProfileRequest:
     properties:
       document:
-        description: |-
-          Document is the user's CPF (11 digits) or CNPJ (14 digits), with or without punctuation.
-          It can be set once (required before billing); changing an existing document is not allowed here.
         example: 123.456.789-09
         type: string
       picture:
@@ -6615,8 +6811,6 @@ definitions:
         example: individual
         type: string
       document:
-        description: Document is the masked CPF/CNPJ (only the last digits are shown),
-          empty when none is set.
         example: '***.***.**9-24'
         type: string
       email:
@@ -6625,9 +6819,6 @@ definitions:
       emailVerified:
         type: boolean
       hasDocument:
-        description: |-
-          HasDocument reports whether the user already has a CPF/CNPJ on file. The frontend uses it to
-          prompt for the document before billing (Asaas cannot create a charge without one).
         type: boolean
       id:
         example: usr_a1b2c3
@@ -6793,16 +6984,12 @@ definitions:
       businessPhoneId:
         type: string
       headerParameters:
-        description: |-
-          HeaderParameters fill a TEXT header. Kept separate from the body's because
-          Meta addresses them as different components.
         items:
           type: string
         type: array
       name:
         type: string
       parameters:
-        description: Parameters fill the template body, in order.
         items:
           type: string
         type: array
@@ -6816,16 +7003,10 @@ definitions:
       attemptId:
         type: string
       chargedMicros:
-        description: |-
-          ChargedMicros is what this send cost. Echoed back so the UI can show the
-          operator the price of the action they just took.
         type: integer
       conversationExisted:
         type: boolean
       entryId:
-        description: |-
-          EntryID and EntryType address the conversation the way the inbox does, so
-          the caller does not need to know this channel's storage by heart.
         type: string
       entryType:
         type: string
@@ -6834,15 +7015,8 @@ definitions:
       messageId:
         type: string
       recorded:
-        description: |-
-          Recorded is false when the message was delivered but could not be written
-          into the thread. The send still succeeded — reporting it as a failure would
-          invite a retry that charges twice.
         type: boolean
       replayed:
-        description: |-
-          Replayed reports that this exact request had already been sent, so nothing
-          was sent or charged a second time.
         type: boolean
     type: object
   whatsappoutreach.WindowOpenResponse:
@@ -6904,9 +7078,6 @@ definitions:
         example: https://exemplo.com.br/promo
         type: string
       otp_type:
-        description: |-
-          OTPType is required when Type is OTP: COPY_CODE, ONE_TAP or ZERO_TAP.
-          COPY_CODE is the one that needs no app-side integration.
         example: COPY_CODE
         type: string
       phone_number:
@@ -6925,12 +7096,6 @@ definitions:
   whatsapptemplate.TemplateComponentRequest:
     properties:
       add_security_recommendation:
-        description: |-
-          AddSecurityRecommendation (on BODY) and CodeExpirationMinutes (on FOOTER)
-          are how an AUTHENTICATION template is written: Meta owns the wording and
-          renders both lines per language, so the client sends a flag and a number
-          instead of text. Pointers because omitting them and sending false/0 mean
-          different things to Meta.
         example: true
         type: boolean
       buttons:
@@ -7072,6 +7237,10 @@ definitions:
             $ref: '#/definitions/working_hours.Window'
           type: array
         type: object
+      holidays:
+        items:
+          type: string
+        type: array
       timezone:
         example: America/Sao_Paulo
         type: string
@@ -7463,19 +7632,18 @@ definitions:
   workspace_config.UpdateWorkspaceConfigOwnerInput:
     properties:
       autoCloseEnabled:
-        description: Conversation auto-close policy (nil = not sent).
         type: boolean
       autoCloseIdleAfterHours:
         type: integer
       autoCloseMaxAgeAfterHours:
         type: integer
       autoCloseMaxAgeEnabled:
-        description: Absolute inactivity max-age (nil = not sent).
         type: boolean
+      outcomeCapture:
+        $ref: '#/definitions/conversation.OutcomeCapture'
       rouletteLastSeenWindowHours:
         type: integer
       rouletteMode:
-        description: Roulette distribution policy (nil = not sent).
         type: string
       rouletteRescueAfterMinutes:
         type: integer
@@ -7484,17 +7652,7 @@ definitions:
       skipAdminAssignment:
         type: boolean
       workingHours:
-        allOf:
-        - $ref: '#/definitions/working_hours.Spec'
-        description: |-
-          WorkingHours sets the workspace schedule. Nil means "not sent", exactly
-          like every field above.
-
-          ClearWorkingHours is separate because a pointer cannot tell "absent" from
-          "explicitly null", and those mean opposite things here: leave the schedule
-          alone, versus go back to operating around the clock. The HTTP layer, which
-          is the only place that can see the difference, translates a JSON null into
-          this flag.
+        $ref: '#/definitions/working_hours.Spec'
     type: object
   workspace_plan.BillingCycle:
     enum:
@@ -7566,33 +7724,20 @@ definitions:
         example: cfg_a1b2c3
         type: string
       includedUnofficialWhatsAppInstances:
-        description: |-
-          IncludedUnofficialWhatsAppInstances is the platform-granted allowance of
-          linked-device WhatsApp numbers. Readable by the workspace so its own
-          screens can explain why the connect button is disabled; writable only
-          through the /admin route.
         example: 2
         type: integer
+      outcomeCapture:
+        $ref: '#/definitions/conversation.OutcomeCapture'
       rouletteLastSeenWindowHours:
-        description: |-
-          RouletteLastSeenWindowHours is how long after going offline an agent stays
-          in the ring (1..168). Only meaningful in last_seen mode.
         example: 48
         type: integer
       rouletteMode:
-        description: |-
-          RouletteMode is "online" (distribute among connected agents, the default)
-          or "last_seen" (distribute among everyone online within the window).
         example: online
         type: string
       rouletteRescueAfterMinutes:
-        description: RouletteRescueAfterMinutes is the owner's deadline (1..1440).
         example: 15
         type: integer
       rouletteRescueEnabled:
-        description: |-
-          RouletteRescueEnabled reassigns a conversation whose owner never opened
-          it. Only acts in last_seen mode.
         example: true
         type: boolean
       skipAdminAssignment:
@@ -7604,15 +7749,7 @@ definitions:
         example: usr_a1b2c3
         type: string
       workingHours:
-        allOf:
-        - $ref: '#/definitions/working_hours.Spec'
-        description: |-
-          WorkingHours is the workspace's weekly schedule, or absent when none is
-          set — which means the roulette rescue runs around the clock.
-
-          While it is set, the rescue is paused outside these hours AND the owner's
-          deadline only counts the minutes inside them, so a conversation handed out
-          five minutes before closing still gets its full deadline the next morning.
+        $ref: '#/definitions/working_hours.Spec'
       workspaceId:
         example: ws_a1b2c3
         type: string
@@ -7677,11 +7814,7 @@ definitions:
       updatedAt:
         type: string
       workingHours:
-        allOf:
-        - $ref: '#/definitions/working_hours.Spec'
-        description: |-
-          WorkingHours is set only when this department overrides the workspace
-          schedule; absent means it inherits.
+        $ref: '#/definitions/working_hours.Spec'
       workspaceId:
         example: ws_a1b2c3
         type: string
@@ -7695,11 +7828,7 @@ definitions:
         example: Suporte
         type: string
       workingHours:
-        allOf:
-        - $ref: '#/definitions/working_hours.Spec'
-        description: |-
-          WorkingHours is this department's own weekly schedule. Send null to clear
-          it and inherit the workspace's; omit it to leave it unchanged.
+        $ref: '#/definitions/working_hours.Spec'
     type: object
   workspacepricing.PublicExchangeRateResponse:
     properties:
@@ -8045,6 +8174,26 @@ paths:
       summary: Tempo de primeira resposta (FRT)
       tags:
       - Atendimento
+  /attendance/metrics:
+    get:
+      description: Lista as métricas de atendimento que podem receber uma meta, com
+        o tipo de valor e a direção (maior ou menor é melhor).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/attendance.MetricSpec'
+              type: array
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Métricas que aceitam meta
+      tags:
+      - Atendimento
   /attendance/occupancy:
     get:
       description: Retorna a ocupação dos atendentes do workspace (tempo em chamada
@@ -8114,6 +8263,14 @@ paths:
         in: query
         name: channel
         type: string
+      - description: Métrica de ordenação da equipe (resolved, volume, revenue_cents)
+        in: query
+        name: rank_metric
+        type: string
+      - description: Meses da série histórica (1 a 24, padrão 13)
+        in: query
+        name: trend_buckets
+        type: integer
       - description: 'Incluir agentes de IA (padrão: true)'
         in: query
         name: include_ai
@@ -8254,6 +8411,108 @@ paths:
       security:
       - BearerAuth: []
       summary: Estatísticas de atendentes
+      tags:
+      - Atendimento
+  /attendance/targets:
+    get:
+      description: Lista as metas do workspace para o período informado (mês). Usuários
+        restritos a departamentos veem apenas as metas do próprio escopo.
+      parameters:
+      - description: 'Período no formato YYYY-MM (padrão: mês atual)'
+        in: query
+        name: period
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/attendance_target.Target'
+              type: array
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar metas de atendimento
+      tags:
+      - Atendimento
+    put:
+      consumes:
+      - application/json
+      description: Cria ou atualiza a meta de uma métrica para um período, no escopo
+        do workspace, de um departamento ou de um membro. Períodos já encerrados são
+        recusados.
+      parameters:
+      - description: Meta a gravar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/attendance.TargetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/attendance_target.Target'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Definir meta de atendimento
+      tags:
+      - Atendimento
+  /attendance/targets/{id}:
+    delete:
+      description: Remove a meta informada. Metas de períodos já encerrados não podem
+        ser removidas.
+      parameters:
+      - description: ID da meta
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remover meta de atendimento
       tags:
       - Atendimento
   /attendance/windows:
@@ -14267,6 +14526,139 @@ paths:
       summary: Desbloquear um link curto protegido por senha
       tags:
       - Links Curtos
+  /reports:
+    get:
+      description: Lista os relatórios solicitados recentemente pelo workspace, do
+        mais novo para o mais antigo.
+      parameters:
+      - description: Quantidade máxima (padrão 25)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/report.Job'
+              type: array
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Listar relatórios recentes
+      tags:
+      - Relatórios
+    post:
+      consumes:
+      - application/json
+      description: Coloca a geração do relatório na fila e devolve o identificador
+        do trabalho. O arquivo fica pronto de forma assíncrona; acompanhe pelo status.
+      parameters:
+      - description: Relatório a gerar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/report.CreateReportRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/report.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Solicitar um relatório
+      tags:
+      - Relatórios
+  /reports/{id}:
+    get:
+      description: 'Devolve a situação do relatório solicitado: na fila, processando,
+        pronto, com falha ou expirado.'
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/report.Job'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Situação de um relatório
+      tags:
+      - Relatórios
+  /reports/{id}/file:
+    get:
+      description: Devolve o arquivo gerado. Responde 409 enquanto o relatório não
+        está pronto e 410 quando já expirou.
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Arquivo do relatório
+          schema:
+            type: string
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Baixar o arquivo do relatório
+      tags:
+      - Relatórios
+  /reports/kinds:
+    get:
+      description: Lista os tipos de relatório que este servidor sabe gerar e os formatos
+        aceitos por cada um.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/report.KindDescriptor'
+              type: array
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tipos de relatório disponíveis
+      tags:
+      - Relatórios
   /saved-views:
     get:
       description: Retorna as visões salvas do usuário para o tipo de objeto informado
@@ -16495,10 +16887,10 @@ paths:
       - Telefones do WhatsApp Business
   /whatsapp/campaigns/{id}/entries/export:
     get:
-      description: Exporta em CSV as entradas (contatos) de uma campanha do WhatsApp
-        do workspace, aplicando os filtros informados na query. O parâmetro status
-        aceita múltiplos valores, separados por vírgula ou repetidos. O arquivo inclui
-        BOM UTF-8 para abertura correta no Excel.
+      description: Coloca na fila a exportacao em CSV das entradas (contatos) de uma
+        campanha do WhatsApp do workspace, aplicando os filtros informados na query.
+        O parâmetro status aceita múltiplos valores, separados por vírgula ou repetidos.
+        O arquivo inclui BOM UTF-8 para abertura correta no Excel.
       parameters:
       - description: Identificador da campanha
         in: path
@@ -16550,12 +16942,12 @@ paths:
         name: attendanceQualityMax
         type: integer
       produces:
-      - text/csv
+      - application/json
       responses:
-        "200":
-          description: Arquivo CSV das entradas
+        "202":
+          description: Relatorio na fila; acompanhe por /reports/{id}
           schema:
-            type: file
+            $ref: '#/definitions/report.Job'
         "400":
           description: Bad Request
           schema:
@@ -16566,10 +16958,6 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
         "404":
           description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "429":
-          description: Too Many Requests
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "500":
@@ -16583,12 +16971,13 @@ paths:
       - Campanhas do WhatsApp
   /whatsapp/campaigns/entries/export:
     get:
-      description: Exporta em CSV os leads de TODAS as campanhas do workspace de uma
-        só vez, no mesmo recorte do resumo de disparos (período de criação da campanha,
-        tipo e departamento). Use status para escolher os envios desejados — por exemplo
-        status=SENT,DELIVERED,READ para os leads que foram enviados, entregues e lidos.
-        Sem status, retorna todos. O arquivo inclui uma coluna campaign identificando
-        a origem de cada linha e BOM UTF-8 para abertura correta no Excel.
+      description: Coloca na fila a exportacao em CSV dos leads de TODAS as campanhas
+        do workspace de uma só vez, no mesmo recorte do resumo de disparos (período
+        de criação da campanha, tipo e departamento). Use status para escolher os
+        envios desejados — por exemplo status=SENT,DELIVERED,READ para os leads que
+        foram enviados, entregues e lidos. Sem status, retorna todos. O arquivo inclui
+        uma coluna campaign identificando a origem de cada linha e BOM UTF-8 para
+        abertura correta no Excel.
       parameters:
       - description: 'Status dos envios (lista: SENT,DELIVERED,READ). Vazio = todos'
         in: query
@@ -16647,12 +17036,12 @@ paths:
         name: attendanceQualityMax
         type: integer
       produces:
-      - text/csv
+      - application/json
       responses:
-        "200":
-          description: Arquivo CSV dos leads
+        "202":
+          description: Relatorio na fila; acompanhe por /reports/{id}
           schema:
-            type: file
+            $ref: '#/definitions/report.Job'
         "400":
           description: Bad Request
           schema:
@@ -16667,10 +17056,6 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
         "413":
           description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "429":
-          description: Too Many Requests
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "500":

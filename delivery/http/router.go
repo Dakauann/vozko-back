@@ -39,6 +39,7 @@ import (
 	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
+	reporthttp "vozko/delivery/http/report"
 	savedviewhttp "vozko/delivery/http/savedview"
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
@@ -131,6 +132,7 @@ type router struct {
 	knowledgeBaseHandler           *handlers.KnowledgeBaseHandler
 	shortLinkHandler               *shortlinkhttp.ShortLinkHandler
 	exportHandler                  *exporthttp.ExportHandler
+	reportHandler                  *reporthttp.ReportHandler
 	invoiceHandler                 *invoicehttp.InvoiceHandler
 	callBillingHandler             *callbillinghttp.CallBillingHandler
 	callsHandler                   *handlers.CallsHandler
@@ -234,6 +236,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	knowledgeBaseHandler *handlers.KnowledgeBaseHandler,
 	shortLinkHandler *shortlinkhttp.ShortLinkHandler,
 	exportHandler *exporthttp.ExportHandler,
+	reportHandler *reporthttp.ReportHandler,
 	invoiceHandler *invoicehttp.InvoiceHandler,
 	callBillingHandler *callbillinghttp.CallBillingHandler,
 	callsHandler *handlers.CallsHandler,
@@ -339,6 +342,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		knowledgeBaseHandler:           knowledgeBaseHandler,
 		shortLinkHandler:               shortLinkHandler,
 		exportHandler:                  exportHandler,
+		reportHandler:                  reportHandler,
 		invoiceHandler:                 invoiceHandler,
 		callBillingHandler:             callBillingHandler,
 		callsHandler:                   callsHandler,
@@ -448,6 +452,7 @@ func (r *router) setupRoutes() {
 	r.setupKnowledgeBaseRoutes(protected)
 	r.setupShortLinkRoutes(protected)
 	r.setupExportRoutes(protected)
+	r.setupReportRoutes(protected)
 	r.setupWorkspaceConfigRoutes(protected)
 	r.setupWorkspaceSubscriptionRoutes(protected)
 	r.setupWorkspaceAddonRoutes(protected)
@@ -908,6 +913,10 @@ func (r *router) setupShortLinkRoutes(protected *mux.Router) {
 
 func (r *router) setupExportRoutes(protected *mux.Router) {
 	exporthttp.RegisterRoutes(protected, r.exportHandler, r.ac)
+}
+
+func (r *router) setupReportRoutes(protected *mux.Router) {
+	reporthttp.RegisterProtectedRoutes(protected, r.reportHandler, r.ac)
 }
 
 func (r *router) setupShortLinkPublicRoutes() {

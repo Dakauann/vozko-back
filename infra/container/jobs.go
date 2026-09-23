@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"vozko/domain/shared"
@@ -14,6 +15,8 @@ import (
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
 )
+
+const reportRetentionSweepLimit = 500
 
 func (c *Container) initJobRunner() {
 	cron_job := cronPackage.NewOrderCleanupJob(c.useCases.cancelExpiredOrder)
@@ -95,6 +98,20 @@ func (c *Container) initJobRunner() {
 		c.jobRunner.SetWhatsAppTemplateSendJobs(cronPackage.CtxJobFunc(func(ctx context.Context) error {
 			_, err := c.useCases.reconcileTemplateSends.Execute(ctx)
 			return err
+		}))
+	}
+
+	if c.services.reportService != nil {
+		reportService := c.services.reportService
+		c.jobRunner.SetReportRetentionJobs(cronPackage.CtxJobFunc(func(context.Context) error {
+			expired, err := reportService.ExpireOldFiles(reportRetentionSweepLimit)
+			if err != nil {
+				return err
+			}
+			if expired > 0 {
+				log.Printf("[cron] report_retention: expired %d report(s)", expired)
+			}
+			return nil
 		}))
 	}
 

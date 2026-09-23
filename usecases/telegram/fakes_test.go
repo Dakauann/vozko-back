@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"vozko/domain/conversation"
 
 	"vozko/domain/shared"
 	tgdomain "vozko/domain/telegram"
@@ -243,7 +244,7 @@ func (f *fakeConversations) SetAutomationEnabled(context.Context, string, *bool)
 	return nil
 }
 
-func (f *fakeConversations) SetStatus(context.Context, string, string, string, string, *time.Time) error {
+func (f *fakeConversations) SetStatus(context.Context, string, conversation.StatusWrite) error {
 	return nil
 }
 

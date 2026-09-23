@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/conversation"
 	"vozko/domain/working_hours"
 	workspaceconfigdomain "vozko/domain/workspace_config"
 	"vozko/infra/http/middleware"
@@ -98,6 +99,7 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 			"rouletteRescueEnabled":       "boolean (optional)",
 			"rouletteRescueAfterMinutes":  "number (optional, 1..1440)",
 			"workingHours":                "object (optional), or null to clear",
+			"outcomeCapture":              "object (optional), or null to clear",
 		})
 		return
 	}
@@ -110,13 +112,21 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 	input.WorkingHours = hours
 	input.ClearWorkingHours = clearHours
 
+	capture, clearCapture, err := conversation.DecodeOutcomeCapturePatch(body, "outcomeCapture")
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	input.OutcomeCapture = capture
+	input.ClearOutcomeCapture = clearCapture
+
 	cfg, err := h.updateOwnerConfig.Execute(r.Context(), workspaceID, claims.UserID, claims.Role, input)
 	if err != nil {
 		if errors.Is(err, workspaceconfigdomain.ErrForbidden) || errors.Is(err, workspaceconfigdomain.ErrUnauthorized) {
 			response.WriteError(w, http.StatusForbidden, "Insufficient permissions to update workspace configuration", nil)
 			return
 		}
-		if working_hours.IsPolicyError(err) {
+		if working_hours.IsPolicyError(err) || conversation.IsOutcomePolicyError(err) {
 			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 			return
 		}

@@ -23,7 +23,8 @@ type WhatsAppCampaignEntry struct {
 	ConversationStatus      string         `gorm:"size:20;not null;default:'';index:idx_wce_conv_status"`
 	CloseSource             string         `gorm:"size:20"`
 	CloseReason             string         `gorm:"size:40"`
-	ClosedAt                *time.Time     `gorm:"column:closed_at"`
+	CloseOutcome            string         `gorm:"size:64;not null;default:'';index:idx_wce_close_outcome,priority:2"`
+	ClosedAt                *time.Time     `gorm:"column:closed_at;index:idx_wce_close_outcome,priority:1"`
 	CreatedAt               time.Time      `gorm:"autoCreateTime;index:idx_wce_campaign_status_created,priority:3;index:idx_wce_lead_created,priority:2"`
 	UpdatedAt               time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt               gorm.DeletedAt `gorm:"index;index:idx_wce_campaign_del,priority:2"`

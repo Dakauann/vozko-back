@@ -99,9 +99,13 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 	note, _ := ctx.Node.Config["note"].(string)
 	note = strings.TrimSpace(workflow.Interpolate(note, ctx.State, nil))
 
+	outcomeCode, _ := ctx.Node.Config["outcome_code"].(string)
+	outcomeCode = strings.TrimSpace(workflow.Interpolate(outcomeCode, ctx.State, nil))
+
 	if err := e.status.Finish(entryID, entryType, conversation.FinishOptions{
-		Source: conversation.CloseSourceSystem,
-		Reason: conversation.CloseReasonWorkflow,
+		Source:      conversation.CloseSourceSystem,
+		Reason:      conversation.CloseReasonWorkflow,
+		OutcomeCode: outcomeCode,
 	}); err != nil {
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),

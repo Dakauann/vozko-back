@@ -3,6 +3,7 @@ package instagram
 import (
 	"context"
 	"time"
+	"vozko/domain/conversation"
 
 	"vozko/domain/shared"
 )
@@ -65,7 +66,7 @@ type ConversationRepository interface {
 	RecordInbound(ctx context.Context, id string, at time.Time) error
 	RecordOutbound(ctx context.Context, id string, at time.Time) error
 	SetIGConversationID(ctx context.Context, id, igConversationID string) error
-	SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error
+	SetStatus(ctx context.Context, id string, write conversation.StatusWrite) error
 	SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error
 	CountByStatus(ctx context.Context, workspaceID, igAccountID string) (map[string]int64, error)
 	StatusForEntry(ctx context.Context, id string) (string, error)

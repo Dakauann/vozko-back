@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"vozko/domain/conversation"
 	"vozko/domain/working_hours"
 )
 
@@ -68,6 +69,8 @@ type WorkspaceConfig struct {
 	RouletteRescueAfterMinutes  int    `json:"rouletteRescueAfterMinutes"`
 
 	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
+
+	OutcomeCapture *conversation.OutcomeCapture `json:"outcomeCapture,omitempty"`
 
 	AudienceDailyCap        int `json:"audienceDailyCap"`
 	AudienceDebounceMinutes int `json:"audienceDebounceMinutes"`
@@ -201,6 +204,9 @@ type UpdateWorkspaceConfigOwnerInput struct {
 
 	WorkingHours      *working_hours.Spec `json:"workingHours,omitempty"`
 	ClearWorkingHours bool                `json:"-"`
+
+	OutcomeCapture      *conversation.OutcomeCapture `json:"outcomeCapture,omitempty"`
+	ClearOutcomeCapture bool                         `json:"-"`
 }
 
 type GetWorkspaceConfigUseCase interface {

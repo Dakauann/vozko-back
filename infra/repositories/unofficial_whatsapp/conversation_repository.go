@@ -10,8 +10,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"vozko/domain/conversation"
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/infra/database/schema"
+	conversation_repository "vozko/infra/repositories/conversation"
 )
 
 type conversationRepository struct {
@@ -202,15 +204,10 @@ func (r *conversationRepository) touchClocks(ctx context.Context, id string, at 
 	return nil
 }
 
-func (r *conversationRepository) SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error {
+func (r *conversationRepository) SetStatus(ctx context.Context, id string, write conversation.StatusWrite) error {
 	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"conversation_status": status,
-			"close_source":        closeSource,
-			"close_reason":        closeReason,
-			"closed_at":           closedAt,
-		})
+		Updates(conversation_repository.StatusUpdates(write))
 	if result.Error != nil {
 		return result.Error
 	}

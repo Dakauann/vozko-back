@@ -62,6 +62,7 @@ func (c *Container) initRouter() {
 		c.handlers.knowledgeBase,
 		c.handlers.shortLink,
 		c.handlers.export,
+		c.handlers.report,
 		c.handlers.invoice,
 		c.handlers.callBilling,
 		c.handlers.calls,

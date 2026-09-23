@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -2672,10 +2673,15 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 
 	if status == conversation.ConversationStatusFinished {
 		if err := h.statusUpdater.Finish(p.EntryID, p.EntryType, conversation.FinishOptions{
-			Source:  conversation.CloseSourceHuman,
-			Reason:  conversation.CloseReasonManual,
-			ActorID: conn.UserID,
+			Source:      conversation.CloseSourceHuman,
+			Reason:      conversation.CloseReasonManual,
+			ActorID:     conn.UserID,
+			OutcomeCode: p.OutcomeCode,
 		}); err != nil {
+			if code, message, outcomes, handled := h.outcomeCaptureError(err, p); handled {
+				h.sendConversationOutcomeError(conn, code, message, p, currentStatus, outcomes)
+				return
+			}
 			h.sendConversationStatusError(
 				conn,
 				"internal_error",
@@ -3342,6 +3348,16 @@ func (h *ConversationHub) sendConversationStatusError(
 	p SetConversationStatusPayload,
 	previousStatus conversation.ConversationStatus,
 ) {
+	h.sendConversationOutcomeError(conn, code, message, p, previousStatus, nil)
+}
+
+func (h *ConversationHub) sendConversationOutcomeError(
+	conn *WSConnection,
+	code, message string,
+	p SetConversationStatusPayload,
+	previousStatus conversation.ConversationStatus,
+	outcomes []conversation.Outcome,
+) {
 	h.sendToConnection(conn, &WSOutgoingMessage{
 		Type: WSEventError,
 		Payload: ErrorPayload{
@@ -3351,8 +3367,33 @@ func (h *ConversationHub) sendConversationStatusError(
 			EntryType:      p.EntryType,
 			Status:         p.Status,
 			PreviousStatus: previousStatus.String(),
+			Outcomes:       outcomes,
 		},
 	})
+}
+
+func (h *ConversationHub) outcomeCaptureError(
+	err error,
+	p SetConversationStatusPayload,
+) (code, message string, outcomes []conversation.Outcome, handled bool) {
+	switch {
+	case errors.Is(err, conversation.ErrOutcomeRequired):
+		code, message = "outcome_required", "Choose an outcome before finishing this conversation"
+	case errors.Is(err, conversation.ErrOutcomeUnknown):
+		code, message = "outcome_unknown", "That outcome is not in this workspace catalogue"
+	default:
+		return "", "", nil, false
+	}
+
+	reader, ok := h.statusUpdater.(interface {
+		OutcomeCapture(entryID, entryType string) (*conversation.OutcomeCapture, error)
+	})
+	if ok {
+		if capture, readErr := reader.OutcomeCapture(p.EntryID, p.EntryType); readErr == nil && capture != nil {
+			outcomes = capture.Outcomes
+		}
+	}
+	return code, message, outcomes, true
 }
 
 func (h *ConversationHub) SendTemplateForEntry(entryID, entryType, templateID string, parameters []string, userID, workspaceID string, isAdmin bool) (string, error) {

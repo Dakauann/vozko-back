@@ -351,12 +351,13 @@ type SubscribedPayload struct {
 }
 
 type ErrorPayload struct {
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	EntryID        string `json:"entry_id,omitempty"`
-	EntryType      string `json:"entry_type,omitempty"`
-	Status         string `json:"status,omitempty"`
-	PreviousStatus string `json:"previous_status,omitempty"`
+	Code           string                 `json:"code"`
+	Message        string                 `json:"message"`
+	EntryID        string                 `json:"entry_id,omitempty"`
+	EntryType      string                 `json:"entry_type,omitempty"`
+	Status         string                 `json:"status,omitempty"`
+	PreviousStatus string                 `json:"previous_status,omitempty"`
+	Outcomes       []conversation.Outcome `json:"outcomes,omitempty"`
 }
 
 type InboxPayload struct {
@@ -460,9 +461,10 @@ type WaitingCallSlotPayload struct {
 }
 
 type SetConversationStatusPayload struct {
-	EntryID   string `json:"entry_id"`
-	EntryType string `json:"entry_type"`
-	Status    string `json:"status"`
+	EntryID     string `json:"entry_id"`
+	EntryType   string `json:"entry_type"`
+	Status      string `json:"status"`
+	OutcomeCode string `json:"outcome_code,omitempty"`
 }
 
 type ConversationStatusUpdatePayload struct {

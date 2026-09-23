@@ -105,6 +105,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	)
 	c.services.conversationStatusService = conversationStatusUpdater
 	c.services.campaignWorkspaceResolver = workspaceResolver
+	c.wireOutcomeCapture()
 	if c.services.crmTelemetryPublisher == nil && c.services.crmTelemetryPub != nil {
 		drops := crm_telemetry_usecase.NewLogDropRecorder()
 		c.services.crmTelemetryPublisher = crm_telemetry_usecase.NewPublisherWithDrops(c.services.crmTelemetryPub, drops)

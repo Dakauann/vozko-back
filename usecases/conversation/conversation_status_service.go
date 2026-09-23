@@ -2,6 +2,8 @@ package conversation_usecase
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -17,7 +19,15 @@ type AISessionEnder interface {
 
 type ConversationStatusStore interface {
 	Status(ctx context.Context, entryID string) (string, error)
-	SetStatus(ctx context.Context, entryID, status, closeSource, closeReason string, closedAt *time.Time) error
+	SetStatus(ctx context.Context, entryID string, write conversation.StatusWrite) error
+}
+
+type OutcomeCaptureReader interface {
+	OutcomeCaptureFor(ctx context.Context, workspaceID string) (*conversation.OutcomeCapture, error)
+}
+
+type EntryDepartmentResolver interface {
+	DepartmentIDForEntry(ctx context.Context, entryID, entryType string) (string, error)
 }
 
 type ConversationStatusService struct {
@@ -27,6 +37,9 @@ type ConversationStatusService struct {
 	events           conv_event.Logger
 	resolveWorkspace func(entryID, entryType string) string
 	aiSessions       AISessionEnder
+	outcomes         OutcomeCaptureReader
+	departments      EntryDepartmentResolver
+	now              func() time.Time
 }
 
 type ConversationStatusCounter func(ctx context.Context, workspaceID, accountID string) (map[string]int64, error)
@@ -79,6 +92,74 @@ func (s *ConversationStatusService) SetAISessionEnder(e AISessionEnder) {
 	}
 }
 
+func (s *ConversationStatusService) SetOutcomeCaptureReader(r OutcomeCaptureReader) {
+	if s != nil {
+		s.outcomes = r
+	}
+}
+
+func (s *ConversationStatusService) SetEntryDepartmentResolver(r EntryDepartmentResolver) {
+	if s != nil {
+		s.departments = r
+	}
+}
+
+func (s *ConversationStatusService) SetClock(clock func() time.Time) {
+	if s != nil && clock != nil {
+		s.now = clock
+	}
+}
+
+func (s *ConversationStatusService) clock() time.Time {
+	if s == nil || s.now == nil {
+		return time.Now().UTC()
+	}
+	return s.now()
+}
+
+var ErrOutcomeWorkspaceUnknown = errors.New("conversation: cannot resolve the workspace that owns this conversation")
+
+func (s *ConversationStatusService) OutcomeCapture(entryID, entryType string) (*conversation.OutcomeCapture, error) {
+	if s == nil || s.outcomes == nil {
+		return nil, nil
+	}
+	if s.resolveWorkspace == nil {
+		return nil, ErrOutcomeWorkspaceUnknown
+	}
+	workspaceID := s.resolveWorkspace(entryID, entryType)
+	if workspaceID == "" {
+		return nil, ErrOutcomeWorkspaceUnknown
+	}
+	return s.outcomes.OutcomeCaptureFor(context.Background(), workspaceID)
+}
+
+func (s *ConversationStatusService) resolveOutcome(
+	entryID, entryType string,
+	source conversation.CloseSource,
+	reason conversation.CloseReason,
+	code string,
+) (string, error) {
+	capture, err := s.OutcomeCapture(entryID, entryType)
+	if err != nil {
+		return "", fmt.Errorf("conversation: reading the outcome capture policy: %w", err)
+	}
+	if capture == nil || !capture.Enabled {
+		return "", nil
+	}
+
+	departmentID := ""
+	if len(capture.DepartmentIDs) > 0 {
+		if s.departments == nil {
+			return "", conversation.ErrOutcomeRequired
+		}
+		departmentID, err = s.departments.DepartmentIDForEntry(context.Background(), entryID, entryType)
+		if err != nil {
+			return "", fmt.Errorf("conversation: resolving the entry department for outcome capture: %w", err)
+		}
+	}
+	return capture.Resolve(source, reason, code, departmentID, s.clock())
+}
+
 func (s *ConversationStatusService) GetConversationStatus(entryID, entryType string) conversation.ConversationStatus {
 	if entryType == string(shared.EntryTypeWhatsApp) {
 		if e, err := s.whatsappRepo.FindByID(entryID); err == nil && e != nil {
@@ -101,10 +182,10 @@ func (s *ConversationStatusService) SetConversationStatus(entryID, entryType str
 			Reason: conversation.CloseReasonManual,
 		})
 	}
-	return s.applyStatus(entryID, entryType, status, false, "", "", false)
+	return s.applyStatus(entryID, entryType, status, false, "", "", "", false)
 }
 
-func (s *ConversationStatusService) Finish(entryID, entryType string, opts conversation.FinishOptions) error {
+func normalizeCloseMeta(opts conversation.FinishOptions) (conversation.CloseSource, conversation.CloseReason) {
 	source := opts.Source
 	reason := opts.Reason
 	if !source.Valid() {
@@ -120,7 +201,16 @@ func (s *ConversationStatusService) Finish(entryID, entryType string, opts conve
 			reason = conversation.CloseReasonManual
 		}
 	}
-	return s.applyStatusActor(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, false, opts.ActorID)
+	return source, reason
+}
+
+func (s *ConversationStatusService) Finish(entryID, entryType string, opts conversation.FinishOptions) error {
+	source, reason := normalizeCloseMeta(opts)
+	outcome, err := s.resolveOutcome(entryID, entryType, source, reason, opts.OutcomeCode)
+	if err != nil {
+		return err
+	}
+	return s.applyStatusActor(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, outcome, false, opts.ActorID)
 }
 
 func (s *ConversationStatusService) applyStatus(
@@ -129,9 +219,10 @@ func (s *ConversationStatusService) applyStatus(
 	setClose bool,
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
+	outcome string,
 	clearClose bool,
 ) error {
-	return s.applyStatusActor(entryID, entryType, status, setClose, source, reason, clearClose, "")
+	return s.applyStatusActor(entryID, entryType, status, setClose, source, reason, outcome, clearClose, "")
 }
 
 func (s *ConversationStatusService) applyStatusActor(
@@ -140,6 +231,7 @@ func (s *ConversationStatusService) applyStatusActor(
 	setClose bool,
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
+	outcome string,
 	clearClose bool,
 	actorID string,
 ) error {
@@ -148,6 +240,7 @@ func (s *ConversationStatusService) applyStatusActor(
 		return nil
 	}
 
+	closedAt := s.clock()
 	var err error
 	switch {
 	case entryType == string(shared.EntryTypeWhatsApp):
@@ -157,10 +250,10 @@ func (s *ConversationStatusService) applyStatusActor(
 			ClearCloseMeta: clearClose,
 		}
 		if setClose {
-			now := time.Now().UTC()
 			write.CloseSource = string(source)
 			write.CloseReason = string(reason)
-			write.ClosedAt = &now
+			write.CloseOutcome = outcome
+			write.ClosedAt = &closedAt
 		}
 		err = s.whatsappRepo.UpdateConversationStatus(entryID, write)
 
@@ -169,15 +262,18 @@ func (s *ConversationStatusService) applyStatusActor(
 		if !ok {
 			return nil
 		}
-		var closedAt *time.Time
-		closeSource, closeReason := "", ""
-		if setClose {
-			now := time.Now().UTC()
-			closedAt = &now
-			closeSource = string(source)
-			closeReason = string(reason)
+		write := conversation.StatusWrite{
+			Status:         status,
+			SetCloseMeta:   setClose,
+			ClearCloseMeta: clearClose,
 		}
-		err = store.SetStatus(context.Background(), entryID, string(status), closeSource, closeReason, closedAt)
+		if setClose {
+			write.CloseSource = source
+			write.CloseReason = reason
+			write.CloseOutcome = outcome
+			write.ClosedAt = closedAt
+		}
+		err = store.SetStatus(context.Background(), entryID, write)
 	}
 	if err != nil {
 		return err
@@ -255,7 +351,7 @@ func (s *ConversationStatusService) TransitionOnMessage(
 	if inbound {
 		switch current {
 		case "", conversation.ConversationStatusFinished:
-			return s.applyStatus(entryID, entryType, conversation.ConversationStatusNew, false, "", "", true)
+			return s.applyStatus(entryID, entryType, conversation.ConversationStatusNew, false, "", "", "", true)
 		}
 		return nil
 	}
@@ -264,7 +360,7 @@ func (s *ConversationStatusService) TransitionOnMessage(
 		return nil
 	}
 	if current == conversation.ConversationStatusNew || current == "" {
-		return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", false)
+		return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", "", false)
 	}
 	return nil
 }

@@ -24,11 +24,16 @@ type Interval struct {
 }
 
 type Schedule struct {
-	loc  *time.Location
-	days [7][]Interval
+	loc      *time.Location
+	days     [7][]Interval
+	holidays map[civilDate]struct{}
 }
 
 func New(loc *time.Location, days map[time.Weekday][]Interval) *Schedule {
+	return NewWithHolidays(loc, days, nil)
+}
+
+func NewWithHolidays(loc *time.Location, days map[time.Weekday][]Interval, holidays []time.Time) *Schedule {
 	s := &Schedule{loc: loc}
 	for wd, ivs := range days {
 		if wd < time.Sunday || wd > time.Saturday {
@@ -38,6 +43,12 @@ func New(loc *time.Location, days map[time.Weekday][]Interval) *Schedule {
 		copy(cp, ivs)
 		sort.Slice(cp, func(i, j int) bool { return cp[i].StartMin < cp[j].StartMin })
 		s.days[wd] = cp
+	}
+	if len(holidays) > 0 {
+		s.holidays = make(map[civilDate]struct{}, len(holidays))
+		for _, h := range holidays {
+			s.holidays[civilOf(h.In(s.Location()))] = struct{}{}
+		}
 	}
 	return s
 }
@@ -138,6 +149,9 @@ func Resolve(workspace, department *Schedule) *Schedule {
 
 func (s *Schedule) segmentsOn(y int, m time.Month, d int) [][2]time.Time {
 	loc := s.Location()
+	if s.isHoliday(y, m, d) {
+		return nil
+	}
 	weekday := time.Date(y, m, d, 12, 0, 0, 0, loc).Weekday()
 	ivs := s.days[weekday]
 	if len(ivs) == 0 {

@@ -1,17 +1,13 @@
 package balance
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/xuri/excelize/v2"
 
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
@@ -19,6 +15,7 @@ import (
 	"vozko/domain/shared"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/http/middleware"
+	balance_usecase "vozko/usecases/balance"
 )
 
 type BalanceHandler struct {
@@ -27,6 +24,7 @@ type BalanceHandler struct {
 	creditUseCase                 balancedomain.CreditBalanceUseCase
 	debitUseCase                  balancedomain.DebitBalanceUseCase
 	listTransactionsUseCase       balancedomain.ListTransactionsUseCase
+	transactionsExporter          *balance_usecase.TransactionsExporter
 	creditResourceUseCase         balancedomain.CreditResourceUseCase
 	debitResourceUseCase          balancedomain.DebitResourceUseCase
 	getFullSummaryUseCase         balancedomain.GetFullBalanceSummaryUseCase
@@ -47,6 +45,7 @@ func NewBalanceHandler(
 	getOrCreateUC balancedomain.GetOrCreateBalanceUseCase,
 	getOrCreateFullSummaryUC balancedomain.GetOrCreateFullBalanceSummaryUseCase,
 	getExchangeRateUC workspace_pricing.GetExchangeRateUseCase,
+	transactionsExporter *balance_usecase.TransactionsExporter,
 ) *BalanceHandler {
 	return &BalanceHandler{
 		createUseCase:                 createUC,
@@ -60,6 +59,7 @@ func NewBalanceHandler(
 		getOrCreateUseCase:            getOrCreateUC,
 		getOrCreateFullSummaryUseCase: getOrCreateFullSummaryUC,
 		getExchangeRateUseCase:        getExchangeRateUC,
+		transactionsExporter:          transactionsExporter,
 	}
 }
 
@@ -479,63 +479,6 @@ func (h *BalanceHandler) ListMyTransactions(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func formatBRLCurrency(value float64) string {
-	rounded := math.Round(value*1000) / 1000
-	if rounded == 0 {
-		rounded = 0
-	}
-
-	sign := ""
-	if rounded < 0 {
-		sign = "-"
-		rounded = -rounded
-	}
-
-	whole := int64(rounded)
-	fractional := int(math.Round((rounded - float64(whole)) * 1000))
-	if fractional == 1000 {
-		whole++
-		fractional = 0
-	}
-
-	fractionalDigits := strings.TrimRight(fmt.Sprintf("%03d", fractional), "0")
-	if len(fractionalDigits) < 2 {
-		fractionalDigits += strings.Repeat("0", 2-len(fractionalDigits))
-	}
-
-	return fmt.Sprintf("%sR$ %s,%s", sign, formatBrazilianInteger(whole), fractionalDigits)
-}
-
-func formatBrazilianInteger(value int64) string {
-	if value == 0 {
-		return "0"
-	}
-
-	parts := make([]string, 0, 4)
-	for value > 0 {
-		chunk := value % 1000
-		value /= 1000
-		if value > 0 {
-			parts = append(parts, fmt.Sprintf("%03d", chunk))
-		} else {
-			parts = append(parts, fmt.Sprintf("%d", chunk))
-		}
-	}
-
-	for left, right := 0, len(parts)-1; left < right; left, right = left+1, right-1 {
-		parts[left], parts[right] = parts[right], parts[left]
-	}
-
-	return strings.Join(parts, ".")
-}
-
-func formatMicrosToBRL(micros int64, exchangeRate float64) string {
-	if exchangeRate <= 0 {
-		return "-"
-	}
-	return formatBRLCurrency(float64(micros) / 1_000_000 * exchangeRate)
-}
-
 // @Summary		Listar tipos de serviço
 // @Description	Retorna a lista de tipos de serviço aceitos para créditos e débitos de saldo.
 // @Tags			Saldo
@@ -570,8 +513,13 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
+	if h.transactionsExporter == nil {
+		response.WriteError(w, http.StatusServiceUnavailable, "Transaction export is not configured", nil)
+		return
+	}
 
-	if _, err := h.getOrCreateUseCase.Execute(middleware.GetWorkspaceID(r)); err != nil {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if _, err := h.getOrCreateUseCase.Execute(workspaceID); err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to ensure balance exists", nil)
 		return
 	}
@@ -586,139 +534,39 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	input := balancedomain.ListTransactionsInput{
-		WorkspaceID: middleware.GetWorkspaceID(r),
-	}
-
-	if serviceTypeStr := strings.TrimSpace(values.Get("serviceType")); serviceTypeStr != "" {
-		st := balancedomain.ServiceType(serviceTypeStr)
-		if !st.IsValid() {
-			response.WriteValidationError(w, map[string]string{"serviceType": "invalid service type"})
+	input, err := balance_usecase.BuildTransactionsFilter(balance_usecase.TransactionsFilter{
+		WorkspaceID: workspaceID,
+		ServiceType: values.Get("serviceType"),
+		Type:        values.Get("type"),
+		StartDate:   values.Get("startDate"),
+		EndDate:     values.Get("endDate"),
+	})
+	if err != nil {
+		var fieldErr balance_usecase.FilterFieldError
+		if errors.As(err, &fieldErr) {
+			response.WriteValidationError(w, fieldErr.ValidationDetails())
 			return
 		}
-		input.ServiceType = &st
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		return
 	}
 
-	if typeStr := strings.TrimSpace(values.Get("type")); typeStr != "" {
-		tt := balancedomain.TransactionType(typeStr)
-		if tt != balancedomain.TransactionTypeCredit && tt != balancedomain.TransactionTypeDebit {
-			response.WriteValidationError(w, map[string]string{"type": "must be credit or debit"})
-			return
-		}
-		input.Type = &tt
-	}
-
-	if sd := strings.TrimSpace(values.Get("startDate")); sd != "" {
-		if parsed, err := time.Parse(time.RFC3339, sd); err == nil {
-			input.StartDate = &parsed
-		}
-	}
-	if ed := strings.TrimSpace(values.Get("endDate")); ed != "" {
-		if parsed, err := time.Parse(time.RFC3339, ed); err == nil {
-			input.EndDate = &parsed
-		}
-	}
-
-	var allTransactions []*balancedomain.Transaction
-	const exportPageSize = shared.MaxPageSize
-	for page := 1; ; page++ {
-		input.QueryOptions = shared.QueryOptions{
-			Pagination: shared.Pagination{Page: page, PageSize: exportPageSize},
-		}
-		result, err := h.listTransactionsUseCase.Execute(input)
-		if err != nil {
-			response.WriteError(w, http.StatusInternalServerError, "Failed to list transactions", nil)
-			return
-		}
-		if len(result.Items) == 0 {
-			break
-		}
-		allTransactions = append(allTransactions, result.Items...)
-		if int64(len(allTransactions)) >= result.TotalItems {
-			break
-		}
-		if len(result.Items) < result.PageSize {
-			break
-		}
-	}
-
-	var currentExchangeRate float64
-	if item, err := h.getExchangeRateUseCase.Execute(); err == nil && item != nil && item.PriceMicros > 0 {
-		currentExchangeRate = float64(item.PriceMicros) / 1_000_000
-	}
-
-	microsToUSD := func(micros int64) string {
-		return fmt.Sprintf("%.6f", float64(micros)/1_000_000)
-	}
-
-	headers := []string{
-		"Date", "Type", "Service", "Description",
-		"Amount (USD)", "Amount (BRL)",
-		"Balance Before (USD)", "Balance Before (BRL)",
-		"Balance After (USD)", "Balance After (BRL)",
-		"Reference ID",
-	}
-
-	rows := make([][]string, 0, len(allTransactions))
-	for _, t := range allTransactions {
-		refID := ""
-		if t.ReferenceID != nil {
-			refID = *t.ReferenceID
-		}
-		signedAmount := t.Amount
-		if t.Type == balancedomain.TransactionTypeDebit {
-			signedAmount = -signedAmount
-		}
-
-		txRate := float64(t.ExchangeRateMicros) / 1_000_000
-		if t.ExchangeRateMicros <= 0 {
-			txRate = currentExchangeRate
-		}
-		rows = append(rows, []string{
-			t.CreatedAt.Format("2006-01-02 15:04:05"),
-			string(t.Type),
-			string(t.ServiceType),
-			t.Description,
-			microsToUSD(signedAmount),
-			formatMicrosToBRL(signedAmount, txRate),
-			microsToUSD(t.BalanceBefore),
-			formatMicrosToBRL(t.BalanceBefore, currentExchangeRate),
-			microsToUSD(t.BalanceAfter),
-			formatMicrosToBRL(t.BalanceAfter, currentExchangeRate),
-			refID,
-		})
+	rows, err := h.transactionsExporter.Rows(input)
+	if err != nil {
+		response.WriteError(w, http.StatusInternalServerError, "Failed to list transactions", nil)
+		return
 	}
 
 	if exportFormat == "csv" {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=transactions.csv")
-		writer := csv.NewWriter(w)
-		_ = writer.Write(headers)
-		for _, row := range rows {
-			_ = writer.Write(row)
+		if err := balance_usecase.WriteTransactionsCSV(rows, w); err != nil {
+			return
 		}
-		writer.Flush()
 		return
-	}
-
-	f := excelize.NewFile()
-	sheet := "Transactions"
-	idx, _ := f.NewSheet(sheet)
-	f.SetActiveSheet(idx)
-	_ = f.DeleteSheet("Sheet1")
-
-	for i, hdr := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		_ = f.SetCellValue(sheet, cell, hdr)
-	}
-	for rowIdx, row := range rows {
-		for colIdx, val := range row {
-			cell, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+2)
-			_ = f.SetCellValue(sheet, cell, val)
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", "attachment; filename=transactions.xlsx")
-	_ = f.Write(w)
+	_ = balance_usecase.WriteTransactionsXLSX(rows, w)
 }

@@ -102,7 +102,8 @@ type InstagramConversation struct {
 	ConversationStatus string     `gorm:"size:20;not null;default:'';index:idx_ig_conv_status"`
 	CloseSource        string     `gorm:"size:20"`
 	CloseReason        string     `gorm:"size:40"`
-	ClosedAt           *time.Time `gorm:"column:closed_at"`
+	CloseOutcome       string     `gorm:"size:64;not null;default:'';index:idx_ig_close_outcome,priority:2"`
+	ClosedAt           *time.Time `gorm:"column:closed_at;index:idx_ig_close_outcome,priority:1"`
 	AutomationEnabled  *bool      `gorm:"default:null"`
 
 	LastMessageAt         *time.Time `gorm:"column:last_message_at;index:idx_ig_conv_lastmsg"`

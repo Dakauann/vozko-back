@@ -11,6 +11,10 @@ type OverviewFilter struct {
 	CampaignType string     `json:"campaign_type,omitempty"`
 	Channel      string     `json:"channel,omitempty"`
 	IncludeAI    bool       `json:"include_ai"`
+	TrendBuckets int        `json:"trend_buckets,omitempty"`
+	RankMetric   string     `json:"rank_metric,omitempty"`
+
+	Quality QualityPolicy `json:"-"`
 }
 
 type OverviewKPIs struct {
@@ -77,6 +81,10 @@ type MemberRow struct {
 	FinishedHuman   int64    `json:"finished_human"`
 	FinishedAI      int64    `json:"finished_ai"`
 	FinishedSystem  int64    `json:"finished_system"`
+
+	TotalMessages   int64    `json:"total_messages"`
+	InboundMessages int64    `json:"inbound_messages"`
+	AvgMessages     *float64 `json:"avg_messages"`
 }
 
 type OverviewFRT struct {
@@ -197,6 +205,15 @@ type MetricDefinitions struct {
 	FinishedBySource string `json:"finished_by_source"`
 	Stages           string `json:"stages"`
 	Unassigned       string `json:"unassigned"`
+	Period           string `json:"period"`
+	Projection       string `json:"projection"`
+	Standing         string `json:"standing"`
+	Trend            string `json:"trend"`
+	Revenue          string `json:"revenue"`
+	BacklogXray      string `json:"backlog_xray"`
+	Quality          string `json:"quality"`
+	TeamRanking      string `json:"team_ranking"`
+	Rework           string `json:"rework"`
 	CSAT             string `json:"csat"`
 	SLA              string `json:"sla"`
 }
@@ -219,6 +236,18 @@ type Overview struct {
 	Reopen           OverviewReopen           `json:"reopen"`
 	FinishedBySource OverviewFinishedBySource `json:"finished_by_source"`
 	Stages           OverviewStages           `json:"stages"`
+
+	Period      Period             `json:"period"`
+	Projections []MetricProjection `json:"projections"`
+	Standing    Standing           `json:"standing"`
+	Trend       Trend              `json:"trend"`
+	Revenue     Revenue            `json:"revenue"`
+	BacklogXray BacklogXray        `json:"backlog_xray"`
+	Quality     Quality            `json:"quality"`
+	TeamRanking TeamRanking        `json:"team_ranking"`
+	Rework      OverviewRework     `json:"rework"`
+
+	GeneratedAt time.Time `json:"generated_at"`
 
 	Definitions MetricDefinitions `json:"definitions"`
 }
@@ -243,6 +272,15 @@ func DefaultDefinitions() MetricDefinitions {
 		FinishedBySource: "engaged finished by close_source: human (incl empty/legacy), ai, system",
 		Stages:           "scoped conversations by their current stage, grouped by owning funnel; engaged is the headline and shells are reported beside it; dwell and stuck are measured over OPEN engaged rows against now",
 		Unassigned:       "engaged entries with empty assignee and status != finished",
+		Period:           "calendar month containing date_to, measured in OPEN business days from the resolved working-hours schedule (department overrides workspace); unavailable when no schedule is configured",
+		Projection:       "cumulative metrics only: actual / open_days_done * open_days_total. Averages and rates are never projected. Needs >= 1 open day done and >= 10% of the period elapsed",
+		Standing:         "share of configured targets whose projection is on track, mapped to a cluster band; unavailable when no target is set",
+		Trend:            "closed calendar months bucketed on closed_at (finished) or created_at (created); best value is the best CLOSED bucket inside the returned window, never an all-time record",
+		Revenue:          "won opportunities attributed by close_date to the owner in owner_id; never summed across currencies; unavailable when a department filter is set because opportunities carry no department",
+		BacklogXray:      "engaged entries with status != finished, broken down by origin, assignee, age, lead tenure, returning contact, required-field fill and per-channel 24h window reachability; every percentage is over its own measured population",
+		Quality:          "durable outcomes over closes subject to outcome capture, attributed to the assignee; the denominator starts at outcome_capture.enabled_at and excludes reserved system, AI and workflow codes",
+		Rework:           "engaged finished conversations that were reopened afterwards, attributed to the assignee; cost is the WhatsApp templates charged on those conversations AFTER the reopen, in the workspace billing currency",
+		TeamRanking:      "members ranked by the declared metric; the team average is over HUMAN actors only, AI and system actors are reported separately with no class; a class needs at least 20 closes",
 		CSAT:             "not available (csat_available=false) until surveys ship",
 		SLA:              "not available (sla_available=false) until SLA policies ship",
 	}

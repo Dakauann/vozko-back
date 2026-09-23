@@ -1284,10 +1284,12 @@ func (r *repository) UpdateConversationStatus(entryID string, write wce.Conversa
 	case write.ClearCloseMeta:
 		updates["close_source"] = ""
 		updates["close_reason"] = ""
+		updates["close_outcome"] = ""
 		updates["closed_at"] = nil
 	case write.SetCloseMeta:
 		updates["close_source"] = write.CloseSource
 		updates["close_reason"] = write.CloseReason
+		updates["close_outcome"] = write.CloseOutcome
 		if write.ClosedAt != nil {
 			updates["closed_at"] = *write.ClosedAt
 		} else {

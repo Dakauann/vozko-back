@@ -11,6 +11,7 @@ import (
 	crm_telemetry_domain "vozko/domain/crm_telemetry"
 	notification_domain "vozko/domain/notification"
 	rag_domain "vozko/domain/rag"
+	report_domain "vozko/domain/report"
 	scheduled_message_domain "vozko/domain/scheduled_message"
 	pricing_service "vozko/domain/services/pricing"
 	"vozko/domain/shipping"
@@ -56,6 +57,7 @@ func (c *Container) initServices() {
 	documentValidator := document_service.NewValidator()
 
 	storage := s3.NewS3Service()
+	c.s3 = storage
 
 	tmplLoader := notification_service.NewTemplateLoaderService("/infra/notifications/templates")
 	emailSvc := notification_service.NewEmailService(tmplLoader, c.cfg.ResendAPIKey, c.cfg.ResendFromEmail, c.cfg.ResendFromName, c.cfg.ResendMaxRPS)
@@ -74,6 +76,7 @@ func (c *Container) initServices() {
 	scheduledMessageExchange := scheduled_message_domain.Exchange
 	unofficialWhatsAppSeedExchange := unofficial_whatsapp_domain.SeedExchange
 	audienceAlertExchange := audience_domain.AlertExchange
+	reportExchange := report_domain.Exchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -118,6 +121,8 @@ func (c *Container) initServices() {
 		ragTextExtractor:           rag_infra.NewTextExtractor(),
 		ragQueuePub:                queue.NewRabbitMQQueuePub(amqpPool, ragDocProcessingExchange),
 		ragQueueSub:                queue.NewRabbitMQQueueSub(amqpPool, ragDocProcessingExchange),
+		reportQueuePub:             queue.NewRabbitMQQueuePub(amqpPool, reportExchange),
+		reportQueueSub:             queue.NewRabbitMQQueueSub(amqpPool, reportExchange),
 		shortlinkQueuePub:          queue.NewRabbitMQQueuePub(amqpPool, shortlinkClickExchange),
 		shortlinkQueueSub:          queue.NewRabbitMQQueueSub(amqpPool, shortlinkClickExchange),
 		webhookQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, webhookExchange),

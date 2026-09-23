@@ -15,6 +15,7 @@ import (
 	"vozko/domain/shared"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/http/middleware"
+	balance_usecase "vozko/usecases/balance"
 )
 
 type exportGetOrCreateStub struct{}
@@ -80,6 +81,10 @@ func TestExportMyTransactions_PaginatesPastReportedFirstPageAndFormatsBRL(t *tes
 		getOrCreateUseCase:      exportGetOrCreateStub{},
 		listTransactionsUseCase: listUC,
 		getExchangeRateUseCase:  exportExchangeRateStub{},
+		transactionsExporter: balance_usecase.NewTransactionsExporter(
+			listUC,
+			exportExchangeRateStub{},
+		),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/user/balance/transactions/export?format=csv", nil)

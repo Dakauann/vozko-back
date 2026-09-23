@@ -16,6 +16,13 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		Filter:      filter,
 		Hourly:      make([]attendance.HourlyPoint, 24),
 		Stages:      attendance.BuildStageDistribution(nil, 0, 0),
+		Revenue:     attendance.UnavailableRevenue(attendance.ReasonNoRevenueRepository),
+		Trend:       attendance.UnavailableTrend(attendance.ReasonTrendUnavailable),
+		Quality:     attendance.UnavailableQuality(attendance.ReasonCaptureDisabled),
+		Rework:      attendance.UnavailableRework(attendance.ReasonReworkUnwatched),
+		GeneratedAt: time.Now().UTC(),
+		TeamRanking: attendance.UnavailableTeamRanking(attendance.ReasonNoTeamRows),
+		Projections: []attendance.MetricProjection{},
 		Definitions: attendance.DefaultDefinitions(),
 		KPIs: attendance.OverviewKPIs{
 			CSATAvailable: false,
@@ -29,8 +36,9 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		return out, nil
 	}
 
+	now := time.Now().UTC()
 	selectBody, args := overviewEntrySelect(workspaceID, filter)
-	suffix := strings.ReplaceAll(fmt.Sprintf("%d", time.Now().UnixNano()), "-", "")
+	suffix := strings.ReplaceAll(fmt.Sprintf("%d", now.UnixNano()), "-", "")
 	tmp := "tmp_att_ov_" + suffix
 	tmpMsg := "tmp_att_msg_" + suffix
 
@@ -58,6 +66,12 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 				se.is_new_contact,
 				se.hour_bucket,
 				se.close_source,
+				se.close_outcome,
+				se.closed_at,
+				se.container_id,
+				se.container_name,
+				se.lead_id,
+				se.created_at,
 				MIN(cm.created_at) FILTER (
 					WHERE cm.message_type IN ('user_message', 'audio', 'media')
 				) AS first_inbound_at,
@@ -88,7 +102,9 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 				AND cm.entry_type = se.entry_type
 				AND cm.deleted_at IS NULL
 			GROUP BY se.entry_id, se.entry_type, se.department_id, se.assigned_user_id,
-				se.status_bucket, se.is_new_contact, se.hour_bucket, se.close_source
+				se.status_bucket, se.is_new_contact, se.hour_bucket, se.close_source,
+				se.close_outcome, se.closed_at, se.container_id, se.container_name,
+				se.lead_id, se.created_at
 		`
 		if err := tx.Exec(msgSQL).Error; err != nil {
 			return err
@@ -201,6 +217,24 @@ func (r *repository) GetOverview(workspaceID string, filter attendance.OverviewF
 		}
 		out.Stages = attendance.BuildStageDistribution(tallies, sr.Engaged, sr.ShellBacklog)
 
+		backlog, err := overviewBacklogXrayTX(tx, workspaceID, tmpMsg, filter, now)
+		if err != nil {
+			return err
+		}
+		out.BacklogXray = backlog
+
+		quality, err := overviewQualityTX(tx, tmpMsg, filter.Quality)
+		if err != nil {
+			return err
+		}
+		out.Quality = quality
+
+		rework, err := overviewReworkTX(tx, workspaceID, tmpMsg, filter)
+		if err != nil {
+			return err
+		}
+		out.Rework = rework
+
 		return overviewFillExtendedTX(tx, workspaceID, base, noArgs, tmpMsg, filter, out)
 	})
 	if err != nil {
@@ -290,6 +324,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				ON ` + src.ContainerJoin + ` AND ` + src.EntryAlias + `.deleted_at IS NULL
 			LEFT JOIN inbox_assignments ia
 				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
+			` + src.LeadJoin + `
 			WHERE ` + src.WorkspaceColumn + ` = ? AND ` + src.ContainerAlias + `.deleted_at IS NULL
 			` + whereExtra
 		a := []interface{}{workspaceID}
@@ -312,6 +347,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				ON ` + src.ContainerJoin + ` AND ` + src.ContainerAlias + `.deleted_at IS NULL
 			LEFT JOIN inbox_assignments ia
 				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
+			` + src.LeadJoin + `
 			WHERE cm.entry_type = '` + string(src.EntryType) + `'
 			  AND cm.deleted_at IS NULL
 			  AND ` + src.WorkspaceColumn + ` = ?
@@ -348,12 +384,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 	}
 
 	if len(parts) == 0 {
-		return `
-			SELECT NULL::uuid AS entry_id, ''::text AS entry_type, 'pending'::text AS status_bucket,
-				FALSE AS is_new_contact, 0 AS hour_bucket, ''::text AS department_id,
-				''::text AS assigned_user_id, NOW() AS created_at, ''::text AS close_source
-			WHERE FALSE
-		`, nil
+		return emptyEntryProjection(), nil
 	}
 
 	return strings.Join(parts, " UNION ALL "), args
@@ -526,7 +557,9 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 			) AS finished_ai,
 			COUNT(*) FILTER (
 				WHERE m.status_bucket = 'finished' AND m.close_source = 'system'
-			) AS finished_system
+			) AS finished_system,
+			COALESCE(SUM(m.total_msgs), 0)::bigint AS total_messages,
+			COALESCE(SUM(m.inbound_msgs), 0)::bigint AS inbound_messages
 		FROM ` + msgTmp + ` m
 		LEFT JOIN users u ON u.id::text = m.assigned_user_id
 		WHERE m.assigned_user_id <> ''
@@ -535,16 +568,18 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 		ORDER BY resolved_count DESC, open_count DESC
 	`
 	type row struct {
-		ActorID        string `gorm:"column:actor_id"`
-		ActorKind      string `gorm:"column:actor_kind"`
-		DisplayName    string `gorm:"column:display_name"`
-		Email          string `gorm:"column:email"`
-		OpenCount      int64  `gorm:"column:open_count"`
-		PendingCount   int64  `gorm:"column:pending_count"`
-		ResolvedCount  int64  `gorm:"column:resolved_count"`
-		FinishedHuman  int64  `gorm:"column:finished_human"`
-		FinishedAI     int64  `gorm:"column:finished_ai"`
-		FinishedSystem int64  `gorm:"column:finished_system"`
+		ActorID         string `gorm:"column:actor_id"`
+		ActorKind       string `gorm:"column:actor_kind"`
+		DisplayName     string `gorm:"column:display_name"`
+		Email           string `gorm:"column:email"`
+		OpenCount       int64  `gorm:"column:open_count"`
+		PendingCount    int64  `gorm:"column:pending_count"`
+		ResolvedCount   int64  `gorm:"column:resolved_count"`
+		FinishedHuman   int64  `gorm:"column:finished_human"`
+		FinishedAI      int64  `gorm:"column:finished_ai"`
+		FinishedSystem  int64  `gorm:"column:finished_system"`
+		TotalMessages   int64  `gorm:"column:total_messages"`
+		InboundMessages int64  `gorm:"column:inbound_messages"`
 	}
 	var rows []row
 	if err := tx.Raw(sql).Scan(&rows).Error; err != nil {
@@ -619,6 +654,9 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 			FinishedHuman:   rw.FinishedHuman,
 			FinishedAI:      rw.FinishedAI,
 			FinishedSystem:  rw.FinishedSystem,
+			TotalMessages:   rw.TotalMessages,
+			InboundMessages: rw.InboundMessages,
+			AvgMessages:     avgMessagesPerConversation(rw.TotalMessages, total),
 		})
 	}
 
@@ -682,4 +720,12 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 	}
 
 	return out, nil
+}
+
+func avgMessagesPerConversation(totalMessages, conversations int64) *float64 {
+	if conversations <= 0 || totalMessages < 0 {
+		return nil
+	}
+	avg := math.Round(float64(totalMessages)/float64(conversations)*100) / 100
+	return &avg
 }

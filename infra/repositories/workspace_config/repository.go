@@ -2,13 +2,17 @@ package workspace_config_repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"vozko/domain/conversation"
 	"vozko/domain/working_hours"
 	wsc "vozko/domain/workspace_config"
 	"vozko/infra/database/schema"
@@ -68,7 +72,8 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 		RouletteRescueEnabled:       row.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(row.RouletteRescueAfterMinutes),
 
-		WorkingHours: decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
+		WorkingHours:   decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
+		OutcomeCapture: decodeOutcomeCapture(row.WorkspaceID, row.OutcomeCapture),
 
 		AudienceDailyCap:        row.AudienceDailyCap,
 		AudienceDebounceMinutes: row.AudienceDebounceMinutes,
@@ -110,10 +115,40 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 	}
 	row.WorkingHours = encoded
 
+	capture, err := encodeOutcomeCapture(cfg.OutcomeCapture)
+	if err != nil {
+		return err
+	}
+	row.OutcomeCapture = capture
+
 	if row.ID == "" {
 		row.ID = uuid.New().String()
 	}
 	return r.db.WithContext(ctx).Save(row).Error
+}
+
+func decodeOutcomeCapture(workspaceID string, raw *string) *conversation.OutcomeCapture {
+	if raw == nil || strings.TrimSpace(*raw) == "" || strings.TrimSpace(*raw) == "null" {
+		return nil
+	}
+	var capture conversation.OutcomeCapture
+	if err := json.Unmarshal([]byte(*raw), &capture); err != nil {
+		log.Printf("[workspace_config] workspace %s has an unreadable outcome-capture document; treating it as not configured: %v", workspaceID, err)
+		return nil
+	}
+	return &capture
+}
+
+func encodeOutcomeCapture(capture *conversation.OutcomeCapture) (*string, error) {
+	if capture == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(capture)
+	if err != nil {
+		return nil, fmt.Errorf("workspace_config: encoding the outcome capture policy: %w", err)
+	}
+	out := string(raw)
+	return &out, nil
 }
 
 func decodeWorkingHours(workspaceID string, raw *string) *working_hours.Spec {

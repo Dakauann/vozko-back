@@ -38,6 +38,7 @@ import (
 	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
+	reporthttp "vozko/delivery/http/report"
 	savedviewhttp "vozko/delivery/http/savedview"
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
@@ -68,7 +69,6 @@ import (
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
 	oppboard_usecase "vozko/usecases/oppboard"
-	"vozko/usecases/opportunityio"
 	payment_usecase "vozko/usecases/payment"
 	workflow_usecase "vozko/usecases/workflow"
 )
@@ -293,6 +293,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getOrCreateBalance,
 			c.useCases.getOrCreateFullSummary,
 			c.useCases.getExchangeRate,
+			c.services.transactionsExporter,
 		),
 		workspaceTemplateAccess: workspacetemplateaccesshttp.NewWorkspaceTemplateAccessHandler(
 			c.useCases.grantTemplateAccess,
@@ -362,7 +363,7 @@ func (c *Container) initHandlers() {
 		),
 		opportunity: opportunityhttp.NewOpportunityHandler(
 			c.useCases.opportunity,
-			opportunityio.NewService(c.useCases.opportunity, c.repositories.customField),
+			c.services.opportunityIO,
 			c.services.conversationAuth,
 		),
 		opportunityBoard: opportunityboardhttp.NewOpportunityBoardHandler(oppboard_usecase.NewService(
@@ -468,6 +469,7 @@ func (c *Container) initHandlers() {
 			h.SetOverview(c.useCases.getOverview)
 			h.SetQueueRepo(c.repositories.queueEvent)
 			h.SetPresenceRepo(c.repositories.agentPresence)
+			h.SetTargets(c.attendanceTargetsService(), c.services.conversationAuthImpl)
 			return h
 		}(),
 		knowledgeBase: handlers.NewKnowledgeBaseHandler(
@@ -500,9 +502,10 @@ func (c *Container) initHandlers() {
 			c.cfg.ShortLinkBaseURL,
 		),
 		export: exporthttp.NewExportHandler(
-			c.useCases.exportEntries,
 			c.useCases.getWCCampaign,
+			c.services.reportService,
 		),
+		report: reporthttp.NewReportHandler(c.services.reportService),
 		invoice: invoicehttp.NewInvoiceHandler(
 			c.useCases.createInvoice,
 			c.useCases.listInvoices,

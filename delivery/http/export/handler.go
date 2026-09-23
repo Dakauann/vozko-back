@@ -1,7 +1,7 @@
 package export
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -17,42 +16,31 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/campaign"
 	exportdomain "vozko/domain/export"
+	reportdomain "vozko/domain/report"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	whatsappcampaign_usecase "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/http/middleware"
-)
-
-const (
-	maxConcurrentExports = 3
-
-	exportQueueWait = 15 * time.Second
-
-	exportTimeout = 5 * time.Minute
+	report_usecase "vozko/usecases/report"
+	report_renderers "vozko/usecases/report/renderers"
 )
 
 type ExportHandler struct {
-	exportUC exportdomain.ExportEntriesUseCase
-	getWCUC  whatsappcampaign_usecase.GetCampaignUseCase
-
-	slots chan struct{}
+	getWCUC whatsappcampaign_usecase.GetCampaignUseCase
+	reports *report_usecase.Service
 }
 
 func NewExportHandler(
-	exportUC exportdomain.ExportEntriesUseCase,
 	getWCUC whatsappcampaign_usecase.GetCampaignUseCase,
+	reports *report_usecase.Service,
 ) *ExportHandler {
-	return &ExportHandler{
-		exportUC: exportUC,
-		getWCUC:  getWCUC,
-		slots:    make(chan struct{}, maxConcurrentExports),
-	}
+	return &ExportHandler{getWCUC: getWCUC, reports: reports}
 }
 
 // @Summary		Exportar entradas de campanha do WhatsApp (CSV)
-// @Description	Exporta em CSV as entradas (contatos) de uma campanha do WhatsApp do workspace, aplicando os filtros informados na query. O parâmetro status aceita múltiplos valores, separados por vírgula ou repetidos. O arquivo inclui BOM UTF-8 para abertura correta no Excel.
+// @Description	Coloca na fila a exportacao em CSV das entradas (contatos) de uma campanha do WhatsApp do workspace, aplicando os filtros informados na query. O parâmetro status aceita múltiplos valores, separados por vírgula ou repetidos. O arquivo inclui BOM UTF-8 para abertura correta no Excel.
 // @Tags			Campanhas do WhatsApp
-// @Produce		text/csv
+// @Produce		json
 // @Param			id						path	string	true	"Identificador da campanha"
 // @Param			status					query	string	false	"Filtrar por status da entrada (aceita lista: SENT,DELIVERED,READ)"
 // @Param			stageId					query	string	false	"Filtrar por etapa"
@@ -65,11 +53,10 @@ func NewExportHandler(
 // @Param			hasAnalysis				query	bool	false	"Filtrar por presença de análise"
 // @Param			attendanceQualityMin	query	int		false	"Qualidade de atendimento mínima"
 // @Param			attendanceQualityMax	query	int		false	"Qualidade de atendimento máxima"
-// @Success		200	{file}		binary	"Arquivo CSV das entradas"
+// @Success		202	{object}	report.Job	"Relatorio na fila; acompanhe por /reports/{id}"
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
-// @Failure		429	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/campaigns/{id}/entries/export [get]
@@ -99,13 +86,13 @@ func (h *ExportHandler) ExportWhatsAppEntries(w http.ResponseWriter, r *http.Req
 		response.WriteValidationError(w, errs)
 		return
 	}
-	h.writeCSVExport(w, r, filter, fmt.Sprintf("whatsapp-campaign-%s", req.CampaignID))
+	h.queueExport(w, r, filter, fmt.Sprintf("whatsapp-campaign-%s", req.CampaignID))
 }
 
 // @Summary		Exportar leads dos disparos do WhatsApp (CSV)
-// @Description	Exporta em CSV os leads de TODAS as campanhas do workspace de uma só vez, no mesmo recorte do resumo de disparos (período de criação da campanha, tipo e departamento). Use status para escolher os envios desejados — por exemplo status=SENT,DELIVERED,READ para os leads que foram enviados, entregues e lidos. Sem status, retorna todos. O arquivo inclui uma coluna campaign identificando a origem de cada linha e BOM UTF-8 para abertura correta no Excel.
+// @Description	Coloca na fila a exportacao em CSV dos leads de TODAS as campanhas do workspace de uma só vez, no mesmo recorte do resumo de disparos (período de criação da campanha, tipo e departamento). Use status para escolher os envios desejados — por exemplo status=SENT,DELIVERED,READ para os leads que foram enviados, entregues e lidos. Sem status, retorna todos. O arquivo inclui uma coluna campaign identificando a origem de cada linha e BOM UTF-8 para abertura correta no Excel.
 // @Tags			Campanhas do WhatsApp
-// @Produce		text/csv
+// @Produce		json
 // @Param			status					query	string	false	"Status dos envios (lista: SENT,DELIVERED,READ). Vazio = todos"
 // @Param			from					query	string	false	"Data inicial de criação da campanha (YYYY-MM-DD ou RFC3339)"
 // @Param			to						query	string	false	"Data final de criação da campanha (YYYY-MM-DD ou RFC3339)"
@@ -120,12 +107,11 @@ func (h *ExportHandler) ExportWhatsAppEntries(w http.ResponseWriter, r *http.Req
 // @Param			hasAnalysis				query	bool	false	"Filtrar por presença de análise"
 // @Param			attendanceQualityMin	query	int		false	"Qualidade de atendimento mínima"
 // @Param			attendanceQualityMax	query	int		false	"Qualidade de atendimento máxima"
-// @Success		200	{file}		binary	"Arquivo CSV dos leads"
+// @Success		202	{object}	report.Job	"Relatorio na fila; acompanhe por /reports/{id}"
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
 // @Failure		413	{object}	response.ErrorResponse
-// @Failure		429	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/campaigns/entries/export [get]
@@ -144,7 +130,7 @@ func (h *ExportHandler) ExportWhatsAppWorkspaceEntries(w http.ResponseWriter, r 
 		response.WriteValidationError(w, errs)
 		return
 	}
-	h.writeCSVExport(w, r, filter, "whatsapp-leads")
+	h.queueExport(w, r, filter, "whatsapp-leads")
 }
 
 func (h *ExportHandler) ExportInstagramEntries(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +166,7 @@ func (h *ExportHandler) exportChannelEntries(
 		response.WriteValidationError(w, errs)
 		return
 	}
-	h.writeCSVExport(w, r, filter, fmt.Sprintf("%s-%s", filenamePrefix, sanitizeFilenamePart(accountID)))
+	h.queueExport(w, r, filter, fmt.Sprintf("%s-%s", filenamePrefix, sanitizeFilenamePart(accountID)))
 }
 
 func (h *ExportHandler) parseExportFilter(
@@ -274,98 +260,58 @@ func parseStatuses(values url.Values, entryType exportdomain.EntryType) ([]strin
 	return out, nil
 }
 
-func (h *ExportHandler) writeCSVExport(
+func (h *ExportHandler) queueExport(
 	w http.ResponseWriter,
 	r *http.Request,
 	filter exportdomain.ExportFilter,
-	filenamePrefix string,
+	label string,
 ) {
-	release, ok := h.acquireSlot(r.Context())
-	if !ok {
-		w.Header().Set("Retry-After", "30")
-		response.WriteError(w, http.StatusTooManyRequests,
-			"Too many exports running right now. Please try again in a moment.", nil)
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
-	defer release()
 
-	ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
-	defer cancel()
-
-	filename := fmt.Sprintf("%s-%s.csv", filenamePrefix, time.Now().Format("2006-01-02"))
-	sink := &csvResponse{w: w, filename: filename}
-
-	count, err := h.exportUC.Export(ctx, filter, sink)
+	params, err := json.Marshal(report_renderers.ConversationEntriesParams{
+		Filter: filter,
+		Label:  label,
+	})
 	if err != nil {
-		if sink.started {
-			log.Printf("[export] aborting partial CSV after %d rows: %v", count, err)
-			panic(http.ErrAbortHandler)
-		}
+		response.WriteError(w, http.StatusInternalServerError, "Failed to prepare the export", nil)
+		return
+	}
+
+	job, err := h.reports.Create(report_usecase.CreateInput{
+		WorkspaceID: filter.Scope.WorkspaceID,
+		RequestedBy: claims.UserID,
+		Kind:        reportdomain.KindConversationEntries,
+		Format:      reportdomain.FormatCSV,
+		Locale:      httpx.RequestLocale(r),
+		Params:      params,
+	})
+	if err != nil {
 		h.writeExportError(w, err)
 		return
 	}
 
-	if count == 0 {
-		response.WriteError(w, http.StatusNotFound, "No entries to export", nil)
-		return
-	}
+	response.WriteSuccess(w, http.StatusAccepted, job)
 }
 
 func (h *ExportHandler) writeExportError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, report_usecase.ErrNotConfigured):
+		response.WriteError(w, http.StatusServiceUnavailable,
+			"Exports are not configured on this server.", nil)
 	case errors.Is(err, exportdomain.ErrTooManyRows):
 		response.WriteError(w, http.StatusRequestEntityTooLarge,
 			"This export is too large. Narrow the period or the filters and try again.", nil)
-	case errors.Is(err, context.DeadlineExceeded):
-		response.WriteError(w, http.StatusGatewayTimeout,
-			"The export took too long. Narrow the period and try again.", nil)
-	case errors.Is(err, context.Canceled):
-		return
+	case errors.Is(err, reportdomain.ErrParamsTooLarge):
+		response.WriteError(w, http.StatusBadRequest,
+			"Too many filters for one export. Narrow them and try again.", nil)
 	default:
-		log.Printf("[export] failed: %v", err)
-		response.WriteError(w, http.StatusInternalServerError, "Failed to export entries", nil)
+		log.Printf("[export] queueing failed: %v", err)
+		response.WriteError(w, http.StatusInternalServerError, "Failed to queue the export", nil)
 	}
-}
-
-func (h *ExportHandler) acquireSlot(ctx context.Context) (func(), bool) {
-	timer := time.NewTimer(exportQueueWait)
-	defer timer.Stop()
-
-	select {
-	case h.slots <- struct{}{}:
-		return func() { <-h.slots }, true
-	case <-ctx.Done():
-		return nil, false
-	case <-timer.C:
-		return nil, false
-	}
-}
-
-type csvResponse struct {
-	w        http.ResponseWriter
-	filename string
-	started  bool
-}
-
-func (c *csvResponse) Write(p []byte) (int, error) {
-	if !c.started {
-		c.started = true
-		c.w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		c.w.Header().Set("Content-Disposition",
-			fmt.Sprintf("attachment; filename=%q", sanitizeFilenamePart(c.filename)))
-		c.w.Header().Set("X-Content-Type-Options", "nosniff")
-		c.w.Header().Set("Cache-Control", "no-store")
-		c.w.WriteHeader(http.StatusOK)
-		if _, err := c.w.Write([]byte("\xEF\xBB\xBF")); err != nil {
-			return 0, err
-		}
-	}
-
-	n, err := c.w.Write(p)
-	if flusher, ok := c.w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	return n, err
 }
 
 func sanitizeFilenamePart(s string) string {

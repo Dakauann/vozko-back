@@ -25,6 +25,7 @@ import (
 	affiliate_domain "vozko/domain/affiliate"
 	agent_domain "vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
+	attendance_domain "vozko/domain/attendance"
 	conversation_domain "vozko/domain/conversation"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
@@ -85,6 +86,7 @@ import (
 	msg_shortcut_usecase "vozko/usecases/message_shortcut"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
+	"vozko/usecases/opportunityio"
 	order_usecase "vozko/usecases/order"
 	payment_usecase "vozko/usecases/payment"
 	pipeline_usecase "vozko/usecases/pipeline"
@@ -875,12 +877,20 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getResponseTimeDistribution:        attendance_usecase.NewGetResponseTimeDistributionUseCase(c.repositories.attendance),
 		getAIAgentStats:                    attendance_usecase.NewGetAIAgentStatsUseCase(c.repositories.attendance),
 		getFRTStats:                        attendance_usecase.NewGetFRTStatsUseCase(c.repositories.attendance),
-		getOverview: attendance_usecase.NewGetOverviewUseCaseWithDeps(
-			c.repositories.attendance,
-			c.repositories.queueEvent,
-			c.repositories.agentPresence,
-			c.services.callSessions,
-		),
+		getOverview: func() attendance_domain.GetOverviewUseCase {
+			uc := attendance_usecase.NewGetOverviewUseCaseWithDeps(
+				c.repositories.attendance,
+				c.repositories.queueEvent,
+				c.repositories.agentPresence,
+				c.services.callSessions,
+			)
+			if setter, ok := uc.(interface {
+				SetExecutiveDeps(*attendance_usecase.ScheduleResolver, *attendance_usecase.TargetsService)
+			}); ok {
+				setter.SetExecutiveDeps(c.attendanceScheduleResolver(), c.attendanceTargetsService())
+			}
+			return uc
+		}(),
 		getTelephonyOverview: telephony_usecase.NewGetOverviewUseCaseWithDeps(
 			c.repositories.telephony,
 			c.repositories.queueEvent,
@@ -1414,4 +1424,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.New(log.Writer(), "billing-reconcile ", log.LstdFlags),
 	)
 	reconciler.RunPeriodic(5*time.Minute, 15*time.Minute)
+
+	c.services.transactionsExporter = balance_usecase.NewTransactionsExporter(
+		c.useCases.listTransactions,
+		c.useCases.getExchangeRate,
+	)
+	c.services.opportunityIO = opportunityio.NewService(c.useCases.opportunity, c.repositories.customField)
+	c.services.reportService = c.buildReportService()
+	c.startReportWorker()
 }

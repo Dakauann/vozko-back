@@ -2,6 +2,7 @@ package attendance
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"vozko/delivery/http/response"
@@ -9,6 +10,7 @@ import (
 	attendancedomain "vozko/domain/attendance"
 	"vozko/domain/queue_event"
 	"vozko/infra/http/middleware"
+	attendance_usecase "vozko/usecases/attendance"
 )
 
 type AttendanceHandler struct {
@@ -20,6 +22,8 @@ type AttendanceHandler struct {
 	getOverview                 attendancedomain.GetOverviewUseCase
 	queueRepo                   queue_event.Repository
 	presenceRepo                agent_presence.Repository
+	targets                     *attendance_usecase.TargetsService
+	targetScoper                targetScoper
 }
 
 func NewAttendanceHandler(
@@ -309,6 +313,12 @@ func parseOverviewFilter(r *http.Request) attendancedomain.OverviewFilter {
 	filter.CampaignID = r.URL.Query().Get("campaign_id")
 	filter.CampaignType = r.URL.Query().Get("campaign_type")
 	filter.Channel = r.URL.Query().Get("channel")
+	filter.RankMetric = r.URL.Query().Get("rank_metric")
+	if v := r.URL.Query().Get("trend_buckets"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			filter.TrendBuckets = n
+		}
+	}
 	ia := r.URL.Query().Get("include_ai")
 	if ia == "" || ia == "1" || ia == "true" || ia == "yes" {
 		filter.IncludeAI = true
@@ -327,6 +337,8 @@ func parseOverviewFilter(r *http.Request) attendancedomain.OverviewFilter {
 // @Param			campaign_id		query	string	false	"ID da campanha"
 // @Param			campaign_type	query	string	false	"Tipo da campanha"
 // @Param			channel			query	string	false	"Canal de atendimento"
+// @Param			rank_metric		query	string	false	"Métrica de ordenação da equipe (resolved, volume, revenue_cents)"
+// @Param			trend_buckets	query	int		false	"Meses da série histórica (1 a 24, padrão 13)"
 // @Param			include_ai		query	string	false	"Incluir agentes de IA (padrão: true)"
 // @Success		200	{object}	attendance.Overview
 // @Failure		400	{object}	response.ErrorResponse

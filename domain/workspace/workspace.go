@@ -57,6 +57,8 @@ var (
 	ResourceMembers                     = registerResource("members")
 	ResourceAssignments                 = registerResource("assignments")
 	ResourceAttendance                  = registerResource("attendance")
+	ResourceAttendanceTargets           = registerResource("attendance_targets")
+	ResourceReports                     = registerResource("reports")
 	ResourceKnowledgeBases              = registerResource("knowledge_bases")
 	ResourceRoles                       = registerResource("roles")
 	ResourceSupportInboxes              = registerResource("support_inboxes")
@@ -244,6 +246,21 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	},
 	ResourceAttendance: {
 		{ActionName: ActionRead, Description: "Visualizar métricas de atendimento: conversas, tempos, filas, ocupação, canais, equipe e atendimentos por IA nos canais de mensagens, além do volume de telefonia"},
+	},
+	ResourceReports: {
+		{ActionName: ActionRead, Description: "Visualizar e baixar relatórios gerados"},
+		{ActionName: ActionCreate, Description: "Solicitar a geração de relatórios"},
+	},
+	ResourceAttendanceTargets: {
+		{ActionName: ActionRead, Description: "Visualizar as metas de atendimento do período", Requires: []PermissionEntry{
+			{Resource: ResourceAttendance, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Definir as metas de atendimento do período", Requires: []PermissionEntry{
+			{Resource: ResourceAttendance, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Remover metas de atendimento", Requires: []PermissionEntry{
+			{Resource: ResourceAttendance, Action: ActionRead},
+		}},
 	},
 	ResourceKnowledgeBases: {
 		{ActionName: ActionCreate, Description: "Criar bases de conhecimento"},

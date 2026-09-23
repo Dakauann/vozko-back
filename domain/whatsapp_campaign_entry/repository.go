@@ -90,6 +90,7 @@ type ConversationStatusWrite struct {
 	SetCloseMeta   bool
 	CloseSource    string
 	CloseReason    string
+	CloseOutcome   string
 	ClosedAt       *time.Time
 	ClearCloseMeta bool
 }

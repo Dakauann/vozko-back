@@ -36,6 +36,7 @@ import (
 	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
+	reporthttp "vozko/delivery/http/report"
 	savedviewhttp "vozko/delivery/http/savedview"
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
@@ -67,6 +68,7 @@ import (
 	aichat_domain "vozko/domain/aichat"
 	analytics_domain "vozko/domain/analytics"
 	attendance_domain "vozko/domain/attendance"
+	attendance_target_domain "vozko/domain/attendance_target"
 	audience_domain "vozko/domain/audience"
 	"vozko/domain/auth"
 	balance_domain "vozko/domain/balance"
@@ -112,6 +114,7 @@ import (
 	"vozko/domain/property"
 	qe_domain "vozko/domain/queue_event"
 	rag_domain "vozko/domain/rag"
+	report_domain "vozko/domain/report"
 	savedview_domain "vozko/domain/savedview"
 	scheduled_message_domain "vozko/domain/scheduled_message"
 	"vozko/domain/shipping"
@@ -148,6 +151,7 @@ import (
 	cronPackage "vozko/infra/cron"
 	queue "vozko/infra/messaging"
 	prometheus_service "vozko/infra/prometheus"
+	"vozko/infra/s3"
 	"vozko/infra/security"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	"vozko/infra/whisper"
@@ -164,6 +168,8 @@ import (
 	ia_usecase "vozko/usecases/inbox_assignment"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
+	"vozko/usecases/opportunityio"
+	report_usecase "vozko/usecases/report"
 	workflow_usecase "vozko/usecases/workflow"
 )
 
@@ -171,6 +177,7 @@ type Container struct {
 	cfg                         config.Config
 	db                          *gorm.DB
 	redisProvider               *redisCache.RedisProvider
+	s3                          *s3.S3Service
 	replicaID                   string
 	repositories                *repositories
 	services                    *services
@@ -248,6 +255,7 @@ type repositories struct {
 	workspace               workspace_domain.Repository
 	customRole              workspace_domain.CustomRoleRepository
 	attendance              attendance_domain.Repository
+	attendanceTarget        attendance_target_domain.Repository
 	telephony               telephony_domain.Repository
 	conversationEvent       ce_domain.Repository
 	assignmentHistory       ia_domain.HistoryRepository
@@ -290,6 +298,7 @@ type repositories struct {
 	labelGroup              label_domain.LabelGroupRepository
 	session                 auth.SessionRepository
 	affiliate               affiliate_domain.Repository
+	report                  report_domain.Repository
 }
 
 type services struct {
@@ -395,6 +404,12 @@ type services struct {
 	telephonyBoardSync telephony_domain.BoardSync
 	telephonyBoardGet  telephony_domain.GetBoardUseCase
 	telephonyCapacity  telephony_domain.CapacityReader
+
+	reportQueuePub       messaging.MessageQueuePub
+	reportQueueSub       messaging.MessageQueueSub
+	reportService        *report_usecase.Service
+	transactionsExporter *balance_usecase.TransactionsExporter
+	opportunityIO        *opportunityio.Service
 }
 
 type useCases struct {
@@ -945,6 +960,7 @@ type handlers_ struct {
 	knowledgeBase           *handlers.KnowledgeBaseHandler
 	shortLink               *shortlinkhttp.ShortLinkHandler
 	export                  *exporthttp.ExportHandler
+	report                  *reporthttp.ReportHandler
 	waba                    *wabahttp.WABAHandler
 	invoice                 *invoicehttp.InvoiceHandler
 	callBilling             *callbillinghttp.CallBillingHandler

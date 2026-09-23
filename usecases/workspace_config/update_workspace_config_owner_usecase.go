@@ -2,6 +2,7 @@ package workspace_config_usecase
 
 import (
 	"context"
+	"time"
 
 	"vozko/domain/workspace"
 	wsc "vozko/domain/workspace_config"
@@ -14,10 +15,24 @@ type workspaceOwnerFetcher interface {
 type updateWorkspaceConfigOwnerUseCase struct {
 	repo   wsc.Repository
 	wsRepo workspaceOwnerFetcher
+	clock  func() time.Time
 }
 
 func NewUpdateWorkspaceConfigOwnerUseCase(repo wsc.Repository, wsRepo workspaceOwnerFetcher) wsc.UpdateWorkspaceConfigOwnerUseCase {
 	return &updateWorkspaceConfigOwnerUseCase{repo: repo, wsRepo: wsRepo}
+}
+
+func (uc *updateWorkspaceConfigOwnerUseCase) SetClock(clock func() time.Time) {
+	if uc != nil && clock != nil {
+		uc.clock = clock
+	}
+}
+
+func (uc *updateWorkspaceConfigOwnerUseCase) now() time.Time {
+	if uc == nil || uc.clock == nil {
+		return time.Now().UTC()
+	}
+	return uc.clock()
 }
 
 func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, workspaceID, callerID, callerRole string, input wsc.UpdateWorkspaceConfigOwnerInput) (*wsc.WorkspaceConfig, error) {
@@ -72,6 +87,17 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 			return nil, err
 		}
 		existing.WorkingHours = input.WorkingHours.Normalized()
+	}
+
+	switch {
+	case input.ClearOutcomeCapture:
+		existing.OutcomeCapture = nil
+	case input.OutcomeCapture != nil:
+		capture, err := wsc.MergeOutcomeCapture(existing.OutcomeCapture, input.OutcomeCapture, uc.now())
+		if err != nil {
+			return nil, err
+		}
+		existing.OutcomeCapture = capture
 	}
 
 	existing.UpdatedBy = callerID

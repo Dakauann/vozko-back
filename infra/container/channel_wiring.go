@@ -2,8 +2,8 @@ package container
 
 import (
 	"context"
-	"time"
 
+	conversation_domain "vozko/domain/conversation"
 	export_domain "vozko/domain/export"
 	instagram_repository "vozko/infra/repositories/instagram"
 	telegram_repository "vozko/infra/repositories/telegram"
@@ -44,7 +44,7 @@ var _ conversation_usecase.ContactIdentityLookup = contactIdentityFuncs{}
 
 type conversationStatusFuncs struct {
 	status func(ctx context.Context, entryID string) (string, error)
-	set    func(ctx context.Context, entryID, status, closeSource, closeReason string, closedAt *time.Time) error
+	set    func(ctx context.Context, entryID string, write conversation_domain.StatusWrite) error
 }
 
 func (f conversationStatusFuncs) Status(ctx context.Context, entryID string) (string, error) {
@@ -54,11 +54,11 @@ func (f conversationStatusFuncs) Status(ctx context.Context, entryID string) (st
 	return f.status(ctx, entryID)
 }
 
-func (f conversationStatusFuncs) SetStatus(ctx context.Context, entryID, status, closeSource, closeReason string, closedAt *time.Time) error {
+func (f conversationStatusFuncs) SetStatus(ctx context.Context, entryID string, write conversation_domain.StatusWrite) error {
 	if f.set == nil {
 		return nil
 	}
-	return f.set(ctx, entryID, status, closeSource, closeReason, closedAt)
+	return f.set(ctx, entryID, write)
 }
 
 var _ conversation_usecase.ConversationStatusStore = conversationStatusFuncs{}

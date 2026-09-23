@@ -24,7 +24,8 @@ type WorkspaceConfig struct {
 	RouletteRescueEnabled       bool   `gorm:"not null;default:true"`
 	RouletteRescueAfterMinutes  int    `gorm:"type:int;not null;default:15"`
 
-	WorkingHours *string `gorm:"type:jsonb"`
+	WorkingHours   *string `gorm:"type:jsonb"`
+	OutcomeCapture *string `gorm:"type:jsonb"`
 
 	AudienceDailyCap        int `gorm:"not null;default:0"`
 	AudienceDebounceMinutes int `gorm:"not null;default:0"`

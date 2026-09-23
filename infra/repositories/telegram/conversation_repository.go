@@ -9,8 +9,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"vozko/domain/conversation"
 	tgdomain "vozko/domain/telegram"
 	"vozko/infra/database/schema"
+	conversation_repository "vozko/infra/repositories/conversation"
 )
 
 type conversationRepository struct {
@@ -172,15 +174,10 @@ func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) 
 	return status, nil
 }
 
-func (r *conversationRepository) SetStatus(ctx context.Context, id, status, closeSource, closeReason string, closedAt *time.Time) error {
+func (r *conversationRepository) SetStatus(ctx context.Context, id string, write conversation.StatusWrite) error {
 	result := r.db.WithContext(ctx).Model(&schema.TelegramConversation{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"conversation_status": status,
-			"close_source":        closeSource,
-			"close_reason":        closeReason,
-			"closed_at":           closedAt,
-		})
+		Updates(conversation_repository.StatusUpdates(write))
 	if result.Error != nil {
 		return result.Error
 	}

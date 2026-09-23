@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"mime"
 	"net/http"
@@ -79,6 +80,28 @@ func (s *S3Service) UploadFile(key string, data []byte, contentType string) erro
 	}
 
 	return err
+}
+
+func (s *S3Service) DownloadFile(ctx context.Context, key string) ([]byte, string, error) {
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	defer output.Body.Close()
+
+	data, err := io.ReadAll(output.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	contentType := ""
+	if output.ContentType != nil {
+		contentType = *output.ContentType
+	}
+	return data, contentType, nil
 }
 
 func (s *S3Service) GetFileURL(key string) string {

@@ -10,6 +10,7 @@ import (
 	analytics_repository "vozko/infra/repositories/analytics"
 	ah_repository "vozko/infra/repositories/assignment_history"
 	attendance_repository "vozko/infra/repositories/attendance"
+	attendance_target_repository "vozko/infra/repositories/attendance_target"
 	ca_repository "vozko/infra/repositories/audience"
 	auth_repository "vozko/infra/repositories/auth"
 	balance_repository "vozko/infra/repositories/balance"
@@ -44,6 +45,7 @@ import (
 	property_repository "vozko/infra/repositories/property"
 	qe_repository "vozko/infra/repositories/queue_event"
 	rag_repository "vozko/infra/repositories/rag"
+	report_repository "vozko/infra/repositories/report"
 	savedview_repository "vozko/infra/repositories/savedview"
 	scheduled_message_repository "vozko/infra/repositories/scheduled_message"
 	shipping_repository "vozko/infra/repositories/shipping"
@@ -125,6 +127,7 @@ func (c *Container) initRepositories() {
 		workspace:               workspace_repository.NewCachedWorkspaceRepository(workspace_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		customRole:              workspace_repository.NewCustomRoleRepository(c.db),
 		attendance:              attendance_repository.New(c.db),
+		attendanceTarget:        attendance_target_repository.New(c.db),
 		telephony:               telephony_repository.New(c.db),
 		conversationEvent:       ce_repository.New(c.db),
 		assignmentHistory:       ah_repository.New(c.db),
@@ -167,5 +170,6 @@ func (c *Container) initRepositories() {
 		labelGroup:              label_repository.NewLabelGroupRepository(c.db),
 		session:                 auth_repository.NewSessionRepository(c.db),
 		affiliate:               affiliate_repository.NewRepository(c.db),
+		report:                  report_repository.New(c.db),
 	}
 }

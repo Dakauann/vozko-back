@@ -3,6 +3,7 @@ package instagram
 import (
 	"context"
 	"time"
+	"vozko/domain/conversation"
 
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/shared"
@@ -204,7 +205,7 @@ func (f *fakeConversationRepo) SetAutomationEnabled(context.Context, string, *bo
 	return nil
 }
 
-func (f *fakeConversationRepo) SetStatus(context.Context, string, string, string, string, *time.Time) error {
+func (f *fakeConversationRepo) SetStatus(context.Context, string, conversation.StatusWrite) error {
 	return nil
 }
 

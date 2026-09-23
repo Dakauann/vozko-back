@@ -1,6 +1,7 @@
 package attendance_usecase
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -11,14 +12,17 @@ import (
 )
 
 type getOverviewUseCase struct {
-	repo     attendance.Repository
-	queue    queue_event.Repository
-	presence agent_presence.Repository
-	live     callsession.CallSessionRegistry
+	repo      attendance.Repository
+	queue     queue_event.Repository
+	presence  agent_presence.Repository
+	live      callsession.CallSessionRegistry
+	schedules *ScheduleResolver
+	targets   *TargetsService
+	now       func() time.Time
 }
 
 func NewGetOverviewUseCase(repo attendance.Repository) attendance.GetOverviewUseCase {
-	return &getOverviewUseCase{repo: repo}
+	return &getOverviewUseCase{repo: repo, now: nowUTC}
 }
 
 func NewGetOverviewUseCaseWithDeps(
@@ -32,25 +36,83 @@ func NewGetOverviewUseCaseWithDeps(
 		queue:    queue,
 		presence: presence,
 		live:     live,
+		now:      nowUTC,
+	}
+}
+
+func nowUTC() time.Time {
+	return time.Now().UTC()
+}
+
+func (uc *getOverviewUseCase) SetExecutiveDeps(schedules *ScheduleResolver, targets *TargetsService) {
+	if uc == nil {
+		return
+	}
+	uc.schedules = schedules
+	uc.targets = targets
+}
+
+func (uc *getOverviewUseCase) SetClock(clock func() time.Time) {
+	if uc != nil && clock != nil {
+		uc.now = clock
 	}
 }
 
 func (uc *getOverviewUseCase) Execute(workspaceID string, filter attendance.OverviewFilter) (*attendance.Overview, error) {
+	ctx := context.Background()
+	now := uc.clock()
+
+	config, err := uc.prepare(ctx, workspaceID, &filter, now)
+	if err != nil {
+		return nil, err
+	}
+
 	out, err := uc.repo.GetOverview(workspaceID, filter)
 	if err != nil {
 		return nil, err
 	}
 	if out == nil {
-		out = &attendance.Overview{
-			Stages:      attendance.BuildStageDistribution(nil, 0, 0),
-			Definitions: attendance.DefaultDefinitions(),
-		}
+		out = emptyOverview()
 	}
+	out.Filter = filter
 
 	uc.fillQueue(workspaceID, filter, out)
 	uc.fillOccupancy(workspaceID, filter, out)
 	uc.fillLive(workspaceID, out)
+
+	inputs, err := uc.resolveInputs(ctx, workspaceID, filter, config, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.fillRevenue(workspaceID, filter, inputs, out); err != nil {
+		return nil, err
+	}
+	uc.fillProjections(inputs, out)
+	if err := uc.fillTrend(workspaceID, filter, inputs, out); err != nil {
+		return nil, err
+	}
+	uc.fillTeamRanking(workspaceID, filter, inputs, out)
 	return out, nil
+}
+
+func (uc *getOverviewUseCase) clock() time.Time {
+	if uc == nil || uc.now == nil {
+		return nowUTC()
+	}
+	return uc.now()
+}
+
+func emptyOverview() *attendance.Overview {
+	return &attendance.Overview{
+		Hourly:      make([]attendance.HourlyPoint, 24),
+		Stages:      attendance.BuildStageDistribution(nil, 0, 0),
+		Revenue:     attendance.UnavailableRevenue(attendance.ReasonNoRevenueRepository),
+		Trend:       attendance.UnavailableTrend(attendance.ReasonTrendUnavailable),
+		Quality:     attendance.UnavailableQuality(attendance.ReasonCaptureDisabled),
+		TeamRanking: attendance.UnavailableTeamRanking(attendance.ReasonNoTeamRows),
+		Projections: []attendance.MetricProjection{},
+		Definitions: attendance.DefaultDefinitions(),
+	}
 }
 
 func (uc *getOverviewUseCase) fillQueue(workspaceID string, filter attendance.OverviewFilter, out *attendance.Overview) {

@@ -112,6 +112,10 @@ func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
 	r.addChannelJob("whatsapp_template_send_reconcile", time.Hour, reconcile)
 }
 
+func (r *JobRunner) SetReportRetentionJobs(expire ctxJob) {
+	r.addChannelJob("report_retention", time.Hour, expire)
+}
+
 func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {
 	r.addChannelJob("scheduled_message_sweep", time.Minute, sweep)
 	r.addChannelJob("scheduled_message_purge", 24*time.Hour, purge)

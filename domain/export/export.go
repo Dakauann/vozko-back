@@ -24,18 +24,18 @@ func (t EntryType) HasSendStatus() bool {
 var ErrTooManyRows = errors.New("export: too many rows for a single export")
 
 type Scope struct {
-	WorkspaceID string
+	WorkspaceID string `json:"-"`
 
-	ContainerID string
+	ContainerID string `json:"containerId,omitempty"`
 
-	ContainerType string
+	ContainerType string `json:"containerType,omitempty"`
 
-	DepartmentIDs []string
+	DepartmentIDs []string `json:"departmentIds,omitempty"`
 
-	Statuses []string
+	Statuses []string `json:"statuses,omitempty"`
 
-	CreatedFrom *time.Time
-	CreatedTo   *time.Time
+	CreatedFrom *time.Time `json:"createdFrom,omitempty"`
+	CreatedTo   *time.Time `json:"createdTo,omitempty"`
 }
 
 func (s Scope) SpansContainers() bool {
@@ -67,26 +67,26 @@ type ChannelEntryLister interface {
 }
 
 type ExportFilter struct {
-	Scope     Scope
-	EntryType EntryType
+	Scope     Scope     `json:"scope"`
+	EntryType EntryType `json:"entryType"`
 
-	StageID string
-	Number  string
+	StageID string `json:"stageId,omitempty"`
+	Number  string `json:"number,omitempty"`
 
-	Interest             string
-	Disposition          string
-	Sentiment            string
-	Qualification        string
-	NextAction           string
-	AttendanceQualityMin *int
-	AttendanceQualityMax *int
-	HasAnalysis          *bool
+	Interest             string `json:"interest,omitempty"`
+	Disposition          string `json:"disposition,omitempty"`
+	Sentiment            string `json:"sentiment,omitempty"`
+	Qualification        string `json:"qualification,omitempty"`
+	NextAction           string `json:"nextAction,omitempty"`
+	AttendanceQualityMin *int   `json:"attendanceQualityMin,omitempty"`
+	AttendanceQualityMax *int   `json:"attendanceQualityMax,omitempty"`
+	HasAnalysis          *bool  `json:"hasAnalysis,omitempty"`
 
-	HasToolCalls    *bool
-	ToolName        string
-	MessageType     string
-	MinMessageCount *int
-	MaxMessageCount *int
+	HasToolCalls    *bool  `json:"hasToolCalls,omitempty"`
+	ToolName        string `json:"toolName,omitempty"`
+	MessageType     string `json:"messageType,omitempty"`
+	MinMessageCount *int   `json:"minMessageCount,omitempty"`
+	MaxMessageCount *int   `json:"maxMessageCount,omitempty"`
 }
 
 type ExportRow struct {

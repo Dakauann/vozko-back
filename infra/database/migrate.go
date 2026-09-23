@@ -144,6 +144,8 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.AssignmentHistory{},
 			&schema.AIAttendanceSession{},
 			&schema.QueueEvent{},
+			&schema.AttendanceTarget{},
+			&schema.ReportJob{},
 			&schema.AgentPresenceInterval{},
 			&schema.TelemetryDedupe{},
 			&schema.ShortLink{},
