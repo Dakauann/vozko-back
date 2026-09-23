@@ -1,5 +1,5 @@
 # Build stage - use golang with Debian for glibc compatibility
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 

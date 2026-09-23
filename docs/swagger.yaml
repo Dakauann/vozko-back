@@ -1539,95 +1539,6 @@ definitions:
           $ref: '#/definitions/audience.AlertMetricOption'
         type: array
     type: object
-  audience.Analysis:
-    properties:
-      accountId:
-        type: string
-      analyzedAt:
-        type: string
-      attempts:
-        type: integer
-      attendanceQuality:
-        type: integer
-      authorExternalId:
-        type: string
-      authorHandle:
-        type: string
-      batchId:
-        type: string
-      containerId:
-        type: string
-      createdAt:
-        type: string
-      deletedAt:
-        type: string
-      disposition:
-        $ref: '#/definitions/audience.Disposition'
-      excerpt:
-        type: string
-      failureReason:
-        type: string
-      id:
-        type: string
-      intent:
-        $ref: '#/definitions/audience.Intent'
-      interest:
-        $ref: '#/definitions/audience.Interest'
-      isSpam:
-        type: boolean
-      language:
-        type: string
-      legalRisk:
-        $ref: '#/definitions/shared.QualityLevel'
-      messageCount:
-        type: integer
-      model:
-        type: string
-      nextAction:
-        $ref: '#/definitions/audience.NextAction'
-      occurredAt:
-        type: string
-      parentCommentId:
-        type: string
-      personalAttack:
-        $ref: '#/definitions/shared.QualityLevel'
-      productInterest:
-        type: string
-      productInterestKey:
-        type: string
-      qualification:
-        $ref: '#/definitions/audience.Qualification'
-      requiresAction:
-        type: boolean
-      revision:
-        type: string
-      sentiment:
-        $ref: '#/definitions/shared.Sentiment'
-      severity:
-        type: integer
-      source:
-        type: string
-      stance:
-        $ref: '#/definitions/audience.Stance'
-      status:
-        $ref: '#/definitions/audience.Status'
-      subjectId:
-        type: string
-      subjectKind:
-        $ref: '#/definitions/audience.SubjectKind'
-      summary:
-        type: string
-      topicKey:
-        type: string
-      toxicity:
-        $ref: '#/definitions/shared.QualityLevel'
-      truncated:
-        type: boolean
-      updatedAt:
-        type: string
-      workspaceId:
-        type: string
-    type: object
   audience.AuthorContainerResponse:
     properties:
       accountId:
@@ -2016,20 +1927,6 @@ definitions:
       total:
         type: integer
     type: object
-  audience.Disposition:
-    enum:
-    - sale
-    - filling_info
-    - callback
-    - declined
-    - pending
-    type: string
-    x-enum-varnames:
-    - DispositionSale
-    - DispositionFillingInfo
-    - DispositionCallback
-    - DispositionDeclined
-    - DispositionPending
   audience.EscalationResponse:
     properties:
       author:
@@ -2043,58 +1940,6 @@ definitions:
       where:
         type: string
     type: object
-  audience.Intent:
-    enum:
-    - praise
-    - question
-    - complaint
-    - support_request
-    - spam
-    - sales_lead
-    - other
-    type: string
-    x-enum-varnames:
-    - IntentPraise
-    - IntentQuestion
-    - IntentComplaint
-    - IntentSupportRequest
-    - IntentSpam
-    - IntentSalesLead
-    - IntentOther
-  audience.Interest:
-    enum:
-    - interested
-    - not_interested
-    - undecided
-    type: string
-    x-enum-varnames:
-    - InterestInterested
-    - InterestNotInterested
-    - InterestUndecided
-  audience.NextAction:
-    enum:
-    - schedule_callback
-    - send_whatsapp
-    - close
-    - escalate
-    - continue
-    type: string
-    x-enum-varnames:
-    - NextActionScheduleCallback
-    - NextActionSendWhatsApp
-    - NextActionClose
-    - NextActionEscalate
-    - NextActionContinue
-  audience.Qualification:
-    enum:
-    - hot_lead
-    - warm_lead
-    - cold_lead
-    type: string
-    x-enum-varnames:
-    - QualificationHotLead
-    - QualificationWarmLead
-    - QualificationColdLead
   audience.ReplyMode:
     enum:
     - "off"
@@ -2167,18 +2012,6 @@ definitions:
       promptTokens:
         type: integer
     type: object
-  audience.Stance:
-    enum:
-    - supporter
-    - neutral
-    - critic
-    - hostile
-    type: string
-    x-enum-varnames:
-    - StanceSupporter
-    - StanceNeutral
-    - StanceCritic
-    - StanceHostile
   audience.StatsResponse:
     properties:
       acceptanceScore:
@@ -2296,20 +2129,6 @@ definitions:
       total:
         type: integer
     type: object
-  audience.Status:
-    enum:
-    - pending
-    - in_flight
-    - analyzed
-    - failed
-    - skipped
-    type: string
-    x-enum-varnames:
-    - StatusPending
-    - StatusInFlight
-    - StatusAnalyzed
-    - StatusFailed
-    - StatusSkipped
   audience.SubjectCount:
     properties:
       count:
@@ -2319,14 +2138,6 @@ definitions:
       label:
         type: string
     type: object
-  audience.SubjectKind:
-    enum:
-    - comment
-    - conversation
-    type: string
-    x-enum-varnames:
-    - SubjectKindComment
-    - SubjectKindConversation
   audience.Topic:
     properties:
       description:
@@ -3428,41 +3239,6 @@ definitions:
         example: SP
         type: string
     type: object
-  conversation.AIHandler:
-    properties:
-      agent_active:
-        type: boolean
-      agent_avatar:
-        type: string
-      agent_id:
-        type: string
-      agent_name:
-        type: string
-      current_node_id:
-        type: string
-      current_node_type:
-        type: string
-      kind:
-        type: string
-      run_status:
-        type: string
-      workflow_id:
-        type: string
-      workflow_name:
-        type: string
-      workflow_run_id:
-        type: string
-    type: object
-  conversation.AnalysisPhase:
-    enum:
-    - ""
-    - awaiting
-    - queued
-    type: string
-    x-enum-varnames:
-    - AnalysisPhaseNone
-    - AnalysisPhaseAwaiting
-    - AnalysisPhaseQueued
   conversation.CallPermissionRequestBody:
     properties:
       body_text:
@@ -3478,30 +3254,6 @@ definitions:
       status:
         type: string
     type: object
-  conversation.CloseReason:
-    enum:
-    - manual
-    - customer_idle
-    - ai_resolved
-    - max_age
-    - workflow
-    type: string
-    x-enum-varnames:
-    - CloseReasonManual
-    - CloseReasonCustomerIdle
-    - CloseReasonAIResolved
-    - CloseReasonMaxAge
-    - CloseReasonWorkflow
-  conversation.CloseSource:
-    enum:
-    - human
-    - ai
-    - system
-    type: string
-    x-enum-varnames:
-    - CloseSourceHuman
-    - CloseSourceAI
-    - CloseSourceSystem
   conversation.ConversationMedia:
     properties:
       createdAt:
@@ -3527,16 +3279,6 @@ definitions:
       whatsappMediaId:
         type: string
     type: object
-  conversation.ConversationStatus:
-    enum:
-    - new
-    - ongoing
-    - finished
-    type: string
-    x-enum-varnames:
-    - ConversationStatusNew
-    - ConversationStatusOngoing
-    - ConversationStatusFinished
   conversation.EntryWithLastMessage:
     properties:
       agentID:
@@ -3589,129 +3331,6 @@ definitions:
       workflowEnabled:
         type: boolean
       workflowID:
-        type: string
-    type: object
-  conversation.InboxEntry:
-    properties:
-      ai_handler:
-        $ref: '#/definitions/conversation.AIHandler'
-      analysis_phase:
-        $ref: '#/definitions/conversation.AnalysisPhase'
-      assigned_user_id:
-        type: string
-      assigned_username:
-        type: string
-      automation_enabled:
-        type: boolean
-      available_stages:
-        items:
-          $ref: '#/definitions/conversation.InboxEntryStage'
-        type: array
-      blocked:
-        type: boolean
-      business_phone_id:
-        type: string
-      campaign_id:
-        type: string
-      campaign_name:
-        type: string
-      close_reason:
-        $ref: '#/definitions/conversation.CloseReason'
-      close_source:
-        $ref: '#/definitions/conversation.CloseSource'
-      closed_at:
-        type: string
-      conversation_status:
-        $ref: '#/definitions/conversation.ConversationStatus'
-      entry_id:
-        type: string
-      entry_type:
-        type: string
-      entry_variables:
-        items:
-          type: string
-        type: array
-      is_group:
-        type: boolean
-      labels:
-        items:
-          $ref: '#/definitions/conversation.InboxEntryLabel'
-        type: array
-      last_message_at:
-        type: string
-      last_message_preview:
-        type: string
-      last_message_sender:
-        type: string
-      last_message_sender_avatar:
-        type: string
-      last_message_type:
-        type: string
-      latest_analysis:
-        $ref: '#/definitions/audience.Analysis'
-      lead_id:
-        type: string
-      lead_metadata:
-        additionalProperties: true
-        type: object
-      lead_name:
-        type: string
-      lead_number:
-        type: string
-      lead_picture:
-        type: string
-      matched_messages:
-        items:
-          $ref: '#/definitions/conversation.MatchedMessage'
-        type: array
-      stage:
-        $ref: '#/definitions/conversation.InboxEntryStage'
-      total_matches:
-        type: integer
-      unread_count:
-        type: integer
-      window_closed_reason:
-        type: string
-      window_expires_at:
-        type: string
-      window_open:
-        type: boolean
-    type: object
-  conversation.InboxEntryLabel:
-    properties:
-      color:
-        type: string
-      label_id:
-        type: string
-      name:
-        type: string
-    type: object
-  conversation.InboxEntryStage:
-    properties:
-      color:
-        type: string
-      name:
-        type: string
-      stage_id:
-        type: string
-    type: object
-  conversation.MatchedMessage:
-    properties:
-      channel:
-        type: string
-      created_at:
-        type: string
-      from:
-        type: string
-      message_id:
-        type: string
-      message_type:
-        type: string
-      page:
-        type: integer
-      position:
-        type: integer
-      text:
         type: string
     type: object
   conversation.MatchedMessageResult:
@@ -3898,49 +3517,6 @@ definitions:
         type: array
       requireOnFinish:
         type: boolean
-    type: object
-  conversation.ReopenWindowRequest:
-    properties:
-      parameters:
-        example:
-        - João
-        - 10/07
-        items:
-          type: string
-        type: array
-      template_id:
-        example: tmpl_a1b2c3
-        type: string
-    type: object
-  conversation.SearchMessagesResponse:
-    properties:
-      messages:
-        items:
-          $ref: '#/definitions/conversation.MessageResponse'
-        type: array
-      page:
-        type: integer
-      page_size:
-        type: integer
-      total_items:
-        type: integer
-      total_pages:
-        type: integer
-    type: object
-  conversation.SendMessageRequest:
-    properties:
-      media_id:
-        example: med_a1b2c3
-        type: string
-      media_type:
-        example: image
-        type: string
-      reply_to_message_id:
-        example: msg_a1b2c3
-        type: string
-      text:
-        example: Olá, como posso ajudar?
-        type: string
     type: object
   conversation.SetAutomationRequest:
     properties:
@@ -6109,16 +5685,6 @@ definitions:
     - QualityLevelLow
     - QualityLevelMedium
     - QualityLevelHigh
-  shared.Sentiment:
-    enum:
-    - positive
-    - neutral
-    - negative
-    type: string
-    x-enum-varnames:
-    - SentimentPositive
-    - SentimentNeutral
-    - SentimentNegative
   shortlink.analyticsResponse:
     properties:
       byBrowser:
@@ -10436,157 +10002,6 @@ paths:
       summary: Obter mídia de uma conversa
       tags:
       - Conversas
-  /conversations/{entryType}/{entryId}/messages:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma mensagem de texto e/ou mídia em uma conversa (entryType
-        'whatsapp' ou 'support'). É obrigatório informar o texto ou o media_id.
-      parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
-        in: path
-        name: entryType
-        required: true
-        type: string
-      - description: ID da entrada
-        in: path
-        name: entryId
-        required: true
-        type: string
-      - description: Conteúdo da mensagem a enviar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/conversation.SendMessageRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/conversation.MessageEnvelopeResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Enviar mensagem em uma conversa
-      tags:
-      - Conversas
-  /conversations/{entryType}/{entryId}/messages/search:
-    get:
-      description: Busca mensagens de uma conversa específica por termo, com paginação.
-        O parâmetro query é obrigatório.
-      parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
-        in: path
-        name: entryType
-        required: true
-        type: string
-      - description: ID da entrada
-        in: path
-        name: entryId
-        required: true
-        type: string
-      - description: Termo de busca
-        in: query
-        name: query
-        required: true
-        type: string
-      - description: Número da página
-        in: query
-        name: page
-        type: integer
-      - description: Tamanho da página
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/conversation.SearchMessagesResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Buscar mensagens de uma conversa
-      tags:
-      - Conversas
-  /conversations/{entryType}/{entryId}/reopen-window:
-    post:
-      consumes:
-      - application/json
-      description: Envia um modelo (template) do WhatsApp para reabrir a janela de
-        atendimento de 24 horas de uma conversa. A janela reabre quando o cliente
-        responde.
-      parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
-        in: path
-        name: entryType
-        required: true
-        type: string
-      - description: ID da entrada
-        in: path
-        name: entryId
-        required: true
-        type: string
-      - description: Modelo e parâmetros a enviar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/conversation.ReopenWindowRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Reabrir janela de conversa
-      tags:
-      - Conversas
   /conversations/{entryType}/{entryId}/scheduled-messages:
     get:
       description: Lista as mensagens agendadas de uma conversa e o estado atual da
@@ -10696,104 +10111,6 @@ paths:
       summary: Agendar uma mensagem
       tags:
       - Mensagens Agendadas
-  /conversations/inbox/search:
-    get:
-      description: Lista e filtra as conversas da caixa de entrada de uma campanha
-        (voice, whatsapp ou support), com paginação e diversos filtros (etapa, canal,
-        período, mensagens não lidas, entre outros).
-      parameters:
-      - description: ID da campanha
-        in: query
-        name: campaign_id
-        required: true
-        type: string
-      - description: Tipo da campanha ('whatsapp' ou 'support')
-        in: query
-        name: campaign_type
-        required: true
-        type: string
-      - description: Termo de busca
-        in: query
-        name: query
-        type: string
-      - description: Filtrar por etapa
-        in: query
-        name: stage_id
-        type: string
-      - description: Filtrar por nome de etapa
-        in: query
-        name: tag_name
-        type: string
-      - description: Buscar no conteúdo das mensagens
-        in: query
-        name: message_search
-        type: string
-      - description: Filtrar por canal
-        in: query
-        name: channel
-        type: string
-      - description: Data inicial (RFC3339)
-        in: query
-        name: date_from
-        type: string
-      - description: Data final (RFC3339)
-        in: query
-        name: date_to
-        type: string
-      - description: Mínimo de mensagens
-        in: query
-        name: min_message_count
-        type: integer
-      - description: Máximo de mensagens
-        in: query
-        name: max_message_count
-        type: integer
-      - description: Somente conversas com janela aberta
-        in: query
-        name: window_open
-        type: boolean
-      - description: Somente conversas com mensagens não lidas
-        in: query
-        name: has_unread
-        type: boolean
-      - description: Número da página
-        in: query
-        name: page
-        type: integer
-      - description: Tamanho da página
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/conversation.InboxEntry'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Buscar conversas na caixa de entrada
-      tags:
-      - Conversas
   /crm/board:
     get:
       description: Renderiza o quadro global do CRM do workspace, agrupado por etapa,
