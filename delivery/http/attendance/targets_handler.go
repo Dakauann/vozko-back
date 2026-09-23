@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -16,8 +15,6 @@ import (
 	"vozko/infra/http/middleware"
 	attendance_usecase "vozko/usecases/attendance"
 )
-
-const targetPeriodLayout = "2006-01"
 
 type targetScoper interface {
 	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
@@ -58,16 +55,8 @@ func (h *AttendanceHandler) targetAccess(r *http.Request, workspaceID string) (a
 	return access, true
 }
 
-func parseTargetPeriod(raw string) (time.Time, bool) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return time.Now().UTC(), true
-	}
-	parsed, err := time.Parse(targetPeriodLayout, trimmed)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return parsed, true
+func parseTargetPeriod(raw string) (attendance_target.Month, bool) {
+	return attendance_target.ParseMonth(raw)
 }
 
 func writeTargetError(w http.ResponseWriter, err error) {

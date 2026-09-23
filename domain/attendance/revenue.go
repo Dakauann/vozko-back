@@ -151,3 +151,16 @@ func avgTicket(valueCents, wonCount int64) *float64 {
 	}
 	return round2Ptr(float64(valueCents) / float64(wonCount))
 }
+
+func RevenueForOwner(tallies []RevenueTally, ownerID string) []RevenueTally {
+	if ownerID == "" {
+		return tallies
+	}
+	out := make([]RevenueTally, 0, len(tallies))
+	for _, tally := range tallies {
+		if tally.OwnerID == ownerID {
+			out = append(out, tally)
+		}
+	}
+	return out
+}

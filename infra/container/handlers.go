@@ -293,7 +293,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getOrCreateBalance,
 			c.useCases.getOrCreateFullSummary,
 			c.useCases.getExchangeRate,
-			c.services.transactionsExporter,
+			c.services.reportService,
 		),
 		workspaceTemplateAccess: workspacetemplateaccesshttp.NewWorkspaceTemplateAccessHandler(
 			c.useCases.grantTemplateAccess,
@@ -365,6 +365,7 @@ func (c *Container) initHandlers() {
 			c.useCases.opportunity,
 			c.services.opportunityIO,
 			c.services.conversationAuth,
+			c.services.reportService,
 		),
 		opportunityBoard: opportunityboardhttp.NewOpportunityBoardHandler(oppboard_usecase.NewService(
 			c.repositories.opportunity,

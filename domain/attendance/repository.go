@@ -50,5 +50,5 @@ type Repository interface {
 
 	GetRevenue(workspaceID string, from, to time.Time) ([]RevenueTally, int64, error)
 
-	GetRevenueByMonth(workspaceID string, from, to time.Time, loc *time.Location) ([]RevenueMonthRow, error)
+	GetRevenueByMonth(workspaceID string, from, to time.Time, loc *time.Location, ownerID string) ([]RevenueMonthRow, error)
 }

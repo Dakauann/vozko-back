@@ -304,7 +304,12 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		if h, ok := j.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName); ok {
 			var stageDef toolsdomain.Definition
 			if ch, ok2 := h.(toolsdomain.ContextualHandler); ok2 && workspaceID != "" {
-				stageDef = ch.DefinitionWithContext(toolsdomain.ToolContext{WorkspaceID: workspaceID, CampaignID: subject.ContainerID, CampaignType: entryTypeStr})
+				stageDef = ch.DefinitionWithContext(toolsdomain.ToolContext{
+					WorkspaceID:  workspaceID,
+					CampaignID:   subject.ContainerID,
+					CampaignType: entryTypeStr,
+					EntryID:      entryID,
+				})
 			} else {
 				stageDef = h.Definition()
 			}

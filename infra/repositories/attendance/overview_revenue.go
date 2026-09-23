@@ -46,6 +46,7 @@ func (r *repository) GetRevenueByMonth(
 	workspaceID string,
 	from, to time.Time,
 	loc *time.Location,
+	ownerID string,
 ) ([]attendance.RevenueMonthRow, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return []attendance.RevenueMonthRow{}, nil
@@ -60,7 +61,7 @@ func (r *repository) GetRevenueByMonth(
 		ValueCents int64     `gorm:"column:value_cents"`
 		WonCount   int64     `gorm:"column:won_count"`
 	}
-	sql, args := revenueByMonthQuery(workspaceID, from, to, loc).build()
+	sql, args := revenueByMonthQuery(workspaceID, from, to, loc, ownerID).build()
 	var rows []monthRow
 	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return nil, err
@@ -108,8 +109,13 @@ func revenueUnattributedQuery(workspaceID string, from, to time.Time) *sqlQuery 
 	`, workspaceID, from, to)
 }
 
-func revenueByMonthQuery(workspaceID string, from, to time.Time, loc *time.Location) *sqlQuery {
-	return newSQLQuery().add(`
+func revenueByMonthQuery(
+	workspaceID string,
+	from, to time.Time,
+	loc *time.Location,
+	ownerID string,
+) *sqlQuery {
+	query := newSQLQuery().add(`
 		SELECT date_trunc('month', close_date AT TIME ZONE ?) AS bucket,
 			COALESCE(NULLIF(currency, ''), 'BRL') AS currency,
 			COALESCE(SUM(value_cents), 0)::bigint AS value_cents,
@@ -121,7 +127,14 @@ func revenueByMonthQuery(workspaceID string, from, to time.Time, loc *time.Locat
 		  AND close_date IS NOT NULL
 		  AND close_date >= ?
 		  AND close_date < ?
+	`, loc.String(), workspaceID, from, to)
+
+	if strings.TrimSpace(ownerID) != "" {
+		query.add(` AND COALESCE(owner_id::text, '') = ?`, ownerID)
+	}
+
+	return query.add(`
 		GROUP BY 1, 2
 		ORDER BY 1
-	`, loc.String(), workspaceID, from, to)
+	`)
 }

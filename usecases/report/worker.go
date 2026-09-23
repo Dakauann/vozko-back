@@ -33,7 +33,12 @@ func (w *Worker) Start() error {
 	if err := w.service.ready(); err != nil {
 		return err
 	}
-	return w.subscriber.Subscribe(report.QueueTopic, w.handle)
+	for _, topic := range report.QueueTopics() {
+		if err := w.subscriber.Subscribe(topic, w.handle); err != nil {
+			return fmt.Errorf("report worker: subscribing to %s: %w", topic, err)
+		}
+	}
+	return nil
 }
 
 func (w *Worker) handle(message []byte, ack messaging.MessageAck) {

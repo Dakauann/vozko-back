@@ -242,8 +242,17 @@ func TestTargetableMetricsAreStableAndResolvable(t *testing.T) {
 		t.Fatalf("TargetableMetrics() is empty")
 	}
 	for i, spec := range metrics {
-		if i > 0 && metrics[i-1].Key >= spec.Key {
-			t.Fatalf("TargetableMetrics() is not sorted at %d: %q then %q", i, metrics[i-1].Key, spec.Key)
+		if i > 0 {
+			previous := metrics[i-1]
+			sameCategory := previous.Category == spec.Category
+			if sameCategory && previous.Key >= spec.Key {
+				t.Fatalf("TargetableMetrics() is not sorted inside %q at %d: %q then %q",
+					spec.Category, i, previous.Key, spec.Key)
+			}
+			if !sameCategory && previous.Category.Order() > spec.Category.Order() {
+				t.Fatalf("TargetableMetrics() categories are out of order at %d: %q then %q",
+					i, previous.Category, spec.Category)
+			}
 		}
 		if !spec.Kind.Valid() {
 			t.Fatalf("TargetableMetrics() %q has an invalid kind %q", spec.Key, spec.Kind)

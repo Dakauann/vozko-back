@@ -123,6 +123,8 @@ func (r *repository) List(query report.ListQuery) (report.ListPage, error) {
 		scope = scope.Where("created_at <= ?", *query.CreatedTo)
 	}
 
+	scope = scope.Session(&gorm.Session{})
+
 	var total int64
 	if err := scope.Count(&total).Error; err != nil {
 		return report.ListPage{}, err

@@ -2,6 +2,7 @@ package attendance_target
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -56,6 +57,49 @@ type Target struct {
 	CreatedBy   string    `json:"createdBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type Month struct {
+	Year  int
+	Month time.Month
+}
+
+const MonthLayout = "2006-01"
+
+func ParseMonth(raw string) (Month, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return Month{}, true
+	}
+	parsed, err := time.Parse(MonthLayout, trimmed)
+	if err != nil {
+		return Month{}, false
+	}
+	return Month{Year: parsed.Year(), Month: parsed.Month()}, true
+}
+
+func MonthAt(instant time.Time, loc *time.Location) Month {
+	if loc == nil {
+		loc = time.UTC
+	}
+	local := instant.In(loc)
+	return Month{Year: local.Year(), Month: local.Month()}
+}
+
+func (m Month) IsZero() bool { return m.Year == 0 }
+
+func (m Month) Start(loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return time.Date(m.Year, m.Month, 1, 0, 0, 0, 0, loc)
+}
+
+func (m Month) String() string {
+	if m.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%04d-%02d", m.Year, int(m.Month))
 }
 
 func NormalizePeriodStart(at time.Time, loc *time.Location) time.Time {

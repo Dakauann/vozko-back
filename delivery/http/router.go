@@ -412,6 +412,7 @@ func (r *router) setupRoutes() {
 	r.setupPublicWorkspacePlanRoutes()
 	r.setupCEPRoutes()
 	r.setupShortLinkPublicRoutes()
+	r.setupReportPublicRoutes()
 	r.setupPublicSupportRoutes()
 	r.setupPublicAffiliateRoutes()
 	r.setupPublicMCPRoutes()
@@ -921,6 +922,10 @@ func (r *router) setupReportRoutes(protected *mux.Router) {
 
 func (r *router) setupShortLinkPublicRoutes() {
 	shortlinkhttp.RegisterPublicRoutes(r.mux, r.shortLinkHandler, r.shortLinkRateLimiter)
+}
+
+func (r *router) setupReportPublicRoutes() {
+	reporthttp.RegisterPublicRoutes(r.mux, r.reportHandler)
 }
 
 func (r *router) setupKnowledgeBaseRoutes(protected *mux.Router) {

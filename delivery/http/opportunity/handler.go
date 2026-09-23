@@ -16,6 +16,7 @@ import (
 	opportunity_repository "vozko/infra/repositories/opportunity"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
+	report_usecase "vozko/usecases/report"
 )
 
 type opportunityScoper interface {
@@ -23,13 +24,19 @@ type opportunityScoper interface {
 }
 
 type OpportunityHandler struct {
-	svc    *opportunity_usecase.Service
-	io     *opportunityio.Service
-	scoper opportunityScoper
+	svc     *opportunity_usecase.Service
+	io      *opportunityio.Service
+	scoper  opportunityScoper
+	reports *report_usecase.Service
 }
 
-func NewOpportunityHandler(svc *opportunity_usecase.Service, io *opportunityio.Service, scoper opportunityScoper) *OpportunityHandler {
-	return &OpportunityHandler{svc: svc, io: io, scoper: scoper}
+func NewOpportunityHandler(
+	svc *opportunity_usecase.Service,
+	io *opportunityio.Service,
+	scoper opportunityScoper,
+	reports *report_usecase.Service,
+) *OpportunityHandler {
+	return &OpportunityHandler{svc: svc, io: io, scoper: scoper, reports: reports}
 }
 
 func (h *OpportunityHandler) resolveScope(userID, workspaceID string, isAdmin bool) (deptIDs []string, restrict bool, assigneeOverride string, allowed bool) {

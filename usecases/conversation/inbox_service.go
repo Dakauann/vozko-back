@@ -424,10 +424,14 @@ func (s *inboxService) assignInitialStages(entries []conversation.InboxEntry, ca
 	}
 
 	for i := range entries {
-		if entries[i].EntryID == "" || entries[i].EntryType == "" || entries[i].CampaignID == "" {
+		if entries[i].EntryID == "" || entries[i].EntryType == "" {
 			continue
 		}
-		s.InitialStageAssigner.AutoAssignInitialStage(campaignWorkspaceID, entries[i].CampaignID, entries[i].EntryType, entries[i].EntryID, entries[i].EntryType)
+		containerID := conversation.ContainerIDOf(entries[i])
+		if containerID == "" {
+			continue
+		}
+		s.InitialStageAssigner.AutoAssignInitialStage(campaignWorkspaceID, containerID, entries[i].EntryType, entries[i].EntryID, entries[i].EntryType)
 	}
 }
 

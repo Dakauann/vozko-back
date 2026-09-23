@@ -26,12 +26,36 @@ const (
 	DirectionLowerIsBetter  MetricDirection = "lower"
 )
 
+type MetricCategory string
+
+const (
+	CategoryVolume  MetricCategory = "volume"
+	CategoryTiming  MetricCategory = "timing"
+	CategoryQuality MetricCategory = "quality"
+	CategoryRevenue MetricCategory = "revenue"
+)
+
+var categoryOrder = map[MetricCategory]int{
+	CategoryVolume:  0,
+	CategoryTiming:  1,
+	CategoryQuality: 2,
+	CategoryRevenue: 3,
+}
+
+func (c MetricCategory) Order() int {
+	if order, found := categoryOrder[c]; found {
+		return order
+	}
+	return len(categoryOrder)
+}
+
 type MetricSpec struct {
 	Key        string          `json:"key"`
 	Kind       MetricKind      `json:"kind"`
 	Direction  MetricDirection `json:"direction"`
 	Cumulative bool            `json:"cumulative"`
 	Targetable bool            `json:"targetable"`
+	Category   MetricCategory  `json:"category"`
 }
 
 const (
@@ -51,19 +75,19 @@ const (
 )
 
 var metricRegistry = map[string]MetricSpec{
-	MetricFinished:          {Key: MetricFinished, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricEngaged:           {Key: MetricEngaged, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricEntriesCreated:    {Key: MetricEntriesCreated, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricNewLeads:          {Key: MetricNewLeads, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricWonCount:          {Key: MetricWonCount, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricRevenueCents:      {Key: MetricRevenueCents, Kind: MetricKindMoney, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true},
-	MetricResolutionPct:     {Key: MetricResolutionPct, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true},
-	MetricAIContainmentRate: {Key: MetricAIContainmentRate, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true},
-	MetricReopenRate:        {Key: MetricReopenRate, Kind: MetricKindPercent, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true},
-	MetricOutcomeDurablePct: {Key: MetricOutcomeDurablePct, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true},
-	MetricAvgFRTMins:        {Key: MetricAvgFRTMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true},
-	MetricAvgWaitMins:       {Key: MetricAvgWaitMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true},
-	MetricAvgHandleMins:     {Key: MetricAvgHandleMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true},
+	MetricFinished:          {Key: MetricFinished, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryVolume},
+	MetricEngaged:           {Key: MetricEngaged, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryVolume},
+	MetricEntriesCreated:    {Key: MetricEntriesCreated, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryVolume},
+	MetricNewLeads:          {Key: MetricNewLeads, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryVolume},
+	MetricWonCount:          {Key: MetricWonCount, Kind: MetricKindCount, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryRevenue},
+	MetricRevenueCents:      {Key: MetricRevenueCents, Kind: MetricKindMoney, Direction: DirectionHigherIsBetter, Cumulative: true, Targetable: true, Category: CategoryRevenue},
+	MetricResolutionPct:     {Key: MetricResolutionPct, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true, Category: CategoryQuality},
+	MetricAIContainmentRate: {Key: MetricAIContainmentRate, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true, Category: CategoryQuality},
+	MetricReopenRate:        {Key: MetricReopenRate, Kind: MetricKindPercent, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true, Category: CategoryQuality},
+	MetricOutcomeDurablePct: {Key: MetricOutcomeDurablePct, Kind: MetricKindPercent, Direction: DirectionHigherIsBetter, Cumulative: false, Targetable: true, Category: CategoryQuality},
+	MetricAvgFRTMins:        {Key: MetricAvgFRTMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true, Category: CategoryTiming},
+	MetricAvgWaitMins:       {Key: MetricAvgWaitMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true, Category: CategoryTiming},
+	MetricAvgHandleMins:     {Key: MetricAvgHandleMins, Kind: MetricKindMinutes, Direction: DirectionLowerIsBetter, Cumulative: false, Targetable: true, Category: CategoryTiming},
 }
 
 func Metric(key string) (MetricSpec, bool) {
@@ -78,7 +102,12 @@ func TargetableMetrics() []MetricSpec {
 			out = append(out, spec)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Category != out[j].Category {
+			return out[i].Category.Order() < out[j].Category.Order()
+		}
+		return out[i].Key < out[j].Key
+	})
 	return out
 }
 

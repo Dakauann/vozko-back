@@ -245,3 +245,7 @@ type File struct {
 	ContentType string
 	Filename    string
 }
+
+type PrintDataProvider interface {
+	PrintData(ctx context.Context, job Job) (interface{}, error)
+}

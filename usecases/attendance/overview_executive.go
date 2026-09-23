@@ -121,9 +121,16 @@ func (uc *getOverviewUseCase) fillRevenue(
 		return err
 	}
 
+	ownerID := filter.MemberID
+	if ownerID != "" {
+		tallies = attendance.RevenueForOwner(tallies, ownerID)
+		unattributed = 0
+	}
+
 	previous := map[string]int64{}
 	prevFrom := inputs.from.AddDate(0, -1, 0)
-	prevRows, err := uc.repo.GetRevenueByMonth(workspaceID, prevFrom, inputs.from, scheduleLocation(inputs.schedule))
+	prevRows, err := uc.repo.GetRevenueByMonth(
+		workspaceID, prevFrom, inputs.from, scheduleLocation(inputs.schedule), ownerID)
 	if err != nil {
 		return err
 	}
@@ -206,7 +213,7 @@ func (uc *getOverviewUseCase) fillTrend(
 		),
 	)
 
-	if revenueSeries, ok := uc.revenueTrend(workspaceID, inputs, currentBucket, out); ok {
+	if revenueSeries, ok := uc.revenueTrend(workspaceID, inputs, currentBucket, filter.MemberID, out); ok {
 		series = append(series, revenueSeries)
 	}
 
@@ -224,6 +231,7 @@ func (uc *getOverviewUseCase) revenueTrend(
 	workspaceID string,
 	inputs executiveInputs,
 	currentBucket string,
+	ownerID string,
 	out *attendance.Overview,
 ) (attendance.TrendSeries, bool) {
 	if uc.repo == nil || !out.Revenue.Available || out.Revenue.MixedCurrencies || len(out.Revenue.Currencies) != 1 {
@@ -232,7 +240,7 @@ func (uc *getOverviewUseCase) revenueTrend(
 	loc := scheduleLocation(inputs.schedule)
 	windowFrom := inputs.from.AddDate(0, -(attendance.DefaultTrendBuckets - 1), 0)
 
-	rows, err := uc.repo.GetRevenueByMonth(workspaceID, windowFrom, inputs.to, loc)
+	rows, err := uc.repo.GetRevenueByMonth(workspaceID, windowFrom, inputs.to, loc, ownerID)
 	if err != nil {
 		return attendance.TrendSeries{}, false
 	}

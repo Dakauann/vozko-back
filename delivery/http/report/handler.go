@@ -248,3 +248,42 @@ func (h *ReportHandler) Kinds(w http.ResponseWriter, r *http.Request) {
 		"kinds": h.service.Registry().Descriptors(),
 	})
 }
+
+// @Summary		Dados para a página de impressão
+// @Description	Devolve os dados do relatório para a página que o navegador headless imprime em PDF. Exige um token de impressão de curta duração, válido apenas para um relatório.
+// @Tags			Relatórios
+// @Produce		json
+// @Param			id		path	string	true	"ID do relatório"
+// @Param			token	query	string	true	"Token de impressão"
+// @Success		200	{object}	report_usecase.PrintPayload
+// @Failure		401	{object}	response.ErrorResponse
+// @Router			/reports/{id}/print-data [get]
+func (h *ReportHandler) PrintData(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		response.WriteError(w, http.StatusUnauthorized, "A print token is required", nil)
+		return
+	}
+
+	payload, err := h.service.PrintPayload(r.Context(), token)
+	if err != nil {
+		switch {
+		case errors.Is(err, reportdomain.ErrPrintTokenExpired):
+			response.WriteError(w, http.StatusUnauthorized, "The print token has expired", nil)
+		case errors.Is(err, reportdomain.ErrPrintTokenInvalid),
+			errors.Is(err, reportdomain.ErrPrintSecretUnset):
+			response.WriteError(w, http.StatusUnauthorized, "The print token is not valid", nil)
+		default:
+			writeReportError(w, err)
+		}
+		return
+	}
+
+	if payload.Job.ID != mux.Vars(r)["id"] {
+		response.WriteError(w, http.StatusUnauthorized, "The print token is not valid for this report", nil)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	response.WriteSuccess(w, http.StatusOK, payload)
+}

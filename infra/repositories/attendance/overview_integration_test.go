@@ -207,11 +207,17 @@ func TestGetRevenueRunsAgainstPostgres(t *testing.T) {
 	if _, _, err := repo.GetRevenue(emptyWorkspace, from, to); err != nil {
 		t.Fatalf("GetRevenue: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from.AddDate(-1, 0, 0), to, loc); err != nil {
+	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from.AddDate(-1, 0, 0), to, loc, ""); err != nil {
 		t.Fatalf("GetRevenueByMonth: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from, to, nil); err != nil {
+	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from, to, nil, ""); err != nil {
 		t.Fatalf("GetRevenueByMonth with no timezone: %v", err)
+	}
+	if _, err := repo.GetRevenueByMonth(
+		emptyWorkspace, from.AddDate(-1, 0, 0), to, loc,
+		"9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8",
+	); err != nil {
+		t.Fatalf("GetRevenueByMonth for one owner: %v", err)
 	}
 }
 

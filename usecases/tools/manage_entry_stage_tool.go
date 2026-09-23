@@ -67,16 +67,29 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 	}
 }
 
+func (t *manageEntryStageTool) stagesForEntry(ctx tools.ToolContext) ([]*stage.Stage, error) {
+	if ctx.EntryID != "" && ctx.CampaignType != "" {
+		current, err := t.stageRepo.GetEntryStage(ctx.EntryID, ctx.CampaignType, ctx.WorkspaceID)
+		if err == nil && current != nil && current.StageID != "" {
+			if placed, err := t.stageRepo.FindByID(current.StageID); err == nil &&
+				placed != nil && placed.PipelineID != "" {
+				return t.stageRepo.ListByPipeline(ctx.WorkspaceID, placed.PipelineID)
+			}
+		}
+	}
+	return t.stageRepo.ListByCampaign(ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType)
+}
+
 func (t *manageEntryStageTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
 	base := t.Definition()
 	if ctx.WorkspaceID == "" {
 		return base
 	}
 
-	tags, err := t.stageRepo.ListByCampaign(ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType)
+	tags, err := t.stagesForEntry(ctx)
 	if err != nil || len(tags) == 0 {
-		log.Printf("[ManageEntryTag] DefinitionWithContext: no stages for workspace=%s campaign=%q/%q: %v",
-			ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType, err)
+		log.Printf("[ManageEntryTag] DefinitionWithContext: no stages for workspace=%s campaign=%q/%q entry=%q: %v",
+			ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType, ctx.EntryID, err)
 		return base
 	}
 

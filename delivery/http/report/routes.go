@@ -8,6 +8,10 @@ import (
 	workspace_domain "vozko/domain/workspace"
 )
 
+func RegisterPublicRoutes(mux *mux.Router, h *ReportHandler) {
+	mux.HandleFunc("/reports/{id}/print-data", h.PrintData).Methods(http.MethodGet)
+}
+
 func RegisterProtectedRoutes(
 	protected *mux.Router,
 	h *ReportHandler,

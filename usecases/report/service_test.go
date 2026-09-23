@@ -155,6 +155,7 @@ func (r *fakeRepo) patch(id string, mutate func(*report.Job)) error {
 
 type fakePublisher struct {
 	published [][]byte
+	topics    []string
 	err       error
 }
 
@@ -163,6 +164,7 @@ func (p *fakePublisher) Publish(topic string, message []byte) error {
 		return p.err
 	}
 	p.published = append(p.published, message)
+	p.topics = append(p.topics, topic)
 	return nil
 }
 
@@ -664,5 +666,34 @@ func TestListReportsAnExpiredJobAsExpired(t *testing.T) {
 	}
 	if len(page.Jobs) != 1 || page.Jobs[0].Status != report.StatusExpired {
 		t.Fatalf("jobs = %+v", page.Jobs)
+	}
+}
+
+func TestHeavyFormatsGetTheirOwnQueue(t *testing.T) {
+	renderer := &stubRenderer{
+		kind:    report.KindAttendanceOverview,
+		formats: []report.Format{report.FormatCSV, report.FormatPDF},
+	}
+	service, _, publisher, _ := buildService(t, renderer)
+
+	if _, err := service.Create(CreateInput{
+		WorkspaceID: "ws-1", Kind: report.KindAttendanceOverview, Format: report.FormatCSV,
+	}); err != nil {
+		t.Fatalf("csv: %v", err)
+	}
+	if _, err := service.Create(CreateInput{
+		WorkspaceID: "ws-1", Kind: report.KindAttendanceOverview, Format: report.FormatPDF,
+	}); err != nil {
+		t.Fatalf("pdf: %v", err)
+	}
+
+	if len(publisher.topics) != 2 {
+		t.Fatalf("published to %d topics", len(publisher.topics))
+	}
+	if publisher.topics[0] != report.QueueTopic {
+		t.Fatalf("csv went to %q, want %q", publisher.topics[0], report.QueueTopic)
+	}
+	if publisher.topics[1] != report.QueueTopicHeavy {
+		t.Fatalf("pdf went to %q; a slow render must not sit in the CSV lane", publisher.topics[1])
 	}
 }

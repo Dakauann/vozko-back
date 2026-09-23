@@ -26,7 +26,7 @@ func septemberInput() UpsertTargetInput {
 	return UpsertTargetInput{
 		Scope:     at.ScopeWorkspace,
 		MetricKey: attendance.MetricFinished,
-		Period:    time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC),
+		Period:    at.Month{Year: 2026, Month: time.September},
 		Value:     1786,
 	}
 }
@@ -34,7 +34,7 @@ func septemberInput() UpsertTargetInput {
 func TestTargetsServiceWithoutARepositoryIsUnavailable(t *testing.T) {
 	svc := NewTargetsService(nil, nil)
 
-	if _, err := svc.List(context.Background(), "ws1", time.Now(), TargetAccess{}); !errors.Is(err, ErrTargetsUnavailable) {
+	if _, err := svc.List(context.Background(), "ws1", at.Month{}, TargetAccess{}); !errors.Is(err, ErrTargetsUnavailable) {
 		t.Fatalf("List() err = %v, want %v rather than an empty no-target list", err, ErrTargetsUnavailable)
 	}
 	if _, err := svc.Upsert(context.Background(), "ws1", septemberInput(), TargetAccess{}); !errors.Is(err, ErrTargetsUnavailable) {
@@ -100,7 +100,7 @@ func TestTargetsServiceListFiltersByDepartmentScope(t *testing.T) {
 	}}
 	svc := targetsServiceAt(t, repo, "2026-09-28T15:36:00Z")
 
-	got, err := svc.List(context.Background(), "ws1", time.Now(), TargetAccess{
+	got, err := svc.List(context.Background(), "ws1", at.Month{}, TargetAccess{
 		Restrict:      true,
 		DepartmentIDs: []string{"dept1"},
 	})
@@ -130,5 +130,45 @@ func TestTargetsServiceValidationBubblesUp(t *testing.T) {
 	negative.Value = -5
 	if _, err := svc.Upsert(context.Background(), "ws1", negative, TargetAccess{IsAdmin: true}); !errors.Is(err, at.ErrInvalidValue) {
 		t.Fatalf("Upsert() err = %v, want %v", err, at.ErrInvalidValue)
+	}
+}
+
+func TestUpsertAcceptsTheMonthThatIsStillRunning(t *testing.T) {
+	repo := &stubTargetRepo{}
+	svc := targetsServiceAt(t, repo, "2026-09-23T12:00:00Z")
+
+	saved, err := svc.Upsert(context.Background(), "ws1", septemberInput(), TargetAccess{})
+	if err != nil {
+		t.Fatalf("saving a goal for the month in progress failed: %v", err)
+	}
+	if saved == nil {
+		t.Fatal("no target came back")
+	}
+	if saved.PeriodStart.Month() != time.September || saved.PeriodStart.Year() != 2026 {
+		t.Fatalf("stored period = %s, want September 2026 in the workspace zone", saved.PeriodStart)
+	}
+	if saved.PeriodStart.Day() != 1 {
+		t.Fatalf("stored period = %s, want the first of the month", saved.PeriodStart)
+	}
+}
+
+func TestUpsertStillRefusesAMonthThatEnded(t *testing.T) {
+	repo := &stubTargetRepo{}
+	svc := targetsServiceAt(t, repo, "2026-11-02T12:00:00Z")
+
+	if _, err := svc.Upsert(context.Background(), "ws1", septemberInput(), TargetAccess{}); !errors.Is(err, at.ErrPeriodClosed) {
+		t.Fatalf("err = %v, want ErrPeriodClosed for a month that already ended", err)
+	}
+}
+
+func TestListDefaultsToTheMonthInTheWorkspaceZone(t *testing.T) {
+	repo := &stubTargetRepo{}
+	svc := targetsServiceAt(t, repo, "2026-09-23T12:00:00Z")
+
+	if _, err := svc.List(context.Background(), "ws1", at.Month{}, TargetAccess{}); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if repo.listedPeriod.Month() != time.September || repo.listedPeriod.Year() != 2026 {
+		t.Fatalf("listed %s, want September 2026", repo.listedPeriod)
 	}
 }

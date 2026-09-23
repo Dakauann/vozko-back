@@ -349,6 +349,18 @@ definitions:
       total_messages:
         type: integer
     type: object
+  attendance.MetricCategory:
+    enum:
+    - volume
+    - timing
+    - quality
+    - revenue
+    type: string
+    x-enum-varnames:
+    - CategoryVolume
+    - CategoryTiming
+    - CategoryQuality
+    - CategoryRevenue
   attendance.MetricDefinitions:
     properties:
       ai:
@@ -459,6 +471,8 @@ definitions:
     type: object
   attendance.MetricSpec:
     properties:
+      category:
+        $ref: '#/definitions/attendance.MetricCategory'
       cumulative:
         type: boolean
       direction:
@@ -5772,6 +5786,15 @@ definitions:
       kind:
         $ref: '#/definitions/report.Kind'
     type: object
+  report.ListPage:
+    properties:
+      reports:
+        items:
+          $ref: '#/definitions/report.Job'
+        type: array
+      total:
+        type: integer
+    type: object
   report.Status:
     enum:
     - queued
@@ -5786,6 +5809,12 @@ definitions:
     - StatusDone
     - StatusFailed
     - StatusExpired
+  report_usecase.PrintPayload:
+    properties:
+      data: {}
+      job:
+        $ref: '#/definitions/report.Job'
+    type: object
   response.ErrorResponse:
     properties:
       code:
@@ -13950,13 +13979,17 @@ paths:
         name: pipelineId
         required: true
         type: string
+      - description: Formato (csv ou pdf)
+        in: query
+        name: format
+        type: string
       produces:
-      - text/csv
+      - application/json
       responses:
-        "200":
-          description: Arquivo CSV das oportunidades
+        "202":
+          description: Relatorio na fila
           schema:
-            type: file
+            $ref: '#/definitions/report.Job'
         "400":
           description: Bad Request
           schema:
@@ -14531,21 +14564,37 @@ paths:
       description: Lista os relatórios solicitados recentemente pelo workspace, do
         mais novo para o mais antigo.
       parameters:
-      - description: Quantidade máxima (padrão 25)
+      - description: Quantidade máxima (padrão 25, teto 100)
         in: query
         name: limit
         type: integer
+      - description: Deslocamento para paginação
+        in: query
+        name: offset
+        type: integer
+      - description: Filtrar por tipo (aceita lista separada por vírgula)
+        in: query
+        name: kind
+        type: string
+      - description: Filtrar por situação (aceita lista separada por vírgula)
+        in: query
+        name: status
+        type: string
+      - description: Data inicial (YYYY-MM-DD ou RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: Data final (YYYY-MM-DD ou RFC3339)
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              items:
-                $ref: '#/definitions/report.Job'
-              type: array
-            type: object
+            $ref: '#/definitions/report.ListPage'
       security:
       - BearerAuth: []
       summary: Listar relatórios recentes
@@ -14637,6 +14686,36 @@ paths:
       security:
       - BearerAuth: []
       summary: Baixar o arquivo do relatório
+      tags:
+      - Relatórios
+  /reports/{id}/print-data:
+    get:
+      description: Devolve os dados do relatório para a página que o navegador headless
+        imprime em PDF. Exige um token de impressão de curta duração, válido apenas
+        para um relatório.
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Token de impressão
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/report_usecase.PrintPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Dados para a página de impressão
       tags:
       - Relatórios
   /reports/kinds:
@@ -16073,11 +16152,10 @@ paths:
       - Saldo
   /user/balance/transactions/export:
     get:
-      description: Exporta as transações do saldo do workspace do usuário autenticado
-        como arquivo CSV ou XLSX. Aceita filtros por tipo de serviço, tipo de transação
-        e intervalo de datas.
+      description: Coloca na fila a exportação das transações do saldo. Devolve o
+        relatório na fila; acompanhe por /reports/{id} e baixe em /reports/{id}/file.
       parameters:
-      - description: Formato de exportação ('csv' ou 'xlsx')
+      - description: Formato de exportação ('csv', 'xlsx' ou 'pdf')
         in: query
         name: format
         type: string
@@ -16098,13 +16176,12 @@ paths:
         name: endDate
         type: string
       produces:
-      - text/csv
-      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - application/json
       responses:
-        "200":
-          description: Arquivo CSV ou XLSX com as transações
+        "202":
+          description: Relatório na fila
           schema:
-            type: string
+            $ref: '#/definitions/report.Job'
         "400":
           description: Bad Request
           schema:
@@ -16113,8 +16190,8 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/response.ErrorResponse'
       security:

@@ -12,10 +12,13 @@ import (
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	balancedomain "vozko/domain/balance"
+	reportdomain "vozko/domain/report"
 	"vozko/domain/shared"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/http/middleware"
 	balance_usecase "vozko/usecases/balance"
+	report_usecase "vozko/usecases/report"
+	report_renderers "vozko/usecases/report/renderers"
 )
 
 type BalanceHandler struct {
@@ -24,7 +27,7 @@ type BalanceHandler struct {
 	creditUseCase                 balancedomain.CreditBalanceUseCase
 	debitUseCase                  balancedomain.DebitBalanceUseCase
 	listTransactionsUseCase       balancedomain.ListTransactionsUseCase
-	transactionsExporter          *balance_usecase.TransactionsExporter
+	reports                       *report_usecase.Service
 	creditResourceUseCase         balancedomain.CreditResourceUseCase
 	debitResourceUseCase          balancedomain.DebitResourceUseCase
 	getFullSummaryUseCase         balancedomain.GetFullBalanceSummaryUseCase
@@ -45,7 +48,7 @@ func NewBalanceHandler(
 	getOrCreateUC balancedomain.GetOrCreateBalanceUseCase,
 	getOrCreateFullSummaryUC balancedomain.GetOrCreateFullBalanceSummaryUseCase,
 	getExchangeRateUC workspace_pricing.GetExchangeRateUseCase,
-	transactionsExporter *balance_usecase.TransactionsExporter,
+	reports *report_usecase.Service,
 ) *BalanceHandler {
 	return &BalanceHandler{
 		createUseCase:                 createUC,
@@ -59,7 +62,7 @@ func NewBalanceHandler(
 		getOrCreateUseCase:            getOrCreateUC,
 		getOrCreateFullSummaryUseCase: getOrCreateFullSummaryUC,
 		getExchangeRateUseCase:        getExchangeRateUC,
-		transactionsExporter:          transactionsExporter,
+		reports:                       reports,
 	}
 }
 
@@ -492,19 +495,18 @@ func (h *BalanceHandler) ListServiceTypes(w http.ResponseWriter, r *http.Request
 }
 
 // @Summary		Exportar transações do saldo
-// @Description	Exporta as transações do saldo do workspace do usuário autenticado como arquivo CSV ou XLSX. Aceita filtros por tipo de serviço, tipo de transação e intervalo de datas.
+// @Description	Coloca na fila a exportação das transações do saldo. Devolve o relatório na fila; acompanhe por /reports/{id} e baixe em /reports/{id}/file.
 // @Tags			Saldo
-// @Produce		text/csv
-// @Produce		application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-// @Param			format		query	string	false	"Formato de exportação ('csv' ou 'xlsx')"
+// @Produce		json
+// @Param			format		query	string	false	"Formato de exportação ('csv', 'xlsx' ou 'pdf')"
 // @Param			serviceType	query	string	false	"Filtrar por tipo de serviço"
 // @Param			type		query	string	false	"Filtrar por tipo de transação ('credit' ou 'debit')"
 // @Param			startDate	query	string	false	"Data inicial (RFC3339)"
 // @Param			endDate		query	string	false	"Data final (RFC3339)"
-// @Success		200	{string}	string	"Arquivo CSV ou XLSX com as transações"
+// @Success		202	{object}	report.Job	"Relatório na fila"
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
+// @Failure		503	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/user/balance/transactions/export [get]
 func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Request) {
@@ -513,11 +515,6 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
-	if h.transactionsExporter == nil {
-		response.WriteError(w, http.StatusServiceUnavailable, "Transaction export is not configured", nil)
-		return
-	}
-
 	workspaceID := middleware.GetWorkspaceID(r)
 	if _, err := h.getOrCreateUseCase.Execute(workspaceID); err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to ensure balance exists", nil)
@@ -525,23 +522,18 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 	}
 
 	values := r.URL.Query()
-	exportFormat := strings.ToLower(strings.TrimSpace(values.Get("format")))
-	if exportFormat == "" {
-		exportFormat = "csv"
-	}
-	if exportFormat != "csv" && exportFormat != "xlsx" {
-		response.WriteValidationError(w, map[string]string{"format": "must be csv or xlsx"})
-		return
+	format := reportdomain.Format(strings.ToLower(strings.TrimSpace(values.Get("format"))))
+	if format == "" {
+		format = reportdomain.FormatCSV
 	}
 
-	input, err := balance_usecase.BuildTransactionsFilter(balance_usecase.TransactionsFilter{
+	if _, err := balance_usecase.BuildTransactionsFilter(balance_usecase.TransactionsFilter{
 		WorkspaceID: workspaceID,
 		ServiceType: values.Get("serviceType"),
 		Type:        values.Get("type"),
 		StartDate:   values.Get("startDate"),
 		EndDate:     values.Get("endDate"),
-	})
-	if err != nil {
+	}); err != nil {
 		var fieldErr balance_usecase.FilterFieldError
 		if errors.As(err, &fieldErr) {
 			response.WriteValidationError(w, fieldErr.ValidationDetails())
@@ -551,22 +543,46 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rows, err := h.transactionsExporter.Rows(input)
+	if h.reports == nil {
+		response.WriteError(w, http.StatusServiceUnavailable, "Exports are not configured on this server", nil)
+		return
+	}
+
+	params, err := json.Marshal(report_renderers.BalanceTransactionsParams{
+		ServiceType: strings.TrimSpace(values.Get("serviceType")),
+		Type:        strings.TrimSpace(values.Get("type")),
+		StartDate:   strings.TrimSpace(values.Get("startDate")),
+		EndDate:     strings.TrimSpace(values.Get("endDate")),
+	})
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to list transactions", nil)
+		response.WriteError(w, http.StatusInternalServerError, "Failed to prepare the export", nil)
 		return
 	}
 
-	if exportFormat == "csv" {
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", "attachment; filename=transactions.csv")
-		if err := balance_usecase.WriteTransactionsCSV(rows, w); err != nil {
-			return
-		}
+	job, err := h.reports.Create(report_usecase.CreateInput{
+		WorkspaceID: workspaceID,
+		RequestedBy: claims.UserID,
+		Kind:        reportdomain.KindBalanceTransactions,
+		Format:      format,
+		Locale:      httpx.RequestLocale(r),
+		Params:      params,
+	})
+	if err != nil {
+		writeBalanceExportError(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", "attachment; filename=transactions.xlsx")
-	_ = balance_usecase.WriteTransactionsXLSX(rows, w)
+	response.WriteSuccess(w, http.StatusAccepted, job)
+}
+
+func writeBalanceExportError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, report_usecase.ErrNotConfigured):
+		response.WriteError(w, http.StatusServiceUnavailable, "Exports are not configured on this server", nil)
+	case errors.Is(err, reportdomain.ErrInvalidFormat),
+		errors.Is(err, reportdomain.ErrFormatUnsupported):
+		response.WriteValidationError(w, map[string]string{"format": "must be csv, xlsx or pdf"})
+	default:
+		response.WriteError(w, http.StatusInternalServerError, "Failed to queue the export", nil)
+	}
 }

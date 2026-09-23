@@ -29,6 +29,26 @@ type AttendanceParams struct {
 	ChannelLabel    string `json:"channelLabel,omitempty"`
 }
 
+func (p AttendanceParams) Filter() attendance.OverviewFilter {
+	filter := attendance.OverviewFilter{
+		DepartmentID: p.DepartmentID,
+		MemberID:     p.MemberID,
+		CampaignID:   p.CampaignID,
+		CampaignType: p.CampaignType,
+		Channel:      p.Channel,
+		RankMetric:   p.RankMetric,
+		TrendBuckets: p.TrendBuckets,
+		IncludeAI:    p.IncludeAI == nil || *p.IncludeAI,
+	}
+	if from, ok := parseDayStart(p.DateFrom); ok {
+		filter.DateFrom = &from
+	}
+	if to, ok := parseDayEnd(p.DateTo); ok {
+		filter.DateTo = &to
+	}
+	return filter
+}
+
 type AttendanceOverviewSource interface {
 	Execute(workspaceID string, filter attendance.OverviewFilter) (*attendance.Overview, error)
 }
@@ -67,22 +87,7 @@ func (r *AttendanceRenderer) Render(
 		return report.Artifact{}, fmt.Errorf("attendance report: reading parameters: %w", err)
 	}
 
-	filter := attendance.OverviewFilter{
-		DepartmentID: params.DepartmentID,
-		MemberID:     params.MemberID,
-		CampaignID:   params.CampaignID,
-		CampaignType: params.CampaignType,
-		Channel:      params.Channel,
-		RankMetric:   params.RankMetric,
-		TrendBuckets: params.TrendBuckets,
-		IncludeAI:    params.IncludeAI == nil || *params.IncludeAI,
-	}
-	if from, ok := parseDayStart(params.DateFrom); ok {
-		filter.DateFrom = &from
-	}
-	if to, ok := parseDayEnd(params.DateTo); ok {
-		filter.DateTo = &to
-	}
+	filter := params.Filter()
 
 	progress(10)
 	if err := ctx.Err(); err != nil {
@@ -819,4 +824,30 @@ func definitionPairs(definitions attendance.MetricDefinitions) [][2]string {
 		out = append(out, [2]string{key, decoded[key]})
 	}
 	return out
+}
+
+func (r *AttendanceRenderer) PrintData(ctx context.Context, job report.Job) (interface{}, error) {
+	if r.source == nil {
+		return nil, report.ErrNoRenderer
+	}
+
+	var params AttendanceParams
+	if err := json.Unmarshal(job.Params, &params); err != nil {
+		return nil, fmt.Errorf("attendance print: reading parameters: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	overview, err := r.source.Execute(job.WorkspaceID, params.Filter())
+	if err != nil {
+		return nil, fmt.Errorf("attendance print: reading the overview: %w", err)
+	}
+	if overview == nil {
+		return nil, report.ErrNotFound
+	}
+	return map[string]interface{}{
+		"overview": overview,
+		"filters":  params,
+	}, nil
 }

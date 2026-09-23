@@ -1,8 +1,10 @@
 package stage_repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -32,11 +34,34 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 }
 
 type repository struct {
-	db *gorm.DB
+	db                *gorm.DB
+	pipelineResolvers map[shared.EntryType]stage.ContainerPipelineResolver
 }
 
 func NewRepository(db *gorm.DB) stage.Repository {
-	return &repository{db: db}
+	return &repository{
+		db:                db,
+		pipelineResolvers: map[shared.EntryType]stage.ContainerPipelineResolver{},
+	}
+}
+
+type PipelineRegistrar interface {
+	SetContainerPipelineResolver(shared.EntryType, stage.ContainerPipelineResolver)
+}
+
+var _ PipelineRegistrar = (*repository)(nil)
+
+func (r *repository) SetContainerPipelineResolver(
+	entryType shared.EntryType,
+	resolver stage.ContainerPipelineResolver,
+) {
+	if r == nil || resolver == nil || entryType == "" {
+		return
+	}
+	if r.pipelineResolvers == nil {
+		r.pipelineResolvers = map[shared.EntryType]stage.ContainerPipelineResolver{}
+	}
+	r.pipelineResolvers[entryType] = resolver
 }
 
 func (r *repository) ensureDefaultConversationPipeline(workspaceID string) (string, error) {
@@ -309,20 +334,17 @@ func (r *repository) resolveConversationPipeline(workspaceID, campaignID, campai
 }
 
 func (r *repository) campaignPipelineID(campaignID, campaignType string) string {
-	_ = campaignType
-	for _, table := range []string{"whatsapp_campaigns"} {
-		var res struct {
-			PipelineID *string `gorm:"column:pipeline_id"`
-		}
-		if err := r.db.Table(table).Select("pipeline_id").
-			Where("id = ? AND deleted_at IS NULL", campaignID).
-			Limit(1).Scan(&res).Error; err == nil && res.PipelineID != nil {
-			if pid := strings.TrimSpace(*res.PipelineID); pid != "" {
-				return pid
-			}
-		}
+	resolver, found := r.pipelineResolvers[shared.EntryType(campaignType)]
+	if !found || resolver == nil {
+		return ""
 	}
-	return ""
+
+	pipelineID, err := resolver.PipelineIDForContainer(context.Background(), campaignID)
+	if err != nil {
+		log.Printf("[stage] pipeline lookup failed for %s container %s: %v", campaignType, campaignID, err)
+		return ""
+	}
+	return strings.TrimSpace(pipelineID)
 }
 
 func (r *repository) CreateConversationPipeline(workspaceID, name, stageGroupID string) (string, error) {

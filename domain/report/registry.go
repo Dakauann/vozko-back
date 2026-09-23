@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,9 +10,23 @@ import (
 )
 
 const (
-	Exchange   = "report_generation_exchange"
+	Exchange = "report_generation_exchange"
+
 	QueueTopic = "report.generate"
+
+	QueueTopicHeavy = "report.generate.heavy"
 )
+
+func TopicFor(format Format) string {
+	if format == FormatPDF {
+		return QueueTopicHeavy
+	}
+	return QueueTopic
+}
+
+func QueueTopics() []string {
+	return []string{QueueTopic, QueueTopicHeavy}
+}
 
 type Registry struct {
 	mu        sync.RWMutex
@@ -86,4 +101,59 @@ type QueueMessage struct {
 	JobID       string `json:"jobId"`
 	WorkspaceID string `json:"workspaceId"`
 	Kind        Kind   `json:"kind"`
+}
+
+type formatRouter struct {
+	kind      Kind
+	renderers map[Format]Renderer
+	order     []Format
+}
+
+func NewFormatRouter(kind Kind, renderers ...Renderer) Renderer {
+	router := &formatRouter{kind: kind, renderers: map[Format]Renderer{}}
+	for _, renderer := range renderers {
+		if renderer == nil {
+			continue
+		}
+		for _, format := range renderer.Formats() {
+			if _, taken := router.renderers[format]; taken {
+				continue
+			}
+			router.renderers[format] = renderer
+			router.order = append(router.order, format)
+		}
+	}
+	if len(router.renderers) == 0 {
+		return nil
+	}
+	return router
+}
+
+func (r *formatRouter) Kind() Kind { return r.kind }
+
+func (r *formatRouter) Formats() []Format {
+	out := make([]Format, len(r.order))
+	copy(out, r.order)
+	return out
+}
+
+func (r *formatRouter) Render(
+	ctx context.Context,
+	job Job,
+	progress ProgressFunc,
+) (Artifact, error) {
+	renderer, found := r.renderers[job.Format]
+	if !found {
+		return Artifact{}, ErrFormatUnsupported
+	}
+	return renderer.Render(ctx, job, progress)
+}
+
+func (r *formatRouter) PrintData(ctx context.Context, job Job) (interface{}, error) {
+	for _, renderer := range r.renderers {
+		if provider, ok := renderer.(PrintDataProvider); ok {
+			return provider.PrintData(ctx, job)
+		}
+	}
+	return nil, ErrNoRenderer
 }

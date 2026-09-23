@@ -163,7 +163,9 @@ func TestRevenueQueryArgumentsLineUpWithTheirPlaceholders(t *testing.T) {
 	cases := map[string]*sqlQuery{
 		"revenue tallies":      revenueTalliesQuery(workspaceID, from, to),
 		"revenue unattributed": revenueUnattributedQuery(workspaceID, from, to),
-		"revenue by month":     revenueByMonthQuery(workspaceID, from, to, loc),
+		"revenue by month":     revenueByMonthQuery(workspaceID, from, to, loc, ""),
+		"revenue by month, one owner": revenueByMonthQuery(
+			workspaceID, from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8"),
 	}
 
 	for name, query := range cases {
@@ -174,7 +176,7 @@ func TestRevenueQueryArgumentsLineUpWithTheirPlaceholders(t *testing.T) {
 
 func TestRevenueByMonthSendsTheTimezoneFirst(t *testing.T) {
 	from, to, loc := trendWindowForTest()
-	sql, args := revenueByMonthQuery("ws-1", from, to, loc).build()
+	sql, args := revenueByMonthQuery("ws-1", from, to, loc, "").build()
 
 	if strings.Index(sql, "AT TIME ZONE ?") > strings.Index(sql, "workspace_id = ?") {
 		t.Fatalf("the timezone placeholder moved after the workspace placeholder; the argument order no longer matches")
@@ -255,9 +257,11 @@ func TestNoAttendanceQueryDoesArithmeticOnABarePlaceholder(t *testing.T) {
 		"trend unbucketed":     trendUnbucketedQuery("ws-1", filter, sources, from, to),
 		"revenue tallies":      revenueTalliesQuery("ws-1", from, to),
 		"revenue unattributed": revenueUnattributedQuery("ws-1", from, to),
-		"revenue by month":     revenueByMonthQuery("ws-1", from, to, loc),
-		"backlog age":          backlogAgeQuery("tmp_msg", now),
-		"backlog tenure":       backlogTenureQuery("tmp_msg", now),
+		"revenue by month":     revenueByMonthQuery("ws-1", from, to, loc, ""),
+		"revenue by month, one owner": revenueByMonthQuery(
+			"ws-1", from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8"),
+		"backlog age":    backlogAgeQuery("tmp_msg", now),
+		"backlog tenure": backlogTenureQuery("tmp_msg", now),
 	}
 
 	for name, query := range queries {

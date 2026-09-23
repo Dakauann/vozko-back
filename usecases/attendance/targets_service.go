@@ -48,7 +48,7 @@ type UpsertTargetInput struct {
 	Scope     at.Scope
 	ScopeID   string
 	MetricKey string
-	Period    time.Time
+	Period    at.Month
 	Value     float64
 	Currency  string
 }
@@ -90,7 +90,14 @@ func (s *TargetsService) location(ctx context.Context, workspaceID string) (*tim
 	return scheduleLocation(sched), nil
 }
 
-func (s *TargetsService) List(ctx context.Context, workspaceID string, period time.Time, access TargetAccess) ([]at.Target, error) {
+func (s *TargetsService) resolveMonth(month at.Month, loc *time.Location) time.Time {
+	if month.IsZero() {
+		month = at.MonthAt(s.now(), loc)
+	}
+	return month.Start(loc)
+}
+
+func (s *TargetsService) List(ctx context.Context, workspaceID string, month at.Month, access TargetAccess) ([]at.Target, error) {
 	if err := s.ready(); err != nil {
 		return nil, err
 	}
@@ -98,7 +105,7 @@ func (s *TargetsService) List(ctx context.Context, workspaceID string, period ti
 	if err != nil {
 		return nil, err
 	}
-	targets, err := s.repo.ListForPeriod(workspaceID, at.NormalizePeriodStart(period, loc))
+	targets, err := s.repo.ListForPeriod(workspaceID, s.resolveMonth(month, loc))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +133,7 @@ func (s *TargetsService) Upsert(ctx context.Context, workspaceID string, input U
 		Scope:       input.Scope,
 		ScopeID:     input.ScopeID,
 		MetricKey:   input.MetricKey,
-		PeriodStart: input.Period,
+		PeriodStart: s.resolveMonth(input.Period, loc),
 		Value:       input.Value,
 		Currency:    input.Currency,
 		CreatedBy:   strings.TrimSpace(access.UserID),

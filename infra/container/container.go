@@ -32,6 +32,7 @@ func New() *Container {
 	c.initPII()
 	c.initServices()
 	c.initRepositories()
+	c.wireContainerPipelines()
 
 	c.seedPricingDefaults()
 	c.services.whatsappClientFactory = template_infra.NewWhatsAppClientFactory(c.repositories.businessPhone, &http.Client{Timeout: 30 * time.Second}, c.cfg.Dialog360MessagingBase, c.cfg.WhatsAppAppID)

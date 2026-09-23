@@ -2,15 +2,20 @@ package opportunity
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
+	reportdomain "vozko/domain/report"
 	"vozko/infra/http/middleware"
 	"vozko/usecases/opportunityio"
+	report_usecase "vozko/usecases/report"
+	report_renderers "vozko/usecases/report/renderers"
 )
 
 const maxImportBytes = 10 << 20
@@ -18,9 +23,10 @@ const maxImportBytes = 10 << 20
 // @Summary		Exportar oportunidades (CSV)
 // @Description	Exporta as oportunidades de um pipeline do workspace em formato CSV, respeitando o escopo de departamento do usuário. As colunas incluem id, título, valor (em unidades maiores), moeda, status, etapa, responsável, lead, origem, data de fechamento, data de criação e uma coluna por campo personalizado.
 // @Tags			Oportunidades
-// @Produce		text/csv
+// @Produce		json
 // @Param			pipelineId	query	string	true	"ID do pipeline"
-// @Success		200	{file}		file	"Arquivo CSV das oportunidades"
+// @Param			format		query	string	false	"Formato (csv ou pdf)"
+// @Success		202	{object}	report.Job	"Relatorio na fila"
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
@@ -46,17 +52,52 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var buf bytes.Buffer
-	buf.Write([]byte("\xEF\xBB\xBF"))
-	if _, err := h.io.Export(wsID, pipelineID, deptIDs, restrict, override, &buf); err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to export opportunities", nil)
+	if h.reports == nil {
+		response.WriteError(w, http.StatusServiceUnavailable,
+			"Exports are not configured on this server", nil)
 		return
 	}
 
-	filename := fmt.Sprintf("opportunities-%s-%s.csv", pipelineID, time.Now().Format("2006-01-02"))
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	w.Write(buf.Bytes())
+	format := reportdomain.Format(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format"))))
+	if format == "" {
+		format = reportdomain.FormatCSV
+	}
+
+	params, err := json.Marshal(report_renderers.OpportunitiesParams{
+		PipelineID:             pipelineID,
+		DepartmentIDs:          deptIDs,
+		Restrict:               restrict,
+		AssigneeOverrideUserID: override,
+		Label:                  "oportunidades",
+	})
+	if err != nil {
+		response.WriteError(w, http.StatusInternalServerError, "Failed to prepare the export", nil)
+		return
+	}
+
+	job, err := h.reports.Create(report_usecase.CreateInput{
+		WorkspaceID: wsID,
+		RequestedBy: claims.UserID,
+		Kind:        reportdomain.KindOpportunities,
+		Format:      format,
+		Locale:      httpx.RequestLocale(r),
+		Params:      params,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, report_usecase.ErrNotConfigured):
+			response.WriteError(w, http.StatusServiceUnavailable,
+				"Exports are not configured on this server", nil)
+		case errors.Is(err, reportdomain.ErrInvalidFormat),
+			errors.Is(err, reportdomain.ErrFormatUnsupported):
+			response.WriteValidationError(w, map[string]string{"format": "must be csv or pdf"})
+		default:
+			response.WriteError(w, http.StatusInternalServerError, "Failed to queue the export", nil)
+		}
+		return
+	}
+
+	response.WriteSuccess(w, http.StatusAccepted, job)
 }
 
 // @Summary		Importar oportunidades (CSV)

@@ -76,16 +76,16 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, in UpdateAcco
 	}
 
 	if in.DepartmentID != nil {
-		account.DepartmentID = normalizeOptionalID(in.DepartmentID)
+		account.DepartmentID = shared.OptionalID(in.DepartmentID)
 	}
 	if in.AgentID != nil {
-		account.AgentID = normalizeOptionalID(in.AgentID)
+		account.AgentID = shared.OptionalID(in.AgentID)
 	}
 	if in.WorkflowID != nil {
-		account.WorkflowID = normalizeOptionalID(in.WorkflowID)
+		account.WorkflowID = shared.OptionalID(in.WorkflowID)
 	}
 	if in.PipelineID != nil {
-		account.PipelineID = normalizeOptionalID(in.PipelineID)
+		account.PipelineID = shared.OptionalID(in.PipelineID)
 	}
 	if in.EnableAgentResponses != nil {
 		account.EnableAgentResponses = *in.EnableAgentResponses
@@ -145,15 +145,4 @@ func (uc *DisconnectAccountUseCase) Execute(ctx context.Context, workspaceID, id
 		log.Printf("[instagram] status update failed on disconnect account=%s: %v", account.IGUserID, err)
 	}
 	return uc.accounts.Delete(ctx, id)
-}
-
-func normalizeOptionalID(v *string) *string {
-	if v == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*v)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
 }

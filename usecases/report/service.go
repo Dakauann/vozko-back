@@ -19,6 +19,8 @@ type Service struct {
 	storage   report.Storage
 	retention time.Duration
 	now       func() time.Time
+
+	printSecret string
 }
 
 func NewService(
@@ -120,7 +122,7 @@ func (s *Service) Create(input CreateInput) (*report.Job, error) {
 		return nil, err
 	}
 
-	if err := s.publisher.Publish(report.QueueTopic, payload); err != nil {
+	if err := s.publisher.Publish(report.TopicFor(job.Format), payload); err != nil {
 		_ = s.repo.MarkFailed(job.ID, report.FailureSourceFailed, s.now())
 		return nil, err
 	}
@@ -190,4 +192,46 @@ func (s *Service) ExpireOldFiles(limit int) (int64, error) {
 
 func (s *Service) logf(format string, args ...interface{}) {
 	log.Printf("[report] "+format, args...)
+}
+
+func (s *Service) SetPrintSecret(secret string) {
+	if s != nil {
+		s.printSecret = secret
+	}
+}
+
+type PrintPayload struct {
+	Job  report.Job  `json:"job"`
+	Data interface{} `json:"data"`
+}
+
+func (s *Service) PrintPayload(ctx context.Context, token string) (*PrintPayload, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+
+	grant, err := report.VerifyPrintToken(s.printSecret, token, s.now())
+	if err != nil {
+		return nil, err
+	}
+
+	job, err := s.repo.GetByID(grant.WorkspaceID, grant.JobID)
+	if err != nil {
+		return nil, err
+	}
+
+	renderer, found := s.registry.Lookup(job.Kind)
+	if !found {
+		return nil, report.ErrNoRenderer
+	}
+	provider, ok := renderer.(report.PrintDataProvider)
+	if !ok {
+		return nil, report.ErrNoRenderer
+	}
+
+	data, err := provider.PrintData(ctx, *job)
+	if err != nil {
+		return nil, err
+	}
+	return &PrintPayload{Job: *job, Data: data}, nil
 }

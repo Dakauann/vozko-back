@@ -16,11 +16,13 @@ import (
 
 type stubOverviewRepo struct {
 	attendance.Repository
-	overview *attendance.Overview
-	trend    attendance.TrendResult
-	revenue  []attendance.RevenueTally
-	trendErr error
-	revErr   error
+	overview       *attendance.Overview
+	trend          attendance.TrendResult
+	revenue        []attendance.RevenueTally
+	revenueByMonth []attendance.RevenueMonthRow
+	monthOwners    []string
+	trendErr       error
+	revErr         error
 }
 
 func (r *stubOverviewRepo) GetOverview(string, attendance.OverviewFilter) (*attendance.Overview, error) {
@@ -39,8 +41,14 @@ func (r *stubOverviewRepo) GetRevenue(string, time.Time, time.Time) ([]attendanc
 	return r.revenue, 0, r.revErr
 }
 
-func (r *stubOverviewRepo) GetRevenueByMonth(string, time.Time, time.Time, *time.Location) ([]attendance.RevenueMonthRow, error) {
-	return nil, r.revErr
+func (r *stubOverviewRepo) GetRevenueByMonth(
+	_ string,
+	_, _ time.Time,
+	_ *time.Location,
+	ownerID string,
+) ([]attendance.RevenueMonthRow, error) {
+	r.monthOwners = append(r.monthOwners, ownerID)
+	return r.revenueByMonth, r.revErr
 }
 
 type stubConfigReader struct {
@@ -62,13 +70,15 @@ func (s stubDepartmentSchedules) ListWorkingHours([]string) ([]dept.DepartmentSc
 }
 
 type stubTargetRepo struct {
-	targets []at.Target
-	err     error
+	targets      []at.Target
+	err          error
+	listedPeriod time.Time
 }
 
 func (s *stubTargetRepo) GetByID(string, string) (*at.Target, error) { return nil, at.ErrNotFound }
 
-func (s *stubTargetRepo) ListForPeriod(string, time.Time) ([]at.Target, error) {
+func (s *stubTargetRepo) ListForPeriod(_ string, period time.Time) ([]at.Target, error) {
+	s.listedPeriod = period
 	return s.targets, s.err
 }
 

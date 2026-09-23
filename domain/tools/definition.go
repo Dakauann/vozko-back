@@ -364,6 +364,7 @@ type ToolContext struct {
 	WorkspaceID  string
 	CampaignID   string
 	CampaignType string
+	EntryID      string
 	Agent        interface{}
 }
 

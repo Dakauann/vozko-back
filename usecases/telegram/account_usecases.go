@@ -83,16 +83,16 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, workspaceID, 
 	}
 
 	if in.DepartmentID != nil {
-		account.DepartmentID = emptyToNil(in.DepartmentID)
+		account.DepartmentID = shared.OptionalID(in.DepartmentID)
 	}
 	if in.AgentID != nil {
-		account.AgentID = emptyToNil(in.AgentID)
+		account.AgentID = shared.OptionalID(in.AgentID)
 	}
 	if in.WorkflowID != nil {
-		account.WorkflowID = emptyToNil(in.WorkflowID)
+		account.WorkflowID = shared.OptionalID(in.WorkflowID)
 	}
 	if in.PipelineID != nil {
-		account.PipelineID = emptyToNil(in.PipelineID)
+		account.PipelineID = shared.OptionalID(in.PipelineID)
 	}
 	if in.EnableAgentResponses != nil {
 		account.EnableAgentResponses = *in.EnableAgentResponses
@@ -118,14 +118,6 @@ func (uc *UpdateAccountConfigUseCase) Execute(ctx context.Context, workspaceID, 
 		return nil, err
 	}
 	return account, nil
-}
-
-func emptyToNil(v *string) *string {
-	if v == nil || strings.TrimSpace(*v) == "" {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*v)
-	return &trimmed
 }
 
 type DisconnectAccountUseCase struct {

@@ -231,9 +231,10 @@ func applyInt(target *int, value *int) {
 }
 
 func applyPtr(target **string, value **string) {
-	if value != nil {
-		*target = *value
+	if value == nil {
+		return
 	}
+	*target = shared.OptionalID(*value)
 }
 
 func EnsureVisible(instance *uw.Instance, workspaceID string, scope uw.DepartmentScope) error {

@@ -8949,7 +8949,7 @@ const docTemplate = `{
                 ],
                 "description": "Exporta as oportunidades de um pipeline do workspace em formato CSV, respeitando o escopo de departamento do usuário. As colunas incluem id, título, valor (em unidades maiores), moeda, status, etapa, responsável, lead, origem, data de fechamento, data de criação e uma coluna por campo personalizado.",
                 "produces": [
-                    "text/csv"
+                    "application/json"
                 ],
                 "tags": [
                     "Oportunidades"
@@ -8962,13 +8962,19 @@ const docTemplate = `{
                         "name": "pipelineId",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Formato (csv ou pdf)",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Arquivo CSV das oportunidades",
+                    "202": {
+                        "description": "Relatorio na fila",
                         "schema": {
-                            "type": "file"
+                            "$ref": "#/definitions/report.Job"
                         }
                     },
                     "400": {
@@ -10230,8 +10236,38 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Quantidade máxima (padrão 25)",
+                        "description": "Quantidade máxima (padrão 25, teto 100)",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Deslocamento para paginação",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por tipo (aceita lista separada por vírgula)",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por situação (aceita lista separada por vírgula)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data inicial (YYYY-MM-DD ou RFC3339)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data final (YYYY-MM-DD ou RFC3339)",
+                        "name": "to",
                         "in": "query"
                     }
                 ],
@@ -10239,13 +10275,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "array",
-                                "items": {
-                                    "$ref": "#/definitions/report.Job"
-                                }
-                            }
+                            "$ref": "#/definitions/report.ListPage"
                         }
                     }
                 }
@@ -10410,6 +10440,48 @@ const docTemplate = `{
                     },
                     "410": {
                         "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/print-data": {
+            "get": {
+                "description": "Devolve os dados do relatório para a página que o navegador headless imprime em PDF. Exige um token de impressão de curta duração, válido apenas para um relatório.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Relatórios"
+                ],
+                "summary": "Dados para a página de impressão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do relatório",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token de impressão",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/report_usecase.PrintPayload"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -12576,10 +12648,9 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Exporta as transações do saldo do workspace do usuário autenticado como arquivo CSV ou XLSX. Aceita filtros por tipo de serviço, tipo de transação e intervalo de datas.",
+                "description": "Coloca na fila a exportação das transações do saldo. Devolve o relatório na fila; acompanhe por /reports/{id} e baixe em /reports/{id}/file.",
                 "produces": [
-                    "text/csv",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/json"
                 ],
                 "tags": [
                     "Saldo"
@@ -12588,7 +12659,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Formato de exportação ('csv' ou 'xlsx')",
+                        "description": "Formato de exportação ('csv', 'xlsx' ou 'pdf')",
                         "name": "format",
                         "in": "query"
                     },
@@ -12618,10 +12689,10 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Arquivo CSV ou XLSX com as transações",
+                    "202": {
+                        "description": "Relatório na fila",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/report.Job"
                         }
                     },
                     "400": {
@@ -12636,8 +12707,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -17557,6 +17628,21 @@ const docTemplate = `{
                 }
             }
         },
+        "attendance.MetricCategory": {
+            "type": "string",
+            "enum": [
+                "volume",
+                "timing",
+                "quality",
+                "revenue"
+            ],
+            "x-enum-varnames": [
+                "CategoryVolume",
+                "CategoryTiming",
+                "CategoryQuality",
+                "CategoryRevenue"
+            ]
+        },
         "attendance.MetricDefinitions": {
             "type": "object",
             "properties": {
@@ -17719,6 +17805,9 @@ const docTemplate = `{
         "attendance.MetricSpec": {
             "type": "object",
             "properties": {
+                "category": {
+                    "$ref": "#/definitions/attendance.MetricCategory"
+                },
                 "cumulative": {
                     "type": "boolean"
                 },
@@ -25405,6 +25494,20 @@ const docTemplate = `{
                 }
             }
         },
+        "report.ListPage": {
+            "type": "object",
+            "properties": {
+                "reports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/report.Job"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "report.Status": {
             "type": "string",
             "enum": [
@@ -25421,6 +25524,15 @@ const docTemplate = `{
                 "StatusFailed",
                 "StatusExpired"
             ]
+        },
+        "report_usecase.PrintPayload": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "job": {
+                    "$ref": "#/definitions/report.Job"
+                }
+            }
         },
         "response.ErrorResponse": {
             "type": "object",
