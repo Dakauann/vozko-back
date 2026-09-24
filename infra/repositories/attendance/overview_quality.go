@@ -37,7 +37,7 @@ func overviewQualityTX(tx *gorm.DB, msgTmp string, policy attendance.QualityPoli
 				WHEN m.close_source = 'system' THEN 'system'
 				ELSE 'human'
 			END AS actor_kind,
-			COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), m.assigned_user_id) AS display_name,
+			` + ownerLabelSQL("m") + ` AS display_name,
 			COUNT(*)::bigint AS closes,
 			COUNT(*) FILTER (
 				WHERE m.close_outcome <> '' AND LEFT(m.close_outcome, 1) <> ?
@@ -48,13 +48,13 @@ func overviewQualityTX(tx *gorm.DB, msgTmp string, policy attendance.QualityPoli
 				  AND m.close_outcome IN (?)
 			)::bigint AS durable
 		FROM ` + msgTmp + ` m
-		LEFT JOIN users u ON u.id::text = m.assigned_user_id
+		` + ownerLabelJoinsSQL("m") + `
 		WHERE m.total_msgs > 0
 		  AND m.status_bucket = 'finished'
 		  AND m.assigned_user_id <> ''
 		  AND m.closed_at IS NOT NULL
 		  AND m.closed_at >= ?
-		GROUP BY m.assigned_user_id, 2, u.username, u.email
+		GROUP BY m.assigned_user_id, 2, ` + ownerLabelGroupBy + `
 	`
 	var rows []qualityRow
 	err := tx.Raw(

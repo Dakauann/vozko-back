@@ -129,6 +129,10 @@ type FindOrCreateConversationInput struct {
 	ContactID   string
 	ChatID      string
 	IsGroup     bool
+	// CampaignID opens the conversation of a campaign that reached the chat, as
+	// an official campaign opens its own entry. Empty means the chat's current
+	// (newest) conversation, or a new campaign-less one.
+	CampaignID string
 }
 
 type GroupRepository interface {

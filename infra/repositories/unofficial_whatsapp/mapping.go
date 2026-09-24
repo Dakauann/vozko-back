@@ -220,6 +220,7 @@ func toConversationDomain(record *schema.UnofficialWhatsAppConversation) *uw.Con
 		ContactID:             record.ContactID,
 		ChatID:                record.ChatID,
 		IsGroup:               record.IsGroup,
+		CampaignID:            record.CampaignID,
 		ConversationStatus:    record.ConversationStatus,
 		CloseSource:           record.CloseSource,
 		CloseReason:           record.CloseReason,

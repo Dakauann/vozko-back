@@ -210,8 +210,8 @@ func (s *Service) broadcast(in BulkInput, t EntryRef) {
 		s.broadcaster.BroadcastStageUpdate(in.WorkspaceID, t.EntryID, t.EntryType)
 	case ActionAddLabel, ActionRemoveLabel:
 		s.broadcaster.BroadcastLabelUpdate(in.WorkspaceID, t.EntryID, t.EntryType)
-	case ActionAssign:
-		s.broadcaster.BroadcastEntryUpdate(t.EntryID, t.EntryType, nil)
+		// A reassignment is announced by the assignment service, which also tells
+		// whoever lost the conversation.
 	}
 }
 

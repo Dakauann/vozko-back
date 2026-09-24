@@ -7,13 +7,13 @@ import (
 	"vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
 	"vozko/domain/conversation"
-	ia_domain "vozko/domain/inbox_assignment"
 	label_domain "vozko/domain/label"
 	lead_domain "vozko/domain/lead"
 	lead_message_window_domain "vozko/domain/lead_message_window"
 	media_domain "vozko/domain/media"
 	"vozko/domain/messaging"
 	"vozko/domain/rag"
+	stage_domain "vozko/domain/stage"
 	"vozko/domain/tools"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	template_domain "vozko/domain/whatsapp/template"
@@ -47,8 +47,11 @@ type ExecutorDeps struct {
 	SubWorkflowRunner       node_executors.SubWorkflowRunner
 	SharedState             cache.SharedState
 	LabelRepo               label_domain.Repository
+	StageRepo               node_executors.StageReader
+	AssignStage             stage_domain.AssignEntryStageUseCase
+	StageBroadcaster        node_executors.StageBroadcaster
 	DepartmentRepo          dept_domain.Repository
-	InboxAssignmentRepo     ia_domain.Repository
+	ConversationHandOff     node_executors.ConversationHandOff
 	WorkspaceRepo           workspace_domain.Repository
 	CachedBalanceChecker    balance.CachedBalanceChecker
 	BillingPub              messaging.MessageQueuePub
@@ -102,8 +105,9 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionRescheduleMeeting, node_executors.NewRescheduleMeetingExecutor(deps.RescheduleEventUC))
 	registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(deps.CalendarRepo, deps.GoogleCalendar))
 	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.LabelRepo))
-	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.InboxAssignmentRepo))
-	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.InboxAssignmentRepo))
+	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
+	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.WorkspaceRepo, deps.ConversationHandOff))
+	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionFinishConversation, node_executors.NewFinishConversationExecutor(deps.ConversationStatus))
 	registry.Register(workflow.NodeTypeActionFormatDate, node_executors.NewFormatDateExecutor())
 	registry.Register(workflow.NodeTypeActionCode, node_executors.NewCodeExecutor())
@@ -120,6 +124,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeConditionTextMatch, node_executors.NewTextMatchExecutor())
 	registry.Register(workflow.NodeTypeConditionFilter, node_executors.NewFilterExecutor())
 	registry.Register(workflow.NodeTypeConditionCheckLabel, node_executors.NewCheckLabelExecutor(deps.LabelRepo))
+	registry.Register(workflow.NodeTypeConditionCheckStage, node_executors.NewCheckStageExecutor(deps.StageRepo))
 
 	registry.Register(workflow.NodeTypeDecorationBackground, node_executors.NewBackgroundNodeExecutor())
 

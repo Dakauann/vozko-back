@@ -580,6 +580,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 	} else {
 		aiFields += ", ''::text AS conversation_status"
 	}
+	aiFields += ", " + ch.closeFieldsSQL()
 	entryJoin := ch.entryJoinOn("e.entry_id")
 
 	if useCampaignFilter {
@@ -602,25 +603,29 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 	offset := (page - 1) * pageSize
 
 	type msgResult struct {
-		EntryID         string    `gorm:"column:entry_id"`
-		EntryType       string    `gorm:"column:entry_type"`
-		LeadID          string    `gorm:"column:lead_id"`
-		BusinessPhoneID string    `gorm:"column:business_phone_id"`
-		CampaignID      string    `gorm:"column:campaign_id"`
-		CampaignName    string    `gorm:"column:campaign_name"`
-		UnreadCount     int64     `gorm:"column:unread_count"`
-		LastMessageText string    `gorm:"column:last_message_text"`
-		LastMessageType string    `gorm:"column:last_message_type"`
-		LastMessageAt   time.Time `gorm:"column:last_message_at"`
-		LastMessageFrom string    `gorm:"column:last_message_from"`
-		HasMedia        bool      `gorm:"column:has_media"`
-		MediaType       string    `gorm:"column:media_type"`
-		AgentID         string    `gorm:"column:agent_id"`
-		WorkflowID      string    `gorm:"column:workflow_id"`
-		AgentEnabled    bool      `gorm:"column:agent_responses_enabled"`
-		WorkflowEnabled bool      `gorm:"column:workflow_enabled"`
-		AutomationOn    *bool     `gorm:"column:automation_enabled"`
-		ConvStatus      string    `gorm:"column:conversation_status"`
+		EntryID         string     `gorm:"column:entry_id"`
+		EntryType       string     `gorm:"column:entry_type"`
+		LeadID          string     `gorm:"column:lead_id"`
+		BusinessPhoneID string     `gorm:"column:business_phone_id"`
+		CampaignID      string     `gorm:"column:campaign_id"`
+		CampaignName    string     `gorm:"column:campaign_name"`
+		UnreadCount     int64      `gorm:"column:unread_count"`
+		LastMessageText string     `gorm:"column:last_message_text"`
+		LastMessageType string     `gorm:"column:last_message_type"`
+		LastMessageAt   time.Time  `gorm:"column:last_message_at"`
+		LastMessageFrom string     `gorm:"column:last_message_from"`
+		HasMedia        bool       `gorm:"column:has_media"`
+		MediaType       string     `gorm:"column:media_type"`
+		AgentID         string     `gorm:"column:agent_id"`
+		WorkflowID      string     `gorm:"column:workflow_id"`
+		AgentEnabled    bool       `gorm:"column:agent_responses_enabled"`
+		WorkflowEnabled bool       `gorm:"column:workflow_enabled"`
+		AutomationOn    *bool      `gorm:"column:automation_enabled"`
+		ConvStatus      string     `gorm:"column:conversation_status"`
+		CloseSource     string     `gorm:"column:close_source"`
+		CloseReason     string     `gorm:"column:close_reason"`
+		CloseOutcome    string     `gorm:"column:close_outcome"`
+		ClosedAt        *time.Time `gorm:"column:closed_at"`
 	}
 
 	query := fmt.Sprintf(`
@@ -663,6 +668,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		       -- database had as ongoing, and why the automation override read
 		       -- back as enabled whatever an operator had set.
 		       te.automation_enabled, te.conversation_status,
+		       te.close_source, te.close_reason, te.close_outcome, te.closed_at,
 		       COALESCE(uc.cnt, 0) AS unread_count,
 		       te.last_message_text, te.last_message_type, te.last_message_at,
 		       te.last_message_from, te.has_media, te.media_type
@@ -704,6 +710,12 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			WorkflowEnabled:       r.WorkflowEnabled,
 			AutomationEnabled:     r.AutomationOn,
 			ConversationStatus:    r.ConvStatus,
+			Close: conversation.CloseRecord{
+				Source:   conversation.CloseSource(r.CloseSource),
+				Reason:   conversation.CloseReason(r.CloseReason),
+				Outcome:  r.CloseOutcome,
+				ClosedAt: r.ClosedAt,
+			},
 		})
 	}
 
@@ -802,6 +814,9 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 
 	if input.ResponsibleUnassigned {
 		cteConditions = append(cteConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id)")
+	} else if input.ResponsibleKind != "" {
+		cteConditions = append(cteConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id AND iaf.assignee_kind = ?)")
+		cteArgs = append(cteArgs, string(input.ResponsibleKind))
 	} else if input.ResponsibleUserID != "" {
 		cteConditions = append(cteConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id AND iaf.assigned_user_id = ?)")
 		cteArgs = append(cteArgs, input.ResponsibleUserID)
@@ -1177,6 +1192,9 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 
 	if input.ResponsibleUnassigned {
 		whereConditions = append(whereConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id)")
+	} else if input.ResponsibleKind != "" {
+		whereConditions = append(whereConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id AND iaf.assignee_kind = ?)")
+		whereArgs = append(whereArgs, string(input.ResponsibleKind))
 	} else if input.ResponsibleUserID != "" {
 		whereConditions = append(whereConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id AND iaf.assigned_user_id = ?)")
 		whereArgs = append(whereArgs, input.ResponsibleUserID)
@@ -1466,16 +1484,20 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 
 	var leadID, businessPhoneID, campaignID, campaignName string
 	type entryInfo struct {
-		LeadID          string `gorm:"column:lead_id"`
-		BusinessPhoneID string `gorm:"column:business_phone_id"`
-		CampaignID      string `gorm:"column:campaign_id"`
-		CampaignName    string `gorm:"column:campaign_name"`
-		AgentID         string `gorm:"column:agent_id"`
-		WorkflowID      string `gorm:"column:workflow_id"`
-		AgentEnabled    bool   `gorm:"column:agent_responses_enabled"`
-		WorkflowEnabled bool   `gorm:"column:workflow_enabled"`
-		AutomationOn    *bool  `gorm:"column:automation_enabled"`
-		ConvStatus      string `gorm:"column:conversation_status"`
+		LeadID          string     `gorm:"column:lead_id"`
+		BusinessPhoneID string     `gorm:"column:business_phone_id"`
+		CampaignID      string     `gorm:"column:campaign_id"`
+		CampaignName    string     `gorm:"column:campaign_name"`
+		AgentID         string     `gorm:"column:agent_id"`
+		WorkflowID      string     `gorm:"column:workflow_id"`
+		AgentEnabled    bool       `gorm:"column:agent_responses_enabled"`
+		WorkflowEnabled bool       `gorm:"column:workflow_enabled"`
+		AutomationOn    *bool      `gorm:"column:automation_enabled"`
+		ConvStatus      string     `gorm:"column:conversation_status"`
+		CloseSource     string     `gorm:"column:close_source"`
+		CloseReason     string     `gorm:"column:close_reason"`
+		CloseOutcome    string     `gorm:"column:close_outcome"`
+		ClosedAt        *time.Time `gorm:"column:closed_at"`
 	}
 	var info entryInfo
 
@@ -1551,6 +1573,12 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WorkflowEnabled:       info.WorkflowEnabled,
 		AutomationEnabled:     info.AutomationOn,
 		ConversationStatus:    info.ConvStatus,
+		Close: conversation.CloseRecord{
+			Source:   conversation.CloseSource(info.CloseSource),
+			Reason:   conversation.CloseReason(info.CloseReason),
+			Outcome:  info.CloseOutcome,
+			ClosedAt: info.ClosedAt,
+		},
 	}, nil
 }
 

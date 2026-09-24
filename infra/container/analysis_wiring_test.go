@@ -84,7 +84,7 @@ func TestCampaignAwareResolverPassesThroughWithoutCampaigns(t *testing.T) {
 		"no bundle":       nil,
 		"bundle no repos": {},
 	} {
-		subject, err := campaignAwareResolver(base, bundle)(context.Background(), "conv-1")
+		subject, err := campaignAwareResolver(base, nil, bundle)(context.Background(), "conv-1")
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

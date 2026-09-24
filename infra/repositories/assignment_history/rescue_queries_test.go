@@ -93,8 +93,11 @@ func TestCountRescuesSinceHandout_StopsAtTheHandout(t *testing.T) {
 		"two hops this chain":     {[]string{ia.TriggerRescue, ia.TriggerRescue, ia.TriggerInboundRR}, 2},
 		"previous chain excluded": {[]string{ia.TriggerRescue, ia.TriggerInboundRR, ia.TriggerRescue, ia.TriggerRescue, ia.TriggerInboundRR}, 1},
 		"manual reassign ignored": {[]string{ia.TriggerManual, ia.TriggerRescue, ia.TriggerInboundRR}, 1},
-		"no handout in history":   {[]string{ia.TriggerManual, ia.TriggerOpen}, 0},
-		"empty history":           {nil, 0},
+		// An AI hand-off through the roulette starts a chain like an inbound one;
+		// without it the count never stops and the chain never gives up.
+		"ai hand-off is a handout": {[]string{ia.TriggerRescue, ia.TriggerAutomationHandoffRoulette, ia.TriggerRescue, ia.TriggerInboundRR}, 1},
+		"no handout in history":    {[]string{ia.TriggerManual, ia.TriggerOpen}, 0},
+		"empty history":            {nil, 0},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

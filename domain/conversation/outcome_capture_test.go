@@ -44,14 +44,16 @@ func TestOutcomeResolveTable(t *testing.T) {
 
 		{"ai, capture off", off, CloseSourceAI, CloseReasonAIResolved, "", "", nil},
 		{"ai, code given", on, CloseSourceAI, CloseReasonAIResolved, "sale", "sale", nil},
-		{"ai, code missing", on, CloseSourceAI, CloseReasonAIResolved, "", OutcomeAIUnspecified, nil},
+		{"ai, code missing", on, CloseSourceAI, CloseReasonAIResolved, "", "", ErrOutcomeRequired},
+		{"ai, code unknown", on, CloseSourceAI, CloseReasonAIResolved, "invented", "", ErrOutcomeUnknown},
 
 		{"system, capture off", off, CloseSourceSystem, CloseReasonCustomerIdle, "", "", nil},
 		{"system, code ignored", on, CloseSourceSystem, CloseReasonCustomerIdle, "sale", OutcomeSystemAutoClose, nil},
 		{"system, code missing", on, CloseSourceSystem, CloseReasonMaxAge, "", OutcomeSystemAutoClose, nil},
 
 		{"workflow, code given", on, CloseSourceSystem, CloseReasonWorkflow, "sale", "sale", nil},
-		{"workflow, code missing", on, CloseSourceSystem, CloseReasonWorkflow, "", OutcomeWorkflowUnspecified, nil},
+		{"workflow, code missing", on, CloseSourceSystem, CloseReasonWorkflow, "", "", ErrOutcomeRequired},
+		{"workflow, code unknown", on, CloseSourceSystem, CloseReasonWorkflow, "invented", "", ErrOutcomeUnknown},
 	}
 
 	for _, tc := range cases {
@@ -84,6 +86,32 @@ func TestOutcomeResolveWithoutRequireOnFinishLetsAHumanCloseUncaptured(t *testin
 	}
 	if got != "" {
 		t.Fatalf("Resolve() = %q, want an uncaptured close", got)
+	}
+}
+
+// An agent or a workflow finishing a conversation follows the rule a person
+// does. Only when the workspace does not require an outcome does a close without
+// one get the reserved "unspecified" code, kept apart from the catalogue.
+func TestOutcomeResolveWithoutRequireOnFinishMarksAutomationClosesUnspecified(t *testing.T) {
+	capture := captureFixture()
+	capture.RequireOnFinish = false
+	now := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		source CloseSource
+		reason CloseReason
+		want   string
+	}{
+		{CloseSourceAI, CloseReasonAIResolved, OutcomeAIUnspecified},
+		{CloseSourceSystem, CloseReasonWorkflow, OutcomeWorkflowUnspecified},
+	} {
+		got, err := capture.Resolve(tc.source, tc.reason, "", "", now)
+		if err != nil {
+			t.Fatalf("Resolve(%s/%s) err = %v, want nil", tc.source, tc.reason, err)
+		}
+		if got != tc.want {
+			t.Fatalf("Resolve(%s/%s) = %q, want %q", tc.source, tc.reason, got, tc.want)
+		}
 	}
 }
 

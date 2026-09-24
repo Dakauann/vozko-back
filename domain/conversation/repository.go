@@ -3,6 +3,7 @@ package conversation
 import (
 	"time"
 
+	"vozko/domain/actor"
 	"vozko/domain/crmfilter"
 	"vozko/domain/shared"
 )
@@ -84,6 +85,8 @@ type SearchEntriesInput struct {
 
 	ResponsibleUserID     string
 	ResponsibleUnassigned bool
+	// ResponsibleKind narrows to conversations an agent (ai) or a workflow holds.
+	ResponsibleKind actor.Kind
 
 	AssigneeOverrideUserID string
 
@@ -148,6 +151,7 @@ type EntryWithLastMessage struct {
 	WorkflowEnabled       bool
 	AutomationEnabled     *bool
 	ConversationStatus    string
+	Close                 CloseRecord
 }
 
 type MessageRepository interface {

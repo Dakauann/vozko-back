@@ -14,6 +14,7 @@ import (
 	conversation_infra "vozko/infra/conversation"
 	whatsapp_infra "vozko/infra/conversation/whatsapp"
 	"vozko/infra/conversation/whatsapp/media"
+	conversation_repository "vozko/infra/repositories/conversation"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	aa_usecase "vozko/usecases/ai_attendance"
 	cauc "vozko/usecases/audience"
@@ -65,6 +66,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.repositories.leadMessageWindow,
 	)
 	c.services.conversationHistory = historyProvider
+	historyProvider.SetEntryWorkspaces(workspaceResolver)
 	c.services.conversationHub.SetHistoryProvider(historyProvider)
 
 	if runs, ok := c.repositories.workflowRun.(interface {
@@ -124,6 +126,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		return ws
 	})
 	c.services.conversationHub.SetConversationStatusUpdater(conversationStatusUpdater)
+	conversationStatusUpdater.SetStatusAnnouncer(c.services.conversationHub)
 	c.services.conversationStatusUpdater = conversationStatusUpdater
 
 	c.services.conversationHub.SetCampaignWorkspaceResolver(workspaceResolver)
@@ -159,7 +162,21 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.redisProvider.SharedState(),
 	))
 	c.services.assignmentService.SetPresence(c.repositories.agentPresence)
+	entryInfo := conversation_repository.NewEntryAutomationReader(c.db)
+	c.services.assignmentService.SetAutomationGovernance(entryInfo)
+	c.services.assignmentService.SetEntryAccountReader(entryInfo)
+	c.services.assignmentService.SetDepartmentLookup(c.repositories.workspaceDepartment)
+	c.services.assignmentService.SetConversationReceivers(c.services.conversationAuth)
+	c.services.assignmentService.SetEntryBroadcaster(c.services.conversationHub)
+
+	// Built here, not when the hub starts, because hand-offs pause through it;
+	// each channel registers its own setter later.
+	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
+		c.services.conversationHub,
+	)
+	c.services.assignmentService.SetAutomationPauser(c.services.conversationAutomation)
 	c.services.aiAttendanceService = aa_usecase.NewAsyncSessionService(telemetryPub)
+	c.services.assignmentService.SetAISessionEnder(c.services.aiAttendanceService)
 	conversationStatusUpdater.SetAISessionEnder(c.services.aiAttendanceService)
 
 	templateSender := conversation_usecase.NewTemplateSenderService(
@@ -301,9 +318,6 @@ func (c *Container) mustChannelAIReply() *conversation_usecase.ChannelAIReplySer
 func (c *Container) startConversationHub() {
 	messageSender := c.services.messageSender
 
-	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
-		c.services.conversationHub,
-	)
 	if c.repositories.wcEntry != nil {
 		wcEntries := c.repositories.wcEntry
 		c.services.conversationAutomation.Register(

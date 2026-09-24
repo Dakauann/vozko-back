@@ -358,6 +358,7 @@ type fakeGateway struct {
 	limitsErr   error
 	cached      []uw.Restriction
 	resolveErr  error
+	resolved    []uwuc.ResolveInput
 }
 
 func (f *fakeGateway) Instance(context.Context, string) (*uw.Instance, error) {
@@ -396,6 +397,7 @@ func (f *fakeGateway) CacheRestriction(_ context.Context, _ string, r uw.Restric
 }
 
 func (f *fakeGateway) Resolve(_ context.Context, instance *uw.Instance, in uwuc.ResolveInput) (*uwuc.Resolved, error) {
+	f.resolved = append(f.resolved, in)
 	if f.resolveErr != nil {
 		return nil, f.resolveErr
 	}

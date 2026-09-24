@@ -38,6 +38,7 @@ type ConversationStatusService struct {
 	resolveWorkspace func(entryID, entryType string) string
 	aiSessions       AISessionEnder
 	outcomes         OutcomeCaptureReader
+	announcer        StatusAnnouncer
 	departments      EntryDepartmentResolver
 	now              func() time.Time
 }
@@ -92,6 +93,20 @@ func (s *ConversationStatusService) SetAISessionEnder(e AISessionEnder) {
 	}
 }
 
+// StatusAnnouncer tells open screens that a conversation's status changed, and
+// for a finish, how it was closed.
+type StatusAnnouncer interface {
+	AnnounceStatus(entryID, entryType string, status conversation.ConversationStatus, close conversation.CloseRecord)
+}
+
+// SetStatusAnnouncer makes every status change, whoever makes it, reach open
+// screens from this one place.
+func (s *ConversationStatusService) SetStatusAnnouncer(a StatusAnnouncer) {
+	if s != nil {
+		s.announcer = a
+	}
+}
+
 func (s *ConversationStatusService) SetOutcomeCaptureReader(r OutcomeCaptureReader) {
 	if s != nil {
 		s.outcomes = r
@@ -133,31 +148,46 @@ func (s *ConversationStatusService) OutcomeCapture(entryID, entryType string) (*
 	return s.outcomes.OutcomeCaptureFor(context.Background(), workspaceID)
 }
 
+// closedOutcome is the outcome a finish records, with the label it had when it
+// was chosen (the catalogue may be renamed later).
+type closedOutcome struct {
+	code  string
+	label string
+}
+
 func (s *ConversationStatusService) resolveOutcome(
 	entryID, entryType string,
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
 	code string,
-) (string, error) {
+) (closedOutcome, error) {
 	capture, err := s.OutcomeCapture(entryID, entryType)
 	if err != nil {
-		return "", fmt.Errorf("conversation: reading the outcome capture policy: %w", err)
+		return closedOutcome{}, fmt.Errorf("conversation: reading the outcome capture policy: %w", err)
 	}
 	if capture == nil || !capture.Enabled {
-		return "", nil
+		return closedOutcome{}, nil
 	}
 
 	departmentID := ""
 	if len(capture.DepartmentIDs) > 0 {
 		if s.departments == nil {
-			return "", conversation.ErrOutcomeRequired
+			return closedOutcome{}, conversation.ErrOutcomeRequired
 		}
 		departmentID, err = s.departments.DepartmentIDForEntry(context.Background(), entryID, entryType)
 		if err != nil {
-			return "", fmt.Errorf("conversation: resolving the entry department for outcome capture: %w", err)
+			return closedOutcome{}, fmt.Errorf("conversation: resolving the entry department for outcome capture: %w", err)
 		}
 	}
-	return capture.Resolve(source, reason, code, departmentID, s.clock())
+	resolved, err := capture.Resolve(source, reason, code, departmentID, s.clock())
+	if err != nil || resolved == "" {
+		return closedOutcome{}, err
+	}
+	out := closedOutcome{code: resolved}
+	if o, found := capture.Lookup(resolved); found {
+		out.label = o.Label
+	}
+	return out, nil
 }
 
 func (s *ConversationStatusService) GetConversationStatus(entryID, entryType string) conversation.ConversationStatus {
@@ -182,7 +212,7 @@ func (s *ConversationStatusService) SetConversationStatus(entryID, entryType str
 			Reason: conversation.CloseReasonManual,
 		})
 	}
-	return s.applyStatus(entryID, entryType, status, false, "", "", "", false)
+	return s.applyStatus(entryID, entryType, status, false, "", "", closedOutcome{}, false)
 }
 
 func normalizeCloseMeta(opts conversation.FinishOptions) (conversation.CloseSource, conversation.CloseReason) {
@@ -219,7 +249,7 @@ func (s *ConversationStatusService) applyStatus(
 	setClose bool,
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
-	outcome string,
+	outcome closedOutcome,
 	clearClose bool,
 ) error {
 	return s.applyStatusActor(entryID, entryType, status, setClose, source, reason, outcome, clearClose, "")
@@ -231,7 +261,7 @@ func (s *ConversationStatusService) applyStatusActor(
 	setClose bool,
 	source conversation.CloseSource,
 	reason conversation.CloseReason,
-	outcome string,
+	outcome closedOutcome,
 	clearClose bool,
 	actorID string,
 ) error {
@@ -252,7 +282,7 @@ func (s *ConversationStatusService) applyStatusActor(
 		if setClose {
 			write.CloseSource = string(source)
 			write.CloseReason = string(reason)
-			write.CloseOutcome = outcome
+			write.CloseOutcome = outcome.code
 			write.ClosedAt = &closedAt
 		}
 		err = s.whatsappRepo.UpdateConversationStatus(entryID, write)
@@ -270,7 +300,7 @@ func (s *ConversationStatusService) applyStatusActor(
 		if setClose {
 			write.CloseSource = source
 			write.CloseReason = reason
-			write.CloseOutcome = outcome
+			write.CloseOutcome = outcome.code
 			write.ClosedAt = closedAt
 		}
 		err = store.SetStatus(context.Background(), entryID, write)
@@ -283,7 +313,14 @@ func (s *ConversationStatusService) applyStatusActor(
 		if s.resolveWorkspace != nil {
 			wsID = s.resolveWorkspace(entryID, entryType)
 		}
-		s.emitStatusChanged(entryID, entryType, string(from), string(status), source, reason, wsID, actorID)
+		s.emitStatusChanged(entryID, entryType, string(from), string(status), source, reason, outcome, wsID, actorID)
+		if s.announcer != nil {
+			var record conversation.CloseRecord
+			if setClose {
+				record = conversation.CloseRecord{Source: source, Reason: reason, Outcome: outcome.code, ClosedAt: &closedAt}
+			}
+			s.announcer.AnnounceStatus(entryID, entryType, status, record)
+		}
 		if status == conversation.ConversationStatusFinished {
 			s.endAISessionContained(entryID, entryType, wsID)
 		}
@@ -301,7 +338,7 @@ func (s *ConversationStatusService) endAISessionContained(entryID, entryType, wo
 	s.aiSessions.EndOpenRaw(workspaceID, entryID, entryType, "contained", "conversation_finished", "")
 }
 
-func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, to string, source conversation.CloseSource, reason conversation.CloseReason, workspaceID, actorID string) {
+func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, to string, source conversation.CloseSource, reason conversation.CloseReason, outcome closedOutcome, workspaceID, actorID string) {
 	if s.events == nil {
 		return
 	}
@@ -321,13 +358,17 @@ func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, 
 	if to == string(conversation.ConversationStatusFinished) && source.Valid() {
 		details["close_source"] = string(source)
 		details["close_reason"] = string(reason)
+		if outcome.code != "" {
+			details["close_outcome"] = outcome.code
+			details["close_outcome_label"] = outcome.label
+		}
 	}
 	builder := conv_event.New(wsID, entryID, entryType, evType).
 		WithChannel(channel).
 		WithDetails(details)
 	switch {
-	case source == conversation.CloseSourceHuman && actorID != "":
-		builder = builder.WithActorHuman(actorID)
+	case actorID != "":
+		builder = builder.WithActor(actorID)
 	case source == conversation.CloseSourceAI:
 		builder = builder.WithActorAI(actorID)
 	default:
@@ -351,7 +392,7 @@ func (s *ConversationStatusService) TransitionOnMessage(
 	if inbound {
 		switch current {
 		case "", conversation.ConversationStatusFinished:
-			return s.applyStatus(entryID, entryType, conversation.ConversationStatusNew, false, "", "", "", true)
+			return s.applyStatus(entryID, entryType, conversation.ConversationStatusNew, false, "", "", closedOutcome{}, true)
 		}
 		return nil
 	}
@@ -360,7 +401,7 @@ func (s *ConversationStatusService) TransitionOnMessage(
 		return nil
 	}
 	if current == conversation.ConversationStatusNew || current == "" {
-		return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", "", false)
+		return s.applyStatus(entryID, entryType, conversation.ConversationStatusOngoing, false, "", "", closedOutcome{}, false)
 	}
 	return nil
 }

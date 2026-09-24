@@ -234,7 +234,7 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 	if !schedule.IsOpen(now) {
 		return outcomeSkipped
 	}
-	if actor.IsAI(h.AssignedActorID) {
+	if actor.IsAutomation(h.AssignedActorID) {
 		return outcomeSkipped
 	}
 	if j.status != nil && j.status.GetConversationStatus(h.EntryID, h.EntryType) == conversation.ConversationStatusFinished {

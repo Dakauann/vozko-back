@@ -3546,7 +3546,7 @@ const docTemplate = `{
         },
         "/conversations/{entryType}/{entryId}/automation": {
             "patch": {
-                "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha.",
+                "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar devolve a conversa para a IA ou o fluxo que atende o canal. A resposta traz o responsável resultante em assigned_user_id.",
                 "consumes": [
                     "application/json"
                 ],
@@ -16751,11 +16751,13 @@ const docTemplate = `{
             "enum": [
                 "human",
                 "ai",
+                "workflow",
                 "system"
             ],
             "x-enum-varnames": [
                 "KindHuman",
                 "KindAI",
+                "KindWorkflow",
                 "KindSystem"
             ]
         },

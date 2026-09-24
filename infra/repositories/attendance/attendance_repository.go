@@ -399,7 +399,7 @@ func (r *repository) GetFRTStats(workspaceID string, filter attendance.StatsFilt
 	for _, rw := range rows {
 		all = append(all, rw.FRTSecs)
 		st.SampleCount++
-		if rw.ActorKind == "ai" {
+		if attendance.CountsAsAutomation(rw.ActorKind) {
 			st.AISamples++
 			aiSum += rw.FRTSecs
 		} else {

@@ -388,14 +388,14 @@ func TestHandleSetConversationStatus_UnauthorizedAccess(t *testing.T) {
 	require.Len(t, statusMock.setCalls, 0)
 }
 
-func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
+// The status service announces every change (a person's, an agent's, a
+// workflow's, the idle sweep's) through AnnounceStatus; viewers receive the
+// finish with who closed it and the outcome recorded.
+func TestAnnounceStatusDeliversHowTheConversationWasClosed(t *testing.T) {
 	authorizer := &hubDepartmentTestAuthorizer{
 		entryAccess: map[string]bool{"user-1": true},
 	}
-	statusMock := newMockStatusUpdater()
-
 	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
-	hub.statusUpdater = statusMock
 
 	conn := &WSConnection{
 		ID: "conn-1", UserID: "user-1", WorkspaceID: "ws-1",
@@ -405,13 +405,10 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 	hub.userConnections[conn.UserID] = map[string]bool{conn.ID: true}
 	subscribeToEntry(hub, "entry-1", "whatsapp", conn)
 
-	payload, _ := json.Marshal(SetConversationStatusPayload{
-		EntryID:   "entry-1",
-		EntryType: "whatsapp",
-		Status:    "finished",
+	closedAt := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	hub.AnnounceStatus("entry-1", "whatsapp", conversation.ConversationStatusFinished, conversation.CloseRecord{
+		Source: conversation.CloseSourceAI, Reason: conversation.CloseReasonAIResolved, Outcome: "sale", ClosedAt: &closedAt,
 	})
-
-	hub.handleSetConversationStatus(conn, payload)
 
 	require.Len(t, hub.broadcast, 0, "the hub loop must not enqueue onto the channel it drains")
 
@@ -422,15 +419,17 @@ func TestHandleSetConversationStatus_BroadcastsStatusUpdate(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("subscriber did not receive the conversation status update")
 	}
-
 	require.Equal(t, WSEventConversationStatusUpdate, msg.Type)
 
 	payloadBytes, _ := json.Marshal(msg.Payload)
 	var statusPayload ConversationStatusUpdatePayload
 	require.NoError(t, json.Unmarshal(payloadBytes, &statusPayload))
 	require.Equal(t, "entry-1", statusPayload.EntryID)
-	require.Equal(t, "whatsapp", statusPayload.EntryType)
 	require.Equal(t, "finished", statusPayload.Status)
+	require.Equal(t, "ai", statusPayload.CloseSource)
+	require.Equal(t, "ai_resolved", statusPayload.CloseReason)
+	require.Equal(t, "sale", statusPayload.CloseOutcome)
+	require.NotNil(t, statusPayload.ClosedAt)
 }
 
 func TestHandleSwitchView_SetsConversationStatusOnConnection(t *testing.T) {

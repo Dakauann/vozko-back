@@ -36,6 +36,8 @@ type Request struct {
 	ToolSeed             map[string]interface{}
 	CampaignID           string
 	CampaignType         string
+	EntryID              string
+	EntryType            string
 
 	PreResolved        []tools.Definition
 	PreResolvedConfigs map[string]map[string]interface{}
@@ -80,6 +82,8 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 			Agent:        req.Agent,
 			CampaignID:   req.CampaignID,
 			CampaignType: req.CampaignType,
+			EntryID:      req.EntryID,
+			EntryType:    req.EntryType,
 		})
 		toolDefs = resolved.Definitions
 		if toolDefs == nil {

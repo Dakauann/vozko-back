@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	ia_usecase "vozko/usecases/inbox_assignment"
+
 	affiliatehttp "vozko/delivery/http/affiliate"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
@@ -314,7 +316,14 @@ func (c *Container) initHandlers() {
 				c.useCases.listConversationEvents,
 			)
 			if c.services.conversationAutomation != nil {
-				h.SetAutomationService(c.services.conversationAutomation)
+				// People switch automation through the toggle that also moves
+				// ownership: pausing releases what the agent or workflow held,
+				// resuming hands the conversation back to it.
+				h.SetAutomationService(ia_usecase.NewOperatorAutomationToggle(
+					c.services.conversationAutomation,
+					c.services.assignmentService,
+					c.services.conversationAuth,
+				))
 			}
 			return h
 		}(),

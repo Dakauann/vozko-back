@@ -81,3 +81,11 @@ func TestValidate_RejectsEmptyWorkspaceOrEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestWithActorKeepsAWorkflowAWorkflow(t *testing.T) {
+	// A workflow hand-off is credited to the workflow, not to an AI agent.
+	ev := New("ws-1", "entry-1", "whatsapp", EventAssigned).WithActor("workflow:wf-1").Build()
+	if ev.ActorKind != actor.KindWorkflow || ev.ActorID != "workflow:wf-1" {
+		t.Fatalf("actor = %q %q, want workflow workflow:wf-1", ev.ActorKind, ev.ActorID)
+	}
+}

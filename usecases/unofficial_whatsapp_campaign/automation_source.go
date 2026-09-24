@@ -12,17 +12,42 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-type AutomationSource struct {
-	entries   uwc.EntryRepository
-	campaigns uwc.Repository
+// ConversationCampaigns reads the campaign a conversation was opened for ("" for
+// a campaign-less one). The unofficial conversation repository implements it.
+type ConversationCampaigns interface {
+	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
-func NewAutomationSource(entries uwc.EntryRepository, campaigns uwc.Repository) *AutomationSource {
-	return &AutomationSource{entries: entries, campaigns: campaigns}
+// AutomationSource answers which campaign's automation a conversation follows:
+// the campaign it was opened for, known from the moment it exists.
+type AutomationSource struct {
+	conversations ConversationCampaigns
+	campaigns     uwc.Repository
+}
+
+func NewAutomationSource(conversations ConversationCampaigns, campaigns uwc.Repository) *AutomationSource {
+	return &AutomationSource{conversations: conversations, campaigns: campaigns}
+}
+
+// campaignFor is the campaign a conversation was opened for; nil for a
+// campaign-less conversation or a campaign that no longer exists.
+func (s *AutomationSource) campaignFor(ctx context.Context, conversationID string) (*uwc.Campaign, error) {
+	campaignID, err := s.conversations.CampaignIDForEntry(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if campaignID == "" {
+		return nil, nil
+	}
+	camp, err := s.campaigns.FindByID(campaignID)
+	if errors.Is(err, uwc.ErrCampaignNotFound) {
+		return nil, nil
+	}
+	return camp, err
 }
 
 func (s *AutomationSource) AutomationForConversation(conversationID string) (*uwuc.CampaignAutomation, bool) {
-	if s == nil || s.entries == nil || s.campaigns == nil {
+	if s == nil || s.conversations == nil || s.campaigns == nil {
 		return nil, false
 	}
 	id := strings.TrimSpace(conversationID)
@@ -30,19 +55,14 @@ func (s *AutomationSource) AutomationForConversation(conversationID string) (*uw
 		return nil, false
 	}
 
-	entry, err := s.entries.FindLatestByConversationID(id)
+	camp, err := s.campaignFor(context.Background(), id)
 	if err != nil {
-		if !errors.Is(err, uwc.ErrEntryNotFound) {
-			log.Printf("[unofficial-whatsapp-campaign] automation lookup failed for conversation %s: %v", id, err)
-		}
-		return nil, false
+		// Reporting "no campaign" would run the instance's AI on a conversation
+		// that may belong to a campaign without one. Run nothing instead.
+		log.Printf("[unofficial-whatsapp-campaign] automation lookup failed for conversation %s, running no automation: %v", id, err)
+		return &uwuc.CampaignAutomation{}, true
 	}
-
-	camp, err := s.campaigns.FindByID(entry.CampaignID)
-	if err != nil || camp == nil {
-		if err != nil && !errors.Is(err, uwc.ErrCampaignNotFound) {
-			log.Printf("[unofficial-whatsapp-campaign] automation lookup failed for campaign %s: %v", entry.CampaignID, err)
-		}
+	if camp == nil {
 		return nil, false
 	}
 
@@ -63,20 +83,10 @@ func (s *AutomationSource) AutomationForConversation(conversationID string) (*uw
 func (s *AutomationSource) AnalysisResolver(base convuc.AnalysisSubjectResolver) convuc.AnalysisSubjectResolver {
 	return func(ctx context.Context, entryID string) (*convuc.AnalysisSubject, error) {
 		subject, err := base(ctx, entryID)
-		if err != nil || subject == nil || s == nil || s.entries == nil || s.campaigns == nil {
+		if err != nil || subject == nil || s == nil || s.conversations == nil || s.campaigns == nil {
 			return subject, err
 		}
-		entry, err := s.entries.FindLatestByConversationID(entryID)
-		if errors.Is(err, uwc.ErrEntryNotFound) {
-			return subject, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		camp, err := s.campaigns.FindByID(entry.CampaignID)
-		if errors.Is(err, uwc.ErrCampaignNotFound) {
-			return subject, nil
-		}
+		camp, err := s.campaignFor(ctx, entryID)
 		if err != nil {
 			return nil, err
 		}

@@ -329,7 +329,7 @@ func overviewFRTStatsTX(tx *gorm.DB, workspaceID string, filter attendance.Stats
 	for _, rw := range rows {
 		all = append(all, rw.FRTSecs)
 		st.SampleCount++
-		if rw.ActorKind == "ai" {
+		if attendance.CountsAsAutomation(rw.ActorKind) {
 			st.AISamples++
 			aiSum += rw.FRTSecs
 		} else {

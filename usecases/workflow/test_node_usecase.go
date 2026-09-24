@@ -679,7 +679,7 @@ func newTestSimulationRegistry(deps ExecutorDeps, workspaceID, simLeadID string,
 		BillingPub:              deps.BillingPub,
 		LabelRepo:               deps.LabelRepo,
 		DepartmentRepo:          deps.DepartmentRepo,
-		InboxAssignmentRepo:     deps.InboxAssignmentRepo,
+		ConversationHandOff:     deps.ConversationHandOff,
 		WorkspaceRepo:           deps.WorkspaceRepo,
 		CachedBalanceChecker:    deps.CachedBalanceChecker,
 	})
@@ -704,7 +704,7 @@ func (uc *testNodeUseCase) shouldUseSimulationRegistry() bool {
 		deps.GoogleCalendar != nil ||
 		deps.LabelRepo != nil ||
 		deps.DepartmentRepo != nil ||
-		deps.InboxAssignmentRepo != nil ||
+		deps.ConversationHandOff != nil ||
 		deps.WorkspaceRepo != nil ||
 		deps.CachedBalanceChecker != nil
 }

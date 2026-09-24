@@ -192,7 +192,7 @@ func (s channelSource) projection(isNewContact string) string {
 				` + isNewContact + ` AS is_new_contact,
 				EXTRACT(HOUR FROM (` + s.EntryAlias + `.created_at))::int AS hour_bucket,
 				COALESCE(` + s.DepartmentColumn + `::text, '') AS department_id,
-				COALESCE(ia.assigned_user_id::text, '') AS assigned_user_id,
+				` + ownerActorIDSQL + ` AS assigned_user_id,
 				` + s.EntryAlias + `.created_at,
 				` + s.closeSource() + ` AS close_source,
 				` + s.closeOutcome() + ` AS close_outcome,
@@ -208,6 +208,7 @@ func (s channelSource) groupByColumns() string {
 		s.EntryAlias + ".created_at",
 		s.DepartmentColumn,
 		"ia.assigned_user_id",
+		"ia.assignee_kind",
 		s.ContainerIDColumn,
 	}
 	if s.StatusColumn != "" {

@@ -154,6 +154,10 @@ type UnofficialWhatsAppConversation struct {
 
 	ChatID  string `gorm:"size:64;not null;index:idx_uw_conv_chat"`
 	IsGroup bool   `gorm:"not null;default:false;index"`
+	// CampaignID is the campaign the conversation was opened for, "" for the
+	// chat's campaign-less one. It is part of the conversation's identity (see
+	// ux_uw_conversation_instance_chat_campaign), text so the key never holds NULL.
+	CampaignID string `gorm:"size:36;not null;default:''"`
 
 	ConversationStatus string     `gorm:"size:20;not null;default:'';index"`
 	CloseSource        string     `gorm:"size:20"`

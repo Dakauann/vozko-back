@@ -157,10 +157,10 @@ func (r *repository) CountRescuesSinceHandout(workspaceID, entryID, entryType st
 
 	count := 0
 	for _, item := range rows {
-		switch item.Trigger {
-		case ia.TriggerInboundRR:
+		switch {
+		case ia.IsRouletteHandout(item.Trigger):
 			return count, nil
-		case ia.TriggerRescue:
+		case item.Trigger == ia.TriggerRescue:
 			count++
 		}
 	}

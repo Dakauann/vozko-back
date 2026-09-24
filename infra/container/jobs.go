@@ -47,6 +47,7 @@ func (c *Container) initJobRunner() {
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		resolver := campaignAwareResolver(
 			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
+			c.unofficialWhatsApp.Conversations,
 			c.unofficialWhatsAppCampaigns,
 		)
 		channels = append(channels, analysisChannel{shared.EntryTypeUnofficialWhatsApp, resolver})
@@ -309,10 +310,11 @@ func registerAnalysisChannels(channels []analysisChannel, sinks ...analysisSubje
 
 func campaignAwareResolver(
 	base conversation_usecase.AnalysisSubjectResolver,
+	conversations uwcuc.ConversationCampaigns,
 	campaigns *unofficialWhatsAppCampaignBundle,
 ) conversation_usecase.AnalysisSubjectResolver {
-	if campaigns == nil || campaigns.Entries == nil || campaigns.Campaigns == nil {
+	if conversations == nil || campaigns == nil || campaigns.Campaigns == nil {
 		return base
 	}
-	return uwcuc.NewAutomationSource(campaigns.Entries, campaigns.Campaigns).AnalysisResolver(base)
+	return uwcuc.NewAutomationSource(conversations, campaigns.Campaigns).AnalysisResolver(base)
 }

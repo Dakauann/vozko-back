@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/workflow"
 	"vozko/domain/workspace"
 )
@@ -102,35 +101,18 @@ func (m *assignMemberWorkspaceMock) HasAnyAssignments(string, workspace.Resource
 	return false, nil
 }
 
-type assignMemberAssignmentMock struct {
-	assignErr      error
-	lastAssignment *ia.InboxAssignment
+type assignMemberHandOffMock struct {
+	err        error
+	workspace  string
+	entryID    string
+	entryType  string
+	assignedTo string
 }
 
-func (m *assignMemberAssignmentMock) Assign(a *ia.InboxAssignment) error {
-	m.lastAssignment = a
-	return m.assignErr
+func (m *assignMemberHandOffMock) HandOffToHuman(workspaceID, entryID, entryType, toUserID string) error {
+	m.workspace, m.entryID, m.entryType, m.assignedTo = workspaceID, entryID, entryType, toUserID
+	return m.err
 }
-func (m *assignMemberAssignmentMock) FindByEntry(string, string, string) (*ia.InboxAssignment, error) {
-	return nil, nil
-}
-func (m *assignMemberAssignmentMock) FindByEntries(string, []string) ([]*ia.InboxAssignment, error) {
-	return nil, nil
-}
-func (m *assignMemberAssignmentMock) FindByEntryAndUser(string, string, string, string) (*ia.InboxAssignment, error) {
-	return nil, nil
-}
-func (m *assignMemberAssignmentMock) IsAssignedToUser(string, string, string, string) (bool, error) {
-	return false, nil
-}
-func (m *assignMemberAssignmentMock) Unassign(string, string, string) error { return nil }
-func (m *assignMemberAssignmentMock) ListByUser(string, string, string) ([]string, error) {
-	return nil, nil
-}
-func (m *assignMemberAssignmentMock) GetRoundRobinState(string, string, string) (*ia.RoundRobinState, error) {
-	return nil, nil
-}
-func (m *assignMemberAssignmentMock) SaveRoundRobinState(*ia.RoundRobinState) error { return nil }
 
 func assignMemberCtx(config map[string]interface{}, edges []workflow.Edge) *workflow.NodeContext {
 	state := workflow.NewRunState()
@@ -161,7 +143,7 @@ func TestAssignMember_Success(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{
 		member: &workspace.Member{UserID: "user-123", Email: "john@example.com"},
 	}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "user-123"}, assignMemberEdges())
@@ -181,17 +163,14 @@ func TestAssignMember_Success(t *testing.T) {
 	if result.Output["assigned_user_email"] != "john@example.com" {
 		t.Errorf("assigned_user_email = %v, want john@example.com", result.Output["assigned_user_email"])
 	}
-	if iaMock.lastAssignment == nil {
-		t.Fatal("expected assignment to be created")
-	}
-	if iaMock.lastAssignment.AssignedUserID != "user-123" {
-		t.Errorf("assignment.AssignedUserID = %q, want user-123", iaMock.lastAssignment.AssignedUserID)
+	if iaMock.assignedTo != "user-123" || iaMock.workspace != "ws1" || iaMock.entryID != "entry1" || iaMock.entryType != "lead" {
+		t.Errorf("hand-off = %+v, want user-123 on ws1/entry1/lead", iaMock)
 	}
 }
 
 func TestAssignMember_MemberNotFound(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{member: nil, memberErr: nil}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "nonexistent"}, assignMemberEdges())
@@ -209,7 +188,7 @@ func TestAssignMember_MemberNotFound(t *testing.T) {
 
 func TestAssignMember_MemberLookupError(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{member: nil, memberErr: errors.New("db error")}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "user-123"}, assignMemberEdges())
@@ -229,7 +208,7 @@ func TestAssignMember_AssignmentError(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{
 		member: &workspace.Member{UserID: "user-123", Email: "john@example.com"},
 	}
-	iaMock := &assignMemberAssignmentMock{assignErr: errors.New("assign failed")}
+	iaMock := &assignMemberHandOffMock{err: errors.New("assign failed")}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "user-123"}, assignMemberEdges())
@@ -247,7 +226,7 @@ func TestAssignMember_AssignmentError(t *testing.T) {
 
 func TestAssignMember_MissingConfig(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{}, assignMemberEdges())
@@ -259,7 +238,7 @@ func TestAssignMember_MissingConfig(t *testing.T) {
 
 func TestAssignMember_EmptyMemberID(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "   "}, assignMemberEdges())
@@ -273,7 +252,7 @@ func TestAssignMember_InterpolatedVariable(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{
 		member: &workspace.Member{UserID: "user-456", Email: "jane@example.com"},
 	}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	ctx := assignMemberCtx(map[string]interface{}{"member_id": "{{vars.target_member}}"}, assignMemberEdges())
@@ -316,7 +295,7 @@ func TestAssignMember_Definition(t *testing.T) {
 
 func TestAssignMember_NoErrorEdge(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{member: nil, memberErr: nil}
-	iaMock := &assignMemberAssignmentMock{}
+	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
 
 	edges := []workflow.Edge{
@@ -334,8 +313,4 @@ func TestAssignMember_NoErrorEdge(t *testing.T) {
 	if result.Output["success"] != false {
 		t.Error("expected success=false")
 	}
-}
-
-func (m *assignMemberAssignmentMock) CompareAndSwapRoundRobinState(*ia.RoundRobinState, string) (bool, error) {
-	return true, nil
 }

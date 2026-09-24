@@ -3,6 +3,7 @@ package conversation
 import (
 	"time"
 
+	"vozko/domain/actor"
 	"vozko/domain/audience"
 	"vozko/domain/shared"
 )
@@ -59,6 +60,7 @@ type InboxEntry struct {
 	CloseSource             CloseSource            `json:"close_source,omitempty"`
 	CloseReason             CloseReason            `json:"close_reason,omitempty"`
 	ClosedAt                *time.Time             `json:"closed_at,omitempty"`
+	CloseOutcome            string                 `json:"close_outcome,omitempty"`
 	AIHandler               *AIHandler             `json:"ai_handler,omitempty"`
 }
 
@@ -149,6 +151,8 @@ type SearchInboxInput struct {
 
 	ResponsibleUserID     string
 	ResponsibleUnassigned bool
+	// ResponsibleKind narrows to conversations an agent (ai) or a workflow holds.
+	ResponsibleKind actor.Kind
 
 	AssigneeOverrideUserID string
 

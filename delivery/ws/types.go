@@ -154,6 +154,7 @@ type SearchInboxPayload struct {
 
 	ResponsibleUserID     string `json:"responsible_user_id,omitempty"`
 	ResponsibleUnassigned bool   `json:"responsible_unassigned,omitempty"`
+	ResponsibleKind       string `json:"responsible_kind,omitempty"`
 
 	Page     int `json:"page,omitempty"`
 	PageSize int `json:"page_size,omitempty"`
@@ -468,12 +469,13 @@ type SetConversationStatusPayload struct {
 }
 
 type ConversationStatusUpdatePayload struct {
-	EntryID     string  `json:"entry_id"`
-	EntryType   string  `json:"entry_type"`
-	Status      string  `json:"status"`
-	CloseSource string  `json:"close_source,omitempty"`
-	CloseReason string  `json:"close_reason,omitempty"`
-	ClosedAt    *string `json:"closed_at,omitempty"`
+	EntryID      string  `json:"entry_id"`
+	EntryType    string  `json:"entry_type"`
+	Status       string  `json:"status"`
+	CloseSource  string  `json:"close_source,omitempty"`
+	CloseReason  string  `json:"close_reason,omitempty"`
+	CloseOutcome string  `json:"close_outcome,omitempty"`
+	ClosedAt     *string `json:"closed_at,omitempty"`
 }
 
 type ConversationStatusCountsUpdatePayload struct {

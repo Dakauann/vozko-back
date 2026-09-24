@@ -91,6 +91,7 @@ const (
 	NodeTypeActionAssignMember              NodeType = "action_assign_member"
 	NodeTypeActionTransferDepartment        NodeType = "action_transfer_department"
 	NodeTypeActionFinishConversation        NodeType = "action_finish_conversation"
+	NodeTypeActionMoveStage                 NodeType = "action_move_stage"
 
 	NodeTypeWaitDuration        NodeType = "wait_duration"
 	NodeTypeWaitForReply        NodeType = "wait_for_reply"
@@ -100,6 +101,7 @@ const (
 	NodeTypeConditionTextMatch  NodeType = "condition_text_match"
 	NodeTypeConditionFilter     NodeType = "condition_filter"
 	NodeTypeConditionCheckLabel NodeType = "condition_check_label"
+	NodeTypeConditionCheckStage NodeType = "condition_check_stage"
 	NodeTypeConditionChannel    NodeType = "condition_channel"
 	NodeTypeEnd                 NodeType = "end"
 
@@ -129,7 +131,9 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionAssignLabel, NodeTypeActionAssignMember,
 		NodeTypeActionTransferDepartment,
 		NodeTypeActionFinishConversation,
+		NodeTypeActionMoveStage,
 		NodeTypeConditionCheckLabel,
+		NodeTypeConditionCheckStage,
 		NodeTypeConditionChannel,
 		NodeTypeEnd,
 		NodeTypeDecorationBackground:
@@ -188,7 +192,7 @@ func (n *NodeType) UnmarshalJSON(data []byte) error {
 
 func (n NodeType) IsCondition() bool {
 	switch n {
-	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionChannel:
+	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionCheckStage, NodeTypeConditionChannel:
 		return true
 	}
 	return false

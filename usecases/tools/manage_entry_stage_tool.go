@@ -68,6 +68,14 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 }
 
 func (t *manageEntryStageTool) stagesForEntry(ctx tools.ToolContext) ([]*stage.Stage, error) {
+	// Resolved for a conversation, the stages are those of its pipeline, the
+	// same scope a move is checked against (see ExecuteWithConfig).
+	if ctx.CampaignType == "" {
+		ctx.CampaignType = ctx.EntryType
+	}
+	if ctx.CampaignID == "" {
+		ctx.CampaignID = ctx.EntryID
+	}
 	if ctx.EntryID != "" && ctx.CampaignType != "" {
 		current, err := t.stageRepo.GetEntryStage(ctx.EntryID, ctx.CampaignType, ctx.WorkspaceID)
 		if err == nil && current != nil && current.StageID != "" {

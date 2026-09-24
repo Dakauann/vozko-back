@@ -368,3 +368,20 @@ func TestVariantIsStableAcrossRetries(t *testing.T) {
 		t.Fatalf("variant drifted between runs: %q then %q", first, second)
 	}
 }
+
+func TestASendOpensTheCampaignsOwnConversation(t *testing.T) {
+	// Like an official campaign's entry: each campaign reaching the contact has
+	// its own conversation, so it starts unassigned and follows this campaign's
+	// AI or workflow, while earlier campaigns keep theirs.
+	h := newHarness(t)
+	campID, entryID := h.seed(t)
+
+	h.run(campID, entryID)
+
+	if len(h.gateway.resolved) != 1 {
+		t.Fatalf("resolves = %d, want 1", len(h.gateway.resolved))
+	}
+	if got := h.gateway.resolved[0].CampaignID; got != campID {
+		t.Fatalf("resolved for campaign %q, want %q", got, campID)
+	}
+}

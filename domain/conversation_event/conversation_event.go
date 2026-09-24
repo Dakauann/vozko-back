@@ -210,6 +210,12 @@ func (b *Builder) WithActorAI(agentID string) *Builder {
 	return b
 }
 
+func (b *Builder) WithActorWorkflow(workflowID string) *Builder {
+	b.ev.ActorKind = actor.KindWorkflow
+	b.ev.ActorID = actor.FormatWorkflow(workflowID)
+	return b
+}
+
 func (b *Builder) WithActorSystem() *Builder {
 	b.ev.ActorKind = actor.KindSystem
 	b.ev.ActorID = actor.SystemID
@@ -220,6 +226,8 @@ func (b *Builder) WithActor(actorID string) *Builder {
 	switch actor.KindOf(actorID) {
 	case actor.KindAI:
 		return b.WithActorAI(actor.ParseAI(actorID))
+	case actor.KindWorkflow:
+		return b.WithActorWorkflow(actor.ParseWorkflow(actorID))
 	case actor.KindHuman:
 		return b.WithActorHuman(actorID)
 	default:

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"vozko/domain/actor"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
@@ -821,59 +822,84 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 
 	log.Printf("[ConversationHub] Auto-assigned entry %s (%s) → user %s (opened)", entryID, entryType, conn.UserID)
 
-	go h.BroadcastEntryRemoved(entryID, entryType, workspaceID, conn.UserID)
+	if h.assignmentService == nil {
+		go h.AnnounceOwnerChange(workspaceID, entryID, entryType, "")
+	}
 }
 
-func (h *ConversationHub) BroadcastEntryRemoved(entryID, entryType, workspaceID, excludeUserID string) {
-	h.broadcastEntryRemovedLocal(entryID, entryType, workspaceID, excludeUserID)
-	h.publishWorkspaceBroadcast("entry_removed", entryID, entryType, "", workspaceID, excludeUserID)
+// AnnounceOwnerChange tells everyone a reassignment concerns: the row is rebuilt
+// for whoever can see the conversation now, and whoever just lost it drops it.
+func (h *ConversationHub) AnnounceOwnerChange(workspaceID, entryID, entryType, previousOwner string) {
+	h.BroadcastEntryUpdate(entryID, entryType, nil)
+	h.BroadcastEntryRemoved(entryID, entryType, workspaceID, previousOwner)
 }
 
-func (h *ConversationHub) broadcastEntryRemovedLocal(entryID, entryType, workspaceID, excludeUserID string) {
-	if h.authorizer == nil {
+// BroadcastEntryRemoved tells the people who lost a conversation to drop it.
+// previousOwner is who held it before: that person, or everyone when it sat in
+// the team queue ("").
+func (h *ConversationHub) BroadcastEntryRemoved(entryID, entryType, workspaceID, previousOwner string) {
+	h.broadcastEntryRemovedLocal(entryID, entryType, workspaceID, previousOwner)
+	h.publishWorkspaceBroadcast("entry_removed", entryID, entryType, "", workspaceID, previousOwner)
+}
+
+// broadcastEntryRemovedLocal reaches the connections that could see the
+// conversation before and cannot now, and unsubscribes them so an open
+// conversation stops receiving its messages. Admins and view_others holders
+// see every conversation, so they never lose one; an agent or workflow held it
+// hidden from every operator, so nobody had it to lose.
+func (h *ConversationHub) broadcastEntryRemovedLocal(entryID, entryType, workspaceID, previousOwner string) {
+	if h.authorizer == nil || actor.IsAutomation(previousOwner) {
 		return
 	}
 
-	event := &WSOutgoingMessage{
-		Type: WSEventEntryRemoved,
-		Payload: EntryRemovedPayload{
-			EntryID:   entryID,
-			EntryType: entryType,
-			Reason:    "assigned",
-		},
-	}
-	data, err := json.Marshal(event)
+	data, err := json.Marshal(&WSOutgoingMessage{
+		Type:    WSEventEntryRemoved,
+		Payload: EntryRemovedPayload{EntryID: entryID, EntryType: entryType, Reason: "assigned"},
+	})
 	if err != nil {
 		return
 	}
 
+	var lost []*WSConnection
 	h.connMu.RLock()
-	defer h.connMu.RUnlock()
-
 	for _, connIDs := range h.userConnections {
 		for connID := range connIDs {
-			if conn, exists := h.connections[connID]; exists {
+			conn, exists := h.connections[connID]
+			if !exists || conn.WorkspaceID != workspaceID || conn.IsAdmin {
+				continue
+			}
+			if previousOwner != "" && conn.UserID != previousOwner {
+				continue
+			}
+			if h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "conversations", "view_others", conn.IsAdmin) {
+				continue
+			}
+			if h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, entryID, entryType, conn.IsAdmin) {
+				continue
+			}
+			select {
+			case conn.Send <- data:
+			default:
+			}
+			lost = append(lost, conn)
+		}
+	}
+	h.connMu.RUnlock()
 
-				if conn.UserID == excludeUserID {
-					continue
-				}
-
-				if conn.WorkspaceID != workspaceID {
-					continue
-				}
-				if !h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, entryID, entryType, conn.IsAdmin) {
-					continue
-				}
-				if h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "conversations", "view_others", conn.IsAdmin) {
-					continue
-				}
-				select {
-				case conn.Send <- data:
-				default:
-				}
+	sub := entrySubscription{entryID: entryID, entryType: entryType}
+	h.subMu.Lock()
+	for _, conn := range lost {
+		if subs, ok := h.connSubscriptions[conn.ID]; ok {
+			delete(subs, sub)
+		}
+		if subscribers, ok := h.entrySubscribers[sub]; ok {
+			delete(subscribers, conn.ID)
+			if len(subscribers) == 0 {
+				delete(h.entrySubscribers, sub)
 			}
 		}
 	}
+	h.subMu.Unlock()
 }
 
 func (h *ConversationHub) BroadcastMessageStatus(entryID, entryType, messageID string, status conversation.DeliveryStatus) {
@@ -2348,6 +2374,7 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 			AssignedUserID:        conn.UserID,
 			ResponsibleUserID:     p.ResponsibleUserID,
 			ResponsibleUnassigned: p.ResponsibleUnassigned,
+			ResponsibleKind:       conversation.ParseResponsibleKind(p.ResponsibleKind),
 			IsAdmin:               conn.IsAdmin,
 			Page:                  p.Page,
 			PageSize:              pageSize,
@@ -2719,21 +2746,27 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 		return
 	}
 
-	statusPayload := ConversationStatusUpdatePayload{
-		EntryID:   p.EntryID,
-		EntryType: p.EntryType,
-		Status:    p.Status,
-	}
-	if status == conversation.ConversationStatusFinished {
-		statusPayload.CloseSource = string(conversation.CloseSourceHuman)
-		statusPayload.CloseReason = string(conversation.CloseReasonManual)
-		now := time.Now().UTC().Format(time.RFC3339)
-		statusPayload.ClosedAt = &now
-	}
+	// The status service announces the change (AnnounceStatus), the same way
+	// it does for agents, workflows and the idle sweep.
+}
 
-	h.handleBroadcast(conversationStatusBroadcast(p.EntryID, p.EntryType, statusPayload))
-
-	go h.BroadcastEntryUpdate(p.EntryID, p.EntryType, nil)
+// AnnounceStatus tells the conversation's viewers its status changed and, for a
+// finish, how it was closed; the inbox row is rebuilt for everyone who lists it.
+func (h *ConversationHub) AnnounceStatus(entryID, entryType string, status conversation.ConversationStatus, close conversation.CloseRecord) {
+	payload := ConversationStatusUpdatePayload{
+		EntryID:      entryID,
+		EntryType:    entryType,
+		Status:       string(status),
+		CloseSource:  string(close.Source),
+		CloseReason:  string(close.Reason),
+		CloseOutcome: close.Outcome,
+	}
+	if close.ClosedAt != nil {
+		at := close.ClosedAt.UTC().Format(time.RFC3339)
+		payload.ClosedAt = &at
+	}
+	h.handleBroadcast(conversationStatusBroadcast(entryID, entryType, payload))
+	go h.BroadcastEntryUpdate(entryID, entryType, nil)
 }
 
 func (h *ConversationHub) handleSearchMessages(conn *WSConnection, payload json.RawMessage) {
@@ -3222,13 +3255,11 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 				WithDetails(details).
 				Build())
 		}
+		// The assignment service announces its own reassignments.
+		go h.AnnounceOwnerChange(workspaceID, p.EntryID, p.EntryType, previousUserID)
 	}
 
 	log.Printf("[ConversationHub] Entry %s (%s) manually assigned to user %s by %s", p.EntryID, p.EntryType, p.UserID, conn.UserID)
-
-	go h.BroadcastEntryUpdate(p.EntryID, p.EntryType, nil)
-
-	go h.BroadcastEntryRemoved(p.EntryID, p.EntryType, workspaceID, p.UserID)
 }
 
 func (h *ConversationHub) handleBroadcast(msg *broadcastMessage) {

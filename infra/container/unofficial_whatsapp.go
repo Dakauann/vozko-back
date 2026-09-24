@@ -180,7 +180,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 
 		handler.SetCampaignAutomationSource(
 			uwcuc.NewAutomationSource(
-				c.unofficialWhatsAppCampaigns.Entries,
+				bundle.Conversations,
 				c.unofficialWhatsAppCampaigns.Campaigns))
 	}
 

@@ -8,14 +8,17 @@ import (
 )
 
 type InboxAssignment struct {
-	ID              string    `gorm:"primaryKey;type:text"`
-	WorkspaceID     string    `gorm:"type:uuid;not null;index:idx_inbox_assign_workspace;index:idx_inbox_assign_ws_user_type,priority:1"`
-	BusinessPhoneID *string   `gorm:"type:uuid;default:null;index:idx_inbox_assign_phone"`
-	EntryID         string    `gorm:"type:uuid;not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_user_entry,priority:2"`
-	EntryType       string    `gorm:"type:varchar(20);not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_ws_user_type,priority:3"`
-	AssignedUserID  string    `gorm:"type:uuid;not null;index:idx_inbox_assign_user;index:idx_inbox_assign_user_entry,priority:1;index:idx_inbox_assign_ws_user_type,priority:2"`
-	CreatedAt       time.Time `gorm:"autoCreateTime"`
-	UpdatedAt       time.Time `gorm:"autoUpdateTime"`
+	ID              string  `gorm:"primaryKey;type:text"`
+	WorkspaceID     string  `gorm:"type:uuid;not null;index:idx_inbox_assign_workspace;index:idx_inbox_assign_ws_user_type,priority:1"`
+	BusinessPhoneID *string `gorm:"type:uuid;default:null;index:idx_inbox_assign_phone"`
+	EntryID         string  `gorm:"type:uuid;not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_user_entry,priority:2"`
+	EntryType       string  `gorm:"type:varchar(20);not null;uniqueIndex:idx_inbox_assign_entry;index:idx_inbox_assign_ws_user_type,priority:3"`
+	AssignedUserID  string  `gorm:"type:uuid;not null;index:idx_inbox_assign_user;index:idx_inbox_assign_user_entry,priority:1;index:idx_inbox_assign_ws_user_type,priority:2"`
+	// AssigneeKind says whose id AssignedUserID is: "human" (a user), "ai" (an
+	// agent) or "workflow". The uuid column cannot carry the actor prefix.
+	AssigneeKind string    `gorm:"type:varchar(10);not null;default:'human'"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
 
 func (InboxAssignment) TableName() string {

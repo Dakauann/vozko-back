@@ -2,7 +2,9 @@ package ws
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
+	"vozko/domain/actor"
 
 	"github.com/stretchr/testify/require"
 
@@ -102,35 +104,58 @@ func drainConnectedUsers(t *testing.T, conn *WSConnection) []string {
 	}
 }
 
-func TestBroadcastEntryRemovedLocal_FiltersUnauthorizedAndViewOthersConnections(t *testing.T) {
-	authorizer := &hubDepartmentTestAuthorizer{
-		entryAccess: map[string]bool{
-			"authorized-user":  true,
-			"view-others-user": true,
-			"blocked-user":     false,
-		},
-		viewOthers: map[string]bool{
-			"view-others-user": true,
-		},
+// removalFixture is a workspace where the entry was just reassigned: only the
+// users in canSee can still open it.
+func removalFixture(t *testing.T, canSee map[string]bool, viewOthers map[string]bool, users ...string) (*ConversationHub, map[string]*WSConnection) {
+	t.Helper()
+	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: canSee, viewOthers: viewOthers}, nil, nil, nil, "test-replica", "")
+	conns := map[string]*WSConnection{}
+	for i, user := range users {
+		conn := &WSConnection{ID: fmt.Sprintf("conn-%d", i), UserID: user, WorkspaceID: "ws-1", Send: make(chan []byte, 2)}
+		hub.connections[conn.ID] = conn
+		hub.userConnections[user] = map[string]bool{conn.ID: true}
+		conns[user] = conn
 	}
+	return hub, conns
+}
 
-	hub := NewConversationHub(authorizer, nil, nil, nil, "test-replica", "")
-	authorizedConn := &WSConnection{ID: "conn-1", UserID: "authorized-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
-	viewOthersConn := &WSConnection{ID: "conn-2", UserID: "view-others-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
-	blockedConn := &WSConnection{ID: "conn-3", UserID: "blocked-user", WorkspaceID: "ws-1", Send: make(chan []byte, 1)}
+// Whoever loses a conversation on a reassign learns it at once: its row leaves
+// their inbox and an open conversation stops receiving its messages. Nobody who
+// can still see it is told to drop it.
+func TestEntryRemovalReachesThePersonWhoLostTheConversation(t *testing.T) {
+	hub, conns := removalFixture(t,
+		map[string]bool{"new-owner": true, "supervisor": true},
+		map[string]bool{"supervisor": true},
+		"previous-owner", "bystander", "new-owner", "supervisor")
+	subscribeToEntry(hub, "entry-1", "whatsapp", conns["previous-owner"])
 
-	hub.connections[authorizedConn.ID] = authorizedConn
-	hub.connections[viewOthersConn.ID] = viewOthersConn
-	hub.connections[blockedConn.ID] = blockedConn
-	hub.userConnections[authorizedConn.UserID] = map[string]bool{authorizedConn.ID: true}
-	hub.userConnections[viewOthersConn.UserID] = map[string]bool{viewOthersConn.ID: true}
-	hub.userConnections[blockedConn.UserID] = map[string]bool{blockedConn.ID: true}
+	hub.broadcastEntryRemovedLocal("entry-1", "whatsapp", "ws-1", "previous-owner")
 
-	hub.broadcastEntryRemovedLocal("entry-1", "whatsapp", "ws-1", "assigned-user")
+	require.Len(t, conns["previous-owner"].Send, 1)
+	require.Len(t, conns["bystander"].Send, 0, "never had it")
+	require.Len(t, conns["new-owner"].Send, 0, "still sees it")
+	require.Len(t, conns["supervisor"].Send, 0, "view_others keeps it")
+	require.Empty(t, hub.entrySubscribers[entrySubscription{entryID: "entry-1", entryType: "whatsapp"}],
+		"an open conversation must stop receiving messages it can no longer see")
+}
 
-	require.Len(t, authorizedConn.Send, 1)
-	require.Len(t, viewOthersConn.Send, 0)
-	require.Len(t, blockedConn.Send, 0)
+func TestLeavingTheTeamQueueRemovesItFromEveryoneWhoNoLongerSeesIt(t *testing.T) {
+	hub, conns := removalFixture(t, map[string]bool{"new-owner": true}, nil, "operator-a", "operator-b", "new-owner")
+
+	hub.broadcastEntryRemovedLocal("entry-1", "whatsapp", "ws-1", "")
+
+	require.Len(t, conns["operator-a"].Send, 1)
+	require.Len(t, conns["operator-b"].Send, 1)
+	require.Len(t, conns["new-owner"].Send, 0)
+}
+
+func TestAConversationAnAutomationHeldWasNoOperatorsToLose(t *testing.T) {
+	hub, conns := removalFixture(t, map[string]bool{}, nil, "operator-a")
+
+	hub.broadcastEntryRemovedLocal("entry-1", "whatsapp", "ws-1", actor.FormatAI("agent-1"))
+	hub.broadcastEntryRemovedLocal("entry-1", "whatsapp", "ws-1", actor.FormatWorkflow("wf-1"))
+
+	require.Len(t, conns["operator-a"].Send, 0)
 }
 
 func TestBroadcastConnectedUsersToWorkspace_GlobalMemberSeesOnlyRelevantDepartmentScope(t *testing.T) {

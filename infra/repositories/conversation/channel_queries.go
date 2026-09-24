@@ -24,6 +24,10 @@ type channelQuery struct {
 
 	StatusColumn string
 
+	// CloseTable is the alias of the row holding how the conversation was
+	// last closed (close_source, close_reason, close_outcome, closed_at).
+	CloseTable string
+
 	ContainerCTE         string
 	ContainerCTEEntryCol string
 
@@ -59,6 +63,7 @@ var channelQueries = []channelQuery{
 
 		AutomationColumn: "wce.automation_enabled",
 		StatusColumn:     "wce.conversation_status",
+		CloseTable:       "wce",
 
 		ContainerCTE:         `SELECT wce_f.id AS entry_id FROM whatsapp_campaign_entries wce_f WHERE wce_f.campaign_id = ? AND wce_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "wce_f.id",
@@ -97,6 +102,7 @@ var channelQueries = []channelQuery{
 
 		AutomationColumn: "igc.automation_enabled",
 		StatusColumn:     "igc.conversation_status",
+		CloseTable:       "igc",
 
 		ContainerCTE:         `SELECT igc_f.id AS entry_id FROM instagram_conversations igc_f WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "igc_f.id",
@@ -137,6 +143,7 @@ var channelQueries = []channelQuery{
 
 		AutomationColumn: "tgc.automation_enabled",
 		StatusColumn:     "tgc.conversation_status",
+		CloseTable:       "tgc",
 
 		ContainerCTE:         `SELECT tgc_f.id AS entry_id FROM telegram_conversations tgc_f WHERE tgc_f.account_id = ? AND tgc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "tgc_f.id",
@@ -160,16 +167,7 @@ var channelQueries = []channelQuery{
 
 		EntryJoin: `JOIN unofficial_whatsapp_conversations uwc ON uwc.id = %[1]s AND uwc.deleted_at IS NULL
 		             JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id
-		             LEFT JOIN LATERAL (
-		             SELECT uwcamp.id, uwcamp.name, uwcamp.agent_id, uwcamp.workflow_id,
-		                    uwcamp.enable_agent_responses, uwcamp.enable_workflow
-		             FROM unofficial_whatsapp_campaign_entries uwce
-		             JOIN unofficial_whatsapp_campaigns uwcamp
-		               ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
-		             WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
-		             ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
-		             LIMIT 1
-		         ) camp ON TRUE`,
+		             ` + UnofficialCampaignJoin("uwc", "camp"),
 		ContactJoin: `JOIN (
 	SELECT c.id,
 	       COALESCE(NULLIF(ld.name, ''), NULLIF(c.contact_name, ''), NULLIF(c.verified_name, ''),
@@ -194,6 +192,7 @@ var channelQueries = []channelQuery{
 
 		AutomationColumn: "uwc.automation_enabled",
 		StatusColumn:     "uwc.conversation_status",
+		CloseTable:       "uwc",
 
 		ContainerCTE:         `SELECT uwc_f.id AS entry_id FROM unofficial_whatsapp_conversations uwc_f WHERE uwc_f.instance_id = ? AND uwc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "uwc_f.id",
@@ -279,7 +278,8 @@ func (q channelQuery) entryInfoSQL() string {
 		       %s AS campaign_name,
 		       %s,
 		       %s AS automation_enabled,
-		       %s AS conversation_status
+		       %s AS conversation_status,
+		       %s
 		FROM (SELECT 1) AS entry_anchor
 		%s
 		LIMIT 1
@@ -291,8 +291,22 @@ func (q channelQuery) entryInfoSQL() string {
 		q.AutomationFields,
 		q.AutomationColumn,
 		q.statusColumnOrEmpty(),
+		q.closeFieldsSQL(),
 		q.entryJoinOn("?::uuid"),
 	)
+}
+
+// closeFieldsSQL projects how the conversation was last closed. The inbox list
+// and the live update both read it from here, so they cannot disagree.
+func (q channelQuery) closeFieldsSQL() string {
+	if q.CloseTable == "" {
+		return "''::text AS close_source, ''::text AS close_reason, ''::text AS close_outcome, NULL::timestamptz AS closed_at"
+	}
+	t := q.CloseTable
+	return "COALESCE(" + t + ".close_source, '') AS close_source, " +
+		"COALESCE(" + t + ".close_reason, '') AS close_reason, " +
+		"COALESCE(" + t + ".close_outcome, '') AS close_outcome, " +
+		t + ".closed_at AS closed_at"
 }
 
 func (q channelQuery) statusColumnOrEmpty() string {

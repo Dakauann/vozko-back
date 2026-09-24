@@ -352,8 +352,10 @@ func TestRescue_QueriesHandoutsAndItsOwnHops(t *testing.T) {
 
 	assert.Equal(t, []string{"ws-1"}, f.history.listArgs.workspaceIDs)
 	assert.Equal(t, ia.RescueCandidateTriggers, f.history.listArgs.triggers)
-	assert.ElementsMatch(t, []string{ia.TriggerInboundRR, ia.TriggerRescue}, f.history.listArgs.triggers,
-		"a hand-out is a candidate, and so is a conversation a previous hop moved")
+	assert.ElementsMatch(t, []string{ia.TriggerInboundRR, ia.TriggerAutomationHandoffRoulette, ia.TriggerRescue}, f.history.listArgs.triggers,
+		"a hand-out is a candidate (inbound or from the AI through the roulette), and so is a conversation a previous hop moved")
+	assert.NotContains(t, f.history.listArgs.triggers, ia.TriggerAutomationHandoff,
+		"a workflow naming a member chose that person; the sweep must not second-guess it")
 	assert.NotContains(t, f.history.listArgs.triggers, ia.TriggerManual,
 		"a human took responsibility; the sweep must not take it back off them")
 	assert.NotContains(t, f.history.listArgs.triggers, ia.TriggerOpen,

@@ -123,12 +123,12 @@ func backlogOriginTX(tx *gorm.DB, msgTmp string) (attendance.XrayDimension, erro
 func backlogAssigneeTX(tx *gorm.DB, msgTmp string) (attendance.XrayDimension, error) {
 	sql := `
 		SELECT m.assigned_user_id AS key,
-			COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), m.assigned_user_id) AS label,
+			` + ownerLabelSQL("m") + ` AS label,
 			COUNT(*)::bigint AS count
 		FROM ` + msgTmp + ` m
-		LEFT JOIN users u ON u.id::text = m.assigned_user_id
+		` + ownerLabelJoinsSQL("m") + `
 		WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished' AND m.assigned_user_id <> ''
-		GROUP BY m.assigned_user_id, u.username, u.email
+		GROUP BY m.assigned_user_id, ` + ownerLabelGroupBy + `
 	`
 	var rows []xrayCountRow
 	if err := tx.Raw(sql).Scan(&rows).Error; err != nil {

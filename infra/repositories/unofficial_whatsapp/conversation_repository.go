@@ -24,12 +24,18 @@ func NewConversationRepository(db *gorm.DB) uw.ConversationRepository {
 	return &conversationRepository{db: db}
 }
 
+// FindOrCreate opens the conversation for a chat. With a campaign it is that
+// campaign's own conversation, as an official campaign opens its own entry;
+// without one it is the chat's current (newest) conversation, or a new
+// campaign-less one, so no receptive campaign is ever needed.
 func (r *conversationRepository) FindOrCreate(
 	ctx context.Context,
 	in uw.FindOrCreateConversationInput,
 ) (*uw.Conversation, error) {
-	if chatID := strings.TrimSpace(in.ChatID); chatID != "" {
-		existing, err := r.FindByChatID(ctx, in.InstanceID, chatID)
+	campaignID := strings.TrimSpace(in.CampaignID)
+	chatID := strings.TrimSpace(in.ChatID)
+	if chatID != "" {
+		existing, err := r.findByChat(ctx, in.InstanceID, chatID, campaignID)
 		if err == nil {
 			return existing, nil
 		}
@@ -38,7 +44,7 @@ func (r *conversationRepository) FindOrCreate(
 		}
 	}
 
-	existing, err := r.findByContact(ctx, in.InstanceID, in.ContactID)
+	existing, err := r.findByContact(ctx, in.InstanceID, in.ContactID, campaignID)
 	if err == nil {
 		return existing, nil
 	}
@@ -52,10 +58,11 @@ func (r *conversationRepository) FindOrCreate(
 		ContactID:   in.ContactID,
 		ChatID:      in.ChatID,
 		IsGroup:     in.IsGroup,
+		CampaignID:  campaignID,
 	}
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "instance_id"}, {Name: "chat_id"}},
+			Columns: []clause.Column{{Name: "instance_id"}, {Name: "chat_id"}, {Name: "campaign_id"}},
 			TargetWhere: clause.Where{
 				Exprs: []clause.Expression{clause.Expr{SQL: "chat_id <> '' AND deleted_at IS NULL"}},
 			},
@@ -65,10 +72,10 @@ func (r *conversationRepository) FindOrCreate(
 		return nil, err
 	}
 
-	if chatID := strings.TrimSpace(in.ChatID); chatID != "" {
-		return r.FindByChatID(ctx, in.InstanceID, chatID)
+	if chatID != "" {
+		return r.findByChat(ctx, in.InstanceID, chatID, campaignID)
 	}
-	return r.findByContact(ctx, in.InstanceID, in.ContactID)
+	return r.findByContact(ctx, in.InstanceID, in.ContactID, campaignID)
 }
 
 func (r *conversationRepository) FindByID(ctx context.Context, id string) (*uw.Conversation, error) {
@@ -82,24 +89,30 @@ func (r *conversationRepository) FindByID(ctx context.Context, id string) (*uw.C
 	return toConversationDomain(&record), nil
 }
 
+// FindByChatID is the chat's current conversation: its newest, the way the
+// official channel routes a number to its newest campaign entry.
 func (r *conversationRepository) FindByChatID(ctx context.Context, instanceID, chatID string) (*uw.Conversation, error) {
-	var record schema.UnofficialWhatsAppConversation
-	err := r.db.WithContext(ctx).
-		First(&record, "instance_id = ? AND chat_id = ?", instanceID, chatID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, uw.ErrConversationNotFound
-		}
-		return nil, err
-	}
-	return toConversationDomain(&record), nil
+	return r.findByChat(ctx, instanceID, chatID, "")
 }
 
-func (r *conversationRepository) findByContact(ctx context.Context, instanceID, contactID string) (*uw.Conversation, error) {
+// findByChat reads a campaign's own conversation, or with no campaign the
+// chat's newest one.
+func (r *conversationRepository) findByChat(ctx context.Context, instanceID, chatID, campaignID string) (*uw.Conversation, error) {
+	return r.findOne(ctx, r.db.WithContext(ctx).Where("instance_id = ? AND chat_id = ?", instanceID, chatID), campaignID)
+}
+
+func (r *conversationRepository) findByContact(ctx context.Context, instanceID, contactID, campaignID string) (*uw.Conversation, error) {
+	return r.findOne(ctx, r.db.WithContext(ctx).Where("instance_id = ? AND contact_id = ?", instanceID, contactID), campaignID)
+}
+
+func (r *conversationRepository) findOne(ctx context.Context, q *gorm.DB, campaignID string) (*uw.Conversation, error) {
+	if campaignID != "" {
+		q = q.Where("campaign_id = ?", campaignID)
+	} else {
+		q = q.Order("created_at DESC")
+	}
 	var record schema.UnofficialWhatsAppConversation
-	err := r.db.WithContext(ctx).
-		First(&record, "instance_id = ? AND contact_id = ?", instanceID, contactID).Error
-	if err != nil {
+	if err := q.First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, uw.ErrConversationNotFound
 		}
@@ -128,17 +141,7 @@ func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entry
 	if err := r.db.WithContext(ctx).
 		Table("unofficial_whatsapp_conversations uwc").
 		Joins("JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id").
-		Joins(`LEFT JOIN LATERAL (
-			SELECT uwcamp.department_id
-			FROM unofficial_whatsapp_campaign_entries uwce
-			JOIN unofficial_whatsapp_campaigns uwcamp
-			  ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
-			WHERE uwce.conversation_id = uwc.id
-			  AND uwce.deleted_at IS NULL
-			  AND uwcamp.department_id IS NOT NULL
-			ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
-			LIMIT 1
-		) camp ON TRUE`).
+		Joins(conversation_repository.UnofficialCampaignJoin("uwc", "camp")).
 		Where("uwc.id = ?", entryID).
 		Limit(1).
 		Pluck("COALESCE(camp.department_id, uwi.department_id)", &departmentIDs).Error; err != nil {
@@ -151,20 +154,19 @@ func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entry
 }
 
 func (r *conversationRepository) CampaignIDForEntry(ctx context.Context, entryID string) (string, error) {
-	var ids []string
+	var ids []sql.NullString
 	if err := r.db.WithContext(ctx).
-		Table("unofficial_whatsapp_campaign_entries uwce").
-		Joins("JOIN unofficial_whatsapp_campaigns uwcamp ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL").
-		Where("uwce.conversation_id = ? AND uwce.deleted_at IS NULL", entryID).
-		Order("uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC").
+		Table("unofficial_whatsapp_conversations uwc").
+		Joins(conversation_repository.UnofficialCampaignJoin("uwc", "camp")).
+		Where("uwc.id = ?", entryID).
 		Limit(1).
-		Pluck("uwce.campaign_id::text", &ids).Error; err != nil {
+		Pluck("camp.id::text", &ids).Error; err != nil {
 		return "", err
 	}
-	if len(ids) == 0 {
+	if len(ids) == 0 || !ids[0].Valid {
 		return "", nil
 	}
-	return ids[0], nil
+	return ids[0].String, nil
 }
 
 func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {

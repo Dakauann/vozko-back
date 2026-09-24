@@ -687,7 +687,8 @@ func (h *AgentHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 			Value string `json:"value"`
 			Label string `json:"label"`
 		} `json:"options,omitempty"`
-		Required bool `json:"required"`
+		OptionsSource string `json:"optionsSource,omitempty"`
+		Required      bool   `json:"required"`
 	}
 
 	type camelTool struct {
@@ -753,6 +754,7 @@ func (h *AgentHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 					DisplayDescription: displayDescription,
 					DefaultValue:       v.Default,
 					Options:            options,
+					OptionsSource:      v.OptionsSource,
 					Required:           v.Required,
 				}
 			}

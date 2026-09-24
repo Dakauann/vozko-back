@@ -109,13 +109,9 @@ var entrySources = []entrySource{
 		Account: "COALESCE(uwc.instance_id::text, '')",
 
 		ConversationStatus: "uwc.conversation_status",
-		CampaignID: `(SELECT uwce.campaign_id::text
-		              FROM unofficial_whatsapp_campaign_entries uwce
-		              JOIN unofficial_whatsapp_campaigns uwcamp
-		                ON uwcamp.id = uwce.campaign_id AND uwcamp.deleted_at IS NULL
-		              WHERE uwce.conversation_id = uwc.id AND uwce.deleted_at IS NULL
-		              ORDER BY uwce.sent_at DESC NULLS LAST, uwce.updated_at DESC
-		              LIMIT 1)`,
+		CampaignID: `(SELECT uwcamp.id::text
+		              FROM unofficial_whatsapp_campaigns uwcamp
+		              WHERE uwcamp.id = NULLIF(uwc.campaign_id, '')::uuid AND uwcamp.deleted_at IS NULL)`,
 
 		CreatedAt:     "uwc.created_at",
 		UpdatedAt:     "uwc.updated_at",

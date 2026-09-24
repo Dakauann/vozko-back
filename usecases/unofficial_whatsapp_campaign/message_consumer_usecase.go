@@ -194,6 +194,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		JID:         jid,
 		PhoneNumber: entry.Number,
 		Name:        entry.Name,
+		CampaignID:  camp.ID,
 	})
 	if err != nil {
 		c.failEntry(entry.ID, errResolveConversation, "could not open a conversation with this number")

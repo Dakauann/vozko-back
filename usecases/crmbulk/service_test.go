@@ -147,7 +147,9 @@ func TestBulkApply_MoveStage_FansOutAndBroadcastsStage(t *testing.T) {
 	}
 }
 
-func TestBulkApply_Assign_ForwardsUserAndBroadcastsEntry(t *testing.T) {
+// The assignment service announces each reassignment (fresh row for the new
+// owner, removal for whoever lost it); bulk must not send a second, partial one.
+func TestBulkApply_Assign_ForwardsUserAndLeavesTheAnnouncementToTheAssigner(t *testing.T) {
 	ea := &mockEntryAssigner{}
 	bc := &mockBroadcaster{}
 	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, ea, allowAll(), bc)
@@ -163,8 +165,8 @@ func TestBulkApply_Assign_ForwardsUserAndBroadcastsEntry(t *testing.T) {
 	if ea.calls[0].userID != "user-42" || ea.calls[0].workspaceID != "ws-7" {
 		t.Errorf("reassign did not forward user/workspace: %+v", ea.calls[0])
 	}
-	if len(bc.entry) != 2 {
-		t.Errorf("assign must broadcast an entry update per success, got %v", bc.entry)
+	if len(bc.entry) != 0 {
+		t.Errorf("bulk sent its own entry updates: %v", bc.entry)
 	}
 }
 

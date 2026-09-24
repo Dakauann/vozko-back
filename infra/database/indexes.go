@@ -636,17 +636,33 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON unofficial_whatsapp_contacts (instance_id, lid)
 				WHERE lid <> '' AND deleted_at IS NULL`,
 		},
+		// A chat holds one conversation per campaign (and one without), as an
+		// official number holds one entry per campaign.
 		{
-			name: "ux_uw_conversation_instance_contact",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_contact
-				ON unofficial_whatsapp_conversations (instance_id, contact_id)
+			name: "ux_uw_conversation_instance_contact (superseded)",
+			sql:  `DROP INDEX IF EXISTS ux_uw_conversation_instance_contact`,
+		},
+		{
+			name: "ux_uw_conversation_instance_chat (superseded)",
+			sql:  `DROP INDEX IF EXISTS ux_uw_conversation_instance_chat`,
+		},
+		{
+			name: "ux_uw_conversation_instance_contact_campaign",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_contact_campaign
+				ON unofficial_whatsapp_conversations (instance_id, contact_id, campaign_id)
 				WHERE deleted_at IS NULL`,
 		},
 		{
-			name: "ux_uw_conversation_instance_chat",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_chat
-				ON unofficial_whatsapp_conversations (instance_id, chat_id)
+			name: "ux_uw_conversation_instance_chat_campaign",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_conversation_instance_chat_campaign
+				ON unofficial_whatsapp_conversations (instance_id, chat_id, campaign_id)
 				WHERE chat_id <> '' AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_uw_conversation_chat_newest",
+			sql: `CREATE INDEX IF NOT EXISTS idx_uw_conversation_chat_newest
+				ON unofficial_whatsapp_conversations (instance_id, chat_id, created_at DESC)
+				WHERE deleted_at IS NULL`,
 		},
 
 		{

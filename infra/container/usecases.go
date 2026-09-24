@@ -170,7 +170,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewHTTPRequestToolUseCase(),
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
-		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, c.services.conversationHub),
+		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, outcomeCaptureReader{configs: c.repositories.workspaceConfig}),
+		tools_usecase.NewTransferToHumanToolUseCase(c.services.assignmentService),
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewScheduleMeetingToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewRescheduleMeetingToolUseCase(rescheduleEventUC),
@@ -1028,6 +1029,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		affiliateAdminUpdate:   affiliate_usecase.NewAdminUpdateAffiliateUseCase(c.repositories.affiliate),
 	}
 
+	if setter, ok := c.useCases.listConversationEvents.(interface {
+		SetWorkflowNames(ce_usecase.WorkflowNameLookup)
+	}); ok {
+		if workflows, ok := c.repositories.workflow.(ce_usecase.WorkflowNameLookup); ok {
+			setter.SetWorkflowNames(workflows)
+		}
+	}
+
 	if c.useCases.startCall != nil {
 		if c.services.callLifecycle != nil {
 			c.services.callLifecycle.SetCDRStart(c.useCases.startCall)
@@ -1056,8 +1065,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		WorkspacePhoneAccess:    c.repositories.workspacePhoneAccess,
 		SharedState:             c.redisProvider.SharedState(),
 		LabelRepo:               c.repositories.label,
+		StageRepo:               c.repositories.stage,
+		AssignStage:             assignEntryStageUC,
+		StageBroadcaster:        c.services.conversationHub,
 		DepartmentRepo:          c.repositories.workspaceDepartment,
-		InboxAssignmentRepo:     c.repositories.inboxAssignment,
+		ConversationHandOff:     c.services.assignmentService,
 		WorkspaceRepo:           c.repositories.workspace,
 		CachedBalanceChecker:    cachedBalanceChecker,
 		BillingPub:              c.services.billingQueuePub,
@@ -1146,6 +1158,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Agents:      c.repositories.agent,
 			Departments: c.repositories.workspaceDepartment,
 			Labels:      c.repositories.label,
+			Stages:      c.repositories.stage,
 			Workflows:   c.repositories.workflow,
 			Members:     builderMemberLister{repo: c.repositories.workspace},
 		}),
@@ -1188,6 +1201,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		SetLabelRepo(label_domain.Repository)
 	}); ok {
 		setter.SetLabelRepo(c.repositories.label)
+	}
+	if setter, ok := c.useCases.activateWorkflow.(interface {
+		SetStageRepo(workflow_usecase.StageLookup)
+	}); ok {
+		setter.SetStageRepo(c.repositories.stage)
 	}
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetDepartmentRepo(workspace_department_domain.Repository)

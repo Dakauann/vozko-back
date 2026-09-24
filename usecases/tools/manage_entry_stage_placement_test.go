@@ -137,3 +137,24 @@ func TestWithoutAnEntryIDTheChannelFunnelIsUsed(t *testing.T) {
 		t.Fatalf("looked up pipeline %q without an entry to place", repo.askedPipeline)
 	}
 }
+
+// The channel AI resolves tools for a conversation, not a campaign. Given only
+// the conversation, the tool still lists that conversation's pipeline instead
+// of every pipeline's stages (which let the model pick another funnel's stage).
+func TestTheChannelAISeesTheConversationsOwnFunnel(t *testing.T) {
+	repo := movedEntryRepo()
+	tool := &manageEntryStageTool{stageRepo: repo}
+
+	def := tool.DefinitionWithContext(tools.ToolContext{
+		WorkspaceID: "ws-1",
+		EntryID:     "conv-1",
+		EntryType:   "unofficial_whatsapp",
+	})
+
+	if enum := enumOf(def); len(enum) != 2 || enum[1] != "Fechado" {
+		t.Fatalf("enum = %v, want the stages of funnel-b", enum)
+	}
+	if repo.askedPipeline != "funnel-b" {
+		t.Fatalf("looked up pipeline %q, want funnel-b", repo.askedPipeline)
+	}
+}

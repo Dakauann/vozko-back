@@ -18,6 +18,10 @@ type ToolResolverOptions struct {
 	Agent        *agent.Agent
 	CampaignID   string
 	CampaignType string
+	// EntryID and EntryType name the conversation the tools are resolved for,
+	// so a tool can tailor itself to it (e.g. its pipeline's stages).
+	EntryID   string
+	EntryType string
 }
 
 func ResolveTools(
@@ -48,6 +52,7 @@ func ResolveTools(
 		toolCtx.CampaignID = opts.CampaignID
 		toolCtx.CampaignType = opts.CampaignType
 	}
+	toolCtx.EntryID, toolCtx.EntryType = opts.EntryID, opts.EntryType
 
 	result := make([]tools.Definition, 0, len(bindings))
 	configsMap := make(map[string]map[string]interface{})

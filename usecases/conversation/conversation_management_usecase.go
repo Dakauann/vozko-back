@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/actor"
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/cache"
@@ -57,6 +58,7 @@ type HistoryProviderService struct {
 	agentRepo         agent.Repository
 	messageWindowRepo lmw.Repository
 	assignmentRepo    ia.Repository
+	entryWorkspaces   EntryWorkspaces
 	workflowRunRepo   workflowRunLookup
 	workflowRepo      workflowLookup
 	contactIdentities map[shared.EntryType]ContactIdentityLookup
@@ -214,6 +216,13 @@ func NewHistoryProviderService(
 	}
 }
 
+// EntryWorkspaces resolves the workspace of a conversation on any channel.
+type EntryWorkspaces interface {
+	GetEntryWorkspaceID(entryID, entryType string) (string, error)
+}
+
+func (s *HistoryProviderService) SetEntryWorkspaces(r EntryWorkspaces) { s.entryWorkspaces = r }
+
 func (s *HistoryProviderService) SetAssignmentRepo(repo ia.Repository) {
 	s.assignmentRepo = repo
 }
@@ -235,11 +244,12 @@ func (s *HistoryProviderService) enrichAssignments(entries []conversation.InboxE
 	}
 
 	assignmentMap := make(map[string]*ia.InboxAssignment, len(assignments))
-	userIDSet := make(map[string]struct{})
+	idsByKind := map[actor.Kind][]string{}
 	for _, a := range assignments {
 		assignmentMap[a.EntryID] = a
 		if a.AssignedUserID != "" {
-			userIDSet[a.AssignedUserID] = struct{}{}
+			kind := actor.KindOf(a.AssignedUserID)
+			idsByKind[kind] = append(idsByKind[kind], a.AssignedUserID)
 		}
 	}
 
@@ -249,35 +259,94 @@ func (s *HistoryProviderService) enrichAssignments(entries []conversation.InboxE
 		}
 	}
 
-	if len(userIDSet) == 0 || s.userRepo == nil {
-		return
+	names := s.humanAssigneeNames(idsByKind[actor.KindHuman])
+	for id, name := range s.agentAssigneeNames(idsByKind[actor.KindAI]) {
+		names[id] = name
 	}
-
-	userIDs := make([]string, 0, len(userIDSet))
-	for id := range userIDSet {
-		userIDs = append(userIDs, id)
+	for id, name := range s.workflowAssigneeNames(idsByKind[actor.KindWorkflow]) {
+		names[id] = name
 	}
+	for i := range entries {
+		if entries[i].AssignedUserID != "" {
+			entries[i].AssignedUsername = names[entries[i].AssignedUserID]
+		}
+	}
+}
 
-	users, err := s.userRepo.FindByIDs(userIDs)
+func (s *HistoryProviderService) humanAssigneeNames(userIDs []string) map[string]string {
+	names := make(map[string]string, len(userIDs))
+	if len(userIDs) == 0 || s.userRepo == nil {
+		return names
+	}
+	users, err := s.userRepo.FindByIDs(uniqueIDs(userIDs))
 	if err != nil {
 		log.Printf("[HistoryProvider] Error batch-fetching users for assignments: %v", err)
-		return
+		return names
 	}
-
-	userMap := make(map[string]string, len(users))
 	for _, u := range users {
 		username := u.Username
 		if username == "" {
 			username = strings.Split(u.Email, "@")[0]
 		}
-		userMap[u.ID] = username
+		names[u.ID] = username
 	}
+	return names
+}
 
-	for i := range entries {
-		if entries[i].AssignedUserID != "" {
-			entries[i].AssignedUsername = userMap[entries[i].AssignedUserID]
-		}
+// agentAssigneeNames names the agents holding conversations, keyed by ai:<id>.
+func (s *HistoryProviderService) agentAssigneeNames(actorIDs []string) map[string]string {
+	names := make(map[string]string, len(actorIDs))
+	if len(actorIDs) == 0 || s.agentRepo == nil {
+		return names
 	}
+	agents, err := s.agentRepo.FindByIDs(bareActorIDs(actorIDs, actor.ParseAI))
+	if err != nil {
+		log.Printf("[HistoryProvider] Error batch-fetching agents for assignments: %v", err)
+		return names
+	}
+	for _, a := range agents {
+		names[actor.FormatAI(a.ID)] = a.Name
+	}
+	return names
+}
+
+// workflowAssigneeNames names the workflows holding conversations, keyed by workflow:<id>.
+func (s *HistoryProviderService) workflowAssigneeNames(actorIDs []string) map[string]string {
+	names := make(map[string]string, len(actorIDs))
+	if len(actorIDs) == 0 || s.workflowRepo == nil {
+		return names
+	}
+	workflows, err := s.workflowRepo.FindByIDs(bareActorIDs(actorIDs, actor.ParseWorkflow))
+	if err != nil {
+		log.Printf("[HistoryProvider] Error batch-fetching workflows for assignments: %v", err)
+		return names
+	}
+	for _, w := range workflows {
+		names[actor.FormatWorkflow(w.ID)] = w.Name
+	}
+	return names
+}
+
+func bareActorIDs(actorIDs []string, parse func(string) string) []string {
+	unique := uniqueIDs(actorIDs)
+	bare := make([]string, 0, len(unique))
+	for _, id := range unique {
+		bare = append(bare, parse(id))
+	}
+	return bare
+}
+
+func uniqueIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.EntryType, limit int) ([]*conversation.Message, bool, int64, error) {
@@ -629,7 +698,7 @@ func (s *HistoryProviderService) buildInboxEntries(
 	}
 
 	leadMap := make(map[string]*lead.Lead, len(leadIDs))
-	if len(leadIDs) > 0 {
+	if len(leadIDs) > 0 && s.leadRepo != nil && workspaceID != "" {
 		if leads, err := s.leadRepo.FindByIDs(workspaceID, leadIDs); err == nil {
 			for _, l := range leads {
 				leadMap[l.ID] = l
@@ -640,7 +709,7 @@ func (s *HistoryProviderService) buildInboxEntries(
 	windowMap := s.batchGetWindowStatus(rows)
 
 	waEntryMap := make(map[string]*wce.WhatsAppCampaignEntry, len(waEntryIDs))
-	if len(waEntryIDs) > 0 {
+	if len(waEntryIDs) > 0 && s.whatsappRepo != nil {
 		if waEntries, err := s.whatsappRepo.FindByIDs(waEntryIDs); err == nil {
 			for _, e := range waEntries {
 				waEntryMap[e.ID] = e
@@ -669,16 +738,10 @@ func (s *HistoryProviderService) buildInboxEntries(
 
 		var entryVariables []string
 		convStatus := conversation.ConversationStatus(e.ConversationStatus)
-		var closeSource conversation.CloseSource
-		var closeReason conversation.CloseReason
-		var closedAt *time.Time
 		if waEntry, ok := waEntryMap[e.EntryID]; ok {
 			entryVariables = waEntry.Variables
 			automationEnabled = waEntry.IsAutomationEnabled()
 			convStatus = conversation.ConversationStatus(waEntry.ConversationStatus)
-			closeSource = conversation.CloseSource(waEntry.CloseSource)
-			closeReason = conversation.CloseReason(waEntry.CloseReason)
-			closedAt = waEntry.ClosedAt
 		}
 
 		var matchedMessages []conversation.MatchedMessage
@@ -719,9 +782,10 @@ func (s *HistoryProviderService) buildInboxEntries(
 			MatchedMessages:         matchedMessages,
 			TotalMatches:            e.TotalMatches,
 			ConversationStatus:      convStatus,
-			CloseSource:             closeSource,
-			CloseReason:             closeReason,
-			ClosedAt:                closedAt,
+			CloseSource:             e.Close.Source,
+			CloseReason:             e.Close.Reason,
+			CloseOutcome:            e.Close.Outcome,
+			ClosedAt:                e.Close.ClosedAt,
 		})
 	}
 
@@ -809,6 +873,7 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		AssignedUserID:         input.AssignedUserID,
 		ResponsibleUserID:      input.ResponsibleUserID,
 		ResponsibleUnassigned:  input.ResponsibleUnassigned,
+		ResponsibleKind:        input.ResponsibleKind,
 		AssigneeOverrideUserID: input.AssigneeOverrideUserID,
 		Page:                   input.Page,
 		PageSize:               input.PageSize,
@@ -888,11 +953,10 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 }
 
 func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
-	hasWorkflow := r.WorkflowEnabled && r.WorkflowID != ""
-	hasAgent := r.AgentResponsesEnabled && r.AgentID != ""
+	governor, configured := r.AutomationProfile().Configured()
 
-	if hasWorkflow || run != nil {
-		h := &conversation.AIHandler{Kind: "workflow", WorkflowID: r.WorkflowID}
+	if run != nil || (configured && governor.Kind == conversation.AutomationWorkflow) {
+		h := &conversation.AIHandler{Kind: string(conversation.AutomationWorkflow), WorkflowID: r.WorkflowID}
 		if run != nil {
 			h.WorkflowID = run.WorkflowID
 			h.WorkflowRunID = run.ID
@@ -910,8 +974,8 @@ func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowR
 		return h
 	}
 
-	if hasAgent {
-		h := &conversation.AIHandler{Kind: "agent", AgentID: r.AgentID}
+	if configured && governor.Kind == conversation.AutomationAgent {
+		h := &conversation.AIHandler{Kind: string(conversation.AutomationAgent), AgentID: governor.ID}
 		if a, ok := agentMap[r.AgentID]; ok {
 			h.AgentName = a.Name
 			h.AgentAvatar = a.AvatarURL
@@ -931,6 +995,8 @@ func mapKeys(m map[string]struct{}) []string {
 	return out
 }
 
+// GetInboxEntry rebuilds one conversation's card for a live update. The screen
+// swaps it in whole, so it is built exactly like a row of the list.
 func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conversation.InboxEntry, error) {
 	e, err := s.messageRepo.GetEntryLastMessage(entryID, shared.EntryType(entryType))
 	if err != nil {
@@ -940,64 +1006,10 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 		return nil, nil
 	}
 
-	var workspaceID string
-	switch shared.EntryType(entryType) {
-	case shared.EntryTypeWhatsApp:
-		if info, infoErr := s.whatsappRepo.GetCampaignForEntry(entryID); infoErr == nil && info != nil {
-			workspaceID = info.WorkspaceID
-		}
-	}
-
-	leadName, leadNumber, leadPicture, leadMetadata, leadBlocked := s.getLeadInfo(workspaceID, e.LeadID)
-	senderName, senderAvatar := s.getSenderInfo(e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
-
-	var entryVariables []string
-	automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
-	var convStatus conversation.ConversationStatus
-	var closeSource conversation.CloseSource
-	var closeReason conversation.CloseReason
-	var closedAt *time.Time
-	if e.EntryType == shared.EntryTypeWhatsApp {
-		if waEntry, err := s.whatsappRepo.FindByID(e.EntryID); err == nil && waEntry != nil {
-			entryVariables = waEntry.Variables
-			automationEnabled = waEntry.IsAutomationEnabled()
-			convStatus = conversation.ConversationStatus(waEntry.ConversationStatus)
-			closeSource = conversation.CloseSource(waEntry.CloseSource)
-			closeReason = conversation.CloseReason(waEntry.CloseReason)
-			closedAt = waEntry.ClosedAt
-		}
-	} else {
-		convStatus = conversation.ConversationStatus(e.ConversationStatus)
-	}
-
-	entry := &conversation.InboxEntry{
-		EntryID:                 e.EntryID,
-		EntryType:               string(e.EntryType),
-		CampaignID:              e.CampaignID,
-		CampaignName:            e.CampaignName,
-		LeadID:                  e.LeadID,
-		LeadName:                leadName,
-		LeadNumber:              leadNumber,
-		LeadPicture:             leadPicture,
-		LeadMetadata:            leadMetadata,
-		Blocked:                 leadBlocked,
-		EntryVariables:          entryVariables,
-		UnreadCount:             e.UnreadCount,
-		LastMessagePreview:      s.formatMessagePreview(*e),
-		LastMessageAt:           e.LastMessageAt,
-		LastMessageType:         s.getDisplayMessageType(*e),
-		LastMessageSender:       senderName,
-		LastMessageSenderAvatar: senderAvatar,
-		AutomationEnabled:       automationEnabled,
-		ConversationStatus:      convStatus,
-		CloseSource:             closeSource,
-		CloseReason:             closeReason,
-		ClosedAt:                closedAt,
-	}
-
-	batch := []conversation.InboxEntry{*entry}
-	s.hydrateContactSenders(batch)
-	*entry = batch[0]
+	rows := []conversation.EntryWithLastMessage{*e}
+	entries := s.buildInboxEntries(rows, s.entryWorkspaceID(entryID, entryType))
+	s.enrichAIHandlers(entries, rows)
+	entry := &entries[0]
 
 	var window conversation.WindowState
 	if e.EntryType == shared.EntryTypeWhatsApp {
@@ -1007,25 +1019,25 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	}
 	entry.WindowOpen, entry.WindowExpiresAt = window.Open, window.ExpiresAt
 	entry.WindowClosedReason = string(window.Reason)
-	entry.BusinessPhoneID = e.BusinessPhoneID
-
-	enriched := []conversation.InboxEntry{*entry}
-	s.enrichAssignments(enriched, workspaceID)
-	s.enrichAIHandlers(enriched, []conversation.EntryWithLastMessage{*e})
-	*entry = enriched[0]
 
 	return entry, nil
 }
 
-func (s *HistoryProviderService) getLeadInfo(workspaceID, leadID string) (name, number, picture string, metadata map[string]interface{}, blocked bool) {
-	if leadID == "" || workspaceID == "" {
-		return "", "", "", nil, false
+// entryWorkspaceID is the workspace a conversation belongs to, on any channel.
+func (s *HistoryProviderService) entryWorkspaceID(entryID, entryType string) string {
+	if s.entryWorkspaces != nil {
+		workspaceID, err := s.entryWorkspaces.GetEntryWorkspaceID(entryID, entryType)
+		if err != nil {
+			log.Printf("[HistoryProvider] cannot resolve workspace for entry %s (%s): %v", entryID, entryType, err)
+		}
+		return workspaceID
 	}
-	lead, err := s.leadRepo.FindByID(workspaceID, leadID)
-	if err != nil || lead == nil {
-		return "", "", "", nil, false
+	if shared.EntryType(entryType) == shared.EntryTypeWhatsApp && s.whatsappRepo != nil {
+		if info, err := s.whatsappRepo.GetCampaignForEntry(entryID); err == nil && info != nil {
+			return info.WorkspaceID
+		}
 	}
-	return lead.Name, lead.Number, lead.ProfilePictureURL, nil, lead.Blocked
+	return ""
 }
 
 func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string) conversation.WindowState {

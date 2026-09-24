@@ -222,34 +222,33 @@ func (c *OutcomeCapture) DurableCodes() []string {
 	return out
 }
 
+// Resolve is the outcome a close records. People, agents and workflows follow
+// one rule: a catalogue code, required when the workspace requires one. When it
+// is optional and none is given, an agent or workflow close is marked with its
+// reserved "unspecified" code. The system's own closes (idle, max age) choose
+// nothing and always carry the reserved auto-close code.
 func (c *OutcomeCapture) Resolve(source CloseSource, reason CloseReason, code string, departmentID string, at time.Time) (string, error) {
 	if !c.AppliesTo(departmentID, at) {
 		return "", nil
 	}
 
-	switch source {
-	case CloseSourceSystem:
-		if reason == CloseReasonWorkflow {
-			if strings.TrimSpace(code) == "" {
-				return OutcomeWorkflowUnspecified, nil
-			}
-			return c.validated(code)
-		}
+	unspecified := ""
+	switch {
+	case source == CloseSourceSystem && reason == CloseReasonWorkflow:
+		unspecified = OutcomeWorkflowUnspecified
+	case source == CloseSourceSystem:
 		return OutcomeSystemAutoClose, nil
-	case CloseSourceAI:
-		if strings.TrimSpace(code) == "" {
-			return OutcomeAIUnspecified, nil
-		}
-		return c.validated(code)
-	default:
-		if strings.TrimSpace(code) == "" {
-			if c.RequireOnFinish {
-				return "", ErrOutcomeRequired
-			}
-			return "", nil
-		}
+	case source == CloseSourceAI:
+		unspecified = OutcomeAIUnspecified
+	}
+
+	if strings.TrimSpace(code) != "" {
 		return c.validated(code)
 	}
+	if c.RequireOnFinish {
+		return "", ErrOutcomeRequired
+	}
+	return unspecified, nil
 }
 
 func (c *OutcomeCapture) validated(code string) (string, error) {
@@ -258,6 +257,15 @@ func (c *OutcomeCapture) validated(code string) (string, error) {
 		return "", ErrOutcomeUnknown
 	}
 	return outcome.Code, nil
+}
+
+// CloseRecord is how a conversation was last closed: who closed it, why, and
+// the outcome recorded (a catalogue code, or a reserved one).
+type CloseRecord struct {
+	Source   CloseSource
+	Reason   CloseReason
+	Outcome  string
+	ClosedAt *time.Time
 }
 
 type StatusWrite struct {

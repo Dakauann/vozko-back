@@ -215,6 +215,8 @@ func TestSetConversationStatusOngoingSkipsTheGate(t *testing.T) {
 	}
 }
 
+// With the outcome optional, closes that choose none are told apart by a
+// reserved code. The system's own closes never choose one.
 func TestSystemAndAICloseStampReservedOutcomes(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -230,8 +232,10 @@ func TestSystemAndAICloseStampReservedOutcomes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			optional := requiringCapture()
+			optional.RequireOnFinish = false
 			repo := &outcomeEntryRepo{status: string(conversation.ConversationStatusOngoing)}
-			svc := outcomeServiceWith(t, repo, &stubCaptureReader{capture: requiringCapture()})
+			svc := outcomeServiceWith(t, repo, &stubCaptureReader{capture: optional})
 
 			err := svc.Finish("entry-1", string(shared.EntryTypeWhatsApp), conversation.FinishOptions{
 				Source: tc.source,
@@ -242,6 +246,32 @@ func TestSystemAndAICloseStampReservedOutcomes(t *testing.T) {
 			}
 			if len(repo.writes) != 1 || repo.writes[0].CloseOutcome != tc.want {
 				t.Fatalf("Finish() wrote %+v, want outcome %q", repo.writes, tc.want)
+			}
+		})
+	}
+}
+
+// An agent or a workflow follows the rule a person does: where the workspace
+// requires an outcome, a finish without one is refused and nothing is written.
+func TestAutomationFinishWithoutARequiredOutcomeIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source conversation.CloseSource
+		reason conversation.CloseReason
+	}{
+		{"ai", conversation.CloseSourceAI, conversation.CloseReasonAIResolved},
+		{"workflow", conversation.CloseSourceSystem, conversation.CloseReasonWorkflow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &outcomeEntryRepo{status: string(conversation.ConversationStatusOngoing)}
+			svc := outcomeServiceWith(t, repo, &stubCaptureReader{capture: requiringCapture()})
+
+			err := svc.Finish("entry-1", string(shared.EntryTypeWhatsApp), conversation.FinishOptions{Source: tc.source, Reason: tc.reason})
+			if !errors.Is(err, conversation.ErrOutcomeRequired) {
+				t.Fatalf("Finish() err = %v, want %v", err, conversation.ErrOutcomeRequired)
+			}
+			if len(repo.writes) != 0 {
+				t.Fatalf("a refused finish wrote %+v", repo.writes)
 			}
 		})
 	}

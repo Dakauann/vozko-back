@@ -4,18 +4,17 @@ import (
 	"fmt"
 	"strings"
 
-	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/workflow"
 	"vozko/domain/workspace"
 )
 
 type assignMemberExecutor struct {
-	workspaceRepo  workspace.Repository
-	assignmentRepo ia.Repository
+	workspaceRepo workspace.Repository
+	handOff       ConversationHandOff
 }
 
-func NewAssignMemberExecutor(workspaceRepo workspace.Repository, assignmentRepo ia.Repository) workflow.NodeExecutor {
-	return &assignMemberExecutor{workspaceRepo: workspaceRepo, assignmentRepo: assignmentRepo}
+func NewAssignMemberExecutor(workspaceRepo workspace.Repository, handOff ConversationHandOff) workflow.NodeExecutor {
+	return &assignMemberExecutor{workspaceRepo: workspaceRepo, handOff: handOff}
 }
 
 func (e *assignMemberExecutor) Definition() workflow.NodeDefinition {
@@ -69,13 +68,16 @@ func (e *assignMemberExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 		}, nil
 	}
 
-	assignment := &ia.InboxAssignment{
-		WorkspaceID:    ctx.Run.WorkspaceID,
-		EntryID:        ctx.Run.EntryID,
-		EntryType:      ctx.Run.EntryType,
-		AssignedUserID: member.UserID,
+	if e.handOff == nil {
+		return &workflow.NodeResult{
+			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+			Output: map[string]interface{}{
+				"success": false,
+				"error":   "atribuição indisponível neste contexto (ex.: simulação)",
+			},
+		}, nil
 	}
-	if err := e.assignmentRepo.Assign(assignment); err != nil {
+	if err := e.handOff.HandOffToHuman(ctx.Run.WorkspaceID, ctx.Run.EntryID, ctx.Run.EntryType, member.UserID); err != nil {
 		errMsg := fmt.Sprintf("erro ao atribuir conversa: %v", err)
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),

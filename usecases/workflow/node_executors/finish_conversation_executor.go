@@ -1,9 +1,11 @@
 package node_executors
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"vozko/domain/actor"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
@@ -45,12 +47,21 @@ func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 			{Key: "entry_type", Description: "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram, telegram ou support)"},
 			{Key: "close_source", Description: "Proveniência do encerramento (system)"},
 			{Key: "close_reason", Description: "Motivo (workflow)"},
+			{Key: "close_outcome", Description: "Código do desfecho registrado, quando houver"},
 			{Key: "error", Description: "Descrição do erro quando falha"},
 		},
 		DefaultConfig: map[string]interface{}{
-			"note": "",
+			"note":         "",
+			"outcome_code": "",
 		},
 		ConfigSchema: []workflow.ConfigField{
+			{
+				Key:           "outcome_code",
+				Label:         "Desfecho",
+				Type:          "select",
+				OptionsSource: "outcomes",
+				Description:   "O desfecho registrado no encerramento, da lista do workspace. Obrigatório quando o workspace exige um desfecho; sem ele o nó sai pela saída erro.",
+			},
 			{
 				Key:         "note",
 				Label:       "Nota (opcional)",
@@ -106,6 +117,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		Source:      conversation.CloseSourceSystem,
 		Reason:      conversation.CloseReasonWorkflow,
 		OutcomeCode: outcomeCode,
+		ActorID:     workflowActor(ctx.Run.WorkflowID),
 	}); err != nil {
 		return &workflow.NodeResult{
 			NextNodeID: resolveEdgeByLabel(edges, "erro"),
@@ -113,7 +125,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 				"success":    false,
 				"entry_id":   entryID,
 				"entry_type": entryType,
-				"error":      fmt.Sprintf("falha ao finalizar conversa: %v", err),
+				"error":      finishFailure(err),
 			},
 		}, nil
 	}
@@ -125,6 +137,9 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		"close_source": string(conversation.CloseSourceSystem),
 		"close_reason": string(conversation.CloseReasonWorkflow),
 	}
+	if outcomeCode != "" {
+		out["close_outcome"] = outcomeCode
+	}
 	if note != "" {
 		out["note"] = note
 	}
@@ -133,4 +148,22 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		NextNodeID: resolveEdgeByLabel(edges, "sucesso"),
 		Output:     out,
 	}, nil
+}
+
+func workflowActor(workflowID string) string {
+	if strings.TrimSpace(workflowID) == "" {
+		return ""
+	}
+	return actor.FormatWorkflow(workflowID)
+}
+
+// finishFailure says in the builder's words why the conversation stayed open.
+func finishFailure(err error) string {
+	switch {
+	case errors.Is(err, conversation.ErrOutcomeRequired):
+		return "o workspace exige um desfecho para finalizar: escolha um no campo Desfecho do nó"
+	case errors.Is(err, conversation.ErrOutcomeUnknown):
+		return "o desfecho escolhido não existe mais no workspace: escolha outro no campo Desfecho do nó"
+	}
+	return fmt.Sprintf("falha ao finalizar conversa: %v", err)
 }

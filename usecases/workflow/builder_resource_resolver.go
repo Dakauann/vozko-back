@@ -7,6 +7,7 @@ import (
 	"vozko/domain/agent"
 	label_domain "vozko/domain/label"
 	"vozko/domain/shared"
+	"vozko/domain/stage"
 	"vozko/domain/workflow"
 	dept_domain "vozko/domain/workspace/workspace_department"
 )
@@ -23,6 +24,9 @@ type departmentLister interface {
 type labelLister interface {
 	ListByWorkspace(workspaceID string) ([]*label_domain.Label, error)
 }
+type stageLister interface {
+	ListByWorkspace(workspaceID string) ([]*stage.Stage, error)
+}
 type workflowLister interface {
 	FindByWorkspaceID(workspaceID string) ([]*workflow.Workflow, error)
 }
@@ -35,6 +39,7 @@ type BuilderResourceResolverDeps struct {
 	Agents      agentLister
 	Departments departmentLister
 	Labels      labelLister
+	Stages      stageLister
 	Workflows   workflowLister
 	Members     memberLister
 }
@@ -114,6 +119,26 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 				continue
 			}
 			out = append(out, ResourceMatch{ID: d.ID, Name: d.Name})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+
+	case "stages":
+		if r.deps.Stages == nil {
+			return nil, nil
+		}
+		stages, err := r.deps.Stages.ListByWorkspace(workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, limit)
+		for _, s := range stages {
+			if s == nil || s.WorkspaceID != workspaceID || !match(s.Name) {
+				continue
+			}
+			out = append(out, ResourceMatch{ID: s.ID, Name: s.Name})
 			if len(out) >= limit {
 				break
 			}

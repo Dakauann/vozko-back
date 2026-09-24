@@ -10,6 +10,7 @@ import (
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
 	rag_domain "vozko/domain/rag"
+	stage_domain "vozko/domain/stage"
 	businessphone_domain "vozko/domain/whatsapp/business_phone"
 	template_domain "vozko/domain/whatsapp/template"
 	"vozko/domain/workflow"
@@ -32,6 +33,7 @@ type activateWorkflowUseCase struct {
 	agentRepo         agent.Repository
 	mediaRepo         media_domain.MediaRepository
 	labelRepo         label_domain.Repository
+	stageRepo         StageLookup
 	departmentRepo    dept_domain.Repository
 	workspaceRepo     workspaceMemberLookup
 	businessPhoneRepo businessPhoneLookup
@@ -67,6 +69,16 @@ func (uc *activateWorkflowUseCase) SetAgentRepo(repo agent.Repository) {
 
 func (uc *activateWorkflowUseCase) SetMediaRepo(repo media_domain.MediaRepository) {
 	uc.mediaRepo = repo
+}
+
+// StageLookup finds a stage, to check a stage node points at one of the
+// workflow's workspace.
+type StageLookup interface {
+	FindByID(id string) (*stage_domain.Stage, error)
+}
+
+func (uc *activateWorkflowUseCase) SetStageRepo(repo StageLookup) {
+	uc.stageRepo = repo
 }
 
 func (uc *activateWorkflowUseCase) SetLabelRepo(repo label_domain.Repository) {
@@ -156,6 +168,9 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 		}
 		if uc.labelRepo != nil {
 			validators = append(validators, &labelValidator{repo: uc.labelRepo, workspaceID: workflowWorkspaceID})
+		}
+		if uc.stageRepo != nil {
+			validators = append(validators, &stageValidator{repo: uc.stageRepo, workspaceID: workflowWorkspaceID})
 		}
 		if uc.departmentRepo != nil {
 			validators = append(validators, &departmentValidator{repo: uc.departmentRepo, workspaceID: workflowWorkspaceID})
@@ -460,6 +475,26 @@ func (v *labelValidator) Validate(n *workflow.Node) error {
 		l, err := v.repo.FindByID(labelID)
 		if err != nil || l == nil || !sameWorkspaceID(v.workspaceID, l.WorkspaceID) {
 			return fmt.Errorf("%w: node %q label_id %q", workflow.ErrNodeInvalidLabelID, n.ID, labelID)
+		}
+	}
+	return nil
+}
+
+type stageValidator struct {
+	repo        StageLookup
+	workspaceID string
+}
+
+func (v *stageValidator) Validate(n *workflow.Node) error {
+	switch n.Type {
+	case workflow.NodeTypeActionMoveStage, workflow.NodeTypeConditionCheckStage:
+		stageID, _ := n.Config["stage_id"].(string)
+		if strings.TrimSpace(stageID) == "" {
+			return nil
+		}
+		s, err := v.repo.FindByID(stageID)
+		if err != nil || s == nil || !sameWorkspaceID(v.workspaceID, s.WorkspaceID) {
+			return fmt.Errorf("%w: node %q stage_id %q", workflow.ErrNodeInvalidStageID, n.ID, stageID)
 		}
 	}
 	return nil

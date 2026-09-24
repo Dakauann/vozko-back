@@ -224,6 +224,8 @@ func (s *ChannelAIReplyService) generateInput(
 		ResolveInternalTools: true,
 		Visibility:           agent.ToolVisibilityMessaging,
 		ToolSeed:             seed,
+		EntryID:              req.EntryID,
+		EntryType:            string(req.EntryType),
 
 		RAGQuery: latest,
 

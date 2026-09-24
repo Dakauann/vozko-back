@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,7 +14,9 @@ import (
 	conversationdomain "vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/shared"
+	"vozko/domain/user"
 	"vozko/infra/http/middleware"
+	ia_usecase "vozko/usecases/inbox_assignment"
 )
 
 type ConversationHandler struct {
@@ -24,8 +27,10 @@ type ConversationHandler struct {
 	automationService     ConversationAutomationService
 }
 
+// ConversationAutomationService switches a conversation's automation for a
+// caller, moving its ownership along (see ia_usecase.OperatorAutomationToggle).
 type ConversationAutomationService interface {
-	SetAutomation(ctx context.Context, entryID string, entryType shared.EntryType, enabled *bool) error
+	SetAutomation(ctx context.Context, in ia_usecase.OperatorAutomationInput) (ia_usecase.OperatorAutomationResult, error)
 }
 
 func (h *ConversationHandler) SetAutomationService(s ConversationAutomationService) {
@@ -366,7 +371,7 @@ type SetAutomationRequest struct {
 }
 
 // @Summary		Ativar/desativar automação de uma conversa
-// @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha.
+// @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar devolve a conversa para a IA ou o fluxo que atende o canal. A resposta traz o responsável resultante em assigned_user_id.
 // @Tags			Conversas
 // @Accept			json
 // @Produce		json
@@ -376,7 +381,8 @@ type SetAutomationRequest struct {
 // @Success		200			{object}	map[string]interface{}
 // @Router			/conversations/{entryType}/{entryId}/automation [patch]
 func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Request) {
-	if middleware.GetClaims(r) == nil {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
@@ -405,9 +411,19 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.automationService.SetAutomation(
-		r.Context(), entryID, shared.EntryType(entryType), req.AutomationEnabled,
-	); err != nil {
+	result, err := h.automationService.SetAutomation(r.Context(), ia_usecase.OperatorAutomationInput{
+		ActorUserID: claims.UserID,
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		IsAdmin:     claims.Role == string(user.RoleAdmin),
+		EntryID:     entryID,
+		EntryType:   shared.EntryType(entryType),
+		Enabled:     req.AutomationEnabled,
+	})
+	if errors.Is(err, ia_usecase.ErrAutomationForbidden) {
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
+		return
+	}
+	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
@@ -416,5 +432,6 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 		"entry_id":           entryID,
 		"entry_type":         entryType,
 		"automation_enabled": req.AutomationEnabled,
+		"assigned_user_id":   result.Owner,
 	})
 }

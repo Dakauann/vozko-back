@@ -26,6 +26,7 @@ func repairNames() []string {
 func dataRepairs() []dataRepair {
 	return []dataRepair{
 		{"uw_clear_group_contact_phone_numbers", clearGroupContactPhoneNumbers},
+		{"uw_backfill_conversation_campaigns", backfillConversationCampaigns},
 		{"uw_merge_split_group_conversations", mergeSplitGroupConversations},
 		{"uw_retire_unattributable_conversations", retireUnattributableConversations},
 		{"uw_reset_never_read_profile_clocks", resetNeverReadProfileClocks},
@@ -84,6 +85,24 @@ func clearGroupContactPhoneNumbers(tx *gorm.DB) error {
 	`).Error
 }
 
+// backfillConversationCampaigns keys each existing conversation with the
+// campaign the inbox already attributes it to: the latest entry sent into it.
+// Only unkeyed rows change, so it is a no-op after the first boot.
+func backfillConversationCampaigns(tx *gorm.DB) error {
+	return tx.Exec(`
+		UPDATE unofficial_whatsapp_conversations AS c
+		SET campaign_id = latest.campaign_id::text
+		FROM (
+			SELECT DISTINCT ON (e.conversation_id) e.conversation_id, e.campaign_id
+			FROM unofficial_whatsapp_campaign_entries e
+			WHERE e.conversation_id IS NOT NULL AND e.deleted_at IS NULL
+			ORDER BY e.conversation_id, e.sent_at DESC NULLS LAST, e.updated_at DESC
+		) AS latest
+		WHERE latest.conversation_id = c.id
+		  AND c.campaign_id = ''
+	`).Error
+}
+
 func retireUnattributableConversations(tx *gorm.DB) error {
 	if !tx.Migrator().HasTable("unofficial_whatsapp_conversations") ||
 		!tx.Migrator().HasTable("unofficial_whatsapp_contacts") {
@@ -127,18 +146,16 @@ func (t entryTable) idExpr(column string) string {
 	return column
 }
 
-func mergeSplitGroupConversations(tx *gorm.DB) error {
-	if !tx.Migrator().HasTable("unofficial_whatsapp_conversations") ||
-		!tx.Migrator().HasColumn("unofficial_whatsapp_conversations", "chat_id") {
-		return nil
-	}
-
-	const duplicatesCTE = `
+// uwDuplicateConversationsSQL pairs each duplicate conversation with the one
+// it merges into. A chat holds one conversation per campaign (and one without),
+// as an official number holds one entry per campaign, so the campaign is part
+// of the key: only true duplicates of the same chat and campaign merge.
+const uwDuplicateConversationsSQL = `
 		SELECT id AS duplicate_id, survivor_id
 		FROM (
 			SELECT id,
 			       FIRST_VALUE(id) OVER (
-			           PARTITION BY instance_id, chat_id
+			           PARTITION BY instance_id, chat_id, campaign_id
 			           ORDER BY created_at ASC, id ASC
 			       ) AS survivor_id
 			FROM unofficial_whatsapp_conversations
@@ -146,6 +163,15 @@ func mergeSplitGroupConversations(tx *gorm.DB) error {
 		) ranked
 		WHERE id <> survivor_id
 	`
+
+func mergeSplitGroupConversations(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("unofficial_whatsapp_conversations") ||
+		!tx.Migrator().HasColumn("unofficial_whatsapp_conversations", "chat_id") ||
+		!tx.Migrator().HasColumn("unofficial_whatsapp_conversations", "campaign_id") {
+		return nil
+	}
+
+	const duplicatesCTE = uwDuplicateConversationsSQL
 
 	var duplicateCount int64
 	if err := tx.Raw(`SELECT COUNT(*) FROM (` + duplicatesCTE + `) d`).

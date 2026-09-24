@@ -49,7 +49,8 @@ func (r *repository) FindByEntries(workspaceID string, entryIDs []string) ([]*ia
 
 func (r *repository) FindByEntryAndUser(workspaceID, entryID, entryType, userID string) (*ia.InboxAssignment, error) {
 	var rec schema.InboxAssignment
-	err := r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ?", workspaceID, entryID, entryType, userID).First(&rec).Error
+	id, kind := splitAssignee(userID)
+	err := r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, entryID, entryType, id, kind).First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -64,7 +65,7 @@ func (r *repository) Assign(assignment *ia.InboxAssignment) error {
 
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "entry_id"}, {Name: "entry_type"}},
-		DoUpdates: clause.AssignmentColumns([]string{"assigned_user_id", "workspace_id", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"assigned_user_id", "assignee_kind", "workspace_id", "updated_at"}),
 	}).Create(&rec).Error
 }
 
@@ -74,9 +75,10 @@ func (r *repository) Unassign(workspaceID, entryID, entryType string) error {
 }
 
 func (r *repository) ListByUser(workspaceID, userID, entryType string) ([]string, error) {
+	id, kind := splitAssignee(userID)
 	q := r.db.Model(&schema.InboxAssignment{}).
 		Select("entry_id").
-		Where("workspace_id = ? AND assigned_user_id = ?", workspaceID, userID)
+		Where("workspace_id = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, id, kind)
 	if entryType != "" {
 		q = q.Where("entry_type = ?", entryType)
 	}
@@ -89,8 +91,9 @@ func (r *repository) ListByUser(workspaceID, userID, entryType string) ([]string
 
 func (r *repository) IsAssignedToUser(workspaceID, entryID, entryType, userID string) (bool, error) {
 	var count int64
+	id, kind := splitAssignee(userID)
 	err := r.db.Model(&schema.InboxAssignment{}).
-		Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ?", workspaceID, entryID, entryType, userID).
+		Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, entryID, entryType, id, kind).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -139,19 +142,21 @@ func toDomain(rec *schema.InboxAssignment) *ia.InboxAssignment {
 		BusinessPhoneID: businessPhoneID,
 		EntryID:         rec.EntryID,
 		EntryType:       rec.EntryType,
-		AssignedUserID:  rec.AssignedUserID,
+		AssignedUserID:  joinAssignee(rec.AssignedUserID, rec.AssigneeKind),
 		CreatedAt:       rec.CreatedAt,
 		UpdatedAt:       rec.UpdatedAt,
 	}
 }
 
 func toSchema(a *ia.InboxAssignment) *schema.InboxAssignment {
+	id, kind := splitAssignee(a.AssignedUserID)
 	rec := &schema.InboxAssignment{
 		ID:             a.ID,
 		WorkspaceID:    a.WorkspaceID,
 		EntryID:        a.EntryID,
 		EntryType:      a.EntryType,
-		AssignedUserID: a.AssignedUserID,
+		AssignedUserID: id,
+		AssigneeKind:   kind,
 	}
 	if a.BusinessPhoneID != "" {
 		bp := a.BusinessPhoneID

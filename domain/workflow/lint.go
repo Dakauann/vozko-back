@@ -432,13 +432,13 @@ func lintFunctionalResourceRefs(g *Graph, add func(LintIssue)) {
 			if cfgStr(n.Config, "template_id") == "" {
 				emit(n.ID, "template_id", "template a enviar")
 			}
-		case NodeTypeActionTransferDepartment:
-			if cfgStr(n.Config, "department_id") == "" {
-				emit(n.ID, "department_id", "departamento de destino")
-			}
 		case NodeTypeActionAssignLabel, NodeTypeConditionCheckLabel:
 			if cfgStr(n.Config, "label_id") == "" {
 				emit(n.ID, "label_id", "etiqueta")
+			}
+		case NodeTypeActionMoveStage, NodeTypeConditionCheckStage:
+			if cfgStr(n.Config, "stage_id") == "" {
+				emit(n.ID, "stage_id", "etapa")
 			}
 		case NodeTypeActionAssignMember:
 			if cfgStr(n.Config, "member_id") == "" {

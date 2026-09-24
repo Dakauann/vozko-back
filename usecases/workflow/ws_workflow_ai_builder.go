@@ -48,7 +48,7 @@ var builderSessionSeq int64
 
 var resourceKinds = []string{
 	"ai_models", "agents", "templates", "departments", "medias",
-	"labels", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
+	"labels", "stages", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
 }
 
 type ResourceMatch struct {

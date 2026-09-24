@@ -368,6 +368,9 @@ type Conversation struct {
 
 	ChatID  string `json:"chatId"`
 	IsGroup bool   `json:"isGroup"`
+	// CampaignID is the campaign this conversation was opened for; empty for a
+	// chat's campaign-less conversation.
+	CampaignID string `json:"campaignId,omitempty"`
 
 	ConversationStatus string     `json:"conversationStatus,omitempty"`
 	CloseSource        string     `json:"closeSource,omitempty"`

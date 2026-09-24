@@ -3,6 +3,8 @@ package inbox_assignment
 import (
 	"errors"
 	"time"
+
+	"vozko/domain/actor"
 )
 
 var (
@@ -22,6 +24,12 @@ type InboxAssignment struct {
 
 func (a *InboxAssignment) AssignedTo(userID string) bool {
 	return a != nil && a.AssignedUserID != "" && a.AssignedUserID == userID
+}
+
+// HeldByAutomation reports whether an AI agent (ai:<id>) or a workflow
+// (workflow:<id>) holds the conversation rather than a person.
+func (a *InboxAssignment) HeldByAutomation() bool {
+	return a != nil && actor.IsAutomation(a.AssignedUserID)
 }
 
 func (a *InboxAssignment) VisibleTo(userID string) bool {

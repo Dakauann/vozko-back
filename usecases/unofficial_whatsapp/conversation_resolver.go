@@ -26,6 +26,9 @@ type ResolveInput struct {
 	LID         string
 	PhoneNumber string
 	Name        string
+	// CampaignID opens that campaign's own conversation with the chat, as an
+	// official campaign opens its own entry. Empty means the chat's current one.
+	CampaignID string
 }
 
 type Resolved struct {
@@ -54,7 +57,7 @@ func (r *ConversationResolver) Resolve(
 	r.bridgeContactLead(ctx, instance, contact)
 
 	existing, findErr := r.conversations.FindByChatID(ctx, instance.ID, in.JID)
-	alreadyExisted := findErr == nil && existing != nil
+	alreadyExisted := findErr == nil && existing != nil && existing.CampaignID == in.CampaignID
 
 	conv, err := r.conversations.FindOrCreate(ctx, uw.FindOrCreateConversationInput{
 		WorkspaceID: instance.WorkspaceID,
@@ -62,6 +65,7 @@ func (r *ConversationResolver) Resolve(
 		ContactID:   contact.ID,
 		ChatID:      in.JID,
 		IsGroup:     false,
+		CampaignID:  in.CampaignID,
 	})
 	if err != nil {
 		return nil, err

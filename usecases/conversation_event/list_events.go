@@ -12,7 +12,13 @@ import (
 	labeldomain "vozko/domain/label"
 	stagedomain "vozko/domain/stage"
 	"vozko/domain/user"
+	"vozko/domain/workflow"
 )
+
+// WorkflowNameLookup names the workflows that appear as actors (workflow:<id>).
+type WorkflowNameLookup interface {
+	FindByIDs(ids []string) ([]*workflow.Workflow, error)
+}
 
 type listEventsUseCase struct {
 	repo   ce.Repository
@@ -20,6 +26,12 @@ type listEventsUseCase struct {
 	agents agentdomain.Repository
 	stages stagedomain.Repository
 	labels labeldomain.Repository
+
+	workflows WorkflowNameLookup
+}
+
+func (uc *listEventsUseCase) SetWorkflowNames(workflows WorkflowNameLookup) {
+	uc.workflows = workflows
 }
 
 func NewListEventsUseCase(
@@ -139,17 +151,21 @@ func (uc *listEventsUseCase) resolveNames(events []*ce.ConversationEvent) {
 
 	userIDs := map[string]bool{}
 	agentIDs := map[string]bool{}
+	workflowIDs := map[string]bool{}
 	want := func(id string) {
-		if !isUUID(strings.TrimPrefix(id, actor.AIPrefix)) {
-			return
-		}
 		switch actor.KindOf(id) {
 		case actor.KindAI:
-			if bare := actor.ParseAI(id); bare != "" {
+			if bare := actor.ParseAI(id); isUUID(bare) {
 				agentIDs[bare] = true
 			}
+		case actor.KindWorkflow:
+			if bare := actor.ParseWorkflow(id); isUUID(bare) {
+				workflowIDs[bare] = true
+			}
 		case actor.KindHuman:
-			userIDs[id] = true
+			if isUUID(id) {
+				userIDs[id] = true
+			}
 		}
 	}
 
@@ -184,6 +200,18 @@ func (uc *listEventsUseCase) resolveNames(events []*ce.ConversationEvent) {
 			for _, a := range found {
 				if a != nil {
 					names[actor.FormatAI(a.ID)] = a.Name
+				}
+			}
+		}
+	}
+
+	if uc.workflows != nil && len(workflowIDs) > 0 {
+		if found, err := uc.workflows.FindByIDs(mapKeys(workflowIDs)); err != nil {
+			log.Printf("[conversation_event] could not resolve workflow names: %v", err)
+		} else {
+			for _, w := range found {
+				if w != nil {
+					names[actor.FormatWorkflow(w.ID)] = w.Name
 				}
 			}
 		}
