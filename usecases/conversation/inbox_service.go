@@ -100,13 +100,13 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 	}
 	if input.CampaignID != "" && input.CampaignType != "" && s.authorizer != nil {
 		if !s.authorizer.CanAccessCampaign(userID, workspaceForOwnerCheck, input.CampaignID, input.CampaignType, input.IsAdmin) {
-			return nil, 0, fmt.Errorf("unauthorized: you don't have access to this inbox")
+			return nil, 0, fmt.Errorf("%w: you don't have access to this inbox", conversation.ErrUnauthorized)
 		}
 	}
 	if s.authorizer != nil && input.WorkspaceID != "" {
 		scope, allowed := s.authorizer.GetDepartmentScope(userID, input.WorkspaceID, input.IsAdmin)
 		if !allowed {
-			return nil, 0, fmt.Errorf("unauthorized: you don't have access to this inbox")
+			return nil, 0, fmt.Errorf("%w: you don't have access to this inbox", conversation.ErrUnauthorized)
 		}
 		input.DepartmentIDs = scope.DepartmentIDs
 		input.RestrictDepartments = scope.Restrict
@@ -122,7 +122,7 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 					}
 				}
 				if !found {
-					return nil, 0, fmt.Errorf("unauthorized: you don't have access to this department")
+					return nil, 0, fmt.Errorf("%w: you don't have access to this department", conversation.ErrUnauthorized)
 				}
 			}
 			input.DepartmentIDs = []string{input.SelectedDepartmentID}

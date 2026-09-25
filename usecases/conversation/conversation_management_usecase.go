@@ -350,12 +350,7 @@ func uniqueIDs(ids []string) []string {
 }
 
 func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.EntryType, limit int) ([]*conversation.Message, bool, int64, error) {
-	if limit <= 0 {
-		limit = conversation.DefaultHistoryPageSize
-	}
-	if limit > conversation.MaxHistoryPageSize {
-		limit = conversation.MaxHistoryPageSize
-	}
+	limit = conversation.HistoryPageSize(limit)
 
 	messages, err := s.messageRepo.ListByEntryPaginated(conversation.ListMessagesInput{
 		EntryID:   entryID,
@@ -458,12 +453,7 @@ func isInboundMessageType(t conversation.MessageType) bool {
 }
 
 func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shared.EntryType, before time.Time, limit int) ([]*conversation.Message, bool, error) {
-	if limit <= 0 {
-		limit = conversation.DefaultHistoryPageSize
-	}
-	if limit > conversation.MaxHistoryPageSize {
-		limit = conversation.MaxHistoryPageSize
-	}
+	limit = conversation.HistoryPageSize(limit)
 
 	messages, err := s.messageRepo.ListByEntryPaginated(conversation.ListMessagesInput{
 		EntryID:   entryID,
@@ -494,12 +484,7 @@ func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shar
 }
 
 func (s *HistoryProviderService) GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*conversation.Message, bool, bool, int64, error) {
-	if limit <= 0 {
-		limit = conversation.DefaultHistoryPageSize
-	}
-	if limit > conversation.MaxHistoryPageSize {
-		limit = conversation.MaxHistoryPageSize
-	}
+	limit = conversation.HistoryPageSize(limit)
 
 	half := limit / 2
 	if half < 1 {
