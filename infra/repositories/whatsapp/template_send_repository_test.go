@@ -38,7 +38,8 @@ func TestCreateIfAbsent_TargetsThePartialUniqueIndex(t *testing.T) {
 	_ = repo
 	_ = context.Background()
 
-	tx := stmt.Clauses(onConflictForTest()).Create(toSendSchemaForTest(attempt))
+	row := toSendSchema(attempt)
+	tx := stmt.Clauses(sendAttemptConflictClause()).Create(&row)
 	sql := strings.ToLower(tx.Statement.SQL.String())
 
 	if !strings.Contains(sql, "on conflict") {
