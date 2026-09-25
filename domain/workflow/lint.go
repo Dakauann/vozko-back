@@ -440,6 +440,10 @@ func lintFunctionalResourceRefs(g *Graph, add func(LintIssue)) {
 			if cfgStr(n.Config, "stage_id") == "" {
 				emit(n.ID, "stage_id", "etapa")
 			}
+		case NodeTypeActionManageOpportunity, NodeTypeConditionCheckOpportunity:
+			if cfgStr(n.Config, "pipeline_id") == "" {
+				emit(n.ID, "pipeline_id", "funil de negócios")
+			}
 		case NodeTypeActionAssignMember:
 			if cfgStr(n.Config, "member_id") == "" {
 				emit(n.ID, "member_id", "atendente")

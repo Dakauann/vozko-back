@@ -18,9 +18,16 @@ type SearchByFilterInput struct {
 	PageSize int
 }
 
+type Store interface {
+	Create(o *Opportunity, links []ConversationLink, events []Event) error
+	Update(o *Opportunity, events []Event) error
+	Link(link ConversationLink, events []Event) error
+	OpenForEntry(workspaceID, pipelineID, entryID, entryType string) (*Opportunity, error)
+}
+
 type Repository interface {
-	Create(o *Opportunity) error
-	Update(o *Opportunity) error
+	Store
+
 	Delete(workspaceID, id string) error
 	GetByID(workspaceID, id string) (*Opportunity, error)
 	ListByPipeline(workspaceID, pipelineID string) ([]*Opportunity, error)
@@ -29,6 +36,11 @@ type Repository interface {
 	SearchByFilter(input SearchByFilterInput) ([]*Opportunity, int64, error)
 
 	SumValueByFilter(input SearchByFilterInput) (int64, error)
+
+	ListEvents(workspaceID, opportunityID string) ([]Event, error)
+	CurrentForEntry(workspaceID, pipelineID, entryID, entryType string) (*Opportunity, error)
+
+	WithEntryLock(workspaceID, entryID, entryType string, fn func(Store) error) error
 }
 
 type ConversationLink struct {
@@ -38,8 +50,11 @@ type ConversationLink struct {
 }
 
 type LinkRepository interface {
-	Link(link ConversationLink) error
 	Unlink(opportunityID, entryID, entryType string) error
 	ListByOpportunity(workspaceID, opportunityID string) ([]ConversationLink, error)
 	ListByEntry(workspaceID, entryID, entryType string) ([]ConversationLink, error)
+}
+
+type OwnerDirectory interface {
+	Belongs(workspaceID, actorID string) (bool, error)
 }

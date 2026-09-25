@@ -33,7 +33,7 @@ func (t *listDepartmentsTool) Execute(ctx context.Context, cc copilot.Context, a
 	}
 	out := make([]wd.Department, 0, len(depts))
 	for _, d := range depts {
-		if inDeptScope(cc.DeptScope, d.ID) {
+		if cc.Departments.Allows(d.ID) {
 			out = append(out, d)
 		}
 	}

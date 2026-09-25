@@ -5,13 +5,16 @@ import (
 
 	"vozko/domain/tools"
 	"vozko/domain/workspace"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type Context struct {
 	WorkspaceID string
 	UserID      string
 	Role        workspace.Role
-	DeptScope   []string
+	Departments *wd.DepartmentFilter
+	View        View
+	Datasets    *DatasetStore
 }
 
 type Meta struct {
@@ -32,6 +35,7 @@ type Result struct {
 	Status  Status
 	Data    interface{}
 	Message string
+	Chart   *Chart
 }
 
 type PendingAction struct {

@@ -140,6 +140,7 @@ func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opport
 
 type ImportOptions struct {
 	DefaultPipelineID string
+	ActorID           string
 	DryRun            bool
 }
 
@@ -205,6 +206,7 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 
 		report.Total++
 		in, buildErr := buildInput(colIndex, record, defsByKey, opts.DefaultPipelineID)
+		in.Actor = opts.ActorID
 		if buildErr != nil {
 			report.Skipped++
 			report.Errors = append(report.Errors, ImportError{Row: rowNum, Message: buildErr.Error()})
@@ -249,7 +251,6 @@ func buildInput(idx map[string]int, record []string, defsByKey map[string]*custo
 		Title:        get("title"),
 		Currency:     get("currency"),
 		Source:       get("source"),
-		Status:       opportunity.Status(strings.ToLower(get("status"))),
 		LostReasonID: get("lost_reason_id"),
 	}
 	if in.PipelineID == "" {

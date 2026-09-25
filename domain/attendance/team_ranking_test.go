@@ -238,3 +238,25 @@ func TestBuildStandingClusterBands(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTeamRankingCreditsRevenueToTheAgentThatWonIt(t *testing.T) {
+	rows := []MemberRow{
+		humanRow("u1", "Bella", 30, 0, 0),
+		{ActorID: "ai:agent-1", ActorKind: ActorKindAI, DisplayName: "Assistente", Resolved: 90},
+	}
+	revenue := map[string]OwnerRevenue{
+		"u1":         {Currency: "BRL", ValueCents: 10000, WonCount: 1},
+		"ai:agent-1": {Currency: "BRL", ValueCents: 45000, WonCount: 3},
+	}
+
+	got := BuildTeamRanking(rows, RankByRevenue, maturePeriod(), nil, revenue, nil)
+	if len(got.Adjacent) != 1 || got.Adjacent[0].RevenueCents == nil || *got.Adjacent[0].RevenueCents != 45000 {
+		t.Fatalf("BuildTeamRanking() adjacent = %+v, want the agent credited with 45000", got.Adjacent)
+	}
+	if got.AdjacentTotal.RevenueCents == nil || *got.AdjacentTotal.RevenueCents != 45000 {
+		t.Fatalf("BuildTeamRanking() AdjacentTotal = %+v, want the automation revenue kept apart", got.AdjacentTotal)
+	}
+	if got.Totals.RevenueCents == nil || *got.Totals.RevenueCents != 10000 {
+		t.Fatalf("BuildTeamRanking() Totals = %+v, want only the human revenue", got.Totals)
+	}
+}

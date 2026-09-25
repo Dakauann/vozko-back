@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"vozko/domain/ai"
 	"vozko/domain/copilot"
@@ -17,6 +18,8 @@ type AccessChecker interface {
 }
 
 type IDGenerator func() string
+
+const EventChart = "chart"
 
 type Driver struct {
 	cc       copilot.Context
@@ -33,7 +36,7 @@ func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChe
 func (d *Driver) Model() string             { return d.model }
 func (d *Driver) Tools() []tools.Definition { return d.registry.Definitions() }
 
-func (d *Driver) SystemPrompt() string { return systemPrompt() }
+func (d *Driver) SystemPrompt() string { return systemPrompt(d.cc.View, time.Now()) }
 
 func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
 	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário."
@@ -79,6 +82,9 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	}
 	res := tool.Execute(ctx, d.cc, call.Arguments)
 	emit("tool", toolEvent(call.Name, string(res.Status), res.Status == copilot.StatusOK))
+	if res.Chart != nil {
+		emit(EventChart, res.Chart)
+	}
 	return agentloop.StepResult{Result: renderResult(res)}
 }
 

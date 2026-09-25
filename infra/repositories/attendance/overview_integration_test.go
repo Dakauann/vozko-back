@@ -251,20 +251,30 @@ func TestGetRevenueRunsAgainstPostgres(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, loc)
 	to := time.Date(2026, 10, 1, 0, 0, 0, 0, loc)
 
-	if _, _, err := repo.GetRevenue(ctx, emptyWorkspace, from, to); err != nil {
+	if _, _, err := repo.GetRevenue(ctx, emptyWorkspace, from, to, attendance.RevenueScope{}); err != nil {
 		t.Fatalf("GetRevenue: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from.AddDate(-1, 0, 0), to, loc, ""); err != nil {
+	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from.AddDate(-1, 0, 0), to, loc, "", attendance.RevenueScope{}); err != nil {
 		t.Fatalf("GetRevenueByMonth: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from, to, nil, ""); err != nil {
+	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from, to, nil, "", attendance.RevenueScope{}); err != nil {
 		t.Fatalf("GetRevenueByMonth with no timezone: %v", err)
 	}
 	if _, err := repo.GetRevenueByMonth(
 		ctx, emptyWorkspace, from.AddDate(-1, 0, 0), to, loc,
-		"9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8",
+		"9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8", attendance.RevenueScope{},
 	); err != nil {
 		t.Fatalf("GetRevenueByMonth for one owner: %v", err)
+	}
+	scoped := attendance.RevenueScope{
+		CampaignID:   "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8",
+		DepartmentID: "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f9",
+	}
+	if _, _, err := repo.GetRevenue(ctx, emptyWorkspace, from, to, scoped); err != nil {
+		t.Fatalf("GetRevenue scoped to a campaign and department: %v", err)
+	}
+	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from, to, loc, "ai:9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8", scoped); err != nil {
+		t.Fatalf("GetRevenueByMonth scoped for an AI owner: %v", err)
 	}
 }
 

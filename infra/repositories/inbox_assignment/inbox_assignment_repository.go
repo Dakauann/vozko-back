@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"vozko/domain/actor"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/infra/database/schema"
 )
@@ -49,7 +50,7 @@ func (r *repository) FindByEntries(workspaceID string, entryIDs []string) ([]*ia
 
 func (r *repository) FindByEntryAndUser(workspaceID, entryID, entryType, userID string) (*ia.InboxAssignment, error) {
 	var rec schema.InboxAssignment
-	id, kind := splitAssignee(userID)
+	id, kind := actor.Split(userID)
 	err := r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, entryID, entryType, id, kind).First(&rec).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -75,7 +76,7 @@ func (r *repository) Unassign(workspaceID, entryID, entryType string) error {
 }
 
 func (r *repository) ListByUser(workspaceID, userID, entryType string) ([]string, error) {
-	id, kind := splitAssignee(userID)
+	id, kind := actor.Split(userID)
 	q := r.db.Model(&schema.InboxAssignment{}).
 		Select("entry_id").
 		Where("workspace_id = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, id, kind)
@@ -91,7 +92,7 @@ func (r *repository) ListByUser(workspaceID, userID, entryType string) ([]string
 
 func (r *repository) IsAssignedToUser(workspaceID, entryID, entryType, userID string) (bool, error) {
 	var count int64
-	id, kind := splitAssignee(userID)
+	id, kind := actor.Split(userID)
 	err := r.db.Model(&schema.InboxAssignment{}).
 		Where("workspace_id = ? AND entry_id = ? AND entry_type = ? AND assigned_user_id = ? AND assignee_kind = ?", workspaceID, entryID, entryType, id, kind).
 		Count(&count).Error
@@ -142,21 +143,21 @@ func toDomain(rec *schema.InboxAssignment) *ia.InboxAssignment {
 		BusinessPhoneID: businessPhoneID,
 		EntryID:         rec.EntryID,
 		EntryType:       rec.EntryType,
-		AssignedUserID:  joinAssignee(rec.AssignedUserID, rec.AssigneeKind),
+		AssignedUserID:  actor.Join(rec.AssignedUserID, actor.Kind(rec.AssigneeKind)),
 		CreatedAt:       rec.CreatedAt,
 		UpdatedAt:       rec.UpdatedAt,
 	}
 }
 
 func toSchema(a *ia.InboxAssignment) *schema.InboxAssignment {
-	id, kind := splitAssignee(a.AssignedUserID)
+	id, kind := actor.Split(a.AssignedUserID)
 	rec := &schema.InboxAssignment{
 		ID:             a.ID,
 		WorkspaceID:    a.WorkspaceID,
 		EntryID:        a.EntryID,
 		EntryType:      a.EntryType,
 		AssignedUserID: id,
-		AssigneeKind:   kind,
+		AssigneeKind:   string(kind),
 	}
 	if a.BusinessPhoneID != "" {
 		bp := a.BusinessPhoneID

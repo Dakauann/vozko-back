@@ -75,14 +75,3 @@ func argToolBindings(args map[string]interface{}, key string) []toolBindingArg {
 	return out
 }
 
-func inDeptScope(scope []string, deptID string) bool {
-	if scope == nil {
-		return true
-	}
-	for _, id := range scope {
-		if id == deptID {
-			return true
-		}
-	}
-	return false
-}

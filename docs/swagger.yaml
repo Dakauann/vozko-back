@@ -629,6 +629,10 @@ definitions:
         items:
           $ref: '#/definitions/attendance.RevenueOwnerRow'
         type: array
+      by_source:
+        items:
+          $ref: '#/definitions/attendance.RevenueSourceRow'
+        type: array
       currencies:
         items:
           $ref: '#/definitions/attendance.RevenueByCurrency'
@@ -640,6 +644,8 @@ definitions:
       unattributed:
         type: integer
       unowned_count:
+        type: integer
+      won_without_value:
         type: integer
     type: object
   attendance.RevenueByCurrency:
@@ -669,6 +675,29 @@ definitions:
         type: string
       owner_id:
         type: string
+      value_cents:
+        type: integer
+      won_count:
+        type: integer
+    type: object
+  attendance.RevenueSource:
+    enum:
+    - human
+    - ai
+    - workflow
+    - unowned
+    type: string
+    x-enum-varnames:
+    - RevenueSourceHuman
+    - RevenueSourceAI
+    - RevenueSourceWorkflow
+    - RevenueSourceUnowned
+  attendance.RevenueSourceRow:
+    properties:
+      currency:
+        type: string
+      source:
+        $ref: '#/definitions/attendance.RevenueSource'
       value_cents:
         type: integer
       won_count:
@@ -4460,9 +4489,6 @@ definitions:
         type: string
       closeDate:
         type: string
-      conversationAssigneeId:
-        example: usr_d4e5f6
-        type: string
       currency:
         example: BRL
         type: string
@@ -4497,6 +4523,52 @@ definitions:
         example: 150000
         type: integer
     type: object
+  opportunity.Event:
+    properties:
+      actorId:
+        type: string
+      createdAt:
+        type: string
+      currency:
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      fromStageId:
+        type: string
+      id:
+        type: string
+      opportunityId:
+        type: string
+      toStageId:
+        type: string
+      type:
+        $ref: '#/definitions/opportunity.EventType'
+      valueCents:
+        type: integer
+      workspaceId:
+        type: string
+    type: object
+  opportunity.EventType:
+    enum:
+    - created
+    - stage_moved
+    - won
+    - lost
+    - reopened
+    - value_changed
+    - owner_changed
+    - linked
+    type: string
+    x-enum-varnames:
+    - EventCreated
+    - EventStageMoved
+    - EventWon
+    - EventLost
+    - EventReopened
+    - EventValueChanged
+    - EventOwnerChanged
+    - EventLinked
   opportunity.LinkConversationRequest:
     properties:
       entryId:
@@ -4514,9 +4586,6 @@ definitions:
       stageId:
         example: stg_a1b2c3
         type: string
-      status:
-        example: won
-        type: string
     type: object
   opportunity.Opportunity:
     properties:
@@ -4524,7 +4593,11 @@ definitions:
         type: string
       closeDate:
         type: string
+      closedBy:
+        type: string
       createdAt:
+        type: string
+      createdBy:
         type: string
       currency:
         type: string
@@ -4571,8 +4644,6 @@ definitions:
       carteiraId:
         example: cart_a1b2c3
         type: string
-      closeDate:
-        type: string
       currency:
         example: BRL
         type: string
@@ -4590,9 +4661,6 @@ definitions:
         type: string
       stageId:
         example: stg_a1b2c3
-        type: string
-      status:
-        example: won
         type: string
       title:
         example: Plano anual
@@ -12681,20 +12749,53 @@ paths:
       summary: Vincular conversa à oportunidade
       tags:
       - Oportunidades
-  /opportunities/{id}/move:
-    post:
-      consumes:
-      - application/json
-      description: Move uma oportunidade para outra etapa do funil e, opcionalmente,
-        define o status ('open', 'won' ou 'lost'). Ao marcar como perdida, informe
-        o motivo da perda.
+  /opportunities/{id}/events:
+    get:
+      description: 'Lista, em ordem cronológica, cada mudança da oportunidade (criação,
+        etapa, ganho, perda, reabertura, valor, responsável e vínculo com conversa)
+        com quem a fez: uma pessoa, um agente de IA (ai:<id>) ou um fluxo (workflow:<id>).'
       parameters:
       - description: ID da oportunidade
         in: path
         name: id
         required: true
         type: string
-      - description: Etapa de destino e status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/opportunity.Event'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Histórico da oportunidade
+      tags:
+      - Oportunidades
+  /opportunities/{id}/move:
+    post:
+      consumes:
+      - application/json
+      description: 'Move uma oportunidade para outra etapa do funil. O status vem
+        da etapa: uma etapa de ganho marca como ganha (e exige valor), uma de perda
+        marca como perdida (e exige o motivo), qualquer outra reabre.'
+      parameters:
+      - description: ID da oportunidade
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Etapa de destino
         in: body
         name: request
         required: true

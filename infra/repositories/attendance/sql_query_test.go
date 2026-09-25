@@ -161,11 +161,11 @@ func TestRevenueQueryArgumentsLineUpWithTheirPlaceholders(t *testing.T) {
 	const workspaceID = "5a018104-560d-4627-aba7-0ee0895fcf50"
 
 	cases := map[string]*sqlQuery{
-		"revenue tallies":      revenueTalliesQuery(workspaceID, from, to),
-		"revenue unattributed": revenueUnattributedQuery(workspaceID, from, to),
-		"revenue by month":     revenueByMonthQuery(workspaceID, from, to, loc, ""),
+		"revenue tallies":      revenueTalliesQuery(workspaceID, from, to, attendance.RevenueScope{}),
+		"revenue unattributed": revenueUnattributedQuery(workspaceID, from, to, attendance.RevenueScope{}),
+		"revenue by month":     revenueByMonthQuery(workspaceID, from, to, loc, "", attendance.RevenueScope{}),
 		"revenue by month, one owner": revenueByMonthQuery(
-			workspaceID, from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8"),
+			workspaceID, from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8", attendance.RevenueScope{}),
 	}
 
 	for name, query := range cases {
@@ -176,7 +176,7 @@ func TestRevenueQueryArgumentsLineUpWithTheirPlaceholders(t *testing.T) {
 
 func TestRevenueByMonthSendsTheTimezoneFirst(t *testing.T) {
 	from, to, loc := trendWindowForTest()
-	sql, args := revenueByMonthQuery("ws-1", from, to, loc, "").build()
+	sql, args := revenueByMonthQuery("ws-1", from, to, loc, "", attendance.RevenueScope{}).build()
 
 	if strings.Index(sql, "AT TIME ZONE ?") > strings.Index(sql, "workspace_id = ?") {
 		t.Fatalf("the timezone placeholder moved after the workspace placeholder; the argument order no longer matches")
@@ -255,11 +255,11 @@ func TestNoAttendanceQueryDoesArithmeticOnABarePlaceholder(t *testing.T) {
 	queries := map[string]*sqlQuery{
 		"trend":                trendQuery("ws-1", filter, sources, from, to, loc),
 		"trend unbucketed":     trendUnbucketedQuery("ws-1", filter, sources, from, to),
-		"revenue tallies":      revenueTalliesQuery("ws-1", from, to),
-		"revenue unattributed": revenueUnattributedQuery("ws-1", from, to),
-		"revenue by month":     revenueByMonthQuery("ws-1", from, to, loc, ""),
+		"revenue tallies":      revenueTalliesQuery("ws-1", from, to, attendance.RevenueScope{}),
+		"revenue unattributed": revenueUnattributedQuery("ws-1", from, to, attendance.RevenueScope{}),
+		"revenue by month":     revenueByMonthQuery("ws-1", from, to, loc, "", attendance.RevenueScope{}),
 		"revenue by month, one owner": revenueByMonthQuery(
-			"ws-1", from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8"),
+			"ws-1", from, to, loc, "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8", attendance.RevenueScope{}),
 		"backlog age":    backlogAgeQuery("tmp_msg", now),
 		"backlog tenure": backlogTenureQuery("tmp_msg", now),
 	}
@@ -271,4 +271,58 @@ func TestNoAttendanceQueryDoesArithmeticOnABarePlaceholder(t *testing.T) {
 
 	union, _ := priorFinishedLeadsUnion("ws-1", "tmp_msg", filter)
 	assertNoUntypedArithmetic(t, "prior finished leads union", union)
+}
+
+func TestRevenueCreditsTheOwnerAsAnActor(t *testing.T) {
+	from, to, _ := trendWindowForTest()
+	sql, _ := revenueTalliesQuery("ws-1", from, to, attendance.RevenueScope{}).build()
+	if !strings.Contains(sql, actorIDSQL("owner_id", "owner_kind")) {
+		t.Fatalf("revenue tallies do not read the owner's kind, so an AI deal would be credited to a person:\n%s", sql)
+	}
+	if !strings.Contains(sql, "won_without_value") {
+		t.Fatalf("revenue tallies do not count wins without a value:\n%s", sql)
+	}
+}
+
+func TestUnscopedRevenueDoesNotRequireAConversation(t *testing.T) {
+	from, to, loc := trendWindowForTest()
+	for name, query := range map[string]*sqlQuery{
+		"tallies":      revenueTalliesQuery("ws-1", from, to, attendance.RevenueScope{}),
+		"unattributed": revenueUnattributedQuery("ws-1", from, to, attendance.RevenueScope{}),
+		"by month":     revenueByMonthQuery("ws-1", from, to, loc, "", attendance.RevenueScope{}),
+	} {
+		sql, _ := query.build()
+		if strings.Contains(sql, "opportunity_conversations") {
+			t.Fatalf("%s without a filter only counts deals with a conversation:\n%s", name, sql)
+		}
+	}
+}
+
+func TestScopedRevenueCountsDealsThroughTheirConversations(t *testing.T) {
+	from, to, loc := trendWindowForTest()
+	scope := attendance.RevenueScope{CampaignID: "c1", CampaignType: "whatsapp", DepartmentID: "d1"}
+	for name, query := range map[string]*sqlQuery{
+		"tallies":      revenueTalliesQuery("ws-1", from, to, scope),
+		"unattributed": revenueUnattributedQuery("ws-1", from, to, scope),
+		"by month":     revenueByMonthQuery("ws-1", from, to, loc, "ai:agent-1", scope),
+	} {
+		sql, args := query.build()
+		assertArgsMatchTheirPlaceholders(t, name, sql, args)
+		assertColumnsExist(t, name, sql)
+		if !strings.Contains(sql, "EXISTS (") || !strings.Contains(sql, "oc.opportunity_id = opportunities.id") {
+			t.Fatalf("%s is not scoped through the deal's conversations:\n%s", name, sql)
+		}
+		if strings.Count(sql, "oc.entry_type = '") != 1 {
+			t.Fatalf("%s should only look at the campaign's own channel:\n%s", name, sql)
+		}
+	}
+}
+
+func TestRevenueScopedToAnotherChannelsCampaignIsEmpty(t *testing.T) {
+	from, to, _ := trendWindowForTest()
+	scope := attendance.RevenueScope{CampaignID: "c1", CampaignType: "whatsapp", Channel: "instagram"}
+	sql, _ := revenueTalliesQuery("ws-1", from, to, scope).build()
+	if !strings.Contains(sql, "AND FALSE") {
+		t.Fatalf("a campaign of one channel filtered to another must match nothing:\n%s", sql)
+	}
 }

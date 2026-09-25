@@ -81,6 +81,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 	for _, ts := range prelude {
 		rec.emitFn("tool", ts.payload())
 	}
+	cc.Datasets = copilot.NewDatasetStore()
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.newID)
 	sess := &agentloop.Session{History: history}
@@ -229,9 +230,10 @@ func deriveTitle(firstMessage string) string {
 }
 
 type toolStep struct {
-	Name    string `json:"name"`
-	Summary string `json:"summary"`
-	Ok      bool   `json:"ok"`
+	Name    string         `json:"name"`
+	Summary string         `json:"summary"`
+	Ok      bool           `json:"ok"`
+	Chart   *copilot.Chart `json:"chart,omitempty"`
 }
 
 func (t toolStep) payload() map[string]interface{} {
@@ -250,6 +252,10 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 		r.reasoning.WriteString(eventText(payload))
 	case "tool":
 		r.tools = append(r.tools, toolStepFromPayload(payload))
+	case EventChart:
+		if chart, ok := payload.(*copilot.Chart); ok && len(r.tools) > 0 {
+			r.tools[len(r.tools)-1].Chart = chart
+		}
 	}
 	r.emit(eventType, payload)
 }

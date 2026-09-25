@@ -24,6 +24,7 @@ func RegisterProtectedRoutes(
 	opRoutes.HandleFunc("/{id}", ac(op, workspace_domain.ActionUpdate, h.Update)).Methods(http.MethodPatch)
 	opRoutes.HandleFunc("/{id}", ac(op, workspace_domain.ActionDelete, h.Delete)).Methods(http.MethodDelete)
 	opRoutes.HandleFunc("/{id}/move", ac(op, workspace_domain.ActionUpdate, h.MoveStage)).Methods(http.MethodPost)
+	opRoutes.HandleFunc("/{id}/events", ac(op, workspace_domain.ActionRead, h.ListEvents)).Methods(http.MethodGet)
 	opRoutes.HandleFunc("/{id}/conversations", ac(op, workspace_domain.ActionRead, h.ListConversations)).Methods(http.MethodGet)
 	opRoutes.HandleFunc("/{id}/conversations", ac(op, workspace_domain.ActionUpdate, h.LinkConversation)).Methods(http.MethodPost)
 	opRoutes.HandleFunc("/{id}/conversations", ac(op, workspace_domain.ActionUpdate, h.UnlinkConversation)).Methods(http.MethodDelete)

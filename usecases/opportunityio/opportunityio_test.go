@@ -9,6 +9,8 @@ import (
 
 	"vozko/domain/customfield"
 	"vozko/domain/opportunity"
+	"vozko/domain/pipeline"
+	"vozko/domain/stage"
 	opportunity_usecase "vozko/usecases/opportunity"
 )
 
@@ -20,13 +22,24 @@ func newFakeOppRepo() *fakeOppRepo {
 	return &fakeOppRepo{store: map[string]*opportunity.Opportunity{}}
 }
 
-func (r *fakeOppRepo) Create(o *opportunity.Opportunity) error {
+func (r *fakeOppRepo) Create(o *opportunity.Opportunity, _ []opportunity.ConversationLink, _ []opportunity.Event) error {
 	cp := *o
 	r.store[o.ID] = &cp
 	return nil
 }
-func (r *fakeOppRepo) Update(o *opportunity.Opportunity) error { return nil }
-func (r *fakeOppRepo) Delete(workspaceID, id string) error     { return nil }
+func (r *fakeOppRepo) Update(*opportunity.Opportunity, []opportunity.Event) error   { return nil }
+func (r *fakeOppRepo) Link(opportunity.ConversationLink, []opportunity.Event) error { return nil }
+func (r *fakeOppRepo) Delete(workspaceID, id string) error                          { return nil }
+func (r *fakeOppRepo) ListEvents(string, string) ([]opportunity.Event, error)       { return nil, nil }
+func (r *fakeOppRepo) OpenForEntry(string, string, string, string) (*opportunity.Opportunity, error) {
+	return nil, opportunity.ErrNotFound
+}
+func (r *fakeOppRepo) CurrentForEntry(string, string, string, string) (*opportunity.Opportunity, error) {
+	return nil, opportunity.ErrNotFound
+}
+func (r *fakeOppRepo) WithEntryLock(_, _, _ string, fn func(opportunity.Store) error) error {
+	return fn(r)
+}
 func (r *fakeOppRepo) GetByID(workspaceID, id string) (*opportunity.Opportunity, error) {
 	o, ok := r.store[id]
 	if !ok || o.WorkspaceID != workspaceID {
@@ -94,11 +107,50 @@ func newFields() *fakeFieldRepo {
 	}}
 }
 
+type dealFunnel struct {
+	workspaceID string
+}
+
+func (f dealFunnel) GetByID(workspaceID, id string) (*pipeline.Pipeline, error) {
+	return &pipeline.Pipeline{ID: id, WorkspaceID: workspaceID, ObjectType: pipeline.ObjectOpportunity}, nil
+}
+
+func (f dealFunnel) ListByWorkspace(workspaceID, _ string) ([]*pipeline.Pipeline, error) {
+	return []*pipeline.Pipeline{{ID: "pipe1", WorkspaceID: workspaceID, ObjectType: pipeline.ObjectOpportunity}}, nil
+}
+
+func (f dealFunnel) FindByID(id string) (*stage.Stage, error) {
+	return &stage.Stage{ID: id, WorkspaceID: f.workspaceID, PipelineID: "pipe1"}, nil
+}
+
+func (f dealFunnel) ListByPipeline(workspaceID, pipelineID string) ([]*stage.Stage, error) {
+	return []*stage.Stage{{ID: "stage1", WorkspaceID: workspaceID, PipelineID: pipelineID, IsInitial: true}}, nil
+}
+
+type everyoneBelongs struct{}
+
+func (everyoneBelongs) Belongs(string, string) (bool, error) { return true, nil }
+
+const importer = "u1"
+
+func newOppService(repo *fakeOppRepo, workspaceID string) *opportunity_usecase.Service {
+	funnel := dealFunnel{workspaceID: workspaceID}
+	return opportunity_usecase.NewService(opportunity_usecase.Deps{
+		Repo:      repo,
+		Fields:    newFields(),
+		Stages:    funnel,
+		Pipelines: funnel,
+		Owners:    everyoneBelongs{},
+	})
+}
+
 func newIO() (*Service, *fakeOppRepo) {
+	return newIOFor("ws1")
+}
+
+func newIOFor(workspaceID string) (*Service, *fakeOppRepo) {
 	oppRepo := newFakeOppRepo()
-	fields := newFields()
-	oppSvc := opportunity_usecase.NewService(oppRepo, nil, fields)
-	return NewService(oppSvc, fields), oppRepo
+	return NewService(newOppService(oppRepo, workspaceID), newFields()), oppRepo
 }
 
 func TestParseMajorToCents(t *testing.T) {
@@ -141,8 +193,9 @@ func TestParseMajorToCents(t *testing.T) {
 
 func TestExport_Format(t *testing.T) {
 	io, repo := newIO()
-	svc := opportunity_usecase.NewService(repo, nil, newFields())
+	svc := newOppService(repo, "ws1")
 	if _, err := svc.Create("ws1", opportunity_usecase.CreateInput{
+		Actor:        importer,
 		PipelineID:   "pipe1",
 		StageID:      "stage1",
 		Title:        "Big Deal",
@@ -228,7 +281,7 @@ func TestImport_ValidAndInvalid(t *testing.T) {
 		"Bad Value,not-money,BRL,stage1,pipe1,open",
 	}, "\n")
 
-	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{})
+	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -271,7 +324,7 @@ func TestImport_CustomFields(t *testing.T) {
 		"Unknown,stage1,pipe1,,",
 	}, "\n")
 
-	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{})
+	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -308,7 +361,7 @@ func TestImport_DryRun(t *testing.T) {
 		"No Stage,,pipe1",
 	}, "\n")
 
-	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{DryRun: true})
+	report, err := io.Import("ws1", strings.NewReader(csvData), ImportOptions{DryRun: true, ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import dry-run: %v", err)
 	}
@@ -322,9 +375,10 @@ func TestImport_DryRun(t *testing.T) {
 
 func TestImport_RoundTripWithDefaultPipeline(t *testing.T) {
 	src, srcRepo := newIO()
-	seed := opportunity_usecase.NewService(srcRepo, nil, newFields())
+	seed := newOppService(srcRepo, "ws1")
 	for i, title := range []string{"A", "B"} {
 		if _, err := seed.Create("ws1", opportunity_usecase.CreateInput{
+			Actor:        importer,
 			PipelineID:   "pipe1",
 			StageID:      "stage1",
 			Title:        title,
@@ -339,8 +393,8 @@ func TestImport_RoundTripWithDefaultPipeline(t *testing.T) {
 		t.Fatalf("Export: %v", err)
 	}
 
-	dst, dstRepo := newIO()
-	report, err := dst.Import("ws2", bytes.NewReader(buf.Bytes()), ImportOptions{DefaultPipelineID: "pipe1"})
+	dst, dstRepo := newIOFor("ws2")
+	report, err := dst.Import("ws2", bytes.NewReader(buf.Bytes()), ImportOptions{DefaultPipelineID: "pipe1", ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import round-trip: %v", err)
 	}
@@ -370,7 +424,7 @@ func TestImport_OverCap(t *testing.T) {
 		fmt.Fprintf(&b, "Deal %d,stage1,pipe1\n", i)
 	}
 
-	report, err := io.Import("ws1", strings.NewReader(b.String()), ImportOptions{})
+	report, err := io.Import("ws1", strings.NewReader(b.String()), ImportOptions{ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import over-cap: %v", err)
 	}
@@ -390,7 +444,7 @@ func TestImport_OverCap(t *testing.T) {
 
 func TestImport_Empty(t *testing.T) {
 	io, _ := newIO()
-	report, err := io.Import("ws1", strings.NewReader(""), ImportOptions{})
+	report, err := io.Import("ws1", strings.NewReader(""), ImportOptions{ActorID: importer})
 	if err != nil {
 		t.Fatalf("Import empty: %v", err)
 	}

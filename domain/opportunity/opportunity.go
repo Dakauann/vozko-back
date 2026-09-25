@@ -2,6 +2,7 @@ package opportunity
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 )
@@ -20,6 +21,10 @@ func (s Status) Valid() bool {
 
 const DefaultCurrency = "BRL"
 
+func SupportedCurrencies() []string {
+	return []string{"BRL", "USD", "EUR"}
+}
+
 type Opportunity struct {
 	ID           string         `json:"id"`
 	WorkspaceID  string         `json:"workspaceId"`
@@ -35,6 +40,8 @@ type Opportunity struct {
 	LostReasonID string         `json:"lostReasonId,omitempty"`
 	Source       string         `json:"source,omitempty"`
 	CloseDate    *time.Time     `json:"closeDate,omitempty"`
+	CreatedBy    string         `json:"createdBy,omitempty"`
+	ClosedBy     string         `json:"closedBy,omitempty"`
 	CustomFields map[string]any `json:"customFields,omitempty"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
@@ -48,6 +55,12 @@ var (
 	ErrInvalidStatus     = errors.New("opportunity: invalid status")
 	ErrNegativeValue     = errors.New("opportunity: value cannot be negative")
 	ErrLostReasonMissing = errors.New("opportunity: a lost opportunity requires a lost reason")
+
+	ErrWonWithoutValue      = errors.New("opportunity: a won opportunity requires a value")
+	ErrUnsupportedCurrency  = errors.New("opportunity: unsupported currency")
+	ErrStageOutsidePipeline = errors.New("opportunity: the stage does not belong to the opportunity pipeline")
+	ErrInvalidAmount        = errors.New("opportunity: the amount must be a finite, non-negative number")
+	ErrNotFound             = errors.New("opportunity: not found")
 )
 
 func (o *Opportunity) Normalize() {
@@ -79,6 +92,12 @@ func (o *Opportunity) Validate() error {
 	}
 	if o.ValueCents < 0 {
 		return ErrNegativeValue
+	}
+	if o.Status == StatusWon && o.ValueCents == 0 {
+		return ErrWonWithoutValue
+	}
+	if !slices.Contains(SupportedCurrencies(), o.Currency) {
+		return ErrUnsupportedCurrency
 	}
 	if o.Status == StatusLost && strings.TrimSpace(o.LostReasonID) == "" {
 		return ErrLostReasonMissing

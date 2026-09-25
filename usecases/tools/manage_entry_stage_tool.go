@@ -11,7 +11,6 @@ import (
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/domain/tools"
-	"vozko/usecases/agentctx"
 )
 
 const ManageEntryStageToolName = "manage_entry_stage"
@@ -192,16 +191,10 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 }
 
 func (t *manageEntryStageTool) moveActor(ctx context.Context, config map[string]interface{}) string {
-	agentID, _ := config["__agent_id"].(string)
-	if agentID == "" {
-		if ctxAgent, ok := agentctx.AgentFromContext(ctx); ok {
-			agentID = ctxAgent.ID
-		}
+	if agentID := agentActor(ctx, config); agentID != "" {
+		return agentID
 	}
-	if agentID == "" {
-		return actor.SystemID
-	}
-	return actor.FormatAI(agentID)
+	return actor.SystemID
 }
 
 func (t *manageEntryStageTool) handleView(workspaceID, campaignID, campaignType, entryID, entryType string) (tools.ExecutionResult, error) {

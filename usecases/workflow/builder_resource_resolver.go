@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/agent"
 	label_domain "vozko/domain/label"
+	"vozko/domain/pipeline"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/domain/workflow"
@@ -27,6 +28,10 @@ type labelLister interface {
 type stageLister interface {
 	ListByWorkspace(workspaceID string) ([]*stage.Stage, error)
 }
+type dealCatalog interface {
+	DealPipelines(workspaceID string) ([]*pipeline.Pipeline, error)
+	PipelineStages(workspaceID, pipelineID string) ([]*stage.Stage, error)
+}
 type workflowLister interface {
 	FindByWorkspaceID(workspaceID string) ([]*workflow.Workflow, error)
 }
@@ -40,6 +45,7 @@ type BuilderResourceResolverDeps struct {
 	Departments departmentLister
 	Labels      labelLister
 	Stages      stageLister
+	Deals       dealCatalog
 	Workflows   workflowLister
 	Members     memberLister
 }
@@ -141,6 +147,56 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 			out = append(out, ResourceMatch{ID: s.ID, Name: s.Name})
 			if len(out) >= limit {
 				break
+			}
+		}
+		return out, nil
+
+	case "opportunity_pipelines":
+		if r.deps.Deals == nil {
+			return nil, nil
+		}
+		funnels, err := r.deps.Deals.DealPipelines(workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, limit)
+		for _, p := range funnels {
+			if p == nil || p.WorkspaceID != workspaceID || !match(p.Name) {
+				continue
+			}
+			out = append(out, ResourceMatch{ID: p.ID, Name: p.Name})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+
+	case "opportunity_stages":
+		if r.deps.Deals == nil {
+			return nil, nil
+		}
+		funnels, err := r.deps.Deals.DealPipelines(workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, limit)
+		for _, p := range funnels {
+			if p == nil || p.WorkspaceID != workspaceID {
+				continue
+			}
+			stages, err := r.deps.Deals.PipelineStages(workspaceID, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, s := range stages {
+				name := p.Name + " · " + s.Name
+				if !match(name) {
+					continue
+				}
+				out = append(out, ResourceMatch{ID: s.ID, Name: name})
+				if len(out) >= limit {
+					return out, nil
+				}
 			}
 		}
 		return out, nil

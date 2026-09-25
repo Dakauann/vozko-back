@@ -9195,6 +9195,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/opportunities/{id}/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista, em ordem cronológica, cada mudança da oportunidade (criação, etapa, ganho, perda, reabertura, valor, responsável e vínculo com conversa) com quem a fez: uma pessoa, um agente de IA (ai:\u003cid\u003e) ou um fluxo (workflow:\u003cid\u003e).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Oportunidades"
+                ],
+                "summary": "Histórico da oportunidade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da oportunidade",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/opportunity.Event"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/opportunities/{id}/move": {
             "post": {
                 "security": [
@@ -9202,7 +9251,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Move uma oportunidade para outra etapa do funil e, opcionalmente, define o status ('open', 'won' ou 'lost'). Ao marcar como perdida, informe o motivo da perda.",
+                "description": "Move uma oportunidade para outra etapa do funil. O status vem da etapa: uma etapa de ganho marca como ganha (e exige valor), uma de perda marca como perdida (e exige o motivo), qualquer outra reabre.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9222,7 +9271,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Etapa de destino e status",
+                        "description": "Etapa de destino",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -17706,6 +17755,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/attendance.RevenueOwnerRow"
                     }
                 },
+                "by_source": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.RevenueSourceRow"
+                    }
+                },
                 "currencies": {
                     "type": "array",
                     "items": {
@@ -17722,6 +17777,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "unowned_count": {
+                    "type": "integer"
+                },
+                "won_without_value": {
                     "type": "integer"
                 }
             }
@@ -17766,6 +17824,38 @@ const docTemplate = `{
                 },
                 "owner_id": {
                     "type": "string"
+                },
+                "value_cents": {
+                    "type": "integer"
+                },
+                "won_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attendance.RevenueSource": {
+            "type": "string",
+            "enum": [
+                "human",
+                "ai",
+                "workflow",
+                "unowned"
+            ],
+            "x-enum-varnames": [
+                "RevenueSourceHuman",
+                "RevenueSourceAI",
+                "RevenueSourceWorkflow",
+                "RevenueSourceUnowned"
+            ]
+        },
+        "attendance.RevenueSourceRow": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/attendance.RevenueSource"
                 },
                 "value_cents": {
                     "type": "integer"
@@ -23216,10 +23306,6 @@ const docTemplate = `{
                 "closeDate": {
                     "type": "string"
                 },
-                "conversationAssigneeId": {
-                    "type": "string",
-                    "example": "usr_d4e5f6"
-                },
                 "currency": {
                     "type": "string",
                     "example": "BRL"
@@ -23266,6 +23352,68 @@ const docTemplate = `{
                 }
             }
         },
+        "opportunity.Event": {
+            "type": "object",
+            "properties": {
+                "actorId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "fromStageId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "opportunityId": {
+                    "type": "string"
+                },
+                "toStageId": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/opportunity.EventType"
+                },
+                "valueCents": {
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "opportunity.EventType": {
+            "type": "string",
+            "enum": [
+                "created",
+                "stage_moved",
+                "won",
+                "lost",
+                "reopened",
+                "value_changed",
+                "owner_changed",
+                "linked"
+            ],
+            "x-enum-varnames": [
+                "EventCreated",
+                "EventStageMoved",
+                "EventWon",
+                "EventLost",
+                "EventReopened",
+                "EventValueChanged",
+                "EventOwnerChanged",
+                "EventLinked"
+            ]
+        },
         "opportunity.LinkConversationRequest": {
             "type": "object",
             "properties": {
@@ -23289,10 +23437,6 @@ const docTemplate = `{
                 "stageId": {
                     "type": "string",
                     "example": "stg_a1b2c3"
-                },
-                "status": {
-                    "type": "string",
-                    "example": "won"
                 }
             }
         },
@@ -23305,7 +23449,13 @@ const docTemplate = `{
                 "closeDate": {
                     "type": "string"
                 },
+                "closedBy": {
+                    "type": "string"
+                },
                 "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
                     "type": "string"
                 },
                 "currency": {
@@ -23373,9 +23523,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "cart_a1b2c3"
                 },
-                "closeDate": {
-                    "type": "string"
-                },
                 "currency": {
                     "type": "string",
                     "example": "BRL"
@@ -23399,10 +23546,6 @@ const docTemplate = `{
                 "stageId": {
                     "type": "string",
                     "example": "stg_a1b2c3"
-                },
-                "status": {
-                    "type": "string",
-                    "example": "won"
                 },
                 "title": {
                     "type": "string",

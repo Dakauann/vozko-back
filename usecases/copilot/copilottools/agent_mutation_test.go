@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/copilot"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type fakeGetAgent struct{ a *agent.Agent }
@@ -44,7 +45,9 @@ func boundAgent() *agent.Agent {
 	}
 }
 
-func okContext() copilot.Context { return copilot.Context{WorkspaceID: "ws-1"} }
+func okContext() copilot.Context {
+	return copilot.Context{WorkspaceID: "ws-1", Departments: &wd.DepartmentFilter{IsOwnerOrAdmin: true}}
+}
 
 func TestUpdateAgentAddsAToolAndKeepsTheExistingOnes(t *testing.T) {
 	upd := &fakeUpdateAgent{}
@@ -165,7 +168,7 @@ func TestUpdateAgentDeniesOutOfScopeDepartment(t *testing.T) {
 	upd := &fakeUpdateAgent{}
 	tool := NewUpdateAgentTool(fakeGetAgent{a: a}, upd)
 
-	res := tool.Execute(context.Background(), copilot.Context{WorkspaceID: "ws-1", DeptScope: []string{"dept-a"}},
+	res := tool.Execute(context.Background(), copilot.Context{WorkspaceID: "ws-1", Departments: &wd.DepartmentFilter{DepartmentIDs: []string{"dept-a"}, WorkspaceHasDepartments: true}},
 		map[string]interface{}{"id": "ag-1", "removeTools": []interface{}{"search_knowledge_base"}})
 	if res.Status != copilot.StatusDenied || upd.calls != 0 {
 		t.Fatalf("status = %v calls = %d", res.Status, upd.calls)

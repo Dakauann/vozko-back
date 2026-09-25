@@ -2,7 +2,6 @@ package opportunity_repository
 
 import (
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"vozko/domain/opportunity"
 	"vozko/infra/database/schema"
@@ -14,18 +13,6 @@ type linkRepository struct {
 
 func NewLinkRepository(db *gorm.DB) opportunity.LinkRepository {
 	return &linkRepository{db: db}
-}
-
-func (r *linkRepository) Link(link opportunity.ConversationLink) error {
-	row := &schema.OpportunityConversation{
-		OpportunityID: link.OpportunityID,
-		EntryID:       link.EntryID,
-		EntryType:     link.EntryType,
-	}
-	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "opportunity_id"}, {Name: "entry_id"}, {Name: "entry_type"}},
-		DoNothing: true,
-	}).Create(row).Error
 }
 
 func (r *linkRepository) Unlink(opportunityID, entryID, entryType string) error {

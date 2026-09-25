@@ -10,12 +10,11 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"vozko/domain/actor"
 	"vozko/domain/opportunity"
 	"vozko/infra/database/schema"
 	crmfiltersql "vozko/infra/repositories/crmfilter"
 )
-
-var ErrNotFound = errors.New("opportunity: not found")
 
 type repository struct {
 	db *gorm.DB
@@ -25,59 +24,13 @@ func NewRepository(db *gorm.DB) opportunity.Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) Create(o *opportunity.Opportunity) error {
-	row, err := mapToSchema(o)
-	if err != nil {
-		return err
-	}
-	if err := r.db.Create(row).Error; err != nil {
-		return err
-	}
-	o.ID = row.ID
-	o.CreatedAt = row.CreatedAt
-	o.UpdatedAt = row.UpdatedAt
-	return nil
-}
-
-func (r *repository) Update(o *opportunity.Opportunity) error {
-	customJSON, err := marshalCustomFields(o.CustomFields)
-	if err != nil {
-		return err
-	}
-	update := map[string]interface{}{
-		"lead_id":        nullableUUID(o.LeadID),
-		"pipeline_id":    o.PipelineID,
-		"stage_id":       o.StageID,
-		"owner_id":       nullableUUID(o.OwnerID),
-		"carteira_id":    nullableUUID(o.CarteiraID),
-		"title":          o.Title,
-		"value_cents":    o.ValueCents,
-		"currency":       o.Currency,
-		"status":         string(o.Status),
-		"lost_reason_id": nullableUUID(o.LostReasonID),
-		"source":         o.Source,
-		"close_date":     o.CloseDate,
-		"custom_fields":  customJSON,
-	}
-	res := r.db.Model(&schema.Opportunity{}).
-		Where("id = ? AND workspace_id = ?", o.ID, o.WorkspaceID).
-		Updates(update)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 func (r *repository) Delete(workspaceID, id string) error {
 	res := r.db.Where("id = ? AND workspace_id = ?", id, workspaceID).Delete(&schema.Opportunity{})
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return ErrNotFound
+		return opportunity.ErrNotFound
 	}
 	return nil
 }
@@ -86,7 +39,7 @@ func (r *repository) GetByID(workspaceID, id string) (*opportunity.Opportunity, 
 	var row schema.Opportunity
 	if err := r.db.Where("id = ? AND workspace_id = ?", id, workspaceID).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, opportunity.ErrNotFound
 		}
 		return nil, err
 	}
@@ -259,22 +212,30 @@ func mapToSchema(o *opportunity.Opportunity) (*schema.Opportunity, error) {
 	if err != nil {
 		return nil, err
 	}
+	ownerID, ownerKind := actor.Split(o.OwnerID)
+	createdByID, createdByKind := splitAuthor(o.CreatedBy)
+	closedByID, closedByKind := splitAuthor(o.ClosedBy)
 	return &schema.Opportunity{
-		ID:           o.ID,
-		WorkspaceID:  o.WorkspaceID,
-		LeadID:       o.LeadID,
-		PipelineID:   o.PipelineID,
-		StageID:      o.StageID,
-		OwnerID:      o.OwnerID,
-		CarteiraID:   o.CarteiraID,
-		Title:        o.Title,
-		ValueCents:   o.ValueCents,
-		Currency:     o.Currency,
-		Status:       string(o.Status),
-		LostReasonID: o.LostReasonID,
-		Source:       o.Source,
-		CloseDate:    o.CloseDate,
-		CustomFields: customJSON,
+		ID:            o.ID,
+		WorkspaceID:   o.WorkspaceID,
+		LeadID:        o.LeadID,
+		PipelineID:    o.PipelineID,
+		StageID:       o.StageID,
+		OwnerID:       ownerID,
+		OwnerKind:     string(ownerKind),
+		CreatedByID:   createdByID,
+		CreatedByKind: createdByKind,
+		ClosedByID:    closedByID,
+		ClosedByKind:  closedByKind,
+		CarteiraID:    o.CarteiraID,
+		Title:         o.Title,
+		ValueCents:    o.ValueCents,
+		Currency:      o.Currency,
+		Status:        string(o.Status),
+		LostReasonID:  o.LostReasonID,
+		Source:        o.Source,
+		CloseDate:     o.CloseDate,
+		CustomFields:  customJSON,
 	}, nil
 }
 
@@ -289,7 +250,9 @@ func mapToDomain(row *schema.Opportunity) (*opportunity.Opportunity, error) {
 		LeadID:       row.LeadID,
 		PipelineID:   row.PipelineID,
 		StageID:      row.StageID,
-		OwnerID:      row.OwnerID,
+		OwnerID:      actor.Join(row.OwnerID, actor.Kind(row.OwnerKind)),
+		CreatedBy:    joinAuthor(row.CreatedByID, row.CreatedByKind),
+		ClosedBy:     joinAuthor(row.ClosedByID, row.ClosedByKind),
 		CarteiraID:   row.CarteiraID,
 		Title:        row.Title,
 		ValueCents:   row.ValueCents,

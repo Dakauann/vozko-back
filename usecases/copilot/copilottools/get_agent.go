@@ -37,7 +37,7 @@ func (t *getAgentTool) Execute(ctx context.Context, cc copilot.Context, args map
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	if a == nil || a.WorkspaceID != cc.WorkspaceID || !inDeptScope(cc.DeptScope, a.DepartmentID) {
+	if a == nil || a.WorkspaceID != cc.WorkspaceID || !cc.Departments.Allows(a.DepartmentID) {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "agente não encontrado neste workspace"}
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: a}

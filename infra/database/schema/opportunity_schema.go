@@ -15,6 +15,12 @@ type Opportunity struct {
 	PipelineID  string `gorm:"type:uuid;not null;index:idx_opportunity_ws_pipe_stage,priority:2"`
 	StageID     string `gorm:"type:uuid;not null;index:idx_opportunity_ws_pipe_stage,priority:3"`
 	OwnerID     string `gorm:"type:uuid;default:null;index:idx_opportunity_ws_owner,priority:2"`
+	OwnerKind   string `gorm:"type:varchar(16);not null;default:human"`
+
+	CreatedByID   string `gorm:"type:uuid;default:null"`
+	CreatedByKind string `gorm:"type:varchar(16);not null;default:''"`
+	ClosedByID    string `gorm:"type:uuid;default:null"`
+	ClosedByKind  string `gorm:"type:varchar(16);not null;default:''"`
 	CarteiraID  string `gorm:"type:uuid;default:null"`
 
 	Title      string `gorm:"size:255"`

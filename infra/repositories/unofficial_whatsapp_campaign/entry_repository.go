@@ -13,6 +13,7 @@ import (
 	"vozko/domain/shared"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	"vozko/infra/database/schema"
+	"vozko/infra/repositories/campaignstamp"
 )
 
 type entryRepository struct{ db *gorm.DB }
@@ -298,7 +299,8 @@ func (r *entryRepository) UpdateStatus(entryID string, status campaign.SendStatu
 		updates["provider_message_id"] = providerMessageID
 	}
 	return r.db.Model(&schema.UnofficialWhatsAppCampaignEntry{}).
-		Where("id = ?", entryID).Updates(updates).Error
+		Where("id = ?", entryID).
+		Updates(campaignstamp.WithStamp(updates, status, time.Now().UTC())).Error
 }
 
 func (r *entryRepository) UpdateStatusByProviderMessageID(providerMessageID string, status campaign.SendStatus) error {
@@ -317,12 +319,13 @@ func (r *entryRepository) UpdateStatusByProviderMessageID(providerMessageID stri
 	}
 	ranked = append(ranked, string(campaign.SendStatusPending))
 
+	now := time.Now().UTC()
 	return r.db.Model(&schema.UnofficialWhatsAppCampaignEntry{}).
 		Where("provider_message_id = ? AND status IN ?", providerMessageID, ranked).
-		Updates(map[string]interface{}{
+		Updates(campaignstamp.WithStamp(map[string]interface{}{
 			"status":     string(status),
-			"updated_at": time.Now().UTC(),
-		}).Error
+			"updated_at": now,
+		}, status, now)).Error
 }
 
 func deliveryRank(s campaign.SendStatus) int {
@@ -397,17 +400,16 @@ func (r *entryRepository) UpdateEntryDetails(entryID string, in uwc.UpdateEntryD
 const uniqueViolation = "23505"
 
 func (r *entryRepository) ResetAllStatuses(campaignID string) (int64, error) {
+	updates := campaignstamp.Clear()
+	updates["status"] = string(campaign.SendStatusPending)
+	updates["provider_message_id"] = ""
+	updates["message_id"] = nil
+	updates["error_code"] = 0
+	updates["error_message"] = ""
+	updates["updated_at"] = time.Now().UTC()
 	result := r.db.Model(&schema.UnofficialWhatsAppCampaignEntry{}).
 		Where("campaign_id = ?", campaignID).
-		Updates(map[string]interface{}{
-			"status":              string(campaign.SendStatusPending),
-			"provider_message_id": "",
-			"message_id":          nil,
-			"error_code":          0,
-			"error_message":       "",
-			"sent_at":             nil,
-			"updated_at":          time.Now().UTC(),
-		})
+		Updates(updates)
 	return result.RowsAffected, result.Error
 }
 

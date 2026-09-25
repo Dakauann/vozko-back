@@ -59,7 +59,7 @@ type Repository interface {
 
 	GetTrend(ctx context.Context, workspaceID string, filter OverviewFilter, buckets int, loc *time.Location) (TrendResult, error)
 
-	GetRevenue(ctx context.Context, workspaceID string, from, to time.Time) ([]RevenueTally, int64, error)
+	GetRevenue(ctx context.Context, workspaceID string, from, to time.Time, scope RevenueScope) ([]RevenueTally, int64, error)
 
-	GetRevenueByMonth(ctx context.Context, workspaceID string, from, to time.Time, loc *time.Location, ownerID string) ([]RevenueMonthRow, error)
+	GetRevenueByMonth(ctx context.Context, workspaceID string, from, to time.Time, loc *time.Location, ownerID string, scope RevenueScope) ([]RevenueMonthRow, error)
 }

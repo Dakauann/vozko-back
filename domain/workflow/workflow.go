@@ -92,18 +92,20 @@ const (
 	NodeTypeActionTransferDepartment        NodeType = "action_transfer_department"
 	NodeTypeActionFinishConversation        NodeType = "action_finish_conversation"
 	NodeTypeActionMoveStage                 NodeType = "action_move_stage"
+	NodeTypeActionManageOpportunity         NodeType = "action_manage_opportunity"
 
-	NodeTypeWaitDuration        NodeType = "wait_duration"
-	NodeTypeWaitForReply        NodeType = "wait_for_reply"
-	NodeTypeWaitSchedule        NodeType = "wait_schedule"
-	NodeTypeConditionBranch     NodeType = "condition_branch"
-	NodeTypeConditionAIClassfy  NodeType = "condition_ai_classify"
-	NodeTypeConditionTextMatch  NodeType = "condition_text_match"
-	NodeTypeConditionFilter     NodeType = "condition_filter"
-	NodeTypeConditionCheckLabel NodeType = "condition_check_label"
-	NodeTypeConditionCheckStage NodeType = "condition_check_stage"
-	NodeTypeConditionChannel    NodeType = "condition_channel"
-	NodeTypeEnd                 NodeType = "end"
+	NodeTypeWaitDuration              NodeType = "wait_duration"
+	NodeTypeWaitForReply              NodeType = "wait_for_reply"
+	NodeTypeWaitSchedule              NodeType = "wait_schedule"
+	NodeTypeConditionBranch           NodeType = "condition_branch"
+	NodeTypeConditionAIClassfy        NodeType = "condition_ai_classify"
+	NodeTypeConditionTextMatch        NodeType = "condition_text_match"
+	NodeTypeConditionFilter           NodeType = "condition_filter"
+	NodeTypeConditionCheckLabel       NodeType = "condition_check_label"
+	NodeTypeConditionCheckStage       NodeType = "condition_check_stage"
+	NodeTypeConditionCheckOpportunity NodeType = "condition_check_opportunity"
+	NodeTypeConditionChannel          NodeType = "condition_channel"
+	NodeTypeEnd                       NodeType = "end"
 
 	NodeTypeDecorationBackground NodeType = "decoration_background"
 )
@@ -132,8 +134,10 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionTransferDepartment,
 		NodeTypeActionFinishConversation,
 		NodeTypeActionMoveStage,
+		NodeTypeActionManageOpportunity,
 		NodeTypeConditionCheckLabel,
 		NodeTypeConditionCheckStage,
+		NodeTypeConditionCheckOpportunity,
 		NodeTypeConditionChannel,
 		NodeTypeEnd,
 		NodeTypeDecorationBackground:
@@ -192,7 +196,7 @@ func (n *NodeType) UnmarshalJSON(data []byte) error {
 
 func (n NodeType) IsCondition() bool {
 	switch n {
-	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionCheckStage, NodeTypeConditionChannel:
+	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionCheckStage, NodeTypeConditionCheckOpportunity, NodeTypeConditionChannel:
 		return true
 	}
 	return false

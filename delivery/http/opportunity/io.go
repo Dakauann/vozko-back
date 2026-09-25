@@ -114,7 +114,8 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/opportunities/import [post]
 func (h *OpportunityHandler) Import(w http.ResponseWriter, r *http.Request) {
-	if middleware.GetClaims(r) == nil {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
@@ -131,6 +132,7 @@ func (h *OpportunityHandler) Import(w http.ResponseWriter, r *http.Request) {
 	report, err := h.io.Import(wsID, bytes.NewReader(body), opportunityio.ImportOptions{
 		DefaultPipelineID: strings.TrimSpace(r.URL.Query().Get("pipelineId")),
 		DryRun:            dryRun,
+		ActorID:           claims.UserID,
 	})
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Failed to parse CSV", nil)

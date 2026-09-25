@@ -40,6 +40,7 @@ var (
 	ErrNodeInvalidMediaID               = errors.New("workflow: media ID is invalid or media not found")
 	ErrNodeInvalidLabelID               = errors.New("workflow: label ID is invalid or label not found")
 	ErrNodeInvalidStageID               = errors.New("workflow: stage ID is invalid or stage not found")
+	ErrNodeInvalidOpportunityPipeline   = errors.New("workflow: pipeline ID is not a deals pipeline of this workspace")
 	ErrNodeInvalidDepartmentID          = errors.New("workflow: department ID is invalid or department not found")
 	ErrNodeInvalidMemberID              = errors.New("workflow: member ID is invalid or member not found")
 	ErrNodeInvalidBusinessPhoneID       = errors.New("workflow: business phone ID is invalid or business phone not found")

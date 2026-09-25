@@ -63,17 +63,7 @@ func (h *AttendanceHandler) SetPresenceRepo(repo agent_presence.Repository) {
 
 func parseStatsFilter(r *http.Request) attendancedomain.StatsFilter {
 	filter := attendancedomain.StatsFilter{}
-	if v := r.URL.Query().Get("date_from"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			filter.DateFrom = &t
-		}
-	}
-	if v := r.URL.Query().Get("date_to"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			end := t.Add(24*time.Hour - time.Second)
-			filter.DateTo = &end
-		}
-	}
+	filter.DateFrom, filter.DateTo = parseDayRange(r)
 	filter.CampaignID = r.URL.Query().Get("campaign_id")
 	filter.CampaignType = r.URL.Query().Get("campaign_type")
 	return filter
@@ -302,17 +292,7 @@ func (h *AttendanceHandler) GetOccupancy(w http.ResponseWriter, r *http.Request)
 
 func parseOverviewFilter(r *http.Request) attendancedomain.OverviewFilter {
 	filter := attendancedomain.OverviewFilter{}
-	if v := r.URL.Query().Get("date_from"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			filter.DateFrom = &t
-		}
-	}
-	if v := r.URL.Query().Get("date_to"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			end := t.Add(24*time.Hour - time.Second)
-			filter.DateTo = &end
-		}
-	}
+	filter.DateFrom, filter.DateTo = parseDayRange(r)
 	filter.DepartmentID = r.URL.Query().Get("department_id")
 	filter.MemberID = r.URL.Query().Get("member_id")
 	filter.CampaignID = r.URL.Query().Get("campaign_id")
@@ -419,4 +399,16 @@ func writeOverviewError(w http.ResponseWriter, err error) {
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch attendance overview: "+err.Error(), nil)
 	}
+}
+
+func parseDayRange(r *http.Request) (*time.Time, *time.Time) {
+	var from, to *time.Time
+	if day, err := attendancedomain.ParseDay(r.URL.Query().Get("date_from")); err == nil {
+		from = &day
+	}
+	if day, err := attendancedomain.ParseDay(r.URL.Query().Get("date_to")); err == nil {
+		end := attendancedomain.EndOfDay(day)
+		to = &end
+	}
+	return from, to
 }

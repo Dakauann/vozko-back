@@ -16,6 +16,7 @@ import (
 	"vozko/domain/workflow"
 	workspace_domain "vozko/domain/workspace"
 	dept_domain "vozko/domain/workspace/workspace_department"
+	opportunity_usecase "vozko/usecases/opportunity"
 )
 
 type workspaceMemberLookup interface {
@@ -34,6 +35,7 @@ type activateWorkflowUseCase struct {
 	mediaRepo         media_domain.MediaRepository
 	labelRepo         label_domain.Repository
 	stageRepo         StageLookup
+	dealFunnels       DealFunnels
 	departmentRepo    dept_domain.Repository
 	workspaceRepo     workspaceMemberLookup
 	businessPhoneRepo businessPhoneLookup
@@ -79,6 +81,14 @@ type StageLookup interface {
 
 func (uc *activateWorkflowUseCase) SetStageRepo(repo StageLookup) {
 	uc.stageRepo = repo
+}
+
+type DealFunnels interface {
+	PipelineStages(workspaceID, pipelineID string) ([]*stage_domain.Stage, error)
+}
+
+func (uc *activateWorkflowUseCase) SetDealFunnels(funnels DealFunnels) {
+	uc.dealFunnels = funnels
 }
 
 func (uc *activateWorkflowUseCase) SetLabelRepo(repo label_domain.Repository) {
@@ -171,6 +181,9 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 		}
 		if uc.stageRepo != nil {
 			validators = append(validators, &stageValidator{repo: uc.stageRepo, workspaceID: workflowWorkspaceID})
+		}
+		if uc.dealFunnels != nil {
+			validators = append(validators, &dealValidator{funnels: uc.dealFunnels, workspaceID: workflowWorkspaceID})
 		}
 		if uc.departmentRepo != nil {
 			validators = append(validators, &departmentValidator{repo: uc.departmentRepo, workspaceID: workflowWorkspaceID})
@@ -498,6 +511,38 @@ func (v *stageValidator) Validate(n *workflow.Node) error {
 		}
 	}
 	return nil
+}
+
+type dealValidator struct {
+	funnels     DealFunnels
+	workspaceID string
+}
+
+func (v *dealValidator) Validate(n *workflow.Node) error {
+	if n.Type != workflow.NodeTypeActionManageOpportunity && n.Type != workflow.NodeTypeConditionCheckOpportunity {
+		return nil
+	}
+	pipelineID, _ := n.Config["pipeline_id"].(string)
+	if pipelineID = strings.TrimSpace(pipelineID); pipelineID == "" {
+		return nil
+	}
+	stages, err := v.funnels.PipelineStages(v.workspaceID, pipelineID)
+	if refusal, refused := opportunity_usecase.RefusalOf(err); refused && refusal == opportunity_usecase.RefusalPipelineInvalid {
+		return fmt.Errorf("%w: node %q pipeline_id %q", workflow.ErrNodeInvalidOpportunityPipeline, n.ID, pipelineID)
+	}
+	if err != nil {
+		return err
+	}
+	stageID, _ := n.Config["stage_id"].(string)
+	if stageID = strings.TrimSpace(stageID); stageID == "" {
+		return nil
+	}
+	for _, st := range stages {
+		if st.ID == stageID {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: node %q stage_id %q", workflow.ErrNodeInvalidStageID, n.ID, stageID)
 }
 
 type departmentValidator struct {

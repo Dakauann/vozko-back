@@ -86,7 +86,10 @@ type UnofficialWhatsAppCampaignEntry struct {
 	Variables pq.StringArray `gorm:"type:text[]"`
 	Metadata  LeadMetadata   `gorm:"type:jsonb;default:'{}'"`
 
-	SentAt    *time.Time
+	SentAt      *time.Time
+	DeliveredAt *time.Time
+	ReadAt      *time.Time
+	FailedAt    *time.Time
 	CreatedAt time.Time      `gorm:"autoCreateTime;index:idx_uwce_campaign_status_created,priority:3"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"index;index:idx_uwce_campaign_del,priority:2"`

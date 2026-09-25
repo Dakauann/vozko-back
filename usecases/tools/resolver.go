@@ -107,7 +107,9 @@ func ResolveTools(
 		h, hOk := registry.Handler(strings.ToLower(key))
 		if hOk {
 			if ch, ok := h.(tools.ContextualHandler); ok {
-				expandedDef = ch.DefinitionWithContext(toolCtx)
+				bindingCtx := toolCtx
+				bindingCtx.Config = binding.Config
+				expandedDef = ch.DefinitionWithContext(bindingCtx)
 
 				if len(binding.Config) > 0 {
 					expandedDef = expandedDef.WithConfigExpansion(binding.Config)

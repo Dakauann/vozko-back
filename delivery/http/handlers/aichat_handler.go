@@ -41,9 +41,10 @@ type threadDTO struct {
 }
 
 type toolActivityDTO struct {
-	Name    string `json:"name"`
-	Summary string `json:"summary"`
-	Ok      bool   `json:"ok"`
+	Name    string                `json:"name"`
+	Summary string                `json:"summary"`
+	Ok      bool                  `json:"ok"`
+	Chart   *copilot_domain.Chart `json:"chart,omitempty"`
 }
 
 type messageDTO struct {
@@ -152,11 +153,16 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := mux.Vars(r)["id"]
 
 	var body struct {
-		Content string `json:"content"`
-		Model   string `json:"model"`
+		Content string              `json:"content"`
+		Model   string              `json:"model"`
+		View    copilot_domain.View `json:"view"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
+		return
+	}
+	if err := body.View.Validate(); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}
 
@@ -177,7 +183,9 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	emit := startChatSSE(w, flusher)
 	r = withDepartmentCreationScope(r, "")
-	if err := h.copilot.Stream(r.Context(), thread, body.Content, copilotCtx(r, claims.UserID, workspaceID), emit); err != nil {
+	cc := copilotCtx(r, claims.UserID, workspaceID)
+	cc.View = body.View
+	if err := h.copilot.Stream(r.Context(), thread, body.Content, cc, emit); err != nil {
 		emit("error", map[string]any{"error": err.Error()})
 	}
 }
@@ -231,7 +239,7 @@ func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Cont
 	return copilot_domain.Context{
 		WorkspaceID: workspaceID,
 		UserID:      userID,
-		DeptScope:   departmentFilterIDs(r),
+		Departments: middleware.GetDepartmentFilter(r),
 	}
 }
 

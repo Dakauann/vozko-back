@@ -146,16 +146,12 @@ func (uc *getOverviewUseCase) fillRevenue(
 	window executiveWindow,
 	out *attendance.SummarySection,
 ) error {
-	if filter.DepartmentID != "" {
-		out.Revenue = attendance.UnavailableRevenue(attendance.ReasonRevenueNotDepartmentScoped)
-		return nil
-	}
 	if uc.repo == nil {
 		out.Revenue = attendance.UnavailableRevenue(attendance.ReasonNoRevenueRepository)
 		return nil
 	}
 
-	tallies, unattributed, err := uc.repo.GetRevenue(ctx, workspaceID, window.from, window.to)
+	tallies, unattributed, err := uc.repo.GetRevenue(ctx, workspaceID, window.from, window.to, filter.RevenueScope())
 	if err != nil {
 		return err
 	}
@@ -168,7 +164,7 @@ func (uc *getOverviewUseCase) fillRevenue(
 
 	previous := map[string]int64{}
 	prevRows, err := uc.repo.GetRevenueByMonth(
-		ctx, workspaceID, window.from.AddDate(0, -1, 0), window.from, scheduleLocation(window.schedule), ownerID)
+		ctx, workspaceID, window.from.AddDate(0, -1, 0), window.from, scheduleLocation(window.schedule), ownerID, filter.RevenueScope())
 	if err != nil {
 		return err
 	}
@@ -251,7 +247,7 @@ func (uc *getOverviewUseCase) buildTrend(
 		),
 	)
 
-	revenueSeries, ok, err := uc.revenueTrend(ctx, workspaceID, window, currentBucket, filter.MemberID, summary.Revenue)
+	revenueSeries, ok, err := uc.revenueTrend(ctx, workspaceID, window, currentBucket, filter, summary.Revenue)
 	if err != nil {
 		return attendance.Trend{}, err
 	}
@@ -273,7 +269,7 @@ func (uc *getOverviewUseCase) revenueTrend(
 	workspaceID string,
 	window executiveWindow,
 	currentBucket string,
-	ownerID string,
+	filter attendance.OverviewFilter,
 	revenue attendance.Revenue,
 ) (attendance.TrendSeries, bool, error) {
 	if !revenue.Available || revenue.MixedCurrencies || len(revenue.Currencies) != 1 {
@@ -282,7 +278,7 @@ func (uc *getOverviewUseCase) revenueTrend(
 	loc := scheduleLocation(window.schedule)
 	windowFrom := window.from.AddDate(0, -(attendance.DefaultTrendBuckets - 1), 0)
 
-	rows, err := uc.repo.GetRevenueByMonth(ctx, workspaceID, windowFrom, window.to, loc, ownerID)
+	rows, err := uc.repo.GetRevenueByMonth(ctx, workspaceID, windowFrom, window.to, loc, filter.MemberID, filter.RevenueScope())
 	if err != nil {
 		return attendance.TrendSeries{}, false, err
 	}

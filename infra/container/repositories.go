@@ -119,6 +119,7 @@ func (c *Container) initRepositories() {
 		savedView:               savedview_repository.NewRepository(c.db),
 		opportunity:             opportunity_repository.NewRepository(c.db),
 		opportunityLink:         opportunity_repository.NewLinkRepository(c.db),
+		opportunityOwners:       opportunity_repository.NewOwnerDirectory(c.db),
 		customField:             customfield_repository.NewRepository(c.db),
 		label:                   label_repository.NewRepository(c.db),
 		messageShortcut:         msg_shortcut_repository.NewRepository(c.db),

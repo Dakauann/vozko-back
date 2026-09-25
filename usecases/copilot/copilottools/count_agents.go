@@ -29,7 +29,11 @@ func (t *countAgentsTool) Definition() tools.Definition {
 }
 
 func (t *countAgentsTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	in := buildAgentListInput(cc, args)
+	departmentIDs, blocked := cc.Departments.ListScope()
+	if blocked {
+		return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"total": 0}}
+	}
+	in := buildAgentListInput(cc, departmentIDs, args)
 	in.Options.Pagination = shared.Pagination{Page: 1, PageSize: 1}
 	res, err := t.list.Execute(in)
 	if err != nil {

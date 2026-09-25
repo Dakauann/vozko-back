@@ -26,6 +26,7 @@ type stubOverviewRepo struct {
 	revenue        []attendance.RevenueTally
 	revenueByMonth []attendance.RevenueMonthRow
 	monthOwners    []string
+	revenueScopes  []attendance.RevenueScope
 	trendErr       error
 	revErr         error
 	onRead         func(section string)
@@ -90,8 +91,11 @@ func (r *stubOverviewRepo) GetTrend(context.Context, string, attendance.Overview
 	return r.trend, r.trendErr
 }
 
-func (r *stubOverviewRepo) GetRevenue(context.Context, string, time.Time, time.Time) ([]attendance.RevenueTally, int64, error) {
+func (r *stubOverviewRepo) GetRevenue(_ context.Context, _ string, _, _ time.Time, scope attendance.RevenueScope) ([]attendance.RevenueTally, int64, error) {
 	r.read("revenue")
+	r.mu.Lock()
+	r.revenueScopes = append(r.revenueScopes, scope)
+	r.mu.Unlock()
 	return r.revenue, 0, r.revErr
 }
 
@@ -101,10 +105,12 @@ func (r *stubOverviewRepo) GetRevenueByMonth(
 	_, _ time.Time,
 	_ *time.Location,
 	ownerID string,
+	scope attendance.RevenueScope,
 ) ([]attendance.RevenueMonthRow, error) {
 	r.read("revenue_by_month")
 	r.mu.Lock()
 	r.monthOwners = append(r.monthOwners, ownerID)
+	r.revenueScopes = append(r.revenueScopes, scope)
 	r.mu.Unlock()
 	return r.revenueByMonth, r.revErr
 }
@@ -269,19 +275,25 @@ func TestExecuteWithoutAScheduleLeavesTheProjectionUnavailable(t *testing.T) {
 	}
 }
 
-func TestExecuteMarksRevenueUnavailableUnderADepartmentFilter(t *testing.T) {
+func TestExecuteScopesRevenueToTheConversationFilters(t *testing.T) {
 	repo := &stubOverviewRepo{}
 	uc := newTestUseCase(repo, businessConfig(), nil, &stubTargetRepo{})
+	filter := attendance.OverviewFilter{DepartmentID: "dept1", Channel: "whatsapp", CampaignID: "c1", CampaignType: "whatsapp"}
 
-	out, err := uc.Execute("ws1", attendance.OverviewFilter{DepartmentID: "dept1"})
+	out, err := uc.Execute("ws1", filter)
 	if err != nil {
 		t.Fatalf("Execute() err = %v, want nil", err)
 	}
-	if out.Revenue.Available {
-		t.Fatalf("Execute() Revenue.Available = true under a department filter, want false")
+	if !out.Revenue.Available {
+		t.Fatalf("Execute() Revenue.Available = false under a department filter, want true")
 	}
-	if out.Revenue.Reason != attendance.ReasonRevenueNotDepartmentScoped {
-		t.Fatalf("Execute() Revenue.Reason = %q, want %q", out.Revenue.Reason, attendance.ReasonRevenueNotDepartmentScoped)
+	if len(repo.revenueScopes) == 0 {
+		t.Fatalf("Execute() never read revenue")
+	}
+	for _, scope := range repo.revenueScopes {
+		if scope != filter.RevenueScope() {
+			t.Fatalf("revenue read with scope %+v, want %+v", scope, filter.RevenueScope())
+		}
 	}
 }
 

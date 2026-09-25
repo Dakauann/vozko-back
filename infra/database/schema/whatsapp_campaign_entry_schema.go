@@ -31,6 +31,10 @@ type WhatsAppCampaignEntry struct {
 	LastMessageAt           *time.Time     `gorm:"column:last_message_at"`
 	LastCustomerMessageAt   *time.Time     `gorm:"column:last_customer_message_at"`
 	LastAgentMessageAt      *time.Time     `gorm:"column:last_agent_message_at"`
+	SentAt                  *time.Time     `gorm:"column:sent_at"`
+	DeliveredAt             *time.Time     `gorm:"column:delivered_at"`
+	ReadAt                  *time.Time     `gorm:"column:read_at"`
+	FailedAt                *time.Time     `gorm:"column:failed_at"`
 
 	Lead Lead `gorm:"foreignKey:LeadID;references:ID"`
 }

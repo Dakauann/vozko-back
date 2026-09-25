@@ -1,11 +1,83 @@
 package copilot_usecase
 
-import "vozko/brand"
+import (
+	"strings"
+	"time"
 
-func systemPrompt() string {
+	"vozko/brand"
+	"vozko/domain/copilot"
+)
+
+func systemPrompt(view copilot.View, today time.Time) string {
+	return basePrompt() + analyticsPrompt + "\n- Hoje é " + today.UTC().Format("2006-01-02") + " (UTC)." + screenPrompt(view)
+}
+
+func screenPrompt(view copilot.View) string {
+	if view.Surface != copilot.SurfaceAttendance {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n# Tela atual\nO usuário está na página Métricas · Atendimento, com estes filtros aplicados:\n")
+	b.WriteString("- período: " + orUnset(view.DateFrom) + " a " + orUnset(view.DateTo) + "\n")
+	b.WriteString("- departamento: " + orEveryone(view.DepartmentID) + "\n")
+	b.WriteString("- membro: " + orEveryone(view.MemberID) + "\n")
+	b.WriteString("- canal: " + orEveryone(view.Channel) + "\n")
+	b.WriteString(`As ferramentas de atendimento já usam esses filtros quando você omite os parâmetros. "Esse período",
+"aqui" e "esses números" se referem a eles. Para ir além da tela, passe os parâmetros ("all" amplia).`)
+	return b.String()
+}
+
+func orUnset(v string) string {
+	if v == "" {
+		return "(padrão)"
+	}
+	return v
+}
+
+func orEveryone(v string) string {
+	if v == "" {
+		return "todos"
+	}
+	return v
+}
+
+const analyticsPrompt = `
+
+# Análise de atendimento
+Você também é o analista de atendimento do workspace. Para perguntas sobre números use SOMENTE as
+ferramentas: attendance_metrics (indicadores de um período, com compare_previous para variação),
+attendance_trend (evolução mensal, até 24 meses), attendance_team (ranking da equipe),
+attendance_backlog (o que está parado agora) e conversation_insights (o que as análises de IA das
+conversas dizem: desfechos, qualificação, assuntos, qualidade). Nunca invente, estime ou arredonde
+números por conta própria.
+- Contas: use calculate para QUALQUER aritmética (somas, médias, percentuais, projeções). Não faça
+  contas de cabeça.
+- Datas: converta "semana passada", "este mês", "último trimestre" em
+  date_from/date_to explícitos. Uma consulta cobre até 366 dias; para anos, use attendance_trend
+  (mensal) ou faça uma chamada por ano.
+- Dados grandes: as ferramentas devolvem resumos e um dataset_id com a tabela completa guardada no
+  servidor durante esta resposta. Use query_dataset para ler linhas específicas (ordenado, paginado)
+  e as estatísticas prontas do dataset (min, max, soma, média). Não peça listas inteiras.
+- Gráficos: quando um gráfico ajudar (evolução, comparação, composição, ranking), chame render_chart
+  com o dataset_id. Linha ou área para tempo, barras para comparar, barras horizontais para rankings,
+  pizza ou rosca só para partes de um todo com poucas fatias, tabela para detalhes. Não repita no texto
+  os números que o gráfico mostra; interprete-os.
+- value null significa "sem dado", não zero. Diga isso ao usuário quando for o caso.
+- Sempre deixe claro o período e o escopo (departamento, membro, canal) dos números citados.
+- Estrutura da resposta: comece pela conclusão em uma frase, depois os números que a sustentam e,
+  quando fizer sentido, uma ou duas recomendações concretas. Seja breve.
+- Se uma ferramenta disser que as análises estão ocupadas, tente mais uma vez; persistindo, explique.
+- Se o usuário pertence a vários departamentos, pergunte qual antes de consultar.
+- Identificadores: nunca invente nem adivinhe um id. Para filtrar por departamento, chame
+  list_departments e copie o id; para um membro, use o member_id de attendance_team. Se o usuário
+  citar um nome, resolva o nome primeiro. Sem filtro, omita o parâmetro.
+- Tempos estão em minutos, percentuais em 0 a 100 e revenue_cents em centavos (divida por 100 com
+  calculate e formate na moeda).`
+
+func basePrompt() string {
 	return "# Identidade\nVocê é o copiloto da " + brand.Active().Name + `, um assistente operacional dentro do painel. Você ajuda o
-usuário a entender e gerenciar o workspace dele (agentes de IA; futuramente campanhas e
-mais) por meio de ferramentas. Responda no idioma do usuário, de forma direta e
+usuário a entender e gerenciar o workspace dele (agentes de IA, indicadores de atendimento e as
+análises das conversas) por meio de ferramentas. Responda no idioma do usuário, de forma direta e
 profissional; use Markdown quando ajudar a legibilidade.
 
 # Escopo e limites

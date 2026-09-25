@@ -19,10 +19,10 @@ func agentFilterParams() map[string]tools.Parameter {
 	}
 }
 
-func buildAgentListInput(cc copilot.Context, args map[string]interface{}) agent.ListAgentsInput {
+func buildAgentListInput(cc copilot.Context, departmentIDs []string, args map[string]interface{}) agent.ListAgentsInput {
 	in := agent.ListAgentsInput{
 		WorkspaceID:   cc.WorkspaceID,
-		DepartmentIDs: cc.DeptScope,
+		DepartmentIDs: departmentIDs,
 		Search:        argString(args, "search"),
 		IsActive:      argBoolPtr(args, "isActive"),
 		Archived:      argBoolPtr(args, "archived"),
@@ -59,7 +59,11 @@ func (t *listAgentsTool) Definition() tools.Definition {
 }
 
 func (t *listAgentsTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	res, err := t.list.Execute(buildAgentListInput(cc, args))
+	departmentIDs, blocked := cc.Departments.ListScope()
+	if blocked {
+		return copilot.Result{Status: copilot.StatusOK, Data: shared.PaginatedResult[*agent.AgentListItem]{Items: []*agent.AgentListItem{}}}
+	}
+	res, err := t.list.Execute(buildAgentListInput(cc, departmentIDs, args))
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}

@@ -3,16 +3,16 @@ package attendance
 import "sort"
 
 const (
-	ReasonRevenueNotDepartmentScoped = "revenue_not_department_scoped"
 	ReasonRevenueMixedCurrencies     = "revenue_mixed_currencies"
 	ReasonNoRevenueRepository        = "revenue_repository_unavailable"
 )
 
 type RevenueTally struct {
-	Currency   string
-	OwnerID    string
-	WonCount   int64
-	ValueCents int64
+	Currency        string
+	OwnerID         string
+	WonCount        int64
+	ValueCents      int64
+	WonWithoutValue int64
 }
 
 type RevenueByCurrency struct {
@@ -37,6 +37,8 @@ type RevenueOwnerRow struct {
 type Revenue struct {
 	Currencies      []RevenueByCurrency `json:"currencies"`
 	ByOwner         []RevenueOwnerRow   `json:"by_owner"`
+	BySource        []RevenueSourceRow  `json:"by_source"`
+	WonWithoutValue int64               `json:"won_without_value"`
 	Unattributed    int64               `json:"unattributed"`
 	UnownedCount    int64               `json:"unowned_count"`
 	MixedCurrencies bool                `json:"mixed_currencies"`
@@ -63,6 +65,7 @@ func UnavailableRevenue(reason string) Revenue {
 	return Revenue{
 		Currencies: []RevenueByCurrency{},
 		ByOwner:    []RevenueOwnerRow{},
+		BySource:   []RevenueSourceRow{},
 		Reason:     reason,
 	}
 }
@@ -71,6 +74,7 @@ func BuildRevenue(tallies []RevenueTally, unattributed int64, p Period, prevByCu
 	out := Revenue{
 		Currencies:   []RevenueByCurrency{},
 		ByOwner:      []RevenueOwnerRow{},
+		BySource:     revenueBySource(tallies),
 		Unattributed: clampNonNegative(unattributed),
 		Available:    true,
 	}
@@ -88,6 +92,7 @@ func BuildRevenue(tallies []RevenueTally, unattributed int64, p Period, prevByCu
 		}
 		row.ValueCents += t.ValueCents
 		row.WonCount += t.WonCount
+		out.WonWithoutValue += t.WonWithoutValue
 
 		if t.OwnerID == "" {
 			out.UnownedCount += t.WonCount

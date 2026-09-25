@@ -50,6 +50,7 @@ type ExecutorDeps struct {
 	StageRepo               node_executors.StageReader
 	AssignStage             stage_domain.AssignEntryStageUseCase
 	StageBroadcaster        node_executors.StageBroadcaster
+	Deals                   node_executors.DealDesk
 	DepartmentRepo          dept_domain.Repository
 	ConversationHandOff     node_executors.ConversationHandOff
 	WorkspaceRepo           workspace_domain.Repository
@@ -106,6 +107,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(deps.CalendarRepo, deps.GoogleCalendar))
 	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.LabelRepo))
 	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
+	registry.Register(workflow.NodeTypeActionManageOpportunity, node_executors.NewManageOpportunityExecutor(deps.Deals))
 	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionFinishConversation, node_executors.NewFinishConversationExecutor(deps.ConversationStatus))
@@ -125,6 +127,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeConditionFilter, node_executors.NewFilterExecutor())
 	registry.Register(workflow.NodeTypeConditionCheckLabel, node_executors.NewCheckLabelExecutor(deps.LabelRepo))
 	registry.Register(workflow.NodeTypeConditionCheckStage, node_executors.NewCheckStageExecutor(deps.StageRepo))
+	registry.Register(workflow.NodeTypeConditionCheckOpportunity, node_executors.NewCheckOpportunityExecutor(deps.Deals))
 
 	registry.Register(workflow.NodeTypeDecorationBackground, node_executors.NewBackgroundNodeExecutor())
 

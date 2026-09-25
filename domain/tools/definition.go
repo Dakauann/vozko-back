@@ -370,6 +370,7 @@ type ToolContext struct {
 	EntryID      string
 	EntryType    string
 	Agent        interface{}
+	Config       map[string]interface{}
 }
 
 type ContextualHandler interface {

@@ -3,6 +3,7 @@ package opportunity_repository
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -225,7 +226,7 @@ func TestGetByID_NotFound(t *testing.T) {
 	mock.ExpectQuery(`SELECT .* FROM "opportunities"`).WillReturnError(gorm.ErrRecordNotFound)
 
 	_, err := repo.GetByID("ws1", "missing")
-	if err != ErrNotFound {
+	if !errors.Is(err, opportunity.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -248,10 +249,12 @@ func TestUpdate_StatusTransition(t *testing.T) {
 		CloseDate:   &closeDate,
 	}
 
+	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "opportunities" SET`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
-	if err := repo.Update(o); err != nil {
+	if err := repo.Update(o, nil); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -268,9 +271,11 @@ func TestUpdate_NotFound(t *testing.T) {
 		ID: "missing", WorkspaceID: "ws1", PipelineID: "p1", StageID: "s1",
 		Title: "x", Currency: "BRL", Status: opportunity.StatusOpen,
 	}
+	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "opportunities" SET`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
 
-	if err := repo.Update(o); err != ErrNotFound {
+	if err := repo.Update(o, nil); !errors.Is(err, opportunity.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

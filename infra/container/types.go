@@ -250,6 +250,7 @@ type repositories struct {
 	savedView               savedview_domain.Repository
 	opportunity             opportunity_domain.Repository
 	opportunityLink         opportunity_domain.LinkRepository
+	opportunityOwners       opportunity_domain.OwnerDirectory
 	customField             customfield_domain.Repository
 	label                   label_domain.Repository
 	messageShortcut         msg_shortcut_domain.Repository

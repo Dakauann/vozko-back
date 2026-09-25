@@ -31,6 +31,9 @@ type audienceBundle struct {
 
 	InstagramAdapter *iguc.AudienceAdapter
 
+	Stats ca.StatsUseCase
+	List  ca.ListUseCase
+
 	AlertConsumer       *cauc.AlertConsumer
 	ConversationAdapter *convuc.AnalysisAdapter
 }
@@ -183,9 +186,11 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 	})
 	getContainer, putContainer, delContainer, listAccounts := cauc.NewContainerSettingsUseCases(settings, resolver, verifiers, clock)
 
+	bundle.List = cauc.NewListUseCase(repo)
+	bundle.Stats = cauc.NewStatsUseCase(repo)
 	bundle.Handler = audiencehttp.NewHandler(audiencehttp.Deps{
-		List:              cauc.NewListUseCase(repo),
-		Stats:             cauc.NewStatsUseCase(repo),
+		List:              bundle.List,
+		Stats:             bundle.Stats,
 		Trends:            cauc.NewTrendsUseCase(repo, rollups),
 		Authors:           cauc.NewListAuthorsUseCase(authors),
 		Author:            cauc.NewGetAuthorUseCase(authors, repo),

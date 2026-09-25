@@ -13,7 +13,6 @@ import (
 	"vozko/domain/customfield"
 	opportunitydomain "vozko/domain/opportunity"
 	"vozko/infra/http/middleware"
-	opportunity_repository "vozko/infra/repositories/opportunity"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
 	report_usecase "vozko/usecases/report"
@@ -84,21 +83,20 @@ func (h *OpportunityHandler) Create(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.GetWorkspaceID(r)
 
 	created, err := h.svc.Create(wsID, opportunity_usecase.CreateInput{
-		LeadID:                 strings.TrimSpace(req.LeadID),
-		PipelineID:             strings.TrimSpace(req.PipelineID),
-		StageID:                strings.TrimSpace(req.StageID),
-		OwnerID:                strings.TrimSpace(req.OwnerID),
-		CarteiraID:             strings.TrimSpace(req.CarteiraID),
-		Title:                  req.Title,
-		ValueCents:             req.ValueCents,
-		Currency:               req.Currency,
-		Source:                 strings.TrimSpace(req.Source),
-		CloseDate:              req.CloseDate,
-		CustomFields:           req.CustomFields,
-		ConversationAssigneeID: strings.TrimSpace(req.ConversationAssigneeID),
-		LinkEntryID:            strings.TrimSpace(req.LinkEntryID),
-		LinkEntryType:          strings.TrimSpace(req.LinkEntryType),
-		CreatorUserID:          claims.UserID,
+		LeadID:        strings.TrimSpace(req.LeadID),
+		PipelineID:    strings.TrimSpace(req.PipelineID),
+		StageID:       strings.TrimSpace(req.StageID),
+		OwnerID:       strings.TrimSpace(req.OwnerID),
+		CarteiraID:    strings.TrimSpace(req.CarteiraID),
+		Title:         req.Title,
+		ValueCents:    req.ValueCents,
+		Currency:      req.Currency,
+		Source:        strings.TrimSpace(req.Source),
+		CloseDate:     req.CloseDate,
+		CustomFields:  req.CustomFields,
+		LinkEntryID:   strings.TrimSpace(req.LinkEntryID),
+		LinkEntryType: strings.TrimSpace(req.LinkEntryType),
+		Actor:         claims.UserID,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -145,12 +143,10 @@ func (h *OpportunityHandler) Update(w http.ResponseWriter, r *http.Request) {
 		OwnerID:      req.OwnerID,
 		CarteiraID:   req.CarteiraID,
 		Source:       req.Source,
-		CloseDate:    req.CloseDate,
 		CustomFields: req.CustomFields,
 		StageID:      req.StageID,
-		Status:       toOpportunityStatus(req.Status),
 		LostReasonID: req.LostReasonID,
-	})
+	}, claims.UserID)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -159,12 +155,12 @@ func (h *OpportunityHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Mover oportunidade de etapa
-// @Description	Move uma oportunidade para outra etapa do funil e, opcionalmente, define o status ('open', 'won' ou 'lost'). Ao marcar como perdida, informe o motivo da perda.
+// @Description	Move uma oportunidade para outra etapa do funil. O status vem da etapa: uma etapa de ganho marca como ganha (e exige valor), uma de perda marca como perdida (e exige o motivo), qualquer outra reabre.
 // @Tags			Oportunidades
 // @Accept			json
 // @Produce		json
 // @Param			id		path		string				true	"ID da oportunidade"
-// @Param			request	body		MoveStageRequest	true	"Etapa de destino e status"
+// @Param			request	body		MoveStageRequest	true	"Etapa de destino"
 // @Success		200	{object}	opportunity.Opportunity
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
@@ -178,7 +174,6 @@ func (h *OpportunityHandler) MoveStage(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", map[string]string{
 			"stageId": "string (required)",
-			"status":  "string (optional: 'open' | 'won' | 'lost')",
 		})
 		return
 	}
@@ -191,9 +186,8 @@ func (h *OpportunityHandler) MoveStage(w http.ResponseWriter, r *http.Request) {
 
 	moved, err := h.svc.MoveStage(wsID, id, opportunity_usecase.MoveStageInput{
 		StageID:      strings.TrimSpace(req.StageID),
-		Status:       opportunitydomain.Status(strings.TrimSpace(req.Status)),
 		LostReasonID: strings.TrimSpace(req.LostReasonID),
-	})
+	}, claims.UserID)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -324,7 +318,7 @@ func (h *OpportunityHandler) LinkConversation(w http.ResponseWriter, r *http.Req
 	}
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.svc.LinkConversation(wsID, id, strings.TrimSpace(req.EntryID), strings.TrimSpace(req.EntryType)); err != nil {
+	if err := h.svc.LinkConversation(wsID, id, strings.TrimSpace(req.EntryID), strings.TrimSpace(req.EntryType), claims.UserID); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
@@ -432,7 +426,7 @@ func (h *OpportunityHandler) ListForEntry(w http.ResponseWriter, r *http.Request
 
 func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, opportunity_repository.ErrNotFound):
+	case errors.Is(err, opportunitydomain.ErrNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, opportunitydomain.ErrWorkspaceRequired),
 		errors.Is(err, opportunitydomain.ErrPipelineRequired),
@@ -441,6 +435,14 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 		errors.Is(err, opportunitydomain.ErrInvalidStatus),
 		errors.Is(err, opportunitydomain.ErrNegativeValue),
 		errors.Is(err, opportunitydomain.ErrLostReasonMissing),
+		errors.Is(err, opportunitydomain.ErrWonWithoutValue),
+		errors.Is(err, opportunitydomain.ErrUnsupportedCurrency),
+		errors.Is(err, opportunitydomain.ErrStageOutsidePipeline),
+		errors.Is(err, opportunitydomain.ErrInvalidAmount),
+		errors.Is(err, opportunity_usecase.ErrOwnerOutsideWorkspace),
+		errors.Is(err, opportunity_usecase.ErrPipelineNotFound),
+		errors.Is(err, opportunity_usecase.ErrNotOpportunityPipeline),
+		errors.Is(err, opportunity_usecase.ErrStageNotFound),
 		errors.Is(err, opportunity_usecase.ErrUnknownCustomField),
 		errors.Is(err, opportunity_usecase.ErrEntryTypeRequired),
 		errors.Is(err, customfield.ErrValueType),
@@ -450,4 +452,27 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
+}
+
+// @Summary		Histórico da oportunidade
+// @Description	Lista, em ordem cronológica, cada mudança da oportunidade (criação, etapa, ganho, perda, reabertura, valor, responsável e vínculo com conversa) com quem a fez: uma pessoa, um agente de IA (ai:<id>) ou um fluxo (workflow:<id>).
+// @Tags			Oportunidades
+// @Produce		json
+// @Param			id	path		string	true	"ID da oportunidade"
+// @Success		200	{array}		opportunity.Event
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/opportunities/{id}/events [get]
+func (h *OpportunityHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetClaims(r) == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+	events, err := h.svc.ListEvents(middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, events)
 }

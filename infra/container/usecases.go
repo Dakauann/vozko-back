@@ -10,7 +10,6 @@ import (
 	"time"
 	workflow_infra "vozko/infra/workflow"
 
-	"github.com/google/uuid"
 
 	"vozko/brand"
 	balance_domain "vozko/domain/balance"
@@ -51,7 +50,6 @@ import (
 	address_usecase "vozko/usecases/address"
 	affiliate_usecase "vozko/usecases/affiliate"
 	agent_usecase "vozko/usecases/agent"
-	agentloop "vozko/usecases/agentloop"
 	"vozko/usecases/agentturn"
 	aichat_usecase "vozko/usecases/aichat"
 	analytics_usecase "vozko/usecases/analytics"
@@ -72,8 +70,6 @@ import (
 	conversation_usecase "vozko/usecases/conversation"
 	"vozko/usecases/conversation/loopguard"
 	ce_usecase "vozko/usecases/conversation_event"
-	copilot_usecase "vozko/usecases/copilot"
-	copilottools "vozko/usecases/copilot/copilottools"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
 	ia_usecase "vozko/usecases/inbox_assignment"
@@ -161,6 +157,15 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
 
+	opportunitySvc := opportunity_usecase.NewService(opportunity_usecase.Deps{
+		Repo:      c.repositories.opportunity,
+		Links:     c.repositories.opportunityLink,
+		Fields:    c.repositories.customField,
+		Stages:    c.repositories.stage,
+		Pipelines: c.repositories.pipeline,
+		Owners:    c.repositories.opportunityOwners,
+	})
+
 	toolHandlers := []tools.Handler{
 		tools_usecase.NewSendEmailToolUseCase(nil),
 		optionsTool,
@@ -171,6 +176,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, outcomeCaptureReader{configs: c.repositories.workspaceConfig}),
 		tools_usecase.NewTransferToHumanToolUseCase(c.services.assignmentService),
+		tools_usecase.NewManageOpportunityTool(opportunitySvc),
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewScheduleMeetingToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewRescheduleMeetingToolUseCase(rescheduleEventUC),
@@ -487,7 +493,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	memberVisibilityUC := workspace_usecase.NewMemberVisibilityUseCase(c.repositories.workspace, c.repositories.workspaceDepartment, c.repositories.workspaceConfig)
 
 	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
-	opportunitySvc := opportunity_usecase.NewService(c.repositories.opportunity, c.repositories.opportunityLink, c.repositories.customField)
 
 	scheduledMessages := c.buildScheduledMessages()
 
@@ -1072,6 +1077,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		StageRepo:               c.repositories.stage,
 		AssignStage:             assignEntryStageUC,
 		StageBroadcaster:        c.services.conversationHub,
+		Deals:                   opportunitySvc,
 		DepartmentRepo:          c.repositories.workspaceDepartment,
 		ConversationHandOff:     c.services.assignmentService,
 		WorkspaceRepo:           c.repositories.workspace,
@@ -1095,26 +1101,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.services.ai,
 		cachedBalanceChecker,
 		c.repositories.workspaceSubscription,
-	)
-
-	c.useCases.copilot = copilot_usecase.NewService(
-		agentloop.Engine{AI: c.services.ai},
-		copilot_usecase.NewRegistry(
-			copilottools.NewListAgentsTool(listAgentsUC),
-			copilottools.NewCountAgentsTool(listAgentsUC),
-			copilottools.NewGetAgentTool(getAgentUC),
-			copilottools.NewCreateAgentTool(createAgentUC),
-			copilottools.NewUpdateAgentTool(getAgentUC, updateAgentUC),
-			copilottools.NewDeleteAgentTool(getAgentUC, deleteAgentUC),
-			copilottools.NewListDepartmentsTool(c.useCases.listWorkspaceDepartments),
-			copilottools.NewListModelsTool(c.services.ai),
-			copilottools.NewListAgentToolsTool(c.services.toolRegistry),
-		),
-		c.useCases.checkWsAccess,
-		c.repositories.aichatThread,
-		c.repositories.aichatMessage,
-		copilot_usecase.NewInMemoryPendingStore(),
-		func() string { return uuid.New().String() },
 	)
 
 	c.useCases.workflowManager = workflow_usecase.NewWorkflowManager(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
@@ -1163,6 +1149,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Departments: c.repositories.workspaceDepartment,
 			Labels:      c.repositories.label,
 			Stages:      c.repositories.stage,
+			Deals:       opportunitySvc,
 			Workflows:   c.repositories.workflow,
 			Members:     builderMemberLister{repo: c.repositories.workspace},
 		}),
@@ -1210,6 +1197,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		SetStageRepo(workflow_usecase.StageLookup)
 	}); ok {
 		setter.SetStageRepo(c.repositories.stage)
+	}
+	if setter, ok := c.useCases.activateWorkflow.(interface {
+		SetDealFunnels(workflow_usecase.DealFunnels)
+	}); ok {
+		setter.SetDealFunnels(opportunitySvc)
 	}
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetDepartmentRepo(workspace_department_domain.Repository)
@@ -1369,6 +1361,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	c.initCommentAnalysis(notifierUC, dashboardURL)
+	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)
 	c.initInstagramRuntime(messageHistoryManager)
 
 	if c.instagram != nil && c.instagram.Enabled && c.instagram.Consume != nil {

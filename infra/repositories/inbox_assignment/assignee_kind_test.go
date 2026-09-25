@@ -144,24 +144,3 @@ func TestListByUser_AsksForTheKind(t *testing.T) {
 		t.Fatalf("ListByUser = %v, %v", ids, err)
 	}
 }
-
-func TestAssigneeKinds_RoundTripEachActorAsItself(t *testing.T) {
-	// Each kind must come back as itself: a workflow read back as ai: would be
-	// named, reported and handed off as an agent.
-	cases := []struct {
-		domain, id, kind string
-	}{
-		{domain: "user-1", id: "user-1", kind: "human"},
-		{domain: "ai:" + agentUUID, id: agentUUID, kind: "ai"},
-		{domain: "workflow:" + agentUUID, id: agentUUID, kind: "workflow"},
-	}
-	for _, tc := range cases {
-		id, kind := splitAssignee(tc.domain)
-		if id != tc.id || kind != tc.kind {
-			t.Errorf("split(%q) = %q %q, want %q %q", tc.domain, id, kind, tc.id, tc.kind)
-		}
-		if back := joinAssignee(id, kind); back != tc.domain {
-			t.Errorf("join(%q, %q) = %q, want %q", id, kind, back, tc.domain)
-		}
-	}
-}

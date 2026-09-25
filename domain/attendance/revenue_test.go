@@ -120,12 +120,12 @@ func TestBuildRevenueZeroPreviousMonthYieldsNoDelta(t *testing.T) {
 }
 
 func TestUnavailableRevenueCarriesItsReason(t *testing.T) {
-	got := UnavailableRevenue(ReasonRevenueNotDepartmentScoped)
+	got := UnavailableRevenue(ReasonNoRevenueRepository)
 	if got.Available {
 		t.Fatalf("UnavailableRevenue() Available = true, want false")
 	}
-	if got.Reason != ReasonRevenueNotDepartmentScoped {
-		t.Fatalf("UnavailableRevenue() Reason = %q, want %q", got.Reason, ReasonRevenueNotDepartmentScoped)
+	if got.Reason != ReasonNoRevenueRepository {
+		t.Fatalf("UnavailableRevenue() Reason = %q, want %q", got.Reason, ReasonNoRevenueRepository)
 	}
 	if got.Currencies == nil || got.ByOwner == nil {
 		t.Fatalf("UnavailableRevenue() left a nil slice on the wire")

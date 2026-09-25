@@ -14,6 +14,7 @@ import (
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/database/schema"
+	"vozko/infra/repositories/campaignstamp"
 )
 
 type repository struct {
@@ -509,7 +510,9 @@ func (r *repository) UpdateStatus(entryID string, status wce.SendStatus, message
 		updates["error_message"] = errorMessage
 	}
 
-	return r.db.Model(&schema.WhatsAppCampaignEntry{}).Where("id = ?", entryID).Updates(updates).Error
+	return r.db.Model(&schema.WhatsAppCampaignEntry{}).
+		Where("id = ?", entryID).
+		Updates(campaignstamp.WithStamp(updates, status, time.Now().UTC())).Error
 }
 
 func (r *repository) UpdateReceivedBusinessPhone(entryID string, businessPhoneID string) error {
@@ -534,14 +537,14 @@ func (r *repository) UpdateStatusByNumber(campaignID, number string, status wce.
 		return wce.ErrEntryStatusInvalid
 	}
 
-	query := `
-		UPDATE whatsapp_campaign_entries 
-		SET status = ?, message_id = ?, updated_at = NOW() 
-		WHERE campaign_id = ? AND lead_id IN (
-			SELECT id FROM leads WHERE number = ?
-		)
-	`
-	return r.db.Exec(query, string(status), messageID, campaignID, normalized).Error
+	leadIDs := r.db.Unscoped().Model(&schema.Lead{}).Select("id").Where("number = ?", normalized)
+	updates := map[string]interface{}{
+		"status":     string(status),
+		"message_id": messageID,
+	}
+	return r.db.Unscoped().Model(&schema.WhatsAppCampaignEntry{}).
+		Where("campaign_id = ? AND lead_id IN (?)", campaignID, leadIDs).
+		Updates(campaignstamp.WithStamp(updates, status, time.Now().UTC())).Error
 }
 
 func (r *repository) UpdateStatusByMessageID(messageID string, status wce.SendStatus) error {
@@ -578,9 +581,9 @@ func (r *repository) UpdateStatusByMessageID(messageID string, status wce.SendSt
 			END < ?`, newPriority)
 	}
 
-	result := query.Updates(map[string]interface{}{
+	result := query.Updates(campaignstamp.WithStamp(map[string]interface{}{
 		"status": string(status),
-	})
+	}, status, time.Now().UTC()))
 
 	if result.Error != nil {
 		return result.Error
@@ -594,12 +597,12 @@ func (r *repository) ResetAllStatuses(campaignID string) (int64, error) {
 		return 0, wce.ErrEntryCampaignRequired
 	}
 
+	updates := campaignstamp.Clear()
+	updates["status"] = string(wce.SendStatusPending)
+	updates["message_id"] = ""
 	result := r.db.Model(&schema.WhatsAppCampaignEntry{}).
 		Where("campaign_id = ?", campaignID).
-		Updates(map[string]interface{}{
-			"status":     string(wce.SendStatusPending),
-			"message_id": "",
-		})
+		Updates(updates)
 
 	return result.RowsAffected, result.Error
 }
