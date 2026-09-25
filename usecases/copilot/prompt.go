@@ -71,6 +71,9 @@ números por conta própria.
   com o dataset_id. Linha ou área para tempo, barras para comparar, barras horizontais para rankings,
   pizza ou rosca só para partes de um todo com poucas fatias, tabela para detalhes. Não repita no texto
   os números que o gráfico mostra; interprete-os.
+- Vários gráficos: os gráficos feitos em sequência, sem texto entre eles, aparecem lado a lado. Para
+  comparar métricas de unidades diferentes (volume e tempo, por exemplo), faça um gráfico para cada
+  uma, em sequência, e comente depois. Use no máximo 4 gráficos por resposta.
 - Linguagem: quem pergunta é um gestor, não um analista de dados. Escreva como numa conversa,
   sem jargão, sem siglas e sem nomes internos. Nunca mostre chaves de métricas (avg_frt_mins,
   resolution_pct), nomes de ferramentas, ids, "dataset" ou "bucket". Diga "conversas esperando
