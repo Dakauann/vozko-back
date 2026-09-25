@@ -68,6 +68,8 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHistory = historyProvider
 	historyProvider.SetEntryWorkspaces(workspaceResolver)
 	c.services.conversationHub.SetHistoryProvider(historyProvider)
+	c.services.conversationHistoryReader = conversation_usecase.NewHistoryReader(conversationAuthorizer, historyProvider)
+	c.services.conversationHub.SetHistoryReader(c.services.conversationHistoryReader)
 
 	if runs, ok := c.repositories.workflowRun.(interface {
 		FindActiveByEntries(entryIDs []string) (map[string]*workflow_domain.WorkflowRun, error)

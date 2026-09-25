@@ -67,7 +67,7 @@ func (a *AnalysisAdapter) EnqueueSubject(ctx context.Context, subject *AnalysisS
 	}
 	entryID, entryType := subject.EntryID, subject.EntryType
 
-	transcript, count, lastAt, err := a.render(entryID, entryType, subject.ContactLabel)
+	transcript, count, lastAt, err := a.render(entryID, entryType)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (a *AnalysisAdapter) ReadTranscripts(ctx context.Context, ref ca.ContainerR
 		if subject == nil || !subject.EnableAnalysis {
 			continue
 		}
-		text, count, lastAt, err := a.render(entryID, entryType, subject.ContactLabel)
+		text, count, lastAt, err := a.render(entryID, entryType)
 		if err != nil {
 			log.Printf("[analysis-adapter] %s entry %s history unreadable: %v", entryType, entryID, err)
 			continue
@@ -156,7 +156,7 @@ func (a *AnalysisAdapter) subject(ctx context.Context, entryID string, entryType
 	return resolver(ctx, entryID)
 }
 
-func (a *AnalysisAdapter) render(entryID string, entryType shared.EntryType, contactLabel string) (string, int, time.Time, error) {
+func (a *AnalysisAdapter) render(entryID string, entryType shared.EntryType) (string, int, time.Time, error) {
 	if a.messageRepo == nil {
 		return "", 0, time.Time{}, nil
 	}
@@ -175,6 +175,6 @@ func (a *AnalysisAdapter) render(entryID string, entryType shared.EntryType, con
 		lastAt = last.CreatedAt
 	}
 
-	text, _ := ca.TruncateRunes(BuildTranscript(history, contactLabel), transcriptRuneLimit)
+	text, _ := ca.TruncateRunes(BuildTranscript(history), transcriptRuneLimit)
 	return text, total, lastAt, nil
 }

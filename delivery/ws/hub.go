@@ -73,6 +73,7 @@ type ConversationHub struct {
 	waCampaignRepo       whatsapp_campaign.Repository
 	workspaceResolver    conversation.CampaignWorkspaceResolver
 	historyProvider      conversation.HistoryProvider
+	historyReader        conversation.HistoryReader
 	messageMarker        conversation.MessageMarker
 	StageProvider        conversation.StageProvider
 	labelProvider        conversation.LabelProvider
@@ -151,6 +152,9 @@ func NewConversationHub(
 
 func (h *ConversationHub) SetHistoryProvider(provider conversation.HistoryProvider) {
 	h.historyProvider = provider
+}
+func (h *ConversationHub) SetHistoryReader(reader conversation.HistoryReader) {
+	h.historyReader = reader
 }
 func (h *ConversationHub) SetMessageMarker(marker conversation.MessageMarker) {
 	h.messageMarker = marker
@@ -1700,19 +1704,18 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		unreadCount, _ = h.historyProvider.GetUnreadCount(p.EntryID, shared.EntryType(p.EntryType))
 		window := h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
 		windowOpen, windowExpiresAt, windowClosedReason = window.Open, window.ExpiresAt, string(window.Reason)
-
-		pageSize := p.PageSize
-		if pageSize <= 0 {
-			pageSize = conversation.DefaultHistoryPageSize
-		}
-		if pageSize > conversation.MaxHistoryPageSize {
-			pageSize = conversation.MaxHistoryPageSize
-		}
-		var histErr error
-		messages, hasMore, total, histErr = h.historyProvider.GetHistory(p.EntryID, shared.EntryType(p.EntryType), pageSize)
+	}
+	if h.historyReader != nil {
+		page, histErr := h.historyReader.ReadHistory(conversation.HistoryQuery{
+			Viewer:    connViewer(conn),
+			EntryID:   p.EntryID,
+			EntryType: shared.EntryType(p.EntryType),
+			Limit:     p.PageSize,
+		})
 		if histErr != nil {
 			log.Printf("[ConversationHub] Error loading history for %s:%s user %s: %v", p.EntryType, p.EntryID, conn.UserID, histErr)
 		}
+		messages, hasMore, total = page.Messages, page.HasMore, page.Total
 	}
 
 	alreadySent := h.sentMessageIDs[conn.ID][sub]
@@ -1784,11 +1787,6 @@ func (h *ConversationHub) handleLoadHistory(conn *WSConnection, payload json.Raw
 		return
 	}
 
-	if !h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, p.EntryID, p.EntryType, conn.IsAdmin) {
-		h.sendError(conn, "unauthorized", "You don't have access to this conversation")
-		return
-	}
-
 	before, err := time.Parse(time.RFC3339Nano, p.Before)
 	if err != nil {
 		before, err = time.Parse(time.RFC3339, p.Before)
@@ -1798,21 +1796,23 @@ func (h *ConversationHub) handleLoadHistory(conn *WSConnection, payload json.Raw
 		}
 	}
 
-	if h.historyProvider == nil {
+	if h.historyReader == nil {
 		h.sendError(conn, "not_configured", "History provider not configured")
 		return
 	}
 
-	pageSize := p.PageSize
-	if pageSize <= 0 {
-		pageSize = conversation.DefaultHistoryPageSize
-	}
-	if pageSize > conversation.MaxHistoryPageSize {
-		pageSize = conversation.MaxHistoryPageSize
-	}
-
 	go func() {
-		messages, hasMore, err := h.historyProvider.GetHistoryBefore(p.EntryID, shared.EntryType(p.EntryType), before, pageSize)
+		page, err := h.historyReader.ReadHistory(conversation.HistoryQuery{
+			Viewer:    connViewer(conn),
+			EntryID:   p.EntryID,
+			EntryType: shared.EntryType(p.EntryType),
+			Before:    &before,
+			Limit:     p.PageSize,
+		})
+		if errors.Is(err, conversation.ErrUnauthorized) {
+			h.sendError(conn, "unauthorized", "You don't have access to this conversation")
+			return
+		}
 		if err != nil {
 			log.Printf("[ConversationHub] Error loading history for %s:%s: %v", p.EntryType, p.EntryID, err)
 			h.sendError(conn, "history_error", "Failed to load message history")
@@ -1824,12 +1824,16 @@ func (h *ConversationHub) handleLoadHistory(conn *WSConnection, payload json.Raw
 			Payload: HistoryPayload{
 				EntryID:   p.EntryID,
 				EntryType: p.EntryType,
-				Messages:  messages,
-				HasMore:   hasMore,
-				PageSize:  len(messages),
+				Messages:  page.Messages,
+				HasMore:   page.HasMore,
+				PageSize:  len(page.Messages),
 			},
 		})
 	}()
+}
+
+func connViewer(conn *WSConnection) conversation.Viewer {
+	return conversation.Viewer{UserID: conn.UserID, WorkspaceID: conn.WorkspaceID, IsAdmin: conn.IsAdmin}
 }
 
 func (h *ConversationHub) handleLoadAround(conn *WSConnection, payload json.RawMessage) {
@@ -1863,13 +1867,7 @@ func (h *ConversationHub) handleLoadAround(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	pageSize := p.PageSize
-	if pageSize <= 0 {
-		pageSize = conversation.DefaultHistoryPageSize
-	}
-	if pageSize > conversation.MaxHistoryPageSize {
-		pageSize = conversation.MaxHistoryPageSize
-	}
+	pageSize := conversation.HistoryPageSize(p.PageSize)
 
 	go func() {
 		messages, hasBefore, hasAfter, total, err := h.historyProvider.GetHistoryAround(p.EntryID, shared.EntryType(p.EntryType), around, pageSize)

@@ -6,7 +6,6 @@ import (
 
 	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
-	"vozko/domain/lead"
 	"vozko/domain/stage"
 )
 
@@ -27,27 +26,7 @@ type AnalysisPromptInput struct {
 }
 
 func BuildAnalysisPrompt(input AnalysisPromptInput) string {
-	var transcript strings.Builder
-	for _, msg := range input.History {
-		if msg == nil {
-			continue
-		}
-
-		switch msg.MessageType {
-		case conversation.MessageTypeToolCall,
-			conversation.MessageTypeToolResult,
-			conversation.MessageTypeSystem:
-			continue
-		}
-		if msg.MessageType.IsCallEvent() {
-			continue
-		}
-		text := strings.TrimSpace(msg.Text)
-		if text == "" {
-			continue
-		}
-		transcript.WriteString(fmt.Sprintf("%s: %s\n", transcriptRole(msg, input.UserPhoneNumber), text))
-	}
+	transcript := BuildTranscript(input.History)
 
 	agentInstructionsSection := ""
 	if input.AgentInstructions != "" {
@@ -60,33 +39,27 @@ func BuildAnalysisPrompt(input AnalysisPromptInput) string {
 	}
 
 	if input.AnalysisType == AnalysisTypeCompleted {
-		return buildCompletedCallPrompt(input.CampaignName, input.UserPhoneNumber, agentInstructionsSection, transcript.String())
+		return buildCompletedCallPrompt(input.CampaignName, input.UserPhoneNumber, agentInstructionsSection, transcript)
 	}
-	return buildOngoingConversationPrompt(input.CampaignName, input.MessageCount, agentInstructionsSection, transcript.String())
+	return buildOngoingConversationPrompt(input.CampaignName, input.MessageCount, agentInstructionsSection, transcript)
 }
 
-func BuildTranscript(history []*conversation.Message, userPhoneNumber string) string {
+func BuildTranscript(history []*conversation.Message) string {
 	var transcript strings.Builder
 	for _, msg := range history {
-		if msg == nil {
+		if !msg.Transcribable() {
 			continue
 		}
-		switch msg.MessageType {
-		case conversation.MessageTypeToolCall,
-			conversation.MessageTypeToolResult,
-			conversation.MessageTypeSystem:
-			continue
-		}
-		if msg.MessageType.IsCallEvent() {
-			continue
-		}
-		text := strings.TrimSpace(msg.Text)
-		if text == "" {
-			continue
-		}
-		transcript.WriteString(fmt.Sprintf("%s: %s\n", transcriptRole(msg, userPhoneNumber), text))
+		fmt.Fprintf(&transcript, "%s: %s\n", transcriptRole(msg), strings.TrimSpace(msg.Text))
 	}
 	return transcript.String()
+}
+
+func transcriptRole(msg *conversation.Message) string {
+	if msg.FromCustomer() {
+		return "User"
+	}
+	return "Agent"
 }
 
 func buildOngoingConversationPrompt(campaignName string, messageCount int, agentInstructions, transcript string) string {
@@ -268,32 +241,4 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 		tagList.String(),
 		input.Transcript,
 	)
-}
-
-func transcriptRole(msg *conversation.Message, userPhoneNumber string) string {
-	const (
-		roleAgent = "Agent"
-		roleUser  = "User"
-	)
-
-	if direction := msg.ResolvedDirection(); direction.Valid() {
-		if direction.IsOutbound() {
-			return roleAgent
-		}
-		return roleUser
-	}
-
-	switch {
-	case msg.MessageType.IsInbound():
-		return roleUser
-	case msg.MessageType == conversation.MessageTypeOperator,
-		msg.MessageType == conversation.MessageTypeAIResponse,
-		msg.MessageType == conversation.MessageTypeTemplate:
-		return roleAgent
-	}
-
-	if msg.From != "" && lead.NormalizeNumber(msg.From) == lead.NormalizeNumber(userPhoneNumber) {
-		return roleUser
-	}
-	return roleAgent
 }

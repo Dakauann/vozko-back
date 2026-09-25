@@ -364,6 +364,7 @@ type services struct {
 	conversationAuthImpl          *conversation_infra.Authorizer
 	requestCallPermission         conversation_domain.RequestCallPermissionUseCase
 	conversationHistory           conversation_domain.HistoryProvider
+	conversationHistoryReader     conversation_domain.HistoryReader
 	channelAdapters               []conversation_domain.ChannelAdapter
 	liveChannelAdapters           *conversation_domain.LiveAdapterRegistry
 	conversationAutomation        *conversation_usecase.ConversationAutomationService

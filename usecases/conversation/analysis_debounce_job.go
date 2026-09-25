@@ -366,7 +366,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			History:         history,
 		})
 	case wantAutoTag:
-		transcript := BuildTranscript(history, userPhoneNumber)
+		transcript := BuildTranscript(history)
 		var currentTagName string
 		var allTags []*stage.Stage
 		if j.stageRepo != nil {
@@ -390,7 +390,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			ContactLabel:    userPhoneNumber,
 			MessageCount:    int(totalCount),
 			CurrentMemories: memoryBlock,
-			Transcript:      BuildTranscript(history, userPhoneNumber),
+			Transcript:      BuildTranscript(history),
 		})
 	}
 

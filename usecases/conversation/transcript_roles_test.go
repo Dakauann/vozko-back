@@ -19,7 +19,7 @@ func TestTranscriptAttributesTurnsByDirection(t *testing.T) {
 			Direction: conversation.MessageDirectionInbound, From: "+558494409624"},
 	}
 
-	got := BuildTranscript(history, "+558494409624")
+	got := BuildTranscript(history)
 
 	want := "User: oi, quanto custa?\n" +
 		"Agent: custa R$ 300\n" +
@@ -38,7 +38,7 @@ func TestTranscriptTreatsAnOwnerReplyAsTheAgent(t *testing.T) {
 			Direction: conversation.MessageDirectionOutbound, From: "+558494409624"},
 	}
 
-	got := BuildTranscript(history, "+558494409624")
+	got := BuildTranscript(history)
 
 	if strings.Count(got, "Agent:") != 1 {
 		t.Errorf("the owner's own reply was not attributed to the business:\n%s", got)
@@ -52,7 +52,7 @@ func TestTranscriptFallsBackToTheMessageTypeWithoutADirection(t *testing.T) {
 		{Text: "resposta da ia", MessageType: conversation.MessageTypeAIResponse, From: "agent"},
 	}
 
-	got := BuildTranscript(history, "+558494409624")
+	got := BuildTranscript(history)
 
 	want := "User: oi\nAgent: olá!\nAgent: resposta da ia\n"
 	if got != want {

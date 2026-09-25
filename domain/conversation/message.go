@@ -324,6 +324,24 @@ func (m *Message) IsFromUser() bool {
 	return m.MessageType == MessageTypeUserMessage || m.MessageType == MessageTypeAudio
 }
 
+func (m *Message) FromCustomer() bool {
+	return m != nil && !m.ResolvedDirection().IsOutbound()
+}
+
+func (m *Message) Transcribable() bool {
+	if m == nil {
+		return false
+	}
+	switch m.MessageType {
+	case MessageTypeToolCall, MessageTypeToolResult, MessageTypeSystem:
+		return false
+	}
+	if m.MessageType.IsCallEvent() {
+		return false
+	}
+	return strings.TrimSpace(m.Text) != ""
+}
+
 func (m *Message) HasMedia() bool {
 	return m.MediaID != nil && *m.MediaID != ""
 }

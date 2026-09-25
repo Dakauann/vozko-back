@@ -1156,7 +1156,7 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		})
 	} else {
 
-		transcript := BuildTranscript(history, userPhoneNumber)
+		transcript := BuildTranscript(history)
 		var currentTagName string
 		var allTags []*stage.Stage
 		if uc.stageRepo != nil {
