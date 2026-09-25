@@ -69,7 +69,6 @@ func TestChannelSourceProjectionsOnlyReferenceRealColumns(t *testing.T) {
 	for _, src := range channelSources {
 		channel := string(src.EntryType)
 		assertColumnsExist(t, channel+" projection", src.projection("TRUE"))
-		assertColumnsExist(t, channel+" group by", src.groupByColumns())
 		assertColumnsExist(t, channel+" lead join", src.LeadJoin)
 		assertColumnsExist(t, channel+" container join", src.ContainerJoin)
 		assertColumnsExist(t, channel+" status column", src.StatusColumn)
@@ -81,33 +80,17 @@ func TestChannelSourceProjectionsOnlyReferenceRealColumns(t *testing.T) {
 		assertColumnsExist(t, channel+" container name", src.ContainerNameExpr)
 		assertColumnsExist(t, channel+" workspace", src.WorkspaceColumn)
 		assertColumnsExist(t, channel+" lead id", src.LeadIDExpr)
-	}
-}
-
-func TestChannelSourceGroupByCoversEveryProjectedColumn(t *testing.T) {
-	for _, src := range channelSources {
-		groupBy := src.groupByColumns()
-		for _, expr := range src.containerNameGroupBy() {
-			if !strings.Contains(groupBy, expr) {
-				t.Fatalf(
-					"%s group by %q is missing the container name expression %q",
-					src.EntryType, groupBy, expr,
-				)
-			}
-		}
-		if src.LeadIDExpr != "" && !strings.Contains(groupBy, src.LeadIDExpr) {
-			t.Fatalf("%s group by is missing the lead expression %q", src.EntryType, src.LeadIDExpr)
-		}
-		if src.ClosedAtColumn != "" && !strings.Contains(groupBy, src.ClosedAtColumn) {
-			t.Fatalf("%s group by is missing %q", src.EntryType, src.ClosedAtColumn)
-		}
-		if src.CloseOutcomeColumn != "" && !strings.Contains(groupBy, src.CloseOutcomeColumn) {
-			t.Fatalf("%s group by is missing %q", src.EntryType, src.CloseOutcomeColumn)
+		assertColumnsExist(t, channel+" last message", src.LastMessageColumn)
+		if src.LastMessageColumn == "" {
+			t.Fatalf("%s has no last message column", channel)
 		}
 	}
 }
 
 func TestTrendAndBacklogSQLOnlyReferenceRealColumns(t *testing.T) {
+	scope, _ := overviewEntrySelect("ws", overviewFilterForTest())
+	assertColumnsExist(t, "scope", scope)
+
 	for _, src := range channelSources {
 		channel := string(src.EntryType)
 		assertColumnsExist(t, channel+" trend joins", trendJoins(src))

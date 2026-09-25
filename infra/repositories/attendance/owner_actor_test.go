@@ -16,9 +16,6 @@ func TestMetricsProjectTheOwnerAsAnActorID(t *testing.T) {
 		if !strings.Contains(p, ownerActorIDSQL+" AS assigned_user_id") {
 			t.Errorf("%s: projection does not use the owner actor id", src.EntryType)
 		}
-		if !strings.Contains(src.groupByColumns(), "ia.assignee_kind") {
-			t.Errorf("%s: group by must include ia.assignee_kind", src.EntryType)
-		}
 	}
 	for _, want := range []string{"'ai:'", "'workflow:'", "ia.assignee_kind"} {
 		if !strings.Contains(ownerActorIDSQL, want) {

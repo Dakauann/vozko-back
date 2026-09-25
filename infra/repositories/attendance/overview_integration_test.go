@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -297,5 +298,60 @@ func TestOutcomeColumnsExistInPostgres(t *testing.T) {
 
 	if conversation.ReservedOutcomePrefix != "_" {
 		t.Fatalf("the reserved outcome prefix changed; the quality SQL filters on a literal underscore")
+	}
+}
+
+func activeBeforeWindowOracle(src channelSource, from, to time.Time) string {
+	return `
+		SELECT ` + src.EntryAlias + `.id
+		FROM ` + src.ContainerTable + `
+		JOIN ` + src.EntryTable + ` ON ` + src.ContainerJoin + ` AND ` + src.EntryAlias + `.deleted_at IS NULL
+		WHERE ` + src.WorkspaceColumn + ` = @ws AND ` + src.ContainerAlias + `.deleted_at IS NULL
+		  AND (` + src.EntryAlias + `.created_at < @from OR ` + src.EntryAlias + `.created_at > @to)
+		  AND EXISTS (
+			SELECT 1 FROM conversation_messages cm
+			WHERE cm.entry_id = ` + src.EntryAlias + `.id AND cm.entry_type = '` + string(src.EntryType) + `'
+			  AND cm.deleted_at IS NULL AND cm.created_at >= @from AND cm.created_at <= @to
+		  )`
+}
+
+func TestScopeAdmitsEveryConversationActiveInTheWindow(t *testing.T) {
+	db := attendanceIntegrationDB(t)
+	workspaceID := workspaceWithBacklog(t, db)
+	now := time.Now().UTC()
+
+	for name, days := range map[string]int{"7 days": 7, "30 days": 30, "365 days": 365} {
+		t.Run(name, func(t *testing.T) {
+			from := now.AddDate(0, 0, -days)
+			filter := attendance.OverviewFilter{DateFrom: &from, DateTo: &now}
+
+			body, args := overviewEntrySelect(workspaceID, filter)
+			var scoped []string
+			err := db.Raw(`SELECT entry_type || ':' || entry_id::text FROM (`+body+`) s WHERE NOT is_new_contact`, args...).
+				Scan(&scoped).Error
+			if err != nil {
+				t.Fatalf("scope: %v", err)
+			}
+
+			var oracle []string
+			for _, src := range channelSources {
+				var ids []string
+				err := db.Raw(activeBeforeWindowOracle(src, from, now), map[string]interface{}{
+					"ws": workspaceID, "from": from, "to": now,
+				}).Scan(&ids).Error
+				if err != nil {
+					t.Fatalf("oracle %s: %v", src.EntryType, err)
+				}
+				for _, id := range ids {
+					oracle = append(oracle, string(src.EntryType)+":"+id)
+				}
+			}
+
+			slices.Sort(scoped)
+			slices.Sort(oracle)
+			if !slices.Equal(scoped, oracle) {
+				t.Fatalf("scope admitted %d conversations active in the window, the plain definition finds %d", len(scoped), len(oracle))
+			}
+		})
 	}
 }

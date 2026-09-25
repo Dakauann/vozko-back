@@ -22,8 +22,8 @@ type channelSource struct {
 	DepartmentColumn   string
 	ContainerIDColumn  string
 	ContainerNameExpr  string
-	ContainerNameCols  []string
 	WorkspaceColumn    string
+	LastMessageColumn  string
 
 	LeadJoin     string
 	LeadIDExpr   string
@@ -46,8 +46,8 @@ var channelSources = []channelSource{
 		DepartmentColumn:   "wc.department_id",
 		ContainerIDColumn:  "wce.campaign_id",
 		ContainerNameExpr:  "NULLIF(wc.name, '')",
-		ContainerNameCols:  []string{"wc.name"},
 		WorkspaceColumn:    "wc.workspace_id",
+		LastMessageColumn:  "wce.last_message_at",
 
 		LeadIDExpr:   "COALESCE(wce.lead_id::text, '')",
 		HasMsgWindow: true,
@@ -67,8 +67,8 @@ var channelSources = []channelSource{
 		DepartmentColumn:   "iga.department_id",
 		ContainerIDColumn:  "igc.ig_account_id",
 		ContainerNameExpr:  "COALESCE(NULLIF(iga.username, ''), NULLIF(iga.name, ''))",
-		ContainerNameCols:  []string{"iga.username", "iga.name"},
 		WorkspaceColumn:    "igc.workspace_id",
+		LastMessageColumn:  "igc.last_message_at",
 
 		LeadJoin:   "LEFT JOIN instagram_contacts igct ON igct.id = igc.contact_id",
 		LeadIDExpr: "COALESCE(igct.lead_id::text, '')",
@@ -88,8 +88,8 @@ var channelSources = []channelSource{
 		DepartmentColumn:   "tga.department_id",
 		ContainerIDColumn:  "tgc.account_id",
 		ContainerNameExpr:  "COALESCE(NULLIF(tga.bot_name, ''), NULLIF(tga.bot_username, ''), NULLIF(tga.business_username, ''))",
-		ContainerNameCols:  []string{"tga.bot_name", "tga.bot_username", "tga.business_username"},
 		WorkspaceColumn:    "tgc.workspace_id",
+		LastMessageColumn:  "tgc.last_message_at",
 
 		LeadJoin:   "LEFT JOIN telegram_contacts tgct ON tgct.id = tgc.contact_id",
 		LeadIDExpr: "COALESCE(tgct.lead_id::text, '')",
@@ -109,8 +109,8 @@ var channelSources = []channelSource{
 		DepartmentColumn:   "uwi.department_id",
 		ContainerIDColumn:  "uwc.instance_id",
 		ContainerNameExpr:  "COALESCE(NULLIF(uwi.display_name, ''), NULLIF(uwi.profile_name, ''), NULLIF(uwi.provider_name, ''), NULLIF(uwi.phone_number, ''))",
-		ContainerNameCols:  []string{"uwi.display_name", "uwi.profile_name", "uwi.provider_name", "uwi.phone_number"},
 		WorkspaceColumn:    "uwc.workspace_id",
+		LastMessageColumn:  "uwc.last_message_at",
 
 		LeadJoin:   "LEFT JOIN unofficial_whatsapp_contacts uwct ON uwct.id = uwc.contact_id",
 		LeadIDExpr: "COALESCE(uwct.lead_id::text, '')",
@@ -169,16 +169,6 @@ func (s channelSource) containerName() string {
 	return "COALESCE(" + s.ContainerNameExpr + ", '')"
 }
 
-func (s channelSource) containerNameGroupBy() []string {
-	if len(s.ContainerNameCols) > 0 {
-		return s.ContainerNameCols
-	}
-	if s.ContainerNameExpr == "" {
-		return nil
-	}
-	return []string{s.ContainerNameExpr}
-}
-
 func (s channelSource) leadID() string {
 	if s.LeadIDExpr == "" {
 		return "''"
@@ -200,34 +190,6 @@ func (s channelSource) projection(isNewContact string) string {
 				COALESCE(` + s.ContainerIDColumn + `::text, '') AS container_id,
 				` + s.containerName() + ` AS container_name,
 				` + s.leadID() + ` AS lead_id`
-}
-
-func (s channelSource) groupByColumns() string {
-	cols := []string{
-		s.EntryAlias + ".id",
-		s.EntryAlias + ".created_at",
-		s.DepartmentColumn,
-		"ia.assigned_user_id",
-		"ia.assignee_kind",
-		s.ContainerIDColumn,
-	}
-	if s.StatusColumn != "" {
-		cols = append(cols, s.StatusColumn)
-	}
-	if s.CloseSourceColumn != "" {
-		cols = append(cols, s.CloseSourceColumn)
-	}
-	if s.CloseOutcomeColumn != "" {
-		cols = append(cols, s.CloseOutcomeColumn)
-	}
-	if s.ClosedAtColumn != "" {
-		cols = append(cols, s.ClosedAtColumn)
-	}
-	cols = append(cols, s.containerNameGroupBy()...)
-	if s.LeadIDExpr != "" {
-		cols = append(cols, s.LeadIDExpr)
-	}
-	return strings.Join(cols, ", ")
 }
 
 func emptyEntryProjection() string {

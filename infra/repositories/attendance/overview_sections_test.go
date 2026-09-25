@@ -192,3 +192,46 @@ func TestSectionReadsOnABlankWorkspaceNeverTouchTheDatabase(t *testing.T) {
 		t.Fatalf("a blank workspace ran SQL: %v", statements)
 	}
 }
+
+func activityWindow() attendance.OverviewFilter {
+	from := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 9, 24, 23, 59, 59, 0, time.UTC)
+	return attendance.OverviewFilter{DateFrom: &from, DateTo: &to}
+}
+
+func TestActivityBranchStartsFromTheWorkspacesOwnConversations(t *testing.T) {
+	sql, args := overviewEntrySelect("ws-1", activityWindow())
+	if regexp.MustCompile(`FROM conversation_messages cm\s+JOIN`).MatchString(sql) {
+		t.Fatalf("the scope drives from conversation_messages, which reads every workspace's messages:\n%s", sql)
+	}
+	for _, src := range channelSources {
+		if !strings.Contains(sql, src.LastMessageColumn+" >= ?") {
+			t.Fatalf("%s activity branch does not narrow candidates by %s", src.EntryType, src.LastMessageColumn)
+		}
+	}
+	if got := strings.Count(sql, "EXISTS ("); got != len(channelSources) {
+		t.Fatalf("EXISTS probes = %d, want one per channel (%d)", got, len(channelSources))
+	}
+	if got := strings.Count(sql, "?"); got != len(args) {
+		t.Fatalf("placeholders = %d, args = %d", got, len(args))
+	}
+}
+
+func TestActivityBranchStillConfirmsAMessageInTheWindow(t *testing.T) {
+	sql, _ := overviewEntrySelect("ws-1", activityWindow())
+	for _, want := range []string{"cm.created_at >= ?", "cm.created_at <= ?", "cm.deleted_at IS NULL"} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("activity branch lost %q, so it would admit conversations with no message in the window", want)
+		}
+	}
+}
+
+func TestScopeMessagesProbeEachConversationThroughItsIndex(t *testing.T) {
+	sql := scopeMessagesSQL()
+	if !strings.Contains(sql, "LEFT JOIN LATERAL") {
+		t.Fatalf("the per-conversation message aggregate is not a LATERAL probe, so Postgres may sort the whole table:\n%s", sql)
+	}
+	if strings.Contains(sql, "GROUP BY se.") {
+		t.Fatalf("the aggregate still groups the joined table instead of probing per conversation")
+	}
+}

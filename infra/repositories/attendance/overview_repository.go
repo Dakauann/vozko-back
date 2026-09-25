@@ -88,6 +88,17 @@ func scopeMessagesSQL() string {
 			se.container_name,
 			se.lead_id,
 			se.created_at,
+			msg.first_inbound_at,
+			msg.first_agent_at,
+			msg.last_agent_at,
+			msg.first_assignee_op_at,
+			msg.total_msgs,
+			msg.inbound_msgs,
+			msg.outbound_msgs,
+			msg.template_msgs
+		FROM ` + scopeEntriesTable + ` se
+		LEFT JOIN LATERAL (
+			SELECT
 			MIN(cm.created_at) FILTER (
 				WHERE cm.message_type IN ('user_message', 'audio', 'media')
 			) AS first_inbound_at,
@@ -112,15 +123,11 @@ func scopeMessagesSQL() string {
 			COUNT(cm.id) FILTER (
 				WHERE cm.message_type = 'template'
 			)::int AS template_msgs
-		FROM ` + scopeEntriesTable + ` se
-		LEFT JOIN conversation_messages cm
-			ON cm.entry_id = se.entry_id
-			AND cm.entry_type = se.entry_type
-			AND cm.deleted_at IS NULL
-		GROUP BY se.entry_id, se.entry_type, se.department_id, se.assigned_user_id,
-			se.status_bucket, se.is_new_contact, se.hour_bucket, se.close_source,
-			se.close_outcome, se.closed_at, se.container_id, se.container_name,
-			se.lead_id, se.created_at
+			FROM conversation_messages cm
+			WHERE cm.entry_id = se.entry_id
+			  AND cm.entry_type = se.entry_type
+			  AND cm.deleted_at IS NULL
+		) msg ON TRUE
 	`
 }
 
@@ -444,19 +451,27 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 		cout, couta := createdOutsideRange(src.EntryAlias)
 		sql := `
 			SELECT ` + src.projection("FALSE") + `
-			FROM conversation_messages cm
+			FROM ` + src.ContainerTable + `
 			JOIN ` + src.EntryTable + `
-				ON ` + src.EntryAlias + `.id = cm.entry_id AND ` + src.EntryAlias + `.deleted_at IS NULL
-			JOIN ` + src.ContainerTable + `
-				ON ` + src.ContainerJoin + ` AND ` + src.ContainerAlias + `.deleted_at IS NULL
+				ON ` + src.ContainerJoin + ` AND ` + src.EntryAlias + `.deleted_at IS NULL
 			LEFT JOIN inbox_assignments ia
 				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
 			` + src.LeadJoin + `
-			WHERE cm.entry_type = '` + string(src.EntryType) + `'
-			  AND cm.deleted_at IS NULL
-			  AND ` + src.WorkspaceColumn + ` = ?
-		`
+			WHERE ` + src.WorkspaceColumn + ` = ? AND ` + src.ContainerAlias + `.deleted_at IS NULL
+			  AND ` + cout
 		a := []interface{}{workspaceID}
+		a = append(a, couta...)
+		if from != nil {
+			sql += " AND " + src.LastMessageColumn + " >= ?"
+			a = append(a, *from)
+		}
+		sql += fcd + `
+			  AND EXISTS (
+				SELECT 1 FROM conversation_messages cm
+				WHERE cm.entry_id = ` + src.EntryAlias + `.id
+				  AND cm.entry_type = '` + string(src.EntryType) + `'
+				  AND cm.deleted_at IS NULL`
+		a = append(a, fca...)
 		if from != nil {
 			sql += " AND cm.created_at >= ?"
 			a = append(a, *from)
@@ -465,12 +480,8 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 			sql += " AND cm.created_at <= ?"
 			a = append(a, *to)
 		}
-		sql += " AND " + cout + fcd
-		a = append(a, couta...)
-		a = append(a, fca...)
 		sql += `
-			GROUP BY ` + src.groupByColumns() + `
-		`
+			  )`
 		parts = append(parts, sql)
 		args = append(args, a...)
 	}
