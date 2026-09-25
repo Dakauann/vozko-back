@@ -9,11 +9,7 @@ import (
 
 const unassignedReworkActor = ""
 
-func overviewReworkTX(
-	tx *gorm.DB,
-	workspaceID, msgTmp string,
-	filter attendance.OverviewFilter,
-) (attendance.OverviewRework, error) {
+func overviewReworkTX(tx *gorm.DB, workspaceID, msgTmp string) (attendance.OverviewRework, error) {
 	type reworkRow struct {
 		ActorID     string `gorm:"column:actor_id"`
 		ActorKind   string `gorm:"column:actor_kind"`
@@ -56,7 +52,6 @@ func overviewReworkTX(
 		tallies = append(tallies, tally)
 	}
 
-	_ = filter
 	return attendance.BuildRework(tallies, unassigned, currency), nil
 }
 

@@ -16,6 +16,7 @@ func RegisterProtectedRoutes(
 	att := workspace_domain.ResourceAttendance
 	attRoutes := protected.PathPrefix("/attendance").Subrouter()
 	attRoutes.HandleFunc("/overview", ac(att, workspace_domain.ActionRead, h.GetOverview)).Methods(http.MethodGet)
+	attRoutes.HandleFunc("/overview/{section}", ac(att, workspace_domain.ActionRead, h.GetOverviewSection)).Methods(http.MethodGet)
 	attRoutes.HandleFunc("/stats", ac(att, workspace_domain.ActionRead, h.GetAttendanceStats)).Methods(http.MethodGet)
 	attRoutes.HandleFunc("/windows", ac(att, workspace_domain.ActionRead, h.GetWindowStats)).Methods(http.MethodGet)
 	attRoutes.HandleFunc("/response-times", ac(att, workspace_domain.ActionRead, h.GetResponseTimeDistribution)).Methods(http.MethodGet)

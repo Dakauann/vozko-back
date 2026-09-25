@@ -1,6 +1,9 @@
 package attendance
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type QualityPolicy struct {
 	Enabled      bool
@@ -44,11 +47,19 @@ type Repository interface {
 
 	GetFRTStats(workspaceID string, filter StatsFilter) (*FRTStats, error)
 
-	GetOverview(workspaceID string, filter OverviewFilter) (*Overview, error)
+	ReadSummary(ctx context.Context, workspaceID string, filter OverviewFilter) (*SummarySection, error)
 
-	GetTrend(workspaceID string, filter OverviewFilter, buckets int, loc *time.Location) (TrendResult, error)
+	ReadTeam(ctx context.Context, workspaceID string, filter OverviewFilter) (*TeamSection, error)
 
-	GetRevenue(workspaceID string, from, to time.Time) ([]RevenueTally, int64, error)
+	ReadStages(ctx context.Context, workspaceID string, filter OverviewFilter) (OverviewStages, error)
 
-	GetRevenueByMonth(workspaceID string, from, to time.Time, loc *time.Location, ownerID string) ([]RevenueMonthRow, error)
+	ReadBacklog(ctx context.Context, workspaceID string, filter OverviewFilter, now time.Time) (BacklogXray, error)
+
+	ReadRework(ctx context.Context, workspaceID string, filter OverviewFilter) (OverviewRework, error)
+
+	GetTrend(ctx context.Context, workspaceID string, filter OverviewFilter, buckets int, loc *time.Location) (TrendResult, error)
+
+	GetRevenue(ctx context.Context, workspaceID string, from, to time.Time) ([]RevenueTally, int64, error)
+
+	GetRevenueByMonth(ctx context.Context, workspaceID string, from, to time.Time, loc *time.Location, ownerID string) ([]RevenueMonthRow, error)
 }

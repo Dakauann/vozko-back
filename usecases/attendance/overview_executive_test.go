@@ -3,6 +3,7 @@ package attendance_usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,38 +17,95 @@ import (
 
 type stubOverviewRepo struct {
 	attendance.Repository
-	overview       *attendance.Overview
+	summary        *attendance.SummarySection
+	team           *attendance.TeamSection
+	stages         attendance.OverviewStages
+	backlog        attendance.BacklogXray
+	rework         attendance.OverviewRework
 	trend          attendance.TrendResult
 	revenue        []attendance.RevenueTally
 	revenueByMonth []attendance.RevenueMonthRow
 	monthOwners    []string
 	trendErr       error
 	revErr         error
+	onRead         func(section string)
+
+	mu    sync.Mutex
+	reads map[string]int
 }
 
-func (r *stubOverviewRepo) GetOverview(string, attendance.OverviewFilter) (*attendance.Overview, error) {
-	if r.overview == nil {
-		return emptyOverview(), nil
+func (r *stubOverviewRepo) read(section string) {
+	r.mu.Lock()
+	if r.reads == nil {
+		r.reads = map[string]int{}
 	}
-	copied := *r.overview
+	r.reads[section]++
+	r.mu.Unlock()
+	if r.onRead != nil {
+		r.onRead(section)
+	}
+}
+
+func (r *stubOverviewRepo) calls(section string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reads[section]
+}
+
+func (r *stubOverviewRepo) ReadSummary(context.Context, string, attendance.OverviewFilter) (*attendance.SummarySection, error) {
+	r.read("summary")
+	if r.summary == nil {
+		return &attendance.SummarySection{Hourly: make([]attendance.HourlyPoint, 24), Definitions: attendance.DefaultDefinitions()}, nil
+	}
+	copied := *r.summary
 	return &copied, nil
 }
 
-func (r *stubOverviewRepo) GetTrend(string, attendance.OverviewFilter, int, *time.Location) (attendance.TrendResult, error) {
+func (r *stubOverviewRepo) ReadTeam(context.Context, string, attendance.OverviewFilter) (*attendance.TeamSection, error) {
+	r.read("team")
+	if r.team == nil {
+		return &attendance.TeamSection{}, nil
+	}
+	copied := *r.team
+	return &copied, nil
+}
+
+func (r *stubOverviewRepo) ReadStages(context.Context, string, attendance.OverviewFilter) (attendance.OverviewStages, error) {
+	r.read("stages")
+	return r.stages, nil
+}
+
+func (r *stubOverviewRepo) ReadBacklog(context.Context, string, attendance.OverviewFilter, time.Time) (attendance.BacklogXray, error) {
+	r.read("backlog")
+	return r.backlog, nil
+}
+
+func (r *stubOverviewRepo) ReadRework(context.Context, string, attendance.OverviewFilter) (attendance.OverviewRework, error) {
+	r.read("rework")
+	return r.rework, nil
+}
+
+func (r *stubOverviewRepo) GetTrend(context.Context, string, attendance.OverviewFilter, int, *time.Location) (attendance.TrendResult, error) {
+	r.read("trend")
 	return r.trend, r.trendErr
 }
 
-func (r *stubOverviewRepo) GetRevenue(string, time.Time, time.Time) ([]attendance.RevenueTally, int64, error) {
+func (r *stubOverviewRepo) GetRevenue(context.Context, string, time.Time, time.Time) ([]attendance.RevenueTally, int64, error) {
+	r.read("revenue")
 	return r.revenue, 0, r.revErr
 }
 
 func (r *stubOverviewRepo) GetRevenueByMonth(
+	_ context.Context,
 	_ string,
 	_, _ time.Time,
 	_ *time.Location,
 	ownerID string,
 ) ([]attendance.RevenueMonthRow, error) {
+	r.read("revenue_by_month")
+	r.mu.Lock()
 	r.monthOwners = append(r.monthOwners, ownerID)
+	r.mu.Unlock()
 	return r.revenueByMonth, r.revErr
 }
 
@@ -125,7 +183,7 @@ func newTestUseCase(
 }
 
 func TestExecuteBuildsPeriodAndProjections(t *testing.T) {
-	repo := &stubOverviewRepo{overview: &attendance.Overview{
+	repo := &stubOverviewRepo{summary: &attendance.SummarySection{
 		KPIs:        attendance.OverviewKPIs{Finished: 1538, Engaged: 2000},
 		Definitions: attendance.DefaultDefinitions(),
 	}}
@@ -188,7 +246,7 @@ func TestExecutePropagatesAConfigReadFailure(t *testing.T) {
 }
 
 func TestExecuteWithoutAScheduleLeavesTheProjectionUnavailable(t *testing.T) {
-	repo := &stubOverviewRepo{overview: &attendance.Overview{
+	repo := &stubOverviewRepo{summary: &attendance.SummarySection{
 		KPIs:        attendance.OverviewKPIs{Finished: 1538},
 		Definitions: attendance.DefaultDefinitions(),
 	}}

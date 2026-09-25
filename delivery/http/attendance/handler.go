@@ -1,13 +1,18 @@
 package attendance
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"vozko/delivery/http/response"
 	"vozko/domain/agent_presence"
 	attendancedomain "vozko/domain/attendance"
+	"vozko/domain/cache"
 	"vozko/domain/queue_event"
 	"vozko/infra/http/middleware"
 	attendance_usecase "vozko/usecases/attendance"
@@ -20,6 +25,7 @@ type AttendanceHandler struct {
 	getAIAgentStats             attendancedomain.GetAIAgentStatsUseCase
 	getFRTStats                 attendancedomain.GetFRTStatsUseCase
 	getOverview                 attendancedomain.GetOverviewUseCase
+	sections                    attendancedomain.OverviewSectionsUseCase
 	queueRepo                   queue_event.Repository
 	presenceRepo                agent_presence.Repository
 	targets                     *attendance_usecase.TargetsService
@@ -44,8 +50,9 @@ func (h *AttendanceHandler) SetFRTStats(uc attendancedomain.GetFRTStatsUseCase) 
 	h.getFRTStats = uc
 }
 
-func (h *AttendanceHandler) SetOverview(uc attendancedomain.GetOverviewUseCase) {
+func (h *AttendanceHandler) SetOverview(uc attendance_usecase.OverviewService) {
 	h.getOverview = uc
+	h.sections = uc
 }
 
 func (h *AttendanceHandler) SetQueueRepo(repo queue_event.Repository) {
@@ -352,22 +359,102 @@ func (h *AttendanceHandler) GetOverview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if h.getOverview == nil {
-		response.WriteSuccess(w, http.StatusOK, &attendancedomain.Overview{
-			Hourly:      make([]attendancedomain.HourlyPoint, 24),
-			Stages:      attendancedomain.BuildStageDistribution(nil, 0, 0),
-			Definitions: attendancedomain.DefaultDefinitions(),
-			KPIs: attendancedomain.OverviewKPIs{
-				CSATAvailable: false,
-				SLAAvailable:  false,
-			},
-		})
+		response.WriteError(w, http.StatusServiceUnavailable, "attendance overview is not configured", nil)
 		return
 	}
 	filter := parseOverviewFilter(r)
 	out, err := h.getOverview.Execute(wsID, filter)
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch attendance overview: "+err.Error(), nil)
+		writeOverviewError(w, err)
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, out)
+}
+
+// @Summary		Seção da visão geral de atendimento
+// @Description	Retorna uma seção da visão geral (summary, trend, stages, backlog, team ou rework) para que a página carregue cada bloco quando ele entra na tela. Aceita os mesmos filtros de /attendance/overview. Seções idênticas ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.
+// @Tags			Atendimento
+// @Produce		json
+// @Param			section			path	string	true	"Seção"	Enums(summary, trend, stages, backlog, team, rework)
+// @Param			date_from		query	string	false	"Data inicial (YYYY-MM-DD)"
+// @Param			date_to			query	string	false	"Data final (YYYY-MM-DD)"
+// @Param			department_id	query	string	false	"ID do departamento"
+// @Param			member_id		query	string	false	"ID do membro"
+// @Param			campaign_id		query	string	false	"ID da campanha"
+// @Param			campaign_type	query	string	false	"Tipo da campanha"
+// @Param			channel			query	string	false	"Canal de atendimento"
+// @Param			rank_metric		query	string	false	"Métrica de ordenação da equipe (apenas team)"
+// @Param			trend_buckets	query	int		false	"Meses da série histórica (apenas trend)"
+// @Param			include_ai		query	string	false	"Incluir agentes de IA (apenas team)"
+// @Success		200	{object}	attendance.SummarySection
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Failure		503	{object}	response.ErrorResponse
+// @Failure		504	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/attendance/overview/{section} [get]
+func (h *AttendanceHandler) GetOverviewSection(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.GetWorkspaceID(r)
+	if wsID == "" {
+		response.WriteError(w, http.StatusBadRequest, "workspace_id required", nil)
+		return
+	}
+	section, ok := attendancedomain.ParseSection(mux.Vars(r)["section"])
+	if !ok {
+		response.WriteError(w, http.StatusNotFound, "unknown overview section", nil)
+		return
+	}
+	if h.sections == nil {
+		response.WriteError(w, http.StatusServiceUnavailable, "attendance overview is not configured", nil)
+		return
+	}
+
+	out, err := h.readSection(r.Context(), section, wsID, parseOverviewFilter(r))
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		writeOverviewError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, out)
+}
+
+func (h *AttendanceHandler) readSection(
+	ctx context.Context,
+	section attendancedomain.Section,
+	workspaceID string,
+	filter attendancedomain.OverviewFilter,
+) (any, error) {
+	switch section {
+	case attendancedomain.SectionSummary:
+		return h.sections.Summary(ctx, workspaceID, filter)
+	case attendancedomain.SectionTrend:
+		return h.sections.Trend(ctx, workspaceID, filter)
+	case attendancedomain.SectionStages:
+		return h.sections.Stages(ctx, workspaceID, filter)
+	case attendancedomain.SectionBacklog:
+		return h.sections.Backlog(ctx, workspaceID, filter)
+	case attendancedomain.SectionTeam:
+		return h.sections.Team(ctx, workspaceID, filter)
+	case attendancedomain.SectionRework:
+		return h.sections.Rework(ctx, workspaceID, filter)
+	}
+	return nil, errUnknownSection
+}
+
+var errUnknownSection = errors.New("unknown overview section")
+
+const analyticsRetryAfterSeconds = "5"
+
+func writeOverviewError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, cache.ErrGateBusy):
+		w.Header().Set("Retry-After", analyticsRetryAfterSeconds)
+		response.WriteError(w, http.StatusServiceUnavailable, "attendance analytics are busy, retry shortly", nil)
+	case errors.Is(err, context.DeadlineExceeded):
+		response.WriteError(w, http.StatusGatewayTimeout, "attendance analytics took too long", nil)
+	default:
+		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch attendance overview: "+err.Error(), nil)
+	}
 }

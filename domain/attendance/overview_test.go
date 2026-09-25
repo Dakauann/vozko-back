@@ -52,14 +52,14 @@ func TestOverviewFilter_JSONTags(t *testing.T) {
 }
 
 func TestOverviewEmptyPayloadShape(t *testing.T) {
-	out := &Overview{
+	out := &Overview{SummarySection: SummarySection{
 		Hourly:      make([]HourlyPoint, 24),
 		Definitions: DefaultDefinitions(),
 		KPIs: OverviewKPIs{
 			CSATAvailable: false,
 			SLAAvailable:  false,
 		},
-	}
+	}}
 	for h := 0; h < 24; h++ {
 		out.Hourly[h] = HourlyPoint{Hour: h}
 	}

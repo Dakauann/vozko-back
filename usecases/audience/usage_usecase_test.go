@@ -131,3 +131,33 @@ func TestUsage_ReportsACeilingWithoutAnyChannelAccount(t *testing.T) {
 		t.Errorf("Limit = %d, want 300", u.Limit)
 	}
 }
+
+func TestUsage_LimitMatchesTheCeilingTheUsageReports(t *testing.T) {
+	uc, repo, limits, _ := usageHarness(t, 20000)
+	ctx := context.Background()
+	repo.seedWaiting("ws-1", 7)
+
+	for _, workspaceCap := range []int{0, 250} {
+		if err := limits.Save(ctx, "ws-1", ca.WorkspaceSettings{DailyCap: workspaceCap}); err != nil {
+			t.Fatal(err)
+		}
+		usage, err := uc.Execute(ctx, "ws-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		limit, err := uc.Limit(ctx, "ws-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if limit != usage.Limit {
+			t.Fatalf("Limit() = %d, Execute().Limit = %d with a workspace cap of %d", limit, usage.Limit, workspaceCap)
+		}
+	}
+}
+
+func TestUsage_LimitNeedsAWorkspace(t *testing.T) {
+	uc, _, _, _ := usageHarness(t, 100)
+	if _, err := uc.Limit(context.Background(), ""); err != ca.ErrWorkspaceRequired {
+		t.Fatalf("Limit(\"\") error = %v, want ErrWorkspaceRequired", err)
+	}
+}

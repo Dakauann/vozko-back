@@ -11,12 +11,12 @@ import (
 	wsc "vozko/domain/workspace_config"
 )
 
-type executiveInputs struct {
-	schedule *wh.Schedule
-	period   attendance.Period
-	from     time.Time
-	to       time.Time
-	targets  []at.Target
+type executiveWindow struct {
+	schedule        *wh.Schedule
+	period          attendance.Period
+	from            time.Time
+	to              time.Time
+	invalidSchedule bool
 }
 
 func (uc *getOverviewUseCase) qualityPolicy(config *wsc.WorkspaceConfig, departmentID string) attendance.QualityPolicy {
@@ -47,51 +47,89 @@ func (uc *getOverviewUseCase) qualityPolicy(config *wsc.WorkspaceConfig, departm
 	}
 }
 
-func (uc *getOverviewUseCase) prepare(
+func (uc *getOverviewUseCase) computeSummary(
 	ctx context.Context,
 	workspaceID string,
-	filter *attendance.OverviewFilter,
-	now time.Time,
-) (*wsc.WorkspaceConfig, error) {
+	filter attendance.OverviewFilter,
+) (*attendance.SummarySection, error) {
+	now := uc.clock()
 	config, err := uc.schedules.Config(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	filter.Quality = uc.qualityPolicy(config, filter.DepartmentID)
-	return config, nil
+
+	out, err := uc.repo.ReadSummary(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	out.Filter = filter
+	out.GeneratedAt = now
+
+	window, err := uc.resolveWindow(config, workspaceID, filter, now)
+	if err != nil {
+		return nil, err
+	}
+	targets, err := uc.overviewTargets(ctx, workspaceID, window)
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.fillRevenue(ctx, workspaceID, filter, window, out); err != nil {
+		return nil, err
+	}
+	fillProjections(window, targets, out)
+	return out, nil
 }
 
-func (uc *getOverviewUseCase) resolveInputs(
+func (uc *getOverviewUseCase) loadWindow(
 	ctx context.Context,
 	workspaceID string,
 	filter attendance.OverviewFilter,
-	config *wsc.WorkspaceConfig,
-	now time.Time,
-) (executiveInputs, error) {
-	out := executiveInputs{}
+) (executiveWindow, error) {
+	config, err := uc.schedules.Config(ctx, workspaceID)
+	if err != nil {
+		return executiveWindow{}, err
+	}
+	return uc.resolveWindow(config, workspaceID, filter, uc.clock())
+}
 
+func (uc *getOverviewUseCase) resolveWindow(
+	config *wsc.WorkspaceConfig,
+	workspaceID string,
+	filter attendance.OverviewFilter,
+	now time.Time,
+) (executiveWindow, error) {
 	schedule, err := uc.schedules.ResolveFromConfig(config, workspaceID, filter.DepartmentID)
 	if err != nil {
 		if !errors.Is(err, ErrScheduleInvalid) {
-			return out, err
+			return executiveWindow{}, err
 		}
-		out.period = attendance.Period{Reason: ReasonInvalidSchedule}
-		out.from, out.to = attendance.MonthRange(anchorOf(filter, now), time.UTC)
-		return out, nil
+		from, to := attendance.MonthRange(anchorOf(filter, now), time.UTC)
+		return executiveWindow{
+			period:          attendance.Period{Reason: ReasonInvalidSchedule},
+			from:            from,
+			to:              to,
+			invalidSchedule: true,
+		}, nil
 	}
-	out.schedule = schedule
-	out.from, out.to = periodFor(schedule, filter, now)
-	out.period = attendance.BuildPeriod(schedule, out.from, out.to, now)
+	from, to := periodFor(schedule, filter, now)
+	return executiveWindow{
+		schedule: schedule,
+		from:     from,
+		to:       to,
+		period:   attendance.BuildPeriod(schedule, from, to, now),
+	}, nil
+}
 
-	if uc.targets == nil {
-		return out, nil
+func (uc *getOverviewUseCase) overviewTargets(
+	ctx context.Context,
+	workspaceID string,
+	window executiveWindow,
+) ([]at.Target, error) {
+	if uc.targets == nil || window.invalidSchedule {
+		return nil, nil
 	}
-	targets, err := uc.targets.ListForOverview(ctx, workspaceID, out.from, scheduleLocation(schedule))
-	if err != nil {
-		return out, err
-	}
-	out.targets = targets
-	return out, nil
+	return uc.targets.ListForOverview(ctx, workspaceID, window.from, scheduleLocation(window.schedule))
 }
 
 func anchorOf(filter attendance.OverviewFilter, now time.Time) time.Time {
@@ -102,10 +140,11 @@ func anchorOf(filter attendance.OverviewFilter, now time.Time) time.Time {
 }
 
 func (uc *getOverviewUseCase) fillRevenue(
+	ctx context.Context,
 	workspaceID string,
 	filter attendance.OverviewFilter,
-	inputs executiveInputs,
-	out *attendance.Overview,
+	window executiveWindow,
+	out *attendance.SummarySection,
 ) error {
 	if filter.DepartmentID != "" {
 		out.Revenue = attendance.UnavailableRevenue(attendance.ReasonRevenueNotDepartmentScoped)
@@ -116,7 +155,7 @@ func (uc *getOverviewUseCase) fillRevenue(
 		return nil
 	}
 
-	tallies, unattributed, err := uc.repo.GetRevenue(workspaceID, inputs.from, inputs.to)
+	tallies, unattributed, err := uc.repo.GetRevenue(ctx, workspaceID, window.from, window.to)
 	if err != nil {
 		return err
 	}
@@ -128,9 +167,8 @@ func (uc *getOverviewUseCase) fillRevenue(
 	}
 
 	previous := map[string]int64{}
-	prevFrom := inputs.from.AddDate(0, -1, 0)
 	prevRows, err := uc.repo.GetRevenueByMonth(
-		workspaceID, prevFrom, inputs.from, scheduleLocation(inputs.schedule), ownerID)
+		ctx, workspaceID, window.from.AddDate(0, -1, 0), window.from, scheduleLocation(window.schedule), ownerID)
 	if err != nil {
 		return err
 	}
@@ -138,12 +176,12 @@ func (uc *getOverviewUseCase) fillRevenue(
 		previous[row.Currency] += row.ValueCents
 	}
 
-	out.Revenue = attendance.BuildRevenue(tallies, unattributed, inputs.period, previous)
+	out.Revenue = attendance.BuildRevenue(tallies, unattributed, window.period, previous)
 	return nil
 }
 
-func (uc *getOverviewUseCase) fillProjections(inputs executiveInputs, out *attendance.Overview) {
-	out.Period = inputs.period
+func fillProjections(window executiveWindow, targets []at.Target, out *attendance.SummarySection) {
+	out.Period = window.period
 	out.Projections = make([]attendance.MetricProjection, 0, len(attendance.TargetableMetrics()))
 
 	selector := at.Selector{
@@ -154,38 +192,38 @@ func (uc *getOverviewUseCase) fillProjections(inputs executiveInputs, out *atten
 	for _, spec := range attendance.TargetableMetrics() {
 		actual, known := attendance.MetricActual(out, spec.Key)
 		var target *float64
-		if resolution, found := at.Resolve(inputs.targets, spec.Key, selector); found {
+		if resolution, found := at.Resolve(targets, spec.Key, selector); found {
 			value := resolution.Value
 			target = &value
 		}
-		out.Projections = append(out.Projections, attendance.BuildProjection(spec, actual, known, target, inputs.period))
+		out.Projections = append(out.Projections, attendance.BuildProjection(spec, actual, known, target, window.period))
 	}
 
 	out.Standing = attendance.BuildStanding(out.Projections, attendance.DefaultClusterBands())
 }
 
-func (uc *getOverviewUseCase) fillTrend(
+func (uc *getOverviewUseCase) buildTrend(
+	ctx context.Context,
 	workspaceID string,
 	filter attendance.OverviewFilter,
-	inputs executiveInputs,
-	out *attendance.Overview,
-) error {
+	window executiveWindow,
+	summary *attendance.SummarySection,
+) (attendance.Trend, error) {
 	if uc.repo == nil {
-		out.Trend = attendance.UnavailableTrend(attendance.ReasonTrendUnavailable)
-		return nil
+		return attendance.UnavailableTrend(attendance.ReasonTrendUnavailable), nil
 	}
-	loc := scheduleLocation(inputs.schedule)
+	loc := scheduleLocation(window.schedule)
 	buckets := attendance.ClampTrendBuckets(filter.TrendBuckets)
 
-	result, err := uc.repo.GetTrend(workspaceID, filter, buckets, loc)
+	result, err := uc.repo.GetTrend(ctx, workspaceID, filter, buckets, loc)
 	if err != nil {
-		return err
+		return attendance.Trend{}, err
 	}
 
-	currentBucket := inputs.from.In(loc).Format(attendance.TrendBucketLayout)
-	projected := projectionByKey(out.Projections)
+	currentBucket := window.from.In(loc).Format(attendance.TrendBucketLayout)
+	projected := projectionByKey(summary.Projections)
 
-	series := make([]attendance.TrendSeries, 0, 4)
+	series := make([]attendance.TrendSeries, 0, 5)
 	series = append(series,
 		attendance.BuildTrend(
 			mustMetric(attendance.MetricFinished),
@@ -213,39 +251,43 @@ func (uc *getOverviewUseCase) fillTrend(
 		),
 	)
 
-	if revenueSeries, ok := uc.revenueTrend(workspaceID, inputs, currentBucket, filter.MemberID, out); ok {
+	revenueSeries, ok, err := uc.revenueTrend(ctx, workspaceID, window, currentBucket, filter.MemberID, summary.Revenue)
+	if err != nil {
+		return attendance.Trend{}, err
+	}
+	if ok {
 		series = append(series, revenueSeries)
 	}
 
-	out.Trend = attendance.Trend{
+	return attendance.Trend{
 		Series:     series,
 		Unbucketed: result.Unbucketed,
 		Available:  true,
-	}
-	return nil
+	}, nil
 }
 
 const trendPendingStockKey = "pending_stock"
 
 func (uc *getOverviewUseCase) revenueTrend(
+	ctx context.Context,
 	workspaceID string,
-	inputs executiveInputs,
+	window executiveWindow,
 	currentBucket string,
 	ownerID string,
-	out *attendance.Overview,
-) (attendance.TrendSeries, bool) {
-	if uc.repo == nil || !out.Revenue.Available || out.Revenue.MixedCurrencies || len(out.Revenue.Currencies) != 1 {
-		return attendance.TrendSeries{}, false
+	revenue attendance.Revenue,
+) (attendance.TrendSeries, bool, error) {
+	if !revenue.Available || revenue.MixedCurrencies || len(revenue.Currencies) != 1 {
+		return attendance.TrendSeries{}, false, nil
 	}
-	loc := scheduleLocation(inputs.schedule)
-	windowFrom := inputs.from.AddDate(0, -(attendance.DefaultTrendBuckets - 1), 0)
+	loc := scheduleLocation(window.schedule)
+	windowFrom := window.from.AddDate(0, -(attendance.DefaultTrendBuckets - 1), 0)
 
-	rows, err := uc.repo.GetRevenueByMonth(workspaceID, windowFrom, inputs.to, loc, ownerID)
+	rows, err := uc.repo.GetRevenueByMonth(ctx, workspaceID, windowFrom, window.to, loc, ownerID)
 	if err != nil {
-		return attendance.TrendSeries{}, false
+		return attendance.TrendSeries{}, false, err
 	}
 
-	currency := out.Revenue.Currencies[0].Currency
+	currency := revenue.Currencies[0].Currency
 	byBucket := map[string]int64{}
 	for _, row := range rows {
 		if row.Currency != currency {
@@ -265,22 +307,23 @@ func (uc *getOverviewUseCase) revenueTrend(
 	}
 
 	var projected *float64
-	if out.Revenue.Currencies[0].Projected != nil {
-		value := float64(*out.Revenue.Currencies[0].Projected)
+	if revenue.Currencies[0].Projected != nil {
+		value := float64(*revenue.Currencies[0].Projected)
 		projected = &value
 	}
-	return attendance.BuildTrend(mustMetric(attendance.MetricRevenueCents), points, projected), true
+	return attendance.BuildTrend(mustMetric(attendance.MetricRevenueCents), points, projected), true, nil
 }
 
-func (uc *getOverviewUseCase) fillTeamRanking(
+func (uc *getOverviewUseCase) buildTeamRanking(
 	workspaceID string,
 	filter attendance.OverviewFilter,
-	inputs executiveInputs,
-	out *attendance.Overview,
-) {
+	window executiveWindow,
+	summary *attendance.SummarySection,
+	members []attendance.MemberRow,
+) attendance.TeamRanking {
 	onlineMS := map[string]int64{}
 	if uc.presence != nil {
-		rows, err := uc.presence.Occupancy(workspaceID, &inputs.from, &inputs.to)
+		rows, err := uc.presence.Occupancy(workspaceID, &window.from, &window.to)
 		if err == nil {
 			for _, row := range rows {
 				onlineMS[row.UserID] = row.OnlineMS
@@ -289,8 +332,8 @@ func (uc *getOverviewUseCase) fillTeamRanking(
 	}
 
 	revenue := map[string]attendance.OwnerRevenue{}
-	if out.Revenue.Available {
-		for _, row := range out.Revenue.ByOwner {
+	if summary.Revenue.Available {
+		for _, row := range summary.Revenue.ByOwner {
 			if row.OwnerID == "" {
 				continue
 			}
@@ -307,10 +350,10 @@ func (uc *getOverviewUseCase) fillTeamRanking(
 		}
 	}
 
-	out.TeamRanking = attendance.BuildTeamRanking(
-		out.ByMember,
+	return attendance.BuildTeamRanking(
+		members,
 		filter.RankMetric,
-		inputs.period,
+		summary.Period,
 		onlineMS,
 		revenue,
 		attendance.DefaultMemberClassBands(),

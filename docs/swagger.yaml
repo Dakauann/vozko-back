@@ -1165,6 +1165,49 @@ definitions:
       total:
         type: integer
     type: object
+  attendance.SummarySection:
+    properties:
+      ai:
+        $ref: '#/definitions/attendance.OverviewAI'
+      channel_mix:
+        items:
+          $ref: '#/definitions/attendance.ChannelSlice'
+        type: array
+      definitions:
+        $ref: '#/definitions/attendance.MetricDefinitions'
+      filter:
+        $ref: '#/definitions/attendance.OverviewFilter'
+      finished_by_source:
+        $ref: '#/definitions/attendance.OverviewFinishedBySource'
+      frt:
+        $ref: '#/definitions/attendance.OverviewFRT'
+      generated_at:
+        type: string
+      hourly:
+        items:
+          $ref: '#/definitions/attendance.HourlyPoint'
+        type: array
+      kpis:
+        $ref: '#/definitions/attendance.OverviewKPIs'
+      messaging:
+        $ref: '#/definitions/attendance.OverviewMessaging'
+      period:
+        $ref: '#/definitions/attendance.Period'
+      projections:
+        items:
+          $ref: '#/definitions/attendance.MetricProjection'
+        type: array
+      quality:
+        $ref: '#/definitions/attendance.Quality'
+      reopen:
+        $ref: '#/definitions/attendance.OverviewReopen'
+      revenue:
+        $ref: '#/definitions/attendance.Revenue'
+      standing:
+        $ref: '#/definitions/attendance.Standing'
+      status_distribution:
+        $ref: '#/definitions/attendance.StatusDistribution'
+    type: object
   attendance.TargetRequest:
     properties:
       currency:
@@ -3256,6 +3299,41 @@ definitions:
       status:
         type: string
     type: object
+  conversation.CloseReason:
+    enum:
+    - manual
+    - customer_idle
+    - ai_resolved
+    - max_age
+    - workflow
+    type: string
+    x-enum-varnames:
+    - CloseReasonManual
+    - CloseReasonCustomerIdle
+    - CloseReasonAIResolved
+    - CloseReasonMaxAge
+    - CloseReasonWorkflow
+  conversation.CloseRecord:
+    properties:
+      closedAt:
+        type: string
+      outcome:
+        type: string
+      reason:
+        $ref: '#/definitions/conversation.CloseReason'
+      source:
+        $ref: '#/definitions/conversation.CloseSource'
+    type: object
+  conversation.CloseSource:
+    enum:
+    - human
+    - ai
+    - system
+    type: string
+    x-enum-varnames:
+    - CloseSourceHuman
+    - CloseSourceAI
+    - CloseSourceSystem
   conversation.ConversationMedia:
     properties:
       createdAt:
@@ -3297,6 +3375,8 @@ definitions:
         type: string
       campaignName:
         type: string
+      close:
+        $ref: '#/definitions/conversation.CloseRecord'
       conversationStatus:
         type: string
       entryID:
@@ -7890,6 +7970,94 @@ paths:
       security:
       - BearerAuth: []
       summary: Visão geral de atendimento
+      tags:
+      - Atendimento
+  /attendance/overview/{section}:
+    get:
+      description: Retorna uma seção da visão geral (summary, trend, stages, backlog,
+        team ou rework) para que a página carregue cada bloco quando ele entra na
+        tela. Aceita os mesmos filtros de /attendance/overview. Seções idênticas ficam
+        em cache por 60 segundos; quando o limite de consultas analíticas simultâneas
+        está ocupado, responde 503 com Retry-After.
+      parameters:
+      - description: Seção
+        enum:
+        - summary
+        - trend
+        - stages
+        - backlog
+        - team
+        - rework
+        in: path
+        name: section
+        required: true
+        type: string
+      - description: Data inicial (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Data final (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: ID do departamento
+        in: query
+        name: department_id
+        type: string
+      - description: ID do membro
+        in: query
+        name: member_id
+        type: string
+      - description: ID da campanha
+        in: query
+        name: campaign_id
+        type: string
+      - description: Tipo da campanha
+        in: query
+        name: campaign_type
+        type: string
+      - description: Canal de atendimento
+        in: query
+        name: channel
+        type: string
+      - description: Métrica de ordenação da equipe (apenas team)
+        in: query
+        name: rank_metric
+        type: string
+      - description: Meses da série histórica (apenas trend)
+        in: query
+        name: trend_buckets
+        type: integer
+      - description: Incluir agentes de IA (apenas team)
+        in: query
+        name: include_ai
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/attendance.SummarySection'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Seção da visão geral de atendimento
       tags:
       - Atendimento
   /attendance/queue-stats:

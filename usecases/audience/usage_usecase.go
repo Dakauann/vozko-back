@@ -46,6 +46,13 @@ func (uc *usageUseCase) Execute(ctx context.Context, workspaceID string) (ca.Usa
 	return usage, nil
 }
 
+func (uc *usageUseCase) Limit(ctx context.Context, workspaceID string) (int, error) {
+	if workspaceID == "" {
+		return 0, ca.ErrWorkspaceRequired
+	}
+	return uc.limitFor(ctx, workspaceID), nil
+}
+
 func (uc *usageUseCase) limitFor(ctx context.Context, workspaceID string) int {
 	workspaceCap := 0
 	if uc.workspaceLimits != nil {

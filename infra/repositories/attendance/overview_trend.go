@@ -1,6 +1,7 @@
 package attendance_repository
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 func (r *repository) GetTrend(
+	ctx context.Context,
 	workspaceID string,
 	filter attendance.OverviewFilter,
 	buckets int,
@@ -52,11 +54,12 @@ func (r *repository) GetTrend(
 
 	sql, args := query.build()
 	var rows []bucketRow
-	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+	db := r.db.WithContext(ctx)
+	if err := db.Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return out, err
 	}
 
-	unbucketed, err := trendUnbucketed(r.db, workspaceID, filter, sources, from, to)
+	unbucketed, err := trendUnbucketed(db, workspaceID, filter, sources, from, to)
 	if err != nil {
 		return out, err
 	}

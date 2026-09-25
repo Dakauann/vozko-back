@@ -210,12 +210,12 @@ func TestBuildProjectionUnknownActualIsUnavailable(t *testing.T) {
 }
 
 func TestMetricActualResolutionPctNeedsAPopulation(t *testing.T) {
-	empty := &Overview{}
+	empty := &SummarySection{}
 	if _, known := MetricActual(empty, MetricResolutionPct); known {
 		t.Fatalf("MetricActual(resolution_pct) on an empty overview known = true, want false")
 	}
 
-	populated := &Overview{KPIs: OverviewKPIs{Finished: 30, Ongoing: 10, Pending: 10}}
+	populated := &SummarySection{KPIs: OverviewKPIs{Finished: 30, Ongoing: 10, Pending: 10}}
 	value, known := MetricActual(populated, MetricResolutionPct)
 	if !known || value != 60 {
 		t.Fatalf("MetricActual(resolution_pct) = %v, %v, want 60, true", value, known)
@@ -223,7 +223,7 @@ func TestMetricActualResolutionPctNeedsAPopulation(t *testing.T) {
 }
 
 func TestMetricActualRevenueRefusesMixedCurrencies(t *testing.T) {
-	mixed := &Overview{Revenue: Revenue{
+	mixed := &SummarySection{Revenue: Revenue{
 		Available:       true,
 		MixedCurrencies: true,
 		Currencies: []RevenueByCurrency{

@@ -3,10 +3,12 @@ package attendance_usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
 	at "vozko/domain/attendance_target"
+	"vozko/domain/cache"
 )
 
 var (
@@ -56,11 +58,25 @@ type UpsertTargetInput struct {
 type TargetsService struct {
 	repo      at.Repository
 	schedules *ScheduleResolver
+	versions  cache.Versions
 	now       func() time.Time
 }
 
 func NewTargetsService(repo at.Repository, schedules *ScheduleResolver) *TargetsService {
 	return &TargetsService{repo: repo, schedules: schedules, now: func() time.Time { return time.Now().UTC() }}
+}
+
+func (s *TargetsService) SetVersions(versions cache.Versions) {
+	s.versions = versions
+}
+
+func (s *TargetsService) invalidate(workspaceID string) {
+	if s.versions == nil {
+		return
+	}
+	if err := s.versions.Bump(workspaceID); err != nil {
+		log.Printf("[attendance] could not invalidate cached sections for %s: %v", workspaceID, err)
+	}
 }
 
 func (s *TargetsService) SetClock(clock func() time.Time) {
@@ -148,7 +164,12 @@ func (s *TargetsService) Upsert(ctx context.Context, workspaceID string, input U
 	if target.PeriodHasClosed(s.now().In(loc)) {
 		return nil, at.ErrPeriodClosed
 	}
-	return s.repo.Upsert(target)
+	saved, err := s.repo.Upsert(target)
+	if err != nil {
+		return nil, err
+	}
+	s.invalidate(workspaceID)
+	return saved, nil
 }
 
 func (s *TargetsService) Delete(ctx context.Context, workspaceID, id string, access TargetAccess) error {
@@ -169,5 +190,9 @@ func (s *TargetsService) Delete(ctx context.Context, workspaceID, id string, acc
 	if existing.PeriodHasClosed(s.now().In(loc)) {
 		return at.ErrPeriodClosed
 	}
-	return s.repo.Delete(workspaceID, id)
+	if err := s.repo.Delete(workspaceID, id); err != nil {
+		return err
+	}
+	s.invalidate(workspaceID)
+	return nil
 }

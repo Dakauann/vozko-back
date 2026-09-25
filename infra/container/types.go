@@ -158,6 +158,7 @@ import (
 	ucmcp "vozko/usecases/agent/mcp"
 	aa_usecase "vozko/usecases/ai_attendance"
 	aichat_usecase "vozko/usecases/aichat"
+	attendance_usecase "vozko/usecases/attendance"
 	balance_usecase "vozko/usecases/balance"
 	calls_usecase "vozko/usecases/calls"
 	callsession_usecase "vozko/usecases/callsession"
@@ -199,6 +200,8 @@ type Container struct {
 
 	cfPublisher       *cloudflare.Publisher
 	cfPublisherCancel context.CancelFunc
+
+	analyticsGate cache.Gate
 }
 
 type repositories struct {
@@ -747,7 +750,7 @@ type useCases struct {
 	getResponseTimeDistribution        attendance_domain.GetResponseTimeDistributionUseCase
 	getAIAgentStats                    attendance_domain.GetAIAgentStatsUseCase
 	getFRTStats                        attendance_domain.GetFRTStatsUseCase
-	getOverview                        attendance_domain.GetOverviewUseCase
+	getOverview                        attendance_usecase.OverviewService
 	getTelephonyOverview               telephony_domain.GetOverviewUseCase
 	getTelephonyBoard                  telephony_domain.GetBoardUseCase
 	consumeCRMTelemetry                crm_telemetry.Consumer

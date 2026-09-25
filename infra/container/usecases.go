@@ -25,7 +25,6 @@ import (
 	affiliate_domain "vozko/domain/affiliate"
 	agent_domain "vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
-	attendance_domain "vozko/domain/attendance"
 	conversation_domain "vozko/domain/conversation"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
@@ -865,7 +864,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getResponseTimeDistribution:        attendance_usecase.NewGetResponseTimeDistributionUseCase(c.repositories.attendance),
 		getAIAgentStats:                    attendance_usecase.NewGetAIAgentStatsUseCase(c.repositories.attendance),
 		getFRTStats:                        attendance_usecase.NewGetFRTStatsUseCase(c.repositories.attendance),
-		getOverview: func() attendance_domain.GetOverviewUseCase {
+		getOverview: func() attendance_usecase.OverviewService {
 			uc := attendance_usecase.NewGetOverviewUseCaseWithDeps(
 				c.repositories.attendance,
 				c.repositories.queueEvent,
@@ -876,6 +875,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 				SetExecutiveDeps(*attendance_usecase.ScheduleResolver, *attendance_usecase.TargetsService)
 			}); ok {
 				setter.SetExecutiveDeps(c.attendanceScheduleResolver(), c.attendanceTargetsService())
+			}
+			if setter, ok := uc.(interface {
+				SetCaching(attendance_usecase.SectionCaching)
+			}); ok {
+				setter.SetCaching(c.attendanceSectionCaching())
 			}
 			return uc
 		}(),

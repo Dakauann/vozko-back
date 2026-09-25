@@ -1,6 +1,7 @@
 package attendance_repository
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -92,50 +93,93 @@ func integrationFilters() map[string]attendance.OverviewFilter {
 	}
 }
 
-func TestGetOverviewRunsAgainstPostgres(t *testing.T) {
+func readEverySection(t *testing.T, repo attendance.Repository, workspaceID string, filter attendance.OverviewFilter) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := repo.ReadSummary(ctx, workspaceID, filter); err != nil {
+		t.Fatalf("ReadSummary: %v", err)
+	}
+	if _, err := repo.ReadTeam(ctx, workspaceID, filter); err != nil {
+		t.Fatalf("ReadTeam: %v", err)
+	}
+	if _, err := repo.ReadStages(ctx, workspaceID, filter); err != nil {
+		t.Fatalf("ReadStages: %v", err)
+	}
+	if _, err := repo.ReadBacklog(ctx, workspaceID, filter, time.Now().UTC()); err != nil {
+		t.Fatalf("ReadBacklog: %v", err)
+	}
+	if _, err := repo.ReadRework(ctx, workspaceID, filter); err != nil {
+		t.Fatalf("ReadRework: %v", err)
+	}
+}
+
+func TestSectionReadsRunAgainstPostgres(t *testing.T) {
 	db := attendanceIntegrationDB(t)
 	repo := New(db)
 
 	for name, filter := range integrationFilters() {
 		t.Run("empty workspace/"+name, func(t *testing.T) {
-			if _, err := repo.GetOverview(emptyWorkspace, filter); err != nil {
-				t.Fatalf("GetOverview(%s): %v", name, err)
-			}
+			readEverySection(t, repo, emptyWorkspace, filter)
 		})
 	}
 }
 
-func TestGetOverviewExercisesTheBacklogBranchesAgainstPostgres(t *testing.T) {
+func TestSectionReadsAgreeOnAPopulatedWorkspace(t *testing.T) {
 	db := attendanceIntegrationDB(t)
 	workspaceID := workspaceWithBacklog(t, db)
 	repo := New(db)
+	ctx := context.Background()
 
 	wide := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	now := time.Now().UTC()
+	filter := attendance.OverviewFilter{DateFrom: &wide, DateTo: &now, IncludeAI: true}
 
-	out, err := repo.GetOverview(workspaceID, attendance.OverviewFilter{
-		DateFrom: &wide,
-		DateTo:   &now,
-	})
+	readEverySection(t, repo, workspaceID, filter)
+
+	summary, err := repo.ReadSummary(ctx, workspaceID, filter)
 	if err != nil {
-		t.Fatalf("GetOverview over a populated workspace: %v", err)
+		t.Fatalf("ReadSummary: %v", err)
 	}
-	if out.BacklogXray.Total == 0 {
+	stages, err := repo.ReadStages(ctx, workspaceID, filter)
+	if err != nil {
+		t.Fatalf("ReadStages: %v", err)
+	}
+	backlog, err := repo.ReadBacklog(ctx, workspaceID, filter, now)
+	if err != nil {
+		t.Fatalf("ReadBacklog: %v", err)
+	}
+	team, err := repo.ReadTeam(ctx, workspaceID, filter)
+	if err != nil {
+		t.Fatalf("ReadTeam: %v", err)
+	}
+
+	if got := stages.StagedEngaged + stages.UnstagedEngaged; got != summary.KPIs.Engaged {
+		t.Fatalf("stages see %d engaged, summary sees %d: two sections disagree about one scope",
+			got, summary.KPIs.Engaged)
+	}
+	if want := summary.KPIs.Engaged - summary.KPIs.Finished; backlog.Total != want {
+		t.Fatalf("backlog total = %d, want engaged - finished = %d", backlog.Total, want)
+	}
+	if backlog.Total == 0 {
 		t.Fatalf("the chosen workspace reported an empty backlog, so the x-ray queries never ran")
 	}
-	if !out.BacklogXray.Available {
-		t.Fatalf("backlog x-ray came back unavailable (%s) although the backlog has %d conversations",
-			out.BacklogXray.Reason, out.BacklogXray.Total)
+	if !backlog.Available || !backlog.Age.Available {
+		t.Fatalf("backlog x-ray came back unavailable (%s / %s) although the backlog has %d conversations",
+			backlog.Reason, backlog.Age.Reason, backlog.Total)
 	}
-	if !out.BacklogXray.Age.Available {
-		t.Fatalf("backlog age bands came back unavailable (%s)", out.BacklogXray.Age.Reason)
-	}
-	if len(out.BacklogXray.Reachability) == 0 {
+	if len(backlog.Reachability) == 0 {
 		t.Fatalf("backlog reachability returned no channel rows")
+	}
+	var memberFinished int64
+	for _, row := range team.ByDepartment {
+		memberFinished += row.Finished
+	}
+	if memberFinished != summary.KPIs.Finished {
+		t.Fatalf("departments add up to %d finished, summary says %d", memberFinished, summary.KPIs.Finished)
 	}
 }
 
-func TestGetOverviewWithOutcomeCaptureRunsAgainstPostgres(t *testing.T) {
+func TestSummaryWithOutcomeCaptureRunsAgainstPostgres(t *testing.T) {
 	db := attendanceIntegrationDB(t)
 	repo := New(db)
 
@@ -158,9 +202,9 @@ func TestGetOverviewWithOutcomeCaptureRunsAgainstPostgres(t *testing.T) {
 					DurableCodes: codes,
 				},
 			}
-			out, err := repo.GetOverview(emptyWorkspace, filter)
+			out, err := repo.ReadSummary(context.Background(), emptyWorkspace, filter)
 			if err != nil {
-				t.Fatalf("GetOverview with capture (%s): %v", name, err)
+				t.Fatalf("ReadSummary with capture (%s): %v", name, err)
 			}
 			if out.Quality.Reason == attendance.ReasonCaptureDisabled {
 				t.Fatalf("quality block reported capture disabled although the policy was enabled")
@@ -172,6 +216,7 @@ func TestGetOverviewWithOutcomeCaptureRunsAgainstPostgres(t *testing.T) {
 func TestGetTrendRunsAgainstPostgres(t *testing.T) {
 	db := attendanceIntegrationDB(t)
 	repo := New(db)
+	ctx := context.Background()
 
 	loc, err := time.LoadLocation("America/Sao_Paulo")
 	if err != nil {
@@ -181,14 +226,14 @@ func TestGetTrendRunsAgainstPostgres(t *testing.T) {
 	for name, filter := range integrationFilters() {
 		t.Run(name, func(t *testing.T) {
 			for _, buckets := range []int{1, 13, 24} {
-				if _, err := repo.GetTrend(emptyWorkspace, filter, buckets, loc); err != nil {
+				if _, err := repo.GetTrend(ctx, emptyWorkspace, filter, buckets, loc); err != nil {
 					t.Fatalf("GetTrend(%s, %d buckets): %v", name, buckets, err)
 				}
 			}
 		})
 	}
 
-	if _, err := repo.GetTrend(emptyWorkspace, attendance.OverviewFilter{}, 13, nil); err != nil {
+	if _, err := repo.GetTrend(ctx, emptyWorkspace, attendance.OverviewFilter{}, 13, nil); err != nil {
 		t.Fatalf("GetTrend with no timezone: %v", err)
 	}
 }
@@ -196,6 +241,7 @@ func TestGetTrendRunsAgainstPostgres(t *testing.T) {
 func TestGetRevenueRunsAgainstPostgres(t *testing.T) {
 	db := attendanceIntegrationDB(t)
 	repo := New(db)
+	ctx := context.Background()
 
 	loc, err := time.LoadLocation("America/Sao_Paulo")
 	if err != nil {
@@ -204,17 +250,17 @@ func TestGetRevenueRunsAgainstPostgres(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, loc)
 	to := time.Date(2026, 10, 1, 0, 0, 0, 0, loc)
 
-	if _, _, err := repo.GetRevenue(emptyWorkspace, from, to); err != nil {
+	if _, _, err := repo.GetRevenue(ctx, emptyWorkspace, from, to); err != nil {
 		t.Fatalf("GetRevenue: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from.AddDate(-1, 0, 0), to, loc, ""); err != nil {
+	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from.AddDate(-1, 0, 0), to, loc, ""); err != nil {
 		t.Fatalf("GetRevenueByMonth: %v", err)
 	}
-	if _, err := repo.GetRevenueByMonth(emptyWorkspace, from, to, nil, ""); err != nil {
+	if _, err := repo.GetRevenueByMonth(ctx, emptyWorkspace, from, to, nil, ""); err != nil {
 		t.Fatalf("GetRevenueByMonth with no timezone: %v", err)
 	}
 	if _, err := repo.GetRevenueByMonth(
-		emptyWorkspace, from.AddDate(-1, 0, 0), to, loc,
+		ctx, emptyWorkspace, from.AddDate(-1, 0, 0), to, loc,
 		"9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8",
 	); err != nil {
 		t.Fatalf("GetRevenueByMonth for one owner: %v", err)

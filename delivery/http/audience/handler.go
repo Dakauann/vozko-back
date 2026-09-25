@@ -853,15 +853,11 @@ func workspaceSettingsResponse(s ca.WorkspaceSettings, effectiveDailyCap int) Wo
 	}
 }
 
-func (h *Handler) effectiveDailyCap(r *http.Request) int {
+func (h *Handler) effectiveDailyCap(r *http.Request) (int, error) {
 	if h.usage == nil {
-		return 0
+		return 0, nil
 	}
-	usage, err := h.usage.Execute(r.Context(), middleware.GetWorkspaceID(r))
-	if err != nil {
-		return 0
-	}
-	return usage.Limit
+	return h.usage.Limit(r.Context(), middleware.GetWorkspaceID(r))
 }
 
 // @Summary		Configuração de análise do workspace
@@ -881,7 +877,12 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err, "Failed to load the analysis settings")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, h.effectiveDailyCap(r)))
+	limit, err := h.effectiveDailyCap(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to resolve the analysis limit")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, limit))
 }
 
 type UpdateWorkspaceSettingsRequest struct {
@@ -917,5 +918,10 @@ func (h *Handler) UpdateWorkspaceSettings(w http.ResponseWriter, r *http.Request
 		writeDomainError(w, err, "Failed to update the analysis settings")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, h.effectiveDailyCap(r)))
+	limit, err := h.effectiveDailyCap(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to resolve the analysis limit")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, workspaceSettingsResponse(settings, limit))
 }

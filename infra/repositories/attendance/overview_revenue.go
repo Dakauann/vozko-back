@@ -1,13 +1,14 @@
 package attendance_repository
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"vozko/domain/attendance"
 )
 
-func (r *repository) GetRevenue(workspaceID string, from, to time.Time) ([]attendance.RevenueTally, int64, error) {
+func (r *repository) GetRevenue(ctx context.Context, workspaceID string, from, to time.Time) ([]attendance.RevenueTally, int64, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return []attendance.RevenueTally{}, 0, nil
 	}
@@ -20,13 +21,13 @@ func (r *repository) GetRevenue(workspaceID string, from, to time.Time) ([]atten
 	}
 	sql, args := revenueTalliesQuery(workspaceID, from, to).build()
 	var rows []tallyRow
-	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 
 	unattributedSQL, unattributedArgs := revenueUnattributedQuery(workspaceID, from, to).build()
 	var unattributed int64
-	if err := r.db.Raw(unattributedSQL, unattributedArgs...).Scan(&unattributed).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(unattributedSQL, unattributedArgs...).Scan(&unattributed).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -43,6 +44,7 @@ func (r *repository) GetRevenue(workspaceID string, from, to time.Time) ([]atten
 }
 
 func (r *repository) GetRevenueByMonth(
+	ctx context.Context,
 	workspaceID string,
 	from, to time.Time,
 	loc *time.Location,
@@ -63,7 +65,7 @@ func (r *repository) GetRevenueByMonth(
 	}
 	sql, args := revenueByMonthQuery(workspaceID, from, to, loc, ownerID).build()
 	var rows []monthRow
-	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 

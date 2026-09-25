@@ -111,7 +111,7 @@ func TargetableMetrics() []MetricSpec {
 	return out
 }
 
-func MetricActual(o *Overview, key string) (float64, bool) {
+func MetricActual(o *SummarySection, key string) (float64, bool) {
 	if o == nil {
 		return 0, false
 	}

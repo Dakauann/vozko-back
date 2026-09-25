@@ -219,37 +219,13 @@ type MetricDefinitions struct {
 }
 
 type Overview struct {
-	Filter             OverviewFilter     `json:"filter"`
-	KPIs               OverviewKPIs       `json:"kpis"`
-	Hourly             []HourlyPoint      `json:"hourly"`
-	StatusDistribution StatusDistribution `json:"status_distribution"`
-	ByDepartment       []DepartmentRow    `json:"by_department"`
-	ByMember           []MemberRow        `json:"by_member"`
-
-	FRT              OverviewFRT              `json:"frt"`
-	AI               OverviewAI               `json:"ai"`
-	Queue            OverviewQueue            `json:"queue"`
-	Occupancy        OverviewOccupancy        `json:"occupancy"`
-	Live             OverviewLive             `json:"live"`
-	ChannelMix       []ChannelSlice           `json:"channel_mix"`
-	Messaging        OverviewMessaging        `json:"messaging"`
-	Reopen           OverviewReopen           `json:"reopen"`
-	FinishedBySource OverviewFinishedBySource `json:"finished_by_source"`
-	Stages           OverviewStages           `json:"stages"`
-
-	Period      Period             `json:"period"`
-	Projections []MetricProjection `json:"projections"`
-	Standing    Standing           `json:"standing"`
-	Trend       Trend              `json:"trend"`
-	Revenue     Revenue            `json:"revenue"`
-	BacklogXray BacklogXray        `json:"backlog_xray"`
-	Quality     Quality            `json:"quality"`
-	TeamRanking TeamRanking        `json:"team_ranking"`
-	Rework      OverviewRework     `json:"rework"`
-
-	GeneratedAt time.Time `json:"generated_at"`
-
-	Definitions MetricDefinitions `json:"definitions"`
+	SummarySection
+	TeamSection
+	TrendSection
+	StagesSection
+	BacklogSection
+	ReworkSection
+	LiveSection
 }
 
 func DefaultDefinitions() MetricDefinitions {

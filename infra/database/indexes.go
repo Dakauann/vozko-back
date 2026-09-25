@@ -495,6 +495,7 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
 	}
+	createConcurrentIndexes(db)
 }
 
 func createSchemaConstraints(tx *gorm.DB) error {

@@ -26,16 +26,7 @@ func overviewBacklogXrayTX(
 	filter attendance.OverviewFilter,
 	now time.Time,
 ) (attendance.BacklogXray, error) {
-	out := attendance.BacklogXray{
-		Origin:             attendance.UnavailableXrayDimension(attendance.XrayDimensionOrigin, attendance.ReasonNoBacklog),
-		Assignee:           attendance.UnavailableXrayDimension(attendance.XrayDimensionAssignee, attendance.ReasonNoBacklog),
-		Age:                attendance.UnavailableXrayDimension(attendance.XrayDimensionAge, attendance.ReasonNoBacklog),
-		Tenure:             attendance.UnavailableXrayDimension(attendance.XrayDimensionTenure, attendance.ReasonNoBacklog),
-		Returning:          attendance.UnavailableXrayDimension(attendance.XrayDimensionReturning, attendance.ReasonNoBacklog),
-		RecordCompleteness: attendance.BuildRecordCompleteness(nil, 0, 0),
-		Reachability:       []attendance.Reachability{},
-		Reason:             attendance.ReasonNoBacklog,
-	}
+	out := emptyBacklogXray()
 
 	var total int64
 	if err := tx.Raw(`SELECT COUNT(*)::bigint FROM ` + msgTmp + ` WHERE ` + backlogPredicate).Scan(&total).Error; err != nil {
@@ -91,6 +82,19 @@ func overviewBacklogXrayTX(
 	out.Available = true
 	out.Reason = ""
 	return out, nil
+}
+
+func emptyBacklogXray() attendance.BacklogXray {
+	return attendance.BacklogXray{
+		Origin:             attendance.UnavailableXrayDimension(attendance.XrayDimensionOrigin, attendance.ReasonNoBacklog),
+		Assignee:           attendance.UnavailableXrayDimension(attendance.XrayDimensionAssignee, attendance.ReasonNoBacklog),
+		Age:                attendance.UnavailableXrayDimension(attendance.XrayDimensionAge, attendance.ReasonNoBacklog),
+		Tenure:             attendance.UnavailableXrayDimension(attendance.XrayDimensionTenure, attendance.ReasonNoBacklog),
+		Returning:          attendance.UnavailableXrayDimension(attendance.XrayDimensionReturning, attendance.ReasonNoBacklog),
+		RecordCompleteness: attendance.BuildRecordCompleteness(nil, 0, 0),
+		Reachability:       []attendance.Reachability{},
+		Reason:             attendance.ReasonNoBacklog,
+	}
 }
 
 func backlogOriginTX(tx *gorm.DB, msgTmp string) (attendance.XrayDimension, error) {
@@ -195,7 +199,7 @@ func backlogTenureQuery(msgTmp string, now time.Time) *sqlQuery {
 				ELSE '12m_plus'
 			END AS band
 			FROM `+msgTmp+` m
-			JOIN leads l ON l.id::text = m.lead_id
+			JOIN leads l ON l.id = NULLIF(m.lead_id, '')::uuid
 			WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished' AND m.lead_id <> ''
 		) banded
 		GROUP BY band
@@ -213,14 +217,8 @@ func backlogTenureTX(tx *gorm.DB, msgTmp string, now time.Time) (attendance.Xray
 		return attendance.XrayDimension{}, err
 	}
 
-	unknownSQL := `
-		SELECT COUNT(*)::bigint
-		FROM ` + msgTmp + ` m
-		LEFT JOIN leads l ON l.id::text = m.lead_id
-		WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished' AND l.id IS NULL
-	`
 	var unknown int64
-	if err := tx.Raw(unknownSQL).Scan(&unknown).Error; err != nil {
+	if err := tx.Raw(backlogTenureUnknownSQL(msgTmp)).Scan(&unknown).Error; err != nil {
 		return attendance.XrayDimension{}, err
 	}
 
@@ -229,6 +227,15 @@ func backlogTenureTX(tx *gorm.DB, msgTmp string, now time.Time) (attendance.Xray
 		withPositions(rows, []string{"under_1m", "1_6m", "6_12m", "12m_plus"}),
 		unknown,
 	), nil
+}
+
+func backlogTenureUnknownSQL(msgTmp string) string {
+	return `
+		SELECT COUNT(*)::bigint
+		FROM ` + msgTmp + ` m
+		LEFT JOIN leads l ON l.id = NULLIF(m.lead_id, '')::uuid
+		WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished' AND l.id IS NULL
+	`
 }
 
 func backlogReturningTX(
@@ -310,7 +317,22 @@ func backlogRecordCompletenessTX(tx *gorm.DB, msgTmp string) (attendance.RecordC
 		AgeFilled   int64 `gorm:"column:age_filled"`
 		FullyFilled int64 `gorm:"column:fully_filled"`
 	}
-	sql := `
+	var row fillRow
+	if err := tx.Raw(backlogCompletenessSQL(msgTmp)).Scan(&row).Error; err != nil {
+		return attendance.RecordCompleteness{}, err
+	}
+	return attendance.BuildRecordCompleteness(
+		[]attendance.RecordFieldTally{
+			{Key: backlogRecordFields[0], Filled: row.NameFilled},
+			{Key: backlogRecordFields[1], Filled: row.AgeFilled},
+		},
+		row.Measured,
+		row.FullyFilled,
+	), nil
+}
+
+func backlogCompletenessSQL(msgTmp string) string {
+	return `
 		WITH backlog_leads AS (
 			SELECT DISTINCT m.lead_id
 			FROM ` + msgTmp + ` m
@@ -323,20 +345,23 @@ func backlogRecordCompletenessTX(tx *gorm.DB, msgTmp string) (attendance.RecordC
 				WHERE COALESCE(TRIM(l.name), '') <> '' AND l.age IS NOT NULL AND l.age > 0
 			)::bigint AS fully_filled
 		FROM backlog_leads bl
-		JOIN leads l ON l.id::text = bl.lead_id
+		JOIN leads l ON l.id = NULLIF(bl.lead_id, '')::uuid
 	`
-	var row fillRow
-	if err := tx.Raw(sql).Scan(&row).Error; err != nil {
-		return attendance.RecordCompleteness{}, err
-	}
-	return attendance.BuildRecordCompleteness(
-		[]attendance.RecordFieldTally{
-			{Key: backlogRecordFields[0], Filled: row.NameFilled},
-			{Key: backlogRecordFields[1], Filled: row.AgeFilled},
-		},
-		row.Measured,
-		row.FullyFilled,
-	), nil
+}
+
+func backlogReachabilityQuery(msgTmp, channel string, now time.Time) *sqlQuery {
+	return newSQLQuery().add(`
+			SELECT COUNT(*)::bigint AS measured,
+				COUNT(*) FILTER (WHERE w.last_message_at IS NOT NULL AND w.last_message_at >= ?)::bigint AS window_open
+			FROM `+msgTmp+` m
+			LEFT JOIN LATERAL (
+				SELECT MAX(lmw.last_message_at) AS last_message_at
+				FROM lead_message_windows lmw
+				WHERE lmw.lead_id = NULLIF(m.lead_id, '')::uuid
+			) w ON TRUE
+			WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished'
+			  AND m.entry_type = ? AND m.lead_id <> ''
+		`, now.Add(-lead_message_window.MessageWindowDuration), channel)
 }
 
 func backlogReachabilityTX(
@@ -368,21 +393,9 @@ func backlogReachabilityTX(
 			continue
 		}
 
-		sql := `
-			SELECT COUNT(*)::bigint AS measured,
-				COUNT(*) FILTER (WHERE w.last_message_at IS NOT NULL AND w.last_message_at >= ?)::bigint AS window_open
-			FROM ` + msgTmp + ` m
-			LEFT JOIN LATERAL (
-				SELECT MAX(lmw.last_message_at) AS last_message_at
-				FROM lead_message_windows lmw
-				WHERE lmw.lead_id::text = m.lead_id
-			) w ON TRUE
-			WHERE m.total_msgs > 0 AND m.status_bucket <> 'finished'
-			  AND m.entry_type = ? AND m.lead_id <> ''
-		`
 		var row channelRow
-		cutoff := now.Add(-lead_message_window.MessageWindowDuration)
-		if err := tx.Raw(sql, cutoff, channel).Scan(&row).Error; err != nil {
+		sql, args := backlogReachabilityQuery(msgTmp, channel, now).build()
+		if err := tx.Raw(sql, args...).Scan(&row).Error; err != nil {
 			return nil, err
 		}
 		out = append(out, attendance.BuildReachability(channel, row.Measured, row.WindowOpen, true))

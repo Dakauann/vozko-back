@@ -683,6 +683,132 @@
                 }
             }
         },
+        "/attendance/overview/{section}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna uma seção da visão geral (summary, trend, stages, backlog, team ou rework) para que a página carregue cada bloco quando ele entra na tela. Aceita os mesmos filtros de /attendance/overview. Seções idênticas ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Atendimento"
+                ],
+                "summary": "Seção da visão geral de atendimento",
+                "parameters": [
+                    {
+                        "enum": [
+                            "summary",
+                            "trend",
+                            "stages",
+                            "backlog",
+                            "team",
+                            "rework"
+                        ],
+                        "type": "string",
+                        "description": "Seção",
+                        "name": "section",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data inicial (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data final (YYYY-MM-DD)",
+                        "name": "date_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do departamento",
+                        "name": "department_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do membro",
+                        "name": "member_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da campanha",
+                        "name": "campaign_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tipo da campanha",
+                        "name": "campaign_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Canal de atendimento",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Métrica de ordenação da equipe (apenas team)",
+                        "name": "rank_metric",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Meses da série histórica (apenas trend)",
+                        "name": "trend_buckets",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Incluir agentes de IA (apenas team)",
+                        "name": "include_ai",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/attendance.SummarySection"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/attendance/queue-stats": {
             "get": {
                 "security": [
@@ -18482,6 +18608,71 @@
                 }
             }
         },
+        "attendance.SummarySection": {
+            "type": "object",
+            "properties": {
+                "ai": {
+                    "$ref": "#/definitions/attendance.OverviewAI"
+                },
+                "channel_mix": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.ChannelSlice"
+                    }
+                },
+                "definitions": {
+                    "$ref": "#/definitions/attendance.MetricDefinitions"
+                },
+                "filter": {
+                    "$ref": "#/definitions/attendance.OverviewFilter"
+                },
+                "finished_by_source": {
+                    "$ref": "#/definitions/attendance.OverviewFinishedBySource"
+                },
+                "frt": {
+                    "$ref": "#/definitions/attendance.OverviewFRT"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "hourly": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.HourlyPoint"
+                    }
+                },
+                "kpis": {
+                    "$ref": "#/definitions/attendance.OverviewKPIs"
+                },
+                "messaging": {
+                    "$ref": "#/definitions/attendance.OverviewMessaging"
+                },
+                "period": {
+                    "$ref": "#/definitions/attendance.Period"
+                },
+                "projections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.MetricProjection"
+                    }
+                },
+                "quality": {
+                    "$ref": "#/definitions/attendance.Quality"
+                },
+                "reopen": {
+                    "$ref": "#/definitions/attendance.OverviewReopen"
+                },
+                "revenue": {
+                    "$ref": "#/definitions/attendance.Revenue"
+                },
+                "standing": {
+                    "$ref": "#/definitions/attendance.Standing"
+                },
+                "status_distribution": {
+                    "$ref": "#/definitions/attendance.StatusDistribution"
+                }
+            }
+        },
         "attendance.TargetRequest": {
             "type": "object",
             "properties": {
@@ -21521,6 +21712,53 @@
                 }
             }
         },
+        "conversation.CloseReason": {
+            "type": "string",
+            "enum": [
+                "manual",
+                "customer_idle",
+                "ai_resolved",
+                "max_age",
+                "workflow"
+            ],
+            "x-enum-varnames": [
+                "CloseReasonManual",
+                "CloseReasonCustomerIdle",
+                "CloseReasonAIResolved",
+                "CloseReasonMaxAge",
+                "CloseReasonWorkflow"
+            ]
+        },
+        "conversation.CloseRecord": {
+            "type": "object",
+            "properties": {
+                "closedAt": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "reason": {
+                    "$ref": "#/definitions/conversation.CloseReason"
+                },
+                "source": {
+                    "$ref": "#/definitions/conversation.CloseSource"
+                }
+            }
+        },
+        "conversation.CloseSource": {
+            "type": "string",
+            "enum": [
+                "human",
+                "ai",
+                "system"
+            ],
+            "x-enum-varnames": [
+                "CloseSourceHuman",
+                "CloseSourceAI",
+                "CloseSourceSystem"
+            ]
+        },
         "conversation.ConversationMedia": {
             "type": "object",
             "properties": {
@@ -21582,6 +21820,9 @@
                 },
                 "campaignName": {
                     "type": "string"
+                },
+                "close": {
+                    "$ref": "#/definitions/conversation.CloseRecord"
                 },
                 "conversationStatus": {
                     "type": "string"

@@ -3,9 +3,12 @@ package container
 import (
 	"context"
 	"strings"
+	"time"
 
+	domainCache "vozko/domain/cache"
 	"vozko/domain/conversation"
 	wsc "vozko/domain/workspace_config"
+	redisCache "vozko/infra/cache"
 	attendance_usecase "vozko/usecases/attendance"
 	conversation_usecase "vozko/usecases/conversation"
 )
@@ -54,11 +57,45 @@ func (c *Container) attendanceScheduleResolver() *attendance_usecase.ScheduleRes
 	)
 }
 
+const (
+	analyticsGateCapacity       = 3
+	analyticsGateMaxWait        = 20 * time.Second
+	analyticsComputeTimeout     = 30 * time.Second
+	attendanceSectionTTL        = 60 * time.Second
+	attendanceSectionVersionKey = "attendance:overview"
+)
+
+func (c *Container) sharedAnalyticsGate() domainCache.Gate {
+	if c.analyticsGate == nil {
+		c.analyticsGate = redisCache.NewSemaphoreGate(analyticsGateCapacity, analyticsGateMaxWait)
+	}
+	return c.analyticsGate
+}
+
+func (c *Container) analyticsMemo() domainCache.Memo {
+	return redisCache.NewSharedStateMemo(c.redisProvider.SharedState(), analyticsComputeTimeout)
+}
+
+func (c *Container) attendanceSectionVersions() domainCache.Versions {
+	return redisCache.NewSharedStateVersions(c.redisProvider.SharedState(), attendanceSectionVersionKey)
+}
+
+func (c *Container) attendanceSectionCaching() attendance_usecase.SectionCaching {
+	return attendance_usecase.SectionCaching{
+		Memo:     c.analyticsMemo(),
+		Gate:     c.sharedAnalyticsGate(),
+		Versions: c.attendanceSectionVersions(),
+		TTL:      attendanceSectionTTL,
+	}
+}
+
 func (c *Container) attendanceTargetsService() *attendance_usecase.TargetsService {
-	return attendance_usecase.NewTargetsService(
+	service := attendance_usecase.NewTargetsService(
 		c.repositories.attendanceTarget,
 		c.attendanceScheduleResolver(),
 	)
+	service.SetVersions(c.attendanceSectionVersions())
+	return service
 }
 
 func (c *Container) wireOutcomeCapture() {

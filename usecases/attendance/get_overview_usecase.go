@@ -8,6 +8,7 @@ import (
 	"vozko/domain/agent_presence"
 	"vozko/domain/attendance"
 	"vozko/domain/callsession"
+	"vozko/domain/cache"
 	"vozko/domain/queue_event"
 )
 
@@ -18,10 +19,19 @@ type getOverviewUseCase struct {
 	live      callsession.CallSessionRegistry
 	schedules *ScheduleResolver
 	targets   *TargetsService
+	memo      cache.Memo
+	gate      cache.Gate
+	versions  cache.Versions
+	ttl       time.Duration
 	now       func() time.Time
 }
 
-func NewGetOverviewUseCase(repo attendance.Repository) attendance.GetOverviewUseCase {
+type OverviewService interface {
+	attendance.GetOverviewUseCase
+	attendance.OverviewSectionsUseCase
+}
+
+func NewGetOverviewUseCase(repo attendance.Repository) OverviewService {
 	return &getOverviewUseCase{repo: repo, now: nowUTC}
 }
 
@@ -30,7 +40,7 @@ func NewGetOverviewUseCaseWithDeps(
 	queue queue_event.Repository,
 	presence agent_presence.Repository,
 	live callsession.CallSessionRegistry,
-) attendance.GetOverviewUseCase {
+) OverviewService {
 	return &getOverviewUseCase{
 		repo:     repo,
 		queue:    queue,
@@ -60,39 +70,41 @@ func (uc *getOverviewUseCase) SetClock(clock func() time.Time) {
 
 func (uc *getOverviewUseCase) Execute(workspaceID string, filter attendance.OverviewFilter) (*attendance.Overview, error) {
 	ctx := context.Background()
-	now := uc.clock()
 
-	config, err := uc.prepare(ctx, workspaceID, &filter, now)
+	summary, err := uc.Summary(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	trend, err := uc.Trend(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	team, err := uc.Team(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	stages, err := uc.Stages(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	backlog, err := uc.Backlog(ctx, workspaceID, filter)
+	if err != nil {
+		return nil, err
+	}
+	rework, err := uc.Rework(ctx, workspaceID, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	out, err := uc.repo.GetOverview(workspaceID, filter)
-	if err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = emptyOverview()
-	}
-	out.Filter = filter
-
-	uc.fillQueue(workspaceID, filter, out)
-	uc.fillOccupancy(workspaceID, filter, out)
-	uc.fillLive(workspaceID, out)
-
-	inputs, err := uc.resolveInputs(ctx, workspaceID, filter, config, now)
-	if err != nil {
-		return nil, err
-	}
-	if err := uc.fillRevenue(workspaceID, filter, inputs, out); err != nil {
-		return nil, err
-	}
-	uc.fillProjections(inputs, out)
-	if err := uc.fillTrend(workspaceID, filter, inputs, out); err != nil {
-		return nil, err
-	}
-	uc.fillTeamRanking(workspaceID, filter, inputs, out)
-	return out, nil
+	return &attendance.Overview{
+		SummarySection: *summary,
+		TeamSection:    *team,
+		TrendSection:   *trend,
+		StagesSection:  *stages,
+		BacklogSection: *backlog,
+		ReworkSection:  *rework,
+		LiveSection:    uc.liveSection(workspaceID, filter),
+	}, nil
 }
 
 func (uc *getOverviewUseCase) clock() time.Time {
@@ -102,30 +114,23 @@ func (uc *getOverviewUseCase) clock() time.Time {
 	return uc.now()
 }
 
-func emptyOverview() *attendance.Overview {
-	return &attendance.Overview{
-		Hourly:      make([]attendance.HourlyPoint, 24),
-		Stages:      attendance.BuildStageDistribution(nil, 0, 0),
-		Revenue:     attendance.UnavailableRevenue(attendance.ReasonNoRevenueRepository),
-		Trend:       attendance.UnavailableTrend(attendance.ReasonTrendUnavailable),
-		Quality:     attendance.UnavailableQuality(attendance.ReasonCaptureDisabled),
-		TeamRanking: attendance.UnavailableTeamRanking(attendance.ReasonNoTeamRows),
-		Projections: []attendance.MetricProjection{},
-		Definitions: attendance.DefaultDefinitions(),
+func (uc *getOverviewUseCase) liveSection(workspaceID string, filter attendance.OverviewFilter) attendance.LiveSection {
+	return attendance.LiveSection{
+		Queue:     uc.queueStats(workspaceID, filter),
+		Occupancy: uc.occupancy(workspaceID, filter),
+		Live:      uc.livePresence(workspaceID),
 	}
 }
 
-func (uc *getOverviewUseCase) fillQueue(workspaceID string, filter attendance.OverviewFilter, out *attendance.Overview) {
+func (uc *getOverviewUseCase) queueStats(workspaceID string, filter attendance.OverviewFilter) attendance.OverviewQueue {
 	if uc.queue == nil {
-		out.Queue = attendance.OverviewQueue{Available: false}
-		return
+		return attendance.OverviewQueue{Available: false}
 	}
 	st, err := uc.queue.Stats(workspaceID, filter.DateFrom, filter.DateTo)
 	if err != nil || st == nil {
-		out.Queue = attendance.OverviewQueue{Available: false}
-		return
+		return attendance.OverviewQueue{Available: false}
 	}
-	out.Queue = attendance.OverviewQueue{
+	out := attendance.OverviewQueue{
 		Enqueued:    st.Enqueued,
 		Connected:   st.Connected,
 		Abandoned:   st.Abandoned,
@@ -137,19 +142,18 @@ func (uc *getOverviewUseCase) fillQueue(workspaceID string, filter attendance.Ov
 	}
 	if st.Connected > 0 && st.AvgASAMs > 0 {
 		mins := math.Round((st.AvgASAMs/60000)*100) / 100
-		out.Queue.AvgASAMins = &mins
+		out.AvgASAMins = &mins
 	}
+	return out
 }
 
-func (uc *getOverviewUseCase) fillOccupancy(workspaceID string, filter attendance.OverviewFilter, out *attendance.Overview) {
+func (uc *getOverviewUseCase) occupancy(workspaceID string, filter attendance.OverviewFilter) attendance.OverviewOccupancy {
 	if uc.presence == nil {
-		out.Occupancy = attendance.OverviewOccupancy{Available: false}
-		return
+		return attendance.OverviewOccupancy{Available: false}
 	}
 	rows, err := uc.presence.Occupancy(workspaceID, filter.DateFrom, filter.DateTo)
 	if err != nil || len(rows) == 0 {
-		out.Occupancy = attendance.OverviewOccupancy{Available: false}
-		return
+		return attendance.OverviewOccupancy{Available: false}
 	}
 	var onlineMS, onCallMS int64
 	var sumPct float64
@@ -162,7 +166,7 @@ func (uc *getOverviewUseCase) fillOccupancy(workspaceID string, filter attendanc
 			n++
 		}
 	}
-	out.Occupancy = attendance.OverviewOccupancy{
+	out := attendance.OverviewOccupancy{
 		AgentsSampled: int64(len(rows)),
 		OnlineMS:      onlineMS,
 		OnCallMS:      onCallMS,
@@ -170,28 +174,25 @@ func (uc *getOverviewUseCase) fillOccupancy(workspaceID string, filter attendanc
 	}
 	if n > 0 {
 		avg := math.Round(sumPct/float64(n)*100) / 100
-		out.Occupancy.AvgOccupancyPct = &avg
+		out.AvgOccupancyPct = &avg
 	}
 	if onlineMS > 0 {
 		team := math.Round(float64(onCallMS)/float64(onlineMS)*10000) / 100
-		out.Occupancy.TeamOccupancyPct = &team
-		idle := math.Round((100-team)*100) / 100
-		if idle < 0 {
-			idle = 0
-		}
-		out.Occupancy.TeamIdlePct = &idle
+		out.TeamOccupancyPct = &team
+		idle := max(math.Round((100-team)*100)/100, 0)
+		out.TeamIdlePct = &idle
 	}
+	return out
 }
 
-func (uc *getOverviewUseCase) fillLive(workspaceID string, out *attendance.Overview) {
+func (uc *getOverviewUseCase) livePresence(workspaceID string) attendance.OverviewLive {
 	if uc.live == nil || workspaceID == "" {
-		out.Live = attendance.OverviewLive{HasData: false, AsOf: time.Now().UTC()}
-		return
+		return attendance.OverviewLive{HasData: false, AsOf: uc.clock()}
 	}
 	rows := uc.live.ListPresence(workspaceID)
 	live := attendance.OverviewLive{
 		HasData: true,
-		AsOf:    time.Now().UTC(),
+		AsOf:    uc.clock(),
 		Agents:  make([]attendance.OverviewLiveAgent, 0, len(rows)),
 	}
 	for _, p := range rows {
@@ -213,5 +214,5 @@ func (uc *getOverviewUseCase) fillLive(workspaceID string, out *attendance.Overv
 		live.IdleRatePct = &idle
 		live.BusyRatePct = &busy
 	}
-	out.Live = live
+	return live
 }

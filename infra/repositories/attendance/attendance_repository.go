@@ -16,15 +16,6 @@ func New(db *gorm.DB) attendance.Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) analytics(fn func(tx *gorm.DB) error) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
-			return err
-		}
-		return fn(tx)
-	})
-}
-
 func campaignJoinForEntryColumn(filter attendance.StatsFilter, alias, entryColumn string) (joinSQL string, extraWhere string, extraArgs []interface{}) {
 	if filter.CampaignID == "" {
 		return "", "", nil
@@ -354,82 +345,16 @@ func (r *repository) GetResponseTimeDistribution(workspaceID string, filter atte
 }
 
 func (r *repository) GetFRTStats(workspaceID string, filter attendance.StatsFilter) (*attendance.FRTStats, error) {
-	query := `
-		SELECT actor_kind, frt_secs FROM (
-			SELECT ah.actor_kind,
-				EXTRACT(EPOCH FROM (cm.created_at - ah.started_at)) AS frt_secs
-			FROM assignment_history ah
-			CROSS JOIN LATERAL (
-				SELECT m.created_at
-				FROM conversation_messages m
-				WHERE m.entry_id = ah.entry_id
-				  AND m.entry_type = ah.entry_type
-				  AND m.deleted_at IS NULL
-				  AND m.message_type IN ('operator', 'ai_response')
-				  AND m.created_at >= ah.started_at
-				ORDER BY m.created_at ASC
-				LIMIT 1
-			) cm
-			WHERE ah.workspace_id = ?`
-	args := []interface{}{workspaceID}
-	if filter.DateFrom != nil {
-		query += " AND ah.started_at >= ?"
-		args = append(args, *filter.DateFrom)
-	}
-	if filter.DateTo != nil {
-		query += " AND ah.started_at <= ?"
-		args = append(args, *filter.DateTo)
-	}
-	query += `
-		) sub WHERE frt_secs IS NOT NULL AND frt_secs > 0`
-
-	type row struct {
-		ActorKind string
-		FRTSecs   float64
-	}
-	var rows []row
-	if err := r.analytics(func(tx *gorm.DB) error {
-		return tx.Raw(query, args...).Scan(&rows).Error
-	}); err != nil {
+	var out attendance.FRTStats
+	err := r.analytics(func(tx *gorm.DB) error {
+		var err error
+		out, err = frtStatsTX(tx, workspaceID, filter)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
-	st := &attendance.FRTStats{}
-	var all []float64
-	var humanSum, aiSum float64
-	for _, rw := range rows {
-		all = append(all, rw.FRTSecs)
-		st.SampleCount++
-		if attendance.CountsAsAutomation(rw.ActorKind) {
-			st.AISamples++
-			aiSum += rw.FRTSecs
-		} else {
-			st.HumanSamples++
-			humanSum += rw.FRTSecs
-		}
-	}
-	if st.SampleCount > 0 {
-		var sum float64
-		for _, v := range all {
-			sum += v
-		}
-		st.AvgFRTMins = math.Round(sum/float64(st.SampleCount)/60*100) / 100
-		for i := 0; i < len(all); i++ {
-			for j := i + 1; j < len(all); j++ {
-				if all[j] < all[i] {
-					all[i], all[j] = all[j], all[i]
-				}
-			}
-		}
-		mid := all[len(all)/2]
-		st.MedianFRTMins = math.Round(mid/60*100) / 100
-	}
-	if st.HumanSamples > 0 {
-		st.HumanAvgMins = math.Round(humanSum/float64(st.HumanSamples)/60*100) / 100
-	}
-	if st.AISamples > 0 {
-		st.AIAvgMins = math.Round(aiSum/float64(st.AISamples)/60*100) / 100
-	}
-	return st, nil
+	return &out, nil
 }
 
 func (r *repository) GetAIAgentStats(workspaceID string, filter attendance.StatsFilter) ([]attendance.AIAgentStats, error) {

@@ -89,6 +89,7 @@ type RetryUseCase interface {
 
 type UsageUseCase interface {
 	Execute(ctx context.Context, workspaceID string) (Usage, error)
+	Limit(ctx context.Context, workspaceID string) (int, error)
 }
 
 type UpdateWorkspaceSettingsInput struct {
