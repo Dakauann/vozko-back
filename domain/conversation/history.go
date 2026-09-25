@@ -25,6 +25,7 @@ func (d MessageHistoryDirection) IsOutbound() bool {
 }
 
 type MessageHistoryRecord struct {
+	SentBy      SentBy
 	EntryID     string
 	EntryType   shared.EntryType
 	Channel     MessageChannel
@@ -59,5 +60,5 @@ func (r MessageHistoryRecord) GetEntryID() string {
 }
 
 type MessageHistoryManager interface {
-	Record(ctx context.Context, direction MessageHistoryDirection, record MessageHistoryRecord) error
+	Record(ctx context.Context, record MessageHistoryRecord) error
 }

@@ -26,7 +26,6 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		shared.EntryTypeInstagram,
 		shared.EntryTypeTelegram,
 		shared.EntryTypeUnofficialWhatsApp,
-		shared.EntryTypeSupport,
 	}
 	if len(entrySources) != len(want) {
 		t.Fatalf("registry holds %d sources, want %d", len(entrySources), len(want))
@@ -168,9 +167,6 @@ func TestEntrySourceDepartmentScopeFailsClosed(t *testing.T) {
 	scope := entrySourceScope{RestrictDepartments: true}
 
 	for _, src := range entrySources {
-		if src.DepartmentExempt {
-			continue
-		}
 		sql, _ := src.inboxSelect(scope, "ws-1")
 		if !strings.Contains(sql, "1 = 0") {
 			t.Errorf("%s: restricted scope must fail closed:\n%s", src.EntryType, sql)
@@ -187,16 +183,6 @@ func TestEntrySourceDepartmentScopeBindsDepartments(t *testing.T) {
 		t.Errorf("Instagram should scope by its account's department:\n%s", sql)
 	}
 	assertPlaceholdersMatchArgs(t, sql, args)
-
-	sup := sourceFor(t, shared.EntryTypeSupport)
-	supSQL, supArgs := sup.inboxSelect(scope, "ws-1")
-	if strings.Contains(supSQL, "1 = 0") {
-		t.Errorf("support is department-exempt and must stay visible:\n%s", supSQL)
-	}
-	if strings.Contains(supSQL, "ANY(?::uuid[])") {
-		t.Errorf("support has no department column to scope by:\n%s", supSQL)
-	}
-	assertPlaceholdersMatchArgs(t, supSQL, supArgs)
 }
 
 func TestEntrySourceAssignmentScope(t *testing.T) {
@@ -339,20 +325,10 @@ func TestBoardKeepsFinishedConversationsAndInboxDoesNot(t *testing.T) {
 	}
 }
 
-func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *testing.T) {
+func TestADepartmentLessChannelFailsClosed(t *testing.T) {
 	scope := entrySourceScope{
 		DepartmentIDs:       []string{"11111111-1111-1111-1111-111111111111"},
 		RestrictDepartments: true,
-	}
-
-	for _, src := range entrySources {
-		if src.EntryType != shared.EntryTypeSupport {
-			continue
-		}
-		sql, _ := src.inboxSelect(scope, "ws-1")
-		if strings.Contains(sql, "1 = 0") {
-			t.Errorf("support must stay visible to department-restricted operators:\n%s", sql)
-		}
 	}
 
 	entrySources = append(entrySources, entrySource{
@@ -366,7 +342,7 @@ func TestDepartmentRestrictionKeepsSupportVisibleButFailsClosedOtherwise(t *test
 
 	sql, _ := entrySources[len(entrySources)-1].inboxSelect(scope, "ws-1")
 	if !strings.Contains(sql, "1 = 0") {
-		t.Errorf("a department-less channel must fail closed unless it opts out:\n%s", sql)
+		t.Errorf("a department-less channel must fail closed:\n%s", sql)
 	}
 }
 

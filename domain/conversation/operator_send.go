@@ -1,6 +1,10 @@
 package conversation
 
-import "context"
+import (
+	"context"
+
+	"vozko/domain/shared"
+)
 
 type OperatorSendInput struct {
 	EntryID   string
@@ -37,4 +41,20 @@ type FinalizeOperatorSendInput struct {
 
 type OperatorSendFinalizer interface {
 	FinalizeOperatorSend(ctx context.Context, in FinalizeOperatorSendInput) error
+}
+
+type PersonSendUseCase interface {
+	Execute(ctx context.Context, by shared.Person, in OperatorSendInput) (*Message, error)
+}
+
+type TemplateSendRequest struct {
+	WorkspaceID string
+	EntryID     string
+	EntryType   string
+	TemplateID  string
+	Variables   []string
+}
+
+type PersonTemplateSendUseCase interface {
+	Execute(by shared.Person, in TemplateSendRequest) (string, error)
 }

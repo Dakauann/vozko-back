@@ -9,8 +9,11 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/auth"
 	"vozko/domain/conversation"
 	labeldomain "vozko/domain/label"
+	"vozko/domain/shared"
+	"vozko/domain/user"
 	"vozko/infra/http/middleware"
 )
 
@@ -19,8 +22,7 @@ type LabelHandler struct {
 	updateUseCase  labeldomain.UpdateLabelUseCase
 	deleteUseCase  labeldomain.DeleteLabelUseCase
 	listUseCase    labeldomain.ListLabelsUseCase
-	assignUseCase  labeldomain.AssignEntryLabelUseCase
-	removeUseCase  labeldomain.RemoveEntryLabelUseCase
+	entryLabels    labeldomain.EntryLabelsUseCase
 	getEntryLabels labeldomain.GetEntryLabelsUseCase
 	reorderUseCase labeldomain.ReorderLabelsUseCase
 	broadcaster    conversation.EventBroadcaster
@@ -31,8 +33,7 @@ func NewLabelHandler(
 	updateUC labeldomain.UpdateLabelUseCase,
 	deleteUC labeldomain.DeleteLabelUseCase,
 	listUC labeldomain.ListLabelsUseCase,
-	assignUC labeldomain.AssignEntryLabelUseCase,
-	removeUC labeldomain.RemoveEntryLabelUseCase,
+	entryLabels labeldomain.EntryLabelsUseCase,
 	getEntryLabelsUC labeldomain.GetEntryLabelsUseCase,
 	reorderUC labeldomain.ReorderLabelsUseCase,
 	broadcaster conversation.EventBroadcaster,
@@ -42,8 +43,7 @@ func NewLabelHandler(
 		updateUseCase:  updateUC,
 		deleteUseCase:  deleteUC,
 		listUseCase:    listUC,
-		assignUseCase:  assignUC,
-		removeUseCase:  removeUC,
+		entryLabels:    entryLabels,
 		getEntryLabels: getEntryLabelsUC,
 		reorderUseCase: reorderUC,
 		broadcaster:    broadcaster,
@@ -265,11 +265,10 @@ func (h *LabelHandler) AssignEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	entryLabel, err := h.assignUseCase.Execute(wsID, labeldomain.AssignEntryLabelInput{
+	entryLabel, err := h.entryLabels.Apply(wsID, personFrom(claims), labeldomain.AssignEntryLabelInput{
 		LabelID:   req.LabelID,
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
-		ActorID:   claims.UserID,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -314,11 +313,10 @@ func (h *LabelHandler) RemoveEntryLabel(w http.ResponseWriter, r *http.Request) 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.removeUseCase.Execute(wsID, labeldomain.RemoveEntryLabelInput{
+	if err := h.entryLabels.Remove(wsID, personFrom(claims), labeldomain.RemoveEntryLabelInput{
 		LabelID:   req.LabelID,
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
-		ActorID:   claims.UserID,
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -364,8 +362,14 @@ func (h *LabelHandler) GetEntryLabels(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toEntryLabelResponses(labels))
 }
 
+func personFrom(claims *auth.Claims) shared.Person {
+	return shared.Person{UserID: claims.UserID, SystemAdmin: claims.Role == string(user.RoleAdmin)}
+}
+
 func (h *LabelHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, labeldomain.ErrEntryAccess):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
 	case errors.Is(err, labeldomain.ErrLabelNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, labeldomain.ErrLabelNameRequired):

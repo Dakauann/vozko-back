@@ -22,7 +22,6 @@ const (
 	KindUnofficialWhatsApp Kind = "unofficial_whatsapp"
 
 	KindWhatsApp Kind = "whatsapp"
-	KindSupport  Kind = "support"
 )
 
 func (k Kind) String() string { return string(k) }

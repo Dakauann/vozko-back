@@ -3,27 +3,27 @@ package template_usecase
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"path"
 	"strings"
 	"time"
 
+	"vozko/domain/media"
 	"vozko/domain/whatsapp/template"
 )
 
 type setTemplateHeaderMediaUseCase struct {
 	templateRepo  template.Repository
 	clientFactory template.WhatsAppClientFactory
-	httpClient    *http.Client
+	files         media.FileReader
 }
 
-func NewSetTemplateHeaderMediaUseCase(templateRepo template.Repository, clientFactory template.WhatsAppClientFactory) template.SetTemplateHeaderMediaUseCase {
+func NewSetTemplateHeaderMediaUseCase(templateRepo template.Repository, clientFactory template.WhatsAppClientFactory, files media.FileReader) template.SetTemplateHeaderMediaUseCase {
 	return &setTemplateHeaderMediaUseCase{
 		templateRepo:  templateRepo,
 		clientFactory: clientFactory,
-		httpClient:    &http.Client{Timeout: 60 * time.Second},
+		files:         files,
 	}
 }
 
@@ -47,6 +47,14 @@ func (uc *setTemplateHeaderMediaUseCase) Execute(input template.SetTemplateHeade
 		return uc.templateRepo.UpdateHeaderMedia(input.TemplateID, nil, nil)
 	}
 
+	if uc.files == nil {
+		return template.ErrHeaderMediaOutsideStorage
+	}
+	key, ours := uc.files.KeyFromURL(*input.HeaderMediaURL)
+	if !ours {
+		return template.ErrHeaderMediaOutsideStorage
+	}
+
 	if tmpl.WABAId == "" {
 		return fmt.Errorf("template has no WABA ID, cannot upload media")
 	}
@@ -56,10 +64,9 @@ func (uc *setTemplateHeaderMediaUseCase) Execute(input template.SetTemplateHeade
 		return fmt.Errorf("failed to get WhatsApp client for phone: %w", err)
 	}
 
-	log.Printf("[template-header-media] Downloading media from URL: %s", *input.HeaderMediaURL)
-	mediaData, mimeType, err := uc.downloadMedia(*input.HeaderMediaURL)
+	mediaData, mimeType, err := uc.readMedia(key, *input.HeaderMediaURL)
 	if err != nil {
-		return fmt.Errorf("failed to download media from URL: %w", err)
+		return fmt.Errorf("failed to read header media: %w", err)
 	}
 	log.Printf("[template-header-media] Downloaded %d bytes, mime type: %s", len(mediaData), mimeType)
 
@@ -96,33 +103,22 @@ func (uc *setTemplateHeaderMediaUseCase) Execute(input template.SetTemplateHeade
 	return uc.templateRepo.UpdateHeaderMedia(input.TemplateID, input.HeaderMediaURL, &mediaID)
 }
 
-func (uc *setTemplateHeaderMediaUseCase) downloadMedia(url string) ([]byte, string, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (uc *setTemplateHeaderMediaUseCase) readMedia(key, url string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	data, storedType, err := uc.files.DownloadFile(ctx, key)
 	if err != nil {
 		return nil, "", err
 	}
-
-	resp, err := uc.httpClient.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("failed to download media: status %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
+	if len(data) > media.MaxReadBytes {
+		return nil, "", media.ErrMediaTooLarge
 	}
 
 	mimeType := http.DetectContentType(data)
 
 	if mimeType == "application/octet-stream" || mimeType == "" {
-		headerType := resp.Header.Get("Content-Type")
-		if headerType != "" && headerType != "application/octet-stream" {
-			mimeType = headerType
+		if storedType != "" && storedType != "application/octet-stream" {
+			mimeType = storedType
 		}
 	}
 

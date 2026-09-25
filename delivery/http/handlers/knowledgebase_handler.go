@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/media"
 	"vozko/domain/rag"
+	"vozko/domain/workspace/workspace_department"
 	"vozko/infra/http/middleware"
 )
 
@@ -22,38 +23,38 @@ type KnowledgeBaseHandler struct {
 	createUseCase      rag.CreateKnowledgeBaseUseCase
 	updateUseCase      rag.UpdateKnowledgeBaseUseCase
 	deleteUseCase      rag.DeleteKnowledgeBaseUseCase
-	getUseCase         rag.GetKnowledgeBaseUseCase
+	access             rag.KnowledgeBaseAccessUseCase
 	listUseCase        rag.ListKnowledgeBasesUseCase
-	createDocUseCase   rag.CreateDocumentUseCase
+	documents          rag.ScopedDocumentsUseCase
 	deleteDocUseCase   rag.DeleteDocumentUseCase
 	getDocUseCase      rag.GetDocumentUseCase
 	listDocsUseCase    rag.ListDocumentsUseCase
 	linkAgentUseCase   rag.LinkAgentKnowledgeBasesUseCase
 	getAgentKBsUseCase rag.GetAgentKnowledgeBasesUseCase
-	queryUseCase       rag.QueryKnowledgeBaseUseCase
+	queryUseCase       rag.ScopedQueryUseCase
 }
 
 func NewKnowledgeBaseHandler(
 	createUC rag.CreateKnowledgeBaseUseCase,
 	updateUC rag.UpdateKnowledgeBaseUseCase,
 	deleteUC rag.DeleteKnowledgeBaseUseCase,
-	getUC rag.GetKnowledgeBaseUseCase,
+	access rag.KnowledgeBaseAccessUseCase,
 	listUC rag.ListKnowledgeBasesUseCase,
-	createDocUC rag.CreateDocumentUseCase,
+	documents rag.ScopedDocumentsUseCase,
 	deleteDocUC rag.DeleteDocumentUseCase,
 	getDocUC rag.GetDocumentUseCase,
 	listDocsUC rag.ListDocumentsUseCase,
 	linkAgentUC rag.LinkAgentKnowledgeBasesUseCase,
 	getAgentKBsUC rag.GetAgentKnowledgeBasesUseCase,
-	queryUC rag.QueryKnowledgeBaseUseCase,
+	queryUC rag.ScopedQueryUseCase,
 ) *KnowledgeBaseHandler {
 	return &KnowledgeBaseHandler{
 		createUseCase:      createUC,
 		updateUseCase:      updateUC,
 		deleteUseCase:      deleteUC,
-		getUseCase:         getUC,
+		access:             access,
 		listUseCase:        listUC,
-		createDocUseCase:   createDocUC,
+		documents:          documents,
 		deleteDocUseCase:   deleteDocUC,
 		getDocUseCase:      getDocUC,
 		listDocsUseCase:    listDocsUC,
@@ -64,6 +65,7 @@ func NewKnowledgeBaseHandler(
 }
 
 type createKnowledgeBaseRequest struct {
+	DepartmentID     string `json:"departmentId"`
 	Name             string `json:"name"`
 	Description      string `json:"description"`
 	ChunkingStrategy string `json:"chunkingStrategy,omitempty"`
@@ -138,7 +140,7 @@ func (h *KnowledgeBaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Config:      config,
 	}
 
-	result, err := h.createUseCase.Execute(r.Context(), input)
+	result, err := h.createUseCase.Execute(withDepartmentCreationScope(r, req.DepartmentID).Context(), input)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -154,7 +156,8 @@ func (h *KnowledgeBaseHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyOwnership(w, id, r) {
+	existing, ok := h.owned(w, id, r)
+	if !ok {
 		return
 	}
 
@@ -166,11 +169,6 @@ func (h *KnowledgeBaseHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var configUpdate *rag.KnowledgeBaseConfig
 	if req.ChunkingStrategy != nil || req.ChunkSize != nil || req.ChunkOverlap != nil || req.EmbeddingModel != nil {
-		existing, err := h.getUseCase.Execute(r.Context(), id)
-		if err != nil {
-			h.handleDomainError(w, err)
-			return
-		}
 		cfg := existing.Config
 		if req.ChunkingStrategy != nil {
 			strategy := rag.ChunkingStrategy(strings.ToLower(*req.ChunkingStrategy))
@@ -233,18 +231,8 @@ func (h *KnowledgeBaseHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyOwnership(w, id, r) {
-		return
-	}
-
-	result, err := h.getUseCase.Execute(r.Context(), id)
-	if err != nil {
-		h.handleDomainError(w, err)
-		return
-	}
-
-	if !canAccessDepartment(r, result.DepartmentID) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
+	result, ok := h.owned(w, id, r)
+	if !ok {
 		return
 	}
 
@@ -302,10 +290,6 @@ func (h *KnowledgeBaseHandler) CreateDocument(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if !h.verifyOwnership(w, kbID, r) {
-		return
-	}
-
 	var req createDocumentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteInvalidBodyError(w, map[string]string{"body": "invalid JSON"})
@@ -335,7 +319,7 @@ func (h *KnowledgeBaseHandler) CreateDocument(w http.ResponseWriter, r *http.Req
 		Metadata:        req.Metadata,
 	}
 
-	result, err := h.createDocUseCase.Execute(r.Context(), input)
+	result, err := h.documents.Add(r.Context(), knowledgeViewer(r), input)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -378,16 +362,6 @@ func (h *KnowledgeBaseHandler) UploadDocument(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	extTypeMap := map[string]rag.DocumentType{
-		"pdf":  rag.DocumentTypePDF,
-		"docx": rag.DocumentTypeDocx,
-		"doc":  rag.DocumentTypeDocx,
-		"md":   rag.DocumentTypeMarkdown,
-		"html": rag.DocumentTypeHTML,
-		"htm":  rag.DocumentTypeHTML,
-		"json": rag.DocumentTypeJSON,
-	}
-
 	type uploadResult struct {
 		Name    string      `json:"name"`
 		Success bool        `json:"success"`
@@ -426,11 +400,7 @@ func (h *KnowledgeBaseHandler) UploadDocument(w http.ResponseWriter, r *http.Req
 			filename = "upload"
 		}
 
-		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
-		docType, ok := extTypeMap[ext]
-		if !ok {
-			docType = rag.DocumentTypeText
-		}
+		docType := rag.DocumentTypeFromName(filename)
 
 		encoded := base64.StdEncoding.EncodeToString(data)
 
@@ -440,12 +410,12 @@ func (h *KnowledgeBaseHandler) UploadDocument(w http.ResponseWriter, r *http.Req
 			Type:            docType,
 			Content:         encoded,
 			Metadata: map[string]string{
-				"originalSize": fmt.Sprintf("%d", len(data)),
-				"encoding":     "base64",
+				"originalSize":       fmt.Sprintf("%d", len(data)),
+				rag.MetadataEncoding: rag.EncodingBase64,
 			},
 		}
 
-		result, err := h.createDocUseCase.Execute(r.Context(), input)
+		result, err := h.documents.Add(r.Context(), knowledgeViewer(r), input)
 		if err != nil {
 			errMsg := "upload failed"
 			if errors.Is(err, rag.ErrMaxDocumentsReached) {
@@ -614,38 +584,16 @@ func (h *KnowledgeBaseHandler) Query(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Query) == "" {
-		response.WriteValidationError(w, map[string]string{"query": "required"})
-		return
-	}
-
-	if len(req.KnowledgeBaseIDs) == 0 {
-		response.WriteValidationError(w, map[string]string{"knowledgeBaseIds": "at least one knowledge base ID is required"})
-		return
-	}
-
-	maxResults := req.MaxResults
-	if maxResults <= 0 {
-		maxResults = 5
-	}
-	if maxResults > 20 {
-		maxResults = 20
-	}
-
-	minScore := req.MinScore
-	if minScore <= 0 {
-		minScore = 0.3
-	}
-
+	viewer := knowledgeViewer(r)
 	input := rag.QueryInput{
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
-		Query:            strings.TrimSpace(req.Query),
-		TopK:             maxResults,
-		MinScore:         minScore,
+		Query:            req.Query,
+		TopK:             req.MaxResults,
+		MinScore:         req.MinScore,
 		IncludeMetadata:  true,
 	}
 
-	result, err := h.queryUseCase.Execute(r.Context(), input)
+	result, err := h.queryUseCase.Execute(r.Context(), viewer, input)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -654,25 +602,44 @@ func (h *KnowledgeBaseHandler) Query(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, result)
 }
 
-func (h *KnowledgeBaseHandler) verifyOwnership(w http.ResponseWriter, kbID string, r *http.Request) bool {
-	kb, err := h.getUseCase.Execute(r.Context(), kbID)
+func knowledgeViewer(r *http.Request) rag.Viewer {
+	return rag.Viewer{WorkspaceID: middleware.GetWorkspaceID(r), Departments: middleware.GetDepartmentFilter(r)}
+}
+
+func (h *KnowledgeBaseHandler) owned(w http.ResponseWriter, kbID string, r *http.Request) (*rag.KnowledgeBase, bool) {
+	kb, err := h.access.Owned(r.Context(), knowledgeViewer(r), kbID)
 	if err != nil {
 		h.handleDomainError(w, err)
-		return false
+		return nil, false
 	}
+	return kb, true
+}
 
-	if kb.WorkspaceID != middleware.GetWorkspaceID(r) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this knowledge base", nil)
-		return false
-	}
-
-	return true
+func (h *KnowledgeBaseHandler) verifyOwnership(w http.ResponseWriter, kbID string, r *http.Request) bool {
+	_, ok := h.owned(w, kbID, r)
+	return ok
 }
 
 func (h *KnowledgeBaseHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, rag.ErrQueryRequired):
+		response.WriteValidationError(w, map[string]string{"query": "required"})
+	case errors.Is(err, rag.ErrKnowledgeBaseIDRequired):
+		response.WriteValidationError(w, map[string]string{"knowledgeBaseIds": "at least one knowledge base ID is required"})
+	case errors.Is(err, rag.ErrQueryTooManyBases):
+		response.WriteValidationError(w, map[string]string{"knowledgeBaseIds": "too many knowledge bases"})
+	case errors.Is(err, rag.ErrKnowledgeBaseAccessDenied):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this knowledge base", nil)
 	case errors.Is(err, rag.ErrKnowledgeBaseNotFound):
 		response.WriteError(w, http.StatusNotFound, "Knowledge base not found", nil)
+	case errors.Is(err, media.ErrMediaNotFound):
+		response.WriteError(w, http.StatusNotFound, "Media not found", nil)
+	case errors.Is(err, media.ErrMediaTooLarge):
+		response.WriteValidationError(w, map[string]string{"mediaId": "file too large"})
+	case errors.Is(err, workspace_department.ErrDepartmentRequired):
+		response.WriteValidationError(w, map[string]string{"departmentId": "required"})
+	case errors.Is(err, workspace_department.ErrDepartmentAccessDenied):
+		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
 	case errors.Is(err, rag.ErrDocumentNotFound):
 		response.WriteError(w, http.StatusNotFound, "Document not found", nil)
 	case errors.Is(err, rag.ErrKnowledgeBaseNameRequired):

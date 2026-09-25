@@ -18,6 +18,7 @@ type whatsAppOutreachUseCases struct {
 	billedTemplateSend        whatsapp_template.BilledTemplateSendUseCase
 	reconcileTemplateSends    whatsapp_template.ReconcileSendAttemptsUseCase
 	startOfficialConversation whatsapp_outreach_domain.StartOfficialConversationUseCase
+	conversationTemplate      whatsapp_outreach_domain.ConversationTemplateUseCase
 	quoteTemplateSend         whatsapp_outreach_domain.QuoteTemplateSendUseCase
 }
 
@@ -54,7 +55,7 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 	built.quoteTemplateSend = whatsapp_outreach_usecase.NewQuoteUseCase(
 		c.repositories.whatsappTemplate, d.consume, c.services.cachedBalanceChecker)
 
-	start, err := whatsapp_outreach_usecase.NewStartConversationUseCase(whatsapp_outreach_usecase.Deps{
+	deps := whatsapp_outreach_usecase.Deps{
 		Phones:        c.repositories.businessPhone,
 		PhoneGrants:   c.repositories.workspacePhoneAccess,
 		Templates:     c.repositories.whatsappTemplate,
@@ -69,11 +70,14 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		History:       d.history,
 		Sender:        sender,
 		Limiter:       whatsapp_outreach_usecase.NewSharedStateLimiter(c.redisProvider.SharedState()),
-	})
-	if err != nil {
+	}
+
+	if built.startOfficialConversation, err = whatsapp_outreach_usecase.NewStartConversationUseCase(deps); err != nil {
 		log.Fatalf("[container] whatsapp outreach: %v", err)
 	}
-	built.startOfficialConversation = start
+	if built.conversationTemplate, err = whatsapp_outreach_usecase.NewConversationTemplateUseCase(deps); err != nil {
+		log.Fatalf("[container] whatsapp outreach: %v", err)
+	}
 
 	return built
 }

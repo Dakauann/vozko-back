@@ -40,7 +40,6 @@ func TestAllowedWorkspaceResourceTables_ContainsKnownGood(t *testing.T) {
 		"whatsapp_templates",
 		"whatsapp_business_phones",
 		"sip_trunks",
-		"support_inboxes",
 		"knowledge_bases",
 		"workflows",
 		"stages",

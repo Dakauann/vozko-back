@@ -1,5 +1,7 @@
 package label
 
+import "vozko/domain/shared"
+
 type CreateLabelUseCase interface {
 	Execute(workspaceID string, input CreateLabelInput) (*Label, error)
 }
@@ -58,4 +60,9 @@ type RemoveEntryLabelInput struct {
 
 type ReorderLabelsInput struct {
 	LabelIDs []string `json:"labelIds"`
+}
+
+type EntryLabelsUseCase interface {
+	Apply(workspaceID string, by shared.Person, input AssignEntryLabelInput) (*EntryLabel, error)
+	Remove(workspaceID string, by shared.Person, input RemoveEntryLabelInput) error
 }

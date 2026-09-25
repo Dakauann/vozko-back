@@ -69,7 +69,7 @@ func TestCreateTemplate_AuthenticationPersistsTheOTPType(t *testing.T) {
 	client := &createMockWAClient{}
 	repo := &sendMockTemplateRepo{}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
-	uc := NewCreateTemplateUseCase(factory, repo, &fakeSetHeaderMediaUC{})
+	uc := NewCreateTemplateUseCase(factory, repo, &fakeSetHeaderMediaUC{}, anyStorage{})
 
 	if _, err := uc.Execute(authCreateInput(
 		template.TemplateComponent{Type: "BODY"},

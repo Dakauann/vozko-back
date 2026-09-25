@@ -107,3 +107,19 @@ func (s *S3Service) DownloadFile(ctx context.Context, key string) ([]byte, strin
 func (s *S3Service) GetFileURL(key string) string {
 	return fmt.Sprintf("%s/%s", os.Getenv("CLOUDFLARE_R2_ENDPOINT"), key)
 }
+
+func (s *S3Service) KeyFromURL(url string) (string, bool) {
+	return keyFromURL(os.Getenv("CLOUDFLARE_R2_ENDPOINT"), url)
+}
+
+func keyFromURL(endpoint, url string) (string, bool) {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint == "" || !strings.HasPrefix(url, endpoint+"/") {
+		return "", false
+	}
+	key := strings.TrimPrefix(url, endpoint+"/")
+	if key == "" || strings.Contains(key, "..") || strings.ContainsAny(key, "?#") {
+		return "", false
+	}
+	return key, true
+}

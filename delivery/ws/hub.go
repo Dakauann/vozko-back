@@ -30,10 +30,6 @@ type workspaceDepartmentMemberLister interface {
 	ListMembers(departmentID string) ([]workspace_department.DepartmentMember, error)
 }
 
-type memberVisibilityChecker interface {
-	CanView(callerUserID, targetUserID, workspaceID string, isPlatformAdmin bool) (bool, error)
-}
-
 type conversationAssigner interface {
 	AssignOnOpen(entryID, entryType, businessPhoneID, workspaceID, userID string) (bool, error)
 	AssignManual(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger string) error
@@ -74,6 +70,7 @@ type ConversationHub struct {
 	workspaceResolver    conversation.CampaignWorkspaceResolver
 	historyProvider      conversation.HistoryProvider
 	historyReader        conversation.HistoryReader
+	personAssign         inbox_assignment.PersonAssignUseCase
 	messageMarker        conversation.MessageMarker
 	StageProvider        conversation.StageProvider
 	labelProvider        conversation.LabelProvider
@@ -91,7 +88,6 @@ type ConversationHub struct {
 	eventLogger          ce.Logger
 	workspaceConfigRepo  wsc.Repository
 	departmentRepo       workspaceDepartmentMemberLister
-	memberVisibility     memberVisibilityChecker
 	statusUpdater        conversation.ConversationStatusUpdater
 	wsMetrics            metrics.WSMetricsRecorder
 	operatorSend         conversation.OperatorSendUseCase
@@ -156,6 +152,9 @@ func (h *ConversationHub) SetHistoryProvider(provider conversation.HistoryProvid
 func (h *ConversationHub) SetHistoryReader(reader conversation.HistoryReader) {
 	h.historyReader = reader
 }
+func (h *ConversationHub) SetPersonAssign(assign inbox_assignment.PersonAssignUseCase) {
+	h.personAssign = assign
+}
 func (h *ConversationHub) SetMessageMarker(marker conversation.MessageMarker) {
 	h.messageMarker = marker
 }
@@ -199,10 +198,6 @@ func (h *ConversationHub) SetPresenceRecorder(p presenceRecorder) {
 
 func (h *ConversationHub) SetAISessionEnder(e aiSessionEnder) {
 	h.aiSessions = e
-}
-
-func (h *ConversationHub) SetMemberVisibility(checker memberVisibilityChecker) {
-	h.memberVisibility = checker
 }
 
 func (h *ConversationHub) SetEventLogger(logger ce.Logger) {
@@ -3172,89 +3167,27 @@ func (h *ConversationHub) handleAssignTo(conn *WSConnection, payload json.RawMes
 		return
 	}
 
-	if (h.assignmentService == nil && h.assignmentRepo == nil) || h.workspaceResolver == nil {
+	if h.personAssign == nil {
 		h.sendError(conn, "not_configured", "Assignment service not configured")
 		return
 	}
 
-	workspaceID, err := h.workspaceResolver.GetEntryWorkspaceID(p.EntryID, p.EntryType)
-	if err != nil || workspaceID == "" {
-		h.sendError(conn, "resolve_failed", "Could not resolve workspace for entry")
+	by := shared.Person{UserID: conn.UserID, SystemAdmin: conn.IsAdmin}
+	err := h.personAssign.Assign(by, conn.WorkspaceID, p.EntryID, p.EntryType, p.UserID)
+	switch {
+	case errors.Is(err, inbox_assignment.ErrAssignEntryAccess):
+		h.sendError(conn, "unauthorized", "You don't have access to this conversation")
 		return
-	}
-
-	if workspaceID != conn.WorkspaceID && !conn.IsAdmin {
-		h.sendError(conn, "unauthorized", "Cannot assign entry from a different workspace")
+	case errors.Is(err, inbox_assignment.ErrAssignTargetIneligible):
+		h.sendError(conn, "unauthorized", "Target user is not a workspace member with conversation access")
 		return
-	}
-
-	if h.authorizer != nil {
-		if _, allowed := h.authorizer.GetDepartmentScope(p.UserID, workspaceID, false); !allowed {
-			h.sendError(conn, "unauthorized", "Target user is not a workspace member with conversation access")
-			return
-		}
-	}
-
-	if h.memberVisibility != nil {
-		canView, err := h.memberVisibility.CanView(conn.UserID, p.UserID, workspaceID, conn.IsAdmin)
-		if err != nil {
-			log.Printf("[ConversationHub] handleAssignTo: visibility check failed for caller %s → target %s: %v", conn.UserID, p.UserID, err)
-			h.sendError(conn, "assign_failed", "Failed to validate assignment target")
-			return
-		}
-		if !canView {
-			h.sendError(conn, "unauthorized", "You cannot assign conversations to members outside your departments")
-			return
-		}
-	}
-
-	businessPhoneID := ""
-	if p.EntryType == "whatsapp" && h.waCampaignRepo != nil {
-		campaignID, _ := h.workspaceResolver.GetEntryCampaignID(p.EntryID, p.EntryType)
-		if campaignID != "" {
-			if wc, err := h.waCampaignRepo.FindByID(campaignID); err == nil && wc != nil {
-				businessPhoneID = wc.BusinessPhoneID
-			}
-		}
-	}
-
-	if h.assignmentService != nil {
-		if err := h.assignmentService.AssignManual(p.EntryID, p.EntryType, businessPhoneID, workspaceID, p.UserID, conn.UserID, inbox_assignment.TriggerManual); err != nil {
-			log.Printf("[ConversationHub] handleAssignTo: error assigning entry %s → user %s: %v", p.EntryID, p.UserID, err)
-			h.sendError(conn, "assign_failed", "Failed to assign entry")
-			return
-		}
-	} else {
-		previousUserID := ""
-		if existing, err := h.assignmentRepo.FindByEntry(workspaceID, p.EntryID, p.EntryType); err == nil && existing != nil {
-			previousUserID = existing.AssignedUserID
-		}
-
-		assignment := &inbox_assignment.InboxAssignment{
-			WorkspaceID:     workspaceID,
-			BusinessPhoneID: businessPhoneID,
-			EntryID:         p.EntryID,
-			EntryType:       p.EntryType,
-			AssignedUserID:  p.UserID,
-		}
-		if err := h.assignmentRepo.Assign(assignment); err != nil {
-			log.Printf("[ConversationHub] handleAssignTo: error assigning entry %s → user %s: %v", p.EntryID, p.UserID, err)
-			h.sendError(conn, "assign_failed", "Failed to assign entry")
-			return
-		}
-		if h.eventLogger != nil {
-			details := map[string]string{"to_user_id": p.UserID, "trigger": "manual"}
-			if previousUserID != "" {
-				details["from_user_id"] = previousUserID
-			}
-			h.eventLogger.Log(ce.New(workspaceID, p.EntryID, p.EntryType, ce.EventAssigned).
-				WithActorHuman(conn.UserID).
-				WithChannel(shared.EntryType(p.EntryType).EventChannel()).
-				WithDetails(details).
-				Build())
-		}
-		// The assignment service announces its own reassignments.
-		go h.AnnounceOwnerChange(workspaceID, p.EntryID, p.EntryType, previousUserID)
+	case errors.Is(err, inbox_assignment.ErrAssignTargetOutOfReach):
+		h.sendError(conn, "unauthorized", "You cannot assign conversations to members outside your departments")
+		return
+	case err != nil:
+		log.Printf("[ConversationHub] handleAssignTo: error assigning entry %s → user %s: %v", p.EntryID, p.UserID, err)
+		h.sendError(conn, "assign_failed", "Failed to assign entry")
+		return
 	}
 
 	log.Printf("[ConversationHub] Entry %s (%s) manually assigned to user %s by %s", p.EntryID, p.EntryType, p.UserID, conn.UserID)

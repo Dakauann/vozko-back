@@ -11,7 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-const leadListMaxPageSize = 200
 
 func sortKeyAliases() map[string]string {
 	keys := leaddomain.AllSortKeys()
@@ -155,8 +154,8 @@ func listInputFromQuery(workspaceID string, values url.Values) (leaddomain.ListL
 	filter := crmfilter.Filter{Groups: append(b.groups, structured.Groups...)}
 
 	pagination := httpx.ParsePagination(values)
-	if pagination.PageSize > leadListMaxPageSize {
-		pagination.PageSize = leadListMaxPageSize
+	if pagination.PageSize > leaddomain.MaxListPageSize {
+		pagination.PageSize = leaddomain.MaxListPageSize
 	}
 
 	return leaddomain.ListLeadsInput{

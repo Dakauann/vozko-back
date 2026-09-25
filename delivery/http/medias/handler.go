@@ -133,7 +133,7 @@ func (h *MediasHandler) GetMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.getMediaUseCase.GetMedia(mediaID)
+	media, err := h.getMediaUseCase.GetMedia(middleware.GetWorkspaceID(r), mediaID)
 	if err != nil {
 		response.WriteError(w, http.StatusNotFound, "Media not found", nil)
 		return

@@ -166,15 +166,24 @@ func orAll(v string) string {
 	return v
 }
 
+func departmentFailure(err error) (copilot.Result, bool) {
+	switch {
+	case errors.Is(err, wd.ErrDepartmentAccessDenied):
+		return copilot.Result{Status: copilot.StatusDenied, Message: "sem acesso a este departamento; o usuário só vê os próprios departamentos"}, true
+	case errors.Is(err, wd.ErrDepartmentRequired):
+		return copilot.Result{Status: copilot.StatusError, Message: "o usuário pertence a mais de um departamento: pergunte qual (list_departments) e passe department_id"}, true
+	}
+	return copilot.Result{}, false
+}
+
 func analyticsFailure(tool string, err error) copilot.Result {
+	if res, ok := departmentFailure(err); ok {
+		return res
+	}
 	switch {
 	case errors.Is(err, attendance.ErrInvalidWindow), errors.Is(err, attendance.ErrUnknownMetric), errors.Is(err, attendance.ErrUnknownBlock),
 		errors.Is(err, errUnknownDepartment), errors.Is(err, errUnknownMember), errors.Is(err, errUnknownChannel), errors.Is(err, errUnknownCampaign):
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	case errors.Is(err, wd.ErrDepartmentAccessDenied):
-		return copilot.Result{Status: copilot.StatusDenied, Message: "sem acesso a este departamento; o usuário só vê os próprios departamentos"}
-	case errors.Is(err, wd.ErrDepartmentRequired):
-		return copilot.Result{Status: copilot.StatusError, Message: "o usuário pertence a mais de um departamento: pergunte qual (list_departments) e passe department_id"}
 	case errors.Is(err, cache.ErrGateBusy):
 		return copilot.Result{Status: copilot.StatusError, Message: "as análises estão ocupadas agora; tente novamente em alguns segundos ou responda com o que já tem"}
 	case errors.Is(err, context.DeadlineExceeded):

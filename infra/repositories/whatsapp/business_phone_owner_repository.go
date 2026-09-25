@@ -17,14 +17,25 @@ func NewOwnerPhoneReader(db *gorm.DB) businessphone.OwnerPhoneReader {
 
 func (r *ownerPhoneReader) CountActiveDialog360ByOwner(workspaceID string) (int64, error) {
 	var count int64
-	err := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
-		Where("owner_workspace_id = ? AND provider = ? AND status NOT IN ?",
-			workspaceID,
-			string(businessphone.ProviderDialog360),
-			[]string{string(businessphone.StatusOnboardingFailed), string(businessphone.StatusSuspended)},
-		).
+	err := r.activeByOwner(workspaceID).
+		Where("provider = ?", string(businessphone.ProviderDialog360)).
 		Count(&count).Error
 	return count, err
+}
+
+func (r *ownerPhoneReader) CountActiveOfficialByOwner(workspaceID string) (int64, error) {
+	var count int64
+	err := r.activeByOwner(workspaceID).Count(&count).Error
+	return count, err
+}
+
+func (r *ownerPhoneReader) activeByOwner(workspaceID string) *gorm.DB {
+	excluded := make([]string, 0, len(businessphone.StatusesOutsidePhoneQuota()))
+	for _, s := range businessphone.StatusesOutsidePhoneQuota() {
+		excluded = append(excluded, string(s))
+	}
+	return r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
+		Where("owner_workspace_id = ? AND status NOT IN ?", workspaceID, excluded)
 }
 
 func (r *ownerPhoneReader) CountConnectedDialog360GroupedByOwner() (map[string]int, error) {

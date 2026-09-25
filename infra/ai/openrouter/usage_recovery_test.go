@@ -125,6 +125,7 @@ func TestGenerateStream_EOFNoUsage_RecoversAndBills(t *testing.T) {
 		t.Fatalf("GenerateStream: %v", err)
 	}
 	drain(t, ch)
+	svc.recoveries.Wait()
 
 	events := pub.events()
 	if len(events) != 1 {
@@ -152,6 +153,7 @@ func TestGenerateStream_RecoveryFails_DoesNotBill(t *testing.T) {
 		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "oi"}},
 	})
 	drain(t, ch)
+	svc.recoveries.Wait()
 	if got := len(pub.events()); got != 0 {
 		t.Fatalf("failed recovery must not bill, got %d events", got)
 	}
@@ -174,6 +176,7 @@ func TestGenerateStream_RecoveryZeroTokens_DoesNotBill(t *testing.T) {
 		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "oi"}},
 	})
 	drain(t, ch)
+	svc.recoveries.Wait()
 	if got := len(pub.events()); got != 0 {
 		t.Fatalf("zero-token recovery must not bill, got %d events", got)
 	}
@@ -195,6 +198,7 @@ func TestGenerateStream_NoFetcher_NoRecovery(t *testing.T) {
 		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "oi"}},
 	})
 	drain(t, ch)
+	svc.recoveries.Wait()
 	if got := len(pub.events()); got != 0 {
 		t.Fatalf("no fetcher → no bill, got %d events", got)
 	}
@@ -219,6 +223,7 @@ func TestGenerateStream_InlineUsage_SkipsRecovery(t *testing.T) {
 		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "oi"}},
 	})
 	drain(t, ch)
+	svc.recoveries.Wait()
 
 	if fetcher.calls != 0 {
 		t.Fatalf("recovery must not run when inline usage is present, calls=%d", fetcher.calls)

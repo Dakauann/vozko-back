@@ -22,7 +22,7 @@ func (g *phoneProvisioningGate) CanProvisionPhone(workspaceID string) (bool, err
 	if err != nil {
 		return false, err
 	}
-	count, err := g.phones.CountActiveDialog360ByOwner(workspaceID)
+	count, err := g.phones.CountActiveOfficialByOwner(workspaceID)
 	if err != nil {
 		return false, err
 	}

@@ -443,6 +443,103 @@ const docTemplate = `{
                 }
             }
         },
+        "/attendance/campaigns/{section}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna uma seção do relatório de disparos de campanhas (summary, daily, failures, tags ou campaigns) para o painel de atendimento. Os dias são contados no fuso do horário de funcionamento do workspace (ou do departamento), como as demais seções de atendimento. Sem campaign_id, cobre as campanhas de disparo do período; com campaign_id, a campanha inteira. As seções ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Atendimento"
+                ],
+                "summary": "Seção do relatório de disparos na visão de atendimento",
+                "parameters": [
+                    {
+                        "enum": [
+                            "summary",
+                            "daily",
+                            "failures",
+                            "tags",
+                            "campaigns"
+                        ],
+                        "type": "string",
+                        "description": "Seção",
+                        "name": "section",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data inicial (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Data final (YYYY-MM-DD), no máximo 92 dias após a inicial",
+                        "name": "date_to",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da campanha",
+                        "name": "campaign_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do departamento (sem campaign_id)",
+                        "name": "department_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsapp_campaign.ReportSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/attendance/frt": {
             "get": {
                 "security": [
@@ -3639,7 +3736,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "path",
                         "required": true
@@ -3707,7 +3804,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "path",
                         "required": true
@@ -3780,7 +3877,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "path",
                         "required": true
@@ -3857,7 +3954,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "path",
                         "required": true
@@ -3930,7 +4027,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "path",
                         "required": true
@@ -4054,7 +4151,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Agenda uma mensagem para ser enviada em uma conversa. O horário precisa estar dentro da janela de atendimento aberta e a pelo menos um minuto de distância. Envie o cabeçalho ` + "`" + `Idempotency-Key` + "`" + ` para que um reenvio da requisição não crie uma segunda mensagem.",
+                "description": "Agenda uma mensagem para ser enviada em uma conversa. Uma mensagem de texto ou mídia precisa cair dentro da janela de atendimento aberta. Um template (campo ` + "`" + `template` + "`" + `, só no WhatsApp oficial) pode ser agendado com a janela fechada, até 30 dias à frente; ele segue as mesmas regras de um envio de template (aprovação, acesso ao template, contato bloqueado, proteção contra spam) e é cobrado no momento do envio. Agendar, reagendar ou cancelar um template exige a permissão whatsapp_templates:send. O horário precisa estar a pelo menos um minuto de distância. Envie o cabeçalho ` + "`" + `Idempotency-Key` + "`" + ` para que um reenvio da requisição não crie uma segunda mensagem.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4134,7 +4231,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "O horário escolhido está fora dos limites",
+                        "description": "O horário escolhido está fora dos limites, ou o template não pode ser enviado a este contato",
                         "schema": {
                             "$ref": "#/definitions/scheduledmessage.WindowErrorResponse"
                         }
@@ -8685,7 +8782,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Tipo da entrada ('whatsapp' ou 'support')",
+                        "description": "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)",
                         "name": "entryType",
                         "in": "query",
                         "required": true
@@ -9070,7 +9167,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Associa uma conversa (entryType 'whatsapp' ou 'support') a uma oportunidade.",
+                "description": "Associa uma conversa (entryType whatsapp, unofficial_whatsapp, instagram ou telegram) a uma oportunidade.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9663,169 +9760,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/workspacepricing.PublicExchangeRateResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/public/support/sessions": {
-            "post": {
-                "description": "Cria uma sessão de atendimento a partir do widget de chat incorporado no site do cliente. Rota pública, chamada pelo próprio widget.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Widget de atendimento"
-                ],
-                "summary": "Iniciar sessão de atendimento",
-                "parameters": [
-                    {
-                        "description": "Dados de contato e caixa de atendimento",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.CreateSessionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.CreateSessionResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/public/support/sessions/reconnect": {
-            "post": {
-                "description": "Reconecta uma sessão de atendimento existente a partir do token de sessão do visitante. Rota pública, chamada pelo próprio widget.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Widget de atendimento"
-                ],
-                "summary": "Reconectar sessão de atendimento",
-                "parameters": [
-                    {
-                        "description": "Token da sessão",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.ReconnectSessionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.ReconnectSessionResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "410": {
-                        "description": "Gone",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/public/support/widget/{inboxId}": {
-            "get": {
-                "description": "Retorna as informações públicas de exibição do widget de chat (nome, saudação, cor e campos de pré-atendimento). Rota pública, chamada pelo próprio widget.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Widget de atendimento"
-                ],
-                "summary": "Consultar configuração do widget",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Identificador da caixa de atendimento",
-                        "name": "inboxId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.WidgetInfoResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "500": {
@@ -11728,315 +11662,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/support/inboxes": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna a lista paginada de caixas de atendimento do workspace, com busca por nome e filtro por arquivadas.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Caixas de atendimento"
-                ],
-                "summary": "Listar caixas de atendimento",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Número da página (inicia em 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Quantidade de itens por página",
-                        "name": "pageSize",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Busca por nome da caixa de atendimento",
-                        "name": "search",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Filtrar por caixas arquivadas",
-                        "name": "archived",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Ordenação (ex.: name:asc, createdAt:desc)",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxListResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Cria uma nova caixa de atendimento (widget de chat incorporável) no workspace.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Caixas de atendimento"
-                ],
-                "summary": "Criar caixa de atendimento",
-                "parameters": [
-                    {
-                        "description": "Dados da caixa de atendimento",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/support/inboxes/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna os detalhes de uma caixa de atendimento a partir do seu identificador.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Caixas de atendimento"
-                ],
-                "summary": "Consultar caixa de atendimento",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Identificador da caixa de atendimento",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Atualiza os dados de uma caixa de atendimento existente.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Caixas de atendimento"
-                ],
-                "summary": "Atualizar caixa de atendimento",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Identificador da caixa de atendimento",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Dados da caixa de atendimento",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/supportinbox.SupportInboxResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Remove uma caixa de atendimento do workspace.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Caixas de atendimento"
-                ],
-                "summary": "Remover caixa de atendimento",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Identificador da caixa de atendimento",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -21035,14 +20660,12 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "whatsapp",
-                "support",
                 "instagram",
                 "telegram",
                 "unofficial_whatsapp"
             ],
             "x-enum-varnames": [
                 "MessageChannelWhatsApp",
-                "MessageChannelSupport",
                 "MessageChannelInstagram",
                 "MessageChannelTelegram",
                 "MessageChannelUnofficialWhatsApp"
@@ -24198,9 +23821,39 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": true
                 },
+                "template": {
+                    "$ref": "#/definitions/scheduledmessage.ScheduleTemplateRequest"
+                },
                 "text": {
                     "type": "string",
                     "example": "Bom dia! Seguindo nossa conversa..."
+                }
+            }
+        },
+        "scheduledmessage.ScheduleTemplateRequest": {
+            "type": "object",
+            "properties": {
+                "body_params": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "Ana"
+                    ]
+                },
+                "header_params": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "Pedido 42"
+                    ]
+                },
+                "template_id": {
+                    "type": "string",
+                    "example": "4f1c2a9e-8b7d-4e21-9a3f-2c6d5e8f1b0a"
                 }
             }
         },
@@ -24253,6 +23906,10 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "kind": {
+                    "type": "string",
+                    "example": "template"
+                },
                 "mediaId": {
                     "type": "string"
                 },
@@ -24277,6 +23934,9 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 },
+                "template": {
+                    "$ref": "#/definitions/scheduledmessage.ScheduledTemplateResponse"
+                },
                 "text": {
                     "type": "string"
                 },
@@ -24285,6 +23945,34 @@ const docTemplate = `{
                 },
                 "workspaceId": {
                     "type": "string"
+                }
+            }
+        },
+        "scheduledmessage.ScheduledTemplateResponse": {
+            "type": "object",
+            "properties": {
+                "bodyParams": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "headerParams": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "follow_up"
+                },
+                "preview": {
+                    "type": "string",
+                    "example": "Oi Ana, tudo certo com o seu pedido?"
                 }
             }
         },
@@ -24316,6 +24004,9 @@ const docTemplate = `{
                 },
                 "open": {
                     "type": "boolean"
+                },
+                "templateLatestAllowedAt": {
+                    "type": "string"
                 }
             }
         },
@@ -24346,14 +24037,12 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "whatsapp",
-                "support",
                 "instagram",
                 "telegram",
                 "unofficial_whatsapp"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
-                "EntryTypeSupport",
                 "EntryTypeInstagram",
                 "EntryTypeTelegram",
                 "EntryTypeUnofficialWhatsApp"
@@ -24828,238 +24517,6 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "example": "Em atendimento"
-                }
-            }
-        },
-        "supportinbox.CreateSessionRequest": {
-            "type": "object",
-            "properties": {
-                "contactEmail": {
-                    "type": "string",
-                    "example": "maria@exemplo.com.br"
-                },
-                "contactName": {
-                    "type": "string",
-                    "example": "Maria Silva"
-                },
-                "inboxId": {
-                    "type": "string",
-                    "example": "inbox_a1b2c3"
-                },
-                "sourceUrl": {
-                    "type": "string",
-                    "example": "https://meusite.com.br/contato"
-                }
-            }
-        },
-        "supportinbox.CreateSessionResponse": {
-            "type": "object",
-            "properties": {
-                "entryId": {
-                    "type": "string",
-                    "example": "entry_a1b2c3"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "greetingMessage": {
-                    "type": "string",
-                    "example": "Olá! Como podemos ajudar?"
-                },
-                "preChatFields": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/supportinbox.PreChatField"
-                    }
-                },
-                "sessionToken": {
-                    "type": "string",
-                    "example": "a1b2c3d4e5f6.7890abcdef"
-                }
-            }
-        },
-        "supportinbox.PreChatField": {
-            "type": "object",
-            "properties": {
-                "label": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "options": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "required": {
-                    "type": "boolean"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "supportinbox.ReconnectSessionRequest": {
-            "type": "object",
-            "properties": {
-                "sessionToken": {
-                    "type": "string",
-                    "example": "a1b2c3d4e5f6.7890abcdef"
-                }
-            }
-        },
-        "supportinbox.ReconnectSessionResponse": {
-            "type": "object",
-            "properties": {
-                "entryId": {
-                    "type": "string",
-                    "example": "entry_a1b2c3"
-                },
-                "expiresAt": {
-                    "type": "string"
-                },
-                "greetingMessage": {
-                    "type": "string",
-                    "example": "Olá! Como podemos ajudar?"
-                },
-                "inboxId": {
-                    "type": "string",
-                    "example": "inbox_a1b2c3"
-                }
-            }
-        },
-        "supportinbox.SupportInboxListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/supportinbox.SupportInboxResponse"
-                    }
-                },
-                "meta": {
-                    "$ref": "#/definitions/response.PaginationMeta"
-                }
-            }
-        },
-        "supportinbox.SupportInboxRequest": {
-            "type": "object",
-            "properties": {
-                "agentId": {
-                    "type": "string",
-                    "example": "agt_a1b2c3"
-                },
-                "allowedOrigins": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "enableAgentResponses": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "greetingMessage": {
-                    "type": "string",
-                    "example": "Olá! Como podemos ajudar?"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "Atendimento Site"
-                },
-                "preChatFields": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/supportinbox.PreChatField"
-                    }
-                },
-                "widgetColor": {
-                    "type": "string",
-                    "example": "#2463eb"
-                }
-            }
-        },
-        "supportinbox.SupportInboxResponse": {
-            "type": "object",
-            "properties": {
-                "agentId": {
-                    "type": "string",
-                    "example": "agt_a1b2c3"
-                },
-                "allowedOrigins": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "archived": {
-                    "type": "boolean",
-                    "example": false
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "enableAgentResponses": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "greetingMessage": {
-                    "type": "string",
-                    "example": "Olá! Como podemos ajudar?"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "inbox_a1b2c3"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "Atendimento Site"
-                },
-                "preChatFields": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/supportinbox.PreChatField"
-                    }
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "widgetColor": {
-                    "type": "string",
-                    "example": "#2463eb"
-                },
-                "workspaceId": {
-                    "type": "string",
-                    "example": "ws_a1b2c3"
-                }
-            }
-        },
-        "supportinbox.WidgetInfoResponse": {
-            "type": "object",
-            "properties": {
-                "greetingMessage": {
-                    "type": "string",
-                    "example": "Olá! Como podemos ajudar?"
-                },
-                "inboxId": {
-                    "type": "string",
-                    "example": "inbox_a1b2c3"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "Atendimento Site"
-                },
-                "preChatFields": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/supportinbox.PreChatField"
-                    }
-                },
-                "widgetColor": {
-                    "type": "string",
-                    "example": "#2463eb"
                 }
             }
         },
@@ -25557,6 +25014,61 @@ const docTemplate = `{
                 }
             }
         },
+        "whatsapp_campaign.ReportSummary": {
+            "type": "object",
+            "properties": {
+                "campaignCreatedAt": {
+                    "type": "string"
+                },
+                "campaignId": {
+                    "type": "string"
+                },
+                "campaignName": {
+                    "type": "string"
+                },
+                "funnel": {
+                    "$ref": "#/definitions/whatsapp_campaign_entry.Funnel"
+                },
+                "templateName": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsapp_campaign_entry.Funnel": {
+            "type": "object",
+            "properties": {
+                "awaitingDelivery": {
+                    "type": "integer"
+                },
+                "base": {
+                    "type": "integer"
+                },
+                "delivered": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "notEligible": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "replied": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                },
+                "trackedSince": {
+                    "type": "string"
+                }
+            }
+        },
         "whatsappbusinessphone.CallingStatusResponse": {
             "type": "object",
             "properties": {
@@ -25997,8 +25509,7 @@ const docTemplate = `{
                         "whatsapp",
                         "unofficial_whatsapp",
                         "instagram",
-                        "telegram",
-                        "support"
+                        "telegram"
                     ],
                     "example": "whatsapp"
                 },

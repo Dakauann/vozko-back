@@ -33,6 +33,8 @@ type WhatsAppCampaignHandler struct {
 	assignDepartmentUseCase wc.AssignDepartmentUseCase
 	deleteUseCase           wc.DeleteCampaignUseCase
 	getUseCase              wc.GetCampaignUseCase
+	access                  wc.CampaignAccessUseCase
+	start                   wc.StartCampaignUseCase
 	listUseCase             wc.ListCampaignsUseCase
 	listEntriesUseCase      wc.ListEntriesUseCase
 	dispatchUseCase         wc.DispatchCampaignUseCase
@@ -394,19 +396,8 @@ func (h *WhatsAppCampaignHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	campaignItem, err := h.getUseCase.Execute(id)
-	if err != nil {
-		h.handleDomainError(w, err)
-		return
-	}
-
-	if campaignItem.WorkspaceID != middleware.GetWorkspaceID(r) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
-		return
-	}
-
-	if !canAccessDepartment(r, campaignItem.DepartmentID) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
+	campaignItem, ok := h.ownedCampaign(w, id, r)
+	if !ok {
 		return
 	}
 
@@ -671,52 +662,26 @@ func (h *WhatsAppCampaignHandler) StartCampaign(w http.ResponseWriter, r *http.R
 		response.WriteValidationError(w, map[string]string{"id": "required"})
 		return
 	}
-
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
-		return
-	}
-
-	campaign, err := h.getUseCase.Execute(campaignID)
-	if err != nil {
-		h.handleDomainError(w, err)
-		return
-	}
-
-	if campaign.WorkspaceID != middleware.GetWorkspaceID(r) {
+	if h.start == nil {
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
 		return
 	}
-
-	if h.activeSubscription != nil {
-		if _, subErr := h.activeSubscription.Execute(campaign.WorkspaceID); subErr != nil {
-			log.Printf("[SUBSCRIPTION] blocked whatsapp campaign start: workspace=%s user=%s campaign=%s err=%v", campaign.WorkspaceID, claims.UserID, campaignID, subErr)
-			response.WriteCodedError(w, http.StatusPaymentRequired, "NO_ACTIVE_SUBSCRIPTION", "This workspace has no active subscription.")
-			return
-		}
-	}
-
-	if campaign.Metrics == nil || campaign.Metrics.TotalNumbers == 0 {
+	_, err := h.start.Start(middleware.GetWorkspaceID(r), middleware.GetDepartmentFilter(r), campaignID)
+	switch {
+	case err == nil:
+		response.WriteSuccess(w, http.StatusAccepted, map[string]string{"message": "WhatsApp campaign started"})
+	case errors.Is(err, wc.ErrCampaignNoSubscription):
+		log.Printf("[SUBSCRIPTION] blocked whatsapp campaign start: workspace=%s campaign=%s err=%v", middleware.GetWorkspaceID(r), campaignID, err)
+		response.WriteCodedError(w, http.StatusPaymentRequired, "NO_ACTIVE_SUBSCRIPTION", "This workspace has no active subscription.")
+	case errors.Is(err, wc.ErrCampaignNoNumbers):
 		response.WriteValidationError(w, map[string]string{"phoneNumbers": "campaign has no phone numbers to process"})
-		return
-	}
-
-	activeCount := campaign.Metrics.Pending
-	if activeCount == 0 && campaign.Metrics.Processed == campaign.Metrics.TotalNumbers {
+	case errors.Is(err, wc.ErrCampaignAllProcessed):
 		response.WriteValidationError(w, map[string]string{"phoneNumbers": "all phone numbers have already been processed"})
-		return
-	}
-
-	if err := h.dispatchUseCase.Dispatch(wc.DispatchCampaignInput{
-		CampaignID: campaign.ID,
-		Action:     wc.CampaignActionStart,
-	}); err != nil {
+	case errors.Is(err, wc.ErrCampaignNotFound):
+		h.handleDomainError(w, err)
+	default:
 		h.handleDispatchError(w, err)
-		return
 	}
-
-	response.WriteSuccess(w, http.StatusAccepted, map[string]string{"message": "WhatsApp campaign started"})
 }
 
 func (h *WhatsAppCampaignHandler) PauseCampaign(w http.ResponseWriter, r *http.Request) {
@@ -1411,17 +1376,28 @@ func (h *WhatsAppCampaignHandler) QuickSend(w http.ResponseWriter, r *http.Reque
 	response.WriteSuccess(w, http.StatusAccepted, output)
 }
 
-func (h *WhatsAppCampaignHandler) verifyOwnership(w http.ResponseWriter, campaignID string, claims *auth.Claims, r *http.Request) bool {
-	campaign, err := h.getUseCase.Execute(campaignID)
+func (h *WhatsAppCampaignHandler) SetCampaignAccess(access wc.CampaignAccessUseCase) {
+	h.access = access
+}
+
+func (h *WhatsAppCampaignHandler) SetStartCampaign(start wc.StartCampaignUseCase) {
+	h.start = start
+}
+
+func (h *WhatsAppCampaignHandler) ownedCampaign(w http.ResponseWriter, campaignID string, r *http.Request) (*wc.Campaign, bool) {
+	if h.access == nil {
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
+		return nil, false
+	}
+	campaign, err := h.access.Owned(middleware.GetWorkspaceID(r), middleware.GetDepartmentFilter(r), campaignID)
 	if err != nil {
 		h.handleDomainError(w, err)
-		return false
+		return nil, false
 	}
+	return campaign, true
+}
 
-	if campaign.WorkspaceID != middleware.GetWorkspaceID(r) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
-		return false
-	}
-
-	return true
+func (h *WhatsAppCampaignHandler) verifyOwnership(w http.ResponseWriter, campaignID string, claims *auth.Claims, r *http.Request) bool {
+	_, ok := h.ownedCampaign(w, campaignID, r)
+	return ok
 }

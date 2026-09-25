@@ -36,11 +36,8 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				WHERE entry_type = 'whatsapp' AND deleted_at IS NULL`,
 		},
 		{
-			name: "idx_cm_unread_count",
-			sql: `CREATE INDEX IF NOT EXISTS idx_cm_unread_count
-				ON conversation_messages (entry_id, entry_type)
-				WHERE read = false AND deleted_at IS NULL
-				AND message_type IN ('user_message', 'audio', 'media')`,
+			name: "idx_cm_unread_count (superseded by idx_cm_unread_contact)",
+			sql:  `DROP INDEX IF EXISTS idx_cm_unread_count`,
 		},
 		{
 			name: "idx_cm_entry_del_created",
@@ -289,11 +286,8 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 		},
 
 		{
-			name: "idx_cm_unread_inbound",
-			sql: `CREATE INDEX IF NOT EXISTS idx_cm_unread_inbound
-				ON conversation_messages (entry_id, entry_type)
-				WHERE read = false AND deleted_at IS NULL
-				AND message_type IN ('text', 'image', 'audio', 'user_message', 'media')`,
+			name: "idx_cm_unread_inbound (superseded by idx_cm_unread_contact)",
+			sql:  `DROP INDEX IF EXISTS idx_cm_unread_inbound`,
 		},
 
 		{
@@ -368,12 +362,6 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			name: "idx_wce_campaign_lastmsg",
 			sql: `CREATE INDEX IF NOT EXISTS idx_wce_campaign_lastmsg
 				ON whatsapp_campaign_entries (campaign_id, last_message_at DESC)
-				WHERE deleted_at IS NULL AND last_message_at IS NOT NULL`,
-		},
-		{
-			name: "idx_se_inbox_lastmsg",
-			sql: `CREATE INDEX IF NOT EXISTS idx_se_inbox_lastmsg
-				ON support_entries (inbox_id, last_message_at DESC)
 				WHERE deleted_at IS NULL AND last_message_at IS NOT NULL`,
 		},
 

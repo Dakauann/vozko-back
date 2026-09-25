@@ -71,7 +71,7 @@ func (uc *rescheduleUseCase) Execute(_ context.Context, in sm.RescheduleInput) (
 	}
 
 	at := in.ScheduledAt.UTC()
-	window, err := uc.windows.Validate(message.EntryID, string(message.EntryType), at)
+	window, err := uc.windows.Validate(message.EntryID, string(message.EntryType), message.Kind, at)
 	if err != nil {
 		return &sm.ScheduleResult{Window: window}, err
 	}

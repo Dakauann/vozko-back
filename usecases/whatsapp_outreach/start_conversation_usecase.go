@@ -2,7 +2,6 @@ package whatsapp_outreach
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -57,36 +56,17 @@ type Deps struct {
 }
 
 type startConversationUseCase struct {
-	deps Deps
+	sendRules
 }
 
 func NewStartConversationUseCase(deps Deps) (wo.StartOfficialConversationUseCase, error) {
-	var missing []string
-	if deps.Phones == nil {
-		missing = append(missing, "business phone repository")
+	rules, err := newSendRules(deps, map[string]bool{
+		"organic campaign use case": deps.EnsureOrganic != nil,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if deps.Templates == nil {
-		missing = append(missing, "template repository")
-	}
-	if deps.Leads == nil {
-		missing = append(missing, "lead repository")
-	}
-	if deps.Entries == nil {
-		missing = append(missing, "campaign entry repository")
-	}
-	if deps.EnsureOrganic == nil {
-		missing = append(missing, "organic campaign use case")
-	}
-	if deps.Sender == nil {
-		missing = append(missing, "billed template sender")
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("whatsapp outreach: %s not configured", strings.Join(missing, ", "))
-	}
-	if deps.Now == nil {
-		deps.Now = func() time.Time { return time.Now().UTC() }
-	}
-	return &startConversationUseCase{deps: deps}, nil
+	return &startConversationUseCase{sendRules: rules}, nil
 }
 
 func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConversationInput) (*wo.StartedConversation, error) {
@@ -102,33 +82,14 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, wo.ErrInvalidPhone
 	}
 
-	phone, err := uc.deps.Phones.FindByID(in.BusinessPhoneID)
-	if err != nil || phone == nil {
-		return nil, wo.ErrBusinessPhoneNotFound
-	}
-	allowed, err := businessphone.CanWorkspaceSendFrom(in.WorkspaceID, in.BusinessPhoneID, phone, uc.deps.PhoneGrants)
+	phone, err := uc.sendablePhone(in.WorkspaceID, in.BusinessPhoneID)
 	if err != nil {
 		return nil, err
 	}
-	if !allowed {
-		return nil, wo.ErrBusinessPhoneNotFound
-	}
-	if !phone.IsVerified() {
-		return nil, wo.ErrPhoneNotConnected
-	}
 
-	tmpl, err := uc.deps.Templates.FindByID(in.TemplateID)
-	if err != nil || tmpl == nil {
-		return nil, wo.ErrTemplateNotFound
-	}
-	if uc.deps.TemplateGrant != nil {
-		granted, accessErr := uc.deps.TemplateGrant.Execute(in.WorkspaceID, tmpl.ID)
-		if accessErr != nil {
-			return nil, accessErr
-		}
-		if !granted {
-			return nil, wo.ErrTemplateForbidden
-		}
+	tmpl, err := uc.grantedTemplate(in.WorkspaceID, in.TemplateID)
+	if err != nil {
+		return nil, err
 	}
 
 	campaign, _, err := uc.deps.EnsureOrganic.Execute(in.WorkspaceID, phone.ID, phone.DisplayPhoneNumber)
@@ -195,7 +156,17 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		}
 	}
 
-	sendResult, sendErr := uc.deps.Sender.Execute(ctx, template.BilledSendInput{
+	d := delivery{
+		entry:      entry,
+		tmpl:       tmpl,
+		bodyParams: in.BodyParams,
+		userID:     in.UserID,
+		to:         leadRecord.Number,
+		leadID:     leadRecord.ID,
+		phoneID:    phone.ID,
+		campaignID: campaign.ID,
+	}
+	sendResult, err := uc.charge(ctx, d, template.BilledSendInput{
 		WorkspaceID:     in.WorkspaceID,
 		UserID:          in.UserID,
 		IdempotencyKey:  in.IdempotencyKey,
@@ -207,9 +178,8 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		CampaignID:      campaign.ID,
 		EntryID:         entry.ID,
 	})
-	if sendErr != nil {
-		uc.markEntryFailed(entry.ID, sendResult, sendErr)
-		return nil, sendErr
+	if err != nil {
+		return nil, err
 	}
 
 	result := &wo.StartedConversation{
@@ -227,18 +197,7 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return result, nil
 	}
 
-	if err := uc.deps.Entries.UpdateStatus(entry.ID, wce.SendStatusSent, sendResult.MessageID, 0, ""); err != nil {
-		log.Printf("[whatsapp-outreach] could not mark entry %s as sent: %v", entry.ID, err)
-	}
-	uc.storeTemplateInfo(entry, tmpl, in.BodyParams)
-	result.Recorded = uc.recordMessage(ctx, entry, tmpl, in, leadRecord, sendResult)
-
-	if uc.deps.CampaignSends != nil {
-		if err := uc.deps.CampaignSends.Record(leadRecord.ID, phone.ID, campaign.ID); err != nil {
-			log.Printf("[whatsapp-outreach] could not record the send against lead %s: %v", leadRecord.ID, err)
-		}
-	}
-
+	result.Recorded = uc.settle(ctx, d, sendResult)
 	return result, nil
 }
 
@@ -265,24 +224,6 @@ func (uc *startConversationUseCase) departmentAllows(in wo.StartConversationInpu
 	return false
 }
 
-func (uc *startConversationUseCase) refuseIfSpam(ctx context.Context, workspaceID, leadID, phoneID string) error {
-	if uc.deps.SpamPolicy == nil || uc.deps.CampaignSends == nil {
-		return nil
-	}
-	days, err := uc.deps.SpamPolicy.SpamProtectionDays(ctx, workspaceID)
-	if err != nil || days <= 0 {
-		return nil
-	}
-	lastSent, err := uc.deps.CampaignSends.GetLastSendTime(leadID, phoneID)
-	if err != nil {
-		return nil
-	}
-	if lcs.WithinSpamWindow(lastSent, days, uc.deps.Now()) {
-		return wo.ErrWithinSpamWindow
-	}
-	return nil
-}
-
 func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspaceID string) error {
 	if uc.deps.Limiter == nil || uc.deps.HourlySendCap <= 0 {
 		return nil
@@ -298,65 +239,3 @@ func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspa
 	return nil
 }
 
-func (uc *startConversationUseCase) markEntryFailed(entryID string, result *template.BilledSendResult, sendErr error) {
-	code, message := 0, sendErr.Error()
-	if result != nil && result.Outcome == template.OutcomeUnknown {
-		return
-	}
-	if len(message) > 500 {
-		message = message[:500]
-	}
-	if err := uc.deps.Entries.UpdateStatus(entryID, wce.SendStatusFailed, "", code, message); err != nil {
-		log.Printf("[whatsapp-outreach] could not mark entry %s as failed: %v", entryID, err)
-	}
-}
-
-func (uc *startConversationUseCase) storeTemplateInfo(entry *wce.WhatsAppCampaignEntry, tmpl *template.Template, params []string) {
-	meta := entry.Metadata
-	if meta == nil {
-		meta = map[string]interface{}{}
-	}
-	meta["template_info"] = tmpl.RenderInfo(params)
-	if err := uc.deps.Entries.UpdateMetadata(entry.ID, meta); err != nil {
-		log.Printf("[whatsapp-outreach] could not store template info on entry %s: %v", entry.ID, err)
-	}
-}
-
-func (uc *startConversationUseCase) recordMessage(
-	ctx context.Context,
-	entry *wce.WhatsAppCampaignEntry,
-	tmpl *template.Template,
-	in wo.StartConversationInput,
-	leadRecord *lead.Lead,
-	sendResult *template.BilledSendResult,
-) bool {
-	if uc.deps.History == nil {
-		return false
-	}
-
-	info := tmpl.RenderInfo(in.BodyParams)
-	bodyText, _ := info["body_text"].(string)
-	metaBytes, err := json.Marshal(info)
-	if err != nil {
-		log.Printf("[whatsapp-outreach] could not marshal template metadata for entry %s: %v", entry.ID, err)
-		return false
-	}
-
-	record := conversation.MessageHistoryRecord{
-		EntryID:     entry.ID,
-		EntryType:   shared.EntryTypeWhatsApp,
-		Channel:     conversation.MessageChannelWhatsApp,
-		MessageType: conversation.MessageTypeTemplate,
-		MessageID:   sendResult.MessageID,
-		From:        in.UserID,
-		To:          leadRecord.Number,
-		Text:        bodyText,
-		Timestamp:   uc.deps.Now(),
-		Metadata:    json.RawMessage(metaBytes),
-	}
-	if err := uc.deps.History.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
-		log.Printf("[whatsapp-outreach] template delivered but not recorded on entry %s: %v", entry.ID, err)
-		return false
-	}
-	return true
-}

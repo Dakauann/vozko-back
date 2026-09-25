@@ -25,7 +25,7 @@ func TestFunnelCountsEveryStageFromMilestonesOrTheStatusThatProvesThem(t *testin
 		`e\.sent_at IS NOT NULL OR e\.status IN \(.+,.+,.+\)\) AS sent,.*` +
 		`e\.delivered_at IS NOT NULL OR e\.status IN \(.+,.+\)\) AS delivered,.*` +
 		`e\.read_at IS NOT NULL OR e\.status IN \(.+\)\) AS read,.*` +
-		`EXISTS \(\s*SELECT 1 FROM conversation_messages m\s+WHERE m\.entry_id = e\.id AND m\.entry_type = .+ AND m\.deleted_at IS NULL AND m\.message_type IN .+\) AS replied,.*` +
+		`EXISTS \(\s*SELECT 1 FROM conversation_messages m\s+WHERE m\.entry_id = e\.id AND m\.entry_type = .+ AND m\.deleted_at IS NULL AND m\.sender_kind = 'contact'\s*\)\) AS replied,.*` +
 		`MIN\(e\.sent_at\) AS tracked_since\s+FROM whatsapp_campaign_entries e\s+WHERE e\.campaign_id = .+ AND e\.deleted_at IS NULL`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"base", "sent", "delivered", "read", "replied", "failed", "awaiting_delivery", "pending", "not_eligible", "tracked_since",

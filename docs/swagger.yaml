@@ -2889,14 +2889,12 @@ definitions:
   conversation.MessageChannel:
     enum:
     - whatsapp
-    - support
     - instagram
     - telegram
     - unofficial_whatsapp
     type: string
     x-enum-varnames:
     - MessageChannelWhatsApp
-    - MessageChannelSupport
     - MessageChannelInstagram
     - MessageChannelTelegram
     - MessageChannelUnofficialWhatsApp
@@ -5121,8 +5119,28 @@ definitions:
       signed:
         example: true
         type: boolean
+      template:
+        $ref: '#/definitions/scheduledmessage.ScheduleTemplateRequest'
       text:
         example: Bom dia! Seguindo nossa conversa...
+        type: string
+    type: object
+  scheduledmessage.ScheduleTemplateRequest:
+    properties:
+      body_params:
+        example:
+        - Ana
+        items:
+          type: string
+        type: array
+      header_params:
+        example:
+        - Pedido 42
+        items:
+          type: string
+        type: array
+      template_id:
+        example: 4f1c2a9e-8b7d-4e21-9a3f-2c6d5e8f1b0a
         type: string
     type: object
   scheduledmessage.ScheduledMessageEnvelope:
@@ -5157,6 +5175,9 @@ definitions:
         type: string
       id:
         type: string
+      kind:
+        example: template
+        type: string
       mediaId:
         type: string
       mediaType:
@@ -5173,11 +5194,32 @@ definitions:
         type: boolean
       status:
         type: string
+      template:
+        $ref: '#/definitions/scheduledmessage.ScheduledTemplateResponse'
       text:
         type: string
       updatedAt:
         type: string
       workspaceId:
+        type: string
+    type: object
+  scheduledmessage.ScheduledTemplateResponse:
+    properties:
+      bodyParams:
+        items:
+          type: string
+        type: array
+      headerParams:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      name:
+        example: follow_up
+        type: string
+      preview:
+        example: Oi Ana, tudo certo com o seu pedido?
         type: string
     type: object
   scheduledmessage.WindowErrorResponse:
@@ -5199,6 +5241,8 @@ definitions:
         type: string
       open:
         type: boolean
+      templateLatestAllowedAt:
+        type: string
     type: object
   scheduledmessage.WorkspaceScheduledMessagesResponse:
     properties:
@@ -5218,14 +5262,12 @@ definitions:
   shared.EntryType:
     enum:
     - whatsapp
-    - support
     - instagram
     - telegram
     - unofficial_whatsapp
     type: string
     x-enum-varnames:
     - EntryTypeWhatsApp
-    - EntryTypeSupport
     - EntryTypeInstagram
     - EntryTypeTelegram
     - EntryTypeUnofficialWhatsApp
@@ -5549,167 +5591,6 @@ definitions:
         type: string
       name:
         example: Em atendimento
-        type: string
-    type: object
-  supportinbox.CreateSessionRequest:
-    properties:
-      contactEmail:
-        example: maria@exemplo.com.br
-        type: string
-      contactName:
-        example: Maria Silva
-        type: string
-      inboxId:
-        example: inbox_a1b2c3
-        type: string
-      sourceUrl:
-        example: https://meusite.com.br/contato
-        type: string
-    type: object
-  supportinbox.CreateSessionResponse:
-    properties:
-      entryId:
-        example: entry_a1b2c3
-        type: string
-      expiresAt:
-        type: string
-      greetingMessage:
-        example: Olá! Como podemos ajudar?
-        type: string
-      preChatFields:
-        items:
-          $ref: '#/definitions/supportinbox.PreChatField'
-        type: array
-      sessionToken:
-        example: a1b2c3d4e5f6.7890abcdef
-        type: string
-    type: object
-  supportinbox.PreChatField:
-    properties:
-      label:
-        type: string
-      name:
-        type: string
-      options:
-        items:
-          type: string
-        type: array
-      required:
-        type: boolean
-      type:
-        type: string
-    type: object
-  supportinbox.ReconnectSessionRequest:
-    properties:
-      sessionToken:
-        example: a1b2c3d4e5f6.7890abcdef
-        type: string
-    type: object
-  supportinbox.ReconnectSessionResponse:
-    properties:
-      entryId:
-        example: entry_a1b2c3
-        type: string
-      expiresAt:
-        type: string
-      greetingMessage:
-        example: Olá! Como podemos ajudar?
-        type: string
-      inboxId:
-        example: inbox_a1b2c3
-        type: string
-    type: object
-  supportinbox.SupportInboxListResponse:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/supportinbox.SupportInboxResponse'
-        type: array
-      meta:
-        $ref: '#/definitions/response.PaginationMeta'
-    type: object
-  supportinbox.SupportInboxRequest:
-    properties:
-      agentId:
-        example: agt_a1b2c3
-        type: string
-      allowedOrigins:
-        items:
-          type: string
-        type: array
-      enableAgentResponses:
-        example: true
-        type: boolean
-      greetingMessage:
-        example: Olá! Como podemos ajudar?
-        type: string
-      name:
-        example: Atendimento Site
-        type: string
-      preChatFields:
-        items:
-          $ref: '#/definitions/supportinbox.PreChatField'
-        type: array
-      widgetColor:
-        example: '#2463eb'
-        type: string
-    type: object
-  supportinbox.SupportInboxResponse:
-    properties:
-      agentId:
-        example: agt_a1b2c3
-        type: string
-      allowedOrigins:
-        items:
-          type: string
-        type: array
-      archived:
-        example: false
-        type: boolean
-      createdAt:
-        type: string
-      enableAgentResponses:
-        example: true
-        type: boolean
-      greetingMessage:
-        example: Olá! Como podemos ajudar?
-        type: string
-      id:
-        example: inbox_a1b2c3
-        type: string
-      name:
-        example: Atendimento Site
-        type: string
-      preChatFields:
-        items:
-          $ref: '#/definitions/supportinbox.PreChatField'
-        type: array
-      updatedAt:
-        type: string
-      widgetColor:
-        example: '#2463eb'
-        type: string
-      workspaceId:
-        example: ws_a1b2c3
-        type: string
-    type: object
-  supportinbox.WidgetInfoResponse:
-    properties:
-      greetingMessage:
-        example: Olá! Como podemos ajudar?
-        type: string
-      inboxId:
-        example: inbox_a1b2c3
-        type: string
-      name:
-        example: Atendimento Site
-        type: string
-      preChatFields:
-        items:
-          $ref: '#/definitions/supportinbox.PreChatField'
-        type: array
-      widgetColor:
-        example: '#2463eb'
         type: string
     type: object
   template.NamedParamExample:
@@ -6056,6 +5937,42 @@ definitions:
       updatedAt:
         type: string
     type: object
+  whatsapp_campaign.ReportSummary:
+    properties:
+      campaignCreatedAt:
+        type: string
+      campaignId:
+        type: string
+      campaignName:
+        type: string
+      funnel:
+        $ref: '#/definitions/whatsapp_campaign_entry.Funnel'
+      templateName:
+        type: string
+    type: object
+  whatsapp_campaign_entry.Funnel:
+    properties:
+      awaitingDelivery:
+        type: integer
+      base:
+        type: integer
+      delivered:
+        type: integer
+      failed:
+        type: integer
+      notEligible:
+        type: integer
+      pending:
+        type: integer
+      read:
+        type: integer
+      replied:
+        type: integer
+      sent:
+        type: integer
+      trackedSince:
+        type: string
+    type: object
   whatsappbusinessphone.CallingStatusResponse:
     properties:
       enabled:
@@ -6360,7 +6277,6 @@ definitions:
         - unofficial_whatsapp
         - instagram
         - telegram
-        - support
         example: whatsapp
         type: string
       phone:
@@ -7281,6 +7197,77 @@ paths:
       security:
       - BearerAuth: []
       summary: Estatísticas de agentes de IA
+      tags:
+      - Atendimento
+  /attendance/campaigns/{section}:
+    get:
+      description: Retorna uma seção do relatório de disparos de campanhas (summary,
+        daily, failures, tags ou campaigns) para o painel de atendimento. Os dias
+        são contados no fuso do horário de funcionamento do workspace (ou do departamento),
+        como as demais seções de atendimento. Sem campaign_id, cobre as campanhas
+        de disparo do período; com campaign_id, a campanha inteira. As seções ficam
+        em cache por 60 segundos; quando o limite de consultas analíticas simultâneas
+        está ocupado, responde 503 com Retry-After.
+      parameters:
+      - description: Seção
+        enum:
+        - summary
+        - daily
+        - failures
+        - tags
+        - campaigns
+        in: path
+        name: section
+        required: true
+        type: string
+      - description: Data inicial (YYYY-MM-DD)
+        in: query
+        name: date_from
+        required: true
+        type: string
+      - description: Data final (YYYY-MM-DD), no máximo 92 dias após a inicial
+        in: query
+        name: date_to
+        required: true
+        type: string
+      - description: ID da campanha
+        in: query
+        name: campaign_id
+        type: string
+      - description: ID do departamento (sem campaign_id)
+        in: query
+        name: department_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsapp_campaign.ReportSummary'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Seção do relatório de disparos na visão de atendimento
       tags:
       - Atendimento
   /attendance/frt:
@@ -9348,7 +9335,8 @@ paths:
       description: Informa se o cliente da conversa permite atualmente ligações pelo
         WhatsApp, para que o cliente possa habilitar ou não a ação de ligar.
       parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: path
         name: entryType
         required: true
@@ -9394,7 +9382,8 @@ paths:
         na conversa informada. A janela de 24 horas precisa estar aberta ou um modelo
         (template) é exigido.
       parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: path
         name: entryType
         required: true
@@ -9442,7 +9431,8 @@ paths:
       description: Retorna o histórico de eventos de uma conversa (mudanças de etapa,
         atribuições, entre outros), com paginação.
       parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: path
         name: entryType
         required: true
@@ -9493,7 +9483,8 @@ paths:
       description: Faz upload de um arquivo de mídia (multipart/form-data) para uma
         conversa e retorna o identificador da mídia, usado depois no envio da mensagem.
       parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: path
         name: entryType
         required: true
@@ -9542,7 +9533,8 @@ paths:
       description: Retorna os metadados de um arquivo de mídia de uma conversa, incluindo
         a URL de acesso, o tipo e o tamanho.
       parameters:
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: path
         name: entryType
         required: true
@@ -9632,10 +9624,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Agenda uma mensagem para ser enviada em uma conversa. O horário
-        precisa estar dentro da janela de atendimento aberta e a pelo menos um minuto
-        de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição
-        não crie uma segunda mensagem.
+      description: Agenda uma mensagem para ser enviada em uma conversa. Uma mensagem
+        de texto ou mídia precisa cair dentro da janela de atendimento aberta. Um
+        template (campo `template`, só no WhatsApp oficial) pode ser agendado com
+        a janela fechada, até 30 dias à frente; ele segue as mesmas regras de um envio
+        de template (aprovação, acesso ao template, contato bloqueado, proteção contra
+        spam) e é cobrado no momento do envio. Agendar, reagendar ou cancelar um template
+        exige a permissão whatsapp_templates:send. O horário precisa estar a pelo
+        menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que
+        um reenvio da requisição não crie uma segunda mensagem.
       parameters:
       - description: Tipo da entrada
         in: path
@@ -9686,7 +9683,8 @@ paths:
           schema:
             $ref: '#/definitions/scheduledmessage.WindowErrorResponse'
         "422":
-          description: O horário escolhido está fora dos limites
+          description: O horário escolhido está fora dos limites, ou o template não
+            pode ser enviado a este contato
           schema:
             $ref: '#/definitions/scheduledmessage.WindowErrorResponse'
       security:
@@ -12709,8 +12707,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Associa uma conversa (entryType 'whatsapp' ou 'support') a uma
-        oportunidade.
+      description: Associa uma conversa (entryType whatsapp, unofficial_whatsapp,
+        instagram ou telegram) a uma oportunidade.
       parameters:
       - description: ID da oportunidade
         in: path
@@ -12954,7 +12952,8 @@ paths:
         name: entryId
         required: true
         type: string
-      - description: Tipo da entrada ('whatsapp' ou 'support')
+      - description: Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou
+          telegram)
         in: query
         name: entryType
         required: true
@@ -13320,117 +13319,6 @@ paths:
       summary: Consultar a cotação do dólar
       tags:
       - Preços
-  /public/support/sessions:
-    post:
-      consumes:
-      - application/json
-      description: Cria uma sessão de atendimento a partir do widget de chat incorporado
-        no site do cliente. Rota pública, chamada pelo próprio widget.
-      parameters:
-      - description: Dados de contato e caixa de atendimento
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/supportinbox.CreateSessionRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/supportinbox.CreateSessionResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      summary: Iniciar sessão de atendimento
-      tags:
-      - Widget de atendimento
-  /public/support/sessions/reconnect:
-    post:
-      consumes:
-      - application/json
-      description: Reconecta uma sessão de atendimento existente a partir do token
-        de sessão do visitante. Rota pública, chamada pelo próprio widget.
-      parameters:
-      - description: Token da sessão
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/supportinbox.ReconnectSessionRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/supportinbox.ReconnectSessionResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "410":
-          description: Gone
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      summary: Reconectar sessão de atendimento
-      tags:
-      - Widget de atendimento
-  /public/support/widget/{inboxId}:
-    get:
-      description: Retorna as informações públicas de exibição do widget de chat (nome,
-        saudação, cor e campos de pré-atendimento). Rota pública, chamada pelo próprio
-        widget.
-      parameters:
-      - description: Identificador da caixa de atendimento
-        in: path
-        name: inboxId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/supportinbox.WidgetInfoResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      summary: Consultar configuração do widget
-      tags:
-      - Widget de atendimento
   /r/{code}:
     get:
       description: Resolve o código público e redireciona para a URL de destino, exibe
@@ -14683,207 +14571,6 @@ paths:
       summary: Reordenar etapas
       tags:
       - Etapas
-  /support/inboxes:
-    get:
-      description: Retorna a lista paginada de caixas de atendimento do workspace,
-        com busca por nome e filtro por arquivadas.
-      parameters:
-      - description: Número da página (inicia em 1)
-        in: query
-        name: page
-        type: integer
-      - description: Quantidade de itens por página
-        in: query
-        name: pageSize
-        type: integer
-      - description: Busca por nome da caixa de atendimento
-        in: query
-        name: search
-        type: string
-      - description: Filtrar por caixas arquivadas
-        in: query
-        name: archived
-        type: boolean
-      - description: 'Ordenação (ex.: name:asc, createdAt:desc)'
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/supportinbox.SupportInboxListResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar caixas de atendimento
-      tags:
-      - Caixas de atendimento
-    post:
-      consumes:
-      - application/json
-      description: Cria uma nova caixa de atendimento (widget de chat incorporável)
-        no workspace.
-      parameters:
-      - description: Dados da caixa de atendimento
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/supportinbox.SupportInboxRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/supportinbox.SupportInboxResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Criar caixa de atendimento
-      tags:
-      - Caixas de atendimento
-  /support/inboxes/{id}:
-    delete:
-      description: Remove uma caixa de atendimento do workspace.
-      parameters:
-      - description: Identificador da caixa de atendimento
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Remover caixa de atendimento
-      tags:
-      - Caixas de atendimento
-    get:
-      description: Retorna os detalhes de uma caixa de atendimento a partir do seu
-        identificador.
-      parameters:
-      - description: Identificador da caixa de atendimento
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/supportinbox.SupportInboxResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Consultar caixa de atendimento
-      tags:
-      - Caixas de atendimento
-    put:
-      consumes:
-      - application/json
-      description: Atualiza os dados de uma caixa de atendimento existente.
-      parameters:
-      - description: Identificador da caixa de atendimento
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Dados da caixa de atendimento
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/supportinbox.SupportInboxRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/supportinbox.SupportInboxResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Atualizar caixa de atendimento
-      tags:
-      - Caixas de atendimento
   /tickets:
     get:
       description: Retorna a lista paginada dos tickets de envio do usuário autenticado,

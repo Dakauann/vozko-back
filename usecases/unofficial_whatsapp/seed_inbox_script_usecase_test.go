@@ -150,8 +150,8 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 	if !strings.Contains(writes[0].Text, "Marina") {
 		t.Errorf("the opening is %q, want the operator's message with the name", writes[0].Text)
 	}
-	if writes[0].Direction != conversation.MessageDirectionOutbound {
-		t.Errorf("the opening is %q, want OUTBOUND", writes[0].Direction)
+	if writes[0].ResolvedDirection() != conversation.MessageDirectionOutbound {
+		t.Errorf("the opening is %q, want OUTBOUND", writes[0].ResolvedDirection())
 	}
 	wantDirections := []conversation.MessageHistoryDirection{
 		conversation.MessageDirectionOutbound,
@@ -160,8 +160,8 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 		conversation.MessageDirectionInbound,
 	}
 	for i, want := range wantDirections {
-		if writes[i].Direction != want {
-			t.Errorf("message %d direction = %q, want %q", i, writes[i].Direction, want)
+		if writes[i].ResolvedDirection() != want {
+			t.Errorf("message %d direction = %q, want %q", i, writes[i].ResolvedDirection(), want)
 		}
 	}
 	if !writes[1].MessageType.IsInbound() {

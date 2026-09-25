@@ -77,7 +77,6 @@ func (c *Container) initRouter() {
 		c.handlers.workspaceConfig,
 		c.handlers.workspacePlan,
 		c.handlers.workspaceAddon,
-		c.handlers.supportInbox,
 		c.handlers.issue,
 		c.handlers.workflow,
 		c.handlers.workflowWebhook,

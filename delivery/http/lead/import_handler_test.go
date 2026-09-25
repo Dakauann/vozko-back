@@ -14,6 +14,7 @@ import (
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/unofficial_whatsapp"
 	"vozko/infra/http/middleware"
+	lead_usecase "vozko/usecases/lead"
 )
 
 type stubLeadRepo struct {
@@ -63,7 +64,7 @@ type importCase struct {
 func newImportCase(t *testing.T, channelPermission bool) importCase {
 	t.Helper()
 	repo := &stubLeadRepo{outcome: &leaddomain.ImportOutcome{Created: 2}}
-	handler := NewLeadHandler(repo, nil, nil, nil, nil, nil, nil)
+	handler := NewLeadHandler(lead_usecase.NewQueries(repo), repo, nil, nil, nil, nil, nil, nil)
 	seeder := &stubSeeder{}
 	handler.SetInboxSeeder(seeder)
 	handler.SetAuthorizer(stubAuthorizer{allow: channelPermission})

@@ -37,6 +37,7 @@ type Result struct {
 	Data    interface{}
 	Message string
 	Chart   *Chart
+	Card    *ActionCard
 }
 
 type PendingAction struct {
@@ -45,6 +46,7 @@ type PendingAction struct {
 	Args     map[string]interface{} `json:"args"`
 	Summary  string                 `json:"summary"`
 	Fields   []Field                `json:"fields"`
+	Preview  *Preview               `json:"preview,omitempty"`
 }
 
 type Tool interface {

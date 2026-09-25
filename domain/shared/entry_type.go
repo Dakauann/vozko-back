@@ -9,7 +9,6 @@ type EntryType string
 
 const (
 	EntryTypeWhatsApp           EntryType = "whatsapp"
-	EntryTypeSupport            EntryType = "support"
 	EntryTypeInstagram          EntryType = "instagram"
 	EntryTypeTelegram           EntryType = "telegram"
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
@@ -17,7 +16,6 @@ const (
 
 var messagingEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -32,7 +30,6 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 
 var crmTaggableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -70,7 +67,6 @@ func ConversationViewableEntryTypes() []EntryType {
 
 var knownEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -87,7 +83,6 @@ func KnownEntryTypes() []EntryType {
 
 var inboxScopableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp:           {},
-	EntryTypeSupport:            {},
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
@@ -125,6 +120,15 @@ func (e EntryType) SupportsConversationClosing() bool {
 
 func ConversationClosableEntryTypes() []EntryType {
 	return sortedEntryTypes(conversationClosableEntryTypes)
+}
+
+var templateEntryTypes = map[EntryType]struct{}{
+	EntryTypeWhatsApp: {},
+}
+
+func (e EntryType) SupportsTemplates() bool {
+	_, ok := templateEntryTypes[e]
+	return ok
 }
 
 func FormatEntryTypes(types []EntryType) string {

@@ -123,10 +123,10 @@ func TestDispatchReportReaderAgainstPostgres(t *testing.T) {
 	}
 
 	for _, m := range []schema.ConversationMessage{
-		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "template", CreatedAt: day1},
-		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "user_message", CreatedAt: day2},
-		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "user_message", CreatedAt: day2.Add(time.Hour)},
-		{EntryID: pending, EntryType: "whatsapp", MessageType: "operator", CreatedAt: day2},
+		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "template", SenderKind: "campaign", CreatedAt: day1},
+		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "user_message", SenderKind: "contact", CreatedAt: day2},
+		{EntryID: readEntry, EntryType: "whatsapp", MessageType: "user_message", SenderKind: "contact", CreatedAt: day2.Add(time.Hour)},
+		{EntryID: pending, EntryType: "whatsapp", MessageType: "operator", SenderKind: "human", CreatedAt: day2},
 	} {
 		if err := db.Create(&m).Error; err != nil {
 			t.Fatalf("seed message: %v", err)

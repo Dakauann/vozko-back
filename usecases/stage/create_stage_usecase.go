@@ -5,15 +5,29 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/pipeline"
 	"vozko/domain/stage"
 )
 
-type CreateStageUseCase struct {
-	repo stage.Repository
+type PipelineReader interface {
+	GetByID(workspaceID, id string) (*pipeline.Pipeline, error)
 }
 
-func NewCreateStageUseCase(repo stage.Repository) stage.CreateStageUseCase {
-	return &CreateStageUseCase{repo: repo}
+type CreateStageUseCase struct {
+	repo      stage.Repository
+	pipelines PipelineReader
+}
+
+func NewCreateStageUseCase(repo stage.Repository, pipelines PipelineReader) stage.CreateStageUseCase {
+	return &CreateStageUseCase{repo: repo, pipelines: pipelines}
+}
+
+func (uc *CreateStageUseCase) ownsFunnel(workspaceID, pipelineID string) bool {
+	if uc.pipelines == nil {
+		return false
+	}
+	p, err := uc.pipelines.GetByID(workspaceID, pipelineID)
+	return err == nil && p != nil && p.WorkspaceID == workspaceID
 }
 
 func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStageInput) (*stage.Stage, error) {
@@ -28,6 +42,9 @@ func (uc *CreateStageUseCase) Execute(workspaceID string, input stage.CreateStag
 	}
 
 	pipelineID := strings.TrimSpace(input.PipelineID)
+	if pipelineID != "" && !uc.ownsFunnel(workspaceID, pipelineID) {
+		return nil, stage.ErrUnauthorized
+	}
 	existing, err := uc.listSiblings(workspaceID, pipelineID, input)
 	if err != nil {
 		return nil, err

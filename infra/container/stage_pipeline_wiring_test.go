@@ -46,12 +46,6 @@ func TestEveryConversationChannelRegistersAPipelineResolver(t *testing.T) {
 	}
 }
 
-func TestSupportIsNotGivenAPipelineResolver(t *testing.T) {
-	if _, found := containerPipelineResolvers(nil)[shared.EntryTypeSupport]; found {
-		t.Fatal("support entries have no container that carries a funnel")
-	}
-}
-
 type staticResolver struct {
 	pipelineID string
 	err        error

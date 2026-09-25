@@ -29,6 +29,8 @@ type ConversationMessage struct {
 	ReplyToMessageID  *string    `gorm:"column:reply_to_message_id;type:text"`
 	DeliveryStatus    string     `gorm:"type:varchar(20);default:''"`
 	SentVia           string     `gorm:"column:sent_via;type:varchar(20);not null;default:''"`
+	SenderKind        string     `gorm:"column:sender_kind;type:varchar(16);not null;default:'unknown'"`
+	SenderID          string     `gorm:"column:sender_id;type:varchar(120);not null;default:''"`
 
 	MetaPricingCategory    string `gorm:"column:meta_pricing_category;type:varchar(20);default:''"`
 	MetaPricingBillable    *bool  `gorm:"column:meta_pricing_billable"`

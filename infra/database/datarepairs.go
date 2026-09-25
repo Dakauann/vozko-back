@@ -40,6 +40,7 @@ func dataRepairs() []dataRepair {
 		{"stg_materialize_stage_group_pipelines", materializeStageGroupPipelines},
 		{"pl_demote_duplicate_default_pipelines", demoteDuplicateDefaultPipelines},
 		{"opp_close_valued_deals_on_won_stages", closeValuedDealsOnWonStages},
+		{"rag_size_documents_and_bases", sizeKnowledgeBaseDocuments},
 	}
 }
 

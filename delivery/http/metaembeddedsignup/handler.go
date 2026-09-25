@@ -741,8 +741,7 @@ func (h *MetaEmbeddedSignupHandler) handleDialog360Provision(w http.ResponseWrit
 	})
 	if err != nil {
 		if errors.Is(err, businessphone.ErrPhoneLimitReached) {
-			response.WriteErrorWithCode(w, http.StatusForbidden, "phone_limit_reached",
-				"WhatsApp number capacity reached for this workspace.", nil)
+			writePhoneLimitReached(w)
 			return
 		}
 		details := map[string]string{}
@@ -762,6 +761,20 @@ func (h *MetaEmbeddedSignupHandler) handleDialog360Provision(w http.ResponseWrit
 		"phone_number_id": phone.MetaPhoneNumberID,
 		"waba_id":         phone.WABAId,
 	})
+}
+
+func writePhoneLimitReached(w http.ResponseWriter) {
+	response.WriteErrorWithCode(w, http.StatusForbidden, "phone_limit_reached",
+		"WhatsApp number capacity reached for this workspace.", nil)
+}
+
+func writeProvisioningRefusal(w http.ResponseWriter, err error) {
+	if errors.Is(err, businessphone.ErrPhoneLimitReached) {
+		writePhoneLimitReached(w)
+		return
+	}
+	log.Printf("[meta-embedded-signup] provisioning refused, quota could not be evaluated: %v", err)
+	response.WriteError(w, http.StatusBadGateway, "whatsapp onboarding failed: "+err.Error(), nil)
 }
 
 func (h *MetaEmbeddedSignupHandler) handleMetaOnboarding(w http.ResponseWriter, r *http.Request, req EmbeddedSignupCallbackRequest, ownerWorkspaceID, ownerAssignedBy string) {
@@ -882,6 +895,13 @@ func (h *MetaEmbeddedSignupHandler) processWithToken(w http.ResponseWriter, acce
 		}
 	}
 
+	if h.onboardUseCase != nil && phoneNumberID != "" {
+		if err := h.onboardUseCase.Authorize(ownerWorkspaceID, phoneNumberID); err != nil {
+			writeProvisioningRefusal(w, err)
+			return
+		}
+	}
+
 	if wabaID != "" {
 		subscribeResult := h.subscribeToWebhooks(wabaID, accessToken)
 		results["webhook_subscription"] = subscribeResult
@@ -969,6 +989,10 @@ func (h *MetaEmbeddedSignupHandler) processWithToken(w http.ResponseWriter, acce
 			MessagingLimitTier:         messagingLimitTier,
 			IsCoexistence:              isCoexistence,
 		})
+		if errors.Is(err, businessphone.ErrPhoneLimitReached) {
+			writePhoneLimitReached(w)
+			return
+		}
 		if err != nil {
 			log.Printf("[meta-embedded-signup] ❌ Failed to save phone to database: %v", err)
 			results["db_save"] = map[string]interface{}{

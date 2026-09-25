@@ -17,11 +17,11 @@ type recordingHistory struct {
 	directions []conversation.MessageHistoryDirection
 }
 
-func (h *recordingHistory) Record(_ context.Context, d conversation.MessageHistoryDirection, r conversation.MessageHistoryRecord) error {
+func (h *recordingHistory) Record(_ context.Context, r conversation.MessageHistoryRecord) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, r)
-	h.directions = append(h.directions, d)
+	h.directions = append(h.directions, r.SentBy.Direction())
 	return nil
 }
 

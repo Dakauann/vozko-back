@@ -85,6 +85,7 @@ type aiFixture struct {
 	depts     *stubDepartments
 	accounts  *stubAccounts
 	receivers *stubReceivers
+	config    *mockWorkspaceConfig
 }
 
 type stubDepartments struct {
@@ -107,11 +108,24 @@ func (s *stubAccounts) EntryAccountID(string, string) (string, error) { return s
 
 type stubReceivers struct {
 	denied map[string]bool
+	// admins are the workspace's owners and admins; noRoulette lacks the
+	// role permission to receive conversations.
+	admins     map[string]bool
+	noRoulette map[string]bool
 }
 
 func (s *stubReceivers) GetDepartmentScope(userID, _ string, _ bool) (conversation.DepartmentAccessScope, bool) {
 	return conversation.DepartmentAccessScope{}, !s.denied[userID]
 }
+
+func (s *stubReceivers) HasWorkspacePermission(userID, _, resource, action string, _ bool) bool {
+	if resource == ia.RouletteResource && action == ia.RouletteAction {
+		return !s.noRoulette[userID]
+	}
+	return true
+}
+
+func (s *stubReceivers) IsWorkspaceOwnerOrAdmin(userID, _ string) bool { return s.admins[userID] }
 
 func newAIFixture(profile conversation.AutomationProfile, humans ...string) *aiFixture {
 	f := &aiFixture{
@@ -128,9 +142,10 @@ func newAIFixture(profile conversation.AutomationProfile, humans ...string) *aiF
 			"dept-other": {ID: "dept-other", WorkspaceID: "ws-2", Name: "Outro workspace"},
 		}},
 		accounts:  &stubAccounts{},
-		receivers: &stubReceivers{denied: map[string]bool{}},
+		receivers: &stubReceivers{denied: map[string]bool{}, admins: map[string]bool{}, noRoulette: map[string]bool{}},
+		config:    defaultConfig(),
 	}
-	f.svc = newService(f.repo, f.eligible, defaultResolver("ws-1", ""), defaultConfig())
+	f.svc = newService(f.repo, f.eligible, defaultResolver("ws-1", ""), f.config)
 	f.svc.SetDepartmentLookup(f.depts)
 	f.svc.SetEntryAccountReader(f.accounts)
 	f.svc.SetConversationReceivers(f.receivers)
@@ -342,36 +357,103 @@ func TestHandOffToRoulette_UnheldConversationStaysWithTheTeam(t *testing.T) {
 	assert.Equal(t, []string{"entry-1"}, f.broadcast.updated, "the card must show the automation paused")
 }
 
-// --- release on pause ---
+// --- taking over on pause ---
 
-func TestReleaseFromAutomation_UnassignsAnAutomationHeldConversation(t *testing.T) {
+// Whoever stops the agent or workflow is about to answer, so the conversation
+// becomes theirs, credited to them on the timeline.
+func TestTakeOverFromAutomation_GivesItToWhoeverPaused(t *testing.T) {
+	for _, holder := range []string{"ai:agent-1", "workflow:wf-1", ""} {
+		t.Run("held by "+holder, func(t *testing.T) {
+			f := newAIFixture(agentGoverned)
+			if holder != "" {
+				f.seed("entry-1", holder)
+			}
+
+			owner, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
+
+			require.NoError(t, err)
+			assert.Equal(t, "carla", owner)
+			assert.Equal(t, "carla", f.owner("entry-1"))
+			h := f.lastHistory(t)
+			assert.Equal(t, ia.TriggerAutomationTakenOver, h.Trigger)
+			assert.Equal(t, "carla", h.AssignedByActorID)
+			assert.Equal(t, []string{"entry-1 from " + holder}, f.broadcast.owners)
+		})
+	}
+}
+
+func TestTakeOverFromAutomation_SomeoneWhoCannotReceiveLeavesItToTheTeam(t *testing.T) {
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ai:agent-1")
+	f.receivers.denied["carla"] = true
 
-	require.NoError(t, f.svc.ReleaseFromAutomation("entry-1", "whatsapp"))
+	owner, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
 
-	assert.Equal(t, "", f.owner("entry-1"))
+	require.NoError(t, err)
+	assert.Equal(t, "", owner)
+	assert.Equal(t, "", f.owner("entry-1"), "a paused automation must not keep it hidden")
 	require.NotEmpty(t, f.events.logged)
 	assert.Equal(t, ce.EventUnassigned, f.events.logged[len(f.events.logged)-1].EventType)
 	assert.Equal(t, []string{"entry-1 from ai:agent-1"}, f.broadcast.owners, "the team must see it arrive")
 }
 
-func TestReleaseFromAutomation_LeavesAHumanOwnerAlone(t *testing.T) {
+// Taking over follows the workspace rule for who receives conversations, the
+// same one opening an unowned conversation follows: with admins left out of
+// the roulette, an admin who pauses leaves it to the team queue.
+func TestTakeOverFromAutomation_FollowsTheWorkspaceRuleForAdmins(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		skipAdmins bool
+		want       string
+	}{
+		{"admins left out", true, ""},
+		{"admins receive", false, "carla"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAIFixture(agentGoverned)
+			f.seed("entry-1", "ai:agent-1")
+			f.receivers.admins["carla"] = true
+			f.config.skipAdmins = tc.skipAdmins
+
+			owner, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, owner)
+			assert.Equal(t, tc.want, f.owner("entry-1"))
+		})
+	}
+}
+
+func TestTakeOverFromAutomation_SomeoneWhoseRoleReceivesNothingLeavesItToTheTeam(t *testing.T) {
+	f := newAIFixture(agentGoverned)
+	f.seed("entry-1", "ai:agent-1")
+	f.receivers.noRoulette["carla"] = true
+
+	owner, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
+
+	require.NoError(t, err)
+	assert.Equal(t, "", owner)
+	assert.Equal(t, "", f.owner("entry-1"))
+}
+
+func TestTakeOverFromAutomation_LeavesAColleaguesConversationAlone(t *testing.T) {
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "bob")
 
-	require.NoError(t, f.svc.ReleaseFromAutomation("entry-1", "whatsapp"))
+	owner, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
 
+	require.NoError(t, err)
+	assert.Equal(t, "bob", owner)
 	assert.Equal(t, "bob", f.owner("entry-1"))
-	assert.Empty(t, f.broadcast.updated)
 	assert.Empty(t, f.broadcast.owners)
 }
 
-func TestReleaseFromAutomation_UnresolvableWorkspaceIsAnError(t *testing.T) {
+func TestTakeOverFromAutomation_UnresolvableWorkspaceIsAnError(t *testing.T) {
 	f := newAIFixture(agentGoverned)
 	f.svc.workspaceResolver = &mockResolver{workspaceErr: errors.New("gone")}
 
-	assert.Error(t, f.svc.ReleaseFromAutomation("entry-1", "whatsapp"))
+	_, err := f.svc.TakeOverFromAutomation("entry-1", "whatsapp", "carla")
+	assert.Error(t, err)
 }
 
 // --- the AI steps out on every hand-off ---

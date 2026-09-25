@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/customfield"
+	"vozko/domain/lead"
 	"vozko/domain/opportunity"
 	"vozko/domain/pipeline"
 	"vozko/domain/stage"
@@ -251,8 +252,69 @@ func serviceWithFields(repo *fakeOppRepo, fields *fakeFieldRepo) *Service {
 		Stages:    salesStages(),
 		Pipelines: fakePipelines{},
 		Owners:    fakeOwners{outsiders: map[string]bool{"stranger": true}},
+		Leads:     leadsIn{"ws1": true},
+		Entries:   entriesIn("ws1"),
 		Clock:     func() time.Time { return fixedNow },
 	})
+}
+
+type leadsIn map[string]bool
+
+func (l leadsIn) Get(workspaceID, id string) (*lead.Lead, error) {
+	if !l[workspaceID] {
+		return nil, lead.ErrLeadNotFound
+	}
+	return &lead.Lead{ID: id, WorkspaceID: workspaceID}, nil
+}
+
+type entriesIn string
+
+func (e entriesIn) GetEntryWorkspaceID(string, string) (string, error) { return string(e), nil }
+
+func foreignService(repo *fakeOppRepo) *Service {
+	return NewService(Deps{
+		Repo:      repo,
+		Links:     &fakeLinks{},
+		Fields:    fieldsWith(),
+		Stages:    salesStages(),
+		Pipelines: fakePipelines{},
+		Owners:    fakeOwners{},
+		Leads:     leadsIn{"ws2": true},
+		Entries:   entriesIn("ws2"),
+		Clock:     func() time.Time { return fixedNow },
+	})
+}
+
+func TestCreateRefusesALeadOfAnotherWorkspace(t *testing.T) {
+	repo := newFakeOppRepo()
+	in := baseCreate()
+	in.LeadID = "lead-9"
+	if _, err := foreignService(repo).Create("ws1", in); !errors.Is(err, ErrLeadOutsideWorkspace) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCreateRefusesToLinkAConversationOfAnotherWorkspace(t *testing.T) {
+	repo := newFakeOppRepo()
+	in := baseCreate()
+	in.LinkEntryID, in.LinkEntryType = "entry-9", "whatsapp"
+	if _, err := foreignService(repo).Create("ws1", in); !errors.Is(err, ErrEntryOutsideWorkspace) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(repo.links) != 0 {
+		t.Fatal("linked a conversation of another workspace")
+	}
+}
+
+func TestLinkRefusesAConversationOfAnotherWorkspace(t *testing.T) {
+	repo := newFakeOppRepo()
+	o, err := newService(repo).Create("ws1", baseCreate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := foreignService(repo).LinkConversation("ws1", o.ID, "entry-9", "whatsapp", "u1"); !errors.Is(err, ErrEntryOutsideWorkspace) {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func baseCreate() CreateInput {

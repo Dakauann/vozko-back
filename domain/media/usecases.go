@@ -9,5 +9,5 @@ type ListMediaUseCase interface {
 }
 
 type GetMediaUseCase interface {
-	GetMedia(mediaID string) (*Media, error)
+	GetMedia(workspaceID, mediaID string) (*Media, error)
 }

@@ -24,7 +24,7 @@ func (c *capturingCreate) Execute(_ context.Context, in *uwc.Campaign, _ uw.Depa
 func postCampaign(t *testing.T, role, body string) *uwc.Campaign {
 	t.Helper()
 	create := &capturingCreate{}
-	h := NewCampaignHandler(CampaignHandlerDeps{Create: create})
+	h := NewCampaignHandler(CampaignHandlerDeps{Create: create, Departments: openScope{}})
 
 	r := httptest.NewRequest(http.MethodPost, "/unofficial-whatsapp/campaigns",
 		bytes.NewBufferString(body))

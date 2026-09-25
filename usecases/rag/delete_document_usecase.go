@@ -2,6 +2,7 @@ package rag_usecase
 
 import (
 	"context"
+	"log"
 
 	"vozko/domain/rag"
 )
@@ -46,6 +47,9 @@ func (uc *deleteDocumentUseCase) Execute(ctx context.Context, id string) error {
 	}
 
 	_ = uc.kbRepo.IncrementDocumentCount(ctx, doc.KnowledgeBaseID, -1)
+	if err := uc.kbRepo.AddTotalSize(ctx, doc.KnowledgeBaseID, -doc.SizeBytes); err != nil {
+		log.Printf("[RAG] warning: failed to remove document %s size from knowledge base %s: %v", doc.ID, doc.KnowledgeBaseID, err)
+	}
 
 	return nil
 }

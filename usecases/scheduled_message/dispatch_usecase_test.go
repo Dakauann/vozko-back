@@ -18,6 +18,8 @@ type dispatchFixture struct {
 	repo        *fakeRepo
 	windows     *fakeWindows
 	send        *fakeSend
+	templates   *fakeTemplates
+	permissions *fakePermissions
 	broadcaster *fakeBroadcaster
 	clock       *fixedClock
 	uc          sm.DispatchUseCase
@@ -29,10 +31,12 @@ func newDispatchFixture(t *testing.T) *dispatchFixture {
 		repo:        newFakeRepo(),
 		windows:     &fakeWindows{open: true},
 		send:        &fakeSend{},
+		templates:   &fakeTemplates{},
+		permissions: &fakePermissions{},
 		broadcaster: &fakeBroadcaster{},
 		clock:       &fixedClock{now: fixedNow},
 	}
-	uc, err := NewDispatchUseCase(f.repo, f.windows, f.send, f.broadcaster, f.clock)
+	uc, err := NewDispatchUseCase(f.repo, f.windows, f.send, f.templates, f.permissions, f.broadcaster, f.clock)
 	if err != nil {
 		t.Fatalf("NewDispatchUseCase: %v", err)
 	}
@@ -284,20 +288,27 @@ func TestDispatchClaimedSkipsTheClaim(t *testing.T) {
 
 func TestNewDispatchUseCaseRefusesMissingDependencies(t *testing.T) {
 	repo, windows, send, broadcaster, clock := newFakeRepo(), &fakeWindows{}, &fakeSend{}, &fakeBroadcaster{}, &fixedClock{}
+	templates, permissions := &fakeTemplates{}, &fakePermissions{}
 
-	if _, err := NewDispatchUseCase(nil, windows, send, broadcaster, clock); err == nil {
+	if _, err := NewDispatchUseCase(nil, windows, send, templates, permissions, broadcaster, clock); err == nil {
 		t.Error("a nil repository was accepted")
 	}
-	if _, err := NewDispatchUseCase(repo, nil, send, broadcaster, clock); err == nil {
+	if _, err := NewDispatchUseCase(repo, nil, send, templates, permissions, broadcaster, clock); err == nil {
 		t.Error("a nil window reader was accepted")
 	}
-	if _, err := NewDispatchUseCase(repo, windows, nil, broadcaster, clock); err == nil {
+	if _, err := NewDispatchUseCase(repo, windows, nil, templates, permissions, broadcaster, clock); err == nil {
 		t.Error("a nil send use case was accepted")
 	}
-	if _, err := NewDispatchUseCase(repo, windows, send, nil, clock); err == nil {
+	if _, err := NewDispatchUseCase(repo, windows, send, nil, permissions, broadcaster, clock); err == nil {
+		t.Error("a nil template sender was accepted")
+	}
+	if _, err := NewDispatchUseCase(repo, windows, send, templates, nil, broadcaster, clock); err == nil {
+		t.Error("a nil permission check was accepted: a revoked operator's templates would still go out")
+	}
+	if _, err := NewDispatchUseCase(repo, windows, send, templates, permissions, nil, clock); err == nil {
 		t.Error("a nil broadcaster was accepted")
 	}
-	if _, err := NewDispatchUseCase(repo, windows, send, broadcaster, nil); err == nil {
+	if _, err := NewDispatchUseCase(repo, windows, send, templates, permissions, broadcaster, nil); err == nil {
 		t.Error("a nil clock was accepted")
 	}
 }

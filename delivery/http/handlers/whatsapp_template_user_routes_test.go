@@ -4,22 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
 
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
 	"vozko/domain/auth"
-	"vozko/domain/media"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/template"
 	"vozko/domain/workspace_template_access"
 	"vozko/infra/http/middleware"
+	templateusecase "vozko/usecases/whatsapp/template"
 )
 
 type stubTemplateListUC struct {
@@ -56,15 +54,6 @@ type stubTemplateSyncOneUC struct {
 
 func (s *stubTemplateSyncOneUC) Execute(input template.SyncTemplateInput) (*template.Template, error) {
 	return s.tmpl, s.err
-}
-
-type stubTemplateSendUC struct {
-	result *template.SendTemplateResult
-	err    error
-}
-
-func (s *stubTemplateSendUC) Execute(input template.SendTemplateMessageInput) (*template.SendTemplateResult, error) {
-	return s.result, s.err
 }
 
 type stubTemplateCreateUC struct {
@@ -260,7 +249,6 @@ func newTemplateTestHandler(opts ...func(*templateTestOpts)) *whatsapptemplateht
 		getUC:              &stubTemplateGetUC{tmpl: &template.Template{ID: "tpl-1", WABAId: "waba-1"}},
 		listUC:             &stubTemplateListUC{result: &shared.PaginatedResult[*template.Template]{}},
 		templateAccessRepo: newStubTemplateAccessRepo(),
-		fileStorage:        &stubFileStorage{},
 		phoneRepo: &stubPhoneRepoForTemplates{
 			phones: map[string]*businessphone.WhatsAppBusinessPhoneNumber{
 				"phone-ws1":      {ID: "phone-ws1", OwnerWorkspaceID: "ws-1", WABAId: "waba-1", AccessToken: "token-1"},
@@ -278,7 +266,6 @@ func newTemplateTestHandler(opts ...func(*templateTestOpts)) *whatsapptemplateht
 		o.getUC,
 		o.syncUC,
 		o.syncOneUC,
-		&stubTemplateSendUC{},
 		o.createUC,
 		&stubTemplateReplicateUC{},
 		o.updateMediaUC,
@@ -286,6 +273,14 @@ func newTemplateTestHandler(opts ...func(*templateTestOpts)) *whatsapptemplateht
 		nil,
 		o.templateAccessRepo,
 		o.phoneRepo,
+		templateusecase.NewWorkspaceTemplatesUseCase(templateusecase.WorkspaceTemplatesDeps{
+			Access: o.templateAccessRepo,
+			Grants: o.templateAccessRepo,
+			Phones: o.phoneRepo,
+			List:   o.listUC,
+			Get:    o.getUC,
+			Create: o.createUC,
+		}),
 	)
 }
 
@@ -299,7 +294,6 @@ type templateTestOpts struct {
 	listUC             *stubTemplateListUC
 	templateAccessRepo *stubTemplateAccessRepo
 	phoneRepo          *stubPhoneRepoForTemplates
-	fileStorage        media.FileStorage
 }
 
 func TestCreateForWorkspace_Success(t *testing.T) {
@@ -347,7 +341,7 @@ func TestCreateForWorkspace_PhoneNotOwnedByWorkspace(t *testing.T) {
 	}
 }
 
-func TestCreateForWorkspace_PhoneNotFound(t *testing.T) {
+func TestCreateForWorkspace_PhoneNotFoundIsForbidden(t *testing.T) {
 	h := newTemplateTestHandler()
 
 	req := requestWithClaims(http.MethodPost, "/whatsapp/templates", whatsapptemplatehttp.CreateTemplateRequest{
@@ -359,8 +353,8 @@ func TestCreateForWorkspace_PhoneNotFound(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.CreateForWorkspace(rr, req)
 
-	if rr.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -712,114 +706,5 @@ func TestUpdateHeaderMediaForWorkspace_PhoneNotOwnedByWorkspace(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
-	}
-}
-
-type stubFileStorage struct {
-	uploads map[string][]byte
-}
-
-func (s *stubFileStorage) UploadFile(key string, data []byte, _ string) error {
-	if s.uploads == nil {
-		s.uploads = map[string][]byte{}
-	}
-	s.uploads[key] = data
-	return nil
-}
-
-func (s *stubFileStorage) GetFileURL(key string) string {
-	return "https://cdn.example.test/" + key
-}
-
-func multipartFile(t *testing.T, field, filename string, data []byte) (*bytes.Buffer, string) {
-	t.Helper()
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile(field, filename)
-	if err != nil {
-		t.Fatalf("create form file: %v", err)
-	}
-	if _, err := fw.Write(data); err != nil {
-		t.Fatalf("write form file: %v", err)
-	}
-	if err := mw.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-	return &buf, mw.FormDataContentType()
-}
-
-var onePixelPNGHeader = []byte("\x89PNG\r\n\x1a\n")
-
-func TestUploadHeaderMedia_Success(t *testing.T) {
-	storage := &stubFileStorage{}
-	h := newTemplateTestHandler(func(o *templateTestOpts) { o.fileStorage = storage })
-
-	body, contentType := multipartFile(t, "file", "banner.png", onePixelPNGHeader)
-	req := httptest.NewRequest(http.MethodPost, "/whatsapp/templates/header-media/upload", body)
-	req.Header.Set("Content-Type", contentType)
-	rr := httptest.NewRecorder()
-
-	h.UploadHeaderMedia(rr, req)
-
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201; body=%s", rr.Code, rr.Body.String())
-	}
-	var resp struct {
-		URL         string `json:"url"`
-		ContentType string `json:"contentType"`
-	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode response: %v (body=%s)", err, rr.Body.String())
-	}
-	if resp.URL == "" {
-		t.Fatalf("expected a url, got body=%s", rr.Body.String())
-	}
-	if resp.ContentType != "image/png" {
-		t.Errorf("contentType = %q, want image/png", resp.ContentType)
-	}
-	if len(storage.uploads) != 1 {
-		t.Fatalf("expected exactly one stored object, got %d", len(storage.uploads))
-	}
-	for k := range storage.uploads {
-		if !strings.HasPrefix(k, "template-headers/") {
-			t.Errorf("stored key %q should be under template-headers/", k)
-		}
-	}
-}
-
-func TestUploadHeaderMedia_UnsupportedType(t *testing.T) {
-	storage := &stubFileStorage{}
-	h := newTemplateTestHandler(func(o *templateTestOpts) { o.fileStorage = storage })
-
-	body, contentType := multipartFile(t, "file", "notes.txt", []byte("just text, not a media asset"))
-	req := httptest.NewRequest(http.MethodPost, "/whatsapp/templates/header-media/upload", body)
-	req.Header.Set("Content-Type", contentType)
-	rr := httptest.NewRecorder()
-
-	h.UploadHeaderMedia(rr, req)
-
-	if rr.Code != http.StatusUnsupportedMediaType {
-		t.Fatalf("status = %d, want 415; body=%s", rr.Code, rr.Body.String())
-	}
-	if len(storage.uploads) != 0 {
-		t.Errorf("unsupported upload must not be stored, got %d objects", len(storage.uploads))
-	}
-}
-
-func TestUploadHeaderMedia_MissingFile(t *testing.T) {
-	h := newTemplateTestHandler(func(o *templateTestOpts) { o.fileStorage = &stubFileStorage{} })
-
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	_ = mw.WriteField("something", "else")
-	mw.Close()
-	req := httptest.NewRequest(http.MethodPost, "/whatsapp/templates/header-media/upload", &buf)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	rr := httptest.NewRecorder()
-
-	h.UploadHeaderMedia(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
 	}
 }

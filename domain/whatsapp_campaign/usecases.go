@@ -7,6 +7,7 @@ import (
 	"vozko/domain/shared"
 
 	wce "vozko/domain/whatsapp_campaign_entry"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type CreateCampaignUseCase interface {
@@ -214,4 +215,12 @@ type QuickSendOutput struct {
 
 type QuickSendUseCase interface {
 	Execute(input QuickSendInput) (*QuickSendOutput, error)
+}
+
+type CampaignAccessUseCase interface {
+	Owned(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*Campaign, error)
+}
+
+type StartCampaignUseCase interface {
+	Start(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*Campaign, error)
 }

@@ -11,6 +11,7 @@ import (
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/shared"
 	"vozko/infra/crypto/piigorm"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -25,7 +26,7 @@ func NewAccountRepository(db *gorm.DB) igdomain.AccountRepository {
 func (r *accountRepository) Create(ctx context.Context, a *igdomain.Account) error {
 	record := toAccountSchema(a)
 	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
-		if isUniqueViolation(err) {
+		if database.IsUniqueViolation(err) {
 			return igdomain.ErrAccountAlreadyLinked
 		}
 		return err
@@ -319,14 +320,4 @@ func toAccountDomain(record *schema.InstagramAccount) *igdomain.Account {
 		}
 	}
 	return a
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "unique constraint") ||
-		strings.Contains(msg, "23505")
 }

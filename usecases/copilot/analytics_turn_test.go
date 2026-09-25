@@ -28,7 +28,7 @@ func TestService_ChartIsStreamedAndKeptWithTheAnswer(t *testing.T) {
 			charts = append(charts, payload)
 		}
 	}
-	if err := newService(prov, th, ms, NewInMemoryPendingStore(), chartTool()).Stream(context.Background(), th.thread, "gráfico", ownerCtx, emit); err != nil {
+	if err := newService(prov, th, ms, chartTool()).Stream(context.Background(), th.thread, copilot.UserMessage{Content: "gráfico"}, ownerCtx, emit); err != nil {
 		t.Fatal(err)
 	}
 	if len(charts) != 1 {
@@ -48,7 +48,7 @@ func TestService_EachTurnGetsItsOwnDatasets(t *testing.T) {
 	th, ms := &fakeThreads{thread: testThread()}, &fakeMessages{}
 	rt := &fakeTool{name: "read_x", meta: readMeta}
 	prov := &scriptAI{turns: [][]ai.ToolCall{{call("read_x", nil)}, {}}, texts: []string{"", "ok"}}
-	if err := newService(prov, th, ms, NewInMemoryPendingStore(), rt).Stream(context.Background(), th.thread, "x", ownerCtx, func(string, interface{}) {}); err != nil {
+	if err := newService(prov, th, ms, rt).Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, func(string, interface{}) {}); err != nil {
 		t.Fatal(err)
 	}
 	if rt.gotCC.Datasets == nil {

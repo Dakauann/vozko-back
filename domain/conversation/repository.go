@@ -190,6 +190,7 @@ type MessageRepository interface {
 	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*Message, error)
 
 	GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*Message, error)
+	ClaimExternalEcho(message *Message) (bool, error)
 	UpdateDeliveryStatus(wamid string, status DeliveryStatus) error
 	UpdateDeliveryStatusWithReason(wamid string, status DeliveryStatus, errorCode int, errorMessage string) error
 	UpdateDeliveryReceipt(wamid string, receipt DeliveryReceipt) error

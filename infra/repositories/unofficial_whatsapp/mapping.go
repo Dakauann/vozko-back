@@ -1,11 +1,6 @@
 package unofficial_whatsapp_repository
 
 import (
-	"errors"
-	"strings"
-
-	"gorm.io/gorm"
-
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/infra/crypto/piigorm"
 	"vozko/infra/database/schema"
@@ -290,15 +285,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }

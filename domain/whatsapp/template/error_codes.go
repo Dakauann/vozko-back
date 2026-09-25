@@ -9,6 +9,9 @@ const (
 	CodeUnknown = "template_unknown_error"
 
 	CodeNotFound              = "template_not_found"
+	CodeAccessDenied          = "template_access_denied"
+	CodeHeaderMediaOutside    = "template_header_media_outside_storage"
+	CodePhoneOutsideWorkspace = "template_phone_outside_workspace"
 	CodeAlreadyExists         = "template_already_exists"
 	CodeExternalIDRequired    = "template_external_id_required"
 	CodeCategoryUnavailable   = "template_category_unavailable"
@@ -74,6 +77,7 @@ const (
 	CodeSendNotSendable          = "template_send_not_sendable"
 	CodeSendBillingNotConfigured = "template_send_billing_not_configured"
 	CodeSendAttemptConflict      = "template_send_attempt_conflict"
+	CodeSendParamsMismatch       = "template_send_params_mismatch"
 
 	CodeProviderRejected    = "template_provider_rejected"
 	CodeProviderUnavailable = "template_provider_unavailable"
@@ -81,6 +85,9 @@ const (
 
 var errorCodes = map[error]string{
 	ErrTemplateNotFound:            CodeNotFound,
+	ErrTemplateAccessDenied:        CodeAccessDenied,
+	ErrHeaderMediaOutsideStorage:   CodeHeaderMediaOutside,
+	ErrPhoneOutsideWorkspace:       CodePhoneOutsideWorkspace,
 	ErrTemplateAlreadyExists:       CodeAlreadyExists,
 	ErrExternalIDRequired:          CodeExternalIDRequired,
 	ErrTemplateCategoryUnavailable: CodeCategoryUnavailable,
@@ -146,6 +153,7 @@ var errorCodes = map[error]string{
 	ErrTemplateNotSendable:    CodeSendNotSendable,
 	ErrBillingNotConfigured:   CodeSendBillingNotConfigured,
 	ErrSendAttemptConflict:    CodeSendAttemptConflict,
+	ErrTemplateParamsMismatch: CodeSendParamsMismatch,
 }
 
 func ErrorCode(err error) string {

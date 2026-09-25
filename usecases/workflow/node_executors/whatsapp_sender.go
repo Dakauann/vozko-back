@@ -145,7 +145,7 @@ func (s *whatsappSender) SendText(ctx context.Context, run *workflow.WorkflowRun
 			Text:        text,
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}
@@ -206,7 +206,7 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 			Text:        text,
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}
@@ -262,7 +262,7 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}
@@ -318,7 +318,7 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}
@@ -435,7 +435,7 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 			Text:        caption,
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}
@@ -551,7 +551,7 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 			Text:        fmt.Sprintf("[template:%s]", tmpl.Name),
 			Timestamp:   time.Now().UTC(),
 		}
-		if err := s.deps.HistoryManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
 		}
 	}

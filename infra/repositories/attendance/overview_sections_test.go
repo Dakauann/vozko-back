@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/attendance"
+	"vozko/infra/database"
 )
 
 type capturedSQL struct {
@@ -233,5 +234,26 @@ func TestScopeMessagesProbeEachConversationThroughItsIndex(t *testing.T) {
 	}
 	if strings.Contains(sql, "GROUP BY se.") {
 		t.Fatalf("the aggregate still groups the joined table instead of probing per conversation")
+	}
+}
+
+func TestScopeCountsMessagesByWhoSentThem(t *testing.T) {
+	sql := scopeMessagesSQL()
+	for _, want := range []string{
+		"WHERE " + database.SentByContactSQL("cm") + "\n\t\t\t) AS first_inbound_at",
+		"WHERE " + database.SentAsReplySQL("cm") + "\n\t\t\t) AS first_agent_at",
+		"WHERE " + database.SentAsReplySQL("cm") + "\n\t\t\t) AS last_agent_at",
+		"cm.sender_id = se.assigned_user_id",
+		"WHERE " + database.SentByContactSQL("cm") + "\n\t\t\t)::int AS inbound_msgs",
+		"WHERE " + database.SentOutboundSQL("cm") + "\n\t\t\t)::int AS outbound_msgs",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("scope does not read %q:\n%s", want, sql)
+		}
+	}
+	for _, guess := range []string{"'user_message', 'audio', 'media'", "'operator', 'ai_response'", "from_participant"} {
+		if strings.Contains(sql, guess) {
+			t.Errorf("scope still infers the sender from %s", guess)
+		}
 	}
 }

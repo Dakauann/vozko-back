@@ -30,6 +30,7 @@ type WhatsAppBusinessPhoneHandlerConfig struct {
 type WhatsAppBusinessPhoneHandler struct {
 	config                       WhatsAppBusinessPhoneHandlerConfig
 	listUseCase                  businessphonedomain.ListUseCase
+	workspacePhones              businessphonedomain.WorkspacePhonesUseCase
 	getUseCase                   businessphonedomain.GetUseCase
 	syncPhoneNumberUseCase       businessphonedomain.SyncPhoneNumberUseCase
 	registerPhoneUseCase         businessphonedomain.RegisterPhoneUseCase
@@ -130,20 +131,11 @@ func (h *WhatsAppBusinessPhoneHandler) List(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	input := h.parsePhoneListInput(r)
-
-	wsID := middleware.GetWorkspaceID(r)
-	input.OwnerWorkspaceID = wsID
-	if h.workspacePhoneAccessRepo != nil {
-		accessPhoneIDs, err := h.workspacePhoneAccessRepo.GetPhoneIDsForWorkspace(wsID)
-		if err != nil {
-			response.WriteError(w, http.StatusInternalServerError, "Failed to list WhatsApp Business phone numbers", nil)
-			return
-		}
-		input.AccessPhoneIDs = accessPhoneIDs
+	if h.workspacePhones == nil {
+		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
+		return
 	}
-
-	result, err := h.listUseCase.Execute(input)
+	result, err := h.workspacePhones.List(middleware.GetWorkspaceID(r), h.parsePhoneListInput(r))
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to list WhatsApp Business phone numbers", nil)
 		return
@@ -155,6 +147,10 @@ func (h *WhatsAppBusinessPhoneHandler) List(w http.ResponseWriter, r *http.Reque
 		TotalPages: result.TotalPages,
 		TotalItems: result.TotalItems,
 	})
+}
+
+func (h *WhatsAppBusinessPhoneHandler) SetWorkspacePhones(phones businessphonedomain.WorkspacePhonesUseCase) {
+	h.workspacePhones = phones
 }
 
 func (h *WhatsAppBusinessPhoneHandler) ListAll(w http.ResponseWriter, r *http.Request) {

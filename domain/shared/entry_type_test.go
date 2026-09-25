@@ -6,7 +6,7 @@ import (
 )
 
 func TestEntryTypeValid(t *testing.T) {
-	valid := []EntryType{EntryTypeWhatsApp, EntryTypeSupport, EntryTypeInstagram}
+	valid := []EntryType{EntryTypeWhatsApp, EntryTypeInstagram, EntryTypeTelegram, EntryTypeUnofficialWhatsApp}
 	for _, e := range valid {
 		if !e.Valid() {
 			t.Errorf("%q should be a valid messaging entry type", e)
@@ -32,7 +32,7 @@ func TestEntryTypeSupportsConversationView(t *testing.T) {
 	}
 
 	notViewable := []EntryType{
-		EntryTypeSupport,
+		"support",
 		"", "messenger", "Instagram", "INSTAGRAM", " whatsapp",
 	}
 	for _, e := range notViewable {
@@ -123,7 +123,6 @@ func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
 	}
 	for _, e := range []EntryType{
 		EntryTypeWhatsApp, EntryTypeTelegram, EntryTypeUnofficialWhatsApp,
-		EntryTypeSupport,
 	} {
 		if e.SupportsCommentAnalysis() {
 			t.Errorf("%q has no public comments and must not support comment analysis", e)
@@ -137,16 +136,6 @@ func TestEntryTypeAnalysisSetsAreIndependent(t *testing.T) {
 		if !e.SupportsConversationAnalysis() {
 			t.Errorf("%q should support conversation analysis", e)
 		}
-	}
-	if EntryTypeSupport.SupportsConversationAnalysis() {
-		t.Error("support should not support conversation analysis")
-	}
-
-	if !EntryTypeSupport.Valid() {
-		t.Fatal("precondition: support is a messaging entry type")
-	}
-	if EntryTypeSupport.SupportsConversationAnalysis() {
-		t.Error("support is a messaging type that is deliberately never analysed")
 	}
 }
 
@@ -190,6 +179,20 @@ func TestAnalysableEntryTypesAreKnown(t *testing.T) {
 	for _, e := range append(CommentAnalysableEntryTypes(), ConversationAnalysableEntryTypes()...) {
 		if !e.IsKnown() {
 			t.Errorf("%q is analysable but not a known entry type", e)
+		}
+	}
+}
+
+func TestOnlyOfficialWhatsAppSupportsTemplates(t *testing.T) {
+	if !EntryTypeWhatsApp.SupportsTemplates() {
+		t.Error("official whatsapp sends approved templates and must support them")
+	}
+	for _, e := range []EntryType{
+		EntryTypeInstagram, EntryTypeTelegram, EntryTypeUnofficialWhatsApp,
+		"WhatsApp", " whatsapp", "",
+	} {
+		if e.SupportsTemplates() {
+			t.Errorf("%q has no Meta template catalogue and must not support templates", e)
 		}
 	}
 }

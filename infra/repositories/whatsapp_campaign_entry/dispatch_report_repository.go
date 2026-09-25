@@ -6,9 +6,9 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/campaign"
-	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/infra/database"
 )
 
 const scopePlaceholder = "{scope}"
@@ -20,19 +20,19 @@ const workspaceScopeSQL = `e.campaign_id IN (
 		WHERE c.workspace_id = @workspace AND c.deleted_at IS NULL{campaignFilters}
 	) AND e.created_at >= @scopeFrom AND e.created_at < @scopeTo`
 
-const repliedSQL = `EXISTS (
+var repliedSQL = `EXISTS (
 		SELECT 1 FROM conversation_messages m
-		WHERE m.entry_id = e.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND m.message_type IN @inbound
+		WHERE m.entry_id = e.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
 	)`
 
-const stageCountsSQL = `COUNT(*) AS base,
+var stageCountsSQL = `COUNT(*) AS base,
 	COUNT(*) FILTER (WHERE e.sent_at IS NOT NULL OR e.status IN @sent) AS sent,
 	COUNT(*) FILTER (WHERE e.delivered_at IS NOT NULL OR e.status IN @delivered) AS delivered,
 	COUNT(*) FILTER (WHERE e.read_at IS NOT NULL OR e.status IN @read) AS read,
 	COUNT(*) FILTER (WHERE ` + repliedSQL + `) AS replied,
 	COUNT(*) FILTER (WHERE e.status = @failed) AS failed`
 
-const funnelSQL = `
+var funnelSQL = `
 SELECT ` + stageCountsSQL + `,
 	COUNT(*) FILTER (WHERE e.status = @awaiting) AS awaiting_delivery,
 	COUNT(*) FILTER (WHERE e.status = @pending) AS pending,
@@ -41,7 +41,7 @@ SELECT ` + stageCountsSQL + `,
 FROM whatsapp_campaign_entries e
 WHERE ` + scopePlaceholder + ` AND e.deleted_at IS NULL`
 
-const campaignsSQL = `
+var campaignsSQL = `
 SELECT e.campaign_id, c.name AS campaign_name, ` + stageCountsSQL + `
 FROM whatsapp_campaign_entries e
 JOIN whatsapp_campaigns c ON c.id = e.campaign_id
@@ -50,7 +50,7 @@ GROUP BY e.campaign_id, c.name
 ORDER BY base DESC, c.name
 LIMIT @limit`
 
-const dailySQL = `
+var dailySQL = `
 WITH scoped AS (
 	SELECT e.id, e.sent_at, e.delivered_at, e.read_at
 	FROM whatsapp_campaign_entries e
@@ -59,7 +59,7 @@ WITH scoped AS (
 	SELECT r.first_at FROM scoped s
 	CROSS JOIN LATERAL (
 		SELECT MIN(m.created_at) AS first_at FROM conversation_messages m
-		WHERE m.entry_id = s.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND m.message_type IN @inbound
+		WHERE m.entry_id = s.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
 		  AND m.created_at < @to
 	) r
 ), events AS (
@@ -125,7 +125,6 @@ func (r *dispatchReportReader) Daily(scope wce.ReportScope, window wce.DayWindow
 	var out []wce.DayCount
 	sql, args := scoped(dailySQL, scope, map[string]interface{}{
 		"entryType": string(shared.EntryTypeWhatsApp),
-		"inbound":   conversation.InboundMessageTypeStrings(),
 		"tz":        window.Location.String(),
 		"from":      window.From,
 		"to":        window.To,
@@ -160,7 +159,6 @@ func stageArgs(extra map[string]interface{}) map[string]interface{} {
 		"read":      provingStatuses(campaign.MilestoneRead),
 		"failed":    string(wce.SendStatusFailed),
 		"entryType": string(shared.EntryTypeWhatsApp),
-		"inbound":   conversation.InboundMessageTypeStrings(),
 	}
 	for key, value := range extra {
 		args[key] = value

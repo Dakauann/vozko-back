@@ -152,7 +152,7 @@ func (p *documentProcessor) resolveContent(doc *rag.Document) (string, error) {
 func ResolveDocumentContent(extractor rag.TextExtractor, doc *rag.Document) (string, error) {
 	content := doc.Content
 
-	if doc.Metadata != nil && doc.Metadata["encoding"] == "base64" {
+	if doc.Metadata != nil && doc.Metadata[rag.MetadataEncoding] == rag.EncodingBase64 {
 		decoded, err := base64.StdEncoding.DecodeString(content)
 		if err != nil {
 			return "", fmt.Errorf("failed to decode base64 content: %w", err)

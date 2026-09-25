@@ -147,8 +147,8 @@ func TestSeededAttachmentStaysAnOutboundOperatorMessage(t *testing.T) {
 	if opening.MessageType != conversation.MessageTypeOperator {
 		t.Fatalf("MessageType = %q, want operator", opening.MessageType)
 	}
-	if opening.Direction != conversation.MessageDirectionOutbound {
-		t.Fatalf("Direction = %q, want outbound", opening.Direction)
+	if opening.ResolvedDirection() != conversation.MessageDirectionOutbound {
+		t.Fatalf("Direction = %q, want outbound", opening.ResolvedDirection())
 	}
 }
 

@@ -98,16 +98,12 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	if wabaErr != nil || strings.TrimSpace(wabaID) == "" {
 		return nil, fmt.Errorf("resolve WABA for template billing: %w", template.ErrTemplateCategoryUnavailable)
 	}
-	if strings.TrimSpace(tmpl.WABAId) != "" && !strings.EqualFold(strings.TrimSpace(tmpl.WABAId), strings.TrimSpace(wabaID)) {
+	if !tmpl.BelongsToWABA(wabaID) {
 		return nil, template.ErrTemplatePhoneMismatch
 	}
 
-	if !tmpl.IsReadyToSend() {
-		msg := tmpl.GetUsabilityMessage()
-		if msg == "" {
-			msg = fmt.Sprintf("template status is %s", tmpl.Status)
-		}
-		return nil, fmt.Errorf("%w: %s", template.ErrTemplateNotSendable, msg)
+	if err := tmpl.EnsureSendable(); err != nil {
+		return nil, err
 	}
 
 	sendInput, err := buildTemplateSendInput(tmpl, in, "")

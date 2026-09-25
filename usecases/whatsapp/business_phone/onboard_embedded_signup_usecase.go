@@ -14,18 +14,39 @@ type onboardEmbeddedSignupUseCase struct {
 	repo       businessphone.Repository
 	wabaRepo   waba.Repository
 	metaClient businessphone.MetaAPIService
+	gate       businessphone.ProvisioningGate
 }
 
 func NewOnboardEmbeddedSignupUseCase(
 	repo businessphone.Repository,
 	wabaRepo waba.Repository,
 	metaClient businessphone.MetaAPIService,
+	gate businessphone.ProvisioningGate,
 ) businessphone.OnboardEmbeddedSignupUseCase {
 	return &onboardEmbeddedSignupUseCase{
 		repo:       repo,
 		wabaRepo:   wabaRepo,
 		metaClient: metaClient,
+		gate:       gate,
 	}
+}
+
+func (uc *onboardEmbeddedSignupUseCase) Authorize(workspaceID, metaPhoneNumberID string) error {
+	if existing, err := uc.repo.FindByMetaPhoneNumberID(metaPhoneNumberID); err == nil && existing != nil && existing.IsHeldBy(workspaceID) {
+		return nil
+	}
+	if uc.gate == nil {
+		return businessphone.ErrPhoneLimitReached
+	}
+	ok, err := uc.gate.CanProvisionPhone(workspaceID)
+	if err != nil {
+		log.Printf("[onboard-embedded-signup] provisioning gate error for workspace %s: %v (denying, fail-closed)", workspaceID, err)
+		return err
+	}
+	if !ok {
+		return businessphone.ErrPhoneLimitReached
+	}
+	return nil
 }
 
 func (uc *onboardEmbeddedSignupUseCase) Execute(input businessphone.OnboardEmbeddedSignupInput) (*businessphone.OnboardEmbeddedSignupResult, error) {
@@ -47,6 +68,10 @@ func (uc *onboardEmbeddedSignupUseCase) Execute(input businessphone.OnboardEmbed
 		}
 	} else if input.AccessToken == "" {
 		return nil, businessphone.ErrInvalidAccessToken
+	}
+
+	if err := uc.Authorize(input.OwnerWorkspaceID, input.PhoneNumberID); err != nil {
+		return nil, err
 	}
 
 	log.Printf("[onboard-embedded-signup] Onboarding phone %s for WABA %s (business_id=%s)", input.PhoneNumberID, input.WABAId, input.BusinessID)

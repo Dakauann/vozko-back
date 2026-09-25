@@ -76,9 +76,13 @@ type CheckBalanceUseCase interface {
 	Execute(workspaceID string, amount int64) (bool, error)
 }
 
+type BalanceReader interface {
+	GetBalance(workspaceID string) (int64, error)
+}
+
 type CachedBalanceChecker interface {
 	HasSufficientBalance(workspaceID string, amountMicros int64) (bool, error)
-	GetBalance(workspaceID string) (int64, error)
+	BalanceReader
 	Invalidate(workspaceID string)
 
 	InvalidateDebounced(workspaceID string)

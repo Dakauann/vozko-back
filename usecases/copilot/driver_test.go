@@ -2,6 +2,7 @@ package copilot_usecase
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -16,14 +17,16 @@ import (
 type scriptAI struct {
 	turns [][]ai.ToolCall
 	texts []string
-	usage *ai.Usage
-	idx   int
+	usage  *ai.Usage
+	idx    int
+	inputs []ai.GenerateInput
 }
 
 func (s *scriptAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
 	return nil, context.Canceled
 }
 func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-chan ai.StreamEvent, error) {
+	s.inputs = append(s.inputs, in)
 	i := s.idx
 	s.idx++
 	var tcs []ai.ToolCall
@@ -66,7 +69,11 @@ type fakeTool struct {
 	calls   int
 	gotCC   copilot.Context
 	gotArgs map[string]interface{}
+	invalid error
 }
+
+func (f *fakeTool) Validate(context.Context, copilot.Context, map[string]interface{}) error { return f.invalid }
+
 
 func (f *fakeTool) Definition() tools.Definition {
 	return tools.Definition{Name: f.name, Description: "x"}
@@ -292,5 +299,27 @@ func TestSummarizeAndToolEvent(t *testing.T) {
 	ev := toolEvent("t", "s", true)
 	if ev["name"] != "t" || ev["ok"] != true {
 		t.Fatalf("tool event fields, got %+v", ev)
+	}
+}
+
+func TestDriver_InvalidProposalNeverReachesTheUser(t *testing.T) {
+	wt := &fakeTool{name: "write_x", meta: writeMeta, invalid: errors.New("business_phone_id \"x\" não existe")}
+	cp := &capture{}
+	step := driverWith(&fakeAccess{}, wt).Dispatch(context.Background(), call("write_x", nil), cp.emit)
+	if step.Pause != nil || cp.has("tool_proposal") || wt.calls != 0 {
+		t.Fatalf("an invalid proposal was shown or run: step=%+v", step)
+	}
+	if !strings.Contains(step.Result, "business_phone_id") || !strings.Contains(step.Result, "nunca invente") {
+		t.Fatalf("the model must learn why, got %q", step.Result)
+	}
+}
+
+func TestDriver_ChangeWithoutPreflightIsRefused(t *testing.T) {
+	type bare struct{ copilot.Tool }
+	wt := bare{&fakeTool{name: "write_x", meta: writeMeta}}
+	cp := &capture{}
+	step := driverWith(&fakeAccess{}, wt).Dispatch(context.Background(), call("write_x", nil), cp.emit)
+	if step.Pause != nil || cp.has("tool_proposal") {
+		t.Fatalf("a change without a validator was proposed: %+v", step)
 	}
 }

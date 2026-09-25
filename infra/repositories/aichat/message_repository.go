@@ -2,6 +2,7 @@ package aichat_repository
 
 import (
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"vozko/domain/aichat"
 	"vozko/infra/database/schema"
@@ -53,6 +54,27 @@ func (r *messageRepository) DeleteByThread(threadID string) error {
 	return r.db.Where("thread_id = ?", threadID).Delete(&schema.AIChatMessage{}).Error
 }
 
+func (r *messageRepository) ClaimProposal(threadID, proposalID string, outcome aichat.ProposalStatus) (*aichat.Message, error) {
+	var recs []schema.AIChatMessage
+	res := r.db.Model(&recs).
+		Clauses(clause.Returning{}).
+		Where("thread_id = ? AND proposal_id = ? AND proposal_status = ?", threadID, proposalID, aichat.ProposalPending).
+		Update("proposal_status", string(outcome))
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 || len(recs) == 0 {
+		return nil, aichat.ErrProposalNotPending
+	}
+	return toMessageDomain(&recs[0]), nil
+}
+
+func (r *messageRepository) ExpireProposals(threadID string) error {
+	return r.db.Model(&schema.AIChatMessage{}).
+		Where("thread_id = ? AND proposal_status = ?", threadID, aichat.ProposalPending).
+		Update("proposal_status", string(aichat.ProposalExpired)).Error
+}
+
 func toMessageDomain(rec *schema.AIChatMessage) *aichat.Message {
 	return &aichat.Message{
 		ID:               rec.ID,
@@ -61,11 +83,30 @@ func toMessageDomain(rec *schema.AIChatMessage) *aichat.Message {
 		Content:          rec.Content,
 		Model:            rec.Model,
 		ToolCalls:        rec.ToolCalls,
+		Attachments:      rec.Attachments,
 		Reasoning:        rec.Reasoning,
 		PromptTokens:     rec.PromptTokens,
 		CompletionTokens: rec.CompletionTokens,
 		CreatedAt:        rec.CreatedAt,
+		ProposalID:       derefProposalID(rec.ProposalID),
+		Proposal:         rec.Proposal,
+		ProposalStatus:   aichat.ProposalStatus(rec.ProposalStatus),
 	}
+}
+
+func derefProposalID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
+}
+
+func proposalIDOf(m *aichat.Message) *string {
+	if m.ProposalID == "" {
+		return nil
+	}
+	id := m.ProposalID
+	return &id
 }
 
 func toMessageSchema(m *aichat.Message) *schema.AIChatMessage {
@@ -76,8 +117,12 @@ func toMessageSchema(m *aichat.Message) *schema.AIChatMessage {
 		Content:          m.Content,
 		Model:            m.Model,
 		ToolCalls:        m.ToolCalls,
+		Attachments:      m.Attachments,
 		Reasoning:        m.Reasoning,
 		PromptTokens:     m.PromptTokens,
 		CompletionTokens: m.CompletionTokens,
+		ProposalID:       proposalIDOf(m),
+		Proposal:         m.Proposal,
+		ProposalStatus:   string(m.ProposalStatus),
 	}
 }

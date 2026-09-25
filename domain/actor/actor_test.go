@@ -32,6 +32,7 @@ func TestKindOf(t *testing.T) {
 		{SystemID, KindSystem},
 		{"ai:agent-1", KindAI},
 		{"user-uuid", KindHuman},
+		{"campaign:camp-1", KindCampaign},
 	}
 	for _, tc := range cases {
 		if got := KindOf(tc.in); got != tc.want {
@@ -56,10 +57,22 @@ func TestNormalize(t *testing.T) {
 }
 
 func TestKindValid(t *testing.T) {
-	if !KindHuman.Valid() || !KindAI.Valid() || !KindSystem.Valid() {
+	if !KindHuman.Valid() || !KindAI.Valid() || !KindSystem.Valid() || !KindCampaign.Valid() {
 		t.Fatal("expected valid kinds")
 	}
 	if Kind("nope").Valid() {
 		t.Fatal("invalid kind should fail")
+	}
+}
+
+func TestFormatCampaign(t *testing.T) {
+	if got := FormatCampaign("camp-1"); got != "campaign:camp-1" {
+		t.Fatalf("FormatCampaign = %q", got)
+	}
+	if got := FormatCampaign("campaign:camp-1"); got != "campaign:camp-1" {
+		t.Fatalf("FormatCampaign twice = %q", got)
+	}
+	if got := FormatCampaign(" "); got != "" {
+		t.Fatalf("FormatCampaign blank = %q", got)
 	}
 }

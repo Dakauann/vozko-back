@@ -259,72 +259,48 @@ func (s *HistoryProviderService) enrichAssignments(entries []conversation.InboxE
 		}
 	}
 
-	names := s.humanAssigneeNames(idsByKind[actor.KindHuman])
-	for id, name := range s.agentAssigneeNames(idsByKind[actor.KindAI]) {
-		names[id] = name
-	}
-	for id, name := range s.workflowAssigneeNames(idsByKind[actor.KindWorkflow]) {
-		names[id] = name
-	}
+	owners := s.actorIdentities(idsByKind[actor.KindHuman], idsByKind[actor.KindAI], idsByKind[actor.KindWorkflow])
 	for i := range entries {
 		if entries[i].AssignedUserID != "" {
-			entries[i].AssignedUsername = names[entries[i].AssignedUserID]
+			entries[i].AssignedUsername = owners[entries[i].AssignedUserID].Name
 		}
 	}
 }
 
-func (s *HistoryProviderService) humanAssigneeNames(userIDs []string) map[string]string {
-	names := make(map[string]string, len(userIDs))
-	if len(userIDs) == 0 || s.userRepo == nil {
-		return names
-	}
-	users, err := s.userRepo.FindByIDs(uniqueIDs(userIDs))
-	if err != nil {
-		log.Printf("[HistoryProvider] Error batch-fetching users for assignments: %v", err)
-		return names
-	}
-	for _, u := range users {
-		username := u.Username
-		if username == "" {
-			username = strings.Split(u.Email, "@")[0]
+func (s *HistoryProviderService) actorIdentities(userIDs, agentActorIDs, workflowActorIDs []string) map[string]senderIdentity {
+	found := make(map[string]senderIdentity, len(userIDs)+len(agentActorIDs)+len(workflowActorIDs))
+	if len(userIDs) > 0 && s.userRepo != nil {
+		users, err := s.userRepo.FindByIDs(uniqueIDs(userIDs))
+		if err != nil {
+			log.Printf("[HistoryProvider] Error batch-fetching users: %v", err)
 		}
-		names[u.ID] = username
+		for _, u := range users {
+			username := u.Username
+			if username == "" {
+				username = strings.Split(u.Email, "@")[0]
+			}
+			found[u.ID] = senderIdentity{Name: username, Avatar: u.Picture}
+		}
 	}
-	return names
-}
-
-// agentAssigneeNames names the agents holding conversations, keyed by ai:<id>.
-func (s *HistoryProviderService) agentAssigneeNames(actorIDs []string) map[string]string {
-	names := make(map[string]string, len(actorIDs))
-	if len(actorIDs) == 0 || s.agentRepo == nil {
-		return names
+	if len(agentActorIDs) > 0 && s.agentRepo != nil {
+		agents, err := s.agentRepo.FindByIDs(bareActorIDs(agentActorIDs, actor.ParseAI))
+		if err != nil {
+			log.Printf("[HistoryProvider] Error batch-fetching agents: %v", err)
+		}
+		for _, a := range agents {
+			found[actor.FormatAI(a.ID)] = senderIdentity{Name: a.Name, Avatar: a.AvatarURL}
+		}
 	}
-	agents, err := s.agentRepo.FindByIDs(bareActorIDs(actorIDs, actor.ParseAI))
-	if err != nil {
-		log.Printf("[HistoryProvider] Error batch-fetching agents for assignments: %v", err)
-		return names
+	if len(workflowActorIDs) > 0 && s.workflowRepo != nil {
+		workflows, err := s.workflowRepo.FindByIDs(bareActorIDs(workflowActorIDs, actor.ParseWorkflow))
+		if err != nil {
+			log.Printf("[HistoryProvider] Error batch-fetching workflows: %v", err)
+		}
+		for _, w := range workflows {
+			found[actor.FormatWorkflow(w.ID)] = senderIdentity{Name: w.Name}
+		}
 	}
-	for _, a := range agents {
-		names[actor.FormatAI(a.ID)] = a.Name
-	}
-	return names
-}
-
-// workflowAssigneeNames names the workflows holding conversations, keyed by workflow:<id>.
-func (s *HistoryProviderService) workflowAssigneeNames(actorIDs []string) map[string]string {
-	names := make(map[string]string, len(actorIDs))
-	if len(actorIDs) == 0 || s.workflowRepo == nil {
-		return names
-	}
-	workflows, err := s.workflowRepo.FindByIDs(bareActorIDs(actorIDs, actor.ParseWorkflow))
-	if err != nil {
-		log.Printf("[HistoryProvider] Error batch-fetching workflows for assignments: %v", err)
-		return names
-	}
-	for _, w := range workflows {
-		names[actor.FormatWorkflow(w.ID)] = w.Name
-	}
-	return names
+	return found
 }
 
 func bareActorIDs(actorIDs []string, parse func(string) string) []string {
@@ -374,13 +350,7 @@ func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.Ent
 		total = int64(len(messages))
 	}
 
-	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
-	authors := s.authorsFor(entryType, entryID, leadNumber, messages)
-
-	for _, msg := range messages {
-		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
-		applyAuthor(msg, authors)
-	}
+	s.identifySenders(entryID, entryType, messages)
 
 	return messages, hasMore, total, nil
 }
@@ -400,7 +370,7 @@ func (s *HistoryProviderService) authorsFor(
 	handles := make([]string, 0, len(messages))
 	seen := make(map[string]struct{}, len(messages))
 	for _, msg := range messages {
-		if !isInboundMessageType(msg.MessageType) {
+		if !msg.FromCustomer() {
 			continue
 		}
 		from := strings.TrimSpace(msg.From)
@@ -442,16 +412,6 @@ func applyAuthor(msg *conversation.Message, authors map[string]ContactDisplay) {
 	msg.SenderAvatar = author.PictureURL
 }
 
-func isInboundMessageType(t conversation.MessageType) bool {
-	switch t {
-	case conversation.MessageTypeUserMessage,
-		conversation.MessageTypeAudio,
-		conversation.MessageTypeMedia:
-		return true
-	}
-	return false
-}
-
 func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shared.EntryType, before time.Time, limit int) ([]*conversation.Message, bool, error) {
 	limit = conversation.HistoryPageSize(limit)
 
@@ -472,13 +432,7 @@ func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shar
 
 	reverseMessages(messages)
 
-	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
-	authors := s.authorsFor(entryType, entryID, leadNumber, messages)
-
-	for _, msg := range messages {
-		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
-		applyAuthor(msg, authors)
-	}
+	s.identifySenders(entryID, entryType, messages)
 
 	return messages, hasMore, nil
 }
@@ -531,12 +485,7 @@ func (s *HistoryProviderService) GetHistoryAround(entryID string, entryType shar
 
 	total, _ := s.messageRepo.CountByEntry(entryID, entryType)
 
-	leadName, leadNumber, leadPicture, _, _, _, _ := s.GetEntryInfo(entryID, string(entryType))
-	authors := s.authorsFor(entryType, entryID, leadNumber, combined)
-	for _, msg := range combined {
-		msg.SenderName, msg.SenderAvatar = s.getSenderInfo(msg.From, msg.MessageType, leadName, leadNumber, leadPicture)
-		applyAuthor(msg, authors)
-	}
+	s.identifySenders(entryID, entryType, combined)
 
 	return combined, hasBefore, hasAfter, total, nil
 }
@@ -1152,23 +1101,7 @@ func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string
 		return
 	}
 
-	var leadName, leadNumber, leadPicture string
-	switch message.MessageType {
-	case conversation.MessageTypeUserMessage, conversation.MessageTypeAudio, conversation.MessageTypeMedia:
-		if entryID == "" || entryType == "" {
-			return
-		}
-		var err error
-		leadName, leadNumber, leadPicture, _, _, _, err = s.GetEntryInfo(entryID, entryType)
-		if err != nil {
-			log.Printf("[HistoryProvider] could not resolve sender for %s:%s: %v", entryType, entryID, err)
-			return
-		}
-	}
-
-	message.SenderName, message.SenderAvatar = s.getSenderInfo(message.From, message.MessageType, leadName, leadNumber, leadPicture)
-	applyAuthor(message, s.authorsFor(shared.EntryType(message.EntryType), message.EntryID, leadNumber,
-		[]*conversation.Message{message}))
+	s.identifySenders(entryID, shared.EntryType(entryType), []*conversation.Message{message})
 }
 
 func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLastMessage) string {
@@ -1334,7 +1267,7 @@ func (s *MessageMarkerService) latestInboundProviderID(
 		if msg.EntryID != entryID || msg.EntryType != entryType {
 			continue
 		}
-		if !isInboundMessage(msg) {
+		if !msg.FromCustomer() {
 			continue
 		}
 		if msg.ExternalMessageID != nil && *msg.ExternalMessageID != "" {
@@ -1345,16 +1278,6 @@ func (s *MessageMarkerService) latestInboundProviderID(
 		}
 	}
 	return ""
-}
-
-func isInboundMessage(msg *conversation.Message) bool {
-	switch msg.Direction {
-	case conversation.MessageDirectionInbound:
-		return true
-	case conversation.MessageDirectionOutbound:
-		return false
-	}
-	return msg.MessageType.IsInbound()
 }
 
 func (s *MessageMarkerService) sendWhatsAppReadReceipts(entryID, entryType string, messageIDs []string) {
@@ -1379,7 +1302,7 @@ func (s *MessageMarkerService) sendWhatsAppReadReceipts(entryID, entryType strin
 		if err != nil || msg == nil {
 			continue
 		}
-		if msg.MessageType.IsInbound() && msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
+		if msg.FromCustomer() && msg.WhatsAppMessageID != nil && *msg.WhatsAppMessageID != "" {
 			latestWamid = *msg.WhatsAppMessageID
 			break
 		}
@@ -1468,7 +1391,7 @@ func (s *MessageMarkerService) findLatestInboundWhatsAppMessageID(entryID string
 	}
 
 	for _, msg := range messages {
-		if msg == nil || !msg.MessageType.IsInbound() || msg.WhatsAppMessageID == nil {
+		if msg == nil || !msg.FromCustomer() || msg.WhatsAppMessageID == nil {
 			continue
 		}
 		wamid := strings.TrimSpace(*msg.WhatsAppMessageID)
@@ -1542,7 +1465,9 @@ func (s *MessageSenderService) adapterFor(entryType string) conversation.Channel
 
 func (s *MessageSenderService) sendViaAdapter(
 	adapter conversation.ChannelAdapter,
-	entryID, entryType, userID, replyToMessageID string,
+	entryID, entryType string,
+	sentBy conversation.SentBy,
+	replyToMessageID string,
 	send func(*conversation.EntryContext) (*conversation.SendOutcome, error),
 	msgType conversation.MessageType,
 	text string,
@@ -1575,7 +1500,8 @@ func (s *MessageSenderService) sendViaAdapter(
 		EntryType:      shared.EntryType(entryType),
 		Channel:        conversation.MessageChannel(entryType),
 		MessageType:    msgType,
-		From:           userID,
+		SentBy:         sentBy,
+		From:           sentBy.Participant(),
 		To:             ec.ContactRef,
 		Text:           text,
 		Read:           true,
@@ -1584,8 +1510,8 @@ func (s *MessageSenderService) sendViaAdapter(
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	if userID != "" {
-		author := userID
+	if sentBy.Kind() == conversation.SenderHuman {
+		author := sentBy.Participant()
 		message.ReadBy = &author
 	}
 
@@ -1643,7 +1569,7 @@ func NewMessageSenderService(
 func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error) {
 	if adapter := s.adapterFor(entryType); adapter != nil {
 		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
-		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
+		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(userID), replyToMessageID,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{
 					HumanInitiated:           true,
@@ -1684,6 +1610,7 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 	now := time.Now().UTC()
 	waMsgID := output.MessageID
 	message := &conversation.Message{
+		SentBy:            conversation.SentByPerson(userID),
 		ID:                uuid.NewString(),
 		EntryID:           entryID,
 		EntryType:         shared.EntryType(entryType),
@@ -1722,7 +1649,7 @@ func (s *MessageSenderService) SendAgentTextMessage(entryID, entryType, text, ag
 		return nil, conversation.ErrNoAdapterForEntryType
 	}
 
-	message, err := s.sendViaAdapter(adapter, entryID, entryType, agentID, "",
+	message, err := s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByAI(agentID), "",
 		func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 			return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: text})
 		},
@@ -1782,6 +1709,7 @@ func (s *MessageSenderService) RequestCallPermission(input conversation.RequestC
 	now := time.Now().UTC()
 	waMsgID := output.MessageID
 	message := &conversation.Message{
+		SentBy:            conversation.SentByPerson(userID),
 		ID:                uuid.NewString(),
 		EntryID:           entryID,
 		EntryType:         shared.EntryType(entryType),
@@ -1877,6 +1805,7 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 		text = "O cliente autorizou ligações pelo WhatsApp até " + expiresAt.Format("02/01/2006 15:04") + "."
 	}
 	message := &conversation.Message{
+		SentBy:      conversation.SentBySystem(),
 		ID:          uuid.NewString(),
 		EntryID:     entryID,
 		EntryType:   shared.EntryType(entryType),
@@ -1906,7 +1835,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 		}
 		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
 
-		return s.sendViaAdapter(adapter, entryID, entryType, userID, replyToMessageID,
+		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(userID), replyToMessageID,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
 					HumanInitiated:           true,
@@ -2025,6 +1954,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 	mt := conversation.MediaType(mediaType)
 	waMsgID := output.MessageID
 	message := &conversation.Message{
+		SentBy:            conversation.SentByPerson(userID),
 		ID:                uuid.NewString(),
 		EntryID:           entryID,
 		EntryType:         shared.EntryType(entryType),
@@ -2098,6 +2028,7 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 	now := time.Now().UTC()
 	waMsgID := output.MessageID
 	message := &conversation.Message{
+		SentBy:            conversation.SentByPerson(userID),
 		ID:                uuid.NewString(),
 		EntryID:           entryID,
 		EntryType:         shared.EntryType(entryType),
@@ -2476,6 +2407,11 @@ type TemplateSenderService struct {
 	hub                     conversation.EventBroadcaster
 	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase
 	events                  ce.Logger
+	grants                  TemplateGrants
+}
+
+type TemplateGrants interface {
+	Execute(workspaceID, templateID string) (bool, error)
 }
 
 func NewTemplateSenderService(
@@ -2487,6 +2423,7 @@ func NewTemplateSenderService(
 	hub conversation.EventBroadcaster,
 	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase,
 	events ce.Logger,
+	grants TemplateGrants,
 ) *TemplateSenderService {
 	return &TemplateSenderService{
 		whatsappClientFactory:   whatsappClientFactory,
@@ -2497,6 +2434,7 @@ func NewTemplateSenderService(
 		hub:                     hub,
 		consumeWhatsappTemplate: consumeWhatsappTemplate,
 		events:                  events,
+		grants:                  grants,
 	}
 }
 
@@ -2510,6 +2448,16 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	}
 	if tmpl.Status != "APPROVED" {
 		return "", fmt.Errorf("template %s is not approved (status: %s)", tmpl.Name, tmpl.Status)
+	}
+	if s.grants == nil {
+		return "", conversation.ErrTemplateNotGranted
+	}
+	granted, err := s.grants.Execute(workspaceID, tmpl.ID)
+	if err != nil {
+		return "", fmt.Errorf("check template access: %w", err)
+	}
+	if !granted {
+		return "", conversation.ErrTemplateNotGranted
 	}
 
 	var leadID, businessPhoneID string
@@ -2543,6 +2491,13 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 
 	if businessPhoneID == "" {
 		return "", fmt.Errorf("no business phone associated with entry %s", entryID)
+	}
+	wabaID, err := s.whatsappClientFactory.WABAIdForPhone(businessPhoneID)
+	if err != nil || strings.TrimSpace(wabaID) == "" {
+		return "", fmt.Errorf("resolve the WhatsApp account of %s: %w", businessPhoneID, whatsappTemplate.ErrTemplatePhoneMismatch)
+	}
+	if strings.TrimSpace(tmpl.WABAId) != "" && !strings.EqualFold(strings.TrimSpace(tmpl.WABAId), strings.TrimSpace(wabaID)) {
+		return "", whatsappTemplate.ErrTemplatePhoneMismatch
 	}
 
 	client, err := s.whatsappClientFactory.ClientForPhone(businessPhoneID)
@@ -2597,6 +2552,7 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	}
 
 	msg := &conversation.Message{
+		SentBy:            conversation.SentByPerson(userID),
 		ID:                msgID,
 		EntryID:           entryID,
 		EntryType:         shared.EntryType(entryType),

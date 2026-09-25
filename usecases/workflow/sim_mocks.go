@@ -431,7 +431,7 @@ type simHistoryManager struct {
 	records []conversation.MessageHistoryRecord
 }
 
-func (m *simHistoryManager) Record(_ context.Context, _ conversation.MessageHistoryDirection, record conversation.MessageHistoryRecord) error {
+func (m *simHistoryManager) Record(_ context.Context, record conversation.MessageHistoryRecord) error {
 	m.mu.Lock()
 	m.records = append(m.records, record)
 	m.mu.Unlock()
@@ -525,6 +525,9 @@ func (r *simMessageRepo) GetByExternalMessageID(_ shared.EntryType, _ string) (*
 }
 func (r *simMessageRepo) GetByEntryAndExternalMessageID(_ shared.EntryType, _, _ string) (*conversation.Message, error) {
 	return nil, nil
+}
+func (r *simMessageRepo) ClaimExternalEcho(_ *conversation.Message) (bool, error) {
+	return false, nil
 }
 func (r *simMessageRepo) UpdateDeliveryStatus(_ string, _ conversation.DeliveryStatus) error {
 	return nil

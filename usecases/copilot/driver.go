@@ -1,6 +1,7 @@
 package copilot_usecase
 
 import (
+	"vozko/domain/readiness"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ type IDGenerator func() string
 
 const (
 	EventChart     = "chart"
+	EventCard      = "action_card"
 	EventToolStart = "tool_start"
 )
 
@@ -31,6 +33,8 @@ type FundsChecker interface {
 
 var ErrFundsExhausted = errors.New("copilot: funds exhausted")
 
+var ErrNoValidator = errors.New("esta ação não tem verificação prévia e não pode ser proposta")
+
 type Driver struct {
 	cc       copilot.Context
 	model    string
@@ -38,6 +42,7 @@ type Driver struct {
 	access   AccessChecker
 	funds    FundsChecker
 	newID    IDGenerator
+	state    *readiness.Snapshot
 }
 
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {
@@ -57,7 +62,9 @@ func (d *Driver) Admit(context.Context) error {
 func (d *Driver) Model() string             { return d.model }
 func (d *Driver) Tools() []tools.Definition { return d.registry.Definitions() }
 
-func (d *Driver) SystemPrompt() string { return systemPrompt(d.cc.View, time.Now()) }
+func (d *Driver) SystemPrompt() string {
+	return systemPrompt(d.cc.View, time.Now()) + workspacePrompt(d.state)
+}
 
 func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
 	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário."
@@ -89,12 +96,18 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			m.Resource, m.Action)}
 	}
 	if m.Mutating {
+		if err := preflight(ctx, tool, d.cc, call.Arguments); err != nil {
+			emit("tool", toolEvent(call.Name, string(copilot.StatusError), false))
+			return agentloop.StepResult{Result: fmt.Sprintf(
+				"PROPOSTA RECUSADA ANTES DE CHEGAR AO USUÁRIO: %v. Confira os dados com as ferramentas de leitura e proponha de novo; nunca invente ids.", err)}
+		}
 		pa := copilot.PendingAction{
 			ID:       d.mintID(),
 			ToolName: call.Name,
 			Args:     call.Arguments,
 			Summary:  summarizeCall(call),
 			Fields:   describe(ctx, tool, d.cc, call.Arguments),
+			Preview:  preview(ctx, tool, d.cc, call.Arguments),
 		}
 		emit("tool_proposal", pa)
 		return agentloop.StepResult{
@@ -107,6 +120,9 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	emit("tool", toolEvent(call.Name, string(res.Status), res.Status == copilot.StatusOK))
 	if res.Chart != nil {
 		emit(EventChart, res.Chart)
+	}
+	if res.Card != nil {
+		emit(EventCard, res.Card)
 	}
 	return agentloop.StepResult{Result: renderResult(res)}
 }
@@ -176,6 +192,21 @@ func (d *Driver) permit(m copilot.Meta) error {
 		return nil
 	}
 	return d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action)
+}
+
+func preflight(ctx context.Context, tool copilot.Tool, cc copilot.Context, args map[string]interface{}) error {
+	validator, ok := tool.(copilot.Validator)
+	if !ok {
+		return ErrNoValidator
+	}
+	return validator.Validate(ctx, cc, args)
+}
+
+func preview(ctx context.Context, tool copilot.Tool, cc copilot.Context, args map[string]interface{}) *copilot.Preview {
+	if previewer, ok := tool.(copilot.Previewer); ok {
+		return previewer.Preview(ctx, cc, args)
+	}
+	return nil
 }
 
 func describe(ctx context.Context, tool copilot.Tool, cc copilot.Context, args map[string]interface{}) []copilot.Field {

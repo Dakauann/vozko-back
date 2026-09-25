@@ -8,6 +8,7 @@ type OwnerPhone struct {
 
 type OwnerPhoneReader interface {
 	CountActiveDialog360ByOwner(workspaceID string) (int64, error)
+	CountActiveOfficialByOwner(workspaceID string) (int64, error)
 	FindConnectedDialog360ByOwner(workspaceID string) ([]OwnerPhone, error)
 	FindSuspendedDialog360ByOwner(workspaceID string) ([]OwnerPhone, error)
 	CountConnectedDialog360GroupedByOwner() (map[string]int, error)
@@ -25,6 +26,23 @@ type Dialog360ChannelRef struct {
 
 type ProvisioningGate interface {
 	CanProvisionPhone(workspaceID string) (bool, error)
+}
+
+func StatusesOutsidePhoneQuota() []Status {
+	return []Status{StatusOnboardingFailed, StatusSuspended}
+}
+
+func (p *WhatsAppBusinessPhoneNumber) CountsTowardPhoneQuota() bool {
+	for _, s := range StatusesOutsidePhoneQuota() {
+		if p.Status == s {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *WhatsAppBusinessPhoneNumber) IsHeldBy(workspaceID string) bool {
+	return p.BelongsToWorkspace(workspaceID) && p.CountsTowardPhoneQuota()
 }
 
 type ChannelStatusReport struct {

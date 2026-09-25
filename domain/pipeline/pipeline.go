@@ -36,6 +36,7 @@ var (
 	ErrInvalidObject     = errors.New("pipeline: invalid object type")
 	ErrNotFound          = errors.New("pipeline: not found")
 	ErrUnauthorized      = errors.New("pipeline: unauthorized access to this pipeline")
+	ErrDepartmentUnknown = errors.New("pipeline: department is not in this workspace")
 
 	ErrDeleteDefault = errors.New("pipeline: the default funnel cannot be deleted")
 

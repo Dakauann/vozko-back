@@ -267,7 +267,7 @@ func NewSendPrivateReplyUseCase(
 	}
 }
 
-func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, accountID, igCommentID, text string) error {
+func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, accountID, igCommentID string, sentBy conversation.SentBy, text string) error {
 	account, err := uc.resolve(ctx, workspaceID, accountID)
 	if err != nil {
 		return err
@@ -317,7 +317,7 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 	}
 
 	conv := uc.ensureConversation(ctx, account, result.RecipientID)
-	uc.recordInTranscript(ctx, account, conv, result, text)
+	uc.recordInTranscript(ctx, account, conv, result, sentBy, text)
 	return nil
 }
 
@@ -326,6 +326,7 @@ func (uc *SendPrivateReplyUseCase) recordInTranscript(
 	account *igdomain.Account,
 	conv *igdomain.Conversation,
 	result *igdomain.SendResult,
+	sentBy conversation.SentBy,
 	text string,
 ) {
 	if uc.history == nil || conv == nil {
@@ -335,7 +336,8 @@ func (uc *SendPrivateReplyUseCase) recordInTranscript(
 	if result != nil {
 		providerID = result.MessageID
 	}
-	if err := uc.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+	if err := uc.history.Record(ctx, conversation.MessageHistoryRecord{
+		SentBy:            sentBy,
 		EntryID:           conv.ID,
 		EntryType:         shared.EntryTypeInstagram,
 		Channel:           conversation.MessageChannelInstagram,

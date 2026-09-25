@@ -93,7 +93,7 @@ func (s *channelSender) SendText(
 	}
 
 	if s.history != nil {
-		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+		if err := recordWorkflowMessage(ctx, s.history, run, conversation.MessageHistoryRecord{
 			EntryID:           run.EntryID,
 			EntryType:         entryType,
 			Channel:           conversation.MessageChannel(entryType),
@@ -175,7 +175,7 @@ func (s *channelSender) SendMedia(
 	if s.history != nil {
 		mediaID, mediaKind := bridgeConversationMedia(s.media, run.EntryID, entryType, mediaURL, kind)
 
-		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+		if err := recordWorkflowMessage(ctx, s.history, run, conversation.MessageHistoryRecord{
 			EntryID:           run.EntryID,
 			EntryType:         entryType,
 			Channel:           conversation.MessageChannel(entryType),
@@ -284,7 +284,7 @@ func (s *channelSender) SendInteractive(
 	}
 
 	if s.history != nil {
-		if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+		if err := recordWorkflowMessage(ctx, s.history, run, conversation.MessageHistoryRecord{
 			EntryID:           run.EntryID,
 			EntryType:         shared.EntryType(run.EntryType),
 			Channel:           conversation.MessageChannel(run.EntryType),
@@ -397,7 +397,7 @@ func (s *channelSender) SendSegments(
 			providerID = outcome.ProviderMessageID
 		}
 		if s.history != nil {
-			if err := s.history.Record(ctx, conversation.MessageDirectionOutbound, conversation.MessageHistoryRecord{
+			if err := recordWorkflowMessage(ctx, s.history, run, conversation.MessageHistoryRecord{
 				EntryID:           run.EntryID,
 				EntryType:         shared.EntryType(run.EntryType),
 				Channel:           conversation.MessageChannel(run.EntryType),

@@ -61,7 +61,6 @@ var (
 	ResourceReports                     = registerResource("reports")
 	ResourceKnowledgeBases              = registerResource("knowledge_bases")
 	ResourceRoles                       = registerResource("roles")
-	ResourceSupportInboxes              = registerResource("support_inboxes")
 	ResourceIssues                      = registerResource("issues")
 	ResourceWorkflows                   = registerResource("workflows")
 	ResourceCalendar                    = registerResource("calendar")
@@ -279,12 +278,6 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar cargos"},
 		{ActionName: ActionUpdate, Description: "Editar cargos e suas permissões"},
 		{ActionName: ActionDelete, Description: "Excluir cargos"},
-	},
-	ResourceSupportInboxes: {
-		{ActionName: ActionCreate, Description: "Criar caixas de entrada de suporte"},
-		{ActionName: ActionRead, Description: "Visualizar caixas de entrada de suporte"},
-		{ActionName: ActionUpdate, Description: "Editar caixas de entrada de suporte"},
-		{ActionName: ActionDelete, Description: "Excluir caixas de entrada de suporte"},
 	},
 	ResourceInstagramAccounts: {
 		{ActionName: ActionCreate, Description: "Conectar contas do Instagram"},

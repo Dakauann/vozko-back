@@ -111,6 +111,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 			departments),
 		Update:      uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Get:         uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
+		Access:      uwcuc.NewCampaignAccessUseCase(uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)),
 		List:        uwcuc.NewListCampaignsUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Delete:      uwcuc.NewDeleteCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		AssignDep:   uwcuc.NewAssignDepartmentUseCase(bundle.Campaigns, departments),

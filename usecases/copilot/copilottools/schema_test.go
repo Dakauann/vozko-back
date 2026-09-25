@@ -1,6 +1,7 @@
 package copilottools
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -147,5 +148,52 @@ func TestDefinitionBuildsFromTheArgsStruct(t *testing.T) {
 	def := definition("search_x", "procura", taggedArgs{})
 	if def.Name != "search_x" || def.Description != "procura" || len(def.Parameters) != 4 || def.Required[0] != "query" {
 		t.Fatalf("definition = %+v", def)
+	}
+}
+
+type sharedArgsFake struct {
+	MediaID string `json:"media_id" req:"true"`
+}
+
+type embeddingArgsFake struct {
+	sharedArgsFake
+	Name string `json:"name" req:"true"`
+}
+
+func TestEmbeddedArgsArePromotedIntoTheSchemaAndDecoding(t *testing.T) {
+	def := definition("embedded", "", embeddingArgsFake{})
+	if _, ok := def.Parameters["media_id"]; !ok || len(def.Required) != 2 {
+		t.Fatalf("schema = %+v required %v", def.Parameters, def.Required)
+	}
+	var a embeddingArgsFake
+	if err := decodeArgs(map[string]interface{}{"name": "x"}, &a); err == nil {
+		t.Fatal("missing embedded required field was accepted")
+	}
+	if err := decodeArgs(map[string]interface{}{"name": "x", "media_id": "m1", "extra": "y"}, &a); err != nil || a.MediaID != "m1" {
+		t.Fatalf("decoded %+v err %v", a, err)
+	}
+}
+
+type idArgsFake struct {
+	PhoneID  string   `json:"phone_id" req:"true" id:"true"`
+	StageIDs []string `json:"stage_ids" id:"true"`
+	Note     string   `json:"note"`
+}
+
+func TestDecodeArgsRefusesInventedIDs(t *testing.T) {
+	for _, args := range []map[string]interface{}{
+		{"phone_id": "0199f6d4-8761-7000-b3a1-example01"},
+		{"phone_id": "CTA Vo"},
+		{"phone_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "stage_ids": []interface{}{"1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "stage-2"}},
+	} {
+		var a idArgsFake
+		err := decodeArgs(args, &a)
+		if !errors.Is(err, errInvalidArgs) {
+			t.Fatalf("%v accepted: %v", args, err)
+		}
+	}
+	var a idArgsFake
+	if err := decodeArgs(map[string]interface{}{"phone_id": " 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d ", "note": "x"}, &a); err != nil || a.PhoneID != "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" {
+		t.Fatalf("a real id was refused: %v", err)
 	}
 }

@@ -22,7 +22,7 @@ type webhookConfigResponse struct {
 
 type webhookTriggerRequest struct {
 	EntryID   string `json:"entry_id,omitempty" example:"c7f1e2a0-9b3d-4a1e-8f2c-1d2e3f4a5b6c"`
-	EntryType string `json:"entry_type,omitempty" enums:"whatsapp,unofficial_whatsapp,instagram,telegram,support" example:"whatsapp"`
+	EntryType string `json:"entry_type,omitempty" enums:"whatsapp,unofficial_whatsapp,instagram,telegram" example:"whatsapp"`
 	Phone     string `json:"phone,omitempty" example:"+5511998887777"`
 }
 

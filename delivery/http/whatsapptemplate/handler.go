@@ -28,6 +28,7 @@ type WhatsAppTemplateHandler struct {
 	clientFactory               whatsapptemplatedomain.WhatsAppClientFactory
 	workspaceTemplateAccessRepo workspace_template_access.Repository
 	phoneRepo                   businessphone.Repository
+	workspaceTemplates          whatsapptemplatedomain.WorkspaceTemplatesUseCase
 }
 
 func NewWhatsAppTemplateHandler(
@@ -42,6 +43,7 @@ func NewWhatsAppTemplateHandler(
 	clientFactory whatsapptemplatedomain.WhatsAppClientFactory,
 	workspaceTemplateAccessRepo workspace_template_access.Repository,
 	phoneRepo businessphone.Repository,
+	workspaceTemplates whatsapptemplatedomain.WorkspaceTemplatesUseCase,
 ) *WhatsAppTemplateHandler {
 	return &WhatsAppTemplateHandler{
 		listUseCase:                 listUC,
@@ -55,6 +57,7 @@ func NewWhatsAppTemplateHandler(
 		clientFactory:               clientFactory,
 		workspaceTemplateAccessRepo: workspaceTemplateAccessRepo,
 		phoneRepo:                   phoneRepo,
+		workspaceTemplates:          workspaceTemplates,
 	}
 }
 
@@ -133,24 +136,7 @@ func (h *WhatsAppTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsID := middleware.GetWorkspaceID(r)
-	templateIDs, err := h.workspaceTemplateAccessRepo.GetTemplateIDsForWorkspace(wsID)
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to check template access", nil)
-		return
-	}
-	if len(templateIDs) == 0 {
-		response.WritePaginated(w, http.StatusOK, []templateResponse{}, response.PaginationMeta{
-			Page:       1,
-			PageSize:   20,
-			TotalPages: 0,
-			TotalItems: 0,
-		})
-		return
-	}
-	input.TemplateIDs = templateIDs
-
-	result, err := h.listUseCase.Execute(input)
+	result, err := h.workspaceTemplates.List(middleware.GetWorkspaceID(r), input)
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to list templates", nil)
 		return
@@ -211,19 +197,12 @@ func (h *WhatsAppTemplateHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsID := middleware.GetWorkspaceID(r)
-	hasAccess, err := h.workspaceTemplateAccessRepo.HasAccess(wsID, id)
+	tmpl, err := h.workspaceTemplates.Get(middleware.GetWorkspaceID(r), id)
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to verify template access", nil)
-		return
-	}
-	if !hasAccess {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this template", nil)
-		return
-	}
-
-	tmpl, err := h.getUseCase.Execute(id)
-	if err != nil {
+		if errors.Is(err, whatsapptemplatedomain.ErrTemplateAccessDenied) {
+			response.WriteError(w, http.StatusForbidden, "You don't have access to this template", nil)
+			return
+		}
 		if errors.Is(err, whatsapptemplatedomain.ErrTemplateNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Template not found", nil)
 			return
@@ -533,10 +512,6 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 		return
 	}
 
-	if h.verifyPhoneOwnership(w, req.BusinessPhoneID, wsID) == nil {
-		return
-	}
-
 	components := toDomainComponents(req.Components)
 
 	input := whatsapptemplatedomain.CreateTemplateInput{
@@ -549,19 +524,13 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 		HeaderMediaURL:  req.HeaderMediaURL,
 	}
 
-	result, err := h.createUseCase.Execute(input)
+	result, err := h.workspaceTemplates.Create(wsID, claims.UserID, input)
 	if err != nil {
+		if errors.Is(err, whatsapptemplatedomain.ErrPhoneOutsideWorkspace) {
+			response.WriteError(w, http.StatusForbidden, "This phone does not belong to your workspace", nil)
+			return
+		}
 		writeTemplateError(w, err)
-		return
-	}
-
-	access := workspace_template_access.NewWorkspaceTemplateAccess(
-		"", wsID, result.ID, claims.UserID,
-	)
-	err = h.workspaceTemplateAccessRepo.Create(access)
-
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to grant workspace access to template: "+err.Error(), nil)
 		return
 	}
 

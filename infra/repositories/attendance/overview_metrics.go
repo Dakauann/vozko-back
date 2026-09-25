@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/attendance"
 	"vozko/domain/conversation_event"
+	"vozko/infra/database"
 )
 
 func overviewFillExtendedTX(
@@ -295,7 +296,7 @@ func frtSamplesQuery(workspaceID string, filter attendance.StatsFilter) *sqlQuer
 				WHERE m.entry_id = ah.entry_id
 				  AND m.entry_type = ah.entry_type
 				  AND m.deleted_at IS NULL
-				  AND m.message_type IN ('operator', 'ai_response')
+				  AND `+database.SentAsReplySQL("m")+`
 				  AND m.created_at >= ah.started_at
 				ORDER BY m.created_at ASC
 				LIMIT 1

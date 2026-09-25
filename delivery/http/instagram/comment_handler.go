@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/conversation"
 	"vozko/infra/http/middleware"
 	iguc "vozko/usecases/instagram"
 )
@@ -138,9 +139,15 @@ func (h *Handler) PrivateReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
 	vars := mux.Vars(r)
 	if err := h.privateReply.Execute(r.Context(),
-		middleware.GetWorkspaceID(r), vars["id"], vars["commentId"], req.Text); err != nil {
+		middleware.GetWorkspaceID(r), vars["id"], vars["commentId"], conversation.SentByPerson(claims.UserID), req.Text); err != nil {
 		writeDomainError(w, err, "Failed to send Instagram private reply")
 		return
 	}

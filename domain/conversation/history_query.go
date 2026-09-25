@@ -39,3 +39,7 @@ func HistoryPageSize(requested int) int {
 	}
 	return requested
 }
+
+type EntryLookup interface {
+	LookupEntry(viewer Viewer, entryID string, entryType shared.EntryType) (*InboxEntry, error)
+}

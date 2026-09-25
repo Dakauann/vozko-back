@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"vozko/domain/auth"
+	pipelinedomain "vozko/domain/pipeline"
 	stagedomain "vozko/domain/stage"
 	"vozko/infra/http/middleware"
 	stage_usecase "vozko/usecases/stage"
@@ -70,14 +71,28 @@ func (r *funnelRepo) AssignStage(et *stagedomain.EntryStage) error {
 	return nil
 }
 
+type anyFunnel struct{}
+
+func (anyFunnel) GetByID(workspaceID, id string) (*pipelinedomain.Pipeline, error) {
+	return &pipelinedomain.Pipeline{ID: id, WorkspaceID: workspaceID}, nil
+}
+
+type entryAccess bool
+
+func (a entryAccess) CanAccessEntry(_, _, _, _ string, _ bool) bool { return bool(a) }
+
 func newFunnelHandler(repo *funnelRepo) *StageHandler {
+	return funnelHandlerWith(repo, entryAccess(true))
+}
+
+func funnelHandlerWith(repo *funnelRepo, access entryAccess) *StageHandler {
 	return NewStageHandler(
-		stage_usecase.NewCreateStageUseCase(repo),
+		stage_usecase.NewCreateStageUseCase(repo, anyFunnel{}),
 		nil,
 		nil,
 		stage_usecase.NewListStagesUseCase(repo),
 		nil,
-		stage_usecase.NewAssignEntryStageUseCase(repo, nil),
+		stage_usecase.NewMoveEntryStageUseCase(access, stage_usecase.NewAssignEntryStageUseCase(repo, nil)),
 		nil,
 		nil,
 		nil,
@@ -235,6 +250,23 @@ func TestAssignEntryStage_SameFunnelSucceeds(t *testing.T) {
 	}
 	if len(repo.assigned) != 1 {
 		t.Errorf("expected the move to be written, got %d", len(repo.assigned))
+	}
+}
+
+func TestAssignEntryStage_RefusesAConversationTheUserCannotSee(t *testing.T) {
+	repo := newFunnelRepo()
+	repo.stagesByID["s-b"] = &stagedomain.Stage{ID: "s-b", WorkspaceID: "ws-1", PipelineID: "pipe-b"}
+
+	body := `{"StageID":"s-b","entryId":"e1","entryType":"whatsapp"}`
+	rec := httptest.NewRecorder()
+	funnelHandlerWith(repo, entryAccess(false)).AssignEntryStage(rec, authed(
+		httptest.NewRequest(http.MethodPost, "/stages/entry", strings.NewReader(body))))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("a move on someone else's conversation must be 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(repo.assigned) != 0 {
+		t.Error("a refused move must write nothing")
 	}
 }
 

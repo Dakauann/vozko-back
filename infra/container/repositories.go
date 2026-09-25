@@ -52,9 +52,6 @@ import (
 	shop_repository "vozko/infra/repositories/shop"
 	shortlink_repository "vozko/infra/repositories/shortlink"
 	stage_repository "vozko/infra/repositories/stage"
-	si_entry_repository "vozko/infra/repositories/support_entry"
-	si_inbox_repository "vozko/infra/repositories/support_inbox"
-	si_session_repository "vozko/infra/repositories/support_session"
 	telephony_repository "vozko/infra/repositories/telephony"
 	ticket_repository "vozko/infra/repositories/ticket"
 	user_repository "vozko/infra/repositories/user"
@@ -154,9 +151,6 @@ func (c *Container) initRepositories() {
 		aichatThread:            aichat_repository.NewThreadRepository(c.db),
 		aichatMessage:           aichat_repository.NewMessageRepository(c.db),
 		workspaceConfig:         workspace_config_repository.NewRepository(c.db),
-		supportInbox:            si_inbox_repository.NewRepository(c.db),
-		supportEntry:            si_entry_repository.NewRepository(c.db),
-		supportSession:          si_session_repository.NewRepository(c.db),
 		issue:                   issues_repository.NewIssuesRepository(c.db),
 		issueResponse:           issues_repository.NewIssueResponseRepository(c.db),
 		workflow:                workflow_repository.NewWorkflowRepository(c.db),

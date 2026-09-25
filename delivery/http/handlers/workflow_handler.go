@@ -19,13 +19,9 @@ import (
 
 type WorkflowHandler struct {
 	createUC           workflow.CreateWorkflowUseCase
-	updateUC           workflow.UpdateWorkflowUseCase
+	workflows          workflow.ScopedWorkflowsUseCase
 	assignDepartmentUC workflow.AssignDepartmentUseCase
-	deleteUC           workflow.DeleteWorkflowUseCase
-	getUC              workflow.GetWorkflowUseCase
 	listUC             workflow.ListWorkflowsUseCase
-	activateUC         workflow.ActivateWorkflowUseCase
-	pauseUC            workflow.PauseWorkflowUseCase
 	startRunUC         workflow.StartRunUseCase
 	cancelRunUC        workflow.CancelRunUseCase
 	getRunUC           workflow.GetRunUseCase
@@ -36,13 +32,9 @@ type WorkflowHandler struct {
 
 func NewWorkflowHandler(
 	createUC workflow.CreateWorkflowUseCase,
-	updateUC workflow.UpdateWorkflowUseCase,
+	workflows workflow.ScopedWorkflowsUseCase,
 	assignDepartmentUC workflow.AssignDepartmentUseCase,
-	deleteUC workflow.DeleteWorkflowUseCase,
-	getUC workflow.GetWorkflowUseCase,
 	listUC workflow.ListWorkflowsUseCase,
-	activateUC workflow.ActivateWorkflowUseCase,
-	pauseUC workflow.PauseWorkflowUseCase,
 	startRunUC workflow.StartRunUseCase,
 	cancelRunUC workflow.CancelRunUseCase,
 	getRunUC workflow.GetRunUseCase,
@@ -52,13 +44,9 @@ func NewWorkflowHandler(
 ) *WorkflowHandler {
 	return &WorkflowHandler{
 		createUC:           createUC,
-		updateUC:           updateUC,
+		workflows:          workflows,
 		assignDepartmentUC: assignDepartmentUC,
-		deleteUC:           deleteUC,
-		getUC:              getUC,
 		listUC:             listUC,
-		activateUC:         activateUC,
-		pauseUC:            pauseUC,
 		startRunUC:         startRunUC,
 		cancelRunUC:        cancelRunUC,
 		getRunUC:           getRunUC,
@@ -118,7 +106,7 @@ func (h *WorkflowHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Graph:         req.Graph,
 	}
 
-	updated, err := h.updateUC.Execute(id, wf)
+	updated, err := h.workflows.Update(workflowScope(r), id, wf)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -137,13 +125,8 @@ func (h *WorkflowHandler) AssignDepartment(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	current, err := h.getUC.Execute(id)
-	if err != nil {
+	if _, err := h.workflows.Get(workflowScope(r), id); err != nil {
 		h.handleDomainError(w, err)
-		return
-	}
-	if current.WorkspaceID != middleware.GetWorkspaceID(r) || !canAccessDepartment(r, current.DepartmentID) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
 		return
 	}
 
@@ -158,7 +141,7 @@ func (h *WorkflowHandler) AssignDepartment(w http.ResponseWriter, r *http.Reques
 
 func (h *WorkflowHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	if err := h.deleteUC.Execute(id); err != nil {
+	if err := h.workflows.Delete(workflowScope(r), id); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
@@ -167,14 +150,9 @@ func (h *WorkflowHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkflowHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	wf, err := h.getUC.Execute(id)
+	wf, err := h.workflows.Get(workflowScope(r), id)
 	if err != nil {
 		h.handleDomainError(w, err)
-		return
-	}
-
-	if !canAccessDepartment(r, wf.DepartmentID) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
 		return
 	}
 
@@ -234,7 +212,7 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkflowHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	wf, err := h.activateUC.Execute(id)
+	wf, err := h.workflows.Activate(workflowScope(r), id)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -244,7 +222,7 @@ func (h *WorkflowHandler) Activate(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkflowHandler) Pause(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	wf, err := h.pauseUC.Execute(id)
+	wf, err := h.workflows.Pause(workflowScope(r), id)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -366,10 +344,16 @@ func (h *WorkflowHandler) ValidateGraph(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func workflowScope(r *http.Request) workflow.Scope {
+	return workflow.Scope{WorkspaceID: middleware.GetWorkspaceID(r), Departments: middleware.GetDepartmentFilter(r)}
+}
+
 func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, workflow.ErrWorkflowNotFound):
 		response.WriteError(w, http.StatusNotFound, "Workflow não encontrado", nil)
+	case errors.Is(err, workflow.ErrWorkflowAccessDenied):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
 	case errors.Is(err, workflow.ErrRunNotFound):
 		response.WriteError(w, http.StatusNotFound, "Execução do workflow não encontrada", nil)
 	case errors.Is(err, workflow.ErrNameRequired):
@@ -492,14 +476,9 @@ type workflowExportPayload struct {
 
 func (h *WorkflowHandler) Export(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	wf, err := h.getUC.Execute(id)
+	wf, err := h.workflows.Get(workflowScope(r), id)
 	if err != nil {
 		h.handleDomainError(w, err)
-		return
-	}
-
-	if !canAccessDepartment(r, wf.DepartmentID) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
 		return
 	}
 

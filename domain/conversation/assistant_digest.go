@@ -10,8 +10,6 @@ import (
 const (
 	DigestPreviewRunes = 160
 	DigestMessageRunes = 500
-	contactMaskShown   = 4
-	contactMask        = "••••"
 )
 
 type Speaker string
@@ -43,23 +41,12 @@ type TranscriptLine struct {
 	Text string  `json:"text"`
 }
 
-func MaskContact(contact string) string {
-	runes := []rune(strings.TrimSpace(contact))
-	if len(runes) == 0 {
-		return ""
-	}
-	if len(runes) <= contactMaskShown {
-		return contactMask
-	}
-	return contactMask + string(runes[len(runes)-contactMaskShown:])
-}
-
 func DigestInboxEntry(e InboxEntry) EntryDigest {
 	d := EntryDigest{
 		EntryID:       e.EntryID,
 		EntryType:     e.EntryType,
 		Customer:      e.LeadName,
-		Contact:       MaskContact(e.LeadNumber),
+		Contact:       shared.MaskContact(e.LeadNumber),
 		Status:        string(e.ConversationStatus),
 		Responsible:   responsibleName(e),
 		Campaign:      e.CampaignName,

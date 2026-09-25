@@ -85,6 +85,7 @@ type EntryAccountReader interface {
 // workspace (the conversation authorizer's department scope).
 type ConversationReceivers interface {
 	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
+	ia.RoulettePermissionChecker
 }
 
 func (s *AssignmentService) SetDepartmentLookup(d DepartmentLookup) { s.departments = d }
@@ -265,6 +266,21 @@ func (s *AssignmentService) handOffAccount(existing *ia.InboxAssignment, in ia.R
 	return account
 }
 
+// mayTakeOver is whether someone who pauses the automation receives the
+// conversation: the rule opening an unowned conversation follows (their role
+// receives conversations and, with admins left out of the roulette, they are
+// not an owner or admin), on top of access to the conversation's department.
+func (s *AssignmentService) mayTakeOver(userID, workspaceID string) bool {
+	if !s.canReceive(userID, workspaceID) {
+		return false
+	}
+	skipAdmins := false
+	if cfg := s.workspaceConfigFor(workspaceID); cfg != nil {
+		skipAdmins = cfg.SkipAdminAssignment
+	}
+	return ia.CanReceiveRoulette(s.receivers, userID, workspaceID, skipAdmins)
+}
+
 func (s *AssignmentService) canReceive(userID, workspaceID string) bool {
 	if s.receivers == nil {
 		return false
@@ -273,25 +289,45 @@ func (s *AssignmentService) canReceive(userID, workspaceID string) bool {
 	return allowed
 }
 
-// ReleaseFromAutomation returns a conversation an agent or workflow holds to
-// the team queue. A paused automation answers nobody, so it must not keep the
-// conversation hidden. A person who owns it is left alone.
-func (s *AssignmentService) ReleaseFromAutomation(entryID, entryType string) error {
+// TakeOverFromAutomation runs when someone pauses the agent or workflow: that
+// person is about to answer, so a conversation the automation held, or nobody
+// held, becomes theirs. A colleague's conversation is left alone. Someone the
+// workspace does not give conversations to (see mayTakeOver) leaves it to the
+// team queue, since a paused
+// automation answers nobody and must not keep it hidden. It returns the owner
+// afterwards ("" for the team queue).
+func (s *AssignmentService) TakeOverFromAutomation(entryID, entryType, actorUserID string) (string, error) {
 	workspaceID, err := s.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
 	if err != nil || workspaceID == "" {
-		return fmt.Errorf("release %s (%s): workspace: %w", entryID, entryType, errors.Join(err, conversation.ErrConversationNotFound))
+		return "", fmt.Errorf("take over %s (%s): workspace: %w", entryID, entryType, errors.Join(err, conversation.ErrConversationNotFound))
 	}
 	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
 	if err != nil {
-		return fmt.Errorf("release %s (%s): %w", entryID, entryType, err)
+		return "", fmt.Errorf("take over %s (%s): %w", entryID, entryType, err)
 	}
-	if !existing.HeldByAutomation() {
-		return nil
+	if existing != nil && !existing.HeldByAutomation() {
+		return existing.AssignedUserID, nil
+	}
+
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID != "" && !actor.IsAutomation(actorUserID) && s.mayTakeOver(actorUserID, workspaceID) {
+		businessPhoneID := ""
+		if existing != nil {
+			businessPhoneID = existing.BusinessPhoneID
+		}
+		if err := s.AssignManual(entryID, entryType, businessPhoneID, workspaceID, actorUserID, actorUserID, ia.TriggerAutomationTakenOver); err != nil {
+			return "", fmt.Errorf("take over %s (%s) by %s: %w", entryID, entryType, actorUserID, err)
+		}
+		return actorUserID, nil
+	}
+
+	if existing == nil {
+		return "", nil
 	}
 	if err := s.UnassignSystem(entryID, entryType, workspaceID, ia.TriggerAutomationReleased); err != nil {
-		return fmt.Errorf("release %s (%s): %w", entryID, entryType, err)
+		return "", fmt.Errorf("release %s (%s): %w", entryID, entryType, err)
 	}
-	return nil
+	return "", nil
 }
 
 // ReturnToAutomation hands a conversation back to the agent or workflow that

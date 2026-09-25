@@ -6,20 +6,6 @@ import (
 	"time"
 )
 
-func TestMaskContactKeepsOnlyTheLastFourCharacters(t *testing.T) {
-	cases := map[string]string{
-		"+5584994409624": "••••9624",
-		"9624":           "••••",
-		"":               "",
-		"@maria.silva":   "••••ilva",
-	}
-	for in, want := range cases {
-		if got := MaskContact(in); got != want {
-			t.Errorf("MaskContact(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestDigestInboxEntryHidesTheNumberAndTrimsThePreview(t *testing.T) {
 	at := time.Date(2026, 9, 20, 14, 30, 0, 0, time.UTC)
 	entry := InboxEntry{

@@ -197,3 +197,19 @@ func TestFindByIdempotencyKeyRejectsAnEmptyKeyWithoutQuerying(t *testing.T) {
 		t.Fatalf("an empty key still hit the database: %v", err)
 	}
 }
+
+func TestMarkSentWithoutAMessageIDStoresNull(t *testing.T) {
+	db, mock, sqlDB := newMockDB(t)
+	defer sqlDB.Close()
+
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "scheduled_messages" SET`)).
+		WithArgs(claimedAt, nil, string(sm.StatusSent), claimedAt, "sched-1", string(sm.StatusSending)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := NewRepository(db).MarkSent("sched-1", "", claimedAt); err != nil {
+		t.Fatalf("MarkSent: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("a template's provider id is not a message uuid and must be stored as NULL: %v", err)
+	}
+}

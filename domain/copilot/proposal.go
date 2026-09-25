@@ -81,3 +81,7 @@ func trimField(s string) string {
 	}
 	return string(runes[:MaxFieldRunes]) + "…"
 }
+
+type Validator interface {
+	Validate(ctx context.Context, cc Context, args map[string]interface{}) error
+}

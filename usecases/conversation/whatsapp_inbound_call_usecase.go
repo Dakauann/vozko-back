@@ -528,6 +528,7 @@ func (uc *WhatsAppInboundCallUseCase) recordEvent(entryID, from string, msgType 
 		EntryType:   shared.EntryTypeWhatsApp,
 		Channel:     conversation_domain.MessageChannelWhatsApp,
 		MessageType: msgType,
+		SentBy:      conversation_domain.SentByContact(from),
 		From:        from,
 		Text:        text,
 		Read:        false,

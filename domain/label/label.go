@@ -40,6 +40,7 @@ var (
 	ErrEntryNotFound      = errors.New("entry not found")
 	ErrInvalidEntryType   = fmt.Errorf("entry_type must be %s", shared.FormatEntryTypes(shared.CRMTaggableEntryTypes()))
 	ErrUnauthorized       = errors.New("unauthorized access to this label")
+	ErrEntryAccess        = errors.New("label: no access to this conversation")
 )
 
 func (l *Label) Normalize() {

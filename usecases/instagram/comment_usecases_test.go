@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
 )
 
@@ -39,7 +40,7 @@ func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 		&fakeContactRepo{}, &fakeConversationRepo{},
 	)
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hello"); err != nil {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hello"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -71,11 +72,11 @@ func TestSendPrivateReply_SecondAttemptRefused(t *testing.T) {
 		&fakeContactRepo{}, &fakeConversationRepo{},
 	)
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "first"); err != nil {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "first"); err != nil {
 		t.Fatalf("first attempt: %v", err)
 	}
 
-	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "second")
+	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "second")
 	if !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
 		t.Fatalf("second attempt err = %v, want ErrPrivateReplyUsed", err)
 	}
@@ -101,14 +102,14 @@ func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 	)
 	_ = messaging
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hi"); err == nil {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi"); err == nil {
 		t.Fatal("expected the send to fail")
 	}
 	if claims.Failed != 1 {
 		t.Errorf("MarkFailed calls = %d, want 1", claims.Failed)
 	}
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hi again"); !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi again"); !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
 		t.Fatalf("retry err = %v, want ErrPrivateReplyUsed", err)
 	}
 }
@@ -129,7 +130,7 @@ func TestSendPrivateReply_RefusesOutsideSevenDayWindow(t *testing.T) {
 		&fakeContactRepo{}, &fakeConversationRepo{},
 	)
 
-	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "too late")
+	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "too late")
 	if !errors.Is(err, igdomain.ErrPrivateReplyExpired) {
 		t.Fatalf("err = %v, want ErrPrivateReplyExpired", err)
 	}
@@ -152,7 +153,7 @@ func TestSendPrivateReply_CreatesConversationFromRecipientID(t *testing.T) {
 		contacts, convs,
 	)
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hi"); err != nil {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if len(contacts.Created) != 1 {
@@ -174,7 +175,7 @@ func TestSendPrivateReply_RequiresCommentsScope(t *testing.T) {
 		&fakeContactRepo{}, &fakeConversationRepo{},
 	)
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", "hi"); err == nil {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi"); err == nil {
 		t.Fatal("send succeeded without the comments scope")
 	}
 	if claims.Claims != 0 {
@@ -192,7 +193,7 @@ func TestSendPrivateReply_EnforcesByteLimit(t *testing.T) {
 	)
 
 	tooLong := strings.Repeat("😀", 400)
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "c", tooLong); !errors.Is(err, igdomain.ErrTextTooLong) {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "c", conversation.SentByPerson("user-1"), tooLong); !errors.Is(err, igdomain.ErrTextTooLong) {
 		t.Fatalf("err = %v, want ErrTextTooLong", err)
 	}
 	if claims.Claims != 0 {

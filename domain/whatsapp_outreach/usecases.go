@@ -48,3 +48,33 @@ type SendQuote struct {
 type QuoteTemplateSendUseCase interface {
 	Execute(ctx context.Context, workspaceID, templateID, businessPhoneID string) (*SendQuote, error)
 }
+
+type ConversationTemplateInput struct {
+	WorkspaceID string
+	UserID      string
+	EntryID     string
+
+	TemplateID   string
+	BodyParams   []string
+	HeaderParams []string
+
+	IdempotencyKey string
+}
+
+type ConversationTemplate struct {
+	Name    string
+	Preview string
+}
+
+type SentConversationTemplate struct {
+	AttemptID     string
+	MessageID     string
+	ChargedMicros int64
+	Replayed      bool
+	Recorded      bool
+}
+
+type ConversationTemplateUseCase interface {
+	Check(ctx context.Context, in ConversationTemplateInput) (*ConversationTemplate, error)
+	Send(ctx context.Context, in ConversationTemplateInput) (*SentConversationTemplate, error)
+}

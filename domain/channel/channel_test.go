@@ -54,9 +54,6 @@ func TestRegistry_UnregisteredChannelsError(t *testing.T) {
 	if _, err := registry.Get(KindWhatsApp); !errors.Is(err, ErrUnknownKind) {
 		t.Errorf("Get(whatsapp) err = %v, want ErrUnknownKind", err)
 	}
-	if _, err := registry.Get(KindSupport); !errors.Is(err, ErrUnknownKind) {
-		t.Errorf("Get(support) err = %v, want ErrUnknownKind", err)
-	}
 	if _, err := registry.ByEntryType(shared.EntryTypeWhatsApp); !errors.Is(err, ErrUnknownEntryType) {
 		t.Errorf("ByEntryType(whatsapp) err = %v, want ErrUnknownEntryType", err)
 	}

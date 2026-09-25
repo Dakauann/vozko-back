@@ -24,6 +24,7 @@ import (
 	ia_usecase "vozko/usecases/inbox_assignment"
 	label_usecase "vozko/usecases/label"
 	stage_usecase "vozko/usecases/stage"
+	workspace_template_access_usecase "vozko/usecases/workspace_template_access"
 )
 
 func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase) {
@@ -46,6 +47,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	}
 
 	c.services.liveOperatorSend = conversation_domain.NewLiveOperatorSend()
+	c.services.personSend = conversation_usecase.NewPersonSend(conversationAuthorizer, c.services.liveOperatorSend)
 
 	c.services.conversationHub = wsdelivery.NewConversationHub(
 		c.services.conversationAuth,
@@ -145,6 +147,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		conversationStatusUpdater,
 	)
 	c.services.inboxService = inboxSvc
+	c.services.conversationEntryLookup = conversation_usecase.NewEntryLookup(c.services.conversationAuth, inboxSvc)
 	if setter, ok := inboxSvc.(interface {
 		SetAnalysisScheduleReader(conversation_domain.AnalysisScheduleReader)
 	}); ok {
@@ -190,8 +193,10 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.services.conversationHub,
 		consumeWhatsappTemplate,
 		eventLoggerEarly,
+		workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
 	)
 	c.services.conversationHub.SetTemplateSender(templateSender)
+	c.services.personTemplateSend = conversation_usecase.NewPersonTemplateSend(c.services.conversationAuth, templateSender)
 
 	if setter, ok := inboxSvc.(interface {
 		SetTemplateSender(conversation_domain.TemplateSender)
@@ -332,7 +337,7 @@ func (c *Container) startConversationHub() {
 
 	c.services.requestCallPermission = messageSender
 
-	c.services.conversationHub.SetMemberVisibility(c.useCases.memberVisibility)
+	c.services.conversationHub.SetPersonAssign(c.services.personAssign)
 
 	go c.services.conversationHub.Run()
 }

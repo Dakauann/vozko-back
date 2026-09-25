@@ -74,6 +74,7 @@ var (
 	ErrEntryNotFound    = errors.New("entry not found")
 	ErrInvalidEntryType = fmt.Errorf("entry_type must be %s", shared.FormatEntryTypes(shared.CRMTaggableEntryTypes()))
 	ErrUnauthorized     = errors.New("unauthorized access to this tag")
+	ErrEntryAccess      = errors.New("stage: no access to this conversation")
 
 	ErrTagGroupNotFound     = errors.New("tag group not found")
 	ErrTagGroupNameRequired = errors.New("tag group name is required")

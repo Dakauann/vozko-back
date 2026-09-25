@@ -29,6 +29,10 @@ type Message struct {
 	Content          string
 	Model            string
 	ToolCalls        []byte
+	Attachments      []byte
+	ProposalID       string
+	Proposal         []byte
+	ProposalStatus   ProposalStatus
 	Reasoning        []byte
 	PromptTokens     int
 	CompletionTokens int

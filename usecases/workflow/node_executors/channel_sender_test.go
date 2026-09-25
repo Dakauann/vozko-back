@@ -60,7 +60,7 @@ type recordingHistory struct {
 	err     error
 }
 
-func (h *recordingHistory) Record(_ context.Context, _ conversation.MessageHistoryDirection, rec conversation.MessageHistoryRecord) error {
+func (h *recordingHistory) Record(_ context.Context, rec conversation.MessageHistoryRecord) error {
 	if h.err != nil {
 		return h.err
 	}

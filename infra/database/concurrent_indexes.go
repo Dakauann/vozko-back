@@ -24,6 +24,18 @@ func concurrentIndexes() []concurrentIndex {
 				ON audience_analyses (workspace_id)
 				WHERE status IN ('pending', 'in_flight') AND deleted_at IS NULL`,
 		},
+		{
+			name: "idx_cm_unread_contact",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_unread_contact
+				ON conversation_messages (entry_id, entry_type)
+				WHERE read = false AND deleted_at IS NULL AND ` + SentByContactSQL(""),
+		},
+		{
+			name: "idx_cm_sender_unknown",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_sender_unknown
+				ON conversation_messages (id)
+				WHERE sender_kind = 'unknown'`,
+		},
 	}
 }
 

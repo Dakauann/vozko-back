@@ -193,3 +193,28 @@ func TestListForEntryFiltersByStatus(t *testing.T) {
 		t.Fatalf("messages = %+v, want only the pending one", result.Messages)
 	}
 }
+
+func TestRescheduleATemplateWhileTheWindowIsClosed(t *testing.T) {
+	f := newManageFixture(t)
+	f.repo.put(templateMessage("sched-1", fixedNow.Add(2*time.Hour)))
+	f.windows.set(false, nil)
+
+	later := fixedNow.Add(72 * time.Hour)
+	if _, err := f.reschedule.Execute(context.Background(), sm.RescheduleInput{ID: "sched-1", WorkspaceID: "ws-1", ScheduledAt: later}); err != nil {
+		t.Fatalf("a template must be reschedulable outside the window: %v", err)
+	}
+	if got := f.repo.get("sched-1").ScheduledAt; !got.Equal(later) {
+		t.Errorf("scheduled at = %s, want %s", got, later)
+	}
+}
+
+func TestRescheduleFreeTextStillNeedsTheWindow(t *testing.T) {
+	f := newManageFixture(t)
+	f.pending("sched-1", "ws-1")
+	f.windows.set(false, nil)
+
+	_, err := f.reschedule.Execute(context.Background(), sm.RescheduleInput{ID: "sched-1", WorkspaceID: "ws-1", ScheduledAt: fixedNow.Add(time.Hour)})
+	if !errors.Is(err, sm.ErrWindowClosed) {
+		t.Fatalf("err = %v, want free text refused on a closed window", err)
+	}
+}

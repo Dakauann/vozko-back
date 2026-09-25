@@ -204,3 +204,7 @@ type ValidateTargetsUseCase interface {
 type PauseCampaignsForInstanceUseCase interface {
 	Execute(ctx context.Context, instanceID, reason string) (paused int, err error)
 }
+
+type CampaignAccessUseCase interface {
+	Owned(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string) (*Campaign, error)
+}

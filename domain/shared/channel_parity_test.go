@@ -234,7 +234,6 @@ func messagingTypesSorted() []EntryType {
 func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	want := []EntryType{
 		EntryTypeInstagram,
-		EntryTypeSupport,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
 		EntryTypeWhatsApp,

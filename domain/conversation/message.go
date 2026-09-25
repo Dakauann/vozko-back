@@ -12,7 +12,6 @@ type MessageChannel string
 
 const (
 	MessageChannelWhatsApp           MessageChannel = "whatsapp"
-	MessageChannelSupport            MessageChannel = "support"
 	MessageChannelInstagram          MessageChannel = "instagram"
 	MessageChannelTelegram           MessageChannel = "telegram"
 	MessageChannelUnofficialWhatsApp MessageChannel = "unofficial_whatsapp"
@@ -20,7 +19,7 @@ const (
 
 func (c MessageChannel) Valid() bool {
 	switch c {
-	case MessageChannelWhatsApp, MessageChannelSupport,
+	case MessageChannelWhatsApp,
 		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp:
 		return true
 	}
@@ -252,6 +251,7 @@ type Message struct {
 	SenderName     string           `json:"senderName,omitempty"`
 	SenderAvatar   string           `json:"senderAvatar,omitempty"`
 	SentVia        MessageTransport `json:"sentVia,omitempty"`
+	SentBy         SentBy           `json:"sentBy"`
 	Metadata       json.RawMessage  `json:"metadata,omitempty"`
 	CreatedAt      time.Time        `json:"createdAt"`
 	UpdatedAt      time.Time        `json:"updatedAt"`
@@ -260,6 +260,9 @@ type Message struct {
 func (m *Message) ResolvedDirection() MessageHistoryDirection {
 	if m == nil {
 		return MessageDirectionUnknown
+	}
+	if m.SentBy.Valid() {
+		return m.SentBy.Direction()
 	}
 	if m.Direction.Valid() {
 		return m.Direction
@@ -316,6 +319,9 @@ func (m *Message) Validate() error {
 	}
 	if m.Text == "" && len(m.Image) == 0 && len(m.Video) == 0 && m.MediaID == nil {
 		return ErrMessageContentRequired
+	}
+	if !m.SentBy.Valid() {
+		return ErrMessageSenderRequired
 	}
 	return nil
 }

@@ -74,4 +74,3 @@ func argToolBindings(args map[string]interface{}, key string) []toolBindingArg {
 	}
 	return out
 }
-

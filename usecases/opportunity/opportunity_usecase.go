@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/customfield"
+	"vozko/domain/lead"
 	"vozko/domain/opportunity"
 )
 
@@ -21,7 +22,17 @@ var (
 	ErrPipelineNotFound       = errors.New("opportunity: pipeline not found")
 	ErrNotOpportunityPipeline = errors.New("opportunity: the pipeline is not a deals pipeline")
 	ErrStageNotFound          = errors.New("opportunity: stage not found")
+	ErrLeadOutsideWorkspace   = errors.New("opportunity: the lead is not in this workspace")
+	ErrEntryOutsideWorkspace  = errors.New("opportunity: the conversation is not in this workspace")
 )
+
+type LeadDirectory interface {
+	Get(workspaceID, id string) (*lead.Lead, error)
+}
+
+type EntryDirectory interface {
+	GetEntryWorkspaceID(entryID, entryType string) (string, error)
+}
 
 type Deps struct {
 	Repo      opportunity.Repository
@@ -30,6 +41,8 @@ type Deps struct {
 	Stages    StageReader
 	Pipelines PipelineReader
 	Owners    opportunity.OwnerDirectory
+	Leads     LeadDirectory
+	Entries   EntryDirectory
 	Clock     func() time.Time
 }
 
@@ -40,6 +53,8 @@ type Service struct {
 	stages    StageReader
 	pipelines PipelineReader
 	owners    opportunity.OwnerDirectory
+	leads     LeadDirectory
+	entries   EntryDirectory
 	now       func() time.Time
 }
 
@@ -55,6 +70,8 @@ func NewService(deps Deps) *Service {
 		stages:    deps.Stages,
 		pipelines: deps.Pipelines,
 		owners:    deps.Owners,
+		leads:     deps.Leads,
+		entries:   deps.Entries,
 		now:       clock,
 	}
 }
@@ -105,6 +122,14 @@ func (s *Service) prepareCreate(workspaceID string, in CreateInput) (*opportunit
 	stageRef, err := s.placement(workspaceID, in.PipelineID, in.StageID)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if err := s.checkLead(workspaceID, in.LeadID); err != nil {
+		return nil, nil, nil, err
+	}
+	if in.LinkEntryID != "" {
+		if err := s.checkEntry(workspaceID, in.LinkEntryID, in.LinkEntryType); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	owner := in.OwnerID
 	if owner == "" {
@@ -279,10 +304,38 @@ func (s *Service) LinkConversation(workspaceID, opportunityID, entryID, entryTyp
 	if err != nil {
 		return err
 	}
+	if err := s.checkEntry(workspaceID, entryID, entryType); err != nil {
+		return err
+	}
 	return s.repo.Link(
 		opportunity.ConversationLink{OpportunityID: opportunityID, EntryID: entryID, EntryType: entryType},
 		[]opportunity.Event{opportunity.LinkedEvent(o, entryID, entryType, actorID, s.now())},
 	)
+}
+
+func (s *Service) checkLead(workspaceID, leadID string) error {
+	if leadID == "" {
+		return nil
+	}
+	if s.leads == nil {
+		return ErrLeadOutsideWorkspace
+	}
+	l, err := s.leads.Get(workspaceID, leadID)
+	if err != nil || l == nil {
+		return ErrLeadOutsideWorkspace
+	}
+	return nil
+}
+
+func (s *Service) checkEntry(workspaceID, entryID, entryType string) error {
+	if s.entries == nil {
+		return ErrEntryOutsideWorkspace
+	}
+	owner, err := s.entries.GetEntryWorkspaceID(entryID, entryType)
+	if err != nil || owner == "" || owner != workspaceID {
+		return ErrEntryOutsideWorkspace
+	}
+	return nil
 }
 
 func (s *Service) UnlinkConversation(workspaceID, opportunityID, entryID, entryType string) error {

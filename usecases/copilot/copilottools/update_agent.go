@@ -44,17 +44,11 @@ func (t *updateAgentTool) Definition() tools.Definition {
 }
 
 func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	id := argString(args, "id")
-	if id == "" {
-		return copilot.Result{Status: copilot.StatusError, Message: "id é obrigatório"}
-	}
-	a, err := t.get.Execute(id)
+	a, err := ownedAgent(t.get, cc, argString(args, "id"))
 	if err != nil {
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	}
-	if a == nil || a.WorkspaceID != cc.WorkspaceID || !cc.Departments.Allows(a.DepartmentID) {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "agente não encontrado neste workspace"}
 	}
+	id := a.ID
 
 	var fields agentFields
 	bindArgs(args, &fields)
@@ -86,4 +80,9 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: out}
+}
+
+func (t *updateAgentTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {
+	_, err := ownedAgent(t.get, cc, argString(args, "id"))
+	return err
 }

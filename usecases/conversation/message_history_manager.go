@@ -34,7 +34,7 @@ func NewMessageHistoryManagerWithHub(repo conversation.MessageRepository, hub co
 	return &messageHistoryManager{repo: repo, hub: hub}
 }
 
-func (m *messageHistoryManager) Record(_ context.Context, direction conversation.MessageHistoryDirection, record conversation.MessageHistoryRecord) error {
+func (m *messageHistoryManager) Record(_ context.Context, record conversation.MessageHistoryRecord) error {
 	if m == nil {
 		return nil
 	}
@@ -58,7 +58,7 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 
 	msgType := record.MessageType
 	if !msgType.Valid() {
-		if direction == conversation.MessageDirectionInbound {
+		if record.SentBy.IsContact() {
 			msgType = conversation.MessageTypeUserMessage
 		} else {
 			msgType = conversation.MessageTypeAIResponse
@@ -78,7 +78,8 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 		EntryType:    entryType,
 		Channel:      channel,
 		MessageType:  msgType,
-		Direction:    direction,
+		Direction:    record.SentBy.Direction(),
+		SentBy:       record.SentBy,
 		From:         strings.TrimSpace(record.From),
 		To:           strings.TrimSpace(record.To),
 		Text:         strings.TrimSpace(record.Text),
@@ -129,6 +130,9 @@ func (m *messageHistoryManager) Record(_ context.Context, direction conversation
 			existing, err = m.repo.GetByWhatsAppMessageID(dedupID)
 		}
 		switch {
+		case err == nil && existing != nil && message.SentBy.Claims(existing.SentBy):
+			_, claimErr := m.repo.ClaimExternalEcho(message)
+			return nil, claimErr
 		case err == nil && existing != nil:
 			log.Printf("[MessageHistoryManager] duplicate message ignored: id=%s entry=%s:%s", dedupID, entryType, entryID)
 			return nil, nil

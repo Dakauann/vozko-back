@@ -69,9 +69,9 @@ func TestOperatorToggle_WithoutAnAccessCheckRefusesEverything(t *testing.T) {
 
 // --- pausing ---
 
-func TestOperatorPause_ReleasesWhatTheAutomationHeld(t *testing.T) {
-	// A paused agent or workflow answers nobody. Left as the owner it would keep
-	// the conversation hidden from every operator, with no one replying.
+func TestOperatorPause_WhoeverPausesTakesOver(t *testing.T) {
+	// A paused agent or workflow answers nobody, and whoever stopped it is about
+	// to: the conversation becomes theirs, and the session ends in their hands.
 	for _, holder := range []string{"ai:agent-1", "workflow:wf-1"} {
 		t.Run(holder, func(t *testing.T) {
 			f := newAIFixture(agentGoverned)
@@ -82,12 +82,25 @@ func TestOperatorPause_ReleasesWhatTheAutomationHeld(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, []string{"whatsapp:entry-1"}, f.pauser.paused, "the existing switch does the pausing")
-			assert.Equal(t, "", f.owner("entry-1"), "the team queue gets it back")
-			assert.Equal(t, "", res.Owner)
-			assert.Equal(t, []string{"ws-1|entry-1|handed_off|automation_paused|"}, f.sessions.ended,
-				"a paused AI did not resolve the conversation")
+			assert.Equal(t, "bob", f.owner("entry-1"))
+			assert.Equal(t, "bob", res.Owner)
+			assert.Equal(t, []string{"ws-1|entry-1|handed_off|automation_paused|bob"}, f.sessions.ended,
+				"a paused AI did not resolve the conversation; bob took it")
 		})
 	}
+}
+
+func TestOperatorPause_SomeoneWhoCannotReceiveLeavesItToTheTeam(t *testing.T) {
+	f := newAIFixture(agentGoverned)
+	f.seed("entry-1", "ai:agent-1")
+	f.receivers.denied["bob"] = true
+	toggle, _ := newToggle(f)
+
+	res, err := toggle.SetAutomation(context.Background(), toggleInput(pauseOff()))
+
+	require.NoError(t, err)
+	assert.Equal(t, "", f.owner("entry-1"), "the team queue gets it back")
+	assert.Equal(t, "", res.Owner)
 }
 
 func TestOperatorPause_LeavesAPersonsConversationAlone(t *testing.T) {

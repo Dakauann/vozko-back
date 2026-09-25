@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	uw "vozko/domain/unofficial_whatsapp"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -116,7 +117,7 @@ func (r *contactRepository) backfillIdentity(
 	if err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppContact{}).
 		Where("id = ?", contact.ID).
 		Updates(update).Error; err != nil {
-		if isUniqueViolation(err) {
+		if database.IsUniqueViolation(err) {
 			return contact, nil
 		}
 		return nil, err

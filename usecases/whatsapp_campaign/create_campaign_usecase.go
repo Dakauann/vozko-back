@@ -28,6 +28,15 @@ type createCampaignUseCase struct {
 	workspaceConfigRepo  wsc.Repository
 	leadCampaignSendRepo lead_campaign_send.Repository
 	departmentResolver   workspace_department.CreationDepartmentResolver
+	templateGrants       TemplateGrants
+}
+
+type TemplateGrants interface {
+	HasAccess(workspaceID, templateID string) (bool, error)
+}
+
+func (uc *createCampaignUseCase) SetTemplateGrants(grants TemplateGrants) {
+	uc.templateGrants = grants
 }
 
 func NewCreateCampaignUseCase(
@@ -113,10 +122,15 @@ func (uc *createCampaignUseCase) Execute(ctx context.Context, input *wc.Campaign
 		return saved, nil
 	}
 
+	if uc.templateGrants == nil {
+		return nil, wc.ErrCampaignTemplateNotFound
+	}
+	if granted, err := uc.templateGrants.HasAccess(input.WorkspaceID, input.TemplateID); err != nil || !granted {
+		return nil, wc.ErrCampaignTemplateNotFound
+	}
 	if uc.templateRepo == nil {
 		return nil, wc.ErrCampaignTemplateNotFound
 	}
-
 	tmpl, err := uc.templateRepo.FindByID(input.TemplateID)
 	if err != nil {
 		return nil, wc.ErrCampaignTemplateNotFound

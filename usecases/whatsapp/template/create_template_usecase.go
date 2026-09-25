@@ -16,13 +16,19 @@ type createTemplateUseCase struct {
 	clientFactory template.WhatsAppClientFactory
 	templateRepo  template.Repository
 	headerMediaUC template.SetTemplateHeaderMediaUseCase
+	storage       StorageURLs
 }
 
-func NewCreateTemplateUseCase(clientFactory template.WhatsAppClientFactory, templateRepo template.Repository, headerMediaUC template.SetTemplateHeaderMediaUseCase) template.CreateTemplateUseCase {
+type StorageURLs interface {
+	KeyFromURL(url string) (string, bool)
+}
+
+func NewCreateTemplateUseCase(clientFactory template.WhatsAppClientFactory, templateRepo template.Repository, headerMediaUC template.SetTemplateHeaderMediaUseCase, storage StorageURLs) template.CreateTemplateUseCase {
 	return &createTemplateUseCase{
 		clientFactory: clientFactory,
 		templateRepo:  templateRepo,
 		headerMediaUC: headerMediaUC,
+		storage:       storage,
 	}
 }
 
@@ -42,14 +48,6 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 	}
 
 	name := strings.TrimSpace(input.Name)
-
-	if err := template.ValidateName(strings.ToLower(name)); err != nil {
-		return nil, err
-	}
-
-	if !input.Category.IsValid() {
-		return nil, template.ErrInvalidCategory
-	}
 
 	domainComponents := make([]template.TemplateComponent, 0, len(input.Components))
 	for _, c := range input.Components {
@@ -96,11 +94,7 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 		domainComponents = append(domainComponents, comp)
 	}
 
-	if err := template.ValidateComponents(domainComponents); err != nil {
-		return nil, err
-	}
-
-	if err := template.ValidateAuthenticationTemplate(input.Category, domainComponents); err != nil {
+	if err := template.ValidateDraft(name, input.Category, domainComponents); err != nil {
 		return nil, err
 	}
 
@@ -216,6 +210,12 @@ func (uc *createTemplateUseCase) processHeaderMediaURLs(client conversation.What
 		for j, handle := range comp.Example.HeaderHandle {
 			if !isURL(handle) {
 				continue
+			}
+			if uc.storage == nil {
+				return template.ErrHeaderMediaOutsideStorage
+			}
+			if _, ours := uc.storage.KeyFromURL(handle); !ours {
+				return template.ErrHeaderMediaOutsideStorage
 			}
 
 			log.Printf("[template-create] Detected URL in header_handle: %s, uploading to Meta...", handle)

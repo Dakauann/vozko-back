@@ -13,6 +13,7 @@ import (
 	"vozko/domain/shared"
 	tgdomain "vozko/domain/telegram"
 	"vozko/infra/crypto/piigorm"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -30,7 +31,7 @@ func (r *accountRepository) Create(ctx context.Context, a *tgdomain.Account) err
 		return err
 	}
 	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
-		if isUniqueViolation(err) {
+		if database.IsUniqueViolation(err) {
 			return tgdomain.ErrAccountAlreadyLinked
 		}
 		return err
@@ -81,7 +82,7 @@ func (r *accountRepository) Update(ctx context.Context, a *tgdomain.Account) err
 		Where("id = ?", a.ID).
 		Updates(update)
 	if result.Error != nil {
-		if isUniqueViolation(result.Error) {
+		if database.IsUniqueViolation(result.Error) {
 			return tgdomain.ErrAccountAlreadyLinked
 		}
 		return result.Error
@@ -355,15 +356,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }

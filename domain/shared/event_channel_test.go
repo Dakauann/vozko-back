@@ -19,7 +19,7 @@ func TestTelegramAndInstagramAreNotLabelledWhatsApp(t *testing.T) {
 }
 
 func TestAChannelAddedLaterDoesNotSilentlyBecomeWhatsApp(t *testing.T) {
-	if len(KnownEntryTypes()) < 5 {
+	if len(KnownEntryTypes()) < 4 {
 		t.Fatalf("expected the full entry type set, got %v", KnownEntryTypes())
 	}
 	for _, et := range KnownEntryTypes() {

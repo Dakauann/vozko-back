@@ -34,8 +34,8 @@ func NewTransferToHumanToolUseCase(handOff ConversationRouletteHandOff) tools.Ha
 func (t *transferToHumanTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:               TransferToHumanToolName,
-		DisplayName:        "Transferir para humano",
-		DisplayDescription: "Passa a conversa para um atendente humano pela roleta e pausa a IA nesta conversa.",
+		DisplayName:        "Transferir conversa",
+		DisplayDescription: "Passa a conversa a uma pessoa pela roleta do workspace (o mesmo rodízio da primeira mensagem) e pausa a IA nesta conversa. O departamento é opcional: vazio, usa o da conversa.",
 		Description: `Transfere a conversa atual para um atendente humano e encerra a sua participação nela.
 
 QUANDO USAR:
@@ -62,7 +62,7 @@ Depois de transferir você não responde mais nesta conversa. Avise o cliente, e
 				Type:               "string",
 				Description:        "Departamento cuja roleta recebe a conversa. Vazio: o departamento da própria conversa.",
 				DisplayName:        "Departamento",
-				DisplayDescription: "Para qual departamento a IA transfere. Vazio usa o departamento da conversa.",
+				DisplayDescription: "Vazio: usa o departamento da própria conversa.",
 				OptionsSource:      "departments",
 			},
 		},

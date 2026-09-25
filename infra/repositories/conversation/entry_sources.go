@@ -23,8 +23,7 @@ type entrySource struct {
 	LastMessageAt string
 	Deleted       string
 
-	Department       string
-	DepartmentExempt bool
+	Department string
 
 	WhatsAppCampaignScoped bool
 	CampaignKind           string
@@ -120,26 +119,6 @@ var entrySources = []entrySource{
 
 		Department: "uwi.department_id",
 	},
-	{
-		EntryType:     shared.EntryTypeSupport,
-		From:          "support_entries se",
-		WorkspaceJoin: "JOIN support_inboxes si ON si.id = se.inbox_id AND si.workspace_id = ?",
-
-		EntryID: "se.id",
-
-		Account: "''",
-
-		ConversationStatus: "",
-		CampaignID:         "",
-
-		CreatedAt:     "se.created_at",
-		UpdatedAt:     "se.updated_at",
-		LastMessageAt: "se.last_message_at",
-		Deleted:       "se.deleted_at IS NULL",
-
-		Department:       "",
-		DepartmentExempt: true,
-	},
 }
 
 type entrySourceScope struct {
@@ -190,7 +169,7 @@ func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}
 		clause, deptArgs := departmentScopeClause(src.Department, src.EntryID, scope.DepartmentIDs, scope.RestrictDepartments, scope.AssigneeOverrideUserID)
 		sql.WriteString(clause)
 		args = append(args, deptArgs...)
-	} else if scope.RestrictDepartments && !src.DepartmentExempt {
+	} else if scope.RestrictDepartments {
 		sql.WriteString(" AND 1 = 0")
 	}
 

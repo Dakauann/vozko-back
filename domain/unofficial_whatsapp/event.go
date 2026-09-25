@@ -85,6 +85,7 @@ type Envelope struct {
 
 type Event struct {
 	Kind          EventKind
+	FromMe        bool
 	ProviderEvent string
 	InstanceID    string
 
@@ -394,6 +395,7 @@ func normalizeMessage(instanceID string, env *Envelope, msg *providerMessage) *E
 	resolveSenderIdentity(ev, msg)
 	ev.IdempotencyKey = messageIdempotencyKey(instanceID, env.Event, providerID, ev)
 	ev.Kind = classifyMessage(env, msg, ev)
+	ev.FromMe = msg.FromMe
 
 	if ev.Kind == EventReaction {
 		ev.Emoji = msg.Text

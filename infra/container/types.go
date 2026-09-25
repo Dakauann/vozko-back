@@ -14,8 +14,8 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
-	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
@@ -42,7 +42,6 @@ import (
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
-	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
@@ -122,7 +121,6 @@ import (
 	"vozko/domain/shop"
 	shortlink_domain "vozko/domain/shortlink"
 	stage_domain "vozko/domain/stage"
-	si_domain "vozko/domain/support_inbox"
 	telephony_domain "vozko/domain/telephony"
 	"vozko/domain/ticket"
 	"vozko/domain/tools"
@@ -286,9 +284,6 @@ type repositories struct {
 	aichatThread            aichat_domain.ThreadRepository
 	aichatMessage           aichat_domain.MessageRepository
 	workspaceConfig         workspace_config_domain.Repository
-	supportInbox            si_domain.Repository
-	supportEntry            si_domain.EntryRepository
-	supportSession          si_domain.SessionRepository
 	issue                   issues_domain.Repository
 	issueResponse           issue_response_domain.Repository
 	workflow                workflow_domain.WorkflowRepository
@@ -333,6 +328,7 @@ type services struct {
 	tokenService                  *security.JWTTokenService
 	readMeTokenService            *security.JWTTokenService
 	fileStorage                   media.FileStorage
+	fileReader                    media.FileReader
 	ticketFileStorage             ticket.FileStorage
 	asaasService                  asaas_service.AsaasServiceUseCases
 	paymentGateway                payment.Gateway
@@ -365,6 +361,10 @@ type services struct {
 	requestCallPermission         conversation_domain.RequestCallPermissionUseCase
 	conversationHistory           conversation_domain.HistoryProvider
 	conversationHistoryReader     conversation_domain.HistoryReader
+	conversationEntryLookup       conversation_domain.EntryLookup
+	personSend                    conversation_domain.PersonSendUseCase
+	personTemplateSend            conversation_domain.PersonTemplateSendUseCase
+	personAssign                  ia_domain.PersonAssignUseCase
 	channelAdapters               []conversation_domain.ChannelAdapter
 	liveChannelAdapters           *conversation_domain.LiveAdapterRegistry
 	conversationAutomation        *conversation_usecase.ConversationAutomationService
@@ -462,6 +462,7 @@ type useCases struct {
 	uploadMedia media.UploadMediaUseCase
 	listMedia   media.ListMediaUseCase
 	getMedia    media.GetMediaUseCase
+	readMedia   media.ReadMediaUseCase
 
 	getCart   cart.GetCartUseCase
 	clearCart cart.ClearCartUseCase
@@ -531,6 +532,7 @@ type useCases struct {
 
 	listWhatsAppTemplates         whatsapp_template.ListUseCase
 	getWhatsAppTemplate           whatsapp_template.GetUseCase
+	workspaceTemplates            whatsapp_template.WorkspaceTemplatesUseCase
 	syncWhatsAppTemplates         whatsapp_template.SyncTemplatesUseCase
 	reconcileWhatsAppTemplates    whatsapp_template.ReconcileTemplatesUseCase
 	reconcileWhatsAppEntitlements businessphone.EntitlementReconciler
@@ -576,9 +578,13 @@ type useCases struct {
 	addEntriesWCCampaign             wc_domain.AddEntriesUseCase
 	quickSendWCCampaign              wc_domain.QuickSendUseCase
 	dispatchWCCampaign               wc_domain.DispatchCampaignUseCase
+	wcCampaignAccess                 wc_domain.CampaignAccessUseCase
+	startWCCampaign                  wc_domain.StartCampaignUseCase
+	wcImportPreview                  wc_domain.ImportPreviewUseCase
 	messageConsumerWCCampaign        wc_domain.MessageConsumerUseCase
 
 	listBusinessPhones         businessphone.ListUseCase
+	workspacePhones            businessphone.WorkspacePhonesUseCase
 	getBusinessPhone           businessphone.GetUseCase
 	syncBusinessPhone          businessphone.SyncPhoneNumberUseCase
 	registerBusinessPhone      businessphone.RegisterPhoneUseCase
@@ -641,6 +647,7 @@ type useCases struct {
 	listStages           stage_domain.ListStagesUseCase
 	setInitialStage      stage_domain.SetInitialStageUseCase
 	assignEntryStage     stage_domain.AssignEntryStageUseCase
+	moveEntryStage       stage_domain.MoveEntryStageUseCase
 	removeEntryStage     stage_domain.RemoveEntryStageUseCase
 	getEntryStage        stage_domain.GetEntryStageUseCase
 	getBatchEntryStages  stage_domain.GetBatchEntryStagesUseCase
@@ -666,6 +673,7 @@ type useCases struct {
 	setDefaultSavedView savedview_domain.SetDefaultSavedViewUseCase
 
 	opportunity *opportunity_usecase.Service
+	personDeals opportunity_domain.PersonDealsUseCase
 	customField *customfield_usecase.Service
 
 	createLabel      label_domain.CreateLabelUseCase
@@ -674,6 +682,7 @@ type useCases struct {
 	listLabels       label_domain.ListLabelsUseCase
 	assignEntryLabel label_domain.AssignEntryLabelUseCase
 	removeEntryLabel label_domain.RemoveEntryLabelUseCase
+	entryLabels      label_domain.EntryLabelsUseCase
 	getEntryLabels   label_domain.GetEntryLabelsUseCase
 	reorderLabels    label_domain.ReorderLabelsUseCase
 
@@ -761,20 +770,23 @@ type useCases struct {
 	getTelephonyBoard                  telephony_domain.GetBoardUseCase
 	consumeCRMTelemetry                crm_telemetry.Consumer
 
-	createKnowledgeBase     rag_domain.CreateKnowledgeBaseUseCase
-	updateKnowledgeBase     rag_domain.UpdateKnowledgeBaseUseCase
-	deleteKnowledgeBase     rag_domain.DeleteKnowledgeBaseUseCase
-	getKnowledgeBase        rag_domain.GetKnowledgeBaseUseCase
-	listKnowledgeBases      rag_domain.ListKnowledgeBasesUseCase
-	createRAGDocument       rag_domain.CreateDocumentUseCase
-	deleteRAGDocument       rag_domain.DeleteDocumentUseCase
-	getRAGDocument          rag_domain.GetDocumentUseCase
-	listRAGDocuments        rag_domain.ListDocumentsUseCase
-	linkAgentKnowledgeBases rag_domain.LinkAgentKnowledgeBasesUseCase
-	getAgentKnowledgeBases  rag_domain.GetAgentKnowledgeBasesUseCase
-	queryKnowledgeBase      rag_domain.QueryKnowledgeBaseUseCase
-	publishDocProcessing    rag_domain.PublishDocumentProcessingUseCase
-	consumeDocProcessing    rag_domain.ConsumeDocumentProcessingUseCase
+	createKnowledgeBase      rag_domain.CreateKnowledgeBaseUseCase
+	updateKnowledgeBase      rag_domain.UpdateKnowledgeBaseUseCase
+	deleteKnowledgeBase      rag_domain.DeleteKnowledgeBaseUseCase
+	getKnowledgeBase         rag_domain.GetKnowledgeBaseUseCase
+	listKnowledgeBases       rag_domain.ListKnowledgeBasesUseCase
+	createRAGDocument        rag_domain.CreateDocumentUseCase
+	deleteRAGDocument        rag_domain.DeleteDocumentUseCase
+	getRAGDocument           rag_domain.GetDocumentUseCase
+	listRAGDocuments         rag_domain.ListDocumentsUseCase
+	linkAgentKnowledgeBases  rag_domain.LinkAgentKnowledgeBasesUseCase
+	getAgentKnowledgeBases   rag_domain.GetAgentKnowledgeBasesUseCase
+	queryKnowledgeBase       rag_domain.QueryKnowledgeBaseUseCase
+	scopedKnowledgeQuery     rag_domain.ScopedQueryUseCase
+	knowledgeBaseAccess      rag_domain.KnowledgeBaseAccessUseCase
+	scopedKnowledgeDocuments rag_domain.ScopedDocumentsUseCase
+	publishDocProcessing     rag_domain.PublishDocumentProcessingUseCase
+	consumeDocProcessing     rag_domain.ConsumeDocumentProcessingUseCase
 
 	createShortLink       shortlink_domain.CreateShortLinkUseCase
 	updateShortLink       shortlink_domain.UpdateShortLinkUseCase
@@ -794,6 +806,7 @@ type useCases struct {
 	scheduleMessage          scheduled_message_domain.ScheduleUseCase
 	rescheduleMessage        scheduled_message_domain.RescheduleUseCase
 	cancelScheduledMessage   scheduled_message_domain.CancelUseCase
+	personScheduler          scheduled_message_domain.PersonSchedulerUseCase
 	listScheduledMessages    scheduled_message_domain.ListUseCase
 	dispatchScheduledMessage scheduled_message_domain.DispatchUseCase
 	consumeScheduledMessage  scheduled_message_domain.ConsumeFireUseCase
@@ -804,6 +817,7 @@ type useCases struct {
 	updateLeadMemory lead_memory_domain.UpdateUseCase
 	deleteLeadMemory lead_memory_domain.DeleteUseCase
 	listLeadMemories lead_memory_domain.ListUseCase
+	leadQueries      lead_domain.Queries
 
 	exportEntries export_domain.ExportEntriesUseCase
 
@@ -830,14 +844,6 @@ type useCases struct {
 	getPlanContractions       analytics_domain.GetPlanContractionsUseCase
 	getMetaServiceMessageCost analytics_domain.GetMetaServiceMessageCostUseCase
 
-	createSupportInbox      si_domain.CreateInboxUseCase
-	updateSupportInbox      si_domain.UpdateInboxUseCase
-	deleteSupportInbox      si_domain.DeleteInboxUseCase
-	getSupportInbox         si_domain.GetInboxUseCase
-	listSupportInboxes      si_domain.ListInboxesUseCase
-	createSupportSession    si_domain.CreateSessionUseCase
-	reconnectSupportSession si_domain.ReconnectSessionUseCase
-
 	createIssue       issues_domain.CreateIssueUseCase
 	listIssues        issues_domain.ListIssuesUseCase
 	listAllIssues     issues_domain.ListAllIssuesUseCase
@@ -856,6 +862,7 @@ type useCases struct {
 	listWorkflows            workflow_domain.ListWorkflowsUseCase
 	activateWorkflow         workflow_domain.ActivateWorkflowUseCase
 	pauseWorkflow            workflow_domain.PauseWorkflowUseCase
+	scopedWorkflows          workflow_domain.ScopedWorkflowsUseCase
 	startWorkflowRun         workflow_domain.StartRunUseCase
 	cancelWorkflowRun        workflow_domain.CancelRunUseCase
 	getWorkflowRun           workflow_domain.GetRunUseCase
@@ -975,7 +982,6 @@ type handlers_ struct {
 	calls                   *handlers.CallsHandler
 	analytics               *analyticshttp.AnalyticsHandler
 	workspaceConfig         *workspaceconfighttp.WorkspaceConfigHandler
-	supportInbox            *supportinboxhttp.SupportInboxHandler
 	issue                   *issuehttp.IssueHandler
 	workflow                *handlers.WorkflowHandler
 	workflowWebhook         *workflowwebhookhttp.Handler

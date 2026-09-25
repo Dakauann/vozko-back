@@ -17,7 +17,7 @@ type KnowledgeBaseRepository interface {
 	CountByWorkspace(ctx context.Context, workspaceID string) (int, error)
 	IncrementDocumentCount(ctx context.Context, id string, delta int) error
 	IncrementChunkCount(ctx context.Context, id string, delta int) error
-	UpdateStats(ctx context.Context, id string, docCount int, chunkCount int, sizeMB float64) error
+	AddTotalSize(ctx context.Context, id string, deltaBytes int64) error
 }
 
 type DocumentRepository interface {

@@ -103,7 +103,7 @@ type fakeHistory struct {
 	err     error
 }
 
-func (f *fakeHistory) Record(_ context.Context, _ conversation.MessageHistoryDirection, r conversation.MessageHistoryRecord) error {
+func (f *fakeHistory) Record(_ context.Context, r conversation.MessageHistoryRecord) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -141,6 +141,9 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 		Entries:       entries,
 		EnsureOrganic: &fakeOrganic{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Type: wc.CampaignTypeOrganic}},
 		Windows:       nil,
+		TemplateGrant: &fakeGrant{granted: true},
+		CampaignSends: &fakeCampaignSends{},
+		SpamPolicy:    &fakeSpamPolicy{},
 		History:       history,
 		Sender:        sender,
 	}

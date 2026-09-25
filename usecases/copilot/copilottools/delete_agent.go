@@ -32,19 +32,18 @@ func (t *deleteAgentTool) Definition() tools.Definition {
 }
 
 func (t *deleteAgentTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	id := argString(args, "id")
-	if id == "" {
-		return copilot.Result{Status: copilot.StatusError, Message: "id é obrigatório"}
-	}
-	a, err := t.get.Execute(id)
+	a, err := ownedAgent(t.get, cc, argString(args, "id"))
 	if err != nil {
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	}
-	if a == nil || a.WorkspaceID != cc.WorkspaceID || !cc.Departments.Allows(a.DepartmentID) {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "agente não encontrado neste workspace"}
 	}
+	id := a.ID
 	if err := t.delete.Execute(id); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"id": id, "deleted": true}}
+}
+
+func (t *deleteAgentTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {
+	_, err := ownedAgent(t.get, cc, argString(args, "id"))
+	return err
 }

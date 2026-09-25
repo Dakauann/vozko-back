@@ -105,6 +105,9 @@ func TestSearchConversationsNarrowsToOwnershipFilters(t *testing.T) {
 	}{
 		{map[string]interface{}{"only_mine": true}, func(in conversation.SearchInboxInput) bool { return in.ResponsibleUserID == "u-1" }},
 		{map[string]interface{}{"unassigned": true}, func(in conversation.SearchInboxInput) bool { return in.ResponsibleUnassigned }},
+		{map[string]interface{}{"member_id": knownMemberID}, func(in conversation.SearchInboxInput) bool {
+			return in.ResponsibleUserID == knownMemberID && in.UserID == "u-1"
+		}},
 		{map[string]interface{}{"held_by": "ai"}, func(in conversation.SearchInboxInput) bool { return in.ResponsibleKind == actor.KindAI }},
 		{map[string]interface{}{"department_id": knownDepartment}, func(in conversation.SearchInboxInput) bool { return in.SelectedDepartmentID == knownDepartment }},
 	}
@@ -124,6 +127,9 @@ func TestSearchConversationsRefusesBadArgumentsBeforeSearching(t *testing.T) {
 		{"held_by": "robot"},
 		{"date_from": "01/09/2026"},
 		{"only_mine": true, "unassigned": true},
+		{"member_id": "dakauann"},
+		{"member_id": knownMemberID, "only_mine": true},
+		{"member_id": knownMemberID, "unassigned": true},
 		{"page": -1},
 	} {
 		inbox := &fakeInbox{}
@@ -196,3 +202,5 @@ func TestReadConversationRefusesInventedIdentifiers(t *testing.T) {
 		}
 	}
 }
+
+const knownMemberID = "2b7f1c3e-9d4a-4e5b-8c6d-1a2b3c4d5e6f"

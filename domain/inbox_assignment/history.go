@@ -21,6 +21,9 @@ const (
 	TriggerAutomationHandoffRoulette = "automation_handoff_rr"
 	// TriggerAutomationReleased: the automation was paused and let the conversation go to the team.
 	TriggerAutomationReleased = "automation_released"
+	// TriggerAutomationTakenOver: someone paused the agent or workflow and took
+	// the conversation over.
+	TriggerAutomationTakenOver = "automation_taken_over"
 	// TriggerAutomationResumed: someone switched automation back on and handed
 	// the conversation back to the agent or workflow that governs it.
 	TriggerAutomationResumed = "automation_resumed"

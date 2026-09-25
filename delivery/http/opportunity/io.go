@@ -46,8 +46,8 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deptIDs, restrict, override, allowed := h.resolveScope(claims.UserID, wsID, claims.Role == "admin")
-	if !allowed {
+	scope, err := h.deals.Scope(personFrom(claims), wsID)
+	if err != nil {
 		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 		return
 	}
@@ -65,9 +65,9 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 	params, err := json.Marshal(report_renderers.OpportunitiesParams{
 		PipelineID:             pipelineID,
-		DepartmentIDs:          deptIDs,
-		Restrict:               restrict,
-		AssigneeOverrideUserID: override,
+		DepartmentIDs:          scope.DepartmentIDs,
+		Restrict:               scope.Restrict,
+		AssigneeOverrideUserID: scope.AssigneeOverride,
 		Label:                  "oportunidades",
 	})
 	if err != nil {

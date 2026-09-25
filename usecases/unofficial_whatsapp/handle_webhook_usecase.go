@@ -204,7 +204,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 	if err := uc.conversations.RecordInbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
 		return err
 	}
-	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.MessageDirectionInbound); err != nil {
+	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.SentByContact(sub.authorHandle)); err != nil {
 		return err
 	}
 
@@ -232,7 +232,7 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, instance *uw
 	if err := uc.conversations.RecordOutbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
 		return err
 	}
-	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.MessageDirectionOutbound); err != nil {
+	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.SentExternally()); err != nil {
 		return err
 	}
 	if ev.Kind == uw.EventOutboundFromDevice && !ev.Backfill && sub.conversation.InScope(instance.HandleGroups) {
@@ -416,7 +416,7 @@ func (uc *HandleWebhookUseCase) recordMessage(
 	instance *uw.Instance,
 	sub *chatContext,
 	ev *uw.Event,
-	direction conversation.MessageHistoryDirection,
+	sentBy conversation.SentBy,
 ) error {
 	if uc.history == nil {
 		return nil
@@ -424,6 +424,7 @@ func (uc *HandleWebhookUseCase) recordMessage(
 
 	conv := sub.conversation
 	record := conversation.MessageHistoryRecord{
+		SentBy:            sentBy,
 		EntryID:           conv.ID,
 		EntryType:         shared.EntryTypeUnofficialWhatsApp,
 		Channel:           conversation.MessageChannelUnofficialWhatsApp,
@@ -435,7 +436,7 @@ func (uc *HandleWebhookUseCase) recordMessage(
 		SenderName:        sub.authorName,
 		SenderAvatar:      sub.authorAvatar,
 	}
-	if direction == conversation.MessageDirectionInbound {
+	if sentBy.IsContact() {
 		record.From, record.To = sub.authorHandle, instance.Label()
 	} else {
 		record.From, record.To = instance.Label(), sub.subject.Handle()
@@ -453,7 +454,7 @@ func (uc *HandleWebhookUseCase) recordMessage(
 	if strings.TrimSpace(record.Text) == "" && record.MediaID == "" {
 		record.Text = placeholderForEmptyMessage(ev)
 	}
-	return uc.history.Record(ctx, direction, record)
+	return uc.history.Record(ctx, record)
 }
 
 func placeholderForEmptyMessage(ev *uw.Event) string {
@@ -603,7 +604,8 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, instance *uw
 	if uc.history == nil {
 		return nil
 	}
-	err = uc.history.Record(ctx, conversation.MessageDirectionInbound, conversation.MessageHistoryRecord{
+	err = uc.history.Record(ctx, conversation.MessageHistoryRecord{
+		SentBy:            reactionSender(ev, sub),
 		EntryID:           sub.conversation.ID,
 		EntryType:         shared.EntryTypeUnofficialWhatsApp,
 		Channel:           conversation.MessageChannelUnofficialWhatsApp,
@@ -678,12 +680,20 @@ func (uc *HandleWebhookUseCase) handleGroupChanged(ctx context.Context, instance
 	return nil
 }
 
+func reactionSender(ev *uw.Event, sub *chatContext) conversation.SentBy {
+	if ev.FromMe {
+		return conversation.SentExternally()
+	}
+	return conversation.SentByContact(sub.authorHandle)
+}
+
 func (uc *HandleWebhookUseCase) handleCall(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
 	conv, err := uc.conversations.FindByChatID(ctx, instance.ID, ev.ChatID)
 	if err != nil || uc.history == nil {
 		return nil
 	}
-	err = uc.history.Record(ctx, conversation.MessageDirectionInbound, conversation.MessageHistoryRecord{
+	err = uc.history.Record(ctx, conversation.MessageHistoryRecord{
+		SentBy:      conversation.SentByContact(ev.ChatID),
 		EntryID:     conv.ID,
 		EntryType:   shared.EntryTypeUnofficialWhatsApp,
 		Channel:     conversation.MessageChannelUnofficialWhatsApp,

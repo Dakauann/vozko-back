@@ -7,17 +7,26 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/rag"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type createKnowledgeBaseUseCase struct {
-	repo rag.KnowledgeBaseRepository
+	repo        rag.KnowledgeBaseRepository
+	departments wd.CreationDepartmentResolver
 }
 
-func NewCreateKnowledgeBaseUseCase(repo rag.KnowledgeBaseRepository) rag.CreateKnowledgeBaseUseCase {
-	return &createKnowledgeBaseUseCase{repo: repo}
+func NewCreateKnowledgeBaseUseCase(repo rag.KnowledgeBaseRepository, departments wd.CreationDepartmentResolver) rag.CreateKnowledgeBaseUseCase {
+	return &createKnowledgeBaseUseCase{repo: repo, departments: departments}
 }
 
 func (uc *createKnowledgeBaseUseCase) Execute(ctx context.Context, input rag.CreateKnowledgeBaseInput) (*rag.KnowledgeBase, error) {
+	if uc.departments == nil {
+		return nil, wd.ErrDepartmentAccessDenied
+	}
+	departmentID, err := uc.departments.Resolve(ctx, input.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
 
 	count, err := uc.repo.CountByWorkspace(ctx, input.WorkspaceID)
 	if err != nil {
@@ -33,14 +42,15 @@ func (uc *createKnowledgeBaseUseCase) Execute(ctx context.Context, input rag.Cre
 	}
 
 	kb := &rag.KnowledgeBase{
-		ID:          uuid.New().String(),
-		WorkspaceID: input.WorkspaceID,
-		Name:        input.Name,
-		Description: input.Description,
-		Status:      rag.KnowledgeBaseStatusActive,
-		Config:      config,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:           uuid.New().String(),
+		WorkspaceID:  input.WorkspaceID,
+		DepartmentID: departmentID,
+		Name:         input.Name,
+		Description:  input.Description,
+		Status:       rag.KnowledgeBaseStatusActive,
+		Config:       config,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	kb.Normalize()

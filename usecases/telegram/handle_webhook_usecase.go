@@ -264,7 +264,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	stored := uc.storeAttachments(ctx, account, conv, ev)
 
 	if ev.Text == "" && len(stored) == 0 {
-		return uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		return uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       conversation.MessageTypeUnsupported,
 			ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 			From:              from,
@@ -278,7 +278,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 	}
 
 	if ev.Text != "" || len(stored) == 0 {
-		if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		if err := uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       conversation.MessageTypeUserMessage,
 			ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 			From:              from,
@@ -298,7 +298,7 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 		if len(stored) > 1 || ev.Text != "" {
 			providerID = fmt.Sprintf("%s:att%d", providerID, i)
 		}
-		if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		if err := uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       messageTypeForMedia(item.mediaType),
 			ProviderMessageID: providerID,
 			From:              from,
@@ -331,7 +331,7 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, account *tgd
 		messageType = conversation.MessageTypeSystem
 	}
 
-	return uc.record(ctx, conv, conversation.MessageDirectionOutbound, historyInput{
+	return uc.record(ctx, conv, conversation.SentExternally(), historyInput{
 		MessageType:       messageType,
 		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 		From:              strconv.FormatInt(account.BotUserID, 10),
@@ -407,7 +407,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	metadata, _ := json.Marshal(map[string]any{
 		"telegram_callback_data": ev.CallbackData,
 	})
-	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+	if err := uc.recordFromContact(ctx, conv, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
 		ProviderMessageID: "cb:" + ev.CallbackQueryID,
 		From:              strconv.FormatInt(contact.TGUserID, 10),
@@ -459,7 +459,7 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 	}
 	metadata, _ := json.Marshal(map[string]any{"telegram_contact_shared": true})
 
-	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+	if err := uc.recordFromContact(ctx, conv, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
 		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID),
 		From:              strconv.FormatInt(contact.TGUserID, 10),
@@ -729,16 +729,21 @@ type historyInput struct {
 	SenderAvatar string
 }
 
+func (uc *HandleWebhookUseCase) recordFromContact(ctx context.Context, conv *tgdomain.Conversation, in historyInput) error {
+	return uc.record(ctx, conv, conversation.SentByContact(in.From), in)
+}
+
 func (uc *HandleWebhookUseCase) record(
 	ctx context.Context,
 	conv *tgdomain.Conversation,
-	direction conversation.MessageHistoryDirection,
+	sentBy conversation.SentBy,
 	in historyInput,
 ) error {
 	if uc.history == nil {
 		return nil
 	}
-	return uc.history.Record(ctx, direction, conversation.MessageHistoryRecord{
+	return uc.history.Record(ctx, conversation.MessageHistoryRecord{
+		SentBy:            sentBy,
 		EntryID:           conv.ID,
 		EntryType:         shared.EntryTypeTelegram,
 		Channel:           conversation.MessageChannelTelegram,

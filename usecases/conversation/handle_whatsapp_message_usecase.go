@@ -273,7 +273,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 
 func isFirstInboundMessage(history []*conversation.Message) bool {
 	for _, m := range history {
-		if m != nil && m.MessageType.IsInbound() {
+		if m != nil && m.FromCustomer() {
 			return false
 		}
 	}
@@ -377,6 +377,13 @@ type agentContext struct {
 	wcLeadRecord    *lead.Lead
 	agent           *agent.Agent
 	skipResponse    bool
+}
+
+func (a *agentContext) sentBy() conversation.SentBy {
+	if a == nil || a.agent == nil {
+		return conversation.SentByAI("")
+	}
+	return conversation.SentByAI(a.agent.ID)
 }
 
 func (ctx *agentContext) getEntryInfo() (entryID string, entryType shared.EntryType) {
@@ -693,6 +700,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 	if uc.historyManager != nil && entryID != "" {
 		record := conversation.MessageHistoryRecord{
+			SentBy:         conversation.SentByContact(message.From),
 			EntryID:        entryID,
 			EntryType:      entryType,
 			Channel:        conversation.MessageChannelWhatsApp,
@@ -708,7 +716,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			record.SenderName = leadRecord.Name
 			record.SenderAvatar = leadRecord.ProfilePictureURL
 		}
-		if err := uc.historyManager.Record(ctx, conversation.MessageDirectionInbound, record); err != nil {
+		if err := uc.historyManager.Record(ctx, record); err != nil {
 			return err
 		}
 	}
@@ -802,6 +810,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		for _, tc := range output.ToolCalls {
 			toolCallText := fmt.Sprintf("[Tool Call] %s: %s", tc.Name, tc.Arguments)
 			toolCallRecord := conversation.MessageHistoryRecord{
+				SentBy:         agentCtx.sentBy(),
 				EntryID:        entryID,
 				EntryType:      entryType,
 				Channel:        conversation.MessageChannelWhatsApp,
@@ -813,7 +822,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 				Text:           toolCallText,
 				Timestamp:      time.Now().UTC(),
 			}
-			if err := uc.historyManager.Record(ctx, conversation.MessageDirectionOutbound, toolCallRecord); err != nil {
+			if err := uc.historyManager.Record(ctx, toolCallRecord); err != nil {
 				log.Printf("[whatsapp-usecase] failed to record tool call: %v", err)
 			}
 
@@ -845,6 +854,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 				if toolResultText != "" {
 					toolResultRecord := conversation.MessageHistoryRecord{
+						SentBy:         agentCtx.sentBy(),
 						EntryID:        entryID,
 						EntryType:      entryType,
 						Channel:        conversation.MessageChannelWhatsApp,
@@ -856,7 +866,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 						Text:           toolResultText,
 						Timestamp:      time.Now().UTC(),
 					}
-					if err := uc.historyManager.Record(ctx, conversation.MessageDirectionOutbound, toolResultRecord); err != nil {
+					if err := uc.historyManager.Record(ctx, toolResultRecord); err != nil {
 						log.Printf("[whatsapp-usecase] failed to record tool result: %v", err)
 					}
 				}
@@ -897,6 +907,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 			if uc.historyManager != nil && (conversationID != "" || entryID != "") {
 				record := conversation.MessageHistoryRecord{
+					SentBy:         agentCtx.sentBy(),
 					EntryID:        entryID,
 					EntryType:      entryType,
 					Channel:        conversation.MessageChannelWhatsApp,
@@ -914,7 +925,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 						record.To = strings.TrimSpace(sendOutput.ContactWaID)
 					}
 				}
-				if err := uc.historyManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+				if err := uc.historyManager.Record(ctx, record); err != nil {
 					return err
 				}
 				uc.recordAIAttendance(agentCtx, entryID, entryType, record.MessageID)
@@ -2351,6 +2362,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		}
 
 		record := conversation.MessageHistoryRecord{
+			SentBy:         conversation.SentByContact(message.From),
 			EntryID:        entryID,
 			EntryType:      entryType,
 			Channel:        conversation.MessageChannelWhatsApp,
@@ -2371,7 +2383,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 				record.Metadata = meta
 			}
 		}
-		if err := uc.historyManager.Record(ctx, conversation.MessageDirectionInbound, record); err != nil {
+		if err := uc.historyManager.Record(ctx, record); err != nil {
 			log.Printf("[whatsapp-media] Failed to record history: %v", err)
 		} else {
 			log.Printf("[whatsapp-media] Message recorded to history (extractedText=%d chars)", len(extractedText))
@@ -2538,6 +2550,7 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 
 		if uc.historyManager != nil && (conversationID != "" || entryID != "") {
 			record := conversation.MessageHistoryRecord{
+				SentBy:         agentCtx.sentBy(),
 				EntryID:        entryID,
 				EntryType:      entryType,
 				Channel:        conversation.MessageChannelWhatsApp,
@@ -2551,7 +2564,7 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 			if sendOutput != nil {
 				record.MessageID = strings.TrimSpace(sendOutput.MessageID)
 			}
-			_ = uc.historyManager.Record(ctx, conversation.MessageDirectionOutbound, record)
+			_ = uc.historyManager.Record(ctx, record)
 		}
 
 		log.Printf("[whatsapp-media] AI response sent for media content")
@@ -2730,6 +2743,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 			EntryType:         audioEntryType,
 			Channel:           conversation.MessageChannelWhatsApp,
 			MessageType:       conversation.MessageTypeAudio,
+			SentBy:            conversation.SentByContact(message.From),
 			From:              strings.TrimSpace(message.From),
 			To:                businessNumber,
 			Text:              "[Áudio]",
@@ -2951,6 +2965,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	if uc.historyManager != nil && (conversationID != "" || audioEntryID != "") {
 		record := conversation.MessageHistoryRecord{
+			SentBy:         agentCtx.sentBy(),
 			EntryID:        audioEntryID,
 			EntryType:      audioEntryType,
 			Channel:        conversation.MessageChannelWhatsApp,
@@ -2962,7 +2977,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 			Text:           responseText,
 			Timestamp:      time.Now().UTC(),
 		}
-		if err := uc.historyManager.Record(ctx, conversation.MessageDirectionOutbound, record); err != nil {
+		if err := uc.historyManager.Record(ctx, record); err != nil {
 			log.Printf("[whatsapp-audio] Failed to record outbound history: %v", err)
 		}
 	}

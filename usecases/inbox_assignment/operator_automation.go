@@ -62,10 +62,10 @@ func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in Operato
 	}
 
 	if in.Enabled != nil && !*in.Enabled {
-		if err := t.ownership.ReleaseFromAutomation(in.EntryID, entryType); err != nil {
+		owner, err := t.ownership.TakeOverFromAutomation(in.EntryID, entryType, in.ActorUserID)
+		if err != nil {
 			return OperatorAutomationResult{}, fmt.Errorf("automation paused for %s (%s) but it still holds the conversation: %w", in.EntryID, in.EntryType, err)
 		}
-		owner := t.ownership.GetAssignedUserID(in.WorkspaceID, in.EntryID, entryType)
 		// A paused AI did not resolve the conversation; whoever holds it now does.
 		t.ownership.endAISession(in.WorkspaceID, in.EntryID, entryType, owner, sessionEndPaused)
 		return OperatorAutomationResult{Owner: owner}, nil

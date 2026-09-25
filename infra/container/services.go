@@ -106,6 +106,7 @@ func (c *Container) initServices() {
 		tokenService:               tokenIssuer,
 		readMeTokenService:         readMeTokenIssuer,
 		fileStorage:                storage,
+		fileReader:                 storage,
 		ticketFileStorage:          storage,
 		asaasService:               asaasSvc,
 		paymentGateway:             paymentGateway,

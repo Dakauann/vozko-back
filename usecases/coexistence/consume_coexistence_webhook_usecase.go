@@ -171,6 +171,13 @@ func (uc *consumeCoexistenceWebhookUseCase) processHistoryThread(
 	}
 }
 
+func historySender(businessOriginated bool, from string) conversation.SentBy {
+	if businessOriginated {
+		return conversation.SentExternally()
+	}
+	return conversation.SentByContact(from)
+}
+
 func (uc *consumeCoexistenceWebhookUseCase) persistHistoryMessage(
 	histMsg coexistence.HistoryMessage,
 	entryID string,
@@ -182,7 +189,8 @@ func (uc *consumeCoexistenceWebhookUseCase) persistHistoryMessage(
 	from := normalizeParticipantNumber(histMsg.From)
 	to := normalizeParticipantNumber(histMsg.To)
 
-	if isBusinessOriginatedHistoryMessage(histMsg, businessPhone) {
+	businessOriginated := isBusinessOriginatedHistoryMessage(histMsg, businessPhone)
+	if businessOriginated {
 		if from == "" {
 			from = normalizeBusinessPhoneNumber(businessPhone)
 		}
@@ -209,6 +217,7 @@ func (uc *consumeCoexistenceWebhookUseCase) persistHistoryMessage(
 		Channel:           conversation.MessageChannelWhatsApp,
 		MessageType:       msgType,
 		SentVia:           conversation.MessageTransportBusinessApp,
+		SentBy:            historySender(businessOriginated, from),
 		From:              from,
 		To:                to,
 		Text:              text,
@@ -351,6 +360,7 @@ func (uc *consumeCoexistenceWebhookUseCase) persistSMBEcho(
 		Channel:           conversation.MessageChannelWhatsApp,
 		MessageType:       msgType,
 		SentVia:           conversation.MessageTransportBusinessApp,
+		SentBy:            conversation.SentExternally(),
 		From:              echo.From,
 		To:                echo.To,
 		Text:              text,

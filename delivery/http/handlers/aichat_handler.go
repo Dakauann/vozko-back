@@ -44,17 +44,39 @@ type toolActivityDTO struct {
 	Name    string                `json:"name"`
 	Summary string                `json:"summary"`
 	Ok      bool                  `json:"ok"`
-	Chart   *copilot_domain.Chart `json:"chart,omitempty"`
+	Chart   *copilot_domain.Chart      `json:"chart,omitempty"`
+	Card    *copilot_domain.ActionCard `json:"card,omitempty"`
 }
 
 type messageDTO struct {
-	ID        string            `json:"id"`
-	Role      string            `json:"role"`
-	Content   string            `json:"content"`
-	Model     string            `json:"model,omitempty"`
-	Reasoning string            `json:"reasoning,omitempty"`
-	Tools     []toolActivityDTO `json:"tools,omitempty"`
-	CreatedAt string            `json:"createdAt"`
+	ID          string                      `json:"id"`
+	Role        string                      `json:"role"`
+	Content     string                      `json:"content"`
+	Model       string                      `json:"model,omitempty"`
+	Reasoning   string                      `json:"reasoning,omitempty"`
+	Tools       []toolActivityDTO           `json:"tools,omitempty"`
+	Attachments []copilot_domain.Attachment `json:"attachments,omitempty"`
+	Proposal    *proposalDTO                `json:"proposal,omitempty"`
+	CreatedAt   string                      `json:"createdAt"`
+}
+
+type proposalDTO struct {
+	ID       string                  `json:"id"`
+	ToolName string                  `json:"toolName"`
+	Fields   []copilot_domain.Field  `json:"fields"`
+	Preview  *copilot_domain.Preview `json:"preview,omitempty"`
+	Status   string                  `json:"status"`
+}
+
+func toProposalDTO(m *aichat.Message) *proposalDTO {
+	if m.ProposalID == "" {
+		return nil
+	}
+	var pa copilot_domain.PendingAction
+	if json.Unmarshal(m.Proposal, &pa) != nil {
+		return nil
+	}
+	return &proposalDTO{ID: pa.ID, ToolName: pa.ToolName, Fields: pa.Fields, Preview: pa.Preview, Status: string(m.ProposalStatus)}
 }
 
 func (h *AIChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
@@ -153,9 +175,10 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := mux.Vars(r)["id"]
 
 	var body struct {
-		Content string              `json:"content"`
-		Model   string              `json:"model"`
-		View    copilot_domain.View `json:"view"`
+		Content     string              `json:"content"`
+		Attachments []string            `json:"attachments"`
+		Model       string              `json:"model"`
+		View        copilot_domain.View `json:"view"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
@@ -185,7 +208,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	r = withDepartmentCreationScope(r, "")
 	cc := copilotCtx(r, claims.UserID, workspaceID)
 	cc.View = body.View
-	if err := h.copilot.Stream(r.Context(), thread, body.Content, cc, emit); err != nil {
+	if err := h.copilot.Stream(r.Context(), thread, copilot_domain.UserMessage{Content: body.Content, AttachmentIDs: body.Attachments}, cc, emit); err != nil {
 		emit("error", map[string]any{"error": err.Error()})
 	}
 }
@@ -329,5 +352,9 @@ func toMessageDTO(m *aichat.Message) messageDTO {
 	if len(m.ToolCalls) > 0 {
 		_ = json.Unmarshal(m.ToolCalls, &dto.Tools)
 	}
+	if len(m.Attachments) > 0 {
+		_ = json.Unmarshal(m.Attachments, &dto.Attachments)
+	}
+	dto.Proposal = toProposalDTO(m)
 	return dto
 }

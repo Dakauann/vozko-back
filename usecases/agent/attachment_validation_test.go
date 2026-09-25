@@ -39,7 +39,7 @@ func (f fakeKBRepo) FindByWorkspaceAndDepartment(context.Context, string, *strin
 func (f fakeKBRepo) CountByWorkspace(context.Context, string) (int, error)        { return 0, nil }
 func (f fakeKBRepo) IncrementDocumentCount(context.Context, string, int) error    { return nil }
 func (f fakeKBRepo) IncrementChunkCount(context.Context, string, int) error       { return nil }
-func (f fakeKBRepo) UpdateStats(context.Context, string, int, int, float64) error { return nil }
+func (f fakeKBRepo) AddTotalSize(context.Context, string, int64) error { return nil }
 
 type fakeMCPRepo struct{ byWorkspace map[string]map[string]bool }
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 	workflow_infra "vozko/infra/workflow"
-
+	lead_usecase "vozko/usecases/lead"
 
 	"vozko/brand"
 	balance_domain "vozko/domain/balance"
@@ -93,7 +93,6 @@ import (
 	shop_usecase "vozko/usecases/shop"
 	shortlink_usecase "vozko/usecases/shortlink"
 	stage_usecase "vozko/usecases/stage"
-	si_usecase "vozko/usecases/support_inbox"
 	telephony_usecase "vozko/usecases/telephony"
 	ticket_usecase "vozko/usecases/ticket"
 	tools_usecase "vozko/usecases/tools"
@@ -164,6 +163,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Stages:    c.repositories.stage,
 		Pipelines: c.repositories.pipeline,
 		Owners:    c.repositories.opportunityOwners,
+		Leads:     lead_usecase.NewQueries(c.repositories.lead),
+		Entries:   c.services.campaignWorkspaceResolver,
 	})
 
 	toolHandlers := []tools.Handler{
@@ -224,7 +225,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	createStageGroupUC := stage_usecase.NewCreateStageGroupUseCase(c.repositories.stageGroup, resolveCreationDepartmentUC)
 	createStageGroupUC.SetStageRepository(c.repositories.stage)
 
-	createPipelineUC := pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline)
+	createPipelineUC := pipeline_usecase.NewCreatePipelineUseCase(c.repositories.pipeline, workspace_department_usecase.NewListDepartmentsUseCase(c.repositories.workspaceDepartment))
 	createPipelineUC.SetStageSeeder(pipelineStageSeeder{stages: c.repositories.stage})
 
 	pipelineOccupancy := pipeline_repository.NewOccupancy(c.db)
@@ -237,6 +238,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	listAgentsUC := agent_usecase.NewListAgentsUseCase(c.repositories.agent)
 
 	createWCCampaignUC := wc_usecase.NewCreateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess, c.repositories.workspaceConfig, c.repositories.leadCampaignSend, resolveCreationDepartmentUC)
+	if granting, ok := createWCCampaignUC.(interface {
+		SetTemplateGrants(wc_usecase.TemplateGrants)
+	}); ok {
+		granting.SetTemplateGrants(c.repositories.workspaceTemplateAccess)
+	}
 	updateWCCampaignUC := wc_usecase.NewUpdateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess)
 	assignWCCampaignDepartmentUC := wc_usecase.NewAssignDepartmentUseCase(c.repositories.wcCampaign, resolveCreationDepartmentUC)
 	deleteWCCampaignUC := wc_usecase.NewDeleteCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
@@ -478,7 +484,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	handleWhatsAppMessageUC = conversation_usecase.AttachTemplateSendAttempts(
 		handleWhatsAppMessageUC, c.repositories.whatsappTemplateSend, c.repositories.balance)
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
-	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)
+	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.services.fileReader)
 	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba).WithNotifier(notifierUC, dashboardURL)
 
 	affiliateStatsUC := affiliate_usecase.NewGetAffiliateStatsUseCase(c.repositories.affiliate)
@@ -495,8 +501,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
 
-	scheduledMessages := c.buildScheduledMessages()
-
 	whatsAppOutreach := c.buildWhatsAppOutreach(whatsAppOutreachDeps{
 		consume:       consumeWhatsappTemplateUC,
 		inflight:      inflightReserver,
@@ -506,6 +510,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		templateGrant: workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
 	})
 
+	scheduledMessages := c.buildScheduledMessages(whatsAppOutreach.conversationTemplate)
+
+	knowledgeBaseAccessUC := rag_usecase.NewKnowledgeBaseAccessUseCase(rag_usecase.NewGetKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase))
+	createRAGDocumentUC := rag_usecase.NewCreateDocumentUseCase(c.repositories.ragDocument, c.repositories.ragKnowledgeBase, publishDocProcessingUC, media_usecase.NewReadMediaUseCase(media_usecase.NewGetMediaUseCase(c.repositories.media), c.services.fileReader))
 	c.useCases = &useCases{
 		billedTemplateSend:        whatsAppOutreach.billedTemplateSend,
 		reconcileTemplateSends:    whatsAppOutreach.reconcileTemplateSends,
@@ -515,6 +523,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		scheduleMessage:          scheduledMessages.schedule,
 		rescheduleMessage:        scheduledMessages.reschedule,
 		cancelScheduledMessage:   scheduledMessages.cancel,
+		personScheduler:          scheduledMessages.person,
 		listScheduledMessages:    scheduledMessages.list,
 		dispatchScheduledMessage: scheduledMessages.dispatch,
 		consumeScheduledMessage:  scheduledMessages.consume,
@@ -525,6 +534,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		updateLeadMemory: leadMemories.update,
 		deleteLeadMemory: leadMemories.delete,
 		listLeadMemories: leadMemories.list,
+		leadQueries:      lead_usecase.NewQueries(c.repositories.lead),
 
 		opportunity:           opportunitySvc,
 		customField:           customFieldSvc,
@@ -594,6 +604,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		),
 		listMedia: media_usecase.NewListMediaUseCase(c.repositories.media),
 		getMedia:  media_usecase.NewGetMediaUseCase(c.repositories.media),
+		readMedia: media_usecase.NewReadMediaUseCase(media_usecase.NewGetMediaUseCase(c.repositories.media), c.services.fileReader),
 
 		getCart:           cart_usecase.NewGetCartUseCase(c.repositories.cart),
 		clearCart:         cart_usecase.NewClearCartUseCase(c.repositories.cart),
@@ -655,13 +666,21 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listInsurancePolicies:         insurance_usecase.NewListPoliciesUseCase(),
 		describeInsuranceRequirements: describeRequirementsUC,
 
-		listWhatsAppTemplates:         whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
-		getWhatsAppTemplate:           whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
+		listWhatsAppTemplates: whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
+		getWhatsAppTemplate:   whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
+		workspaceTemplates: whatsapp_template_usecase.NewWorkspaceTemplatesUseCase(whatsapp_template_usecase.WorkspaceTemplatesDeps{
+			Access: c.repositories.workspaceTemplateAccess,
+			Grants: c.repositories.workspaceTemplateAccess,
+			Phones: c.repositories.businessPhone,
+			List:   whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
+			Get:    whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
+			Create: whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader),
+		}),
 		syncWhatsAppTemplates:         whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		reconcileWhatsAppTemplates:    whatsapp_template_usecase.NewReconcileTemplatesUseCase(c.repositories.businessPhone, whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)),
 		reconcileWhatsAppEntitlements: businessphone_usecase.NewReconcileWhatsAppEntitlementsUseCase(c.repositories.ownerPhoneReader, batchEntitlementResolverUC, addonPhoneDeactivatorUC),
 		syncWhatsAppTemplate:          whatsapp_template_usecase.NewSyncTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
-		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC),
+		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader),
 		replicateWhatsAppTemplate:     whatsapp_template_usecase.NewReplicateTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		setHeaderMediaWhatsApp:        setHeaderMediaUC,
 		deleteWhatsAppTemplate:        whatsapp_template_usecase.NewDeleteTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate),
@@ -681,6 +700,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listShops:  shop_usecase.NewListShopsUseCase(c.repositories.shop),
 
 		listBusinessPhones:         businessphone_usecase.NewListUseCase(c.repositories.businessPhone),
+		workspacePhones:            businessphone_usecase.NewWorkspacePhonesUseCase(businessphone_usecase.NewListUseCase(c.repositories.businessPhone), c.repositories.workspacePhoneAccess),
 		getBusinessPhone:           businessphone_usecase.NewGetUseCase(c.repositories.businessPhone),
 		syncBusinessPhone:          businessphone_usecase.NewSyncPhoneNumberUseCase(c.repositories.businessPhone, c.services.businessPhoneMetaAPI),
 		registerBusinessPhone:      businessphone_usecase.NewRegisterPhoneUseCase(c.repositories.businessPhone, c.services.businessPhoneMetaAPI),
@@ -690,7 +710,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		verifyBusinessPhoneCode:    businessphone_usecase.NewVerifyCodeUseCase(c.repositories.businessPhone, c.services.businessPhoneMetaAPI),
 		updateBusinessPhoneProfile: businessphone_usecase.NewUpdateBusinessProfileUseCase(c.repositories.businessPhone, c.services.businessPhoneMetaAPI, c.services.whatsappClientFactory),
 		getBusinessPhoneProfile:    businessphone_usecase.NewGetBusinessProfileUseCase(c.repositories.businessPhone, c.services.businessPhoneMetaAPI, c.services.whatsappClientFactory),
-		onboardEmbeddedSignup:      businessphone_usecase.NewOnboardEmbeddedSignupUseCase(c.repositories.businessPhone, c.repositories.waba, c.services.businessPhoneMetaAPI),
+		onboardEmbeddedSignup:      businessphone_usecase.NewOnboardEmbeddedSignupUseCase(c.repositories.businessPhone, c.repositories.waba, c.services.businessPhoneMetaAPI, phoneProvisioningGateUC),
 		deleteBusinessPhone:        businessphone_usecase.NewDeletePhoneNumberUseCase(c.repositories.businessPhone),
 		unassignBusinessPhoneOwner: businessphone_usecase.NewUnassignOwnerUseCase(c.repositories.businessPhone, c.repositories.ownerPhoneReader, dialog360PartnerForAddons),
 		handlePhoneWebhook:         handlePhoneWebhookUC,
@@ -752,13 +772,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getConversationMedia:    conversation_usecase.NewGetConversationMediaUseCase(c.repositories.conversationMedia),
 		listConversationEvents:  ce_usecase.NewListEventsUseCase(c.repositories.conversationEvent, c.repositories.user, c.repositories.agent, c.repositories.stage, c.repositories.label),
 
-		createStage:          stage_usecase.NewCreateStageUseCase(c.repositories.stage),
+		createStage:          stage_usecase.NewCreateStageUseCase(c.repositories.stage, c.repositories.pipeline),
 		cloneStagesFromGroup: stage_usecase.NewCloneStagesFromGroupUseCase(c.repositories.stageGroup, c.repositories.stage),
 		updateStage:          stage_usecase.NewUpdateStageUseCase(c.repositories.stage),
 		deleteStage:          stage_usecase.NewDeleteStageUseCase(c.repositories.stage),
 		listStages:           stage_usecase.NewListStagesUseCase(c.repositories.stage),
 		setInitialStage:      stage_usecase.NewSetInitialStageUseCase(c.repositories.stage),
 		assignEntryStage:     assignEntryStageUC,
+		moveEntryStage:       stage_usecase.NewMoveEntryStageUseCase(c.services.conversationAuth, assignEntryStageUC),
 		removeEntryStage:     stage_usecase.NewRemoveEntryStageUseCase(c.repositories.stage, timeline),
 		getEntryStage:        stage_usecase.NewGetEntryStageUseCase(c.repositories.stage),
 		getBatchEntryStages:  stage_usecase.NewGetBatchEntryStagesUseCase(c.repositories.stage),
@@ -771,7 +792,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getStageGroup:    stage_usecase.NewGetStageGroupUseCase(c.repositories.stageGroup),
 
 		createPipeline: createPipelineUC,
-		updatePipeline: pipeline_usecase.NewUpdatePipelineUseCase(c.repositories.pipeline),
+		updatePipeline: pipeline_usecase.NewUpdatePipelineUseCase(c.repositories.pipeline, workspace_department_usecase.NewListDepartmentsUseCase(c.repositories.workspaceDepartment)),
 		deletePipeline: pipeline_usecase.NewDeletePipelineUseCase(c.repositories.pipeline, pipelineOccupancy),
 		listPipelines:  pipeline_usecase.NewListPipelinesUseCase(c.repositories.pipeline),
 		getPipeline:    pipeline_usecase.NewGetPipelineUseCase(c.repositories.pipeline),
@@ -789,8 +810,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listLabels:       label_usecase.NewListLabelsUseCase(c.repositories.label),
 		assignEntryLabel: label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline),
 		removeEntryLabel: label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline),
-		getEntryLabels:   label_usecase.NewGetEntryLabelsUseCase(c.repositories.label),
-		reorderLabels:    label_usecase.NewReorderLabelsUseCase(c.repositories.label),
+		entryLabels: label_usecase.NewEntryLabelsUseCase(
+			c.services.conversationAuth,
+			label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline),
+			label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline),
+		),
+		getEntryLabels: label_usecase.NewGetEntryLabelsUseCase(c.repositories.label),
+		reorderLabels:  label_usecase.NewReorderLabelsUseCase(c.repositories.label),
 
 		createMessageShortcut: msg_shortcut_usecase.NewCreateUseCase(c.repositories.messageShortcut),
 		updateMessageShortcut: msg_shortcut_usecase.NewUpdateUseCase(c.repositories.messageShortcut),
@@ -908,19 +934,22 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Drops:     crm_telemetry_usecase.NewLogDropRecorder(),
 		}),
 
-		createKnowledgeBase:     rag_usecase.NewCreateKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase),
-		updateKnowledgeBase:     rag_usecase.NewUpdateKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase),
-		deleteKnowledgeBase:     rag_usecase.NewDeleteKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase, c.repositories.ragChunk, c.repositories.ragVector, c.repositories.ragAgentKB),
-		getKnowledgeBase:        rag_usecase.NewGetKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase),
-		listKnowledgeBases:      rag_usecase.NewListKnowledgeBasesUseCase(c.repositories.ragKnowledgeBase),
-		createRAGDocument:       rag_usecase.NewCreateDocumentUseCase(c.repositories.ragDocument, c.repositories.ragKnowledgeBase, publishDocProcessingUC),
-		deleteRAGDocument:       rag_usecase.NewDeleteDocumentUseCase(c.repositories.ragDocument, c.repositories.ragChunk, c.repositories.ragVector, c.repositories.ragKnowledgeBase),
-		getRAGDocument:          rag_usecase.NewGetDocumentUseCase(c.repositories.ragDocument),
-		listRAGDocuments:        rag_usecase.NewListDocumentsUseCase(c.repositories.ragDocument),
-		linkAgentKnowledgeBases: rag_usecase.NewLinkAgentKnowledgeBasesUseCase(c.repositories.ragAgentKB, c.repositories.ragKnowledgeBase),
-		getAgentKnowledgeBases:  rag_usecase.NewGetAgentKnowledgeBasesUseCase(c.repositories.ragAgentKB, c.repositories.ragKnowledgeBase),
-		queryKnowledgeBase:      queryKnowledgeBaseUC,
-		publishDocProcessing:    publishDocProcessingUC,
+		createKnowledgeBase:      rag_usecase.NewCreateKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase, resolveCreationDepartmentUC),
+		updateKnowledgeBase:      rag_usecase.NewUpdateKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase),
+		deleteKnowledgeBase:      rag_usecase.NewDeleteKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase, c.repositories.ragChunk, c.repositories.ragVector, c.repositories.ragAgentKB),
+		getKnowledgeBase:         rag_usecase.NewGetKnowledgeBaseUseCase(c.repositories.ragKnowledgeBase),
+		listKnowledgeBases:       rag_usecase.NewListKnowledgeBasesUseCase(c.repositories.ragKnowledgeBase),
+		createRAGDocument:        createRAGDocumentUC,
+		knowledgeBaseAccess:      knowledgeBaseAccessUC,
+		scopedKnowledgeDocuments: rag_usecase.NewScopedDocumentsUseCase(knowledgeBaseAccessUC, createRAGDocumentUC),
+		deleteRAGDocument:        rag_usecase.NewDeleteDocumentUseCase(c.repositories.ragDocument, c.repositories.ragChunk, c.repositories.ragVector, c.repositories.ragKnowledgeBase),
+		getRAGDocument:           rag_usecase.NewGetDocumentUseCase(c.repositories.ragDocument),
+		listRAGDocuments:         rag_usecase.NewListDocumentsUseCase(c.repositories.ragDocument),
+		linkAgentKnowledgeBases:  rag_usecase.NewLinkAgentKnowledgeBasesUseCase(c.repositories.ragAgentKB, c.repositories.ragKnowledgeBase),
+		getAgentKnowledgeBases:   rag_usecase.NewGetAgentKnowledgeBasesUseCase(c.repositories.ragAgentKB, c.repositories.ragKnowledgeBase),
+		queryKnowledgeBase:       queryKnowledgeBaseUC,
+		scopedKnowledgeQuery:     rag_usecase.NewScopedQueryUseCase(knowledgeBaseAccessUC, queryKnowledgeBaseUC),
+		publishDocProcessing:     publishDocProcessingUC,
 		consumeDocProcessing: rag_usecase.NewConsumeDocumentProcessingUseCase(
 			c.services.ragQueueSub,
 			c.services.ragQueuePub,
@@ -959,23 +988,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		consumeCoexistenceWebhook:   coexistence_usecase.NewConsumeCoexistenceWebhookUseCase(c.services.webhookQueueSub, c.repositories.businessPhone, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.conversation, c.repositories.lead),
 		consumeAsaasWebhook:         asaasConsumer,
 		consumeMercadoPagoWebhook:   mercadoPagoConsumer,
-
-		createSupportInbox: si_usecase.NewCreateInboxUseCase(c.repositories.supportInbox),
-		updateSupportInbox: si_usecase.NewUpdateInboxUseCase(c.repositories.supportInbox),
-		deleteSupportInbox: si_usecase.NewDeleteInboxUseCase(c.repositories.supportInbox),
-		getSupportInbox:    si_usecase.NewGetInboxUseCase(c.repositories.supportInbox),
-		listSupportInboxes: si_usecase.NewListInboxesUseCase(c.repositories.supportInbox),
-		createSupportSession: si_usecase.NewCreateSessionUseCase(
-			c.repositories.supportInbox,
-			c.repositories.supportEntry,
-			c.repositories.supportSession,
-			c.cfg.AuthJWTSecret,
-		),
-		reconnectSupportSession: si_usecase.NewReconnectSessionUseCase(
-			c.repositories.supportInbox,
-			c.repositories.supportSession,
-			c.cfg.AuthJWTSecret,
-		),
 
 		createIssue:       issues_usecase.NewCreateIssueUseCase(c.repositories.issue, c.repositories.workspace, c.repositories.user, publishEmailUC),
 		listIssues:        issues_usecase.NewListIssuesUseCase(c.repositories.issue),
@@ -1039,6 +1051,18 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		affiliateAdminGet:      affiliate_usecase.NewAdminGetAffiliateUseCase(c.repositories.affiliate, affiliateStatsUC),
 		affiliateAdminUpdate:   affiliate_usecase.NewAdminUpdateAffiliateUseCase(c.repositories.affiliate),
 	}
+	c.useCases.wcCampaignAccess = wc_usecase.NewCampaignAccessUseCase(getWCCampaignUC)
+	c.useCases.startWCCampaign = wc_usecase.NewStartCampaignUseCase(wc_usecase.StartCampaignDeps{
+		Access:       c.useCases.wcCampaignAccess,
+		Subscription: activeSubscriptionUC,
+		Dispatch:     dispatchWCCampaignUC,
+	})
+	c.useCases.wcImportPreview = wc_usecase.NewImportPreviewUseCase(wc_usecase.ImportPreviewDeps{
+		Files:     c.useCases.readMedia,
+		Templates: c.useCases.workspaceTemplates,
+		Prices:    consumeWhatsappTemplateUC,
+		Balance:   cachedBalanceChecker,
+	})
 
 	if setter, ok := c.useCases.listConversationEvents.(interface {
 		SetWorkflowNames(ce_usecase.WorkflowNameLookup)
@@ -1363,6 +1387,22 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	c.initCommentAnalysis(notifierUC, dashboardURL)
+	c.useCases.scopedWorkflows = workflow_usecase.NewScopedWorkflowsUseCase(
+		c.useCases.getWorkflow,
+		c.useCases.updateWorkflow,
+		c.useCases.deleteWorkflow,
+		c.useCases.activateWorkflow,
+		c.useCases.pauseWorkflow,
+	)
+	c.useCases.personDeals = opportunity_usecase.NewPersonDeals(c.useCases.opportunity, c.services.conversationAuth, c.services.conversationAuth)
+	c.services.personAssign = ia_usecase.NewPersonAssignUseCase(ia_usecase.PersonAssignDeps{
+		Access:     c.services.conversationAuth,
+		Targets:    c.services.conversationAuth,
+		Visibility: c.useCases.memberVisibility,
+		Phones:     entryPhones{resolver: c.services.campaignWorkspaceResolver, campaigns: c.repositories.wcCampaign},
+		Assigner:   c.services.assignmentService,
+		Roulette:   c.services.assignmentService,
+	})
 	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)
 	c.initInstagramRuntime(messageHistoryManager)
 

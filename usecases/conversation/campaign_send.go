@@ -14,8 +14,9 @@ import (
 )
 
 type SendCampaignMessageInput struct {
-	EntryID   string
-	EntryType string
+	CampaignID string
+	EntryID    string
+	EntryType  string
 
 	Text string
 
@@ -42,7 +43,7 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 		if !ok {
 			return nil, fmt.Errorf("campaign send: %s cannot deliver interactive prompts", in.EntryType)
 		}
-		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, "", "",
+		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, conversation.SentByCampaign(in.CampaignID), "",
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return interactive.SendInteractive(context.Background(), ec, conversation.SendInteractiveRequest{
 					Body:    in.Text,
@@ -61,7 +62,7 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 
 		transcriptMediaID := s.registerCampaignMediaInConversation(in, libraryMedia.URL)
 
-		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, "", "",
+		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, conversation.SentByCampaign(in.CampaignID), "",
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
 					HumanInitiated: false,
@@ -74,7 +75,7 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 			conversation.MessageTypeMedia, in.Text, transcriptMediaID, in.MediaType)
 
 	default:
-		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, "", "",
+		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, conversation.SentByCampaign(in.CampaignID), "",
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{
 					HumanInitiated: false,

@@ -16,7 +16,11 @@ import (
 	conversationdomain "vozko/domain/conversation"
 	sm "vozko/domain/scheduled_message"
 	"vozko/domain/shared"
+	"vozko/domain/whatsapp/template"
+	wo "vozko/domain/whatsapp_outreach"
+	"vozko/domain/workspace"
 	"vozko/infra/http/middleware"
+	scheduled_message_usecase "vozko/usecases/scheduled_message"
 )
 
 var reqNow = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
@@ -73,22 +77,38 @@ func (a stubAuthorizer) HasWorkspacePermission(string, string, string, string, b
 func (a stubAuthorizer) IsWorkspaceMember(string, string) bool       { return true }
 func (a stubAuthorizer) IsWorkspaceOwnerOrAdmin(string, string) bool { return true }
 
+type stubMessages struct{ sm.Repository }
+
+func (stubMessages) FindByID(id string) (*sm.ScheduledMessage, error) {
+	return &sm.ScheduledMessage{ID: id, WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: shared.EntryTypeWhatsApp}, nil
+}
+
+type stubPermissions struct{ err error }
+
+func (p *stubPermissions) Execute(string, string, workspace.Resource, workspace.Action) error {
+	return p.err
+}
+
 type handlerFixture struct {
-	schedule   *stubSchedule
-	reschedule *stubReschedule
-	cancel     *stubCancel
-	list       *stubList
-	router     *mux.Router
+	schedule    *stubSchedule
+	reschedule  *stubReschedule
+	cancel      *stubCancel
+	list        *stubList
+	permissions *stubPermissions
+	router      *mux.Router
 }
 
 func newHandlerFixture(allowAccess bool) *handlerFixture {
 	f := &handlerFixture{
-		schedule:   &stubSchedule{},
-		reschedule: &stubReschedule{},
-		cancel:     &stubCancel{},
-		list:       &stubList{},
+		schedule:    &stubSchedule{},
+		reschedule:  &stubReschedule{},
+		cancel:      &stubCancel{},
+		list:        &stubList{},
+		permissions: &stubPermissions{},
 	}
-	h := NewScheduledMessageHandler(f.schedule, f.reschedule, f.cancel, f.list, stubAuthorizer{allow: allowAccess})
+	access := stubAuthorizer{allow: allowAccess}
+	scheduler := scheduled_message_usecase.NewPersonSchedulerUseCase(access, f.permissions, stubMessages{}, f.schedule, f.reschedule, f.cancel)
+	h := NewScheduledMessageHandler(scheduler, f.list, access)
 
 	f.router = mux.NewRouter()
 	f.router.HandleFunc("/conversations/{entryType}/{entryId}/scheduled-messages", h.Create).Methods(http.MethodPost)
@@ -191,6 +211,18 @@ func TestErrorMapping(t *testing.T) {
 		{"not found", sm.ErrNotFound, http.StatusNotFound, "not_found", false},
 		{"already sent", sm.ErrNotPending, http.StatusConflict, "not_pending", false},
 		{"no content", sm.ErrContentRequired, http.StatusBadRequest, "invalid_request", false},
+		{"template with free text", sm.ErrTemplateWithFreeContent, http.StatusBadRequest, "invalid_request", false},
+		{"channel without templates", sm.ErrTemplatesUnsupported, http.StatusUnprocessableEntity, "templates_unsupported", false},
+		{"template variable missing", template.ErrTemplateParamsMismatch, http.StatusUnprocessableEntity, "template_params", false},
+		{"template paused", template.ErrTemplateNotSendable, http.StatusUnprocessableEntity, "template_unavailable", false},
+		{"template of another account", template.ErrTemplatePhoneMismatch, http.StatusUnprocessableEntity, "template_unavailable", false},
+		{"template not granted", wo.ErrTemplateForbidden, http.StatusUnprocessableEntity, "template_unavailable", false},
+		{"template deleted", wo.ErrTemplateNotFound, http.StatusUnprocessableEntity, "template_unavailable", false},
+		{"blocked contact", wo.ErrLeadBlocked, http.StatusUnprocessableEntity, "contact_blocked", false},
+		{"inside the spam window", wo.ErrWithinSpamWindow, http.StatusUnprocessableEntity, "spam_window", false},
+		{"number disconnected", wo.ErrPhoneNotConnected, http.StatusUnprocessableEntity, "number_unavailable", false},
+		{"number withdrawn", wo.ErrBusinessPhoneNotFound, http.StatusUnprocessableEntity, "number_unavailable", false},
+		{"conversation gone", wo.ErrConversationNotFound, http.StatusNotFound, "not_found", false},
 	}
 
 	for _, tc := range cases {
@@ -233,6 +265,12 @@ func TestEntryRoutesRefuseAConversationTheUserCannotSee(t *testing.T) {
 		rec := f.do(tc.method, "/conversations/whatsapp/entry-1/scheduled-messages", tc.body, nil)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s status = %d, want 403", tc.method, rec.Code)
+		}
+	}
+	for _, method := range []string{http.MethodDelete, http.MethodPatch} {
+		rec := f.do(method, "/scheduled-messages/sched-1", `{"scheduled_at":"2026-08-12T14:00:00Z"}`, nil)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s status = %d, want 403", method, rec.Code)
 		}
 	}
 }
@@ -324,5 +362,78 @@ func TestParseStatusesDropsUnknownValues(t *testing.T) {
 	}
 	if parseStatuses("  ") != nil {
 		t.Error("an empty filter should mean no filter, not an empty match")
+	}
+}
+
+func templateMessageResponse() *sm.ScheduledMessage {
+	m := message()
+	m.Text = ""
+	m.Kind = sm.KindTemplate
+	m.Template = &sm.TemplateContent{ID: "tpl-1", Name: "follow_up", Preview: "Oi Ana", BodyParams: []string{"Ana"}}
+	return m
+}
+
+func TestCreateForwardsATemplate(t *testing.T) {
+	f := newHandlerFixture(true)
+	f.schedule.result = &sm.ScheduleResult{Message: templateMessageResponse(), Window: openWindow()}
+
+	rec := f.do(http.MethodPost, "/conversations/whatsapp/entry-1/scheduled-messages",
+		`{"scheduled_at":"2026-08-14T14:00:00Z","template":{"template_id":"tpl-1","body_params":["Ana"],"header_params":["42"]}}`, nil)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
+	}
+	in := f.schedule.last
+	if in.Template == nil || in.Template.ID != "tpl-1" {
+		t.Fatalf("template = %+v, want it forwarded", in.Template)
+	}
+	if len(in.Template.BodyParams) != 1 || in.Template.BodyParams[0] != "Ana" || in.Template.HeaderParams[0] != "42" {
+		t.Errorf("values = %+v", in.Template)
+	}
+
+	var body struct {
+		ScheduledMessage struct {
+			Kind     string `json:"kind"`
+			Template struct {
+				Name    string `json:"name"`
+				Preview string `json:"preview"`
+			} `json:"template"`
+		} `json:"scheduledMessage"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.ScheduledMessage.Kind != "template" || body.ScheduledMessage.Template.Name != "follow_up" {
+		t.Errorf("response = %s", rec.Body.String())
+	}
+}
+
+func TestATextCreateCarriesNoTemplate(t *testing.T) {
+	f := newHandlerFixture(true)
+	f.schedule.result = &sm.ScheduleResult{Message: message(), Window: openWindow()}
+
+	f.do(http.MethodPost, "/conversations/whatsapp/entry-1/scheduled-messages",
+		`{"text":"oi","scheduled_at":"2026-08-12T14:00:00Z"}`, nil)
+
+	if f.schedule.last.Template != nil {
+		t.Fatalf("a text schedule was turned into a template: %+v", f.schedule.last.Template)
+	}
+}
+
+func TestCreateATemplateWithoutTheTemplatePermission(t *testing.T) {
+	f := newHandlerFixture(true)
+	f.permissions.err = workspace.ErrInsufficientPermissions
+
+	rec := f.do(http.MethodPost, "/conversations/whatsapp/entry-1/scheduled-messages",
+		`{"scheduled_at":"2026-08-14T14:00:00Z","template":{"template_id":"tpl-1","body_params":["Ana"]}}`, nil)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "template_forbidden") {
+		t.Errorf("body = %s, want the template_forbidden code", rec.Body.String())
+	}
+	if f.schedule.last.Template != nil {
+		t.Error("the use case ran for someone without the template permission")
 	}
 }

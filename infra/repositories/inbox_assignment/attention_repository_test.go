@@ -38,8 +38,7 @@ func TestAttendedSince_QueryShape(t *testing.T) {
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "conversation_messages" ` +
 		`WHERE \(entry_id = \$1 AND entry_type = \$2\) AND ` +
 		`\(\(read = \$3 AND read_by = \$4 AND read_at >= \$5\) OR ` +
-		`\(created_at >= \$6 AND \(direction = \$7 OR ` +
-		`\(direction = \$8 AND message_type NOT IN .*\)\)\)\) AND ` +
+		`\(created_at >= \$6 AND sender_id = \$7\)\) AND ` +
 		`"conversation_messages"."deleted_at" IS NULL`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 

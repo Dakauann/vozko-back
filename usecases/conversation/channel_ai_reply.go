@@ -169,7 +169,7 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 			continue
 		}
 		role := ai.RoleAssistant
-		if m.MessageType.IsInbound() {
+		if m.FromCustomer() {
 			role = ai.RoleUser
 		}
 		out = append(out, ai.Message{Role: role, Content: body})

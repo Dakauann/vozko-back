@@ -479,6 +479,7 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 	bodyText, _ := templateInfo["body_text"].(string)
 
 	record := conversation.MessageHistoryRecord{
+		SentBy:      conversation.SentByCampaign(entry.CampaignID),
 		EntryID:     entry.ID,
 		EntryType:   shared.EntryTypeWhatsApp,
 		Channel:     conversation.MessageChannelWhatsApp,
@@ -488,7 +489,7 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 		Text:        bodyText,
 		Metadata:    json.RawMessage(metaBytes),
 	}
-	if err := c.MessageHistoryManager.Record(context.Background(), conversation.MessageDirectionOutbound, record); err != nil {
+	if err := c.MessageHistoryManager.Record(context.Background(), record); err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to record template message for entry %s: %v\n", entry.ID, err)
 	}
 }

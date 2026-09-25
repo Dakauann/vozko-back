@@ -10,6 +10,7 @@ import (
 
 type fakeOwnerReader struct {
 	active       int64
+	official     int64
 	connected    []businessphone.OwnerPhone
 	suspended    []businessphone.OwnerPhone
 	connectedCnt map[string]int
@@ -25,6 +26,7 @@ func (f *fakeOwnerReader) ListWorkspaceIDsWithSuspendedDialog360() ([]string, er
 	return f.suspendedWS, f.listErr
 }
 func (f *fakeOwnerReader) CountActiveDialog360ByOwner(string) (int64, error) { return f.active, nil }
+func (f *fakeOwnerReader) CountActiveOfficialByOwner(string) (int64, error)  { return f.official, nil }
 func (f *fakeOwnerReader) FindConnectedDialog360ByOwner(string) ([]businessphone.OwnerPhone, error) {
 	return f.connected, nil
 }

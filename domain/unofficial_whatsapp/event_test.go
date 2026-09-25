@@ -573,3 +573,25 @@ func TestMessageWithSenderButNoChatStillResolves(t *testing.T) {
 		t.Errorf("subject = %q, want the sender", ev.SubjectJID())
 	}
 }
+
+func TestAReactionKeepsWhichSideReacted(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		fromMe bool
+	}{
+		{"the contact reacted", false},
+		{"the phone reacted", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := onlyEvent(t, NormalizeEnvelope("inst-1", envelopeJSON(t, "messages", map[string]any{
+				"fromMe": tc.fromMe, "messageid": "r1", "reaction": "m1", "text": "👍", "messageType": "reaction",
+			})))
+			if ev.Kind != EventReaction {
+				t.Fatalf("kind = %q, want a reaction", ev.Kind)
+			}
+			if ev.FromMe != tc.fromMe {
+				t.Fatalf("FromMe = %v, want %v", ev.FromMe, tc.fromMe)
+			}
+		})
+	}
+}

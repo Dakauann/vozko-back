@@ -12,8 +12,6 @@ var contactRefs = map[shared.EntryType]string{
 		(SELECT uwct.lead_id FROM unofficial_whatsapp_contacts uwct
 		  WHERE uwct.id = uwc.contact_id AND uwct.lead_id IS NOT NULL),
 		uwc.contact_id)`,
-
-	shared.EntryTypeSupport: "NULL::uuid",
 }
 
 func contactRefUUID(entryType shared.EntryType) string {

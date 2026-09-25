@@ -780,10 +780,9 @@ func composeHistory(history []*conversation.Message, limit int) []ai.Message {
 			}
 		}
 
-		role := ai.RoleUser
-		if msg.MessageType == conversation.MessageTypeAIResponse ||
-			msg.MessageType == conversation.MessageTypeTemplate {
-			role = ai.RoleAssistant
+		role := ai.RoleAssistant
+		if msg.FromCustomer() {
+			role = ai.RoleUser
 		}
 
 		messages = append(messages, ai.Message{Role: role, Content: content})
@@ -1075,7 +1074,7 @@ func (e *aiAgentExecutor) resolveTypingClient(ctx *workflow.NodeContext) (conver
 		return nil, "", err
 	}
 	for _, msg := range messages {
-		if msg == nil || !msg.MessageType.IsInbound() || msg.WhatsAppMessageID == nil {
+		if msg == nil || !msg.FromCustomer() || msg.WhatsAppMessageID == nil {
 			continue
 		}
 		wamid := strings.TrimSpace(*msg.WhatsAppMessageID)

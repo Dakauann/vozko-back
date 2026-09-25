@@ -9,49 +9,35 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
-	"vozko/domain/conversation"
+	"vozko/domain/auth"
 	"vozko/domain/customfield"
 	opportunitydomain "vozko/domain/opportunity"
+	"vozko/domain/shared"
+	"vozko/domain/user"
 	"vozko/infra/http/middleware"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
 	report_usecase "vozko/usecases/report"
 )
 
-type opportunityScoper interface {
-	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
-}
-
 type OpportunityHandler struct {
 	svc     *opportunity_usecase.Service
 	io      *opportunityio.Service
-	scoper  opportunityScoper
+	deals   opportunitydomain.PersonDealsUseCase
 	reports *report_usecase.Service
 }
 
 func NewOpportunityHandler(
 	svc *opportunity_usecase.Service,
 	io *opportunityio.Service,
-	scoper opportunityScoper,
+	deals opportunitydomain.PersonDealsUseCase,
 	reports *report_usecase.Service,
 ) *OpportunityHandler {
-	return &OpportunityHandler{svc: svc, io: io, scoper: scoper, reports: reports}
+	return &OpportunityHandler{svc: svc, io: io, deals: deals, reports: reports}
 }
 
-func (h *OpportunityHandler) resolveScope(userID, workspaceID string, isAdmin bool) (deptIDs []string, restrict bool, assigneeOverride string, allowed bool) {
-	if h.scoper == nil {
-		return nil, false, "", true
-	}
-	scope, ok := h.scoper.GetDepartmentScope(userID, workspaceID, isAdmin)
-	if !ok {
-		return nil, false, "", false
-	}
-	deptIDs = scope.DepartmentIDs
-	restrict = scope.Restrict
-	if !isAdmin && restrict {
-		assigneeOverride = userID
-	}
-	return deptIDs, restrict, assigneeOverride, true
+func personFrom(claims *auth.Claims) shared.Person {
+	return shared.Person{UserID: claims.UserID, SystemAdmin: claims.Role == string(user.RoleAdmin)}
 }
 
 // @Summary		Criar oportunidade
@@ -247,12 +233,7 @@ func (h *OpportunityHandler) ListByPipeline(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	deptIDs, restrict, override, allowed := h.resolveScope(claims.UserID, wsID, claims.Role == "admin")
-	if !allowed {
-		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
-		return
-	}
-	list, err := h.svc.ListByPipelineScoped(wsID, pipelineID, deptIDs, restrict, override)
+	list, err := h.deals.ListByPipeline(personFrom(claims), wsID, pipelineID)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -288,7 +269,7 @@ func (h *OpportunityHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Vincular conversa à oportunidade
-// @Description	Associa uma conversa (entryType 'whatsapp' ou 'support') a uma oportunidade.
+// @Description	Associa uma conversa (entryType whatsapp, unofficial_whatsapp, instagram ou telegram) a uma oportunidade.
 // @Tags			Oportunidades
 // @Accept			json
 // @Produce		json
@@ -307,7 +288,7 @@ func (h *OpportunityHandler) LinkConversation(w http.ResponseWriter, r *http.Req
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "Invalid request body", map[string]string{
 			"entryId":   "string (required)",
-			"entryType": "string (required, 'whatsapp' | 'support')",
+			"entryType": "string (required, 'whatsapp' | 'unofficial_whatsapp' | 'instagram' | 'telegram')",
 		})
 		return
 	}
@@ -318,7 +299,7 @@ func (h *OpportunityHandler) LinkConversation(w http.ResponseWriter, r *http.Req
 	}
 	wsID := middleware.GetWorkspaceID(r)
 
-	if err := h.svc.LinkConversation(wsID, id, strings.TrimSpace(req.EntryID), strings.TrimSpace(req.EntryType), claims.UserID); err != nil {
+	if err := h.deals.Link(personFrom(claims), wsID, id, strings.TrimSpace(req.EntryID), strings.TrimSpace(req.EntryType)); err != nil {
 		h.handleDomainError(w, err)
 		return
 	}
@@ -396,7 +377,7 @@ func (h *OpportunityHandler) ListConversations(w http.ResponseWriter, r *http.Re
 // @Tags			Oportunidades
 // @Produce		json
 // @Param			entryId		query	string	true	"ID da entrada (conversa ou chamada)"
-// @Param			entryType	query	string	true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	query	string	true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Success		200	{array}		opportunity.Opportunity
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
@@ -428,6 +409,8 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 	switch {
 	case errors.Is(err, opportunitydomain.ErrNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
+	case errors.Is(err, opportunitydomain.ErrScopeDenied), errors.Is(err, opportunitydomain.ErrEntryAccess):
+		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 	case errors.Is(err, opportunitydomain.ErrWorkspaceRequired),
 		errors.Is(err, opportunitydomain.ErrPipelineRequired),
 		errors.Is(err, opportunitydomain.ErrStageRequired),
@@ -440,6 +423,8 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 		errors.Is(err, opportunitydomain.ErrStageOutsidePipeline),
 		errors.Is(err, opportunitydomain.ErrInvalidAmount),
 		errors.Is(err, opportunity_usecase.ErrOwnerOutsideWorkspace),
+		errors.Is(err, opportunity_usecase.ErrLeadOutsideWorkspace),
+		errors.Is(err, opportunity_usecase.ErrEntryOutsideWorkspace),
 		errors.Is(err, opportunity_usecase.ErrPipelineNotFound),
 		errors.Is(err, opportunity_usecase.ErrNotOpportunityPipeline),
 		errors.Is(err, opportunity_usecase.ErrStageNotFound),

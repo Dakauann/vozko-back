@@ -13,32 +13,28 @@ import (
 	sm "vozko/domain/scheduled_message"
 	"vozko/domain/shared"
 	"vozko/domain/user"
+	"vozko/domain/whatsapp/template"
+	wo "vozko/domain/whatsapp_outreach"
 	"vozko/infra/http/middleware"
 )
 
 const idempotencyHeader = "Idempotency-Key"
 
 type ScheduledMessageHandler struct {
-	scheduleUC   sm.ScheduleUseCase
-	rescheduleUC sm.RescheduleUseCase
-	cancelUC     sm.CancelUseCase
-	listUC       sm.ListUseCase
-	authorizer   conversationdomain.ConversationAuthorizer
+	scheduler  sm.PersonSchedulerUseCase
+	listUC     sm.ListUseCase
+	authorizer conversationdomain.ConversationAuthorizer
 }
 
 func NewScheduledMessageHandler(
-	scheduleUC sm.ScheduleUseCase,
-	rescheduleUC sm.RescheduleUseCase,
-	cancelUC sm.CancelUseCase,
+	scheduler sm.PersonSchedulerUseCase,
 	listUC sm.ListUseCase,
 	authorizer conversationdomain.ConversationAuthorizer,
 ) *ScheduledMessageHandler {
 	return &ScheduledMessageHandler{
-		scheduleUC:   scheduleUC,
-		rescheduleUC: rescheduleUC,
-		cancelUC:     cancelUC,
-		listUC:       listUC,
-		authorizer:   authorizer,
+		scheduler:  scheduler,
+		listUC:     listUC,
+		authorizer: authorizer,
 	}
 }
 
@@ -74,7 +70,7 @@ func (h *ScheduledMessageHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Agendar uma mensagem
-// @Description	Agenda uma mensagem para ser enviada em uma conversa. O horário precisa estar dentro da janela de atendimento aberta e a pelo menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não crie uma segunda mensagem.
+// @Description	Agenda uma mensagem para ser enviada em uma conversa. Uma mensagem de texto ou mídia precisa cair dentro da janela de atendimento aberta. Um template (campo `template`, só no WhatsApp oficial) pode ser agendado com a janela fechada, até 30 dias à frente; ele segue as mesmas regras de um envio de template (aprovação, acesso ao template, contato bloqueado, proteção contra spam) e é cobrado no momento do envio. Agendar, reagendar ou cancelar um template exige a permissão whatsapp_templates:send. O horário precisa estar a pelo menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não crie uma segunda mensagem.
 // @Tags			Mensagens Agendadas
 // @Accept			json
 // @Produce		json
@@ -88,11 +84,11 @@ func (h *ScheduledMessageHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
 // @Failure		409	{object}	WindowErrorResponse			"A janela de atendimento está fechada"
-// @Failure		422	{object}	WindowErrorResponse			"O horário escolhido está fora dos limites"
+// @Failure		422	{object}	WindowErrorResponse			"O horário escolhido está fora dos limites, ou o template não pode ser enviado a este contato"
 // @Security		BearerAuth
 // @Router			/conversations/{entryType}/{entryId}/scheduled-messages [post]
 func (h *ScheduledMessageHandler) Create(w http.ResponseWriter, r *http.Request) {
-	entryType, entryID, ok := h.authorizedEntry(w, r)
+	entryType, entryID, ok := entryFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -104,19 +100,18 @@ func (h *ScheduledMessageHandler) Create(w http.ResponseWriter, r *http.Request)
 			"scheduled_at": "RFC3339 com fuso, ex: 2026-08-13T14:30:00-03:00",
 			"media_id":     "string (opcional)",
 			"media_type":   "image | video | audio | document (opcional)",
+			"template":     "{template_id, body_params, header_params} (opcional, só WhatsApp oficial; substitui text e mídia)",
 		})
 		return
 	}
 
-	claims := middleware.GetClaims(r)
 	in := sm.ScheduleInput{
-		WorkspaceID:     middleware.GetWorkspaceID(r),
-		EntryID:         entryID,
-		EntryType:       entryType,
-		CreatedByUserID: claims.UserID,
-		Text:            req.Text,
-		ScheduledAt:     req.ScheduledAt,
-		IdempotencyKey:  strings.TrimSpace(r.Header.Get(idempotencyHeader)),
+		WorkspaceID:    middleware.GetWorkspaceID(r),
+		EntryID:        entryID,
+		EntryType:      entryType,
+		Text:           req.Text,
+		ScheduledAt:    req.ScheduledAt,
+		IdempotencyKey: strings.TrimSpace(r.Header.Get(idempotencyHeader)),
 	}
 	if req.MediaID != nil {
 		in.MediaID = *req.MediaID
@@ -130,8 +125,15 @@ func (h *ScheduledMessageHandler) Create(w http.ResponseWriter, r *http.Request)
 	if req.Signed != nil {
 		in.Signed = *req.Signed
 	}
+	if req.Template != nil {
+		in.Template = &sm.TemplateContent{
+			ID:           req.Template.TemplateID,
+			BodyParams:   req.Template.BodyParams,
+			HeaderParams: req.Template.HeaderParams,
+		}
+	}
 
-	result, err := h.scheduleUC.Execute(r.Context(), in)
+	result, err := h.scheduler.Schedule(r.Context(), personFrom(r), in)
 	if err != nil {
 		window := sm.WindowState{}
 		if result != nil {
@@ -174,7 +176,7 @@ func (h *ScheduledMessageHandler) Reschedule(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	result, err := h.rescheduleUC.Execute(r.Context(), sm.RescheduleInput{
+	result, err := h.scheduler.Reschedule(r.Context(), personFrom(r), sm.RescheduleInput{
 		ID:          mux.Vars(r)["id"],
 		WorkspaceID: middleware.GetWorkspaceID(r),
 		ScheduledAt: req.ScheduledAt,
@@ -206,7 +208,7 @@ func (h *ScheduledMessageHandler) Reschedule(w http.ResponseWriter, r *http.Requ
 // @Security		BearerAuth
 // @Router			/scheduled-messages/{id} [delete]
 func (h *ScheduledMessageHandler) Cancel(w http.ResponseWriter, r *http.Request) {
-	err := h.cancelUC.Execute(r.Context(), middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
+	err := h.scheduler.Cancel(r.Context(), personFrom(r), middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
 	if err != nil {
 		h.writeDomainError(w, err, sm.WindowState{})
 		return
@@ -251,7 +253,7 @@ func (h *ScheduledMessageHandler) ListWorkspace(w http.ResponseWriter, r *http.R
 	})
 }
 
-func (h *ScheduledMessageHandler) authorizedEntry(w http.ResponseWriter, r *http.Request) (entryType, entryID string, ok bool) {
+func entryFromPath(w http.ResponseWriter, r *http.Request) (entryType, entryID string, ok bool) {
 	vars := mux.Vars(r)
 	entryType, entryID = vars["entryType"], vars["entryId"]
 
@@ -259,20 +261,30 @@ func (h *ScheduledMessageHandler) authorizedEntry(w http.ResponseWriter, r *http
 		response.WriteError(w, http.StatusBadRequest, "Invalid entry type", nil)
 		return "", "", false
 	}
-
-	claims := middleware.GetClaims(r)
-	if claims == nil {
+	if middleware.GetClaims(r) == nil {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return "", "", false
 	}
+	return entryType, entryID, true
+}
 
-	workspaceID := middleware.GetWorkspaceID(r)
-	isAdmin := claims.Role == string(user.RoleAdmin)
-	if !h.authorizer.CanAccessEntry(claims.UserID, workspaceID, entryID, entryType, isAdmin) {
+func personFrom(r *http.Request) shared.Person {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return shared.Person{}
+	}
+	return shared.Person{UserID: claims.UserID, SystemAdmin: claims.Role == string(user.RoleAdmin)}
+}
+
+func (h *ScheduledMessageHandler) authorizedEntry(w http.ResponseWriter, r *http.Request) (entryType, entryID string, ok bool) {
+	entryType, entryID, ok = entryFromPath(w, r)
+	if !ok {
+		return "", "", false
+	}
+	if !personFrom(r).MayActOn(h.authorizer, middleware.GetWorkspaceID(r), entryID, entryType) {
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
 		return "", "", false
 	}
-
 	return entryType, entryID, true
 }
 
@@ -288,9 +300,35 @@ func (h *ScheduledMessageHandler) writeDomainError(w http.ResponseWriter, err er
 		writeWindowError(w, http.StatusUnprocessableEntity, "too_far", err.Error(), window)
 	case errors.Is(err, sm.ErrNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", err.Error(), nil)
+	case errors.Is(err, sm.ErrEntryAccess):
+		response.WriteErrorWithCode(w, http.StatusForbidden, "forbidden", "You don't have access to this conversation", nil)
+	case errors.Is(err, sm.ErrTemplatePermission):
+		response.WriteErrorWithCode(w, http.StatusForbidden, "template_forbidden", err.Error(), nil)
+	case errors.Is(err, wo.ErrConversationNotFound):
+		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", err.Error(), nil)
+	case errors.Is(err, sm.ErrTemplatesUnsupported):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "templates_unsupported", err.Error(), nil)
+	case errors.Is(err, template.ErrTemplateParamsMismatch):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "template_params", err.Error(), nil)
+	case errors.Is(err, template.ErrTemplateNotSendable),
+		errors.Is(err, template.ErrTemplatePhoneMismatch),
+		errors.Is(err, wo.ErrTemplateForbidden),
+		errors.Is(err, wo.ErrTemplateNotFound):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "template_unavailable", err.Error(), nil)
+	case errors.Is(err, wo.ErrLeadBlocked):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "contact_blocked", err.Error(), nil)
+	case errors.Is(err, wo.ErrWithinSpamWindow):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "spam_window", err.Error(), nil)
+	case errors.Is(err, wo.ErrPhoneNotConnected),
+		errors.Is(err, wo.ErrBusinessPhoneNotFound):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "number_unavailable", err.Error(), nil)
 	case errors.Is(err, sm.ErrNotPending):
 		response.WriteErrorWithCode(w, http.StatusConflict, "not_pending", err.Error(), nil)
 	case errors.Is(err, sm.ErrContentRequired),
+		errors.Is(err, sm.ErrKindInvalid),
+		errors.Is(err, sm.ErrKindMismatch),
+		errors.Is(err, sm.ErrTemplateRequired),
+		errors.Is(err, sm.ErrTemplateWithFreeContent),
 		errors.Is(err, sm.ErrEntryIDRequired),
 		errors.Is(err, sm.ErrEntryTypeInvalid),
 		errors.Is(err, sm.ErrWorkspaceRequired),

@@ -9,6 +9,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,8 @@ type Service struct {
 	billingPub        messaging.MessageQueuePub
 	usageFetcher      generationUsageFetcher
 	catalogFetcher    *modelCatalogFetcher
+	usageRetryDelays  []time.Duration
+	recoveries        sync.WaitGroup
 }
 
 type Config struct {
@@ -59,6 +62,7 @@ func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQ
 		billingPub:        billingPub,
 		usageFetcher:      newHTTPGenerationFetcher(cfg.APIKey, openRouterDefaultBaseURL),
 		catalogFetcher:    newModelCatalogFetcher(cfg.APIKey, openRouterDefaultBaseURL),
+		usageRetryDelays:  generationRetryDelays,
 	}, nil
 }
 
@@ -193,6 +197,11 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			stream.Close()
 
 			s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+
+			if streamUnfinished(finishReason, totalUsage) {
+				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: fmt.Errorf("%w: model=%s generation=%s finish=%q", ai.ErrStreamIncomplete, req.Model, genID, finishReason)}
+				return
+			}
 
 			pending := make([]openrouter.ToolCall, 0, len(toolAcc))
 			for _, tc := range toolAcc {
@@ -587,6 +596,13 @@ func streamReasoningDelta(delta openrouter.ChatCompletionStreamChoiceDelta) stri
 		return *delta.Reasoning
 	}
 	return delta.ReasoningContent
+}
+
+func streamUnfinished(finishReason string, usage *openrouter.Usage) bool {
+	if finishReason == "error" {
+		return true
+	}
+	return finishReason == "" && usage == nil
 }
 
 func isStreamClosedError(err error) bool {

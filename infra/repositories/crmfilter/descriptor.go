@@ -3,10 +3,9 @@ package crmfilter
 import (
 	"errors"
 	"fmt"
-	"strings"
 
-	"vozko/domain/conversation"
 	"vozko/domain/crmfilter"
+	"vozko/infra/database"
 )
 
 type Style int
@@ -50,15 +49,6 @@ var (
 	ErrUnsupportedField    = errors.New("crmfilter: unsupported field for this object")
 	ErrUnsupportedOperator = errors.New("crmfilter: operator not supported by field mapping")
 )
-
-func inboundMessageTypesSQL() string {
-	types := conversation.InboundMessageTypeStrings()
-	quoted := make([]string, len(types))
-	for i, t := range types {
-		quoted[i] = "'" + t + "'"
-	}
-	return "(" + strings.Join(quoted, ", ") + ")"
-}
 
 const windowOpenSubquery = "(" +
 	"SELECT wce_w.id FROM whatsapp_campaign_entries wce_w " +
@@ -163,7 +153,7 @@ func (d ConversationDescriptor) Field(field crmfilter.Field) (FieldMapping, erro
 	case crmfilter.FieldUnread:
 		unreadCount := "(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = " + entryID +
 			" AND cm4.entry_type = " + entryType +
-			" AND cm4.read = false AND cm4.message_type IN " + inboundMessageTypesSQL() +
+			" AND cm4.read = false AND " + database.SentByContactSQL("cm4") +
 			" AND cm4.deleted_at IS NULL)"
 		return FieldMapping{
 			Style:     StyleBool,

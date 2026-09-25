@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"vozko/domain/pipeline"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type defaultRepo struct {
@@ -109,7 +110,7 @@ func boolPtr(b bool) *bool { return &b }
 
 func TestPromotingADefaultDemotesThePreviousOne(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true), convPipe("new", false))
-	uc := NewUpdatePipelineUseCase(repo)
+	uc := NewUpdatePipelineUseCase(repo, departmentsOf{})
 
 	if _, err := uc.Execute("ws", "new", pipeline.UpdatePipelineInput{
 		IsDefault: boolPtr(true),
@@ -136,7 +137,7 @@ func TestPromotingDoesNotDemoteTheOtherObjectKind(t *testing.T) {
 		ObjectType: pipeline.ObjectOpportunity, IsDefault: true,
 	}
 	repo := newDefaultRepo(convPipe("old", true), convPipe("new", false), sales)
-	uc := NewUpdatePipelineUseCase(repo)
+	uc := NewUpdatePipelineUseCase(repo, departmentsOf{})
 
 	if _, err := uc.Execute("ws", "new", pipeline.UpdatePipelineInput{
 		IsDefault: boolPtr(true),
@@ -151,7 +152,7 @@ func TestPromotingDoesNotDemoteTheOtherObjectKind(t *testing.T) {
 
 func TestClearingTheLastDefaultIsRefused(t *testing.T) {
 	repo := newDefaultRepo(convPipe("only", true), convPipe("other", false))
-	uc := NewUpdatePipelineUseCase(repo)
+	uc := NewUpdatePipelineUseCase(repo, departmentsOf{})
 
 	_, err := uc.Execute("ws", "only", pipeline.UpdatePipelineInput{
 		IsDefault: boolPtr(false),
@@ -166,7 +167,7 @@ func TestClearingTheLastDefaultIsRefused(t *testing.T) {
 
 func TestClearingTheFlagOnANonDefaultIsFine(t *testing.T) {
 	repo := newDefaultRepo(convPipe("theDefault", true), convPipe("other", false))
-	uc := NewUpdatePipelineUseCase(repo)
+	uc := NewUpdatePipelineUseCase(repo, departmentsOf{})
 
 	if _, err := uc.Execute("ws", "other", pipeline.UpdatePipelineInput{
 		IsDefault: boolPtr(false),
@@ -180,7 +181,7 @@ func TestClearingTheFlagOnANonDefaultIsFine(t *testing.T) {
 
 func TestRenamingDoesNotTouchTheDefaultFlag(t *testing.T) {
 	repo := newDefaultRepo(convPipe("a", true), convPipe("b", false))
-	uc := NewUpdatePipelineUseCase(repo)
+	uc := NewUpdatePipelineUseCase(repo, departmentsOf{})
 
 	newName := "renamed"
 	if _, err := uc.Execute("ws", "b", pipeline.UpdatePipelineInput{Name: &newName}); err != nil {
@@ -196,7 +197,7 @@ func TestRenamingDoesNotTouchTheDefaultFlag(t *testing.T) {
 
 func TestCreatingADefaultDemotesThePreviousOne(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true))
-	uc := NewCreatePipelineUseCase(repo)
+	uc := NewCreatePipelineUseCase(repo, departmentsOf{})
 
 	created, err := uc.Execute("ws", pipeline.CreatePipelineInput{
 		Name: "novo", ObjectType: string(pipeline.ObjectConversation), IsDefault: true,
@@ -216,7 +217,7 @@ func TestCreatingADefaultDemotesThePreviousOne(t *testing.T) {
 
 func TestCreatingANonDefaultLeavesTheDefaultAlone(t *testing.T) {
 	repo := newDefaultRepo(convPipe("old", true))
-	uc := NewCreatePipelineUseCase(repo)
+	uc := NewCreatePipelineUseCase(repo, departmentsOf{})
 
 	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
 		Name: "novo", ObjectType: string(pipeline.ObjectConversation),
@@ -233,7 +234,7 @@ func TestCreatingANonDefaultLeavesTheDefaultAlone(t *testing.T) {
 
 func TestFirstFunnelBecomesTheDefault(t *testing.T) {
 	repo := newDefaultRepo()
-	uc := NewCreatePipelineUseCase(repo)
+	uc := NewCreatePipelineUseCase(repo, departmentsOf{})
 
 	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
 		Name: "primeiro", ObjectType: string(pipeline.ObjectConversation), IsDefault: true,
@@ -242,5 +243,38 @@ func TestFirstFunnelBecomesTheDefault(t *testing.T) {
 	}
 	if got := repo.defaults(pipeline.ObjectConversation); len(got) != 1 {
 		t.Fatalf("defaults = %v, want exactly one", got)
+	}
+}
+
+type departmentsOf []string
+
+func (d departmentsOf) Execute(string) ([]wd.Department, error) {
+	out := make([]wd.Department, 0, len(d))
+	for _, id := range d {
+		out = append(out, wd.Department{ID: id})
+	}
+	return out, nil
+}
+
+func TestCreatingAFunnelRefusesAForeignDepartment(t *testing.T) {
+	repo := newDefaultRepo()
+	uc := NewCreatePipelineUseCase(repo, departmentsOf{"d-mine"})
+	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
+		Name: "novo", ObjectType: string(pipeline.ObjectConversation), DepartmentID: "d-other",
+	}); err != pipeline.ErrDepartmentUnknown {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := uc.Execute("ws", pipeline.CreatePipelineInput{
+		Name: "novo", ObjectType: string(pipeline.ObjectConversation), DepartmentID: "d-mine",
+	}); err != nil {
+		t.Fatalf("own department: %v", err)
+	}
+}
+
+func TestMovingAFunnelToAForeignDepartmentIsRefused(t *testing.T) {
+	repo := newDefaultRepo(convPipe("a", true))
+	other := "d-other"
+	if _, err := NewUpdatePipelineUseCase(repo, departmentsOf{"d-mine"}).Execute("ws", "a", pipeline.UpdatePipelineInput{DepartmentID: &other}); err != pipeline.ErrDepartmentUnknown {
+		t.Fatalf("err = %v", err)
 	}
 }

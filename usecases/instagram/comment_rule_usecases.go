@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 
+	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
 )
 
@@ -173,7 +174,7 @@ func (r *CommentActionRunner) ReplyPrivately(ctx context.Context, workspaceID, a
 	if r == nil || r.private == nil {
 		return nil
 	}
-	return r.private.Execute(ctx, workspaceID, accountID, igCommentID, text)
+	return r.private.Execute(ctx, workspaceID, accountID, igCommentID, conversation.SentBySystem(), text)
 }
 
 func (r *CommentActionRunner) SetHidden(ctx context.Context, workspaceID, accountID, igCommentID string, hidden bool) error {

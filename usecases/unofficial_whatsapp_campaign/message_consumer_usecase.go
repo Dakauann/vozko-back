@@ -205,6 +205,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	body := camp.Message.Render(variant, entry.Variables)
 
 	message, err := c.deps.Sender.SendCampaignMessage(conversation_usecase.SendCampaignMessageInput{
+		CampaignID:  camp.ID,
 		EntryID:     resolved.Conversation.ID,
 		EntryType:   string(shared.EntryTypeUnofficialWhatsApp),
 		Text:        body,

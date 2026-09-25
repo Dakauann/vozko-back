@@ -3,6 +3,7 @@ package stage_usecase
 import (
 	"testing"
 
+	"vozko/domain/pipeline"
 	"vozko/domain/stage"
 )
 
@@ -52,12 +53,32 @@ func (r *scopedRepo) FindByID(id string) (*stage.Stage, error) {
 	return nil, nil
 }
 
+type funnelsOf string
+
+func (w funnelsOf) GetByID(workspaceID, id string) (*pipeline.Pipeline, error) {
+	if workspaceID != string(w) {
+		return nil, pipeline.ErrNotFound
+	}
+	return &pipeline.Pipeline{ID: id, WorkspaceID: workspaceID}, nil
+}
+
+func TestCreateStage_RefusesAFunnelOfAnotherWorkspace(t *testing.T) {
+	repo := newScopedRepo()
+	uc := NewCreateStageUseCase(repo, funnelsOf("other-ws"))
+	if _, err := uc.Execute("ws", stage.CreateStageInput{Name: "Fechado", Description: "fim", PipelineID: "pipe-b"}); err != stage.ErrUnauthorized {
+		t.Fatalf("err = %v", err)
+	}
+	if len(repo.created) != 0 {
+		t.Fatal("created a stage on a foreign funnel")
+	}
+}
+
 func TestCreateStage_LandsOnTheNamedFunnel(t *testing.T) {
 	repo := newScopedRepo()
 	repo.byPipeline["pipe-b"] = []*stage.Stage{
 		{ID: "s1", Name: "triagem", PipelineID: "pipe-b", Position: 1},
 	}
-	uc := NewCreateStageUseCase(repo)
+	uc := NewCreateStageUseCase(repo, funnelsOf("ws"))
 
 	got, err := uc.Execute("ws", stage.CreateStageInput{
 		Name: "Fechado", Description: "fim", PipelineID: "pipe-b",
@@ -83,7 +104,7 @@ func TestCreateStage_NameCollidesOnlyWithinItsOwnFunnel(t *testing.T) {
 	repo := newScopedRepo()
 	repo.byPipeline["pipe-a"] = []*stage.Stage{{ID: "s1", Name: "fechado", PipelineID: "pipe-a"}}
 	repo.byPipeline["pipe-b"] = []*stage.Stage{{ID: "s2", Name: "triagem", PipelineID: "pipe-b"}}
-	uc := NewCreateStageUseCase(repo)
+	uc := NewCreateStageUseCase(repo, funnelsOf("ws"))
 
 	if _, err := uc.Execute("ws", stage.CreateStageInput{
 		Name: "Fechado", Description: "d", PipelineID: "pipe-b",
@@ -101,7 +122,7 @@ func TestCreateStage_NameCollidesOnlyWithinItsOwnFunnel(t *testing.T) {
 func TestCreateStage_WithoutAFunnelKeepsTheLegacyPath(t *testing.T) {
 	repo := newScopedRepo()
 	repo.byCampaign = []*stage.Stage{{ID: "s1", Name: "recebido", Position: 1}}
-	uc := NewCreateStageUseCase(repo)
+	uc := NewCreateStageUseCase(repo, funnelsOf("ws"))
 
 	if _, err := uc.Execute("ws", stage.CreateStageInput{
 		Name: "Nova", Description: "d", CampaignID: "camp-1",

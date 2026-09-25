@@ -3,6 +3,7 @@ package conversation_usecase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ type dedupMessageRepo struct {
 
 	createCalls int32
 	getCalls    int32
+	claims      int
 }
 
 func (m *dedupMessageRepo) Create(msg *conversation.Message) error {
@@ -54,6 +56,7 @@ func (m *dedupMessageRepo) GetByWhatsAppMessageID(wamid string) (*conversation.M
 
 func newInboundRecord(wamid string) conversation.MessageHistoryRecord {
 	return conversation.MessageHistoryRecord{
+		SentBy:      conversation.SentByContact("5511952166820"),
 		EntryID:     "entry-1",
 		EntryType:   shared.EntryTypeWhatsApp,
 		Channel:     conversation.MessageChannelWhatsApp,
@@ -74,7 +77,7 @@ func TestMessageHistoryManager_Record_DeduplicatesByWhatsAppMessageID(t *testing
 	rec := newInboundRecord(wamid)
 
 	for i := 0; i < 5; i++ {
-		if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		if err := mgr.Record(context.Background(), rec); err != nil {
 			t.Fatalf("unexpected error on Record call #%d: %v", i+1, err)
 		}
 	}
@@ -104,7 +107,7 @@ func TestMessageHistoryManager_Record_FirstMessageDoesNotLogError(t *testing.T) 
 	mgr := NewMessageHistoryManager(repo)
 
 	rec := newInboundRecord("wamid.first-seen")
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+	if err := mgr.Record(context.Background(), rec); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -133,7 +136,7 @@ func TestMessageHistoryManager_Record_ConcurrentCalls_NoDuplicates(t *testing.T)
 		go func() {
 			defer wg.Done()
 			<-start
-			_ = mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec)
+			_ = mgr.Record(context.Background(), rec)
 		}()
 	}
 	close(start)
@@ -149,6 +152,7 @@ func TestMessageHistoryManager_Record_EmptyWamidStillPersists(t *testing.T) {
 	mgr := NewMessageHistoryManager(repo)
 
 	rec := conversation.MessageHistoryRecord{
+		SentBy:      conversation.SentByAI("agent-1"),
 		EntryID:     "entry-1",
 		EntryType:   shared.EntryTypeWhatsApp,
 		Channel:     conversation.MessageChannelWhatsApp,
@@ -161,7 +165,7 @@ func TestMessageHistoryManager_Record_EmptyWamidStillPersists(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := mgr.Record(context.Background(), conversation.MessageDirectionOutbound, rec); err != nil {
+		if err := mgr.Record(context.Background(), rec); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
@@ -189,8 +193,9 @@ func (m *dedupMessageRepo) GetByEntryAndExternalMessageID(entryType shared.Entry
 	return nil, conversation.ErrMessageNotFound
 }
 
-func providerRecord(entryID, providerID string, dir conversation.MessageHistoryDirection) conversation.MessageHistoryRecord {
+func providerRecord(entryID, providerID string, sentBy conversation.SentBy) conversation.MessageHistoryRecord {
 	return conversation.MessageHistoryRecord{
+		SentBy:            sentBy,
 		EntryID:           entryID,
 		EntryType:         shared.EntryTypeUnofficialWhatsApp,
 		Channel:           conversation.MessageChannelUnofficialWhatsApp,
@@ -209,12 +214,10 @@ func TestMessageHistoryManager_Record_SameProviderIDOnAnotherEntryIsNotADuplicat
 
 	const providerID = "3EB027B8F1853217E3B8BB"
 
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionOutbound,
-		providerRecord("sender-entry", providerID, conversation.MessageDirectionOutbound)); err != nil {
+	if err := mgr.Record(context.Background(), providerRecord("sender-entry", providerID, conversation.SentExternally())); err != nil {
 		t.Fatalf("outbound: %v", err)
 	}
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound,
-		providerRecord("receiver-entry", providerID, conversation.MessageDirectionInbound)); err != nil {
+	if err := mgr.Record(context.Background(), providerRecord("receiver-entry", providerID, conversation.SentByContact("a"))); err != nil {
 		t.Fatalf("inbound: %v", err)
 	}
 
@@ -227,15 +230,29 @@ func TestMessageHistoryManager_Record_SameProviderIDOnSameEntryStaysDeduped(t *t
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
 
-	rec := providerRecord("entry-1", "PROVIDER-1", conversation.MessageDirectionInbound)
+	rec := providerRecord("entry-1", "PROVIDER-1", conversation.SentByContact("a"))
 	for i := 0; i < 2; i++ {
-		if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+		if err := mgr.Record(context.Background(), rec); err != nil {
 			t.Fatalf("record %d: %v", i, err)
 		}
 	}
 	if got := len(repo.created); got != 1 {
 		t.Fatalf("a replay must not duplicate, got %d", got)
 	}
+}
+
+func (m *dedupMessageRepo) ClaimExternalEcho(msg *conversation.Message) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, existing := range m.created {
+		if existing.EntryID == msg.EntryID && existing.ExternalMessageID != nil && msg.ExternalMessageID != nil &&
+			*existing.ExternalMessageID == *msg.ExternalMessageID && msg.SentBy.Claims(existing.SentBy) {
+			existing.SentBy = msg.SentBy
+			m.claims++
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *dedupMessageRepo) seed(msg *conversation.Message) {
@@ -255,10 +272,10 @@ func TestMessageHistoryManager_Record_TranslatesQuotedProviderIDToOurID(t *testi
 	}
 	repo.seed(quoted)
 
-	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.SentByContact("a"))
 	rec.ReplyToWAMessageID = "PROVIDER-ORIGINAL"
 
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+	if err := mgr.Record(context.Background(), rec); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -285,7 +302,7 @@ func TestMessageHistoryManager_Record_TranslatesQuotedWamid(t *testing.T) {
 	rec := newInboundRecord("wamid.REPLY")
 	rec.ReplyToWAMessageID = "wamid.ORIGINAL"
 
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+	if err := mgr.Record(context.Background(), rec); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -299,10 +316,10 @@ func TestMessageHistoryManager_Record_UnknownQuoteStillPersistsTheMessage(t *tes
 	repo := &dedupMessageRepo{}
 	mgr := NewMessageHistoryManager(repo)
 
-	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.SentByContact("a"))
 	rec.ReplyToWAMessageID = "NEVER-SEEN"
 
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+	if err := mgr.Record(context.Background(), rec); err != nil {
 		t.Fatalf("an unresolvable quote must not fail the message: %v", err)
 	}
 	if len(repo.created) != 1 {
@@ -328,10 +345,10 @@ func TestMessageHistoryManager_Record_QuotePrefersTheSameEntry(t *testing.T) {
 		ExternalMessageID: strPtrHM("SHARED-ID"),
 	})
 
-	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.MessageDirectionInbound)
+	rec := providerRecord("entry-1", "PROVIDER-REPLY", conversation.SentByContact("a"))
 	rec.ReplyToWAMessageID = "SHARED-ID"
 
-	if err := mgr.Record(context.Background(), conversation.MessageDirectionInbound, rec); err != nil {
+	if err := mgr.Record(context.Background(), rec); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -342,3 +359,71 @@ func TestMessageHistoryManager_Record_QuotePrefersTheSameEntry(t *testing.T) {
 }
 
 func strPtrHM(s string) *string { return &s }
+
+func TestMessageHistoryManager_Record_StoresWhoSentIt(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	rec := providerRecord("entry-1", "PROVIDER-MEDIA", conversation.SentByWorkflow("wf-1"))
+	rec.MessageType = conversation.MessageTypeMedia
+	if err := mgr.Record(context.Background(), rec); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	got := repo.created[0]
+	if got.SentBy != conversation.SentByWorkflow("wf-1") {
+		t.Fatalf("sender %+v, want the workflow", got.SentBy)
+	}
+	if got.Direction != conversation.MessageDirectionOutbound {
+		t.Fatalf("direction %s: workflow media is outbound", got.Direction)
+	}
+}
+
+func TestMessageHistoryManager_Record_RefusesAnUnattributedMessage(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	err := mgr.Record(context.Background(), providerRecord("entry-1", "PROVIDER-X", conversation.SentBy{}))
+
+	if !errors.Is(err, conversation.ErrMessageSenderRequired) {
+		t.Fatalf("Record() = %v, want %v", err, conversation.ErrMessageSenderRequired)
+	}
+	if len(repo.created) != 0 {
+		t.Fatalf("stored %d unattributed message(s)", len(repo.created))
+	}
+}
+
+func TestMessageHistoryManager_Record_OurSendClaimsItsEarlierEcho(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	if err := mgr.Record(context.Background(), providerRecord("entry-1", "PROVIDER-ECHO", conversation.SentExternally())); err != nil {
+		t.Fatalf("echo: %v", err)
+	}
+	if err := mgr.Record(context.Background(), providerRecord("entry-1", "PROVIDER-ECHO", conversation.SentByWorkflow("wf-1"))); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	if len(repo.created) != 1 || repo.claims != 1 {
+		t.Fatalf("created %d, claims %d: want the echo claimed, not duplicated", len(repo.created), repo.claims)
+	}
+	if repo.created[0].SentBy != conversation.SentByWorkflow("wf-1") {
+		t.Fatalf("sender %+v, want the workflow", repo.created[0].SentBy)
+	}
+}
+
+func TestMessageHistoryManager_Record_ALateEchoLeavesOurSendAlone(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	if err := mgr.Record(context.Background(), providerRecord("entry-1", "PROVIDER-ECHO", conversation.SentByPerson("user-1"))); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := mgr.Record(context.Background(), providerRecord("entry-1", "PROVIDER-ECHO", conversation.SentExternally())); err != nil {
+		t.Fatalf("echo: %v", err)
+	}
+
+	if len(repo.created) != 1 || repo.claims != 0 || repo.created[0].SentBy != conversation.SentByPerson("user-1") {
+		t.Fatalf("the person's send must stay theirs: %+v, claims %d", repo.created[0].SentBy, repo.claims)
+	}
+}

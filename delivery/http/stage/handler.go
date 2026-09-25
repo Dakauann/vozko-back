@@ -10,7 +10,9 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/conversation"
+	"vozko/domain/shared"
 	stagedomain "vozko/domain/stage"
+	"vozko/domain/user"
 	"vozko/infra/http/middleware"
 )
 
@@ -20,7 +22,7 @@ type StageHandler struct {
 	deleteUseCase       stagedomain.DeleteStageUseCase
 	listUseCase         stagedomain.ListStagesUseCase
 	setInitialUseCase   stagedomain.SetInitialStageUseCase
-	assignUseCase       stagedomain.AssignEntryStageUseCase
+	moveUseCase         stagedomain.MoveEntryStageUseCase
 	removeUseCase       stagedomain.RemoveEntryStageUseCase
 	getEntryTagUC       stagedomain.GetEntryStageUseCase
 	getBatchEntryTagsUC stagedomain.GetBatchEntryStagesUseCase
@@ -36,7 +38,7 @@ func NewStageHandler(
 	deleteUC stagedomain.DeleteStageUseCase,
 	listUC stagedomain.ListStagesUseCase,
 	setInitialUC stagedomain.SetInitialStageUseCase,
-	assignUC stagedomain.AssignEntryStageUseCase,
+	moveUC stagedomain.MoveEntryStageUseCase,
 	removeUC stagedomain.RemoveEntryStageUseCase,
 	getEntryTagUC stagedomain.GetEntryStageUseCase,
 	getBatchEntryTagsUC stagedomain.GetBatchEntryStagesUseCase,
@@ -49,7 +51,7 @@ func NewStageHandler(
 		deleteUseCase:       deleteUC,
 		listUseCase:         listUC,
 		setInitialUseCase:   setInitialUC,
-		assignUseCase:       assignUC,
+		moveUseCase:         moveUC,
 		removeUseCase:       removeUC,
 		getEntryTagUC:       getEntryTagUC,
 		getBatchEntryTagsUC: getBatchEntryTagsUC,
@@ -348,11 +350,11 @@ func (h *StageHandler) assignEntryStage(w http.ResponseWriter, r *http.Request, 
 
 	wsID := middleware.GetWorkspaceID(r)
 
-	EntryStage, err := h.assignUseCase.Execute(wsID, stagedomain.AssignEntryStageInput{
+	mover := shared.Person{UserID: claims.UserID, SystemAdmin: claims.Role == string(user.RoleAdmin)}
+	EntryStage, err := h.moveUseCase.Execute(wsID, mover, stagedomain.AssignEntryStageInput{
 		StageID:            req.StageID,
 		EntryID:            req.EntryID,
 		EntryType:          req.EntryType,
-		ActorID:            claims.UserID,
 		AllowCrossPipeline: crossFunnel,
 	})
 	if err != nil {
@@ -518,6 +520,8 @@ func (h *StageHandler) handleDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, stagedomain.ErrStagePipelineMismatch):
 		response.WriteError(w, http.StatusConflict,
 			"Esta etapa pertence a outro funil. Mova a conversa de funil para usá-la.", nil)
+	case errors.Is(err, stagedomain.ErrEntryAccess):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
 	case errors.Is(err, stagedomain.ErrUnauthorized):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
 	default:

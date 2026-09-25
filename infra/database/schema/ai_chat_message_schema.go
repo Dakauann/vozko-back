@@ -14,6 +14,10 @@ type AIChatMessage struct {
 	Content          string         `gorm:"type:text"`
 	Model            string         `gorm:"type:text"`
 	ToolCalls        []byte         `gorm:"type:jsonb"`
+	Attachments      []byte         `gorm:"type:jsonb"`
+	ProposalID       *string        `gorm:"type:text;index:idx_chat_msg_proposal"`
+	Proposal         []byte         `gorm:"type:jsonb"`
+	ProposalStatus   string         `gorm:"type:varchar(16)"`
 	Reasoning        []byte         `gorm:"type:jsonb"`
 	PromptTokens     int            `gorm:"default:0"`
 	CompletionTokens int            `gorm:"default:0"`

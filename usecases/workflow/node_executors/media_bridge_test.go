@@ -43,7 +43,7 @@ func TestMediaBridgeGivesACaptionlessAttachmentContent(t *testing.T) {
 
 	msg := &conversation.Message{
 		ID: "m1", EntryID: "entry-1", EntryType: shared.EntryTypeWhatsApp,
-		From: "5511", To: "5522", Text: "", MediaID: &mediaID,
+		From: "5511", To: "5522", Text: "", MediaID: &mediaID, SentBy: conversation.SentByWorkflow("wf-1"),
 	}
 	if err := msg.Validate(); err != nil {
 		t.Errorf("a captionless media message is still invalid: %v", err)

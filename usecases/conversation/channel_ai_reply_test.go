@@ -155,3 +155,27 @@ type stubMessageRepo struct {
 func (r stubMessageRepo) ListByEntryPaginated(conversation.ListMessagesInput) ([]*conversation.Message, error) {
 	return r.newestFirst, nil
 }
+
+func TestBuildPromptGivesTheCustomerRoleOnlyToTheContact(t *testing.T) {
+	svc := &ChannelAIReplyService{messages: stubMessageRepo{newestFirst: []*conversation.Message{
+		{Text: "enviado do celular", MessageType: conversation.MessageTypeUserMessage, SentBy: conversation.SentExternally()},
+		{Text: "catalogo.pdf", MessageType: conversation.MessageTypeMedia, SentBy: conversation.SentByWorkflow("wf-1")},
+		{Text: "posso ajudar", MessageType: conversation.MessageTypeOperator, SentBy: conversation.SentByPerson("user-1")},
+		{Text: "oi", MessageType: conversation.MessageTypeUserMessage, SentBy: conversation.SentByContact("5511")},
+	}}}
+
+	got, err := svc.buildPrompt(conversation.AIReplyRequest{EntryID: "conv-1", EntryType: shared.EntryTypeUnofficialWhatsApp}, "oi de novo")
+	if err != nil {
+		t.Fatalf("buildPrompt: %v", err)
+	}
+
+	want := []ai.Role{ai.RoleUser, ai.RoleAssistant, ai.RoleAssistant, ai.RoleAssistant, ai.RoleUser}
+	if len(got) != len(want) {
+		t.Fatalf("got %d turns, want %d: %+v", len(got), len(want), got)
+	}
+	for i, role := range want {
+		if got[i].Role != role {
+			t.Errorf("turn %d %q is %s, want %s", i, got[i].Content, got[i].Role, role)
+		}
+	}
+}

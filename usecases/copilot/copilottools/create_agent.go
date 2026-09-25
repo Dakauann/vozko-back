@@ -59,3 +59,8 @@ func (t *createAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: out}
 }
+
+func (t *createAgentTool) Validate(_ context.Context, _ copilot.Context, args map[string]interface{}) error {
+	var fields agentFields
+	return decodeArgs(args, &fields)
+}

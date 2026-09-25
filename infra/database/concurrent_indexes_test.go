@@ -82,3 +82,27 @@ func TestAnalyticsIndexesCoverTheirQueries(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSenderBackfillFindsItsRowsThroughAPartialIndex(t *testing.T) {
+	for _, idx := range concurrentIndexes() {
+		if idx.name == "idx_cm_sender_unknown" {
+			if !strings.Contains(idx.sql, "WHERE sender_kind = 'unknown'") {
+				t.Fatalf("the index must cover only unattributed rows: %s", idx.sql)
+			}
+			return
+		}
+	}
+	t.Fatal("idx_cm_sender_unknown is not built")
+}
+
+func TestUnreadCountsHaveAnIndexOnTheContactsMessages(t *testing.T) {
+	for _, idx := range concurrentIndexes() {
+		if idx.name == "idx_cm_unread_contact" {
+			if !strings.Contains(idx.sql, "WHERE read = false AND deleted_at IS NULL AND "+SentByContactSQL("")) {
+				t.Fatalf("the index predicate must match the unread queries: %s", idx.sql)
+			}
+			return
+		}
+	}
+	t.Fatal("idx_cm_unread_contact is not built")
+}

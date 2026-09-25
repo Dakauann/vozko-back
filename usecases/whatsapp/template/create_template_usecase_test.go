@@ -35,7 +35,7 @@ func (f *fakeSetHeaderMediaUC) Execute(in template.SetTemplateHeaderMediaInput) 
 
 func newCreateUC(client *createMockWAClient) template.CreateTemplateUseCase {
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
-	return NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{})
+	return NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{}, anyStorage{})
 }
 
 func namedBodyComponent() template.TemplateComponent {
@@ -213,7 +213,7 @@ func TestCreateTemplate_Dialog360_MediaHeaderPassesURLThrough(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
 	client := &mediaHeaderMockClient{wantsURL: true}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
-	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{})
+	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{}, anyStorage{})
 
 	if _, err := uc.Execute(baseCreateInput(mediaHeaderComponent(url), positionalBodyComponent())); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -230,7 +230,7 @@ func TestCreateTemplate_Meta_MediaHeaderUploadedToHandle(t *testing.T) {
 	const url = "https://discador.net/img/enioalmeida/enioalmeida.jpg"
 	client := &mediaHeaderMockClient{wantsURL: false}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
-	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{})
+	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, &fakeSetHeaderMediaUC{}, anyStorage{})
 
 	if _, err := uc.Execute(baseCreateInput(mediaHeaderComponent(url), positionalBodyComponent())); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -252,7 +252,7 @@ func TestCreateTemplate_MediaHeader_MintsMediaIDViaSetHeaderMedia(t *testing.T) 
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
 	repo := &capturingTemplateRepo{}
 	setHeaderMedia := &fakeSetHeaderMediaUC{}
-	uc := NewCreateTemplateUseCase(factory, repo, setHeaderMedia)
+	uc := NewCreateTemplateUseCase(factory, repo, setHeaderMedia, anyStorage{})
 
 	in := baseCreateInput(mediaHeaderComponent(url), positionalBodyComponent())
 	headerURL := url
@@ -280,7 +280,7 @@ func TestCreateTemplate_NoMediaHeader_SkipsHeaderMediaMinting(t *testing.T) {
 	client := &createMockWAClient{}
 	factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
 	setHeaderMedia := &fakeSetHeaderMediaUC{}
-	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, setHeaderMedia)
+	uc := NewCreateTemplateUseCase(factory, &sendMockTemplateRepo{}, setHeaderMedia, anyStorage{})
 
 	if _, err := uc.Execute(baseCreateInput(positionalBodyComponent())); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -314,7 +314,7 @@ func TestCreateTemplate_Dialog360LowercaseStatus_NormalizedToUppercase(t *testin
 		client := &createMockWAClient{createOutput: &conversation.CreateTemplateOutput{ID: "ext-1", Status: tc.raw}}
 		factory := &sendMockClientFactory{client: client, wabaID: "waba-1"}
 		repo := &capturingTemplateRepo{}
-		uc := NewCreateTemplateUseCase(factory, repo, &fakeSetHeaderMediaUC{})
+		uc := NewCreateTemplateUseCase(factory, repo, &fakeSetHeaderMediaUC{}, anyStorage{})
 
 		out, err := uc.Execute(baseCreateInput(positionalBodyComponent()))
 		if err != nil {

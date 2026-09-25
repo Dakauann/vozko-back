@@ -58,7 +58,7 @@ func NewConversationHandler(
 // @Tags			Conversas
 // @Accept			json
 // @Produce		json
-// @Param			entryType	path		string						true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	path		string						true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Param			entryId		path		string						true	"ID da entrada"
 // @Param			request		body		CallPermissionRequestBody	false	"Texto opcional da solicitação"
 // @Success		200	{object}	MessageEnvelopeResponse
@@ -117,7 +117,7 @@ func (h *ConversationHandler) RequestCallPermission(w http.ResponseWriter, r *ht
 // @Description	Informa se o cliente da conversa permite atualmente ligações pelo WhatsApp, para que o cliente possa habilitar ou não a ação de ligar.
 // @Tags			Conversas
 // @Produce		json
-// @Param			entryType	path		string	true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	path		string	true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Param			entryId		path		string	true	"ID da entrada"
 // @Success		200	{object}	conversation.CallPermissionStatus
 // @Failure		400	{object}	response.ErrorResponse
@@ -145,11 +145,6 @@ func (h *ConversationHandler) GetCallPermission(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if entryType == "support" {
-		response.WriteSuccess(w, http.StatusOK, conversationdomain.CallPermissionStatus{Status: "none"})
-		return
-	}
-
 	status, err := h.requestCallPermission.CallPermissionStatus(entryID, entryType)
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, err.Error(), nil)
@@ -164,7 +159,7 @@ func (h *ConversationHandler) GetCallPermission(w http.ResponseWriter, r *http.R
 // @Tags			Conversas
 // @Accept			mpfd
 // @Produce		json
-// @Param			entryType	path		string	true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	path		string	true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Param			entryId		path		string	true	"ID da entrada"
 // @Param			media		formData	file	true	"Arquivo de mídia"
 // @Param			mediaType	formData	string	true	"Tipo da mídia (ex.: image, video, audio, document)"
@@ -245,7 +240,7 @@ func (h *ConversationHandler) UploadMedia(w http.ResponseWriter, r *http.Request
 // @Description	Retorna os metadados de um arquivo de mídia de uma conversa, incluindo a URL de acesso, o tipo e o tamanho.
 // @Tags			Conversas
 // @Produce		json
-// @Param			entryType	path		string	true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	path		string	true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Param			entryId		path		string	true	"ID da entrada"
 // @Param			mediaId		path		string	true	"ID da mídia"
 // @Success		200	{object}	conversation.ConversationMedia
@@ -303,7 +298,7 @@ func (h *ConversationHandler) GetMedia(w http.ResponseWriter, r *http.Request) {
 // @Description	Retorna o histórico de eventos de uma conversa (mudanças de etapa, atribuições, entre outros), com paginação.
 // @Tags			Conversas
 // @Produce		json
-// @Param			entryType	path		string	true	"Tipo da entrada ('whatsapp' ou 'support')"
+// @Param			entryType	path		string	true	"Tipo da entrada (whatsapp, unofficial_whatsapp, instagram ou telegram)"
 // @Param			entryId		path		string	true	"ID da entrada"
 // @Param			page		query		int		false	"Número da página"
 // @Param			page_size	query		int		false	"Tamanho da página"

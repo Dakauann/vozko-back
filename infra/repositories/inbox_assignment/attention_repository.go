@@ -23,19 +23,11 @@ func (r *attentionRepository) AttendedSince(entryID, entryType, assignedUserID s
 		return false, nil
 	}
 
-	inbound := conversation.InboundMessageTypeStrings()
-
 	q := r.db.Model(&schema.ConversationMessage{}).
 		Where("entry_id = ? AND entry_type = ?", entryID, entryType).
 		Where(
 			r.db.Where("read = ? AND read_by = ? AND read_at >= ?", true, assignedUserID, since).
-				Or(
-					r.db.Where("created_at >= ?", since).
-						Where(
-							r.db.Where("direction = ?", string(conversation.MessageDirectionOutbound)).
-								Or("direction = ? AND message_type NOT IN ?", "", inbound),
-						),
-				),
+				Or("created_at >= ? AND sender_id = ?", since, conversation.SentByPerson(assignedUserID).ID()),
 		)
 
 	var count int64

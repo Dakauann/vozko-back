@@ -11,6 +11,7 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 	crmfiltersql "vozko/infra/repositories/crmfilter"
 
@@ -20,15 +21,6 @@ import (
 
 type repository struct {
 	db *gorm.DB
-}
-
-func inboundTypesSQL() string {
-	types := conversation.InboundMessageTypeStrings()
-	quoted := make([]string, len(types))
-	for i, t := range types {
-		quoted[i] = fmt.Sprintf("'%s'", t)
-	}
-	return "(" + strings.Join(quoted, ", ") + ")"
 }
 
 func departmentScopeClause(deptColumn, entryIDColumn string, departmentIDs []string, restrict bool, assigneeUserID string) (string, []interface{}) {
@@ -72,9 +64,6 @@ func NewRepository(db *gorm.DB) conversation.MessageRepository {
 }
 
 func entryTableForLastMessage(entryType string) string {
-	if entryType == string(conversation.MessageChannelSupport) {
-		return "support_entries"
-	}
 	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
 		return ch.EntryTable
 	}
@@ -82,33 +71,17 @@ func entryTableForLastMessage(entryType string) string {
 }
 
 func (r *repository) touchEntryLastMessageAt(entryID, entryType string, at time.Time) {
-	r.touchEntryMessageClocks(entryID, entryType, "", at)
+	r.touchEntryMessageClocks(entryID, entryType, conversation.SentBy{}, at)
 }
 
-func (r *repository) touchEntryMessageClocks(entryID, entryType string, msgType conversation.MessageType, at time.Time) {
+func (r *repository) touchEntryMessageClocks(entryID, entryType string, sentBy conversation.SentBy, at time.Time) {
 	table := entryTableForLastMessage(entryType)
 	if table == "" || entryID == "" || at.IsZero() {
 		return
 	}
 
-	if table == "support_entries" {
-		if err := r.db.Exec(fmt.Sprintf(`
-			UPDATE %s SET last_message_at = ?
-			WHERE id = ? AND (last_message_at IS NULL OR last_message_at < ?)`, table),
-			at, entryID, at).Error; err != nil {
-			log.Printf("[conversation] last_message_at bump failed (%s %s): %v", entryType, entryID, err)
-		}
-		return
-	}
-
-	setCustomer := msgType != "" && msgType.IsInbound()
-	setAgent := false
-	if msgType != "" {
-		switch msgType {
-		case conversation.MessageTypeOperator, conversation.MessageTypeAIResponse, conversation.MessageTypeTemplate:
-			setAgent = true
-		}
-	}
+	setCustomer := sentBy.IsContact()
+	setAgent := sentBy.FromTheBusiness()
 
 	sql := fmt.Sprintf(`UPDATE %s SET last_message_at = CASE
 			WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END`, table)
@@ -149,18 +122,32 @@ func (r *repository) Create(message *conversation.Message) error {
 	if message == nil {
 		return conversation.ErrMessageContentRequired
 	}
+	if !message.SentBy.Valid() {
+		return conversation.ErrMessageSenderRequired
+	}
 
 	dbMessage := mapDomainToSchema(message)
 	if err := r.db.Create(dbMessage).Error; err != nil {
+		if database.IsUniqueViolation(err) {
+			if claimed, claimErr := r.ClaimExternalEcho(message); claimErr == nil && claimed {
+				return nil
+			}
+		}
 		return err
 	}
-	r.touchEntryMessageClocks(
-		dbMessage.EntryID,
-		dbMessage.EntryType,
-		conversation.MessageType(dbMessage.MessageType),
-		dbMessage.CreatedAt,
-	)
+	r.touchEntryMessageClocks(dbMessage.EntryID, dbMessage.EntryType, message.SentBy, dbMessage.CreatedAt)
 	return nil
+}
+
+func (r *repository) ClaimExternalEcho(message *conversation.Message) (bool, error) {
+	if message == nil || message.ExternalMessageID == nil || !message.SentBy.Claims(conversation.SentExternally()) {
+		return false, nil
+	}
+	result := r.db.Model(&schema.ConversationMessage{}).
+		Where("entry_type = ? AND entry_id = ? AND external_message_id = ? AND sender_kind = ?",
+			string(message.EntryType), message.EntryID, *message.ExternalMessageID, string(conversation.SenderExternal)).
+		Updates(map[string]interface{}{"sender_kind": string(message.SentBy.Kind()), "sender_id": message.SentBy.ID()})
+	return result.RowsAffected > 0, result.Error
 }
 
 func (r *repository) Update(messageID string, message *conversation.Message) error {
@@ -319,7 +306,7 @@ func (r *repository) MarkAsRead(input conversation.MarkAsReadInput) (int64, erro
 	query := r.db.Model(&schema.ConversationMessage{}).
 		Where("entry_id = ? AND entry_type = ?", input.EntryID, string(input.EntryType)).
 		Where("read = ?", false).
-		Where("message_type IN ?", conversation.InboundMessageTypeStrings())
+		Where(database.SentByContactSQL(""))
 
 	if input.UpToTimestamp != nil {
 		query = query.Where("created_at <= ?", *input.UpToTimestamp)
@@ -346,7 +333,7 @@ func (r *repository) CountUnreadByEntry(entryID string, entryType shared.EntryTy
 	err := r.db.Model(&schema.ConversationMessage{}).
 		Where("entry_id = ? AND entry_type = ?", entryID, string(entryType)).
 		Where("read = ?", false).
-		Where("message_type IN ?", conversation.InboundMessageTypeStrings()).
+		Where(database.SentByContactSQL("")).
 		Count(&count).Error
 	return count, err
 }
@@ -367,7 +354,7 @@ func (r *repository) CountUnreadByEntries(entryIDs []string, entryType shared.En
 		Where("entry_id IN ?", entryIDs).
 		Where("entry_type = ?", string(entryType)).
 		Where("read = ?", false).
-		Where("message_type IN ?", conversation.InboundMessageTypeStrings()).
+		Where(database.SentByContactSQL("")).
 		Group("entry_id").
 		Scan(&results).Error
 
@@ -469,6 +456,8 @@ func mapDomainToSchema(message *conversation.Message) *schema.ConversationMessag
 		ReplyToMessageID:  message.ReplyToMessageID,
 		DeliveryStatus:    string(message.DeliveryStatus),
 		SentVia:           string(message.SentVia),
+		SenderKind:        string(message.SentBy.Kind()),
+		SenderID:          message.SentBy.ID(),
 		Metadata:          message.Metadata,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
@@ -502,6 +491,7 @@ func mapSchemaToDomain(message *schema.ConversationMessage) *conversation.Messag
 		ReplyToMessageID:  message.ReplyToMessageID,
 		DeliveryStatus:    conversation.DeliveryStatus(message.DeliveryStatus),
 		SentVia:           conversation.MessageTransport(message.SentVia),
+		SentBy:            conversation.RestoreSentBy(message.SenderKind, message.SenderID),
 		Metadata:          message.Metadata,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
@@ -654,7 +644,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			SELECT cm2.entry_id, COUNT(*) AS cnt
 			FROM conversation_messages cm2
 			WHERE cm2.entry_type = ? AND cm2.read = false
-			  AND cm2.message_type IN %s AND cm2.deleted_at IS NULL
+			  AND %s AND cm2.deleted_at IS NULL
 			  AND cm2.entry_id IN (SELECT entry_id FROM top_entries)
 			GROUP BY cm2.entry_id
 		)
@@ -675,7 +665,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		FROM top_entries te
 		LEFT JOIN unread_counts uc ON uc.entry_id = te.entry_id
 		ORDER BY te.last_message_at DESC
-	`, entryCTE, leadField, bphoneField, campaignIDField, campaignNameField, aiFields, entryJoin, inboundTypesSQL())
+	`, entryCTE, leadField, bphoneField, campaignIDField, campaignNameField, aiFields, entryJoin, database.SentByContactSQL("cm2"))
 
 	queryArgs := append(append([]interface{}{}, cteArgs...), et, pageSize, offset, et, et)
 
@@ -918,7 +908,7 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	}
 
 	if input.HasUnread != nil {
-		unreadSubquery := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = entries.entry_id AND cm4.entry_type = ? AND cm4.read = false AND cm4.message_type IN ` + inboundTypesSQL() + ` AND cm4.deleted_at IS NULL)`
+		unreadSubquery := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = entries.entry_id AND cm4.entry_type = ? AND cm4.read = false AND ` + database.SentByContactSQL("cm4") + ` AND cm4.deleted_at IS NULL)`
 		if *input.HasUnread {
 			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSubquery))
 		} else {
@@ -1159,7 +1149,7 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	}
 
 	if input.HasUnread != nil {
-		unreadSub := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = ae.entry_id AND cm4.entry_type = ae.entry_type AND cm4.read = false AND cm4.message_type IN ` + inboundTypesSQL() + ` AND cm4.deleted_at IS NULL)`
+		unreadSub := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = ae.entry_id AND cm4.entry_type = ae.entry_type AND cm4.read = false AND ` + database.SentByContactSQL("cm4") + ` AND cm4.deleted_at IS NULL)`
 		if *input.HasUnread {
 			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSub))
 		} else {
@@ -1529,7 +1519,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 			m.entry_type AS entry_type,
 			(SELECT COUNT(*) FROM conversation_messages cm2
 			 WHERE cm2.entry_id = m.entry_id AND cm2.entry_type = m.entry_type
-			   AND cm2.read = false AND cm2.message_type IN %s
+			   AND cm2.read = false AND %s
 			   AND cm2.deleted_at IS NULL) AS unread_count,
 			m.text AS last_message_text,
 			m.message_type AS last_message_type,
@@ -1541,7 +1531,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WHERE m.entry_id = ?::uuid AND m.entry_type = ?
 		ORDER BY m.created_at DESC
 		LIMIT 1
-	`, inboundTypesSQL())
+	`, database.SentByContactSQL("cm2"))
 
 	err := r.db.Raw(query, entryID, string(entryType)).Scan(&result).Error
 
@@ -1601,29 +1591,12 @@ func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryT
 		SELECT COUNT(*)
 		FROM conversation_messages
 		WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
-		  AND message_type IN (?)
-	`, entryID, string(entryType), inboundMessageTypes()).Scan(&count).Error
+		  AND `+database.SentByContactSQL("")+`
+	`, entryID, string(entryType)).Scan(&count).Error
 	if err != nil {
 		return 0, err
 	}
 	return count, nil
-}
-
-func inboundMessageTypes() []string {
-	all := []conversation.MessageType{
-		conversation.MessageTypeUserMessage, conversation.MessageTypeAudio,
-		conversation.MessageTypeMedia, conversation.MessageTypeStoryReply,
-		conversation.MessageTypeStoryMention, conversation.MessageTypePostShare,
-		conversation.MessageTypeAIResponse, conversation.MessageTypeOperator,
-		conversation.MessageTypeSystem, conversation.MessageTypeUnsupported,
-	}
-	out := make([]string, 0, len(all))
-	for _, t := range all {
-		if t.IsInbound() {
-			out = append(out, string(t))
-		}
-	}
-	return out
 }
 
 func (r *repository) SearchMessagesByEntry(input conversation.SearchMessagesByEntryInput) ([]*conversation.Message, int64, error) {

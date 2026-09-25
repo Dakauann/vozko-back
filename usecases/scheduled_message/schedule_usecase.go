@@ -10,18 +10,21 @@ import (
 
 	sm "vozko/domain/scheduled_message"
 	"vozko/domain/shared"
+	wo "vozko/domain/whatsapp_outreach"
 )
 
 type scheduleUseCase struct {
-	repo    sm.Repository
-	windows *windowService
-	wake    sm.WakeScheduler
-	clock   sm.Clock
+	repo      sm.Repository
+	windows   *windowService
+	templates wo.ConversationTemplateUseCase
+	wake      sm.WakeScheduler
+	clock     sm.Clock
 }
 
 func NewScheduleUseCase(
 	repo sm.Repository,
 	windows sm.WindowReader,
+	templates wo.ConversationTemplateUseCase,
 	wake sm.WakeScheduler,
 	clock sm.Clock,
 ) (sm.ScheduleUseCase, error) {
@@ -33,6 +36,9 @@ func NewScheduleUseCase(
 	if repo == nil {
 		missing = append(missing, "repository")
 	}
+	if templates == nil {
+		missing = append(missing, "template check")
+	}
 	if wake == nil {
 		missing = append(missing, "wake scheduler")
 	}
@@ -40,10 +46,10 @@ func NewScheduleUseCase(
 		return nil, fmt.Errorf("scheduled message schedule use case: missing %s", strings.Join(missing, ", "))
 	}
 
-	return &scheduleUseCase{repo: repo, windows: windowSvc, wake: wake, clock: clock}, nil
+	return &scheduleUseCase{repo: repo, windows: windowSvc, templates: templates, wake: wake, clock: clock}, nil
 }
 
-func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.ScheduleResult, error) {
+func (uc *scheduleUseCase) Execute(ctx context.Context, in sm.ScheduleInput) (*sm.ScheduleResult, error) {
 	if existing, err := uc.replay(in); existing != nil || err != nil {
 		return existing, err
 	}
@@ -59,6 +65,8 @@ func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.
 		MediaType:        optional(in.MediaType),
 		ReplyToMessageID: optional(in.ReplyToMessageID),
 		Signed:           in.Signed,
+		Kind:             kindOf(in),
+		Template:         templateOf(in),
 		ScheduledAt:      in.ScheduledAt.UTC(),
 		IdempotencyKey:   optional(in.IdempotencyKey),
 		Status:           sm.StatusPending,
@@ -68,11 +76,17 @@ func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.
 		return nil, err
 	}
 
-	window, err := uc.windows.Validate(message.EntryID, string(message.EntryType), message.ScheduledAt)
+	window, err := uc.windows.Validate(message.EntryID, string(message.EntryType), message.Kind, message.ScheduledAt)
 	if err != nil {
 		return &sm.ScheduleResult{Window: window}, err
 	}
 	message.WindowExpiresAtAtCreation = window.ExpiresAt
+
+	if message.Kind == sm.KindTemplate {
+		if err := uc.checkTemplate(ctx, message); err != nil {
+			return &sm.ScheduleResult{Window: window}, err
+		}
+	}
 
 	if err := uc.repo.Create(message); err != nil {
 		return nil, err
@@ -80,6 +94,34 @@ func (uc *scheduleUseCase) Execute(_ context.Context, in sm.ScheduleInput) (*sm.
 
 	uc.enqueue(message)
 	return &sm.ScheduleResult{Message: message, Window: window}, nil
+}
+
+func (uc *scheduleUseCase) checkTemplate(ctx context.Context, m *sm.ScheduledMessage) error {
+	checked, err := uc.templates.Check(ctx, templateSend(m))
+	if err != nil {
+		return err
+	}
+	m.Template.Name = checked.Name
+	m.Template.Preview = checked.Preview
+	return nil
+}
+
+func kindOf(in sm.ScheduleInput) sm.Kind {
+	if in.Template != nil {
+		return sm.KindTemplate
+	}
+	return sm.KindText
+}
+
+func templateOf(in sm.ScheduleInput) *sm.TemplateContent {
+	if in.Template == nil {
+		return nil
+	}
+	return &sm.TemplateContent{
+		ID:           in.Template.ID,
+		BodyParams:   in.Template.BodyParams,
+		HeaderParams: in.Template.HeaderParams,
+	}
 }
 
 func (uc *scheduleUseCase) replay(in sm.ScheduleInput) (*sm.ScheduleResult, error) {

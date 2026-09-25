@@ -17,6 +17,7 @@ var (
 	ErrTemplateCategoryUnavailable = errors.New("template category is unavailable for billing")
 
 	ErrHeaderMediaURLNotApplicable = errors.New("header media URL can only be set for templates with IMAGE, VIDEO, or DOCUMENT headers")
+	ErrHeaderMediaOutsideStorage   = errors.New("header media must be a file from the workspace media library")
 
 	ErrTemplateNameInvalidChars    = errors.New("template name must contain only lowercase letters, numbers, and underscores")
 	ErrTemplateNameMustStartLetter = errors.New("template name must start with a letter")

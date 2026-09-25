@@ -281,3 +281,15 @@ func TestCompile_BoolAndText(t *testing.T) {
 		t.Errorf("query args mismatch\n got: %#v\nwant: %#v", args, want)
 	}
 }
+
+func TestUnreadCountsOnlyWhatTheContactSent(t *testing.T) {
+	sql, _, err := Compile(crmfilter.Filter{Groups: []crmfilter.Group{
+		group(crmfilter.Or, pred(crmfilter.FieldUnread, crmfilter.OpIsTrue)),
+	}}, NewConversationDescriptor(), 1)
+	if err != nil {
+		t.Fatalf("unread: %v", err)
+	}
+	if !strings.Contains(sql, "cm4.sender_kind = 'contact'") || strings.Contains(sql, "message_type") {
+		t.Fatalf("unread must count the contact's messages, not message types: %s", sql)
+	}
+}

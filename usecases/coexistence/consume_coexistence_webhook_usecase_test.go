@@ -259,6 +259,7 @@ func (r *mockMessageRepo) GetByExternalMessageID(shared.EntryType, string) (*con
 func (r *mockMessageRepo) GetByEntryAndExternalMessageID(shared.EntryType, string, string) (*conversation.Message, error) {
 	return nil, nil
 }
+func (r *mockMessageRepo) ClaimExternalEcho(*conversation.Message) (bool, error)          { return false, nil }
 func (r *mockMessageRepo) UpdateDeliveryStatus(string, conversation.DeliveryStatus) error { return nil }
 func (r *mockMessageRepo) UpdateDeliveryStatusWithReason(string, conversation.DeliveryStatus, int, string) error {
 	return nil
@@ -433,6 +434,13 @@ func TestHandleHistory_CreatesLeadEntryAndMessages(t *testing.T) {
 	}
 	if msg0.EntryType != shared.EntryTypeWhatsApp {
 		t.Errorf("msg0 entry_type = %s, want whatsapp", msg0.EntryType)
+	}
+
+	if msg0.SentBy != conversation.SentByContact("5511888888888") {
+		t.Errorf("msg0 sender = %+v, want the contact", msg0.SentBy)
+	}
+	if messageRepo.created[1].SentBy != conversation.SentExternally() {
+		t.Errorf("msg1 sender = %+v, want sent outside Vozko", messageRepo.created[1].SentBy)
 	}
 
 	msg1 := messageRepo.created[1]
@@ -841,6 +849,9 @@ func TestHandleMessageEchoes_PersistsOutboundMessages(t *testing.T) {
 	}
 	if msg.DeliveryStatus != conversation.DeliveryStatusSent {
 		t.Errorf("delivery = %s, want sent", msg.DeliveryStatus)
+	}
+	if msg.SentBy != conversation.SentExternally() {
+		t.Errorf("sender = %+v, want sent outside Vozko", msg.SentBy)
 	}
 }
 

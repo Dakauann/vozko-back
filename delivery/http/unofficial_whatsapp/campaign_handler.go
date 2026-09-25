@@ -38,12 +38,14 @@ type CampaignHandler struct {
 	validate  uwc.ValidateTargetsUseCase
 
 	departments DepartmentScopeResolver
+	access      uwc.CampaignAccessUseCase
 }
 
 type CampaignHandlerDeps struct {
 	Create      uwc.CreateCampaignUseCase
 	Update      uwc.UpdateCampaignUseCase
 	Get         uwc.GetCampaignUseCase
+	Access      uwc.CampaignAccessUseCase
 	List        uwc.ListCampaignsUseCase
 	Delete      uwc.DeleteCampaignUseCase
 	AssignDep   uwc.AssignDepartmentUseCase
@@ -66,7 +68,7 @@ func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
 		remove: d.Delete, assignDep: d.AssignDep, summary: d.Summary,
 		entries: d.Entries, dispatch: d.Dispatch, reset: d.Reset, clear: d.Clear,
 		addEntry: d.AddEntry, updEntry: d.UpdateEntry, delEntry: d.DeleteEntry,
-		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments,
+		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments, access: d.Access,
 	}
 }
 
@@ -77,7 +79,8 @@ func (h *CampaignHandler) campaignScope(w http.ResponseWriter, r *http.Request) 
 		return "", uw.DepartmentScope{}, false
 	}
 	if h.departments == nil {
-		return workspaceID, uw.Unrestricted(), true
+		response.WriteError(w, http.StatusForbidden, "you do not have access to this workspace's campaigns", nil)
+		return "", uw.DepartmentScope{}, false
 	}
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -95,6 +98,23 @@ func (h *CampaignHandler) campaignScope(w http.ResponseWriter, r *http.Request) 
 		DepartmentIDs: scope.DepartmentIDs,
 		Restrict:      scope.Restrict,
 	}, true
+}
+
+func (h *CampaignHandler) ownedCampaign(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, *uwc.Campaign, bool) {
+	workspaceID, scope, ok := h.campaignScope(w, r)
+	if !ok {
+		return "", uw.DepartmentScope{}, nil, false
+	}
+	if h.access == nil {
+		response.WriteError(w, http.StatusNotFound, uwc.ErrCampaignNotFound.Error(), nil)
+		return "", uw.DepartmentScope{}, nil, false
+	}
+	c, err := h.access.Owned(r.Context(), workspaceID, scope, mux.Vars(r)["id"])
+	if err != nil {
+		writeCampaignError(w, err)
+		return "", uw.DepartmentScope{}, nil, false
+	}
+	return workspaceID, scope, c, true
 }
 
 func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -155,12 +175,8 @@ func (h *CampaignHandler) ListArchived(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) Get(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
-		return
-	}
-	c, err := h.get.Execute(r.Context(), mux.Vars(r)["id"])
-	if err != nil {
-		writeCampaignError(w, err)
+	_, _, c, ok := h.ownedCampaign(w, r)
+	if !ok {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, campaignToDTO(c))
@@ -192,7 +208,7 @@ func (h *CampaignHandler) Summary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	values := r.URL.Query()
@@ -253,7 +269,7 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
-	workspaceID, scope, ok := h.campaignScope(w, r)
+	workspaceID, scope, _, ok := h.ownedCampaign(w, r)
 	if !ok {
 		return
 	}
@@ -272,7 +288,7 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	if err := h.remove.Execute(mux.Vars(r)["id"]); err != nil {
@@ -283,7 +299,7 @@ func (h *CampaignHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) AssignDepartment(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	updated, err := h.assignDep.Execute(r.Context(), mux.Vars(r)["id"])
@@ -300,17 +316,11 @@ func (h *CampaignHandler) Unarchive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) setArchived(w http.ResponseWriter, r *http.Request, archived bool) {
-	workspaceID, scope, ok := h.campaignScope(w, r)
+	workspaceID, scope, existing, ok := h.ownedCampaign(w, r)
 	if !ok {
 		return
 	}
-	id := mux.Vars(r)["id"]
-
-	existing, err := h.get.Execute(r.Context(), id)
-	if err != nil {
-		writeCampaignError(w, err)
-		return
-	}
+	id := existing.ID
 	existing.Archived = archived
 	existing.WorkspaceID = workspaceID
 
@@ -333,7 +343,7 @@ func (h *CampaignHandler) Stop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) act(w http.ResponseWriter, r *http.Request, action campaign.Action) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	err := h.dispatch.Dispatch(r.Context(), uwc.DispatchCampaignInput{
@@ -348,7 +358,7 @@ func (h *CampaignHandler) act(w http.ResponseWriter, r *http.Request, action cam
 }
 
 func (h *CampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	var payload struct {
@@ -375,7 +385,7 @@ func (h *CampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) Validate(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	out, err := h.validate.Execute(r.Context(), mux.Vars(r)["id"])
@@ -387,7 +397,7 @@ func (h *CampaignHandler) Validate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	out, err := h.reset.PrepareReset(mux.Vars(r)["id"])
@@ -399,7 +409,7 @@ func (h *CampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) ConfirmReset(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	var payload struct {
@@ -420,7 +430,7 @@ func (h *CampaignHandler) ConfirmReset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) PrepareClearHistory(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	out, err := h.clear.PrepareClearHistory(mux.Vars(r)["id"])
@@ -432,7 +442,7 @@ func (h *CampaignHandler) PrepareClearHistory(w http.ResponseWriter, r *http.Req
 }
 
 func (h *CampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	var payload struct {
@@ -453,7 +463,7 @@ func (h *CampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *http.Req
 }
 
 func (h *CampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	var payload struct {
@@ -482,7 +492,7 @@ func (h *CampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) UpdateEntry(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	var payload struct {
@@ -510,7 +520,7 @@ func (h *CampaignHandler) UpdateEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.campaignScope(w, r); !ok {
+	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
 	}
 	vars := mux.Vars(r)

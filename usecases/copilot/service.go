@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
-	"sync"
 	"time"
+	"vozko/domain/readiness"
 
 	"vozko/domain/ai"
 	"vozko/domain/aichat"
 	"vozko/domain/copilot"
+	"vozko/domain/media"
 	"vozko/usecases/agentloop"
 )
 
@@ -25,12 +27,6 @@ var (
 	ErrActionNotFound = errors.New("copilot: pending action not found")
 )
 
-type PendingActionStore interface {
-	Save(threadID string, pa copilot.PendingAction) error
-	Get(threadID, actionID string) (copilot.PendingAction, bool, error)
-	Delete(threadID, actionID string) error
-}
-
 type Service struct {
 	engine   agentloop.Engine
 	registry *Registry
@@ -38,8 +34,13 @@ type Service struct {
 	funds    FundsChecker
 	threads  aichat.ThreadRepository
 	messages aichat.MessageRepository
-	pending  PendingActionStore
+	files    AttachmentResolver
+	state    readiness.SnapshotUseCase
 	newID    IDGenerator
+}
+
+type AttachmentResolver interface {
+	GetMedia(workspaceID, mediaID string) (*media.Media, error)
 }
 
 func NewService(
@@ -49,21 +50,51 @@ func NewService(
 	funds FundsChecker,
 	threads aichat.ThreadRepository,
 	messages aichat.MessageRepository,
-	pending PendingActionStore,
+	files AttachmentResolver,
+	state readiness.SnapshotUseCase,
 	newID IDGenerator,
 ) *Service {
-	return &Service{engine: engine, registry: reg, access: access, funds: funds, threads: threads, messages: messages, pending: pending, newID: newID}
+	return &Service{engine: engine, registry: reg, access: access, funds: funds, threads: threads, messages: messages, files: files, state: state, newID: newID}
 }
 
-func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content string, cc copilot.Context, emit agentloop.Emit) error {
-	content = strings.TrimSpace(content)
-	if content == "" {
+func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, msg copilot.UserMessage, cc copilot.Context, emit agentloop.Emit) error {
+	content := strings.TrimSpace(msg.Content)
+	if content == "" && len(msg.AttachmentIDs) == 0 {
 		return ErrEmptyMessage
 	}
-	return s.runTurn(ctx, thread, content, cc, emit, true)
+	attachments, err := s.resolveAttachments(cc.WorkspaceID, msg.AttachmentIDs)
+	if err != nil {
+		return err
+	}
+	if err := s.messages.ExpireProposals(thread.ID); err != nil {
+		return err
+	}
+	return s.runTurn(ctx, thread, content, cc, emit, attachments, true)
 }
 
-func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt string, cc copilot.Context, emit agentloop.Emit, persistUserMsg bool, prelude ...toolStep) error {
+func (s *Service) resolveAttachments(workspaceID string, ids []string) ([]copilot.Attachment, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if len(ids) > copilot.MaxAttachments {
+		return nil, copilot.ErrTooManyAttachments
+	}
+	if s.files == nil {
+		return nil, copilot.ErrAttachmentNotFound
+	}
+	out := make([]copilot.Attachment, 0, len(ids))
+	for _, id := range ids {
+		m, err := s.files.GetMedia(workspaceID, strings.TrimSpace(id))
+		if err != nil || m == nil {
+			return nil, copilot.ErrAttachmentNotFound
+		}
+		out = append(out, copilot.Attachment{MediaID: m.ID, Name: m.DisplayName(), Kind: string(m.Type)})
+	}
+	return out, nil
+}
+
+func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content string, cc copilot.Context, emit agentloop.Emit, attachments []copilot.Attachment, persistUserMsg bool, prelude ...toolStep) error {
+	prompt := copilot.PromptWithAttachments(content, attachments)
 	model := thread.Model
 	if strings.TrimSpace(model) == "" {
 		model = defaultCopilotModel
@@ -74,7 +105,11 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 		return err
 	}
 	if persistUserMsg {
-		if err := s.messages.Create(&aichat.Message{ThreadID: thread.ID, Role: aichat.RoleUser, Content: prompt}); err != nil {
+		user := &aichat.Message{ThreadID: thread.ID, Role: aichat.RoleUser, Content: content}
+		if len(attachments) > 0 {
+			user.Attachments, _ = json.Marshal(attachments)
+		}
+		if err := s.messages.Create(user); err != nil {
 			return err
 		}
 	}
@@ -86,20 +121,24 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 	cc.Datasets = copilot.NewDatasetStore()
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
+	driver.state = s.workspaceState(ctx, cc)
 	sess := &agentloop.Session{History: history}
 	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, AnswerTokenBudget), sess, prompt)
 
 	switch out.Kind {
 	case agentloop.OutcomePaused:
 		pa, _ := out.Pause.Payload.(copilot.PendingAction)
-		if err := s.pending.Save(thread.ID, pa); err != nil {
-			return err
-		}
 		proposal := lastAssistantContent(sess.History)
 		if proposal == "" {
 			proposal = "Proponho uma ação que precisa da sua aprovação."
 		}
-		_ = s.messages.Create(rec.message(thread.ID, proposal, model))
+		m := rec.message(thread.ID, proposal, model)
+		if err := attachProposal(m, pa); err != nil {
+			return err
+		}
+		if err := s.messages.Create(m); err != nil {
+			return err
+		}
 		emit("awaiting_approval", map[string]interface{}{"actionId": pa.ID, "tool": pa.ToolName, "summary": pa.Summary})
 	default:
 		reply := lastAssistantContent(sess.History)
@@ -114,18 +153,51 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 
 	_ = s.threads.Touch(thread.ID, time.Now().UTC(), model)
 	if persistUserMsg && strings.TrimSpace(thread.Title) == "" {
-		_ = s.threads.Rename(thread.ID, deriveTitle(prompt))
+		_ = s.threads.Rename(thread.ID, deriveTitle(titleSource(content, attachments)))
 	}
 	return nil
 }
 
-func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, cc copilot.Context, emit agentloop.Emit) error {
-	pa, ok, err := s.pending.Get(thread.ID, actionID)
+func (s *Service) workspaceState(ctx context.Context, cc copilot.Context) *readiness.Snapshot {
+	if s.state == nil {
+		return nil
+	}
+	snap, err := s.state.Snapshot(ctx, readiness.Person{WorkspaceID: cc.WorkspaceID, UserID: cc.UserID, SystemAdmin: cc.SystemAdmin})
+	if err != nil {
+		log.Printf("[copilot] workspace state unavailable: %v", err)
+		return nil
+	}
+	return snap
+}
+
+func attachProposal(m *aichat.Message, pa copilot.PendingAction) error {
+	raw, err := json.Marshal(pa)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return ErrActionNotFound
+	m.ProposalID, m.Proposal, m.ProposalStatus = pa.ID, raw, aichat.ProposalPending
+	return nil
+}
+
+func (s *Service) claim(threadID, actionID string, outcome aichat.ProposalStatus) (copilot.PendingAction, error) {
+	var pa copilot.PendingAction
+	m, err := s.messages.ClaimProposal(threadID, actionID, outcome)
+	if errors.Is(err, aichat.ErrProposalNotPending) {
+		return pa, ErrActionNotFound
+	}
+	if err != nil {
+		return pa, err
+	}
+	if err := json.Unmarshal(m.Proposal, &pa); err != nil {
+		return pa, err
+	}
+	return pa, nil
+}
+
+func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, cc copilot.Context, emit agentloop.Emit) error {
+	pa, err := s.claim(thread.ID, actionID, aichat.ProposalApproved)
+	if err != nil {
+		return err
 	}
 	model := thread.Model
 	if strings.TrimSpace(model) == "" {
@@ -133,20 +205,15 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	}
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	res := driver.ExecuteApproved(ctx, pa)
-	_ = s.pending.Delete(thread.ID, actionID)
 	executed := toolStep{Name: pa.ToolName, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK}
-	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, false, executed)
+	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
 }
 
 func (s *Service) Reject(ctx context.Context, thread *aichat.Thread, actionID string, emit agentloop.Emit) error {
-	pa, ok, err := s.pending.Get(thread.ID, actionID)
+	pa, err := s.claim(thread.ID, actionID, aichat.ProposalRejected)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return ErrActionNotFound
-	}
-	_ = s.pending.Delete(thread.ID, actionID)
 	content := "Ação cancelada pelo usuário: " + pa.ToolName
 	_ = s.messages.Create(&aichat.Message{ThreadID: thread.ID, Role: aichat.RoleAssistant, Content: content, Model: thread.Model})
 	emit("done", map[string]interface{}{"content": content, "status": "rejected"})
@@ -174,10 +241,28 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 		case aichat.RoleSystem:
 			out = append(out, ai.Message{Role: ai.RoleSystem, Content: m.Content})
 		case aichat.RoleUser:
-			out = append(out, ai.Message{Role: ai.RoleUser, Content: m.Content})
+			out = append(out, ai.Message{Role: ai.RoleUser, Content: copilot.PromptWithAttachments(m.Content, storedAttachments(m.Attachments))})
 		}
 	}
 	return out, nil
+}
+
+func storedAttachments(raw []byte) []copilot.Attachment {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out []copilot.Attachment
+	if json.Unmarshal(raw, &out) != nil {
+		return nil
+	}
+	return out
+}
+
+func titleSource(content string, attachments []copilot.Attachment) string {
+	if content != "" || len(attachments) == 0 {
+		return content
+	}
+	return attachments[0].Name
 }
 
 func lastAssistantContent(h []ai.Message) string {
@@ -235,10 +320,11 @@ func deriveTitle(firstMessage string) string {
 }
 
 type toolStep struct {
-	Name    string         `json:"name"`
-	Summary string         `json:"summary"`
-	Ok      bool           `json:"ok"`
-	Chart   *copilot.Chart `json:"chart,omitempty"`
+	Name    string              `json:"name"`
+	Summary string              `json:"summary"`
+	Ok      bool                `json:"ok"`
+	Chart   *copilot.Chart      `json:"chart,omitempty"`
+	Card    *copilot.ActionCard `json:"card,omitempty"`
 }
 
 func (t toolStep) payload() map[string]interface{} {
@@ -260,6 +346,10 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 	case EventChart:
 		if chart, ok := payload.(*copilot.Chart); ok && len(r.tools) > 0 {
 			r.tools[len(r.tools)-1].Chart = chart
+		}
+	case EventCard:
+		if card, ok := payload.(*copilot.ActionCard); ok && len(r.tools) > 0 {
+			r.tools[len(r.tools)-1].Card = card
 		}
 	}
 	r.emit(eventType, payload)
@@ -298,36 +388,4 @@ func toolStepFromPayload(payload interface{}) toolStep {
 	summary, _ := p["summary"].(string)
 	ok, _ := p["ok"].(bool)
 	return toolStep{Name: name, Summary: summary, Ok: ok}
-}
-
-type InMemoryPendingStore struct {
-	mu sync.Mutex
-	m  map[string]copilot.PendingAction
-}
-
-func NewInMemoryPendingStore() *InMemoryPendingStore {
-	return &InMemoryPendingStore{m: make(map[string]copilot.PendingAction)}
-}
-
-func pendingKey(threadID, actionID string) string { return threadID + "/" + actionID }
-
-func (s *InMemoryPendingStore) Save(threadID string, pa copilot.PendingAction) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.m[pendingKey(threadID, pa.ID)] = pa
-	return nil
-}
-
-func (s *InMemoryPendingStore) Get(threadID, actionID string) (copilot.PendingAction, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	pa, ok := s.m[pendingKey(threadID, actionID)]
-	return pa, ok, nil
-}
-
-func (s *InMemoryPendingStore) Delete(threadID, actionID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.m, pendingKey(threadID, actionID))
-	return nil
 }

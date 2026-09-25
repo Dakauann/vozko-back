@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/attendance"
+	"vozko/infra/database"
 )
 
 const (
@@ -100,25 +101,24 @@ func scopeMessagesSQL() string {
 		LEFT JOIN LATERAL (
 			SELECT
 			MIN(cm.created_at) FILTER (
-				WHERE cm.message_type IN ('user_message', 'audio', 'media')
+				WHERE ` + database.SentByContactSQL("cm") + `
 			) AS first_inbound_at,
 			MIN(cm.created_at) FILTER (
-				WHERE cm.message_type IN ('operator', 'ai_response')
+				WHERE ` + database.SentAsReplySQL("cm") + `
 			) AS first_agent_at,
 			MAX(cm.created_at) FILTER (
-				WHERE cm.message_type IN ('operator', 'ai_response')
+				WHERE ` + database.SentAsReplySQL("cm") + `
 			) AS last_agent_at,
 			MIN(cm.created_at) FILTER (
-				WHERE cm.message_type = 'operator'
-				  AND se.assigned_user_id <> ''
-				  AND cm.from_participant = se.assigned_user_id
+				WHERE se.assigned_user_id <> ''
+				  AND cm.sender_id = se.assigned_user_id
 			) AS first_assignee_op_at,
 			COUNT(cm.id)::int AS total_msgs,
 			COUNT(cm.id) FILTER (
-				WHERE cm.message_type IN ('user_message', 'audio', 'media')
+				WHERE ` + database.SentByContactSQL("cm") + `
 			)::int AS inbound_msgs,
 			COUNT(cm.id) FILTER (
-				WHERE cm.message_type IN ('operator', 'ai_response', 'template')
+				WHERE ` + database.SentOutboundSQL("cm") + `
 			)::int AS outbound_msgs,
 			COUNT(cm.id) FILTER (
 				WHERE cm.message_type = 'template'

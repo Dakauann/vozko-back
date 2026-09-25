@@ -69,7 +69,7 @@ func TestTheWindowRuleAnswersForEveryChannelShape(t *testing.T) {
 
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
-			_, err := LatestAllowed(shape.open, shape.expiresAt, now)
+			_, err := KindText.LatestAllowed(shape.open, shape.expiresAt, now)
 			if shape.wantBound && err != nil {
 				t.Errorf("%s (%s) produced no bound: %v", shape.name, shape.channels, err)
 			}

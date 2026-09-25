@@ -11,6 +11,7 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/infra/crypto/piigorm"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -25,7 +26,7 @@ func NewInstanceRepository(db *gorm.DB) uw.InstanceRepository {
 func (r *instanceRepository) Create(ctx context.Context, i *uw.Instance) error {
 	record := toInstanceSchema(i)
 	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
-		if isUniqueViolation(err) {
+		if database.IsUniqueViolation(err) {
 			return uw.ErrNumberAlreadyLinked
 		}
 		return err
@@ -116,7 +117,7 @@ func (r *instanceRepository) UpdateSession(ctx context.Context, id string, in uw
 		Where("id = ?", id).
 		Updates(update)
 	if result.Error != nil {
-		if isUniqueViolation(result.Error) {
+		if database.IsUniqueViolation(result.Error) {
 			return uw.ErrNumberAlreadyLinked
 		}
 		return result.Error

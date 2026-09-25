@@ -233,7 +233,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 		if msgType == conversation.MessageTypeUserMessage {
 			msgType = conversation.MessageTypeUnsupported
 		}
-		return uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		return uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       msgType,
 			ProviderMessageID: msg.MID,
 			From:              contact.IGSID,
@@ -247,7 +247,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	}
 
 	if text != "" || len(stored) == 0 {
-		if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		if err := uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       msgType,
 			ProviderMessageID: msg.MID,
 			From:              contact.IGSID,
@@ -267,7 +267,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 		if len(stored) > 1 || text != "" {
 			providerID = fmt.Sprintf("%s:att%d", msg.MID, i)
 		}
-		if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+		if err := uc.recordFromContact(ctx, conv, historyInput{
 			MessageType:       mediaMessageType(msgType, item.mediaType),
 			ProviderMessageID: providerID,
 			From:              contact.IGSID,
@@ -401,7 +401,7 @@ func (uc *HandleWebhookUseCase) handleEcho(ctx context.Context, account *igdomai
 	}
 
 	_, metadata := classifyInbound(msg)
-	return uc.record(ctx, conv, conversation.MessageDirectionOutbound, historyInput{
+	return uc.record(ctx, conv, conversation.SentExternally(), historyInput{
 		MessageType:       conversation.MessageTypeOperator,
 		ProviderMessageID: msg.MID,
 		From:              account.IGUserID,
@@ -523,7 +523,7 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 		"instagram_postback_payload": ev.Postback.Payload,
 		"instagram_postback_title":   ev.Postback.Title,
 	})
-	if err := uc.record(ctx, conv, conversation.MessageDirectionInbound, historyInput{
+	if err := uc.recordFromContact(ctx, conv, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,
 		ProviderMessageID: ev.Postback.MID,
 		From:              contact.IGSID,
@@ -673,11 +673,16 @@ type historyInput struct {
 	SenderAvatar string
 }
 
-func (uc *HandleWebhookUseCase) record(ctx context.Context, conv *igdomain.Conversation, direction conversation.MessageHistoryDirection, in historyInput) error {
+func (uc *HandleWebhookUseCase) recordFromContact(ctx context.Context, conv *igdomain.Conversation, in historyInput) error {
+	return uc.record(ctx, conv, conversation.SentByContact(in.From), in)
+}
+
+func (uc *HandleWebhookUseCase) record(ctx context.Context, conv *igdomain.Conversation, sentBy conversation.SentBy, in historyInput) error {
 	if uc.history == nil {
 		return nil
 	}
-	return uc.history.Record(ctx, direction, conversation.MessageHistoryRecord{
+	return uc.history.Record(ctx, conversation.MessageHistoryRecord{
+		SentBy:            sentBy,
 		EntryID:           conv.ID,
 		EntryType:         shared.EntryTypeInstagram,
 		Channel:           conversation.MessageChannelInstagram,

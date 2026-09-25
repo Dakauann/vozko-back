@@ -45,7 +45,6 @@ import (
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
-	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
 	tickethttp "vozko/delivery/http/ticket"
@@ -167,7 +166,6 @@ type router struct {
 	workspaceConfigHandler         *workspaceconfighttp.WorkspaceConfigHandler
 	workspacePlanHandler           *handlers.WorkspacePlanHandler
 	workspaceAddonHandler          *workspaceaddonhttp.WorkspaceAddonHandler
-	supportInboxHandler            *supportinboxhttp.SupportInboxHandler
 	issueHandler                   *issuehttp.IssueHandler
 	workflowHandler                *handlers.WorkflowHandler
 	workflowWebhookHandler         *workflowwebhookhttp.Handler
@@ -253,7 +251,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	workspaceConfigHandler *workspaceconfighttp.WorkspaceConfigHandler,
 	workspacePlanHandler *handlers.WorkspacePlanHandler,
 	workspaceAddonHandler *workspaceaddonhttp.WorkspaceAddonHandler,
-	supportInboxHandler *supportinboxhttp.SupportInboxHandler,
 	issueHandler *issuehttp.IssueHandler,
 	workflowHandler *handlers.WorkflowHandler,
 	workflowWebhookHandler *workflowwebhookhttp.Handler,
@@ -355,7 +352,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		workspaceConfigHandler:         workspaceConfigHandler,
 		workspacePlanHandler:           workspacePlanHandler,
 		workspaceAddonHandler:          workspaceAddonHandler,
-		supportInboxHandler:            supportInboxHandler,
 		issueHandler:                   issueHandler,
 		workflowHandler:                workflowHandler,
 		workflowWebhookHandler:         workflowWebhookHandler,
@@ -417,7 +413,6 @@ func (r *router) setupRoutes() {
 	r.setupCEPRoutes()
 	r.setupShortLinkPublicRoutes()
 	r.setupReportPublicRoutes()
-	r.setupPublicSupportRoutes()
 	r.setupPublicAffiliateRoutes()
 	r.setupPublicMCPRoutes()
 
@@ -441,7 +436,6 @@ func (r *router) setupRoutes() {
 	r.setupCallBillingRoutes(protected)
 	r.setupCallsRoutes(protected)
 	r.setupWhatsAppCampaignRoutes(protected)
-	r.setupSupportInboxRoutes(protected)
 	r.setupWhatsAppTemplateRoutes(protected)
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
@@ -518,13 +512,6 @@ func (r *router) setupRoutes() {
 	calendarhttp.RegisterPublicRoutes(r.mux, r.calendarHandler)
 }
 
-func (r *router) setupSupportInboxRoutes(protected *mux.Router) {
-	supportinboxhttp.RegisterProtectedRoutes(protected, r.supportInboxHandler, r.ac)
-}
-
-func (r *router) setupPublicSupportRoutes() {
-	supportinboxhttp.RegisterPublicRoutes(r.mux, r.supportInboxHandler)
-}
 
 func (r *router) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

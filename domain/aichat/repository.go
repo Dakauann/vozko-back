@@ -33,4 +33,6 @@ type MessageRepository interface {
 	Create(message *Message) error
 	ListByThread(input ListMessagesInput) ([]*Message, int64, error)
 	DeleteByThread(threadID string) error
+	ClaimProposal(threadID, proposalID string, outcome ProposalStatus) (*Message, error)
+	ExpireProposals(threadID string) error
 }

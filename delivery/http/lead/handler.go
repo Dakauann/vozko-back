@@ -26,6 +26,7 @@ import (
 )
 
 type LeadHandler struct {
+	leads        leaddomain.Queries
 	leadRepo     leaddomain.Repository
 	wcEntryRepo  wc_entry.Repository
 	messageRepo  conversation.MessageRepository
@@ -48,6 +49,7 @@ func (h *LeadHandler) SetInboxSeeder(seeder InboxSeeder) {
 }
 
 func NewLeadHandler(
+	leads leaddomain.Queries,
 	leadRepo leaddomain.Repository,
 	wcEntryRepo wc_entry.Repository,
 	messageRepo conversation.MessageRepository,
@@ -57,6 +59,7 @@ func NewLeadHandler(
 	metaAPI businessphone.MetaAPIService,
 ) *LeadHandler {
 	return &LeadHandler{
+		leads:        leads,
 		leadRepo:     leadRepo,
 		wcEntryRepo:  wcEntryRepo,
 		messageRepo:  messageRepo,
@@ -110,7 +113,7 @@ func (h *LeadHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByID(workspaceID, leadID)
+	leadRecord, err := h.leads.Get(workspaceID, leadID)
 	if err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -151,7 +154,7 @@ func (h *LeadHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByNumber(workspaceID, number)
+	leadRecord, err := h.leads.GetByNumber(workspaceID, number)
 	if err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -223,7 +226,7 @@ func (h *LeadHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.leadRepo.ListWithSummary(input)
+	result, err := h.leads.List(input)
 	if err != nil {
 		h.writeListError(w, err)
 		return
@@ -259,7 +262,7 @@ func (h *LeadHandler) Facets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	facets, err := h.leadRepo.Facets(input)
+	facets, err := h.leads.Facets(input)
 	if err != nil {
 		h.writeListError(w, err)
 		return
@@ -314,7 +317,7 @@ func (h *LeadHandler) GetCampaignHistory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByID(workspaceID, leadID)
+	leadRecord, err := h.leads.Get(workspaceID, leadID)
 	if err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -466,7 +469,7 @@ func (h *LeadHandler) GetConversationHistory(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByID(workspaceID, leadID)
+	leadRecord, err := h.leads.Get(workspaceID, leadID)
 	if err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -533,7 +536,7 @@ func (h *LeadHandler) BlockLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByID(workspaceID, leadId)
+	leadRecord, err := h.leads.Get(workspaceID, leadId)
 	if err != nil {
 		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
 		return
@@ -729,7 +732,7 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	leadRecord, err := h.leadRepo.FindByID(workspaceID, leadID)
+	leadRecord, err := h.leads.Get(workspaceID, leadID)
 	if err != nil {
 		if errors.Is(err, leaddomain.ErrLeadNotFound) {
 			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
@@ -834,7 +837,7 @@ func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.leadRepo.FindByID(workspaceID, leadID)
+	updated, err := h.leads.Get(workspaceID, leadID)
 	if err != nil {
 		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
 		return

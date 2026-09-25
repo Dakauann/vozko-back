@@ -17,6 +17,10 @@ const (
 	generationFetchTimeout   = 10 * time.Second
 )
 
+var generationRetryDelays = []time.Duration{
+	time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second,
+}
+
 type generationUsageFetcher interface {
 	FetchUsage(ctx context.Context, generationID string) (promptTokens, completionTokens int, costMicros int64, ok bool)
 }
@@ -84,17 +88,38 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 		s.publishBillingEvent(workspaceID, model, usage.PromptTokens, usage.CompletionTokens, costToMicros(usage.Cost))
 		return
 	}
-	if s.usageFetcher != nil && strings.TrimSpace(generationID) != "" {
+	if s.usageFetcher == nil || strings.TrimSpace(generationID) == "" {
+		logUnbilled(workspaceID, model, generationID)
+		return
+	}
+	s.recoveries.Add(1)
+	go func() {
+		defer s.recoveries.Done()
+		s.recoverStreamUsage(workspaceID, model, generationID)
+	}()
+}
+
+func (s *Service) recoverStreamUsage(workspaceID, model, generationID string) {
+	delays := s.usageRetryDelays
+	if len(delays) == 0 {
+		delays = []time.Duration{0}
+	}
+	for _, delay := range delays {
+		time.Sleep(delay)
 		fctx, cancel := context.WithTimeout(context.Background(), generationFetchTimeout)
 		pt, ct, costMicros, ok := s.usageFetcher.FetchUsage(fctx, generationID)
 		cancel()
 		if ok && (pt > 0 || ct > 0 || costMicros > 0) {
-			log.Printf("[ai-billing] recovered usage for cut stream via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
+			log.Printf("[ai-billing] recovered usage via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
 				generationID, model, workspaceID, pt, ct, costMicros)
 			s.publishBillingEvent(workspaceID, model, pt, ct, costMicros)
 			return
 		}
 	}
+	logUnbilled(workspaceID, model, generationID)
+}
+
+func logUnbilled(workspaceID, model, generationID string) {
 	log.Printf("CRITICAL: [ai-billing] no usage for model=%s ws=%s (generation_id=%q, recovery unavailable/empty), NOT billing this stream (REVENUE LEAK)",
 		model, workspaceID, generationID)
 }

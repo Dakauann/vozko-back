@@ -234,7 +234,6 @@ func TestWorkspacePricingHandler_GetPublicExchangeRate_HidesInternalPricingField
 			Currency:    "BRL",
 		}},
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/pricing/exchange-rate", nil)

@@ -143,4 +143,5 @@ type OnboardEmbeddedSignupResult struct {
 
 type OnboardEmbeddedSignupUseCase interface {
 	Execute(input OnboardEmbeddedSignupInput) (*OnboardEmbeddedSignupResult, error)
+	Authorize(workspaceID, metaPhoneNumberID string) error
 }

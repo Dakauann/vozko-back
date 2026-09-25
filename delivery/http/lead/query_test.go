@@ -214,8 +214,8 @@ func TestUnknownSortKeyIsDroppedNotRejected(t *testing.T) {
 
 func TestPageSizeIsCapped(t *testing.T) {
 	input := parse(t, "pageSize=100000")
-	if input.Options.Pagination.PageSize != leadListMaxPageSize {
-		t.Errorf("pageSize = %d, want the %d cap", input.Options.Pagination.PageSize, leadListMaxPageSize)
+	if input.Options.Pagination.PageSize != leaddomain.MaxListPageSize {
+		t.Errorf("pageSize = %d, want the %d cap", input.Options.Pagination.PageSize, leaddomain.MaxListPageSize)
 	}
 
 	if got := parse(t, "pageSize=50").Options.Pagination.PageSize; got != 50 {

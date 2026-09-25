@@ -20,7 +20,10 @@ func NewRepository(db *gorm.DB) sm.Repository {
 }
 
 func (r *repository) Create(m *sm.ScheduledMessage) error {
-	row := fromDomain(m)
+	row, err := fromDomain(m)
+	if err != nil {
+		return err
+	}
 	if err := r.db.Create(&row).Error; err != nil {
 		return err
 	}
@@ -149,7 +152,7 @@ func (r *repository) ClaimDueBatch(now time.Time, limit int) ([]*sm.ScheduledMes
 func (r *repository) MarkSent(id, messageID string, sentAt time.Time) error {
 	return r.transitionFrom(id, sm.StatusSending, map[string]interface{}{
 		"status":          string(sm.StatusSent),
-		"sent_message_id": messageID,
+		"sent_message_id": nullableID(messageID),
 		"sent_at":         sentAt,
 		"updated_at":      sentAt,
 	})
@@ -222,6 +225,13 @@ func (r *repository) PurgeTerminalBefore(cutoff time.Time) (int64, error) {
 			[]string{string(sm.StatusSent), string(sm.StatusFailed), string(sm.StatusCanceled)}, cutoff).
 		Delete(&schema.ScheduledMessage{})
 	return result.RowsAffected, result.Error
+}
+
+func nullableID(id string) *string {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	return &id
 }
 
 var _ sm.Repository = (*repository)(nil)

@@ -13,4 +13,6 @@ var (
 	ErrDepartmentForbidden   = errors.New("whatsapp outreach: this number belongs to another department")
 	ErrTemplateForbidden     = errors.New("whatsapp outreach: this template is not available to this workspace")
 	ErrRateLimited           = errors.New("whatsapp outreach: too many new conversations started from this workspace, try again shortly")
+	ErrConversationNotFound  = errors.New("whatsapp outreach: conversation not found")
+	ErrSendOutcomeUnknown    = errors.New("whatsapp outreach: the template may have been delivered, the provider's answer was lost")
 )

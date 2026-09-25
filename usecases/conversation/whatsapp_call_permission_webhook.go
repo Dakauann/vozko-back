@@ -129,6 +129,7 @@ func (c *WhatsAppCallPermissionConsumer) process(metaPhoneNumberID, userNumber s
 		EntryType:   shared.EntryTypeWhatsApp,
 		Channel:     conversation_domain.MessageChannelWhatsApp,
 		MessageType: msgType,
+		SentBy:      conversation_domain.SentByContact(userNumber),
 		From:        userNumber,
 		Text:        text,
 		Read:        false,

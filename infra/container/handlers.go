@@ -46,7 +46,6 @@ import (
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
-	supportinboxhttp "vozko/delivery/http/supportinbox"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
@@ -169,6 +168,7 @@ func (c *Container) initHandlers() {
 			c.services.whatsappClientFactory,
 			c.repositories.workspaceTemplateAccess,
 			c.repositories.businessPhone,
+			c.useCases.workspaceTemplates,
 		),
 		whatsappOutreach: whatsappoutreachhttp.NewHandler(whatsappoutreachhttp.HandlerDeps{
 			Start:       c.useCases.startOfficialConversation,
@@ -215,7 +215,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getShop,
 			c.useCases.listShops,
 		),
-		whatsappCampaign: handlers.NewWhatsAppCampaignHandler(
+		whatsappCampaign: withCampaignAccess(c, handlers.NewWhatsAppCampaignHandler(
 			c.useCases.createWCCampaign,
 			c.useCases.updateWCCampaign,
 			c.useCases.assignWCCampaignDepartment,
@@ -237,8 +237,9 @@ func (c *Container) initHandlers() {
 			c.useCases.ensureActiveWorkspaceSubscription,
 			c.useCases.getAgent,
 			c.useCases.getWCCampaignsSummary,
-		),
+		)),
 		lead: withLeadInboxSeeding(c, leadhttp.NewLeadHandler(
+			c.useCases.leadQueries,
 			c.repositories.lead,
 			c.repositories.wcEntry,
 			c.repositories.conversation,
@@ -248,7 +249,7 @@ func (c *Container) initHandlers() {
 			c.services.businessPhoneMetaAPI,
 		)),
 		callRecording: callrecordinghttp.NewCallRecordingHandler(c.useCases.callRecordingQuery),
-		whatsappBusinessPhone: whatsappbusinessphonehttp.NewWhatsAppBusinessPhoneHandler(
+		whatsappBusinessPhone: withWorkspacePhones(c, whatsappbusinessphonehttp.NewWhatsAppBusinessPhoneHandler(
 			whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandlerConfig{
 				AccessToken: c.cfg.WhatsAppAccessToken,
 			},
@@ -268,7 +269,7 @@ func (c *Container) initHandlers() {
 			c.repositories.workspacePhoneAccess,
 			c.services.businessPhoneMetaAPI,
 			c.services.whatsappClientFactory,
-		),
+		)),
 		waba: wabahttp.NewWABAHandler(c.useCases.listWABAs, c.useCases.getWABA),
 		metaEmbeddedSignup: metaembeddedsignuphttp.NewMetaEmbeddedSignupHandler(
 			metaembeddedsignuphttp.GetMetaEmbeddedSignupConfigFromEnv(),
@@ -339,7 +340,7 @@ func (c *Container) initHandlers() {
 			c.useCases.deleteStage,
 			c.useCases.listStages,
 			c.useCases.setInitialStage,
-			c.useCases.assignEntryStage,
+			c.useCases.moveEntryStage,
 			c.useCases.removeEntryStage,
 			c.useCases.getEntryStage,
 			c.useCases.getBatchEntryStages,
@@ -371,7 +372,7 @@ func (c *Container) initHandlers() {
 		opportunity: opportunityhttp.NewOpportunityHandler(
 			c.useCases.opportunity,
 			c.services.opportunityIO,
-			c.services.conversationAuth,
+			c.useCases.personDeals,
 			c.services.reportService,
 		),
 		opportunityBoard: opportunityboardhttp.NewOpportunityBoardHandler(oppboard_usecase.NewService(
@@ -387,8 +388,7 @@ func (c *Container) initHandlers() {
 			c.useCases.updateLabel,
 			c.useCases.deleteLabel,
 			c.useCases.listLabels,
-			c.useCases.assignEntryLabel,
-			c.useCases.removeEntryLabel,
+			c.useCases.entryLabels,
 			c.useCases.getEntryLabels,
 			c.useCases.reorderLabels,
 			c.services.conversationHub,
@@ -401,9 +401,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getByShortcut,
 		),
 		scheduledMessage: scheduledmessagehttp.NewScheduledMessageHandler(
-			c.useCases.scheduleMessage,
-			c.useCases.rescheduleMessage,
-			c.useCases.cancelScheduledMessage,
+			c.useCases.personScheduler,
 			c.useCases.listScheduledMessages,
 			c.services.conversationAuth,
 		),
@@ -484,15 +482,15 @@ func (c *Container) initHandlers() {
 			c.useCases.createKnowledgeBase,
 			c.useCases.updateKnowledgeBase,
 			c.useCases.deleteKnowledgeBase,
-			c.useCases.getKnowledgeBase,
+			c.useCases.knowledgeBaseAccess,
 			c.useCases.listKnowledgeBases,
-			c.useCases.createRAGDocument,
+			c.useCases.scopedKnowledgeDocuments,
 			c.useCases.deleteRAGDocument,
 			c.useCases.getRAGDocument,
 			c.useCases.listRAGDocuments,
 			c.useCases.linkAgentKnowledgeBases,
 			c.useCases.getAgentKnowledgeBases,
-			c.useCases.queryKnowledgeBase,
+			c.useCases.scopedKnowledgeQuery,
 		),
 		shortLink: shortlinkhttp.NewShortLinkHandler(
 			c.useCases.createShortLink,
@@ -535,15 +533,6 @@ func (c *Container) initHandlers() {
 			c.useCases.getPlanContractions,
 			c.useCases.getMetaServiceMessageCost,
 		),
-		supportInbox: supportinboxhttp.NewSupportInboxHandler(
-			c.useCases.createSupportInbox,
-			c.useCases.updateSupportInbox,
-			c.useCases.deleteSupportInbox,
-			c.useCases.getSupportInbox,
-			c.useCases.listSupportInboxes,
-			c.useCases.createSupportSession,
-			c.useCases.reconnectSupportSession,
-		),
 		issue: issuehttp.NewIssueHandler(
 			c.useCases.createIssue,
 			c.useCases.listIssues,
@@ -556,13 +545,9 @@ func (c *Container) initHandlers() {
 		),
 		workflow: handlers.NewWorkflowHandler(
 			c.useCases.createWorkflow,
-			c.useCases.updateWorkflow,
+			c.useCases.scopedWorkflows,
 			c.useCases.assignWorkflowDepartment,
-			c.useCases.deleteWorkflow,
-			c.useCases.getWorkflow,
 			c.useCases.listWorkflows,
-			c.useCases.activateWorkflow,
-			c.useCases.pauseWorkflow,
 			c.useCases.startWorkflowRun,
 			c.useCases.cancelWorkflowRun,
 			c.useCases.getWorkflowRun,

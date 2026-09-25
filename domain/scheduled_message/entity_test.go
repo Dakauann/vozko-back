@@ -55,7 +55,7 @@ func TestLatestAllowed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := LatestAllowed(tc.open, tc.expiresAt, now)
+			got, err := KindText.LatestAllowed(tc.open, tc.expiresAt, now)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Fatalf("err = %v, want %v", err, tc.wantErr)
@@ -128,7 +128,7 @@ func TestValidateScheduledAt(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateScheduledAt(tc.at, tc.open, tc.expiresAt, now)
+			err := KindText.ValidateScheduledAt(tc.at, tc.open, tc.expiresAt, now)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}

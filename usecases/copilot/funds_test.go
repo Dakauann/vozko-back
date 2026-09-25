@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"vozko/domain/copilot"
 
 	"vozko/domain/ai"
 	"vozko/usecases/agentloop"
@@ -40,9 +41,9 @@ func TestService_BalanceIsCheckedBeforeEveryModelCall(t *testing.T) {
 	rt := &fakeTool{name: "read_x", meta: readMeta}
 	prov := &scriptAI{turns: [][]ai.ToolCall{{call("read_x", nil)}, {call("read_x", nil)}, {}}, texts: []string{"Vou consultar.", "", "fim"}}
 	funds := &drainingFunds{allowed: 1}
-	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(rt), &fakeAccess{}, funds, th, ms, NewInMemoryPendingStore(), func() string { return "a" })
+	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(rt), &fakeAccess{}, funds, th, ms, nil, nil, func() string { return "a" })
 	ev := &events{}
-	if err := svc.Stream(context.Background(), th.thread, "x", ownerCtx, ev.emit); err != nil {
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, ev.emit); err != nil {
 		t.Fatal(err)
 	}
 	// One admitted call, then the ledger says no: the second call must never be paid for.
@@ -67,9 +68,9 @@ func TestService_AnAnswerHasATokenBudget(t *testing.T) {
 	}
 	th, ms := &fakeThreads{thread: testThread()}, &fakeMessages{}
 	prov := &scriptAI{turns: [][]ai.ToolCall{{call("read_x", nil)}, {}}, texts: []string{"", "fim"}, usage: &ai.Usage{TotalTokens: AnswerTokenBudget}}
-	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{}, openFunds{}, th, ms, NewInMemoryPendingStore(), func() string { return "a" })
+	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{}, openFunds{}, th, ms, nil, nil, func() string { return "a" })
 	ev := &events{}
-	if err := svc.Stream(context.Background(), th.thread, "x", ownerCtx, ev.emit); err != nil {
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, ev.emit); err != nil {
 		t.Fatal(err)
 	}
 	errs := ev.byType["error"]

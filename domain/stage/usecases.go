@@ -1,6 +1,10 @@
 package stage
 
-import "context"
+import (
+	"context"
+
+	"vozko/domain/shared"
+)
 
 type CreateStageUseCase interface {
 	Execute(workspaceID string, input CreateStageInput) (*Stage, error)
@@ -24,6 +28,14 @@ type SetInitialStageUseCase interface {
 
 type AssignEntryStageUseCase interface {
 	Execute(workspaceID string, input AssignEntryStageInput) (*EntryStage, error)
+}
+
+type ListFunnelStagesUseCase interface {
+	Execute(workspaceID string) ([]FunnelStages, error)
+}
+
+type MoveEntryStageUseCase interface {
+	Execute(workspaceID string, by shared.Person, input AssignEntryStageInput) (*EntryStage, error)
 }
 
 type RemoveEntryStageUseCase interface {

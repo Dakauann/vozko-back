@@ -5,6 +5,7 @@ import "strings"
 const (
 	AIPrefix       = "ai:"
 	WorkflowPrefix = "workflow:"
+	CampaignPrefix = "campaign:"
 	SystemID       = "system"
 )
 
@@ -15,11 +16,12 @@ const (
 	KindAI       Kind = "ai"
 	KindWorkflow Kind = "workflow"
 	KindSystem   Kind = "system"
+	KindCampaign Kind = "campaign"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindHuman, KindAI, KindWorkflow, KindSystem:
+	case KindHuman, KindAI, KindWorkflow, KindSystem, KindCampaign:
 		return true
 	}
 	return false
@@ -50,6 +52,14 @@ func ParseWorkflow(id string) string {
 	return parsePrefixed(WorkflowPrefix, id)
 }
 
+func FormatCampaign(campaignID string) string {
+	return formatPrefixed(CampaignPrefix, campaignID)
+}
+
+func IsCampaign(id string) bool {
+	return strings.HasPrefix(strings.TrimSpace(id), CampaignPrefix)
+}
+
 // IsAutomation reports whether the actor is automation rather than a person or
 // the system: an AI agent or a workflow.
 func IsAutomation(id string) bool {
@@ -66,6 +76,9 @@ func KindOf(actorID string) Kind {
 	}
 	if IsWorkflow(id) {
 		return KindWorkflow
+	}
+	if IsCampaign(id) {
+		return KindCampaign
 	}
 	return KindHuman
 }

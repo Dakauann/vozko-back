@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/attendance"
+	"vozko/infra/database"
 )
 
 type repository struct {
@@ -106,13 +107,7 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 		userIDs[i] = m.UserID
 	}
 
-	respondedQuery := `
-		SELECT ia.assigned_user_id AS user_id, COUNT(DISTINCT cm.entry_id) AS responded_count
-		FROM conversation_messages cm
-		JOIN inbox_assignments ia ON ia.entry_id = cm.entry_id AND ia.entry_type = cm.entry_type` + cmJoin + `
-		WHERE ia.workspace_id = ? AND ia.assigned_user_id IN ?
-		AND cm.message_type = 'operator'
-		AND cm.deleted_at IS NULL` + cmWhere
+	respondedQuery := respondedSQL(cmJoin, cmWhere)
 	respondedArgs := append([]interface{}{workspaceID, userIDs}, cmExtra...)
 	if filter.DateFrom != nil {
 		respondedQuery += " AND cm.created_at >= ?"
@@ -144,20 +139,7 @@ func (r *repository) GetAttendantStats(workspaceID string, filter attendance.Sta
 			SELECT ia.assigned_user_id AS user_id,
 				EXTRACT(EPOCH FROM (op.first_at - usr.first_at)) AS response_time_secs
 			FROM inbox_assignments ia` + iaJoin + `
-			CROSS JOIN LATERAL (
-				SELECT m.created_at AS first_at
-				FROM conversation_messages m
-				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
-				  AND m.deleted_at IS NULL AND m.message_type = 'user_message'
-				ORDER BY m.created_at ASC LIMIT 1
-			) usr
-			CROSS JOIN LATERAL (
-				SELECT m.created_at AS first_at
-				FROM conversation_messages m
-				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
-				  AND m.deleted_at IS NULL AND m.message_type = 'operator'
-				ORDER BY m.created_at ASC LIMIT 1
-			) op
+` + ownerResponseLateralsSQL() + `
 			WHERE ia.workspace_id = ? AND ia.assigned_user_id IN ?` + iaWhere
 	avgArgs := []interface{}{workspaceID, userIDs}
 	avgArgs = append(avgArgs, iaExtra...)
@@ -281,20 +263,7 @@ func (r *repository) GetResponseTimeDistribution(workspaceID string, filter atte
 		SELECT response_time_secs FROM (
 			SELECT EXTRACT(EPOCH FROM (op.first_at - usr.first_at)) AS response_time_secs
 			FROM inbox_assignments ia` + iaJoin + `
-			CROSS JOIN LATERAL (
-				SELECT m.created_at AS first_at
-				FROM conversation_messages m
-				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
-				  AND m.deleted_at IS NULL AND m.message_type = 'user_message'
-				ORDER BY m.created_at ASC LIMIT 1
-			) usr
-			CROSS JOIN LATERAL (
-				SELECT m.created_at AS first_at
-				FROM conversation_messages m
-				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
-				  AND m.deleted_at IS NULL AND m.message_type = 'operator'
-				ORDER BY m.created_at ASC LIMIT 1
-			) op
+` + ownerResponseLateralsSQL() + `
 			WHERE ia.workspace_id = ?` + iaWhere
 	args := []interface{}{workspaceID}
 	args = append(args, iaExtra...)
@@ -409,4 +378,32 @@ func (r *repository) GetAIAgentStats(workspaceID string, filter attendance.Stats
 		out[i] = st
 	}
 	return out, nil
+}
+
+func respondedSQL(cmJoin, cmWhere string) string {
+	return `
+		SELECT ia.assigned_user_id AS user_id, COUNT(DISTINCT cm.entry_id) AS responded_count
+		FROM conversation_messages cm
+		JOIN inbox_assignments ia ON ia.entry_id = cm.entry_id AND ia.entry_type = cm.entry_type` + cmJoin + `
+		WHERE ia.workspace_id = ? AND ia.assigned_user_id IN ?
+		AND cm.sender_id = ` + ownerActorIDSQL + `
+		AND cm.deleted_at IS NULL` + cmWhere
+}
+
+func ownerResponseLateralsSQL() string {
+	return `
+			CROSS JOIN LATERAL (
+				SELECT m.created_at AS first_at
+				FROM conversation_messages m
+				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
+				  AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
+				ORDER BY m.created_at ASC LIMIT 1
+			) usr
+			CROSS JOIN LATERAL (
+				SELECT m.created_at AS first_at
+				FROM conversation_messages m
+				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
+				  AND m.deleted_at IS NULL AND m.sender_id = ` + ownerActorIDSQL + `
+				ORDER BY m.created_at ASC LIMIT 1
+			) op`
 }

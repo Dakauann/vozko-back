@@ -870,7 +870,7 @@ func (r *mockInflightReserver) GetInflight(workspaceID string) (int64, error) {
 
 type mockMessageHistoryManager struct{}
 
-func (m *mockMessageHistoryManager) Record(_ context.Context, _ conversation.MessageHistoryDirection, _ conversation.MessageHistoryRecord) error {
+func (m *mockMessageHistoryManager) Record(_ context.Context, _ conversation.MessageHistoryRecord) error {
 	return nil
 }
 

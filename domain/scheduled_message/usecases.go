@@ -10,6 +10,8 @@ type WindowState struct {
 	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
 	ClosedReason    string     `json:"closedReason,omitempty"`
 	LatestAllowedAt *time.Time `json:"latestAllowedAt,omitempty"`
+
+	TemplateLatestAllowedAt *time.Time `json:"templateLatestAllowedAt,omitempty"`
 }
 
 type ScheduleInput struct {
@@ -24,6 +26,8 @@ type ScheduleInput struct {
 	MediaType        string
 	ReplyToMessageID string
 	Signed           bool
+
+	Template *TemplateContent
 
 	ScheduledAt time.Time
 

@@ -1,25 +1,51 @@
 package pipeline_usecase
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"vozko/domain/pipeline"
+	wd "vozko/domain/workspace/workspace_department"
 )
 
 type StageSeeder interface {
 	SeedConversationPipeline(workspaceID, pipelineID, copyFromPipelineID string, stages []pipeline.StageSeed) error
 }
 
-type CreatePipelineUseCase struct {
-	repo   pipeline.Repository
-	seeder StageSeeder
+type DepartmentDirectory interface {
+	Execute(workspaceID string) ([]wd.Department, error)
 }
 
-func NewCreatePipelineUseCase(repo pipeline.Repository) *CreatePipelineUseCase {
-	return &CreatePipelineUseCase{repo: repo}
+func departmentInWorkspace(departments DepartmentDirectory, workspaceID, departmentID string) error {
+	if departmentID == "" {
+		return nil
+	}
+	if departments == nil {
+		return pipeline.ErrDepartmentUnknown
+	}
+	list, err := departments.Execute(workspaceID)
+	if err != nil {
+		return fmt.Errorf("departments of %s: %w", workspaceID, err)
+	}
+	for _, d := range list {
+		if d.ID == departmentID {
+			return nil
+		}
+	}
+	return pipeline.ErrDepartmentUnknown
+}
+
+type CreatePipelineUseCase struct {
+	repo        pipeline.Repository
+	departments DepartmentDirectory
+	seeder      StageSeeder
+}
+
+func NewCreatePipelineUseCase(repo pipeline.Repository, departments DepartmentDirectory) *CreatePipelineUseCase {
+	return &CreatePipelineUseCase{repo: repo, departments: departments}
 }
 
 func (uc *CreatePipelineUseCase) SetStageSeeder(s StageSeeder) {
@@ -38,6 +64,9 @@ func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.Crea
 	}
 	p.Normalize()
 	if err := p.Validate(); err != nil {
+		return nil, err
+	}
+	if err := departmentInWorkspace(uc.departments, workspaceID, p.DepartmentID); err != nil {
 		return nil, err
 	}
 
@@ -75,11 +104,12 @@ func (uc *CreatePipelineUseCase) Execute(workspaceID string, input pipeline.Crea
 }
 
 type UpdatePipelineUseCase struct {
-	repo pipeline.Repository
+	repo        pipeline.Repository
+	departments DepartmentDirectory
 }
 
-func NewUpdatePipelineUseCase(repo pipeline.Repository) pipeline.UpdatePipelineUseCase {
-	return &UpdatePipelineUseCase{repo: repo}
+func NewUpdatePipelineUseCase(repo pipeline.Repository, departments DepartmentDirectory) pipeline.UpdatePipelineUseCase {
+	return &UpdatePipelineUseCase{repo: repo, departments: departments}
 }
 
 func (uc *UpdatePipelineUseCase) Execute(workspaceID, id string, input pipeline.UpdatePipelineInput) (*pipeline.Pipeline, error) {
@@ -111,6 +141,11 @@ func (uc *UpdatePipelineUseCase) Execute(workspaceID, id string, input pipeline.
 	existing.Normalize()
 	if err := existing.Validate(); err != nil {
 		return nil, err
+	}
+	if input.DepartmentID != nil {
+		if err := departmentInWorkspace(uc.departments, workspaceID, existing.DepartmentID); err != nil {
+			return nil, err
+		}
 	}
 	if err := uc.repo.Update(existing); err != nil {
 		return nil, err

@@ -13,7 +13,15 @@ type ScheduledMessage struct {
 	EntryID     string `gorm:"type:uuid;not null;index:idx_sched_msg_entry,priority:1"`
 	EntryType   string `gorm:"size:32;not null;index:idx_sched_msg_entry,priority:2"`
 
-	CreatedByUserID  string  `gorm:"type:uuid;not null;index"`
+	CreatedByUserID string `gorm:"type:uuid;not null;index"`
+
+	Kind                 string  `gorm:"size:20;not null;default:'text'"`
+	TemplateID           *string `gorm:"type:uuid"`
+	TemplateName         string  `gorm:"size:512"`
+	TemplatePreview      string  `gorm:"type:text"`
+	TemplateBodyParams   []byte  `gorm:"type:jsonb"`
+	TemplateHeaderParams []byte  `gorm:"type:jsonb"`
+
 	Text             string  `gorm:"type:text"`
 	MediaID          *string `gorm:"type:uuid"`
 	MediaType        *string `gorm:"size:20"`

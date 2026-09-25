@@ -1,6 +1,10 @@
 package scheduled_message_repository
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
+
 	sm "vozko/domain/scheduled_message"
 	"vozko/domain/shared"
 	"vozko/infra/database/schema"
@@ -17,6 +21,8 @@ func toDomain(row *schema.ScheduledMessage) *sm.ScheduledMessage {
 		EntryID:                   row.EntryID,
 		EntryType:                 shared.EntryType(row.EntryType),
 		CreatedByUserID:           row.CreatedByUserID,
+		Kind:                      sm.Kind(row.Kind),
+		Template:                  templateFromRow(row),
 		Text:                      row.Text,
 		MediaID:                   row.MediaID,
 		MediaType:                 row.MediaType,
@@ -48,13 +54,14 @@ func toDomainSlice(rows []schema.ScheduledMessage) []*sm.ScheduledMessage {
 	return out
 }
 
-func fromDomain(m *sm.ScheduledMessage) schema.ScheduledMessage {
+func fromDomain(m *sm.ScheduledMessage) (schema.ScheduledMessage, error) {
 	row := schema.ScheduledMessage{
 		ID:                        m.ID,
 		WorkspaceID:               m.WorkspaceID,
 		EntryID:                   m.EntryID,
 		EntryType:                 string(m.EntryType),
 		CreatedByUserID:           m.CreatedByUserID,
+		Kind:                      string(m.Kind),
 		Text:                      m.Text,
 		MediaID:                   m.MediaID,
 		MediaType:                 m.MediaType,
@@ -73,7 +80,53 @@ func fromDomain(m *sm.ScheduledMessage) schema.ScheduledMessage {
 		reason := string(*m.FailureReason)
 		row.FailureReason = &reason
 	}
-	return row
+	if err := templateToRow(m.Template, &row); err != nil {
+		return schema.ScheduledMessage{}, err
+	}
+	return row, nil
+}
+
+func templateToRow(t *sm.TemplateContent, row *schema.ScheduledMessage) error {
+	if t == nil {
+		return nil
+	}
+	body, err := json.Marshal(t.BodyParams)
+	if err != nil {
+		return fmt.Errorf("scheduled message: encode template body values: %w", err)
+	}
+	header, err := json.Marshal(t.HeaderParams)
+	if err != nil {
+		return fmt.Errorf("scheduled message: encode template header values: %w", err)
+	}
+	id := t.ID
+	row.TemplateID = &id
+	row.TemplateName = t.Name
+	row.TemplatePreview = t.Preview
+	row.TemplateBodyParams = body
+	row.TemplateHeaderParams = header
+	return nil
+}
+
+func templateFromRow(row *schema.ScheduledMessage) *sm.TemplateContent {
+	if row.TemplateID == nil {
+		return nil
+	}
+	return &sm.TemplateContent{
+		ID:           *row.TemplateID,
+		Name:         row.TemplateName,
+		Preview:      row.TemplatePreview,
+		BodyParams:   decodeValues(row.ID, "body", row.TemplateBodyParams),
+		HeaderParams: decodeValues(row.ID, "header", row.TemplateHeaderParams),
+	}
+}
+
+func decodeValues(id, part string, raw []byte) []string {
+	var values []string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		log.Printf("[scheduled_message] %s has unreadable template %s values, the send rules will refuse it: %v", id, part, err)
+		return nil
+	}
+	return values
 }
 
 func statusStrings(statuses []sm.Status) []string {

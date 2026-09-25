@@ -560,7 +560,6 @@ var allowedWorkspaceResourceTables = map[string]struct{}{
 	"whatsapp_templates":       {},
 	"whatsapp_business_phones": {},
 	"sip_trunks":               {},
-	"support_inboxes":          {},
 	"knowledge_bases":          {},
 	"workflows":                {},
 	"stages":                   {},

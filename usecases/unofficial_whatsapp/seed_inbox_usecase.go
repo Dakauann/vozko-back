@@ -314,7 +314,7 @@ func (uc *SeedInboxUseCase) writeThread(candidate *seedCandidate, asset *seedAss
 		EntryType:   shared.EntryTypeUnofficialWhatsApp,
 		Channel:     conversation.MessageChannelUnofficialWhatsApp,
 		MessageType: conversation.MessageTypeOperator,
-		Direction:   conversation.MessageDirectionOutbound,
+		SentBy:      conversation.SentBySystem(),
 		Text:        candidate.opening,
 		Metadata:    metadata,
 		CreatedAt:   at[0],
@@ -333,17 +333,17 @@ func (uc *SeedInboxUseCase) writeThread(candidate *seedCandidate, asset *seedAss
 		}
 		if turn.FromLead {
 			msg.MessageType = conversation.MessageTypeUserMessage
-			msg.Direction = conversation.MessageDirectionInbound
+			msg.SentBy = conversation.SentByContact(candidate.target.Number)
 		} else {
 			msg.MessageType = conversation.MessageTypeOperator
-			msg.Direction = conversation.MessageDirectionOutbound
+			msg.SentBy = conversation.SentBySystem()
 		}
 		messages = append(messages, msg)
 	}
 
 	readAt := now
 	for i, msg := range messages {
-		trailingInbound := i == len(messages)-1 && msg.MessageType.IsInbound()
+		trailingInbound := i == len(messages)-1 && msg.SentBy.IsContact()
 		if trailingInbound {
 			continue
 		}
@@ -391,6 +391,7 @@ func newInboxPlaceholder(conversationID string, now time.Time) *conversation.Mes
 		EntryType:   shared.EntryTypeUnofficialWhatsApp,
 		Channel:     conversation.MessageChannelUnofficialWhatsApp,
 		MessageType: conversation.MessageTypeSystem,
+		SentBy:      conversation.SentBySystem(),
 		Text:        "",
 		Read:        true,
 		ReadAt:      &now,

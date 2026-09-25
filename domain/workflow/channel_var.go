@@ -11,7 +11,6 @@ var ChannelBranchOrder = []shared.EntryType{
 	shared.EntryTypeUnofficialWhatsApp,
 	shared.EntryTypeInstagram,
 	shared.EntryTypeTelegram,
-	shared.EntryTypeSupport,
 }
 
 func ChannelOf(run *WorkflowRun) string {
@@ -26,7 +25,6 @@ var channelBranchLabels = map[shared.EntryType]string{
 	shared.EntryTypeUnofficialWhatsApp: "WhatsApp não oficial",
 	shared.EntryTypeInstagram:          "Instagram",
 	shared.EntryTypeTelegram:           "Telegram",
-	shared.EntryTypeSupport:            "Suporte",
 }
 
 func ChannelBranchLabel(entryType shared.EntryType) string {

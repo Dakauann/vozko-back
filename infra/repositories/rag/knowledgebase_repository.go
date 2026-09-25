@@ -168,14 +168,10 @@ func (r *knowledgeBaseRepository) IncrementChunkCount(ctx context.Context, id st
 		UpdateColumn("chunk_count", gorm.Expr("chunk_count + ?", delta)).Error
 }
 
-func (r *knowledgeBaseRepository) UpdateStats(ctx context.Context, id string, docCount int, chunkCount int, sizeMB float64) error {
+func (r *knowledgeBaseRepository) AddTotalSize(ctx context.Context, id string, deltaBytes int64) error {
 	return r.db.WithContext(ctx).Model(&schema.KnowledgeBase{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"document_count": docCount,
-			"chunk_count":    chunkCount,
-			"total_size_mb":  sizeMB,
-		}).Error
+		UpdateColumn("total_size_mb", gorm.Expr("GREATEST(total_size_mb + ?, 0)", rag.SizeInMB(deltaBytes))).Error
 }
 
 func mapKnowledgeBaseToSchema(kb *rag.KnowledgeBase) *schema.KnowledgeBase {

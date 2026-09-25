@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/conversation"
 	sm "vozko/domain/scheduled_message"
+	"vozko/domain/shared"
 )
 
 type windowService struct {
@@ -29,17 +30,23 @@ func newWindowService(windows sm.WindowReader, clock sm.Clock) (*windowService, 
 }
 
 func (s *windowService) State(entryID, entryType string) sm.WindowState {
-	return s.stateFrom(s.windows.GetWindowStatusForEntry(entryID, entryType))
+	return s.stateFrom(s.windows.GetWindowStatusForEntry(entryID, entryType), entryType)
 }
 
-func (s *windowService) stateFrom(live conversation.WindowState) sm.WindowState {
+func (s *windowService) stateFrom(live conversation.WindowState, entryType string) sm.WindowState {
+	now := s.clock.Now()
 	state := sm.WindowState{
 		Open:         live.Open,
 		ExpiresAt:    live.ExpiresAt,
 		ClosedReason: string(live.Reason),
 	}
-	if latest, err := sm.LatestAllowed(live.Open, live.ExpiresAt, s.clock.Now()); err == nil {
+	if latest, err := sm.KindText.LatestAllowed(live.Open, live.ExpiresAt, now); err == nil {
 		state.LatestAllowedAt = &latest
+	}
+	if shared.EntryType(entryType).SupportsTemplates() {
+		if latest, err := sm.KindTemplate.LatestAllowed(live.Open, live.ExpiresAt, now); err == nil {
+			state.TemplateLatestAllowedAt = &latest
+		}
 	}
 	return state
 }
@@ -48,7 +55,7 @@ func (s *windowService) IsOpen(entryID, entryType string) bool {
 	return s.windows.GetWindowStatusForEntry(entryID, entryType).Open
 }
 
-func (s *windowService) Validate(entryID, entryType string, at time.Time) (sm.WindowState, error) {
+func (s *windowService) Validate(entryID, entryType string, kind sm.Kind, at time.Time) (sm.WindowState, error) {
 	live := s.windows.GetWindowStatusForEntry(entryID, entryType)
-	return s.stateFrom(live), sm.ValidateScheduledAt(at, live.Open, live.ExpiresAt, s.clock.Now())
+	return s.stateFrom(live, entryType), kind.ValidateScheduledAt(at, live.Open, live.ExpiresAt, s.clock.Now())
 }
