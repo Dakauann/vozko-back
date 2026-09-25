@@ -219,31 +219,6 @@ definitions:
       username:
         type: string
     type: object
-  attendance.BacklogXray:
-    properties:
-      age:
-        $ref: '#/definitions/attendance.XrayDimension'
-      assignee:
-        $ref: '#/definitions/attendance.XrayDimension'
-      available:
-        type: boolean
-      origin:
-        $ref: '#/definitions/attendance.XrayDimension'
-      reachability:
-        items:
-          $ref: '#/definitions/attendance.Reachability'
-        type: array
-      reason:
-        type: string
-      record_completeness:
-        $ref: '#/definitions/attendance.RecordCompleteness'
-      returning:
-        $ref: '#/definitions/attendance.XrayDimension'
-      tenure:
-        $ref: '#/definitions/attendance.XrayDimension'
-      total:
-        type: integer
-    type: object
   attendance.ChannelSlice:
     properties:
       channel:
@@ -252,29 +227,6 @@ definitions:
         type: integer
       pct:
         type: number
-    type: object
-  attendance.DepartmentRow:
-    properties:
-      avg_handle_mins:
-        type: number
-      avg_wait_mins:
-        type: number
-      department_id:
-        type: string
-      department_name:
-        type: string
-      finished:
-        type: integer
-      finished_ai:
-        type: integer
-      finished_human:
-        type: integer
-      finished_system:
-        type: integer
-      ongoing:
-        type: integer
-      pending:
-        type: integer
     type: object
   attendance.FRTStats:
     properties:
@@ -298,57 +250,6 @@ definitions:
       count:
         type: integer
       hour:
-        type: integer
-    type: object
-  attendance.MemberClass:
-    enum:
-    - elite
-    - solid
-    - below
-    - critical
-    - insufficient_data
-    type: string
-    x-enum-varnames:
-    - ClassElite
-    - ClassSolid
-    - ClassBelow
-    - ClassCritical
-    - ClassInsufficientData
-  attendance.MemberRow:
-    properties:
-      actor_id:
-        type: string
-      actor_kind:
-        type: string
-      avg_messages:
-        type: number
-      avg_response_mins:
-        type: number
-      display_name:
-        type: string
-      email:
-        type: string
-      finished_ai:
-        type: integer
-      finished_human:
-        type: integer
-      finished_system:
-        type: integer
-      inbound_messages:
-        type: integer
-      open:
-        type: integer
-      pending:
-        type: integer
-      presence:
-        type: string
-      rating:
-        type: number
-      resolution_pct:
-        type: number
-      resolved:
-        type: integer
-      total_messages:
         type: integer
     type: object
   attendance.MetricCategory:
@@ -486,73 +387,6 @@ definitions:
       targetable:
         type: boolean
     type: object
-  attendance.Overview:
-    properties:
-      ai:
-        $ref: '#/definitions/attendance.OverviewAI'
-      backlog_xray:
-        $ref: '#/definitions/attendance.BacklogXray'
-      by_department:
-        items:
-          $ref: '#/definitions/attendance.DepartmentRow'
-        type: array
-      by_member:
-        items:
-          $ref: '#/definitions/attendance.MemberRow'
-        type: array
-      channel_mix:
-        items:
-          $ref: '#/definitions/attendance.ChannelSlice'
-        type: array
-      definitions:
-        $ref: '#/definitions/attendance.MetricDefinitions'
-      filter:
-        $ref: '#/definitions/attendance.OverviewFilter'
-      finished_by_source:
-        $ref: '#/definitions/attendance.OverviewFinishedBySource'
-      frt:
-        $ref: '#/definitions/attendance.OverviewFRT'
-      generated_at:
-        type: string
-      hourly:
-        items:
-          $ref: '#/definitions/attendance.HourlyPoint'
-        type: array
-      kpis:
-        $ref: '#/definitions/attendance.OverviewKPIs'
-      live:
-        $ref: '#/definitions/attendance.OverviewLive'
-      messaging:
-        $ref: '#/definitions/attendance.OverviewMessaging'
-      occupancy:
-        $ref: '#/definitions/attendance.OverviewOccupancy'
-      period:
-        $ref: '#/definitions/attendance.Period'
-      projections:
-        items:
-          $ref: '#/definitions/attendance.MetricProjection'
-        type: array
-      quality:
-        $ref: '#/definitions/attendance.Quality'
-      queue:
-        $ref: '#/definitions/attendance.OverviewQueue'
-      reopen:
-        $ref: '#/definitions/attendance.OverviewReopen'
-      revenue:
-        $ref: '#/definitions/attendance.Revenue'
-      rework:
-        $ref: '#/definitions/attendance.OverviewRework'
-      stages:
-        $ref: '#/definitions/attendance.OverviewStages'
-      standing:
-        $ref: '#/definitions/attendance.Standing'
-      status_distribution:
-        $ref: '#/definitions/attendance.StatusDistribution'
-      team_ranking:
-        $ref: '#/definitions/attendance.TeamRanking'
-      trend:
-        $ref: '#/definitions/attendance.Trend'
-    type: object
   attendance.OverviewAI:
     properties:
       abandoned:
@@ -672,36 +506,6 @@ definitions:
       unassigned_backlog:
         type: integer
     type: object
-  attendance.OverviewLive:
-    properties:
-      agents:
-        items:
-          $ref: '#/definitions/attendance.OverviewLiveAgent'
-        type: array
-      as_of:
-        type: string
-      busy_rate_pct:
-        type: number
-      free:
-        type: integer
-      has_data:
-        type: boolean
-      idle_rate_pct:
-        type: number
-      in_call:
-        type: integer
-      online:
-        type: integer
-    type: object
-  attendance.OverviewLiveAgent:
-    properties:
-      busy:
-        type: boolean
-      has_browser:
-        type: boolean
-      user_id:
-        type: string
-    type: object
   attendance.OverviewMessaging:
     properties:
       available:
@@ -723,44 +527,6 @@ definitions:
       template_messages:
         type: integer
     type: object
-  attendance.OverviewOccupancy:
-    properties:
-      agents_sampled:
-        type: integer
-      available:
-        type: boolean
-      avg_occupancy_pct:
-        type: number
-      on_call_ms:
-        type: integer
-      online_ms:
-        type: integer
-      team_idle_pct:
-        type: number
-      team_occupancy_pct:
-        type: number
-    type: object
-  attendance.OverviewQueue:
-    properties:
-      abandon_rate:
-        type: number
-      abandoned:
-        type: integer
-      available:
-        type: boolean
-      avg_asa_mins:
-        type: number
-      cancelled:
-        type: integer
-      connected:
-        type: integer
-      enqueued:
-        type: integer
-      overflow:
-        type: integer
-      queue_full:
-        type: integer
-    type: object
   attendance.OverviewReopen:
     properties:
       available:
@@ -772,50 +538,6 @@ definitions:
       reopen_rate:
         type: number
       reopened_count:
-        type: integer
-    type: object
-  attendance.OverviewRework:
-    properties:
-      adjacent:
-        items:
-          $ref: '#/definitions/attendance.ReworkRow'
-        type: array
-      available:
-        type: boolean
-      cost_available:
-        type: boolean
-      cost_reason:
-        type: string
-      currency:
-        type: string
-      reason:
-        type: string
-      rows:
-        items:
-          $ref: '#/definitions/attendance.ReworkRow'
-        type: array
-      team:
-        $ref: '#/definitions/attendance.ReworkRow'
-      unassigned:
-        $ref: '#/definitions/attendance.ReworkRow'
-    type: object
-  attendance.OverviewStages:
-    properties:
-      available:
-        type: boolean
-      funnels:
-        items:
-          $ref: '#/definitions/attendance.StageFunnelGroup'
-        type: array
-      staged_engaged:
-        type: integer
-      staged_shell:
-        type: integer
-      stuck:
-        type: integer
-      unstaged_engaged:
-        type: integer
-      unstaged_shell:
         type: integer
     type: object
   attendance.Period:
@@ -882,106 +604,6 @@ definitions:
         type: number
       verdict:
         $ref: '#/definitions/attendance.Verdict'
-    type: object
-  attendance.RankedMember:
-    properties:
-      actor_id:
-        type: string
-      actor_kind:
-        type: string
-      avg_messages:
-        type: number
-      avg_response_mins:
-        type: number
-      avg_ticket_cents:
-        type: number
-      class:
-        $ref: '#/definitions/attendance.MemberClass'
-      currency:
-        type: string
-      display_name:
-        type: string
-      email:
-        type: string
-      finished_ai:
-        type: integer
-      finished_human:
-        type: integer
-      finished_system:
-        type: integer
-      inbound_messages:
-        type: integer
-      online_ms:
-        type: integer
-      open:
-        type: integer
-      pct_of_team_avg:
-        type: number
-      pending:
-        type: integer
-      per_online_hour:
-        type: number
-      per_open_day:
-        type: number
-      presence:
-        type: string
-      rank_metric_value:
-        type: number
-      rating:
-        type: number
-      resolution_pct:
-        type: number
-      resolved:
-        type: integer
-      revenue_cents:
-        type: integer
-      total_messages:
-        type: integer
-      won_count:
-        type: integer
-    type: object
-  attendance.Reachability:
-    properties:
-      available:
-        type: boolean
-      channel:
-        type: string
-      closed_pct:
-        type: number
-      measured:
-        type: integer
-      reason:
-        type: string
-      window_closed:
-        type: integer
-      window_open:
-        type: integer
-    type: object
-  attendance.RecordCompleteness:
-    properties:
-      available:
-        type: boolean
-      avg_fill_pct:
-        type: number
-      fields:
-        items:
-          $ref: '#/definitions/attendance.RecordField'
-        type: array
-      fully_filled:
-        type: integer
-      measured:
-        type: integer
-      reason:
-        type: string
-    type: object
-  attendance.RecordField:
-    properties:
-      filled:
-        type: integer
-      key:
-        type: string
-      pct:
-        type: number
     type: object
   attendance.ResponseTimeBucket:
     properties:
@@ -1050,89 +672,6 @@ definitions:
       value_cents:
         type: integer
       won_count:
-        type: integer
-    type: object
-  attendance.ReworkRow:
-    properties:
-      actor_id:
-        type: string
-      actor_kind:
-        type: string
-      cost_micros:
-        type: integer
-      display_name:
-        type: string
-      finished:
-        type: integer
-      reopen_rate:
-        type: number
-      reopened:
-        type: integer
-      templates:
-        type: integer
-    type: object
-  attendance.StageFunnelGroup:
-    properties:
-      engaged:
-        type: integer
-      funnel_id:
-        type: string
-      funnel_name:
-        type: string
-      is_default:
-        type: boolean
-      pct_of_staged:
-        type: number
-      shell:
-        type: integer
-      stages:
-        items:
-          $ref: '#/definitions/attendance.StageRow'
-        type: array
-      stuck:
-        type: integer
-      total:
-        type: integer
-    type: object
-  attendance.StageRow:
-    properties:
-      avg_days_in_stage:
-        type: number
-      color:
-        type: string
-      engaged:
-        type: integer
-      finished:
-        type: integer
-      is_lost:
-        type: boolean
-      is_won:
-        type: boolean
-      oldest_days_in_stage:
-        type: number
-      ongoing:
-        type: integer
-      pct_of_funnel:
-        type: number
-      pct_of_staged:
-        type: number
-      pending:
-        type: integer
-      position:
-        type: integer
-      rot_days_set:
-        type: boolean
-      shell:
-        type: integer
-      stage_id:
-        type: string
-      stage_name:
-        type: string
-      stuck:
-        type: integer
-      stuck_after_days:
-        type: integer
-      total:
         type: integer
     type: object
   attendance.Standing:
@@ -1228,111 +767,6 @@ definitions:
         example: 1786
         type: number
     type: object
-  attendance.TeamRanking:
-    properties:
-      adjacent:
-        items:
-          $ref: '#/definitions/attendance.RankedMember'
-        type: array
-      adjacent_totals:
-        $ref: '#/definitions/attendance.TeamTotals'
-      available:
-        type: boolean
-      members:
-        items:
-          $ref: '#/definitions/attendance.RankedMember'
-        type: array
-      min_sample:
-        type: integer
-      rank_metric_key:
-        type: string
-      reason:
-        type: string
-      team_average:
-        type: number
-      totals:
-        $ref: '#/definitions/attendance.TeamTotals'
-    type: object
-  attendance.TeamTotals:
-    properties:
-      avg_ticket_cents:
-        type: number
-      currency:
-        type: string
-      members:
-        type: integer
-      online_ms:
-        type: integer
-      open:
-        type: integer
-      pending:
-        type: integer
-      per_online_hour:
-        type: number
-      per_open_day:
-        type: number
-      rank_metric_value:
-        type: number
-      resolved:
-        type: integer
-      revenue_cents:
-        type: integer
-      won_count:
-        type: integer
-    type: object
-  attendance.Trend:
-    properties:
-      available:
-        type: boolean
-      reason:
-        type: string
-      series:
-        items:
-          $ref: '#/definitions/attendance.TrendSeries'
-        type: array
-      unbucketed:
-        type: integer
-    type: object
-  attendance.TrendPoint:
-    properties:
-      bucket:
-        type: string
-      partial:
-        type: boolean
-      projected:
-        type: boolean
-      value:
-        type: number
-    type: object
-  attendance.TrendSeries:
-    properties:
-      available:
-        type: boolean
-      best_bucket:
-        type: string
-      best_value:
-        type: number
-      delta_pct:
-        type: number
-      direction:
-        $ref: '#/definitions/attendance.MetricDirection'
-      kind:
-        $ref: '#/definitions/attendance.MetricKind'
-      metric_key:
-        type: string
-      points:
-        items:
-          $ref: '#/definitions/attendance.TrendPoint'
-        type: array
-      prev_closed:
-        type: number
-      reason:
-        type: string
-      window_from:
-        type: string
-      window_to:
-        type: string
-    type: object
   attendance.Verdict:
     enum:
     - on_track
@@ -1363,34 +797,6 @@ definitions:
           $ref: '#/definitions/attendance.WindowBucket'
         type: array
       total_open:
-        type: integer
-    type: object
-  attendance.XrayBucket:
-    properties:
-      count:
-        type: integer
-      key:
-        type: string
-      label:
-        type: string
-      pct:
-        type: number
-    type: object
-  attendance.XrayDimension:
-    properties:
-      available:
-        type: boolean
-      buckets:
-        items:
-          $ref: '#/definitions/attendance.XrayBucket'
-        type: array
-      dimension:
-        type: string
-      measured:
-        type: integer
-      reason:
-        type: string
-      unknown:
         type: integer
     type: object
   attendance_target.Scope:
@@ -7906,79 +7312,14 @@ paths:
       summary: Ocupação dos atendentes
       tags:
       - Atendimento
-  /attendance/overview:
-    get:
-      description: Retorna o painel operacional filtrável do workspace (KPIs, distribuição
-        por hora, por departamento e por equipe), com filtros opcionais por período,
-        departamento, membro, campanha e canal.
-      parameters:
-      - description: Data inicial (YYYY-MM-DD)
-        in: query
-        name: date_from
-        type: string
-      - description: Data final (YYYY-MM-DD)
-        in: query
-        name: date_to
-        type: string
-      - description: ID do departamento
-        in: query
-        name: department_id
-        type: string
-      - description: ID do membro
-        in: query
-        name: member_id
-        type: string
-      - description: ID da campanha
-        in: query
-        name: campaign_id
-        type: string
-      - description: Tipo da campanha
-        in: query
-        name: campaign_type
-        type: string
-      - description: Canal de atendimento
-        in: query
-        name: channel
-        type: string
-      - description: Métrica de ordenação da equipe (resolved, volume, revenue_cents)
-        in: query
-        name: rank_metric
-        type: string
-      - description: Meses da série histórica (1 a 24, padrão 13)
-        in: query
-        name: trend_buckets
-        type: integer
-      - description: 'Incluir agentes de IA (padrão: true)'
-        in: query
-        name: include_ai
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/attendance.Overview'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Visão geral de atendimento
-      tags:
-      - Atendimento
   /attendance/overview/{section}:
     get:
-      description: Retorna uma seção da visão geral (summary, trend, stages, backlog,
-        team ou rework) para que a página carregue cada bloco quando ele entra na
-        tela. Aceita os mesmos filtros de /attendance/overview. Seções idênticas ficam
-        em cache por 60 segundos; quando o limite de consultas analíticas simultâneas
-        está ocupado, responde 503 com Retry-After.
+      description: Retorna uma seção da visão geral de atendimento (summary, trend,
+        stages, backlog, team, rework ou live) para que a página carregue cada bloco
+        quando ele entra na tela, com filtros opcionais por período, departamento,
+        membro, campanha e canal. As seções, exceto live, idênticas ficam em cache
+        por 60 segundos; quando o limite de consultas analíticas simultâneas está
+        ocupado, responde 503 com Retry-After.
       parameters:
       - description: Seção
         enum:
@@ -7988,6 +7329,7 @@ paths:
         - backlog
         - team
         - rework
+        - live
         in: path
         name: section
         required: true

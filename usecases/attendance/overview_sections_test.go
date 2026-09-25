@@ -254,3 +254,39 @@ func TestExecuteComposesEverySection(t *testing.T) {
 		t.Fatalf("Execute() lost a section: %+v", out)
 	}
 }
+
+type countingMemo struct {
+	memoryMemo
+	calls int
+}
+
+func (m *countingMemo) Remember(
+	ctx context.Context,
+	key string,
+	ttl time.Duration,
+	compute func(context.Context) ([]byte, error),
+) ([]byte, error) {
+	m.calls++
+	return m.memoryMemo.Remember(ctx, key, ttl, compute)
+}
+
+func TestLiveIsNeverServedFromTheCache(t *testing.T) {
+	repo := &stubOverviewRepo{}
+	uc := newTestUseCase(repo, businessConfig(), nil, &stubTargetRepo{})
+	memo := &countingMemo{memoryMemo: memoryMemo{values: map[string][]byte{}}}
+	uc.SetCaching(SectionCaching{Memo: memo, Gate: &trackingGate{}, Versions: newMemoryVersions(), TTL: time.Minute})
+
+	out, err := uc.Live(context.Background(), "ws1", attendance.OverviewFilter{})
+	if err != nil {
+		t.Fatalf("Live() error = %v", err)
+	}
+	if out == nil {
+		t.Fatalf("Live() returned nothing")
+	}
+	if memo.calls != 0 {
+		t.Fatalf("Live() went through the cache %d times; presence must always be current", memo.calls)
+	}
+	if len(repo.reads) != 0 {
+		t.Fatalf("Live() read overview sections %v; it must never build the scope", repo.reads)
+	}
+}

@@ -176,3 +176,12 @@ func rememberSection[T any](
 	key := sectionCachePrefix + ":" + workspaceID + ":" + version + ":" + filter.Fingerprint(section)
 	return cache.Remember(ctx, uc.memo, key, uc.ttl, compute)
 }
+
+func (uc *getOverviewUseCase) Live(
+	_ context.Context,
+	workspaceID string,
+	filter attendance.OverviewFilter,
+) (*attendance.LiveSection, error) {
+	out := uc.liveSection(workspaceID, filter)
+	return &out, nil
+}

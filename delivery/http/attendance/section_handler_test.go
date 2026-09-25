@@ -12,6 +12,7 @@ import (
 
 	attendancedomain "vozko/domain/attendance"
 	"vozko/domain/cache"
+	workspace_domain "vozko/domain/workspace"
 	"vozko/infra/http/middleware"
 )
 
@@ -26,6 +27,10 @@ func (s *stubSections) Summary(_ context.Context, _ string, _ attendancedomain.O
 		return nil, s.err
 	}
 	return &attendancedomain.SummarySection{KPIs: attendancedomain.OverviewKPIs{Engaged: 7}}, nil
+}
+
+func (s *stubSections) Live(_ context.Context, _ string, _ attendancedomain.OverviewFilter) (*attendancedomain.LiveSection, error) {
+	return &attendancedomain.LiveSection{}, s.err
 }
 
 func (s *stubSections) Team(_ context.Context, _ string, filter attendancedomain.OverviewFilter) (*attendancedomain.TeamSection, error) {
@@ -72,7 +77,7 @@ func TestSectionEndpointPassesTheRankingMetricToTheTeam(t *testing.T) {
 }
 
 func TestSectionEndpointRejectsAnUnknownSection(t *testing.T) {
-	rec := serveSection(t, &stubSections{}, "/attendance/overview/live")
+	rec := serveSection(t, &stubSections{}, "/attendance/overview/queue")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -112,5 +117,43 @@ func TestSectionEndpointWithoutAWiredServiceRefuses(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestSectionEndpointServesLivePresence(t *testing.T) {
+	rec := serveSection(t, &stubSections{}, "/attendance/overview/live")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body is not JSON: %v", err)
+	}
+	for _, key := range []string{"live", "queue", "occupancy"} {
+		if _, ok := body[key]; !ok {
+			t.Fatalf("live body has no %s: %s", key, rec.Body.String())
+		}
+	}
+}
+
+func TestOnlyTheSectionRoutesServeTheOverview(t *testing.T) {
+	router := mux.NewRouter()
+	allow := func(_ workspace_domain.Resource, _ workspace_domain.Action, next http.HandlerFunc) http.HandlerFunc {
+		return next
+	}
+	RegisterProtectedRoutes(router, &AttendanceHandler{sections: &stubSections{}}, allow)
+
+	for path, want := range map[string]int{
+		"/attendance/overview":         http.StatusNotFound,
+		"/attendance/overview/summary": http.StatusOK,
+		"/attendance/overview/live":    http.StatusOK,
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req = req.WithContext(context.WithValue(req.Context(), middleware.WorkspaceIDContextKey, "ws1"))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("GET %s = %d, want %d", path, rec.Code, want)
+		}
 	}
 }

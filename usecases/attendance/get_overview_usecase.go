@@ -7,8 +7,8 @@ import (
 
 	"vozko/domain/agent_presence"
 	"vozko/domain/attendance"
-	"vozko/domain/callsession"
 	"vozko/domain/cache"
+	"vozko/domain/callsession"
 	"vozko/domain/queue_event"
 )
 

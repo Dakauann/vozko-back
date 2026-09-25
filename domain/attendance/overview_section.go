@@ -18,12 +18,13 @@ const (
 	SectionBacklog Section = "backlog"
 	SectionTeam    Section = "team"
 	SectionRework  Section = "rework"
+	SectionLive    Section = "live"
 )
 
 const fingerprintVersion = "v1"
 
 func Sections() []Section {
-	return []Section{SectionSummary, SectionTrend, SectionStages, SectionBacklog, SectionTeam, SectionRework}
+	return []Section{SectionSummary, SectionTrend, SectionStages, SectionBacklog, SectionTeam, SectionRework, SectionLive}
 }
 
 func ParseSection(raw string) (Section, bool) {
@@ -119,4 +120,5 @@ type OverviewSectionsUseCase interface {
 	Backlog(ctx context.Context, workspaceID string, filter OverviewFilter) (*BacklogSection, error)
 	Team(ctx context.Context, workspaceID string, filter OverviewFilter) (*TeamSection, error)
 	Rework(ctx context.Context, workspaceID string, filter OverviewFilter) (*ReworkSection, error)
+	Live(ctx context.Context, workspaceID string, filter OverviewFilter) (*LiveSection, error)
 }

@@ -24,7 +24,6 @@ type AttendanceHandler struct {
 	getResponseTimeDistribution attendancedomain.GetResponseTimeDistributionUseCase
 	getAIAgentStats             attendancedomain.GetAIAgentStatsUseCase
 	getFRTStats                 attendancedomain.GetFRTStatsUseCase
-	getOverview                 attendancedomain.GetOverviewUseCase
 	sections                    attendancedomain.OverviewSectionsUseCase
 	queueRepo                   queue_event.Repository
 	presenceRepo                agent_presence.Repository
@@ -50,8 +49,7 @@ func (h *AttendanceHandler) SetFRTStats(uc attendancedomain.GetFRTStatsUseCase) 
 	h.getFRTStats = uc
 }
 
-func (h *AttendanceHandler) SetOverview(uc attendance_usecase.OverviewService) {
-	h.getOverview = uc
+func (h *AttendanceHandler) SetOverview(uc attendancedomain.OverviewSectionsUseCase) {
 	h.sections = uc
 }
 
@@ -333,49 +331,11 @@ func parseOverviewFilter(r *http.Request) attendancedomain.OverviewFilter {
 	return filter
 }
 
-// @Summary		Visão geral de atendimento
-// @Description	Retorna o painel operacional filtrável do workspace (KPIs, distribuição por hora, por departamento e por equipe), com filtros opcionais por período, departamento, membro, campanha e canal.
-// @Tags			Atendimento
-// @Produce		json
-// @Param			date_from		query	string	false	"Data inicial (YYYY-MM-DD)"
-// @Param			date_to			query	string	false	"Data final (YYYY-MM-DD)"
-// @Param			department_id	query	string	false	"ID do departamento"
-// @Param			member_id		query	string	false	"ID do membro"
-// @Param			campaign_id		query	string	false	"ID da campanha"
-// @Param			campaign_type	query	string	false	"Tipo da campanha"
-// @Param			channel			query	string	false	"Canal de atendimento"
-// @Param			rank_metric		query	string	false	"Métrica de ordenação da equipe (resolved, volume, revenue_cents)"
-// @Param			trend_buckets	query	int		false	"Meses da série histórica (1 a 24, padrão 13)"
-// @Param			include_ai		query	string	false	"Incluir agentes de IA (padrão: true)"
-// @Success		200	{object}	attendance.Overview
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/attendance/overview [get]
-func (h *AttendanceHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
-	wsID := middleware.GetWorkspaceID(r)
-	if wsID == "" {
-		response.WriteError(w, http.StatusBadRequest, "workspace_id required", nil)
-		return
-	}
-	if h.getOverview == nil {
-		response.WriteError(w, http.StatusServiceUnavailable, "attendance overview is not configured", nil)
-		return
-	}
-	filter := parseOverviewFilter(r)
-	out, err := h.getOverview.Execute(wsID, filter)
-	if err != nil {
-		writeOverviewError(w, err)
-		return
-	}
-	response.WriteSuccess(w, http.StatusOK, out)
-}
-
 // @Summary		Seção da visão geral de atendimento
-// @Description	Retorna uma seção da visão geral (summary, trend, stages, backlog, team ou rework) para que a página carregue cada bloco quando ele entra na tela. Aceita os mesmos filtros de /attendance/overview. Seções idênticas ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.
+// @Description	Retorna uma seção da visão geral de atendimento (summary, trend, stages, backlog, team, rework ou live) para que a página carregue cada bloco quando ele entra na tela, com filtros opcionais por período, departamento, membro, campanha e canal. As seções, exceto live, idênticas ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.
 // @Tags			Atendimento
 // @Produce		json
-// @Param			section			path	string	true	"Seção"	Enums(summary, trend, stages, backlog, team, rework)
+// @Param			section			path	string	true	"Seção"	Enums(summary, trend, stages, backlog, team, rework, live)
 // @Param			date_from		query	string	false	"Data inicial (YYYY-MM-DD)"
 // @Param			date_to			query	string	false	"Data final (YYYY-MM-DD)"
 // @Param			department_id	query	string	false	"ID do departamento"
@@ -439,6 +399,8 @@ func (h *AttendanceHandler) readSection(
 		return h.sections.Team(ctx, workspaceID, filter)
 	case attendancedomain.SectionRework:
 		return h.sections.Rework(ctx, workspaceID, filter)
+	case attendancedomain.SectionLive:
+		return h.sections.Live(ctx, workspaceID, filter)
 	}
 	return nil, errUnknownSection
 }

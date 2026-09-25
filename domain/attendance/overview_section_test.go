@@ -17,7 +17,7 @@ func TestParseSectionAcceptsEverySection(t *testing.T) {
 }
 
 func TestParseSectionRejectsUnknownNames(t *testing.T) {
-	for _, raw := range []string{"", "overview", "live", "SUMMARY", " summary"} {
+	for _, raw := range []string{"", "overview", "queue", "SUMMARY", " summary"} {
 		if _, ok := ParseSection(raw); ok {
 			t.Fatalf("ParseSection(%q) ok = true, want false", raw)
 		}
@@ -162,6 +162,7 @@ func TestSectionResponsesCarryOnlyTheirOwnKeys(t *testing.T) {
 		{name: "backlog", value: BacklogSection{}, want: []string{"backlog_xray"}},
 		{name: "rework", value: ReworkSection{}, want: []string{"rework"}},
 		{name: "team", value: TeamSection{}, want: []string{"by_department", "by_member", "team_ranking"}},
+		{name: "live", value: LiveSection{}, want: []string{"live", "occupancy", "queue"}},
 	}
 	for _, tc := range cases {
 		raw, err := json.Marshal(tc.value)
@@ -180,5 +181,12 @@ func TestSectionResponsesCarryOnlyTheirOwnKeys(t *testing.T) {
 		if !slices.Equal(got, tc.want) {
 			t.Fatalf("%s JSON keys = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestLiveIsASectionOfItsOwn(t *testing.T) {
+	got, ok := ParseSection("live")
+	if !ok || got != SectionLive {
+		t.Fatalf("ParseSection(live) = %q, %v, want %q, true", got, ok, SectionLive)
 	}
 }
