@@ -53,7 +53,9 @@ COPY infra/notifications/templates /infra/notifications/templates
 COPY assets /assets
 
 # Create recordings directory with proper permissions
-RUN mkdir -p /recordings && chown 65534:65534 /recordings
+RUN mkdir -p /recordings /home/app && chown 65534:65534 /recordings /home/app
+
+ENV HOME=/home/app
 
 EXPOSE 8080
 
