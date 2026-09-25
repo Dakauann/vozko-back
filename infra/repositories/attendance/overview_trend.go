@@ -107,7 +107,7 @@ func trendQuery(
 		SELECT date_trunc('month', bucket_at AT TIME ZONE ?) AS bucket,
 			COUNT(*) FILTER (WHERE engaged AND kind = 'created')::bigint AS engaged,
 			COUNT(*) FILTER (WHERE engaged AND kind = 'finished')::bigint AS finished,
-			COUNT(*) FILTER (WHERE kind = 'created')::bigint AS created,
+			COUNT(*) FILTER (WHERE engaged AND kind = 'created')::bigint AS created,
 			COUNT(*) FILTER (WHERE engaged AND kind = 'created' AND status_bucket <> 'finished')::bigint AS pending
 		FROM scoped
 		GROUP BY 1
@@ -235,12 +235,13 @@ func trendJoins(src channelSource) string {
 }
 
 func trendEngagedPredicate(src channelSource) string {
-	return `EXISTS (
+	return `(` + src.EntryAlias + `.last_message_at IS NOT NULL AND EXISTS (
 				SELECT 1 FROM conversation_messages cm
 				WHERE cm.entry_id = ` + src.EntryAlias + `.id
 				  AND cm.entry_type = '` + string(src.EntryType) + `'
 				  AND cm.deleted_at IS NULL
-			)`
+				  AND ` + realMessageSQL("cm") + `
+			))`
 }
 
 func trendScopeClause(src channelSource, filter attendance.OverviewFilter) *sqlQuery {

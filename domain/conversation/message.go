@@ -67,6 +67,11 @@ const (
 	MessageTypePostShare    MessageType = "post_share"
 )
 
+const (
+	SeedMetadataKey      = "seed"
+	SeedSourceLeadImport = "lead_import"
+)
+
 func (t MessageType) IsCallEvent() bool {
 	switch t {
 	case MessageTypeCallReceived, MessageTypeCallAnswered, MessageTypeCallMissed, MessageTypeCallEnded,

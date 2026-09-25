@@ -88,8 +88,6 @@ const (
 
 	scriptCallTimeout = 60 * time.Second
 
-	seedMetadataSource = "lead_import"
-
 	minTurnGapSeconds    = 90
 	turnGapSpreadSeconds = 151
 
@@ -377,8 +375,8 @@ func threadTimestamps(number string, count int, now time.Time) []time.Time {
 
 func seedMetadata(now time.Time) json.RawMessage {
 	body, err := json.Marshal(map[string]string{
-		"seed":     seedMetadataSource,
-		"seededAt": now.UTC().Format(time.RFC3339),
+		conversation.SeedMetadataKey: conversation.SeedSourceLeadImport,
+		"seededAt":                   now.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
 		return nil

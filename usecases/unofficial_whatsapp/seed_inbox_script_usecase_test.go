@@ -189,8 +189,8 @@ func TestSeedInboxWritesTheScriptedThread(t *testing.T) {
 	if err := json.Unmarshal(writes[0].Metadata, &meta); err != nil {
 		t.Fatalf("metadata is not JSON: %v (%s)", err, writes[0].Metadata)
 	}
-	if meta["seed"] != seedMetadataSource {
-		t.Errorf("metadata seed = %v, want %q", meta["seed"], seedMetadataSource)
+	if meta[conversation.SeedMetadataKey] != conversation.SeedSourceLeadImport {
+		t.Errorf("metadata seed = %v, want %q", meta[conversation.SeedMetadataKey], conversation.SeedSourceLeadImport)
 	}
 	if _, ok := meta["seededAt"]; !ok {
 		t.Error("metadata carries no seededAt")

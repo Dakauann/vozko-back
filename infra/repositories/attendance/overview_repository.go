@@ -127,7 +127,9 @@ func scopeMessagesSQL() string {
 			WHERE cm.entry_id = se.entry_id
 			  AND cm.entry_type = se.entry_type
 			  AND cm.deleted_at IS NULL
+			  AND ` + realMessageSQL("cm") + `
 		) msg ON TRUE
+		WHERE msg.total_msgs > 0
 	`
 }
 
@@ -437,6 +439,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				ON ia.entry_id = ` + src.EntryAlias + `.id AND ia.entry_type = '` + string(src.EntryType) + `'
 			` + src.LeadJoin + `
 			WHERE ` + src.WorkspaceColumn + ` = ? AND ` + src.ContainerAlias + `.deleted_at IS NULL
+			  AND ` + src.LastMessageColumn + ` IS NOT NULL
 			` + whereExtra
 		a := []interface{}{workspaceID}
 		a = append(a, whereArgs...)
@@ -470,7 +473,8 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				SELECT 1 FROM conversation_messages cm
 				WHERE cm.entry_id = ` + src.EntryAlias + `.id
 				  AND cm.entry_type = '` + string(src.EntryType) + `'
-				  AND cm.deleted_at IS NULL`
+				  AND cm.deleted_at IS NULL
+				  AND ` + realMessageSQL("cm")
 		a = append(a, fca...)
 		if from != nil {
 			sql += " AND cm.created_at >= ?"
