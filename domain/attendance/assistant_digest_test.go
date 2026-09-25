@@ -253,3 +253,22 @@ func TestCompareReadings(t *testing.T) {
 		t.Fatalf("wait = %+v, want unknown when this period has no value", got[3])
 	}
 }
+
+func TestDigestTrendOffersOnlyTheSeriesTheTrendBuilds(t *testing.T) {
+	queue := TrendSeries{MetricKey: MetricPendingStock, Kind: MetricKindCount, Direction: DirectionLowerIsBetter, Available: true,
+		Points: []TrendPoint{{Bucket: "2026-08", Value: 4}}}
+	got, err := DigestTrend(Trend{Available: true, Series: []TrendSeries{queue}}, []string{MetricPendingStock})
+	// The page draws "Fila acumulada" from this series; the assistant must be able to ask for it by name.
+	if err != nil || got[0].Direction != DirectionLowerIsBetter || len(got[0].Points) != 1 {
+		t.Fatalf("got = %+v err %v", got, err)
+	}
+	// First response time is a period metric, never a monthly series: asking for it must say so, not return a blank.
+	if _, err := DigestTrend(Trend{}, []string{MetricAvgFRTMins}); !errors.Is(err, ErrUnknownMetric) {
+		t.Fatalf("err = %v, want ErrUnknownMetric for a metric the trend never builds", err)
+	}
+	for _, key := range TrendMetricKeys() {
+		if _, err := DigestTrend(Trend{}, []string{key}); err != nil {
+			t.Fatalf("trend key %s refused: %v", key, err)
+		}
+	}
+}

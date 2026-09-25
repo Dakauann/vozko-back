@@ -238,7 +238,7 @@ func (uc *getOverviewUseCase) buildTrend(
 		),
 		attendance.BuildTrend(
 			attendance.MetricSpec{
-				Key:       trendPendingStockKey,
+				Key:       attendance.MetricPendingStock,
 				Kind:      attendance.MetricKindCount,
 				Direction: attendance.DirectionLowerIsBetter,
 			},
@@ -261,8 +261,6 @@ func (uc *getOverviewUseCase) buildTrend(
 		Available:  true,
 	}, nil
 }
-
-const trendPendingStockKey = "pending_stock"
 
 func (uc *getOverviewUseCase) revenueTrend(
 	ctx context.Context,

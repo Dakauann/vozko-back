@@ -25,6 +25,9 @@ type View struct {
 	DepartmentID string  `json:"departmentId,omitempty"`
 	MemberID     string  `json:"memberId,omitempty"`
 	Channel      string  `json:"channel,omitempty"`
+	CampaignID   string  `json:"campaignId,omitempty"`
+	CampaignType string  `json:"campaignType,omitempty"`
+	IncludeAI    *bool   `json:"includeAi,omitempty"`
 }
 
 func (v View) IsZero() bool {
@@ -46,7 +49,7 @@ func (v View) Validate() error {
 			return fmt.Errorf("%w: %q is not a YYYY-MM-DD date", ErrInvalidView, day)
 		}
 	}
-	for _, token := range []string{v.DepartmentID, v.MemberID, v.Channel} {
+	for _, token := range []string{v.DepartmentID, v.MemberID, v.Channel, v.CampaignID, v.CampaignType} {
 		if token != "" && !viewToken.MatchString(token) {
 			return fmt.Errorf("%w: %q is not an identifier", ErrInvalidView, token)
 		}

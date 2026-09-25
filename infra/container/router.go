@@ -65,6 +65,7 @@ func (c *Container) initRouter() {
 		c.handlers.report,
 		c.handlers.invoice,
 		c.handlers.callBilling,
+		c.handlers.campaignReport,
 		c.handlers.calls,
 		c.handlers.analytics,
 		c.services.tokenService,

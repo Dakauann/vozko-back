@@ -126,6 +126,13 @@ type Outcome struct {
 	Valid   bool
 	Summary string
 	Pause   *Pause
+	Halt    error
+}
+
+var ErrSessionBudget = errors.New("agentloop: session token budget exhausted")
+
+type Guard interface {
+	Admit(ctx context.Context) error
 }
 
 type Engine struct {
@@ -143,6 +150,7 @@ const (
 	finishIgnoredMsg      = "finish IGNORADO: você fez mutações neste turno, chame finish sozinho, sem outras ferramentas."
 	providerErrPrefix     = "erro do provedor de IA: "
 	reasonCancelled       = "cancelado"
+	reasonHalted          = "interrompido antes da próxima chamada ao modelo"
 	reasonTimeout         = "tempo limite da sessão atingido, o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
 )
 
@@ -191,7 +199,12 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
 		}
 		if cfg.SessionTokenBudget > 0 && sess.TokensUsed >= cfg.SessionTokenBudget {
-			return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonTokenBudget}
+			return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonTokenBudget, Halt: ErrSessionBudget}
+		}
+		if guard, guarded := drv.(Guard); guarded {
+			if err := guard.Admit(ctx); err != nil {
+				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonHalted, Halt: err}
+			}
 		}
 
 		emit(EventIteration, iterationPayload{N: iter, Max: cfg.MaxIterations, TokensUsed: sess.TokensUsed, TokenBudget: cfg.SessionTokenBudget})

@@ -101,6 +101,7 @@ func (c *Container) initRepositories() {
 		shop:                    shop_repository.NewRepository(c.db),
 		wcCampaign:              wc_repository.NewCachedRepository(wc_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		wcEntry:                 wc_entry_repository.NewRepository(c.db),
+		wcDispatchReport:        wc_entry_repository.NewDispatchReportReader(c.db),
 		businessPhone:           whatsapp_repository.NewCachedBusinessPhoneRepository(whatsapp_repository.NewBusinessPhoneRepository(c.db), c.redisProvider.SharedState()),
 		ownerPhoneReader:        whatsapp_repository.NewOwnerPhoneReader(c.db),
 		callRecording:           call_recording_repository.NewRepository(c.db),

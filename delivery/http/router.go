@@ -16,6 +16,7 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
@@ -135,6 +136,7 @@ type router struct {
 	reportHandler                  *reporthttp.ReportHandler
 	invoiceHandler                 *invoicehttp.InvoiceHandler
 	callBillingHandler             *callbillinghttp.CallBillingHandler
+	campaignReportHandler          *campaignreporthttp.Handler
 	callsHandler                   *handlers.CallsHandler
 	analyticsHandler               *analyticshttp.AnalyticsHandler
 	rolesMiddleware                *middleware.RolesMiddleware
@@ -239,6 +241,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	reportHandler *reporthttp.ReportHandler,
 	invoiceHandler *invoicehttp.InvoiceHandler,
 	callBillingHandler *callbillinghttp.CallBillingHandler,
+	campaignReportHandler *campaignreporthttp.Handler,
 	callsHandler *handlers.CallsHandler,
 	analyticsHandler *analyticshttp.AnalyticsHandler,
 	verifier auth.TokenVerifier,
@@ -345,6 +348,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		reportHandler:                  reportHandler,
 		invoiceHandler:                 invoiceHandler,
 		callBillingHandler:             callBillingHandler,
+		campaignReportHandler:          campaignReportHandler,
 		callsHandler:                   callsHandler,
 		analyticsHandler:               analyticsHandler,
 		systemConfigHandler:            systemConfigHandler,
@@ -1093,6 +1097,7 @@ func (r *router) setupWorkspaceConfigRoutes(protected *mux.Router) {
 }
 
 func (r *router) setupAttendanceRoutes(protected *mux.Router) {
+	campaignreporthttp.RegisterRoutes(protected, r.campaignReportHandler, r.ac)
 	attendancehttp.RegisterProtectedRoutes(protected, r.attendanceHandler, r.ac)
 }
 

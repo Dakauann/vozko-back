@@ -14,6 +14,7 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
@@ -232,6 +233,7 @@ type repositories struct {
 	shop                    shop.Repository
 	wcCampaign              wc_domain.Repository
 	wcEntry                 wc_entry_domain.Repository
+	wcDispatchReport        wc_entry_domain.DispatchReportReader
 	businessPhone           businessphone.Repository
 	ownerPhoneReader        businessphone.OwnerPhoneReader
 	callRecording           call_recordings.CallRecordRepository
@@ -441,6 +443,7 @@ type useCases struct {
 	createAgent           agent_domain.CreateAgentUseCase
 	simulateAgentTurn     agent_domain.SimulateTurnUseCase
 	aichat                *aichat_usecase.Service
+	chatFunds             *aichat_usecase.FundsGate
 	copilot               *copilot_usecase.Service
 	updateAgent           agent_domain.UpdateAgentUseCase
 	assignAgentDepartment agent_domain.AssignDepartmentUseCase
@@ -562,6 +565,7 @@ type useCases struct {
 	getWCCampaign                    wc_domain.GetCampaignUseCase
 	listWCCampaigns                  wc_domain.ListCampaignsUseCase
 	getWCCampaignsSummary            wc_domain.GetSummaryUseCase
+	getWCDispatchReport              wc_domain.GetDispatchReportUseCase
 	ensureOrganicCoexistenceCampaign wc_domain.EnsureOrganicCoexistenceCampaignUseCase
 	listWCEntries                    wc_domain.ListEntriesUseCase
 	resetWCCampaign                  wc_domain.ResetCampaignUseCase
@@ -966,6 +970,7 @@ type handlers_ struct {
 	waba                    *wabahttp.WABAHandler
 	invoice                 *invoicehttp.InvoiceHandler
 	callBilling             *callbillinghttp.CallBillingHandler
+	campaignReport          *campaignreporthttp.Handler
 	calls                   *handlers.CallsHandler
 	analytics               *analyticshttp.AnalyticsHandler
 	workspaceConfig         *workspaceconfighttp.WorkspaceConfigHandler

@@ -3,6 +3,7 @@ package copilot_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -58,14 +59,58 @@ func TestService_EachTurnGetsItsOwnDatasets(t *testing.T) {
 func TestSystemPromptDescribesTheScreen(t *testing.T) {
 	cc := ownerCtx
 	cc.View = copilot.View{Surface: copilot.SurfaceAttendance, DateFrom: "2026-09-01", DateTo: "2026-09-07", DepartmentID: "d1"}
-	prompt := NewDriver(cc, "m", NewRegistry(), &fakeAccess{}, nil).SystemPrompt()
+	prompt := NewDriver(cc, "m", NewRegistry(), &fakeAccess{}, openFunds{}, nil).SystemPrompt()
 	for _, want := range []string{"2026-09-01", "2026-09-07", "d1", "Atendimento"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt does not mention %q", want)
 		}
 	}
-	bare := NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, nil).SystemPrompt()
+	bare := NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, openFunds{}, nil).SystemPrompt()
 	if strings.Contains(bare, "# Tela atual") {
 		t.Fatal("a chat opened outside a page must not claim a screen")
+	}
+}
+
+type orderedEvents struct{ names []string }
+
+func (o *orderedEvents) emit(t string, payload interface{}) {
+	if t == EventToolStart || t == "tool" {
+		o.names = append(o.names, t)
+	}
+}
+
+type slowTool struct {
+	fakeTool
+	seenStart *bool
+	events    *orderedEvents
+}
+
+func (s *slowTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+	*s.seenStart = len(s.events.names) == 1 && s.events.names[0] == EventToolStart
+	return s.fakeTool.Execute(ctx, cc, args)
+}
+
+func TestDriver_AnnouncesAToolBeforeItRuns(t *testing.T) {
+	events := &orderedEvents{}
+	started := false
+	tool := &slowTool{fakeTool: fakeTool{name: "read_x", meta: readMeta}, seenStart: &started, events: events}
+	drv := NewDriver(ownerCtx, "m", NewRegistry(tool), &fakeAccess{}, openFunds{}, nil)
+	drv.Dispatch(context.Background(), call("read_x", nil), events.emit)
+	// A query can wait for the analytics gate; without the start event the answer looks frozen until it returns.
+	if !started || len(events.names) != 2 || events.names[1] != "tool" {
+		t.Fatalf("events = %v, started before execute = %v", events.names, started)
+	}
+}
+
+func TestDriver_DoesNotAnnounceWhatItWillNotRun(t *testing.T) {
+	events := &orderedEvents{}
+	denied := NewDriver(ownerCtx, "m", NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{err: errors.New("no")}, openFunds{}, nil)
+	denied.Dispatch(context.Background(), call("read_x", nil), events.emit)
+	proposal := NewDriver(ownerCtx, "m", NewRegistry(&fakeTool{name: "write_x", meta: writeMeta}), &fakeAccess{}, openFunds{}, nil)
+	proposal.Dispatch(context.Background(), call("write_x", nil), events.emit)
+	for _, name := range events.names {
+		if name == EventToolStart {
+			t.Fatalf("events = %v: a denied call or an approval proposal never runs, so it must not show as running", events.names)
+		}
 	}
 }

@@ -249,6 +249,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.wcEntry.(wc_entry_domain.SummaryAggregator),
 		waChargeAgg,
 	)
+	getWCDispatchReportUC := wc_usecase.NewGetDispatchReportUseCase(c.repositories.wcCampaign, c.repositories.wcDispatchReport, c.attendanceScheduleResolver(), c.dispatchReportCaching())
 	listWCEntriesUC := wc_usecase.NewListEntriesUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	resetWCCampaignUC := wc_usecase.NewResetCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	clearHistoryWCCampaignUC := wc_usecase.NewClearHistoryUseCase(c.repositories.wcCampaign, c.repositories.conversation)
@@ -568,6 +569,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getWCCampaign:                    getWCCampaignUC,
 		listWCCampaigns:                  listWCCampaignsUC,
 		getWCCampaignsSummary:            getWCCampaignsSummaryUC,
+		getWCDispatchReport:              getWCDispatchReportUC,
 		ensureOrganicCoexistenceCampaign: wc_usecase.NewEnsureOrganicCoexistenceCampaignUseCase(c.repositories.wcCampaign),
 		listWCEntries:                    listWCEntriesUC,
 		resetWCCampaign:                  resetWCCampaignUC,
@@ -1095,12 +1097,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
 	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(c.repositories.wcEntry))
+	c.useCases.chatFunds = aichat_usecase.NewFundsGate(cachedBalanceChecker, c.repositories.workspaceSubscription)
 	c.useCases.aichat = aichat_usecase.NewService(
 		c.repositories.aichatThread,
 		c.repositories.aichatMessage,
 		c.services.ai,
-		cachedBalanceChecker,
-		c.repositories.workspaceSubscription,
+		c.useCases.chatFunds,
 	)
 
 	c.useCases.workflowManager = workflow_usecase.NewWorkflowManager(c.repositories.workflow, c.repositories.workflowRun, wfEngine)

@@ -16,6 +16,7 @@ import (
 type scriptAI struct {
 	turns [][]ai.ToolCall
 	texts []string
+	usage *ai.Usage
 	idx   int
 }
 
@@ -39,7 +40,7 @@ func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-c
 		if txt != "" {
 			ch <- ai.StreamEvent{Type: ai.StreamEventToken, Token: txt}
 		}
-		ch <- ai.StreamEvent{Type: ai.StreamEventDone, FullText: txt, AllToolCalls: tcs, Usage: &ai.Usage{}}
+		ch <- ai.StreamEvent{Type: ai.StreamEventDone, FullText: txt, AllToolCalls: tcs, Usage: s.usageOrEmpty()}
 	}()
 	return ch, nil
 }
@@ -113,7 +114,7 @@ var (
 )
 
 func driverWith(fa *fakeAccess, ts ...copilot.Tool) *Driver {
-	return NewDriver(ownerCtx, "m", NewRegistry(ts...), fa, func() string { return "act-1" })
+	return NewDriver(ownerCtx, "m", NewRegistry(ts...), fa, openFunds{}, func() string { return "act-1" })
 }
 
 func TestDriver_ReadExecutesAndScopes(t *testing.T) {
@@ -235,10 +236,10 @@ func TestDriver_Accessors(t *testing.T) {
 }
 
 func TestDriver_MintID(t *testing.T) {
-	if NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, nil).mintID() != "act" {
+	if NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, openFunds{}, nil).mintID() != "act" {
 		t.Fatal("nil id generator should fall back")
 	}
-	if NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, func() string { return "z" }).mintID() != "z" {
+	if NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, openFunds{}, func() string { return "z" }).mintID() != "z" {
 		t.Fatal("custom id generator should be used")
 	}
 }

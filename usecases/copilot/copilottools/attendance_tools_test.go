@@ -34,6 +34,9 @@ type fakeSections struct {
 	summary *attendance.SummarySection
 	trend   attendance.Trend
 	team    attendance.TeamRanking
+	stages  attendance.OverviewStages
+	rework  attendance.OverviewRework
+	live    attendance.LiveSection
 	err     error
 }
 
@@ -57,7 +60,7 @@ func (f *fakeSections) Trend(_ context.Context, _ string, filter attendance.Over
 }
 
 func (f *fakeSections) Stages(_ context.Context, _ string, filter attendance.OverviewFilter) (*attendance.StagesSection, error) {
-	return &attendance.StagesSection{}, f.record(filter)
+	return &attendance.StagesSection{Stages: f.stages}, f.record(filter)
 }
 
 func (f *fakeSections) Backlog(_ context.Context, _ string, filter attendance.OverviewFilter) (*attendance.BacklogSection, error) {
@@ -69,11 +72,12 @@ func (f *fakeSections) Team(_ context.Context, _ string, filter attendance.Overv
 }
 
 func (f *fakeSections) Rework(_ context.Context, _ string, filter attendance.OverviewFilter) (*attendance.ReworkSection, error) {
-	return &attendance.ReworkSection{}, f.record(filter)
+	return &attendance.ReworkSection{Rework: f.rework}, f.record(filter)
 }
 
 func (f *fakeSections) Live(_ context.Context, _ string, filter attendance.OverviewFilter) (*attendance.LiveSection, error) {
-	return &attendance.LiveSection{}, f.record(filter)
+	live := f.live
+	return &live, f.record(filter)
 }
 
 func ownerOn(view copilot.View) copilot.Context {
@@ -272,5 +276,30 @@ func TestAttendanceQueryAcceptsRealIdentifiers(t *testing.T) {
 	})
 	if res.Status != copilot.StatusOK || sections.filters[0].DepartmentID != knownDepartment {
 		t.Fatalf("status = %v (%s)", res.Status, res.Message)
+	}
+}
+
+func TestAttendanceQueryFollowsTheCampaignAndAIFiltersOnScreen(t *testing.T) {
+	sections := &fakeSections{}
+	hide := false
+	view := screen
+	view.CampaignID = "9d1c2b3a-4e5f-4a6b-8c7d-0e1f2a3b4c5d"
+	view.CampaignType = "whatsapp"
+	view.IncludeAI = &hide
+	NewAttendanceMetricsTool(testDeps(sections)).Execute(context.Background(), ownerOn(view), nil)
+	got := sections.filters[0]
+	// "This campaign" on a page filtered to a campaign must not silently answer for every campaign.
+	if got.CampaignID != view.CampaignID || got.CampaignType != "whatsapp" || got.IncludeAI {
+		t.Fatalf("filter = %+v, want the campaign on screen and AI hidden like the page", got)
+	}
+
+	NewAttendanceMetricsTool(testDeps(sections)).Execute(context.Background(), ownerOn(view), map[string]interface{}{"campaign_id": "all"})
+	if sections.filters[1].CampaignID != "" || sections.filters[1].CampaignType != "" {
+		t.Fatalf("filter = %+v, want every campaign", sections.filters[1])
+	}
+
+	res := NewAttendanceMetricsTool(testDeps(sections)).Execute(context.Background(), ownerOn(copilot.View{}), map[string]interface{}{"campaign_id": "black friday"})
+	if res.Status != copilot.StatusError || len(sections.filters) != 2 {
+		t.Fatalf("status = %v, want an invented campaign refused before querying", res.Status)
 	}
 }

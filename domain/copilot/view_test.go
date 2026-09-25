@@ -33,3 +33,19 @@ func TestViewValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestViewCarriesTheCampaignFilterAndTheAIToggle(t *testing.T) {
+	hide := false
+	ok := View{Surface: SurfaceAttendance, CampaignID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", CampaignType: "whatsapp", IncludeAI: &hide}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	for name, v := range map[string]View{
+		"prose in the campaign":      {Surface: SurfaceAttendance, CampaignID: "the big one"},
+		"prose in the campaign type": {Surface: SurfaceAttendance, CampaignType: "whatsapp; drop"},
+	} {
+		if err := v.Validate(); !errors.Is(err, ErrInvalidView) {
+			t.Fatalf("%s: Validate() = %v, want ErrInvalidView", name, err)
+		}
+	}
+}

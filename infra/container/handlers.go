@@ -18,6 +18,7 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
@@ -521,6 +522,7 @@ func (c *Container) initHandlers() {
 		callBilling: callbillinghttp.NewCallBillingHandler(
 			c.useCases.listBillingRecords,
 		),
+		campaignReport: campaignreporthttp.NewHandler(c.useCases.getWCDispatchReport),
 		calls: handlers.NewCallsHandler(
 			c.useCases.listCalls,
 			c.useCases.getCall,

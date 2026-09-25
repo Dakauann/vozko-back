@@ -9,10 +9,10 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/agent_presence"
 	attendancedomain "vozko/domain/attendance"
-	"vozko/domain/cache"
 	"vozko/domain/queue_event"
 	"vozko/infra/http/middleware"
 	attendance_usecase "vozko/usecases/attendance"
@@ -387,18 +387,11 @@ func (h *AttendanceHandler) readSection(
 
 var errUnknownSection = errors.New("unknown overview section")
 
-const analyticsRetryAfterSeconds = "5"
-
 func writeOverviewError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, cache.ErrGateBusy):
-		w.Header().Set("Retry-After", analyticsRetryAfterSeconds)
-		response.WriteError(w, http.StatusServiceUnavailable, "attendance analytics are busy, retry shortly", nil)
-	case errors.Is(err, context.DeadlineExceeded):
-		response.WriteError(w, http.StatusGatewayTimeout, "attendance analytics took too long", nil)
-	default:
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch attendance overview: "+err.Error(), nil)
+	if httpx.WriteAnalyticsLimit(w, err, "attendance") {
+		return
 	}
+	response.WriteError(w, http.StatusInternalServerError, "Failed to fetch attendance overview: "+err.Error(), nil)
 }
 
 func parseDayRange(r *http.Request) (*time.Time, *time.Time) {

@@ -28,6 +28,7 @@ func attendanceParams() map[string]tools.Parameter {
 		"department_id": {Type: "string", Description: "id de departamento (list_departments); omita para usar o da tela; \"all\" para o workspace inteiro"},
 		"member_id":     {Type: "string", Description: "id de um membro (de attendance_team); omita para usar o da tela; \"all\" para todos"},
 		"channel":       {Type: "string", Description: "canal; omita para usar o da tela; \"all\" para todos", Enum: channelOptions()},
+		"campaign_id":   {Type: "string", Description: "id de uma campanha de disparo (de campaign_dispatch); omita para usar a da tela; \"all\" para todas"},
 	}
 }
 
@@ -58,6 +59,7 @@ var (
 	errUnknownDepartment = errors.New("departamento inexistente neste workspace: use list_departments e copie o id exatamente, nunca invente")
 	errUnknownMember     = errors.New("member_id inválido: use o member_id devolvido por attendance_team, nunca invente")
 	errUnknownChannel    = errors.New("canal inválido: use um dos canais listados no parâmetro channel")
+	errUnknownCampaign   = errors.New("campaign_id inválido: use o id devolvido por campaign_dispatch, nunca invente")
 )
 
 type attendanceQuery struct {
@@ -89,11 +91,19 @@ func (d AttendanceDeps) resolve(ctx context.Context, cc copilot.Context, args ma
 	if channel != "" && !shared.EntryType(channel).SupportsConversationView() {
 		return attendanceQuery{}, errUnknownChannel
 	}
+	campaign := onScreen(argString(args, "campaign_id"), cc.View.CampaignID)
+	if campaign != "" {
+		if _, err := uuid.Parse(campaign); err != nil {
+			return attendanceQuery{}, errUnknownCampaign
+		}
+	}
 	filter := attendance.OverviewFilter{
 		DepartmentID: department,
 		MemberID:     member,
 		Channel:      channel,
-		IncludeAI:    true,
+		CampaignID:   campaign,
+		CampaignType: campaignTypeFor(campaign, cc.View),
+		IncludeAI:    includeAI(args, cc.View),
 	}
 	window.Apply(&filter)
 	return attendanceQuery{window: window, filter: filter}, nil
@@ -158,8 +168,8 @@ func orAll(v string) string {
 
 func analyticsFailure(tool string, err error) copilot.Result {
 	switch {
-	case errors.Is(err, attendance.ErrInvalidWindow), errors.Is(err, attendance.ErrUnknownMetric),
-		errors.Is(err, errUnknownDepartment), errors.Is(err, errUnknownMember), errors.Is(err, errUnknownChannel):
+	case errors.Is(err, attendance.ErrInvalidWindow), errors.Is(err, attendance.ErrUnknownMetric), errors.Is(err, attendance.ErrUnknownBlock),
+		errors.Is(err, errUnknownDepartment), errors.Is(err, errUnknownMember), errors.Is(err, errUnknownChannel), errors.Is(err, errUnknownCampaign):
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	case errors.Is(err, wd.ErrDepartmentAccessDenied):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "sem acesso a este departamento; o usuário só vê os próprios departamentos"}
@@ -193,4 +203,21 @@ func keep(cc copilot.Context, d *copilot.Dataset) *copilot.Dataset {
 		return d
 	}
 	return cc.Datasets.Put(d)
+}
+
+func campaignTypeFor(campaignID string, view copilot.View) string {
+	if campaignID == "" || campaignID != view.CampaignID {
+		return ""
+	}
+	return view.CampaignType
+}
+
+func includeAI(args map[string]interface{}, view copilot.View) bool {
+	if explicit := argBoolPtr(args, "include_ai"); explicit != nil {
+		return *explicit
+	}
+	if view.IncludeAI != nil {
+		return *view.IncludeAI
+	}
+	return true
 }

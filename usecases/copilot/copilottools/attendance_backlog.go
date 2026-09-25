@@ -6,7 +6,6 @@ import (
 	"vozko/domain/attendance"
 	"vozko/domain/copilot"
 	"vozko/domain/tools"
-	"vozko/domain/workspace"
 )
 
 type attendanceBacklogTool struct{ deps AttendanceDeps }
@@ -15,9 +14,7 @@ func NewAttendanceBacklogTool(deps AttendanceDeps) copilot.Tool {
 	return &attendanceBacklogTool{deps: deps}
 }
 
-func (t *attendanceBacklogTool) Meta() copilot.Meta {
-	return copilot.Meta{Resource: workspace.ResourceAttendance, Action: workspace.ActionRead}
-}
+func (t *attendanceBacklogTool) Meta() copilot.Meta { return attendanceReadMeta() }
 
 func (t *attendanceBacklogTool) Definition() tools.Definition {
 	return tools.Definition{

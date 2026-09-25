@@ -98,3 +98,11 @@ func scheduleLocation(sched *wh.Schedule) *time.Location {
 	}
 	return sched.Location()
 }
+
+func (r *ScheduleResolver) Location(ctx context.Context, workspaceID, departmentID string) (*time.Location, error) {
+	sched, err := r.Resolve(ctx, workspaceID, departmentID)
+	if err != nil {
+		return nil, err
+	}
+	return scheduleLocation(sched), nil
+}

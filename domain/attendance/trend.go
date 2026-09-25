@@ -9,6 +9,12 @@ const (
 
 const TrendBucketLayout = "2006-01"
 
+const MetricPendingStock = "pending_stock"
+
+func TrendMetricKeys() []string {
+	return []string{MetricFinished, MetricEngaged, MetricEntriesCreated, MetricPendingStock, MetricRevenueCents}
+}
+
 const (
 	ReasonNoClosedBuckets  = "no_closed_buckets"
 	ReasonTrendUnavailable = "trend_repository_unavailable"

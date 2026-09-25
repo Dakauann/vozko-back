@@ -3,6 +3,7 @@ package copilot_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,18 +20,38 @@ type AccessChecker interface {
 
 type IDGenerator func() string
 
-const EventChart = "chart"
+const (
+	EventChart     = "chart"
+	EventToolStart = "tool_start"
+)
+
+type FundsChecker interface {
+	Check(workspaceID string) error
+}
+
+var ErrFundsExhausted = errors.New("copilot: funds exhausted")
 
 type Driver struct {
 	cc       copilot.Context
 	model    string
 	registry *Registry
 	access   AccessChecker
+	funds    FundsChecker
 	newID    IDGenerator
 }
 
-func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, newID IDGenerator) *Driver {
-	return &Driver{cc: cc, model: model, registry: reg, access: access, newID: newID}
+func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {
+	return &Driver{cc: cc, model: model, registry: reg, access: access, funds: funds, newID: newID}
+}
+
+func (d *Driver) Admit(context.Context) error {
+	if d.funds == nil {
+		return ErrFundsExhausted
+	}
+	if err := d.funds.Check(d.cc.WorkspaceID); err != nil {
+		return fmt.Errorf("%w: %v", ErrFundsExhausted, err)
+	}
+	return nil
 }
 
 func (d *Driver) Model() string             { return d.model }
@@ -62,7 +83,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	}
 	m := tool.Meta()
 	if err := d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action); err != nil {
-		emit("tool", toolEvent(call.Name, "permissão negada", false))
+		emit("tool", toolEvent(call.Name, string(copilot.StatusDenied), false))
 		return agentloop.StepResult{Result: fmt.Sprintf(
 			"PERMISSÃO NEGADA: o usuário não tem permissão para %s:%s neste workspace. Não tente contornar.",
 			m.Resource, m.Action)}
@@ -80,6 +101,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			Pause:  &agentloop.Pause{Reason: "aguardando aprovação", Payload: pa},
 		}
 	}
+	emit(EventToolStart, map[string]interface{}{"name": call.Name})
 	res := tool.Execute(ctx, d.cc, call.Arguments)
 	emit("tool", toolEvent(call.Name, string(res.Status), res.Status == copilot.StatusOK))
 	if res.Chart != nil {

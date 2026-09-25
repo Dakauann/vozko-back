@@ -67,7 +67,7 @@ func testThread() *aichat.Thread {
 }
 
 func newService(prov *scriptAI, th *fakeThreads, ms *fakeMessages, store PendingActionStore, ts ...copilot.Tool) *Service {
-	return NewService(agentloop.Engine{AI: prov}, NewRegistry(ts...), &fakeAccess{}, th, ms, store, func() string { return "act-1" })
+	return NewService(agentloop.Engine{AI: prov}, NewRegistry(ts...), &fakeAccess{}, openFunds{}, th, ms, store, func() string { return "act-1" })
 }
 
 func (f *fakeMessages) last() *aichat.Message {

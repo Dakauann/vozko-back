@@ -165,6 +165,15 @@ type MemberDigest struct {
 	AvgResponseMins *float64    `json:"avg_response_mins,omitempty"`
 	Rating          *float64    `json:"rating,omitempty"`
 	Class           MemberClass `json:"class,omitempty"`
+	RevenueCents    *int64      `json:"revenue_cents,omitempty"`
+	Currency        string      `json:"currency,omitempty"`
+	WonCount        int64       `json:"won_count"`
+	AvgTicketCents  *float64    `json:"avg_ticket_cents,omitempty"`
+	PerOpenDay      *float64    `json:"per_open_day,omitempty"`
+	PerOnlineHour   *float64    `json:"per_online_hour,omitempty"`
+	Presence        string      `json:"presence,omitempty"`
+	TotalMessages   int64       `json:"total_messages"`
+	AvgMessages     *float64    `json:"avg_messages,omitempty"`
 }
 
 type TeamDigest struct {
@@ -225,6 +234,15 @@ func digestMember(m RankedMember) MemberDigest {
 		AvgResponseMins: m.AvgResponseMins,
 		Rating:          m.Rating,
 		Class:           m.Class,
+		RevenueCents:    m.RevenueCents,
+		Currency:        m.Currency,
+		WonCount:        m.WonCount,
+		AvgTicketCents:  m.AvgTicketCents,
+		PerOpenDay:      m.PerOpenDay,
+		PerOnlineHour:   m.PerOnlineHour,
+		Presence:        m.Presence,
+		TotalMessages:   m.TotalMessages,
+		AvgMessages:     m.AvgMessages,
 	}
 }
 
@@ -246,7 +264,7 @@ type TrendDigest struct {
 }
 
 func DigestTrend(t Trend, keys []string) ([]TrendDigest, error) {
-	resolved, err := resolveMetricKeys(keys, false)
+	resolved, err := resolveTrendKeys(keys)
 	if err != nil {
 		return nil, err
 	}
@@ -256,9 +274,11 @@ func DigestTrend(t Trend, keys []string) ([]TrendDigest, error) {
 	}
 	out := make([]TrendDigest, 0, len(resolved))
 	for _, key := range resolved {
-		spec, _ := Metric(key)
 		series, found := byKey[key]
-		d := TrendDigest{Metric: key, Kind: spec.Kind, Direction: spec.Direction, Points: []TrendPointDigest{}}
+		d := TrendDigest{Metric: key, Kind: series.Kind, Direction: series.Direction, Points: []TrendPointDigest{}}
+		if spec, known := Metric(key); known && !found {
+			d.Kind, d.Direction = spec.Kind, spec.Direction
+		}
 		if !found {
 			d.Reason = t.Reason
 			out = append(out, d)
@@ -349,4 +369,33 @@ func directionOf(delta float64, direction MetricDirection) Change {
 		return ChangeWorsened
 	}
 	return ChangeImproved
+}
+
+func resolveTrendKeys(keys []string) ([]string, error) {
+	allowed := TrendMetricKeys()
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("%w: name at least one of %s", ErrUnknownMetric, strings.Join(allowed, ", "))
+	}
+	out := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		if !containsKey(allowed, key) {
+			return nil, fmt.Errorf("%w: %q has no monthly series, available: %s", ErrUnknownMetric, key, strings.Join(allowed, ", "))
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out, nil
+}
+
+func containsKey(keys []string, key string) bool {
+	for _, k := range keys {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }

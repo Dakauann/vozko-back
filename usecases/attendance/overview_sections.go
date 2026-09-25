@@ -35,7 +35,7 @@ func (uc *getOverviewUseCase) Summary(
 	return rememberSection(ctx, uc, workspaceID, attendance.SectionSummary, filter,
 		func(ctx context.Context) (*attendance.SummarySection, error) {
 			var out *attendance.SummarySection
-			err := uc.gated(ctx, func(ctx context.Context) error {
+			err := cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				var err error
 				out, err = uc.computeSummary(ctx, workspaceID, filter)
 				return err
@@ -56,7 +56,7 @@ func (uc *getOverviewUseCase) Trend(
 				return nil, err
 			}
 			out := &attendance.TrendSection{}
-			err = uc.gated(ctx, func(ctx context.Context) error {
+			err = cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				window, err := uc.loadWindow(ctx, workspaceID, filter)
 				if err != nil {
 					return err
@@ -80,7 +80,7 @@ func (uc *getOverviewUseCase) Team(
 				return nil, err
 			}
 			var out *attendance.TeamSection
-			err = uc.gated(ctx, func(ctx context.Context) error {
+			err = cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				window, err := uc.loadWindow(ctx, workspaceID, filter)
 				if err != nil {
 					return err
@@ -103,7 +103,7 @@ func (uc *getOverviewUseCase) Stages(
 	return rememberSection(ctx, uc, workspaceID, attendance.SectionStages, filter,
 		func(ctx context.Context) (*attendance.StagesSection, error) {
 			out := &attendance.StagesSection{}
-			err := uc.gated(ctx, func(ctx context.Context) error {
+			err := cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				var err error
 				out.Stages, err = uc.repo.ReadStages(ctx, workspaceID, filter)
 				return err
@@ -120,7 +120,7 @@ func (uc *getOverviewUseCase) Backlog(
 	return rememberSection(ctx, uc, workspaceID, attendance.SectionBacklog, filter,
 		func(ctx context.Context) (*attendance.BacklogSection, error) {
 			out := &attendance.BacklogSection{}
-			err := uc.gated(ctx, func(ctx context.Context) error {
+			err := cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				var err error
 				out.BacklogXray, err = uc.repo.ReadBacklog(ctx, workspaceID, filter, uc.clock())
 				return err
@@ -137,25 +137,13 @@ func (uc *getOverviewUseCase) Rework(
 	return rememberSection(ctx, uc, workspaceID, attendance.SectionRework, filter,
 		func(ctx context.Context) (*attendance.ReworkSection, error) {
 			out := &attendance.ReworkSection{}
-			err := uc.gated(ctx, func(ctx context.Context) error {
+			err := cache.Gated(ctx, uc.gate, func(ctx context.Context) error {
 				var err error
 				out.Rework, err = uc.repo.ReadRework(ctx, workspaceID, filter)
 				return err
 			})
 			return out, err
 		})
-}
-
-func (uc *getOverviewUseCase) gated(ctx context.Context, fn func(context.Context) error) error {
-	if uc.gate == nil {
-		return fn(ctx)
-	}
-	release, err := uc.gate.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	return fn(ctx)
 }
 
 func rememberSection[T any](

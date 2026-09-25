@@ -35,6 +35,7 @@ type Service struct {
 	engine   agentloop.Engine
 	registry *Registry
 	access   AccessChecker
+	funds    FundsChecker
 	threads  aichat.ThreadRepository
 	messages aichat.MessageRepository
 	pending  PendingActionStore
@@ -45,12 +46,13 @@ func NewService(
 	engine agentloop.Engine,
 	reg *Registry,
 	access AccessChecker,
+	funds FundsChecker,
 	threads aichat.ThreadRepository,
 	messages aichat.MessageRepository,
 	pending PendingActionStore,
 	newID IDGenerator,
 ) *Service {
-	return &Service{engine: engine, registry: reg, access: access, threads: threads, messages: messages, pending: pending, newID: newID}
+	return &Service{engine: engine, registry: reg, access: access, funds: funds, threads: threads, messages: messages, pending: pending, newID: newID}
 }
 
 func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content string, cc copilot.Context, emit agentloop.Emit) error {
@@ -83,9 +85,9 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 	}
 	cc.Datasets = copilot.NewDatasetStore()
 
-	driver := NewDriver(cc, model, s.registry, s.access, s.newID)
+	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	sess := &agentloop.Session{History: history}
-	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, 0), sess, prompt)
+	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, AnswerTokenBudget), sess, prompt)
 
 	switch out.Kind {
 	case agentloop.OutcomePaused:
@@ -103,6 +105,9 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, prompt str
 		reply := lastAssistantContent(sess.History)
 		if reply != "" {
 			_ = s.messages.Create(rec.message(thread.ID, reply, model))
+		}
+		if msg := haltMessage(out.Halt); msg != "" {
+			emit("error", map[string]interface{}{"error": msg})
 		}
 		emit("done", map[string]interface{}{"content": reply})
 	}
@@ -126,10 +131,10 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	if strings.TrimSpace(model) == "" {
 		model = defaultCopilotModel
 	}
-	driver := NewDriver(cc, model, s.registry, s.access, s.newID)
+	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	res := driver.ExecuteApproved(ctx, pa)
 	_ = s.pending.Delete(thread.ID, actionID)
-	executed := toolStep{Name: pa.ToolName, Summary: pa.Summary, Ok: res.Status == copilot.StatusOK}
+	executed := toolStep{Name: pa.ToolName, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK}
 	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, false, executed)
 }
 

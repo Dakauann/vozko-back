@@ -8,7 +8,6 @@ import (
 
 	"vozko/domain/ai"
 	"vozko/domain/aichat"
-	"vozko/domain/balance"
 	"vozko/domain/workspace/workspace_plan"
 )
 
@@ -34,18 +33,16 @@ type Service struct {
 	threads  aichat.ThreadRepository
 	messages aichat.MessageRepository
 	ai       ai.Service
-	balance  balance.CachedBalanceChecker
-	subs     subscriptionReader
+	funds    *FundsGate
 }
 
 func NewService(
 	threads aichat.ThreadRepository,
 	messages aichat.MessageRepository,
 	aiSvc ai.Service,
-	bal balance.CachedBalanceChecker,
-	subs subscriptionReader,
+	funds *FundsGate,
 ) *Service {
-	return &Service{threads: threads, messages: messages, ai: aiSvc, balance: bal, subs: subs}
+	return &Service{threads: threads, messages: messages, ai: aiSvc, funds: funds}
 }
 
 func (s *Service) CreateThread(workspaceID, userID, model, title string) (*aichat.Thread, error) {
@@ -99,7 +96,7 @@ func (s *Service) Precheck(workspaceID, userID, threadID string) (*aichat.Thread
 	if err != nil {
 		return nil, err
 	}
-	if err := s.gate(workspaceID); err != nil {
+	if err := s.funds.Check(workspaceID); err != nil {
 		return nil, err
 	}
 	return thread, nil
@@ -215,21 +212,6 @@ func (s *Service) authorizeThread(workspaceID, userID, threadID string) (*aichat
 		return nil, ErrForbidden
 	}
 	return t, nil
-}
-
-func (s *Service) gate(workspaceID string) error {
-	sub, err := s.subs.GetCurrentByWorkspaceID(workspaceID, time.Now().UTC())
-	if err != nil || sub == nil {
-		return ErrNoSubscription
-	}
-	bal, err := s.balance.GetBalance(workspaceID)
-	if err != nil {
-		return err
-	}
-	if bal <= 0 {
-		return ErrInsufficientBalance
-	}
-	return nil
 }
 
 func deriveTitle(firstMessage string) string {

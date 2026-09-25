@@ -8,7 +8,6 @@ import (
 	"vozko/domain/attendance"
 	"vozko/domain/copilot"
 	"vozko/domain/tools"
-	"vozko/domain/workspace"
 )
 
 const maxTrendMetrics = 4
@@ -19,18 +18,16 @@ func NewAttendanceTrendTool(deps AttendanceDeps) copilot.Tool {
 	return &attendanceTrendTool{deps: deps}
 }
 
-func (t *attendanceTrendTool) Meta() copilot.Meta {
-	return copilot.Meta{Resource: workspace.ResourceAttendance, Action: workspace.ActionRead}
-}
+func (t *attendanceTrendTool) Meta() copilot.Meta { return attendanceReadMeta() }
 
 func (t *attendanceTrendTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name: "attendance_trend",
-		Description: "Série MENSAL de até 24 meses de uma a quatro métricas, terminando no mês de date_to. Use para evolução, " +
+		Description: "Série MENSAL de até 24 meses, terminando no mês de date_to, para as séries que a página desenha (concluídas, conversas com mensagem, novas entradas, fila acumulada e receita). Outras métricas não têm série mensal: compare períodos com attendance_metrics. Use para evolução, " +
 			"sazonalidade e comparações longas (trimestres, anos). Retorna um resumo por métrica (melhor mês, variação contra o " +
 			"mês anterior, mês parcial) e um dataset com a tabela mês a mês para render_chart ou query_dataset.",
 		Parameters: withParams(attendanceParams(), map[string]tools.Parameter{
-			"metrics": {Type: "array", Description: "de 1 a 4 chaves: " + strings.Join(attendance.MetricKeys(), ", "), Items: &tools.ParameterItems{Type: "string"}},
+			"metrics": {Type: "array", Description: "de 1 a 4 séries: " + strings.Join(attendance.TrendMetricKeys(), ", ") + " (pending_stock é a fila acumulada no fim de cada mês)", Items: &tools.ParameterItems{Type: "string"}},
 			"months":  {Type: "integer", Description: "quantidade de meses (1 a 24, padrão 13)"},
 		}),
 		Required: []string{"metrics"},
