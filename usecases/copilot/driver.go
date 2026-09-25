@@ -82,7 +82,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 		return agentloop.StepResult{Result: "ferramenta desconhecida: " + call.Name}
 	}
 	m := tool.Meta()
-	if err := d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action); err != nil {
+	if err := d.permit(m); err != nil {
 		emit("tool", toolEvent(call.Name, string(copilot.StatusDenied), false))
 		return agentloop.StepResult{Result: fmt.Sprintf(
 			"PERMISSÃO NEGADA: o usuário não tem permissão para %s:%s neste workspace. Não tente contornar.",
@@ -116,7 +116,7 @@ func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction) 
 		return copilot.Result{Status: copilot.StatusError, Message: "ferramenta desconhecida: " + pa.ToolName}
 	}
 	m := tool.Meta()
-	if err := d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action); err != nil {
+	if err := d.permit(m); err != nil {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "permissão negada"}
 	}
 	return tool.Execute(ctx, d.cc, pa.Args)
@@ -168,4 +168,11 @@ func renderResult(r copilot.Result) string {
 		return "ok"
 	}
 	return string(b)
+}
+
+func (d *Driver) permit(m copilot.Meta) error {
+	if d.cc.SystemAdmin {
+		return nil
+	}
+	return d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action)
 }

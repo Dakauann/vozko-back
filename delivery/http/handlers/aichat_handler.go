@@ -236,10 +236,12 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Context {
+	claims := middleware.GetClaims(r)
 	return copilot_domain.Context{
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Departments: middleware.GetDepartmentFilter(r),
+		SystemAdmin: claims != nil && claims.Role == "admin",
 	}
 }
 

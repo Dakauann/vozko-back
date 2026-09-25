@@ -114,3 +114,32 @@ func TestDriver_DoesNotAnnounceWhatItWillNotRun(t *testing.T) {
 		}
 	}
 }
+
+func TestDriver_SystemAdminPassesToolChecksLikeTheRoutes(t *testing.T) {
+	notMember := &fakeAccess{err: errors.New("workspace: unauthorized")}
+	cc := ownerCtx
+	cc.SystemAdmin = true
+	read := &fakeTool{name: "read_x", meta: readMeta}
+	drv := NewDriver(cc, "m", NewRegistry(read), notMember, openFunds{}, nil)
+	// The routes let a platform admin into any workspace (workspace_middleware RequireAccess); the tools must agree,
+	// or support staff see "no permission" on a workspace they were let into.
+	if res := drv.Dispatch(context.Background(), call("read_x", nil), func(string, interface{}) {}); read.calls != 1 {
+		t.Fatalf("result = %q, want the tool to run for a system admin", res.Result)
+	}
+
+	write := &fakeTool{name: "write_x", meta: writeMeta}
+	drv = NewDriver(cc, "m", NewRegistry(write), notMember, openFunds{}, nil)
+	step := drv.Dispatch(context.Background(), call("write_x", nil), func(string, interface{}) {})
+	if step.Pause == nil || write.calls != 0 {
+		t.Fatal("a system admin still approves every change; the bypass is about access, not about approval")
+	}
+}
+
+func TestDriver_NonAdminsStillNeedTheirPermission(t *testing.T) {
+	read := &fakeTool{name: "read_x", meta: readMeta}
+	drv := NewDriver(ownerCtx, "m", NewRegistry(read), &fakeAccess{err: errors.New("no")}, openFunds{}, nil)
+	drv.Dispatch(context.Background(), call("read_x", nil), func(string, interface{}) {})
+	if read.calls != 0 {
+		t.Fatal("without the system admin flag the permission check must still refuse")
+	}
+}

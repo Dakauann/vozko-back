@@ -12,6 +12,7 @@ type Context struct {
 	WorkspaceID string
 	UserID      string
 	Role        workspace.Role
+	SystemAdmin bool
 	Departments *wd.DepartmentFilter
 	View        View
 	Datasets    *DatasetStore
