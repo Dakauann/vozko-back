@@ -143,3 +143,31 @@ func TestDriver_NonAdminsStillNeedTheirPermission(t *testing.T) {
 		t.Fatal("without the system admin flag the permission check must still refuse")
 	}
 }
+
+type describedTool struct{ fakeTool }
+
+func (describedTool) Describe(context.Context, copilot.Context, map[string]interface{}) []copilot.Field {
+	return []copilot.Field{{Key: "stage", Value: "Negociação"}}
+}
+
+func TestDriver_ProposalsCarryReadableFields(t *testing.T) {
+	var proposal copilot.PendingAction
+	capture := func(eventType string, payload interface{}) {
+		if eventType == "tool_proposal" {
+			proposal = payload.(copilot.PendingAction)
+		}
+	}
+	plain := &fakeTool{name: "write_x", meta: writeMeta}
+	NewDriver(ownerCtx, "m", NewRegistry(plain), &fakeAccess{}, openFunds{}, nil).
+		Dispatch(context.Background(), call("write_x", map[string]interface{}{"name": "Bia", "id": "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f"}), capture)
+	if len(proposal.Fields) != 1 || proposal.Fields[0] != (copilot.Field{Key: "name", Value: "Bia"}) {
+		t.Fatalf("fields = %+v, want the plain arguments without the id", proposal.Fields)
+	}
+
+	described := &describedTool{fakeTool{name: "move_x", meta: writeMeta}}
+	NewDriver(ownerCtx, "m", NewRegistry(described), &fakeAccess{}, openFunds{}, nil).
+		Dispatch(context.Background(), call("move_x", map[string]interface{}{"stage_id": "s1"}), capture)
+	if len(proposal.Fields) != 1 || proposal.Fields[0].Value != "Negociação" {
+		t.Fatalf("fields = %+v, want the tool's own description", proposal.Fields)
+	}
+}

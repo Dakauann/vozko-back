@@ -44,6 +44,7 @@ type PendingAction struct {
 	ToolName string                 `json:"toolName"`
 	Args     map[string]interface{} `json:"args"`
 	Summary  string                 `json:"summary"`
+	Fields   []Field                `json:"fields"`
 }
 
 type Tool interface {

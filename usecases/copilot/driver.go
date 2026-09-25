@@ -94,6 +94,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			ToolName: call.Name,
 			Args:     call.Arguments,
 			Summary:  summarizeCall(call),
+			Fields:   describe(ctx, tool, d.cc, call.Arguments),
 		}
 		emit("tool_proposal", pa)
 		return agentloop.StepResult{
@@ -175,4 +176,11 @@ func (d *Driver) permit(m copilot.Meta) error {
 		return nil
 	}
 	return d.access.Execute(d.cc.UserID, d.cc.WorkspaceID, m.Resource, m.Action)
+}
+
+func describe(ctx context.Context, tool copilot.Tool, cc copilot.Context, args map[string]interface{}) []copilot.Field {
+	if describer, ok := tool.(copilot.Describer); ok {
+		return describer.Describe(ctx, cc, args)
+	}
+	return copilot.DescribeArgs(args)
 }
