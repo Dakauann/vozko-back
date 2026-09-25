@@ -48,10 +48,6 @@ func (r *callPermissionRepository) Upsert(p *callpermission.CallPermission) erro
 	workspaceID := strings.TrimSpace(p.WorkspaceID)
 	businessPhoneID := strings.TrimSpace(p.BusinessPhoneID)
 	userNumber := canonicalNumber(p.UserNumber)
-	if workspaceID == "" {
-
-		return errors.New("workspace id is required")
-	}
 	if businessPhoneID == "" || userNumber == "" {
 		return errors.New("business phone id and user number are required")
 	}
@@ -72,7 +68,6 @@ func (r *callPermissionRepository) Upsert(p *callpermission.CallPermission) erro
 	}
 
 	assignments := map[string]any{
-		"workspace_id":    workspaceID,
 		"status":          record.Status,
 		"expires_at":      record.ExpiresAt,
 		"response_source": record.ResponseSource,
@@ -88,10 +83,24 @@ func (r *callPermissionRepository) Upsert(p *callpermission.CallPermission) erro
 		assignments["responded_at"] = record.RespondedAt
 	}
 
-	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "business_phone_id"}, {Name: "user_number"}},
-		DoUpdates: clause.Assignments(assignments),
-	}).Create(&record).Error
+	if workspaceID != "" {
+		assignments["workspace_id"] = workspaceID
+		return r.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "business_phone_id"}, {Name: "user_number"}},
+			DoUpdates: clause.Assignments(assignments),
+		}).Create(&record).Error
+	}
+
+	outcome := r.db.Model(&schema.WhatsAppCallPermission{}).
+		Where("business_phone_id = ? AND user_number = ?", businessPhoneID, userNumber).
+		Updates(assignments)
+	if outcome.Error != nil {
+		return outcome.Error
+	}
+	if outcome.RowsAffected == 0 {
+		return errors.New("workspace id is required to create a call permission")
+	}
+	return nil
 }
 
 func (r *callPermissionRepository) FindByPhoneAndNumber(businessPhoneID, userNumber string) (*callpermission.CallPermission, error) {

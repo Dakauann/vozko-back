@@ -2,6 +2,7 @@ package conversation_usecase
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -102,7 +103,10 @@ func (c *WhatsAppCallPermissionConsumer) process(metaPhoneNumberID, userNumber s
 	}
 	perm.LeadID = leadID
 
-	_ = c.permissions.Upsert(perm)
+	if err := c.permissions.Upsert(perm); err != nil {
+		log.Printf("[call-permission] failed to record %s for %s on phone %s: %v", perm.Status, userNumber, phone.ID, err)
+		return
+	}
 
 	if entryID == "" || c.messages == nil {
 		return

@@ -1789,7 +1789,7 @@ func (s *MessageSenderService) RequestCallPermission(input conversation.RequestC
 	if err != nil {
 
 		if strings.Contains(err.Error(), "138017") {
-			return s.markCallPermissionGranted(workspaceID, entryID, entryType, leadID, leadNumber, businessPhoneID, nil), nil
+			return s.markCallPermissionGranted(workspaceID, entryID, entryType, leadID, leadNumber, businessPhoneID, nil)
 		}
 		return nil, err
 	}
@@ -1819,14 +1819,16 @@ func (s *MessageSenderService) RequestCallPermission(input conversation.RequestC
 	}
 
 	if s.callPermissionRepo != nil {
-		_ = s.callPermissionRepo.Upsert(&callpermission.CallPermission{
+		if err := s.callPermissionRepo.Upsert(&callpermission.CallPermission{
 			WorkspaceID:     workspaceID,
 			BusinessPhoneID: businessPhoneID,
 			LeadID:          leadID,
 			UserNumber:      leadNumber,
 			Status:          callpermission.StatusPending,
 			RequestedAt:     &now,
-		})
+		}); err != nil {
+			log.Printf("[call-permission] failed to record pending request for %s on phone %s: %v", leadNumber, businessPhoneID, err)
+		}
 	}
 
 	if s.hub != nil {
@@ -1869,10 +1871,10 @@ func (s *MessageSenderService) CallPermissionStatus(entryID, entryType string) (
 	}, nil
 }
 
-func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, entryType, leadID, leadNumber, businessPhoneID string, expiresAt *time.Time) *conversation.Message {
+func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, entryType, leadID, leadNumber, businessPhoneID string, expiresAt *time.Time) (*conversation.Message, error) {
 	now := time.Now().UTC()
 	if s.callPermissionRepo != nil {
-		_ = s.callPermissionRepo.Upsert(&callpermission.CallPermission{
+		if err := s.callPermissionRepo.Upsert(&callpermission.CallPermission{
 			WorkspaceID:     workspaceID,
 			BusinessPhoneID: businessPhoneID,
 			LeadID:          leadID,
@@ -1880,7 +1882,9 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 			Status:          callpermission.StatusGranted,
 			ExpiresAt:       expiresAt,
 			RespondedAt:     &now,
-		})
+		}); err != nil {
+			return nil, fmt.Errorf("failed to record call permission: %w", err)
+		}
 	}
 
 	text := "O cliente já autorizou ligações pelo WhatsApp."
@@ -1901,12 +1905,12 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 	}
 	message.Normalize()
 	if err := s.messageRepo.Create(message); err != nil {
-		return message
+		return message, nil
 	}
 	if s.hub != nil {
 		s.hub.BroadcastNewMessage(entryID, entryType, message)
 	}
-	return message
+	return message, nil
 }
 
 func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID string, caption string) (*conversation.Message, error) {
