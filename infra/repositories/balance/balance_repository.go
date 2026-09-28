@@ -161,10 +161,6 @@ func (r *BalanceRepositoryImpl) DebitBalance(params balance.DebitBalanceInput) (
 			return err
 		}
 
-		if err := admitMonthlyTemplateSend(tx, params.WorkspaceID, params.MonthlyCap); err != nil {
-			return err
-		}
-
 		balanceBefore := dbBalance.Amount
 		if !params.AllowNegative && balanceBefore < params.Amount {
 			return balance.ErrInsufficientBalance

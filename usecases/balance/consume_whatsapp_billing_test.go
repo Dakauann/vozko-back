@@ -24,7 +24,6 @@ type waDebitCall struct {
 	profitMicros int64
 	serviceType  balance.ServiceType
 	referenceID  *string
-	monthlyCap   *balance.MonthlySendCapGuard
 }
 
 type waCreditCall struct {
@@ -56,7 +55,6 @@ func (m *waMockBalanceRepo) DebitBalance(params balance.DebitBalanceInput) (*bal
 		profitMicros: params.ProfitMicros,
 		serviceType:  params.ServiceType,
 		referenceID:  params.ReferenceID,
-		monthlyCap:   params.MonthlyCap,
 	})
 	return &balance.Transaction{
 		ID:           "tx-" + params.WorkspaceID,

@@ -3,6 +3,7 @@ package balance_usecase
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -11,33 +12,41 @@ import (
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
-var errMonthlySendCapReaderMissing = errors.New("monthly send cap reader is required")
+var errMonthlySendSlotsMissing = errors.New("monthly send slots are required")
 
 type consumeWhatsappTemplateUseCase struct {
 	balanceRepo balance.Repository
 	pricer      workspace_pricing.Pricer
 	checker     workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase
-	caps        balance.MonthlySendCapReader
+	slots       balance.MonthlySendSlots
 	now         func() time.Time
 }
 
-func NewConsumeWhatsappTemplateUseCase(balanceRepo balance.Repository, pricer workspace_pricing.Pricer, checker workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase, caps balance.MonthlySendCapReader) balance.ConsumeWhatsappTemplateUseCase {
-	return &consumeWhatsappTemplateUseCase{balanceRepo: balanceRepo, pricer: pricer, checker: checker, caps: caps, now: time.Now}
+func NewConsumeWhatsappTemplateUseCase(balanceRepo balance.Repository, pricer workspace_pricing.Pricer, checker workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase, slots balance.MonthlySendSlots) balance.ConsumeWhatsappTemplateUseCase {
+	return &consumeWhatsappTemplateUseCase{balanceRepo: balanceRepo, pricer: pricer, checker: checker, slots: slots, now: time.Now}
 }
 
-func (uc *consumeWhatsappTemplateUseCase) monthlyCapGuard(workspaceID string) (*balance.MonthlySendCapGuard, error) {
-	if uc.caps == nil {
-		return nil, errMonthlySendCapReaderMissing
+func (uc *consumeWhatsappTemplateUseCase) takeMonthlySendSlot(workspaceID, referenceID string) (bool, error) {
+	if uc.slots == nil {
+		return false, errMonthlySendSlotsMissing
 	}
-	cap, err := uc.caps.GetMonthlySendCap(workspaceID)
+	took, err := uc.slots.TakeMonthlySendSlot(workspaceID, referenceID, balance.SendCapMonthStart(uc.now()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read monthly send cap: %w", err)
+		if errors.Is(err, balance.ErrMonthlySendCapReached) {
+			return false, err
+		}
+		return false, fmt.Errorf("failed to take a monthly send slot: %w", err)
 	}
-	if cap == nil {
-		return nil, nil
+	return took, nil
+}
+
+func (uc *consumeWhatsappTemplateUseCase) giveBackMonthlySendSlot(workspaceID, referenceID string) {
+	if uc.slots == nil {
+		return
 	}
-	guard := cap.Guard(uc.now())
-	return &guard, nil
+	if err := uc.slots.GiveBackMonthlySendSlot(workspaceID, referenceID); err != nil {
+		log.Printf("[monthly-send-cap] slot %s of workspace %s stays taken: %v", referenceID, workspaceID, err)
+	}
 }
 
 func (uc *consumeWhatsappTemplateUseCase) ensureCurrentSubscription(workspaceID string) error {
@@ -83,7 +92,11 @@ func (uc *consumeWhatsappTemplateUseCase) Refund(workspaceID string, referenceID
 		ProfitMicros: -result.ProfitMicros,
 		IsRefund:     true,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	uc.giveBackMonthlySendSlot(workspaceID, referenceID)
+	return nil
 }
 
 func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceID string, templateCategory string) (*balance.Transaction, error) {
@@ -99,13 +112,13 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		return nil, fmt.Errorf("%w: whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
 	}
 
-	monthlyCap, err := uc.monthlyCapGuard(workspaceID)
+	tookSlot, err := uc.takeMonthlySendSlot(workspaceID, referenceID)
 	if err != nil {
 		return nil, err
 	}
 
 	description := fmt.Sprintf("Template WhatsApp %s (ref: %s)", strings.ToLower(templateCategory), referenceID)
-	return uc.balanceRepo.DebitBalance(balance.DebitBalanceInput{
+	transaction, err := uc.balanceRepo.DebitBalance(balance.DebitBalanceInput{
 		WorkspaceID:  workspaceID,
 		Amount:       result.PriceMicros,
 		ServiceType:  balance.ServiceWhatsAppCampaign,
@@ -113,6 +126,12 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		Description:  description,
 		CostMicros:   result.CostMicros,
 		ProfitMicros: result.ProfitMicros,
-		MonthlyCap:   monthlyCap,
 	})
+	if err != nil {
+		if tookSlot {
+			uc.giveBackMonthlySendSlot(workspaceID, referenceID)
+		}
+		return nil, err
+	}
+	return transaction, nil
 }

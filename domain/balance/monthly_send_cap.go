@@ -35,11 +35,6 @@ type MonthlySendCap struct {
 	UnlockedAt  *time.Time
 }
 
-type MonthlySendCapGuard struct {
-	Limit int64
-	Since time.Time
-}
-
 type SendCapLevel string
 
 const (
@@ -56,6 +51,11 @@ type SendCapUsage struct {
 
 type MonthlySendCapReader interface {
 	GetMonthlySendCap(workspaceID string) (*MonthlySendCap, error)
+}
+
+type MonthlySendSlots interface {
+	TakeMonthlySendSlot(workspaceID, referenceID string, period time.Time) (bool, error)
+	GiveBackMonthlySendSlot(workspaceID, referenceID string) error
 }
 
 type MonthlySendCapRepository interface {
@@ -92,17 +92,13 @@ func (c MonthlySendCap) Unlocked(limit int64, unlockedBy string, now time.Time) 
 	return relimited, nil
 }
 
-func (c MonthlySendCap) Guard(now time.Time) MonthlySendCapGuard {
-	return MonthlySendCapGuard{Limit: c.Limit, Since: SendCapMonthStart(now)}
-}
-
 func SendCapMonthStart(now time.Time) time.Time {
 	local := now.In(billing.LocationBRT())
 	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, local.Location())
 }
 
-func (g MonthlySendCapGuard) Admit(used int64) error {
-	if used >= g.Limit {
+func (c MonthlySendCap) CheckRoom(used int64) error {
+	if used >= c.Limit {
 		return ErrMonthlySendCapReached
 	}
 	return nil

@@ -165,6 +165,18 @@ func (m *mockAck) Nack(requeue bool) error {
 }
 func (m *mockAck) DeliveryCount() int { return m.deliveryCount }
 
+type ackState struct {
+	acked    bool
+	nacked   bool
+	requeued bool
+}
+
+func (m *mockAck) state() ackState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return ackState{acked: m.acked, nacked: m.nacked, requeued: m.requeued}
+}
+
 type stubBillingMetrics struct {
 	mu      sync.Mutex
 	reasons []string
@@ -226,7 +238,7 @@ func TestAIBilling_HappyPath(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK on success")
 	}
 
@@ -266,7 +278,7 @@ func TestAIBilling_Idempotency(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK for duplicate (idempotent skip)")
 	}
 
@@ -290,10 +302,10 @@ func TestAIBilling_BadMessage(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	if !ack.nacked {
+	if !ack.state().nacked {
 		t.Error("expected NACK for bad message")
 	}
-	if ack.requeued {
+	if ack.state().requeued {
 		t.Error("bad message should not be requeued")
 	}
 }
@@ -309,7 +321,7 @@ func TestAIBilling_ZeroTokens(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK for zero-token event")
 	}
 
@@ -331,7 +343,7 @@ func TestAIBilling_EmptyWorkspaceID(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK for empty workspace (skip)")
 	}
 }
@@ -346,7 +358,7 @@ func TestAIBilling_EmptyRequestID(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK for empty requestID (skip)")
 	}
 }
@@ -464,10 +476,10 @@ func TestAIBilling_DebitError_NACKsWithRequeue(t *testing.T) {
 	ack.mu.Lock()
 	defer ack.mu.Unlock()
 
-	if !ack.nacked {
+	if !ack.state().nacked {
 		t.Error("expected NACK on debit error")
 	}
-	if !ack.requeued {
+	if !ack.state().requeued {
 		t.Error("first failure should requeue for retry")
 	}
 }
@@ -487,10 +499,10 @@ func TestAIBilling_IdempotencyCheckError_NACKs(t *testing.T) {
 	ack.mu.Lock()
 	defer ack.mu.Unlock()
 
-	if !ack.nacked {
+	if !ack.state().nacked {
 		t.Error("expected NACK when idempotency check fails")
 	}
-	if !ack.requeued {
+	if !ack.state().requeued {
 		t.Error("idempotency check failure should requeue")
 	}
 }
@@ -508,7 +520,7 @@ func TestAIBilling_SubCentPrecision(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Fatal("expected ACK")
 	}
 
@@ -557,7 +569,7 @@ func TestAIBilling_MarginApplied_AllModels(t *testing.T) {
 		ack := &mockAck{deliveryCount: 1}
 		fireAndWait(t, sub, event, ack)
 
-		if !ack.acked {
+		if !ack.state().acked {
 			t.Errorf("[%s] expected ACK", tt.model)
 			continue
 		}
@@ -619,7 +631,7 @@ func TestAIBilling_ProfitPersisted(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Fatal("expected ACK")
 	}
 
@@ -659,7 +671,7 @@ func TestAIBilling_AllowNegative_DebitsEvenWithZeroBalance(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Fatal("expected ACK, AI already consumed, must debit regardless")
 	}
 
@@ -696,7 +708,7 @@ func TestAIBilling_UnknownModel_ZeroPrice(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	if !ack.acked {
+	if !ack.state().acked {
 		t.Error("expected ACK for zero-price (unknown model)")
 	}
 
@@ -752,7 +764,7 @@ func TestAIBilling_PricerError_NACKs(t *testing.T) {
 	ack.mu.Lock()
 	defer ack.mu.Unlock()
 
-	if !ack.nacked {
+	if !ack.state().nacked {
 		t.Error("expected NACK when pricer fails")
 	}
 }
@@ -782,10 +794,10 @@ func TestAIBilling_Panic_Recovery(t *testing.T) {
 	ack.mu.Lock()
 	defer ack.mu.Unlock()
 
-	if !ack.nacked {
+	if !ack.state().nacked {
 		t.Error("expected NACK after panic recovery")
 	}
-	if ack.requeued {
+	if ack.state().requeued {
 		t.Error("panic should not requeue (dropped)")
 	}
 }

@@ -106,6 +106,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.ConversationEvent{},
 			&schema.WorkspaceConfig{},
 			&schema.WorkspaceMonthlySendCap{},
+			&schema.WorkspaceMonthlySendSlot{},
 			&schema.Issue{},
 			&schema.IssueResponse{},
 			&schema.WorkflowSchema{},

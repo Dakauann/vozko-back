@@ -9,6 +9,8 @@ type WorkspaceMonthlySendCap struct {
 	UpdatedAt    time.Time `gorm:"not null"`
 	UnlockedBy   *string   `gorm:"type:uuid"`
 	UnlockedAt   *time.Time
+	CountedFrom  *time.Time
+	Used         int64     `gorm:"not null;default:0"`
 	CreatedAt    time.Time `gorm:"autoCreateTime"`
 
 	Workspace Workspace `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:CASCADE"`

@@ -51,17 +51,8 @@ func TestSendCapMonthStart_UsesSaoPauloCalendarMonth(t *testing.T) {
 	}
 }
 
-func TestMonthlySendCap_GuardCarriesLimitAndMonthStart(t *testing.T) {
-	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	cap := MonthlySendCap{WorkspaceID: "ws-1", Limit: 500}
-	guard := cap.Guard(now)
-	if guard.Limit != 500 || !guard.Since.Equal(SendCapMonthStart(now)) {
-		t.Errorf("unexpected guard %+v", guard)
-	}
-}
-
-func TestMonthlySendCapGuard_Admit(t *testing.T) {
-	guard := MonthlySendCapGuard{Limit: 3}
+func TestMonthlySendCap_CheckRoom(t *testing.T) {
+	cap := MonthlySendCap{Limit: 3}
 	cases := []struct {
 		used    int64
 		wantErr bool
@@ -73,7 +64,7 @@ func TestMonthlySendCapGuard_Admit(t *testing.T) {
 		{-1, false},
 	}
 	for _, tc := range cases {
-		err := guard.Admit(tc.used)
+		err := cap.CheckRoom(tc.used)
 		if tc.wantErr && !errors.Is(err, ErrMonthlySendCapReached) {
 			t.Errorf("used %d: want ErrMonthlySendCapReached, got %v", tc.used, err)
 		}

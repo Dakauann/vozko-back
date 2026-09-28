@@ -36,8 +36,6 @@ type DebitBalanceInput struct {
 	AllowNegative bool
 
 	ExchangeRateMicros int64
-
-	MonthlyCap *MonthlySendCapGuard
 }
 
 type CreateBalanceUseCase interface {

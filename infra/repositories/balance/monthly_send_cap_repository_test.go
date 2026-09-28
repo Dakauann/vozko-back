@@ -80,9 +80,14 @@ func TestDeleteMonthlySendCap(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
+	mock.ExpectBegin()
 	mock.ExpectExec(`DELETE FROM "workspace_monthly_send_caps" WHERE workspace_id = \$1`).
 		WithArgs("ws-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM "workspace_monthly_send_slots" WHERE workspace_id = \$1`).
+		WithArgs("ws-1").
+		WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
 
 	if err := NewMonthlySendCapRepository(db).DeleteMonthlySendCap("ws-1"); err != nil {
 		t.Fatalf("delete: %v", err)
@@ -99,8 +104,8 @@ func TestListMonthlySendCapUsage_CountsWithTheSharedNetRule(t *testing.T) {
 	updatedAt := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(`FROM workspace_monthly_send_caps c JOIN workspaces w ON w.id = c.workspace_id AND w.deleted_at IS NULL`).
-		WithArgs(since).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "monthly_limit", "updated_by", "updated_at", "unlocked_by", "unlocked_at", "workspace_name", "used"}).
+		WithArgs(since, since).
+		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "monthly_limit", "updated_by", "updated_at", "unlocked_by", "unlocked_at", "workspace_name", "month_used"}).
 			AddRow("ws-1", int64(100), "admin-1", updatedAt, nil, nil, "Acme", int64(85)))
 
 	rows, err := NewMonthlySendCapRepository(db).ListMonthlySendCapUsage(since)

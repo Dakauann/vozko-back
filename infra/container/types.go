@@ -238,6 +238,7 @@ type repositories struct {
 	callCDR                 call_cdr_domain.Repository
 	balance                 balance_domain.Repository
 	monthlySendCaps         balance_domain.MonthlySendCapRepository
+	monthlySendSlots        balance_domain.MonthlySendSlots
 	workspacePricing        workspace_pricing_domain.Repository
 	workspaceTemplateAccess workspace_template_access_domain.Repository
 	workspacePhoneAccess    workspace_phone_access_domain.Repository
