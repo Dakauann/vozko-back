@@ -24,8 +24,6 @@ type channelQuery struct {
 
 	StatusColumn string
 
-	// CloseTable is the alias of the row holding how the conversation was
-	// last closed (close_source, close_reason, close_outcome, closed_at).
 	CloseTable string
 
 	ContainerCTE         string
@@ -296,8 +294,6 @@ func (q channelQuery) entryInfoSQL() string {
 	)
 }
 
-// closeFieldsSQL projects how the conversation was last closed. The inbox list
-// and the live update both read it from here, so they cannot disagree.
 func (q channelQuery) closeFieldsSQL() string {
 	if q.CloseTable == "" {
 		return "''::text AS close_source, ''::text AS close_reason, ''::text AS close_outcome, NULL::timestamptz AS closed_at"

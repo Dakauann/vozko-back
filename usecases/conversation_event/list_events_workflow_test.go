@@ -25,8 +25,6 @@ func (s *stubWorkflowNames) FindByIDs(ids []string) ([]*workflow.Workflow, error
 }
 
 func TestExecuteNamesAWorkflowThatHandedOff(t *testing.T) {
-	// A workflow transfer node credits the workflow; the timeline must read
-	// "Triagem transferiu para ana", not an unnamed actor or an agent.
 	uc, _, agents := newUC([]*ce.ConversationEvent{
 		ce.New("ws", "entry", "whatsapp", ce.EventAssigned).
 			WithActorWorkflow(triagem).

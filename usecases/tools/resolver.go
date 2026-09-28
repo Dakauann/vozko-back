@@ -18,10 +18,8 @@ type ToolResolverOptions struct {
 	Agent        *agent.Agent
 	CampaignID   string
 	CampaignType string
-	// EntryID and EntryType name the conversation the tools are resolved for,
-	// so a tool can tailor itself to it (e.g. its pipeline's stages).
-	EntryID   string
-	EntryType string
+	EntryID      string
+	EntryType    string
 }
 
 func ResolveTools(

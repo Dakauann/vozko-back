@@ -8,11 +8,8 @@ import (
 	"vozko/domain/shared"
 )
 
-// ErrAutomationForbidden: the caller cannot open this conversation, so they
-// cannot switch its automation either.
 var ErrAutomationForbidden = errors.New("inbox assignment: no access to this conversation")
 
-// EntryAccess answers whether a caller may open a conversation.
 type EntryAccess interface {
 	CanAccessEntry(userID, workspaceID, entryID, entryType string, isAdmin bool) bool
 }
@@ -23,24 +20,13 @@ type OperatorAutomationInput struct {
 	IsAdmin     bool
 	EntryID     string
 	EntryType   shared.EntryType
-	// Enabled is the new switch state; nil clears the override so the
-	// conversation follows its channel again, which is on.
-	Enabled *bool
+	Enabled     *bool
 }
 
 type OperatorAutomationResult struct {
-	// Owner holds the conversation afterwards: a user id, ai:<id>,
-	// workflow:<id>, or "" for the team queue.
 	Owner string
 }
 
-// OperatorAutomationToggle is the automation switch as people use it. It is
-// the existing per-conversation switch plus the ownership that must follow:
-// pausing lets go of what the paused agent or workflow held, so it returns to
-// the team instead of staying hidden; resuming hands the conversation back to
-// the automation that governs it, so a person and the AI never answer the same
-// contact. Hand-offs pause through the plain switch instead, since they have
-// just moved the conversation to a person.
 type OperatorAutomationToggle struct {
 	automation AutomationPauser
 	ownership  *AssignmentService
@@ -66,7 +52,6 @@ func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in Operato
 		if err != nil {
 			return OperatorAutomationResult{}, fmt.Errorf("automation paused for %s (%s) but it still holds the conversation: %w", in.EntryID, in.EntryType, err)
 		}
-		// A paused AI did not resolve the conversation; whoever holds it now does.
 		t.ownership.endAISession(in.WorkspaceID, in.EntryID, entryType, owner, sessionEndPaused)
 		return OperatorAutomationResult{Owner: owner}, nil
 	}

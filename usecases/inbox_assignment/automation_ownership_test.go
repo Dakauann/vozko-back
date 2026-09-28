@@ -28,11 +28,8 @@ func (s *stubAutomationProfiles) EntryAutomation(string, string) (conversation.A
 }
 
 type recordingBroadcaster struct {
-	updated []string
-	// owners records each reassignment as "<entry> from <previous owner>".
-	owners []string
-	// pausedWhenAnnounced is how many pauses had happened at each owner change,
-	// to prove the card is rebuilt only once the automation stepped out.
+	updated             []string
+	owners              []string
 	pausedWhenAnnounced []int
 	pauser              *recordingPauser
 }
@@ -107,9 +104,7 @@ type stubAccounts struct {
 func (s *stubAccounts) EntryAccountID(string, string) (string, error) { return s.account, s.err }
 
 type stubReceivers struct {
-	denied map[string]bool
-	// admins are the workspace's owners and admins; noRoulette lacks the
-	// role permission to receive conversations.
+	denied     map[string]bool
 	admins     map[string]bool
 	noRoulette map[string]bool
 }
@@ -179,8 +174,6 @@ func (f *aiFixture) lastHistory(t *testing.T) *ia.AssignmentHistory {
 	return f.history.appended[len(f.history.appended)-1]
 }
 
-// --- the roulette ---
-
 func TestEnsureAssignment_AIGovernedConversationGoesToTheAI(t *testing.T) {
 	f := newAIFixture(agentGoverned, "ana", "bob")
 
@@ -196,7 +189,6 @@ func TestEnsureAssignment_AIGovernedConversationGoesToTheAI(t *testing.T) {
 }
 
 func TestEnsureAssignment_AIGovernedDoesNotMoveTheHumanRing(t *testing.T) {
-	// Handing a conversation to the AI must not cost an operator their turn.
 	f := newAIFixture(agentGoverned, "ana", "bob")
 
 	f.svc.EnsureAssignment("entry-1", "whatsapp", "phone-1")
@@ -211,7 +203,6 @@ func TestEnsureAssignment_WorkflowGovernedGoesToTheWorkflow(t *testing.T) {
 }
 
 func TestEnsureAssignment_AIGovernedEvenWithNobodyOnline(t *testing.T) {
-	// The AI answers regardless of who is connected; an empty ring is irrelevant.
 	f := newAIFixture(agentGoverned)
 
 	assert.Equal(t, "ai:agent-1", f.svc.EnsureAssignment("entry-1", "whatsapp", "phone-1"))
@@ -231,9 +222,6 @@ func TestEnsureAssignment_NoAIUsesTheHumanRoulette(t *testing.T) {
 }
 
 func TestEnsureAssignment_ProfileErrorAssignsNobody(t *testing.T) {
-	// Not knowing whether the AI governs must not be read as "it does not":
-	// that would hand an AI conversation to an operator. Nothing is written and
-	// the next inbound message decides again.
 	f := newAIFixture(conversation.AutomationProfile{}, "ana")
 	f.profiles.err = errors.New("db down")
 
@@ -243,7 +231,6 @@ func TestEnsureAssignment_ProfileErrorAssignsNobody(t *testing.T) {
 }
 
 func TestEnsureAssignment_AlreadyHeldIsNotReconsidered(t *testing.T) {
-	// A human the AI handed off to keeps the conversation on the next message.
 	f := newAIFixture(agentGoverned, "ana")
 	f.seed("entry-1", "bob")
 
@@ -256,8 +243,6 @@ func TestEnsureAssignment_WithoutAReaderKeepsTodaysBehaviour(t *testing.T) {
 
 	assert.Equal(t, "ana", svc.EnsureAssignment("entry-1", "whatsapp", "phone-1"))
 }
-
-// --- hand-off to a named human ---
 
 func TestHandOffToHuman_MovesTheConversationAndCreditsTheAI(t *testing.T) {
 	f := newAIFixture(agentGoverned, "ana")
@@ -295,8 +280,6 @@ func TestHandOffToHuman_RefusesAnAITargetOrNoTarget(t *testing.T) {
 	assert.Empty(t, f.broadcast.owners)
 }
 
-// --- hand-off through the roulette ---
-
 func TestHandOffToRoulette_PicksTheNextHumanInTheRing(t *testing.T) {
 	f := newAIFixture(agentGoverned, "ana", "bob")
 	f.seed("entry-1", "ai:agent-1")
@@ -317,8 +300,6 @@ func TestHandOffToRoulette_PicksTheNextHumanInTheRing(t *testing.T) {
 }
 
 func TestHandOffToRoulette_NobodyEligibleReleasesToTheTeam(t *testing.T) {
-	// Hidden and unanswered is the one state that must not happen: with nobody
-	// to take it, the conversation becomes the whole team's queue.
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ai:agent-1")
 
@@ -345,7 +326,6 @@ func TestHandOffToRoulette_AHumanOwnerIsKept(t *testing.T) {
 }
 
 func TestHandOffToRoulette_UnheldConversationStaysWithTheTeam(t *testing.T) {
-	// No row means no roulette context (business phone) and the team already sees it.
 	f := newAIFixture(agentGoverned, "ana")
 
 	got, err := f.svc.HandOffToRoulette(ia.RouletteHandOff{WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: "whatsapp"})
@@ -357,10 +337,6 @@ func TestHandOffToRoulette_UnheldConversationStaysWithTheTeam(t *testing.T) {
 	assert.Equal(t, []string{"entry-1"}, f.broadcast.updated, "the card must show the automation paused")
 }
 
-// --- taking over on pause ---
-
-// Whoever stops the agent or workflow is about to answer, so the conversation
-// becomes theirs, credited to them on the timeline.
 func TestTakeOverFromAutomation_GivesItToWhoeverPaused(t *testing.T) {
 	for _, holder := range []string{"ai:agent-1", "workflow:wf-1", ""} {
 		t.Run("held by "+holder, func(t *testing.T) {
@@ -397,9 +373,6 @@ func TestTakeOverFromAutomation_SomeoneWhoCannotReceiveLeavesItToTheTeam(t *test
 	assert.Equal(t, []string{"entry-1 from ai:agent-1"}, f.broadcast.owners, "the team must see it arrive")
 }
 
-// Taking over follows the workspace rule for who receives conversations, the
-// same one opening an unowned conversation follows: with admins left out of
-// the roulette, an admin who pauses leaves it to the team queue.
 func TestTakeOverFromAutomation_FollowsTheWorkspaceRuleForAdmins(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -456,12 +429,7 @@ func TestTakeOverFromAutomation_UnresolvableWorkspaceIsAnError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// --- the AI steps out on every hand-off ---
-
 func TestEveryHandOffPausesTheAIForThatConversation(t *testing.T) {
-	// Reply paths and workflow triggers honour only the pause switch, never the
-	// assignee. Without the pause the agent keeps replying, and a workflow keeps
-	// starting runs, while the person it was handed to is attending.
 	cases := map[string]func(f *aiFixture) error{
 		"named human (workflow nodes)": func(f *aiFixture) error {
 			return f.svc.HandOffToHuman("ws-1", "entry-1", "whatsapp", "bob")
@@ -495,7 +463,6 @@ func TestReleasingToTheTeamAlsoPausesTheAI(t *testing.T) {
 }
 
 func TestAPauseFailureAfterTheHandOffIsReported(t *testing.T) {
-	// The person has it, but the AI may still answer: the caller must know.
 	f := newAIFixture(agentGoverned, "ana")
 	f.seed("entry-1", "ai:agent-1")
 	f.pauser.err = errors.New("db down")
@@ -507,7 +474,6 @@ func TestAPauseFailureAfterTheHandOffIsReported(t *testing.T) {
 }
 
 func TestAFailedHandOffDoesNotPause(t *testing.T) {
-	// If nobody took it, pausing would leave the contact with no one at all.
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ai:agent-1")
 
@@ -515,11 +481,7 @@ func TestAFailedHandOffDoesNotPause(t *testing.T) {
 	assert.Empty(t, f.pauser.paused)
 }
 
-// --- a workflow is its own actor ---
-
 func TestWorkflowHandOffIsCreditedToTheWorkflow(t *testing.T) {
-	// The workflow transfer nodes hand off what the workflow held; history and
-	// the timeline must name the workflow, not an AI agent.
 	f := newAIFixture(conversation.AutomationProfile{WorkflowID: "wf-1", WorkflowEnabled: true}, "ana")
 	f.seed("entry-1", "workflow:wf-1")
 
@@ -549,8 +511,6 @@ func TestAHandOffCannotTargetAWorkflow(t *testing.T) {
 	assert.ErrorIs(t, f.svc.HandOffToHuman("ws-1", "entry-1", "whatsapp", "workflow:wf-1"), ErrHandOffTargetNotHuman)
 }
 
-// --- handing a conversation back to its automation ---
-
 var (
 	workflowGoverned = conversation.AutomationProfile{WorkflowID: "wf-1", WorkflowEnabled: true}
 	noAutomation     = conversation.AutomationProfile{}
@@ -574,8 +534,6 @@ func TestReturnToAutomation_GivesItToTheGoverningAutomation(t *testing.T) {
 }
 
 func TestReturnToAutomation_GoesToWhoeverAnswersNowNotWhoHandedOff(t *testing.T) {
-	// The channel now runs a workflow; replies follow the channel, so the
-	// owner must too, or the screen would name one actor while another answers.
 	f := newAIFixture(workflowGoverned)
 	f.seed("entry-1", "bob")
 
@@ -608,8 +566,6 @@ func TestReturnToAutomation_AlreadyHeldIsANoOp(t *testing.T) {
 }
 
 func TestReturnToAutomation_RefusesWhenNothingWouldAnswer(t *testing.T) {
-	// Handing back with no agent or workflow configured (or paused) would give
-	// the contact to nobody.
 	paused := false
 	for name, profile := range map[string]conversation.AutomationProfile{
 		"nothing configured": noAutomation,
@@ -640,12 +596,7 @@ func TestReturnToAutomation_AnUnreadableProfileChangesNothing(t *testing.T) {
 	assert.Equal(t, "bob", f.owner("entry-1"))
 }
 
-// --- the AI session ends at the hand-off ---
-
 func TestHandOffsEndTheAISessionAsHandedOff(t *testing.T) {
-	// Finishing a conversation closes any open AI session as "contained". If the
-	// session outlived the hand-off, a person closing without replying would be
-	// counted as the AI resolving it.
 	t.Run("to a named person", func(t *testing.T) {
 		f := newAIFixture(agentGoverned)
 		f.seed("entry-1", "ai:agent-1")
@@ -683,15 +634,11 @@ func TestAFailedHandOffLeavesTheSessionOpen(t *testing.T) {
 	assert.Empty(t, f.sessions.ended, "the AI still has the conversation")
 }
 
-// --- the roulette, for any automation and any department ---
-
 func departmentHandOff(departmentID string) ia.RouletteHandOff {
 	return ia.RouletteHandOff{WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: "whatsapp", DepartmentID: departmentID, ByActorID: "workflow:wf-1"}
 }
 
 func TestHandOffToRoulette_DrawsFromTheChosenDepartmentsRing(t *testing.T) {
-	// Same ring the first customer message uses, keyed by that department:
-	// the workspace's mode, its eligibility and its shared pointer all apply.
 	f := newAIFixture(workflowGoverned, "ana")
 	f.eligible.departmentUsers["ws-1:dept-sales"] = []string{"carla", "davi"}
 	f.seed("entry-1", "workflow:wf-1")
@@ -711,8 +658,6 @@ func TestHandOffToRoulette_DrawsFromTheChosenDepartmentsRing(t *testing.T) {
 }
 
 func TestHandOffToRoulette_RefusesADepartmentOutsideTheWorkspace(t *testing.T) {
-	// A workflow variable could produce any id; the hand-off must never deal a
-	// customer to people in another workspace.
 	for _, id := range []string{"dept-other", "dept-missing"} {
 		t.Run(id, func(t *testing.T) {
 			f := newAIFixture(workflowGoverned, "ana")
@@ -740,8 +685,6 @@ func TestHandOffToRoulette_WithoutADepartmentLookupRefusesAChosenDepartment(t *t
 }
 
 func TestHandOffToRoulette_AChosenDepartmentReplacesAPerson(t *testing.T) {
-	// "Transfer to Sales" means Sales, even if someone else holds it now; only
-	// the default (the conversation's own department) keeps a person in place.
 	f := newAIFixture(workflowGoverned)
 	f.eligible.departmentUsers["ws-1:dept-sales"] = []string{"carla"}
 	f.seed("entry-1", "bob")
@@ -754,8 +697,6 @@ func TestHandOffToRoulette_AChosenDepartmentReplacesAPerson(t *testing.T) {
 }
 
 func TestHandOffToRoulette_AnUnassignedConversationIsDealtWithItsAccount(t *testing.T) {
-	// No row means no business phone on record; the channel's account keys the
-	// ring instead of leaving the conversation in the queue.
 	f := newAIFixture(workflowGoverned, "ana")
 	f.accounts.account = "phone-9"
 
@@ -777,11 +718,7 @@ func TestHandOffToRoulette_AnEmptyDepartmentRingGoesToTheTeamQueue(t *testing.T)
 	assert.Equal(t, "", f.owner("entry-1"))
 }
 
-// --- a named person must be able to answer ---
-
 func TestHandOffToHuman_RefusesSomeoneWithoutConversationAccess(t *testing.T) {
-	// The same check the manual "assign to" makes: a member without
-	// conversation access would receive a conversation nobody can answer.
 	f := newAIFixture(workflowGoverned)
 	f.seed("entry-1", "workflow:wf-1")
 	f.receivers.denied["guest"] = true
@@ -800,9 +737,6 @@ func TestHandOffToHuman_WithoutAnAccessCheckRefusesEveryone(t *testing.T) {
 	assert.ErrorIs(t, f.svc.HandOffToHuman("ws-1", "entry-1", "whatsapp", "bob"), ia.ErrHandOffTargetNoAccess)
 }
 
-// Every reassignment, whoever makes it (a person, the rescue sweep, a bulk
-// action, an incoming call), is announced with the owner it had, so the one who
-// lost it drops it and the one who got it sees it.
 func TestEveryReassignmentIsAnnouncedWithItsPreviousOwner(t *testing.T) {
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ana")

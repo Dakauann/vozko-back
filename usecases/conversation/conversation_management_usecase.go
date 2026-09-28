@@ -216,7 +216,6 @@ func NewHistoryProviderService(
 	}
 }
 
-// EntryWorkspaces resolves the workspace of a conversation on any channel.
 type EntryWorkspaces interface {
 	GetEntryWorkspaceID(entryID, entryType string) (string, error)
 }
@@ -929,8 +928,6 @@ func mapKeys(m map[string]struct{}) []string {
 	return out
 }
 
-// GetInboxEntry rebuilds one conversation's card for a live update. The screen
-// swaps it in whole, so it is built exactly like a row of the list.
 func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conversation.InboxEntry, error) {
 	e, err := s.messageRepo.GetEntryLastMessage(entryID, shared.EntryType(entryType))
 	if err != nil {
@@ -957,7 +954,6 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	return entry, nil
 }
 
-// entryWorkspaceID is the workspace a conversation belongs to, on any channel.
 func (s *HistoryProviderService) entryWorkspaceID(entryID, entryType string) string {
 	if s.entryWorkspaces != nil {
 		workspaceID, err := s.entryWorkspaces.GetEntryWorkspaceID(entryID, entryType)

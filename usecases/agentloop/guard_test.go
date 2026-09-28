@@ -47,7 +47,6 @@ func TestRun_GuardStopsTheLoopBeforeTheCallItRefuses(t *testing.T) {
 	prov := &fakeAI{turns: []aiTurn{{tcs: []ai.ToolCall{tcall("read")}}, {tcs: []ai.ToolCall{tcall("read")}}, {tokens: []string{"pronto"}}}}
 	drv := &guardedDriver{fakeDriver: &fakeDriver{}, failAt: 2}
 	out, cp := runGuarded(prov, drv)
-	// The refused call must never reach the provider: that call is the money the gate exists to protect.
 	if len(prov.models) != 1 {
 		t.Fatalf("model calls = %d, want only the one admitted", len(prov.models))
 	}
@@ -79,7 +78,6 @@ func TestRun_DriversWithoutAGuardAreUnchanged(t *testing.T) {
 func TestRun_TokenBudgetStopSaysWhy(t *testing.T) {
 	prov := &fakeAI{turns: []aiTurn{{tcs: []ai.ToolCall{tcall("read")}, usage: &ai.Usage{TotalTokens: 100}}}}
 	out, _, _ := run(t, prov, &fakeDriver{}, Config{FinishToolName: "finish", SessionTokenBudget: 50})
-	// A caller that only reads Summary cannot tell "done" from "cut off"; the halt says it was cut off.
 	if !errors.Is(out.Halt, ErrSessionBudget) {
 		t.Fatalf("halt = %v, want ErrSessionBudget", out.Halt)
 	}

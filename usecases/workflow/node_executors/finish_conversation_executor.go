@@ -157,7 +157,6 @@ func workflowActor(workflowID string) string {
 	return actor.FormatWorkflow(workflowID)
 }
 
-// finishFailure says in the builder's words why the conversation stayed open.
 func finishFailure(err error) string {
 	switch {
 	case errors.Is(err, conversation.ErrOutcomeRequired):

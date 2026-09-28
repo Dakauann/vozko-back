@@ -15,7 +15,6 @@ import (
 	"vozko/domain/workflow"
 )
 
-// WorkflowNameLookup names the workflows that appear as actors (workflow:<id>).
 type WorkflowNameLookup interface {
 	FindByIDs(ids []string) ([]*workflow.Workflow, error)
 }

@@ -9,8 +9,6 @@ import (
 	"vozko/domain/conversation"
 )
 
-// The builder picks the outcome from the workspace catalogue, the same list a
-// person chooses from when finishing a conversation.
 func TestFinishConversationExecutorOffersTheOutcomeCatalogue(t *testing.T) {
 	def := NewFinishConversationExecutor(&finishStatusMock{}).Definition()
 

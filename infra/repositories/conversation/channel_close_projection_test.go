@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// How a conversation was last closed (who, why and with which outcome) lives
-// on every channel's conversation row. Projected for official WhatsApp only,
-// every other channel showed a finished conversation without its closer or its
-// outcome.
 func TestEveryChannelProjectsHowItWasClosed(t *testing.T) {
 	for _, ch := range channelQueries {
 		t.Run(string(ch.EntryType), func(t *testing.T) {

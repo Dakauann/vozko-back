@@ -215,8 +215,6 @@ func TestSetConversationStatusOngoingSkipsTheGate(t *testing.T) {
 	}
 }
 
-// With the outcome optional, closes that choose none are told apart by a
-// reserved code. The system's own closes never choose one.
 func TestSystemAndAICloseStampReservedOutcomes(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -251,8 +249,6 @@ func TestSystemAndAICloseStampReservedOutcomes(t *testing.T) {
 	}
 }
 
-// An agent or a workflow follows the rule a person does: where the workspace
-// requires an outcome, a finish without one is refused and nothing is written.
 func TestAutomationFinishWithoutARequiredOutcomeIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

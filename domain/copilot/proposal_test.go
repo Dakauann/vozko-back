@@ -32,7 +32,6 @@ func TestDescribeArgsNeverShowsInternalIdentifiers(t *testing.T) {
 		"note":          "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f",
 		"text":          "Olá",
 	})
-	// A person approving a change cannot judge a UUID; tools that need to show one resolve it to a name.
 	want := []Field{{Key: "text", Value: "Olá"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DescribeArgs = %+v, want %+v", got, want)

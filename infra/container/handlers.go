@@ -19,8 +19,8 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
-	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
@@ -324,9 +324,6 @@ func (c *Container) initHandlers() {
 				c.useCases.listConversationEvents,
 			)
 			if c.services.conversationAutomation != nil {
-				// People switch automation through the toggle that also moves
-				// ownership: pausing releases what the agent or workflow held,
-				// resuming hands the conversation back to it.
 				h.SetAutomationService(ia_usecase.NewOperatorAutomationToggle(
 					c.services.conversationAutomation,
 					c.services.assignmentService,

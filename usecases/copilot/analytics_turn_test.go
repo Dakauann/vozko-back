@@ -38,7 +38,6 @@ func TestService_ChartIsStreamedAndKeptWithTheAnswer(t *testing.T) {
 	if err := json.Unmarshal(ms.last().ToolCalls, &steps); err != nil {
 		t.Fatal(err)
 	}
-	// Reopening the conversation must show the same chart, so it is stored with the tool step that drew it.
 	if len(steps) != 1 || steps[0].Chart == nil || steps[0].Chart.Title != "Volume" {
 		t.Fatalf("steps = %+v", steps)
 	}
@@ -96,7 +95,6 @@ func TestDriver_AnnouncesAToolBeforeItRuns(t *testing.T) {
 	tool := &slowTool{fakeTool: fakeTool{name: "read_x", meta: readMeta}, seenStart: &started, events: events}
 	drv := NewDriver(ownerCtx, "m", NewRegistry(tool), &fakeAccess{}, openFunds{}, nil)
 	drv.Dispatch(context.Background(), call("read_x", nil), events.emit)
-	// A query can wait for the analytics gate; without the start event the answer looks frozen until it returns.
 	if !started || len(events.names) != 2 || events.names[1] != "tool" {
 		t.Fatalf("events = %v, started before execute = %v", events.names, started)
 	}
@@ -121,8 +119,6 @@ func TestDriver_SystemAdminPassesToolChecksLikeTheRoutes(t *testing.T) {
 	cc.SystemAdmin = true
 	read := &fakeTool{name: "read_x", meta: readMeta}
 	drv := NewDriver(cc, "m", NewRegistry(read), notMember, openFunds{}, nil)
-	// The routes let a platform admin into any workspace (workspace_middleware RequireAccess); the tools must agree,
-	// or support staff see "no permission" on a workspace they were let into.
 	if res := drv.Dispatch(context.Background(), call("read_x", nil), func(string, interface{}) {}); read.calls != 1 {
 		t.Fatalf("result = %q, want the tool to run for a system admin", res.Result)
 	}

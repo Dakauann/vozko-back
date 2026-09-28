@@ -39,11 +39,7 @@ func newToggle(f *aiFixture) (*OperatorAutomationToggle, *stubAccess) {
 	return NewOperatorAutomationToggle(f.pauser, f.svc, access), access
 }
 
-// --- access ---
-
 func TestOperatorToggle_RefusesAConversationTheCallerCannotAccess(t *testing.T) {
-	// Switching automation moves ownership now, so the route permission alone
-	// is not enough: the caller must be able to open this conversation.
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ai:agent-1")
 	toggle, access := newToggle(f)
@@ -67,11 +63,7 @@ func TestOperatorToggle_WithoutAnAccessCheckRefusesEverything(t *testing.T) {
 	assert.Empty(t, f.pauser.paused)
 }
 
-// --- pausing ---
-
 func TestOperatorPause_WhoeverPausesTakesOver(t *testing.T) {
-	// A paused agent or workflow answers nobody, and whoever stopped it is about
-	// to: the conversation becomes theirs, and the session ends in their hands.
 	for _, holder := range []string{"ai:agent-1", "workflow:wf-1"} {
 		t.Run(holder, func(t *testing.T) {
 			f := newAIFixture(agentGoverned)
@@ -131,8 +123,6 @@ func TestOperatorPause_AFailedSwitchReleasesNothing(t *testing.T) {
 }
 
 func TestOperatorPause_AFailedReleaseSurfaces(t *testing.T) {
-	// The pause is stored but the conversation may still be hidden; the operator
-	// must hear it so they can retry (both steps are idempotent).
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "ai:agent-1")
 	f.svc.workspaceResolver = &mockResolver{workspaceErr: errors.New("gone")}
@@ -143,11 +133,7 @@ func TestOperatorPause_AFailedReleaseSurfaces(t *testing.T) {
 	require.Error(t, err)
 }
 
-// --- resuming hands the conversation back ---
-
 func TestOperatorResume_HandsAPersonsConversationBackToTheAutomation(t *testing.T) {
-	// Replies read only the switch. Resuming while a person keeps the
-	// conversation would have the AI and the person answering the same contact.
 	cases := map[string]struct {
 		profile   func() *aiFixture
 		wantOwner string
@@ -172,8 +158,6 @@ func TestOperatorResume_HandsAPersonsConversationBackToTheAutomation(t *testing.
 }
 
 func TestOperatorResume_WithNothingToAnswerOnlyFlipsTheSwitch(t *testing.T) {
-	// No agent or workflow is configured: handing back would give the contact
-	// to nobody, so the person keeps it and the switch still flips.
 	f := newAIFixture(noAutomation)
 	f.seed("entry-1", "bob")
 	toggle, _ := newToggle(f)
@@ -199,7 +183,6 @@ func TestOperatorResume_AFailedHandBackSurfaces(t *testing.T) {
 }
 
 func TestOperatorInherit_AlsoHandsBack(t *testing.T) {
-	// Clearing the override means "follow the channel", which is on.
 	f := newAIFixture(agentGoverned)
 	f.seed("entry-1", "bob")
 	toggle, _ := newToggle(f)

@@ -108,7 +108,6 @@ func TestAttendanceQueryDefaultsToWhatIsOnScreen(t *testing.T) {
 		t.Fatalf("status = %v (%s)", res.Status, res.Message)
 	}
 	got := sections.filters[0]
-	// "This week" on the attendance page means the week on screen, not a default the user never chose.
 	if day(got) != "2026-09-01..2026-09-07" || got.DepartmentID != knownDepartment || got.Channel != "whatsapp" {
 		t.Fatalf("filter = %s dept=%q channel=%q", day(got), got.DepartmentID, got.Channel)
 	}
@@ -247,7 +246,6 @@ func TestAttendanceTeamKeepsTheWholeTeamOutOfTheReply(t *testing.T) {
 
 func TestAttendanceQueryRefusesInventedIdentifiersBeforeQuerying(t *testing.T) {
 	cases := map[string]map[string]interface{}{
-		// A model once sent ObjectId-shaped department ids; Postgres rejected them only after the gate was taken.
 		"a department the workspace does not have": {"department_id": "69e1116ce4b2ef3195a9e834"},
 		"a member id that is not an actor":         {"member_id": "joao"},
 		"an automation id with a malformed tail":   {"member_id": "ai:not-a-uuid"},
@@ -288,7 +286,6 @@ func TestAttendanceQueryFollowsTheCampaignAndAIFiltersOnScreen(t *testing.T) {
 	view.IncludeAI = &hide
 	NewAttendanceMetricsTool(testDeps(sections)).Execute(context.Background(), ownerOn(view), nil)
 	got := sections.filters[0]
-	// "This campaign" on a page filtered to a campaign must not silently answer for every campaign.
 	if got.CampaignID != view.CampaignID || got.CampaignType != "whatsapp" || got.IncludeAI {
 		t.Fatalf("filter = %+v, want the campaign on screen and AI hidden like the page", got)
 	}

@@ -138,9 +138,6 @@ func TestWithoutAnEntryIDTheChannelFunnelIsUsed(t *testing.T) {
 	}
 }
 
-// The channel AI resolves tools for a conversation, not a campaign. Given only
-// the conversation, the tool still lists that conversation's pipeline instead
-// of every pipeline's stages (which let the model pick another funnel's stage).
 func TestTheChannelAISeesTheConversationsOwnFunnel(t *testing.T) {
 	repo := movedEntryRepo()
 	tool := &manageEntryStageTool{stageRepo: repo}

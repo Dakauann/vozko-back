@@ -73,8 +73,6 @@ func (uc *activateWorkflowUseCase) SetMediaRepo(repo media_domain.MediaRepositor
 	uc.mediaRepo = repo
 }
 
-// StageLookup finds a stage, to check a stage node points at one of the
-// workflow's workspace.
 type StageLookup interface {
 	FindByID(id string) (*stage_domain.Stage, error)
 }

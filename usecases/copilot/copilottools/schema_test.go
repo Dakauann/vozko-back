@@ -111,7 +111,6 @@ func TestStructParamsReadsDescriptionsEnumsAndListItemsFromTags(t *testing.T) {
 	if !reflect.DeepEqual(params["status"].Enum, []string{"open", "closed"}) {
 		t.Fatalf("status enum = %v", params["status"].Enum)
 	}
-	// Strict providers reject an array parameter that does not say what it holds.
 	if params["channels"].Items == nil || params["channels"].Items.Type != "string" {
 		t.Fatalf("channels items = %+v", params["channels"].Items)
 	}

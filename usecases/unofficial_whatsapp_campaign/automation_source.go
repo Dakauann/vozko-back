@@ -12,14 +12,10 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-// ConversationCampaigns reads the campaign a conversation was opened for ("" for
-// a campaign-less one). The unofficial conversation repository implements it.
 type ConversationCampaigns interface {
 	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
-// AutomationSource answers which campaign's automation a conversation follows:
-// the campaign it was opened for, known from the moment it exists.
 type AutomationSource struct {
 	conversations ConversationCampaigns
 	campaigns     uwc.Repository
@@ -29,8 +25,6 @@ func NewAutomationSource(conversations ConversationCampaigns, campaigns uwc.Repo
 	return &AutomationSource{conversations: conversations, campaigns: campaigns}
 }
 
-// campaignFor is the campaign a conversation was opened for; nil for a
-// campaign-less conversation or a campaign that no longer exists.
 func (s *AutomationSource) campaignFor(ctx context.Context, conversationID string) (*uwc.Campaign, error) {
 	campaignID, err := s.conversations.CampaignIDForEntry(ctx, conversationID)
 	if err != nil {
@@ -57,8 +51,6 @@ func (s *AutomationSource) AutomationForConversation(conversationID string) (*uw
 
 	camp, err := s.campaignFor(context.Background(), id)
 	if err != nil {
-		// Reporting "no campaign" would run the instance's AI on a conversation
-		// that may belong to a campaign without one. Run nothing instead.
 		log.Printf("[unofficial-whatsapp-campaign] automation lookup failed for conversation %s, running no automation: %v", id, err)
 		return &uwuc.CampaignAutomation{}, true
 	}

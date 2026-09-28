@@ -388,9 +388,6 @@ func TestHandleSetConversationStatus_UnauthorizedAccess(t *testing.T) {
 	require.Len(t, statusMock.setCalls, 0)
 }
 
-// The status service announces every change (a person's, an agent's, a
-// workflow's, the idle sweep's) through AnnounceStatus; viewers receive the
-// finish with who closed it and the outcome recorded.
 func TestAnnounceStatusDeliversHowTheConversationWasClosed(t *testing.T) {
 	authorizer := &hubDepartmentTestAuthorizer{
 		entryAccess: map[string]bool{"user-1": true},

@@ -90,8 +90,6 @@ func TestStageNodesOfferThePipelineStages(t *testing.T) {
 	}
 }
 
-// Moving goes through the same use case people and the AI use, so the
-// pipeline rule and the timeline entry apply, recorded as the workflow.
 func TestMoveStageMovesTheConversationAsTheWorkflow(t *testing.T) {
 	mover := &stageMoverStub{}
 	screens := &stageBroadcastStub{}

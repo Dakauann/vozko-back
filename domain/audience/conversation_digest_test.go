@@ -11,7 +11,6 @@ import (
 func TestLatestConversationAnalysesIsTheDashboardQuery(t *testing.T) {
 	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	in := LatestConversationAnalyses("ws-1", &from, nil)
-	// The engine keeps a timeline per conversation; totals must count each conversation once, at its newest revision.
 	if !in.LatestOnly {
 		t.Fatal("LatestOnly must be set or a conversation is counted once per revision")
 	}
@@ -61,7 +60,6 @@ func TestDigestConversationsKeepsOutcomesAndDropsCommentCounters(t *testing.T) {
 
 func TestDigestConversationsWithNothingAnalysedHasNoQuality(t *testing.T) {
 	got := DigestConversations(&Stats{})
-	// A quality of 0 would read as "terrible"; with no analysed conversation it is simply unknown.
 	if got.Quality != nil {
 		t.Fatalf("quality = %+v, want nil", got.Quality)
 	}

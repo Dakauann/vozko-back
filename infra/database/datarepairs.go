@@ -87,9 +87,6 @@ func clearGroupContactPhoneNumbers(tx *gorm.DB) error {
 	`).Error
 }
 
-// backfillConversationCampaigns keys each existing conversation with the
-// campaign the inbox already attributes it to: the latest entry sent into it.
-// Only unkeyed rows change, so it is a no-op after the first boot.
 func backfillConversationCampaigns(tx *gorm.DB) error {
 	return tx.Exec(`
 		UPDATE unofficial_whatsapp_conversations AS c
@@ -148,10 +145,6 @@ func (t entryTable) idExpr(column string) string {
 	return column
 }
 
-// uwDuplicateConversationsSQL pairs each duplicate conversation with the one
-// it merges into. A chat holds one conversation per campaign (and one without),
-// as an official number holds one entry per campaign, so the campaign is part
-// of the key: only true duplicates of the same chat and campaign merge.
 const uwDuplicateConversationsSQL = `
 		SELECT id AS duplicate_id, survivor_id
 		FROM (

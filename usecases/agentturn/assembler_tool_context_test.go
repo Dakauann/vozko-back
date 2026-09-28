@@ -31,8 +31,6 @@ type conversationToolRegistry struct {
 
 func (r conversationToolRegistry) Handler(string) (tools.Handler, bool) { return r.tool, true }
 
-// A tool that tailors itself to the conversation (the stage tool lists only
-// the conversation's own pipeline) must be told which conversation it is for.
 func TestContextualToolsSeeTheConversation(t *testing.T) {
 	seen := &tools.ToolContext{}
 	reg := conversationToolRegistry{

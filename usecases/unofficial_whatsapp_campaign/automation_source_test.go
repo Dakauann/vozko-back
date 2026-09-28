@@ -9,7 +9,6 @@ import (
 	convuc "vozko/usecases/conversation"
 )
 
-// fakeConversationCampaigns is the campaign stored on each conversation.
 type fakeConversationCampaigns map[string]string
 
 func (f fakeConversationCampaigns) CampaignIDForEntry(_ context.Context, entryID string) (string, error) {
@@ -46,9 +45,6 @@ func TestAutomationSourceMapsTheOwningCampaign(t *testing.T) {
 }
 
 func TestAutomationSourceFollowsTheCampaignBeforeAnySendIsRecorded(t *testing.T) {
-	// A campaign's conversation exists before its first send is recorded. Read
-	// from the entries it looked campaign-less in that window and followed the
-	// instance's AI, answering a campaign that has none.
 	campaigns := newFakeCampaignRepo()
 	campaigns.put(&uwc.Campaign{ID: "camp-no-ai"})
 
@@ -117,8 +113,6 @@ func TestAutomationSourceNilIsInert(t *testing.T) {
 }
 
 func TestAutomationSourceRunsNothingWhenTheCampaignCannotBeRead(t *testing.T) {
-	// "No campaign" would hand the conversation to the instance's AI. A failed
-	// read is not "no campaign": run no automation until it can be read.
 	got, ok := NewAutomationSource(fakeConversationCampaigns{}, newFakeCampaignRepo()).AutomationForConversation("conv-broken")
 	if !ok {
 		t.Fatal("a failed lookup fell back to the instance's automation")

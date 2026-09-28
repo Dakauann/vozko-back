@@ -9,8 +9,6 @@ const (
 	ActorKindSystem   = "system"
 )
 
-// CountsAsAutomation reports whether an assignment interval belongs to an AI
-// agent or a workflow rather than a person, for metrics that split the two.
 func CountsAsAutomation(actorKind string) bool {
 	return actorKind == ActorKindAI || actorKind == ActorKindWorkflow
 }

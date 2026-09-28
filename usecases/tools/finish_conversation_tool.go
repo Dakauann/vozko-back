@@ -15,14 +15,10 @@ import (
 
 const FinishConversationToolName = "finish_conversation"
 
-// OutcomeCatalogue reads the outcomes a workspace collects when a conversation
-// is finished.
 type OutcomeCatalogue interface {
 	OutcomeCaptureFor(ctx context.Context, workspaceID string) (*conversation.OutcomeCapture, error)
 }
 
-// finishConversationTool finishes through the status service, which records the
-// finish and announces it to open screens, as it does for a person.
 type finishConversationTool struct {
 	status   conversation.ConversationStatusUpdater
 	outcomes OutcomeCatalogue
@@ -67,8 +63,6 @@ Após finalizar, se o cliente mandar mensagem de novo a conversa reabre automati
 	}
 }
 
-// DefinitionWithContext shows the model the outcomes this workspace collects,
-// and requires one when the workspace requires it of a person.
 func (t *finishConversationTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
 	def := t.Definition()
 	capture := t.catalogue(ctx.WorkspaceID)
@@ -183,8 +177,6 @@ func (t *finishConversationTool) ExecuteWithConfig(ctx context.Context, config m
 	return tools.ExecutionResult{Result: msg}, nil
 }
 
-// outcomeRefusal tells the model why the finish was refused and which outcomes
-// it may use, so its next call can succeed.
 func (t *finishConversationTool) outcomeRefusal(workspaceID string, err error) string {
 	msg := "A conversa não foi finalizada: este workspace exige um desfecho válido no encerramento."
 	if errors.Is(err, conversation.ErrOutcomeUnknown) {

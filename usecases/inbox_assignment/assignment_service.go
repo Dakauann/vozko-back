@@ -155,8 +155,6 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 	return assignedUserID
 }
 
-// humanPool is the ring of people who may receive a conversation in this
-// workspace and department, under the workspace's roulette settings.
 func (s *AssignmentService) humanPool(workspaceID, departmentID string) Pool {
 	cfg := s.workspaceConfigFor(workspaceID)
 	skipAdmins := false
@@ -187,14 +185,11 @@ func (s *AssignmentService) Reassign(entryID, entryType, businessPhoneID, worksp
 	return s.AssignManual(entryID, entryType, businessPhoneID, workspaceID, userID, userID, ia.TriggerManual)
 }
 
-// ownerMove is how a reassignment went: whether the owner changed, and from whom.
 type ownerMove struct {
 	changed  bool
 	previous string
 }
 
-// AssignManual gives the conversation to toUserID and announces it: whoever
-// can see it now gets the fresh row, whoever lost it drops it.
 func (s *AssignmentService) AssignManual(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger string) error {
 	moved, err := s.reassign(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger)
 	if err != nil {
@@ -212,8 +207,6 @@ func (s *AssignmentService) announceOwner(workspaceID, entryID, entryType, previ
 	}
 }
 
-// reassign records the new owner without announcing it, for flows that announce
-// once they are complete.
 func (s *AssignmentService) reassign(entryID, entryType, businessPhoneID, workspaceID, toUserID, assignedBy, trigger string) (ownerMove, error) {
 	prev := ""
 	if existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType); err == nil && existing != nil {
@@ -275,7 +268,6 @@ func (s *AssignmentService) AssignOnOpen(entryID, entryType, businessPhoneID, wo
 	return true, nil
 }
 
-// UnassignSystem puts the conversation in the team queue and announces it.
 func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reason string) error {
 	moved, err := s.unassign(entryID, entryType, workspaceID, reason)
 	if err != nil {
@@ -287,7 +279,6 @@ func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reas
 	return nil
 }
 
-// unassign records the release without announcing it.
 func (s *AssignmentService) unassign(entryID, entryType, workspaceID, reason string) (ownerMove, error) {
 	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
 	if err != nil {
@@ -382,8 +373,6 @@ func (s *AssignmentService) recordHistoryAndEvent(in recordInput) {
 	}
 }
 
-// appendHistory closes the open interval and, unless the conversation was just
-// unassigned, opens the next one.
 func (s *AssignmentService) appendHistory(in recordInput, actorKind string, now time.Time) {
 	if err := s.history.CloseOpen(in.WorkspaceID, in.EntryID, in.EntryType, now); err != nil {
 		log.Printf("[InboxAssignment] history CloseOpen: %v", err)

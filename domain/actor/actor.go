@@ -39,7 +39,6 @@ func ParseAI(id string) string {
 	return parsePrefixed(AIPrefix, id)
 }
 
-// FormatWorkflow is the actor id of a workflow: workflow:<workflowID>.
 func FormatWorkflow(workflowID string) string {
 	return formatPrefixed(WorkflowPrefix, workflowID)
 }
@@ -60,8 +59,6 @@ func IsCampaign(id string) bool {
 	return strings.HasPrefix(strings.TrimSpace(id), CampaignPrefix)
 }
 
-// IsAutomation reports whether the actor is automation rather than a person or
-// the system: an AI agent or a workflow.
 func IsAutomation(id string) bool {
 	return IsAI(id) || IsWorkflow(id)
 }

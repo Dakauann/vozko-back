@@ -11,9 +11,6 @@ import (
 )
 
 func TestConversationCampaignJoinReadsTheStoredCampaign(t *testing.T) {
-	// The campaign is known the moment its conversation is created. Searching
-	// the entries instead left a window before the send was recorded in which a
-	// campaign's conversation followed the instance's AI.
 	join := conversation_repository.UnofficialCampaignJoin("uwc", "camp")
 	for _, want := range []string{
 		"LEFT JOIN unofficial_whatsapp_campaigns camp",

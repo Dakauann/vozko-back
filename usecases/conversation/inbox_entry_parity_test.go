@@ -50,9 +50,6 @@ type stubAgentsByID struct {
 
 func (s stubAgentsByID) FindByIDs([]string) ([]*agent.Agent, error) { return s.agents, nil }
 
-// A live update rebuilds the card from GetInboxEntry and the screen swaps it in
-// whole. Built without the workspace on channels other than official WhatsApp,
-// it dropped the contact, the assignee and the AI chip the list had shown.
 func TestInboxEntryMatchesTheListOnEveryChannel(t *testing.T) {
 	for _, entryType := range []shared.EntryType{
 		shared.EntryTypeUnofficialWhatsApp,
@@ -95,8 +92,6 @@ func TestInboxEntryMatchesTheListOnEveryChannel(t *testing.T) {
 	}
 }
 
-// A finished conversation shows who closed it and with which outcome, on every
-// channel and in both the list and the live update.
 func TestInboxEntryCarriesHowItWasClosedOnEveryChannel(t *testing.T) {
 	for _, entryType := range []shared.EntryType{
 		shared.EntryTypeUnofficialWhatsApp,

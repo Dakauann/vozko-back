@@ -9,15 +9,10 @@ import (
 	"vozko/domain/shared"
 )
 
-// EntryInfoReader reads what the roulette needs about one conversation through
-// the same per-channel entry query the inbox broadcast uses: its automation
-// settings (so the roulette and the inbox ai_handler chip read one source) and
-// the channel account that keys the roulette pointer.
 type EntryInfoReader struct {
 	db *gorm.DB
 }
 
-// NewEntryAutomationReader builds the reader.
 func NewEntryAutomationReader(db *gorm.DB) *EntryInfoReader {
 	return &EntryInfoReader{db: db}
 }
@@ -31,8 +26,6 @@ type entryInfoRow struct {
 	AutomationOn    *bool  `gorm:"column:automation_enabled"`
 }
 
-// entryInfo reads one conversation through its channel's entry query. Every
-// way the read can fail is an error, never a zero row.
 func (r *EntryInfoReader) entryInfo(entryID, entryType string) (entryInfoRow, error) {
 	var row entryInfoRow
 	ch, ok := channelQueryFor(shared.EntryType(entryType))
@@ -49,8 +42,6 @@ func (r *EntryInfoReader) entryInfo(entryID, entryType string) (entryInfoRow, er
 	return row, nil
 }
 
-// EntryAccountID is the channel account the conversation came in on (the
-// business phone on WhatsApp), which keys the roulette pointer.
 func (r *EntryInfoReader) EntryAccountID(entryID, entryType string) (string, error) {
 	row, err := r.entryInfo(entryID, entryType)
 	if err != nil {

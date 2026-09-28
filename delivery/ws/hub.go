@@ -826,26 +826,16 @@ func (h *ConversationHub) tryAssignOnOpen(conn *WSConnection, entryID, entryType
 	}
 }
 
-// AnnounceOwnerChange tells everyone a reassignment concerns: the row is rebuilt
-// for whoever can see the conversation now, and whoever just lost it drops it.
 func (h *ConversationHub) AnnounceOwnerChange(workspaceID, entryID, entryType, previousOwner string) {
 	h.BroadcastEntryUpdate(entryID, entryType, nil)
 	h.BroadcastEntryRemoved(entryID, entryType, workspaceID, previousOwner)
 }
 
-// BroadcastEntryRemoved tells the people who lost a conversation to drop it.
-// previousOwner is who held it before: that person, or everyone when it sat in
-// the team queue ("").
 func (h *ConversationHub) BroadcastEntryRemoved(entryID, entryType, workspaceID, previousOwner string) {
 	h.broadcastEntryRemovedLocal(entryID, entryType, workspaceID, previousOwner)
 	h.publishWorkspaceBroadcast("entry_removed", entryID, entryType, "", workspaceID, previousOwner)
 }
 
-// broadcastEntryRemovedLocal reaches the connections that could see the
-// conversation before and cannot now, and unsubscribes them so an open
-// conversation stops receiving its messages. Admins and view_others holders
-// see every conversation, so they never lose one; an agent or workflow held it
-// hidden from every operator, so nobody had it to lose.
 func (h *ConversationHub) broadcastEntryRemovedLocal(entryID, entryType, workspaceID, previousOwner string) {
 	if h.authorizer == nil || actor.IsAutomation(previousOwner) {
 		return
@@ -2739,12 +2729,8 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 		return
 	}
 
-	// The status service announces the change (AnnounceStatus), the same way
-	// it does for agents, workflows and the idle sweep.
 }
 
-// AnnounceStatus tells the conversation's viewers its status changed and, for a
-// finish, how it was closed; the inbox row is rebuilt for everyone who lists it.
 func (h *ConversationHub) AnnounceStatus(entryID, entryType string, status conversation.ConversationStatus, close conversation.CloseRecord) {
 	payload := ConversationStatusUpdatePayload{
 		EntryID:      entryID,

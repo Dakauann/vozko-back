@@ -83,10 +83,8 @@ func serve(t *testing.T, reports *reportsStub, target string) *httptest.Response
 func TestTheReportIsAnAttendanceSectionThatAlsoNeedsCampaignAccess(t *testing.T) {
 	recorder := &accessRecorder{}
 	RegisterRoutes(mux.NewRouter(), NewHandler(&reportsStub{}), recorder.ac)
-	// It sits on the attendance page, so it follows the attendance gate; it shows campaign data, so it keeps the
-	// campaign gate too. Nobody sees more than before the move.
 	want := map[permission]bool{
-		{workspace_domain.ResourceAttendance, workspace_domain.ActionRead}:       true,
+		{workspace_domain.ResourceAttendance, workspace_domain.ActionRead}:        true,
 		{workspace_domain.ResourceWhatsAppCampaigns, workspace_domain.ActionRead}: true,
 	}
 	if len(recorder.checked) != len(want) {
@@ -135,7 +133,6 @@ func TestThePeriodTravelsAsDaysAndTheServerPicksTheZone(t *testing.T) {
 
 	rec := serve(t, reports, "/attendance/campaigns/summary?"+period+"&timezone=Mars/Olympus")
 
-	// The viewer's zone is not an input any more: attendance counts days in the workspace schedule's zone.
 	if rec.Code != http.StatusOK || reports.period != (wc.ReportPeriod{DateFrom: "2026-09-01", DateTo: "2026-09-07"}) {
 		t.Fatalf("status = %d, period = %+v", rec.Code, reports.period)
 	}

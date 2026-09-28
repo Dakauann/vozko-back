@@ -11,8 +11,6 @@ type stageListerStub []*stage.Stage
 
 func (s stageListerStub) ListByWorkspace(string) ([]*stage.Stage, error) { return s, nil }
 
-// The AI builder fills a stage node's picker from real stages of the workspace,
-// the same list the editor shows.
 func TestBuilderFindsTheWorkspaceStages(t *testing.T) {
 	r := NewBuilderResourceResolver(BuilderResourceResolverDeps{Stages: stageListerStub{
 		{ID: "st-1", WorkspaceID: "ws1", Name: "Proposta enviada"},

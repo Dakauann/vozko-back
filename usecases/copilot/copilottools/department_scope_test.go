@@ -33,7 +33,6 @@ func TestStrandedMemberSeesNoDepartments(t *testing.T) {
 	tool := NewListDepartmentsTool(fakeListDepartments{depts: []wd.Department{{ID: "d1"}, {ID: "d2"}}})
 	res := tool.Execute(context.Background(), strandedContext(), nil)
 	data := res.Data.(map[string]interface{})
-	// The old []string scope read "no departments" as "every department" and listed them all.
 	if data["total"] != 0 {
 		t.Fatalf("total = %v, want 0", data["total"])
 	}

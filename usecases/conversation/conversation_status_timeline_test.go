@@ -26,9 +26,6 @@ func (r *recordedEvents) finished(t *testing.T) *conv_event.ConversationEvent {
 	return nil
 }
 
-// The timeline is where a finish is read back: who closed the conversation and
-// with which outcome. A person, an agent and a workflow are recorded alike, the
-// outcome with the label it had when it was chosen.
 func TestFinishRecordsTheOutcomeAndWhoClosedOnTheTimeline(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -94,8 +91,6 @@ func (r *recordedAnnouncements) AnnounceStatus(entryID, _ string, status convers
 	r.got = append(r.got, announcedStatus{entryID: entryID, status: status, close: close})
 }
 
-// Open screens learn of a finish from the service every finish goes through,
-// whoever closed: a person, an agent, a workflow or the idle sweep.
 func TestFinishIsAnnouncedWithHowItWasClosed(t *testing.T) {
 	repo := &outcomeEntryRepo{status: string(conversation.ConversationStatusOngoing)}
 	svc := outcomeServiceWith(t, repo, &stubCaptureReader{capture: requiringCapture()})

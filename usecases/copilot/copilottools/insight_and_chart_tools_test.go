@@ -59,7 +59,6 @@ func TestConversationInsightsReadsTheLatestRevisionOnly(t *testing.T) {
 func TestConversationInsightsIsForWorkspaceWideReadersOnly(t *testing.T) {
 	stats := &fakeAudienceStats{}
 	res := NewConversationInsightsTool(stats, &fakeAudienceList{}, fixedNow).Execute(context.Background(), memberOf("d1"), nil)
-	// Analyses carry no department, so a department member would see every department's conversations.
 	if res.Status != copilot.StatusDenied || stats.calls != 0 {
 		t.Fatalf("status = %v calls = %d", res.Status, stats.calls)
 	}
@@ -119,7 +118,6 @@ func TestRenderChartFromADatasetHandle(t *testing.T) {
 	if res.Status != copilot.StatusOK || res.Chart == nil || len(res.Chart.Categories) != 5 {
 		t.Fatalf("res = %+v", res)
 	}
-	// The model gets an acknowledgement, not the chart back: the values would cost context for nothing.
 	if data := res.Data.(map[string]interface{}); data["points"] != 5 {
 		t.Fatalf("data = %+v", data)
 	}

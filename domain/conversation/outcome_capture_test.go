@@ -89,9 +89,6 @@ func TestOutcomeResolveWithoutRequireOnFinishLetsAHumanCloseUncaptured(t *testin
 	}
 }
 
-// An agent or a workflow finishing a conversation follows the rule a person
-// does. Only when the workspace does not require an outcome does a close without
-// one get the reserved "unspecified" code, kept apart from the catalogue.
 func TestOutcomeResolveWithoutRequireOnFinishMarksAutomationClosesUnspecified(t *testing.T) {
 	capture := captureFixture()
 	capture.RequireOnFinish = false

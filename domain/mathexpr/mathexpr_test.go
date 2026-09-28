@@ -17,7 +17,6 @@ func TestEvaluate(t *testing.T) {
 		{"10 % 4", 2},
 		{"-3 + 5", 2},
 		{"--3", 3},
-		// Right-associative like every calculator the user has used: 2^(3^2), not (2^3)^2.
 		{"2 ^ 3 ^ 2", 512},
 		{"-2 ^ 2", -4},
 		{"1.5e3 / 3", 500},
@@ -32,7 +31,6 @@ func TestEvaluate(t *testing.T) {
 		{"median(9, 1, 5)", 5},
 		{"median(1, 2, 3, 10)", 2.5},
 		{"pct(25, 200)", 12.5},
-		// The question managers ask most: "how much did it change?"
 		{"pct_change(80, 100)", 25},
 		{"pct_change(-50, -25)", 50},
 		{"round(pct_change(1702, 1895), 1)", 11.3},

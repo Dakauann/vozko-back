@@ -222,11 +222,6 @@ func (c *OutcomeCapture) DurableCodes() []string {
 	return out
 }
 
-// Resolve is the outcome a close records. People, agents and workflows follow
-// one rule: a catalogue code, required when the workspace requires one. When it
-// is optional and none is given, an agent or workflow close is marked with its
-// reserved "unspecified" code. The system's own closes (idle, max age) choose
-// nothing and always carry the reserved auto-close code.
 func (c *OutcomeCapture) Resolve(source CloseSource, reason CloseReason, code string, departmentID string, at time.Time) (string, error) {
 	if !c.AppliesTo(departmentID, at) {
 		return "", nil
@@ -259,8 +254,6 @@ func (c *OutcomeCapture) validated(code string) (string, error) {
 	return outcome.Code, nil
 }
 
-// CloseRecord is how a conversation was last closed: who closed it, why, and
-// the outcome recorded (a catalogue code, or a reserved one).
 type CloseRecord struct {
 	Source   CloseSource
 	Reason   CloseReason

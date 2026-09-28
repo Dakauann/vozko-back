@@ -341,8 +341,6 @@ func TestThePeriodIsCountedInTheWorkspacesTimezone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Attendance counts days in the workspace schedule's zone; the report next to it must cut days the same way,
-	// never in whatever zone the viewer's browser happens to be in.
 	if daily.Timezone != "America/Fortaleza" || reader.windowArg.Location != loc || reader.scopes[0].Window.Location != loc {
 		t.Fatalf("daily timezone = %q, window zone = %v", daily.Timezone, reader.windowArg.Location)
 	}

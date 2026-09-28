@@ -279,10 +279,8 @@ type ConfigParameter struct {
 	DisplayDescription string
 	Default            interface{}
 	Options            []ConfigParameterOption
-	// OptionsSource names a list the client loads for the choice, such as
-	// "departments", when the options depend on the workspace.
-	OptionsSource string
-	Required      bool
+	OptionsSource      string
+	Required           bool
 }
 
 type ConfigParameterOption struct {

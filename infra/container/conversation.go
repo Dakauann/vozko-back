@@ -174,8 +174,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.assignmentService.SetConversationReceivers(c.services.conversationAuth)
 	c.services.assignmentService.SetEntryBroadcaster(c.services.conversationHub)
 
-	// Built here, not when the hub starts, because hand-offs pause through it;
-	// each channel registers its own setter later.
 	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
 		c.services.conversationHub,
 	)

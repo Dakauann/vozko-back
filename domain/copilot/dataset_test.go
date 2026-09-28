@@ -70,7 +70,6 @@ func TestPreviewOfASmallTableIsTheWholeTable(t *testing.T) {
 
 func TestPreviewOfABigTableIsRowsPlusStatistics(t *testing.T) {
 	p := teamDataset(t, 300).Preview()
-	// The model must see the SHAPE of 300 rows without 300 rows landing in its context.
 	if p.RowCount != 300 || len(p.Rows) != PreviewRows || !p.Truncated {
 		t.Fatalf("rows = %d of %d truncated=%v", len(p.Rows), p.RowCount, p.Truncated)
 	}
@@ -81,7 +80,6 @@ func TestPreviewOfABigTableIsRowsPlusStatistics(t *testing.T) {
 	if resolved.Column != "resolved" || resolved.Count != 300 || resolved.Min != 0 || resolved.Max != 2990 || resolved.Sum != 448500 || resolved.Avg != 1495 {
 		t.Fatalf("resolved stats = %+v", resolved)
 	}
-	// Missing values are counted out, not averaged in as zero.
 	if frt := p.Stats[1]; frt.Count != 150 || frt.Missing != 150 {
 		t.Fatalf("frt stats = %+v", frt)
 	}
@@ -96,7 +94,6 @@ func TestSliceSortsAndPagesWithinTheCap(t *testing.T) {
 	if len(got.Rows) != 3 || got.Rows[0][0] != "m39" || got.Rows[2][0] != "m37" {
 		t.Fatalf("rows = %v", got.Rows)
 	}
-	// Sorting a slice must never reorder the stored table: a later chart reads the original order.
 	if d.Rows[0][0] != "m00" {
 		t.Fatal("Slice mutated the dataset")
 	}
@@ -148,7 +145,6 @@ func TestStoreEvictsTheOldestBeyondItsCapacity(t *testing.T) {
 }
 
 func TestPreviewShowsATableThatFitsInOneSliceWhole(t *testing.T) {
-	// A 24-month trend is read end to end; cutting it at ten rows would hide the recent months.
 	p := teamDataset(t, MaxSliceRows).Preview()
 	if len(p.Rows) != MaxSliceRows || p.Truncated {
 		t.Fatalf("rows = %d truncated = %v", len(p.Rows), p.Truncated)

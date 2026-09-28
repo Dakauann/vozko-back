@@ -61,7 +61,6 @@ func TestCampaignDispatchReadsTheScreenAndPassesDaysOnly(t *testing.T) {
 	if res.Status != copilot.StatusOK {
 		t.Fatalf("status = %v (%s)", res.Status, res.Message)
 	}
-	// The zone is the report's business (workspace schedule), exactly as on the page; the assistant sends days.
 	if reports.periods[0] != (wc.ReportPeriod{DateFrom: "2026-09-01", DateTo: "2026-09-07"}) || reports.access[0].CampaignID != view.CampaignID {
 		t.Fatalf("period = %+v access = %+v", reports.periods[0], reports.access[0])
 	}

@@ -20,13 +20,11 @@ func TestParseWindow(t *testing.T) {
 		wantTo   time.Time
 		wantErr  bool
 	}{
-		// "How are we doing?" names no period; the default must be a real, bounded one.
 		{"no dates means the last 30 days", "", "", day("2026-08-27"), EndOfDay(day("2026-09-25")), false},
 		{"only a start runs to today", "2026-09-01", "", day("2026-09-01"), EndOfDay(day("2026-09-25")), false},
 		{"only an end looks back 30 days from it", "", "2026-06-30", day("2026-06-01"), EndOfDay(day("2026-06-30")), false},
 		{"a single day", "2026-09-10", "2026-09-10", day("2026-09-10"), EndOfDay(day("2026-09-10")), false},
 		{"a full year fits", "2025-09-25", "2026-09-25", day("2025-09-25"), EndOfDay(day("2026-09-25")), false},
-		// One day past a year: the query cost grows with the span, so the ceiling is enforced, not advised.
 		{"more than a year is refused", "2025-09-24", "2026-09-25", time.Time{}, time.Time{}, true},
 		{"reversed range is refused", "2026-09-10", "2026-09-01", time.Time{}, time.Time{}, true},
 		{"a start in the future is refused", "2026-10-01", "2026-10-05", time.Time{}, time.Time{}, true},
@@ -92,7 +90,6 @@ func TestReadMetricsReturnsOnlyWhatWasAsked(t *testing.T) {
 	if got[1].Value == nil || *got[1].Value != 12.35 {
 		t.Fatalf("frt = %v, want rounded 12.35", got[1].Value)
 	}
-	// A projection without a target is not a verdict worth repeating to the user.
 	if got[1].Verdict != "" || got[1].Target != nil {
 		t.Fatalf("frt carries a verdict without a target: %+v", got[1])
 	}
@@ -106,7 +103,6 @@ func TestReadMetricsReportsMissingValuesAsNullNotZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A zero wait time is good news; an unmeasured one is not. The model must see the difference.
 	if got[0].Value != nil {
 		t.Fatalf("value = %v, want nil", *got[0].Value)
 	}
@@ -207,7 +203,6 @@ func TestDigestBacklogKeepsTheOldestAgeBucket(t *testing.T) {
 	if got.Total != 8 || len(got.Dimensions) != 1 {
 		t.Fatalf("got = %+v, want only the available dimension", got)
 	}
-	// Age is an ordered dimension: its tail is the stalest backlog, the one a manager asks about.
 	if last := got.Dimensions[0].Buckets; len(last) != 8 || last[7].Key != "h" {
 		t.Fatalf("age buckets = %+v, want all eight in order", last)
 	}
@@ -241,11 +236,9 @@ func TestCompareReadings(t *testing.T) {
 	if got[0].DeltaPct == nil || *got[0].DeltaPct != 20 || got[0].Change != ChangeImproved {
 		t.Fatalf("finished = %+v", got[0])
 	}
-	// A lower FRT is the good direction; the sign of the delta alone would call it a decline.
 	if got[1].DeltaPct == nil || *got[1].DeltaPct != -25 || got[1].Change != ChangeImproved {
 		t.Fatalf("frt = %+v", got[1])
 	}
-	// From zero there is no percentage, but the absolute move still tells the story.
 	if got[2].DeltaPct != nil || got[2].Delta == nil || *got[2].Delta != 4 || got[2].Change != ChangeWorsened {
 		t.Fatalf("reopen = %+v", got[2])
 	}
@@ -258,11 +251,9 @@ func TestDigestTrendOffersOnlyTheSeriesTheTrendBuilds(t *testing.T) {
 	queue := TrendSeries{MetricKey: MetricPendingStock, Kind: MetricKindCount, Direction: DirectionLowerIsBetter, Available: true,
 		Points: []TrendPoint{{Bucket: "2026-08", Value: 4}}}
 	got, err := DigestTrend(Trend{Available: true, Series: []TrendSeries{queue}}, []string{MetricPendingStock})
-	// The page draws "Fila acumulada" from this series; the assistant must be able to ask for it by name.
 	if err != nil || got[0].Direction != DirectionLowerIsBetter || len(got[0].Points) != 1 {
 		t.Fatalf("got = %+v err %v", got, err)
 	}
-	// First response time is a period metric, never a monthly series: asking for it must say so, not return a blank.
 	if _, err := DigestTrend(Trend{}, []string{MetricAvgFRTMins}); !errors.Is(err, ErrUnknownMetric) {
 		t.Fatalf("err = %v, want ErrUnknownMetric for a metric the trend never builds", err)
 	}

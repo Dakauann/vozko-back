@@ -3,8 +3,6 @@ package actor
 import "testing"
 
 func TestWorkflowIsItsOwnKind(t *testing.T) {
-	// A workflow is not an AI agent: it is identified, named and reported as a
-	// workflow, never folded into ai:.
 	cases := []struct {
 		in   string
 		want Kind

@@ -9,19 +9,15 @@ import (
 	"vozko/domain/workflow"
 )
 
-// StageReader reads a stage and the stage a conversation is in.
 type StageReader interface {
 	FindByID(id string) (*stage.Stage, error)
 	GetEntryStage(entryID, entryType, workspaceID string) (*stage.EntryStage, error)
 }
 
-// StageBroadcaster tells open screens a conversation changed stage.
 type StageBroadcaster interface {
 	BroadcastStageUpdate(workspaceID, entryID, entryType string)
 }
 
-// stagePicker is the stage field both stage nodes share: every stage of the
-// workspace's pipelines, labelled with its pipeline.
 func stagePicker(description string) workflow.ConfigField {
 	return workflow.ConfigField{
 		Key:           "stage_id",
@@ -33,7 +29,6 @@ func stagePicker(description string) workflow.ConfigField {
 	}
 }
 
-// currentStage is the stage the conversation is in, nil when it is in none.
 func currentStage(stages StageReader, run *workflow.WorkflowRun) *stage.EntryStage {
 	current, err := stages.GetEntryStage(run.EntryID, run.EntryType, run.WorkspaceID)
 	if err != nil || current == nil || current.StageID == "" {
@@ -48,8 +43,6 @@ type moveStageExecutor struct {
 	broadcast StageBroadcaster
 }
 
-// NewMoveStageExecutor moves the conversation through the same use case people
-// and the AI use, so the pipeline rule and the timeline entry apply.
 func NewMoveStageExecutor(stages StageReader, mover stage.AssignEntryStageUseCase, broadcast StageBroadcaster) workflow.NodeExecutor {
 	return &moveStageExecutor{stages: stages, mover: mover, broadcast: broadcast}
 }
@@ -145,7 +138,6 @@ func failMove(edges []workflow.Edge, stageID, reason string) *workflow.NodeResul
 	}
 }
 
-// moveFailure says in the builder's words why the conversation did not move.
 func moveFailure(err error) string {
 	if errors.Is(err, stage.ErrStagePipelineMismatch) {
 		return "a etapa é de outro funil: a conversa só muda de etapa dentro do próprio funil"

@@ -13,9 +13,6 @@ import (
 
 const TransferToHumanToolName = "transfer_to_human"
 
-// ConversationRouletteHandOff deals the conversation through the roulette
-// inbound conversations use, or to the team queue when nobody is eligible
-// (""), and takes the automation out of the conversation.
 type ConversationRouletteHandOff interface {
 	HandOffToRoulette(in ia.RouletteHandOff) (string, error)
 }
@@ -89,8 +86,6 @@ func (t *transferToHumanTool) ExecuteWithConfig(_ context.Context, config map[st
 	reason, _ := params["reason"].(string)
 	reason = strings.TrimSpace(reason)
 
-	// The department comes from the agent's tool settings, never from the
-	// model's arguments, so the AI cannot route to a department it invented.
 	owner, err := t.handOff.HandOffToRoulette(ia.RouletteHandOff{
 		WorkspaceID:  workspaceID,
 		EntryID:      entryID,

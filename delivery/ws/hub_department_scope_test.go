@@ -104,8 +104,6 @@ func drainConnectedUsers(t *testing.T, conn *WSConnection) []string {
 	}
 }
 
-// removalFixture is a workspace where the entry was just reassigned: only the
-// users in canSee can still open it.
 func removalFixture(t *testing.T, canSee map[string]bool, viewOthers map[string]bool, users ...string) (*ConversationHub, map[string]*WSConnection) {
 	t.Helper()
 	hub := NewConversationHub(&hubDepartmentTestAuthorizer{entryAccess: canSee, viewOthers: viewOthers}, nil, nil, nil, "test-replica", "")
@@ -119,9 +117,6 @@ func removalFixture(t *testing.T, canSee map[string]bool, viewOthers map[string]
 	return hub, conns
 }
 
-// Whoever loses a conversation on a reassign learns it at once: its row leaves
-// their inbox and an open conversation stops receiving its messages. Nobody who
-// can still see it is told to drop it.
 func TestEntryRemovalReachesThePersonWhoLostTheConversation(t *testing.T) {
 	hub, conns := removalFixture(t,
 		map[string]bool{"new-owner": true, "supervisor": true},

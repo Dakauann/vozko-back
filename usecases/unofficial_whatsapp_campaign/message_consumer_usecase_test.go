@@ -370,9 +370,6 @@ func TestVariantIsStableAcrossRetries(t *testing.T) {
 }
 
 func TestASendOpensTheCampaignsOwnConversation(t *testing.T) {
-	// Like an official campaign's entry: each campaign reaching the contact has
-	// its own conversation, so it starts unassigned and follows this campaign's
-	// AI or workflow, while earlier campaigns keep theirs.
 	h := newHarness(t)
 	campID, entryID := h.seed(t)
 

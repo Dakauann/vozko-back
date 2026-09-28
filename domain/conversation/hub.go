@@ -151,8 +151,7 @@ type SearchInboxInput struct {
 
 	ResponsibleUserID     string
 	ResponsibleUnassigned bool
-	// ResponsibleKind narrows to conversations an agent (ai) or a workflow holds.
-	ResponsibleKind actor.Kind
+	ResponsibleKind       actor.Kind
 
 	AssigneeOverrideUserID string
 

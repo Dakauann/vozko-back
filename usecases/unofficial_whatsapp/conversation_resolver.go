@@ -26,9 +26,7 @@ type ResolveInput struct {
 	LID         string
 	PhoneNumber string
 	Name        string
-	// CampaignID opens that campaign's own conversation with the chat, as an
-	// official campaign opens its own entry. Empty means the chat's current one.
-	CampaignID string
+	CampaignID  string
 }
 
 type Resolved struct {

@@ -60,7 +60,6 @@ func TestGoalsKeepOnlyMetricsWithATarget(t *testing.T) {
 func TestPerPersonListsAreCappedAndRanked(t *testing.T) {
 	q, _ := DigestSummaryBlock(richSummary(), BlockQuality)
 	quality := q.(QualityDigest)
-	// The busiest closers first: they are the ones whose durability moves the team number.
 	if len(quality.Rows) != MaxAssistantListItems || quality.TotalRows != 30 || quality.Rows[0].Closes != 29 {
 		t.Fatalf("quality = %d rows of %d, first %+v", len(quality.Rows), quality.TotalRows, quality.Rows[0])
 	}

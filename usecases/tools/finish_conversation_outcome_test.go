@@ -37,9 +37,6 @@ func finishToolWith(status *finishStatusStub, catalogue outcomeCatalogueStub) *f
 	return NewFinishConversationToolUseCase(status, catalogue).(*finishConversationTool)
 }
 
-// The model can only pick an outcome it has been shown. The tool lists the
-// workspace's catalogue, and a workspace that requires one makes it required,
-// exactly as it does for a person finishing the conversation.
 func TestFinishConversationToolListsTheWorkspaceOutcomes(t *testing.T) {
 	ft := finishToolWith(&finishStatusStub{}, outcomeCatalogueStub{"ws-1": outcomeCatalogue(true)})
 
@@ -75,8 +72,6 @@ func TestFinishConversationToolHidesTheOutcomeWhenNotCollected(t *testing.T) {
 	}
 }
 
-// A refusal teaches the model the valid choices so its next call can succeed,
-// even when the definition it saw was not tailored to the workspace.
 func TestFinishConversationToolExplainsARefusedOutcome(t *testing.T) {
 	for _, refusal := range []error{conversation.ErrOutcomeRequired, conversation.ErrOutcomeUnknown} {
 		status := &finishStatusStub{err: refusal}

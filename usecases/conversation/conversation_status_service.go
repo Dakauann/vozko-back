@@ -93,14 +93,10 @@ func (s *ConversationStatusService) SetAISessionEnder(e AISessionEnder) {
 	}
 }
 
-// StatusAnnouncer tells open screens that a conversation's status changed, and
-// for a finish, how it was closed.
 type StatusAnnouncer interface {
 	AnnounceStatus(entryID, entryType string, status conversation.ConversationStatus, close conversation.CloseRecord)
 }
 
-// SetStatusAnnouncer makes every status change, whoever makes it, reach open
-// screens from this one place.
 func (s *ConversationStatusService) SetStatusAnnouncer(a StatusAnnouncer) {
 	if s != nil {
 		s.announcer = a
@@ -148,8 +144,6 @@ func (s *ConversationStatusService) OutcomeCapture(entryID, entryType string) (*
 	return s.outcomes.OutcomeCaptureFor(context.Background(), workspaceID)
 }
 
-// closedOutcome is the outcome a finish records, with the label it had when it
-// was chosen (the catalogue may be renamed later).
 type closedOutcome struct {
 	code  string
 	label string

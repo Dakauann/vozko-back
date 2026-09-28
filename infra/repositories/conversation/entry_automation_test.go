@@ -17,8 +17,6 @@ func aiProfileColumns() []string {
 }
 
 func TestEntryAIProfile_ReadsEveryChannelThroughItsEntryInfoQuery(t *testing.T) {
-	// The roulette decides on every channel, so every channel must be readable;
-	// a channel missing here would silently hand its conversations to humans.
 	for _, ch := range channelQueries {
 		t.Run(string(ch.EntryType), func(t *testing.T) {
 			db, mock, sqlDB := newStatusDB(t)
@@ -63,8 +61,6 @@ func TestEntryAIProfile_CarriesThePauseSwitch(t *testing.T) {
 }
 
 func TestEntryAIProfile_FailsInsteadOfReturningAZeroProfile(t *testing.T) {
-	// A zero profile reads as "no AI" and routes the conversation to a human,
-	// exposing it. Every way the read can fail must surface as an error.
 	t.Run("query error", func(t *testing.T) {
 		db, mock, sqlDB := newStatusDB(t)
 		defer sqlDB.Close()
@@ -98,8 +94,6 @@ func TestEntryAIProfile_FailsInsteadOfReturningAZeroProfile(t *testing.T) {
 }
 
 func TestEntryAccountID_ReadsTheChannelAccountFromTheSameQuery(t *testing.T) {
-	// The roulette pointer is keyed by the channel account (business phone on
-	// WhatsApp); a conversation nobody was assigned to has none on record.
 	db, mock, sqlDB := newStatusDB(t)
 	defer sqlDB.Close()
 

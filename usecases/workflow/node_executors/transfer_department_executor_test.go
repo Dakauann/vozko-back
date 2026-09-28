@@ -52,8 +52,6 @@ func newTransfer(handOff *rouletteHandOffStub) workflow.NodeExecutor {
 }
 
 func TestTransferDepartment_DealsThroughTheSharedRoulette(t *testing.T) {
-	// The same ring the first customer message uses, not a private rotation:
-	// the workspace's mode, eligibility and pointer all apply.
 	handOff := &rouletteHandOffStub{owner: "user-9"}
 
 	result, err := newTransfer(handOff).Execute(transferCtx("sales"))
@@ -98,8 +96,6 @@ func TestTransferDepartment_WithoutADepartmentUsesTheConversations(t *testing.T)
 }
 
 func TestTransferDepartment_NobodyEligibleIsASuccessInTheTeamQueue(t *testing.T) {
-	// The roulette released it to the team; the flow continues, and can branch
-	// on "queued" to tell the contact someone will answer.
 	result, err := newTransfer(&rouletteHandOffStub{owner: ""}).Execute(transferCtx("sales"))
 
 	if err != nil {
@@ -127,7 +123,6 @@ func TestTransferDepartment_ADepartmentOutsideTheWorkspaceTakesTheErrorEdge(t *t
 }
 
 func TestTransferDepartment_WithoutAHandOffItIsUnavailable(t *testing.T) {
-	// The node test runner builds executors without the live service.
 	exec := NewTransferDepartmentExecutor(&transferDeptRepoStub{}, nil, nil)
 
 	result, err := exec.Execute(transferCtx("sales"))

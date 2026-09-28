@@ -27,8 +27,6 @@ type ConversationHandler struct {
 	automationService     ConversationAutomationService
 }
 
-// ConversationAutomationService switches a conversation's automation for a
-// caller, moving its ownership along (see ia_usecase.OperatorAutomationToggle).
 type ConversationAutomationService interface {
 	SetAutomation(ctx context.Context, in ia_usecase.OperatorAutomationInput) (ia_usecase.OperatorAutomationResult, error)
 }

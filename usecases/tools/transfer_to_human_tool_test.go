@@ -35,8 +35,6 @@ func transferConfig() map[string]interface{} {
 }
 
 func TestTransferToHuman_HandsOffTheCurrentConversation(t *testing.T) {
-	// Pausing the AI is part of the hand-off itself (the assignment service),
-	// shared with the workflow transfer nodes; the tool only names the conversation.
 	handOff := &handOffStub{owner: "user-7"}
 	tool := NewTransferToHumanToolUseCase(handOff)
 
@@ -70,8 +68,6 @@ func TestTransferToHuman_HandOffFailureIsAnError(t *testing.T) {
 }
 
 func TestTransferToHuman_APauseFailureIsNotReportedAsClean(t *testing.T) {
-	// The person has it but the AI may keep answering: the model must still tell
-	// the contact a person is taking over, and the log must not look clean.
 	tool := NewTransferToHumanToolUseCase(&handOffStub{
 		owner: "user-7",
 		err:   fmt.Errorf("%w: e-1", ia_usecase.ErrAutomationStillActive),
@@ -115,8 +111,6 @@ func TestTransferToHuman_Definition(t *testing.T) {
 }
 
 func TestTransferToHuman_UsesTheDepartmentTheAdminConfigured(t *testing.T) {
-	// The department comes from the agent's tool settings, set by an admin;
-	// the model never names one, so it cannot invent "Financeiro".
 	handOff := &handOffStub{owner: "user-7"}
 	tool := NewTransferToHumanToolUseCase(handOff)
 	cfg := transferConfig()

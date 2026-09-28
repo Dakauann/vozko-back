@@ -47,8 +47,6 @@ func conversationIntegrationDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&schema.UnofficialWhatsAppConversation{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	// The production unique keys (infra/database/indexes.go): the upsert's
-	// ON CONFLICT target must match them exactly or Postgres rejects the insert.
 	for _, stmt := range []string{
 		`CREATE UNIQUE INDEX ux_uw_conversation_instance_contact_campaign
 			ON unofficial_whatsapp_conversations (instance_id, contact_id, campaign_id)
@@ -75,13 +73,11 @@ func TestConversationsPerCampaignAgainstPostgres(t *testing.T) {
 	}
 	promo, retomada := uuid.NewString(), uuid.NewString()
 
-	// Ana writes first, with no campaign: a campaign-less conversation.
 	walkIn, err := repo.FindOrCreate(ctx, base)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Month 1 and month 2 campaigns each open their own conversation.
 	withCampaign := func(id string) uw.FindOrCreateConversationInput { in := base; in.CampaignID = id; return in }
 	month1, err := repo.FindOrCreate(ctx, withCampaign(promo))
 	if err != nil {
@@ -98,7 +94,6 @@ func TestConversationsPerCampaignAgainstPostgres(t *testing.T) {
 		t.Fatalf("month 2 campaign = %q, want %q", month2.CampaignID, retomada)
 	}
 
-	// The next wave of the same campaign reuses its conversation.
 	again, err := repo.FindOrCreate(ctx, withCampaign(retomada))
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +102,6 @@ func TestConversationsPerCampaignAgainstPostgres(t *testing.T) {
 		t.Fatalf("a resend opened %s, want the campaign's %s", again.ID, month2.ID)
 	}
 
-	// Ana's reply, or anything that is not a campaign send, goes to the newest.
 	current, err := repo.FindByChatID(ctx, base.InstanceID, base.ChatID)
 	if err != nil {
 		t.Fatal(err)

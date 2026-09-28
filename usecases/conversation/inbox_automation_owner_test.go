@@ -64,8 +64,6 @@ func ownerFixture(agents *ownerAgentsStub, users *ownerUsersStub) *HistoryProvid
 }
 
 func TestInboxNamesTheAutomationThatHoldsAConversation(t *testing.T) {
-	// The web prints assigned_username as text in the row, the card and the
-	// panel. An AI owner with no name there read as "Não atribuído".
 	users := &ownerUsersStub{}
 	agents := &ownerAgentsStub{}
 	svc := ownerFixture(agents, users)
@@ -127,7 +125,6 @@ func TestTheHandlerChipFollowsTheSharedGovernanceRule(t *testing.T) {
 			wantKind: "workflow", wantID: "wf-1",
 		},
 		{
-			// The chip still names a paused AI ("IA pausada"); only ownership drops it.
 			name:     "paused agent keeps its chip",
 			row:      conversation.EntryWithLastMessage{AgentID: "agent-1", AgentResponsesEnabled: true, AutomationEnabled: boolPtr(false)},
 			wantKind: "agent", wantID: "agent-1",

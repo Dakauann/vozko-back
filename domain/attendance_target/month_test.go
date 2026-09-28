@@ -63,7 +63,6 @@ func TestAMonthClosesTheInstantItEnds(t *testing.T) {
 func TestMonthAtReadsTheLocalMonthNotTheUTCOne(t *testing.T) {
 	loc := fortaleza(t)
 
-	// One hour past midnight UTC on the 1st is still the previous month locally.
 	instant := time.Date(2026, time.September, 1, 1, 0, 0, 0, time.UTC)
 
 	month := MonthAt(instant, loc)

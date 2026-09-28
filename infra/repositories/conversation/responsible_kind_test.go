@@ -10,8 +10,6 @@ import (
 )
 
 func TestSearchFiltersByTheAutomationThatHoldsTheConversation(t *testing.T) {
-	// "Responsável: IA" and "Responsável: Fluxo" must ask for the kind, never
-	// compare an ai:/workflow: string with the uuid column (a query error).
 	paths := map[string]conversation.SearchEntriesInput{
 		"workspace": {WorkspaceID: "ws-1", EntryType: shared.EntryTypeWhatsApp},
 		"campaign":  {CampaignID: "camp-1", EntryType: shared.EntryTypeWhatsApp},

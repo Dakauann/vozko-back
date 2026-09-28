@@ -8,9 +8,6 @@ import (
 )
 
 func TestMetricsProjectTheOwnerAsAnActorID(t *testing.T) {
-	// inbox_assignments stores an agent or workflow as its bare uuid plus
-	// assignee_kind. Metrics must see ai:<id> / workflow:<id>, or an agent
-	// would be grouped and labelled like a person with a raw uuid for a name.
 	for _, src := range channelSources {
 		p := src.projection("TRUE")
 		if !strings.Contains(p, ownerActorIDSQL+" AS assigned_user_id") {

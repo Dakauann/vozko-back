@@ -15,8 +15,6 @@ func conversationColumns() []string {
 }
 
 func TestFindByChatID_TheNewestConversationIsTheChats(t *testing.T) {
-	// Like the official channel's newest entry for a number: a reply, a message
-	// sent from the phone or a backfill lands in the chat's newest conversation.
 	db, mock, sqlDB := newLookupDB(t)
 	defer sqlDB.Close()
 
@@ -38,9 +36,6 @@ func TestFindByChatID_TheNewestConversationIsTheChats(t *testing.T) {
 }
 
 func TestFindOrCreate_ACampaignGetsItsOwnConversation(t *testing.T) {
-	// A campaign reaching the contact opens its own conversation, as an official
-	// campaign opens its own entry, so it starts unassigned and follows its own
-	// automation.
 	db, mock, sqlDB := newLookupDB(t)
 	defer sqlDB.Close()
 
@@ -72,8 +67,6 @@ func TestFindOrCreate_ACampaignGetsItsOwnConversation(t *testing.T) {
 }
 
 func TestFindOrCreate_WithoutACampaignKeepsTheChatsCurrentConversation(t *testing.T) {
-	// No receptive campaign is needed: anything that is not a campaign send
-	// keeps landing in the chat's current (newest) conversation.
 	db, mock, sqlDB := newLookupDB(t)
 	defer sqlDB.Close()
 

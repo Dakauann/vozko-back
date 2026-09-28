@@ -147,8 +147,6 @@ func TestBulkApply_MoveStage_FansOutAndBroadcastsStage(t *testing.T) {
 	}
 }
 
-// The assignment service announces each reassignment (fresh row for the new
-// owner, removal for whoever lost it); bulk must not send a second, partial one.
 func TestBulkApply_Assign_ForwardsUserAndLeavesTheAnnouncementToTheAssigner(t *testing.T) {
 	ea := &mockEntryAssigner{}
 	bc := &mockBroadcaster{}

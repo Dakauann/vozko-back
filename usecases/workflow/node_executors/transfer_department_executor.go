@@ -12,9 +12,6 @@ import (
 	dept "vozko/domain/workspace/workspace_department"
 )
 
-// transferDepartmentExecutor deals the conversation through the roulette, the
-// same ring the first customer message uses, drawing from the chosen
-// department or the conversation's own.
 type transferDepartmentExecutor struct {
 	deptRepo      dept.Repository
 	workspaceRepo workspace.Repository

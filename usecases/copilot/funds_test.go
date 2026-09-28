@@ -46,7 +46,6 @@ func TestService_BalanceIsCheckedBeforeEveryModelCall(t *testing.T) {
 	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, ev.emit); err != nil {
 		t.Fatal(err)
 	}
-	// One admitted call, then the ledger says no: the second call must never be paid for.
 	if prov.idx != 1 || funds.checks != 2 {
 		t.Fatalf("model calls = %d checks = %d", prov.idx, funds.checks)
 	}

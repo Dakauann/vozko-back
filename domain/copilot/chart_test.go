@@ -60,7 +60,6 @@ func TestPieFoldsTheTailIntoOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Twenty slices is unreadable; the tail survives as one slice so the total stays honest.
 	if len(c.Categories) != MaxPieSlices || c.Categories[MaxPieSlices-1] != OtherCategory {
 		t.Fatalf("categories = %v", c.Categories)
 	}

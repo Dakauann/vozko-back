@@ -8,10 +8,6 @@ import (
 )
 
 func TestUnofficialReadersUseTheStoredCampaign(t *testing.T) {
-	// The inbox row, the automation profile the roulette reads, and the entry
-	// sources must all take the campaign stored on the conversation. Searching
-	// the entries left a window in which a campaign's new conversation followed
-	// the instance's AI.
 	ch, ok := channelQueryFor(shared.EntryTypeUnofficialWhatsApp)
 	if !ok {
 		t.Fatal("no unofficial channel query")

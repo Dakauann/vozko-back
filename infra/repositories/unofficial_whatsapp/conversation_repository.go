@@ -24,10 +24,6 @@ func NewConversationRepository(db *gorm.DB) uw.ConversationRepository {
 	return &conversationRepository{db: db}
 }
 
-// FindOrCreate opens the conversation for a chat. With a campaign it is that
-// campaign's own conversation, as an official campaign opens its own entry;
-// without one it is the chat's current (newest) conversation, or a new
-// campaign-less one, so no receptive campaign is ever needed.
 func (r *conversationRepository) FindOrCreate(
 	ctx context.Context,
 	in uw.FindOrCreateConversationInput,
@@ -89,14 +85,10 @@ func (r *conversationRepository) FindByID(ctx context.Context, id string) (*uw.C
 	return toConversationDomain(&record), nil
 }
 
-// FindByChatID is the chat's current conversation: its newest, the way the
-// official channel routes a number to its newest campaign entry.
 func (r *conversationRepository) FindByChatID(ctx context.Context, instanceID, chatID string) (*uw.Conversation, error) {
 	return r.findByChat(ctx, instanceID, chatID, "")
 }
 
-// findByChat reads a campaign's own conversation, or with no campaign the
-// chat's newest one.
 func (r *conversationRepository) findByChat(ctx context.Context, instanceID, chatID, campaignID string) (*uw.Conversation, error) {
 	return r.findOne(ctx, r.db.WithContext(ctx).Where("instance_id = ? AND chat_id = ?", instanceID, chatID), campaignID)
 }

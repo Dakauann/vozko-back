@@ -67,8 +67,6 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 }
 
 func (t *manageEntryStageTool) stagesForEntry(ctx tools.ToolContext) ([]*stage.Stage, error) {
-	// Resolved for a conversation, the stages are those of its pipeline, the
-	// same scope a move is checked against (see ExecuteWithConfig).
 	if ctx.CampaignType == "" {
 		ctx.CampaignType = ctx.EntryType
 	}

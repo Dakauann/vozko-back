@@ -37,7 +37,6 @@ func TestLocationIsTheZoneAttendanceCountsDaysIn(t *testing.T) {
 
 func TestLocationWithoutAScheduleIsUTCLikeAttendance(t *testing.T) {
 	loc, err := NewScheduleResolver(configStub{}, noDepartmentSchedules{}).Location(context.Background(), "ws1", "")
-	// The attendance sections fall back to UTC for a workspace with no schedule; anything else would split days differently.
 	if err != nil || loc != time.UTC {
 		t.Fatalf("Location() = %v, %v, want UTC", loc, err)
 	}

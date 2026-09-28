@@ -22,7 +22,6 @@ func TestAllows(t *testing.T) {
 		dept   string
 		want   bool
 	}{
-		// A request that never passed the middleware carries no scope; guessing "everything" is the fail-open bug this replaces.
 		{"no filter denies", nil, "d1", false},
 		{"owner sees any department", owner, "d7", true},
 		{"owner sees unassigned resources", owner, "", true},
@@ -30,7 +29,6 @@ func TestAllows(t *testing.T) {
 		{"member sees own department", twoDeptMember, "d2", true},
 		{"member does not see another department", oneDeptMember, "d2", false},
 		{"restricted member does not see unassigned resources", oneDeptMember, "", false},
-		// The member the department feature strands: in a department-aware workspace but in none of them.
 		{"member in no department sees nothing", strandedMember, "d1", false},
 		{"selection header does not grant a department", selectingMember, "d9", false},
 	}
@@ -78,10 +76,8 @@ func TestReadScope(t *testing.T) {
 		{"owner reads the whole workspace", owner, "", "", nil},
 		{"owner narrows to a department", owner, "d3", "d3", nil},
 		{"flat workspace member reads the whole workspace", flatMember, "", "", nil},
-		// With one department there is only one honest answer, so the caller need not name it.
 		{"single-department member defaults to it", oneDeptMember, "", "d1", nil},
 		{"member names own department", twoDeptMember, "d2", "d2", nil},
-		// Summing two departments would need a query the page never runs; asking is cheaper than guessing.
 		{"multi-department member must choose", twoDeptMember, "", "", ErrDepartmentRequired},
 		{"member cannot read another department", twoDeptMember, "d3", "", ErrDepartmentAccessDenied},
 		{"member in no department is denied", strandedMember, "", "", ErrDepartmentAccessDenied},

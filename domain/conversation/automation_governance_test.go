@@ -13,7 +13,6 @@ func TestAutomationProfileGoverning(t *testing.T) {
 		wantID   string
 	}{
 		{
-			// A brand-new conversation has no override yet; nil means "inherit", which is ON.
 			name:     "agent with automation never touched governs",
 			profile:  AutomationProfile{AgentID: "agent-1", AgentResponsesEnabled: true},
 			wantOK:   true,
@@ -28,13 +27,11 @@ func TestAutomationProfileGoverning(t *testing.T) {
 			wantID:   "agent-1",
 		},
 		{
-			// The operator paused the AI for this one conversation: nobody automated answers it.
 			name:    "automation paused for the conversation means nothing governs",
 			profile: AutomationProfile{AgentID: "agent-1", AgentResponsesEnabled: true, AutomationEnabled: boolPtr(false)},
 			wantOK:  false,
 		},
 		{
-			// An agent picked on the channel but with responses switched off never replies.
 			name:    "agent configured but responses disabled does not govern",
 			profile: AutomationProfile{AgentID: "agent-1"},
 			wantOK:  false,
@@ -45,7 +42,6 @@ func TestAutomationProfileGoverning(t *testing.T) {
 			wantOK:  false,
 		},
 		{
-			// Same precedence as the inbox ai_handler chip: the workflow drives the conversation.
 			name: "workflow wins over agent",
 			profile: AutomationProfile{
 				AgentID: "agent-1", AgentResponsesEnabled: true,
@@ -91,8 +87,6 @@ func TestAutomationProfileGoverning(t *testing.T) {
 }
 
 func TestAutomationProfileConfiguredIgnoresThePause(t *testing.T) {
-	// The inbox chip still names the paused AI ("IA pausada"), so the configured
-	// automation must survive a pause even though Governing does not.
 	p := AutomationProfile{AgentID: "agent-1", AgentResponsesEnabled: true, AutomationEnabled: boolPtr(false)}
 	got, ok := p.Configured()
 	if !ok || got.Kind != AutomationAgent || got.ID != "agent-1" {
@@ -101,8 +95,6 @@ func TestAutomationProfileConfiguredIgnoresThePause(t *testing.T) {
 }
 
 func TestAutomationActorID(t *testing.T) {
-	// An agent and a workflow are different actors: history, events and the
-	// inbox tell them apart by prefix, so a workflow must never become ai:.
 	cases := map[Automation]string{
 		{Kind: AutomationAgent, ID: "agent-1"}: "ai:agent-1",
 		{Kind: AutomationWorkflow, ID: "wf-1"}: "workflow:wf-1",
@@ -115,8 +107,6 @@ func TestAutomationActorID(t *testing.T) {
 }
 
 func TestParseResponsibleKindAcceptsOnlyAutomationKinds(t *testing.T) {
-	// The inbox filter narrows by who holds a conversation. "human" is already
-	// served by responsible_user_id, and anything else is ignored, not trusted.
 	cases := map[string]string{
 		"ai":        "ai",
 		" workflow": "workflow",

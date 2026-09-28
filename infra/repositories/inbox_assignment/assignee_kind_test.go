@@ -16,8 +16,6 @@ func assignmentColumns() []string {
 }
 
 func TestAssign_StoresTheAIAsItsBareIDAndKind(t *testing.T) {
-	// assigned_user_id is a uuid column joined to users by the attendance
-	// reports, so the ai: prefix must never reach it; the kind column says AI.
 	db, mock, sqlDB := newRRDB(t)
 	defer sqlDB.Close()
 
@@ -40,8 +38,6 @@ func TestAssign_StoresTheAIAsItsBareIDAndKind(t *testing.T) {
 }
 
 func TestAssign_AHumanIsStoredAsHuman(t *testing.T) {
-	// Reassigning an AI-held row to a person must overwrite the kind too, or the
-	// person's uuid would be read back as ai:<their id>.
 	db, mock, sqlDB := newRRDB(t)
 	defer sqlDB.Close()
 
@@ -81,7 +77,6 @@ func TestFindByEntry_ReadsTheAIBackWithItsPrefix(t *testing.T) {
 }
 
 func TestFindByEntry_RowsBeforeTheColumnAreHuman(t *testing.T) {
-	// Every row written before assignee_kind existed defaults to human.
 	db, mock, sqlDB := newRRDB(t)
 	defer sqlDB.Close()
 
@@ -106,9 +101,7 @@ func TestIsAssignedToUser_AsksForTheKindAndTheBareID(t *testing.T) {
 		wantID string
 		kind   string
 	}{
-		// A person's check must not match an AI row even if the uuids collided.
 		{name: "person", id: "user-1", wantID: "user-1", kind: "human"},
-		// An ai: id must not be cast to uuid as is: that is a query error.
 		{name: "ai", id: "ai:" + agentUUID, wantID: agentUUID, kind: "ai"},
 	}
 	for _, tc := range cases {

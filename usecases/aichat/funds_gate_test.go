@@ -46,7 +46,6 @@ func TestFundsGate(t *testing.T) {
 	}{
 		{"funded and subscribed", &fakeLedger{balance: 1_000_000}, active, nil},
 		{"exactly at the AI floor", &fakeLedger{balance: balance.MinAIFloorMicros}, active, nil},
-		// The same floor every other AI spender uses; "> 0" let a workspace with a fraction of a cent start a paid call.
 		{"below the AI floor", &fakeLedger{balance: balance.MinAIFloorMicros - 1}, active, ErrInsufficientBalance},
 		{"negative balance", &fakeLedger{balance: -5}, active, ErrInsufficientBalance},
 		{"no subscription", &fakeLedger{balance: 1_000_000}, fakeSubscriptions{}, ErrNoSubscription},
@@ -67,8 +66,6 @@ func TestFundsGateReadsThroughTheSharedCache(t *testing.T) {
 	gate := NewFundsGate(ledger, active)
 	_ = gate.Check("ws")
 	_ = gate.Check("ws")
-	// The cache is one key per workspace shared by every replica and every agent reply. Writes keep it fresh
-	// (CachedBalanceRepository invalidates on every debit and credit); a read path must never delete it.
 	if ledger.invalidated != 0 || ledger.reads != 2 {
 		t.Fatalf("invalidated = %d reads = %d, want cached reads only", ledger.invalidated, ledger.reads)
 	}

@@ -625,8 +625,6 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON unofficial_whatsapp_contacts (instance_id, lid)
 				WHERE lid <> '' AND deleted_at IS NULL`,
 		},
-		// A chat holds one conversation per campaign (and one without), as an
-		// official number holds one entry per campaign.
 		{
 			name: "ux_uw_conversation_instance_contact (superseded)",
 			sql:  `DROP INDEX IF EXISTS ux_uw_conversation_instance_contact`,

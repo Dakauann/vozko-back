@@ -6,9 +6,6 @@ import (
 )
 
 func TestRouletteHandouts(t *testing.T) {
-	// A roulette hand-out is an assignment the rescue sweep may take back when
-	// the person never opens it. An AI handing off through the roulette is the
-	// same situation as an inbound one; a workflow naming a member is a choice.
 	cases := map[string]bool{
 		TriggerInboundRR:                 true,
 		TriggerAutomationHandoffRoulette: true,
