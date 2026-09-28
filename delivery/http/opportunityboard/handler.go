@@ -20,8 +20,8 @@ func NewOpportunityBoardHandler(service *oppboard_usecase.Service) *OpportunityB
 	return &OpportunityBoardHandler{service: service}
 }
 
-// @Summary		Board de oportunidades (Funil de Vendas)
-// @Description	Renderiza o funil de vendas do workspace agrupado por etapa, responsável ou campo personalizado. Cada coluna traz a contagem de oportunidades e a soma dos valores (em reais do cliente). Respeita o escopo de departamento do usuário.
+// @Summary		Quadro de oportunidades
+// @Description	Renderiza o funil de oportunidades do workspace agrupado por etapa, responsável ou campo personalizado. Cada coluna traz a contagem de oportunidades e a soma dos valores (em reais do cliente). Respeita o escopo de departamento do usuário.
 // @Tags			Oportunidades
 // @Produce		json
 // @Param			pipelineId	query		string	false	"ID do pipeline a exibir"

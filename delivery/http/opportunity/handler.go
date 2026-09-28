@@ -41,7 +41,7 @@ func personFrom(claims *auth.Claims) shared.Person {
 }
 
 // @Summary		Criar oportunidade
-// @Description	Cria uma nova oportunidade (negócio) no funil de vendas do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado.
+// @Description	Cria uma nova oportunidade em um funil de oportunidades do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado.
 // @Tags			Oportunidades
 // @Accept			json
 // @Produce		json
@@ -247,7 +247,7 @@ func (h *OpportunityHandler) ListByPipeline(w http.ResponseWriter, r *http.Reque
 }
 
 // @Summary		Remover oportunidade
-// @Description	Exclui uma oportunidade do funil de vendas do workspace.
+// @Description	Exclui uma oportunidade do workspace.
 // @Tags			Oportunidades
 // @Produce		json
 // @Param			id	path	string	true	"ID da oportunidade"
@@ -415,7 +415,7 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 	case errors.Is(err, opportunitydomain.ErrNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, opportunitydomain.ErrStaleDeal):
-		response.WriteError(w, http.StatusConflict, "Este negócio foi alterado agora. Recarregue para ver a versão atual.", nil)
+		response.WriteError(w, http.StatusConflict, "Esta oportunidade foi alterada agora. Recarregue para ver a versão atual.", nil)
 	case errors.Is(err, opportunitydomain.ErrScopeDenied), errors.Is(err, opportunitydomain.ErrEntryAccess), errors.Is(err, opportunity_usecase.ErrOwnerChoiceDenied):
 		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 	case errors.Is(err, opportunitydomain.ErrWorkspaceRequired),

@@ -8711,7 +8711,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cria uma nova oportunidade (negócio) no funil de vendas do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado.",
+                "description": "Cria uma nova oportunidade em um funil de oportunidades do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado.",
                 "consumes": [
                     "application/json"
                 ],
@@ -8762,14 +8762,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Renderiza o funil de vendas do workspace agrupado por etapa, responsável ou campo personalizado. Cada coluna traz a contagem de oportunidades e a soma dos valores (em reais do cliente). Respeita o escopo de departamento do usuário.",
+                "description": "Renderiza o funil de oportunidades do workspace agrupado por etapa, responsável ou campo personalizado. Cada coluna traz a contagem de oportunidades e a soma dos valores (em reais do cliente). Respeita o escopo de departamento do usuário.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Oportunidades"
                 ],
-                "summary": "Board de oportunidades (Funil de Vendas)",
+                "summary": "Quadro de oportunidades",
                 "parameters": [
                     {
                         "type": "string",
@@ -9188,7 +9188,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Exclui uma oportunidade do funil de vendas do workspace.",
+                "description": "Exclui uma oportunidade do workspace.",
                 "produces": [
                     "application/json"
                 ],

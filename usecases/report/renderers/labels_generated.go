@@ -101,7 +101,7 @@ func ExportLabels() *StaticLabels {
 			"columns.verdict":                     "Situação",
 			"columns.windowClosed":                "Janela fechada",
 			"columns.windowOpen":                  "Janela aberta",
-			"columns.wonCount":                    "Negócios ganhos",
+			"columns.wonCount":                    "Oportunidades ganhas",
 			"definitions.ai":                      "Atendimento por IA",
 			"definitions.channel_mix":             "Mix de canais",
 			"definitions.csat":                    "Satisfação (CSAT)",

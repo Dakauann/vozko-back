@@ -135,7 +135,7 @@ var defaultOpportunityStages = []struct {
 	{Name: "qualificação", Description: "Avaliando fit, orçamento e decisor.", Color: "#f59e0b", Position: 2},
 	{Name: "proposta", Description: "Proposta enviada ao cliente.", Color: "#8b5cf6", Position: 3},
 	{Name: "negociação", Description: "Ajustes finais de preço e condições.", Color: "#06b6d4", Position: 4},
-	{Name: "ganho", Description: "Negócio fechado com sucesso.", Color: "#10b981", Position: 5, IsWon: true},
+	{Name: "ganho", Description: "Oportunidade fechada com sucesso.", Color: "#10b981", Position: 5, IsWon: true},
 	{Name: "perdido", Description: "Oportunidade perdida.", Color: "#ef4444", Position: 6, IsLost: true},
 }
 

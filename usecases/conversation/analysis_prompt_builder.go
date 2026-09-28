@@ -243,25 +243,25 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 	)
 }
 
-const autoDealRules = `- Mantenha os negócios desta conversa no funil usando a ferramenta auto_manage_opportunity.
-- create: quando o cliente demonstra intenção real de compra e ainda não há negócio aberto para esse interesse. create_new: só para um contrato diferente dos que já existem.
+const autoDealRules = `- Mantenha as oportunidades desta conversa no funil usando a ferramenta auto_manage_opportunity.
+- create: quando o cliente demonstra intenção real de compra e ainda não há oportunidade aberta para esse interesse. create_new: só para um contrato diferente dos que já existem.
 - update_value: quando um valor é combinado ou alterado. move: quando a negociação avança para outra etapa aberta.
 - win: quando o cliente CONFIRMA a compra, sempre com o valor fechado em "value".
 - lose: quando o cliente desiste ou a conversa termina sem compra, com o motivo em "lost_reason".
-- Quando houver mais de um negócio aberto, informe em "opportunity_id" o id exato da lista abaixo.
-- NUNCA invente valores nem negócios. Se nada mudou nos negócios, não chame a ferramenta.`
+- Quando houver mais de uma oportunidade aberta, informe em "opportunity_id" o id exato da lista abaixo.
+- NUNCA invente valores nem oportunidades. Se nada mudou nas oportunidades, não chame a ferramenta.`
 
-const autoDealInstruction = "Siga as instruções do sistema: leia a transcrição INTEIRA e mantenha os negócios da conversa com a ferramenta auto_manage_opportunity. Se nada mudou nos negócios, não chame nenhuma ferramenta."
+const autoDealInstruction = "Siga as instruções do sistema: leia a transcrição INTEIRA e mantenha as oportunidades da conversa com a ferramenta auto_manage_opportunity. Se nada mudou nas oportunidades, não chame nenhuma ferramenta."
 
-const autoDealFollowUp = "Além disso, mantenha os negócios da conversa via auto_manage_opportunity, se algo mudou."
+const autoDealFollowUp = "Além disso, mantenha as oportunidades da conversa via auto_manage_opportunity, se algo mudou."
 
 func BuildAutoDealSection(currentDeals string) string {
 	return fmt.Sprintf(`
 
 ═══════════════════════════════════════════════════
-NEGÓCIOS DA CONVERSA (tarefa adicional)
+OPORTUNIDADES DA CONVERSA (tarefa adicional)
 ═══════════════════════════════════════════════════
-Além da tarefa acima, mantenha os negócios desta conversa:
+Além da tarefa acima, mantenha as oportunidades desta conversa:
 %s
 
 %s
@@ -277,7 +277,7 @@ type AutoDealPromptInput struct {
 }
 
 func BuildAutoDealPrompt(input AutoDealPromptInput) string {
-	return fmt.Sprintf(`Você mantém os negócios (oportunidades de venda) de uma conversa em um CRM. Sua ÚNICA tarefa é ler a transcrição abaixo e, usando a ferramenta auto_manage_opportunity, registrar o que mudou nos negócios desta conversa.
+	return fmt.Sprintf(`Você mantém as oportunidades de venda de uma conversa em um CRM. Sua ÚNICA tarefa é ler a transcrição abaixo e, usando a ferramenta auto_manage_opportunity, registrar o que mudou nas oportunidades desta conversa.
 
 ═══════════════════════════════════════════════════
 CONTEXTO

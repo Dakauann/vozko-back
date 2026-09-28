@@ -93,7 +93,7 @@ func TestManageOpportunityNodeRoutesAnAmbiguousDealToErro(t *testing.T) {
 	}}
 	result := manageDeal(t, desk, map[string]interface{}{"pipeline_id": "pl-deals", "action": "update_value", "value": "10"})
 	require.Equal(t, "fail", result.NextNodeID)
-	require.Contains(t, result.Output["error"], "ID do negócio")
+	require.Contains(t, result.Output["error"], "ID da oportunidade")
 }
 
 func TestManageOpportunityNodeRoutesARefusalToErro(t *testing.T) {

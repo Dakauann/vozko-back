@@ -63,9 +63,9 @@ func toResponse(setting *dealautomation.Setting) SettingResponse {
 	return out
 }
 
-// @Summary		Consultar negócios automáticos do canal
-// @Description	Retorna o funil de negócios que a análise automática usa neste canal. Sem funil, os negócios automáticos estão desligados.
-// @Tags			Negócios automáticos
+// @Summary		Consultar oportunidades automáticas do canal
+// @Description	Retorna o funil de oportunidades que a análise automática usa neste canal. Sem funil, as oportunidades automáticas estão desligadas.
+// @Tags			Oportunidades automáticas
 // @Produce		json
 // @Param			entryType	path	string	true	"Tipo de conversa do canal (whatsapp, unofficial_whatsapp, instagram, facebook, telegram)"
 // @Param			kind		path	string	true	"account ou campaign"
@@ -94,15 +94,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toResponse(setting))
 }
 
-// @Summary		Configurar negócios automáticos do canal
-// @Description	Define o funil de negócios que a análise automática usa neste canal. Envie pipelineId vazio para desligar.
-// @Tags			Negócios automáticos
+// @Summary		Configurar oportunidades automáticas do canal
+// @Description	Define o funil de oportunidades que a análise automática usa neste canal. Envie pipelineId vazio para desligar.
+// @Tags			Oportunidades automáticas
 // @Accept			json
 // @Produce		json
 // @Param			entryType	path	string			true	"Tipo de conversa do canal"
 // @Param			kind		path	string			true	"account ou campaign"
 // @Param			containerId	path	string			true	"ID da conta, número, página ou campanha"
-// @Param			request		body	UpdateRequest	true	"Funil de negócios"
+// @Param			request		body	UpdateRequest	true	"Funil de oportunidades"
 // @Success		200	{object}	SettingResponse
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
@@ -140,12 +140,12 @@ func personFrom(userID, role string) shared.Person {
 func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, dealautomation.ErrUnsupportedChannel):
-		response.WriteError(w, http.StatusBadRequest, "Este canal não tem negócios automáticos", nil)
+		response.WriteError(w, http.StatusBadRequest, "Este canal não tem oportunidades automáticas", nil)
 	case errors.Is(err, workspace.ErrUnauthorized), errors.Is(err, workspace.ErrInsufficientPermissions):
 		response.WriteError(w, http.StatusForbidden, "Sem permissão para este canal", nil)
 	default:
 		if refusal, ok := opportunity_usecase.RefusalOf(err); ok && refusal == opportunity_usecase.RefusalPipelineInvalid {
-			response.WriteError(w, http.StatusUnprocessableEntity, "Escolha um funil de negócios com etapas de ganho e perda", nil)
+			response.WriteError(w, http.StatusUnprocessableEntity, "Escolha um funil de oportunidades com etapas de ganho e perda", nil)
 			return
 		}
 		log.Printf("[deal-automation] request failed: %v", err)

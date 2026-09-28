@@ -54,8 +54,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         "funnels",
-		Name:        "Funis",
-		Location:    "Menu lateral › Funis",
+		Name:        "Funis e etapas",
+		Location:    "Menu lateral › Funis e etapas",
 		Description: "Cadastro dos funis e das etapas usadas no Kanban, nas oportunidades e nas campanhas.",
 		Capabilities: []Capability{
 			{Key: "funnels.view", Description: "Ver os funis e as etapas", Requires: []PermissionEntry{stagesRead}, Screens: []Screen{ScreenFunnels}},
@@ -79,8 +79,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         "deals",
-		Name:        "Vendas",
-		Location:    "Menu lateral › Vendas",
+		Name:        "Oportunidades",
+		Location:    "Menu lateral › Oportunidades",
 		Description: "Quadro de oportunidades de venda por funil, com valores, responsáveis e conversas vinculadas.",
 		Scopes:      []ScopeRule{ScopeDepartments, ScopeAssignedConversations},
 		Capabilities: []Capability{
