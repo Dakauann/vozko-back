@@ -168,31 +168,30 @@ func TestSendCapUsage_MatchesLevel(t *testing.T) {
 	}
 }
 
-func TestVerifySendCapUnlockCode(t *testing.T) {
-	if err := VerifySendCapUnlockCode(sendCapUnlockCode); err != nil {
-		t.Errorf("the configured code must verify, got %v", err)
+func TestVerifySendCapUnlockCode_EachAdminUsesTheirOwnCode(t *testing.T) {
+	cases := []struct {
+		name    string
+		email   string
+		code    string
+		wantErr bool
+	}{
+		{"first admin with own code", "dakauannc@gmail.com", "1601", false},
+		{"second admin with own code", "joscelioapinheiro@gmail.com", "9412", false},
+		{"first admin with the second admin's code", "dakauannc@gmail.com", "9412", true},
+		{"second admin with the first admin's code", "joscelioapinheiro@gmail.com", "1601", true},
+		{"a right code from someone off the list", "ops@vozkoia.com", "1601", true},
+		{"empty code", "dakauannc@gmail.com", "", true},
 	}
-	if err := VerifySendCapUnlockCode(" " + sendCapUnlockCode + " "); err != nil {
-		t.Errorf("surrounding spaces are ignored, got %v", err)
-	}
-	for _, code := range []string{"", "0000", sendCapUnlockCode + "0", sendCapUnlockCode[:3]} {
-		if code == sendCapUnlockCode {
-			continue
-		}
-		if err := VerifySendCapUnlockCode(code); !errors.Is(err, ErrInvalidUnlockCode) {
-			t.Errorf("%q: want ErrInvalidUnlockCode, got %v", code, err)
-		}
-	}
-}
-
-func TestSendCapUnlockCode_IsFourDigits(t *testing.T) {
-	if len(sendCapUnlockCode) != 4 {
-		t.Fatalf("unlock code must have 4 digits, has %d", len(sendCapUnlockCode))
-	}
-	for _, r := range sendCapUnlockCode {
-		if r < '0' || r > '9' {
-			t.Fatalf("unlock code must be numeric, got %q", sendCapUnlockCode)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := VerifySendCapUnlockCode(tc.email, tc.code)
+			if tc.wantErr && !errors.Is(err, ErrInvalidUnlockCode) {
+				t.Fatalf("want ErrInvalidUnlockCode, got %v", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("want accepted, got %v", err)
+			}
+		})
 	}
 }
 
@@ -239,8 +238,9 @@ func TestSendCapActor_Permissions(t *testing.T) {
 		wantUnlock bool
 	}{
 		{"system admin on the allowlist", SendCapActor{UserID: "u-1", Email: "dakauannc@gmail.com", SystemAdmin: true}, true, true},
-		{"second allowlisted system admin", SendCapActor{UserID: "u-2", Email: "dakauannc@vozkoia.com", SystemAdmin: true}, true, true},
+		{"second allowlisted system admin", SendCapActor{UserID: "u-2", Email: "joscelioapinheiro@gmail.com", SystemAdmin: true}, true, true},
 		{"system admin off the allowlist", SendCapActor{UserID: "u-3", Email: "ops@vozkoia.com", SystemAdmin: true}, true, false},
+		{"the old second address is no longer on the list", SendCapActor{UserID: "u-6", Email: "dakauannc@vozkoia.com", SystemAdmin: true}, true, false},
 		{"allowlisted email without the system admin role", SendCapActor{UserID: "u-4", Email: "dakauannc@gmail.com"}, false, false},
 		{"system admin without a user id", SendCapActor{Email: "dakauannc@gmail.com", SystemAdmin: true}, false, false},
 		{"regular user", SendCapActor{UserID: "u-5", Email: "someone@acme.com"}, false, false},

@@ -1,7 +1,6 @@
 package balance
 
 import (
-	"crypto/subtle"
 	"errors"
 	"sort"
 	"strings"
@@ -21,8 +20,6 @@ var (
 	ErrInvalidSendCapLevel      = errors.New("invalid monthly send cap level")
 	ErrSendCapForbidden         = errors.New("not allowed to manage monthly send caps")
 )
-
-const sendCapUnlockCode = "7314"
 
 const sendCapNearPercent = 80
 
@@ -146,8 +143,8 @@ func ParseSendCapLevel(raw string) (SendCapLevel, error) {
 	}
 }
 
-func VerifySendCapUnlockCode(code string) error {
-	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(code)), []byte(sendCapUnlockCode)) != 1 {
+func VerifySendCapUnlockCode(email, code string) error {
+	if !user.VerifySuperAdminPin(email, code) {
 		return ErrInvalidUnlockCode
 	}
 	return nil

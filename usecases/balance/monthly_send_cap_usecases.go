@@ -94,7 +94,7 @@ func (uc *unlockMonthlySendCapUseCase) Execute(actor balance.SendCapActor, input
 	if !actor.CanUnlock() {
 		return nil, balance.ErrSendCapForbidden
 	}
-	if err := balance.VerifySendCapUnlockCode(input.Code); err != nil {
+	if err := balance.VerifySendCapUnlockCode(actor.Email, input.Code); err != nil {
 		log.Printf("[monthly-send-cap] rejected unlock code for workspace %s from %s", input.WorkspaceID, actor.UserID)
 		return nil, err
 	}

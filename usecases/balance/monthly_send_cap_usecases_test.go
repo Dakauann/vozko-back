@@ -2,7 +2,6 @@ package balance_usecase
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -15,6 +14,7 @@ var capNow = time.Date(2026, 9, 26, 15, 0, 0, 0, time.UTC)
 var (
 	systemAdmin = balance.SendCapActor{UserID: "admin-1", Email: "ops@vozkoia.com", SystemAdmin: true}
 	superAdmin  = balance.SendCapActor{UserID: "root-1", Email: "dakauannc@gmail.com", SystemAdmin: true}
+	secondAdmin = balance.SendCapActor{UserID: "root-2", Email: "joscelioapinheiro@gmail.com", SystemAdmin: true}
 	regularUser = balance.SendCapActor{UserID: "user-1", Email: "dakauannc@gmail.com"}
 )
 
@@ -74,14 +74,7 @@ func fixedClock() time.Time { return capNow }
 
 func validUnlockCode(t *testing.T) string {
 	t.Helper()
-	for i := 0; i < 10000; i++ {
-		code := fmt.Sprintf("%04d", i)
-		if balance.VerifySendCapUnlockCode(code) == nil {
-			return code
-		}
-	}
-	t.Fatal("no four digit code verifies")
-	return ""
+	return "1601"
 }
 
 func TestListMonthlySendCaps_OnlySystemAdmins(t *testing.T) {
@@ -252,6 +245,36 @@ func TestUnlockMonthlySendCap_Refusals(t *testing.T) {
 			}
 			if len(tc.caps.deleted) != 0 {
 				t.Fatal("a refused unlock must not delete the cap")
+			}
+		})
+	}
+}
+
+func TestUnlockMonthlySendCap_EachAdminUnlocksWithTheirOwnCode(t *testing.T) {
+	limit := int64(500)
+	cases := []struct {
+		name  string
+		actor balance.SendCapActor
+		code  string
+		want  error
+	}{
+		{"first admin, own code", superAdmin, "1601", nil},
+		{"second admin, own code", secondAdmin, "9412", nil},
+		{"first admin, second admin's code", superAdmin, "9412", balance.ErrInvalidUnlockCode},
+		{"second admin, first admin's code", secondAdmin, "1601", balance.ErrInvalidUnlockCode},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			caps := newMemoryCaps(balance.MonthlySendCap{WorkspaceID: "ws-1", Limit: 100})
+			got, err := NewUnlockMonthlySendCapUseCase(caps, fixedClock).Execute(tc.actor, balance.UnlockMonthlySendCapInput{WorkspaceID: "ws-1", Limit: &limit, Code: tc.code})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("want %v, got %v", tc.want, err)
+			}
+			if tc.want == nil && (got == nil || got.UnlockedBy == nil || *got.UnlockedBy != tc.actor.UserID || caps.caps["ws-1"].Limit != 500) {
+				t.Fatalf("the unlock must be recorded against %s, got %+v", tc.actor.UserID, got)
+			}
+			if tc.want != nil && caps.caps["ws-1"].Limit != 100 {
+				t.Fatal("a refused unlock leaves the limit alone")
 			}
 		})
 	}
