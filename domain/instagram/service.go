@@ -104,6 +104,11 @@ type SendResult struct {
 	MessageID   string
 }
 
+type MessageSender struct {
+	ID       string
+	Username string
+}
+
 type ContactProfileResult struct {
 	Username             string
 	Name                 string
@@ -127,6 +132,7 @@ type MessagingService interface {
 	SendPrivateReply(ctx context.Context, igUserID, token, igCommentID, text string) (*SendResult, error)
 
 	GetContactProfile(ctx context.Context, token, igsid string) (*ContactProfileResult, error)
+	GetMessageSender(ctx context.Context, token, mid string) (*MessageSender, error)
 
 	GetConversations(ctx context.Context, igUserID, token string, limit int) error
 }

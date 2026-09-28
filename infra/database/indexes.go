@@ -566,7 +566,27 @@ func createSchemaConstraints(tx *gorm.DB) error {
 		},
 
 		{
+			name: "ux_fb_contact_page_psid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_fb_contact_page_psid
+				ON facebook_contacts (page_id, psid)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_fb_conversation_page_contact",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_fb_conversation_page_contact
+				ON facebook_conversations (page_id, contact_id)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_fb_grant_workspace_user_business",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_fb_grant_workspace_user_business
+				ON facebook_grants (workspace_id, app_scoped_user_id, client_business_id)
+				WHERE deleted_at IS NULL`,
+		},
+
+		{
 			name: "ux_tg_account_bot_user",
+
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_account_bot_user
 				ON telegram_accounts (bot_user_id)
 				WHERE deleted_at IS NULL`,

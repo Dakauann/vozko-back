@@ -44,7 +44,7 @@ func TestSource_Valid(t *testing.T) {
 	if !SourceInstagram.Valid() {
 		t.Error("instagram should be a valid source")
 	}
-	for _, s := range []Source{"", "Instagram", "facebook", "instagram "} {
+	for _, s := range []Source{"", "Instagram", "messenger", "instagram "} {
 		if s.Valid() {
 			t.Errorf("%q should be invalid", s)
 		}
@@ -98,6 +98,7 @@ func TestParseContainerKey_RejectsKindChannelMismatch(t *testing.T) {
 	}
 	for _, k := range []string{
 		"instagram:acc:post",
+		"facebook:page:1_2",
 		"conversation:telegram:acc:chat",
 		"conversation:instagram:acc:camp",
 	} {
@@ -108,7 +109,7 @@ func TestParseContainerKey_RejectsKindChannelMismatch(t *testing.T) {
 }
 
 func TestParseContainerKey_Rejects(t *testing.T) {
-	for _, k := range []string{"", "instagram", "instagram:acc", "facebook:a:b", "instagram::b", "instagram:a:", ":a:b"} {
+	for _, k := range []string{"", "instagram", "instagram:acc", "myspace:a:b", "instagram::b", "instagram:a:", ":a:b"} {
 		if _, err := ParseContainerKey(k); err == nil {
 			t.Errorf("ParseContainerKey(%q) should fail", k)
 		}

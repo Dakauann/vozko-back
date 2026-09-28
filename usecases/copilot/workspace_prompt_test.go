@@ -33,3 +33,12 @@ func TestWorkspacePromptIsEmptyWithoutASnapshot(t *testing.T) {
 		t.Fatal("no snapshot must add nothing")
 	}
 }
+
+func TestWorkspacePromptNamesFacebookPages(t *testing.T) {
+	text := workspacePrompt(&readiness.Snapshot{SubscriptionActive: true, Capabilities: []readiness.Status{
+		{Capability: readiness.Facebook, Count: 1, CanAdd: true},
+	}})
+	if !strings.Contains(text, "Páginas do Facebook: 1; pode adicionar") {
+		t.Errorf("missing the Facebook line in:\n%s", text)
+	}
+}

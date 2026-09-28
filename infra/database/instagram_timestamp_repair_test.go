@@ -30,3 +30,24 @@ func TestRepairInstagramSecondTimestampsIsRegistered(t *testing.T) {
 	}
 	t.Fatal("the Instagram timestamp repair is not registered in runDataRepairs")
 }
+
+func TestClearStoryPlaceholdersOnlyTouchesStoryRows(t *testing.T) {
+	db, mock, sqlDB := newRepairDB(t)
+	defer sqlDB.Close()
+
+	mock.ExpectExec(`UPDATE conversation_messages\s+SET text = ''\s+WHERE message_type IN \('story_mention', 'story_reply'\)\s+AND text = '\[unsupported message\]'`).
+		WillReturnResult(sqlmock.NewResult(0, 25))
+
+	if err := clearStoryPlaceholders(db); err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range repairNames() {
+		if name == "cm_clear_story_placeholders" {
+			return
+		}
+	}
+	t.Fatal("the story placeholder repair is not registered")
+}

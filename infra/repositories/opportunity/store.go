@@ -2,7 +2,6 @@ package opportunity_repository
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -35,6 +34,7 @@ func (r *repository) Create(o *opportunity.Opportunity, links []opportunity.Conv
 		return err
 	}
 	o.ID = row.ID
+	o.Version = row.Version
 	o.CreatedAt = row.CreatedAt
 	o.UpdatedAt = row.UpdatedAt
 	return nil
@@ -64,19 +64,36 @@ func (r *repository) Update(o *opportunity.Opportunity, events []opportunity.Eve
 		"source":         o.Source,
 		"close_date":     o.CloseDate,
 		"custom_fields":  customJSON,
+		"version":        gorm.Expr("version + 1"),
 	}
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	err = r.db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&schema.Opportunity{}).
-			Where("id = ? AND workspace_id = ?", o.ID, o.WorkspaceID).
+			Where("id = ? AND workspace_id = ? AND version = ?", o.ID, o.WorkspaceID, o.Version).
 			Updates(update)
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
-			return opportunity.ErrNotFound
+			return staleOrMissing(tx, o)
 		}
 		return insertEvents(tx, events)
 	})
+	if err != nil {
+		return err
+	}
+	o.Version++
+	return nil
+}
+
+func staleOrMissing(tx *gorm.DB, o *opportunity.Opportunity) error {
+	var count int64
+	if err := tx.Model(&schema.Opportunity{}).Where("id = ? AND workspace_id = ?", o.ID, o.WorkspaceID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return opportunity.ErrNotFound
+	}
+	return opportunity.ErrStaleDeal
 }
 
 func (r *repository) Link(link opportunity.ConversationLink, events []opportunity.Event) error {
@@ -88,34 +105,30 @@ func (r *repository) Link(link opportunity.ConversationLink, events []opportunit
 	})
 }
 
-func (r *repository) OpenForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
-	return r.firstEntryDeal(r.entryDeals(workspaceID, pipelineID, entryID, entryType).
-		Where("o.status = ?", string(opportunity.StatusOpen)))
-}
+const entryDealsLimit = 100
 
-func (r *repository) CurrentForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
-	return r.firstEntryDeal(r.entryDeals(workspaceID, pipelineID, entryID, entryType).
-		Order(clause.Expr{SQL: "o.status = ? DESC", Vars: []interface{}{string(opportunity.StatusOpen)}}))
-}
-
-func (r *repository) entryDeals(workspaceID, pipelineID, entryID, entryType string) *gorm.DB {
-	return r.db.Table("opportunities AS o").
+func (r *repository) DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error) {
+	var rows []schema.Opportunity
+	if err := r.db.Table("opportunities AS o").
 		Select("o.*").
 		Joins("JOIN opportunity_conversations oc ON oc.opportunity_id = o.id").
 		Where("o.deleted_at IS NULL AND o.workspace_id = ? AND o.pipeline_id = ?", workspaceID, pipelineID).
-		Where("oc.entry_id = ? AND oc.entry_type = ?", entryID, entryType)
-}
-
-func (r *repository) firstEntryDeal(query *gorm.DB) (*opportunity.Opportunity, error) {
-	var row schema.Opportunity
-	err := query.Order("o.created_at DESC").Limit(1).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, opportunity.ErrNotFound
-	}
-	if err != nil {
+		Where("oc.entry_id = ? AND oc.entry_type = ?", entryID, entryType).
+		Order(clause.Expr{SQL: "o.status = ? DESC", Vars: []interface{}{string(opportunity.StatusOpen)}}).
+		Order("o.created_at DESC").
+		Limit(entryDealsLimit).
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	return mapToDomain(&row)
+	deals := make(opportunity.EntryDeals, 0, len(rows))
+	for i := range rows {
+		deal, err := mapToDomain(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		deals = append(deals, deal)
+	}
+	return deals, nil
 }
 
 func (r *repository) ListEvents(workspaceID, opportunityID string) ([]opportunity.Event, error) {

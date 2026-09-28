@@ -1680,6 +1680,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	var windowOpen bool
 	var windowExpiresAt *time.Time
 	var windowClosedReason string
+	var windowTier string
 	var messages []*conversation.Message
 	var hasMore bool
 	var total int64
@@ -1688,7 +1689,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		leadName, leadNumber, leadPicture, leadMetadata, entryVariables, automationEnabled, _ = h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
 		unreadCount, _ = h.historyProvider.GetUnreadCount(p.EntryID, shared.EntryType(p.EntryType))
 		window := h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
-		windowOpen, windowExpiresAt, windowClosedReason = window.Open, window.ExpiresAt, string(window.Reason)
+		windowOpen, windowExpiresAt, windowClosedReason, windowTier = window.Open, window.ExpiresAt, string(window.Reason), string(window.Tier)
 	}
 	if h.historyReader != nil {
 		page, histErr := h.historyReader.ReadHistory(conversation.HistoryQuery{
@@ -1731,6 +1732,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 			WindowOpen:         windowOpen,
 			WindowExpiresAt:    windowExpiresAt,
 			WindowClosedReason: windowClosedReason,
+			WindowTier:         windowTier,
 		},
 	})
 

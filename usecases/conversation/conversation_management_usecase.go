@@ -178,19 +178,9 @@ func contactDisplayNames(entryType shared.EntryType, c ContactDisplay) (name, ha
 		name = handle
 	}
 	if name == "" {
-		name = channelDisplayLabel(entryType)
+		name = entryType.DisplayLabel()
 	}
 	return name, handle
-}
-
-func channelDisplayLabel(entryType shared.EntryType) string {
-	switch entryType {
-	case shared.EntryTypeInstagram:
-		return "Instagram"
-	case shared.EntryTypeTelegram:
-		return "Telegram"
-	}
-	return string(entryType)
 }
 
 func (s *HistoryProviderService) SetWorkflowLookups(runs workflowRunLookup, workflows workflowLookup) {
@@ -1117,6 +1107,14 @@ func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLa
 	}
 
 	text := e.LastMessageText
+	if text == "" {
+		switch e.LastMessageType {
+		case conversation.MessageTypeStoryMention:
+			return "[menção em story]"
+		case conversation.MessageTypeStoryReply:
+			return "[resposta a story]"
+		}
+	}
 	if len(text) > 50 {
 		truncateAt := 47
 		for i := 47; i > 30; i-- {

@@ -20,6 +20,7 @@ const (
 	KindInstagram          Kind = "instagram"
 	KindTelegram           Kind = "telegram"
 	KindUnofficialWhatsApp Kind = "unofficial_whatsapp"
+	KindFacebook           Kind = "facebook"
 
 	KindWhatsApp Kind = "whatsapp"
 )
@@ -38,8 +39,9 @@ type Capabilities struct {
 	MaxTextBytes int
 	MaxTextRunes int
 
-	OutboundWindow time.Duration
-	ExtendedWindow time.Duration
+	OutboundWindow   time.Duration
+	ExtendedWindow   time.Duration
+	HumanAgentWindow bool
 
 	SignatureFormat string
 

@@ -2,57 +2,20 @@ package opportunity_repository
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"vozko/domain/opportunity"
 	"vozko/infra/database/schema"
+	"vozko/infra/repositories/repotest"
 )
 
-func integrationDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-}
-
 func integrationDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
-	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
-	admin, err := gorm.Open(postgres.Open(integrationDSN()), silent)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	schemaName := "opp_test_" + uuid.New().String()[:8]
-	if err := admin.Exec("CREATE SCHEMA " + schemaName).Error; err != nil {
-		t.Fatalf("create schema: %v", err)
-	}
-	db, err := gorm.Open(postgres.Open(integrationDSN()+" search_path="+schemaName), silent)
-	if err != nil {
-		t.Fatalf("open schema: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		_ = admin.Exec("DROP SCHEMA " + schemaName + " CASCADE").Error
-		if sqlDB, err := admin.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := db.AutoMigrate(&schema.Opportunity{}, &schema.OpportunityConversation{}, &schema.OpportunityEvent{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
+	return repotest.IsolatedDB(t, "opp_test", &schema.Opportunity{}, &schema.OpportunityConversation{}, &schema.OpportunityEvent{})
 }
 
 func newDeal(ws, pipeline, owner string) *opportunity.Opportunity {
@@ -175,32 +138,38 @@ func TestUpdateCommitsItsEvents(t *testing.T) {
 	}
 }
 
-func TestOpenForEntryFindsOnlyTheOpenDealOfThatFunnel(t *testing.T) {
+func TestDealsForEntryListsThisFunnelsDealsOpenFirst(t *testing.T) {
 	repo := NewRepository(integrationDB(t))
 	ws, pipeline, entry := uuid.New().String(), uuid.New().String(), uuid.New().String()
-	link := func(d *opportunity.Opportunity) []opportunity.ConversationLink {
-		return []opportunity.ConversationLink{{OpportunityID: d.ID, EntryID: entry, EntryType: "whatsapp"}}
+	create := func(d *opportunity.Opportunity) {
+		t.Helper()
+		if err := repo.Create(d, []opportunity.ConversationLink{{OpportunityID: d.ID, EntryID: entry, EntryType: "whatsapp"}}, nil); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	deals, err := repo.DealsForEntry(ws, pipeline, entry, "whatsapp")
+	if err != nil || len(deals) != 0 {
+		t.Fatalf("DealsForEntry() with no deal = %v, %v", deals, err)
 	}
 
 	won := newDeal(ws, pipeline, uuid.New().String())
 	won.Status = opportunity.StatusWon
-	otherFunnel := newDeal(ws, uuid.New().String(), uuid.New().String())
-	for _, d := range []*opportunity.Opportunity{won, otherFunnel} {
-		if err := repo.Create(d, link(d), nil); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-	}
-	if _, err := repo.OpenForEntry(ws, pipeline, entry, "whatsapp"); !errors.Is(err, opportunity.ErrNotFound) {
-		t.Fatalf("OpenForEntry() with only a won deal and another funnel's deal = %v, want ErrNotFound", err)
-	}
+	create(won)
+	time.Sleep(5 * time.Millisecond)
+	first := newDeal(ws, pipeline, uuid.New().String())
+	create(first)
+	time.Sleep(5 * time.Millisecond)
+	second := newDeal(ws, pipeline, uuid.New().String())
+	create(second)
+	create(newDeal(ws, uuid.New().String(), uuid.New().String()))
 
-	open := newDeal(ws, pipeline, uuid.New().String())
-	if err := repo.Create(open, link(open), nil); err != nil {
-		t.Fatalf("Create() error = %v", err)
+	deals, err = repo.DealsForEntry(ws, pipeline, entry, "whatsapp")
+	if err != nil || len(deals) != 3 {
+		t.Fatalf("DealsForEntry() = %v, %v, want the three deals of this funnel", deals, err)
 	}
-	got, err := repo.OpenForEntry(ws, pipeline, entry, "whatsapp")
-	if err != nil || got.ID != open.ID {
-		t.Fatalf("OpenForEntry() = %v, %v, want the open deal", got, err)
+	if deals[0].ID != second.ID || deals[1].ID != first.ID || deals[2].ID != won.ID {
+		t.Fatalf("order = %s %s %s, want open deals newest first, then closed", deals[0].ID, deals[1].ID, deals[2].ID)
 	}
 }
 
@@ -216,10 +185,12 @@ func TestConcurrentAutomationsCreateExactlyOneDeal(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			errs <- repo.WithEntryLock(ws, entry, "whatsapp", func(store opportunity.Store) error {
-				if _, err := store.OpenForEntry(ws, pipeline, entry, "whatsapp"); err == nil {
-					return nil
-				} else if !errors.Is(err, opportunity.ErrNotFound) {
+				deals, err := store.DealsForEntry(ws, pipeline, entry, "whatsapp")
+				if err != nil {
 					return err
+				}
+				if len(deals.Open()) > 0 {
+					return nil
 				}
 				deal := newDeal(ws, pipeline, "ai:"+uuid.New().String())
 				return store.Create(deal, []opportunity.ConversationLink{{OpportunityID: deal.ID, EntryID: entry, EntryType: "whatsapp"}}, nil)
@@ -241,38 +212,35 @@ func TestConcurrentAutomationsCreateExactlyOneDeal(t *testing.T) {
 	}
 }
 
-func TestCurrentForEntryPrefersTheOpenDealThenTheLatestClosedOne(t *testing.T) {
+func TestTwoSavesFromTheSameReadCannotBothWin(t *testing.T) {
 	repo := NewRepository(integrationDB(t))
-	ws, pipeline, entry := uuid.New().String(), uuid.New().String(), uuid.New().String()
-	create := func(d *opportunity.Opportunity) {
-		t.Helper()
-		if err := repo.Create(d, []opportunity.ConversationLink{{OpportunityID: d.ID, EntryID: entry, EntryType: "whatsapp"}}, nil); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
+	ws, pipeline := uuid.New().String(), uuid.New().String()
+	deal := newDeal(ws, pipeline, uuid.New().String())
+	if err := repo.Create(deal, nil, nil); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if deal.Version != 1 {
+		t.Fatalf("a new deal starts at version 1, got %d", deal.Version)
 	}
 
-	if _, err := repo.CurrentForEntry(ws, pipeline, entry, "whatsapp"); !errors.Is(err, opportunity.ErrNotFound) {
-		t.Fatalf("CurrentForEntry() with no deal = %v, want ErrNotFound", err)
+	first, _ := repo.GetByID(ws, deal.ID)
+	second, _ := repo.GetByID(ws, deal.ID)
+	first.ValueCents = 1500
+	if err := repo.Update(first, nil); err != nil {
+		t.Fatalf("first save error = %v", err)
+	}
+	second.ValueCents = 9900
+	if err := repo.Update(second, nil); !errors.Is(err, opportunity.ErrStaleDeal) {
+		t.Fatalf("second save from the same read error = %v, want ErrStaleDeal", err)
 	}
 
-	lost := newDeal(ws, pipeline, uuid.New().String())
-	lost.Status, lost.LostReasonID = opportunity.StatusLost, "preço"
-	create(lost)
-	time.Sleep(5 * time.Millisecond)
-	won := newDeal(ws, pipeline, uuid.New().String())
-	won.Status = opportunity.StatusWon
-	create(won)
-	create(newDeal(ws, uuid.New().String(), uuid.New().String()))
-
-	got, err := repo.CurrentForEntry(ws, pipeline, entry, "whatsapp")
-	if err != nil || got.ID != won.ID {
-		t.Fatalf("CurrentForEntry() = %v, %v, want the latest closed deal", got, err)
+	stored, _ := repo.GetByID(ws, deal.ID)
+	if stored.ValueCents != 1500 || stored.Version != 2 {
+		t.Fatalf("stored = value %d version %d, want 1500 and 2", stored.ValueCents, stored.Version)
 	}
 
-	open := newDeal(ws, pipeline, uuid.New().String())
-	create(open)
-	got, err = repo.CurrentForEntry(ws, pipeline, entry, "whatsapp")
-	if err != nil || got.ID != open.ID {
-		t.Fatalf("CurrentForEntry() = %v, %v, want the open deal", got, err)
+	missing := newDeal(ws, pipeline, uuid.New().String())
+	if err := repo.Update(missing, nil); !errors.Is(err, opportunity.ErrNotFound) {
+		t.Fatalf("a missing deal must stay not found, got %v", err)
 	}
 }

@@ -176,7 +176,7 @@ func ValidateNodeConfigs(g *Graph, catalog []NodeDefinition, validators ...Confi
 			continue
 		}
 		for _, field := range def.ConfigSchema {
-			if field.Required {
+			if field.RequiredFor(n.Config) {
 				val, exists := n.Config[field.Key]
 				if !exists || isEmpty(val) {
 					return fmt.Errorf("%w: node %q (%s) field %q", ErrNodeMissingRequiredField, n.ID, n.Type, field.Key)

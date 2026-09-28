@@ -15,6 +15,7 @@ const (
 	EntryTypeInstagram          EntryType = "instagram"
 	EntryTypeTelegram           EntryType = "telegram"
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
+	EntryTypeFacebook           EntryType = "facebook"
 )
 
 func (t EntryType) HasSendStatus() bool {

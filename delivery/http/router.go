@@ -16,14 +16,16 @@ import (
 	buildersessionhttp "vozko/delivery/http/buildersession"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
-	campaignreporthttp "vozko/delivery/http/campaignreport"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
+	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
+	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
@@ -35,6 +37,7 @@ import (
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
+	metaplatformhttp "vozko/delivery/http/metaplatform"
 	opportunityhttp "vozko/delivery/http/opportunity"
 	opportunityboardhttp "vozko/delivery/http/opportunityboard"
 	paymentsplithttp "vozko/delivery/http/paymentsplit"
@@ -119,6 +122,7 @@ type router struct {
 	stageGroupHandler              *handlers.StageGroupHandler
 	pipelineHandler                *pipelinehttp.PipelineHandler
 	savedViewHandler               *savedviewhttp.SavedViewHandler
+	dealAutomationHandler          *dealautomationhttp.Handler
 	opportunityHandler             *opportunityhttp.OpportunityHandler
 	opportunityBoardHandler        *opportunityboardhttp.OpportunityBoardHandler
 	customFieldHandler             *customfieldhttp.CustomFieldHandler
@@ -153,6 +157,7 @@ type router struct {
 	metaEmbeddedSignupHandler      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler
 	instagramHandler               *instagramhttp.Handler
 	instagramWebhookHandler        *instagramhttp.WebhookHandler
+	metaChannels                   MetaChannelRoutes
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
@@ -224,6 +229,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	stageGroupHandler *handlers.StageGroupHandler,
 	pipelineHandler *pipelinehttp.PipelineHandler,
 	savedViewHandler *savedviewhttp.SavedViewHandler,
+	dealAutomationHandler *dealautomationhttp.Handler,
 	opportunityHandler *opportunityhttp.OpportunityHandler,
 	opportunityBoardHandler *opportunityboardhttp.OpportunityBoardHandler,
 	customFieldHandler *customfieldhttp.CustomFieldHandler,
@@ -280,8 +286,10 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler,
 	audienceHandler *audiencehttp.Handler,
 	sendCapHandler *balancehttp.SendCapHandler,
+	metaChannels MetaChannelRoutes,
 ) Router {
 	r := &router{
+		metaChannels:                   metaChannels,
 		instagramHandler:               instagramHandler,
 		audienceHandler:                audienceHandler,
 		sendCapHandler:                 sendCapHandler,
@@ -332,6 +340,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		stageGroupHandler:              stageGroupHandler,
 		pipelineHandler:                pipelineHandler,
 		savedViewHandler:               savedViewHandler,
+		dealAutomationHandler:          dealAutomationHandler,
 		opportunityHandler:             opportunityHandler,
 		opportunityBoardHandler:        opportunityBoardHandler,
 		customFieldHandler:             customFieldHandler,
@@ -443,6 +452,8 @@ func (r *router) setupRoutes() {
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
 	r.setupInstagramRoutes(protected)
+	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
+
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
 	r.setupUnofficialWhatsAppRoutes(protected)
@@ -514,7 +525,6 @@ func (r *router) setupRoutes() {
 
 	calendarhttp.RegisterPublicRoutes(r.mux, r.calendarHandler)
 }
-
 
 func (r *router) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -641,6 +651,9 @@ func (r *router) setupWebhookRoutes() {
 	r.mux.HandleFunc("/webhooks/whatsapp", r.webhookHandler.HandleWhatsAppWebhook).Methods(http.MethodGet, http.MethodPost)
 	metaembeddedsignuphttp.RegisterPublicRoutes(r.mux, r.metaEmbeddedSignupHandler)
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
+	metaplatformhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Platform)
+	facebookhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Facebook, r.metaChannels.FacebookWebhook)
+
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)
@@ -997,6 +1010,7 @@ func (r *router) setupPipelineRoutes(protected *mux.Router) {
 
 func (r *router) setupSavedViewRoutes(protected *mux.Router) {
 	savedviewhttp.RegisterRoutes(protected, r.savedViewHandler, r.ac)
+	dealautomationhttp.RegisterRoutes(protected, r.dealAutomationHandler)
 }
 
 func (r *router) setupOpportunityRoutes(protected *mux.Router) {

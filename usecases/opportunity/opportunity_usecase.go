@@ -9,6 +9,7 @@ import (
 	"vozko/domain/customfield"
 	"vozko/domain/lead"
 	"vozko/domain/opportunity"
+	"vozko/domain/workspace"
 )
 
 const objectType = "opportunity"
@@ -19,6 +20,7 @@ var (
 	ErrActorRequired          = errors.New("opportunity: the acting user, agent or workflow is required")
 	ErrOwnerOutsideWorkspace  = errors.New("opportunity: the owner does not belong to this workspace")
 	ErrOwnerDirectoryMissing  = errors.New("opportunity: owners cannot be verified")
+	ErrOwnerChoiceDenied      = errors.New("opportunity: choosing another owner requires permission to assign conversations")
 	ErrPipelineNotFound       = errors.New("opportunity: pipeline not found")
 	ErrNotOpportunityPipeline = errors.New("opportunity: the pipeline is not a deals pipeline")
 	ErrStageNotFound          = errors.New("opportunity: stage not found")
@@ -43,7 +45,12 @@ type Deps struct {
 	Owners    opportunity.OwnerDirectory
 	Leads     LeadDirectory
 	Entries   EntryDirectory
+	Assign    AssignAccess
 	Clock     func() time.Time
+}
+
+type AssignAccess interface {
+	Execute(userID, workspaceID string, resource workspace.Resource, action workspace.Action) error
 }
 
 type Service struct {
@@ -55,6 +62,7 @@ type Service struct {
 	owners    opportunity.OwnerDirectory
 	leads     LeadDirectory
 	entries   EntryDirectory
+	assign    AssignAccess
 	now       func() time.Time
 }
 
@@ -72,6 +80,7 @@ func NewService(deps Deps) *Service {
 		owners:    deps.Owners,
 		leads:     deps.Leads,
 		entries:   deps.Entries,
+		assign:    deps.Assign,
 		now:       clock,
 	}
 }
@@ -93,7 +102,8 @@ type CreateInput struct {
 	LinkEntryID   string
 	LinkEntryType string
 
-	Actor string
+	Actor                string
+	ActorIsPlatformAdmin bool
 }
 
 func (s *Service) Create(workspaceID string, in CreateInput) (*opportunity.Opportunity, error) {
@@ -130,6 +140,9 @@ func (s *Service) prepareCreate(workspaceID string, in CreateInput) (*opportunit
 		if err := s.checkEntry(workspaceID, in.LinkEntryID, in.LinkEntryType); err != nil {
 			return nil, nil, nil, err
 		}
+	}
+	if err := s.mayChooseOwner(workspaceID, in.Actor, in.OwnerID, in.ActorIsPlatformAdmin); err != nil {
+		return nil, nil, nil, err
 	}
 	owner := in.OwnerID
 	if owner == "" {
@@ -189,10 +202,13 @@ type UpdateInput struct {
 	CustomFields map[string]any
 	StageID      *string
 	LostReasonID *string
+
+	ExpectedVersion      *int64
+	ActorIsPlatformAdmin bool
 }
 
 func (s *Service) Update(workspaceID, id string, in UpdateInput, actorID string) (*opportunity.Opportunity, error) {
-	return s.change(workspaceID, id, actorID, func(o *opportunity.Opportunity, now time.Time) error {
+	return s.change(workspaceID, id, actorID, in.ExpectedVersion, func(o *opportunity.Opportunity, now time.Time) error {
 		if in.Title != nil {
 			o.Title = *in.Title
 		}
@@ -212,6 +228,9 @@ func (s *Service) Update(workspaceID, id string, in UpdateInput, actorID string)
 			o.LostReasonID = *in.LostReasonID
 		}
 		if in.OwnerID != nil {
+			if err := s.mayChooseOwner(workspaceID, actorID, *in.OwnerID, in.ActorIsPlatformAdmin); err != nil {
+				return err
+			}
 			if err := s.checkOwner(workspaceID, *in.OwnerID); err != nil {
 				return err
 			}
@@ -231,12 +250,13 @@ func (s *Service) Update(workspaceID, id string, in UpdateInput, actorID string)
 }
 
 type MoveStageInput struct {
-	StageID      string
-	LostReasonID string
+	StageID         string
+	LostReasonID    string
+	ExpectedVersion *int64
 }
 
 func (s *Service) MoveStage(workspaceID, id string, in MoveStageInput, actorID string) (*opportunity.Opportunity, error) {
-	return s.change(workspaceID, id, actorID, func(o *opportunity.Opportunity, now time.Time) error {
+	return s.change(workspaceID, id, actorID, in.ExpectedVersion, func(o *opportunity.Opportunity, now time.Time) error {
 		if in.LostReasonID != "" {
 			o.LostReasonID = in.LostReasonID
 		}
@@ -246,6 +266,7 @@ func (s *Service) MoveStage(workspaceID, id string, in MoveStageInput, actorID s
 
 func (s *Service) change(
 	workspaceID, id, actorID string,
+	expectedVersion *int64,
 	mutate func(o *opportunity.Opportunity, now time.Time) error,
 ) (*opportunity.Opportunity, error) {
 	if actorID == "" {
@@ -253,6 +274,9 @@ func (s *Service) change(
 	}
 	current, err := s.repo.GetByID(workspaceID, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := current.Expects(expectedVersion); err != nil {
 		return nil, err
 	}
 	before := *current

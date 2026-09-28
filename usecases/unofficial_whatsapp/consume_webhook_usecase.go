@@ -3,7 +3,6 @@ package unofficial_whatsapp
 import (
 	"context"
 	"errors"
-	"log"
 
 	"vozko/domain/cache"
 	"vozko/domain/messaging"
@@ -33,7 +32,7 @@ func NewConsumeWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
 	queuePub messaging.MessageQueuePub,
 	sharedState cache.SharedState,
-	durable uw.ProcessedEventRepository,
+	durable webhook.ProcessedEventRepository,
 	handler *HandleWebhookUseCase,
 ) *ConsumeWebhookUseCase {
 	build := func(topic, name string, concurrency int) *webhook_usecase.ConsumerRunner[QueuedEvent] {
@@ -43,7 +42,7 @@ func NewConsumeWebhookUseCase(
 			QueueSub:    queueSub,
 			QueuePub:    queuePub,
 			SharedState: sharedState,
-			Durable:     durableAdapter{repo: durable},
+			Durable:     durable,
 			Concurrency: concurrency,
 			DedupKey:    dedupKeyForEvent,
 			Handle: func(ctx context.Context, q *QueuedEvent) error {
@@ -109,16 +108,4 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 	}
 
 	return webhook_usecase.DispositionRetry
-}
-
-type durableAdapter struct {
-	repo uw.ProcessedEventRepository
-}
-
-func (a durableAdapter) Claim(ctx context.Context, key, channel, instanceID string) (bool, error) {
-	if a.repo == nil {
-		log.Printf("[unofficial-whatsapp] no durable dedup store; relying on the Redis guard alone")
-		return true, nil
-	}
-	return a.repo.Claim(ctx, key, channel, instanceID)
 }

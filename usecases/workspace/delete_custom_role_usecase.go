@@ -12,14 +12,8 @@ func NewDeleteCustomRoleUseCase(repo workspace.Repository, roleRepo workspace.Cu
 }
 
 func (uc *deleteCustomRoleUseCase) Execute(actorID, workspaceID, callerRole, roleID string) error {
-	if callerRole != "admin" {
-		actor := mustBeMember(uc.repo, workspaceID, actorID)
-		if actor == nil {
-			return workspace.ErrUnauthorized
-		}
-		if !actor.Role.CanManageMembers() {
-			return workspace.ErrInsufficientPermissions
-		}
+	if err := requireManager(uc.repo, workspaceID, actorID, callerRole); err != nil {
+		return err
 	}
 
 	role, err := uc.roleRepo.GetRoleByID(roleID)

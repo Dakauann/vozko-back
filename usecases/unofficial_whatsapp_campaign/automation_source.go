@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"vozko/domain/campaign"
+	"vozko/domain/conversation"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	convuc "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
@@ -87,6 +88,7 @@ func (s *AutomationSource) AnalysisResolver(base convuc.AnalysisSubjectResolver)
 		}
 		overridden := *subject
 		overridden.ContainerID, overridden.ContainerName = camp.ID, camp.Name
+		overridden.ContainerKind = conversation.ContainerKindCampaign
 		overridden.AgentID, overridden.AIModel = camp.AgentID, camp.AiModel
 		overridden.EnableAnalysis = camp.EnableAnalysis
 		overridden.EnableAutoStaging = camp.EnableAutoStaging

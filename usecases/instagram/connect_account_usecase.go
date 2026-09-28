@@ -8,12 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"vozko/domain/cache"
 	igdomain "vozko/domain/instagram"
 	"vozko/infra/meta"
+	"vozko/usecases/shared/oauthstate"
 )
-
-const nonceTTL = 15 * time.Minute
 
 type StartConnectInput struct {
 	WorkspaceID string
@@ -45,10 +43,7 @@ type ConnectAccountUseCase struct {
 	subscription igdomain.SubscriptionService
 	messaging    igdomain.MessagingService
 	accounts     igdomain.AccountRepository
-	sharedState  cache.SharedState
-
-	appSecret         string
-	defaultReturnPath string
+	states       *oauthstate.Issuer
 }
 
 func NewConnectAccountUseCase(
@@ -56,21 +51,14 @@ func NewConnectAccountUseCase(
 	subscription igdomain.SubscriptionService,
 	messaging igdomain.MessagingService,
 	accounts igdomain.AccountRepository,
-	sharedState cache.SharedState,
-	appSecret string,
-	defaultReturnPath string,
+	states *oauthstate.Issuer,
 ) *ConnectAccountUseCase {
-	if defaultReturnPath == "" {
-		defaultReturnPath = "/dashboard/instagram-accounts"
-	}
 	return &ConnectAccountUseCase{
-		oauth:             oauth,
-		subscription:      subscription,
-		messaging:         messaging,
-		accounts:          accounts,
-		sharedState:       sharedState,
-		appSecret:         appSecret,
-		defaultReturnPath: defaultReturnPath,
+		oauth:        oauth,
+		subscription: subscription,
+		messaging:    messaging,
+		accounts:     accounts,
+		states:       states,
 	}
 }
 
@@ -79,31 +67,14 @@ func (uc *ConnectAccountUseCase) Start(ctx context.Context, in StartConnectInput
 		return nil, igdomain.ErrWorkspaceIDRequired
 	}
 
-	nonce, err := NewNonce()
-	if err != nil {
-		return nil, fmt.Errorf("instagram: mint nonce: %w", err)
-	}
-
-	state, err := EncodeState(OAuthState{
+	state, err := uc.states.Issue(oauthstate.IssueInput{
 		WorkspaceID: in.WorkspaceID,
 		UserID:      in.UserID,
-		Nonce:       nonce,
-		ExpiresAt:   time.Now().UTC().Add(stateTTL),
-		ReturnPath:  SafeReturnPath(in.ReturnPath, uc.defaultReturnPath),
+		ReturnPath:  in.ReturnPath,
 		Popup:       in.Popup,
-	}, uc.appSecret)
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	if uc.sharedState != nil {
-		ok, err := uc.sharedState.SetNX(nonceKey(nonce), in.WorkspaceID, nonceTTL)
-		if err != nil {
-			return nil, fmt.Errorf("instagram: persist oauth nonce: %w", err)
-		}
-		if !ok {
-			return nil, fmt.Errorf("instagram: oauth nonce collision")
-		}
 	}
 
 	return &StartConnectOutput{AuthorizeURL: uc.oauth.BuildAuthorizeURL(state)}, nil
@@ -113,7 +84,7 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	log.Printf("[instagram] callback received (code=%t state=%t error=%q reason=%q)",
 		in.Code != "", in.State != "", in.Error, in.ErrorReason)
 
-	state, err := DecodeState(in.State, uc.appSecret)
+	state, err := uc.states.Redeem(in.State)
 	if err != nil {
 		log.Printf("[instagram] state rejected: %v", err)
 		return nil, err
@@ -121,27 +92,7 @@ func (uc *ConnectAccountUseCase) Complete(ctx context.Context, in CompleteConnec
 	log.Printf("[instagram] state ok (workspace=%s user=%s popup=%t returnPath=%s)",
 		state.WorkspaceID, state.UserID, state.Popup, state.ReturnPath)
 
-	if uc.sharedState != nil {
-		issued, err := uc.sharedState.Exists(nonceKey(state.Nonce))
-		if err != nil {
-			return nil, fmt.Errorf("instagram: verify oauth nonce: %w", err)
-		}
-		if !issued {
-			log.Printf("[instagram] nonce %s not found (expired, or the callback was replayed)", state.Nonce)
-			return nil, ErrReplayedState
-		}
-		claimed, err := uc.sharedState.SetNX(nonceUsedKey(state.Nonce), "1", nonceTTL)
-		if err != nil {
-			return nil, fmt.Errorf("instagram: consume oauth nonce: %w", err)
-		}
-		if !claimed {
-			log.Printf("[instagram] nonce %s already consumed; refusing a replayed callback", state.Nonce)
-			return nil, ErrReplayedState
-		}
-		_ = uc.sharedState.Del(nonceKey(state.Nonce))
-	}
-
-	returnPath := SafeReturnPath(state.ReturnPath, uc.defaultReturnPath)
+	returnPath := uc.states.ReturnPath(state)
 
 	if in.Error != "" || in.ErrorReason != "" {
 		log.Printf("[instagram] user declined authorization: error=%q reason=%q", in.Error, in.ErrorReason)
@@ -321,6 +272,3 @@ func (uc *ConnectAccountUseCase) probeMessagingHealth(ctx context.Context, accou
 		log.Printf("[instagram] persist messaging health failed account=%s: %v", account.IGUserID, err)
 	}
 }
-
-func nonceKey(nonce string) string     { return "ig:oauth:nonce:" + nonce }
-func nonceUsedKey(nonce string) string { return "ig:oauth:used:" + nonce }

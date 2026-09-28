@@ -146,8 +146,3 @@ type GroupRepository interface {
 
 	Delete(ctx context.Context, id string) error
 }
-
-type ProcessedEventRepository interface {
-	Claim(ctx context.Context, key, channel, instanceID string) (claimed bool, err error)
-	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
-}

@@ -40,6 +40,7 @@ type ContactRepository interface {
 	FindByIDs(ctx context.Context, ids []string) ([]*Contact, error)
 	FindByIGSID(ctx context.Context, igAccountID, igsid string) (*Contact, error)
 	UpdateProfile(ctx context.Context, id string, p ContactProfile) error
+	FillUsername(ctx context.Context, id, username string) error
 	SetBlocked(ctx context.Context, id string, blocked bool) error
 }
 
@@ -96,16 +97,4 @@ type ListCommentsInput struct {
 	TopLevelOnly bool
 	HiddenOnly   *bool
 	Options      shared.QueryOptions
-}
-
-type PrivateReplyRepository interface {
-	Claim(ctx context.Context, igCommentID, igAccountID string) (claimed bool, err error)
-	MarkSent(ctx context.Context, igCommentID, recipientIGSID, igMessageID string) error
-	MarkFailed(ctx context.Context, igCommentID string, code int, message string) error
-	Find(ctx context.Context, igCommentID string) (*PrivateReply, error)
-}
-
-type ProcessedEventRepository interface {
-	Claim(ctx context.Context, key, channel, accountID string) (claimed bool, err error)
-	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }

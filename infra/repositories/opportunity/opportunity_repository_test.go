@@ -273,9 +273,32 @@ func TestUpdate_NotFound(t *testing.T) {
 	}
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "opportunities" SET`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "opportunities"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectRollback()
 
 	if err := repo.Update(o, nil); !errors.Is(err, opportunity.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdate_StaleVersion(t *testing.T) {
+	db, mock, sqlDB := newMockDB(t)
+	defer sqlDB.Close()
+	repo := NewRepository(db)
+
+	o := &opportunity.Opportunity{
+		ID: "deal", WorkspaceID: "ws1", PipelineID: "p1", StageID: "s1",
+		Title: "x", Currency: "BRL", Status: opportunity.StatusOpen, Version: 2,
+	}
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE "opportunities" SET`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "opportunities"`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectRollback()
+
+	if err := repo.Update(o, nil); !errors.Is(err, opportunity.ErrStaleDeal) {
+		t.Fatalf("expected ErrStaleDeal, got %v", err)
+	}
+	if o.Version != 2 {
+		t.Fatalf("a refused save must not move the version, got %d", o.Version)
 	}
 }

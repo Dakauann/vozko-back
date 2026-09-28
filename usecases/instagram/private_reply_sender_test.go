@@ -19,7 +19,7 @@ func (h *recordedHistory) Record(_ context.Context, record conversation.MessageH
 func TestSendPrivateReply_IsRecordedAsSentByThePerson(t *testing.T) {
 	account := connectedAccount()
 	history := &recordedHistory{}
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), &fakeMessagingService{},
 		&fakeCommentRepo{}, &fakePrivateReplyRepo{},
 		&fakeContactRepo{}, &fakeConversationRepo{},

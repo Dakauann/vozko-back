@@ -31,11 +31,13 @@ type UpdateOpportunityRequest struct {
 	CustomFields map[string]any `json:"customFields,omitempty"`
 	StageID      *string        `json:"stageId,omitempty" example:"stg_a1b2c3"`
 	LostReasonID *string        `json:"lostReasonId,omitempty" example:"lr_a1b2c3"`
+	Version      *int64         `json:"version,omitempty" example:"3"`
 }
 
 type MoveStageRequest struct {
 	StageID      string `json:"stageId" example:"stg_a1b2c3"`
 	LostReasonID string `json:"lostReasonId,omitempty" example:"lr_a1b2c3"`
+	Version      *int64 `json:"version,omitempty" example:"3"`
 }
 
 type LinkConversationRequest struct {

@@ -115,6 +115,27 @@ var channelSources = []channelSource{
 		LeadJoin:   "LEFT JOIN unofficial_whatsapp_contacts uwct ON uwct.id = uwc.contact_id",
 		LeadIDExpr: "COALESCE(uwct.lead_id::text, '')",
 	},
+	{
+		EntryType:      shared.EntryTypeFacebook,
+		EntryTable:     "facebook_conversations fbc",
+		EntryAlias:     "fbc",
+		ContainerTable: "facebook_pages fbp",
+		ContainerAlias: "fbp",
+		ContainerJoin:  "fbp.id = fbc.page_id",
+
+		StatusColumn:       "fbc.conversation_status",
+		CloseSourceColumn:  "fbc.close_source",
+		CloseOutcomeColumn: "fbc.close_outcome",
+		ClosedAtColumn:     "fbc.closed_at",
+		DepartmentColumn:   "fbp.department_id",
+		ContainerIDColumn:  "fbc.page_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(fbp.name, ''), NULLIF(fbp.username, ''))",
+		WorkspaceColumn:    "fbc.workspace_id",
+		LastMessageColumn:  "fbc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN facebook_contacts fbct ON fbct.id = fbc.contact_id",
+		LeadIDExpr: "COALESCE(fbct.lead_id::text, '')",
+	},
 }
 
 func selectedChannelSources(channel string) []channelSource {

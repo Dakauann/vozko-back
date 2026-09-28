@@ -5,23 +5,30 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"vozko/domain/conversation"
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/infra/database/schema"
 	conversation_repository "vozko/infra/repositories/conversation"
 )
 
 type conversationRepository struct {
+	conversation_repository.ChannelConversationTable
 	db *gorm.DB
 }
 
 func NewConversationRepository(db *gorm.DB) uw.ConversationRepository {
-	return &conversationRepository{db: db}
+	return &conversationRepository{
+		db: db,
+		ChannelConversationTable: conversation_repository.ChannelConversationTable{
+			DB:              db,
+			NewModel:        func() any { return &schema.UnofficialWhatsAppConversation{} },
+			ContainerColumn: "instance_id",
+			NotFound:        uw.ErrConversationNotFound,
+		},
+	}
 }
 
 func (r *conversationRepository) FindOrCreate(
@@ -113,21 +120,6 @@ func (r *conversationRepository) findOne(ctx context.Context, q *gorm.DB, campai
 	return toConversationDomain(&record), nil
 }
 
-func (r *conversationRepository) WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error) {
-	var workspaceID string
-	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("id = ?", entryID).
-		Limit(1).
-		Pluck("workspace_id", &workspaceID).Error
-	if err != nil {
-		return "", err
-	}
-	if workspaceID == "" {
-		return "", uw.ErrConversationNotFound
-	}
-	return workspaceID, nil
-}
-
 func (r *conversationRepository) DepartmentIDForEntry(ctx context.Context, entryID string) (string, error) {
 	var departmentIDs []sql.NullString
 	if err := r.db.WithContext(ctx).
@@ -159,113 +151,4 @@ func (r *conversationRepository) CampaignIDForEntry(ctx context.Context, entryID
 		return "", nil
 	}
 	return ids[0].String, nil
-}
-
-func (r *conversationRepository) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {
-	var ids []string
-	if err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("workspace_id = ?", workspaceID).
-		Pluck("id", &ids).Error; err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
-func (r *conversationRepository) RecordInbound(ctx context.Context, id string, at time.Time) error {
-	return r.touchClocks(ctx, id, at, "last_customer_message_at")
-}
-
-func (r *conversationRepository) RecordOutbound(ctx context.Context, id string, at time.Time) error {
-	return r.touchClocks(ctx, id, at, "last_agent_message_at")
-}
-
-func (r *conversationRepository) touchClocks(ctx context.Context, id string, at time.Time, sideColumn string) error {
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
-	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"last_message_at": gorm.Expr("GREATEST(COALESCE(last_message_at, ?), ?)", at, at),
-			sideColumn:        gorm.Expr("GREATEST(COALESCE("+sideColumn+", ?), ?)", at, at),
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return uw.ErrConversationNotFound
-	}
-	return nil
-}
-
-func (r *conversationRepository) SetStatus(ctx context.Context, id string, write conversation.StatusWrite) error {
-	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("id = ?", id).
-		Updates(conversation_repository.StatusUpdates(write))
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return uw.ErrConversationNotFound
-	}
-	return nil
-}
-
-func (r *conversationRepository) SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error {
-	result := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("id = ?", id).
-		Update("automation_enabled", enabled)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return uw.ErrConversationNotFound
-	}
-	return nil
-}
-
-func (r *conversationRepository) StatusForEntry(ctx context.Context, id string) (string, error) {
-	var status string
-	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Where("id = ?", id).
-		Limit(1).
-		Pluck("COALESCE(conversation_status, '')", &status).Error
-	if err != nil {
-		return "", err
-	}
-	return status, nil
-}
-
-func (r *conversationRepository) CountByStatus(ctx context.Context, workspaceID, instanceID string) (map[string]int64, error) {
-	type row struct {
-		Status string `gorm:"column:status"`
-		Count  int64  `gorm:"column:cnt"`
-	}
-
-	const statusExpr = "COALESCE(NULLIF(conversation_status, ''), 'new')"
-
-	query := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
-		Select(statusExpr + " AS status, COUNT(*) AS cnt").
-		Where("deleted_at IS NULL").
-		Where("last_message_at IS NOT NULL")
-
-	switch {
-	case instanceID != "":
-		query = query.Where("instance_id = ?", instanceID)
-	case workspaceID != "":
-		query = query.Where("workspace_id = ?", workspaceID)
-	default:
-		return map[string]int64{}, nil
-	}
-
-	var rows []row
-	if err := query.Group(statusExpr).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	out := make(map[string]int64, len(rows))
-	for _, item := range rows {
-		out[item.Status] = item.Count
-	}
-	return out, nil
 }

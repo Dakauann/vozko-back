@@ -82,6 +82,34 @@ type ConfigField struct {
 	Min           *float64            `json:"min,omitempty"`
 	Max           *float64            `json:"max,omitempty"`
 	Step          *float64            `json:"step,omitempty"`
+	VisibleWhen   *FieldRule          `json:"visibleWhen,omitempty"`
+	RequiredWhen  *FieldRule          `json:"requiredWhen,omitempty"`
+}
+
+type FieldRule struct {
+	Field  string   `json:"field"`
+	Values []string `json:"values"`
+}
+
+func (r *FieldRule) Matches(config map[string]interface{}) bool {
+	if r == nil {
+		return false
+	}
+	current, _ := config[r.Field].(string)
+	for _, v := range r.Values {
+		if v == current {
+			return true
+		}
+	}
+	return false
+}
+
+func (f ConfigField) VisibleFor(config map[string]interface{}) bool {
+	return f.VisibleWhen == nil || f.VisibleWhen.Matches(config)
+}
+
+func (f ConfigField) RequiredFor(config map[string]interface{}) bool {
+	return f.VisibleFor(config) && (f.Required || f.RequiredWhen.Matches(config))
 }
 
 type NodeDefiner interface {

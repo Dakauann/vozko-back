@@ -32,4 +32,5 @@ var (
 	ErrRoleInUse                  = errors.New("cannot delete role that is assigned to members")
 	ErrInvalidDepartment          = errors.New("one or more department IDs do not belong to this workspace")
 	ErrWorkspaceLimitReached      = errors.New("workspace limit reached: you cannot create more than 10 workspaces")
+	ErrUnknownFeature             = errors.New("unknown feature")
 )

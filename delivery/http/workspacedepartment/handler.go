@@ -10,6 +10,7 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/working_hours"
+	"vozko/domain/workspace"
 	workspacedepartmentdomain "vozko/domain/workspace/workspace_department"
 	"vozko/infra/http/middleware"
 )
@@ -17,39 +18,19 @@ import (
 const maxDepartmentBodyBytes = 64 << 10
 
 type WorkspaceDepartmentHandler struct {
-	create       workspacedepartmentdomain.CreateDepartmentUseCase
-	get          workspacedepartmentdomain.GetDepartmentUseCase
-	list         workspacedepartmentdomain.ListDepartmentsUseCase
-	listByIDs    workspacedepartmentdomain.ListDepartmentsByIDsUseCase
-	update       workspacedepartmentdomain.UpdateDepartmentUseCase
-	delete       workspacedepartmentdomain.DeleteDepartmentUseCase
-	addMember    workspacedepartmentdomain.AddMemberUseCase
-	removeMember workspacedepartmentdomain.RemoveMemberUseCase
-	listMembers  workspacedepartmentdomain.ListMembersUseCase
+	create    workspacedepartmentdomain.CreateDepartmentUseCase
+	list      workspacedepartmentdomain.ListDepartmentsUseCase
+	listByIDs workspacedepartmentdomain.ListDepartmentsByIDsUseCase
+	scoped    workspacedepartmentdomain.ScopedDepartmentsUseCase
 }
 
 func NewWorkspaceDepartmentHandler(
 	create workspacedepartmentdomain.CreateDepartmentUseCase,
-	get workspacedepartmentdomain.GetDepartmentUseCase,
 	list workspacedepartmentdomain.ListDepartmentsUseCase,
 	listByIDs workspacedepartmentdomain.ListDepartmentsByIDsUseCase,
-	update workspacedepartmentdomain.UpdateDepartmentUseCase,
-	del workspacedepartmentdomain.DeleteDepartmentUseCase,
-	addMember workspacedepartmentdomain.AddMemberUseCase,
-	removeMember workspacedepartmentdomain.RemoveMemberUseCase,
-	listMembers workspacedepartmentdomain.ListMembersUseCase,
+	scoped workspacedepartmentdomain.ScopedDepartmentsUseCase,
 ) *WorkspaceDepartmentHandler {
-	return &WorkspaceDepartmentHandler{
-		create:       create,
-		get:          get,
-		list:         list,
-		listByIDs:    listByIDs,
-		update:       update,
-		delete:       del,
-		addMember:    addMember,
-		removeMember: removeMember,
-		listMembers:  listMembers,
-	}
+	return &WorkspaceDepartmentHandler{create: create, list: list, listByIDs: listByIDs, scoped: scoped}
 }
 
 // @Summary		Criar um departamento
@@ -95,9 +76,7 @@ func (h *WorkspaceDepartmentHandler) Create(w http.ResponseWriter, r *http.Reque
 // @Security		BearerAuth
 // @Router			/departments/{id} [get]
 func (h *WorkspaceDepartmentHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-
-	dept, err := h.get.Execute(id)
+	dept, err := h.scoped.Get(middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
 	if err != nil {
 		writeDepartmentError(w, err)
 		return
@@ -170,7 +149,7 @@ func (h *WorkspaceDepartmentHandler) Update(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	dept, err := h.update.Execute(id, workspacedepartmentdomain.UpdateDepartmentInput{
+	dept, err := h.scoped.Update(middleware.GetWorkspaceID(r), id, workspacedepartmentdomain.UpdateDepartmentInput{
 		Name:              req.Name,
 		Description:       req.Description,
 		WorkingHours:      hours,
@@ -198,9 +177,7 @@ func (h *WorkspaceDepartmentHandler) Update(w http.ResponseWriter, r *http.Reque
 // @Security		BearerAuth
 // @Router			/departments/{id} [delete]
 func (h *WorkspaceDepartmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-
-	if err := h.delete.Execute(id); err != nil {
+	if err := h.scoped.Delete(middleware.GetWorkspaceID(r), mux.Vars(r)["id"]); err != nil {
 		writeDepartmentError(w, err)
 		return
 	}
@@ -230,7 +207,7 @@ func (h *WorkspaceDepartmentHandler) AddMember(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	dm, err := h.addMember.Execute(deptID, workspacedepartmentdomain.AddMemberInput{
+	dm, err := h.scoped.AddMember(middleware.GetWorkspaceID(r), deptID, workspacedepartmentdomain.AddMemberInput{
 		MemberID: req.MemberID,
 	})
 	if err != nil {
@@ -256,7 +233,7 @@ func (h *WorkspaceDepartmentHandler) RemoveMember(w http.ResponseWriter, r *http
 	deptID := vars["id"]
 	memberID := vars["memberId"]
 
-	if err := h.removeMember.Execute(deptID, memberID); err != nil {
+	if err := h.scoped.RemoveMember(middleware.GetWorkspaceID(r), deptID, memberID); err != nil {
 		writeDepartmentError(w, err)
 		return
 	}
@@ -273,11 +250,9 @@ func (h *WorkspaceDepartmentHandler) RemoveMember(w http.ResponseWriter, r *http
 // @Security		BearerAuth
 // @Router			/departments/{id}/members [get]
 func (h *WorkspaceDepartmentHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	deptID := mux.Vars(r)["id"]
-
-	members, err := h.listMembers.Execute(deptID)
+	members, err := h.scoped.ListMembers(middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
 	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
+		writeDepartmentError(w, err)
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toDepartmentMemberResponses(members))
@@ -291,7 +266,7 @@ func writeDepartmentError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, workspacedepartmentdomain.ErrDepartmentMemberExists):
 		response.WriteError(w, http.StatusConflict, err.Error(), nil)
-	case errors.Is(err, workspacedepartmentdomain.ErrDepartmentMemberNotFound):
+	case errors.Is(err, workspacedepartmentdomain.ErrDepartmentMemberNotFound), errors.Is(err, workspace.ErrMemberNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, workspacedepartmentdomain.ErrDepartmentRequired):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)

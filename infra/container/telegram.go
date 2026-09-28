@@ -4,7 +4,8 @@ import (
 	"context"
 	"log"
 	"strconv"
-	"time"
+	"vozko/domain/webhook"
+	webhook_repository "vozko/infra/repositories/webhook"
 
 	telegramhttp "vozko/delivery/http/telegram"
 	conversation_domain "vozko/domain/conversation"
@@ -24,7 +25,7 @@ type telegramBundle struct {
 	Conversations tgdomain.ConversationRepository
 	DeepLinks     tgdomain.DeepLinkRepository
 	Files         tgdomain.FileCacheRepository
-	ProcessedEvts tgdomain.ProcessedEventRepository
+	ProcessedEvts webhook.ProcessedEventRepository
 
 	API tgdomain.BotAPI
 
@@ -33,7 +34,6 @@ type telegramBundle struct {
 
 	Consume     *tguc.ConsumeWebhookUseCase
 	CheckHealth *tguc.CheckWebhookHealthUseCase
-	PurgeEvents *tguc.PurgeProcessedEventsUseCase
 }
 
 func (c *Container) initTelegram() {
@@ -55,7 +55,7 @@ func (c *Container) initTelegram() {
 	bundle.Conversations = telegram_repository.NewConversationRepository(c.db)
 	bundle.DeepLinks = telegram_repository.NewDeepLinkRepository(c.db)
 	bundle.Files = telegram_repository.NewFileCacheRepository(c.db)
-	bundle.ProcessedEvts = telegram_repository.NewProcessedEventRepository(c.db)
+	bundle.ProcessedEvts = webhook_repository.NewProcessedEventRepository(c.db)
 
 	bundle.Handler = telegramhttp.NewHandler(telegramhttp.HandlerDeps{
 		Connect:    tguc.NewConnectAccountUseCase(bundle.Accounts, api, c.cfg.TelegramWebhookBaseURL),
@@ -71,7 +71,6 @@ func (c *Container) initTelegram() {
 	bundle.WebhookHandler = telegramhttp.NewWebhookHandler(bundle.Accounts, nil)
 
 	bundle.CheckHealth = tguc.NewCheckWebhookHealthUseCase(bundle.Accounts, api)
-	bundle.PurgeEvents = tguc.NewPurgeProcessedEventsUseCase(bundle.ProcessedEvts, 30*24*time.Hour)
 
 	bundle.Enabled = true
 	log.Printf("[telegram] channel enabled (webhook base=%s)", c.cfg.TelegramWebhookBaseURL)

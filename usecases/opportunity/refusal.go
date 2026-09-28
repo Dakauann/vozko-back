@@ -19,6 +19,11 @@ const (
 	RefusalCurrencyUnsupported Refusal = "currency_unsupported"
 	RefusalPipelineInvalid     Refusal = "pipeline_invalid"
 	RefusalRequiredFields      Refusal = "required_fields"
+	RefusalAmbiguousDeal       Refusal = "ambiguous_deal"
+	RefusalDealNotLinked       Refusal = "deal_not_linked"
+	RefusalDealClosed          Refusal = "deal_closed"
+	RefusalDealIDOnNewDeal     Refusal = "deal_id_on_new_deal"
+	RefusalDealChanged         Refusal = "deal_changed"
 )
 
 var refusalCauses = []struct {
@@ -37,6 +42,11 @@ var refusalCauses = []struct {
 		ErrPipelineHasNoOpenStage, ErrPipelineHasNoWonStage, ErrPipelineHasNoLostStage,
 	}},
 	{RefusalRequiredFields, []error{customfield.ErrValueRequired}},
+	{RefusalAmbiguousDeal, []error{opportunity.ErrAmbiguousDeal}},
+	{RefusalDealNotLinked, []error{opportunity.ErrDealNotLinked}},
+	{RefusalDealClosed, []error{opportunity.ErrDealClosed}},
+	{RefusalDealIDOnNewDeal, []error{ErrDealIDOnNewDeal}},
+	{RefusalDealChanged, []error{opportunity.ErrStaleDeal}},
 }
 
 func Refusals() []Refusal {

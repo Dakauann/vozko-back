@@ -38,8 +38,12 @@ func operationToolset() []copilot.Tool {
 	}
 }
 
+func allTools() []copilot.Tool {
+	return append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...)
+}
+
 func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		if !tool.Meta().Mutating {
 			continue
 		}
@@ -50,7 +54,7 @@ func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {
 }
 
 func TestNoToolLetsTheModelChooseTheWorkspace(t *testing.T) {
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		for name := range tool.Definition().Parameters {
 			if strings.Contains(strings.ToLower(name), "workspace") {
 				t.Errorf("%s takes %q: the workspace must come from the session, never from the model", tool.Definition().Name, name)
@@ -60,7 +64,7 @@ func TestNoToolLetsTheModelChooseTheWorkspace(t *testing.T) {
 }
 
 func TestEveryToolDeclaresAPermission(t *testing.T) {
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		if m := tool.Meta(); m.Resource == "" || m.Action == "" {
 			t.Errorf("%s has no permission", tool.Definition().Name)
 		}
@@ -68,7 +72,7 @@ func TestEveryToolDeclaresAPermission(t *testing.T) {
 }
 
 func TestChangesToAConversationShowWhoTheyTouch(t *testing.T) {
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		def := tool.Definition()
 		_, targetsConversation := def.Parameters["entry_id"]
 		if !tool.Meta().Mutating || !targetsConversation {
@@ -81,7 +85,7 @@ func TestChangesToAConversationShowWhoTheyTouch(t *testing.T) {
 }
 
 func TestConversationIdsAlwaysTravelWithTheirChannel(t *testing.T) {
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		def := tool.Definition()
 		if _, ok := def.Parameters["entry_id"]; !ok {
 			continue
@@ -94,7 +98,7 @@ func TestConversationIdsAlwaysTravelWithTheirChannel(t *testing.T) {
 
 func TestToolNamesAreUnique(t *testing.T) {
 	seen := map[string]bool{}
-	for _, tool := range operationToolset() {
+	for _, tool := range allTools() {
 		name := tool.Definition().Name
 		if seen[name] {
 			t.Errorf("duplicate tool %s", name)

@@ -236,6 +236,7 @@ func mapToSchema(o *opportunity.Opportunity) (*schema.Opportunity, error) {
 		Source:        o.Source,
 		CloseDate:     o.CloseDate,
 		CustomFields:  customJSON,
+		Version:       o.Version,
 	}, nil
 }
 
@@ -262,6 +263,7 @@ func mapToDomain(row *schema.Opportunity) (*opportunity.Opportunity, error) {
 		Source:       row.Source,
 		CloseDate:    row.CloseDate,
 		CustomFields: custom,
+		Version:      row.Version,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}, nil

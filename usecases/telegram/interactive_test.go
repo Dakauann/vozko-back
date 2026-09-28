@@ -45,7 +45,7 @@ func TestInlineKeyboardDropsAnOptionWhosePayloadOverflows(t *testing.T) {
 	if rows[0][0].CallbackData != "ok" {
 		t.Errorf("kept %q, want the option that fits", rows[0][0].CallbackData)
 	}
-	if len(dropped) != 1 || !strings.Contains(dropped[0].reason, "64-byte") {
+	if len(dropped) != 1 || !strings.Contains(dropped[0].Reason, "64-byte") {
 		t.Errorf("dropped = %+v, want the payload limit named", dropped)
 	}
 }
@@ -91,26 +91,6 @@ func TestInlineKeyboardStopsAtTheConfiguredCap(t *testing.T) {
 	}
 	if len(dropped) != 5 {
 		t.Errorf("dropped = %d, want the 5 beyond the cap", len(dropped))
-	}
-}
-
-func TestComposeInteractiveBodyKeepsHeaderAndFooter(t *testing.T) {
-	body := composeInteractiveBody(conversation.SendInteractiveRequest{
-		Header: "Atendimento",
-		Body:   "Escolha uma opção",
-		Footer: "Responda a qualquer momento",
-	})
-
-	for _, want := range []string{"Atendimento", "Escolha uma opção", "Responda a qualquer momento"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body %q is missing %q", body, want)
-		}
-	}
-}
-
-func TestComposeInteractiveBodyOmitsEmptyParts(t *testing.T) {
-	if got := composeInteractiveBody(conversation.SendInteractiveRequest{Body: "Só o corpo"}); got != "Só o corpo" {
-		t.Errorf("body = %q, want no stray separators", got)
 	}
 }
 

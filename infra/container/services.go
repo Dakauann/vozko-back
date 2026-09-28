@@ -12,6 +12,7 @@ import (
 	notification_domain "vozko/domain/notification"
 	rag_domain "vozko/domain/rag"
 	report_domain "vozko/domain/report"
+	facebook_domain "vozko/domain/facebook"
 	scheduled_message_domain "vozko/domain/scheduled_message"
 	pricing_service "vozko/domain/services/pricing"
 	"vozko/domain/shipping"
@@ -77,6 +78,7 @@ func (c *Container) initServices() {
 	unofficialWhatsAppSeedExchange := unofficial_whatsapp_domain.SeedExchange
 	audienceAlertExchange := audience_domain.AlertExchange
 	reportExchange := report_domain.Exchange
+	facebookPublishExchange := facebook_domain.PublishExchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -124,6 +126,8 @@ func (c *Container) initServices() {
 		ragQueueSub:                queue.NewRabbitMQQueueSub(amqpPool, ragDocProcessingExchange),
 		reportQueuePub:             queue.NewRabbitMQQueuePub(amqpPool, reportExchange),
 		reportQueueSub:             queue.NewRabbitMQQueueSub(amqpPool, reportExchange),
+		facebookPublishPub:         queue.NewRabbitMQQueuePub(amqpPool, facebookPublishExchange),
+		facebookPublishSub:         queue.NewRabbitMQQueueSub(amqpPool, facebookPublishExchange),
 		shortlinkQueuePub:          queue.NewRabbitMQQueuePub(amqpPool, shortlinkClickExchange),
 		shortlinkQueueSub:          queue.NewRabbitMQQueueSub(amqpPool, shortlinkClickExchange),
 		webhookQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, webhookExchange),

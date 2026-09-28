@@ -3,7 +3,8 @@ package container
 import (
 	"context"
 	"log"
-	"time"
+	"vozko/domain/webhook"
+	webhook_repository "vozko/infra/repositories/webhook"
 
 	instagramhttp "vozko/delivery/http/instagram"
 	conversation_domain "vozko/domain/conversation"
@@ -23,12 +24,9 @@ type instagramBundle struct {
 	Conversations   igdomain.ConversationRepository
 	Media           igdomain.MediaRepository
 	Comments        igdomain.CommentRepository
-	PrivateReplies  igdomain.PrivateReplyRepository
-	ProcessedEvent  igdomain.ProcessedEventRepository
-	CommentRules    igdomain.CommentRuleRepository
-	CommentRuleEval *iguc.EvaluateCommentRulesUseCase
+	ProcessedEvent  webhook.ProcessedEventRepository
+	CommentRuleEval *iguc.CommentRules
 	PrivateReplyUC  *iguc.SendPrivateReplyUseCase
-	ManageRules     *iguc.ManageCommentRulesUseCase
 	ModerateComment *iguc.ModerateCommentUseCase
 	ReplyComment    *iguc.ReplyToCommentUseCase
 
@@ -43,7 +41,6 @@ type instagramBundle struct {
 
 	Consume       *iguc.ConsumeWebhookUseCase
 	RefreshTokens *iguc.RefreshTokensUseCase
-	PurgeEvents   *iguc.PurgeProcessedEventsUseCase
 
 	WebhookSecrets []string
 }
@@ -98,9 +95,7 @@ func (c *Container) initInstagram() {
 	bundle.Conversations = instagram_repository.NewConversationRepository(c.db)
 	bundle.Media = instagram_repository.NewMediaRepository(c.db)
 	bundle.Comments = instagram_repository.NewCommentRepository(c.db)
-	bundle.PrivateReplies = instagram_repository.NewPrivateReplyRepository(c.db)
-	bundle.ProcessedEvent = instagram_repository.NewProcessedEventRepository(c.db)
-	bundle.CommentRules = instagram_repository.NewCommentRuleRepository(c.db)
+	bundle.ProcessedEvent = webhook_repository.NewProcessedEventRepository(c.db)
 
 	bundle.WebhookSecrets = append([]string{c.cfg.InstagramAppSecret}, c.cfg.MetaAppSecret)
 	bundle.WebhookSecrets = append(bundle.WebhookSecrets, c.cfg.MetaAppSecretsExtra...)
@@ -110,25 +105,24 @@ func (c *Container) initInstagram() {
 		bundle.Subscription,
 		bundle.Messaging,
 		bundle.Accounts,
-		c.redisProvider.SharedState(),
-		c.cfg.InstagramAppSecret,
-		"/dashboard/instagram-accounts",
+		c.mustOAuthStateIssuer("ig:oauth", c.cfg.InstagramAppSecret, "/dashboard/instagram-accounts"),
 	)
 
 	replyComment := iguc.NewReplyToCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
 	moderateComment := iguc.NewModerateCommentUseCase(bundle.Accounts, commentSvc, bundle.Comments)
+	automation := c.commentAutomation()
+	automation.Manager.Register(shared.EntryTypeInstagram, iguc.NewAccountOwnership(bundle.Accounts))
 	privateReply := iguc.NewSendPrivateReplyUseCase(
-		bundle.Accounts, bundle.Messaging, bundle.Comments,
-		bundle.PrivateReplies, bundle.Contacts, bundle.Conversations,
+		bundle.Accounts, bundle.Messaging, commentSvc, bundle.Comments,
+		automation.Sender, bundle.Contacts, bundle.Conversations,
 	)
 	bundle.PrivateReplyUC = privateReply
 	bundle.ModerateComment = moderateComment
 	bundle.ReplyComment = replyComment
-	bundle.CommentRuleEval = iguc.NewEvaluateCommentRulesUseCase(
-		bundle.CommentRules,
+	bundle.CommentRuleEval = iguc.NewCommentRules(
+		automation.Evaluator,
 		iguc.NewCommentActionRunner(replyComment, privateReply, moderateComment),
 	)
-	bundle.ManageRules = iguc.NewManageCommentRulesUseCase(bundle.CommentRules, bundle.Accounts)
 
 	bundle.Handler = instagramhttp.NewHandler(instagramhttp.HandlerDeps{
 		Connect:           connect,
@@ -146,12 +140,11 @@ func (c *Container) initInstagram() {
 		ReplyComment:      replyComment,
 		Moderate:          moderateComment,
 		PrivateReply:      privateReply,
-		ManageRules:       bundle.ManageRules,
+		ManageRules:       automation.Manager,
 		FrontendBaseURL:   c.cfg.FrontendBaseURL,
 	})
 
 	bundle.RefreshTokens = iguc.NewRefreshTokensUseCase(bundle.Accounts, bundle.OAuth)
-	bundle.PurgeEvents = iguc.NewPurgeProcessedEventsUseCase(bundle.ProcessedEvent, 30*24*time.Hour)
 
 	bundle.Enabled = true
 	log.Printf("[instagram] channel enabled (graph=%s/%s)", iginfra.GraphHost, iginfra.DefaultGraphVersion)

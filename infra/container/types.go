@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	mpuc "vozko/usecases/metaplatform"
 
 	"gorm.io/gorm"
 
@@ -21,6 +22,7 @@ import (
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
+	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	invoicehttp "vozko/delivery/http/invoice"
@@ -90,6 +92,7 @@ import (
 	"vozko/domain/crm_telemetry"
 	"vozko/domain/customer"
 	customfield_domain "vozko/domain/customfield"
+	dealautomation_domain "vozko/domain/dealautomation"
 	export_domain "vozko/domain/export"
 	ia_domain "vozko/domain/inbox_assignment"
 	"vozko/domain/insurance"
@@ -165,6 +168,7 @@ import (
 	copilot_usecase "vozko/usecases/copilot"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
+	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
@@ -180,11 +184,14 @@ type Container struct {
 	s3                          *s3.S3Service
 	replicaID                   string
 	repositories                *repositories
+	commentAutomationShared     *commentAutomationBundle
 	services                    *services
 	useCases                    *useCases
 	handlers                    *handlers_
 	agentMCP                    *handlers.AgentMCPBundle
 	instagram                   *instagramBundle
+	facebook                    *facebookBundle
+	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
 	unofficialWhatsApp          *unofficialWhatsAppBundle
@@ -250,6 +257,7 @@ type repositories struct {
 	stageGroup              stage_domain.StageGroupRepository
 	pipeline                pipeline_domain.Repository
 	savedView               savedview_domain.Repository
+	dealAutomation          dealautomation_domain.Repository
 	opportunity             opportunity_domain.Repository
 	opportunityLink         opportunity_domain.LinkRepository
 	opportunityOwners       opportunity_domain.OwnerDirectory
@@ -416,6 +424,8 @@ type services struct {
 
 	reportQueuePub       messaging.MessageQueuePub
 	reportQueueSub       messaging.MessageQueueSub
+	facebookPublishPub   messaging.MessageQueuePub
+	facebookPublishSub   messaging.MessageQueueSub
 	reportService        *report_usecase.Service
 	transactionsExporter *balance_usecase.TransactionsExporter
 	opportunityIO        *opportunityio.Service
@@ -674,9 +684,10 @@ type useCases struct {
 	listSavedViews      savedview_domain.ListSavedViewsUseCase
 	setDefaultSavedView savedview_domain.SetDefaultSavedViewUseCase
 
-	opportunity *opportunity_usecase.Service
-	personDeals opportunity_domain.PersonDealsUseCase
-	customField *customfield_usecase.Service
+	opportunity    *opportunity_usecase.Service
+	personDeals    opportunity_domain.PersonDealsUseCase
+	dealAutomation *dealautomation_usecase.UseCase
+	customField    *customfield_usecase.Service
 
 	createLabel      label_domain.CreateLabelUseCase
 	updateLabel      label_domain.UpdateLabelUseCase
@@ -713,6 +724,8 @@ type useCases struct {
 	setMemberPermissions               workspace_domain.SetMemberPermissionsUseCase
 	getMemberPermissions               workspace_domain.GetMemberPermissionsUseCase
 	listResourcePermissions            workspace_domain.ListResourcePermissionsUseCase
+	listFeatures                       workspace_domain.ListFeaturesUseCase
+	diagnoseAccess                     workspace_domain.DiagnoseAccessUseCase
 	checkWsAccess                      workspace_domain.CheckAccessUseCase
 	ensureDefaultWorkspace             workspace_domain.EnsureDefaultWorkspaceUseCase
 	assignResource                     workspace_domain.AssignResourceUseCase
@@ -894,15 +907,10 @@ type useCases struct {
 	stopCalendarWatch          calendar_domain.StopWatchUseCase
 	renewCalendarChannels      calendar_domain.RenewExpiringChannelsUseCase
 
-	createWorkspaceDepartment       workspace_department_domain.CreateDepartmentUseCase
-	getWorkspaceDepartment          workspace_department_domain.GetDepartmentUseCase
-	listWorkspaceDepartments        workspace_department_domain.ListDepartmentsUseCase
-	listWorkspaceDepartmentsByIDs   workspace_department_domain.ListDepartmentsByIDsUseCase
-	updateWorkspaceDepartment       workspace_department_domain.UpdateDepartmentUseCase
-	deleteWorkspaceDepartment       workspace_department_domain.DeleteDepartmentUseCase
-	addWorkspaceDepartmentMember    workspace_department_domain.AddMemberUseCase
-	removeWorkspaceDepartmentMember workspace_department_domain.RemoveMemberUseCase
-	listWorkspaceDepartmentMembers  workspace_department_domain.ListMembersUseCase
+	createWorkspaceDepartment     workspace_department_domain.CreateDepartmentUseCase
+	listWorkspaceDepartments      workspace_department_domain.ListDepartmentsUseCase
+	listWorkspaceDepartmentsByIDs workspace_department_domain.ListDepartmentsByIDsUseCase
+	scopedDepartments             workspace_department_domain.ScopedDepartmentsUseCase
 
 	affiliateRegister      affiliate_domain.RegisterAffiliateUseCase
 	affiliateGetMy         affiliate_domain.GetMyAffiliateUseCase
@@ -960,6 +968,7 @@ type handlers_ struct {
 	stageGroup              *handlers.StageGroupHandler
 	pipeline                *pipelinehttp.PipelineHandler
 	savedView               *savedviewhttp.SavedViewHandler
+	dealAutomation          *dealautomationhttp.Handler
 	opportunity             *opportunityhttp.OpportunityHandler
 	opportunityBoard        *opportunityboardhttp.OpportunityBoardHandler
 	customField             *customfieldhttp.CustomFieldHandler

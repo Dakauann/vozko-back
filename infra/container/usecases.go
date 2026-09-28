@@ -72,6 +72,7 @@ import (
 	ce_usecase "vozko/usecases/conversation_event"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customfield_usecase "vozko/usecases/customfield"
+	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	insurance_usecase "vozko/usecases/insurance"
 	invoice_usecase "vozko/usecases/invoice"
@@ -165,6 +166,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Owners:    c.repositories.opportunityOwners,
 		Leads:     lead_usecase.NewQueries(c.repositories.lead),
 		Entries:   c.services.campaignWorkspaceResolver,
+		Assign:    workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace),
 	})
 
 	toolHandlers := []tools.Handler{
@@ -178,6 +180,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, outcomeCaptureReader{configs: c.repositories.workspaceConfig}),
 		tools_usecase.NewTransferToHumanToolUseCase(c.services.assignmentService),
 		tools_usecase.NewManageOpportunityTool(opportunitySvc),
+		tools_usecase.NewAutoManageOpportunityTool(opportunitySvc, ia_usecase.NewConversationOwners(c.repositories.inboxAssignment)),
 		tools_usecase.NewCheckCalendarAvailabilityToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewScheduleMeetingToolUseCase(c.repositories.calendar, c.services.googleCalendar),
 		tools_usecase.NewRescheduleMeetingToolUseCase(rescheduleEventUC),
@@ -843,6 +846,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		setMemberPermissions:               workspace_usecase.NewSetMemberPermissionsUseCase(c.repositories.workspace),
 		getMemberPermissions:               workspace_usecase.NewGetMemberPermissionsUseCase(c.repositories.workspace),
 		listResourcePermissions:            workspace_usecase.NewListResourcePermissionsUseCase(),
+		listFeatures:                       workspace_usecase.NewListFeaturesUseCase(),
+		diagnoseAccess:                     workspace_usecase.NewDiagnoseAccessUseCase(c.repositories.workspace, workspace_usecase.NewGetMemberPermissionsUseCase(c.repositories.workspace), c.repositories.workspaceDepartment),
 		checkWsAccess:                      workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace),
 		ensureDefaultWorkspace:             ensureDefaultWorkspaceUC,
 		assignResource:                     workspace_usecase.NewAssignResourceUseCase(c.repositories.workspace),
@@ -1028,15 +1033,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		stopCalendarWatch:          calendar_usecase.NewStopWatchUseCase(c.repositories.calendar, c.services.googleCalendar),
 		renewCalendarChannels:      calendar_usecase.NewRenewExpiringChannelsUseCase(c.repositories.calendar, c.services.googleCalendar, calendar_usecase.NewStartWatchUseCase(c.repositories.calendar, c.services.googleCalendar)),
 
-		createWorkspaceDepartment:       workspace_department_usecase.NewCreateDepartmentUseCase(c.repositories.workspaceDepartment),
-		getWorkspaceDepartment:          workspace_department_usecase.NewGetDepartmentUseCase(c.repositories.workspaceDepartment),
-		listWorkspaceDepartments:        workspace_department_usecase.NewListDepartmentsUseCase(c.repositories.workspaceDepartment),
-		listWorkspaceDepartmentsByIDs:   workspace_department_usecase.NewListDepartmentsByIDsUseCase(c.repositories.workspaceDepartment),
-		updateWorkspaceDepartment:       workspace_department_usecase.NewUpdateDepartmentUseCase(c.repositories.workspaceDepartment),
-		deleteWorkspaceDepartment:       workspace_department_usecase.NewDeleteDepartmentUseCase(c.repositories.workspaceDepartment),
-		addWorkspaceDepartmentMember:    workspace_department_usecase.NewAddMemberUseCase(c.repositories.workspaceDepartment),
-		removeWorkspaceDepartmentMember: workspace_department_usecase.NewRemoveMemberUseCase(c.repositories.workspaceDepartment),
-		listWorkspaceDepartmentMembers:  workspace_department_usecase.NewListMembersUseCase(c.repositories.workspaceDepartment),
+		createWorkspaceDepartment:     workspace_department_usecase.NewCreateDepartmentUseCase(c.repositories.workspaceDepartment),
+		listWorkspaceDepartments:      workspace_department_usecase.NewListDepartmentsUseCase(c.repositories.workspaceDepartment),
+		listWorkspaceDepartmentsByIDs: workspace_department_usecase.NewListDepartmentsByIDsUseCase(c.repositories.workspaceDepartment),
+		scopedDepartments:             workspace_department_usecase.NewScopedDepartmentsUseCase(c.repositories.workspaceDepartment, c.repositories.workspace),
 
 		affiliateRegister:      affiliate_usecase.NewRegisterAffiliateUseCase(c.repositories.affiliate, c.repositories.user, c.repositories.systemConfig, affiliateWalletValidator),
 		affiliateGetMy:         affiliate_usecase.NewGetMyAffiliateUseCase(c.repositories.affiliate, affiliateStatsUC),
@@ -1395,6 +1395,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.useCases.pauseWorkflow,
 	)
 	c.useCases.personDeals = opportunity_usecase.NewPersonDeals(c.useCases.opportunity, c.services.conversationAuth, c.services.conversationAuth)
+	c.useCases.dealAutomation = dealautomation_usecase.New(c.repositories.dealAutomation, c.useCases.checkWsAccess, c.useCases.opportunity)
 	c.services.personAssign = ia_usecase.NewPersonAssignUseCase(ia_usecase.PersonAssignDeps{
 		Access:     c.services.conversationAuth,
 		Targets:    c.services.conversationAuth,
@@ -1416,7 +1417,19 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
+	c.initFacebookRuntime(messageHistoryManager)
+	if c.facebook != nil && c.facebook.Enabled && c.facebook.Consume != nil {
+		if err := c.facebook.Consume.Start(); err != nil {
+			log.Fatalf("[facebook] failed to start webhook consumers: %v", err)
+		}
+		if err := c.facebook.PublishRunner.Start(); err != nil {
+			log.Fatalf("[facebook] failed to start the publish consumer: %v", err)
+		}
+		log.Printf("[facebook] webhook consumers started")
+	}
+
 	c.initTelegramRuntime(messageHistoryManager)
+
 	if c.telegram != nil && c.telegram.Enabled && c.telegram.Consume != nil {
 		if err := c.telegram.Consume.Start(); err != nil {
 			log.Printf("[telegram] failed to start webhook consumers: %v", err)

@@ -11,20 +11,18 @@ import (
 	"vozko/domain/cache"
 	igdomain "vozko/domain/instagram"
 	"vozko/infra/meta"
+	"vozko/infra/meta/sendapi"
 )
 
 const (
-	sendTextPerSecond      = 100
-	sendMediaPerSecond     = 10
-	conversationsPerSecond = 2
+	bucketText          = "ig_send_text"
+	bucketMedia         = "ig_send_media"
+	bucketConversations = "ig_conversations"
 )
 
 type messagingService struct {
-	client *meta.Client
-
-	textLimiter  cache.RateLimiter
-	mediaLimiter cache.RateLimiter
-	convLimiter  cache.RateLimiter
+	client   *meta.Client
+	throttle *meta.Throttle
 }
 
 type MessagingConfig struct {
@@ -37,232 +35,92 @@ type MessagingConfig struct {
 func NewMessagingService(cfg MessagingConfig) (igdomain.MessagingService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
-		APIVersion: graphVersionOr(cfg.GraphVersion),
+		APIVersion: meta.VersionOr(cfg.GraphVersion),
 		AppSecret:  cfg.AppSecret,
 		HTTPClient: cfg.HTTPClient,
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	s := &messagingService{client: client}
-	if cfg.RateLimiterFactory != nil {
-		s.textLimiter = cfg.RateLimiterFactory("ig_send_text", sendTextPerSecond, time.Second)
-		s.mediaLimiter = cfg.RateLimiterFactory("ig_send_media", sendMediaPerSecond, time.Second)
-		s.convLimiter = cfg.RateLimiterFactory("ig_conversations", conversationsPerSecond, time.Second)
+	throttle, err := meta.NewThrottle(cfg.RateLimiterFactory,
+		meta.Bucket{Name: bucketText, Max: 100, Window: time.Second},
+		meta.Bucket{Name: bucketMedia, Max: 10, Window: time.Second},
+		meta.Bucket{Name: bucketConversations, Max: 2, Window: time.Second},
+	)
+	if err != nil {
+		return nil, err
 	}
-	return s, nil
+	return &messagingService{client: client, throttle: throttle}, nil
 }
 
-type sendResponse struct {
-	RecipientID string `json:"recipient_id"`
-	MessageID   string `json:"message_id"`
-}
-
-type textBody struct {
-	Recipient recipient   `json:"recipient"`
-	Message   textMessage `json:"message"`
-	ReplyTo   *replyTo    `json:"reply_to,omitempty"`
-}
-
-type recipient struct {
-	ID        string `json:"id,omitempty"`
-	CommentID string `json:"comment_id,omitempty"`
-}
-
-type textMessage struct {
-	Text         string       `json:"text"`
-	QuickReplies []quickReply `json:"quick_replies,omitempty"`
-}
-
-type quickReply struct {
-	ContentType string `json:"content_type"`
-	Title       string `json:"title"`
-	Payload     string `json:"payload"`
-}
-
-type replyTo struct {
-	MID string `json:"mid"`
-}
-
-type mediaBody struct {
-	Recipient recipient    `json:"recipient"`
-	Message   mediaMessage `json:"message"`
-	ReplyTo   *replyTo     `json:"reply_to,omitempty"`
-}
-
-type mediaMessage struct {
-	Attachment attachment `json:"attachment"`
-}
-
-type attachment struct {
-	Type    string            `json:"type"`
-	Payload attachmentPayload `json:"payload"`
-}
-
-type attachmentPayload struct {
-	URL string `json:"url"`
-}
-
-type reactionBody struct {
-	Recipient    recipient        `json:"recipient"`
-	SenderAction string           `json:"sender_action"`
-	Payload      *reactionPayload `json:"payload,omitempty"`
-}
-
-type reactionPayload struct {
-	MessageID string `json:"message_id"`
-	Reaction  string `json:"reaction,omitempty"`
-}
-
-type senderActionBody struct {
-	Recipient    recipient `json:"recipient"`
-	SenderAction string    `json:"sender_action"`
+func (s *messagingService) send(ctx context.Context, bucket, igUserID, token string, env sendapi.Envelope) (*sendapi.Response, error) {
+	if err := s.throttle.Allow(bucket, igUserID); err != nil {
+		return nil, err
+	}
+	return sendapi.Send(ctx, s.client, "/"+igUserID+"/messages", token, env)
 }
 
 func (s *messagingService) SendText(ctx context.Context, igUserID, token string, in igdomain.SendTextInput) (*igdomain.SendResult, error) {
 	if len(in.Text) > igdomain.MaxTextBytes {
 		return nil, igdomain.ErrTextTooLong
 	}
-	if err := s.allow(s.textLimiter, igUserID); err != nil {
-		return nil, err
-	}
-
-	body := textBody{
-		Recipient: recipient{ID: in.RecipientIGSID},
-		Message:   textMessage{Text: in.Text, QuickReplies: quickRepliesFor(in.QuickReplies)},
-	}
-	if in.ReplyToMID != "" {
-		body.ReplyTo = &replyTo{MID: in.ReplyToMID}
-	}
-
-	var out sendResponse
-	if err := s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body:   body,
-	}, &out); err != nil {
+	env := sendapi.Text(sendapi.ToUser(in.RecipientIGSID), in.Text).
+		WithQuickReplies(sendapi.QuickReplies(quickReplyOptions(in.QuickReplies),
+			igdomain.MaxQuickReplies, igdomain.MaxQuickReplyTitleRunes)).
+		ReplyingTo(in.ReplyToMID)
+	out, err := s.send(ctx, bucketText, igUserID, token, env)
+	if err != nil {
 		return nil, err
 	}
 	return &igdomain.SendResult{RecipientID: out.RecipientID, MessageID: out.MessageID}, nil
 }
 
 func (s *messagingService) SendMedia(ctx context.Context, igUserID, token string, in igdomain.SendMediaInput) (*igdomain.SendResult, error) {
-	kind, err := attachmentTypeFor(in.Kind)
+	kind, err := sendapi.AttachmentTypeFor(in.Kind)
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(in.URL) == "" {
 		return nil, fmt.Errorf("instagram: media send requires a publicly reachable URL")
 	}
-	if err := s.allow(s.mediaLimiter, igUserID); err != nil {
-		return nil, err
-	}
-
-	body := mediaBody{
-		Recipient: recipient{ID: in.RecipientIGSID},
-		Message: mediaMessage{
-			Attachment: attachment{Type: kind, Payload: attachmentPayload{URL: in.URL}},
-		},
-	}
-	if in.ReplyToMID != "" {
-		body.ReplyTo = &replyTo{MID: in.ReplyToMID}
-	}
-
-	var out sendResponse
-	if err := s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body:   body,
-	}, &out); err != nil {
+	env := sendapi.Media(sendapi.ToUser(in.RecipientIGSID), kind, in.URL).ReplyingTo(in.ReplyToMID)
+	out, err := s.send(ctx, bucketMedia, igUserID, token, env)
+	if err != nil {
 		return nil, err
 	}
 	return &igdomain.SendResult{RecipientID: out.RecipientID, MessageID: out.MessageID}, nil
 }
 
 func (s *messagingService) SendReaction(ctx context.Context, igUserID, token, recipientIGSID, targetMID, reaction string) error {
-	if err := s.allow(s.textLimiter, igUserID); err != nil {
-		return err
-	}
-	body := reactionBody{
-		Recipient:    recipient{ID: recipientIGSID},
-		SenderAction: "react",
-		Payload:      &reactionPayload{MessageID: targetMID, Reaction: reaction},
-	}
-	return s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body:   body,
-	}, nil)
+	_, err := s.send(ctx, bucketText, igUserID, token, sendapi.React(sendapi.ToUser(recipientIGSID), targetMID, reaction))
+	return err
 }
 
 func (s *messagingService) RemoveReaction(ctx context.Context, igUserID, token, recipientIGSID, targetMID string) error {
-	if err := s.allow(s.textLimiter, igUserID); err != nil {
-		return err
-	}
-	body := reactionBody{
-		Recipient:    recipient{ID: recipientIGSID},
-		SenderAction: "unreact",
-		Payload:      &reactionPayload{MessageID: targetMID},
-	}
-	return s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body:   body,
-	}, nil)
+	_, err := s.send(ctx, bucketText, igUserID, token, sendapi.Unreact(sendapi.ToUser(recipientIGSID), targetMID))
+	return err
 }
 
 func (s *messagingService) SendTyping(ctx context.Context, igUserID, token, recipientIGSID string, on bool) error {
-	action := "typing_off"
+	action := sendapi.ActionTypingOff
 	if on {
-		action = "typing_on"
+		action = sendapi.ActionTypingOn
 	}
-	return s.senderAction(ctx, igUserID, token, recipientIGSID, action)
+	_, err := s.send(ctx, bucketText, igUserID, token, sendapi.Action(sendapi.ToUser(recipientIGSID), action))
+	return err
 }
 
 func (s *messagingService) MarkSeen(ctx context.Context, igUserID, token, recipientIGSID string) error {
-	return s.senderAction(ctx, igUserID, token, recipientIGSID, "mark_seen")
-}
-
-func (s *messagingService) senderAction(ctx context.Context, igUserID, token, recipientIGSID, action string) error {
-	if err := s.allow(s.textLimiter, igUserID); err != nil {
-		return err
-	}
-	return s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body: senderActionBody{
-			Recipient:    recipient{ID: recipientIGSID},
-			SenderAction: action,
-		},
-	}, nil)
+	_, err := s.send(ctx, bucketText, igUserID, token, sendapi.Action(sendapi.ToUser(recipientIGSID), sendapi.ActionMarkSeen))
+	return err
 }
 
 func (s *messagingService) SendPrivateReply(ctx context.Context, igUserID, token, igCommentID, text string) (*igdomain.SendResult, error) {
 	if len(text) > igdomain.MaxTextBytes {
 		return nil, igdomain.ErrTextTooLong
 	}
-	if err := s.allow(s.textLimiter, igUserID); err != nil {
-		return nil, err
-	}
-
-	body := textBody{
-		Recipient: recipient{CommentID: igCommentID},
-		Message:   textMessage{Text: text},
-	}
-
-	var out sendResponse
-	if err := s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/messages",
-		Token:  token,
-		Body:   body,
-	}, &out); err != nil {
+	out, err := s.send(ctx, bucketText, igUserID, token, sendapi.Text(sendapi.ToComment(igCommentID), text))
+	if err != nil {
 		return nil, err
 	}
 	return &igdomain.SendResult{RecipientID: out.RecipientID, MessageID: out.MessageID}, nil
@@ -302,8 +160,31 @@ func (s *messagingService) GetContactProfile(ctx context.Context, token, igsid s
 	}, nil
 }
 
+type messageSenderResponse struct {
+	From struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+	} `json:"from"`
+}
+
+func (s *messagingService) GetMessageSender(ctx context.Context, token, mid string) (*igdomain.MessageSender, error) {
+	q := url.Values{}
+	q.Set("fields", "from")
+
+	var out messageSenderResponse
+	if err := s.client.Do(ctx, meta.Request{
+		Method: http.MethodGet,
+		Path:   "/" + url.PathEscape(mid),
+		Token:  token,
+		Query:  q,
+	}, &out); err != nil {
+		return nil, err
+	}
+	return &igdomain.MessageSender{ID: out.From.ID, Username: out.From.Username}, nil
+}
+
 func (s *messagingService) GetConversations(ctx context.Context, igUserID, token string, limit int) error {
-	if err := s.allow(s.convLimiter, igUserID); err != nil {
+	if err := s.throttle.Allow(bucketConversations, igUserID); err != nil {
 		return err
 	}
 	if limit <= 0 {
@@ -321,64 +202,10 @@ func (s *messagingService) GetConversations(ctx context.Context, igUserID, token
 	}, nil)
 }
 
-func (s *messagingService) allow(limiter cache.RateLimiter, accountID string) error {
-	if limiter == nil {
-		return nil
-	}
-	allowed, retryAfter, err := limiter.Allow(accountID)
-	if err != nil {
-		return nil
-	}
-	if !allowed {
-		return &meta.Error{
-			Code:        meta.CodeMessagingRate,
-			IsTransient: true,
-			Message: fmt.Sprintf("local rate limit for instagram account %s; retry in %s",
-				accountID, retryAfter),
-		}
-	}
-	return nil
-}
-
-func attachmentTypeFor(kind string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "image":
-		return "image", nil
-	case "video":
-		return "video", nil
-	case "audio":
-		return "audio", nil
-	case "document", "file":
-		return "file", nil
-	}
-	return "", fmt.Errorf("instagram: unsupported media kind %q", kind)
-}
-
-func quickRepliesFor(options []igdomain.QuickReplyOption) []quickReply {
-	if len(options) == 0 {
-		return nil
-	}
-	out := make([]quickReply, 0, len(options))
+func quickReplyOptions(options []igdomain.QuickReplyOption) []sendapi.Option {
+	out := make([]sendapi.Option, 0, len(options))
 	for _, o := range options {
-		if len(out) >= igdomain.MaxQuickReplies {
-			break
-		}
-		out = append(out, quickReply{
-			ContentType: "text",
-			Title:       truncateRunes(o.Title, igdomain.MaxQuickReplyTitleRunes),
-			Payload:     o.Payload,
-		})
+		out = append(out, sendapi.Option{Title: o.Title, Payload: o.Payload})
 	}
 	return out
-}
-
-func truncateRunes(s string, max int) string {
-	if max <= 0 {
-		return s
-	}
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max])
 }

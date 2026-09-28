@@ -6,9 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/actor"
 	"vozko/domain/opportunity"
 	"vozko/domain/pipeline"
 	"vozko/domain/stage"
+	"vozko/domain/workspace"
 )
 
 var (
@@ -86,6 +88,16 @@ func (s *Service) PipelineStages(workspaceID, pipelineID string) ([]*stage.Stage
 	}
 	sort.SliceStable(stages, func(i, j int) bool { return stages[i].Position < stages[j].Position })
 	return stages, nil
+}
+
+func (s *Service) mayChooseOwner(workspaceID, actorID, ownerID string, platformAdmin bool) error {
+	if ownerID == "" || ownerID == actorID || platformAdmin || actor.KindOf(actorID) != actor.KindHuman {
+		return nil
+	}
+	if s.assign == nil || s.assign.Execute(actorID, workspaceID, workspace.ResourceConversations, workspace.ActionAssign) != nil {
+		return ErrOwnerChoiceDenied
+	}
+	return nil
 }
 
 func (s *Service) checkOwner(workspaceID, ownerID string) error {

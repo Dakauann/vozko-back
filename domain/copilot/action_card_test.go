@@ -27,3 +27,9 @@ func TestActionKindsAreAClosedCatalog(t *testing.T) {
 		t.Fatal("the catalog must be closed")
 	}
 }
+
+func TestConnectFacebookOffersTheFacebookCapability(t *testing.T) {
+	if c, ok := ActionConnectFacebook.Capability(); !ok || c != readiness.Facebook {
+		t.Fatalf("capability = %q, %v", c, ok)
+	}
+}

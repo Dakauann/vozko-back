@@ -11,7 +11,7 @@ import (
 )
 
 type DealDesk interface {
-	CurrentDealForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error)
+	DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error)
 	ManageForEntry(workspaceID string, cmd opportunity_usecase.EntryCommand) (*opportunity_usecase.EntryResult, error)
 }
 
@@ -34,6 +34,34 @@ func dealStagePicker(description string) workflow.ConfigField {
 		OptionsSource: "opportunity_stages",
 		Description:   description,
 	}
+}
+
+func dealIDField(description string) workflow.ConfigField {
+	return workflow.ConfigField{
+		Key:         "opportunity_id",
+		Label:       "ID do negócio",
+		Type:        "text",
+		Placeholder: "{{no_anterior.opportunity_id}}",
+		Description: description,
+	}
+}
+
+func whenAction(actions ...opportunity_usecase.EntryAction) *workflow.FieldRule {
+	values := make([]string, 0, len(actions))
+	for _, action := range actions {
+		values = append(values, string(action))
+	}
+	return &workflow.FieldRule{Field: "action", Values: values}
+}
+
+func whenCheck(checks ...string) *workflow.FieldRule {
+	return &workflow.FieldRule{Field: "check", Values: checks}
+}
+
+func withRules(field workflow.ConfigField, visible, required *workflow.FieldRule) workflow.ConfigField {
+	field.VisibleWhen = visible
+	field.RequiredWhen = required
+	return field
 }
 
 func nodeText(ctx *workflow.NodeContext, key string) string {
@@ -71,12 +99,14 @@ func (e *manageOpportunityExecutor) Definition() workflow.NodeDefinition {
 		Category:    workflow.NodeCategoryAction,
 		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
 		Label:       "Gerenciar Negócio",
-		Description: "Cria ou atualiza o negócio (oportunidade) da conversa: valor, etapa, ganho ou perda.",
+		Description: "Cria ou atualiza negócios (oportunidades) da conversa: valor, etapa, ganho ou perda.",
 		Icon:        "CurrencyDollar",
 		Guidance: workflow.NodeGuidance{
 			When: "Para registrar a venda da conversa no funil de negócios, por exemplo depois que um agente confirma o fechamento.",
-			Behavior: "A conversa tem no máximo um negócio aberto por funil: criar de novo atualiza o mesmo negócio. " +
-				"O fluxo fica registrado como responsável e autor. Ganho exige valor; perdido exige motivo.",
+			Behavior: "Sem ID do negócio, o nó age no único negócio aberto da conversa neste funil; com mais de um aberto, segue pela saída Erro. " +
+				"Criar novo negócio sempre abre outro, para quando a conversa trata mais de um contrato. " +
+				"Mover, atualizar valor e marcar como perdido nunca criam negócio. O fluxo fica registrado como responsável e autor. " +
+				"Ganho exige valor; perdido exige motivo.",
 		},
 		Outputs: []workflow.HandleDefinition{
 			{ID: "sucesso", Label: "Sucesso"},
@@ -103,16 +133,23 @@ func (e *manageOpportunityExecutor) Definition() workflow.NodeDefinition {
 		ConfigSchema: []workflow.ConfigField{
 			dealPipelinePicker(),
 			{Key: "action", Label: "Ação", Type: "select", Options: actions, Required: true},
-			dealStagePicker("Etapa destino. Obrigatória para mover; nas outras ações é opcional."),
-			{Key: "title", Label: "Título", Type: "text", Placeholder: "Plano Pro", Description: "Título usado quando o negócio é criado."},
-			{Key: "value", Label: "Valor", Type: "text", Placeholder: "{{last.value}}", Description: "Número com ponto decimal, ex.: 1500.50. Aceita variáveis."},
-			{Key: "lost_reason", Label: "Motivo da perda", Type: "text", Description: "Obrigatório para marcar como perdido. Aceita variáveis."},
+			withRules(dealIDField("Opcional. Vazio: o único negócio aberto da conversa neste funil. Com mais de um aberto, informe o ID vindo de um passo anterior."),
+				whenAction(opportunity_usecase.EntryCreate, opportunity_usecase.EntryUpdateValue, opportunity_usecase.EntryMove, opportunity_usecase.EntryWin, opportunity_usecase.EntryLose), nil),
+			withRules(dealStagePicker("Etapa onde o negócio fica. Obrigatória para mover."),
+				whenAction(opportunity_usecase.EntryCreate, opportunity_usecase.EntryCreateNew, opportunity_usecase.EntryMove), whenAction(opportunity_usecase.EntryMove)),
+			withRules(workflow.ConfigField{Key: "title", Label: "Título", Type: "text", Placeholder: "Plano Pro", Description: "Título usado quando o negócio é criado."},
+				whenAction(opportunity_usecase.EntryCreate, opportunity_usecase.EntryCreateNew), nil),
+			withRules(workflow.ConfigField{Key: "value", Label: "Valor", Type: "text", Placeholder: "{{last.value}}", Description: "Número com ponto decimal, ex.: 1500.50. Aceita variáveis. Ganho exige valor quando o negócio ainda não tem."},
+				whenAction(opportunity_usecase.EntryCreate, opportunity_usecase.EntryCreateNew, opportunity_usecase.EntryUpdateValue, opportunity_usecase.EntryWin), whenAction(opportunity_usecase.EntryUpdateValue)),
+			withRules(workflow.ConfigField{Key: "lost_reason", Label: "Motivo da perda", Type: "text", Description: "Aceita variáveis."},
+				whenAction(opportunity_usecase.EntryLose), whenAction(opportunity_usecase.EntryLose)),
 		},
 	}
 }
 
 var dealActionLabels = map[opportunity_usecase.EntryAction]string{
 	opportunity_usecase.EntryCreate:      "Criar ou atualizar",
+	opportunity_usecase.EntryCreateNew:   "Criar novo negócio",
 	opportunity_usecase.EntryUpdateValue: "Atualizar valor",
 	opportunity_usecase.EntryMove:        "Mover de etapa",
 	opportunity_usecase.EntryWin:         "Marcar como ganho",
@@ -131,14 +168,15 @@ func (e *manageOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	}
 
 	cmd := opportunity_usecase.EntryCommand{
-		EntryID:      ctx.Run.EntryID,
-		EntryType:    ctx.Run.EntryType,
-		PipelineID:   pipelineID,
-		Actor:        workflowActor(ctx.Run.WorkflowID),
-		Action:       action,
-		Title:        nodeText(ctx, "title"),
-		StageID:      nodeText(ctx, "stage_id"),
-		LostReasonID: nodeText(ctx, "lost_reason"),
+		EntryID:       ctx.Run.EntryID,
+		EntryType:     ctx.Run.EntryType,
+		PipelineID:    pipelineID,
+		Actor:         workflowActor(ctx.Run.WorkflowID),
+		Action:        action,
+		OpportunityID: nodeText(ctx, "opportunity_id"),
+		Title:         nodeText(ctx, "title"),
+		StageID:       nodeText(ctx, "stage_id"),
+		LostReasonID:  nodeText(ctx, "lost_reason"),
 	}
 	if value := nodeText(ctx, "value"); value != "" {
 		cents, err := opportunity.CentsFromText(value)
@@ -167,7 +205,7 @@ func failDeal(edges []workflow.Edge, reason string) *workflow.NodeResult {
 
 var nodeRefusals = map[opportunity_usecase.Refusal]string{
 	opportunity_usecase.RefusalWonWithoutValue:     "negócio ganho precisa de valor: preencha o campo Valor do nó",
-	opportunity_usecase.RefusalNoOpenDeal:          "a conversa não tem negócio aberto para marcar como perdido",
+	opportunity_usecase.RefusalNoOpenDeal:          "a conversa não tem negócio aberto neste funil: use Criar ou atualizar para abrir um",
 	opportunity_usecase.RefusalLostReasonMissing:   "negócio perdido precisa de motivo: preencha o campo Motivo da perda do nó",
 	opportunity_usecase.RefusalTitleMissing:        "preencha o Título do negócio no nó",
 	opportunity_usecase.RefusalStageInvalid:        "a etapa escolhida não é do funil do nó: escolha outra no campo Etapa do negócio",
@@ -175,6 +213,11 @@ var nodeRefusals = map[opportunity_usecase.Refusal]string{
 	opportunity_usecase.RefusalCurrencyUnsupported: "a moeda do negócio não é suportada",
 	opportunity_usecase.RefusalPipelineInvalid:     "o funil escolhido não existe mais ou não é um funil de negócios completo (aberto, ganho e perdido)",
 	opportunity_usecase.RefusalRequiredFields:      "o funil exige campos personalizados obrigatórios que o fluxo não preenche",
+	opportunity_usecase.RefusalAmbiguousDeal:       "a conversa tem mais de um negócio aberto neste funil: informe o ID do negócio no nó",
+	opportunity_usecase.RefusalDealNotLinked:       "o ID do negócio não pertence a esta conversa neste funil",
+	opportunity_usecase.RefusalDealClosed:          "o negócio informado já foi encerrado",
+	opportunity_usecase.RefusalDealIDOnNewDeal:     "Criar novo negócio não usa ID do negócio: deixe o campo vazio",
+	opportunity_usecase.RefusalDealChanged:         "o negócio foi alterado ao mesmo tempo por outra pessoa ou automação; nada foi sobrescrito",
 }
 
 func dealFailure(err error) string {
@@ -185,9 +228,10 @@ func dealFailure(err error) string {
 }
 
 const (
-	dealCheckExists = "exists"
-	dealCheckStatus = "status"
-	dealCheckStage  = "stage"
+	dealCheckExists      = "exists"
+	dealCheckSeveralOpen = "several_open"
+	dealCheckStatus      = "status"
+	dealCheckStage       = "stage"
 )
 
 type checkOpportunityExecutor struct {
@@ -204,11 +248,12 @@ func (e *checkOpportunityExecutor) Definition() workflow.NodeDefinition {
 		Category:    workflow.NodeCategoryCondition,
 		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
 		Label:       "Verificar Negócio",
-		Description: "Verifica o negócio da conversa: se existe, sua situação ou sua etapa.",
+		Description: "Verifica os negócios da conversa: se existem, se há mais de um aberto, a situação ou a etapa.",
 		Icon:        "CurrencyDollar",
 		Guidance: workflow.NodeGuidance{
-			When:     "Para seguir caminhos diferentes conforme a conversa já tenha um negócio, ele esteja ganho ou em uma etapa.",
-			Behavior: "Considera o negócio aberto da conversa no funil escolhido ou, sem um aberto, o último fechado.",
+			When: "Para seguir caminhos diferentes conforme a conversa já tenha um negócio, ele esteja ganho ou em uma etapa.",
+			Behavior: "Considera o negócio do ID informado ou o único negócio aberto da conversa no funil; sem aberto, o último fechado. " +
+				"Com mais de um aberto e sem ID, verificar situação ou etapa interrompe a execução. A saída lista todos os negócios para usar em um Loop.",
 		},
 		Outputs: []workflow.HandleDefinition{
 			{ID: "true", Label: "Sim"},
@@ -221,21 +266,26 @@ func (e *checkOpportunityExecutor) Definition() workflow.NodeDefinition {
 			{Key: "stage_id", Description: "ID da etapa do negócio"},
 			{Key: "value_cents", Description: "Valor em centavos"},
 			{Key: "value", Description: "Valor na unidade da moeda"},
+			{Key: "open_count", Description: "Quantidade de negócios abertos da conversa no funil"},
+			{Key: "opportunities", Description: "Lista dos negócios da conversa no funil, abertos primeiro"},
 		},
 		DefaultConfig: map[string]interface{}{"pipeline_id": "", "check": dealCheckExists},
 		ConfigSchema: []workflow.ConfigField{
 			dealPipelinePicker(),
 			{Key: "check", Label: "Verificar", Type: "select", Required: true, Options: []workflow.ConfigFieldOption{
 				{Value: dealCheckExists, Label: "Tem negócio"},
+				{Value: dealCheckSeveralOpen, Label: "Tem mais de um negócio aberto"},
 				{Value: dealCheckStatus, Label: "Situação do negócio é"},
 				{Value: dealCheckStage, Label: "Negócio está na etapa"},
 			}},
-			{Key: "status", Label: "Situação", Type: "select", Description: "Usado quando verifica a situação.", Options: []workflow.ConfigFieldOption{
+			withRules(dealIDField("Opcional. Vazio: o único negócio aberto da conversa neste funil ou, sem aberto, o último fechado."),
+				whenCheck(dealCheckExists, dealCheckStatus, dealCheckStage), nil),
+			withRules(workflow.ConfigField{Key: "status", Label: "Situação", Type: "select", Options: []workflow.ConfigFieldOption{
 				{Value: string(opportunity.StatusOpen), Label: "Aberto"},
 				{Value: string(opportunity.StatusWon), Label: "Ganho"},
 				{Value: string(opportunity.StatusLost), Label: "Perdido"},
-			}},
-			dealStagePicker("Usada quando verifica a etapa."),
+			}}, whenCheck(dealCheckStatus), whenCheck(dealCheckStatus)),
+			withRules(dealStagePicker("Etapa a comparar."), whenCheck(dealCheckStage), whenCheck(dealCheckStage)),
 		},
 	}
 }
@@ -245,35 +295,36 @@ func (e *checkOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflow
 	check := nodeText(ctx, "check")
 	status := opportunity.Status(nodeText(ctx, "status"))
 	stageID := nodeText(ctx, "stage_id")
+	dealID := nodeText(ctx, "opportunity_id")
 	if pipelineID == "" || !dealCheckComplete(check, status, stageID) {
 		return nil, workflow.ErrNodeConfigMissing
 	}
 
-	var deal *opportunity.Opportunity
+	var deals opportunity.EntryDeals
 	if e.deals != nil {
-		current, err := e.deals.CurrentDealForEntry(ctx.Run.WorkspaceID, pipelineID, ctx.Run.EntryID, ctx.Run.EntryType)
-		switch {
-		case errors.Is(err, opportunity.ErrNotFound):
-		case err != nil:
+		found, err := e.deals.DealsForEntry(ctx.Run.WorkspaceID, pipelineID, ctx.Run.EntryID, ctx.Run.EntryType)
+		if err != nil {
 			return nil, err
-		default:
-			deal = current
 		}
+		deals = found
 	}
 
-	out := map[string]interface{}{"matched": false, "opportunity_id": "", "status": "", "stage_id": "", "value_cents": int64(0), "value": float64(0)}
-	if deal != nil {
-		for key, value := range dealOutput(deal) {
-			out[key] = value
-		}
-		switch check {
-		case dealCheckExists:
-			out["matched"] = true
-		case dealCheckStatus:
-			out["matched"] = deal.Status == status
-		case dealCheckStage:
-			out["matched"] = deal.StageID == stageID
-		}
+	deal, err := deals.Current(dealID)
+	ambiguous := errors.Is(err, opportunity.ErrAmbiguousDeal)
+	if ambiguous && (check == dealCheckStatus || check == dealCheckStage) {
+		return nil, fmt.Errorf("%w: node %q", err, ctx.Node.ID)
+	}
+
+	out := dealCheckOutput(deals, deal)
+	switch check {
+	case dealCheckExists:
+		out["matched"] = deal != nil || ambiguous
+	case dealCheckSeveralOpen:
+		out["matched"] = len(deals.Open()) > 1
+	case dealCheckStatus:
+		out["matched"] = deal != nil && deal.Status == status
+	case dealCheckStage:
+		out["matched"] = deal != nil && deal.StageID == stageID
 	}
 
 	branch := "false"
@@ -286,9 +337,26 @@ func (e *checkOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflow
 	}, nil
 }
 
+func dealCheckOutput(deals opportunity.EntryDeals, deal *opportunity.Opportunity) map[string]interface{} {
+	list := make([]map[string]interface{}, 0, len(deals))
+	for _, d := range deals {
+		list = append(list, dealOutput(d))
+	}
+	out := map[string]interface{}{
+		"matched": false, "opportunity_id": "", "status": "", "stage_id": "", "value_cents": int64(0), "value": float64(0),
+		"open_count": len(deals.Open()), "opportunities": list,
+	}
+	if deal != nil {
+		for key, value := range dealOutput(deal) {
+			out[key] = value
+		}
+	}
+	return out
+}
+
 func dealCheckComplete(check string, status opportunity.Status, stageID string) bool {
 	switch check {
-	case dealCheckExists:
+	case dealCheckExists, dealCheckSeveralOpen:
 		return true
 	case dealCheckStatus:
 		return status.Valid()

@@ -25,6 +25,14 @@ func (r *Registry) Get(name string) (copilot.Tool, bool) {
 	return t, ok
 }
 
+func (r *Registry) Tools() []copilot.Tool {
+	out := make([]copilot.Tool, 0, len(r.byName))
+	for _, t := range r.byName {
+		out = append(out, t)
+	}
+	return out
+}
+
 func (r *Registry) Definitions() []tools.Definition {
 	defs := make([]tools.Definition, 0, len(r.byName))
 	for _, t := range r.byName {

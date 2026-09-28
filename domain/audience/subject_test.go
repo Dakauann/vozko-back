@@ -8,12 +8,12 @@ import (
 )
 
 func TestSourceValidFollowsTheAnalysisSets(t *testing.T) {
-	for _, s := range []Source{SourceInstagram, SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp} {
+	for _, s := range []Source{SourceInstagram, SourceWhatsApp, SourceTelegram, SourceUnofficialWhatsApp, SourceFacebook} {
 		if !s.Valid() {
 			t.Errorf("%q should be an analysable source", s)
 		}
 	}
-	for _, s := range []Source{"support", "voice", "", "Instagram", "facebook", "instagram "} {
+	for _, s := range []Source{"support", "voice", "", "Instagram", "messenger", "instagram "} {
 		if s.Valid() {
 			t.Errorf("%q should not be an analysable source", s)
 		}
@@ -37,7 +37,7 @@ func TestSubjectKindSupportedOn(t *testing.T) {
 			t.Errorf("%q has no public comments", s)
 		}
 	}
-	for _, s := range []Source{SourceWhatsApp, SourceInstagram, SourceTelegram, SourceUnofficialWhatsApp} {
+	for _, s := range []Source{SourceWhatsApp, SourceInstagram, SourceTelegram, SourceUnofficialWhatsApp, SourceFacebook} {
 		if !SubjectKindConversation.SupportedOn(s) {
 			t.Errorf("%q should carry conversations", s)
 		}
@@ -232,7 +232,7 @@ func TestNewPendingRefusesImpossibleSubjects(t *testing.T) {
 		"comment on telegram":     {Kind: SubjectKindComment, Source: SourceTelegram, AccountID: "a", ContainerID: "c"},
 		"conversation on voice":   {Kind: SubjectKindConversation, Source: "voice", AccountID: "a", ContainerID: "c"},
 		"conversation on support": {Kind: SubjectKindConversation, Source: "support", AccountID: "a", ContainerID: "c"},
-		"unknown channel":         {Kind: SubjectKindConversation, Source: "facebook", AccountID: "a", ContainerID: "c"},
+		"unknown channel":         {Kind: SubjectKindConversation, Source: "myspace", AccountID: "a", ContainerID: "c"},
 	} {
 		if _, err := NewPending(NewInput{
 			WorkspaceID: "ws", Container: ref, SubjectID: "x", Text: "hi", Now: now,

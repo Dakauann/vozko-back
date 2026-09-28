@@ -24,6 +24,7 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 	want := []shared.EntryType{
 		shared.EntryTypeWhatsApp,
 		shared.EntryTypeInstagram,
+		shared.EntryTypeFacebook,
 		shared.EntryTypeTelegram,
 		shared.EntryTypeUnofficialWhatsApp,
 	}

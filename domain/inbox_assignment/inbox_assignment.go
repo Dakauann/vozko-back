@@ -26,6 +26,13 @@ func (a *InboxAssignment) AssignedTo(userID string) bool {
 	return a != nil && a.AssignedUserID != "" && a.AssignedUserID == userID
 }
 
+func (a *InboxAssignment) Owner() string {
+	if a == nil {
+		return ""
+	}
+	return a.AssignedUserID
+}
+
 func (a *InboxAssignment) HeldByAutomation() bool {
 	return a != nil && actor.IsAutomation(a.AssignedUserID)
 }

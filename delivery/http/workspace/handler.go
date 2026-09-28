@@ -35,6 +35,7 @@ type WorkspaceHandler struct {
 	setMemberPermissions    workspacedomain.SetMemberPermissionsUseCase
 	getMemberPermissions    workspacedomain.GetMemberPermissionsUseCase
 	listResourcePermissions workspacedomain.ListResourcePermissionsUseCase
+	listFeatures            workspacedomain.ListFeaturesUseCase
 	checkAccess             workspacedomain.CheckAccessUseCase
 	ensureDefault           workspacedomain.EnsureDefaultWorkspaceUseCase
 	assignResource          workspacedomain.AssignResourceUseCase
@@ -68,6 +69,7 @@ func NewWorkspaceHandler(
 	setMemberPermissions workspacedomain.SetMemberPermissionsUseCase,
 	getMemberPermissions workspacedomain.GetMemberPermissionsUseCase,
 	listResourcePermissions workspacedomain.ListResourcePermissionsUseCase,
+	listFeatures workspacedomain.ListFeaturesUseCase,
 	checkAccess workspacedomain.CheckAccessUseCase,
 	ensureDefault workspacedomain.EnsureDefaultWorkspaceUseCase,
 	assignResource workspacedomain.AssignResourceUseCase,
@@ -100,6 +102,7 @@ func NewWorkspaceHandler(
 		setMemberPermissions:    setMemberPermissions,
 		getMemberPermissions:    getMemberPermissions,
 		listResourcePermissions: listResourcePermissions,
+		listFeatures:            listFeatures,
 		checkAccess:             checkAccess,
 		ensureDefault:           ensureDefault,
 		assignResource:          assignResource,
@@ -731,7 +734,7 @@ func (h *WorkspaceHandler) GetMemberPermissions(w http.ResponseWriter, r *http.R
 }
 
 // @Summary		Listar permissões disponíveis
-// @Description	Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace.
+// @Description	Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace e o catálogo de funcionalidades com as permissões e telas de cada uma.
 // @Tags			Workspaces
 // @Produce		json
 // @Success		200	{object}	map[string]interface{}
@@ -745,8 +748,10 @@ func (h *WorkspaceHandler) ListResourcePermissions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	permissions := h.listResourcePermissions.Execute()
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"permissions": permissions})
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
+		"permissions": h.listResourcePermissions.Execute(),
+		"features":    h.listFeatures.Execute(),
+	})
 }
 
 // @Summary		Atribuir recurso a um membro

@@ -28,6 +28,8 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 		WHERE tgc.workspace_id = ?::uuid AND tgc.deleted_at IS NULL`,
 	shared.EntryTypeUnofficialWhatsApp: `SELECT uwc.id::text FROM unofficial_whatsapp_conversations uwc
 		WHERE uwc.workspace_id = ?::uuid AND uwc.deleted_at IS NULL`,
+	shared.EntryTypeFacebook: `SELECT fbc.id::text FROM facebook_conversations fbc
+		WHERE fbc.workspace_id = ?::uuid AND fbc.deleted_at IS NULL`,
 }
 
 type repository struct {

@@ -2,8 +2,10 @@ package crmfilter
 
 import (
 	"fmt"
+	"strings"
 
 	"vozko/domain/crmfilter"
+	"vozko/domain/shared"
 )
 
 type LeadDescriptor struct {
@@ -66,30 +68,80 @@ func (d LeadDescriptor) WindowExpiresAtExpr() string {
 
 func (d LeadDescriptor) LastActivityExpr() string {
 	leadID := d.id()
+	clocks := make([]string, 0, len(contactChannels))
+	for _, c := range contactChannels {
+		clocks = append(clocks, c.lastMessageExpr(leadID))
+	}
 	return "GREATEST(" +
 		"(SELECT MAX(wce_a.last_message_at) FROM whatsapp_campaign_entries wce_a WHERE wce_a.lead_id = " + leadID + " AND wce_a.deleted_at IS NULL)," +
 		"(SELECT MAX(wce_u.updated_at) FROM whatsapp_campaign_entries wce_u WHERE wce_u.lead_id = " + leadID + " AND wce_u.deleted_at IS NULL)," +
 		d.WindowLastMessageExpr() + "," +
-		"(SELECT MAX(uwc_a.last_message_at) FROM unofficial_whatsapp_conversations uwc_a JOIN unofficial_whatsapp_contacts uwct_a ON uwct_a.id = uwc_a.contact_id WHERE uwct_a.lead_id = " + leadID + " AND uwc_a.deleted_at IS NULL AND uwct_a.deleted_at IS NULL)," +
-		"(SELECT MAX(tgc_a.last_message_at) FROM telegram_conversations tgc_a JOIN telegram_contacts tgct_a ON tgct_a.id = tgc_a.contact_id WHERE tgct_a.lead_id = " + leadID + " AND tgc_a.deleted_at IS NULL AND tgct_a.deleted_at IS NULL)," +
-		"(SELECT MAX(igc_a.last_message_at) FROM instagram_conversations igc_a JOIN instagram_contacts igct_a ON igct_a.id = igc_a.contact_id WHERE igct_a.lead_id = " + leadID + " AND igc_a.deleted_at IS NULL AND igct_a.deleted_at IS NULL)" +
+		strings.Join(clocks, ",") +
 		")"
 }
 
-const leadChannelsFrom = "(" +
-	"SELECT wce_c.lead_id AS lead_id, 'whatsapp' AS channel FROM whatsapp_campaign_entries wce_c WHERE wce_c.deleted_at IS NULL" +
-	" UNION ALL SELECT lmw_c.lead_id, 'whatsapp' FROM lead_message_windows lmw_c" +
-	" UNION ALL SELECT uwct_c.lead_id, 'unofficial_whatsapp' FROM unofficial_whatsapp_contacts uwct_c WHERE uwct_c.lead_id IS NOT NULL AND uwct_c.deleted_at IS NULL" +
-	" UNION ALL SELECT tgct_c.lead_id, 'telegram' FROM telegram_contacts tgct_c WHERE tgct_c.lead_id IS NOT NULL AND tgct_c.deleted_at IS NULL" +
-	" UNION ALL SELECT igct_c.lead_id, 'instagram' FROM instagram_contacts igct_c WHERE igct_c.lead_id IS NOT NULL AND igct_c.deleted_at IS NULL" +
-	") lead_channels"
+type contactChannel struct {
+	entryType     shared.EntryType
+	alias         string
+	conversations string
+	contacts      string
+}
 
-const leadEntriesFrom = "(" +
-	"SELECT wce_e.lead_id AS lead_id, wce_e.id AS entry_id, 'whatsapp' AS entry_type FROM whatsapp_campaign_entries wce_e WHERE wce_e.deleted_at IS NULL" +
-	" UNION ALL SELECT uwct_e.lead_id, uwc_e.id, 'unofficial_whatsapp' FROM unofficial_whatsapp_conversations uwc_e JOIN unofficial_whatsapp_contacts uwct_e ON uwct_e.id = uwc_e.contact_id WHERE uwct_e.lead_id IS NOT NULL AND uwc_e.deleted_at IS NULL AND uwct_e.deleted_at IS NULL" +
-	" UNION ALL SELECT tgct_e.lead_id, tgc_e.id, 'telegram' FROM telegram_conversations tgc_e JOIN telegram_contacts tgct_e ON tgct_e.id = tgc_e.contact_id WHERE tgct_e.lead_id IS NOT NULL AND tgc_e.deleted_at IS NULL AND tgct_e.deleted_at IS NULL" +
-	" UNION ALL SELECT igct_e.lead_id, igc_e.id, 'instagram' FROM instagram_conversations igc_e JOIN instagram_contacts igct_e ON igct_e.id = igc_e.contact_id WHERE igct_e.lead_id IS NOT NULL AND igc_e.deleted_at IS NULL AND igct_e.deleted_at IS NULL" +
-	") lead_entries"
+var contactChannels = []contactChannel{
+	{shared.EntryTypeUnofficialWhatsApp, "uw", "unofficial_whatsapp_conversations", "unofficial_whatsapp_contacts"},
+	{shared.EntryTypeTelegram, "tg", "telegram_conversations", "telegram_contacts"},
+	{shared.EntryTypeInstagram, "ig", "instagram_conversations", "instagram_contacts"},
+	{shared.EntryTypeFacebook, "fb", "facebook_conversations", "facebook_contacts"},
+}
+
+func (c contactChannel) conversationAlias(suffix string) string { return c.alias + "c_" + suffix }
+
+func (c contactChannel) contactAlias(suffix string) string { return c.alias + "ct_" + suffix }
+
+func (c contactChannel) conversationsWithContacts(suffix string) string {
+	conv, contact := c.conversationAlias(suffix), c.contactAlias(suffix)
+	return c.conversations + " " + conv + " JOIN " + c.contacts + " " + contact + " ON " + contact + ".id = " + conv + ".contact_id"
+}
+
+func (c contactChannel) liveRows(suffix string) string {
+	return c.conversationAlias(suffix) + ".deleted_at IS NULL AND " + c.contactAlias(suffix) + ".deleted_at IS NULL"
+}
+
+func (c contactChannel) lastMessageExpr(leadID string) string {
+	return "(SELECT MAX(" + c.conversationAlias("a") + ".last_message_at) FROM " + c.conversationsWithContacts("a") +
+		" WHERE " + c.contactAlias("a") + ".lead_id = " + leadID + " AND " + c.liveRows("a") + ")"
+}
+
+func (c contactChannel) channelRow() string {
+	contact := c.contactAlias("c")
+	return " UNION ALL SELECT " + contact + ".lead_id, '" + string(c.entryType) + "' FROM " + c.contacts + " " + contact +
+		" WHERE " + contact + ".lead_id IS NOT NULL AND " + contact + ".deleted_at IS NULL"
+}
+
+func (c contactChannel) entryRow() string {
+	contact := c.contactAlias("e")
+	return " UNION ALL SELECT " + contact + ".lead_id, " + c.conversationAlias("e") + ".id, '" + string(c.entryType) + "' FROM " +
+		c.conversationsWithContacts("e") + " WHERE " + contact + ".lead_id IS NOT NULL AND " + c.liveRows("e")
+}
+
+func unionOver(head string, row func(contactChannel) string, alias string) string {
+	var b strings.Builder
+	b.WriteString("(" + head)
+	for _, c := range contactChannels {
+		b.WriteString(row(c))
+	}
+	b.WriteString(") " + alias)
+	return b.String()
+}
+
+var leadChannelsFrom = unionOver(
+	"SELECT wce_c.lead_id AS lead_id, 'whatsapp' AS channel FROM whatsapp_campaign_entries wce_c WHERE wce_c.deleted_at IS NULL"+
+		" UNION ALL SELECT lmw_c.lead_id, 'whatsapp' FROM lead_message_windows lmw_c",
+	contactChannel.channelRow, "lead_channels")
+
+var leadEntriesFrom = unionOver(
+	"SELECT wce_e.lead_id AS lead_id, wce_e.id AS entry_id, 'whatsapp' AS entry_type FROM whatsapp_campaign_entries wce_e WHERE wce_e.deleted_at IS NULL",
+	contactChannel.entryRow, "lead_entries")
 
 func LeadChannelsSource() string { return leadChannelsFrom }
 

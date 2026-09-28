@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	mm "vozko/domain/metamessaging"
 )
 
 func loadFixture(t *testing.T, name string) []byte {
@@ -17,15 +19,15 @@ func loadFixture(t *testing.T, name string) []byte {
 	return raw
 }
 
-func decodeFirstEntry(t *testing.T, name string) *EntryEnvelope {
+func decodeFirstEntry(t *testing.T, name string) *mm.EntryEnvelope {
 	t.Helper()
-	envelopes, err := DecodeEnvelope(loadFixture(t, name))
+	envelopes, err := mm.DecodeEnvelope(loadFixture(t, name))
 	if err != nil {
-		t.Fatalf("DecodeEnvelope(%s): %v", name, err)
+		t.Fatalf("mm.DecodeEnvelope(%s): %v", name, err)
 	}
-	entries := SplitEntries(envelopes)
+	entries := mm.SplitEntries(envelopes)
 	if len(entries) == 0 {
-		t.Fatalf("SplitEntries(%s) returned no entries", name)
+		t.Fatalf("mm.SplitEntries(%s) returned no entries", name)
 	}
 	return entries[0]
 }
@@ -46,7 +48,7 @@ func firstEvent(t *testing.T, name string) *Event {
 
 func TestDecodeEnvelope_AcceptsBothTopLevelShapes(t *testing.T) {
 	for _, name := range []string{"text_dm.json", "top_level_array.json"} {
-		envelopes, err := DecodeEnvelope(loadFixture(t, name))
+		envelopes, err := mm.DecodeEnvelope(loadFixture(t, name))
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", name, err)
 		}
@@ -64,8 +66,8 @@ func TestDecodeEnvelope_AcceptsBothTopLevelShapes(t *testing.T) {
 
 func TestDecodeEnvelope_RejectsGarbage(t *testing.T) {
 	for _, body := range []string{"", "   ", "not json", "42"} {
-		if _, err := DecodeEnvelope([]byte(body)); err == nil {
-			t.Errorf("DecodeEnvelope(%q) = nil error, want failure", body)
+		if _, err := mm.DecodeEnvelope([]byte(body)); err == nil {
+			t.Errorf("mm.DecodeEnvelope(%q) = nil error, want failure", body)
 		}
 	}
 }
@@ -73,14 +75,14 @@ func TestDecodeEnvelope_RejectsGarbage(t *testing.T) {
 func TestNormalizeEntry_TextDM(t *testing.T) {
 	ev := firstEvent(t, "text_dm.json")
 
-	if ev.Kind != EventInboundMessage {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventInboundMessage)
+	if ev.Kind != mm.EventInboundMessage {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventInboundMessage)
 	}
-	if ev.ContactIGSID != "IGSID" {
-		t.Errorf("contact = %q, want IGSID", ev.ContactIGSID)
+	if ev.ContactExternalID != "IGSID" {
+		t.Errorf("contact = %q, want IGSID", ev.ContactExternalID)
 	}
-	if ev.IGAccountExternalID != "IGID" {
-		t.Errorf("account = %q, want IGID", ev.IGAccountExternalID)
+	if ev.AccountExternalID != "IGID" {
+		t.Errorf("account = %q, want IGID", ev.AccountExternalID)
 	}
 	if ev.Message == nil || ev.Message.Text != "MESSAGE-TEXT" {
 		t.Errorf("message text not decoded: %+v", ev.Message)
@@ -96,15 +98,15 @@ func TestNormalizeEntry_TextDM(t *testing.T) {
 func TestUnixTimestampToTimeAcceptsSecondsAndMilliseconds(t *testing.T) {
 	want := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	for _, value := range []int64{want.Unix(), want.UnixMilli()} {
-		if got := unixTimestampToTime(value); !got.Equal(want) {
-			t.Errorf("unixTimestampToTime(%d) = %v, want %v", value, got, want)
+		if got := mm.UnixTime(value); !got.Equal(want) {
+			t.Errorf("UnixTime(%d) = %v, want %v", value, got, want)
 		}
 	}
 }
 
 func TestNormalizeChange_UsesSecondsForCurrentMetaPayloads(t *testing.T) {
 	want := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
-	event := normalizeChange(&Entry{ID: "account-1", Time: want.Unix()}, "comments", json.RawMessage(`{
+	event := normalizeChange(&mm.Entry{ID: "account-1", Time: want.Unix()}, "comments", json.RawMessage(`{
 		"id":"comment-1","text":"oi","media":{"id":"media-1"}
 	}`))
 	if event == nil {
@@ -118,14 +120,14 @@ func TestNormalizeChange_UsesSecondsForCurrentMetaPayloads(t *testing.T) {
 func TestNormalizeEntry_EchoIsDistinguished(t *testing.T) {
 	ev := firstEvent(t, "echo_outbound.json")
 
-	if ev.Kind != EventEchoMessage {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventEchoMessage)
+	if ev.Kind != mm.EventEchoMessage {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventEchoMessage)
 	}
 	if !ev.IsOutbound() {
 		t.Error("IsOutbound() = false, want true")
 	}
-	if ev.ContactIGSID != "IGSID" {
-		t.Errorf("contact = %q, want IGSID", ev.ContactIGSID)
+	if ev.ContactExternalID != "IGSID" {
+		t.Errorf("contact = %q, want IGSID", ev.ContactExternalID)
 	}
 	if ev.IdempotencyKey != "ig:IGID:messages:MESSAGE-ID" {
 		t.Errorf("idempotency key = %q, want the same key as the inbound message", ev.IdempotencyKey)
@@ -142,8 +144,8 @@ func TestNormalizeEntry_PresenceOnlyBooleans(t *testing.T) {
 	}
 
 	deleted := firstEvent(t, "deleted_message.json")
-	if deleted.Kind != EventDeletedMessage {
-		t.Fatalf("kind = %s, want %s", deleted.Kind, EventDeletedMessage)
+	if deleted.Kind != mm.EventDeletedMessage {
+		t.Fatalf("kind = %s, want %s", deleted.Kind, mm.EventDeletedMessage)
 	}
 	if deleted.Message.IsDeleted == nil || !*deleted.Message.IsDeleted {
 		t.Error("is_deleted should decode to true")
@@ -192,10 +194,10 @@ func TestNormalizeEntry_MultipleAttachments(t *testing.T) {
 	if len(ev.Message.Attachments) != 2 {
 		t.Fatalf("got %d attachments, want 2", len(ev.Message.Attachments))
 	}
-	if got := MediaKindForAttachment(ev.Message.Attachments[0].Type); got != "image" {
+	if got := mm.MediaKindForAttachment(ev.Message.Attachments[0].Type); got != "image" {
 		t.Errorf("first attachment kind = %q, want image", got)
 	}
-	if got := MediaKindForAttachment(ev.Message.Attachments[1].Type); got != "video" {
+	if got := mm.MediaKindForAttachment(ev.Message.Attachments[1].Type); got != "video" {
 		t.Errorf("second attachment kind = %q, want video", got)
 	}
 }
@@ -212,15 +214,15 @@ func TestNormalizeEntry_EphemeralHasNoPayload(t *testing.T) {
 	if att.Payload != nil {
 		t.Errorf("ephemeral payload = %+v, want nil", att.Payload)
 	}
-	if got := MediaKindForAttachment(att.Type); got != "" {
-		t.Errorf("MediaKindForAttachment(ephemeral) = %q, want empty", got)
+	if got := mm.MediaKindForAttachment(att.Type); got != "" {
+		t.Errorf("mm.MediaKindForAttachment(ephemeral) = %q, want empty", got)
 	}
 }
 
 func TestNormalizeEntry_Reaction(t *testing.T) {
 	react := firstEvent(t, "reaction_react.json")
-	if react.Kind != EventReaction {
-		t.Fatalf("kind = %s, want %s", react.Kind, EventReaction)
+	if react.Kind != mm.EventReaction {
+		t.Fatalf("kind = %s, want %s", react.Kind, mm.EventReaction)
 	}
 	if react.Reaction.Action != "react" || react.Reaction.Reaction != "love" {
 		t.Errorf("reaction = %+v", react.Reaction)
@@ -239,8 +241,8 @@ func TestNormalizeEntry_Reaction(t *testing.T) {
 
 func TestNormalizeEntry_ReadUsesMidNotWatermark(t *testing.T) {
 	ev := firstEvent(t, "read_receipt.json")
-	if ev.Kind != EventRead {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventRead)
+	if ev.Kind != mm.EventRead {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventRead)
 	}
 	if ev.Read == nil || ev.Read.MID != "MESSAGE-ID" {
 		t.Errorf("read = %+v, want mid MESSAGE-ID", ev.Read)
@@ -249,8 +251,8 @@ func TestNormalizeEntry_ReadUsesMidNotWatermark(t *testing.T) {
 
 func TestNormalizeEntry_EditNumEditIsAString(t *testing.T) {
 	ev := firstEvent(t, "edited_message.json")
-	if ev.Kind != EventEditedMessage {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventEditedMessage)
+	if ev.Kind != mm.EventEditedMessage {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventEditedMessage)
 	}
 	if ev.Edit.Text != "the edited text" {
 		t.Errorf("edited text = %q", ev.Edit.Text)
@@ -265,11 +267,11 @@ func TestNormalizeEntry_EditNumEditIsAString(t *testing.T) {
 
 func TestNormalizeEntry_PostbackIdentifiesBusinessByRecipient(t *testing.T) {
 	ev := firstEvent(t, "postback.json")
-	if ev.Kind != EventPostback {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventPostback)
+	if ev.Kind != mm.EventPostback {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventPostback)
 	}
-	if ev.IGAccountExternalID != "IGID" {
-		t.Errorf("account = %q, want IGID (from recipient.id, not entry.id)", ev.IGAccountExternalID)
+	if ev.AccountExternalID != "IGID" {
+		t.Errorf("account = %q, want IGID (from recipient.id, not entry.id)", ev.AccountExternalID)
 	}
 	if ev.Postback.Payload != "ICEBREAKER_1" {
 		t.Errorf("payload = %q", ev.Postback.Payload)
@@ -291,8 +293,8 @@ func TestNormalizeEntry_CommentBothLoginShapes(t *testing.T) {
 	if got := igLogin.Comment.ResolvedCommentID(); got != "COMMENT_ID" {
 		t.Errorf("instagram-login: comment id = %q (value.id form)", got)
 	}
-	if igLogin.ContactIGSID != "IGSID" {
-		t.Errorf("instagram-login: commenter = %q", igLogin.ContactIGSID)
+	if igLogin.ContactExternalID != "IGSID" {
+		t.Errorf("instagram-login: commenter = %q", igLogin.ContactExternalID)
 	}
 
 	fbLogin := firstEvent(t, "comment_fb_login.json")
@@ -309,15 +311,15 @@ func TestNormalizeEntry_CommentBothLoginShapes(t *testing.T) {
 
 func TestNormalizeEntry_Standby(t *testing.T) {
 	ev := firstEvent(t, "standby.json")
-	if ev.Kind != EventStandby {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventStandby)
+	if ev.Kind != mm.EventStandby {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventStandby)
 	}
 }
 
 func TestNormalizeEntry_UnknownFieldIsNotDropped(t *testing.T) {
 	ev := firstEvent(t, "unknown_field.json")
-	if ev.Kind != EventUnknown {
-		t.Fatalf("kind = %s, want %s", ev.Kind, EventUnknown)
+	if ev.Kind != mm.EventUnknown {
+		t.Fatalf("kind = %s, want %s", ev.Kind, mm.EventUnknown)
 	}
 	if ev.RawField != "messaging_policy_enforcement" {
 		t.Errorf("raw field = %q", ev.RawField)
@@ -332,11 +334,11 @@ func TestNormalizeEntry_UnknownFieldIsNotDropped(t *testing.T) {
 }
 
 func TestSplitEntries_MultiAccountBatch(t *testing.T) {
-	envelopes, err := DecodeEnvelope(loadFixture(t, "multi_account_batch.json"))
+	envelopes, err := mm.DecodeEnvelope(loadFixture(t, "multi_account_batch.json"))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	entries := SplitEntries(envelopes)
+	entries := mm.SplitEntries(envelopes)
 	if len(entries) != 2 {
 		t.Fatalf("got %d entries, want 2", len(entries))
 	}
@@ -347,7 +349,7 @@ func TestSplitEntries_MultiAccountBatch(t *testing.T) {
 		if len(events) != 1 {
 			t.Fatalf("entry %s: got %d events, want 1", entry.Entry.ID, len(events))
 		}
-		seen[events[0].IGAccountExternalID] = true
+		seen[events[0].AccountExternalID] = true
 	}
 	for _, want := range []string{"IGID_A", "IGID_B"} {
 		if !seen[want] {

@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 
+	fbdomain "vozko/domain/facebook"
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/rag"
 	"vozko/domain/readiness"
@@ -13,6 +14,19 @@ import (
 )
 
 var countOnly = shared.QueryOptions{Pagination: shared.Pagination{Page: 1, PageSize: 1}}
+
+func workspaceTotal[In, T any](
+	list func(context.Context, In) (*shared.PaginatedResult[T], error),
+	input func(workspaceID string) In,
+) func(context.Context, string) (int, error) {
+	return func(ctx context.Context, workspaceID string) (int, error) {
+		out, err := list(ctx, input(workspaceID))
+		if err != nil {
+			return 0, err
+		}
+		return int(out.TotalItems), nil
+	}
+}
 
 func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 	access := c.useCases.checkWsAccess
@@ -35,26 +49,22 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 		probes = append(probes, readiness_usecase.NewUnofficialWhatsAppProbe(c.unofficialWhatsApp.Entitlements, access))
 	}
 	if c.instagram != nil && c.instagram.Accounts != nil {
-		accounts := c.instagram.Accounts
 		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Instagram, workspace.ResourceInstagramAccounts,
-			func(ctx context.Context, workspaceID string) (int, error) {
-				out, err := accounts.ListByWorkspace(ctx, igdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly})
-				if err != nil {
-					return 0, err
-				}
-				return int(out.TotalItems), nil
-			}, 0, access))
+			workspaceTotal(c.instagram.Accounts.ListByWorkspace, func(workspaceID string) igdomain.ListAccountsInput {
+				return igdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly}
+			}), 0, access))
 	}
 	if c.telegram != nil && c.telegram.Accounts != nil {
-		accounts := c.telegram.Accounts
 		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Telegram, workspace.ResourceTelegramAccounts,
-			func(ctx context.Context, workspaceID string) (int, error) {
-				out, err := accounts.ListByWorkspace(ctx, tgdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly})
-				if err != nil {
-					return 0, err
-				}
-				return int(out.TotalItems), nil
-			}, 0, access))
+			workspaceTotal(c.telegram.Accounts.ListByWorkspace, func(workspaceID string) tgdomain.ListAccountsInput {
+				return tgdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly}
+			}), 0, access))
+	}
+	if c.facebook != nil && c.facebook.Pages != nil {
+		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Facebook, workspace.ResourceFacebookPages,
+			workspaceTotal(c.facebook.Pages.ListByWorkspace, func(workspaceID string) fbdomain.ListPagesInput {
+				return fbdomain.ListPagesInput{WorkspaceID: workspaceID, Options: countOnly}
+			}), 0, access))
 	}
 	return readiness_usecase.NewSnapshotUseCase(readiness_usecase.SnapshotDeps{
 		Subscription: c.useCases.ensureActiveWorkspaceSubscription,

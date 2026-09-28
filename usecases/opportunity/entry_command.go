@@ -9,14 +9,16 @@ import (
 )
 
 var (
-	ErrNoOpenDeal    = errors.New("opportunity: this conversation has no open deal")
-	ErrUnknownAction = errors.New("opportunity: unknown action")
+	ErrNoOpenDeal      = errors.New("opportunity: this conversation has no open deal")
+	ErrUnknownAction   = errors.New("opportunity: unknown action")
+	ErrDealIDOnNewDeal = errors.New("opportunity: a new deal cannot target an existing deal id")
 )
 
 type EntryAction string
 
 const (
 	EntryCreate      EntryAction = "create"
+	EntryCreateNew   EntryAction = "create_new"
 	EntryUpdateValue EntryAction = "update_value"
 	EntryMove        EntryAction = "move"
 	EntryWin         EntryAction = "win"
@@ -24,7 +26,11 @@ const (
 )
 
 func EntryActions() []EntryAction {
-	return []EntryAction{EntryCreate, EntryUpdateValue, EntryMove, EntryWin, EntryLose}
+	return []EntryAction{EntryCreate, EntryCreateNew, EntryUpdateValue, EntryMove, EntryWin, EntryLose}
+}
+
+func (a EntryAction) createsWhenMissing() bool {
+	return a == EntryCreate || a == EntryCreateNew || a == EntryWin
 }
 
 func (a EntryAction) Valid() bool {
@@ -42,6 +48,9 @@ type EntryCommand struct {
 	LeadID     string
 	PipelineID string
 	Actor      string
+	Owner      string
+
+	OpportunityID string
 
 	Action       EntryAction
 	Title        string
@@ -66,6 +75,9 @@ func (s *Service) ManageForEntry(workspaceID string, cmd EntryCommand) (*EntryRe
 	if !cmd.Action.Valid() {
 		return nil, ErrUnknownAction
 	}
+	if cmd.Action == EntryCreateNew && cmd.OpportunityID != "" {
+		return nil, ErrDealIDOnNewDeal
+	}
 	stages, err := s.PipelineStages(workspaceID, cmd.PipelineID)
 	if err != nil {
 		return nil, err
@@ -77,15 +89,18 @@ func (s *Service) ManageForEntry(workspaceID string, cmd EntryCommand) (*EntryRe
 
 	var result EntryResult
 	err = s.repo.WithEntryLock(workspaceID, cmd.EntryID, cmd.EntryType, func(store opportunity.Store) error {
-		current, err := store.OpenForEntry(workspaceID, cmd.PipelineID, cmd.EntryID, cmd.EntryType)
+		deals, err := store.DealsForEntry(workspaceID, cmd.PipelineID, cmd.EntryID, cmd.EntryType)
+		if err != nil {
+			return err
+		}
+		current, err := targetDeal(cmd, deals)
 		switch {
-		case errors.Is(err, opportunity.ErrNotFound):
-			if cmd.Action == EntryLose {
-				return ErrNoOpenDeal
-			}
+		case errors.Is(err, opportunity.ErrNotFound) && cmd.Action.createsWhenMissing():
 			created, err := s.createForEntry(workspaceID, cmd, stages, target, store)
 			result = EntryResult{Opportunity: created, Created: true}
 			return err
+		case errors.Is(err, opportunity.ErrNotFound):
+			return ErrNoOpenDeal
 		case err != nil:
 			return err
 		}
@@ -97,6 +112,13 @@ func (s *Service) ManageForEntry(workspaceID string, cmd EntryCommand) (*EntryRe
 		return nil, err
 	}
 	return &result, nil
+}
+
+func targetDeal(cmd EntryCommand, deals opportunity.EntryDeals) (*opportunity.Opportunity, error) {
+	if cmd.Action == EntryCreateNew {
+		return nil, opportunity.ErrNotFound
+	}
+	return deals.Editable(cmd.OpportunityID)
 }
 
 func (s *Service) targetStage(workspaceID string, cmd EntryCommand, stages []*stage.Stage) (*opportunity.StageRef, error) {
@@ -145,6 +167,7 @@ func (s *Service) createForEntry(
 		LinkEntryID:   cmd.EntryID,
 		LinkEntryType: cmd.EntryType,
 		Actor:         cmd.Actor,
+		OwnerID:       cmd.Owner,
 	})
 	if err != nil {
 		return nil, err
@@ -200,12 +223,12 @@ func applyEntryCommand(o *opportunity.Opportunity, cmd EntryCommand, target *opp
 	return o.Validate()
 }
 
-func (s *Service) CurrentDealForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
+func (s *Service) DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error) {
 	if err := s.dealPipeline(workspaceID, pipelineID); err != nil {
 		return nil, err
 	}
 	if entryID == "" || entryType == "" {
 		return nil, ErrEntryTypeRequired
 	}
-	return s.repo.CurrentForEntry(workspaceID, pipelineID, entryID, entryType)
+	return s.repo.DealsForEntry(workspaceID, pipelineID, entryID, entryType)
 }

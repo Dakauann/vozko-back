@@ -9,8 +9,10 @@ const (
 	ActionConnectUnofficialWhatsApp ActionKind = "connect_unofficial_whatsapp"
 	ActionConnectInstagram          ActionKind = "connect_instagram"
 	ActionConnectTelegram           ActionKind = "connect_telegram"
+	ActionConnectFacebook           ActionKind = "connect_facebook"
 	ActionTopUpBalance              ActionKind = "top_up_balance"
 	ActionManageSubscription        ActionKind = "manage_subscription"
+	ActionOpenScreen                ActionKind = "open_screen"
 )
 
 var actionCapabilities = map[ActionKind]readiness.Capability{
@@ -18,12 +20,13 @@ var actionCapabilities = map[ActionKind]readiness.Capability{
 	ActionConnectUnofficialWhatsApp: readiness.UnofficialWhatsApp,
 	ActionConnectInstagram:          readiness.Instagram,
 	ActionConnectTelegram:           readiness.Telegram,
+	ActionConnectFacebook:           readiness.Facebook,
 }
 
 func ActionKinds() []ActionKind {
 	return []ActionKind{
 		ActionConnectWhatsAppBusiness, ActionConnectUnofficialWhatsApp, ActionConnectInstagram,
-		ActionConnectTelegram, ActionTopUpBalance, ActionManageSubscription,
+		ActionConnectTelegram, ActionConnectFacebook, ActionTopUpBalance, ActionManageSubscription,
 	}
 }
 
@@ -46,6 +49,7 @@ type ActionCard struct {
 	Status             *readiness.Status `json:"status,omitempty"`
 	BalanceMicros      int64             `json:"balanceMicros"`
 	SubscriptionActive bool              `json:"subscriptionActive"`
+	Destination        *Destination      `json:"destination,omitempty"`
 }
 
 func NewActionCard(kind ActionKind, snap *readiness.Snapshot) (*ActionCard, bool) {

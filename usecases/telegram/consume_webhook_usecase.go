@@ -25,7 +25,7 @@ func NewConsumeWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
 	queuePub messaging.MessageQueuePub,
 	sharedState cache.SharedState,
-	durable tgdomain.ProcessedEventRepository,
+	durable webhook.ProcessedEventRepository,
 	handler *HandleWebhookUseCase,
 ) *ConsumeWebhookUseCase {
 	build := func(topic, name string, concurrency int) *webhook_usecase.ConsumerRunner[QueuedUpdate] {
@@ -35,7 +35,7 @@ func NewConsumeWebhookUseCase(
 			QueueSub:    queueSub,
 			QueuePub:    queuePub,
 			SharedState: sharedState,
-			Durable:     durableAdapter{repo: durable},
+			Durable:     durable,
 			Concurrency: concurrency,
 			DedupKey:    dedupKeyForUpdate,
 			Handle: func(ctx context.Context, q *QueuedUpdate) error {
@@ -104,15 +104,4 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 		}
 	}
 	return webhook_usecase.DispositionRetry
-}
-
-type durableAdapter struct {
-	repo tgdomain.ProcessedEventRepository
-}
-
-func (d durableAdapter) Claim(ctx context.Context, key, channel, accountID string) (bool, error) {
-	if d.repo == nil {
-		return true, nil
-	}
-	return d.repo.Claim(ctx, key, channel, accountID)
 }

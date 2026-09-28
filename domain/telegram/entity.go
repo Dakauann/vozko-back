@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"vozko/domain/conversation"
 )
 
 var (
@@ -373,4 +375,16 @@ func ValidDeepLinkToken(token string) bool {
 		}
 	}
 	return true
+}
+
+func (a *Account) Automation() conversation.ChannelAutomation {
+	return conversation.ChannelAutomation{
+		AgentID:              a.AgentID,
+		WorkflowID:           a.WorkflowID,
+		EnableAgentResponses: a.EnableAgentResponses,
+		EnableWorkflow:       a.EnableWorkflow,
+		EnableAnalysis:       a.EnableAnalysis,
+		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
+	}
 }

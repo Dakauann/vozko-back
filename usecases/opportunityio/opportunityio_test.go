@@ -31,11 +31,8 @@ func (r *fakeOppRepo) Update(*opportunity.Opportunity, []opportunity.Event) erro
 func (r *fakeOppRepo) Link(opportunity.ConversationLink, []opportunity.Event) error { return nil }
 func (r *fakeOppRepo) Delete(workspaceID, id string) error                          { return nil }
 func (r *fakeOppRepo) ListEvents(string, string) ([]opportunity.Event, error)       { return nil, nil }
-func (r *fakeOppRepo) OpenForEntry(string, string, string, string) (*opportunity.Opportunity, error) {
-	return nil, opportunity.ErrNotFound
-}
-func (r *fakeOppRepo) CurrentForEntry(string, string, string, string) (*opportunity.Opportunity, error) {
-	return nil, opportunity.ErrNotFound
+func (r *fakeOppRepo) DealsForEntry(string, string, string, string) (opportunity.EntryDeals, error) {
+	return nil, nil
 }
 func (r *fakeOppRepo) WithEntryLock(_, _, _ string, fn func(opportunity.Store) error) error {
 	return fn(r)

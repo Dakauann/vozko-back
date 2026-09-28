@@ -119,6 +119,47 @@ var channelQueries = []channelQuery{
 				  AND igc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
 	},
 	{
+		EntryType:  shared.EntryTypeFacebook,
+		EntryTable: "facebook_conversations",
+
+		EntryJoin: `JOIN facebook_conversations fbc ON fbc.id = %[1]s AND fbc.deleted_at IS NULL
+		             JOIN facebook_pages fbp ON fbp.id = fbc.page_id`,
+		ContactJoin: `JOIN (
+	SELECT id,
+	       COALESCE(NULLIF(name, ''), NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), 'Facebook user ' || RIGHT(psid, 4)) AS name,
+	       '' AS number, '' AS profile_picture_url, blocked, deleted_at
+	FROM facebook_contacts
+) l ON l.id = fbc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(fbc.page_id::text, '')",
+		ContainerIDField:   "fbp.id::text",
+		ContainerNameField: "fbp.name",
+		AutomationFields: "COALESCE(fbp.agent_id::text, '') AS agent_id, " +
+			"COALESCE(fbp.workflow_id::text, '') AS workflow_id, " +
+			"fbp.enable_agent_responses AS agent_responses_enabled, " +
+			"fbp.enable_workflow AS workflow_enabled",
+
+		AutomationColumn: "fbc.automation_enabled",
+		StatusColumn:     "fbc.conversation_status",
+		CloseTable:       "fbc",
+
+		ContainerCTE:         `SELECT fbc_f.id AS entry_id FROM facebook_conversations fbc_f WHERE fbc_f.page_id = ? AND fbc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "fbc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT fbc_f.id FROM facebook_conversations fbc_f
+				JOIN facebook_pages fbp_f ON fbp_f.id = fbc_f.page_id
+				WHERE fbc_f.page_id = ? AND fbc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "fbp_f.department_id",
+		DepartmentEntryCol: "fbc_f.id",
+
+		WindowSubquery: `SELECT fbc_w.id::text FROM facebook_conversations fbc_w
+				WHERE fbc_w.deleted_at IS NULL
+				  AND fbc_w.last_customer_message_at IS NOT NULL
+				  AND fbc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+	},
+	{
 		EntryType:  shared.EntryTypeTelegram,
 		EntryTable: "telegram_conversations",
 

@@ -11,7 +11,8 @@ type AIReplyRequest struct {
 	AgentResponsesEnabled bool
 	AutomationEnabled     *bool
 
-	Text string
+	Text       string
+	Disclosure string
 
 	LeadID *string
 }

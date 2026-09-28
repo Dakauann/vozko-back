@@ -170,6 +170,7 @@ func TestChannelBranch_OffersOnlyReachableChannels(t *testing.T) {
 		shared.EntryTypeUnofficialWhatsApp,
 		shared.EntryTypeInstagram,
 		shared.EntryTypeTelegram,
+		shared.EntryTypeFacebook,
 	} {
 		assert.True(t, KnownChannelBranch(string(entryType)), string(entryType))
 		assert.Contains(t, workflow.ChannelBranchOrder, entryType)

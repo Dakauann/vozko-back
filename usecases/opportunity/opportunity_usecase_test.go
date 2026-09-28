@@ -22,11 +22,14 @@ type fakeOppRepo struct {
 	locks      int
 	getErr     error
 	createErrs int
+
+	bumpBehindTheScenes string
 }
 
 func newFakeOppRepo() *fakeOppRepo { return &fakeOppRepo{store: map[string]*opportunity.Opportunity{}} }
 
 func (r *fakeOppRepo) Create(o *opportunity.Opportunity, links []opportunity.ConversationLink, events []opportunity.Event) error {
+	o.Version = 1
 	cp := *o
 	r.store[o.ID] = &cp
 	r.links = append(r.links, links...)
@@ -35,9 +38,18 @@ func (r *fakeOppRepo) Create(o *opportunity.Opportunity, links []opportunity.Con
 }
 
 func (r *fakeOppRepo) Update(o *opportunity.Opportunity, events []opportunity.Event) error {
-	if _, ok := r.store[o.ID]; !ok {
+	stored, ok := r.store[o.ID]
+	if !ok {
 		return opportunity.ErrNotFound
 	}
+	if r.bumpBehindTheScenes == o.ID {
+		stored.Version++
+		r.bumpBehindTheScenes = ""
+	}
+	if stored.Version != o.Version {
+		return opportunity.ErrStaleDeal
+	}
+	o.Version++
 	cp := *o
 	r.store[o.ID] = &cp
 	r.events = append(r.events, events...)
@@ -50,31 +62,16 @@ func (r *fakeOppRepo) Link(link opportunity.ConversationLink, events []opportuni
 	return nil
 }
 
-func (r *fakeOppRepo) OpenForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
+func (r *fakeOppRepo) DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error) {
+	deals := opportunity.EntryDeals{}
 	for _, l := range r.links {
-		o := r.store[l.OpportunityID]
-		if l.EntryID == entryID && l.EntryType == entryType && o != nil &&
-			o.WorkspaceID == workspaceID && o.PipelineID == pipelineID && o.Status == opportunity.StatusOpen {
-			cp := *o
-			return &cp, nil
-		}
-	}
-	return nil, opportunity.ErrNotFound
-}
-
-func (r *fakeOppRepo) CurrentForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
-	if open, err := r.OpenForEntry(workspaceID, pipelineID, entryID, entryType); err == nil {
-		return open, nil
-	}
-	for i := len(r.links) - 1; i >= 0; i-- {
-		l := r.links[i]
 		o := r.store[l.OpportunityID]
 		if l.EntryID == entryID && l.EntryType == entryType && o != nil && o.WorkspaceID == workspaceID && o.PipelineID == pipelineID {
 			cp := *o
-			return &cp, nil
+			deals = append(deals, &cp)
 		}
 	}
-	return nil, opportunity.ErrNotFound
+	return deals, nil
 }
 
 func (r *fakeOppRepo) WithEntryLock(_, _, _ string, fn func(opportunity.Store) error) error {
@@ -254,6 +251,7 @@ func serviceWithFields(repo *fakeOppRepo, fields *fakeFieldRepo) *Service {
 		Owners:    fakeOwners{outsiders: map[string]bool{"stranger": true}},
 		Leads:     leadsIn{"ws1": true},
 		Entries:   entriesIn("ws1"),
+		Assign:    assignAccessStub{granted: map[string]bool{"u1": true}},
 		Clock:     func() time.Time { return fixedNow },
 	})
 }
@@ -691,18 +689,101 @@ func TestPipelineStagesAreThoseOfADealFunnelInOrder(t *testing.T) {
 	}
 }
 
-func TestCurrentDealForEntryReadsTheConversationsDeal(t *testing.T) {
+func TestDealsForEntryReadsTheConversationsDeals(t *testing.T) {
 	svc := newAutomationService(newFakeOppRepo())
-	if _, err := svc.CurrentDealForEntry("ws1", "pipe1", "entry-1", "whatsapp"); !errors.Is(err, opportunity.ErrNotFound) {
-		t.Fatalf("CurrentDealForEntry() before any deal error = %v, want ErrNotFound", err)
+	deals, err := svc.DealsForEntry("ws1", "pipe1", "entry-1", "whatsapp")
+	if err != nil || len(deals) != 0 {
+		t.Fatalf("DealsForEntry() before any deal = %v, %v", deals, err)
 	}
 	won, _ := svc.ManageForEntry("ws1", entryCommand(EntryWin))
-	got, err := svc.CurrentDealForEntry("ws1", "pipe1", "entry-1", "whatsapp")
-	if err != nil || got.ID != won.Opportunity.ID || got.Status != opportunity.StatusWon {
-		t.Fatalf("CurrentDealForEntry() = %+v, %v, want the won deal", got, err)
+	deals, err = svc.DealsForEntry("ws1", "pipe1", "entry-1", "whatsapp")
+	if err != nil || len(deals) != 1 || deals[0].ID != won.Opportunity.ID {
+		t.Fatalf("DealsForEntry() = %+v, %v, want the won deal", deals, err)
 	}
-	if _, err := svc.CurrentDealForEntry("ws1", "pipe-conv", "entry-1", "whatsapp"); !errors.Is(err, ErrNotOpportunityPipeline) {
-		t.Fatalf("CurrentDealForEntry(conversation funnel) error = %v, want ErrNotOpportunityPipeline", err)
+	if _, err := svc.DealsForEntry("ws1", "pipe-conv", "entry-1", "whatsapp"); !errors.Is(err, ErrNotOpportunityPipeline) {
+		t.Fatalf("DealsForEntry(conversation funnel) error = %v, want ErrNotOpportunityPipeline", err)
+	}
+}
+
+func TestCreateNewOpensASecondContractBesideTheOpenOne(t *testing.T) {
+	repo := newFakeOppRepo()
+	svc := newAutomationService(repo)
+	first, _ := svc.ManageForEntry("ws1", entryCommand(EntryCreate))
+	second, err := svc.ManageForEntry("ws1", entryCommand(EntryCreateNew))
+	if err != nil || !second.Created || second.Opportunity.ID == first.Opportunity.ID {
+		t.Fatalf("create_new = %+v, %v, want a second deal", second, err)
+	}
+	if len(repo.store) != 2 {
+		t.Fatalf("%d deals, want 2", len(repo.store))
+	}
+}
+
+func TestCreateNewTakesNoDealID(t *testing.T) {
+	cmd := entryCommand(EntryCreateNew)
+	cmd.OpportunityID = "any"
+	if _, err := newAutomationService(newFakeOppRepo()).ManageForEntry("ws1", cmd); !errors.Is(err, ErrDealIDOnNewDeal) {
+		t.Fatalf("create_new with an id error = %v, want ErrDealIDOnNewDeal", err)
+	}
+}
+
+func TestAutomationRefusesToGuessBetweenOpenDeals(t *testing.T) {
+	repo := newFakeOppRepo()
+	svc := newAutomationService(repo)
+	first, _ := svc.ManageForEntry("ws1", entryCommand(EntryCreate))
+	_, _ = svc.ManageForEntry("ws1", entryCommand(EntryCreateNew))
+
+	for _, action := range []EntryAction{EntryCreate, EntryUpdateValue, EntryWin} {
+		if _, err := svc.ManageForEntry("ws1", entryCommand(action)); !errors.Is(err, opportunity.ErrAmbiguousDeal) {
+			t.Fatalf("%s with two open deals error = %v, want ErrAmbiguousDeal", action, err)
+		}
+	}
+
+	cmd := entryCommand(EntryUpdateValue)
+	cmd.OpportunityID = first.Opportunity.ID
+	bigger := int64(20000)
+	cmd.ValueCents = &bigger
+	result, err := svc.ManageForEntry("ws1", cmd)
+	if err != nil || result.Opportunity.ID != first.Opportunity.ID || result.Opportunity.ValueCents != 20000 {
+		t.Fatalf("update by id = %+v, %v", result, err)
+	}
+}
+
+func TestAutomationOnlyTouchesDealsOfItsConversation(t *testing.T) {
+	repo := newFakeOppRepo()
+	svc := newAutomationService(repo)
+	other := entryCommand(EntryCreate)
+	other.EntryID = "entry-2"
+	foreign, _ := svc.ManageForEntry("ws1", other)
+
+	cmd := entryCommand(EntryUpdateValue)
+	cmd.OpportunityID = foreign.Opportunity.ID
+	if _, err := svc.ManageForEntry("ws1", cmd); !errors.Is(err, opportunity.ErrDealNotLinked) {
+		t.Fatalf("another conversation's deal error = %v, want ErrDealNotLinked", err)
+	}
+}
+
+func TestAutomationDoesNotChangeAClosedDeal(t *testing.T) {
+	svc := newAutomationService(newFakeOppRepo())
+	won, _ := svc.ManageForEntry("ws1", entryCommand(EntryWin))
+	cmd := entryCommand(EntryUpdateValue)
+	cmd.OpportunityID = won.Opportunity.ID
+	if _, err := svc.ManageForEntry("ws1", cmd); !errors.Is(err, opportunity.ErrDealClosed) {
+		t.Fatalf("closed deal error = %v, want ErrDealClosed", err)
+	}
+}
+
+func TestAutomationNeverInventsADealToMoveOrReprice(t *testing.T) {
+	for _, action := range []EntryAction{EntryMove, EntryUpdateValue, EntryLose} {
+		cmd := entryCommand(action)
+		cmd.StageID = "stage1"
+		cmd.LostReasonID = "price"
+		repo := newFakeOppRepo()
+		if _, err := newAutomationService(repo).ManageForEntry("ws1", cmd); !errors.Is(err, ErrNoOpenDeal) {
+			t.Fatalf("%s without a deal error = %v, want ErrNoOpenDeal", action, err)
+		}
+		if len(repo.store) != 0 {
+			t.Fatalf("%s created a deal", action)
+		}
 	}
 }
 
@@ -717,5 +798,28 @@ func TestDealPipelinesAreOnlyTheWorkspacesDealFunnels(t *testing.T) {
 	got, err := newAutomationService(newFakeOppRepo()).DealPipelines("ws1")
 	if err != nil || len(got) != 1 || got[0].ID != "pipe1" {
 		t.Fatalf("DealPipelines() = %+v, %v, want pipe1", got, err)
+	}
+}
+
+func TestAutomationCanCreditTheDealToAnotherOwner(t *testing.T) {
+	repo := newFakeOppRepo()
+	svc := newAutomationService(repo)
+	cmd := entryCommand(EntryCreate)
+	cmd.Actor = "system"
+	cmd.Owner = "ai:agent-1"
+	result, err := svc.ManageForEntry("ws1", cmd)
+	if err != nil {
+		t.Fatalf("ManageForEntry() error = %v", err)
+	}
+	if result.Opportunity.OwnerID != "ai:agent-1" || result.Opportunity.CreatedBy != "system" {
+		t.Fatalf("owner = %q author = %q", result.Opportunity.OwnerID, result.Opportunity.CreatedBy)
+	}
+
+	update := entryCommand(EntryUpdateValue)
+	update.Actor = "system"
+	update.Owner = "ai:someone-else"
+	updated, err := svc.ManageForEntry("ws1", update)
+	if err != nil || updated.Opportunity.OwnerID != "ai:agent-1" {
+		t.Fatalf("an update must never reassign the deal, got %+v, %v", updated, err)
 	}
 }

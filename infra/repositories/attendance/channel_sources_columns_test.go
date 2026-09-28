@@ -10,6 +10,7 @@ import (
 	gormschema "gorm.io/gorm/schema"
 
 	"vozko/domain/attendance"
+	"vozko/domain/shared"
 
 	"vozko/infra/database/schema"
 )
@@ -26,6 +27,9 @@ var aliasModels = map[string]interface{}{
 	"uwc":  &schema.UnofficialWhatsAppConversation{},
 	"uwi":  &schema.UnofficialWhatsAppInstance{},
 	"uwct": &schema.UnofficialWhatsAppContact{},
+	"fbc":  &schema.FacebookConversation{},
+	"fbp":  &schema.FacebookPage{},
+	"fbct": &schema.FacebookContact{},
 }
 
 var qualifiedColumn = regexp.MustCompile(`\b([a-z]+[a-z0-9]*)\.([a-z_][a-z0-9_]*)\b`)
@@ -109,5 +113,13 @@ func overviewFilterForTest() attendance.OverviewFilter {
 		DepartmentID: "dept-1",
 		MemberID:     "user-1",
 		CampaignID:   "camp-1",
+	}
+}
+
+func TestEveryConversationChannelFeedsAttendance(t *testing.T) {
+	for _, e := range shared.ConversationViewableEntryTypes() {
+		if len(selectedChannelSources(string(e))) != 1 {
+			t.Errorf("%s has no attendance source; its conversations would vanish from every metric", e)
+		}
 	}
 }

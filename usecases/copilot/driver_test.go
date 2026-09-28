@@ -120,7 +120,7 @@ var (
 	writeMeta = copilot.Meta{Mutating: true, Resource: workspace.ResourceAgents, Action: workspace.ActionCreate}
 )
 
-func driverWith(fa *fakeAccess, ts ...copilot.Tool) *Driver {
+func driverWith(fa AccessChecker, ts ...copilot.Tool) *Driver {
 	return NewDriver(ownerCtx, "m", NewRegistry(ts...), fa, openFunds{}, func() string { return "act-1" })
 }
 
@@ -321,5 +321,35 @@ func TestDriver_ChangeWithoutPreflightIsRefused(t *testing.T) {
 	step := driverWith(&fakeAccess{}, wt).Dispatch(context.Background(), call("write_x", nil), cp.emit)
 	if step.Pause != nil || cp.has("tool_proposal") {
 		t.Fatalf("a change without a validator was proposed: %+v", step)
+	}
+}
+
+type resourceAccess map[workspace.Resource]bool
+
+func (r resourceAccess) Execute(_, _ string, res workspace.Resource, _ workspace.Action) error {
+	if r[res] {
+		return nil
+	}
+	return workspace.ErrInsufficientPermissions
+}
+
+func TestDriver_OffersOnlyTheToolsThePersonMayUse(t *testing.T) {
+	allowed := &fakeTool{name: "list_agents", meta: copilot.Meta{Resource: workspace.ResourceAgents, Action: workspace.ActionRead}}
+	forbidden := &fakeTool{name: "create_template", meta: copilot.Meta{Mutating: true, Resource: workspace.ResourceWhatsAppTemplates, Action: workspace.ActionCreate}}
+	drv := driverWith(resourceAccess{workspace.ResourceAgents: true}, allowed, forbidden)
+	defs := drv.Tools()
+	if len(defs) != 1 || defs[0].Name != "list_agents" {
+		t.Fatalf("tools = %+v", defs)
+	}
+	admin := NewDriver(copilot.Context{WorkspaceID: "ws1", UserID: "u1", SystemAdmin: true}, "m", NewRegistry(allowed, forbidden), resourceAccess{}, openFunds{}, func() string { return "a" })
+	if len(admin.Tools()) != 2 {
+		t.Fatalf("system admin tools = %d", len(admin.Tools()))
+	}
+}
+
+func TestDriver_AnAccessErrorHidesTheTool(t *testing.T) {
+	drv := driverWith(&fakeAccess{err: errors.New("db down")}, &fakeTool{name: "a", meta: readMeta})
+	if len(drv.Tools()) != 0 {
+		t.Fatal("a tool whose permission could not be checked was offered")
 	}
 }

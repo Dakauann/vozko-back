@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	igdomain "vozko/domain/instagram"
 	"vozko/infra/http/middleware"
@@ -86,14 +88,7 @@ func (h *Handler) ProxyMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.Header().Set("Cache-Control", "private, max-age=300")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	httpx.WriteBinary(w, data, contentType, "application/octet-stream", 5*time.Minute)
 }
 
 // @Summary		Publicar no Instagram
@@ -220,12 +215,5 @@ func (h *Handler) ProxyAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if contentType == "" {
-		contentType = "image/jpeg"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.Header().Set("Cache-Control", "private, max-age=3600")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	httpx.WriteBinary(w, data, contentType, "image/jpeg", time.Hour)
 }

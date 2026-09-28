@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
+	webhook_repository "vozko/infra/repositories/webhook"
+	webhook_usecase "vozko/usecases/webhook"
 
 	"vozko/domain/shared"
 	cronPackage "vozko/infra/cron"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	conversation_usecase "vozko/usecases/conversation"
+	tools_usecase "vozko/usecases/tools"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
@@ -44,6 +48,9 @@ func (c *Container) initJobRunner() {
 	if c.telegram != nil && c.telegram.Enabled {
 		channels = append(channels, analysisChannel{shared.EntryTypeTelegram, telegramAnalysisResolver(c.telegram)})
 	}
+	if c.facebook != nil && c.facebook.Enabled {
+		channels = append(channels, analysisChannel{shared.EntryTypeFacebook, facebookAnalysisResolver(c.facebook)})
+	}
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		resolver := campaignAwareResolver(
 			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
@@ -71,6 +78,11 @@ func (c *Container) initJobRunner() {
 		SetAnalysisDebouncePolicy(conversation_usecase.AnalysisDebouncePolicy)
 	}); ok {
 		p.SetAnalysisDebouncePolicy(workspace_config_repository.NewAudienceSettingsStore(c.db))
+	}
+	if d, ok := analysisDebounceJob.(interface {
+		SetDealAutomation(conversation_usecase.DealAutomationSettings, tools_usecase.OpportunityManager)
+	}); ok {
+		d.SetDealAutomation(c.useCases.dealAutomation, c.useCases.opportunity)
 	}
 
 	registerAnalysisChannels(channels, sinks...)
@@ -116,15 +128,22 @@ func (c *Container) initJobRunner() {
 		}))
 	}
 
+	c.jobRunner.SetWebhookEventPurgeJob(webhook_usecase.NewPurgeProcessedEventsUseCase(
+		webhook_repository.NewProcessedEventRepository(c.db), 30*24*time.Hour))
+
 	if c.instagram != nil && c.instagram.Enabled {
-		c.jobRunner.SetInstagramJobs(c.instagram.RefreshTokens, c.instagram.PurgeEvents)
+		c.jobRunner.SetInstagramJobs(c.instagram.RefreshTokens)
 	}
+	if c.facebook != nil && c.facebook.Enabled {
+		c.jobRunner.SetFacebookJobs(c.facebook.Health, cronPackage.CtxJobFunc(c.facebook.Publisher.Reap))
+	}
+
 	if c.audience != nil && c.audience.Enabled {
 		b := c.audience
 		c.jobRunner.SetAudienceJobs(b.Flush, b.Backstop, b.Rollup, b.Purge, b.Backfill)
 	}
 	if c.telegram != nil && c.telegram.Enabled {
-		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth, c.telegram.PurgeEvents)
+		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth)
 	}
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		c.jobRunner.SetUnofficialWhatsAppCampaignJobs(
@@ -138,110 +157,7 @@ func (c *Container) initJobRunner() {
 			c.unofficialWhatsApp.CheckHealth,
 			cronPackage.CtxJobFunc(c.unofficialWhatsApp.CheckHealth.VerifyIntegrity),
 			c.unofficialWhatsApp.ReconcileCapacity,
-			c.unofficialWhatsApp.PurgeEvents,
 		)
-	}
-}
-
-func unofficialWhatsAppAnalysisResolver(bundle *unofficialWhatsAppBundle) conversation_usecase.AnalysisSubjectResolver {
-	return func(ctx context.Context, entryID string) (*conversation_usecase.AnalysisSubject, error) {
-		conv, err := bundle.Conversations.FindByID(ctx, entryID)
-		if err != nil || conv == nil {
-			return nil, err
-		}
-		instance, err := bundle.Instances.FindByID(ctx, conv.InstanceID)
-		if err != nil || instance == nil {
-			return nil, err
-		}
-
-		label := instance.Label()
-		var leadID string
-		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
-			label = contact.DisplayName()
-			leadID = derefID(contact.LeadID)
-		}
-
-		return &conversation_usecase.AnalysisSubject{
-			EntryID:           conv.ID,
-			EntryType:         shared.EntryTypeUnofficialWhatsApp,
-			WorkspaceID:       conv.WorkspaceID,
-			ContainerID:       instance.ID,
-			ContainerName:     instance.Label(),
-			ContactLabel:      label,
-			LeadID:            leadID,
-			AgentID:           derefID(instance.AgentID),
-			EnableAnalysis:    instance.EnableAnalysis,
-			EnableAutoStaging: instance.EnableAutoStaging,
-			EnableAutoMemory:  instance.EnableAutoMemory,
-		}, nil
-	}
-}
-
-func instagramAnalysisResolver(bundle *instagramBundle) conversation_usecase.AnalysisSubjectResolver {
-	return func(ctx context.Context, entryID string) (*conversation_usecase.AnalysisSubject, error) {
-		conv, err := bundle.Conversations.FindByID(ctx, entryID)
-		if err != nil || conv == nil {
-			return nil, err
-		}
-		account, err := bundle.Accounts.FindByID(ctx, conv.IGAccountID)
-		if err != nil || account == nil {
-			return nil, err
-		}
-
-		label := "@" + account.Username
-		var leadID string
-		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
-			label = contact.DisplayName()
-			leadID = derefID(contact.LeadID)
-		}
-
-		return &conversation_usecase.AnalysisSubject{
-			EntryID:           conv.ID,
-			EntryType:         shared.EntryTypeInstagram,
-			WorkspaceID:       conv.WorkspaceID,
-			ContainerID:       account.ID,
-			ContainerName:     "@" + account.Username,
-			ContactLabel:      label,
-			LeadID:            leadID,
-			AgentID:           derefID(account.AgentID),
-			EnableAnalysis:    account.EnableAnalysis,
-			EnableAutoStaging: account.EnableAutoStaging,
-			EnableAutoMemory:  account.EnableAutoMemory,
-		}, nil
-	}
-}
-
-func telegramAnalysisResolver(bundle *telegramBundle) conversation_usecase.AnalysisSubjectResolver {
-	return func(ctx context.Context, entryID string) (*conversation_usecase.AnalysisSubject, error) {
-		conv, err := bundle.Conversations.FindByID(ctx, entryID)
-		if err != nil || conv == nil {
-			return nil, err
-		}
-		account, err := bundle.Accounts.FindByID(ctx, conv.AccountID)
-		if err != nil || account == nil {
-			return nil, err
-		}
-
-		label := account.DisplayName()
-		var leadID string
-		if contact, err := bundle.Contacts.FindByID(ctx, conv.ContactID); err == nil && contact != nil {
-			label = contact.DisplayName()
-			leadID = derefID(contact.LeadID)
-		}
-
-		return &conversation_usecase.AnalysisSubject{
-			EntryID:           conv.ID,
-			EntryType:         shared.EntryTypeTelegram,
-			WorkspaceID:       conv.WorkspaceID,
-			ContainerID:       account.ID,
-			ContainerName:     account.DisplayName(),
-			ContactLabel:      label,
-			LeadID:            leadID,
-			AgentID:           derefID(account.AgentID),
-			EnableAnalysis:    account.EnableAnalysis,
-			EnableAutoStaging: account.EnableAutoStaging,
-			EnableAutoMemory:  account.EnableAutoMemory,
-		}, nil
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ca "vozko/domain/audience"
+	"vozko/domain/shared"
 )
 
 const (
@@ -227,7 +228,8 @@ func (e *Engine) publishPendingGauge(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	for _, source := range []ca.Source{ca.SourceInstagram} {
+	for _, entry := range shared.CommentAnalysableEntryTypes() {
+		source := ca.SourceOf(entry)
 		e.Metrics.SetCommentPending(string(source), counts[source])
 	}
 }

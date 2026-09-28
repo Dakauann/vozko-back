@@ -29,6 +29,7 @@ type ToolCategory string
 const (
 	VisibilityMessaging        ToolVisibility = "messaging"
 	VisibilityPostConversation ToolVisibility = "post_conversation"
+	VisibilityAnalysis         ToolVisibility = "analysis"
 )
 
 const (

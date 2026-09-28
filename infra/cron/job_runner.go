@@ -75,9 +75,18 @@ type channelJob struct {
 	job    ctxJob
 }
 
-func (r *JobRunner) SetInstagramJobs(tokenRefresh, eventPurge ctxJob) {
+func (r *JobRunner) SetInstagramJobs(tokenRefresh ctxJob) {
 	r.addChannelJob("instagram_token_refresh", time.Hour, tokenRefresh)
-	r.addChannelJob("instagram_event_purge", 24*time.Hour, eventPurge)
+}
+
+func (r *JobRunner) SetFacebookJobs(health, publishReaper ctxJob) {
+	r.addChannelJob("facebook_health_check", 24*time.Hour, health)
+	r.addChannelJob("facebook_publish_reaper", 5*time.Minute, publishReaper)
+}
+
+func (r *JobRunner) SetWebhookEventPurgeJob(purge ctxJob) {
+
+	r.addChannelJob("webhook_event_purge", 24*time.Hour, purge)
 }
 
 func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctxJob) {
@@ -88,16 +97,15 @@ func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctx
 	r.addChannelJob("audience_backfill", time.Minute, backfill)
 }
 
-func (r *JobRunner) SetTelegramJobs(webhookHealth, eventPurge ctxJob) {
+func (r *JobRunner) SetTelegramJobs(webhookHealth ctxJob) {
 	r.addChannelJob("telegram_webhook_health", time.Hour, webhookHealth)
-	r.addChannelJob("telegram_event_purge", 24*time.Hour, eventPurge)
 }
 
-func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, reconcileCapacity, purgeEvents ctxJob) {
+func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, reconcileCapacity ctxJob) {
 	r.addChannelJob("unofficial_whatsapp_session_health", 15*time.Minute, sessionHealth)
 	r.addChannelJob("unofficial_whatsapp_integrity", time.Hour, verifyIntegrity)
 	r.addChannelJob("unofficial_whatsapp_capacity_reconcile", 24*time.Hour, reconcileCapacity)
-	r.addChannelJob("unofficial_whatsapp_event_purge", 24*time.Hour, purgeEvents)
+
 }
 
 func (r *JobRunner) SetAssignmentJobs(rescue ctxJob) {

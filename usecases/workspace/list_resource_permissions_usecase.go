@@ -25,6 +25,7 @@ func (uc *listResourcePermissionsUseCase) Execute() []workspace.ResourcePermissi
 		actions := make([]workspace.Action, len(defs))
 		descriptions := make(map[string]string, len(defs))
 		var deps map[string][]workspace.PermissionEntry
+		var risks map[string][]workspace.Risk
 		for j, d := range defs {
 			actions[j] = d.ActionName
 			descriptions[string(d.ActionName)] = d.Description
@@ -34,6 +35,12 @@ func (uc *listResourcePermissionsUseCase) Execute() []workspace.ResourcePermissi
 				}
 				deps[string(d.ActionName)] = d.Requires
 			}
+			if flagged := workspace.RisksOf(workspace.PermissionEntry{Resource: r, Action: d.ActionName}); len(flagged) > 0 {
+				if risks == nil {
+					risks = make(map[string][]workspace.Risk)
+				}
+				risks[string(d.ActionName)] = flagged
+			}
 		}
 
 		result = append(result, workspace.ResourcePermissionInfo{
@@ -41,6 +48,7 @@ func (uc *listResourcePermissionsUseCase) Execute() []workspace.ResourcePermissi
 			Actions:            actions,
 			ActionDescriptions: descriptions,
 			Dependencies:       deps,
+			Risks:              risks,
 		})
 	}
 	return result

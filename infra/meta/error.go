@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type Error struct {
@@ -36,13 +37,37 @@ const (
 	CodeRateLimit         = 4
 	CodePermission        = 10
 	CodeUserRateLimit     = 17
+	CodePageUserRateLimit = 32
 	CodeInvalidParam      = 100
 	CodeSessionExpired    = 102
-	CodeAppRateLimit      = 32
 	CodeAccessTokenError  = 190
+	CodeAccessLevel       = 200
+	CodePolicyBlock       = 368
+	CodeDuplicatePost     = 506
 	CodePersonUnavailable = 551
 	CodeMessagingRate     = 613
+	CodePrivateReplyUsed  = 10900
+	CodePrivateReplyUser  = 10903
+	CodePrivateReplyOff   = 10904
+	CodePageRateLimit     = 80001
+	CodeMessengerRate     = 80006
 	CodeWindowClosed      = 1545041
+	CodeThreadOwned       = 2018300
+	CodeAutomatedQA       = 2018321
+)
+
+const (
+	SubcodeRoleLost             = 492
+	SubcodeOutsideWindow        = 2018278
+	SubcodeOutsideWindowAlt     = 2534022
+	SubcodeCannotReceive        = 2018108
+	SubcodePageRestricted       = 1893063
+	SubcodeMessagingNotReviewed = 2018028
+	SubcodePrivateReplyInvalid  = 2534025
+	SubcodeNotThreadOwner       = 2534037
+	SubcodeThreadOwnedElsewhere = 2018300
+	SubcodeNoMatchingUser       = 2018001
+	SubcodeNoProfile            = 2018218
 )
 
 func (e *Error) Retryable() bool {
@@ -53,14 +78,13 @@ func (e *Error) Retryable() bool {
 		return true
 	}
 	switch e.Code {
-	case CodeUnknown, CodeAPIService, CodeRateLimit, CodeUserRateLimit,
-		CodeAppRateLimit, CodeMessagingRate:
+	case CodeUnknown, CodeAPIService:
 		return true
 	}
-	if e.HTTPStatus >= 500 || e.HTTPStatus == http.StatusTooManyRequests {
+	if e.IsRateLimit() {
 		return true
 	}
-	return false
+	return e.HTTPStatus >= 500
 }
 
 func (e *Error) NeedsReauth() bool {
@@ -79,22 +103,79 @@ func (e *Error) IsRateLimit() bool {
 		return false
 	}
 	switch e.Code {
-	case CodeRateLimit, CodeUserRateLimit, CodeAppRateLimit, CodeMessagingRate:
+	case CodeRateLimit, CodeUserRateLimit, CodePageUserRateLimit, CodeMessagingRate,
+		CodePageRateLimit, CodeMessengerRate:
 		return true
 	}
 	return e.HTTPStatus == http.StatusTooManyRequests
 }
 
 func (e *Error) IsWindowClosed() bool {
-	return e != nil && e.Code == CodeWindowClosed
+	if e == nil {
+		return false
+	}
+	return e.Code == CodeWindowClosed ||
+		e.Subcode == SubcodeOutsideWindow ||
+		e.Subcode == SubcodeOutsideWindowAlt
 }
 
 func (e *Error) IsRecipientUnreachable() bool {
-	return e != nil && e.Code == CodePersonUnavailable
+	if e == nil {
+		return false
+	}
+	return e.Code == CodePersonUnavailable ||
+		e.Subcode == SubcodeCannotReceive ||
+		(e.Code == CodeAccessLevel && e.Subcode == CodeWindowClosed)
 }
 
 func (e *Error) IsPermission() bool {
 	return e != nil && (e.Code == CodePermission || e.Code == CodeInvalidParam && e.Subcode == 33)
+}
+
+func (e *Error) IsThreadControl() bool {
+	if e == nil {
+		return false
+	}
+	return e.Code == CodeThreadOwned ||
+		e.Subcode == SubcodeThreadOwnedElsewhere ||
+		e.Subcode == SubcodeNotThreadOwner
+}
+
+func (e *Error) IsAccessLevel() bool {
+	if e == nil || e.Code != CodeAccessLevel {
+		return false
+	}
+	if e.Subcode == SubcodeMessagingNotReviewed {
+		return true
+	}
+	return strings.Contains(strings.ToLower(e.Message), "admins, developers or testers")
+}
+
+func (e *Error) IsPageRestricted() bool {
+	return e != nil && e.Subcode == SubcodePageRestricted
+}
+
+func (e *Error) IsPrivateReplyUsed() bool {
+	if e == nil {
+		return false
+	}
+	switch e.Code {
+	case CodePrivateReplyUsed, CodePrivateReplyUser, CodePrivateReplyOff:
+		return true
+	}
+	return e.Subcode == SubcodePrivateReplyInvalid
+}
+
+func (e *Error) IsDuplicatePost() bool {
+	return e != nil && e.Code == CodeDuplicatePost
+}
+
+func (e *Error) IsRoleLost() bool {
+	return e != nil && e.Code == CodeAccessTokenError && e.Subcode == SubcodeRoleLost
+}
+
+func (e *Error) IsPolicyBlock() bool {
+	return e != nil && e.Code == CodePolicyBlock
 }
 
 func AsError(err error) (*Error, bool) {
@@ -128,4 +209,11 @@ func (e *RequestError) Unwrap() error { return e.Err }
 
 type errorBody struct {
 	Error Error `json:"error"`
+}
+
+func (e *Error) ErrorCode() (code, subcode int) {
+	if e == nil {
+		return 0, 0
+	}
+	return e.Code, e.Subcode
 }

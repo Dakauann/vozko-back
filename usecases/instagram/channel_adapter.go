@@ -70,15 +70,8 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
-	if ec.LastInboundAt == nil {
-		return conversation.ClosedWindow(conversation.WindowReasonNoInbound), nil
-	}
+	return conversation.EvaluateWindow(a.caps, ec.LastInboundAt, time.Now().UTC(), true), nil
 
-	expires := ec.LastInboundAt.Add(a.caps.OutboundWindow)
-	if time.Now().UTC().Before(expires) {
-		return conversation.OpenWindow(&expires), nil
-	}
-	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {

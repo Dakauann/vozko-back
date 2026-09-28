@@ -74,6 +74,8 @@ func TestEveryDeclaredMessageTypeIsInTheRegistry(t *testing.T) {
 		"MessageTypeReaction":               MessageTypeReaction,
 		"MessageTypeUnsupported":            MessageTypeUnsupported,
 		"MessageTypePostShare":              MessageTypePostShare,
+		"MessageTypeSticker":                MessageTypeSticker,
+		"MessageTypeLinkShare":              MessageTypeLinkShare,
 	}
 
 	for _, name := range declaredMessageTypes(t) {

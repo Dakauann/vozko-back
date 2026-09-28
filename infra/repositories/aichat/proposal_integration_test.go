@@ -2,56 +2,19 @@ package aichat_repository
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"vozko/domain/aichat"
 	"vozko/infra/database/schema"
+	"vozko/infra/repositories/repotest"
 )
 
-func integrationDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-}
-
 func integrationDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
-	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
-	admin, err := gorm.Open(postgres.Open(integrationDSN()), silent)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	schemaName := "chat_test_" + uuid.New().String()[:8]
-	if err := admin.Exec("CREATE SCHEMA " + schemaName).Error; err != nil {
-		t.Fatalf("create schema: %v", err)
-	}
-	db, err := gorm.Open(postgres.Open(integrationDSN()+" search_path="+schemaName), silent)
-	if err != nil {
-		t.Fatalf("open schema: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		_ = admin.Exec("DROP SCHEMA " + schemaName + " CASCADE").Error
-		if sqlDB, err := admin.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := db.AutoMigrate(&schema.AIChatMessage{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
+	return repotest.IsolatedDB(t, "chat_test", &schema.AIChatMessage{})
 }
 
 func proposed(t *testing.T, repo aichat.MessageRepository, threadID, proposalID string) {

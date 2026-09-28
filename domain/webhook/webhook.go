@@ -14,6 +14,10 @@ const (
 	TopicInstagramComment = "webhook.instagram.comment"
 	TopicInstagramAccount = "webhook.instagram.account"
 
+	TopicFacebookMessage = "webhook.facebook.message"
+	TopicFacebookFeed    = "webhook.facebook.feed"
+	TopicFacebookPage    = "webhook.facebook.page"
+
 	TopicTelegramMessage = "webhook.telegram.message"
 	TopicTelegramAccount = "webhook.telegram.account"
 
@@ -45,7 +49,17 @@ func TelegramTopics() []string {
 	return []string{TopicTelegramMessage, TopicTelegramAccount}
 }
 
+func TopicForFacebookField(field string) string {
+	switch field {
+	case "feed", "mention", "videos":
+		return TopicFacebookFeed
+	default:
+		return TopicFacebookPage
+	}
+}
+
 func InstagramTopics() []string {
+
 	return []string{TopicInstagramMessage, TopicInstagramComment, TopicInstagramAccount}
 }
 

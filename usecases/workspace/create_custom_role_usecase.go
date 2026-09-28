@@ -24,14 +24,8 @@ func (uc *createCustomRoleUseCase) Execute(actorID, workspaceID, callerRole stri
 		return nil, workspace.ErrRoleNameRequired
 	}
 
-	if callerRole != "admin" {
-		actor := mustBeMember(uc.repo, workspaceID, actorID)
-		if actor == nil {
-			return nil, workspace.ErrUnauthorized
-		}
-		if !actor.Role.CanManageMembers() {
-			return nil, workspace.ErrInsufficientPermissions
-		}
+	if err := requireManager(uc.repo, workspaceID, actorID, callerRole); err != nil {
+		return nil, err
 	}
 
 	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {

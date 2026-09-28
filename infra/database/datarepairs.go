@@ -34,6 +34,7 @@ func dataRepairs() []dataRepair {
 		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
 		{"cm_relink_uw_orphaned_media", relinkUnofficialOrphanedMedia},
 		{"ig_repair_second_timestamps", repairInstagramSecondTimestamps},
+		{"cm_clear_story_placeholders", clearStoryPlaceholders},
 		{"wmp_drop_retired_resources", dropRetiredPermissionResources},
 		{"cs_rename_dialer_resource_permissions", renameDialerResourcePermissions},
 		{"cs_rename_dialer_presence_source", renameDialerPresenceSource},
@@ -41,6 +42,8 @@ func dataRepairs() []dataRepair {
 		{"pl_demote_duplicate_default_pipelines", demoteDuplicateDefaultPipelines},
 		{"opp_close_valued_deals_on_won_stages", closeValuedDealsOnWonStages},
 		{"rag_size_documents_and_bases", sizeKnowledgeBaseDocuments},
+		{"ca_copy_instagram_comment_rules", copyInstagramCommentRules},
+		{"ca_copy_instagram_private_replies", copyInstagramPrivateReplies},
 	}
 }
 
@@ -63,6 +66,15 @@ func repairInstagramSecondTimestamps(tx *gorm.DB) error {
 		return err
 	}
 	return nil
+}
+
+func clearStoryPlaceholders(tx *gorm.DB) error {
+	return tx.Exec(`
+		UPDATE conversation_messages
+		   SET text = ''
+		 WHERE message_type IN ('story_mention', 'story_reply')
+		   AND text = '[unsupported message]'
+	`).Error
 }
 
 func runDataRepairs(tx *gorm.DB) error {
@@ -558,4 +570,32 @@ func demoteDuplicateDefaultPipelines(tx *gorm.DB) error {
 		log.Printf("[data-repair] demoted %d duplicate default funnel(s)", res.RowsAffected)
 	}
 	return nil
+}
+
+func copyInstagramCommentRules(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("instagram_comment_rules") || !tx.Migrator().HasTable("comment_rules") {
+		return nil
+	}
+	return tx.Exec(`
+		INSERT INTO comment_rules (id, workspace_id, source, account_id, container_id, name, enabled, match,
+			keywords, actions, public_reply_text, private_reply_text, priority, created_at, updated_at, deleted_at)
+		SELECT r.id, r.workspace_id, 'instagram', r.ig_account_id, r.ig_media_id, r.name, r.enabled, r.match,
+			r.keywords, r.actions, r.public_reply_text, r.private_reply_text, r.priority, r.created_at, r.updated_at, r.deleted_at
+		FROM instagram_comment_rules r
+		WHERE NOT EXISTS (SELECT 1 FROM comment_rules c WHERE c.id = r.id)
+	`).Error
+}
+
+func copyInstagramPrivateReplies(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("instagram_private_replies") || !tx.Migrator().HasTable("comment_private_replies") {
+		return nil
+	}
+	return tx.Exec(`
+		INSERT INTO comment_private_replies (source, comment_id, account_id, status, recipient_ref, message_id,
+			error_code, error_message, attempted_at, updated_at)
+		SELECT 'instagram', p.ig_comment_id, p.ig_account_id, p.status, p.recipient_igsid, p.ig_message_id,
+			p.error_code, p.error_message, p.attempted_at, p.updated_at
+		FROM instagram_private_replies p
+		ON CONFLICT (source, comment_id) DO NOTHING
+	`).Error
 }

@@ -26,6 +26,7 @@ import (
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customfieldhttp "vozko/delivery/http/customfield"
+	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
 	"vozko/delivery/http/handlers"
 	invoicehttp "vozko/delivery/http/invoice"
@@ -365,6 +366,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getPipeline,
 			c.useCases.pipelineUsage,
 		),
+		dealAutomation: dealautomationhttp.NewHandler(c.useCases.dealAutomation),
 		savedView: savedviewhttp.NewSavedViewHandler(
 			c.useCases.createSavedView,
 			c.useCases.updateSavedView,
@@ -434,6 +436,7 @@ func (c *Container) initHandlers() {
 			c.useCases.setMemberPermissions,
 			c.useCases.getMemberPermissions,
 			c.useCases.listResourcePermissions,
+			c.useCases.listFeatures,
 			c.useCases.checkWsAccess,
 			c.useCases.ensureDefaultWorkspace,
 			c.useCases.assignResource,
@@ -589,14 +592,9 @@ func (c *Container) initHandlers() {
 		),
 		workspaceDepartment: workspacedepartmenthttp.NewWorkspaceDepartmentHandler(
 			c.useCases.createWorkspaceDepartment,
-			c.useCases.getWorkspaceDepartment,
 			c.useCases.listWorkspaceDepartments,
 			c.useCases.listWorkspaceDepartmentsByIDs,
-			c.useCases.updateWorkspaceDepartment,
-			c.useCases.deleteWorkspaceDepartment,
-			c.useCases.addWorkspaceDepartmentMember,
-			c.useCases.removeWorkspaceDepartmentMember,
-			c.useCases.listWorkspaceDepartmentMembers,
+			c.useCases.scopedDepartments,
 		),
 	}
 

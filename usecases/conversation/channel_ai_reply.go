@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
@@ -86,10 +87,11 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 	ctx = agentctx.WithAgent(ctx, agentRecord)
 	ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 
-	messages, err := s.buildPrompt(req, text)
+	history, err := s.recentHistory(req)
 	if err != nil {
 		return nil, err
 	}
+	messages := promptFrom(history, text)
 
 	out, err := s.aiService.Generate(ctx, s.generateInput(ctx, req, agentRecord, messages, text))
 	if err != nil {
@@ -106,6 +108,7 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		return nil, nil
 	}
 
+	reply = conversation.WithAutomationDisclosure(req.Disclosure, reply, history, time.Now().UTC())
 	message, err := s.sender.SendAgentTextMessage(req.EntryID, string(req.EntryType), reply, req.AgentID)
 	if err != nil {
 		if err == conversation.ErrOutboundWindowClosed {
@@ -139,15 +142,22 @@ func (s *ChannelAIReplyService) enabled(req conversation.AIReplyRequest) bool {
 }
 
 func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, latest string) ([]ai.Message, error) {
-	history, err := s.messages.ListByEntryPaginated(conversation.ListMessagesInput{
+	history, err := s.recentHistory(req)
+	if err != nil {
+		return nil, err
+	}
+	return promptFrom(history, latest), nil
+}
+
+func (s *ChannelAIReplyService) recentHistory(req conversation.AIReplyRequest) ([]*conversation.Message, error) {
+	return s.messages.ListByEntryPaginated(conversation.ListMessagesInput{
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
 		Limit:     historyDepth,
 	})
-	if err != nil {
-		return nil, err
-	}
+}
 
+func promptFrom(history []*conversation.Message, latest string) []ai.Message {
 	out := make([]ai.Message, 0, len(history)+1)
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
@@ -178,7 +188,7 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 	if len(out) == 0 || out[len(out)-1].Content != latest {
 		out = append(out, ai.Message{Role: ai.RoleUser, Content: latest})
 	}
-	return out, nil
+	return out
 }
 
 func (s *ChannelAIReplyService) generateInput(

@@ -102,6 +102,7 @@ func TestLeadStageResolvesEntriesOnEveryChannel(t *testing.T) {
 		"unofficial_whatsapp_conversations",
 		"telegram_conversations",
 		"instagram_conversations",
+		"facebook_conversations",
 	} {
 		if !strings.Contains(sql, table) {
 			t.Errorf("stage predicate cannot see %s entries: %q", table, sql)
@@ -128,7 +129,7 @@ func TestLeadTagMembershipCarriesWorkspaceScope(t *testing.T) {
 
 func TestLeadChannelUnionExcludesNullLeadIDs(t *testing.T) {
 	source := LeadChannelsSource()
-	for _, table := range []string{"unofficial_whatsapp_contacts", "telegram_contacts", "instagram_contacts"} {
+	for _, table := range []string{"unofficial_whatsapp_contacts", "telegram_contacts", "instagram_contacts", "facebook_contacts"} {
 		idx := strings.Index(source, table)
 		if idx < 0 {
 			t.Fatalf("channel union missing %s", table)
@@ -160,6 +161,7 @@ func TestLeadLastActivitySpansEveryChannel(t *testing.T) {
 		"unofficial_whatsapp_conversations",
 		"telegram_conversations",
 		"instagram_conversations",
+		"facebook_conversations",
 	} {
 		if !strings.Contains(expr, fragment) {
 			t.Errorf("LastActivityExpr ignores %s: %q", fragment, expr)

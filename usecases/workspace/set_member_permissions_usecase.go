@@ -23,10 +23,6 @@ func (uc *setMemberPermissionsUseCase) Execute(actorID, workspaceID, memberUserI
 		}
 	}
 
-	if actorID == memberUserID {
-		return nil, workspace.ErrCannotModifySelf
-	}
-
 	target, err := uc.repo.GetMember(workspaceID, memberUserID)
 	if err != nil {
 		return nil, err
@@ -35,8 +31,8 @@ func (uc *setMemberPermissionsUseCase) Execute(actorID, workspaceID, memberUserI
 		return nil, workspace.ErrMemberNotFound
 	}
 
-	if target.Role == workspace.RoleOwner || target.Role == workspace.RoleAdmin {
-		return nil, workspace.ErrCannotChangeOwnerRole
+	if err := workspace.CanEditPermissions(actorID, target); err != nil {
+		return nil, err
 	}
 
 	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {

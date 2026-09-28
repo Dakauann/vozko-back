@@ -43,6 +43,7 @@ type Opportunity struct {
 	CreatedBy    string         `json:"createdBy,omitempty"`
 	ClosedBy     string         `json:"closedBy,omitempty"`
 	CustomFields map[string]any `json:"customFields,omitempty"`
+	Version      int64          `json:"version"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
 }
@@ -61,6 +62,7 @@ var (
 	ErrStageOutsidePipeline = errors.New("opportunity: the stage does not belong to the opportunity pipeline")
 	ErrInvalidAmount        = errors.New("opportunity: the amount must be a finite, non-negative number")
 	ErrNotFound             = errors.New("opportunity: not found")
+	ErrStaleDeal            = errors.New("opportunity: the deal changed since it was read")
 )
 
 func (o *Opportunity) Normalize() {
@@ -107,4 +109,11 @@ func (o *Opportunity) Validate() error {
 
 func (o *Opportunity) IsClosed() bool {
 	return o.Status == StatusWon || o.Status == StatusLost
+}
+
+func (o *Opportunity) Expects(version *int64) error {
+	if version != nil && *version != o.Version {
+		return ErrStaleDeal
+	}
+	return nil
 }

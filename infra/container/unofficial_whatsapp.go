@@ -3,7 +3,8 @@ package container
 import (
 	"context"
 	"log"
-	"time"
+	"vozko/domain/webhook"
+	webhook_repository "vozko/infra/repositories/webhook"
 
 	uwhttp "vozko/delivery/http/unofficial_whatsapp"
 	conversation_domain "vozko/domain/conversation"
@@ -34,7 +35,7 @@ type unofficialWhatsAppBundle struct {
 
 	Entitlements *uwuc.InstanceEntitlementReader
 
-	ProcessedEvts uw.ProcessedEventRepository
+	ProcessedEvts webhook.ProcessedEventRepository
 
 	Handler        *uwhttp.Handler
 	WebhookHandler *uwhttp.WebhookHandler
@@ -44,7 +45,6 @@ type unofficialWhatsAppBundle struct {
 	CheckHealth        *uwuc.CheckInstanceHealthUseCase
 	ReconcileCapacity  *uwuc.ReconcileServerCapacityUseCase
 	ProvisionInstances *uwuc.ProvisionInstanceUseCase
-	PurgeEvents        *uwuc.PurgeProcessedEventsUseCase
 
 	SeedInboxPublisher *uwuc.SeedInboxPublisher
 	ConsumeSeedInbox   *uwuc.ConsumeSeedInboxUseCase
@@ -68,7 +68,7 @@ func (c *Container) initUnofficialWhatsApp() {
 	bundle.Contacts = uwrepo.NewContactRepository(c.db)
 	bundle.Conversations = uwrepo.NewConversationRepository(c.db)
 	bundle.Groups = uwrepo.NewGroupRepository(c.db)
-	bundle.ProcessedEvts = uwrepo.NewProcessedEventRepository(c.db)
+	bundle.ProcessedEvts = webhook_repository.NewProcessedEventRepository(c.db)
 
 	bundle.StartConv = uwuc.NewStartConversationUseCase(
 		bundle.Instances, bundle.Servers, bundle.Contacts, bundle.Conversations,
@@ -114,7 +114,6 @@ func (c *Container) initUnofficialWhatsApp() {
 		bundle.Instances, bundle.Servers, provider, c.cfg.UnofficialWhatsAppWebhookBaseURL)
 	bundle.ReconcileCapacity = uwuc.NewReconcileServerCapacityUseCase(
 		bundle.Servers, bundle.Instances, provider)
-	bundle.PurgeEvents = uwuc.NewPurgeProcessedEventsUseCase(bundle.ProcessedEvts, 30*24*time.Hour)
 
 	bundle.Enabled = true
 	log.Printf("[unofficial-whatsapp] channel enabled (webhook base=%s)",

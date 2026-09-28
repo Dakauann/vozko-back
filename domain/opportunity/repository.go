@@ -22,7 +22,7 @@ type Store interface {
 	Create(o *Opportunity, links []ConversationLink, events []Event) error
 	Update(o *Opportunity, events []Event) error
 	Link(link ConversationLink, events []Event) error
-	OpenForEntry(workspaceID, pipelineID, entryID, entryType string) (*Opportunity, error)
+	DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (EntryDeals, error)
 }
 
 type Repository interface {
@@ -38,7 +38,6 @@ type Repository interface {
 	SumValueByFilter(input SearchByFilterInput) (int64, error)
 
 	ListEvents(workspaceID, opportunityID string) ([]Event, error)
-	CurrentForEntry(workspaceID, pipelineID, entryID, entryType string) (*Opportunity, error)
 
 	WithEntryLock(workspaceID, entryID, entryType string, fn func(Store) error) error
 }

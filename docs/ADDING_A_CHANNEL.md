@@ -72,6 +72,13 @@ staged but never closed, analysed, exported or counted.
 | Analysis subject | `SetAnalysisSubjectResolver` in [infra/container/jobs.go](../infra/container/jobs.go) | `EnableAnalysis` is a switch that does nothing |
 | Export source | `SetChannelEntryLister` in [infra/container/channel_wiring.go](../infra/container/channel_wiring.go) | `unsupported entry type` — the tenant cannot get their data out |
 | Status counts | `SetConversationCounter` (step 8) | The inbox header reads "no work here" while the list below shows work |
+| Container funnel | `ChannelPipelineResolvers` in [infra/repositories/stage/container_pipeline_resolver.go](../infra/repositories/stage/container_pipeline_resolver.go) | Cards ignore the funnel chosen on the account and land in the workspace default; `TestEveryBoardChannelHasAPipelineResolver` fails |
+| Lead filter unions | `contactChannels` in [infra/repositories/crmfilter/lead_descriptor.go](../infra/repositories/crmfilter/lead_descriptor.go) | The lead's channel facet, stage and label filters and last activity ignore the channel |
+| Workflow channel branch | `ChannelBranchOrder` in [domain/workflow/channel_var.go](../domain/workflow/channel_var.go) | The "channel" condition node routes the channel to "other channels" |
+| Readiness | a count probe in [infra/container/readiness.go](../infra/container/readiness.go) plus a copilot label and connect action | The copilot never offers to connect the channel |
+| Comment sources (comment channels only) | `sourceActions` in [domain/commentautomation/rule.go](../domain/commentautomation/rule.go), `commentAnalysableEntryTypes`, an audience adapter and verifier in [infra/container/audience.go](../infra/container/audience.go) | Comment rules refuse the channel and comments are never analysed |
+
+The analysis subject resolver, the pipeline resolver, the attendance source, the ownership query and the stage subquery each have a parity test that walks the shared entry-type sets, so a channel added to the sets but missing here fails the build.
 
 ---
 
@@ -391,7 +398,9 @@ until it is set.
 - [ ] Webhook handler via `MessageHistoryManager` + `ConsumerRunner`
 - [ ] `entrySources` descriptor + `channelQueries` declaration
 - [ ] `channelSources` (attendance), ownership query, stage subquery
-- [ ] Analysis subject resolver + export lister + status counter
+- [ ] Analysis subject resolver (via `channelAnalysisResolver`) + export lister + status counter
+- [ ] Container funnel resolver, lead filter union, workflow channel branch, readiness probe
+- [ ] Comment channels only: comment rule actions, comment analysis source, audience adapter
 - [ ] Container wiring via `registerChannelAdapter` + auth/status/resolver
 - [ ] Contact identity lookup wired into **all three** hydration points
 - [ ] HTTP routes (public webhook + management)

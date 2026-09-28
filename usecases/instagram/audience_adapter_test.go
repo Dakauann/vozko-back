@@ -8,6 +8,7 @@ import (
 
 	ca "vozko/domain/audience"
 	igdomain "vozko/domain/instagram"
+	mm "vozko/domain/metamessaging"
 )
 
 type captureIngestor struct {
@@ -166,7 +167,7 @@ func TestHandleComment_EnqueuesAfterMirror(t *testing.T) {
 	uc := NewHandleWebhookUseCase(HandleWebhookDeps{Comments: comments, Audience: enq})
 	account := &igdomain.Account{ID: "acc-1", WorkspaceID: "ws-1", IGUserID: "ig-me"}
 	ev := &igdomain.Event{
-		Kind: igdomain.EventComment, Timestamp: time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
+		Event: mm.Event{Kind: igdomain.EventComment, Timestamp: time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)},
 		Comment: &igdomain.CommentValue{ID: "c-1", Text: "oi", From: &igdomain.CommentFrom{ID: "igsid-9", Username: "ana"},
 			Media: &igdomain.CommentMedia{ID: "m-1"}},
 	}

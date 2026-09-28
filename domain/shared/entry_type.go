@@ -12,6 +12,7 @@ const (
 	EntryTypeInstagram          EntryType = "instagram"
 	EntryTypeTelegram           EntryType = "telegram"
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
+	EntryTypeFacebook           EntryType = "facebook"
 )
 
 var messagingEntryTypes = map[EntryType]struct{}{
@@ -19,6 +20,7 @@ var messagingEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 var conversationViewableEntryTypes = map[EntryType]struct{}{
@@ -26,6 +28,7 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 var crmTaggableEntryTypes = map[EntryType]struct{}{
@@ -33,6 +36,7 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 var conversationClosableEntryTypes = map[EntryType]struct{}{
@@ -40,6 +44,7 @@ var conversationClosableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 func (e EntryType) Valid() bool {
@@ -70,6 +75,7 @@ var knownEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 func (e EntryType) IsKnown() bool {
@@ -86,6 +92,7 @@ var inboxScopableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 func (e EntryType) SupportsInboxScope() bool {
@@ -102,6 +109,7 @@ var containerScopedInboxEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 func (e EntryType) SupportsContainerScopedInbox() bool {
@@ -158,6 +166,7 @@ func (e EntryType) EventChannel() string {
 
 var commentAnalysableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram: {},
+	EntryTypeFacebook:  {},
 }
 
 var conversationAnalysableEntryTypes = map[EntryType]struct{}{
@@ -165,6 +174,7 @@ var conversationAnalysableEntryTypes = map[EntryType]struct{}{
 	EntryTypeInstagram:          {},
 	EntryTypeTelegram:           {},
 	EntryTypeUnofficialWhatsApp: {},
+	EntryTypeFacebook:           {},
 }
 
 func (e EntryType) SupportsCommentAnalysis() bool {

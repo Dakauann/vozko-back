@@ -49,6 +49,7 @@ func (c *Container) initRouter() {
 		c.handlers.stageGroup,
 		c.handlers.pipeline,
 		c.handlers.savedView,
+		c.handlers.dealAutomation,
 		c.handlers.opportunity,
 		c.handlers.opportunityBoard,
 		c.handlers.customField,
@@ -105,7 +106,9 @@ func (c *Container) initRouter() {
 		unofficialWhatsAppCampaignHandler(c),
 		audienceHandler(c),
 		c.handlers.sendCap,
+		c.metaChannelRoutes(),
 	)
+
 }
 
 func (c *Container) initServer() {

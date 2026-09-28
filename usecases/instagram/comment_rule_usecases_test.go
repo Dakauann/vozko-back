@@ -5,65 +5,21 @@ import (
 	"errors"
 	"testing"
 
+	ca "vozko/domain/commentautomation"
 	igdomain "vozko/domain/instagram"
+	"vozko/domain/shared"
+	cauc "vozko/usecases/commentautomation"
 )
 
-type recordingActions struct {
-	public    []string
-	private   []string
-	hidden    []string
-	order     []string
-	publicErr error
-	privErr   error
+type candidateRules struct {
+	ca.Repository
+	rules []*ca.Rule
+	asked []string
 }
 
-func (a *recordingActions) ReplyPublicly(_ context.Context, _, _, commentID, message string) (string, error) {
-	a.order = append(a.order, "public")
-	if a.publicErr != nil {
-		return "", a.publicErr
-	}
-	a.public = append(a.public, message)
-	return "reply-1", nil
-}
-
-func (a *recordingActions) ReplyPrivately(_ context.Context, _, _, commentID, text string) error {
-	a.order = append(a.order, "private")
-	if a.privErr != nil {
-		return a.privErr
-	}
-	a.private = append(a.private, text)
-	return nil
-}
-
-func (a *recordingActions) SetHidden(_ context.Context, _, _, commentID string, hidden bool) error {
-	a.order = append(a.order, "hide")
-	a.hidden = append(a.hidden, commentID)
-	return nil
-}
-
-type stubRules struct {
-	igdomain.CommentRuleRepository
-	candidates []*igdomain.CommentRule
-	err        error
-	calls      int
-}
-
-func (s *stubRules) ListCandidates(_ context.Context, _, _ string) ([]*igdomain.CommentRule, error) {
-	s.calls++
-	return s.candidates, s.err
-}
-
-func rule(name string, actions ...igdomain.CommentRuleAction) *igdomain.CommentRule {
-	r := &igdomain.CommentRule{
-		ID: name, Name: name, Enabled: true,
-		WorkspaceID: "ws-1", IGAccountID: "acct-1",
-		Match: igdomain.MatchContains, Keywords: []string{"quero"},
-		Actions:          actions,
-		PublicReplyText:  "oi {{username}}",
-		PrivateReplyText: "te chamei, {{username}}",
-	}
-	r.Normalize()
-	return r
+func (c *candidateRules) ListCandidates(_ context.Context, source shared.EntryType, accountID, containerID string) ([]*ca.Rule, error) {
+	c.asked = append(c.asked, string(source)+"|"+accountID+"|"+containerID)
+	return c.rules, nil
 }
 
 func inbound(text string) *igdomain.Comment {
@@ -74,143 +30,49 @@ func inbound(text string) *igdomain.Comment {
 	}
 }
 
-func TestEvaluateRunsMatchingRuleActions(t *testing.T) {
-	actions := &recordingActions{}
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{
-			rule("promo", igdomain.ActionPublicReply, igdomain.ActionPrivateReply),
-		}},
-		actions,
-	)
-
-	uc.Execute(context.Background(), inbound("eu quero!"))
-
-	if len(actions.public) != 1 || actions.public[0] != "oi maria" {
-		t.Errorf("public reply not rendered/sent: %v", actions.public)
-	}
-	if len(actions.private) != 1 || actions.private[0] != "te chamei, maria" {
-		t.Errorf("private reply not rendered/sent: %v", actions.private)
+func TestCommentSubjectCarriesWhatRulesMatchOn(t *testing.T) {
+	c := inbound("quero")
+	c.Hidden, c.IsOurs = true, true
+	got := CommentSubject(c)
+	if got.ContainerID != "m-1" || got.AuthorName != "maria" || got.Text != "quero" || !got.Hidden || !got.IsOurs {
+		t.Fatalf("subject = %+v", got)
 	}
 }
 
-func TestEvaluatePreservesActionOrder(t *testing.T) {
-	actions := &recordingActions{}
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{
-			rule("promo", igdomain.ActionPublicReply, igdomain.ActionPrivateReply, igdomain.ActionHide),
-		}},
-		actions,
-	)
+func TestInstagramRulesRunThroughTheSharedEvaluator(t *testing.T) {
+	hide := &ca.Rule{ID: "r1", WorkspaceID: "ws-1", Source: shared.EntryTypeInstagram, AccountID: "acct-1",
+		Name: "Ocultar", Enabled: true, Match: ca.MatchContains, Keywords: []string{"quero"}, Actions: []ca.Action{ca.ActionHide}}
+	hide.Normalize()
+	rules := &candidateRules{rules: []*ca.Rule{hide}}
+	comments := &fakeCommentService{}
+	moderate := NewModerateCommentUseCase(accountRepoFor(connectedAccount()), comments, &fakeCommentRepo{})
 
-	uc.Execute(context.Background(), inbound("quero"))
+	NewCommentRules(cauc.NewEvaluator(rules), NewCommentActionRunner(nil, nil, moderate)).Execute(context.Background(), inbound("eu quero"))
 
-	want := []string{"public", "private", "hide"}
-	if len(actions.order) != len(want) {
-		t.Fatalf("ran %v, want %v", actions.order, want)
+	if len(rules.asked) != 1 || rules.asked[0] != "instagram|acct-1|m-1" {
+		t.Fatalf("candidates asked = %v", rules.asked)
 	}
-	for i := range want {
-		if actions.order[i] != want[i] {
-			t.Errorf("action %d = %q, want %q", i, actions.order[i], want[i])
-		}
+	if len(comments.HiddenTo) != 1 || !comments.HiddenTo[0] {
+		t.Fatalf("hidden = %v", comments.HiddenTo)
 	}
 }
 
-func TestEvaluateFirstMatchWins(t *testing.T) {
-	actions := &recordingActions{}
-	spam := rule("spam", igdomain.ActionHide)
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{
-			rule("promo", igdomain.ActionPublicReply),
-			spam,
-		}},
-		actions,
-	)
-
-	uc.Execute(context.Background(), inbound("quero"))
-
-	if len(actions.public) != 1 {
-		t.Errorf("first rule should have replied: %v", actions.public)
+func TestInstagramRefusesFacebookOnlyActions(t *testing.T) {
+	runner := NewCommentActionRunner(nil, nil, nil)
+	if err := runner.Delete(context.Background(), &ca.Rule{}, "c"); !errors.Is(err, ca.ErrActionUnsupported) {
+		t.Fatalf("delete: %v", err)
 	}
-	if len(actions.hidden) != 0 {
-		t.Error("the second matching rule must not also run")
+	if err := runner.Like(context.Background(), &ca.Rule{}, "c"); !errors.Is(err, ca.ErrActionUnsupported) {
+		t.Fatalf("like: %v", err)
 	}
 }
 
-func TestEvaluateIgnoresOurOwnComments(t *testing.T) {
-	actions := &recordingActions{}
-	rules := &stubRules{candidates: []*igdomain.CommentRule{rule("promo", igdomain.ActionPublicReply)}}
-	uc := NewEvaluateCommentRulesUseCase(rules, actions)
-
-	own := inbound("quero")
-	own.IsOurs = true
-	uc.Execute(context.Background(), own)
-
-	if rules.calls != 0 {
-		t.Error("rules must not even be loaded for our own comment")
+func TestAccountOwnershipStaysInTheWorkspace(t *testing.T) {
+	owner := NewAccountOwnership(accountRepoFor(connectedAccount()))
+	if err := owner.VerifyAccount(context.Background(), "ws-1", "acct-1"); err != nil {
+		t.Fatal(err)
 	}
-	if len(actions.order) != 0 {
-		t.Errorf("no action may run on our own comment: %v", actions.order)
+	if err := owner.VerifyAccount(context.Background(), "ws-2", "acct-1"); !errors.Is(err, igdomain.ErrAccountNotFound) {
+		t.Fatalf("got %v", err)
 	}
-}
-
-func TestEvaluateContinuesWhenPrivateReplyAlreadyUsed(t *testing.T) {
-	actions := &recordingActions{privErr: igdomain.ErrPrivateReplyUsed}
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{
-			rule("promo", igdomain.ActionPrivateReply, igdomain.ActionHide),
-		}},
-		actions,
-	)
-
-	uc.Execute(context.Background(), inbound("quero"))
-
-	if len(actions.hidden) != 1 {
-		t.Error("a spent private-reply allowance must not abort the remaining actions")
-	}
-}
-
-func TestEvaluateContinuesAfterActionFailure(t *testing.T) {
-	actions := &recordingActions{publicErr: errors.New("rate limited")}
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{
-			rule("promo", igdomain.ActionPublicReply, igdomain.ActionHide),
-		}},
-		actions,
-	)
-
-	uc.Execute(context.Background(), inbound("quero"))
-
-	if len(actions.hidden) != 1 {
-		t.Error("a failed action must not abort the rule")
-	}
-}
-
-func TestEvaluateNoMatchDoesNothing(t *testing.T) {
-	actions := &recordingActions{}
-	uc := NewEvaluateCommentRulesUseCase(
-		&stubRules{candidates: []*igdomain.CommentRule{rule("promo", igdomain.ActionPublicReply)}},
-		actions,
-	)
-
-	uc.Execute(context.Background(), inbound("que lindo!"))
-
-	if len(actions.order) != 0 {
-		t.Errorf("no rule matched, nothing should run: %v", actions.order)
-	}
-}
-
-func TestEvaluateSurvivesRepositoryFailure(t *testing.T) {
-	actions := &recordingActions{}
-	uc := NewEvaluateCommentRulesUseCase(&stubRules{err: errors.New("db down")}, actions)
-
-	uc.Execute(context.Background(), inbound("quero"))
-
-	if len(actions.order) != 0 {
-		t.Error("nothing should run when rules cannot be loaded")
-	}
-}
-
-func TestEvaluateNilSafety(t *testing.T) {
-	(&EvaluateCommentRulesUseCase{}).Execute(context.Background(), inbound("quero"))
-	NewEvaluateCommentRulesUseCase(&stubRules{}, &recordingActions{}).Execute(context.Background(), nil)
 }

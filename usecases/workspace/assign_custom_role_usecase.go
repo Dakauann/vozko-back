@@ -17,18 +17,12 @@ func NewAssignCustomRoleUseCase(repo workspace.Repository, roleRepo workspace.Cu
 
 func (uc *assignCustomRoleUseCase) Execute(actorID, workspaceID, memberUserID, callerRole, roleID string) (*workspace.Member, error) {
 
-	var actorRole workspace.Role
-	if callerRole == "admin" {
-		actorRole = workspace.RoleOwner
-	} else {
-		actor := mustBeMember(uc.repo, workspaceID, actorID)
-		if actor == nil {
-			return nil, workspace.ErrUnauthorized
-		}
-		if !actor.Role.CanManageMembers() {
-			return nil, workspace.ErrInsufficientPermissions
-		}
-		actorRole = actor.Role
+	actor, err := actorFor(uc.repo, workspaceID, actorID, callerRole)
+	if err != nil {
+		return nil, err
+	}
+	if err := actor.ManagesMembers(); err != nil {
+		return nil, err
 	}
 
 	target, err := uc.repo.GetMember(workspaceID, memberUserID)
@@ -39,12 +33,8 @@ func (uc *assignCustomRoleUseCase) Execute(actorID, workspaceID, memberUserID, c
 		return nil, workspace.ErrMemberNotFound
 	}
 
-	if target.Role == workspace.RoleOwner {
-		return nil, workspace.ErrCannotChangeOwnerRole
-	}
-
-	if target.Role == workspace.RoleAdmin && actorRole != workspace.RoleOwner {
-		return nil, workspace.ErrInsufficientPermissions
+	if err := actor.CanReassign(target); err != nil {
+		return nil, err
 	}
 
 	role, err := uc.roleRepo.GetRoleByID(roleID)

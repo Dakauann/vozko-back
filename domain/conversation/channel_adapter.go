@@ -70,10 +70,23 @@ type WindowState struct {
 	Open      bool
 	ExpiresAt *time.Time
 	Reason    WindowClosedReason
+	Tier      channel.WindowTier
 }
 
 func OpenWindow(expiresAt *time.Time) WindowState {
-	return WindowState{Open: true, ExpiresAt: expiresAt, Reason: WindowReasonNone}
+	return WindowState{Open: true, ExpiresAt: expiresAt, Reason: WindowReasonNone, Tier: channel.WindowTierStandard}
+}
+
+func EvaluateWindow(caps channel.Capabilities, lastInbound *time.Time, now time.Time, humanInitiated bool) WindowState {
+	tier, expiresAt := caps.Window(lastInbound, now, humanInitiated)
+	switch {
+	case tier != channel.WindowTierNone:
+		return WindowState{Open: true, ExpiresAt: expiresAt, Tier: tier}
+	case lastInbound == nil:
+		return ClosedWindow(WindowReasonNoInbound)
+	default:
+		return ClosedWindow(WindowReasonExpired)
+	}
 }
 
 func ClosedWindow(reason WindowClosedReason) WindowState {

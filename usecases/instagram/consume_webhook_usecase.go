@@ -8,6 +8,7 @@ import (
 	"vozko/domain/cache"
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/messaging"
+	mm "vozko/domain/metamessaging"
 	"vozko/domain/webhook"
 	"vozko/infra/meta"
 	webhook_usecase "vozko/usecases/webhook"
@@ -27,20 +28,20 @@ func NewConsumeWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
 	queuePub messaging.MessageQueuePub,
 	sharedState cache.SharedState,
-	durable igdomain.ProcessedEventRepository,
+	durable webhook.ProcessedEventRepository,
 	handler *HandleWebhookUseCase,
 ) *ConsumeWebhookUseCase {
-	build := func(topic, name string, concurrency int) *webhook_usecase.ConsumerRunner[igdomain.EntryEnvelope] {
-		return webhook_usecase.NewConsumerRunner(webhook_usecase.ConsumerConfig[igdomain.EntryEnvelope]{
+	build := func(topic, name string, concurrency int) *webhook_usecase.ConsumerRunner[mm.EntryEnvelope] {
+		return webhook_usecase.NewConsumerRunner(webhook_usecase.ConsumerConfig[mm.EntryEnvelope]{
 			Name:        name,
 			Topic:       topic,
 			QueueSub:    queueSub,
 			QueuePub:    queuePub,
 			SharedState: sharedState,
-			Durable:     durableAdapter{repo: durable},
+			Durable:     durable,
 			Concurrency: concurrency,
-			DedupKey:    dedupKeyForEntry,
-			Handle: func(ctx context.Context, env *igdomain.EntryEnvelope) error {
+			DedupKey:    igdomain.EntryDedupKey,
+			Handle: func(ctx context.Context, env *mm.EntryEnvelope) error {
 				return handler.Execute(ctx, env)
 			},
 			Classify: classifyWebhookFailure,
@@ -63,14 +64,6 @@ func (uc *ConsumeWebhookUseCase) Start() error {
 		}
 	}
 	return nil
-}
-
-func dedupKeyForEntry(env *igdomain.EntryEnvelope) string {
-	events := igdomain.NormalizeEntry(env)
-	if len(events) == 0 {
-		return ""
-	}
-	return events[0].IdempotencyKey
 }
 
 func classifyWebhookFailure(err error) webhook_usecase.Disposition {
@@ -98,15 +91,4 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 		}
 	}
 	return webhook_usecase.DispositionRetry
-}
-
-type durableAdapter struct {
-	repo igdomain.ProcessedEventRepository
-}
-
-func (d durableAdapter) Claim(ctx context.Context, key, channel, accountID string) (bool, error) {
-	if d.repo == nil {
-		return true, nil
-	}
-	return d.repo.Claim(ctx, key, channel, accountID)
 }

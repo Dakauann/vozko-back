@@ -26,6 +26,7 @@ import (
 	ce_repository "vozko/infra/repositories/conversation_event"
 	customer_repository "vozko/infra/repositories/customer"
 	customfield_repository "vozko/infra/repositories/customfield"
+	dealautomation_repository "vozko/infra/repositories/dealautomation"
 	ia_repository "vozko/infra/repositories/inbox_assignment"
 	insurance_repository "vozko/infra/repositories/insurance"
 	invoice_repository "vozko/infra/repositories/invoice"
@@ -165,6 +166,7 @@ func (c *Container) initRepositories() {
 		builderSession:          workflow_repository.NewBuilderSessionRepository(c.db),
 		calendar:                calendar_repository.NewRepository(c.db),
 		inboxAssignment:         ia_repository.New(c.db),
+		dealAutomation:          dealautomation_repository.New(c.db),
 		workspaceDepartment:     workspace_department_repository.NewRepository(c.db),
 		labelGroup:              label_repository.NewLabelGroupRepository(c.db),
 		session:                 auth_repository.NewSessionRepository(c.db),

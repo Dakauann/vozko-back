@@ -20,7 +20,7 @@ type commentService struct {
 func NewCommentService(cfg GraphConfig) (igdomain.CommentService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
-		APIVersion: graphVersionOr(cfg.GraphVersion),
+		APIVersion: meta.VersionOr(cfg.GraphVersion),
 		AppSecret:  cfg.AppSecret,
 		HTTPClient: cfg.HTTPClient,
 	})
@@ -196,10 +196,11 @@ func (s *commentService) SetHidden(ctx context.Context, token, igCommentID strin
 	form.Set("hide", fmt.Sprint(hidden))
 
 	return s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igCommentID,
-		Token:  token,
-		Form:   form,
+		Method:     http.MethodPost,
+		Path:       "/" + igCommentID,
+		Token:      token,
+		Form:       form,
+		Idempotent: true,
 	}, nil)
 }
 

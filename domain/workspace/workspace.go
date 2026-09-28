@@ -72,6 +72,7 @@ var (
 	ResourceAIChat                      = registerResource("ai_chat")
 	ResourceShortLinks                  = registerResource("short_links")
 	ResourceInstagramAccounts           = registerResource("instagram_accounts")
+	ResourceFacebookPages               = registerResource("facebook_pages")
 	ResourceAudience                    = registerResource("audience")
 	ResourceTelegramAccounts            = registerResource("telegram_accounts")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
@@ -88,6 +89,7 @@ type ActionDefinition struct {
 	ActionName  Action            `json:"actionName"`
 	Description string            `json:"description"`
 	Requires    []PermissionEntry `json:"requires,omitempty"`
+	Risks       []RiskKind        `json:"risks,omitempty"`
 }
 
 var Actions = make(map[Action]struct{})
@@ -127,17 +129,17 @@ func (a Action) IsValid() bool {
 
 var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceAgents: {
-		{ActionName: ActionCreate, Description: "Criar novos agentes de IA"},
+		{ActionName: ActionCreate, Description: "Criar novos agentes de IA", Risks: []RiskKind{RiskChangesAutomation}},
 		{ActionName: ActionRead, Description: "Visualizar agentes"},
 		{ActionName: ActionReadDetails, Description: "Visualizar as configurações do agente", Requires: []PermissionEntry{
 			{Resource: ResourceAgents, Action: ActionRead},
 		}},
-		{ActionName: ActionUpdate, Description: "Editar configurações de agentes"},
-		{ActionName: ActionDelete, Description: "Excluir agentes"},
+		{ActionName: ActionUpdate, Description: "Editar configurações de agentes", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Excluir agentes", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
 	},
 	ResourceAIChat: {
 		{ActionName: ActionRead, Description: "Visualizar e usar o chat de IA"},
-		{ActionName: ActionCreate, Description: "Criar conversas e enviar mensagens no chat de IA"},
+		{ActionName: ActionCreate, Description: "Criar conversas e enviar mensagens no chat de IA", Risks: []RiskKind{RiskSpendsBalance}},
 		{ActionName: ActionUpdate, Description: "Renomear conversas do chat de IA"},
 		{ActionName: ActionDelete, Description: "Excluir conversas do chat de IA"},
 	},
@@ -145,16 +147,16 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp"},
 		{ActionName: ActionRead, Description: "Visualizar campanhas de WhatsApp"},
 		{ActionName: ActionUpdate, Description: "Editar campanhas de WhatsApp"},
-		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp"},
-		{ActionName: ActionStart, Description: "Iniciar envio de campanhas WhatsApp"},
+		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp", Risks: []RiskKind{RiskDeletesData}},
+		{ActionName: ActionStart, Description: "Iniciar envio de campanhas WhatsApp", Risks: []RiskKind{RiskSpendsBalance, RiskContactsCustomers}},
 		{ActionName: ActionStop, Description: "Parar campanhas WhatsApp em execução"},
 	},
 	ResourceWhatsAppTemplates: {
 		{ActionName: ActionCreate, Description: "Criar modelos de mensagem WhatsApp"},
 		{ActionName: ActionRead, Description: "Visualizar modelos de mensagem"},
 		{ActionName: ActionUpdate, Description: "Editar modelos de mensagem"},
-		{ActionName: ActionDelete, Description: "Excluir modelos de mensagem"},
-		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo enviando um modelo pelo WhatsApp oficial (consome saldo)", Requires: []PermissionEntry{
+		{ActionName: ActionDelete, Description: "Excluir modelos de mensagem", Risks: []RiskKind{RiskDeletesData}},
+		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo enviando um modelo pelo WhatsApp oficial (consome saldo)", Risks: []RiskKind{RiskSpendsBalance, RiskContactsCustomers}, Requires: []PermissionEntry{
 			{Resource: ResourceWhatsAppTemplates, Action: ActionRead},
 			{Resource: ResourceBusinessPhones, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionRead},
@@ -167,7 +169,7 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionCreate, Description: "Criar novas etapas"},
 		{ActionName: ActionRead, Description: "Visualizar etapas existentes"},
 		{ActionName: ActionUpdate, Description: "Editar etapas"},
-		{ActionName: ActionDelete, Description: "Excluir etapas"},
+		{ActionName: ActionDelete, Description: "Excluir etapas", Risks: []RiskKind{RiskDeletesData}},
 		{ActionName: ActionAssign, Description: "Atribuir etapas a contatos e conversas"},
 		{ActionName: ActionTransfer, Description: "Mover conversas para outro funil", Requires: []PermissionEntry{
 			{Resource: ResourceStages, Action: ActionAssign},
@@ -177,34 +179,34 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionCreate, Description: "Criar funis de etapas"},
 		{ActionName: ActionRead, Description: "Visualizar funis de etapas"},
 		{ActionName: ActionUpdate, Description: "Editar funis de etapas"},
-		{ActionName: ActionDelete, Description: "Excluir funis de etapas"},
+		{ActionName: ActionDelete, Description: "Excluir funis de etapas", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceLabels: {
 		{ActionName: ActionCreate, Description: "Criar novas etiquetas"},
 		{ActionName: ActionRead, Description: "Visualizar etiquetas existentes"},
 		{ActionName: ActionUpdate, Description: "Editar etiquetas"},
-		{ActionName: ActionDelete, Description: "Excluir etiquetas"},
+		{ActionName: ActionDelete, Description: "Excluir etiquetas", Risks: []RiskKind{RiskDeletesData}},
 		{ActionName: ActionAssign, Description: "Atribuir etiquetas a itens"},
 	},
 	ResourceMessageShortcuts: {
 		{ActionName: ActionCreate, Description: "Criar atalhos de mensagem"},
 		{ActionName: ActionRead, Description: "Visualizar atalhos de mensagem"},
 		{ActionName: ActionUpdate, Description: "Editar atalhos de mensagem"},
-		{ActionName: ActionDelete, Description: "Excluir atalhos de mensagem"},
+		{ActionName: ActionDelete, Description: "Excluir atalhos de mensagem", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceBalance: {
-		{ActionName: ActionRead, Description: "Visualizar saldo, créditos e faturas da conta"},
+		{ActionName: ActionRead, Description: "Visualizar saldo, créditos e faturas da conta", Risks: []RiskKind{RiskSensitiveData}},
 	},
 	ResourceConversations: {
-		{ActionName: ActionCreate, Description: "Iniciar novas conversas com contatos"},
+		{ActionName: ActionCreate, Description: "Iniciar novas conversas com contatos", Risks: []RiskKind{RiskContactsCustomers}},
 		{ActionName: ActionRead, Description: "Visualizar conversas e histórico de mensagens"},
 		{ActionName: ActionUpdate, Description: "Editar informações de conversas"},
 		{ActionName: ActionSend, Description: "Enviar mensagens em conversas"},
-		{ActionName: ActionReopen, Description: "Reabrir conversas encerradas"},
+		{ActionName: ActionReopen, Description: "Reabrir conversas encerradas", Risks: []RiskKind{RiskSpendsBalance}},
 		{ActionName: ActionAssign, Description: "Passar a conversa para outro membro da equipe", Requires: []PermissionEntry{
 			{Resource: ResourceMembers, Action: ActionRead},
 		}},
-		{ActionName: ActionViewOthers, Description: "Visualizar conversas atribuídas a outros membros da equipe"},
+		{ActionName: ActionViewOthers, Description: "Visualizar conversas atribuídas a outros membros da equipe", Risks: []RiskKind{RiskSensitiveData}},
 		{ActionName: ActionCall, Description: "Solicitar ao cliente permissão para receber ligações pelo WhatsApp. A ligação em si usa a permissão de chamadas.", Requires: []PermissionEntry{
 			{Resource: ResourceConversations, Action: ActionRead},
 			{Resource: ResourceCallSession, Action: ActionUse},
@@ -217,38 +219,38 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceMedia: {
 		{ActionName: ActionCreate, Description: "Enviar arquivos de mídia (imagens, áudios, documentos)"},
 		{ActionName: ActionRead, Description: "Visualizar e baixar arquivos de mídia"},
-		{ActionName: ActionDelete, Description: "Excluir arquivos de mídia"},
+		{ActionName: ActionDelete, Description: "Excluir arquivos de mídia", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceLeads: {
 		{ActionName: ActionCreate, Description: "Cadastrar novos leads e contatos"},
 		{ActionName: ActionRead, Description: "Visualizar leads e informações de contato"},
 		{ActionName: ActionBlock, Description: "Bloquear um lead"},
 		{ActionName: ActionUpdate, Description: "Editar dados de leads"},
-		{ActionName: ActionDelete, Description: "Excluir leads"},
+		{ActionName: ActionDelete, Description: "Excluir leads", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceCallRecordings: {
-		{ActionName: ActionRead, Description: "Ouvir e baixar gravações de chamadas"},
+		{ActionName: ActionRead, Description: "Ouvir e baixar gravações de chamadas", Risks: []RiskKind{RiskSensitiveData}},
 	},
 	ResourceMembers: {
-		{ActionName: ActionCreate, Description: "Convidar novos membros ao workspace"},
+		{ActionName: ActionCreate, Description: "Convidar novos membros ao workspace", Risks: []RiskKind{RiskManagesAccess}},
 		{ActionName: ActionRead, Description: "Visualizar membros e suas funções"},
 		{ActionName: ActionViewOthers, Description: "Visualizar membros de outros departamentos", Requires: []PermissionEntry{
 			{Resource: ResourceMembers, Action: ActionRead},
 		}},
-		{ActionName: ActionUpdate, Description: "Alterar funções e permissões de membros"},
-		{ActionName: ActionDelete, Description: "Remover membros do workspace"},
+		{ActionName: ActionUpdate, Description: "Alterar funções e permissões de membros", Risks: []RiskKind{RiskManagesAccess}},
+		{ActionName: ActionDelete, Description: "Remover membros do workspace", Risks: []RiskKind{RiskManagesAccess}},
 	},
 	ResourceAssignments: {
-		{ActionName: ActionCreate, Description: "Atribuir recursos a membros específicos"},
+		{ActionName: ActionCreate, Description: "Atribuir recursos a membros específicos", Risks: []RiskKind{RiskManagesAccess}},
 		{ActionName: ActionRead, Description: "Visualizar atribuições de recursos"},
-		{ActionName: ActionDelete, Description: "Remover atribuições de recursos"},
+		{ActionName: ActionDelete, Description: "Remover atribuições de recursos", Risks: []RiskKind{RiskManagesAccess}},
 	},
 	ResourceAttendance: {
 		{ActionName: ActionRead, Description: "Visualizar métricas de atendimento: conversas, tempos, filas, ocupação, canais, equipe e atendimentos por IA nos canais de mensagens, além do volume de telefonia"},
 	},
 	ResourceReports: {
-		{ActionName: ActionRead, Description: "Visualizar e baixar relatórios gerados"},
-		{ActionName: ActionCreate, Description: "Solicitar a geração de relatórios"},
+		{ActionName: ActionRead, Description: "Visualizar e baixar relatórios gerados", Risks: []RiskKind{RiskSensitiveData}},
+		{ActionName: ActionCreate, Description: "Solicitar a geração de relatórios", Risks: []RiskKind{RiskSensitiveData}},
 	},
 	ResourceAttendanceTargets: {
 		{ActionName: ActionRead, Description: "Visualizar as metas de atendimento do período", Requires: []PermissionEntry{
@@ -262,56 +264,63 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		}},
 	},
 	ResourceKnowledgeBases: {
-		{ActionName: ActionCreate, Description: "Criar bases de conhecimento"},
+		{ActionName: ActionCreate, Description: "Criar bases de conhecimento", Risks: []RiskKind{RiskChangesAutomation}},
 		{ActionName: ActionRead, Description: "Visualizar bases de conhecimento"},
-		{ActionName: ActionUpdate, Description: "Editar bases de conhecimento"},
-		{ActionName: ActionDelete, Description: "Excluir bases de conhecimento"},
+		{ActionName: ActionUpdate, Description: "Editar bases de conhecimento", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Excluir bases de conhecimento", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
 	},
 	ResourceShortLinks: {
 		{ActionName: ActionCreate, Description: "Criar links curtos"},
 		{ActionName: ActionRead, Description: "Visualizar links curtos e suas métricas de acesso"},
 		{ActionName: ActionUpdate, Description: "Editar links curtos"},
-		{ActionName: ActionDelete, Description: "Excluir links curtos"},
+		{ActionName: ActionDelete, Description: "Excluir links curtos", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceRoles: {
-		{ActionName: ActionCreate, Description: "Criar cargos personalizados"},
+		{ActionName: ActionCreate, Description: "Criar cargos personalizados", Risks: []RiskKind{RiskManagesAccess}},
 		{ActionName: ActionRead, Description: "Visualizar cargos"},
-		{ActionName: ActionUpdate, Description: "Editar cargos e suas permissões"},
-		{ActionName: ActionDelete, Description: "Excluir cargos"},
+		{ActionName: ActionUpdate, Description: "Editar cargos e suas permissões", Risks: []RiskKind{RiskManagesAccess}},
+		{ActionName: ActionDelete, Description: "Excluir cargos", Risks: []RiskKind{RiskManagesAccess}},
+	},
+	ResourceFacebookPages: {
+		{ActionName: ActionCreate, Description: "Conectar páginas do Facebook", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar páginas, publicações e comentários do Facebook"},
+		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Facebook", Risks: []RiskKind{RiskContactsCustomers}},
+		{ActionName: ActionDelete, Description: "Desconectar páginas do Facebook", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourceInstagramAccounts: {
-		{ActionName: ActionCreate, Description: "Conectar contas do Instagram"},
+
+		{ActionName: ActionCreate, Description: "Conectar contas do Instagram", Risks: []RiskKind{RiskConnectsAccounts}},
 		{ActionName: ActionRead, Description: "Visualizar contas, publicações e comentários do Instagram"},
-		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram"},
-		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram"},
+		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Instagram", Risks: []RiskKind{RiskContactsCustomers}},
+		{ActionName: ActionDelete, Description: "Desconectar contas do Instagram", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourceAudience: {
 		{ActionName: ActionRead, Description: "Visualizar a análise de comentários e conversas (audiência, temas, assuntos, autores)"},
-		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários e conversas (teto de análises, tempo de silêncio, temas), moderar autores e iniciar reprocessamentos"},
-		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Requires: []PermissionEntry{
+		{ActionName: ActionUpdate, Description: "Configurar a análise de comentários e conversas (teto de análises, tempo de silêncio, temas), moderar autores e iniciar reprocessamentos", Risks: []RiskKind{RiskSpendsBalance}},
+		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
 			{Resource: ResourceAudience, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionSend},
 		}},
 	},
 	ResourceTelegramAccounts: {
-		{ActionName: ActionCreate, Description: "Conectar bots do Telegram"},
+		{ActionName: ActionCreate, Description: "Conectar bots do Telegram", Risks: []RiskKind{RiskConnectsAccounts}},
 		{ActionName: ActionRead, Description: "Visualizar bots e links de atribuição do Telegram"},
 		{ActionName: ActionUpdate, Description: "Editar configurações e links do Telegram"},
-		{ActionName: ActionDelete, Description: "Desconectar bots do Telegram"},
+		{ActionName: ActionDelete, Description: "Desconectar bots do Telegram", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourceUnofficialWhatsAppInstances: {
-		{ActionName: ActionCreate, Description: "Conectar números de WhatsApp por QR Code"},
+		{ActionName: ActionCreate, Description: "Conectar números de WhatsApp por QR Code", Risks: []RiskKind{RiskConnectsAccounts}},
 		{ActionName: ActionRead, Description: "Visualizar números de WhatsApp conectados por QR Code"},
-		{ActionName: ActionUpdate, Description: "Editar configurações e reconectar números de WhatsApp por QR Code"},
-		{ActionName: ActionDelete, Description: "Desconectar números de WhatsApp por QR Code"},
-		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo pelo WhatsApp não oficial"},
+		{ActionName: ActionUpdate, Description: "Editar configurações e reconectar números de WhatsApp por QR Code", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionDelete, Description: "Desconectar números de WhatsApp por QR Code", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionSend, Description: "Iniciar conversa com um número novo pelo WhatsApp não oficial", Risks: []RiskKind{RiskContactsCustomers}},
 	},
 	ResourceUnofficialWhatsAppCampaigns: {
 		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp não oficial"},
 		{ActionName: ActionRead, Description: "Visualizar campanhas de WhatsApp não oficial"},
 		{ActionName: ActionUpdate, Description: "Editar campanhas de WhatsApp não oficial"},
-		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp não oficial"},
-		{ActionName: ActionStart, Description: "Iniciar disparos de campanhas de WhatsApp não oficial"},
+		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp não oficial", Risks: []RiskKind{RiskDeletesData}},
+		{ActionName: ActionStart, Description: "Iniciar disparos de campanhas de WhatsApp não oficial", Risks: []RiskKind{RiskContactsCustomers}},
 		{ActionName: ActionStop, Description: "Pausar ou parar campanhas de WhatsApp não oficial em execução"},
 	},
 	ResourceIssues: {
@@ -320,13 +329,13 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Fechar issues"},
 	},
 	ResourceWorkflows: {
-		{ActionName: ActionCreate, Description: "Criar workflows de automação"},
+		{ActionName: ActionCreate, Description: "Criar workflows de automação", Risks: []RiskKind{RiskChangesAutomation}},
 		{ActionName: ActionRead, Description: "Visualizar workflows e execuções"},
 		{ActionName: ActionReadDetails, Description: "Visualizar detalhes de configurações e execuções de workflows", Requires: []PermissionEntry{
 			{Resource: ResourceWorkflows, Action: ActionRead},
 		}},
-		{ActionName: ActionUpdate, Description: "Editar workflows"},
-		{ActionName: ActionDelete, Description: "Excluir workflows"},
+		{ActionName: ActionUpdate, Description: "Editar workflows", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Excluir workflows", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
 	},
 	ResourceCalendar: {
 		{ActionName: ActionCreate, Description: "Criar eventos no calendário"},
@@ -337,11 +346,11 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceDepartments: {
 		{ActionName: ActionCreate, Description: "Criar departamentos"},
 		{ActionName: ActionRead, Description: "Visualizar departamentos e seus membros"},
-		{ActionName: ActionUpdate, Description: "Editar departamentos"},
-		{ActionName: ActionDelete, Description: "Excluir departamentos"},
+		{ActionName: ActionUpdate, Description: "Editar departamentos", Risks: []RiskKind{RiskManagesAccess}},
+		{ActionName: ActionDelete, Description: "Excluir departamentos", Risks: []RiskKind{RiskManagesAccess}},
 	},
 	ResourceCallSession: {
-		{ActionName: ActionUse, Description: "Realizar e atender chamadas de WhatsApp nas conversas. Não inclui métricas, use a permissão de atendimento para dashboards."},
+		{ActionName: ActionUse, Description: "Realizar e atender chamadas de WhatsApp nas conversas. Não inclui métricas, use a permissão de atendimento para dashboards.", Risks: []RiskKind{RiskContactsCustomers}},
 		{ActionName: ActionListMembers, Description: "Visualizar membros conectados às chamadas em tempo real", Requires: []PermissionEntry{
 			{Resource: ResourceCallSession, Action: ActionUse},
 		}},
@@ -352,14 +361,14 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	},
 	ResourceMCP: {
 		{ActionName: ActionRead, Description: "Visualizar servidores MCP integrados e remotos do workspace"},
-		{ActionName: ActionCreate, Description: "Habilitar servidores MCP integrados e registrar servidores MCP remotos"},
-		{ActionName: ActionUpdate, Description: "Configurar credenciais (API key / OAuth) de servidores MCP"},
-		{ActionName: ActionDelete, Description: "Remover servidores MCP integrados ou remotos"},
+		{ActionName: ActionCreate, Description: "Habilitar servidores MCP integrados e registrar servidores MCP remotos", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionUpdate, Description: "Configurar credenciais (API key / OAuth) de servidores MCP", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionDelete, Description: "Remover servidores MCP integrados ou remotos", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourcePlans: {
 		{ActionName: ActionRead, Description: "Visualizar planos disponíveis e a assinatura atual do workspace"},
-		{ActionName: ActionCreate, Description: "Contratar planos e gerar faturas de cobrança"},
-		{ActionName: ActionDelete, Description: "Cancelar a assinatura atual do workspace"},
+		{ActionName: ActionCreate, Description: "Contratar planos e gerar faturas de cobrança", Risks: []RiskKind{RiskChangesBilling}},
+		{ActionName: ActionDelete, Description: "Cancelar a assinatura atual do workspace", Risks: []RiskKind{RiskChangesBilling}},
 	},
 }
 
@@ -456,6 +465,20 @@ type Permission struct {
 	Resource  Resource  `json:"resource"`
 	Action    Action    `json:"action"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (p Permission) Entry() PermissionEntry {
+	return PermissionEntry{Resource: p.Resource, Action: p.Action}
+}
+
+func EntriesOf(perms []*Permission) []PermissionEntry {
+	out := make([]PermissionEntry, 0, len(perms))
+	for _, p := range perms {
+		if p != nil {
+			out = append(out, p.Entry())
+		}
+	}
+	return out
 }
 
 type Invite struct {

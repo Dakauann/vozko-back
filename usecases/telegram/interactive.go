@@ -28,7 +28,7 @@ func (a *channelAdapter) SendInteractive(
 		return nil, err
 	}
 
-	body := composeInteractiveBody(req)
+	body := req.ComposedBody()
 	if strings.TrimSpace(body) == "" {
 		return nil, fmt.Errorf("%w: an interactive prompt needs a body", conversation.ErrCapabilityUnsupported)
 	}
@@ -41,7 +41,7 @@ func (a *channelAdapter) SendInteractive(
 		return nil, fmt.Errorf("%w: no option could be rendered as an inline button", conversation.ErrCapabilityUnsupported)
 	}
 	for _, d := range dropped {
-		log.Printf("[telegram] option %q omitted from inline keyboard: %s", d.id, d.reason)
+		log.Printf("[telegram] option %q omitted from inline keyboard: %s", d.ID, d.Reason)
 	}
 
 	markup, err := json.Marshal(map[string]any{"inline_keyboard": rows})
@@ -75,54 +75,13 @@ func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {
 	return a.caps.Interactive
 }
 
-type droppedOption struct {
-	id     string
-	reason string
-}
-
-func inlineKeyboardFor(options []conversation.InteractiveOption) ([][]inlineButton, []droppedOption) {
-	rows := make([][]inlineButton, 0, len(options))
-	var dropped []droppedOption
-
-	for _, opt := range options {
-		id := strings.TrimSpace(opt.ID)
-		title := strings.TrimSpace(opt.Title)
-		if title == "" {
-			title = id
-		}
-
-		switch {
-		case id == "":
-			dropped = append(dropped, droppedOption{opt.Title, "no id to send back on press"})
-			continue
-		case len(id) > tgdomain.MaxCallbackDataBytes:
-			dropped = append(dropped, droppedOption{id, fmt.Sprintf(
-				"callback_data is %d bytes, over Telegram's %d-byte limit",
-				len(id), tgdomain.MaxCallbackDataBytes)})
-			continue
-		case len(rows) >= tgdomain.MaxInlineKeyboardButtons:
-			dropped = append(dropped, droppedOption{id, "beyond the inline keyboard cap"})
-			continue
-		}
-
-		rows = append(rows, []inlineButton{{Text: title, CallbackData: id}})
+func inlineKeyboardFor(options []conversation.InteractiveOption) ([][]inlineButton, []conversation.DroppedOption) {
+	kept, dropped := conversation.FitOptions(options, tgdomain.MaxInlineKeyboardButtons, tgdomain.MaxCallbackDataBytes)
+	rows := make([][]inlineButton, 0, len(kept))
+	for _, opt := range kept {
+		rows = append(rows, []inlineButton{{Text: opt.Title, CallbackData: opt.ID}})
 	}
-
 	return rows, dropped
-}
-
-func composeInteractiveBody(req conversation.SendInteractiveRequest) string {
-	parts := make([]string, 0, 3)
-	if h := strings.TrimSpace(req.Header); h != "" {
-		parts = append(parts, h)
-	}
-	if b := strings.TrimSpace(req.Body); b != "" {
-		parts = append(parts, b)
-	}
-	if f := strings.TrimSpace(req.Footer); f != "" {
-		parts = append(parts, f)
-	}
-	return strings.Join(parts, "\n\n")
 }
 
 var _ conversation.InteractiveAdapter = (*channelAdapter)(nil)

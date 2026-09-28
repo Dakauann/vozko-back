@@ -238,7 +238,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		if bound, err := media.EnableSharedUDPMux(muxPort); err != nil {
 			log.Printf("[whatsapp-calls] WARNING: could not bind media UDP mux on :%d (%v), WhatsApp media falls back to per-call sockets, which does NOT scale. Fix WHATSAPP_MEDIA_UDP_MUX_PORT.", muxPort, err)
 		} else {
-			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d, one shared socket for all calls (scales to thousands)", bound)
+			log.Printf("[whatsapp-calls] WebRTC media UDP mux on port %d, one shared socket for all calls ", bound)
 		}
 
 		c.services.whatsappCallSignaling = signaling

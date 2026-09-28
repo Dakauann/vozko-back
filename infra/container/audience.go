@@ -13,6 +13,7 @@ import (
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	cauc "vozko/usecases/audience"
 	convuc "vozko/usecases/conversation"
+	fbuc "vozko/usecases/facebook"
 	iguc "vozko/usecases/instagram"
 )
 
@@ -30,6 +31,7 @@ type audienceBundle struct {
 	Backfill *cauc.BackfillJob
 
 	InstagramAdapter *iguc.AudienceAdapter
+	FacebookAdapter  *fbuc.AudienceAdapter
 
 	Stats ca.StatsUseCase
 	List  ca.ListUseCase
@@ -44,7 +46,9 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 	bundle := &audienceBundle{}
 	c.audience = bundle
 
-	if c.instagram == nil || !c.instagram.Enabled {
+	instagramOn := c.instagram != nil && c.instagram.Enabled
+	facebookOn := c.facebook != nil && c.facebook.Enabled
+	if !instagramOn && !facebookOn {
 		log.Printf("[comment-analysis] no comment source enabled; feature not wired")
 		return
 	}
@@ -70,14 +74,29 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 		live.SetLive(c.services.conversationHub)
 	}
 
-	ig := c.instagram
-	bundle.InstagramAdapter = iguc.NewAudienceAdapter(
-		bundle.Ingestor, ig.Comments, ig.Media, ig.Accounts, ig.CommentSvc, repo,
-	)
-	if ig.ModerateComment != nil {
+	adapters := map[ca.Source]ca.SourceAdapter{}
+	verifiers := map[ca.Source]cauc.AccountVerifier{}
+	repliers := map[ca.Source]ca.CommentReplier{}
+	if instagramOn {
+		ig := c.instagram
+		bundle.InstagramAdapter = iguc.NewAudienceAdapter(
+			bundle.Ingestor, ig.Comments, ig.Media, ig.Accounts, ig.CommentSvc, repo,
+		)
 		ig.ModerateComment.SetCommentAnalysis(bundle.InstagramAdapter)
+		adapters[ca.SourceInstagram] = bundle.InstagramAdapter
+		verifiers[ca.SourceInstagram] = iguc.NewAudienceAccountVerifier(ig.Accounts)
+		repliers[ca.SourceInstagram] = instagramCommentReplier{uc: ig.ReplyComment}
 	}
-	adapters := map[ca.Source]ca.SourceAdapter{ca.SourceInstagram: bundle.InstagramAdapter}
+	if facebookOn {
+		fb := c.facebook
+		bundle.FacebookAdapter = fbuc.NewAudienceAdapter(fbuc.AudienceDeps{
+			Ingestor: bundle.Ingestor, Pages: fb.Pages, Posts: fb.Posts, Comments: fb.Comments,
+			Service: fb.CommentSvc, Tombstones: repo,
+		})
+		adapters[ca.SourceFacebook] = bundle.FacebookAdapter
+		verifiers[ca.SourceFacebook] = fbuc.NewPageOwnership(fb.Pages)
+		repliers[ca.SourceFacebook] = facebookCommentReplier{bundle: fb}
+	}
 
 	alertRules := ca_repository.NewAlertRuleRepository(c.db)
 
@@ -117,7 +136,6 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 		Sender:    bundle.AlertConsumer,
 		State:     state,
 	})
-	verifiers := map[ca.Source]cauc.AccountVerifier{ca.SourceInstagram: iguc.NewAudienceAccountVerifier(ig.Accounts)}
 
 	bundle.ConversationAdapter = convuc.NewAnalysisAdapter(bundle.Ingestor, c.repositories.conversation)
 	conversationAdapters := map[ca.Source]ca.ConversationAdapter{}
@@ -172,10 +190,6 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 	estimate, start, get, cancel := cauc.NewBackfillUseCases(backfillDeps)
 	getSettings, updateSettings := cauc.NewSettingsUseCases(settings, verifiers, clock)
 
-	repliers := map[ca.Source]ca.CommentReplier{}
-	if c.instagram != nil && c.instagram.Enabled && c.instagram.ReplyComment != nil {
-		repliers[ca.SourceInstagram] = instagramCommentReplier{uc: c.instagram.ReplyComment}
-	}
 	suggestReply, postReply := cauc.NewReplyUseCases(cauc.ReplyDeps{
 		Repo: repo, Settings: settings, Adapters: adapters,
 		Drafter:  cauc.NewReplyDrafter(c.services.ai, c.cfg.OpenRouterDefaultModel),

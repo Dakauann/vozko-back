@@ -74,7 +74,14 @@ type Config struct {
 	InstagramRedirectURI        string
 	InstagramWebhookVerifyToken string
 	InstagramGraphVersion       string
-	FrontendBaseURL             string
+
+	MetaAppID                  string
+	FacebookLoginConfigID      string
+	FacebookRedirectURI        string
+	FacebookWebhookVerifyToken string
+	FacebookGraphVersion       string
+	FacebookHumanAgentApproved bool
+	FrontendBaseURL            string
 
 	TelegramWebhookBaseURL string
 	TelegramBotAPIBaseURL  string
@@ -199,7 +206,15 @@ func LoadConfig() Config {
 		InstagramRedirectURI:        mustGetEnvTrimmed("INSTAGRAM_REDIRECT_URI"),
 		InstagramWebhookVerifyToken: mustGetEnvTrimmed("INSTAGRAM_WEBHOOK_VERIFY_TOKEN"),
 		InstagramGraphVersion:       trimEnv("INSTAGRAM_GRAPH_VERSION"),
-		FrontendBaseURL:             strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
+
+		MetaAppID:                  mustGetEnvTrimmed("WHATSAPP_APP_ID"),
+		FacebookLoginConfigID:      mustGetEnvTrimmed("FACEBOOK_LOGIN_CONFIG_ID"),
+		FacebookRedirectURI:        mustGetEnvTrimmed("FACEBOOK_REDIRECT_URI"),
+		FacebookWebhookVerifyToken: mustGetEnvTrimmed("FACEBOOK_WEBHOOK_VERIFY_TOKEN"),
+		FacebookGraphVersion:       trimEnv("FACEBOOK_GRAPH_VERSION"),
+		FacebookHumanAgentApproved: getBoolEnv("FACEBOOK_HUMAN_AGENT_APPROVED", false),
+
+		FrontendBaseURL: strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
 
 		TelegramWebhookBaseURL: strings.TrimRight(mustGetEnvTrimmed("TELEGRAM_WEBHOOK_BASE_URL"), "/"),
 		TelegramBotAPIBaseURL:  strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),

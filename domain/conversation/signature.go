@@ -12,7 +12,8 @@ func SignOutbound(entryType shared.EntryType, username, text string) string {
 	if username == "" {
 		return text
 	}
-	if entryType == shared.EntryTypeInstagram {
+	if entryType.SignsWithPlainText() {
+
 		return fmt.Sprintf("%s:\n%s", username, text)
 	}
 	return fmt.Sprintf("*%s*:\n%s", username, text)

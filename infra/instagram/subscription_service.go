@@ -19,7 +19,7 @@ type subscriptionService struct {
 func NewSubscriptionService(cfg GraphConfig) (igdomain.SubscriptionService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
-		APIVersion: graphVersionOr(cfg.GraphVersion),
+		APIVersion: meta.VersionOr(cfg.GraphVersion),
 		AppSecret:  cfg.AppSecret,
 		HTTPClient: cfg.HTTPClient,
 	})
@@ -49,10 +49,11 @@ func (s *subscriptionService) Subscribe(ctx context.Context, igUserID, token str
 
 	var out subscribeResponse
 	if err := s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igUserID + "/subscribed_apps",
-		Token:  token,
-		Query:  q,
+		Method:     http.MethodPost,
+		Path:       "/" + igUserID + "/subscribed_apps",
+		Token:      token,
+		Query:      q,
+		Idempotent: true,
 	}, &out); err != nil {
 		return err
 	}

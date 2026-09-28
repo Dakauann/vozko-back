@@ -142,35 +142,3 @@ func (r *fileCacheRepository) Put(ctx context.Context, accountID, sourceKey, fil
 			FileID:    fileID,
 		}).Error
 }
-
-type processedEventRepository struct {
-	db *gorm.DB
-}
-
-func NewProcessedEventRepository(db *gorm.DB) tgdomain.ProcessedEventRepository {
-	return &processedEventRepository{db: db}
-}
-
-func (r *processedEventRepository) Claim(ctx context.Context, key, channel, accountID string) (bool, error) {
-	if key == "" {
-		return true, nil
-	}
-	result := r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{DoNothing: true}).
-		Create(&schema.WebhookProcessedEvent{
-			ID:        key,
-			Channel:   channel,
-			AccountID: accountID,
-		})
-	if result.Error != nil {
-		return false, result.Error
-	}
-	return result.RowsAffected > 0, nil
-}
-
-func (r *processedEventRepository) PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	result := r.db.WithContext(ctx).
-		Where("channel = ? AND created_at < ?", "telegram", cutoff).
-		Delete(&schema.WebhookProcessedEvent{})
-	return result.RowsAffected, result.Error
-}

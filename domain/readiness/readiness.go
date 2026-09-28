@@ -10,6 +10,7 @@ const (
 	UnofficialWhatsApp Capability = "unofficial_whatsapp"
 	Instagram          Capability = "instagram"
 	Telegram           Capability = "telegram"
+	Facebook           Capability = "facebook"
 	KnowledgeBases     Capability = "knowledge_bases"
 )
 

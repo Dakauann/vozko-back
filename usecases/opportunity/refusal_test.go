@@ -48,7 +48,7 @@ func TestRefusalsListsEachRefusalOnce(t *testing.T) {
 		}
 		seen[r] = true
 	}
-	if len(seen) != 9 {
-		t.Fatalf("Refusals() = %d refusals, want 9", len(seen))
+	if len(seen) != 14 {
+		t.Fatalf("Refusals() = %d refusals, want 14", len(seen))
 	}
 }

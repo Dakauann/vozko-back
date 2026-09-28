@@ -233,6 +233,7 @@ func messagingTypesSorted() []EntryType {
 
 func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	want := []EntryType{
+		EntryTypeFacebook,
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
@@ -241,5 +242,32 @@ func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	got := messagingTypesSorted()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("messaging entry types = %v, want %v", got, want)
+	}
+}
+
+func TestFacebookIsFullyRegistered(t *testing.T) {
+	fb := EntryTypeFacebook
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   fb.Valid(),
+		"SupportsConversationView":     fb.SupportsConversationView(),
+		"SupportsCRMTagging":           fb.SupportsCRMTagging(),
+		"SupportsConversationClosing":  fb.SupportsConversationClosing(),
+		"SupportsInboxScope":           fb.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": fb.SupportsContainerScopedInbox(),
+		"SupportsConversationAnalysis": fb.SupportsConversationAnalysis(),
+		"IsKnown":                      fb.IsKnown(),
+		"SignsWithPlainText":           fb.SignsWithPlainText(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("facebook fails %s", name)
+		}
+	}
+	if fb.EventChannel() != string(fb) {
+		t.Errorf("EventChannel() = %q", fb.EventChannel())
+	}
+	if fb.DisplayLabel() != "Messenger" {
+		t.Errorf("DisplayLabel() = %q", fb.DisplayLabel())
 	}
 }

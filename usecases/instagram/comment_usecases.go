@@ -11,7 +11,7 @@ import (
 	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/shared"
-	"vozko/infra/meta"
+	cauc "vozko/usecases/commentautomation"
 )
 
 type ListCommentsInput struct {
@@ -237,12 +237,13 @@ func (uc *ModerateCommentUseCase) Delete(ctx context.Context, workspaceID, accou
 
 type SendPrivateReplyUseCase struct {
 	accountResolver
-	messaging      igdomain.MessagingService
-	commentsRepo   igdomain.CommentRepository
-	privateReplies igdomain.PrivateReplyRepository
-	contacts       igdomain.ContactRepository
-	conversations  igdomain.ConversationRepository
-	history        conversation.MessageHistoryManager
+	messaging     igdomain.MessagingService
+	comments      igdomain.CommentService
+	commentsRepo  igdomain.CommentRepository
+	sender        *cauc.PrivateReplySender
+	contacts      igdomain.ContactRepository
+	conversations igdomain.ConversationRepository
+	history       conversation.MessageHistoryManager
 }
 
 func (uc *SendPrivateReplyUseCase) SetHistoryManager(h conversation.MessageHistoryManager) {
@@ -252,16 +253,18 @@ func (uc *SendPrivateReplyUseCase) SetHistoryManager(h conversation.MessageHisto
 func NewSendPrivateReplyUseCase(
 	accounts igdomain.AccountRepository,
 	messaging igdomain.MessagingService,
+	comments igdomain.CommentService,
 	commentsRepo igdomain.CommentRepository,
-	privateReplies igdomain.PrivateReplyRepository,
+	sender *cauc.PrivateReplySender,
 	contacts igdomain.ContactRepository,
 	conversations igdomain.ConversationRepository,
 ) *SendPrivateReplyUseCase {
 	return &SendPrivateReplyUseCase{
 		accountResolver: accountResolver{accounts: accounts},
 		messaging:       messaging,
+		comments:        comments,
 		commentsRepo:    commentsRepo,
-		privateReplies:  privateReplies,
+		sender:          sender,
 		contacts:        contacts,
 		conversations:   conversations,
 	}
@@ -283,58 +286,45 @@ func (uc *SendPrivateReplyUseCase) Execute(ctx context.Context, workspaceID, acc
 		return igdomain.ErrTextTooLong
 	}
 
-	if uc.commentsRepo != nil {
-		stored, err := uc.commentsRepo.FindByIGCommentID(ctx, account.ID, igCommentID)
-		if err == nil && stored != nil && stored.Timestamp != nil {
-			if time.Since(*stored.Timestamp) > igdomain.PrivateReplyWindow {
-				return igdomain.ErrPrivateReplyExpired
+	delivery, err := uc.sender.Send(ctx, shared.EntryTypeInstagram, account.ID, igCommentID, uc.commentTime(ctx, account, igCommentID),
+		func(ctx context.Context) (*cauc.Delivery, error) {
+			result, err := uc.messaging.SendPrivateReply(ctx, account.IGUserID, account.AccessToken, igCommentID, text)
+			if err != nil {
+				return nil, err
 			}
-		}
-	}
-
-	claimed, err := uc.privateReplies.Claim(ctx, igCommentID, account.ID)
+			return &cauc.Delivery{RecipientRef: result.RecipientID, MessageID: result.MessageID}, nil
+		})
 	if err != nil {
 		return err
 	}
-	if !claimed {
-		return igdomain.ErrPrivateReplyUsed
-	}
 
-	result, err := uc.messaging.SendPrivateReply(ctx, account.IGUserID, account.AccessToken, igCommentID, text)
-	if err != nil {
-		code := 0
-		if apiErr, ok := meta.AsError(err); ok {
-			code = apiErr.Code
-		}
-		if markErr := uc.privateReplies.MarkFailed(ctx, igCommentID, code, err.Error()); markErr != nil {
-			log.Printf("[instagram] mark private reply failed comment=%s: %v", igCommentID, markErr)
-		}
-		return err
-	}
-
-	if err := uc.privateReplies.MarkSent(ctx, igCommentID, result.RecipientID, result.MessageID); err != nil {
-		log.Printf("[instagram] mark private reply sent comment=%s: %v", igCommentID, err)
-	}
-
-	conv := uc.ensureConversation(ctx, account, result.RecipientID)
-	uc.recordInTranscript(ctx, account, conv, result, sentBy, text)
+	conv := uc.ensureConversation(ctx, account, delivery.RecipientRef)
+	uc.recordInTranscript(ctx, account, conv, delivery, sentBy, text)
 	return nil
+}
+
+func (uc *SendPrivateReplyUseCase) commentTime(ctx context.Context, account *igdomain.Account, igCommentID string) *time.Time {
+	if stored, err := uc.commentsRepo.FindByIGCommentID(ctx, account.ID, igCommentID); err == nil && stored.Timestamp != nil {
+		return stored.Timestamp
+	}
+	remote, err := uc.comments.GetComment(ctx, account.AccessToken, igCommentID)
+	if err != nil {
+		log.Printf("[instagram] comment %s time unavailable for the private reply deadline: %v", igCommentID, err)
+		return nil
+	}
+	return remote.Timestamp
 }
 
 func (uc *SendPrivateReplyUseCase) recordInTranscript(
 	ctx context.Context,
 	account *igdomain.Account,
 	conv *igdomain.Conversation,
-	result *igdomain.SendResult,
+	delivery *cauc.Delivery,
 	sentBy conversation.SentBy,
 	text string,
 ) {
 	if uc.history == nil || conv == nil {
 		return
-	}
-	providerID := ""
-	if result != nil {
-		providerID = result.MessageID
 	}
 	if err := uc.history.Record(ctx, conversation.MessageHistoryRecord{
 		SentBy:            sentBy,
@@ -342,9 +332,9 @@ func (uc *SendPrivateReplyUseCase) recordInTranscript(
 		EntryType:         shared.EntryTypeInstagram,
 		Channel:           conversation.MessageChannelInstagram,
 		MessageType:       conversation.MessageTypeOperator,
-		ProviderMessageID: providerID,
+		ProviderMessageID: delivery.MessageID,
 		From:              account.IGUserID,
-		To:                result.RecipientID,
+		To:                delivery.RecipientRef,
 		Text:              text,
 		Timestamp:         time.Now().UTC(),
 	}); err != nil {
@@ -353,7 +343,7 @@ func (uc *SendPrivateReplyUseCase) recordInTranscript(
 }
 
 func (uc *SendPrivateReplyUseCase) ensureConversation(ctx context.Context, account *igdomain.Account, igsid string) *igdomain.Conversation {
-	if igsid == "" || uc.contacts == nil || uc.conversations == nil {
+	if igsid == "" {
 		return nil
 	}
 	contact, err := uc.contacts.FindOrCreate(ctx, account.WorkspaceID, account.ID, igsid)

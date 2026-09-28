@@ -141,6 +141,10 @@ func (h *ExportHandler) ExportTelegramEntries(w http.ResponseWriter, r *http.Req
 	h.exportChannelEntries(w, r, exportdomain.EntryTypeTelegram, "telegram-account")
 }
 
+func (h *ExportHandler) ExportFacebookEntries(w http.ResponseWriter, r *http.Request) {
+	h.exportChannelEntries(w, r, exportdomain.EntryTypeFacebook, "facebook-page")
+}
+
 func (h *ExportHandler) ExportUnofficialWhatsAppCampaignEntries(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Set("type", "campaign")

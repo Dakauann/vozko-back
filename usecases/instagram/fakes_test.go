@@ -1,11 +1,13 @@
 package instagram
 
 import (
+	"errors"
 	"context"
 	"time"
 	"vozko/domain/conversation"
 
 	igdomain "vozko/domain/instagram"
+	"vozko/domain/privatereply"
 	"vozko/domain/shared"
 )
 
@@ -19,6 +21,8 @@ type fakeAccountRepo struct {
 
 	StatusUpdates []igdomain.Status
 	TokenUpdates  int
+	ErasedTokens  int
+	Deletes       int
 }
 
 func (f *fakeAccountRepo) Create(context.Context, *igdomain.Account) error { return nil }
@@ -26,6 +30,9 @@ func (f *fakeAccountRepo) Update(context.Context, *igdomain.Account) error { ret
 
 func (f *fakeAccountRepo) UpdateToken(ctx context.Context, id, token string, expiresAt, refreshedAt time.Time) error {
 	f.TokenUpdates++
+	if token == "" {
+		f.ErasedTokens++
+	}
 	if f.UpdateTokenFn != nil {
 		return f.UpdateTokenFn(ctx, id, token, expiresAt, refreshedAt)
 	}
@@ -81,14 +88,20 @@ func (f *fakeAccountRepo) ListDueForTokenRefresh(ctx context.Context, before tim
 	return nil, nil
 }
 
-func (f *fakeAccountRepo) Delete(context.Context, string) error { return nil }
+func (f *fakeAccountRepo) Delete(context.Context, string) error {
+	f.Deletes++
+	return nil
+}
+
 
 type fakeContactRepo struct {
 	FindByIDFn     func(ctx context.Context, id string) (*igdomain.Contact, error)
 	FindByIGSIDFn  func(ctx context.Context, igAccountID, igsid string) (*igdomain.Contact, error)
 	FindOrCreateFn func(ctx context.Context, workspaceID, igAccountID, igsid string) (*igdomain.Contact, error)
 
-	Created []string
+	Created   []string
+	Profiles  map[string]igdomain.ContactProfile
+	Usernames map[string]string
 }
 
 func (f *fakeContactRepo) FindOrCreate(ctx context.Context, workspaceID, igAccountID, igsid string) (*igdomain.Contact, error) {
@@ -132,7 +145,19 @@ func (f *fakeContactRepo) FindByIGSID(ctx context.Context, igAccountID, igsid st
 	}
 	return nil, igdomain.ErrContactNotFound
 }
-func (f *fakeContactRepo) UpdateProfile(context.Context, string, igdomain.ContactProfile) error {
+func (f *fakeContactRepo) UpdateProfile(_ context.Context, id string, p igdomain.ContactProfile) error {
+	if f.Profiles == nil {
+		f.Profiles = map[string]igdomain.ContactProfile{}
+	}
+	f.Profiles[id] = p
+	return nil
+}
+
+func (f *fakeContactRepo) FillUsername(_ context.Context, id, username string) error {
+	if f.Usernames == nil {
+		f.Usernames = map[string]string{}
+	}
+	f.Usernames[id] = username
 	return nil
 }
 func (f *fakeContactRepo) SetBlocked(context.Context, string, bool) error { return nil }
@@ -223,7 +248,10 @@ type fakeMessagingService struct {
 	SendTextFn  func(ctx context.Context, igUserID, token string, in igdomain.SendTextInput) (*igdomain.SendResult, error)
 	SendMediaFn func(ctx context.Context, igUserID, token string, in igdomain.SendMediaInput) (*igdomain.SendResult, error)
 
-	Sent []sentMessage
+	Sent          []sentMessage
+	ProfileErr    error
+	Senders       map[string]*igdomain.MessageSender
+	SenderLookups []string
 }
 
 func (f *fakeMessagingService) SendText(ctx context.Context, igUserID, token string, in igdomain.SendTextInput) (*igdomain.SendResult, error) {
@@ -267,7 +295,18 @@ func (f *fakeMessagingService) SendPrivateReply(ctx context.Context, igUserID, t
 }
 
 func (f *fakeMessagingService) GetContactProfile(context.Context, string, string) (*igdomain.ContactProfileResult, error) {
+	if f.ProfileErr != nil {
+		return nil, f.ProfileErr
+	}
 	return &igdomain.ContactProfileResult{Username: "someone"}, nil
+}
+
+func (f *fakeMessagingService) GetMessageSender(_ context.Context, _, mid string) (*igdomain.MessageSender, error) {
+	f.SenderLookups = append(f.SenderLookups, mid)
+	if sender, ok := f.Senders[mid]; ok {
+		return sender, nil
+	}
+	return nil, errors.New("message not found")
 }
 
 func (f *fakeMessagingService) GetConversations(context.Context, string, string, int) error {
@@ -312,7 +351,7 @@ type fakePrivateReplyRepo struct {
 	claimed map[string]bool
 }
 
-func (f *fakePrivateReplyRepo) Claim(ctx context.Context, igCommentID, igAccountID string) (bool, error) {
+func (f *fakePrivateReplyRepo) Claim(ctx context.Context, _ shared.EntryType, igCommentID, igAccountID string) (bool, error) {
 	f.Claims++
 	if f.ClaimFn != nil {
 		return f.ClaimFn(ctx, igCommentID, igAccountID)
@@ -327,17 +366,21 @@ func (f *fakePrivateReplyRepo) Claim(ctx context.Context, igCommentID, igAccount
 	return true, nil
 }
 
-func (f *fakePrivateReplyRepo) MarkSent(context.Context, string, string, string) error {
+func (f *fakePrivateReplyRepo) MarkSent(context.Context, shared.EntryType, string, string, string) error {
 	f.Sent++
 	return nil
 }
 
-func (f *fakePrivateReplyRepo) MarkFailed(context.Context, string, int, string) error {
+func (f *fakePrivateReplyRepo) MarkFailed(context.Context, shared.EntryType, string, int, string) error {
 	f.Failed++
 	return nil
 }
 
-func (f *fakePrivateReplyRepo) Find(context.Context, string) (*igdomain.PrivateReply, error) {
+func (f *fakePrivateReplyRepo) Find(context.Context, shared.EntryType, string) (*privatereply.Record, error) {
+	return nil, nil
+}
+
+func (f *fakePrivateReplyRepo) FindMany(context.Context, shared.EntryType, []string) (map[string]*privatereply.Record, error) {
 	return nil, nil
 }
 
@@ -383,6 +426,7 @@ func (f *fakeCommentRepo) ListByMedia(context.Context, igdomain.ListCommentsInpu
 type fakeCommentService struct {
 	ListFn   func(ctx context.Context, token, igMediaID string, limit int, after string) (*igdomain.Page[*igdomain.RemoteComment], error)
 	DeleteFn func(ctx context.Context, token, igCommentID string) error
+	GetFn    func(ctx context.Context, token, igCommentID string) (*igdomain.RemoteComment, error)
 
 	Deletes  int
 	HiddenTo []bool
@@ -400,8 +444,12 @@ func (f *fakeCommentService) ListComments(ctx context.Context, token, igMediaID 
 	return &igdomain.Page[*igdomain.RemoteComment]{}, nil
 }
 
-func (f *fakeCommentService) GetComment(context.Context, string, string) (*igdomain.RemoteComment, error) {
-	return nil, igdomain.ErrCommentNotFound
+func (f *fakeCommentService) GetComment(ctx context.Context, token, igCommentID string) (*igdomain.RemoteComment, error) {
+	if f.GetFn != nil {
+		return f.GetFn(ctx, token, igCommentID)
+	}
+	recent := time.Now().UTC().Add(-time.Hour)
+	return &igdomain.RemoteComment{IGCommentID: igCommentID, Timestamp: &recent}, nil
 }
 
 func (f *fakeCommentService) ListReplies(context.Context, string, string, int, string) (*igdomain.Page[*igdomain.RemoteComment], error) {

@@ -81,6 +81,8 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.templateCreateTools(),
 		c.campaignTools(),
 		c.unofficialCampaignTools(),
+		c.workspaceAdminTools(),
+		c.accessTools(),
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
@@ -119,6 +121,57 @@ func (c *Container) campaignTools() []copilot.Tool {
 		copilottools.NewPreviewCampaignImportTool(deps),
 		copilottools.NewCreateCampaignTool(deps),
 		copilottools.NewStartCampaignTool(deps),
+	}
+}
+
+func (c *Container) workspaceAdminTools() []copilot.Tool {
+	deps := copilottools.WorkspaceAdminDeps{
+		Members:           c.useCases.listWsMembers,
+		Invite:            c.useCases.inviteMember,
+		Invites:           c.useCases.listWorkspaceInvites,
+		CancelInvite:      c.useCases.cancelInvite,
+		RemoveMember:      c.useCases.removeMember,
+		ChangeRole:        c.useCases.updateMemberRole,
+		Permissions:       c.useCases.getMemberPermissions,
+		SetPermissions:    c.useCases.setMemberPermissions,
+		Catalog:           c.useCases.listResourcePermissions,
+		Roles:             c.useCases.listCustomRoles,
+		CreateRole:        c.useCases.createCustomRole,
+		UpdateRole:        c.useCases.updateCustomRole,
+		DeleteRole:        c.useCases.deleteCustomRole,
+		AssignRole:        c.useCases.assignCustomRole,
+		CreateDepartment:  c.useCases.createWorkspaceDepartment,
+		ScopedDepartments: c.useCases.scopedDepartments,
+	}
+	return []copilot.Tool{
+		copilottools.NewListWorkspaceMembersTool(deps),
+		copilottools.NewListWorkspaceInvitesTool(deps),
+		copilottools.NewGetMemberPermissionsTool(deps),
+		copilottools.NewListPermissionCatalogTool(deps),
+		copilottools.NewInviteMemberTool(deps),
+		copilottools.NewCancelInviteTool(deps),
+		copilottools.NewRemoveMemberTool(deps),
+		copilottools.NewChangeMemberRoleTool(deps),
+		copilottools.NewUpdateMemberPermissionsTool(deps),
+		copilottools.NewListRolesTool(deps),
+		copilottools.NewCreateRoleTool(deps),
+		copilottools.NewUpdateRoleTool(deps),
+		copilottools.NewDeleteRoleTool(deps),
+		copilottools.NewListDepartmentMembersTool(deps),
+		copilottools.NewCreateDepartmentTool(deps),
+		copilottools.NewUpdateDepartmentTool(deps),
+		copilottools.NewDeleteDepartmentTool(deps),
+		copilottools.NewAddDepartmentMemberTool(deps),
+		copilottools.NewRemoveDepartmentMemberTool(deps),
+	}
+}
+
+func (c *Container) accessTools() []copilot.Tool {
+	deps := copilottools.AccessDeps{Diagnose: c.useCases.diagnoseAccess}
+	return []copilot.Tool{
+		copilottools.NewExplainPermissionTool(),
+		copilottools.NewDiagnoseAccessTool(deps),
+		copilottools.NewOpenScreenTool(deps),
 	}
 }
 

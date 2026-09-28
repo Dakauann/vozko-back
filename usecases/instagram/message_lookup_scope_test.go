@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
+	mm "vozko/domain/metamessaging"
 	"vozko/domain/shared"
 )
 
@@ -57,7 +58,7 @@ func TestMessageLookupPrefersThisAccountsConversation(t *testing.T) {
 
 	uc := lookupUC(msgs, contacts, convs)
 	got, err := uc.messageByProviderID(context.Background(),
-		&igdomain.Account{ID: "acc-1"}, &igdomain.Event{ContactIGSID: "igsid-1"}, "mid-shared")
+		&igdomain.Account{ID: "acc-1"}, &igdomain.Event{Event: mm.Event{ContactExternalID: "igsid-1"}}, "mid-shared")
 	if err != nil {
 		t.Fatalf("lookup: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 			name:     "sender is the business, so no contact row",
 			contacts: &fakeContactRepo{},
 			convs:    &fakeConversationRepo{},
-			event:    &igdomain.Event{ContactIGSID: "business-igsid"},
+			event:    &igdomain.Event{Event: mm.Event{ContactExternalID: "business-igsid"}},
 		},
 		{
 			name: "contact known but no conversation yet",
@@ -94,7 +95,7 @@ func TestMessageLookupFallsBackWhenNoContactResolves(t *testing.T) {
 				},
 			},
 			convs: &fakeConversationRepo{},
-			event: &igdomain.Event{ContactIGSID: "igsid-1"},
+			event: &igdomain.Event{Event: mm.Event{ContactExternalID: "igsid-1"}},
 		},
 		{
 			name:     "event carries no contact at all",

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"vozko/domain/conversation"
 )
 
 var (
@@ -21,8 +23,6 @@ var (
 	ErrStatusTransition      = errors.New("invalid instagram account status transition")
 	ErrWindowClosed          = errors.New("instagram 24h messaging window is closed")
 	ErrTextTooLong           = errors.New("instagram message text exceeds 1000 bytes")
-	ErrPrivateReplyUsed      = errors.New("a private reply was already sent for this comment")
-	ErrPrivateReplyExpired   = errors.New("private replies must be sent within 7 days of the comment")
 	ErrCaptionImmutable      = errors.New("instagram does not support editing a published caption")
 	ErrDeleteNotSupported    = errors.New("deleting media requires Instagram API with Facebook Login")
 )
@@ -39,8 +39,6 @@ const MessagingWindow = 24 * time.Hour
 const ExtendedMessagingWindow = 7 * 24 * time.Hour
 
 const MaxTextBytes = 1000
-
-const PrivateReplyWindow = 7 * 24 * time.Hour
 
 const (
 	MaxQuickReplies           = 13
@@ -337,26 +335,14 @@ type Comment struct {
 
 func (c *Comment) CanDelete() bool { return c.IsOurs }
 
-type PrivateReplyStatus string
-
-const (
-	PrivateReplyAttempted PrivateReplyStatus = "ATTEMPTED"
-	PrivateReplySent      PrivateReplyStatus = "SENT"
-	PrivateReplyFailed    PrivateReplyStatus = "FAILED"
-)
-
-type PrivateReply struct {
-	IGCommentID    string             `json:"igCommentId"`
-	IGAccountID    string             `json:"igAccountId"`
-	Status         PrivateReplyStatus `json:"status"`
-	RecipientIGSID *string            `json:"recipientIgsid,omitempty"`
-	IGMessageID    *string            `json:"igMessageId,omitempty"`
-	ErrorCode      int                `json:"errorCode,omitempty"`
-	ErrorMessage   string             `json:"errorMessage,omitempty"`
-	AttemptedAt    time.Time          `json:"attemptedAt"`
-	UpdatedAt      time.Time          `json:"updatedAt"`
-}
-
-func (p *PrivateReply) Consumed() bool {
-	return p.Status == PrivateReplySent || p.Status == PrivateReplyAttempted
+func (a *Account) Automation() conversation.ChannelAutomation {
+	return conversation.ChannelAutomation{
+		AgentID:              a.AgentID,
+		WorkflowID:           a.WorkflowID,
+		EnableAgentResponses: a.EnableAgentResponses,
+		EnableWorkflow:       a.EnableWorkflow,
+		EnableAnalysis:       a.EnableAnalysis,
+		EnableAutoStaging:    a.EnableAutoStaging,
+		EnableAutoMemory:     a.EnableAutoMemory,
+	}
 }

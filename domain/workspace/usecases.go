@@ -93,6 +93,27 @@ type ListResourcePermissionsUseCase interface {
 	Execute() []ResourcePermissionInfo
 }
 
+type ListFeaturesUseCase interface {
+	Execute() []Feature
+}
+
+type DiagnoseAccessInput struct {
+	ActorID      string
+	WorkspaceID  string
+	MemberUserID string
+	CallerRole   string
+	Feature      FeatureKey
+}
+
+type AccessDiagnosis struct {
+	Member *Member `json:"member"`
+	FeatureDiagnosis
+}
+
+type DiagnoseAccessUseCase interface {
+	Execute(input DiagnoseAccessInput) (*AccessDiagnosis, error)
+}
+
 type CheckAccessUseCase interface {
 	Execute(userID, workspaceID string, resource Resource, action Action) error
 }
@@ -142,6 +163,7 @@ type ResourcePermissionInfo struct {
 	Actions            []Action                     `json:"actions"`
 	ActionDescriptions map[string]string            `json:"actionDescriptions"`
 	Dependencies       map[string][]PermissionEntry `json:"dependencies,omitempty"`
+	Risks              map[string][]Risk            `json:"risks,omitempty"`
 }
 
 type AssignResourceInput struct {

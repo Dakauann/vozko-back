@@ -53,6 +53,7 @@ func TestEntryTypeMatchingIsExact(t *testing.T) {
 func TestConversationViewableEntryTypesIsStableAndComplete(t *testing.T) {
 	got := ConversationViewableEntryTypes()
 	want := []EntryType{
+		EntryTypeFacebook,
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
@@ -109,7 +110,7 @@ func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 	if !messenger.SupportsConversationView() {
 		t.Error("registering the type should make it viewable")
 	}
-	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'instagram', 'messenger', 'telegram', 'unofficial_whatsapp' or 'whatsapp'" {
+	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'facebook', 'instagram', 'messenger', 'telegram', 'unofficial_whatsapp' or 'whatsapp'" {
 		t.Errorf("error text did not follow the set: %q", got)
 	}
 	if messenger.Valid() {
@@ -149,7 +150,7 @@ func TestAnalysisSetsMatchExactly(t *testing.T) {
 
 func TestAnalysableEntryTypeListsMirrorPredicates(t *testing.T) {
 	comment := CommentAnalysableEntryTypes()
-	if !reflect.DeepEqual(comment, []EntryType{EntryTypeInstagram}) {
+	if !reflect.DeepEqual(comment, []EntryType{EntryTypeFacebook, EntryTypeInstagram}) {
 		t.Errorf("CommentAnalysableEntryTypes() = %v", comment)
 	}
 	for _, e := range comment {
@@ -160,6 +161,7 @@ func TestAnalysableEntryTypeListsMirrorPredicates(t *testing.T) {
 
 	conversation := ConversationAnalysableEntryTypes()
 	want := []EntryType{
+		EntryTypeFacebook,
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,

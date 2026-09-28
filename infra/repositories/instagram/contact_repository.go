@@ -87,6 +87,12 @@ func (r *contactRepository) FindByIGSID(ctx context.Context, igAccountID, igsid 
 	return toContactDomain(&record), nil
 }
 
+func (r *contactRepository) FillUsername(ctx context.Context, id, username string) error {
+	return r.db.WithContext(ctx).Model(&schema.InstagramContact{}).
+		Where("id = ? AND COALESCE(username, '') = ''", id).
+		Update("username", username).Error
+}
+
 func (r *contactRepository) UpdateProfile(ctx context.Context, id string, p igdomain.ContactProfile) error {
 	fetchedAt := p.FetchedAt
 	if fetchedAt.IsZero() {

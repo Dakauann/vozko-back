@@ -13,7 +13,8 @@ func closeValuedDealsOnWonStages(tx *gorm.DB) error {
 			   SET status = 'won',
 			       close_date = COALESCE(o.close_date, o.updated_at),
 			       closed_by_id = NULL,
-			       closed_by_kind = 'system'
+			       closed_by_kind = 'system',
+			       version = o.version + 1
 			  FROM stages s
 			 WHERE s.id::text = o.stage_id::text
 			   AND s.is_won

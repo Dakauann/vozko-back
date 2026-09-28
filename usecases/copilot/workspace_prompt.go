@@ -13,6 +13,7 @@ var capabilityLabels = map[readiness.Capability]string{
 	readiness.UnofficialWhatsApp: "WhatsApp não oficial",
 	readiness.Instagram:          "Instagram",
 	readiness.Telegram:           "Telegram",
+	readiness.Facebook:           "Páginas do Facebook",
 	readiness.KnowledgeBases:     "Bases de conhecimento",
 }
 

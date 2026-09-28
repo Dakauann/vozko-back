@@ -21,7 +21,7 @@ type Opportunity struct {
 	CreatedByKind string `gorm:"type:varchar(16);not null;default:''"`
 	ClosedByID    string `gorm:"type:uuid;default:null"`
 	ClosedByKind  string `gorm:"type:varchar(16);not null;default:''"`
-	CarteiraID  string `gorm:"type:uuid;default:null"`
+	CarteiraID    string `gorm:"type:uuid;default:null"`
 
 	Title      string `gorm:"size:255"`
 	ValueCents int64  `gorm:"type:bigint;not null;default:0"`
@@ -33,6 +33,8 @@ type Opportunity struct {
 	CloseDate    *time.Time `gorm:"default:null"`
 
 	CustomFields datatypes.JSON `gorm:"type:jsonb"`
+
+	Version int64 `gorm:"not null;default:1"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`

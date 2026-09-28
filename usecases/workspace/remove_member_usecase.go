@@ -11,12 +11,9 @@ func NewRemoveMemberUseCase(repo workspace.Repository) workspace.RemoveMemberUse
 }
 
 func (uc *removeMemberUseCase) Execute(actorID, workspaceID, memberUserID, callerRole string) error {
-	var actor *workspace.Member
-	if callerRole != "admin" {
-		actor = mustBeMember(uc.repo, workspaceID, actorID)
-		if actor == nil {
-			return workspace.ErrUnauthorized
-		}
+	actor, err := actorFor(uc.repo, workspaceID, actorID, callerRole)
+	if err != nil {
+		return err
 	}
 
 	target, err := uc.repo.GetMember(workspaceID, memberUserID)
@@ -27,12 +24,8 @@ func (uc *removeMemberUseCase) Execute(actorID, workspaceID, memberUserID, calle
 		return workspace.ErrMemberNotFound
 	}
 
-	if target.Role == workspace.RoleOwner {
-		return workspace.ErrCannotRemoveOwner
-	}
-
-	if actor != nil && target.Role == workspace.RoleAdmin && !actor.Role.CanManageMembers() {
-		return workspace.ErrInsufficientPermissions
+	if err := actor.CanRemove(target); err != nil {
+		return err
 	}
 
 	return uc.repo.RemoveMember(target.ID)

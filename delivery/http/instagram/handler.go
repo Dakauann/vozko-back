@@ -3,7 +3,6 @@ package instagram
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -12,12 +11,16 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/commentautomationhttp"
 	"vozko/delivery/http/httpx"
+	"vozko/delivery/http/oauthpopup"
 	"vozko/delivery/http/response"
 	igdomain "vozko/domain/instagram"
 	"vozko/domain/shared"
 	"vozko/infra/http/middleware"
+	cauc "vozko/usecases/commentautomation"
 	iguc "vozko/usecases/instagram"
+	"vozko/usecases/shared/oauthstate"
 )
 
 type Handler struct {
@@ -26,7 +29,7 @@ type Handler struct {
 	get         *iguc.GetAccountUseCase
 	updateCfg   *iguc.UpdateAccountConfigUseCase
 	disconnect  *iguc.DisconnectAccountUseCase
-	manageRules *iguc.ManageCommentRulesUseCase
+	manageRules *cauc.Manager
 
 	listMedia         *iguc.ListMediaUseCase
 	getMedia          *iguc.GetMediaUseCase
@@ -48,7 +51,7 @@ type HandlerDeps struct {
 	List        *iguc.ListAccountsUseCase
 	Get         *iguc.GetAccountUseCase
 	UpdateCfg   *iguc.UpdateAccountConfigUseCase
-	ManageRules *iguc.ManageCommentRulesUseCase
+	ManageRules *cauc.Manager
 	Disconnect  *iguc.DisconnectAccountUseCase
 
 	ListMedia         *iguc.ListMediaUseCase
@@ -148,7 +151,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			h.writePopupResult(w, result)
 			return
 		}
-		h.redirectWithResult(w, r, "/dashboard/instagram-accounts", result)
+		h.redirectWithResult(w, r, instagramAccountsPath, result)
 		return
 	}
 
@@ -174,76 +177,30 @@ func popupHint(query url.Values) bool {
 	return query.Get("popup") == "1"
 }
 
+const instagramAccountsPath = "/dashboard/instagram-accounts"
+
 func (h *Handler) writePopupResult(w http.ResponseWriter, result connectResult) {
-	payload, err := json.Marshal(map[string]string{
+	oauthpopup.WriteResult(w, h.frontendBaseURL, map[string]any{
 		"source":   "ig-business-login",
 		"status":   result.Status,
 		"username": result.Username,
 		"reason":   result.Reason,
 	})
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to render result", nil)
-		return
-	}
-
-	targetOrigin := h.frontendBaseURL
-	if targetOrigin == "" {
-		targetOrigin = "null"
-	}
-	origin, err := json.Marshal(targetOrigin)
-	if err != nil {
-		origin = []byte(`"null"`)
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-
-	_, _ = fmt.Fprintf(w, `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Instagram</title></head>
-<body style="font:14px system-ui;padding:24px;text-align:center;color:#444">
-<p>You can close this window.</p>
-<script>
-(function () {
-  var payload = %s;
-  var target = %s;
-  try {
-    if (window.opener && target !== "null") {
-      window.opener.postMessage(payload, target);
-    }
-  } catch (e) {}
-  setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
-})();
-</script>
-</body></html>`, payload, origin)
 }
 
 func (h *Handler) redirectWithResult(w http.ResponseWriter, r *http.Request, path string, result connectResult) {
-	target := h.frontendBaseURL + iguc.SafeReturnPath(path, "/dashboard/instagram-accounts")
-
-	parsed, err := url.Parse(target)
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Invalid redirect target", nil)
-		return
-	}
-	q := parsed.Query()
-	q.Set("instagram", result.Status)
-	if result.Username != "" {
-		q.Set("username", result.Username)
-	}
-	if result.Reason != "" {
-		q.Set("reason", result.Reason)
-	}
-	parsed.RawQuery = q.Encode()
-
-	http.Redirect(w, r, parsed.String(), http.StatusFound)
+	oauthpopup.Redirect(w, r, h.frontendBaseURL, path, instagramAccountsPath, url.Values{
+		"instagram": {result.Status},
+		"username":  {result.Username},
+		"reason":    {result.Reason},
+	})
 }
 
 func connectErrorCode(err error) string {
 	switch {
-	case errors.Is(err, iguc.ErrInvalidState), errors.Is(err, iguc.ErrReplayedState):
+	case errors.Is(err, oauthstate.ErrInvalidState), errors.Is(err, oauthstate.ErrReplayedState):
 		return "invalid_state"
-	case errors.Is(err, iguc.ErrExpiredState):
+	case errors.Is(err, oauthstate.ErrExpiredState):
 		return "expired_state"
 	case errors.Is(err, igdomain.ErrMissingMessagingScope):
 		return "missing_messaging_scope"
@@ -394,13 +351,7 @@ func writeDomainError(w http.ResponseWriter, err error, fallback string) {
 		response.WriteErrorWithCode(w, http.StatusConflict, "reconnect_required",
 			"This Instagram account needs to be reconnected", nil)
 
-	case errors.Is(err, igdomain.ErrPrivateReplyUsed):
-		response.WriteErrorWithCode(w, http.StatusConflict, "private_reply_used",
-			"Instagram allows only one private reply per comment", nil)
-
-	case errors.Is(err, igdomain.ErrPrivateReplyExpired):
-		response.WriteErrorWithCode(w, http.StatusConflict, "private_reply_expired",
-			"Private replies must be sent within 7 days of the comment", nil)
+	case commentautomationhttp.WriteError(w, err):
 
 	default:
 		response.WriteError(w, http.StatusInternalServerError, fallback, nil)

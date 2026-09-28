@@ -349,6 +349,7 @@ type SubscribedPayload struct {
 	WindowOpen         bool                   `json:"window_open"`
 	WindowExpiresAt    *time.Time             `json:"window_expires_at,omitempty"`
 	WindowClosedReason string                 `json:"window_closed_reason,omitempty"`
+	WindowTier         string                 `json:"window_tier,omitempty"`
 }
 
 type ErrorPayload struct {

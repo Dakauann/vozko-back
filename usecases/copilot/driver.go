@@ -43,6 +43,7 @@ type Driver struct {
 	funds    FundsChecker
 	newID    IDGenerator
 	state    *readiness.Snapshot
+	offered  []tools.Definition
 }
 
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {
@@ -60,7 +61,22 @@ func (d *Driver) Admit(context.Context) error {
 }
 
 func (d *Driver) Model() string             { return d.model }
-func (d *Driver) Tools() []tools.Definition { return d.registry.Definitions() }
+func (d *Driver) Tools() []tools.Definition {
+	if d.offered == nil {
+		d.offered = d.permittedDefinitions()
+	}
+	return d.offered
+}
+
+func (d *Driver) permittedDefinitions() []tools.Definition {
+	defs := make([]tools.Definition, 0)
+	for _, t := range d.registry.Tools() {
+		if d.permit(t.Meta()) == nil {
+			defs = append(defs, t.Definition())
+		}
+	}
+	return defs
+}
 
 func (d *Driver) SystemPrompt() string {
 	return systemPrompt(d.cc.View, time.Now()) + workspacePrompt(d.state)

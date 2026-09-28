@@ -81,8 +81,28 @@ var entrySources = []entrySource{
 		Department: "iga.department_id",
 	},
 	{
-		EntryType:     shared.EntryTypeTelegram,
-		From:          "telegram_conversations tgc",
+		EntryType:     shared.EntryTypeFacebook,
+		From:          "facebook_conversations fbc",
+		WorkspaceJoin: "JOIN facebook_pages fbp ON fbp.id = fbc.page_id AND fbp.workspace_id = ?",
+
+		EntryID: "fbc.id",
+
+		Account: "COALESCE(fbc.page_id::text, '')",
+
+		ConversationStatus: "fbc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "fbc.created_at",
+		UpdatedAt:     "fbc.updated_at",
+		LastMessageAt: "fbc.last_message_at",
+		Deleted:       "fbc.deleted_at IS NULL",
+
+		Department: "fbp.department_id",
+	},
+	{
+		EntryType: shared.EntryTypeTelegram,
+		From:      "telegram_conversations tgc",
+
 		WorkspaceJoin: "JOIN telegram_accounts tga ON tga.id = tgc.account_id AND tga.workspace_id = ?",
 
 		EntryID: "tgc.id",

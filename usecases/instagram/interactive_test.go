@@ -42,8 +42,8 @@ func TestQuickRepliesStopAtInstagramsCap(t *testing.T) {
 	if len(dropped) != 4 {
 		t.Errorf("dropped = %d, want the 4 beyond the cap", len(dropped))
 	}
-	if len(dropped) > 0 && !strings.Contains(dropped[0].reason, "13") {
-		t.Errorf("reason %q should name the limit", dropped[0].reason)
+	if len(dropped) > 0 && !strings.Contains(dropped[0].Reason, "13") {
+		t.Errorf("reason %q should name the limit", dropped[0].Reason)
 	}
 }
 
@@ -58,19 +58,6 @@ func TestQuickRepliesFallBackToTheIDAsLabel(t *testing.T) {
 	out, _ := quickReplyOptionsFor(opts("sim", ""))
 	if len(out) != 1 || out[0].Title != "sim" {
 		t.Errorf("out = %+v, want the id used as the visible label", out)
-	}
-}
-
-func TestComposeInteractiveBodyKeepsHeaderAndFooter(t *testing.T) {
-	body := composeInteractiveBody(conversation.SendInteractiveRequest{
-		Header: "Atendimento",
-		Body:   "Escolha",
-		Footer: "Rodapé",
-	})
-	for _, want := range []string{"Atendimento", "Escolha", "Rodapé"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body %q is missing %q", body, want)
-		}
 	}
 }
 

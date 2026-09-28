@@ -82,29 +82,12 @@ func (m *DepartmentMiddleware) ResolveDepartment() func(http.Handler) http.Handl
 				return
 			}
 
-			deptIDs, err := m.resolver.GetMemberDepartmentIDs(wsID, claims.UserID)
+			filter, err := dept.MemberFilter(m.resolver, wsID, claims.UserID)
 			if err != nil {
-				log.Printf("department-resolver: error fetching departments for user %s ws %s: %v", claims.UserID, wsID, err)
-
-				deptIDs = nil
+				log.Printf("department-resolver: error resolving departments for user %s ws %s: %v", claims.UserID, wsID, err)
+				filter = dept.BlockedFilter()
 			}
-
-			workspaceHasDepartments := len(deptIDs) > 0
-			if !workspaceHasDepartments && m.resolver != nil {
-				depts, listErr := m.resolver.ListDepartments(wsID)
-				if listErr != nil {
-					log.Printf("department-resolver: error listing departments for ws %s: %v", wsID, listErr)
-
-					workspaceHasDepartments = true
-				} else {
-					workspaceHasDepartments = len(depts) > 0
-				}
-			}
-
-			filter := &dept.DepartmentFilter{
-				DepartmentIDs:           deptIDs,
-				WorkspaceHasDepartments: workspaceHasDepartments,
-			}
+			deptIDs := filter.DepartmentIDs
 
 			if selected != "" {
 				if len(deptIDs) == 0 {

@@ -19,6 +19,7 @@ import (
 	"vozko/domain/shared"
 	tgdomain "vozko/domain/telegram"
 	"vozko/domain/workflow"
+	conversation_usecase "vozko/usecases/conversation"
 )
 
 const profileTTL = 7 * 24 * time.Hour
@@ -27,18 +28,6 @@ var ErrUnknownAccount = errors.New("telegram: webhook for an unknown account")
 
 type AssignmentService interface {
 	EnsureAssignment(entryID, entryType, accountID string) string
-}
-
-type AIReplier interface {
-	Reply(ctx context.Context, req conversation.AIReplyRequest) (*conversation.Message, error)
-}
-
-type WorkflowTrigger interface {
-	Evaluate(event workflow.TriggerEvent)
-}
-
-type AnalysisScheduler interface {
-	ScheduleAnalysis(entryID string, entryType shared.EntryType)
 }
 
 type LeadLinker interface {
@@ -58,10 +47,8 @@ type HandleWebhookUseCase struct {
 	fileStorage media.FileStorage
 	broadcaster conversation.EventBroadcaster
 	assignments AssignmentService
-	aiReply     AIReplier
-	workflows   WorkflowTrigger
+	automation  *conversation_usecase.InboundAutomation
 	leads       LeadLinker
-	analysis    AnalysisScheduler
 }
 
 type HandleWebhookDeps struct {
@@ -77,10 +64,10 @@ type HandleWebhookDeps struct {
 	FileStorage media.FileStorage
 	Broadcaster conversation.EventBroadcaster
 	Assignments AssignmentService
-	AIReply     AIReplier
-	Workflows   WorkflowTrigger
+	AIReply     conversation_usecase.AgentReplier
+	Workflows   conversation_usecase.WorkflowEvaluator
 	Leads       LeadLinker
-	Analysis    AnalysisScheduler
+	Analysis    conversation_usecase.AnalysisRequester
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -96,10 +83,8 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		fileStorage:   d.FileStorage,
 		broadcaster:   d.Broadcaster,
 		assignments:   d.Assignments,
-		aiReply:       d.AIReply,
-		workflows:     d.Workflows,
+		automation:    conversation_usecase.NewInboundAutomation(d.Workflows, d.AIReply, d.Analysis, d.Messages),
 		leads:         d.Leads,
-		analysis:      d.Analysis,
 	}
 }
 
@@ -231,21 +216,9 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 	uc.enrichContact(ctx, account, contact)
 
 	if private {
-		uc.fireWorkflowTriggers(ctx, account, conv, ev.Text, nil)
-		uc.maybeReplyWithAgent(ctx, account, contact, conv, ev.Text)
-		uc.scheduleAnalysis(account, conv)
+		uc.automation.Dispatch(ctx, automationInput(account, contact, conv, ev.Text, nil))
 	}
 	return nil
-}
-
-func (uc *HandleWebhookUseCase) scheduleAnalysis(account *tgdomain.Account, conv *tgdomain.Conversation) {
-	if uc.analysis == nil || !(account.EnableAnalysis || account.EnableAutoStaging || account.EnableAutoMemory) {
-		return
-	}
-	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {
-		return
-	}
-	uc.analysis.ScheduleAnalysis(conv.ID, shared.EntryTypeTelegram)
 }
 
 func (uc *HandleWebhookUseCase) recordInboundMessage(
@@ -422,12 +395,13 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	}
 
 	if conv.IsPrivate() {
-		uc.fireWorkflowTriggers(ctx, account, conv, ev.Text, &workflow.OptionSelection{
+		in := automationInput(account, contact, conv, ev.Text, &workflow.OptionSelection{
 			ID:    ev.CallbackData,
 			Title: ev.Text,
 			Kind:  "callback_query",
 		})
-		uc.maybeReplyWithAgent(ctx, account, contact, conv, ev.Text)
+		uc.automation.FireWorkflows(ctx, in)
+		uc.automation.ReplyWithAgent(ctx, in)
 	}
 	return nil
 }
@@ -474,8 +448,9 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 	}
 
 	if conv.IsPrivate() {
-		uc.fireWorkflowTriggers(ctx, account, conv, text, nil)
-		uc.maybeReplyWithAgent(ctx, account, contact, conv, text)
+		in := automationInput(account, contact, conv, text, nil)
+		uc.automation.FireWorkflows(ctx, in)
+		uc.automation.ReplyWithAgent(ctx, in)
 	}
 	return nil
 }
@@ -539,90 +514,6 @@ func (uc *HandleWebhookUseCase) handleBusinessConnection(ctx context.Context, ac
 	log.Printf("[telegram] business connection %s for @%s: enabled=%t can_reply=%t",
 		conn.ID, account.BotUsername, conn.IsEnabled, account.Rights().CanReply)
 	return nil
-}
-
-func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
-	ctx context.Context,
-	account *tgdomain.Account,
-	conv *tgdomain.Conversation,
-	text string,
-	sel *workflow.OptionSelection,
-) {
-	if uc.workflows == nil || !account.EnableWorkflow {
-		return
-	}
-	if conv.AutomationEnabled != nil && !*conv.AutomationEnabled {
-		return
-	}
-
-	data := map[string]interface{}{
-		"message":      text,
-		"channel":      string(shared.EntryTypeTelegram),
-		"workspace_id": account.WorkspaceID,
-	}
-	if account.WorkflowID != nil {
-		data["account_workflow_id"] = *account.WorkflowID
-	}
-	workflow.ApplySelection(data, sel)
-	workflow.ApplyContactNumber(data, strconv.FormatInt(conv.TGChatID, 10))
-
-	uc.workflows.Evaluate(workflow.TriggerEvent{
-		WorkspaceID: account.WorkspaceID,
-		EntryID:     conv.ID,
-		EntryType:   string(shared.EntryTypeTelegram),
-		TriggerType: workflow.TriggerMessageReceived,
-		Data:        data,
-	})
-
-	if uc.isFirstInboundMessage(conv) {
-		uc.workflows.Evaluate(workflow.TriggerEvent{
-			WorkspaceID: account.WorkspaceID,
-			EntryID:     conv.ID,
-			EntryType:   string(shared.EntryTypeTelegram),
-			TriggerType: workflow.TriggerFirstMessage,
-			Data:        data,
-		})
-	}
-}
-
-func (uc *HandleWebhookUseCase) isFirstInboundMessage(conv *tgdomain.Conversation) bool {
-	if uc.messages == nil {
-		return false
-	}
-	count, err := uc.messages.CountInboundByEntry(conv.ID, shared.EntryTypeTelegram)
-	if err != nil {
-		log.Printf("[telegram] could not count inbound messages for %s: %v", conv.ID, err)
-		return false
-	}
-	return count == 1
-}
-
-func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
-	ctx context.Context,
-	account *tgdomain.Account,
-	contact *tgdomain.Contact,
-	conv *tgdomain.Conversation,
-	text string,
-) {
-	if uc.aiReply == nil || account.AgentID == nil {
-		return
-	}
-	var leadID *string
-	if contact != nil {
-		leadID = contact.LeadID
-	}
-	if _, err := uc.aiReply.Reply(ctx, conversation.AIReplyRequest{
-		WorkspaceID:           account.WorkspaceID,
-		EntryID:               conv.ID,
-		EntryType:             shared.EntryTypeTelegram,
-		AgentID:               *account.AgentID,
-		AgentResponsesEnabled: account.EnableAgentResponses,
-		AutomationEnabled:     conv.AutomationEnabled,
-		Text:                  text,
-		LeadID:                leadID,
-	}); err != nil {
-		log.Printf("[telegram] agent reply failed conversation=%s: %v", conv.ID, err)
-	}
 }
 
 func (uc *HandleWebhookUseCase) resolveConversation(
@@ -1019,4 +910,27 @@ func truncateRaw(raw json.RawMessage, n int) string {
 		return string(raw)
 	}
 	return string(raw[:n]) + "…"
+}
+
+func automationInput(
+	account *tgdomain.Account,
+	contact *tgdomain.Contact,
+	conv *tgdomain.Conversation,
+	text string,
+	sel *workflow.OptionSelection,
+) conversation_usecase.InboundAutomationInput {
+	in := conversation_usecase.InboundAutomationInput{
+		WorkspaceID:          account.WorkspaceID,
+		EntryID:              conv.ID,
+		EntryType:            shared.EntryTypeTelegram,
+		ContactRef:           strconv.FormatInt(conv.TGChatID, 10),
+		Text:                 text,
+		Selection:            sel,
+		ConversationOverride: conv.AutomationEnabled,
+		Config:               account.Automation(),
+	}
+	if contact != nil {
+		in.LeadID = contact.LeadID
+	}
+	return in
 }

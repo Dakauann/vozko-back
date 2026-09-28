@@ -2,11 +2,13 @@ package instagram
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
-	igdomain "vozko/domain/instagram"
+	ca "vozko/domain/commentautomation"
+	"vozko/domain/shared"
 	"vozko/infra/http/middleware"
 )
 
@@ -22,25 +24,64 @@ type CommentRuleRequest struct {
 	Priority         int      `json:"priority"`
 }
 
-func (r CommentRuleRequest) toDomain(workspaceID, accountID, id string) *igdomain.CommentRule {
-	actions := make([]igdomain.CommentRuleAction, 0, len(r.Actions))
+func (r CommentRuleRequest) toDomain(workspaceID, accountID, id string) *ca.Rule {
+	actions := make([]ca.Action, 0, len(r.Actions))
 	for _, a := range r.Actions {
-		actions = append(actions, igdomain.CommentRuleAction(a))
+		actions = append(actions, ca.Action(a))
 	}
-	return &igdomain.CommentRule{
+	return &ca.Rule{
 		ID:               id,
 		WorkspaceID:      workspaceID,
-		IGAccountID:      accountID,
+		Source:           shared.EntryTypeInstagram,
+		AccountID:        accountID,
 		Name:             r.Name,
 		Enabled:          r.Enabled,
-		IGMediaID:        r.IGMediaID,
-		Match:            igdomain.CommentRuleMatch(r.Match),
+		ContainerID:      r.IGMediaID,
+		Match:            ca.Match(r.Match),
 		Keywords:         r.Keywords,
 		Actions:          actions,
 		PublicReplyText:  r.PublicReplyText,
 		PrivateReplyText: r.PrivateReplyText,
 		Priority:         r.Priority,
 	}
+}
+
+type CommentRuleResponse struct {
+	ID               string    `json:"id"`
+	WorkspaceID      string    `json:"workspaceId"`
+	IGAccountID      string    `json:"igAccountId"`
+	Name             string    `json:"name"`
+	Enabled          bool      `json:"enabled"`
+	IGMediaID        string    `json:"igMediaId,omitempty"`
+	Match            string    `json:"match"`
+	Keywords         []string  `json:"keywords"`
+	Actions          []string  `json:"actions"`
+	PublicReplyText  string    `json:"publicReplyText,omitempty"`
+	PrivateReplyText string    `json:"privateReplyText,omitempty"`
+	Priority         int       `json:"priority"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+}
+
+func presentCommentRule(rule *ca.Rule) CommentRuleResponse {
+	actions := make([]string, 0, len(rule.Actions))
+	for _, a := range rule.Actions {
+		actions = append(actions, string(a))
+	}
+	return CommentRuleResponse{
+		ID: rule.ID, WorkspaceID: rule.WorkspaceID, IGAccountID: rule.AccountID, Name: rule.Name, Enabled: rule.Enabled,
+		IGMediaID: rule.ContainerID, Match: string(rule.Match), Keywords: rule.Keywords, Actions: actions,
+		PublicReplyText: rule.PublicReplyText, PrivateReplyText: rule.PrivateReplyText, Priority: rule.Priority,
+		CreatedAt: rule.CreatedAt, UpdatedAt: rule.UpdatedAt,
+	}
+}
+
+func presentCommentRules(rules []*ca.Rule) []CommentRuleResponse {
+	out := make([]CommentRuleResponse, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, presentCommentRule(rule))
+	}
+	return out
 }
 
 func (h *Handler) rulesReady(w http.ResponseWriter) bool {
@@ -62,12 +103,12 @@ func (h *Handler) ListCommentRules(w http.ResponseWriter, r *http.Request) {
 	if !h.rulesReady(w) {
 		return
 	}
-	rules, err := h.manageRules.List(r.Context(), middleware.GetWorkspaceID(r), mux.Vars(r)["id"])
+	rules, err := h.manageRules.List(r.Context(), middleware.GetWorkspaceID(r), shared.EntryTypeInstagram, mux.Vars(r)["id"])
 	if err != nil {
 		writeDomainError(w, err, "Failed to list comment rules")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, rules)
+	response.WriteSuccess(w, http.StatusOK, presentCommentRules(rules))
 }
 
 // @Summary	Criar regra de automação de comentários
@@ -94,7 +135,7 @@ func (h *Handler) CreateCommentRule(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err, "Failed to create comment rule")
 		return
 	}
-	response.WriteSuccess(w, http.StatusCreated, rule)
+	response.WriteSuccess(w, http.StatusCreated, presentCommentRule(rule))
 }
 
 // @Summary	Atualizar regra de automação de comentários
@@ -123,7 +164,7 @@ func (h *Handler) UpdateCommentRule(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err, "Failed to update comment rule")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, rule)
+	response.WriteSuccess(w, http.StatusOK, presentCommentRule(rule))
 }
 
 // @Summary	Remover regra de automação de comentários
@@ -138,7 +179,8 @@ func (h *Handler) DeleteCommentRule(w http.ResponseWriter, r *http.Request) {
 	if !h.rulesReady(w) {
 		return
 	}
-	if err := h.manageRules.Delete(r.Context(), middleware.GetWorkspaceID(r), mux.Vars(r)["ruleId"]); err != nil {
+	vars := mux.Vars(r)
+	if err := h.manageRules.Delete(r.Context(), middleware.GetWorkspaceID(r), shared.EntryTypeInstagram, vars["id"], vars["ruleId"]); err != nil {
 		writeDomainError(w, err, "Failed to delete comment rule")
 		return
 	}

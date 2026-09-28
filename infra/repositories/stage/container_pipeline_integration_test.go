@@ -10,11 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/shared"
-	"vozko/domain/stage"
-	instagram_repository "vozko/infra/repositories/instagram"
-	telegram_repository "vozko/infra/repositories/telegram"
-	unofficial_whatsapp_campaign_repository "vozko/infra/repositories/unofficial_whatsapp_campaign"
-	whatsapp_campaign_repository "vozko/infra/repositories/whatsapp_campaign"
 )
 
 func pipelineIntegrationDB(t *testing.T) *gorm.DB {
@@ -37,12 +32,7 @@ func TestEveryChannelPipelineLookupRunsAgainstPostgres(t *testing.T) {
 
 	const absentID = "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8"
 
-	resolvers := map[shared.EntryType]stage.ContainerPipelineResolver{
-		shared.EntryTypeWhatsApp:           whatsapp_campaign_repository.NewContainerPipelineResolver(db),
-		shared.EntryTypeInstagram:          instagram_repository.NewContainerPipelineResolver(db),
-		shared.EntryTypeTelegram:           telegram_repository.NewContainerPipelineResolver(db),
-		shared.EntryTypeUnofficialWhatsApp: unofficial_whatsapp_campaign_repository.NewContainerPipelineResolver(db),
-	}
+	resolvers := ChannelPipelineResolvers(db)
 
 	for entryType, resolver := range resolvers {
 		pipelineID, err := resolver.PipelineIDForContainer(context.Background(), absentID)
@@ -59,7 +49,7 @@ func TestEveryChannelPipelineLookupRunsAgainstPostgres(t *testing.T) {
 func TestPipelineLookupToleratesAnEmptyContainerID(t *testing.T) {
 	db := pipelineIntegrationDB(t)
 
-	resolver := instagram_repository.NewContainerPipelineResolver(db)
+	resolver := ChannelPipelineResolvers(db)[shared.EntryTypeInstagram]
 	pipelineID, err := resolver.PipelineIDForContainer(context.Background(), "")
 	if err != nil {
 		t.Fatalf("an empty container id must not reach the database: %v", err)
@@ -71,7 +61,7 @@ func TestPipelineLookupToleratesAnEmptyContainerID(t *testing.T) {
 
 func TestUnofficialWhatsAppFallsFromCampaignToInstance(t *testing.T) {
 	db := pipelineIntegrationDB(t)
-	resolver := unofficial_whatsapp_campaign_repository.NewContainerPipelineResolver(db)
+	resolver := ChannelPipelineResolvers(db)[shared.EntryTypeUnofficialWhatsApp]
 
 	var instanceIDs []string
 	if err := db.Raw(`SELECT id::text FROM unofficial_whatsapp_instances
@@ -119,8 +109,7 @@ func TestAnInstanceWithAFunnelResolvesIt(t *testing.T) {
 		t.Fatalf("bind the funnel: %v", err)
 	}
 
-	resolved, err := unofficial_whatsapp_campaign_repository.
-		NewContainerPipelineResolver(tx).
+	resolved, err := ChannelPipelineResolvers(tx)[shared.EntryTypeUnofficialWhatsApp].
 		PipelineIDForContainer(context.Background(), instanceID)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)

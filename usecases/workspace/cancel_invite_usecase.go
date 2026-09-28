@@ -22,15 +22,8 @@ func (uc *cancelInviteUseCase) Execute(actorID, workspaceID, callerRole, inviteI
 		return workspace.ErrInviteNotFound
 	}
 
-	role := workspace.Role(callerRole)
-	if !role.CanManageMembers() {
-		member, err := uc.repo.GetMember(workspaceID, actorID)
-		if err != nil {
-			return workspace.ErrUnauthorized
-		}
-		if !member.Role.CanManageMembers() {
-			return workspace.ErrInsufficientPermissions
-		}
+	if err := requireManager(uc.repo, workspaceID, actorID, callerRole); err != nil {
+		return err
 	}
 
 	if invite.Status != workspace.InviteStatusPending {

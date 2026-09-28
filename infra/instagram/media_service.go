@@ -16,8 +16,6 @@ type mediaService struct {
 	client *meta.Client
 }
 
-const DefaultGraphVersion = "v25.0"
-
 type GraphConfig struct {
 	GraphVersion string
 	AppSecret    string
@@ -27,7 +25,7 @@ type GraphConfig struct {
 func NewMediaService(cfg GraphConfig) (igdomain.MediaService, error) {
 	client, err := meta.NewClient(meta.Config{
 		Host:       GraphHost,
-		APIVersion: graphVersionOr(cfg.GraphVersion),
+		APIVersion: meta.VersionOr(cfg.GraphVersion),
 		AppSecret:  cfg.AppSecret,
 		HTTPClient: cfg.HTTPClient,
 	})
@@ -243,10 +241,11 @@ func (s *mediaService) SetCommentEnabled(ctx context.Context, token, igMediaID s
 	form.Set("comment_enabled", fmt.Sprint(enabled))
 
 	return s.client.Do(ctx, meta.Request{
-		Method: http.MethodPost,
-		Path:   "/" + igMediaID,
-		Token:  token,
-		Form:   form,
+		Method:     http.MethodPost,
+		Path:       "/" + igMediaID,
+		Token:      token,
+		Form:       form,
+		Idempotent: true,
 	}, nil)
 }
 
@@ -270,11 +269,4 @@ func parseGraphTime(v string) *time.Time {
 		}
 	}
 	return nil
-}
-
-func graphVersionOr(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return DefaultGraphVersion
-	}
-	return v
 }

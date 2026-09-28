@@ -242,3 +242,66 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 		input.Transcript,
 	)
 }
+
+const autoDealRules = `- Mantenha os negócios desta conversa no funil usando a ferramenta auto_manage_opportunity.
+- create: quando o cliente demonstra intenção real de compra e ainda não há negócio aberto para esse interesse. create_new: só para um contrato diferente dos que já existem.
+- update_value: quando um valor é combinado ou alterado. move: quando a negociação avança para outra etapa aberta.
+- win: quando o cliente CONFIRMA a compra, sempre com o valor fechado em "value".
+- lose: quando o cliente desiste ou a conversa termina sem compra, com o motivo em "lost_reason".
+- Quando houver mais de um negócio aberto, informe em "opportunity_id" o id exato da lista abaixo.
+- NUNCA invente valores nem negócios. Se nada mudou nos negócios, não chame a ferramenta.`
+
+const autoDealInstruction = "Siga as instruções do sistema: leia a transcrição INTEIRA e mantenha os negócios da conversa com a ferramenta auto_manage_opportunity. Se nada mudou nos negócios, não chame nenhuma ferramenta."
+
+const autoDealFollowUp = "Além disso, mantenha os negócios da conversa via auto_manage_opportunity, se algo mudou."
+
+func BuildAutoDealSection(currentDeals string) string {
+	return fmt.Sprintf(`
+
+═══════════════════════════════════════════════════
+NEGÓCIOS DA CONVERSA (tarefa adicional)
+═══════════════════════════════════════════════════
+Além da tarefa acima, mantenha os negócios desta conversa:
+%s
+
+%s
+`, autoDealRules, currentDeals)
+}
+
+type AutoDealPromptInput struct {
+	ContainerName string
+	ContactLabel  string
+	MessageCount  int
+	CurrentDeals  string
+	Transcript    string
+}
+
+func BuildAutoDealPrompt(input AutoDealPromptInput) string {
+	return fmt.Sprintf(`Você mantém os negócios (oportunidades de venda) de uma conversa em um CRM. Sua ÚNICA tarefa é ler a transcrição abaixo e, usando a ferramenta auto_manage_opportunity, registrar o que mudou nos negócios desta conversa.
+
+═══════════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════════
+- Campanha/canal: %s
+- Contato: %s
+- Total de mensagens na conversa: %d
+
+%s
+
+═══════════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════════
+%s
+
+═══════════════════════════════════════════════════
+TRANSCRIÇÃO COMPLETA DA CONVERSA
+═══════════════════════════════════════════════════
+%s`,
+		input.ContainerName,
+		input.ContactLabel,
+		input.MessageCount,
+		input.CurrentDeals,
+		autoDealRules,
+		input.Transcript,
+	)
+}

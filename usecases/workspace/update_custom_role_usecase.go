@@ -19,14 +19,8 @@ func NewUpdateCustomRoleUseCase(repo workspace.Repository, roleRepo workspace.Cu
 }
 
 func (uc *updateCustomRoleUseCase) Execute(actorID, workspaceID, callerRole, roleID string, input workspace.UpdateCustomRoleInput) (*workspace.CustomRole, error) {
-	if callerRole != "admin" {
-		actor := mustBeMember(uc.repo, workspaceID, actorID)
-		if actor == nil {
-			return nil, workspace.ErrUnauthorized
-		}
-		if !actor.Role.CanManageMembers() {
-			return nil, workspace.ErrInsufficientPermissions
-		}
+	if err := requireManager(uc.repo, workspaceID, actorID, callerRole); err != nil {
+		return nil, err
 	}
 
 	role, err := uc.roleRepo.GetRoleByID(roleID)

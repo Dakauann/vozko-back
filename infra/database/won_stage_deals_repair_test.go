@@ -12,7 +12,7 @@ import (
 
 func TestRepairClosesOnlyValuedDealsLeftOpenOnAWonStage(t *testing.T) {
 	tx := repairTx(t)
-	if err := tx.AutoMigrate(&schema.Opportunity{}, &schema.OpportunityEvent{}); err != nil {
+	if err := tx.AutoMigrate(&schema.Stage{}, &schema.Opportunity{}, &schema.OpportunityEvent{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	ws, pipeline := uuid.New().String(), uuid.New().String()

@@ -5,6 +5,7 @@ import (
 
 	conversation_domain "vozko/domain/conversation"
 	export_domain "vozko/domain/export"
+	facebook_repository "vozko/infra/repositories/facebook"
 	instagram_repository "vozko/infra/repositories/instagram"
 	telegram_repository "vozko/infra/repositories/telegram"
 	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
@@ -91,6 +92,9 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		setter.SetChannelEntryLister(export_domain.EntryTypeUnofficialWhatsApp,
 			unofficial_whatsapp_repository.NewExportRepository(c.db))
+	}
+	if c.facebook != nil && c.facebook.Enabled {
+		setter.SetChannelEntryLister(export_domain.EntryTypeFacebook, facebook_repository.NewExportRepository(c.db))
 	}
 	return uc
 }

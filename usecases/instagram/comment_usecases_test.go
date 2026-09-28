@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/privatereply"
 	igdomain "vozko/domain/instagram"
+	cauc "vozko/usecases/commentautomation"
 )
 
 func accountRepoFor(account *igdomain.Account) *fakeAccountRepo {
@@ -19,6 +21,37 @@ func accountRepoFor(account *igdomain.Account) *fakeAccountRepo {
 			}
 			return nil, igdomain.ErrAccountNotFound
 		},
+	}
+}
+
+func newPrivateReplyUC(
+	accounts igdomain.AccountRepository,
+	messaging igdomain.MessagingService,
+	commentsRepo igdomain.CommentRepository,
+	claims *fakePrivateReplyRepo,
+	contacts igdomain.ContactRepository,
+	convs igdomain.ConversationRepository,
+) *SendPrivateReplyUseCase {
+	return NewSendPrivateReplyUseCase(accounts, messaging, &fakeCommentService{}, commentsRepo,
+		cauc.NewPrivateReplySender(claims), contacts, convs)
+}
+
+func TestSendPrivateReply_RefusesWhenTheCommentTimeIsUnknown(t *testing.T) {
+	account := connectedAccount()
+	claims := &fakePrivateReplyRepo{}
+	messaging := &fakeMessagingService{}
+	unknown := &fakeCommentService{GetFn: func(context.Context, string, string) (*igdomain.RemoteComment, error) {
+		return nil, igdomain.ErrCommentNotFound
+	}}
+	uc := NewSendPrivateReplyUseCase(accountRepoFor(account), messaging, unknown, &fakeCommentRepo{},
+		cauc.NewPrivateReplySender(claims), &fakeContactRepo{}, &fakeConversationRepo{})
+
+	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "oi")
+	if !errors.Is(err, privatereply.ErrDeadlineUnknown) {
+		t.Fatalf("err = %v, want ErrDeadlineUnknown", err)
+	}
+	if claims.Claims != 0 || len(messaging.Sent) != 0 {
+		t.Fatal("a reply with an unknown deadline was claimed or sent")
 	}
 }
 
@@ -34,7 +67,7 @@ func TestSendPrivateReply_ClaimsBeforeSending(t *testing.T) {
 	}
 	messaging.SendTextFn = nil
 
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), messaging,
 		&fakeCommentRepo{}, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},
@@ -66,7 +99,7 @@ func TestSendPrivateReply_SecondAttemptRefused(t *testing.T) {
 	messaging := &fakeMessagingService{}
 	claims := &fakePrivateReplyRepo{}
 
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), messaging,
 		&fakeCommentRepo{}, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},
@@ -77,7 +110,7 @@ func TestSendPrivateReply_SecondAttemptRefused(t *testing.T) {
 	}
 
 	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "second")
-	if !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
+	if !errors.Is(err, privatereply.ErrUsed) {
 		t.Fatalf("second attempt err = %v, want ErrPrivateReplyUsed", err)
 	}
 	if len(messaging.Sent) != 1 {
@@ -95,7 +128,7 @@ func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 	}
 	failing := &failingPrivateReplyMessaging{}
 
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), failing,
 		&fakeCommentRepo{}, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},
@@ -109,7 +142,7 @@ func TestSendPrivateReply_FailureKeepsAllowanceConsumed(t *testing.T) {
 		t.Errorf("MarkFailed calls = %d, want 1", claims.Failed)
 	}
 
-	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi again"); !errors.Is(err, igdomain.ErrPrivateReplyUsed) {
+	if err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "hi again"); !errors.Is(err, privatereply.ErrUsed) {
 		t.Fatalf("retry err = %v, want ErrPrivateReplyUsed", err)
 	}
 }
@@ -125,13 +158,13 @@ func TestSendPrivateReply_RefusesOutsideSevenDayWindow(t *testing.T) {
 	claims := &fakePrivateReplyRepo{}
 	messaging := &fakeMessagingService{}
 
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), messaging, comments, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},
 	)
 
 	err := uc.Execute(context.Background(), account.WorkspaceID, account.ID, "comment-1", conversation.SentByPerson("user-1"), "too late")
-	if !errors.Is(err, igdomain.ErrPrivateReplyExpired) {
+	if !errors.Is(err, privatereply.ErrExpired) {
 		t.Fatalf("err = %v, want ErrPrivateReplyExpired", err)
 	}
 	if claims.Claims != 0 {
@@ -147,7 +180,7 @@ func TestSendPrivateReply_CreatesConversationFromRecipientID(t *testing.T) {
 	contacts := &fakeContactRepo{}
 	convs := &fakeConversationRepo{}
 
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), &fakeMessagingService{},
 		&fakeCommentRepo{}, &fakePrivateReplyRepo{},
 		contacts, convs,
@@ -169,7 +202,7 @@ func TestSendPrivateReply_RequiresCommentsScope(t *testing.T) {
 	account.GrantedScopes = []string{igdomain.ScopeBasic, igdomain.ScopeManageMessages}
 
 	claims := &fakePrivateReplyRepo{}
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), &fakeMessagingService{},
 		&fakeCommentRepo{}, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},
@@ -186,7 +219,7 @@ func TestSendPrivateReply_RequiresCommentsScope(t *testing.T) {
 func TestSendPrivateReply_EnforcesByteLimit(t *testing.T) {
 	account := connectedAccount()
 	claims := &fakePrivateReplyRepo{}
-	uc := NewSendPrivateReplyUseCase(
+	uc := newPrivateReplyUC(
 		accountRepoFor(account), &fakeMessagingService{},
 		&fakeCommentRepo{}, claims,
 		&fakeContactRepo{}, &fakeConversationRepo{},

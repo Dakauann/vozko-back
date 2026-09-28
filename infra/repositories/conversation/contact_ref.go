@@ -7,6 +7,7 @@ var contactRefs = map[shared.EntryType]string{
 
 	shared.EntryTypeInstagram: "igc.contact_id",
 	shared.EntryTypeTelegram:  "tgc.contact_id",
+	shared.EntryTypeFacebook:  "fbc.contact_id",
 
 	shared.EntryTypeUnofficialWhatsApp: `COALESCE(
 		(SELECT uwct.lead_id FROM unofficial_whatsapp_contacts uwct

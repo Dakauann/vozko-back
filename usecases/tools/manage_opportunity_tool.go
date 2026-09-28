@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"vozko/domain/actor"
 	"vozko/domain/opportunity"
 	"vozko/domain/stage"
 	"vozko/domain/tools"
@@ -14,14 +15,15 @@ import (
 )
 
 const (
-	ManageOpportunityToolName  = "manage_opportunity"
-	OpportunityPipelinesSource = "opportunity_pipelines"
-	readOpportunityAction      = "get"
+	ManageOpportunityToolName     = "manage_opportunity"
+	AutoManageOpportunityToolName = "auto_manage_opportunity"
+	OpportunityPipelinesSource    = "opportunity_pipelines"
+	readOpportunityAction         = "get"
 )
 
 type OpportunityManager interface {
 	PipelineStages(workspaceID, pipelineID string) ([]*stage.Stage, error)
-	CurrentDealForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error)
+	DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error)
 	ManageForEntry(workspaceID string, cmd opportunity_usecase.EntryCommand) (*opportunity_usecase.EntryResult, error)
 }
 
@@ -34,18 +36,101 @@ func DefaultOpportunityToolActions() []opportunity_usecase.EntryAction {
 	}
 }
 
+type ConversationOwners interface {
+	ConversationOwner(workspaceID, entryID, entryType string) (string, error)
+}
+
+type dealIdentity struct {
+	author string
+	owner  string
+}
+
+type dealToolVariant struct {
+	define   func() tools.Definition
+	identify func(ctx context.Context, config map[string]interface{}) (dealIdentity, string)
+	settings func(config map[string]interface{}) opportunitySettings
+}
+
 type manageOpportunityTool struct {
-	deals OpportunityManager
+	deals   OpportunityManager
+	variant dealToolVariant
 }
 
 func NewManageOpportunityTool(deals OpportunityManager) tools.Handler {
 	if deals == nil {
 		return nil
 	}
-	return &manageOpportunityTool{deals: deals}
+	return &manageOpportunityTool{deals: deals, variant: dealToolVariant{
+		define:   agentDealDefinition,
+		identify: agentIdentity,
+		settings: opportunitySettingsFrom,
+	}}
+}
+
+func NewAutoManageOpportunityTool(deals OpportunityManager, owners ConversationOwners) tools.Handler {
+	if deals == nil || owners == nil {
+		return nil
+	}
+	return &manageOpportunityTool{deals: deals, variant: dealToolVariant{
+		define:   autoDealDefinition,
+		identify: conversationIdentity(owners),
+		settings: autoDealSettings,
+	}}
+}
+
+func agentIdentity(ctx context.Context, config map[string]interface{}) (dealIdentity, string) {
+	actorID := agentActor(ctx, config)
+	if actorID == "" {
+		return dealIdentity{}, "Esta ferramenta só pode ser usada por um agente de IA identificado."
+	}
+	return dealIdentity{author: actorID}, ""
+}
+
+func conversationIdentity(owners ConversationOwners) func(context.Context, map[string]interface{}) (dealIdentity, string) {
+	return func(_ context.Context, config map[string]interface{}) (dealIdentity, string) {
+		owner, err := owners.ConversationOwner(configString(config, "__workspace_id"), configString(config, "__entry_id"), configString(config, "__entry_type"))
+		if err != nil {
+			log.Printf("[AutoManageOpportunity] owner lookup failed: %v", err)
+			return dealIdentity{}, "Não foi possível identificar o responsável pela conversa agora. Nenhum negócio foi alterado."
+		}
+		if owner == "" {
+			if agentID := configString(config, "__agent_id"); agentID != "" {
+				owner = actor.FormatAI(agentID)
+			}
+		}
+		if owner == "" {
+			return dealIdentity{}, "A conversa não tem responsável nem agente de IA. Nenhum negócio foi registrado."
+		}
+		return dealIdentity{author: actor.SystemID, owner: owner}, ""
+	}
+}
+
+func autoDealSettings(config map[string]interface{}) opportunitySettings {
+	settings := opportunitySettings{pipelineID: configString(config, "pipeline_id"), allowed: map[opportunity_usecase.EntryAction]bool{}}
+	for _, action := range opportunity_usecase.EntryActions() {
+		settings.allowed[action] = true
+	}
+	return settings
+}
+
+func autoDealDefinition() tools.Definition {
+	def := agentDealDefinition()
+	def.Name = AutoManageOpportunityToolName
+	def.DisplayName = "Negócios automáticos"
+	def.DisplayDescription = "Registra e atualiza os negócios da conversa a partir da análise automática. O responsável pela conversa fica como dono do negócio."
+	def.Visibility = []tools.ToolVisibility{tools.VisibilityAnalysis}
+	def.Category = tools.CategoryAgentUtility
+	def.ConfigSchema = nil
+	def.RequiredConfig = nil
+	def.RequiresConfig = false
+	return def
 }
 
 func (t *manageOpportunityTool) Definition() tools.Definition {
+	return t.variant.define()
+}
+
+func agentDealDefinition() tools.Definition {
 	actionOptions := make([]tools.ConfigParameterOption, 0, len(opportunity_usecase.EntryActions()))
 	for _, action := range opportunity_usecase.EntryActions() {
 		actionOptions = append(actionOptions, tools.ConfigParameterOption{Value: string(action), Label: entryActionLabels[action]})
@@ -58,23 +143,29 @@ func (t *manageOpportunityTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:               ManageOpportunityToolName,
 		DisplayName:        "Gerenciar Negócio da Conversa",
-		DisplayDescription: "Cria e atualiza o negócio (oportunidade) desta conversa no funil de vendas: valor, etapa, ganho ou perda. A IA fica como responsável pelo negócio que criar.",
-		Description: `Gerencia o negócio (oportunidade de venda) desta conversa. Cada conversa tem no máximo um negócio aberto neste funil; criar de novo atualiza o mesmo negócio.
+		DisplayDescription: "Cria e atualiza os negócios (oportunidades) desta conversa no funil de vendas: valor, etapa, ganho ou perda. A IA fica como responsável pelos negócios que criar.",
+		Description: `Gerencia os negócios (oportunidades de venda) desta conversa neste funil. Uma conversa pode tratar mais de um contrato, cada um com seu negócio.
 
 AÇÕES:
-- get: consulta o negócio da conversa (o aberto ou, se não houver, o último fechado).
-- create: abre o negócio quando o cliente demonstra intenção real de compra. Informe "title" e, se souber, "value".
+- get: lista os negócios da conversa com o id de cada um. Use antes de alterar quando não souber qual negócio é.
+- create: abre o negócio quando o cliente demonstra intenção real de compra ou atualiza o negócio aberto. Informe "title" e, se souber, "value".
+- create_new: abre OUTRO negócio, para um contrato diferente dos que já existem. Não use "opportunity_id".
 - update_value: atualiza o valor negociado em "value".
 - move: move o negócio para a etapa "stage".
 - win: marca como ganho quando o cliente CONFIRMA a compra. Exige "value" com o valor fechado.
 - lose: marca como perdido quando o cliente desiste. Exige "lost_reason".
 
+"opportunity_id" escolhe o negócio. Sem ele, a ação vale para o único negócio aberto da conversa; com mais de um aberto, a ferramenta recusa e devolve a lista para você escolher.
 "value" é um número na moeda do negócio, com ponto decimal (ex.: 1500.50). NUNCA invente valores: use apenas o que foi combinado na conversa.`,
 		Parameters: map[string]tools.Parameter{
 			"action": {
 				Type:        "string",
 				Description: "Ação a executar.",
 				Enum:        append([]string{readOpportunityAction}, entryActionNames(opportunity_usecase.EntryActions())...),
+			},
+			"opportunity_id": {
+				Type:        "string",
+				Description: "Id exato de um negócio retornado por get. Obrigatório quando a conversa tem mais de um negócio aberto.",
 			},
 			"title": {
 				Type:        "string",
@@ -109,7 +200,7 @@ AÇÕES:
 				Type:               "array",
 				Description:        "Ações que a IA pode executar no negócio.",
 				DisplayName:        "Ações permitidas",
-				DisplayDescription: "O que a IA pode fazer com o negócio. Marcar como ganho fica desligado até você permitir.",
+				DisplayDescription: "O que a IA pode fazer com os negócios. Abrir outro negócio e marcar como ganho ficam desligados até você permitir.",
 				Default:            defaults,
 				Options:            actionOptions,
 			},
@@ -128,6 +219,7 @@ AÇÕES:
 
 var entryActionLabels = map[opportunity_usecase.EntryAction]string{
 	opportunity_usecase.EntryCreate:      "Criar negócio",
+	opportunity_usecase.EntryCreateNew:   "Abrir outro negócio",
 	opportunity_usecase.EntryUpdateValue: "Atualizar valor",
 	opportunity_usecase.EntryMove:        "Mover de etapa",
 	opportunity_usecase.EntryWin:         "Marcar como ganho",
@@ -152,7 +244,7 @@ func currencyOptions() []tools.ConfigParameterOption {
 
 func (t *manageOpportunityTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
 	def := t.Definition()
-	settings := opportunitySettingsFrom(ctx.Config)
+	settings := t.variant.settings(ctx.Config)
 
 	params := make(map[string]tools.Parameter, len(def.Parameters))
 	for key, param := range def.Parameters {
@@ -243,11 +335,11 @@ func (t *manageOpportunityTool) ExecuteWithConfig(ctx context.Context, config ma
 	if workspaceID == "" || entryID == "" || entryType == "" {
 		return refuse("Não foi possível identificar a conversa atual. Esta ferramenta só funciona durante um atendimento."), nil
 	}
-	actorID := agentActor(ctx, config)
-	if actorID == "" {
-		return refuse("Esta ferramenta só pode ser usada por um agente de IA identificado."), nil
+	identity, refusal := t.variant.identify(ctx, config)
+	if refusal != "" {
+		return refuse(refusal), nil
 	}
-	settings := opportunitySettingsFrom(config)
+	settings := t.variant.settings(config)
 	if settings.pipelineID == "" {
 		return refuse("A ferramenta está sem funil de negócios configurado. Avise um administrador."), nil
 	}
@@ -255,7 +347,7 @@ func (t *manageOpportunityTool) ExecuteWithConfig(ctx context.Context, config ma
 	name, _ := params["action"].(string)
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == readOpportunityAction {
-		return t.describeCurrentDeal(workspaceID, entryID, entryType, settings.pipelineID), nil
+		return t.listDeals(workspaceID, entryID, entryType, settings.pipelineID), nil
 	}
 	action := opportunity_usecase.EntryAction(name)
 	if !action.Valid() {
@@ -270,15 +362,17 @@ func (t *manageOpportunityTool) ExecuteWithConfig(ctx context.Context, config ma
 		return refuse(opportunityRefusal(err)), nil
 	}
 	cmd := opportunity_usecase.EntryCommand{
-		EntryID:      entryID,
-		EntryType:    entryType,
-		LeadID:       configString(config, "__lead_id"),
-		PipelineID:   settings.pipelineID,
-		Actor:        actorID,
-		Action:       action,
-		Title:        paramString(params, "title"),
-		Currency:     settings.currency,
-		LostReasonID: paramString(params, "lost_reason"),
+		EntryID:       entryID,
+		EntryType:     entryType,
+		LeadID:        configString(config, "__lead_id"),
+		PipelineID:    settings.pipelineID,
+		Actor:         identity.author,
+		Owner:         identity.owner,
+		Action:        action,
+		OpportunityID: paramString(params, "opportunity_id"),
+		Title:         paramString(params, "title"),
+		Currency:      settings.currency,
+		LostReasonID:  paramString(params, "lost_reason"),
 	}
 	if raw, given := params["value"]; given && raw != nil {
 		cents, err := centsFromParam(raw)
@@ -298,6 +392,10 @@ func (t *manageOpportunityTool) ExecuteWithConfig(ctx context.Context, config ma
 	}
 
 	result, err := t.deals.ManageForEntry(workspaceID, cmd)
+	if errors.Is(err, opportunity.ErrAmbiguousDeal) {
+		listing := t.listDeals(workspaceID, entryID, entryType, settings.pipelineID)
+		return refuse(fmt.Sprintf("%s\n%v", opportunityRefusal(err), listing.Result)), nil
+	}
 	if err != nil {
 		return refuse(opportunityRefusal(err)), nil
 	}
@@ -312,19 +410,31 @@ func (t *manageOpportunityTool) ExecuteWithConfig(ctx context.Context, config ma
 	}, nil
 }
 
-func (t *manageOpportunityTool) describeCurrentDeal(workspaceID, entryID, entryType, pipelineID string) tools.ExecutionResult {
-	deal, err := t.deals.CurrentDealForEntry(workspaceID, pipelineID, entryID, entryType)
-	if errors.Is(err, opportunity.ErrNotFound) {
-		return tools.ExecutionResult{Result: "Esta conversa ainda não tem negócio neste funil."}
-	}
+func (t *manageOpportunityTool) listDeals(workspaceID, entryID, entryType, pipelineID string) tools.ExecutionResult {
+	described, err := DescribeEntryDeals(t.deals, workspaceID, pipelineID, entryID, entryType)
 	if err != nil {
 		return refuse(opportunityRefusal(err))
 	}
-	stages, err := t.deals.PipelineStages(workspaceID, pipelineID)
+	return tools.ExecutionResult{Result: described}
+}
+
+func DescribeEntryDeals(deals OpportunityManager, workspaceID, pipelineID, entryID, entryType string) (string, error) {
+	list, err := deals.DealsForEntry(workspaceID, pipelineID, entryID, entryType)
 	if err != nil {
-		return refuse(opportunityRefusal(err))
+		return "", err
 	}
-	return tools.ExecutionResult{Result: describeDeal(deal, stages)}
+	if len(list) == 0 {
+		return "Esta conversa ainda não tem negócio neste funil.", nil
+	}
+	stages, err := deals.PipelineStages(workspaceID, pipelineID)
+	if err != nil {
+		return "", err
+	}
+	lines := make([]string, 0, len(list))
+	for _, deal := range list {
+		lines = append(lines, fmt.Sprintf("- id %s: %s", deal.ID, describeDeal(deal, stages)))
+	}
+	return "Negócios desta conversa:\n" + strings.Join(lines, "\n"), nil
 }
 
 func refuse(message string) tools.ExecutionResult {
@@ -378,7 +488,7 @@ func formatAmount(currency string, cents int64) string {
 
 var toolRefusals = map[opportunity_usecase.Refusal]string{
 	opportunity_usecase.RefusalWonWithoutValue:     "Para marcar o negócio como ganho, informe em \"value\" o valor fechado com o cliente.",
-	opportunity_usecase.RefusalNoOpenDeal:          "Esta conversa não tem negócio aberto para marcar como perdido.",
+	opportunity_usecase.RefusalNoOpenDeal:          "Esta conversa não tem negócio aberto neste funil. Use create para abrir um.",
 	opportunity_usecase.RefusalLostReasonMissing:   "Informe em \"lost_reason\" o motivo da perda.",
 	opportunity_usecase.RefusalTitleMissing:        "Informe em \"title\" um título para o negócio.",
 	opportunity_usecase.RefusalStageInvalid:        "Informe em \"stage\" uma etapa aberta do funil configurado.",
@@ -386,6 +496,11 @@ var toolRefusals = map[opportunity_usecase.Refusal]string{
 	opportunity_usecase.RefusalCurrencyUnsupported: "A moeda configurada na ferramenta não é suportada. Avise um administrador.",
 	opportunity_usecase.RefusalPipelineInvalid:     "O funil de negócios configurado para esta ferramenta é inválido. Avise um administrador.",
 	opportunity_usecase.RefusalRequiredFields:      "O funil exige campos personalizados que a IA não preenche. Avise um administrador.",
+	opportunity_usecase.RefusalAmbiguousDeal:       "Esta conversa tem mais de um negócio aberto. Repita a ação informando em \"opportunity_id\" o id do negócio certo:",
+	opportunity_usecase.RefusalDealNotLinked:       "Esse \"opportunity_id\" não é de um negócio desta conversa. Use get para ver os ids.",
+	opportunity_usecase.RefusalDealClosed:          "Esse negócio já foi encerrado e não pode mais ser alterado pela IA.",
+	opportunity_usecase.RefusalDealIDOnNewDeal:     "create_new abre um negócio novo: não informe \"opportunity_id\".",
+	opportunity_usecase.RefusalDealChanged:         "O negócio acabou de ser alterado por outra pessoa ou automação. Use get para ver o estado atual antes de tentar de novo.",
 }
 
 func opportunityRefusal(err error) string {

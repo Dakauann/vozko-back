@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/cache"
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
 )
 
@@ -16,6 +17,7 @@ type AnalysisSubject struct {
 
 	WorkspaceID   string
 	ContainerID   string
+	ContainerKind conversation.ContainerKind
 	ContainerName string
 
 	ContactLabel string

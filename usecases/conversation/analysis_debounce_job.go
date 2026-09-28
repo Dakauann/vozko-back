@@ -11,6 +11,7 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	"vozko/domain/dealautomation"
 	"vozko/domain/lead"
 	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/shared"
@@ -43,6 +44,30 @@ type analysisDebounceJob struct {
 	resolvers            map[shared.EntryType]AnalysisSubjectResolver
 	analysisQueue        ConversationAnalysisEnqueuer
 	debouncePolicy       AnalysisDebouncePolicy
+	dealSettings         DealAutomationSettings
+	dealDesk             tools_usecase.OpportunityManager
+}
+
+type DealAutomationSettings interface {
+	PipelineFor(workspaceID string, channel dealautomation.Channel, containerID string) (string, error)
+}
+
+func (j *analysisDebounceJob) SetDealAutomation(settings DealAutomationSettings, desk tools_usecase.OpportunityManager) {
+	j.dealSettings, j.dealDesk = settings, desk
+}
+
+func (j *analysisDebounceJob) autoDealsPipeline(subject *AnalysisSubject) (string, error) {
+	if j.dealSettings == nil || j.dealDesk == nil {
+		return "", nil
+	}
+	return j.dealSettings.PipelineFor(subject.WorkspaceID, dealautomation.Channel{EntryType: subject.EntryType, Kind: subject.ContainerKind}, subject.ContainerID)
+}
+
+func toolDefinition(h toolsdomain.Handler, ctx toolsdomain.ToolContext) toolsdomain.Definition {
+	if contextual, ok := h.(toolsdomain.ContextualHandler); ok && ctx.WorkspaceID != "" {
+		return contextual.DefinitionWithContext(ctx)
+	}
+	return h.Definition()
 }
 
 type ConversationAnalysisEnqueuer interface {
@@ -244,6 +269,7 @@ func resolveWhatsAppSubject(
 		EntryType:         shared.EntryTypeWhatsApp,
 		WorkspaceID:       wcCampaign.WorkspaceID,
 		ContainerID:       wcCampaign.ID,
+		ContainerKind:     conversation.ContainerKindCampaign,
 		ContainerName:     wcCampaign.Name,
 		ContactLabel:      contactLabel,
 		LeadID:            wcEntry.LeadID,
@@ -260,7 +286,11 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	if err != nil || subject == nil {
 		return err
 	}
-	if !subject.WantsWork() {
+	dealsPipeline, err := j.autoDealsPipeline(subject)
+	if err != nil {
+		return err
+	}
+	if !subject.WantsWork() && dealsPipeline == "" {
 		return nil
 	}
 	if subject.EnableAnalysis && j.analysisQueue != nil {
@@ -271,7 +301,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			return queueErr
 		}
 	}
-	if !subject.EnableAutoStaging && !(subject.EnableAutoMemory && subject.LeadID != "") {
+	if !subject.EnableAutoStaging && !(subject.EnableAutoMemory && subject.LeadID != "") && dealsPipeline == "" {
 		return nil
 	}
 
@@ -302,18 +332,12 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	autoTagEnabled := subject.EnableAutoStaging
 	if autoTagEnabled {
 		if h, ok := j.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName); ok {
-			var stageDef toolsdomain.Definition
-			if ch, ok2 := h.(toolsdomain.ContextualHandler); ok2 && workspaceID != "" {
-				stageDef = ch.DefinitionWithContext(toolsdomain.ToolContext{
-					WorkspaceID:  workspaceID,
-					CampaignID:   subject.ContainerID,
-					CampaignType: entryTypeStr,
-					EntryID:      entryID,
-				})
-			} else {
-				stageDef = h.Definition()
-			}
-			aiTools = append(aiTools, stageDef)
+			aiTools = append(aiTools, toolDefinition(h, toolsdomain.ToolContext{
+				WorkspaceID:  workspaceID,
+				CampaignID:   subject.ContainerID,
+				CampaignType: entryTypeStr,
+				EntryID:      entryID,
+			}))
 			toolConfigs[tools_usecase.ManageEntryStageToolName] = map[string]interface{}{
 				"__entry_id":      entryID,
 				"__entry_type":    entryTypeStr,
@@ -346,6 +370,30 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			})
 		} else {
 			wantMemory = false
+		}
+	}
+
+	wantDeals := dealsPipeline != ""
+	var dealsBlock string
+	if wantDeals {
+		if h, ok := j.toolRegistry.Handler(tools_usecase.AutoManageOpportunityToolName); ok {
+			dealConfig := map[string]interface{}{
+				"__workspace_id": workspaceID,
+				"__entry_id":     entryID,
+				"__entry_type":   entryTypeStr,
+				"__lead_id":      subject.LeadID,
+				"__agent_id":     subject.AgentID,
+				"pipeline_id":    dealsPipeline,
+			}
+			described, err := tools_usecase.DescribeEntryDeals(j.dealDesk, workspaceID, dealsPipeline, entryID, entryTypeStr)
+			if err != nil {
+				return err
+			}
+			dealsBlock = described
+			aiTools = append(aiTools, toolDefinition(h, toolsdomain.ToolContext{WorkspaceID: workspaceID, Config: dealConfig}))
+			toolConfigs[tools_usecase.AutoManageOpportunityToolName] = dealConfig
+		} else {
+			wantDeals = false
 		}
 	}
 
@@ -384,7 +432,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			CurrentTagName: currentTagName,
 			Tags:           allTags,
 		})
-	default:
+	case wantMemory:
 		systemPrompt = BuildAutoMemoryPrompt(AutoMemoryPromptInput{
 			ContainerName:   campaignName,
 			ContactLabel:    userPhoneNumber,
@@ -392,10 +440,21 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 			CurrentMemories: memoryBlock,
 			Transcript:      BuildTranscript(history),
 		})
+	default:
+		systemPrompt = BuildAutoDealPrompt(AutoDealPromptInput{
+			ContainerName: campaignName,
+			ContactLabel:  userPhoneNumber,
+			MessageCount:  int(totalCount),
+			CurrentDeals:  dealsBlock,
+			Transcript:    BuildTranscript(history),
+		})
 	}
 
 	if wantMemory && (wantAnalysis || wantAutoTag) {
 		systemPrompt += BuildAutoMemorySection(memoryBlock)
+	}
+	if wantDeals && (wantAnalysis || wantAutoTag || wantMemory) {
+		systemPrompt += BuildAutoDealSection(dealsBlock)
 	}
 
 	var userMessage string
@@ -406,11 +465,16 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		userMessage = "Analise a conversa acima e chame a ferramenta conversation_analysis com sua avaliação."
 	case wantAutoTag:
 		userMessage = "Siga os passos do sistema: leia a transcrição INTEIRA, identifique o estado MAIS RECENTE da negociação (foque nas últimas mensagens), compare com as descrições das etapas, e chame manage_entry_stage com a etapa correta. Se a etapa atual já está correta, passe a mesma etapa."
-	default:
+	case wantMemory:
 		userMessage = "Siga as instruções do sistema: leia a transcrição INTEIRA e gerencie a memória do lead com a ferramenta manage_lead_memory. Se não houver fatos duráveis novos ou alterados, não chame nenhuma ferramenta."
+	default:
+		userMessage = autoDealInstruction
 	}
 	if wantMemory && (wantAnalysis || wantAutoTag) {
 		userMessage += " Além disso, registre na memória do lead, via manage_lead_memory, os fatos duráveis novos ou alterados desta conversa, se houver."
+	}
+	if wantDeals && (wantAnalysis || wantAutoTag || wantMemory) {
+		userMessage += " " + autoDealFollowUp
 	}
 
 	aiModel := "openai/gpt-4o-mini"

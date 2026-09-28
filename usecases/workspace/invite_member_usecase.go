@@ -50,19 +50,14 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 		input.Role = ""
 	}
 
-	isPlatformAdmin := callerRole == "admin"
-	callerCanManageMembers := isPlatformAdmin
-
-	if !isPlatformAdmin {
+	actor := workspace.Actor{PlatformAdmin: callerRole == "admin"}
+	if !actor.PlatformAdmin {
 		member := mustBeMember(uc.repo, workspaceID, inviterID)
 		if member == nil {
 			return nil, workspace.ErrUnauthorized
 		}
-
-		if member.Role.CanManageMembers() {
-			callerCanManageMembers = true
-		} else {
-
+		actor.Role = member.Role
+		if actor.ManagesMembers() != nil {
 			has, err := uc.repo.HasPermission(member.ID, workspace.ResourceMembers, workspace.ActionCreate)
 			if err != nil {
 				return nil, err
@@ -73,8 +68,8 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 		}
 	}
 
-	if input.Role == workspace.RoleAdmin && !callerCanManageMembers {
-		return nil, workspace.ErrInsufficientPermissions
+	if err := actor.CanInviteAs(input.Role); err != nil {
+		return nil, err
 	}
 
 	inviter, _ := uc.userRepo.FindByID(inviterID)

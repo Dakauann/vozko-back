@@ -81,30 +81,3 @@ func (uc *RefreshTokensUseCase) markExpired(ctx context.Context, account *igdoma
 	}
 	log.Printf("[instagram] account=%s marked TOKEN_EXPIRED: %s", account.IGUserID, reason)
 }
-
-type PurgeProcessedEventsUseCase struct {
-	events    igdomain.ProcessedEventRepository
-	retention time.Duration
-}
-
-func NewPurgeProcessedEventsUseCase(
-	events igdomain.ProcessedEventRepository,
-	retention time.Duration,
-) *PurgeProcessedEventsUseCase {
-	if retention <= 0 {
-		retention = 30 * 24 * time.Hour
-	}
-	return &PurgeProcessedEventsUseCase{events: events, retention: retention}
-}
-
-func (uc *PurgeProcessedEventsUseCase) Execute(ctx context.Context) error {
-	cutoff := time.Now().UTC().Add(-uc.retention)
-	deleted, err := uc.events.PurgeOlderThan(ctx, cutoff)
-	if err != nil {
-		return err
-	}
-	if deleted > 0 {
-		log.Printf("[instagram] purged %d processed webhook event(s)", deleted)
-	}
-	return nil
-}

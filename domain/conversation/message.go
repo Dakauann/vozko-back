@@ -15,12 +15,14 @@ const (
 	MessageChannelInstagram          MessageChannel = "instagram"
 	MessageChannelTelegram           MessageChannel = "telegram"
 	MessageChannelUnofficialWhatsApp MessageChannel = "unofficial_whatsapp"
+	MessageChannelFacebook           MessageChannel = "facebook"
 )
 
 func (c MessageChannel) Valid() bool {
 	switch c {
 	case MessageChannelWhatsApp,
-		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp:
+		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp,
+		MessageChannelFacebook:
 		return true
 	}
 	return false
@@ -64,6 +66,8 @@ const (
 	MessageTypeReaction     MessageType = "reaction"
 	MessageTypeUnsupported  MessageType = "unsupported"
 	MessageTypePostShare    MessageType = "post_share"
+	MessageTypeSticker      MessageType = "sticker"
+	MessageTypeLinkShare    MessageType = "link_share"
 )
 
 const (
@@ -88,6 +92,8 @@ func InboundMessageTypes() []MessageType {
 		MessageTypeStoryReply,
 		MessageTypeStoryMention,
 		MessageTypePostShare,
+		MessageTypeSticker,
+		MessageTypeLinkShare,
 	}
 }
 
@@ -103,7 +109,7 @@ func InboundMessageTypeStrings() []string {
 func (t MessageType) IsInbound() bool {
 	switch t {
 	case MessageTypeUserMessage, MessageTypeAudio, MessageTypeMedia,
-		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypePostShare:
+		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypePostShare, MessageTypeSticker, MessageTypeLinkShare:
 		return true
 	}
 	return false
@@ -112,7 +118,8 @@ func (t MessageType) IsInbound() bool {
 func (t MessageType) Valid() bool {
 	switch t {
 	case MessageTypeUserMessage, MessageTypeAIResponse, MessageTypeToolCall, MessageTypeToolResult, MessageTypeAudio, MessageTypeSystem, MessageTypeMedia, MessageTypeOperator, MessageTypeTemplate,
-		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypeReaction, MessageTypeUnsupported, MessageTypePostShare:
+		MessageTypeStoryReply, MessageTypeStoryMention, MessageTypeReaction, MessageTypeUnsupported, MessageTypePostShare,
+		MessageTypeSticker, MessageTypeLinkShare:
 		return true
 	}
 	return false
@@ -149,6 +156,8 @@ func AllMessageTypes() []MessageType {
 		MessageTypeReaction,
 		MessageTypeUnsupported,
 		MessageTypePostShare,
+		MessageTypeSticker,
+		MessageTypeLinkShare,
 	}
 }
 

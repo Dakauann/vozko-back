@@ -3,6 +3,8 @@ package webhook_usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+
 	"log"
 	"runtime/debug"
 	"time"
@@ -90,6 +92,9 @@ func NewConsumerRunner[T any](cfg ConsumerConfig[T]) *ConsumerRunner[T] {
 }
 
 func (r *ConsumerRunner[T]) Start() error {
+	if r.dedupKey != nil && r.durable == nil {
+		return fmt.Errorf("%s: a durable dedup store is required", r.name)
+	}
 	return r.queueSub.Subscribe(r.topic, func(payload []byte, ack messaging.MessageAck) {
 		r.dispatch(payload, ack)
 	})
@@ -144,8 +149,12 @@ func (r *ConsumerRunner[T]) dispatch(raw []byte, ack messaging.MessageAck) {
 		if key != "" && r.durable != nil {
 			claimed, err := r.durable.Claim(ctx, key, r.name, "")
 			if err != nil {
-				log.Printf("[%s] durable dedup failed, falling back to redis guard: %v", r.name, err)
-			} else if !claimed {
+				log.Printf("[%s] durable dedup unavailable, requeueing: %v", r.name, err)
+				_ = r.dedup.Release(key)
+				r.requeueWithDelay(raw, ack)
+				return
+			}
+			if !claimed {
 				_ = r.dedup.Complete(key)
 				_ = ack.Ack()
 				return

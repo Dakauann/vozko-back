@@ -14,7 +14,7 @@ import (
 
 type fakeDeals struct {
 	stages   []*stage.Stage
-	open     *opportunity.Opportunity
+	deals    opportunity.EntryDeals
 	manageFn func(opportunity_usecase.EntryCommand) (*opportunity_usecase.EntryResult, error)
 	commands []opportunity_usecase.EntryCommand
 }
@@ -26,11 +26,8 @@ func (f *fakeDeals) PipelineStages(workspaceID, pipelineID string) ([]*stage.Sta
 	return f.stages, nil
 }
 
-func (f *fakeDeals) CurrentDealForEntry(workspaceID, pipelineID, entryID, entryType string) (*opportunity.Opportunity, error) {
-	if f.open == nil {
-		return nil, opportunity.ErrNotFound
-	}
-	return f.open, nil
+func (f *fakeDeals) DealsForEntry(workspaceID, pipelineID, entryID, entryType string) (opportunity.EntryDeals, error) {
+	return f.deals, nil
 }
 
 func (f *fakeDeals) ManageForEntry(workspaceID string, cmd opportunity_usecase.EntryCommand) (*opportunity_usecase.EntryResult, error) {
@@ -156,17 +153,60 @@ func TestManageOpportunityLosesWithTheGivenReason(t *testing.T) {
 	}
 }
 
-func TestManageOpportunityReadsTheConversationsDeal(t *testing.T) {
-	deals := &fakeDeals{open: &opportunity.Opportunity{ID: "deal-1", Title: "Plano Pro", StageID: "stage-proposal", ValueCents: 7900, Currency: "BRL", Status: opportunity.StatusOpen}}
+func TestManageOpportunityListsTheConversationsDeals(t *testing.T) {
+	deals := &fakeDeals{deals: opportunity.EntryDeals{
+		{ID: "deal-1", Title: "Plano Pro", StageID: "stage-proposal", ValueCents: 7900, Currency: "BRL", Status: opportunity.StatusOpen},
+		{ID: "deal-2", Title: "Contrato anual", StageID: "stage-won", ValueCents: 120000, Currency: "BRL", Status: opportunity.StatusWon},
+	}}
 	result := run(t, dealTool(deals), conversationConfig(nil), map[string]interface{}{"action": "get"})
 	text, _ := result.Result.(string)
-	if result.IsError || !strings.Contains(text, "Plano Pro") || !strings.Contains(text, "Proposta") || !strings.Contains(text, "79,00") {
-		t.Fatalf("get = %+v", result)
+	for _, want := range []string{"deal-1", "Plano Pro", "Proposta", "79,00", "deal-2", "Contrato anual", "ganho"} {
+		if result.IsError || !strings.Contains(text, want) {
+			t.Fatalf("get is missing %q: %+v", want, result)
+		}
 	}
 
 	result = run(t, dealTool(&fakeDeals{}), conversationConfig(nil), map[string]interface{}{"action": "get"})
 	if result.IsError {
 		t.Fatalf("a conversation without a deal is an answer, not an error: %+v", result)
+	}
+}
+
+func TestManageOpportunityTargetsTheDealTheModelChose(t *testing.T) {
+	deals := &fakeDeals{}
+	run(t, dealTool(deals), conversationConfig(nil), map[string]interface{}{"action": "update_value", "value": 10.0, "opportunity_id": " deal-2 "})
+	if deals.commands[0].OpportunityID != "deal-2" {
+		t.Fatalf("opportunity id = %q", deals.commands[0].OpportunityID)
+	}
+}
+
+func TestManageOpportunityHandsTheListBackWhenItCannotGuess(t *testing.T) {
+	deals := &fakeDeals{
+		deals: opportunity.EntryDeals{
+			{ID: "deal-1", Title: "Plano Pro", StageID: "stage-new", Currency: "BRL", Status: opportunity.StatusOpen},
+			{ID: "deal-2", Title: "Plano Plus", StageID: "stage-new", Currency: "BRL", Status: opportunity.StatusOpen},
+		},
+		manageFn: func(opportunity_usecase.EntryCommand) (*opportunity_usecase.EntryResult, error) {
+			return nil, opportunity.ErrAmbiguousDeal
+		},
+	}
+	result := run(t, dealTool(deals), conversationConfig(nil), map[string]interface{}{"action": "update_value", "value": 10.0})
+	text, _ := result.Result.(string)
+	if !result.IsError || !strings.Contains(text, "opportunity_id") || !strings.Contains(text, "deal-1") || !strings.Contains(text, "deal-2") {
+		t.Fatalf("ambiguous = %+v", result)
+	}
+}
+
+func TestManageOpportunityOpensAnotherDealOnlyWhenTheAdminAllowedIt(t *testing.T) {
+	deals := &fakeDeals{}
+	result := run(t, dealTool(deals), conversationConfig(nil), map[string]interface{}{"action": "create_new", "title": "Contrato 2"})
+	if !result.IsError || len(deals.commands) != 0 {
+		t.Fatalf("create_new without permission = %+v", result)
+	}
+	allowed := conversationConfig(map[string]interface{}{"allowed_actions": []interface{}{"create_new"}})
+	result = run(t, dealTool(deals), allowed, map[string]interface{}{"action": "create_new", "title": "Contrato 2"})
+	if result.IsError || deals.commands[0].Action != opportunity_usecase.EntryCreateNew {
+		t.Fatalf("allowed create_new = %+v", result)
 	}
 }
 

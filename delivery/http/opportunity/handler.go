@@ -69,20 +69,21 @@ func (h *OpportunityHandler) Create(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.GetWorkspaceID(r)
 
 	created, err := h.svc.Create(wsID, opportunity_usecase.CreateInput{
-		LeadID:        strings.TrimSpace(req.LeadID),
-		PipelineID:    strings.TrimSpace(req.PipelineID),
-		StageID:       strings.TrimSpace(req.StageID),
-		OwnerID:       strings.TrimSpace(req.OwnerID),
-		CarteiraID:    strings.TrimSpace(req.CarteiraID),
-		Title:         req.Title,
-		ValueCents:    req.ValueCents,
-		Currency:      req.Currency,
-		Source:        strings.TrimSpace(req.Source),
-		CloseDate:     req.CloseDate,
-		CustomFields:  req.CustomFields,
-		LinkEntryID:   strings.TrimSpace(req.LinkEntryID),
-		LinkEntryType: strings.TrimSpace(req.LinkEntryType),
-		Actor:         claims.UserID,
+		LeadID:               strings.TrimSpace(req.LeadID),
+		PipelineID:           strings.TrimSpace(req.PipelineID),
+		StageID:              strings.TrimSpace(req.StageID),
+		OwnerID:              strings.TrimSpace(req.OwnerID),
+		CarteiraID:           strings.TrimSpace(req.CarteiraID),
+		Title:                req.Title,
+		ValueCents:           req.ValueCents,
+		Currency:             req.Currency,
+		Source:               strings.TrimSpace(req.Source),
+		CloseDate:            req.CloseDate,
+		CustomFields:         req.CustomFields,
+		LinkEntryID:          strings.TrimSpace(req.LinkEntryID),
+		LinkEntryType:        strings.TrimSpace(req.LinkEntryType),
+		Actor:                claims.UserID,
+		ActorIsPlatformAdmin: personFrom(claims).SystemAdmin,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -132,6 +133,9 @@ func (h *OpportunityHandler) Update(w http.ResponseWriter, r *http.Request) {
 		CustomFields: req.CustomFields,
 		StageID:      req.StageID,
 		LostReasonID: req.LostReasonID,
+
+		ExpectedVersion:      req.Version,
+		ActorIsPlatformAdmin: personFrom(claims).SystemAdmin,
 	}, claims.UserID)
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -171,8 +175,9 @@ func (h *OpportunityHandler) MoveStage(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.GetWorkspaceID(r)
 
 	moved, err := h.svc.MoveStage(wsID, id, opportunity_usecase.MoveStageInput{
-		StageID:      strings.TrimSpace(req.StageID),
-		LostReasonID: strings.TrimSpace(req.LostReasonID),
+		StageID:         strings.TrimSpace(req.StageID),
+		LostReasonID:    strings.TrimSpace(req.LostReasonID),
+		ExpectedVersion: req.Version,
 	}, claims.UserID)
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -409,7 +414,9 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 	switch {
 	case errors.Is(err, opportunitydomain.ErrNotFound):
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
-	case errors.Is(err, opportunitydomain.ErrScopeDenied), errors.Is(err, opportunitydomain.ErrEntryAccess):
+	case errors.Is(err, opportunitydomain.ErrStaleDeal):
+		response.WriteError(w, http.StatusConflict, "Este negócio foi alterado agora. Recarregue para ver a versão atual.", nil)
+	case errors.Is(err, opportunitydomain.ErrScopeDenied), errors.Is(err, opportunitydomain.ErrEntryAccess), errors.Is(err, opportunity_usecase.ErrOwnerChoiceDenied):
 		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 	case errors.Is(err, opportunitydomain.ErrWorkspaceRequired),
 		errors.Is(err, opportunitydomain.ErrPipelineRequired),
