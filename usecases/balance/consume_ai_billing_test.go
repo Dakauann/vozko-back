@@ -473,9 +473,6 @@ func TestAIBilling_DebitError_NACKsWithRequeue(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	ack.mu.Lock()
-	defer ack.mu.Unlock()
-
 	if !ack.state().nacked {
 		t.Error("expected NACK on debit error")
 	}
@@ -495,9 +492,6 @@ func TestAIBilling_IdempotencyCheckError_NACKs(t *testing.T) {
 	event := makeEvent("req-exists-fail", "ws-1", "gpt-4o-mini", 1000, 500)
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
-
-	ack.mu.Lock()
-	defer ack.mu.Unlock()
 
 	if !ack.state().nacked {
 		t.Error("expected NACK when idempotency check fails")
@@ -761,9 +755,6 @@ func TestAIBilling_PricerError_NACKs(t *testing.T) {
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
 
-	ack.mu.Lock()
-	defer ack.mu.Unlock()
-
 	if !ack.state().nacked {
 		t.Error("expected NACK when pricer fails")
 	}
@@ -790,9 +781,6 @@ func TestAIBilling_Panic_Recovery(t *testing.T) {
 	event := makeEvent("req-panic", "ws-1", "gpt-4o-mini", 1000, 500)
 	ack := &mockAck{deliveryCount: 1}
 	fireAndWait(t, sub, event, ack)
-
-	ack.mu.Lock()
-	defer ack.mu.Unlock()
 
 	if !ack.state().nacked {
 		t.Error("expected NACK after panic recovery")
