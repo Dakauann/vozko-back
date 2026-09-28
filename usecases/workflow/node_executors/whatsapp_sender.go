@@ -522,7 +522,7 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: billing dependency not configured, refusing to send a paid template")
 	}
 	if _, consumeErr := s.deps.ConsumeWhatsappTemplate.Execute(run.WorkspaceID, billingRefID, templateCategory); consumeErr != nil {
-		return nil, usedBusinessPhoneID, fmt.Errorf("insufficient balance to send WhatsApp template: %w", consumeErr)
+		return nil, usedBusinessPhoneID, fmt.Errorf("could not charge the WhatsApp template: %w", consumeErr)
 	}
 
 	output, err := client.SendTemplateMessage(ctx, apiInput)

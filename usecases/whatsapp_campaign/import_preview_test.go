@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"vozko/domain/campaign"
 
 	"vozko/domain/media"
 	"vozko/domain/shared"
@@ -69,14 +70,14 @@ func TestImportPreviewReportsEveryProblemWithItsLine(t *testing.T) {
 	if p.TotalRows != 5 || p.ValidRows != 2 || p.Variables != 2 {
 		t.Fatalf("preview = %+v", p)
 	}
-	if p.IssueCounts[wc.IssueInvalidNumber] != 1 || p.IssueCounts[wc.IssueDuplicate] != 1 || p.IssueCounts[wc.IssueMissingVariable] != 1 {
+	if p.IssueCounts[campaign.IssueInvalidNumber] != 1 || p.IssueCounts[campaign.IssueDuplicate] != 1 || p.IssueCounts[campaign.IssueMissingVariable] != 1 {
 		t.Fatalf("counts = %v", p.IssueCounts)
 	}
 	lines := map[int]string{}
 	for _, i := range p.Issues {
 		lines[i.Line] = i.Reason
 	}
-	if lines[4] != wc.IssueInvalidNumber || lines[5] != wc.IssueDuplicate || lines[6] != wc.IssueMissingVariable {
+	if lines[4] != campaign.IssueInvalidNumber || lines[5] != campaign.IssueDuplicate || lines[6] != campaign.IssueMissingVariable {
 		t.Fatalf("issues = %+v", p.Issues)
 	}
 	if p.Rows[1].Number != "5584994409625" || p.Rows[1].Variables[1] != "BF10" {
@@ -106,12 +107,12 @@ func TestImportPreviewHonoursAnExplicitMapping(t *testing.T) {
 		Files: importFiles{"ws1|m1": file}, Templates: importTemplates{granted: true}, Prices: importPrices{}, Balance: importBalance(1_000_000),
 	})
 	p, err := uc.Preview(context.Background(), wc.ImportRequest{WorkspaceID: "ws1", MediaID: "m1", TemplateID: "t1",
-		Mapping: wc.ColumnMapping{Number: "fone", Name: "cliente", Variables: []string{"cliente", "cupom"}}})
+		Mapping: campaign.ColumnMapping{Number: "fone", Name: "cliente", Variables: []string{"cliente", "cupom"}}})
 	if err != nil || p.ValidRows != 1 || p.Rows[0].Variables[0] != "Maria" {
 		t.Fatalf("preview %+v err %v", p, err)
 	}
 	if _, err := uc.Preview(context.Background(), wc.ImportRequest{WorkspaceID: "ws1", MediaID: "m1", TemplateID: "t1",
-		Mapping: wc.ColumnMapping{Number: "fone", Variables: []string{"cupom"}}}); !errors.Is(err, wc.ErrImportVariableCount) {
+		Mapping: campaign.ColumnMapping{Number: "fone", Variables: []string{"cupom"}}}); !errors.Is(err, campaign.ErrImportVariableCount) {
 		t.Fatalf("short mapping: %v", err)
 	}
 }

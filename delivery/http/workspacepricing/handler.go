@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/user"
 	pricingdomain "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/http/middleware"
 )
@@ -133,7 +134,7 @@ func (h *WorkspacePricingHandler) UpdateExchangeRate(w http.ResponseWriter, r *h
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
-	if claims.Email != pricingdomain.SuperAdminEmail {
+	if !user.IsSuperAdmin(claims.Email) {
 		response.WriteError(w, http.StatusForbidden, pricingdomain.ErrSuperAdminRequired.Error(), nil)
 		return
 	}

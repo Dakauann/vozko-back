@@ -3,9 +3,11 @@ package whatsapp_outreach
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -48,6 +50,7 @@ type fakeEntries struct {
 	existing *wce.WhatsAppCampaignEntry
 	created  []*wce.WhatsAppCampaignEntry
 	statuses []string
+	codes    []int
 }
 
 func (f *fakeEntries) FindByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
@@ -63,8 +66,9 @@ func (f *fakeEntries) Create(e *wce.WhatsAppCampaignEntry) error {
 	f.created = append(f.created, e)
 	return nil
 }
-func (f *fakeEntries) UpdateStatus(_ string, status wce.SendStatus, _ string, _ int, _ string) error {
+func (f *fakeEntries) UpdateStatus(_ string, status wce.SendStatus, _ string, code int, _ string) error {
 	f.statuses = append(f.statuses, string(status))
+	f.codes = append(f.codes, code)
 	return nil
 }
 func (f *fakeEntries) UpdateMetadata(string, map[string]interface{}) error { return nil }
@@ -382,3 +386,16 @@ func TestNewStartConversationUseCase_RefusesWithoutSender(t *testing.T) {
 type windowRow = struct{}
 
 var _ = time.Now
+
+func TestStartConversation_MonthlyCapReached_MarksEntryFailedWithCapCode(t *testing.T) {
+	uc := newUC(t)
+	uc.sender.err = fmt.Errorf("charge: %w", balance.ErrMonthlySendCapReached)
+
+	_, err := uc.uc.Execute(context.Background(), input())
+	if !errors.Is(err, balance.ErrMonthlySendCapReached) {
+		t.Fatalf("the cap must reach the caller, got %v", err)
+	}
+	if len(uc.entries.codes) == 0 || uc.entries.statuses[0] != string(wce.SendStatusFailed) || uc.entries.codes[0] != wce.ErrorCodeMonthlySendCapReached {
+		t.Fatalf("statuses %v codes %v, want FAILED with %d", uc.entries.statuses, uc.entries.codes, wce.ErrorCodeMonthlySendCapReached)
+	}
+}

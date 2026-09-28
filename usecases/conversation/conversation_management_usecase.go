@@ -2519,7 +2519,7 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 	}
 	_, consumeErr := s.consumeWhatsappTemplate.Execute(workspaceID, entryID, templateCategory)
 	if consumeErr != nil {
-		return "", fmt.Errorf("insufficient balance to send WhatsApp template: %w", consumeErr)
+		return "", fmt.Errorf("could not charge the WhatsApp template: %w", consumeErr)
 	}
 
 	result, err := client.SendTemplateMessage(context.Background(), sendInput)

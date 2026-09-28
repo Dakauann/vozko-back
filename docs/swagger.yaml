@@ -6,12 +6,14 @@ definitions:
     - ai
     - workflow
     - system
+    - campaign
     type: string
     x-enum-varnames:
     - KindHuman
     - KindAI
     - KindWorkflow
     - KindSystem
+    - KindCampaign
   affiliate.AffiliateProfileResponse:
     properties:
       affiliate:
@@ -1996,6 +1998,57 @@ definitions:
       totalMoneyDebits:
         type: integer
     type: object
+  balance.SendCapChangeResponse:
+    properties:
+      limit:
+        type: integer
+      workspaceId:
+        type: string
+    type: object
+  balance.SendCapItemResponse:
+    properties:
+      level:
+        enum:
+        - ok
+        - near
+        - reached
+        type: string
+      limit:
+        type: integer
+      remaining:
+        type: integer
+      unlockedAt:
+        type: string
+      unlockedBy:
+        type: string
+      updatedAt:
+        type: string
+      updatedBy:
+        type: string
+      used:
+        type: integer
+      workspaceId:
+        type: string
+      workspaceName:
+        type: string
+    type: object
+  balance.SendCapListResponse:
+    properties:
+      canUnlock:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/balance.SendCapItemResponse'
+        type: array
+      monthStart:
+        type: string
+    type: object
+  balance.SetSendCapRequest:
+    properties:
+      limit:
+        example: 5000
+        type: integer
+    type: object
   balance.TransactionResponse:
     properties:
       amount:
@@ -2022,6 +2075,18 @@ definitions:
         type: string
       workspaceId:
         type: string
+    type: object
+  balance.UnlockSendCapRequest:
+    properties:
+      code:
+        example: "0000"
+        type: string
+      limit:
+        example: 20000
+        type: integer
+      removeCap:
+        example: false
+        type: boolean
     type: object
   balance.balanceResponse:
     properties:
@@ -6912,6 +6977,118 @@ info:
   title: API
   version: "1.0"
 paths:
+  /admin/send-caps:
+    get:
+      description: System admin only. Every capped workspace with its usage in the
+        current month (America/Sao_Paulo), most pressed first.
+      parameters:
+      - description: ok, near or reached
+        in: query
+        name: level
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/balance.SendCapListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List monthly template send caps
+      tags:
+      - Admin - Monthly send caps
+  /admin/send-caps/{workspaceId}:
+    put:
+      consumes:
+      - application/json
+      description: System admin only. Raising an existing cap is refused with unlock_required.
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: workspaceId
+        required: true
+        type: string
+      - description: New monthly limit
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/balance.SetSendCapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/balance.SendCapChangeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create or lower a monthly template send cap
+      tags:
+      - Admin - Monthly send caps
+  /admin/send-caps/{workspaceId}/unlock:
+    post:
+      consumes:
+      - application/json
+      description: Allowlisted super admins only, with the unlock code. Send either
+        limit or removeCap.
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: workspaceId
+        required: true
+        type: string
+      - description: New limit or removal, plus the unlock code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/balance.UnlockSendCapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/balance.SendCapChangeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Raise or remove a monthly template send cap
+      tags:
+      - Admin - Monthly send caps
   /affiliate/earnings:
     get:
       description: Retorna a lista paginada de comissões registradas para o afiliado

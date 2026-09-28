@@ -117,6 +117,8 @@ func templateSendFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "esse modelo é de outra conta do WhatsApp, diferente do número desta conversa"}
 	case errors.Is(err, balance.ErrInsufficientBalance):
 		return copilot.Result{Status: copilot.StatusError, Message: "saldo insuficiente para enviar o modelo; o usuário precisa recarregar"}
+	case errors.Is(err, balance.ErrMonthlySendCapReached):
+		return copilot.Result{Status: copilot.StatusError, Message: "o limite mensal de envios de modelos deste workspace foi atingido; o usuário precisa falar com a administração"}
 	case errors.Is(err, conversation.ErrEntryTypeInvalid):
 		return copilot.Result{Status: copilot.StatusError, Message: "modelos só podem ser enviados em conversas do WhatsApp oficial"}
 	}

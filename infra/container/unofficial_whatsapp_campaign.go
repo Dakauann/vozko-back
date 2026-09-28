@@ -27,6 +27,11 @@ type unofficialWhatsAppCampaignBundle struct {
 
 	Consumer     uwc.MessageConsumerUseCase
 	Dispatch     uwc.DispatchCampaignUseCase
+	Create       uwc.CreateCampaignUseCase
+	Access       uwc.CampaignAccessUseCase
+	Actions      uwc.CampaignActionUseCase
+	Preview      uwc.ImportPreviewUseCase
+	Instances    uwc.CampaignInstanceUseCase
 	ScheduleJob  uwc.StartScheduleJob
 	PauseForInst uwc.PauseCampaignsForInstanceUseCase
 
@@ -95,6 +100,12 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		c.services.wcQueuePub, c.redisProvider.SharedState(),
 	)
 	bundle.ScheduleJob = uwcuc.NewScheduleStartJob(bundle.Campaigns, bundle.Dispatch)
+	bundle.Create = uwcuc.NewCreateCampaignUseCase(
+		bundle.Campaigns, bundle.Entries, c.repositories.lead, gateway, spam, departments)
+	bundle.Access = uwcuc.NewCampaignAccessUseCase(uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway))
+	bundle.Actions = uwcuc.NewCampaignActionUseCase(bundle.Access, bundle.Dispatch)
+	bundle.Preview = uwcuc.NewImportPreviewUseCase(c.useCases.readMedia)
+	bundle.Instances = uwcuc.NewCampaignInstanceUseCase(gateway)
 
 	logChannelCapabilities("unofficial-whatsapp-campaigns", map[string]bool{
 		"sender":         sender != nil,
@@ -106,18 +117,16 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	})
 
 	bundle.Handler = uwhttp.NewCampaignHandler(uwhttp.CampaignHandlerDeps{
-		Create: uwcuc.NewCreateCampaignUseCase(
-			bundle.Campaigns, bundle.Entries, c.repositories.lead, gateway, spam,
-			departments),
+		Create:      bundle.Create,
 		Update:      uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Get:         uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
-		Access:      uwcuc.NewCampaignAccessUseCase(uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)),
+		Access:      bundle.Access,
+		Actions:     bundle.Actions,
 		List:        uwcuc.NewListCampaignsUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Delete:      uwcuc.NewDeleteCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		AssignDep:   uwcuc.NewAssignDepartmentUseCase(bundle.Campaigns, departments),
 		Summary:     uwcuc.NewGetSummaryUseCase(summary),
 		Entries:     uwcuc.NewListEntriesUseCase(bundle.Entries),
-		Dispatch:    bundle.Dispatch,
 		Reset:       uwcuc.NewResetCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		Clear:       uwcuc.NewClearHistoryUseCase(bundle.Campaigns, bundle.Entries, c.repositories.conversation),
 		AddEntry:    uwcuc.NewAddEntriesUseCase(bundle.Campaigns, bundle.Entries, c.repositories.lead),

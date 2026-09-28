@@ -48,9 +48,10 @@ func campaignRequest(method, path string, handler http.HandlerFunc) *httptest.Re
 
 func TestCampaignRoutesRefuseAnotherWorkspacesCampaign(t *testing.T) {
 	dispatch := &dispatchRecorder{}
+	access := uwcuc.NewCampaignAccessUseCase(foreignCampaign{})
 	h := NewCampaignHandler(CampaignHandlerDeps{
-		Get: foreignCampaign{}, Access: uwcuc.NewCampaignAccessUseCase(foreignCampaign{}),
-		Dispatch: dispatch, Departments: openScope{},
+		Get: foreignCampaign{}, Access: access,
+		Actions: uwcuc.NewCampaignActionUseCase(access, dispatch), Departments: openScope{},
 	})
 	if w := campaignRequest(http.MethodPost, "/unofficial-whatsapp/campaigns/c-9/start", h.Start); w.Code != http.StatusNotFound || dispatch.calls != 0 {
 		t.Fatalf("start: status %d dispatches %d", w.Code, dispatch.calls)
@@ -62,7 +63,8 @@ func TestCampaignRoutesRefuseAnotherWorkspacesCampaign(t *testing.T) {
 
 func TestCampaignRoutesRefuseWithoutADepartmentResolver(t *testing.T) {
 	dispatch := &dispatchRecorder{}
-	h := NewCampaignHandler(CampaignHandlerDeps{Access: uwcuc.NewCampaignAccessUseCase(foreignCampaign{}), Dispatch: dispatch})
+	access := uwcuc.NewCampaignAccessUseCase(foreignCampaign{})
+	h := NewCampaignHandler(CampaignHandlerDeps{Access: access, Actions: uwcuc.NewCampaignActionUseCase(access, dispatch)})
 	if w := campaignRequest(http.MethodPost, "/unofficial-whatsapp/campaigns/c-9/start", h.Start); w.Code != http.StatusForbidden || dispatch.calls != 0 {
 		t.Fatalf("status %d dispatches %d", w.Code, dispatch.calls)
 	}

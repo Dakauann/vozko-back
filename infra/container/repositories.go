@@ -104,6 +104,7 @@ func (c *Container) initRepositories() {
 		callRecording:           call_recording_repository.NewRepository(c.db),
 		callCDR:                 call_cdr_repository.NewRepository(c.db),
 		balance:                 balance_repository.NewCachedBalanceRepository(balance_repository.NewRepository(c.db), c.redisProvider.SharedState()),
+		monthlySendCaps:         balance_repository.NewMonthlySendCapRepository(c.db),
 		workspacePricing:        workspace_pricing_repository.NewRepository(c.db),
 		workspaceTemplateAccess: workspace_template_access_repository.NewRepository(c.db),
 		workspacePhoneAccess:    workspace_phone_access_repository.NewRepository(c.db),

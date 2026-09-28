@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
 
 	affiliatehttp "vozko/delivery/http/affiliate"
@@ -298,6 +299,11 @@ func (c *Container) initHandlers() {
 			c.useCases.getOrCreateFullSummary,
 			c.useCases.getExchangeRate,
 			c.services.reportService,
+		),
+		sendCap: balancehttp.NewSendCapHandler(
+			balance_usecase.NewListMonthlySendCapsUseCase(c.repositories.monthlySendCaps, time.Now),
+			balance_usecase.NewSetMonthlySendCapUseCase(c.repositories.monthlySendCaps, c.repositories.workspace, time.Now),
+			balance_usecase.NewUnlockMonthlySendCapUseCase(c.repositories.monthlySendCaps, time.Now),
 		),
 		workspaceTemplateAccess: workspacetemplateaccesshttp.NewWorkspaceTemplateAccessHandler(
 			c.useCases.grantTemplateAccess,

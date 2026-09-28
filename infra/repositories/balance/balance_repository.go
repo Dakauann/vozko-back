@@ -161,6 +161,10 @@ func (r *BalanceRepositoryImpl) DebitBalance(params balance.DebitBalanceInput) (
 			return err
 		}
 
+		if err := admitMonthlyTemplateSend(tx, params.WorkspaceID, params.MonthlyCap); err != nil {
+			return err
+		}
+
 		balanceBefore := dbBalance.Amount
 		if !params.AllowNegative && balanceBefore < params.Amount {
 			return balance.ErrInsufficientBalance
@@ -345,20 +349,11 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 				WHEN position('utility' IN lower(bt.description)) > 0 THEN 'UTILITY'
 				ELSE 'UNKNOWN'
 			END AS category,
-			COALESCE(SUM(
-				CASE
-					WHEN bt.type = 'debit'  AND bt.is_refund = false THEN 1
-					WHEN bt.type = 'credit' AND bt.is_refund = true  THEN -1
-					ELSE 0
-				END
-			), 0)::bigint AS net
+			COALESCE(SUM(` + netTemplateSendExpr + `), 0)::bigint AS net
 		FROM balance_transactions bt
 		WHERE bt.workspace_id = ?
 		  AND bt.service_type = ?
-		  AND (
-		    (bt.type = 'debit'  AND bt.is_refund = false)
-		    OR (bt.type = 'credit' AND bt.is_refund = true)
-		  )
+		  AND ` + templateSendRowsFilter + `
 	`
 	args := []interface{}{ws, string(balance.ServiceWhatsAppCampaign)}
 	if filter.From != nil {

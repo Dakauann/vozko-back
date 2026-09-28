@@ -1,19 +1,17 @@
 package whatsapp_campaign
 
-import "errors"
+import (
+	"errors"
+
+	"vozko/domain/campaign"
+)
 
 var (
 	ErrCampaignNoSubscription = errors.New("whatsapp campaign start: the workspace has no active subscription")
-	ErrCampaignNoNumbers      = errors.New("whatsapp campaign start: the campaign has no phone numbers to process")
-	ErrCampaignAllProcessed   = errors.New("whatsapp campaign start: all phone numbers have already been processed")
+	ErrCampaignNoNumbers      = campaign.ErrNothingToSend
+	ErrCampaignAllProcessed   = campaign.ErrAlreadySent
 )
 
 func (c *Campaign) Startable() error {
-	if c.Metrics == nil || c.Metrics.TotalNumbers == 0 {
-		return ErrCampaignNoNumbers
-	}
-	if c.Metrics.Pending == 0 && c.Metrics.Processed == c.Metrics.TotalNumbers {
-		return ErrCampaignAllProcessed
-	}
-	return nil
+	return c.Metrics.Startable()
 }

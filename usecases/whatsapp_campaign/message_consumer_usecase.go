@@ -286,6 +286,11 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 			fmt.Printf("whatsapp campaign consumer: debit failed (insufficient balance) for workspace %s (campaign %s), requeuing with delay\n", campaignItem.WorkspaceID, msg.CampaignID)
 			return campaignqueue.RetryLater(balanceRequeueDelay)
 		}
+		if errors.Is(consumeErr, balance.ErrMonthlySendCapReached) {
+			fmt.Printf("whatsapp campaign consumer: monthly send cap reached for workspace %s (campaign %s), failing entry\n", campaignItem.WorkspaceID, msg.CampaignID)
+			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", wce.FailureCode(consumeErr), balance.ErrMonthlySendCapReached.Error())
+			return campaignqueue.Drop
+		}
 		if errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(consumeErr, workspace_plan.ErrSubscriptionNotActive) {
 			fmt.Printf("whatsapp campaign consumer: subscription expired during debit for workspace %s (campaign %s), failing entry\n", campaignItem.WorkspaceID, msg.CampaignID)
 			c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no active subscription")

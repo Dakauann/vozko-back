@@ -104,6 +104,7 @@ func (c *Container) initRouter() {
 		unofficialWhatsAppGroupHandler(c),
 		unofficialWhatsAppCampaignHandler(c),
 		audienceHandler(c),
+		c.handlers.sendCap,
 	)
 }
 

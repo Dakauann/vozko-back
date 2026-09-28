@@ -51,12 +51,13 @@ const (
 	ReasonProviderError       FailureReason = "provider_error"
 	ReasonDispatchInterrupted FailureReason = "dispatch_interrupted"
 
-	ReasonPermissionRevoked   FailureReason = "permission_revoked"
-	ReasonTemplateUnavailable FailureReason = "template_unavailable"
-	ReasonContactIneligible   FailureReason = "contact_ineligible"
-	ReasonInsufficientBalance FailureReason = "insufficient_balance"
-	ReasonBillingUnavailable  FailureReason = "billing_unavailable"
-	ReasonOutcomeUnknown      FailureReason = "outcome_unknown"
+	ReasonPermissionRevoked     FailureReason = "permission_revoked"
+	ReasonTemplateUnavailable   FailureReason = "template_unavailable"
+	ReasonContactIneligible     FailureReason = "contact_ineligible"
+	ReasonInsufficientBalance   FailureReason = "insufficient_balance"
+	ReasonMonthlySendCapReached FailureReason = "monthly_send_cap_reached"
+	ReasonBillingUnavailable    FailureReason = "billing_unavailable"
+	ReasonOutcomeUnknown        FailureReason = "outcome_unknown"
 )
 
 type Kind string

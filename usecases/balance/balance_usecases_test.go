@@ -624,7 +624,7 @@ func TestInflightReserver_GetInflight_NoKey(t *testing.T) {
 
 func TestGetTemplateCostMicros_Utility(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&waMockPricingRepo{})
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	cost, err := uc.GetTemplateCostMicros("ws1", "UTILITY")
 	if err != nil {
@@ -639,7 +639,7 @@ func TestGetTemplateCostMicros_Utility(t *testing.T) {
 func TestGetTemplateCostMicros_NoSubscription(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&waMockPricingRepo{})
 	checker := &allowAllSubscriptionChecker{err: errors.New("subscription required")}
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, checker)
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, checker, noMonthlySendCaps{})
 
 	_, err := uc.GetTemplateCostMicros("ws1", "UTILITY")
 	if err == nil {
@@ -650,7 +650,7 @@ func TestGetTemplateCostMicros_NoSubscription(t *testing.T) {
 func TestWhatsApp_Execute_NoSubscription(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&waMockPricingRepo{})
 	checker := &allowAllSubscriptionChecker{err: errors.New("subscription required")}
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, checker)
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, checker, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if err == nil {
@@ -660,7 +660,7 @@ func TestWhatsApp_Execute_NoSubscription(t *testing.T) {
 
 func TestWhatsApp_Execute_NilChecker(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&waMockPricingRepo{})
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, nil)
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, nil, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if err == nil {
@@ -686,7 +686,7 @@ func (m *errPricingRepo) ListAuditEntries(*string, int, int) ([]workspace_pricin
 
 func TestGetTemplateCostMicros_PricerError(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&errPricingRepo{err: errors.New("db down")})
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.GetTemplateCostMicros("ws1", "UTILITY")
 	if err == nil {
@@ -696,7 +696,7 @@ func TestGetTemplateCostMicros_PricerError(t *testing.T) {
 
 func TestWhatsApp_Refund_PricerError(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&errPricingRepo{err: errors.New("db down")})
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	err := uc.Refund("ws1", "ref1", "UTILITY")
 	if err == nil {
@@ -708,7 +708,7 @@ func TestWhatsApp_Execute_ZeroPrice(t *testing.T) {
 
 	emptyRepo := &errPricingRepo{err: nil}
 	pricer := workspace_pricing.NewPricer(emptyRepo)
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	tx, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if !errors.Is(err, balance.ErrPriceUnavailable) {
@@ -721,7 +721,7 @@ func TestWhatsApp_Execute_ZeroPrice(t *testing.T) {
 
 func TestWhatsApp_Execute_PricerError(t *testing.T) {
 	pricer := workspace_pricing.NewPricer(&errPricingRepo{err: errors.New("db down")})
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if err == nil {
@@ -732,7 +732,7 @@ func TestWhatsApp_Execute_PricerError(t *testing.T) {
 func TestWhatsApp_Refund_ZeroPrice(t *testing.T) {
 	emptyRepo := &errPricingRepo{err: nil}
 	pricer := workspace_pricing.NewPricer(emptyRepo)
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	if err := uc.Refund("ws1", "ref1", "UTILITY"); !errors.Is(err, balance.ErrPriceUnavailable) {
 		t.Fatalf("a refund that cannot be priced must report failure, got err=%v", err)

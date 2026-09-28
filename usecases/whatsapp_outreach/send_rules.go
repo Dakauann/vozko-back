@@ -114,7 +114,7 @@ func (r sendRules) markEntryFailed(entryID string, result *template.BilledSendRe
 	if len(message) > 500 {
 		message = message[:500]
 	}
-	if err := r.deps.Entries.UpdateStatus(entryID, wce.SendStatusFailed, "", 0, message); err != nil {
+	if err := r.deps.Entries.UpdateStatus(entryID, wce.SendStatusFailed, "", wce.FailureCode(sendErr), message); err != nil {
 		log.Printf("[whatsapp-outreach] could not mark entry %s as failed: %v", entryID, err)
 	}
 }

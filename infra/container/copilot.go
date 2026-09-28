@@ -10,6 +10,7 @@ import (
 	"vozko/usecases/agentloop"
 	copilot_usecase "vozko/usecases/copilot"
 	copilottools "vozko/usecases/copilot/copilottools"
+	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
 func (c *Container) buildCopilot(
@@ -79,6 +80,7 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.dealTools(),
 		c.templateCreateTools(),
 		c.campaignTools(),
+		c.unofficialCampaignTools(),
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
@@ -117,6 +119,29 @@ func (c *Container) campaignTools() []copilot.Tool {
 		copilottools.NewPreviewCampaignImportTool(deps),
 		copilottools.NewCreateCampaignTool(deps),
 		copilottools.NewStartCampaignTool(deps),
+	}
+}
+
+func (c *Container) unofficialCampaignTools() []copilot.Tool {
+	campaigns := c.unofficialWhatsAppCampaigns
+	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled || campaigns == nil || !campaigns.Enabled {
+		return nil
+	}
+	deps := copilottools.UnofficialCampaignDeps{
+		Scopes:  c.services.conversationAuthImpl,
+		Numbers: uwuc.NewListInstancesUseCase(c.unofficialWhatsApp.Instances),
+		Usable:  campaigns.Instances,
+		Preview: campaigns.Preview,
+		Create:  campaigns.Create,
+		Access:  campaigns.Access,
+		Actions: campaigns.Actions,
+		Media:   c.useCases.getMedia,
+	}
+	return []copilot.Tool{
+		copilottools.NewListUnofficialNumbersTool(deps),
+		copilottools.NewPreviewUnofficialImportTool(deps),
+		copilottools.NewCreateUnofficialCampaignTool(deps),
+		copilottools.NewStartUnofficialCampaignTool(deps),
 	}
 }
 

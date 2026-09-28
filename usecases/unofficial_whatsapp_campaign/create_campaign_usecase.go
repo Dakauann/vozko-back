@@ -11,7 +11,6 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	workspace_department "vozko/domain/workspace/workspace_department"
-	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
 type createCampaignUseCase struct {
@@ -55,14 +54,8 @@ func (uc *createCampaignUseCase) Execute(
 		return nil, err
 	}
 
-	instance, err := uc.instances.Instance(ctx, in.InstanceID)
+	instance, err := usableInstance(ctx, uc.instances, in.WorkspaceID, scope, in.InstanceID)
 	if err != nil {
-		return nil, err
-	}
-	if err := uwuc.EnsureVisible(instance, in.WorkspaceID, scope); err != nil {
-		return nil, err
-	}
-	if err := ensureInstanceCanCampaign(instance); err != nil {
 		return nil, err
 	}
 

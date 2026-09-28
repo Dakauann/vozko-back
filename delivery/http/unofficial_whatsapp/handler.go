@@ -63,24 +63,11 @@ func NewHandler(d HandlerDeps) *Handler {
 }
 
 func (h *Handler) scopeFor(r *http.Request) (uw.DepartmentScope, bool) {
-	if h.departments == nil {
-		return uw.Unrestricted(), true
-	}
 	claims := middleware.GetClaims(r)
-	if claims == nil {
+	if claims == nil || h.departments == nil {
 		return uw.DepartmentScope{}, false
 	}
-	workspaceID := middleware.GetWorkspaceID(r)
-
-	scope, allowed := h.departments.GetDepartmentScope(
-		claims.UserID, workspaceID, claims.Role == string(user_domain.RoleAdmin))
-	if !allowed {
-		return uw.DepartmentScope{}, false
-	}
-	return uw.DepartmentScope{
-		DepartmentIDs: scope.DepartmentIDs,
-		Restrict:      scope.Restrict,
-	}, true
+	return uw.ResolveScope(h.departments, claims.UserID, middleware.GetWorkspaceID(r), claims.Role == string(user_domain.RoleAdmin))
 }
 
 func (h *Handler) requireScope(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, bool) {

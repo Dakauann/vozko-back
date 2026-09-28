@@ -18,8 +18,6 @@ const (
 	CategoryMargin       ServiceCategory = "margin"
 )
 
-const SuperAdminEmail = "dakauannc@gmail.com"
-
 var ErrPricingItemNotFound = errors.New("pricing item not found")
 var ErrWhatsAppTemplateCategoryUnsupported = errors.New("unsupported whatsapp template category for pricing")
 var ErrPriceMicrosNotPositive = errors.New("priceMicros must be greater than zero")

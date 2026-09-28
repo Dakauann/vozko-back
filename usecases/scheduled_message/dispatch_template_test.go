@@ -3,6 +3,7 @@ package scheduled_message_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"vozko/domain/balance"
@@ -116,6 +117,7 @@ func TestDispatchClassifiesTemplateSendErrors(t *testing.T) {
 		{"template deleted", wo.ErrTemplateNotFound, sm.ReasonTemplateUnavailable},
 		{"no money", balance.ErrInsufficientBalance, sm.ReasonInsufficientBalance},
 		{"no balance row", balance.ErrBalanceNotFound, sm.ReasonInsufficientBalance},
+		{"monthly send cap reached", fmt.Errorf("charge: %w", balance.ErrMonthlySendCapReached), sm.ReasonMonthlySendCapReached},
 		{"no price", template.ErrPricingUnavailable, sm.ReasonBillingUnavailable},
 		{"no price on the ledger", balance.ErrPriceUnavailable, sm.ReasonBillingUnavailable},
 		{"subscription lapsed", workspace_plan.ErrSubscriptionNotCurrent, sm.ReasonBillingUnavailable},

@@ -219,6 +219,10 @@ func (h *Handler) writeDomainError(w http.ResponseWriter, err error, result *wo.
 		response.WriteErrorWithCode(w, http.StatusPaymentRequired, "insufficient_balance",
 			"saldo insuficiente para enviar este modelo", nil)
 
+	case errors.Is(err, balance.ErrMonthlySendCapReached):
+		response.WriteErrorWithCode(w, http.StatusForbidden, "monthly_send_cap_reached",
+			"o limite mensal de envios deste workspace foi atingido, fale com a administração", nil)
+
 	case errors.Is(err, template.ErrPricingUnavailable):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "pricing_unavailable",
 			"não há preço configurado para esta categoria de modelo", nil)

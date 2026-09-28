@@ -154,6 +154,7 @@ type router struct {
 	instagramHandler               *instagramhttp.Handler
 	instagramWebhookHandler        *instagramhttp.WebhookHandler
 	audienceHandler                *audiencehttp.Handler
+	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
 	telegramWebhookHandler         *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler      *unofficialwahttp.Handler
@@ -278,10 +279,12 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
 	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler,
 	audienceHandler *audiencehttp.Handler,
+	sendCapHandler *balancehttp.SendCapHandler,
 ) Router {
 	r := &router{
 		instagramHandler:               instagramHandler,
 		audienceHandler:                audienceHandler,
+		sendCapHandler:                 sendCapHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
 		telegramHandler:                telegramHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
@@ -939,6 +942,7 @@ func (r *router) setupKnowledgeBaseRoutes(protected *mux.Router) {
 
 func (r *router) setupAdminBalanceRoutes(adminRoutes *mux.Router) {
 	balancehttp.RegisterAdminRoutes(adminRoutes, r.balanceHandler)
+	balancehttp.RegisterSendCapAdminRoutes(adminRoutes, r.sendCapHandler)
 	invoicehttp.RegisterAdminRoutes(adminRoutes, r.invoiceHandler)
 }
 

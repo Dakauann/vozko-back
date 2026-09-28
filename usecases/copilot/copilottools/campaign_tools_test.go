@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"vozko/domain/campaign"
 
 	"vozko/domain/copilot"
 	"vozko/domain/media"
@@ -31,10 +32,12 @@ func (f *fakeImportPreview) Preview(_ context.Context, req wc.ImportRequest) (*w
 		return nil, media.ErrMediaNotFound
 	}
 	return &wc.ImportPreview{
-		Headers: []string{"numero", "var1", "var2"}, Variables: 2, TotalRows: 3, ValidRows: 2,
-		IssueCounts: map[string]int{wc.IssueInvalidNumber: 1}, Issues: []wc.ImportIssue{{Line: 3, Reason: wc.IssueInvalidNumber, Value: "123"}},
+		ImportResult: campaign.ImportResult{
+			Headers: []string{"numero", "var1", "var2"}, Variables: 2, TotalRows: 3, ValidRows: 2,
+			IssueCounts: map[string]int{campaign.IssueInvalidNumber: 1}, Issues: []campaign.ImportIssue{{Line: 3, Reason: campaign.IssueInvalidNumber, Value: "123"}},
+			Rows: []campaign.ImportRow{{Number: "5584994409624", Variables: []string{"Maria", "10"}}, {Number: "5584994409625", Variables: []string{"João", "11"}}},
+		},
 		UnitCostMicros: 60_000, CostMicros: 120_000, BalanceMicros: 5_000_000, Affordable: true,
-		Rows: []wc.PhoneInput{{Number: "5584994409624", Variables: []string{"Maria", "10"}}, {Number: "5584994409625", Variables: []string{"João", "11"}}},
 	}, nil
 }
 
@@ -160,7 +163,7 @@ func TestPreviewCampaignImportRefusesInventedIDs(t *testing.T) {
 
 func TestPreviewCampaignImportExplainsAMissingColumn(t *testing.T) {
 	f := newCampaignFixture()
-	f.preview.err = wc.ErrImportVariableCount
+	f.preview.err = campaign.ErrImportVariableCount
 	res := NewPreviewCampaignImportTool(f.deps).Execute(context.Background(), member(), map[string]interface{}{"media_id": knownSheet, "template_id": knownTemplate})
 	if res.Status != copilot.StatusError || !strings.Contains(res.Message, "variable_columns") {
 		t.Fatalf("result = %+v", res)
@@ -218,7 +221,7 @@ func TestCreateCampaignRefusesAFileWithNoValidRow(t *testing.T) {
 type emptyPreview struct{}
 
 func (emptyPreview) Preview(context.Context, wc.ImportRequest) (*wc.ImportPreview, error) {
-	return &wc.ImportPreview{TotalRows: 4}, nil
+	return &wc.ImportPreview{ImportResult: campaign.ImportResult{TotalRows: 4}}, nil
 }
 
 func TestCreateCampaignApprovalShowsWhatWillBeCreated(t *testing.T) {

@@ -15,6 +15,179 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/send-caps": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "System admin only. Every capped workspace with its usage in the current month (America/Sao_Paulo), most pressed first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin - Monthly send caps"
+                ],
+                "summary": "List monthly template send caps",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ok, near or reached",
+                        "name": "level",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/balance.SendCapListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/send-caps/{workspaceId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "System admin only. Raising an existing cap is refused with unlock_required.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin - Monthly send caps"
+                ],
+                "summary": "Create or lower a monthly template send cap",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New monthly limit",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/balance.SetSendCapRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/balance.SendCapChangeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/send-caps/{workspaceId}/unlock": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Allowlisted super admins only, with the unlock code. Send either limit or removeCap.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin - Monthly send caps"
+                ],
+                "summary": "Raise or remove a monthly template send cap",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "workspaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New limit or removal, plus the unlock code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/balance.UnlockSendCapRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/balance.SendCapChangeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/affiliate/earnings": {
             "get": {
                 "security": [
@@ -16454,13 +16627,15 @@ const docTemplate = `{
                 "human",
                 "ai",
                 "workflow",
-                "system"
+                "system",
+                "campaign"
             ],
             "x-enum-varnames": [
                 "KindHuman",
                 "KindAI",
                 "KindWorkflow",
-                "KindSystem"
+                "KindSystem",
+                "KindCampaign"
             ]
         },
         "affiliate.AffiliateProfileResponse": {
@@ -19409,6 +19584,83 @@ const docTemplate = `{
                 }
             }
         },
+        "balance.SendCapChangeResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "balance.SendCapItemResponse": {
+            "type": "object",
+            "properties": {
+                "level": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "near",
+                        "reached"
+                    ]
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "remaining": {
+                    "type": "integer"
+                },
+                "unlockedAt": {
+                    "type": "string"
+                },
+                "unlockedBy": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedBy": {
+                    "type": "string"
+                },
+                "used": {
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                },
+                "workspaceName": {
+                    "type": "string"
+                }
+            }
+        },
+        "balance.SendCapListResponse": {
+            "type": "object",
+            "properties": {
+                "canUnlock": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/balance.SendCapItemResponse"
+                    }
+                },
+                "monthStart": {
+                    "type": "string"
+                }
+            }
+        },
+        "balance.SetSendCapRequest": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "example": 5000
+                }
+            }
+        },
         "balance.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -19447,6 +19699,23 @@ const docTemplate = `{
                 },
                 "workspaceId": {
                     "type": "string"
+                }
+            }
+        },
+        "balance.UnlockSendCapRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "0000"
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20000
+                },
+                "removeCap": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },

@@ -1403,6 +1403,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Assigner:   c.services.assignmentService,
 		Roulette:   c.services.assignmentService,
 	})
+	c.initUnofficialWhatsAppCampaigns(
+		c.services.messageSender, resolveCreationDepartmentUC)
 	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)
 	c.initInstagramRuntime(messageHistoryManager)
 
@@ -1422,9 +1424,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			log.Printf("[telegram] webhook consumers started")
 		}
 	}
-
-	c.initUnofficialWhatsAppCampaigns(
-		c.services.messageSender, resolveCreationDepartmentUC)
 
 	c.initUnofficialWhatsAppRuntime(messageHistoryManager)
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled && c.unofficialWhatsApp.Consume != nil {

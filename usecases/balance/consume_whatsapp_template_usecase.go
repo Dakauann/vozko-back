@@ -1,22 +1,43 @@
 package balance_usecase
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"vozko/domain/balance"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
+var errMonthlySendCapReaderMissing = errors.New("monthly send cap reader is required")
+
 type consumeWhatsappTemplateUseCase struct {
 	balanceRepo balance.Repository
 	pricer      workspace_pricing.Pricer
 	checker     workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase
+	caps        balance.MonthlySendCapReader
+	now         func() time.Time
 }
 
-func NewConsumeWhatsappTemplateUseCase(balanceRepo balance.Repository, pricer workspace_pricing.Pricer, checker workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase) balance.ConsumeWhatsappTemplateUseCase {
-	return &consumeWhatsappTemplateUseCase{balanceRepo: balanceRepo, pricer: pricer, checker: checker}
+func NewConsumeWhatsappTemplateUseCase(balanceRepo balance.Repository, pricer workspace_pricing.Pricer, checker workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase, caps balance.MonthlySendCapReader) balance.ConsumeWhatsappTemplateUseCase {
+	return &consumeWhatsappTemplateUseCase{balanceRepo: balanceRepo, pricer: pricer, checker: checker, caps: caps, now: time.Now}
+}
+
+func (uc *consumeWhatsappTemplateUseCase) monthlyCapGuard(workspaceID string) (*balance.MonthlySendCapGuard, error) {
+	if uc.caps == nil {
+		return nil, errMonthlySendCapReaderMissing
+	}
+	cap, err := uc.caps.GetMonthlySendCap(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read monthly send cap: %w", err)
+	}
+	if cap == nil {
+		return nil, nil
+	}
+	guard := cap.Guard(uc.now())
+	return &guard, nil
 }
 
 func (uc *consumeWhatsappTemplateUseCase) ensureCurrentSubscription(workspaceID string) error {
@@ -78,6 +99,11 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		return nil, fmt.Errorf("%w: whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
 	}
 
+	monthlyCap, err := uc.monthlyCapGuard(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
 	description := fmt.Sprintf("Template WhatsApp %s (ref: %s)", strings.ToLower(templateCategory), referenceID)
 	return uc.balanceRepo.DebitBalance(balance.DebitBalanceInput{
 		WorkspaceID:  workspaceID,
@@ -87,5 +113,6 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		Description:  description,
 		CostMicros:   result.CostMicros,
 		ProfitMicros: result.ProfitMicros,
+		MonthlyCap:   monthlyCap,
 	})
 }

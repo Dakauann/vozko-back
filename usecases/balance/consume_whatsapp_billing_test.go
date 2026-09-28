@@ -24,6 +24,7 @@ type waDebitCall struct {
 	profitMicros int64
 	serviceType  balance.ServiceType
 	referenceID  *string
+	monthlyCap   *balance.MonthlySendCapGuard
 }
 
 type waCreditCall struct {
@@ -55,6 +56,7 @@ func (m *waMockBalanceRepo) DebitBalance(params balance.DebitBalanceInput) (*bal
 		profitMicros: params.ProfitMicros,
 		serviceType:  params.ServiceType,
 		referenceID:  params.ReferenceID,
+		monthlyCap:   params.MonthlyCap,
 	})
 	return &balance.Transaction{
 		ID:           "tx-" + params.WorkspaceID,
@@ -136,7 +138,7 @@ func findWACatalogItem(service string) workspace_pricing.PricingItem {
 func TestWhatsAppBilling_UtilityProfitStored(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-utility-1", "UTILITY")
 	if err != nil {
@@ -174,7 +176,7 @@ func TestWhatsAppBilling_UtilityProfitStored(t *testing.T) {
 func TestWhatsAppBilling_MarketingProfitStored(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-marketing-1", "MARKETING")
 	if err != nil {
@@ -210,7 +212,7 @@ func TestWhatsAppBilling_MarketingProfitStored(t *testing.T) {
 func TestWhatsAppBilling_RefundIsMarkedAndNegatesProfit(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa-refund", "entry-wa-ref-1", "UTILITY")
 	if err != nil {
@@ -256,7 +258,7 @@ func TestWhatsAppBilling_RefundIsMarkedAndNegatesProfit(t *testing.T) {
 func TestWhatsAppBilling_MarketingRefundNegatesProfit(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, _ = uc.Execute("ws-wa-mkt-refund", "entry-mkt-1", "MARKETING")
 	err := uc.Refund("ws-wa-mkt-refund", "entry-mkt-1", "MARKETING")
@@ -281,7 +283,7 @@ func TestWhatsAppBilling_MarketingRefundNegatesProfit(t *testing.T) {
 func TestWhatsAppBilling_AuthenticationProfitStored(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa-auth", "entry-auth-1", "AUTHENTICATION")
 	if err != nil {
@@ -318,7 +320,7 @@ func TestWhatsAppBilling_AuthenticationProfitStored(t *testing.T) {
 func TestWhatsAppBilling_AuthenticationRefundNegatesProfit(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, _ = uc.Execute("ws-wa-auth-refund", "entry-auth-ref-1", "AUTHENTICATION")
 	err := uc.Refund("ws-wa-auth-refund", "entry-auth-ref-1", "AUTHENTICATION")
@@ -353,7 +355,7 @@ func TestWhatsAppBilling_AuthenticationRefundNegatesProfit(t *testing.T) {
 func TestWhatsAppBilling_UnsupportedCategoryRejectsDebit(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-bad-cat", "SERVICE")
 	if err == nil {
@@ -370,7 +372,7 @@ func TestWhatsAppBilling_UnsupportedCategoryRejectsDebit(t *testing.T) {
 func TestWhatsAppBilling_UnsupportedCategoryRejectsRefund(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	err := uc.Refund("ws-wa", "entry-bad-cat", "SERVICE")
 	if err == nil {
@@ -387,7 +389,7 @@ func TestWhatsAppBilling_UnsupportedCategoryRejectsRefund(t *testing.T) {
 func TestWhatsAppBilling_EmptyCategoryRejectsDebit(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-empty", "")
 	if err == nil {
@@ -398,7 +400,7 @@ func TestWhatsAppBilling_EmptyCategoryRejectsDebit(t *testing.T) {
 func TestWhatsAppBilling_LowercaseCategoryWorks(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-lower", "utility")
 	if err != nil {
@@ -419,7 +421,7 @@ func TestWhatsAppBilling_LowercaseCategoryWorks(t *testing.T) {
 func TestWhatsAppBilling_MixedCaseCategoryWorks(t *testing.T) {
 	balanceRepo := newWAMockBalanceRepo()
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(balanceRepo, pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws-wa", "entry-mixed", "Marketing")
 	if err != nil {
@@ -435,7 +437,7 @@ func TestWhatsAppBilling_MixedCaseCategoryWorks(t *testing.T) {
 
 func TestGetTemplateCostMicros_Authentication(t *testing.T) {
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	cost, err := uc.GetTemplateCostMicros("ws1", "AUTHENTICATION")
 	if err != nil {
@@ -449,7 +451,7 @@ func TestGetTemplateCostMicros_Authentication(t *testing.T) {
 
 func TestGetTemplateCostMicros_Marketing(t *testing.T) {
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	cost, err := uc.GetTemplateCostMicros("ws1", "MARKETING")
 	if err != nil {
@@ -463,7 +465,7 @@ func TestGetTemplateCostMicros_Marketing(t *testing.T) {
 
 func TestGetTemplateCostMicros_UnsupportedCategoryFails(t *testing.T) {
 	pricer := newWATestPricer()
-	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(newWAMockBalanceRepo(), pricer, &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.GetTemplateCostMicros("ws1", "UNKNOWN_CATEGORY")
 	if err == nil {
@@ -472,7 +474,7 @@ func TestGetTemplateCostMicros_UnsupportedCategoryFails(t *testing.T) {
 }
 
 func TestWhatsAppBilling_DebitRepoError(t *testing.T) {
-	uc := NewConsumeWhatsappTemplateUseCase(&waErrBalanceRepo{debitErr: fmt.Errorf("db write failed")}, newWATestPricer(), &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(&waErrBalanceRepo{debitErr: fmt.Errorf("db write failed")}, newWATestPricer(), &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	_, err := uc.Execute("ws1", "ref1", "UTILITY")
 	if err == nil {
@@ -481,7 +483,7 @@ func TestWhatsAppBilling_DebitRepoError(t *testing.T) {
 }
 
 func TestWhatsAppBilling_CreditRepoError(t *testing.T) {
-	uc := NewConsumeWhatsappTemplateUseCase(&waErrBalanceRepo{creditErr: fmt.Errorf("db write failed")}, newWATestPricer(), &allowAllSubscriptionChecker{})
+	uc := NewConsumeWhatsappTemplateUseCase(&waErrBalanceRepo{creditErr: fmt.Errorf("db write failed")}, newWATestPricer(), &allowAllSubscriptionChecker{}, noMonthlySendCaps{})
 
 	err := uc.Refund("ws1", "ref1", "UTILITY")
 	if err == nil {

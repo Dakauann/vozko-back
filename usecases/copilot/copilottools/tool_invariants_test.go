@@ -33,6 +33,8 @@ func operationToolset() []copilot.Tool {
 		NewPreviewCampaignImportTool(CampaignDeps{}), NewCreateCampaignTool(CampaignDeps{}), NewStartCampaignTool(CampaignDeps{}),
 		NewCreateKnowledgeBaseTool(KnowledgeWriteDeps{}), NewAddKnowledgeDocumentTool(KnowledgeWriteDeps{}),
 		NewCreateAgentTool(nil), NewUpdateAgentTool(nil, nil), NewDeleteAgentTool(nil, nil),
+		NewListUnofficialNumbersTool(UnofficialCampaignDeps{}), NewPreviewUnofficialImportTool(UnofficialCampaignDeps{}),
+		NewCreateUnofficialCampaignTool(UnofficialCampaignDeps{}), NewStartUnofficialCampaignTool(UnofficialCampaignDeps{}),
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"vozko/domain/balance"
+	"vozko/domain/campaign"
 	"vozko/domain/copilot"
 	"vozko/domain/media"
 	"vozko/domain/shared"
@@ -32,16 +33,28 @@ type CampaignDeps struct {
 	Balance   balance.BalanceReader
 }
 
-type campaignFileArgs struct {
+type sheetArgs struct {
 	MediaID         string   `json:"media_id" req:"true" desc:"media_id da planilha anexada na conversa (CSV)" id:"true"`
-	TemplateID      string   `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
 	NumberColumn    string   `json:"number_column" desc:"coluna com o telefone; omita para detectar (numero, telefone, phone...)"`
 	NameColumn      string   `json:"name_column" desc:"coluna com o nome do contato"`
-	VariableColumns []string `json:"variable_columns" desc:"uma coluna por variável do modelo, na ordem de {{1}}, {{2}}...; omita para usar var1, var2..."`
+	VariableColumns []string `json:"variable_columns" desc:"uma coluna por variável da mensagem, na ordem de {{1}}, {{2}}...; omita para usar var1, var2..."`
+}
+
+func (a sheetArgs) sheet() (string, campaign.ColumnMapping, error) {
+	mediaID, err := knownID(a.MediaID, "media_id", "anexos da conversa")
+	if err != nil {
+		return "", campaign.ColumnMapping{}, err
+	}
+	return mediaID, campaign.ColumnMapping{Number: a.NumberColumn, Name: a.NameColumn, Variables: a.VariableColumns}, nil
+}
+
+type campaignFileArgs struct {
+	sheetArgs
+	TemplateID string `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
 }
 
 func (a campaignFileArgs) request(cc copilot.Context) (wc.ImportRequest, error) {
-	mediaID, err := knownID(a.MediaID, "media_id", "anexos da conversa")
+	mediaID, mapping, err := a.sheet()
 	if err != nil {
 		return wc.ImportRequest{}, err
 	}
@@ -49,12 +62,7 @@ func (a campaignFileArgs) request(cc copilot.Context) (wc.ImportRequest, error) 
 	if err != nil {
 		return wc.ImportRequest{}, err
 	}
-	return wc.ImportRequest{
-		WorkspaceID: cc.WorkspaceID,
-		MediaID:     mediaID,
-		TemplateID:  templateID,
-		Mapping:     wc.ColumnMapping{Number: a.NumberColumn, Name: a.NameColumn, Variables: a.VariableColumns},
-	}, nil
+	return wc.ImportRequest{WorkspaceID: cc.WorkspaceID, MediaID: mediaID, TemplateID: templateID, Mapping: mapping}, nil
 }
 
 type previewCampaignImportTool struct{ deps CampaignDeps }
@@ -202,7 +210,7 @@ func (t *createCampaignTool) Execute(ctx context.Context, cc copilot.Context, ar
 		Type:            wc.CampaignTypeStandard,
 		TemplateID:      req.TemplateID,
 		BusinessPhoneID: phoneID,
-		PhoneInputs:     preview.Rows,
+		PhoneInputs:     preview.PhoneInputs(),
 	})
 	if err != nil {
 		return campaignFailure(err)
@@ -310,25 +318,38 @@ func formatUSD(micros int64) string {
 	return fmt.Sprintf("US$ %.2f", float64(micros)/1_000_000)
 }
 
-func campaignFailure(err error) copilot.Result {
+func importFailure(err error) (copilot.Result, bool) {
 	if res, ok := departmentFailure(err); ok {
-		return res
+		return res, true
 	}
 	switch {
 	case errors.Is(err, errInvalidArgs):
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
+		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}, true
 	case errors.Is(err, media.ErrMediaNotFound):
-		return copilot.Result{Status: copilot.StatusError, Message: "anexo desconhecido; peça ao usuário para anexar a planilha na conversa"}
+		return copilot.Result{Status: copilot.StatusError, Message: "anexo desconhecido; peça ao usuário para anexar o arquivo na conversa"}, true
 	case errors.Is(err, media.ErrMediaTooLarge):
-		return copilot.Result{Status: copilot.StatusError, Message: "a planilha é grande demais; importe pela tela de campanhas"}
+		return copilot.Result{Status: copilot.StatusError, Message: "a planilha é grande demais; importe pela tela de campanhas"}, true
+	case errors.Is(err, campaign.ErrImportEmpty):
+		return copilot.Result{Status: copilot.StatusError, Message: "a planilha está vazia ou só tem o cabeçalho"}, true
+	case errors.Is(err, campaign.ErrImportNumberColumn):
+		return copilot.Result{Status: copilot.StatusError, Message: "coluna de telefone não encontrada; passe number_column com o nome exato do cabeçalho"}, true
+	case errors.Is(err, campaign.ErrImportVariableCount):
+		return copilot.Result{Status: copilot.StatusError, Message: "passe variable_columns com uma coluna existente para cada variável da mensagem, na ordem"}, true
+	case errors.Is(err, campaign.ErrNothingToSend), errors.Is(err, campaign.ErrAlreadySent):
+		return copilot.Result{Status: copilot.StatusError, Message: "a campanha não tem contatos pendentes para enviar"}, true
+	case errors.Is(err, campaign.ErrAlreadyRunning):
+		return copilot.Result{Status: copilot.StatusError, Message: "a campanha já está em envio"}, true
+	}
+	return copilot.Result{}, false
+}
+
+func campaignFailure(err error) copilot.Result {
+	if res, ok := importFailure(err); ok {
+		return res
+	}
+	switch {
 	case errors.Is(err, tmpl.ErrTemplateAccessDenied), errors.Is(err, tmpl.ErrTemplateNotFound), errors.Is(err, wc.ErrCampaignTemplateNotFound):
 		return copilot.Result{Status: copilot.StatusError, Message: "modelo desconhecido ou sem acesso; use os ids de list_templates"}
-	case errors.Is(err, wc.ErrImportEmpty):
-		return copilot.Result{Status: copilot.StatusError, Message: "a planilha está vazia ou só tem o cabeçalho"}
-	case errors.Is(err, wc.ErrImportNumberColumn):
-		return copilot.Result{Status: copilot.StatusError, Message: "coluna de telefone não encontrada; passe number_column com o nome exato do cabeçalho"}
-	case errors.Is(err, wc.ErrImportVariableCount):
-		return copilot.Result{Status: copilot.StatusError, Message: "passe variable_columns com uma coluna existente para cada variável do modelo, na ordem"}
 	case errors.Is(err, wc.ErrCampaignPhoneNumbersTooMany):
 		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("a planilha passa do limite de %d contatos por campanha", wc.MaxCampaignPhoneNumbers)}
 	case errors.Is(err, wc.ErrCampaignBusinessPhoneNotFound), errors.Is(err, wc.ErrCampaignBusinessPhoneNoAccess):
@@ -341,8 +362,6 @@ func campaignFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "campanha desconhecida ou sem acesso"}
 	case errors.Is(err, wc.ErrCampaignNoSubscription):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o workspace não tem assinatura ativa; campanhas não podem ser iniciadas"}
-	case errors.Is(err, wc.ErrCampaignNoNumbers), errors.Is(err, wc.ErrCampaignAllProcessed):
-		return copilot.Result{Status: copilot.StatusError, Message: "a campanha não tem contatos pendentes para enviar"}
 	case errors.Is(err, wc.ErrDispatchCampaignAlreadyRunning):
 		return copilot.Result{Status: copilot.StatusError, Message: "a campanha já está em envio"}
 	}

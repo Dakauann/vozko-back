@@ -237,6 +237,7 @@ type repositories struct {
 	callRecording           call_recordings.CallRecordRepository
 	callCDR                 call_cdr_domain.Repository
 	balance                 balance_domain.Repository
+	monthlySendCaps         balance_domain.MonthlySendCapRepository
 	workspacePricing        workspace_pricing_domain.Repository
 	workspaceTemplateAccess workspace_template_access_domain.Repository
 	workspacePhoneAccess    workspace_phone_access_domain.Repository
@@ -948,6 +949,7 @@ type handlers_ struct {
 	lead                    *leadhttp.LeadHandler
 	callRecording           *callrecordinghttp.CallRecordingHandler
 	balance                 *balancehttp.BalanceHandler
+	sendCap                 *balancehttp.SendCapHandler
 	workspaceTemplateAccess *workspacetemplateaccesshttp.WorkspaceTemplateAccessHandler
 	workspacePhoneAccess    *workspacephoneaccesshttp.WorkspacePhoneAccessHandler
 	conversation            *conversationhttp.ConversationHandler

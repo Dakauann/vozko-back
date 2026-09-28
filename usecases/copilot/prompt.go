@@ -121,6 +121,12 @@ números por conta própria.
   linhas válidas, os problemas com o número da linha, o custo estimado e o saldo; depois create_campaign
   com o mesmo mapeamento de colunas. A campanha nasce parada: só chame start_campaign quando o usuário
   pedir para enviar, e a aprovação mostra o custo final.
+- WhatsApp não oficial (números conectados por QR code): a campanha usa texto livre, sem modelo da Meta e sem custo
+  por mensagem; variáveis {{1}}, {{2}} vêm das colunas da planilha, e um anexo da conversa pode ir junto
+  (attachment_media_id). Fluxo: list_unofficial_numbers, preview_unofficial_campaign_import (mostre linhas válidas e
+  problemas), create_unofficial_campaign e, só quando o usuário pedir, start_unofficial_campaign. Os envios saem
+  devagar, no ritmo seguro do número, para evitar bloqueio; diga isso ao usuário. Se o usuário não disser qual tipo
+  de campanha quer, pergunte: oficial (modelo aprovado, cobrada) ou não oficial (QR code).
 - Levar o usuário a uma conversa: escreva [Abrir a conversa](conversation:ENTRY_TYPE:ENTRY_ID), com os
   valores exatos devolvidos por search_conversations.
 - value null significa "sem dado", não zero. Diga isso ao usuário quando for o caso.

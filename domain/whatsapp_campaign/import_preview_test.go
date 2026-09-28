@@ -1,40 +1,16 @@
 package whatsapp_campaign_test
 
 import (
-	"reflect"
 	"testing"
 
+	"vozko/domain/campaign"
 	wc "vozko/domain/whatsapp_campaign"
 )
 
-func TestDefaultMappingDetectsCommonHeaders(t *testing.T) {
-	got := wc.DefaultMapping([]string{"Nome", " Telefone ", "VAR2", "var1", "cidade"}, 2)
-	want := wc.ColumnMapping{Number: " Telefone ", Name: "Nome", Variables: []string{"var1", "VAR2"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("mapping = %+v", got)
-	}
-}
-
-func TestDefaultMappingLeavesUnknownVariablesBlank(t *testing.T) {
-	got := wc.DefaultMapping([]string{"phone", "var1"}, 3)
-	if !reflect.DeepEqual(got.Variables, []string{"var1", "", ""}) {
-		t.Fatalf("variables = %q", got.Variables)
-	}
-}
-
-func TestStartableNeedsPendingNumbers(t *testing.T) {
-	cases := []struct {
-		metrics *wc.CampaignMetrics
-		want    error
-	}{
-		{nil, wc.ErrCampaignNoNumbers},
-		{&wc.CampaignMetrics{}, wc.ErrCampaignNoNumbers},
-		{&wc.CampaignMetrics{TotalNumbers: 2, Processed: 2}, wc.ErrCampaignAllProcessed},
-		{&wc.CampaignMetrics{TotalNumbers: 2, Pending: 1, Processed: 1}, nil},
-	}
-	for _, c := range cases {
-		if err := (&wc.Campaign{Metrics: c.metrics}).Startable(); err != c.want {
-			t.Fatalf("%+v: %v", c.metrics, err)
-		}
+func TestImportPreviewBecomesCampaignPhoneInputs(t *testing.T) {
+	p := wc.ImportPreview{ImportResult: campaign.ImportResult{Rows: []campaign.ImportRow{{Number: "5584994409624", Name: "Maria", Variables: []string{"BF10"}}}}}
+	got := p.PhoneInputs()
+	if len(got) != 1 || got[0].Number != "5584994409624" || got[0].Name != "Maria" || got[0].Variables[0] != "BF10" {
+		t.Fatalf("inputs = %+v", got)
 	}
 }

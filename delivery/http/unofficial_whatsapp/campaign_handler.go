@@ -28,7 +28,6 @@ type CampaignHandler struct {
 	assignDep uwc.AssignDepartmentUseCase
 	summary   uwc.GetSummaryUseCase
 	entries   uwc.ListEntriesUseCase
-	dispatch  uwc.DispatchCampaignUseCase
 	reset     uwc.ResetCampaignUseCase
 	clear     uwc.ClearHistoryUseCase
 	addEntry  uwc.AddEntriesUseCase
@@ -39,6 +38,7 @@ type CampaignHandler struct {
 
 	departments DepartmentScopeResolver
 	access      uwc.CampaignAccessUseCase
+	actions     uwc.CampaignActionUseCase
 }
 
 type CampaignHandlerDeps struct {
@@ -46,12 +46,12 @@ type CampaignHandlerDeps struct {
 	Update      uwc.UpdateCampaignUseCase
 	Get         uwc.GetCampaignUseCase
 	Access      uwc.CampaignAccessUseCase
+	Actions     uwc.CampaignActionUseCase
 	List        uwc.ListCampaignsUseCase
 	Delete      uwc.DeleteCampaignUseCase
 	AssignDep   uwc.AssignDepartmentUseCase
 	Summary     uwc.GetSummaryUseCase
 	Entries     uwc.ListEntriesUseCase
-	Dispatch    uwc.DispatchCampaignUseCase
 	Reset       uwc.ResetCampaignUseCase
 	Clear       uwc.ClearHistoryUseCase
 	AddEntry    uwc.AddEntriesUseCase
@@ -66,9 +66,9 @@ func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
 	return &CampaignHandler{
 		create: d.Create, update: d.Update, get: d.Get, list: d.List,
 		remove: d.Delete, assignDep: d.AssignDep, summary: d.Summary,
-		entries: d.Entries, dispatch: d.Dispatch, reset: d.Reset, clear: d.Clear,
+		entries: d.Entries, reset: d.Reset, clear: d.Clear,
 		addEntry: d.AddEntry, updEntry: d.UpdateEntry, delEntry: d.DeleteEntry,
-		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments, access: d.Access,
+		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments, access: d.Access, actions: d.Actions,
 	}
 }
 
@@ -87,17 +87,13 @@ func (h *CampaignHandler) campaignScope(w http.ResponseWriter, r *http.Request) 
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return "", uw.DepartmentScope{}, false
 	}
-	scope, allowed := h.departments.GetDepartmentScope(
-		claims.UserID, workspaceID, claims.Role == "admin")
+	scope, allowed := uw.ResolveScope(h.departments, claims.UserID, workspaceID, claims.Role == "admin")
 	if !allowed {
 		response.WriteError(w, http.StatusForbidden,
 			"you do not have access to this workspace's campaigns", nil)
 		return "", uw.DepartmentScope{}, false
 	}
-	return workspaceID, uw.DepartmentScope{
-		DepartmentIDs: scope.DepartmentIDs,
-		Restrict:      scope.Restrict,
-	}, true
+	return workspaceID, scope, true
 }
 
 func (h *CampaignHandler) ownedCampaign(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, *uwc.Campaign, bool) {
@@ -343,14 +339,15 @@ func (h *CampaignHandler) Stop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CampaignHandler) act(w http.ResponseWriter, r *http.Request, action campaign.Action) {
-	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
+	workspaceID, scope, ok := h.campaignScope(w, r)
+	if !ok {
 		return
 	}
-	err := h.dispatch.Dispatch(r.Context(), uwc.DispatchCampaignInput{
-		CampaignID: mux.Vars(r)["id"],
-		Action:     action,
-	})
-	if err != nil {
+	if h.actions == nil {
+		response.WriteError(w, http.StatusNotFound, uwc.ErrCampaignNotFound.Error(), nil)
+		return
+	}
+	if _, err := h.actions.Act(r.Context(), workspaceID, scope, mux.Vars(r)["id"], action); err != nil {
 		writeCampaignError(w, err)
 		return
 	}
