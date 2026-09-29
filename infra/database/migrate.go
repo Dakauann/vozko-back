@@ -180,6 +180,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.AudienceBatch{},
 			&schema.AudienceBackfill{},
 			&schema.TelegramAccount{},
+			&schema.SIPTrunk{},
 			&schema.TelegramContact{},
 			&schema.TelegramConversation{},
 			&schema.TelegramDeepLink{},

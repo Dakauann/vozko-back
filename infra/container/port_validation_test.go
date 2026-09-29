@@ -33,6 +33,26 @@ func TestCheckPortLayout(t *testing.T) {
 			in:   portLayoutInputs{mux: eLo, ephLo: eLo, ephHi: eHi},
 			want: "WhatsApp media mux",
 		},
+		{
+			name: "sip signalling and rtp below the ephemeral range",
+			in:   portLayoutInputs{mux: 3092, sip: portRange{5063, 5162}, rtp: portRange{20000, 29999}, ephLo: eLo, ephHi: eHi},
+			want: "",
+		},
+		{
+			name: "rtp range reaching into the ephemeral range",
+			in:   portLayoutInputs{mux: 3092, sip: portRange{5063, 5162}, rtp: portRange{20000, 59999}, ephLo: eLo, ephHi: eHi},
+			want: "SIP RTP ports",
+		},
+		{
+			name: "sip signalling range inside the ephemeral range",
+			in:   portLayoutInputs{mux: 3092, sip: portRange{40000, 40099}, rtp: portRange{20000, 29999}, ephLo: eLo, ephHi: eHi},
+			want: "SIP signalling ports",
+		},
+		{
+			name: "whatsapp mux inside the rtp range",
+			in:   portLayoutInputs{mux: 25000, sip: portRange{5063, 5162}, rtp: portRange{20000, 29999}, ephLo: eLo, ephHi: eHi},
+			want: "WhatsApp media mux port 25000 sits inside the SIP RTP ports",
+		},
 	}
 
 	for _, c := range cases {

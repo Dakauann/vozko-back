@@ -9,6 +9,8 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/zaf/g711"
+
+	"vozko/infra/natdiscovery"
 )
 
 const (
@@ -18,7 +20,7 @@ const (
 	frameDuration = 20 * time.Millisecond
 )
 
-var defaultSTUNServers = []string{"stun:stun.l.google.com:19302"}
+var defaultSTUNServers = natdiscovery.DefaultSTUNServers
 
 type Session struct {
 	pc         *webrtc.PeerConnection

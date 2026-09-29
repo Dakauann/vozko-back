@@ -83,6 +83,7 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.unofficialCampaignTools(),
 		c.workspaceAdminTools(),
 		c.accessTools(),
+		c.callTools(),
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
@@ -173,6 +174,13 @@ func (c *Container) accessTools() []copilot.Tool {
 		copilottools.NewDiagnoseAccessTool(deps),
 		copilottools.NewOpenScreenTool(deps),
 	}
+}
+
+func (c *Container) callTools() []copilot.Tool {
+	if c.sipTrunks == nil {
+		return nil
+	}
+	return []copilot.Tool{copilottools.NewPlaceCallTool(copilottools.CallDeps{Planner: c.sipTrunks.Planner})}
 }
 
 func (c *Container) unofficialCampaignTools() []copilot.Tool {

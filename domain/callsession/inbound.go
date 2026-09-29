@@ -9,6 +9,13 @@ import (
 
 const CallSessionInboundCall = "call:incoming"
 
+const CallSessionInboundCallWithdrawn = "call:incoming_withdrawn"
+
+type InboundOfferWithdrawn struct {
+	OfferID string `json:"offer_id"`
+	Reason  string `json:"reason"`
+}
+
 type InboundCallOffer struct {
 	OfferID     string `json:"offer_id"`
 	CallID      string `json:"call_id"`

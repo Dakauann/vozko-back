@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vozko/domain/calls/billing"
 )
 
 type LLMPriceFetcher interface {
@@ -37,7 +39,6 @@ type Pricer interface {
 
 	PriceLLM(workspaceID string, model string, promptTokens, completionTokens int, providerCostMicros int64) (PriceResult, error)
 
-	PriceTelephony(workspaceID string, durationSeconds float64) (PriceResult, error)
 
 	PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error)
 
@@ -109,8 +110,7 @@ func (p *pricer) ResolveForWorkspace(workspaceID string) ([]ResolvedPricingItem,
 	if workspaceID != "" && p.planPricing != nil {
 		planItems, err = p.planPricing.ListForWorkspace(workspaceID)
 		if err != nil {
-
-			planItems = nil
+			return nil, fmt.Errorf("failed to get plan pricing for workspace %s: %w", workspaceID, err)
 		}
 	}
 	resolved := ResolvePricingLayers(defaults, planItems)
@@ -189,10 +189,6 @@ func (p *pricer) PriceLLM(workspaceID string, model string, promptTokens, comple
 	}, nil
 }
 
-func (p *pricer) PriceTelephony(workspaceID string, durationSeconds float64) (PriceResult, error) {
-	return p.PriceTelephonyChannel(workspaceID, durationSeconds, "")
-}
-
 func (p *pricer) PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error) {
 	if durationSeconds <= 0 {
 		return PriceResult{}, nil
@@ -211,7 +207,7 @@ func (p *pricer) PriceTelephonyChannel(workspaceID string, durationSeconds float
 
 		return PriceResult{}, nil
 	}
-	minutes := int64(math.Ceil(durationSeconds / 60.0))
+	minutes := billing.BilledMinutes(int(math.Ceil(durationSeconds)))
 	costMicros := minutes * item.CostMicros
 	priceMicros := minutes * item.PriceMicros
 	return PriceResult{

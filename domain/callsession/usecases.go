@@ -23,6 +23,7 @@ type CallAdmissionLease struct {
 	WorkspaceID         string
 	ReservedMicros      int64
 	PerMinuteCostMicros int64
+	CallChannel         string
 	SlotAcquired        bool
 	AcquiredAt          time.Time
 }
@@ -46,6 +47,7 @@ type StartOutboundCallInput struct {
 	EntryType        string
 	TargetPhone      string
 	WhatsAppPhoneID  string
+	TrunkID          string
 	OnWaitingForSlot func()
 }
 

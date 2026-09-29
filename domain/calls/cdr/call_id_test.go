@@ -39,3 +39,23 @@ func TestSourceForCallID(t *testing.T) {
 		t.Errorf("SIP source = %q, want %q", got, SourceWebSocket)
 	}
 }
+
+func TestSIPCallIDsHaveTheirOwnSourceAndAreRecorded(t *testing.T) {
+	for _, id := range []string{NewSIPOutboundCallID(), SIPInboundCallID("dialog-1")} {
+		if !IsSIPCallID(id) || IsWhatsAppCallID(id) {
+			t.Errorf("%q: IsSIPCallID=%v IsWhatsAppCallID=%v, want a SIP id only", id, IsSIPCallID(id), IsWhatsAppCallID(id))
+		}
+		if SourceForCallID(id) != SourceSIPTrunk {
+			t.Errorf("SourceForCallID(%q) = %q, want sip_trunk", id, SourceForCallID(id))
+		}
+		if !IsRecordedCallID(id) {
+			t.Errorf("IsRecordedCallID(%q) = false, want SIP calls recorded", id)
+		}
+	}
+	if NewSIPOutboundCallID() == NewSIPOutboundCallID() {
+		t.Error("outbound SIP call ids must be unique")
+	}
+	if !IsRecordedCallID("wa-call-1") || IsRecordedCallID("call_abc") || IsSIPCallID("sip-12345") {
+		t.Error("recording must cover WhatsApp and SIP call ids only")
+	}
+}

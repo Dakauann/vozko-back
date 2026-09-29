@@ -402,6 +402,7 @@ type StartCallPayload struct {
 	PhoneNumber string `json:"phone_number,omitempty"`
 
 	WhatsAppPhoneID string `json:"whatsapp_phone_id,omitempty"`
+	TrunkID         string `json:"trunk_id,omitempty"`
 	RequestID       string `json:"request_id,omitempty"`
 }
 

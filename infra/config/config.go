@@ -112,6 +112,8 @@ type Config struct {
 
 	WhatsAppMediaUDPMuxPort int
 
+	SIP SIPConfig
+
 	RecordingsStagingDir   string
 	RecordingUploadWorkers int
 
@@ -249,6 +251,8 @@ func LoadConfig() Config {
 
 		WhatsAppStunServers:     parseCSVEnv("WHATSAPP_STUN_SERVERS"),
 		WhatsAppMediaUDPMuxPort: mustGetIntEnv("WHATSAPP_MEDIA_UDP_MUX_PORT"),
+
+		SIP: loadSIPConfig(),
 
 		RecordingsStagingDir:   getEnvTrimmed("RECORDINGS_STAGING_DIR", ""),
 		RecordingUploadWorkers: getIntEnv("RECORDING_UPLOAD_WORKERS", 8),
@@ -497,5 +501,37 @@ func sandboxPayerStatus() string {
 	default:
 		log.Fatalf("invalid MERCADOPAGO_SANDBOX_PAYER_STATUS %q: must be APRO (approved), CONT (pending) or OTHE (rejected)", status)
 		return ""
+	}
+}
+
+type SIPConfig struct {
+	BindHost        string
+	PortStart       int
+	PortCount       int
+	RTPPortStart    int
+	RTPPortEnd      int
+	RegisterExpiry  time.Duration
+	DialTimeout     time.Duration
+	MediaTimeout    time.Duration
+	MaxCallDuration time.Duration
+	PublicAddress   string
+	STUNServers     []string
+	Debug           bool
+}
+
+func loadSIPConfig() SIPConfig {
+	return SIPConfig{
+		BindHost:        getEnvTrimmed("SIP_BIND_HOST", "0.0.0.0"),
+		PortStart:       getIntEnv("SIP_PORT_START", 5063),
+		PortCount:       getIntEnv("SIP_PORT_COUNT", 100),
+		RTPPortStart:    getIntEnv("SIP_RTP_PORT_START", 20000),
+		RTPPortEnd:      getIntEnv("SIP_RTP_PORT_END", 29999),
+		RegisterExpiry:  time.Duration(getIntEnv("SIP_REGISTER_EXPIRY_SECONDS", 60)) * time.Second,
+		DialTimeout:     time.Duration(getIntEnv("SIP_DIAL_TIMEOUT_SECONDS", 60)) * time.Second,
+		MediaTimeout:    time.Duration(getIntEnv("SIP_MEDIA_TIMEOUT_SECONDS", 60)) * time.Second,
+		MaxCallDuration: time.Duration(getIntEnv("SIP_MAX_CALL_DURATION_MINUTES", 240)) * time.Minute,
+		PublicAddress:   trimEnv("SIP_PUBLIC_ADDRESS"),
+		STUNServers:     parseCSVEnv("SIP_STUN_SERVERS"),
+		Debug:           getBoolEnv("SIP_DEBUG", false),
 	}
 }

@@ -5,7 +5,7 @@ import "testing"
 func TestRetiredResourcesAreDroppedNotRejected(t *testing.T) {
 	perms := []PermissionEntry{
 		{Resource: ResourceConversations, Action: ActionRead},
-		{Resource: Resource("sip_trunks"), Action: ActionRead},
+		{Resource: Resource("branches"), Action: ActionRead},
 		{Resource: ResourceLeads, Action: ActionCreate},
 		{Resource: Resource("usage"), Action: ActionRead},
 		{Resource: Resource("affiliate"), Action: ActionRead},
@@ -36,9 +36,9 @@ func TestRetiredResourcesAreDroppedNotRejected(t *testing.T) {
 
 func TestDroppedResourcesAreReportedOnce(t *testing.T) {
 	perms := []PermissionEntry{
-		{Resource: Resource("sip_trunks"), Action: ActionRead},
-		{Resource: Resource("sip_trunks"), Action: ActionCreate},
-		{Resource: Resource("sip_trunks"), Action: ActionDelete},
+		{Resource: Resource("branches"), Action: ActionRead},
+		{Resource: Resource("branches"), Action: ActionCreate},
+		{Resource: Resource("branches"), Action: ActionDelete},
 	}
 
 	kept, dropped := DropRetiredResources(perms)
@@ -46,8 +46,8 @@ func TestDroppedResourcesAreReportedOnce(t *testing.T) {
 	if len(kept) != 0 {
 		t.Errorf("kept %v, want nothing", kept)
 	}
-	if len(dropped) != 1 || dropped[0] != Resource("sip_trunks") {
-		t.Errorf("dropped = %v, want [sip_trunks] once", dropped)
+	if len(dropped) != 1 || dropped[0] != Resource("branches") {
+		t.Errorf("dropped = %v, want [branches] once", dropped)
 	}
 }
 

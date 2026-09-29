@@ -65,6 +65,7 @@ var (
 	ScreenFacebookConnect           = registerScreen("facebook_connect")
 	ScreenTelegramAccounts          = registerScreen("telegram_accounts")
 	ScreenTelegramConnect           = registerScreen("telegram_connect")
+	ScreenSIPTrunks                 = registerScreen("sip_trunks")
 	ScreenTelegramAccount           = registerScreen("telegram_account", "accountId")
 	ScreenMessageShortcuts          = registerScreen("message_shortcuts")
 	ScreenLeads                     = registerScreen("leads")

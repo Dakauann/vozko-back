@@ -16,6 +16,7 @@ type CallDialInput struct {
 	IsAdmin     bool
 
 	WhatsAppPhoneID string
+	TrunkID         string
 }
 
 type CRMCall interface {

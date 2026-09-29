@@ -1,6 +1,7 @@
 package workspace_plan_usecase
 
 import (
+	"errors"
 	"time"
 
 	workspace_plan "vozko/domain/workspace/workspace_plan"
@@ -21,9 +22,11 @@ func NewPlanPricingAdapter(
 
 func (a *PlanPricingAdapter) ListForWorkspace(workspaceID string) ([]workspace_pricing.PricingItem, error) {
 	sub, err := a.subReader.GetCurrentByWorkspaceID(workspaceID, time.Now())
-	if err != nil {
-
+	if errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent) {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	items, err := a.planRepo.ListPricingItems(sub.PlanDefinitionID)
 	if err != nil {

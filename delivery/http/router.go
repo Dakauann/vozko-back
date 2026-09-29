@@ -48,6 +48,7 @@ import (
 	savedviewhttp "vozko/delivery/http/savedview"
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
+	siptrunkhttp "vozko/delivery/http/siptrunk"
 	stagehttp "vozko/delivery/http/stage"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
@@ -163,6 +164,7 @@ type router struct {
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
+	sipTrunkHandler                *siptrunkhttp.Handler
 	telegramWebhookHandler         *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler      *unofficialwahttp.Handler
 	whatsappOutreachHandler        *whatsappoutreachhttp.Handler
@@ -282,6 +284,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	instagramWebhookHandler *instagramhttp.WebhookHandler,
 	telegramHandler *telegramhttp.Handler,
 	telegramWebhookHandler *telegramhttp.WebhookHandler,
+	sipTrunkHandler *siptrunkhttp.Handler,
 	unofficialWhatsAppHandler *unofficialwahttp.Handler,
 	whatsappOutreachHandler *whatsappoutreachhttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
@@ -298,6 +301,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		sendCapHandler:                 sendCapHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
 		telegramHandler:                telegramHandler,
+		sipTrunkHandler:                sipTrunkHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
 		unofficialWhatsAppHandler:      unofficialWhatsAppHandler,
 		whatsappOutreachHandler:        whatsappOutreachHandler,
@@ -460,6 +464,7 @@ func (r *router) setupRoutes() {
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
+	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
 	r.setupUnofficialWhatsAppRoutes(protected)
 	r.setupWhatsAppOutreachRoutes(protected)
 	r.setupWABARoutes(protected)

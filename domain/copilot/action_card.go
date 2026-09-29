@@ -13,6 +13,7 @@ const (
 	ActionTopUpBalance              ActionKind = "top_up_balance"
 	ActionManageSubscription        ActionKind = "manage_subscription"
 	ActionOpenScreen                ActionKind = "open_screen"
+	ActionPlaceCall                 ActionKind = "place_call"
 )
 
 var actionCapabilities = map[ActionKind]readiness.Capability{
@@ -50,6 +51,7 @@ type ActionCard struct {
 	BalanceMicros      int64             `json:"balanceMicros"`
 	SubscriptionActive bool              `json:"subscriptionActive"`
 	Destination        *Destination      `json:"destination,omitempty"`
+	Call               *CallIntent       `json:"call,omitempty"`
 }
 
 func NewActionCard(kind ActionKind, snap *readiness.Snapshot) (*ActionCard, bool) {

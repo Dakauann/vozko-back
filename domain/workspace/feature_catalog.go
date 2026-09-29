@@ -348,6 +348,19 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "sip_trunks",
+		Name:        "Troncos SIP",
+		Location:    "Menu lateral › Telefonia › Troncos SIP, e o discador na borda direita",
+		Description: "Troncos SIP do provedor de telefonia e o discador que faz e atende ligações por eles.",
+		Capabilities: []Capability{
+			{Key: "sip_trunks.view", Description: "Ver os troncos, o estado do registro e as chamadas em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead)}, Screens: []Screen{ScreenSIPTrunks}},
+			{Key: "sip_trunks.connect", Description: "Cadastrar troncos", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionCreate)}},
+			{Key: "sip_trunks.edit", Description: "Editar troncos e suas credenciais", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionUpdate)}},
+			{Key: "sip_trunks.remove", Description: "Remover troncos, encerrando as chamadas em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionDelete)}},
+			{Key: "sip_trunks.call", Description: "Fazer e atender ligações pelo discador", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionCall), need(ResourceCallSession, ActionUse)}},
+		},
+	},
+	{
 		Key:         "telegram",
 		Name:        "Telegram",
 		Location:    "Menu lateral › Telegram › Contas",

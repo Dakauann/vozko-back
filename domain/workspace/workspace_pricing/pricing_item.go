@@ -31,12 +31,22 @@ const (
 
 const (
 	TelephonyServiceWhatsAppCalls = "whatsapp_calls"
+	TelephonyServiceSIPCalls      = "sip_calls"
 )
 
-const TelephonyChannelWhatsApp = "whatsapp"
+const (
+	TelephonyChannelWhatsApp = "whatsapp"
+	TelephonyChannelSIP      = "sip"
+)
 
-func TelephonyServiceForChannel(_ string) string {
-	return TelephonyServiceWhatsAppCalls
+func TelephonyServiceForChannel(channel string) string {
+	switch channel {
+	case TelephonyChannelWhatsApp:
+		return TelephonyServiceWhatsAppCalls
+	case TelephonyChannelSIP:
+		return TelephonyServiceSIPCalls
+	}
+	return ""
 }
 
 type PricingItem struct {
@@ -91,6 +101,7 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryWhatsApp, Service: WhatsAppServiceServiceMessage, Metric: "per_message", CostMicros: 0, PriceMicros: 0, Currency: "USD"},
 
 	{Category: CategoryTelephony, Service: TelephonyServiceWhatsAppCalls, Metric: "per_minute", CostMicros: 10_800, PriceMicros: 13_333, Currency: "USD"},
+	{Category: CategoryTelephony, Service: TelephonyServiceSIPCalls, Metric: "per_minute", CostMicros: 0, PriceMicros: 0, Currency: "USD"},
 
 	{Category: CategoryLLM, Service: "default_markup", Metric: "percentage", MarkupPct: 0.20, Currency: "USD"},
 

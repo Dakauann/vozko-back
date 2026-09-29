@@ -45,7 +45,7 @@ func attachCall(ctx context.Context, input callAttachInput) (*liveCall, error) {
 		input.StartedAt = time.Now()
 	}
 
-	if input.RecordingPool != nil && input.Call != nil && cdr.IsWhatsAppCallID(input.Call.ID()) {
+	if input.RecordingPool != nil && input.Call != nil && cdr.IsRecordedCallID(input.Call.ID()) {
 		if rec := calls_usecase.NewRecordingCRMCall(input.Call, input.RecordingPool, input.WorkspaceID, input.EntryID, input.LeadID); rec != nil {
 			input.Call = rec
 		}

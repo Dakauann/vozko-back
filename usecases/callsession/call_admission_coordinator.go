@@ -58,6 +58,7 @@ func (c *callAdmissionCoordinator) Acquire(ctx context.Context, input callsessio
 	lease := &callsession.CallAdmissionLease{
 		WorkspaceID:         input.WorkspaceID,
 		PerMinuteCostMicros: pr.PriceMicros,
+		CallChannel:         input.CallChannel,
 		AcquiredAt:          time.Now(),
 	}
 

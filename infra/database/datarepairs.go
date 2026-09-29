@@ -345,7 +345,6 @@ func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 }
 
 var retiredPermissionResources = []string{
-	"sip_trunks",
 	"branches",
 	"campaigns",
 	"affiliate",

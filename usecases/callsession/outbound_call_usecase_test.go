@@ -143,3 +143,43 @@ func TestEndOutboundCallUseCaseHangupAndRelease(t *testing.T) {
 		t.Fatalf("releaseCalls = %d, want 1", admission.releaseCalls)
 	}
 }
+
+type channelRecordingAdmission struct {
+	stubAdmission
+	channel string
+}
+
+func (s *channelRecordingAdmission) Acquire(ctx context.Context, input callsession.CallAdmissionInput) (*callsession.CallAdmissionLease, error) {
+	s.channel = input.CallChannel
+	return s.stubAdmission.Acquire(ctx, input)
+}
+
+func TestTrunkCallsKeepTheTypedNumberAndArePricedAsSIP(t *testing.T) {
+	admission := &channelRecordingAdmission{stubAdmission: stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}}}
+	source := &stubCallSource{call: &stubCRMCall{}}
+	uc := NewStartOutboundCallUseCase(source, nil, admission)
+
+	res, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
+		WorkspaceID: "ws-1",
+		UserID:      "user-1",
+		TargetPhone: " *100# ",
+		TrunkID:     "trunk-1",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if admission.channel != "sip" {
+		t.Fatalf("admission channel = %q, want sip", admission.channel)
+	}
+	if source.lastIn.TrunkID != "trunk-1" || source.lastIn.PhoneNumber != "*100#" || res.PhoneNumber != "*100#" {
+		t.Fatalf("dial input = %+v, want the trunk and the typed dial string untouched", source.lastIn)
+	}
+}
+
+func TestTrunkCallsRequireANumber(t *testing.T) {
+	uc := NewStartOutboundCallUseCase(&stubCallSource{}, nil, &stubAdmission{lease: &callsession.CallAdmissionLease{}})
+	_, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{WorkspaceID: "ws-1", UserID: "u", TrunkID: "trunk-1"})
+	if !errors.Is(err, callsession.ErrTargetPhoneRequired) {
+		t.Fatalf("Execute() error = %v, want ErrTargetPhoneRequired", err)
+	}
+}

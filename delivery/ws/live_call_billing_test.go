@@ -116,6 +116,7 @@ func TestLiveCall_StartIsIdempotent_NoDoubleBilling(t *testing.T) {
 	go func() { defer wg.Done(); lc.start(context.Background(), runner, nil, log.Default(), onEnd) }()
 	wg.Wait()
 
+	answerThenSettle(call)
 	_ = call.Hangup()
 
 	select {
@@ -154,7 +155,7 @@ func TestLiveCall_LifecycleSurvivesForwarderSwap_OneBillingEvent(t *testing.T) {
 
 	call.events <- conversation.CallEvent{Type: "ringing"}
 	lc.forwarder.Store(nil)
-	call.events <- conversation.CallEvent{Type: "answered"}
+	answerThenSettle(call)
 
 	_ = call.Hangup()
 
@@ -181,8 +182,8 @@ func TestLiveCall_LifecycleSurvivesForwarderSwap_OneBillingEvent(t *testing.T) {
 	if ev.CallSource != billing.CallSourceWebSocket {
 		t.Fatalf("CallSource = %q, want websocket", ev.CallSource)
 	}
-	if ev.DurationSec < 30 {
-		t.Fatalf("DurationSec = %d, want >= 30 (full pre-Hangup duration, not just post-swap window)", ev.DurationSec)
+	if ev.DurationSec < 1 || ev.CallStart.Before(startedAt.Add(29*time.Second)) {
+		t.Fatalf("billed %ds from %v, want talk time counted from the answer, not the ring start %v", ev.DurationSec, ev.CallStart, startedAt)
 	}
 }
 
@@ -204,6 +205,7 @@ func TestLiveCall_LifecycleDoneOrderingClosesLast(t *testing.T) {
 		onEndRan.Store(true)
 	})
 
+	answerThenSettle(call)
 	_ = call.Hangup()
 
 	select {
@@ -253,4 +255,9 @@ func TestLiveCall_StartNilLifecycle_ReleasesAndExitsCleanly(t *testing.T) {
 	if got := adm.Releases(); got != 1 {
 		t.Fatalf("nil-lifecycle path released admission %d times, want 1", got)
 	}
+}
+
+func answerThenSettle(call *fakeCallSessionCRMCall) {
+	call.events <- conversation.CallEvent{Type: conversation.CallEventAnswered}
+	time.Sleep(50 * time.Millisecond)
 }

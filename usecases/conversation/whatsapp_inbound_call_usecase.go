@@ -72,7 +72,7 @@ type WhatsAppInboundCallUseCase struct {
 	eligible    inboundEligibleUsers
 	sessions    callsession.CallSessionRegistry
 	admission   callsession.CallAdmissionCoordinator
-	broker      *callsession_usecase.InboundOfferBroker
+	ringer      *callsession_usecase.InboundRinger
 	executor    callsession.InboundCRMCallExecutor
 	messages    conversation_domain.MessageRepository
 	hub         conversation_domain.EventBroadcaster
@@ -125,7 +125,7 @@ func NewWhatsAppInboundCallUseCase(cfg WhatsAppInboundConfig) *WhatsAppInboundCa
 		eligible:    cfg.Eligible,
 		sessions:    cfg.Sessions,
 		admission:   cfg.Admission,
-		broker:      cfg.Broker,
+		ringer:      callsession_usecase.NewInboundRinger(cfg.Broker),
 		executor:    cfg.Executor,
 		messages:    cfg.Messages,
 		hub:         cfg.Hub,
@@ -221,19 +221,35 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 		return
 	}
 
-	signals := uc.registry.Register(c.CallID)
+	termination := watchTermination(uc.registry.Register(c.CallID))
 	defer uc.registry.Unregister(c.CallID)
 
-	deadline := time.Now().Add(whatsappInboundTotalWindow)
-	outcome := uc.ringSequentially(ctx, c, businessPhoneID, workspaceID, entryID, roulette, candidates, signals, deadline)
-	if outcome.terminated {
+	outcome := uc.ringer.Ring(ctx, callsession_usecase.RingRequest{
+		Offer: callsession.InboundCallOffer{
+			CallID:      c.CallID,
+			WorkspaceID: workspaceID,
+			FromNumber:  c.FromNumber,
+			ToNumber:    c.ToNumber,
+			Channel:     "whatsapp",
+		},
+		Candidates:   candidates,
+		PerCandidate: whatsappInboundPerAgentRing,
+		Deadline:     time.Now().Add(whatsappInboundTotalWindow),
+		CallerGone:   termination.gone,
+		OnReserved: func(cand callsession.CallSession) {
+			if roulette && entryID != "" {
+				uc.assignTo(businessPhoneID, workspaceID, entryID, cand.UserID())
+			}
+		},
+	})
+	if outcome.CallerGone {
 		uc.recordEvent(entryID, c.FromNumber, conversation_domain.MessageTypeCallMissed, "📞 Chamada perdida.")
 		return
 	}
-	if outcome.session == nil {
-		if outcome.declinedByUserID != "" {
+	if outcome.Session == nil {
+		if outcome.DeclinedByUserID != "" {
 			uc.recordEvent(entryID, c.FromNumber, conversation_domain.MessageTypeCallMissed,
-				"📞 Chamada recusada por "+uc.usernameOf(outcome.declinedByUserID)+".")
+				"📞 Chamada recusada por "+uc.usernameOf(outcome.DeclinedByUserID)+".")
 		} else {
 			uc.recordEvent(entryID, c.FromNumber, conversation_domain.MessageTypeCallMissed, "📞 Chamada não atendida.")
 		}
@@ -244,7 +260,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 	reservationActive := true
 	defer func() {
 		if reservationActive {
-			outcome.session.Release(outcome.offerID)
+			outcome.Session.Release(outcome.OfferID)
 		}
 	}()
 
@@ -258,19 +274,18 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 
 	call := newWhatsAppInboundCall("wa-in-"+c.CallID, businessPhoneID, c.CallID, c.FromNumber, sess, uc.signaling, uc.log)
 	go func() {
-		for sig := range signals {
-			if sig.Kind == conversation_domain.WhatsAppCallTerminate {
-				call.markEnded(sig.Reason)
-				return
-			}
+		select {
+		case <-termination.gone:
+			call.markEnded(termination.reason)
+		case <-call.Done():
 		}
 	}()
 
 	if err := uc.executor.AttachInboundCRMCall(ctx, callsession.AttachInboundCRMCallInput{
-		OfferID:     outcome.offerID,
+		OfferID:     outcome.OfferID,
 		WorkspaceID: workspaceID,
-		UserID:      outcome.session.UserID(),
-		Session:     outcome.session,
+		UserID:      outcome.Session.UserID(),
+		Session:     outcome.Session,
 		PhoneNumber: c.FromNumber,
 		Call:        call,
 		Admission:   lease,
@@ -285,7 +300,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 	closeMedia = false
 
 	if roulette && entryID != "" {
-		uc.assignTo(businessPhoneID, workspaceID, entryID, outcome.session.UserID())
+		uc.assignTo(businessPhoneID, workspaceID, entryID, outcome.Session.UserID())
 	}
 
 	select {
@@ -304,13 +319,6 @@ func (uc *WhatsAppInboundCallUseCase) usernameOf(userID string) string {
 		}
 	}
 	return "um agente"
-}
-
-type ringOutcome struct {
-	session          callsession.CallSession
-	offerID          string
-	terminated       bool
-	declinedByUserID string
 }
 
 func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentID, assignedUserID string) ([]callsession.CallSession, bool) {
@@ -359,128 +367,6 @@ func (uc *WhatsAppInboundCallUseCase) resolveCandidates(workspaceID, departmentI
 	uc.log.Printf("[WAInbound] resolveCandidates: department=%q skipAdmins=%t eligible=%v callSessionAvailable=%v → %d candidate(s)",
 		departmentID, skipAdmins, eligible, callSessionUserIDs, len(candidates))
 	return candidates, true
-}
-
-func (uc *WhatsAppInboundCallUseCase) ringSequentially(
-	ctx context.Context,
-	c conversation_domain.WhatsAppInboundConnect,
-	businessPhoneID, workspaceID, entryID string,
-	roulette bool,
-	candidates []callsession.CallSession,
-	signals <-chan conversation_domain.WhatsAppCallSignal,
-	deadline time.Time,
-) *ringOutcome {
-	var lastDeclinedBy string
-	for _, cand := range candidates {
-		if time.Now().After(deadline) {
-			break
-		}
-		if cand == nil || cand.HasActiveCall() {
-			continue
-		}
-		ring := whatsappInboundPerAgentRing
-		if rem := time.Until(deadline); rem < ring {
-			ring = rem
-		}
-		if ring <= 0 {
-			break
-		}
-
-		offerID := uuid.NewString()
-		offer := callsession.InboundCallOffer{
-			OfferID:     offerID,
-			CallID:      c.CallID,
-			WorkspaceID: workspaceID,
-			FromNumber:  c.FromNumber,
-			ToNumber:    c.ToNumber,
-			Channel:     "whatsapp",
-			ExpiresAt:   time.Now().Add(ring),
-		}
-
-		onReserved := func() {
-			if roulette && entryID != "" {
-				uc.assignTo(businessPhoneID, workspaceID, entryID, cand.UserID())
-			}
-		}
-
-		switch uc.ringCandidate(ctx, cand, offer, signals, ring, onReserved) {
-		case candAccepted:
-			return &ringOutcome{session: cand, offerID: offerID}
-		case candTerminated:
-			return &ringOutcome{terminated: true}
-		case candDeclined:
-			lastDeclinedBy = cand.UserID()
-		case candTimedOut, candUnavailable:
-		}
-	}
-	return &ringOutcome{declinedByUserID: lastDeclinedBy}
-}
-
-type candidateOutcome int
-
-const (
-	candUnavailable candidateOutcome = iota
-	candAccepted
-	candDeclined
-	candTimedOut
-	candTerminated
-)
-
-func (uc *WhatsAppInboundCallUseCase) ringCandidate(
-	ctx context.Context,
-	cand callsession.CallSession,
-	offer callsession.InboundCallOffer,
-	signals <-chan conversation_domain.WhatsAppCallSignal,
-	ring time.Duration,
-	onReserved func(),
-) candidateOutcome {
-	if !cand.Reserve(offer.OfferID) {
-		return candUnavailable
-	}
-	accepted := false
-	defer func() {
-		if !accepted {
-			cand.Release(offer.OfferID)
-		}
-	}()
-
-	state := &callsession_usecase.InboundOfferState{
-		Offer:           offer,
-		TargetUserID:    cand.UserID(),
-		TargetSessionID: cand.ID(),
-		Response:        make(chan callsession_usecase.InboundOfferResponse, 1),
-	}
-	remove := uc.broker.Store(state)
-	defer remove()
-
-	if onReserved != nil {
-		onReserved()
-	}
-
-	if err := cand.Notify(callsession.CallSessionControlMessage{Type: callsession.CallSessionInboundCall, Payload: offer}); err != nil {
-		return candUnavailable
-	}
-
-	timer := time.NewTimer(ring)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return candTerminated
-		case sig := <-signals:
-			if sig.Kind == conversation_domain.WhatsAppCallTerminate {
-				return candTerminated
-			}
-		case resp := <-state.Response:
-			if resp.Accepted {
-				accepted = true
-				return candAccepted
-			}
-			return candDeclined
-		case <-timer.C:
-			return candTimedOut
-		}
-	}
 }
 
 func (uc *WhatsAppInboundCallUseCase) reject(ctx context.Context, businessPhoneID, callID string) {
@@ -557,3 +443,22 @@ func formatCallDuration(d time.Duration) string {
 }
 
 var _ conversation_domain.WhatsAppInboundCallHandler = (*WhatsAppInboundCallUseCase)(nil)
+
+type terminationWatch struct {
+	gone   chan struct{}
+	reason string
+}
+
+func watchTermination(signals <-chan conversation_domain.WhatsAppCallSignal) *terminationWatch {
+	watch := &terminationWatch{gone: make(chan struct{})}
+	go func() {
+		for sig := range signals {
+			if sig.Kind == conversation_domain.WhatsAppCallTerminate {
+				watch.reason = sig.Reason
+				close(watch.gone)
+				return
+			}
+		}
+	}()
+	return watch
+}

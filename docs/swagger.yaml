@@ -5480,6 +5480,251 @@ definitions:
       totalLinks:
         type: integer
     type: object
+  siptrunk.ActiveCallResponse:
+    properties:
+      answeredAt:
+        type: string
+      direction:
+        enum:
+        - outbound
+        - inbound
+        example: outbound
+        type: string
+      id:
+        example: sip-out-7d9f2c4a
+        type: string
+      phoneNumber:
+        example: "5584999990000"
+        type: string
+      startedAt:
+        type: string
+      trunkId:
+        example: 5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f
+        type: string
+    type: object
+  siptrunk.CreateTrunkRequest:
+    properties:
+      domain:
+        example: provedor.com.br
+        type: string
+      enabled:
+        example: true
+        type: boolean
+      host:
+        example: sip.provedor.com.br
+        type: string
+      name:
+        example: Operadora principal
+        type: string
+      password:
+        example: s3nh4-do-tronco
+        type: string
+      port:
+        example: 5060
+        type: integer
+      settings:
+        $ref: '#/definitions/siptrunk.TrunkSettingsDTO'
+      transport:
+        enum:
+        - UDP
+        - TCP
+        example: UDP
+        type: string
+      trunkType:
+        enum:
+        - OUTBOUND
+        - INBOUND
+        - BIDIRECTIONAL
+        example: BIDIRECTIONAL
+        type: string
+      username:
+        example: "1001"
+        type: string
+    type: object
+  siptrunk.DialPlanDTO:
+    properties:
+      addPrefix:
+        example: "55"
+        type: string
+      stripPrefix:
+        example: "0"
+        type: string
+    type: object
+  siptrunk.StatusResponse:
+    properties:
+      status:
+        enum:
+        - deleted
+        - hung_up
+        example: deleted
+        type: string
+    type: object
+  siptrunk.TrunkResponse:
+    properties:
+      createdAt:
+        type: string
+      domain:
+        example: provedor.com.br
+        type: string
+      enabled:
+        example: true
+        type: boolean
+      hasPassword:
+        example: true
+        type: boolean
+      host:
+        example: sip.provedor.com.br
+        type: string
+      id:
+        example: 5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f
+        type: string
+      lastError:
+        example: 401 Unauthorized
+        type: string
+      name:
+        example: Operadora principal
+        type: string
+      port:
+        example: 5060
+        type: integer
+      registrationStatus:
+        enum:
+        - UNREGISTERED
+        - REGISTERING
+        - REGISTERED
+        - FAILED
+        example: REGISTERED
+        type: string
+      settings:
+        $ref: '#/definitions/siptrunk.TrunkSettingsDTO'
+      transport:
+        enum:
+        - UDP
+        - TCP
+        example: UDP
+        type: string
+      trunkType:
+        enum:
+        - OUTBOUND
+        - INBOUND
+        - BIDIRECTIONAL
+        example: BIDIRECTIONAL
+        type: string
+      updatedAt:
+        type: string
+      username:
+        example: "1001"
+        type: string
+    type: object
+  siptrunk.TrunkSettingsDTO:
+    properties:
+      allowRegisterHeaders:
+        items:
+          type: string
+        type: array
+      authUsername:
+        example: "1001"
+        type: string
+      bindHost:
+        example: 0.0.0.0
+        type: string
+      bindPort:
+        example: 5063
+        type: integer
+      codecs:
+        example:
+        - PCMA
+        - PCMU
+        items:
+          enum:
+          - PCMU
+          - PCMA
+          - opus
+          - telephone-event
+          type: string
+        type: array
+      dialPlan:
+        $ref: '#/definitions/siptrunk.DialPlanDTO'
+      extraInviteHeaders:
+        additionalProperties:
+          type: string
+        type: object
+      inboundAllowedSources:
+        example:
+        - 203.0.113.0/24
+        items:
+          type: string
+        type: array
+      outboundProxy:
+        example: proxy.provedor.com.br:5060
+        type: string
+      publicAddress:
+        example: 203.0.113.10
+        type: string
+      registerExpirySeconds:
+        example: 3600
+        type: integer
+      skipRegistration:
+        example: false
+        type: boolean
+      srtpMode:
+        enum:
+        - OPTIONAL
+        - REQUIRED
+        example: OPTIONAL
+        type: string
+      stunEnabled:
+        example: false
+        type: boolean
+      stunServers:
+        example:
+        - stun.l.google.com:19302
+        items:
+          type: string
+        type: array
+      userAgent:
+        example: Vozko
+        type: string
+    type: object
+  siptrunk.UpdateTrunkRequest:
+    properties:
+      domain:
+        example: provedor.com.br
+        type: string
+      enabled:
+        example: true
+        type: boolean
+      host:
+        example: sip.provedor.com.br
+        type: string
+      name:
+        example: Operadora principal
+        type: string
+      password:
+        example: nova-s3nh4
+        type: string
+      port:
+        example: 5060
+        type: integer
+      settings:
+        $ref: '#/definitions/siptrunk.TrunkSettingsDTO'
+      transport:
+        enum:
+        - UDP
+        - TCP
+        example: UDP
+        type: string
+      trunkType:
+        enum:
+        - OUTBOUND
+        - INBOUND
+        - BIDIRECTIONAL
+        example: BIDIRECTIONAL
+        type: string
+      username:
+        example: "1001"
+        type: string
+    type: object
   stage.AssignEntryTagRequest:
     properties:
       StageID:
@@ -14258,6 +14503,262 @@ paths:
       summary: Estatísticas de links curtos
       tags:
       - Links Curtos
+  /sip-trunks:
+    get:
+      description: Lista os troncos SIP do workspace com o estado atual da registração
+        no provedor. A senha nunca é devolvida, apenas se há uma cadastrada.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/siptrunk.TrunkResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar troncos SIP
+      tags:
+      - Troncos SIP
+    post:
+      consumes:
+      - application/json
+      description: Cadastra um tronco SIP no workspace. Troncos habilitados passam
+        a se registrar no provedor e a registração é mantida e renovada antes de expirar,
+        sem depender de chamadas. É preciso ao menos um codec G.711 (PCMU ou PCMA).
+      parameters:
+      - description: Dados do tronco a cadastrar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/siptrunk.CreateTrunkRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/siptrunk.TrunkResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar tronco SIP
+      tags:
+      - Troncos SIP
+  /sip-trunks/{id}:
+    delete:
+      description: Remove um tronco SIP do workspace, cancela a registração no provedor
+        e encerra as chamadas em andamento por ele.
+      parameters:
+      - description: ID do tronco
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/siptrunk.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remover tronco SIP
+      tags:
+      - Troncos SIP
+    get:
+      description: Retorna um tronco SIP do workspace com o estado atual da registração.
+      parameters:
+      - description: ID do tronco
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/siptrunk.TrunkResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter tronco SIP
+      tags:
+      - Troncos SIP
+    put:
+      consumes:
+      - application/json
+      description: Atualiza um tronco SIP do workspace. Todos os campos são opcionais
+        e apenas os informados são alterados; omitir a senha mantém a atual. O tronco
+        se registra de novo com a configuração nova.
+      parameters:
+      - description: ID do tronco
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Campos do tronco a atualizar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/siptrunk.UpdateTrunkRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/siptrunk.TrunkResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar tronco SIP
+      tags:
+      - Troncos SIP
+  /sip-trunks/{id}/calls:
+    get:
+      description: Lista as chamadas em andamento por um tronco SIP do workspace.
+        Chamadas são iniciadas pelo WebSocket de sessão de chamada (evento call:start
+        com trunk_id), que aplica a reserva de saldo e a cobrança por minuto; não
+        há rota HTTP para iniciar chamadas.
+      parameters:
+      - description: ID do tronco
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/siptrunk.ActiveCallResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar chamadas ativas do tronco
+      tags:
+      - Troncos SIP
+  /sip-trunks/{id}/calls/{callId}:
+    delete:
+      description: Encerra uma chamada em andamento por um tronco SIP do workspace.
+        A chamada é cobrada pelos minutos falados até o encerramento.
+      parameters:
+      - description: ID do tronco
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da chamada
+        in: path
+        name: callId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/siptrunk.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Encerrar chamada do tronco
+      tags:
+      - Troncos SIP
   /stages:
     get:
       description: Retorna as etapas de UM funil de conversas, na ordem de exibição.

@@ -16,9 +16,16 @@ import (
 	"vozko/domain/messaging"
 )
 
-const balanceGuardDefaultInterval = 30 * time.Second
+const (
+	reservationLeadDefault  = 10 * time.Second
+	reservationRetryDefault = 2 * time.Second
+	inflightReservationTTL  = 5 * time.Minute
+)
 
-const balanceGuardFailClosedThreshold = 3
+const (
+	endReasonInsufficientBalance = "insufficient_balance"
+	endReasonBalanceCheckError   = "balance_check_error"
+)
 
 type OutboundCallLifecycleInput struct {
 	Call        conversation.CRMCall
@@ -45,7 +52,9 @@ type OutboundCallLifecycleRunner struct {
 	billingPub           messaging.MessageQueuePub
 	cdrStart             cdr.StartCallUseCase
 	cdrAnswered          cdr.MarkCallAnsweredUseCase
-	balanceGuardInterval time.Duration
+	billingMinute        time.Duration
+	reservationLead      time.Duration
+	reservationRetry     time.Duration
 	logger               *log.Logger
 	nowFn                func() time.Time
 }
@@ -80,15 +89,17 @@ func NewOutboundCallLifecycleRunner(
 		cachedBalanceChecker: cachedBalanceChecker,
 		inflightReserver:     inflightReserver,
 		billingPub:           billingPub,
-		balanceGuardInterval: balanceGuardDefaultInterval,
+		billingMinute:        billing.BillingMinute,
+		reservationLead:      reservationLeadDefault,
+		reservationRetry:     reservationRetryDefault,
 		logger:               logger,
 		nowFn:                time.Now,
 	}, nil
 }
 
-func (r *OutboundCallLifecycleRunner) SetBalanceGuardInterval(d time.Duration) {
-	if d > 0 {
-		r.balanceGuardInterval = d
+func (r *OutboundCallLifecycleRunner) SetMinuteWaves(minute, lead, retry time.Duration) {
+	if minute > 0 && lead >= 0 && retry > 0 {
+		r.billingMinute, r.reservationLead, r.reservationRetry = minute, lead, retry
 	}
 }
 
@@ -114,31 +125,23 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 
 	callRecordID := r.startCDR(input)
 
-	var (
-		perMinCost    int64
-		myReservation int64
-	)
+	var perMinCost, admittedMicros int64
 	if input.Admission != nil {
 		perMinCost = input.Admission.PerMinuteCostMicros
-		myReservation = input.Admission.ReservedMicros
+		admittedMicros = input.Admission.ReservedMicros
 	}
-	balanceErrors := 0
+	guard := r.newMinuteGuard(input.WorkspaceID, input.Call.ID(), perMinCost, admittedMicros)
+	var answeredAt time.Time
 
 	defer func() {
-		r.releaseAdmission(input.Admission, myReservation)
-		r.publishBilling(input, callRecordID)
+		guard.close()
+		r.releaseAdmission(input.Admission, guard.reservedMicros)
+		r.publishBilling(input, callRecordID, answeredAt)
 	}()
 
 	call := input.Call
 	audioCh := call.AudioStream()
 	events := call.Events()
-
-	var tickerC <-chan time.Time
-	if perMinCost > 0 && r.inflightReserver != nil && r.cachedBalanceChecker != nil {
-		t := time.NewTicker(r.balanceGuardInterval)
-		defer t.Stop()
-		tickerC = t.C
-	}
 
 	sentEnded := false
 	emitEnded := func(reason string) {
@@ -147,7 +150,11 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 		}
 		sentEnded = true
 		if input.OnEnded != nil {
-			input.OnEnded(reason, r.nowFn().Sub(input.StartedAt))
+			var talk time.Duration
+			if !answeredAt.IsZero() {
+				talk = r.nowFn().Sub(answeredAt)
+			}
+			input.OnEnded(reason, talk)
 		}
 	}
 
@@ -157,7 +164,7 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 			emitEnded("cancelled")
 			return
 		case <-call.Done():
-			emitEnded("ended")
+			emitEnded(pendingTerminalReason(events))
 			return
 		case ev, ok := <-events:
 			if !ok {
@@ -165,8 +172,10 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 				emitEnded("ended")
 				return
 			}
-			if ev.Type == conversation.CallEventAnswered {
+			if ev.Type == conversation.CallEventAnswered && answeredAt.IsZero() {
+				answeredAt = r.nowFn()
 				r.markAnswered(input.Call.ID())
+				guard.answered(answeredAt)
 			}
 			if ev.IsTerminal() {
 				emitEnded(string(ev.Type))
@@ -183,71 +192,14 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 			if input.OnAudio != nil {
 				input.OnAudio(pcm)
 			}
-		case <-tickerC:
-			newReservation, abortReason, abort := r.extendReservation(input, perMinCost, myReservation, &balanceErrors)
-			if abort {
-				emitEnded(abortReason)
-				go func() { _ = call.Hangup() }()
-				return
-			}
-			myReservation = newReservation
+		case <-guard.nextC():
+			guard.reserveNextMinute()
+		case <-guard.stopC():
+			emitEnded(guard.failure)
+			go func() { _ = call.Hangup() }()
+			return
 		}
 	}
-}
-
-func (r *OutboundCallLifecycleRunner) extendReservation(
-	input OutboundCallLifecycleInput,
-	perMinCost int64,
-	current int64,
-	balanceErrors *int,
-) (int64, string, bool) {
-	elapsed := r.nowFn().Sub(input.StartedAt)
-	projectedEnd := elapsed + r.balanceGuardInterval
-
-	projectedSec := int64(projectedEnd.Seconds())
-	projectedMinutes := (projectedSec + 59) / 60
-	projectedCost := projectedMinutes * perMinCost
-	delta := projectedCost - current
-	if delta <= 0 {
-		return current, "", false
-	}
-
-	budget, err := r.cachedBalanceChecker.GetBalance(input.WorkspaceID)
-	if err != nil {
-		*balanceErrors++
-		r.logger.Printf("[CallBalanceGuard] balance read error for ws %s: %v (consecutive: %d)",
-			input.WorkspaceID, err, *balanceErrors)
-		if *balanceErrors >= balanceGuardFailClosedThreshold {
-			r.logger.Printf("[CallBalanceGuard] CRITICAL: %d consecutive balance errors for ws %s, terminating call (fail-closed)",
-				*balanceErrors, input.WorkspaceID)
-			return current, "balance_check_error", true
-		}
-		return current, "", false
-	}
-
-	ok, err := r.inflightReserver.Reserve(input.WorkspaceID, delta, budget)
-	if err != nil {
-		*balanceErrors++
-		r.logger.Printf("[CallBalanceGuard] reserve error for ws %s: %v (consecutive: %d)",
-			input.WorkspaceID, err, *balanceErrors)
-		if *balanceErrors >= balanceGuardFailClosedThreshold {
-			r.logger.Printf("[CallBalanceGuard] CRITICAL: %d consecutive reserve errors for ws %s, terminating call (fail-closed)",
-				*balanceErrors, input.WorkspaceID)
-			return current, "balance_check_error", true
-		}
-		return current, "", false
-	}
-	*balanceErrors = 0
-
-	if !ok {
-		r.logger.Printf("[CallBalanceGuard] insufficient balance for ws %s (budget=%d), ending call %s",
-			input.WorkspaceID, budget, input.Call.ID())
-		return current, "insufficient_balance", true
-	}
-
-	newReservation := current + delta
-	_ = r.inflightReserver.RefreshTTL(input.WorkspaceID, 5*time.Minute)
-	return newReservation, "", false
 }
 
 func (r *OutboundCallLifecycleRunner) releaseAdmission(lease *callsession.CallAdmissionLease, totalReservation int64) {
@@ -316,22 +268,27 @@ func (r *OutboundCallLifecycleRunner) markAnswered(callID string) {
 	}
 }
 
-func (r *OutboundCallLifecycleRunner) publishBilling(input OutboundCallLifecycleInput, callRecordID string) {
+func (r *OutboundCallLifecycleRunner) publishBilling(input OutboundCallLifecycleInput, callRecordID string, answeredAt time.Time) {
 	if r.billingPub == nil || input.Call == nil {
 		return
 	}
-	callEnd := r.nowFn()
-	durationSec := int(callEnd.Sub(input.StartedAt).Seconds())
-	if durationSec <= 0 {
+	if answeredAt.IsZero() {
+		r.logger.Printf("[CallBilling] call %s was never answered, nothing to bill", input.Call.ID())
 		return
+	}
+	callEnd := r.nowFn()
+	channel := ""
+	if input.Admission != nil {
+		channel = input.Admission.CallChannel
 	}
 	event := billing.CallCompletedEvent{
 		CallID:       input.Call.ID(),
 		WorkspaceID:  input.WorkspaceID,
 		CallSource:   billing.CallSourceWebSocket,
-		CallStart:    input.StartedAt,
+		Channel:      channel,
+		CallStart:    answeredAt,
 		CallEnd:      callEnd,
-		DurationSec:  durationSec,
+		DurationSec:  billing.BillableSeconds(answeredAt, callEnd),
 		CallRecordID: callRecordID,
 	}
 	data, err := json.Marshal(event)
@@ -343,6 +300,22 @@ func (r *OutboundCallLifecycleRunner) publishBilling(input OutboundCallLifecycle
 		r.logger.Printf("[CallBilling] failed to publish billing event for call %s: %v", event.CallID, err)
 		return
 	}
-	r.logger.Printf("[CallBilling] published billing event for call %s (duration=%ds, workspace=%s)",
-		event.CallID, durationSec, input.WorkspaceID)
+	r.logger.Printf("[CallBilling] published billing event for call %s (billable=%ds, channel=%s, workspace=%s)",
+		event.CallID, event.DurationSec, channel, input.WorkspaceID)
+}
+
+func pendingTerminalReason(events <-chan conversation.CallEvent) string {
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				return string(conversation.CallEventEnded)
+			}
+			if ev.IsTerminal() {
+				return string(ev.Type)
+			}
+		default:
+			return string(conversation.CallEventEnded)
+		}
+	}
 }

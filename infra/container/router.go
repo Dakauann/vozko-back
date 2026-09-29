@@ -100,6 +100,7 @@ func (c *Container) initRouter() {
 		instagramWebhookHandler(c),
 		telegramHandler(c),
 		telegramWebhookHandler(c),
+		sipTrunkHandler(c),
 		unofficialWhatsAppHandler(c),
 		whatsAppOutreachHandler(c),
 		unofficialWhatsAppWebhookHandler(c),

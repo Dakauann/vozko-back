@@ -5,6 +5,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	wsdelivery "vozko/delivery/ws"
 	balance_domain "vozko/domain/balance"
@@ -14,6 +15,7 @@ import (
 	conversation_infra "vozko/infra/conversation"
 	whatsapp_infra "vozko/infra/conversation/whatsapp"
 	"vozko/infra/conversation/whatsapp/media"
+	"vozko/infra/natdiscovery"
 	conversation_repository "vozko/infra/repositories/conversation"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	aa_usecase "vozko/usecases/ai_attendance"
@@ -227,7 +229,10 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		signaling := whatsapp_infra.NewCallSignalingClient(c.repositories.businessPhone, nil, "")
 
 		var publicMediaIP string
-		if ip, err := media.DiscoverPublicIP(c.cfg.WhatsAppStunServers); err == nil {
+		stunCtx, stunCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ip, err := natdiscovery.PublicIP(stunCtx, c.cfg.WhatsAppStunServers)
+		stunCancel()
+		if err == nil {
 			publicMediaIP = ip
 			log.Printf("[whatsapp-calls] discovered public media IP via STUN: %s", ip)
 		} else {
@@ -263,7 +268,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 			c.services.conversationHub,
 		)
 
-		callSource := conversation_usecase.NewDispatchingCallSource(whatsappCallSource)
+		callSource := conversation_usecase.NewDispatchingCallSource(whatsappCallSource, c.sipTrunks.CallSource)
 		c.services.crmCallSource = callSource
 		c.services.conversationHub.SetCallSource(callSource)
 	}

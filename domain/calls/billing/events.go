@@ -8,6 +8,7 @@ type CallCompletedEvent struct {
 	AgentID     *string    `json:"agentId,omitempty"`
 	LeadID      *string    `json:"leadId,omitempty"`
 	CallSource  CallSource `json:"callSource"`
+	Channel     string     `json:"channel,omitempty"`
 
 	CallStart   time.Time `json:"callStart"`
 	CallEnd     time.Time `json:"callEnd"`

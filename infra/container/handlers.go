@@ -70,6 +70,7 @@ import (
 	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	callsession_usecase "vozko/usecases/callsession"
+	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	conversation_usecase "vozko/usecases/conversation"
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
@@ -664,6 +665,16 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 			consumer.SetInboundHandler(whatsappInboundUC)
 		}
 	}
+
+	c.sipTrunks.Engine.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(sip_trunk_usecase.InboundCallConfig{
+		Sessions:    sessions,
+		Admission:   c.services.callAdmission,
+		Ringer:      callsession_usecase.NewInboundRinger(inboundBroker),
+		Executor:    inboundExecutor,
+		Permissions: c.sipTrunks.Permissions,
+		Engine:      c.sipTrunks.Engine,
+		Logger:      log.Default(),
+	}))
 
 	return base.
 		WithInboundCalls(inboundBroker).

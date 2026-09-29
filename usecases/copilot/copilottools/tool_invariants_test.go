@@ -39,7 +39,7 @@ func operationToolset() []copilot.Tool {
 }
 
 func allTools() []copilot.Tool {
-	return append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...)
+	return append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...)
 }
 
 func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {

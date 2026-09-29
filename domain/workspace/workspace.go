@@ -77,6 +77,7 @@ var (
 	ResourceTelegramAccounts            = registerResource("telegram_accounts")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
+	ResourceSIPTrunks                   = registerResource("sip_trunks")
 )
 
 func (r Resource) IsValid() bool {
@@ -300,6 +301,16 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionSend, Description: "Encaminhar comentários, responder publicamente e configurar alertas automáticos por WhatsApp", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
 			{Resource: ResourceAudience, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionSend},
+		}},
+	},
+	ResourceSIPTrunks: {
+		{ActionName: ActionCreate, Description: "Cadastrar troncos SIP com as credenciais do provedor de telefonia", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar troncos SIP, o estado do registro e as chamadas em andamento"},
+		{ActionName: ActionUpdate, Description: "Editar troncos SIP e suas credenciais", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionDelete, Description: "Remover troncos SIP, encerrando as chamadas em andamento", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionCall, Description: "Fazer e atender ligações pelos troncos SIP no discador", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceSIPTrunks, Action: ActionRead},
+			{Resource: ResourceCallSession, Action: ActionUse},
 		}},
 	},
 	ResourceTelegramAccounts: {

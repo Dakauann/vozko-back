@@ -27,6 +27,7 @@ const (
 	SourceWebSocket     Source = "websocket"
 	SourceWhatsApp      Source = "whatsapp"
 	SourceBrowserDirect Source = "browser_direct"
+	SourceSIPTrunk      Source = "sip_trunk"
 )
 
 type Status string

@@ -63,6 +63,7 @@ func New() *Container {
 
 	c.services.serviceMessageBilling = serviceMessageBilling
 
+	c.initSIPTrunks()
 	c.wireConversationHub(consumeWhatsappTemplateUC)
 	c.initCallSessionRegistries()
 	c.agentMCP = c.initAgentMCP()
@@ -91,6 +92,7 @@ func (c *Container) Start(port string) error {
 	c.jobRunner.StartAll()
 	log.Println("Background jobs started")
 	c.startLiveDecisions()
+	c.startSIPTrunks()
 
 	c.metricsHTTP.Start()
 
@@ -126,6 +128,8 @@ func (c *Container) Shutdown() {
 	if c.liveCoalescerCancel != nil {
 		c.liveCoalescerCancel()
 	}
+
+	c.stopSIPTrunks()
 
 	c.metricsHTTP.Shutdown()
 

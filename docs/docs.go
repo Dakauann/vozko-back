@@ -11128,6 +11128,391 @@ const docTemplate = `{
                 }
             }
         },
+        "/sip-trunks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os troncos SIP do workspace com o estado atual da registração no provedor. A senha nunca é devolvida, apenas se há uma cadastrada.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Listar troncos SIP",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/siptrunk.TrunkResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cadastra um tronco SIP no workspace. Troncos habilitados passam a se registrar no provedor e a registração é mantida e renovada antes de expirar, sem depender de chamadas. É preciso ao menos um codec G.711 (PCMU ou PCMA).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Criar tronco SIP",
+                "parameters": [
+                    {
+                        "description": "Dados do tronco a cadastrar",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.CreateTrunkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.TrunkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sip-trunks/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna um tronco SIP do workspace com o estado atual da registração.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Obter tronco SIP",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do tronco",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.TrunkResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza um tronco SIP do workspace. Todos os campos são opcionais e apenas os informados são alterados; omitir a senha mantém a atual. O tronco se registra de novo com a configuração nova.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Atualizar tronco SIP",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do tronco",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos do tronco a atualizar",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.UpdateTrunkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.TrunkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove um tronco SIP do workspace, cancela a registração no provedor e encerra as chamadas em andamento por ele.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Remover tronco SIP",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do tronco",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sip-trunks/{id}/calls": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as chamadas em andamento por um tronco SIP do workspace. Chamadas são iniciadas pelo WebSocket de sessão de chamada (evento call:start com trunk_id), que aplica a reserva de saldo e a cobrança por minuto; não há rota HTTP para iniciar chamadas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Listar chamadas ativas do tronco",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do tronco",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/siptrunk.ActiveCallResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sip-trunks/{id}/calls/{callId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Encerra uma chamada em andamento por um tronco SIP do workspace. A chamada é cobrada pelos minutos falados até o encerramento.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Troncos SIP"
+                ],
+                "summary": "Encerrar chamada do tronco",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do tronco",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da chamada",
+                        "name": "callId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/siptrunk.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/stages": {
             "get": {
                 "security": [
@@ -24482,6 +24867,344 @@ const docTemplate = `{
                 },
                 "totalLinks": {
                     "type": "integer"
+                }
+            }
+        },
+        "siptrunk.ActiveCallResponse": {
+            "type": "object",
+            "properties": {
+                "answeredAt": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": [
+                        "outbound",
+                        "inbound"
+                    ],
+                    "example": "outbound"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "sip-out-7d9f2c4a"
+                },
+                "phoneNumber": {
+                    "type": "string",
+                    "example": "5584999990000"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "trunkId": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                }
+            }
+        },
+        "siptrunk.CreateTrunkRequest": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "example": "provedor.com.br"
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "host": {
+                    "type": "string",
+                    "example": "sip.provedor.com.br"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Operadora principal"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "s3nh4-do-tronco"
+                },
+                "port": {
+                    "type": "integer",
+                    "example": 5060
+                },
+                "settings": {
+                    "$ref": "#/definitions/siptrunk.TrunkSettingsDTO"
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": [
+                        "UDP",
+                        "TCP"
+                    ],
+                    "example": "UDP"
+                },
+                "trunkType": {
+                    "type": "string",
+                    "enum": [
+                        "OUTBOUND",
+                        "INBOUND",
+                        "BIDIRECTIONAL"
+                    ],
+                    "example": "BIDIRECTIONAL"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "1001"
+                }
+            }
+        },
+        "siptrunk.DialPlanDTO": {
+            "type": "object",
+            "properties": {
+                "addPrefix": {
+                    "type": "string",
+                    "example": "55"
+                },
+                "stripPrefix": {
+                    "type": "string",
+                    "example": "0"
+                }
+            }
+        },
+        "siptrunk.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "deleted",
+                        "hung_up"
+                    ],
+                    "example": "deleted"
+                }
+            }
+        },
+        "siptrunk.TrunkResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "domain": {
+                    "type": "string",
+                    "example": "provedor.com.br"
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "hasPassword": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "host": {
+                    "type": "string",
+                    "example": "sip.provedor.com.br"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                },
+                "lastError": {
+                    "type": "string",
+                    "example": "401 Unauthorized"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Operadora principal"
+                },
+                "port": {
+                    "type": "integer",
+                    "example": 5060
+                },
+                "registrationStatus": {
+                    "type": "string",
+                    "enum": [
+                        "UNREGISTERED",
+                        "REGISTERING",
+                        "REGISTERED",
+                        "FAILED"
+                    ],
+                    "example": "REGISTERED"
+                },
+                "settings": {
+                    "$ref": "#/definitions/siptrunk.TrunkSettingsDTO"
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": [
+                        "UDP",
+                        "TCP"
+                    ],
+                    "example": "UDP"
+                },
+                "trunkType": {
+                    "type": "string",
+                    "enum": [
+                        "OUTBOUND",
+                        "INBOUND",
+                        "BIDIRECTIONAL"
+                    ],
+                    "example": "BIDIRECTIONAL"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "1001"
+                }
+            }
+        },
+        "siptrunk.TrunkSettingsDTO": {
+            "type": "object",
+            "properties": {
+                "allowRegisterHeaders": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "authUsername": {
+                    "type": "string",
+                    "example": "1001"
+                },
+                "bindHost": {
+                    "type": "string",
+                    "example": "0.0.0.0"
+                },
+                "bindPort": {
+                    "type": "integer",
+                    "example": 5063
+                },
+                "codecs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "PCMU",
+                            "PCMA",
+                            "opus",
+                            "telephone-event"
+                        ]
+                    },
+                    "example": [
+                        "PCMA",
+                        "PCMU"
+                    ]
+                },
+                "dialPlan": {
+                    "$ref": "#/definitions/siptrunk.DialPlanDTO"
+                },
+                "extraInviteHeaders": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "inboundAllowedSources": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "203.0.113.0/24"
+                    ]
+                },
+                "outboundProxy": {
+                    "type": "string",
+                    "example": "proxy.provedor.com.br:5060"
+                },
+                "publicAddress": {
+                    "type": "string",
+                    "example": "203.0.113.10"
+                },
+                "registerExpirySeconds": {
+                    "type": "integer",
+                    "example": 3600
+                },
+                "skipRegistration": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "srtpMode": {
+                    "type": "string",
+                    "enum": [
+                        "OPTIONAL",
+                        "REQUIRED"
+                    ],
+                    "example": "OPTIONAL"
+                },
+                "stunEnabled": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "stunServers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "stun.l.google.com:19302"
+                    ]
+                },
+                "userAgent": {
+                    "type": "string",
+                    "example": "Vozko"
+                }
+            }
+        },
+        "siptrunk.UpdateTrunkRequest": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "example": "provedor.com.br"
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "host": {
+                    "type": "string",
+                    "example": "sip.provedor.com.br"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Operadora principal"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "nova-s3nh4"
+                },
+                "port": {
+                    "type": "integer",
+                    "example": 5060
+                },
+                "settings": {
+                    "$ref": "#/definitions/siptrunk.TrunkSettingsDTO"
+                },
+                "transport": {
+                    "type": "string",
+                    "enum": [
+                        "UDP",
+                        "TCP"
+                    ],
+                    "example": "UDP"
+                },
+                "trunkType": {
+                    "type": "string",
+                    "enum": [
+                        "OUTBOUND",
+                        "INBOUND",
+                        "BIDIRECTIONAL"
+                    ],
+                    "example": "BIDIRECTIONAL"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "1001"
                 }
             }
         },

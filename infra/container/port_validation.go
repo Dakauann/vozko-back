@@ -13,6 +13,8 @@ func (c *Container) validatePortLayout() {
 	eLo, eHi := osEphemeralRange()
 	in := portLayoutInputs{
 		mux:   c.cfg.WhatsAppMediaUDPMuxPort,
+		sip:   portRange{lo: c.cfg.SIP.PortStart, hi: c.cfg.SIP.PortStart + c.cfg.SIP.PortCount - 1},
+		rtp:   portRange{lo: c.cfg.SIP.RTPPortStart, hi: c.cfg.SIP.RTPPortEnd},
 		ephLo: eLo,
 		ephHi: eHi,
 	}
@@ -20,23 +22,49 @@ func (c *Container) validatePortLayout() {
 		for _, v := range violations {
 			log.Printf("[port-config] violation: %s", v)
 		}
-		log.Fatalf("[port-config] REFUSING TO START: %d unsafe port-layout violation(s) above, fix WHATSAPP_MEDIA_UDP_MUX_PORT", len(violations))
+		log.Fatalf("[port-config] REFUSING TO START: %d unsafe port-layout violation(s) above, fix WHATSAPP_MEDIA_UDP_MUX_PORT or the SIP_* port ranges", len(violations))
 	}
-	log.Printf("[port-config] OK: WhatsApp media mux %d (outside OS ephemeral %d-%d)", in.mux, eLo, eHi)
+	log.Printf("[port-config] OK: WhatsApp media mux %d, SIP %d-%d, RTP %d-%d (outside OS ephemeral %d-%d)", in.mux, in.sip.lo, in.sip.hi, in.rtp.lo, in.rtp.hi, eLo, eHi)
+}
+
+type portRange struct {
+	lo, hi int
+}
+
+func (r portRange) set() bool {
+	return r.lo > 0 && r.hi >= r.lo
+}
+
+func (r portRange) contains(port int) bool {
+	return r.set() && port >= r.lo && port <= r.hi
+}
+
+func (r portRange) overlaps(lo, hi int) bool {
+	return r.set() && r.lo <= hi && lo <= r.hi
 }
 
 type portLayoutInputs struct {
 	mux          int
+	sip          portRange
+	rtp          portRange
 	ephLo, ephHi int
 }
 
 func checkPortLayout(in portLayoutInputs) []string {
-	if in.mux <= 0 {
-		return nil
-	}
 	var v []string
-	if in.mux >= in.ephLo && in.mux <= in.ephHi {
+	if in.mux > 0 && in.mux >= in.ephLo && in.mux <= in.ephHi {
 		v = append(v, fmt.Sprintf("WhatsApp media mux port %d sits inside the OS ephemeral range %d-%d; an outbound socket could take it first and blackhole call media (pick a port below %d)", in.mux, in.ephLo, in.ephHi, in.ephLo))
+	}
+	for _, named := range []struct {
+		name string
+		r    portRange
+	}{{"SIP signalling ports", in.sip}, {"SIP RTP ports", in.rtp}} {
+		if named.r.overlaps(in.ephLo, in.ephHi) {
+			v = append(v, fmt.Sprintf("%s %d-%d overlap the OS ephemeral range %d-%d; outbound sockets could take them and break calls (keep them below %d)", named.name, named.r.lo, named.r.hi, in.ephLo, in.ephHi, in.ephLo))
+		}
+		if in.mux > 0 && named.r.contains(in.mux) {
+			v = append(v, fmt.Sprintf("WhatsApp media mux port %d sits inside the %s %d-%d", in.mux, named.name, named.r.lo, named.r.hi))
+		}
 	}
 	return v
 }

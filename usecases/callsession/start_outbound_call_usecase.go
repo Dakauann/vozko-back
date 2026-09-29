@@ -50,7 +50,10 @@ func (uc *startOutboundCallUseCase) Execute(ctx context.Context, input callsessi
 	}
 
 	callChannel := ""
-	if strings.TrimSpace(input.WhatsAppPhoneID) != "" {
+	switch {
+	case strings.TrimSpace(input.TrunkID) != "":
+		callChannel = workspace_pricing.TelephonyChannelSIP
+	case strings.TrimSpace(input.WhatsAppPhoneID) != "":
 		callChannel = workspace_pricing.TelephonyChannelWhatsApp
 	}
 	lease, err := uc.admission.Acquire(ctx, callsession.CallAdmissionInput{
@@ -73,6 +76,7 @@ func (uc *startOutboundCallUseCase) Execute(ctx context.Context, input callsessi
 		WorkspaceID:     input.WorkspaceID,
 		IsAdmin:         input.IsAdmin,
 		WhatsAppPhoneID: input.WhatsAppPhoneID,
+		TrunkID:         input.TrunkID,
 	})
 	if err != nil {
 		_ = uc.admission.Release(lease)
@@ -103,6 +107,13 @@ func (uc *startOutboundCallUseCase) resolveDialEntryType(input callsession.Start
 }
 
 func (uc *startOutboundCallUseCase) resolveTargetPhone(input callsession.StartOutboundCallInput) (string, error) {
+	if strings.TrimSpace(input.TrunkID) != "" {
+		dialString := strings.TrimSpace(input.TargetPhone)
+		if dialString == "" {
+			return "", callsession.ErrTargetPhoneRequired
+		}
+		return dialString, nil
+	}
 	if p := strings.TrimSpace(input.TargetPhone); p != "" {
 		return shared.EnsureDialablePhoneNumber(p), nil
 	}

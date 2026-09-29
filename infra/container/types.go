@@ -197,6 +197,7 @@ type Container struct {
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
+	sipTrunks                   *sipTrunkBundle
 	unofficialWhatsApp          *unofficialWhatsAppBundle
 	unofficialWhatsAppCampaigns *unofficialWhatsAppCampaignBundle
 	mcpCollection               domainmcp.CollectionRepository

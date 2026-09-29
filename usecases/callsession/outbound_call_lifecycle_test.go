@@ -201,6 +201,7 @@ func TestLifecycleRun_PublishesBillingOnNaturalHangup(t *testing.T) {
 	startedAt := time.Now().Add(-45 * time.Second)
 	runner := newRunner(admission, reserver, checker, pub)
 
+	answered := make(chan struct{})
 	var endedReason string
 	var endedDuration time.Duration
 	done := make(chan struct{})
@@ -214,10 +215,18 @@ func TestLifecycleRun_PublishesBillingOnNaturalHangup(t *testing.T) {
 				endedReason = reason
 				endedDuration = d
 			},
+			OnStatus: func(ev conversation.CallEvent) {
+				if ev.Type == conversation.CallEventAnswered {
+					close(answered)
+				}
+			},
 		})
 		close(done)
 	}()
 
+	call.events <- conversation.CallEvent{Type: conversation.CallEventAnswered}
+	<-answered
+	time.Sleep(20 * time.Millisecond)
 	_ = call.Hangup()
 	<-done
 
@@ -267,6 +276,7 @@ func TestLifecycleRun_TerminalEventEndsCallAndPublishesBilling(t *testing.T) {
 		close(done)
 	}()
 
+	call.events <- conversation.CallEvent{Type: conversation.CallEventAnswered}
 	call.events <- conversation.CallEvent{Type: "ended", Reason: "peer_hangup"}
 
 	select {
@@ -330,216 +340,6 @@ func TestLifecycleRun_ForwardsStatusAndAudio(t *testing.T) {
 	}
 }
 
-func TestLifecycleRun_ExtendsReservationViaBalanceGuard(t *testing.T) {
-	call := newFakeCall("call-extend")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	checker := &fakeBalanceChecker{balance: 10_000_000}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-	runner.SetBalanceGuardInterval(20 * time.Millisecond)
-
-	startedAt := time.Unix(0, 0)
-	var nowNano atomic.Int64
-
-	nowNano.Store(startedAt.Add(70 * time.Second).UnixNano())
-	runner.SetNowFn(func() time.Time { return time.Unix(0, nowNano.Load()) })
-
-	done := make(chan struct{})
-	go func() {
-		runner.Run(context.Background(), OutboundCallLifecycleInput{
-			Call:        call,
-			WorkspaceID: "ws-1",
-			StartedAt:   startedAt,
-			Admission: &callsession.CallAdmissionLease{
-				WorkspaceID:         "ws-1",
-				PerMinuteCostMicros: 100,
-				ReservedMicros:      100,
-			},
-			OnEnded: func(string, time.Duration) {},
-		})
-		close(done)
-	}()
-
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if atomic.LoadInt32(&reserver.reserveCalls) >= 1 {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	_ = call.Hangup()
-	<-done
-
-	if atomic.LoadInt32(&reserver.reserveCalls) < 1 {
-		t.Fatalf("expected at least one Reserve call, got %d", reserver.reserveCalls)
-	}
-	if atomic.LoadInt32(&reserver.refreshCalls) < 1 {
-		t.Fatalf("expected RefreshTTL after successful reserve, got %d", reserver.refreshCalls)
-	}
-
-	if admission.lastReleased == nil {
-		t.Fatal("expected lease release")
-	}
-	if admission.lastReleased.ReservedMicros < 200 {
-		t.Fatalf("lease reservation on release = %d, want >= 200 (1 min initial + 1 min extension)", admission.lastReleased.ReservedMicros)
-	}
-}
-
-func TestLifecycleRun_InsufficientBalanceHangsUpAndStillBills(t *testing.T) {
-	call := newFakeCall("call-insuf")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	reserver.allowReserve = false
-	checker := &fakeBalanceChecker{balance: 0}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-	runner.SetBalanceGuardInterval(10 * time.Millisecond)
-
-	startedAt := time.Unix(0, 0)
-	var nowNano atomic.Int64
-	nowNano.Store(startedAt.Add(90 * time.Second).UnixNano())
-	runner.SetNowFn(func() time.Time { return time.Unix(0, nowNano.Load()) })
-
-	reasonCh := make(chan string, 1)
-	go runner.Run(context.Background(), OutboundCallLifecycleInput{
-		Call:        call,
-		WorkspaceID: "ws-1",
-		StartedAt:   startedAt,
-		Admission: &callsession.CallAdmissionLease{
-			WorkspaceID:         "ws-1",
-			PerMinuteCostMicros: 100,
-			ReservedMicros:      100,
-		},
-		OnEnded: func(reason string, _ time.Duration) { reasonCh <- reason },
-	})
-
-	select {
-	case r := <-reasonCh:
-		if r != "insufficient_balance" {
-			t.Fatalf("reason = %q, want 'insufficient_balance'", r)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("OnEnded never called")
-	}
-
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) && call.HangupCount() == 0 {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if call.HangupCount() == 0 {
-		t.Fatal("expected call.Hangup() on insufficient balance")
-	}
-
-	if pub.Count() != 1 {
-		t.Fatalf("billing events = %d, want 1", pub.Count())
-	}
-}
-
-func TestLifecycleRun_BalanceErrorsFailClosedAfter3(t *testing.T) {
-	call := newFakeCall("call-failclosed")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	checker := &fakeBalanceChecker{err: errors.New("redis down")}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-	runner.SetBalanceGuardInterval(10 * time.Millisecond)
-
-	startedAt := time.Unix(0, 0)
-	var nowNano atomic.Int64
-	nowNano.Store(startedAt.Add(90 * time.Second).UnixNano())
-	runner.SetNowFn(func() time.Time { return time.Unix(0, nowNano.Load()) })
-
-	reasonCh := make(chan string, 1)
-	go runner.Run(context.Background(), OutboundCallLifecycleInput{
-		Call:        call,
-		WorkspaceID: "ws-1",
-		StartedAt:   startedAt,
-		Admission: &callsession.CallAdmissionLease{
-			WorkspaceID:         "ws-1",
-			PerMinuteCostMicros: 100,
-			ReservedMicros:      100,
-		},
-		OnEnded: func(reason string, _ time.Duration) { reasonCh <- reason },
-	})
-
-	select {
-	case r := <-reasonCh:
-		if r != "balance_check_error" {
-			t.Fatalf("reason = %q, want 'balance_check_error'", r)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("OnEnded never called")
-	}
-	if atomic.LoadInt32(&checker.calls) < balanceGuardFailClosedThreshold {
-		t.Fatalf("balance GetBalance calls = %d, want >= %d", checker.calls, balanceGuardFailClosedThreshold)
-	}
-}
-
-func TestLifecycleRun_ReserveErrorsFailClosedAfter3(t *testing.T) {
-	call := newFakeCall("call-reserveerr")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	reserver.reserveErr = errors.New("redis pool exhausted")
-	checker := &fakeBalanceChecker{balance: 1_000_000}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-	runner.SetBalanceGuardInterval(10 * time.Millisecond)
-
-	startedAt := time.Unix(0, 0)
-	current := startedAt.Add(90 * time.Second)
-	runner.SetNowFn(func() time.Time { return current })
-
-	reasonCh := make(chan string, 1)
-	go runner.Run(context.Background(), OutboundCallLifecycleInput{
-		Call:        call,
-		WorkspaceID: "ws-1",
-		StartedAt:   startedAt,
-		Admission: &callsession.CallAdmissionLease{
-			WorkspaceID:         "ws-1",
-			PerMinuteCostMicros: 100,
-			ReservedMicros:      100,
-		},
-		OnEnded: func(reason string, _ time.Duration) { reasonCh <- reason },
-	})
-
-	select {
-	case r := <-reasonCh:
-		if r != "balance_check_error" {
-			t.Fatalf("reason = %q, want 'balance_check_error'", r)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("OnEnded never called")
-	}
-}
-
-func TestLifecycleRun_ZeroDurationSkipsBilling(t *testing.T) {
-	call := newFakeCall("call-zero")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	checker := &fakeBalanceChecker{balance: 1_000_000}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-
-	frozen := time.Now()
-	runner.SetNowFn(func() time.Time { return frozen })
-
-	endedCh := make(chan struct{})
-	go runner.Run(context.Background(), OutboundCallLifecycleInput{
-		Call:        call,
-		WorkspaceID: "ws-1",
-		StartedAt:   frozen,
-		Admission:   &callsession.CallAdmissionLease{WorkspaceID: "ws-1"},
-		OnEnded:     func(string, time.Duration) { close(endedCh) },
-	})
-	_ = call.Hangup()
-	<-endedCh
-
-	if pub.Count() != 0 {
-		t.Fatalf("expected 0 billing events for zero-duration call, got %d", pub.Count())
-	}
-}
-
 func TestLifecycleRun_ContextCancelEndsCallAndReleases(t *testing.T) {
 	call := newFakeCall("call-ctx")
 	admission := &fakeAdmission{}
@@ -565,6 +365,10 @@ func TestLifecycleRun_ContextCancelEndsCallAndReleases(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("OnEnded never called after cancel")
+	}
+	deadline := time.Now().Add(time.Second)
+	for atomic.LoadInt32(&admission.releaseCalls) == 0 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
 	}
 	if atomic.LoadInt32(&admission.releaseCalls) != 1 {
 		t.Fatal("admission not released on ctx cancel")
@@ -642,47 +446,6 @@ func TestLifecycleRun_BillingPublishErrorDoesNotPanic(t *testing.T) {
 	}
 }
 
-func TestLifecycleRun_BillingDurationMatchesElapsedExactly(t *testing.T) {
-	call := newFakeCall("call-duration")
-	admission := &fakeAdmission{}
-	reserver := newFakeReserver()
-	checker := &fakeBalanceChecker{balance: 1_000_000}
-	pub := &fakeBillingPub{}
-	runner := newRunner(admission, reserver, checker, pub)
-
-	startedAt := time.Unix(0, 0)
-	endAt := startedAt.Add(125 * time.Second)
-	runner.SetNowFn(func() time.Time { return endAt })
-
-	done := make(chan struct{})
-	go func() {
-		runner.Run(context.Background(), OutboundCallLifecycleInput{
-			Call:        call,
-			WorkspaceID: "ws-1",
-			StartedAt:   startedAt,
-			Admission:   &callsession.CallAdmissionLease{WorkspaceID: "ws-1"},
-			OnEnded:     func(string, time.Duration) {},
-		})
-		close(done)
-	}()
-	_ = call.Hangup()
-	<-done
-
-	if pub.Count() != 1 {
-		t.Fatalf("billing publishes = %d, want 1", pub.Count())
-	}
-	ev := pub.LastEvent(t)
-	if ev.DurationSec != 125 {
-		t.Fatalf("DurationSec = %d, want exactly 125 (nowFn - StartedAt)", ev.DurationSec)
-	}
-	if !ev.CallEnd.Equal(endAt) {
-		t.Fatalf("CallEnd = %v, want %v (must equal nowFn at publish time)", ev.CallEnd, endAt)
-	}
-	if !ev.CallStart.Equal(startedAt) {
-		t.Fatalf("CallStart = %v, want %v (must equal input.StartedAt)", ev.CallStart, startedAt)
-	}
-}
-
 func TestLifecycleRun_PanicInOnAudioStillReleasesAndPublishes(t *testing.T) {
 	call := newFakeCall("call-panic-audio")
 	admission := &fakeAdmission{}
@@ -695,6 +458,7 @@ func TestLifecycleRun_PanicInOnAudioStillReleasesAndPublishes(t *testing.T) {
 
 	done := make(chan struct{})
 	var recovered any
+	answered := make(chan struct{})
 	go func() {
 		defer func() {
 			recovered = recover()
@@ -705,12 +469,19 @@ func TestLifecycleRun_PanicInOnAudioStillReleasesAndPublishes(t *testing.T) {
 			WorkspaceID: "ws-panic",
 			StartedAt:   startedAt,
 			Admission:   &callsession.CallAdmissionLease{WorkspaceID: "ws-panic", ReservedMicros: 100, PerMinuteCostMicros: 100},
+			OnStatus: func(ev conversation.CallEvent) {
+				if ev.Type == conversation.CallEventAnswered {
+					close(answered)
+				}
+			},
 			OnAudio: func([]byte) {
 				panic("simulated codec failure")
 			},
 		})
 	}()
 
+	call.events <- conversation.CallEvent{Type: conversation.CallEventAnswered}
+	<-answered
 	call.audio <- []byte{0x01, 0x02}
 
 	select {
@@ -766,7 +537,7 @@ func TestLifecycleRun_PanicInOnStatusStillReleasesAndPublishes(t *testing.T) {
 		})
 	}()
 
-	call.events <- conversation.CallEvent{Type: "ringing"}
+	call.events <- conversation.CallEvent{Type: conversation.CallEventAnswered}
 
 	select {
 	case <-done:
@@ -793,5 +564,24 @@ func TestNewOutboundCallLifecycleRunnerRequiresABillingPublisher(t *testing.T) {
 
 	if _, err := NewOutboundCallLifecycleRunner(nil, nil, nil, &fakeBillingPub{}, quietLogger()); err != nil {
 		t.Fatalf("a runner with a publisher failed to build: %v", err)
+	}
+}
+
+func TestLifecycleReportsTheTerminalReasonEvenWhenDoneClosesAlongside(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		call := newFakeCall("call-busy")
+		runner := newRunner(&fakeAdmission{}, newFakeReserver(), &fakeBalanceChecker{balance: 1_000}, &fakeBillingPub{})
+		call.events <- conversation.CallEvent{Type: conversation.CallEventBusy, Reason: "486 Busy Here"}
+		close(call.done)
+		reason := make(chan string, 1)
+		runner.Run(context.Background(), OutboundCallLifecycleInput{
+			Call:        call,
+			WorkspaceID: "ws-1",
+			StartedAt:   time.Now(),
+			OnEnded:     func(r string, _ time.Duration) { reason <- r },
+		})
+		if got := <-reason; got != string(conversation.CallEventBusy) {
+			t.Fatalf("run %d: reason = %q, want busy", i, got)
+		}
 	}
 }

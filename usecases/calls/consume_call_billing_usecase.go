@@ -96,11 +96,7 @@ func (c *ConsumeCallBillingUseCase) processEvent(event billing.CallCompletedEven
 	if event.DurationSec <= 0 {
 		telDurationSec = event.CallEnd.Sub(event.CallStart).Seconds()
 	}
-	telChannel := ""
-	if cdr.IsWhatsAppCallID(event.CallID) {
-		telChannel = workspace_pricing.TelephonyChannelWhatsApp
-	}
-	telResult, err := c.pricer.PriceTelephonyChannel(event.WorkspaceID, telDurationSec, telChannel)
+	telResult, err := c.pricer.PriceTelephonyChannel(event.WorkspaceID, telDurationSec, billingChannel(event))
 	if err != nil {
 		return fmt.Errorf("telephony pricing failed for call %s: %w", event.CallID, err)
 	}
@@ -226,4 +222,14 @@ func (c *ConsumeCallBillingUseCase) logf(format string, args ...interface{}) {
 	if c.logger != nil {
 		c.logger.Printf(format, args...)
 	}
+}
+
+func billingChannel(event billing.CallCompletedEvent) string {
+	if event.Channel != "" {
+		return event.Channel
+	}
+	if cdr.IsWhatsAppCallID(event.CallID) {
+		return workspace_pricing.TelephonyChannelWhatsApp
+	}
+	return ""
 }

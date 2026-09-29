@@ -17,6 +17,7 @@ import (
 	callsession_domain "vozko/domain/callsession"
 	"vozko/domain/conversation"
 	"vozko/domain/metrics"
+	"vozko/domain/sip_trunk"
 	"vozko/domain/telephony"
 	"vozko/infra/http/middleware"
 	calls_usecase "vozko/usecases/calls"
@@ -137,6 +138,10 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	}
 
 	isAdmin := strings.TrimSpace(claims.Role) == "admin"
+	if h.authorizer == nil || !h.authorizer.HasWorkspacePermission(claims.UserID, workspaceID, "call_session", "use", isAdmin) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	ws, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -232,6 +237,7 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 				IsAdmin:         isAdmin,
 				TargetPhone:     p.PhoneNumber,
 				WhatsAppPhoneID: p.WhatsAppPhoneID,
+				TrunkID:         p.TrunkID,
 				OnWaitingForSlot: func() {
 					send(&WSOutgoingMessage{Type: WSEventWaitingCallSlot, Payload: WaitingCallSlotPayload{Reason: "All call slots in use, waiting for one to free up"}})
 				},
@@ -325,6 +331,14 @@ func (h *CallSessionWSHandler) sendStartCallError(send func(*WSOutgoingMessage),
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "not_configured", Message: "Call source not configured"}})
 	case errors.Is(err, conversation.ErrWhatsAppCallNoPermission):
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "whatsapp_permission_required", Message: "The customer hasn't granted permission to receive WhatsApp calls"}})
+	case errors.Is(err, sip_trunk.ErrCallNotPermitted):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "unauthorized", Message: "You don't have permission to call through SIP trunks"}})
+	case errors.Is(err, sip_trunk.ErrTrunkNotFound), errors.Is(err, sip_trunk.ErrTrunkDisabled), errors.Is(err, sip_trunk.ErrTrunkCannotDial):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "trunk_unavailable", Message: "This trunk cannot place calls"}})
+	case errors.Is(err, sip_trunk.ErrTrunkNotRegistered):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "trunk_not_registered", Message: "This trunk is not registered with its provider"}})
+	case errors.Is(err, sip_trunk.ErrInvalidPhoneNumber):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "invalid_number", Message: "The number can only contain digits, *, # and a leading +"}})
 	default:
 		h.logger.Printf("[CallSessionWS] start call error: %v", err)
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "dial_failed", Message: "Failed to initiate call"}})

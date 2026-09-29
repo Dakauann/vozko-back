@@ -105,14 +105,11 @@ func (s *stubPricer) PriceTTS(string, string, string, int) (workspace_pricing.Pr
 func (s *stubPricer) PriceLLM(string, string, int, int, int64) (workspace_pricing.PriceResult, error) {
 	return workspace_pricing.PriceResult{}, nil
 }
-func (s *stubPricer) PriceTelephony(string, float64) (workspace_pricing.PriceResult, error) {
+func (s *stubPricer) PriceTelephonyChannel(string, float64, string) (workspace_pricing.PriceResult, error) {
 	if s.err != nil {
 		return workspace_pricing.PriceResult{}, s.err
 	}
 	return s.telephony, nil
-}
-func (s *stubPricer) PriceTelephonyChannel(ws string, dur float64, _ string) (workspace_pricing.PriceResult, error) {
-	return s.PriceTelephony(ws, dur)
 }
 func (s *stubPricer) PriceWhatsApp(string, string) (workspace_pricing.PriceResult, error) {
 	return workspace_pricing.PriceResult{}, nil
