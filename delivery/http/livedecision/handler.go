@@ -27,14 +27,7 @@ type SummaryResponse struct {
 	Effects       map[string]int `json:"effects"`
 }
 
-// @Summary		Resumo das decisões em tempo real
-// @Description	Por workspace: quantas decisões, falhas, custo, latência média e etapas movidas no período. Apenas administradores da plataforma.
-// @Tags			Decisões em tempo real
-// @Produce		json
-// @Param			days	query	int	false	"Dias para trás (1 a 90, padrão 7)"
-// @Success		200	{array}	SummaryResponse
-// @Security		BearerAuth
-// @Router			/admin/live-decisions/summary [get]
+// Internal system-admin operation; intentionally excluded from public Swagger.
 func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	days, err := strconv.Atoi(r.URL.Query().Get("days"))
 	if err != nil {

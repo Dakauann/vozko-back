@@ -4,190 +4,17 @@ package docs
 import "github.com/swaggo/swag"
 
 const docTemplate = `{
-    "schemes": {{ marshal .Schemes }},
+    "schemes": [[ marshal .Schemes ]],
     "swagger": "2.0",
     "info": {
-        "description": "{{escape .Description}}",
-        "title": "{{.Title}}",
+        "description": "[[escape .Description]]",
+        "title": "[[.Title]]",
         "contact": {},
-        "version": "{{.Version}}"
+        "version": "[[.Version]]"
     },
-    "host": "{{.Host}}",
-    "basePath": "{{.BasePath}}",
+    "host": "[[.Host]]",
+    "basePath": "[[.BasePath]]",
     "paths": {
-        "/admin/send-caps": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "System admin only. Every capped workspace with its usage in the current month (America/Sao_Paulo), most pressed first.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Admin - Monthly send caps"
-                ],
-                "summary": "List monthly template send caps",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ok, near or reached",
-                        "name": "level",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/balance.SendCapListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/send-caps/{workspaceId}": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "System admin only. Raising an existing cap is refused with unlock_required.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Admin - Monthly send caps"
-                ],
-                "summary": "Create or lower a monthly template send cap",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Workspace ID",
-                        "name": "workspaceId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "New monthly limit",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/balance.SetSendCapRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/balance.SendCapChangeResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/send-caps/{workspaceId}/unlock": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Allowlisted super admins only, with the unlock code. Send either limit or removeCap.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Admin - Monthly send caps"
-                ],
-                "summary": "Raise or remove a monthly template send cap",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Workspace ID",
-                        "name": "workspaceId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "New limit or removal, plus the unlock code",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/balance.UnlockSendCapRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/balance.SendCapChangeResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/affiliate/earnings": {
             "get": {
                 "security": [
@@ -4902,6 +4729,142 @@ const docTemplate = `{
                 }
             }
         },
+        "/deal-automation/{entryType}/{kind}/{containerId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna o funil de oportunidades que a análise automática usa neste canal. Sem funil, as oportunidades automáticas estão desligadas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Oportunidades automáticas"
+                ],
+                "summary": "Consultar oportunidades automáticas do canal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo de conversa do canal (whatsapp, unofficial_whatsapp, instagram, facebook, telegram)",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "account ou campaign",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta, número, página ou campanha",
+                        "name": "containerId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dealautomation.SettingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Define o funil de oportunidades que a análise automática usa neste canal. Envie pipelineId vazio para desligar.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Oportunidades automáticas"
+                ],
+                "summary": "Configurar oportunidades automáticas do canal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo de conversa do canal",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "account ou campaign",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta, número, página ou campanha",
+                        "name": "containerId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Funil de oportunidades",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dealautomation.UpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dealautomation.SettingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/departments": {
             "get": {
                 "security": [
@@ -9316,7 +9279,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/opportunity.ConversationLink"
+                                "$ref": "#/definitions/opportunity_usecase.LinkedConversation"
                             }
                         }
                     },
@@ -14902,7 +14865,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace.",
+                "description": "Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace e o catálogo de funcionalidades com as permissões e telas de cada uma.",
                 "produces": [
                     "application/json"
                 ],
@@ -19584,83 +19547,6 @@ const docTemplate = `{
                 }
             }
         },
-        "balance.SendCapChangeResponse": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer"
-                },
-                "workspaceId": {
-                    "type": "string"
-                }
-            }
-        },
-        "balance.SendCapItemResponse": {
-            "type": "object",
-            "properties": {
-                "level": {
-                    "type": "string",
-                    "enum": [
-                        "ok",
-                        "near",
-                        "reached"
-                    ]
-                },
-                "limit": {
-                    "type": "integer"
-                },
-                "remaining": {
-                    "type": "integer"
-                },
-                "unlockedAt": {
-                    "type": "string"
-                },
-                "unlockedBy": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "updatedBy": {
-                    "type": "string"
-                },
-                "used": {
-                    "type": "integer"
-                },
-                "workspaceId": {
-                    "type": "string"
-                },
-                "workspaceName": {
-                    "type": "string"
-                }
-            }
-        },
-        "balance.SendCapListResponse": {
-            "type": "object",
-            "properties": {
-                "canUnlock": {
-                    "type": "boolean"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/balance.SendCapItemResponse"
-                    }
-                },
-                "monthStart": {
-                    "type": "string"
-                }
-            }
-        },
-        "balance.SetSendCapRequest": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "example": 5000
-                }
-            }
-        },
         "balance.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -19699,23 +19585,6 @@ const docTemplate = `{
                 },
                 "workspaceId": {
                     "type": "string"
-                }
-            }
-        },
-        "balance.UnlockSendCapRequest": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "0000"
-                },
-                "limit": {
-                    "type": "integer",
-                    "example": 20000
-                },
-                "removeCap": {
-                    "type": "boolean",
-                    "example": false
                 }
             }
         },
@@ -20931,13 +20800,15 @@ const docTemplate = `{
                 "whatsapp",
                 "instagram",
                 "telegram",
-                "unofficial_whatsapp"
+                "unofficial_whatsapp",
+                "facebook"
             ],
             "x-enum-varnames": [
                 "MessageChannelWhatsApp",
                 "MessageChannelInstagram",
                 "MessageChannelTelegram",
-                "MessageChannelUnofficialWhatsApp"
+                "MessageChannelUnofficialWhatsApp",
+                "MessageChannelFacebook"
             ]
         },
         "conversation.MessageEnvelopeResponse": {
@@ -21052,7 +20923,9 @@ const docTemplate = `{
                 "story_mention",
                 "reaction",
                 "unsupported",
-                "post_share"
+                "post_share",
+                "sticker",
+                "link_share"
             ],
             "x-enum-varnames": [
                 "MessageTypeUserMessage",
@@ -21075,7 +20948,9 @@ const docTemplate = `{
                 "MessageTypeStoryMention",
                 "MessageTypeReaction",
                 "MessageTypeUnsupported",
-                "MessageTypePostShare"
+                "MessageTypePostShare",
+                "MessageTypeSticker",
+                "MessageTypeLinkShare"
             ]
         },
         "conversation.Outcome": {
@@ -21635,6 +21510,28 @@ const docTemplate = `{
                 "type": {
                     "type": "string",
                     "example": "select"
+                }
+            }
+        },
+        "dealautomation.SettingResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "dealautomation.UpdateRequest": {
+            "type": "object",
+            "properties": {
+                "pipelineId": {
+                    "type": "string"
                 }
             }
         },
@@ -23174,20 +23071,6 @@ const docTemplate = `{
                 }
             }
         },
-        "opportunity.ConversationLink": {
-            "type": "object",
-            "properties": {
-                "entryId": {
-                    "type": "string"
-                },
-                "entryType": {
-                    "type": "string"
-                },
-                "opportunityId": {
-                    "type": "string"
-                }
-            }
-        },
         "opportunity.CreateOpportunityRequest": {
             "type": "object",
             "properties": {
@@ -23248,6 +23131,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "actorId": {
+                    "type": "string"
+                },
+                "actorName": {
                     "type": "string"
                 },
                 "createdAt": {
@@ -23329,6 +23215,10 @@ const docTemplate = `{
                 "stageId": {
                     "type": "string",
                     "example": "stg_a1b2c3"
+                },
+                "version": {
+                    "type": "integer",
+                    "example": 3
                 }
             }
         },
@@ -23344,10 +23234,16 @@ const docTemplate = `{
                 "closedBy": {
                     "type": "string"
                 },
+                "closedByName": {
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
                 "createdBy": {
+                    "type": "string"
+                },
+                "createdByName": {
                     "type": "string"
                 },
                 "currency": {
@@ -23369,6 +23265,9 @@ const docTemplate = `{
                 "ownerId": {
                     "type": "string"
                 },
+                "ownerName": {
+                    "type": "string"
+                },
                 "pipelineId": {
                     "type": "string"
                 },
@@ -23388,6 +23287,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "valueCents": {
+                    "type": "integer"
+                },
+                "version": {
                     "type": "integer"
                 },
                 "workspaceId": {
@@ -23446,6 +23348,30 @@ const docTemplate = `{
                 "valueCents": {
                     "type": "integer",
                     "example": 150000
+                },
+                "version": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "opportunity_usecase.LinkedConversation": {
+            "type": "object",
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "leadName": {
+                    "type": "string"
+                },
+                "leadNumber": {
+                    "type": "string"
+                },
+                "opportunityId": {
+                    "type": "string"
                 }
             }
         },
@@ -24308,13 +24234,15 @@ const docTemplate = `{
                 "whatsapp",
                 "instagram",
                 "telegram",
-                "unofficial_whatsapp"
+                "unofficial_whatsapp",
+                "facebook"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
                 "EntryTypeInstagram",
                 "EntryTypeTelegram",
-                "EntryTypeUnofficialWhatsApp"
+                "EntryTypeUnofficialWhatsApp",
+                "EntryTypeFacebook"
             ]
         },
         "shared.QualityLevel": {
@@ -26725,8 +26653,8 @@ var SwaggerInfo = &swag.Spec{
 	Description:      "API de comunicação omnichannel e call center.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
-	LeftDelim:        "{{",
-	RightDelim:       "}}",
+	LeftDelim:        "[[",
+	RightDelim:       "]]",
 }
 
 func init() {

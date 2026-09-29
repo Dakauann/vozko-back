@@ -47,16 +47,7 @@ func sendCapActor(r *http.Request) (balancedomain.SendCapActor, bool) {
 	}, true
 }
 
-// @Summary List monthly template send caps
-// @Description System admin only. Every capped workspace with its usage in the current month (America/Sao_Paulo), most pressed first.
-// @Tags Admin - Monthly send caps
-// @Produce json
-// @Security BearerAuth
-// @Param level query string false "ok, near or reached"
-// @Success 200 {object} SendCapListResponse
-// @Failure 400 {object} response.ErrorResponse
-// @Failure 403 {object} response.ErrorResponse
-// @Router /admin/send-caps [get]
+// Internal system-admin operation; intentionally excluded from public Swagger.
 func (h *SendCapHandler) List(w http.ResponseWriter, r *http.Request) {
 	actor, ok := sendCapActor(r)
 	if !ok {
@@ -76,19 +67,7 @@ func (h *SendCapHandler) List(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toSendCapListResponse(listing))
 }
 
-// @Summary Create or lower a monthly template send cap
-// @Description System admin only. Raising an existing cap is refused with unlock_required.
-// @Tags Admin - Monthly send caps
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param workspaceId path string true "Workspace ID"
-// @Param body body SetSendCapRequest true "New monthly limit"
-// @Success 200 {object} SendCapChangeResponse
-// @Failure 400 {object} response.ErrorResponse
-// @Failure 403 {object} response.ErrorResponse
-// @Failure 404 {object} response.ErrorResponse
-// @Router /admin/send-caps/{workspaceId} [put]
+// Internal system-admin operation; intentionally excluded from public Swagger.
 func (h *SendCapHandler) Set(w http.ResponseWriter, r *http.Request) {
 	actor, ok := sendCapActor(r)
 	if !ok {
@@ -109,19 +88,7 @@ func (h *SendCapHandler) Set(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toSendCapChangeResponse(workspaceID, cap))
 }
 
-// @Summary Raise or remove a monthly template send cap
-// @Description Allowlisted super admins only, with the unlock code. Send either limit or removeCap.
-// @Tags Admin - Monthly send caps
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param workspaceId path string true "Workspace ID"
-// @Param body body UnlockSendCapRequest true "New limit or removal, plus the unlock code"
-// @Success 200 {object} SendCapChangeResponse
-// @Failure 400 {object} response.ErrorResponse
-// @Failure 403 {object} response.ErrorResponse
-// @Failure 404 {object} response.ErrorResponse
-// @Router /admin/send-caps/{workspaceId}/unlock [post]
+// Internal system-admin operation; intentionally excluded from public Swagger.
 func (h *SendCapHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 	actor, ok := sendCapActor(r)
 	if !ok {

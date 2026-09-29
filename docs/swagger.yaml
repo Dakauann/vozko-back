@@ -1998,57 +1998,6 @@ definitions:
       totalMoneyDebits:
         type: integer
     type: object
-  balance.SendCapChangeResponse:
-    properties:
-      limit:
-        type: integer
-      workspaceId:
-        type: string
-    type: object
-  balance.SendCapItemResponse:
-    properties:
-      level:
-        enum:
-        - ok
-        - near
-        - reached
-        type: string
-      limit:
-        type: integer
-      remaining:
-        type: integer
-      unlockedAt:
-        type: string
-      unlockedBy:
-        type: string
-      updatedAt:
-        type: string
-      updatedBy:
-        type: string
-      used:
-        type: integer
-      workspaceId:
-        type: string
-      workspaceName:
-        type: string
-    type: object
-  balance.SendCapListResponse:
-    properties:
-      canUnlock:
-        type: boolean
-      items:
-        items:
-          $ref: '#/definitions/balance.SendCapItemResponse'
-        type: array
-      monthStart:
-        type: string
-    type: object
-  balance.SetSendCapRequest:
-    properties:
-      limit:
-        example: 5000
-        type: integer
-    type: object
   balance.TransactionResponse:
     properties:
       amount:
@@ -2075,18 +2024,6 @@ definitions:
         type: string
       workspaceId:
         type: string
-    type: object
-  balance.UnlockSendCapRequest:
-    properties:
-      code:
-        example: "0000"
-        type: string
-      limit:
-        example: 20000
-        type: integer
-      removeCap:
-        example: false
-        type: boolean
     type: object
   balance.balanceResponse:
     properties:
@@ -2957,12 +2894,14 @@ definitions:
     - instagram
     - telegram
     - unofficial_whatsapp
+    - facebook
     type: string
     x-enum-varnames:
     - MessageChannelWhatsApp
     - MessageChannelInstagram
     - MessageChannelTelegram
     - MessageChannelUnofficialWhatsApp
+    - MessageChannelFacebook
   conversation.MessageEnvelopeResponse:
     properties:
       message:
@@ -3045,6 +2984,8 @@ definitions:
     - reaction
     - unsupported
     - post_share
+    - sticker
+    - link_share
     type: string
     x-enum-varnames:
     - MessageTypeUserMessage
@@ -3068,6 +3009,8 @@ definitions:
     - MessageTypeReaction
     - MessageTypeUnsupported
     - MessageTypePostShare
+    - MessageTypeSticker
+    - MessageTypeLinkShare
   conversation.Outcome:
     properties:
       code:
@@ -3492,6 +3435,20 @@ definitions:
         type: boolean
       type:
         example: select
+        type: string
+    type: object
+  dealautomation.SettingResponse:
+    properties:
+      enabled:
+        type: boolean
+      pipelineId:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  dealautomation.UpdateRequest:
+    properties:
+      pipelineId:
         type: string
     type: object
   handlers.SimulateAgentHistoryMessage:
@@ -4536,15 +4493,6 @@ definitions:
       valueTotal:
         type: integer
     type: object
-  opportunity.ConversationLink:
-    properties:
-      entryId:
-        type: string
-      entryType:
-        type: string
-      opportunityId:
-        type: string
-    type: object
   opportunity.CreateOpportunityRequest:
     properties:
       carteiraId:
@@ -4589,6 +4537,8 @@ definitions:
   opportunity.Event:
     properties:
       actorId:
+        type: string
+      actorName:
         type: string
       createdAt:
         type: string
@@ -4649,6 +4599,9 @@ definitions:
       stageId:
         example: stg_a1b2c3
         type: string
+      version:
+        example: 3
+        type: integer
     type: object
   opportunity.Opportunity:
     properties:
@@ -4658,9 +4611,13 @@ definitions:
         type: string
       closedBy:
         type: string
+      closedByName:
+        type: string
       createdAt:
         type: string
       createdBy:
+        type: string
+      createdByName:
         type: string
       currency:
         type: string
@@ -4675,6 +4632,8 @@ definitions:
         type: string
       ownerId:
         type: string
+      ownerName:
+        type: string
       pipelineId:
         type: string
       source:
@@ -4688,6 +4647,8 @@ definitions:
       updatedAt:
         type: string
       valueCents:
+        type: integer
+      version:
         type: integer
       workspaceId:
         type: string
@@ -4731,6 +4692,22 @@ definitions:
       valueCents:
         example: 150000
         type: integer
+      version:
+        example: 3
+        type: integer
+    type: object
+  opportunity_usecase.LinkedConversation:
+    properties:
+      entryId:
+        type: string
+      entryType:
+        type: string
+      leadName:
+        type: string
+      leadNumber:
+        type: string
+      opportunityId:
+        type: string
     type: object
   opportunityio.ImportError:
     properties:
@@ -5330,12 +5307,14 @@ definitions:
     - instagram
     - telegram
     - unofficial_whatsapp
+    - facebook
     type: string
     x-enum-varnames:
     - EntryTypeWhatsApp
     - EntryTypeInstagram
     - EntryTypeTelegram
     - EntryTypeUnofficialWhatsApp
+    - EntryTypeFacebook
   shared.QualityLevel:
     enum:
     - none
@@ -6977,118 +6956,6 @@ info:
   title: API
   version: "1.0"
 paths:
-  /admin/send-caps:
-    get:
-      description: System admin only. Every capped workspace with its usage in the
-        current month (America/Sao_Paulo), most pressed first.
-      parameters:
-      - description: ok, near or reached
-        in: query
-        name: level
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/balance.SendCapListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List monthly template send caps
-      tags:
-      - Admin - Monthly send caps
-  /admin/send-caps/{workspaceId}:
-    put:
-      consumes:
-      - application/json
-      description: System admin only. Raising an existing cap is refused with unlock_required.
-      parameters:
-      - description: Workspace ID
-        in: path
-        name: workspaceId
-        required: true
-        type: string
-      - description: New monthly limit
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/balance.SetSendCapRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/balance.SendCapChangeResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create or lower a monthly template send cap
-      tags:
-      - Admin - Monthly send caps
-  /admin/send-caps/{workspaceId}/unlock:
-    post:
-      consumes:
-      - application/json
-      description: Allowlisted super admins only, with the unlock code. Send either
-        limit or removeCap.
-      parameters:
-      - description: Workspace ID
-        in: path
-        name: workspaceId
-        required: true
-        type: string
-      - description: New limit or removal, plus the unlock code
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/balance.UnlockSendCapRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/balance.SendCapChangeResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Raise or remove a monthly template send cap
-      tags:
-      - Admin - Monthly send caps
   /affiliate/earnings:
     get:
       description: Retorna a lista paginada de comissões registradas para o afiliado
@@ -10193,6 +10060,98 @@ paths:
       summary: Atualizar campo personalizado
       tags:
       - Campos Personalizados
+  /deal-automation/{entryType}/{kind}/{containerId}:
+    get:
+      description: Retorna o funil de oportunidades que a análise automática usa neste
+        canal. Sem funil, as oportunidades automáticas estão desligadas.
+      parameters:
+      - description: Tipo de conversa do canal (whatsapp, unofficial_whatsapp, instagram,
+          facebook, telegram)
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: account ou campaign
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: ID da conta, número, página ou campanha
+        in: path
+        name: containerId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dealautomation.SettingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar oportunidades automáticas do canal
+      tags:
+      - Oportunidades automáticas
+    put:
+      consumes:
+      - application/json
+      description: Define o funil de oportunidades que a análise automática usa neste
+        canal. Envie pipelineId vazio para desligar.
+      parameters:
+      - description: Tipo de conversa do canal
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: account ou campaign
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: ID da conta, número, página ou campanha
+        in: path
+        name: containerId
+        required: true
+        type: string
+      - description: Funil de oportunidades
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dealautomation.UpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dealautomation.SettingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Configurar oportunidades automáticas do canal
+      tags:
+      - Oportunidades automáticas
   /departments:
     get:
       description: Retorna os departamentos do workspace visíveis para o usuário autenticado,
@@ -12682,7 +12641,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Cria uma nova oportunidade (negócio) no funil de vendas do workspace.
+      description: Cria uma nova oportunidade em um funil de oportunidades do workspace.
         O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há
         um lead associado.
       parameters:
@@ -12714,7 +12673,7 @@ paths:
       - Oportunidades
   /opportunities/{id}:
     delete:
-      description: Exclui uma oportunidade do funil de vendas do workspace.
+      description: Exclui uma oportunidade do workspace.
       parameters:
       - description: ID da oportunidade
         in: path
@@ -12866,7 +12825,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/opportunity.ConversationLink'
+              $ref: '#/definitions/opportunity_usecase.LinkedConversation'
             type: array
         "401":
           description: Unauthorized
@@ -13002,9 +12961,10 @@ paths:
       - Oportunidades
   /opportunities/board:
     get:
-      description: Renderiza o funil de vendas do workspace agrupado por etapa, responsável
-        ou campo personalizado. Cada coluna traz a contagem de oportunidades e a soma
-        dos valores (em reais do cliente). Respeita o escopo de departamento do usuário.
+      description: Renderiza o funil de oportunidades do workspace agrupado por etapa,
+        responsável ou campo personalizado. Cada coluna traz a contagem de oportunidades
+        e a soma dos valores (em reais do cliente). Respeita o escopo de departamento
+        do usuário.
       parameters:
       - description: ID do pipeline a exibir
         in: query
@@ -13072,7 +13032,7 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Board de oportunidades (Funil de Vendas)
+      summary: Quadro de oportunidades
       tags:
       - Oportunidades
   /opportunities/export:
@@ -17900,7 +17860,8 @@ paths:
   /workspaces/permissions:
     get:
       description: Retorna o catálogo de recursos e ações que podem ser concedidos
-        a membros e cargos do workspace.
+        a membros e cargos do workspace e o catálogo de funcionalidades com as permissões
+        e telas de cada uma.
       produces:
       - application/json
       responses:
